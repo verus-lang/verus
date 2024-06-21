@@ -108,7 +108,7 @@ pub fn main() {
 
     let times_ms_json_data = if verifier.args.time {
         let mut smt_init_times = verifier
-            .bucket_times
+            .bucket_stats
             .iter()
             .filter(|(k, _)| k.function().is_none())
             .map(|(k, v)| (k.module(), v.time_smt_init.as_millis()))
@@ -116,14 +116,28 @@ pub fn main() {
         smt_init_times.sort_by(|(_, a), (_, b)| b.cmp(a));
         let total_smt_init: u128 = smt_init_times.iter().map(|(_, v)| v).sum();
 
-        let mut smt_run_times: Vec<(&std::sync::Arc<vir::ast::PathX>, u128)> = verifier
-            .bucket_times
+        struct SmtStats {
+            time_millis: u128,
+            rlimit_count: u64,
+        }
+
+        let mut smt_run_stats: Vec<(&std::sync::Arc<vir::ast::PathX>, SmtStats)> = verifier
+            .bucket_stats
             .iter()
             .filter(|(k, _)| k.function().is_none())
-            .map(|(k, v)| (k.module(), v.time_smt_run.as_millis()))
+            .map(|(k, v)| {
+                (
+                    k.module(),
+                    SmtStats {
+                        time_millis: v.time_smt_run.as_millis(),
+                        rlimit_count: v.rlimit_count,
+                    },
+                )
+            })
             .collect::<Vec<_>>();
-        smt_run_times.sort_by(|(_, a), (_, b)| b.cmp(a));
-        let total_smt_run: u128 = smt_run_times.iter().map(|(_, v)| v).sum();
+        smt_run_stats.sort_by(|(_, a), (_, b)| b.time_millis.cmp(&a.time_millis));
+        let total_smt_run: u128 = smt_run_stats.iter().map(|(_, v)| v.time_millis).sum();
+        let total_rlimit_count: u64 = smt_run_stats.iter().map(|(_, v)| v.rlimit_count).sum();
 
         let mut smt_function_breakdown = {
             let mod_fun_times: Vec<_> = verifier
@@ -131,13 +145,24 @@ pub fn main() {
                 .iter()
                 .flat_map(|(k, v)| {
                     v.iter()
-                        .map(|(f, t)| (k.module().clone(), (f.clone(), t.as_millis())))
+                        .map(|(f, t)| {
+                            (
+                                k.module().clone(),
+                                (
+                                    f.clone(),
+                                    SmtStats {
+                                        time_millis: t.smt_time.as_millis(),
+                                        rlimit_count: t.rlimit_count,
+                                    },
+                                ),
+                            )
+                        })
                         .collect::<Vec<_>>()
                 })
                 .collect();
             let mut per_module: std::collections::HashMap<
                 vir::ast::Path,
-                Vec<(vir::ast::Fun, u128)>,
+                Vec<(vir::ast::Fun, SmtStats)>,
             > = std::collections::HashMap::new();
             for (m, f_t) in mod_fun_times {
                 per_module.entry(m).or_insert(Vec::new()).push(f_t);
@@ -146,7 +171,7 @@ pub fn main() {
         };
 
         let mut air_times = verifier
-            .bucket_times
+            .bucket_stats
             .iter()
             .filter(|(k, _)| k.function().is_none())
             .map(|(k, v)| {
@@ -157,7 +182,7 @@ pub fn main() {
         let total_air: u128 = air_times.iter().map(|(_, v)| v).sum();
 
         let mut verify_times = verifier
-            .bucket_times
+            .bucket_stats
             .iter()
             .filter(|(k, _)| k.function().is_none())
             .map(|(k, v)| (k.module(), (v.time_verify).as_millis()))
@@ -199,7 +224,7 @@ pub fn main() {
                 let _smt_function_breakdown_set =
                     smt_function_breakdown.keys().collect::<std::collections::HashSet<_>>();
                 let _smt_run_times_set =
-                    smt_run_times.iter().map(|(x, _)| *x).collect::<std::collections::HashSet<_>>();
+                    smt_run_stats.iter().map(|(x, _)| *x).collect::<std::collections::HashSet<_>>();
                 // REVIEW check these are consistent
             }
 
@@ -256,14 +281,16 @@ pub fn main() {
                             })
                         }).collect::<Vec<serde_json::Value>>(),
                         "smt-run": total_smt_run,
-                        "smt-run-module-times" : smt_run_times.iter().map(|(m, t)| {
+                        "smt-run-module-times" : smt_run_stats.iter().map(|(m, t)| {
                             serde_json::json!({
                                 "module" : rust_verify::verifier::module_name(m),
-                                "time" : t,
+                                "time" : t.time_millis,
+                                "rlimit-count" : t.rlimit_count,
                                 "function-breakdown" : smt_function_breakdown.get_mut(*m).map(|b| b.iter().map(|(f, t)| {
                                     serde_json::json!({
                                         "function" : vir::ast_util::fun_as_friendly_rust_name(f),
-                                        "time" : t
+                                        "time" : t.time_millis,
+                                        "rlimit-count" : t.rlimit_count,
                                     })
                                  }).collect::<Vec<serde_json::Value>>()).unwrap_or_default(),
                             })
@@ -345,16 +372,17 @@ pub fn main() {
                     }
                 }
                 println!(
-                    "        total smt-run:         {:>10} ms   ({} threads)",
-                    total_smt_run, verifier.num_threads
+                    "        total smt-run:         {:>10} ms, {:>8} rlimit ({} threads)",
+                    total_smt_run, total_rlimit_count, verifier.num_threads,
                 );
                 if verifier.args.time_expanded {
-                    for (i, (m, t)) in smt_run_times.iter().take(3).enumerate() {
+                    for (i, (m, t)) in smt_run_stats.iter().take(3).enumerate() {
                         println!(
-                            "            {}. {:<40} {:>10} ms",
+                            "            {}. {:<40} {:>10} ms, {:>8} rlimit",
                             i + 1,
                             rust_verify::verifier::module_name(m),
-                            t
+                            t.time_millis,
+                            t.rlimit_count,
                         );
                     }
                 }
