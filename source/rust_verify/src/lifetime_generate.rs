@@ -1603,39 +1603,38 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
                 vec![]
             }
         }
-        // TODO(1.79.0) StmtKind::Local(local) => {
-        // TODO(1.79.0)     let mode = ctxt.var_modes[&local.pat.hir_id];
-        // TODO(1.79.0)     if mode == Mode::Spec {
-        // TODO(1.79.0)         if let Some(init) = local.init {
-        // TODO(1.79.0)             if let Some(e) = erase_expr(ctxt, state, true, init) {
-        // TODO(1.79.0)                 vec![Box::new((stmt.span, StmX::Expr(e)))]
-        // TODO(1.79.0)             } else {
-        // TODO(1.79.0)                 vec![]
-        // TODO(1.79.0)             }
-        // TODO(1.79.0)         } else {
-        // TODO(1.79.0)             vec![]
-        // TODO(1.79.0)         }
-        // TODO(1.79.0)     } else {
-        // TODO(1.79.0)         let pat = erase_pat(ctxt, state, &local.pat);
-        // TODO(1.79.0)         let typ = erase_ty(ctxt, state, &ctxt.types().node_type(local.pat.hir_id));
-        // TODO(1.79.0)         let init_exp = if let Some(init) = local.init {
-        // TODO(1.79.0)             erase_expr(ctxt, state, false, init)
-        // TODO(1.79.0)         } else {
-        // TODO(1.79.0)             None
-        // TODO(1.79.0)         };
-        // TODO(1.79.0)         vec![Box::new((stmt.span, StmX::Let(pat, typ, init_exp)))]
-        // TODO(1.79.0)     }
-        // TODO(1.79.0) }
-        StmtKind::Item(..) => panic!("unexpected statement"),
         StmtKind::Let(LetStmt {
             pat,
             ty,
             init,
-            els,
+            els: _,
             hir_id,
-            span,
-            source,
-        }) => todo!("TODO(1.79.0)"),
+            span: _,
+            source: _,
+        }) => {
+          let mode = ctxt.var_modes[&pat.hir_id];
+          if mode == Mode::Spec {
+              if let Some(init) = init {
+                  if let Some(e) = erase_expr(ctxt, state, true, init) {
+                      vec![Box::new((stmt.span, StmX::Expr(e)))]
+                  } else {
+                      vec![]
+                  }
+              } else {
+                  vec![]
+              }
+          } else {
+              let pat: Pattern = erase_pat(ctxt, state, pat);
+              let typ = erase_ty(ctxt, state, &ctxt.types().node_type(*hir_id)); // TODO(1.79.0) &ctxt.types().node_type(pat.hir_id)
+              let init_exp = if let Some(init) = init {
+                  erase_expr(ctxt, state, false, init)
+              } else {
+                  None
+              };
+              vec![Box::new((stmt.span, StmX::Let(pat, typ, init_exp)))]
+          }
+        }
+        StmtKind::Item(..) => panic!("unexpected statement"),
     }
 }
 
