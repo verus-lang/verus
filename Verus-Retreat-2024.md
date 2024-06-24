@@ -60,6 +60,7 @@ This is a tentative program.
 ### Wednesday, June 26th
 
 - Documentation write-a-thon  (2-3 hours in the morning)
+  - +Wiki updates
 
 - Setting up CI that includes other Verus projects (a-la crater) (Andrea)
 
