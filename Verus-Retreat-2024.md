@@ -42,6 +42,7 @@ This is a tentative program.
    - `verusfmt` (Jay Bosamiya)
    - `cargo verus` 
    - Verus find (Matthias Brun)
+   - HumanEval in Verus (Bryan Parno)
 
 *Feature request triage (1-2 hours in the afternoon)*
 
