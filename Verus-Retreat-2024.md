@@ -84,6 +84,7 @@ This is a tentative program.
 - 11:15 AM: *Retreat Photograph* 
 
 - Feature design discussion (afternoon)
+  - Lean integration
   - Attaching specifications to standard library with traits, e.g., `HashMap<Key: View>`
 
 - Evening: Board games!
