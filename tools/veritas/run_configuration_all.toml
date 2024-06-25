@@ -38,11 +38,16 @@ extra_args = [
     "--extern=deps_hack=deps_hack/target/debug/libdeps_hack.rlib",
 ]
 prepare_script = """
-DEBIAN_FRONTEND=noninteractive apt-get install -y libpmem1 libpmemlog1 libpmem-dev libpmemlog-dev llvm-dev clang libclang-dev # verified-storage
+DEBIAN_FRONTEND=noninteractive apt-get update; apt-get install -y libpmem1 libpmemlog1 libpmem-dev libpmemlog-dev llvm-dev clang libclang-dev # verified-storage
+
+cd pmsafe
+cargo clean
+cargo build 
+cd ..
 
 cd deps_hack
 cargo clean
-cargo +1.76.0 build
+cargo build
 """
 
 [[project]]
