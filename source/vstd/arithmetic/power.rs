@@ -438,7 +438,7 @@ pub broadcast proof fn lemma_pow_increases(b: nat, e1: nat, e2: nat)
 pub broadcast proof fn lemma_pow_strictly_increases_converse(b: nat, e1: nat, e2: nat)
     requires
         b > 0,
-        pow(b as int, e1) < pow(b as int, e2),
+        #[trigger] pow(b as int, e1) < #[trigger] pow(b as int, e2),
     ensures
         e1 < e2,
 {
@@ -455,7 +455,7 @@ pub broadcast proof fn lemma_pow_strictly_increases_converse(b: nat, e1: nat, e2
 pub broadcast proof fn lemma_pow_increases_converse(b: nat, e1: nat, e2: nat)
     requires
         1 < b,
-        pow(b as int, e1) <= pow(b as int, e2),
+        #[trigger] pow(b as int, e1) <= #[trigger] pow(b as int, e2),
     ensures
         e1 <= e2,
 {

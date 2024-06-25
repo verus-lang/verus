@@ -10,7 +10,7 @@ use crate::ast::{
     TraitX, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner, is_visible_to_or_true};
-use crate::ast_visitor::VisitorScopeMap;
+use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{array_index_fun, fn_inv_name, fn_namespace_name, Spanned};
 use crate::poly::MonoTyp;
@@ -50,6 +50,13 @@ struct ReachTraitImpl {
     trait_typ_args: Vec<ReachedType>,
 }
 
+#[derive(Debug)]
+struct ReachBroadcastFunction {
+    // For each trigger, keep a Vec<Fun> that contains every Fun that must be reached to
+    // activate the trigger:
+    reach_triggers: Vec<Vec<Fun>>,
+}
+
 struct Ctxt {
     module: Option<Path>,
     function_map: HashMap<Fun, Function>,
@@ -64,6 +71,10 @@ struct Ctxt {
     assoc_type_impl_map: HashMap<AssocTypeGroup, Vec<AssocTypeImpl>>,
     // Map (D, T.f) -> D.f if D implements T.f:
     method_map: HashMap<(ReachedType, Fun), Vec<Fun>>,
+    // For a broadcast function f with triggers containing functions f0..fn, point f0..fn to f:
+    fun_to_trigger_broadcasts: HashMap<Fun, Vec<Fun>>,
+    // Map each revealed broadcast function f to its ReachBroadcastFunction
+    fun_revealed_broadcast_map: HashMap<Fun, ReachBroadcastFunction>,
     all_functions_in_each_module: HashMap<Path, Vec<Fun>>,
     all_reveal_groups_in_each_module: HashMap<Path, Vec<Fun>>,
     vstd_crate_name: Ident,
@@ -152,6 +163,29 @@ fn reach_function(ctxt: &Ctxt, state: &mut State, name: &Fun) {
     }
 }
 
+fn reach_function_via_reveal(ctxt: &Ctxt, state: &mut State, name: &Fun) {
+    if let Some(broadcast) = ctxt.fun_revealed_broadcast_map.get(name) {
+        // "name" is a revealed broadcast function
+        // If any triggers are reachable, reach the function
+        if broadcast.reach_triggers.len() == 0 {
+            // No triggers, so there's nothing to base pruning on, so we can't prune
+            reach_function(ctxt, state, name);
+        }
+        'try_next_trigger: for trig in &broadcast.reach_triggers {
+            for f in trig {
+                if !state.reached_functions.contains(f) {
+                    continue 'try_next_trigger;
+                }
+            }
+            // We found a reachable trigger, so reach the whole broadcast function:
+            reach_function(ctxt, state, name);
+            break;
+        }
+    } else {
+        reach_function(ctxt, state, name);
+    }
+}
+
 fn reach_reveal_group(ctxt: &Ctxt, state: &mut State, name: &Fun) {
     let group = &ctxt.reveal_group_map[name];
     if let Some(module_path) = &group.x.owning_module {
@@ -165,7 +199,7 @@ fn reach_reveal_group(ctxt: &Ctxt, state: &mut State, name: &Fun) {
         }
     }
     for member in group.x.members.iter() {
-        reach_function(ctxt, state, member);
+        reach_function_via_reveal(ctxt, state, member);
     }
 }
 
@@ -326,6 +360,11 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
                 reach_function(ctxt, state, method);
             }
+            if let Some(f_trigs) = ctxt.fun_to_trigger_broadcasts.get(&f) {
+                for f_trig in f_trigs {
+                    reach_function_via_reveal(ctxt, state, f_trig);
+                }
+            }
             // note: the types in typ_bounds are handled below by map_function_visitor_env
             traverse_generic_bounds(ctxt, state, &function.x.typ_bounds, false);
             let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
@@ -464,10 +503,14 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if let Some(fs) = ctxt.all_functions_in_each_module.get(&m) {
                 for f in fs {
                     let function = &ctxt.function_map[f];
+                    if let Some(reach) = ctxt.fun_revealed_broadcast_map.get(f) {
+                        if reach.reach_triggers.len() > 0 {
+                            continue;
+                        }
+                    }
                     if function.x.attrs.broadcast_forall && function.x.body.is_none() {
                         // If we reach m, we reach all broadcast_forall functions in m
-                        // TODO: remove this and rely on explicit reaching of broadcast_forall
-                        // (also remove all_functions_in_each_module)
+                        // that didn't have triggers to prune on
                         reach_function(ctxt, state, f);
                     }
                 }
@@ -528,6 +571,72 @@ fn overapproximate_revealed_functions(
             }
         }
     }
+}
+
+fn collect_broadcast_triggers(f: &Function) -> Vec<Vec<Fun>> {
+    use crate::ast::{Exprs, TriggerAnnotation, UnaryOp};
+    let mut unary_trigs: Vec<Expr> = Vec::new();
+    let mut with_triggers: Vec<Exprs> = Vec::new();
+    let mut map: VisitorScopeMap = ScopeMap::new();
+    let mut f_get_triggers = |_: &mut VisitorScopeMap, expr: &Expr| {
+        match &expr.x {
+            ExprX::WithTriggers { triggers, body: _ } => {
+                with_triggers.extend((**triggers).clone());
+                VisitorControlFlow::Recurse
+            }
+            ExprX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(..)), e) => {
+                unary_trigs.push(e.clone());
+                VisitorControlFlow::Recurse
+            }
+            ExprX::Unary(UnaryOp::Trigger(..), _) => {
+                // TODO: we should probably make this an error
+                VisitorControlFlow::Stop(())
+            }
+            ExprX::Quant(..) => VisitorControlFlow::Return,
+            _ => VisitorControlFlow::Recurse,
+        }
+    };
+
+    // Collect all triggers
+    for expr in f.x.require.iter().chain(f.x.ensure.iter()) {
+        let control = crate::ast_visitor::expr_visitor_dfs(expr, &mut map, &mut f_get_triggers);
+        if control == VisitorControlFlow::Stop(()) {
+            return vec![];
+        }
+    }
+    if unary_trigs.len() > 0 {
+        with_triggers.push(Arc::new(unary_trigs));
+    }
+
+    // Collect function calls in each trigger
+    // (Note: it's ok to err on the side of missing some function calls)
+    let mut trigs: Vec<Vec<Fun>> = Vec::new();
+    for trig in &with_triggers {
+        let mut calls: Vec<Fun> = Vec::new();
+        let mut f_get_calls = |_: &mut VisitorScopeMap, expr: &Expr| match &expr.x {
+            ExprX::Call(CallTarget::Fun(_, name, _, _, _), _) => {
+                calls.push(name.clone());
+                VisitorControlFlow::Recurse
+            }
+            _ => VisitorControlFlow::Recurse,
+        };
+        for term in trig.iter() {
+            let control =
+                crate::ast_visitor::expr_visitor_dfs(term, &mut ScopeMap::new(), &mut f_get_calls);
+            if control == VisitorControlFlow::Stop(()) {
+                return vec![];
+            }
+        }
+        if calls.len() == 0 {
+            // For the case of a trigger with no function calls (e.g. a trigger on an
+            // arithmetic op, or extentional equality, or height),
+            // we fall back to the module-based pruning.
+            // TODO: consider type-based pruning for extentional equality, height?
+            return vec![];
+        }
+        trigs.push(calls);
+    }
+    trigs
 }
 
 // module is none: prune to keep what's reachable from current_crate
@@ -757,6 +866,8 @@ pub fn prune_krate_for_module_or_krate(
     let mut method_map: HashMap<(ReachedType, Fun), Vec<Fun>> = HashMap::new();
     let mut all_functions_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     let mut all_reveal_groups_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
+    let mut fun_to_trigger_broadcasts: HashMap<Fun, Vec<Fun>> = HashMap::new();
+    let mut fun_revealed_broadcast_map: HashMap<Fun, ReachBroadcastFunction> = HashMap::new();
     for f in &functions {
         function_map.insert(f.x.name.clone(), f.clone());
         if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. }
@@ -774,6 +885,19 @@ pub fn prune_krate_for_module_or_krate(
             all_functions_in_each_module.insert(module.clone(), Vec::new());
         }
         all_functions_in_each_module.get_mut(&module).unwrap().push(f.x.name.clone());
+        if revealed_functions.contains(&f.x.name) {
+            let reach_triggers = collect_broadcast_triggers(f);
+            for trig in &reach_triggers {
+                for term in trig {
+                    fun_to_trigger_broadcasts
+                        .entry(term.clone())
+                        .or_insert_with(|| Vec::new())
+                        .push(f.x.name.clone());
+                }
+            }
+            let reach_broadcast = ReachBroadcastFunction { reach_triggers };
+            fun_revealed_broadcast_map.insert(f.x.name.clone(), reach_broadcast);
+        }
     }
     for f in &reveal_groups {
         reveal_group_map.insert(f.x.name.clone(), f.clone());
@@ -853,6 +977,8 @@ pub fn prune_krate_for_module_or_krate(
         trait_impl_map,
         assoc_type_impl_map,
         method_map,
+        fun_to_trigger_broadcasts,
+        fun_revealed_broadcast_map,
         all_functions_in_each_module,
         all_reveal_groups_in_each_module,
         vstd_crate_name,
