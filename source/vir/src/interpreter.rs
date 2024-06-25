@@ -1674,15 +1674,15 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     Ok(res)
 }
 
-fn cleanup_seq_like(span: &Span, typ: Typ, v: &Vector<Exp>, is_seq: bool) -> Result<Exp, VirErr>
+fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr>
 {
     match &*typ {
         TypX::Datatype(_, typs, _) => {
             // Grab the type the sequence holds
             let inner_type = typs[0].clone();
             // Convert back to a standard SST representation
-            let s = if is_seq { seq_to_sst(span, inner_type.clone(), v) } else { array_to_sst(span, inner_type.clone(), v) };
-            // Wrap the construction in unbox to account for the Poly type of the sequence/array functions
+            let s = seq_to_sst(span, inner_type.clone(), v); 
+            // Wrap the seq construction in unbox to account for the Poly type of the sequence functions
             let unbox_opr = crate::ast::UnaryOpr::Unbox(typ.clone());
             let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
             let unboxed_e = SpannedTyped::new(span, &typ.clone(), unboxed_expx);
@@ -1700,8 +1700,7 @@ fn cleanup_seq_like(span: &Span, typ: Typ, v: &Vector<Exp>, is_seq: bool) -> Res
                 _ => Err(error(
                     &span,
                     format!(
-                        "Internal error: Inside box, expected to find {} type but found: {:?}",
-                        if is_seq { "a sequence" } else { "an array" },
+                        "Internal error: Inside box, expected to find a sequence type but found: {:?}",
                         typ,
                     ),
                 )),
@@ -1710,8 +1709,7 @@ fn cleanup_seq_like(span: &Span, typ: Typ, v: &Vector<Exp>, is_seq: bool) -> Res
         _ => Err(error(
             &span,
             format!(
-                "Internal error: Expected to find {} type but found: {:?}",
-                if is_seq { "a sequence" } else { "an array" },
+                "Internal error: Expected to find a sequence type but found: {:?}",
                 typ
             ),
         )),
@@ -1726,49 +1724,8 @@ fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr>
     let boxed_expx = crate::sst::ExpX::UnaryOpr(box_opr, arr);
     let boxed_e = SpannedTyped::new(span, &typ.clone(), boxed_expx);
     Ok(boxed_e)
-/*
-    match &*typ {
-        TypX::Datatype(_, typs, _) => {
-            // Grab the type the sequence holds
-            let inner_type = typs[0].clone();
-            // Convert back to a standard SST representation
-            let s = if is_seq { seq_to_sst(span, inner_type.clone(), v) } else { array_to_sst(span, inner_type.clone(), v) };
-            // Wrap the construction in unbox to account for the Poly type of the sequence/array functions
-            let unbox_opr = crate::ast::UnaryOpr::Unbox(typ.clone());
-            let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
-            let unboxed_e = SpannedTyped::new(span, &typ.clone(), unboxed_expx);
-            Ok(unboxed_e)
-        }
-        TypX::Boxed(t) => {
-            match &**t {
-                TypX::Datatype(_, typs, _) => {
-                    // Grab the type the sequence holds
-                    let inner_type = typs[0].clone();
-                    // Convert back to a standard SST sequence representation
-                    let s = seq_to_sst(span, inner_type.clone(), v);
-                    Ok(s)
-                }
-                _ => Err(error(
-                    &span,
-                    format!(
-                        "Internal error: Inside box, expected to find {} type but found: {:?}",
-                        if is_seq { "a sequence" } else { "an array" },
-                        typ,
-                    ),
-                )),
-            }
-        }
-        _ => Err(error(
-            &span,
-            format!(
-                "Internal error: Expected to find {} type but found: {:?}",
-                if is_seq { "a sequence" } else { "an array" },
-                typ
-            ),
-        )),
-    }
-*/
 }
+
 /// Restore the free variables we hid during interpretation
 /// and any sequence expressions we partially simplified during interpretation
 fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
@@ -1777,11 +1734,10 @@ fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
             Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
         }
         ExpX::Interp(InterpExp::Array(v)) => {
-            //cleanup_seq_like(&e.span, e.typ.clone(), v, false)
             cleanup_array(&e.span, e.typ.clone(), v)
         }
         ExpX::Interp(InterpExp::Seq(v)) => {
-            cleanup_seq_like(&e.span, e.typ.clone(), v, true)
+            cleanup_seq(&e.span, e.typ.clone(), v)
         }
         ExpX::Interp(InterpExp::Closure(..)) => Err(error(
             &e.span,
