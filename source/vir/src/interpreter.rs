@@ -676,6 +676,7 @@ fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
 
 /// Identify array functions for which we provide custom interpretation
 fn is_array_fn(fun: &Fun) -> bool {
+    dbg!("Checking if function is array function {}", fun.path.clone());
     match path_as_vstd_name(&fun.path).as_ref().map(|x| x.as_str()) {
         Some("verus::builtin::array_index") => true,
         _ => false,
@@ -910,12 +911,13 @@ fn eval_array(
 ) -> Result<Exp, VirErr> {
     use ExpX::*;
     use InterpExp::*;
+    dbg!("Starting eval_array");
     match &exp.x {
         Call(fun, typs, _old_args) => {
             let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
             // If we can't make any progress at all, we return the partially simplified call
             let ok = Ok(exp_new(Call(fun.clone(), typs.clone(), args.clone())));
-            // We made partial progress, so convert the internal sequence back to SST
+            // We made partial progress, so convert the internal array back to SST
             // and reassemble a call from the rest of the args
             let ok_arr = |array_exp: &Exp, seq: &Vector<Exp>, args: &[Exp]| {
                 let mut new_args = vec![array_to_sst(&array_exp.span, typs[0].clone(), &seq)];
@@ -943,11 +945,11 @@ fn eval_array(
                                 }
                             }
                         },
-                        _ => ok_arr(&args[0], &s, &args[1..]),
+                        _ => { dbg!("Failed to find Const(Constant::Int).  Found {:?}", &e.x); ok_arr(&args[0], &s, &args[1..]) },
                     },
-                    _ => ok_arr(&args[0], &s, &args[1..]),
+                    _ => { dbg!("Failed to find UnaryOpr(crate::ast::UnaryOpr::Box(_), e).  Found {:?}", &args[1].x); ok_arr(&args[0], &s, &args[1..]) },
                 },
-                _ => ok,
+                _ => { dbg!("Failed to find Interp(Array(s)).  Got {:?}", &args[0].x); ok },
             }
         }
         _ => panic!(
@@ -956,6 +958,60 @@ fn eval_array(
         ),
     }
 }
+
+fn eval_array_index(
+    state: &mut State,
+    exp: &Exp,
+    arr: &Exp,
+    index_exp: &Exp,
+) -> Result<Exp, VirErr> {
+    use ExpX::*;
+    use InterpExp::*;
+    dbg!("Starting eval_array");
+    let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
+    // If we can't make any progress at all, we return the partially simplified call
+    //let ok = Ok(exp_new(Call(fun.clone(), typs.clone(), args.clone())));
+    // We made partial progress, so convert the internal array back to SST
+    // and reassemble a call from the rest of the args
+    let ok_arr = |array_exp: &Exp, index_exp: &Exp| {
+        Ok(exp_new(Binary(
+            crate::ast::BinaryOp::ArrayIndex,
+            array_exp.clone(),
+            index_exp.clone(),
+        )))
+    };
+    let ok = ok_arr(arr, index_exp);
+    // For now, the only possible function is array_index
+    match &arr.x {
+        Interp(Array(s)) => {
+        match &index_exp.x {
+            UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
+                Const(Constant::Int(i)) => match BigInt::to_usize(i) {
+                    None => {
+                        let msg = "Computation tried to index into an array using a value that does not fit into usize";
+                        state.msgs.push(warning(&exp.span, msg));
+                        ok
+                    }
+                    Some(index) => {
+                        if index < s.len() {
+                            Ok(s[index].clone())
+                        } else {
+                            let msg = "Computation tried to index past the length of an array";
+                            state.msgs.push(warning(&exp.span, msg));
+                            ok
+                        }
+                    }
+                },
+                _ => { dbg!("Failed to find Const(Constant::Int).  Found {:?}", &e.x); ok },
+            },
+            _ => { dbg!("Failed to find UnaryOpr(crate::ast::UnaryOpr::Box(_), e).  Found {:?}", &index_exp.x); ok },
+        }
+    }
+        _ => { dbg!("Failed to find Interp(Array(s)).  Got {:?}", &arr.x); ok },
+    }
+}
+
+
 /********************
  * Core interpreter *
  ********************/
@@ -1477,7 +1533,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                 }
-                HeightCompare { .. } | StrGetChar | ArrayIndex => ok_e2(e2.clone()),
+                ArrayIndex => {
+                    let e2 = eval_expr_internal(ctx, state, e2)?;
+                    eval_array_index(state, exp, &e1, &e2)
+                }
+                HeightCompare { .. } | StrGetChar => ok_e2(e2.clone()),
             }
         }
         BinaryOpr(op, e1, e2) => {
