@@ -899,7 +899,6 @@ fn eval_array_index(
 ) -> Result<Exp, VirErr> {
     use ExpX::*;
     use InterpExp::*;
-    dbg!("Starting eval_array");
     let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
     // If we can't make any progress at all, we return the partially simplified call
     //let ok = Ok(exp_new(Call(fun.clone(), typs.clone(), args.clone())));
@@ -916,30 +915,27 @@ fn eval_array_index(
     // For now, the only possible function is array_index
     match &arr.x {
         Interp(Array(s)) => {
-        match &index_exp.x {
-            UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
-                Const(Constant::Int(i)) => match BigInt::to_usize(i) {
-                    None => {
-                        let msg = "Computation tried to index into an array using a value that does not fit into usize";
-                        state.msgs.push(warning(&exp.span, msg));
-                        ok
-                    }
-                    Some(index) => {
-                        if index < s.len() {
-                            Ok(s[index].clone())
-                        } else {
-                            let msg = "Computation tried to index past the length of an array";
+            match &index_exp.x {
+                    Const(Constant::Int(i)) => match BigInt::to_usize(i) {
+                        None => {
+                            let msg = "Computation tried to index into an array using a value that does not fit into usize";
                             state.msgs.push(warning(&exp.span, msg));
                             ok
                         }
-                    }
-                },
-                _ => { dbg!("Failed to find Const(Constant::Int).  Found {:?}", &e.x); ok },
-            },
-            _ => { dbg!("Failed to find UnaryOpr(crate::ast::UnaryOpr::Box(_), e).  Found {:?}", &index_exp.x); ok },
+                        Some(index) => {
+                            if index < s.len() {
+                                Ok(s[index].clone())
+                            } else {
+                                let msg = "Computation tried to index past the length of an array";
+                                state.msgs.push(warning(&exp.span, msg));
+                                ok
+                            }
+                        }
+                    },
+                    _ => ok,
+                }
         }
-    }
-        _ => { dbg!("Failed to find Interp(Array(s)).  Got {:?}", &arr.x); ok },
+        _ => ok,
     }
 }
 

@@ -779,11 +779,19 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
             }
             let typ = match &*exp.typ {
+                TypX::Decorate(_dec, t) => 
+                    match &**t {
+                        TypX::Boxed(t) => match &**t {
+                            TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                            _ => panic!("Failed to extract the array literal element type for {:?}", exp),
+                        },
+                        _ => panic!("Failed to extract the array literal element boxed type for {:?}", exp),
+                    }
                 TypX::Boxed(t) => match &**t {
                     TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
-                    _ => panic!("Failed to extract the array literal element type for {:?}", exp),
+                    _ => panic!("Failed to directly extract the array literal element type for {:?}", exp),
                 },
-                _ => panic!("Failed to extract the array literal element boxed type for {:?}", exp),
+                _ => panic!("Failed to extract the decorated array literal element type for {:?}", exp),
             };
             let mut args = typ_to_ids(&typ);
             let len = mk_nat(es.len());
