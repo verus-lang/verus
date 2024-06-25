@@ -16,11 +16,10 @@ use crate::def::{
     prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident,
     static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, unique_local,
     variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX, ProverChoice,
-    SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
-    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN,
-    SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
-    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END, U_HI,
+    SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
+    FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE,
+    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
+    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
@@ -779,19 +778,29 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
             }
             let typ = match &*exp.typ {
-                TypX::Decorate(_dec, t) => 
-                    match &**t {
-                        TypX::Boxed(t) => match &**t {
-                            TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
-                            _ => panic!("Failed to extract the array literal element type for {:?}", exp),
-                        },
-                        _ => panic!("Failed to extract the array literal element boxed type for {:?}", exp),
-                    }
+                TypX::Decorate(_dec, t) => match &**t {
+                    TypX::Boxed(t) => match &**t {
+                        TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                        _ => {
+                            panic!("Failed to extract the array literal element type for {:?}", exp)
+                        }
+                    },
+                    _ => panic!(
+                        "Failed to extract the array literal element boxed type for {:?}",
+                        exp
+                    ),
+                },
                 TypX::Boxed(t) => match &**t {
                     TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
-                    _ => panic!("Failed to directly extract the array literal element type for {:?}", exp),
+                    _ => panic!(
+                        "Failed to directly extract the array literal element type for {:?}",
+                        exp
+                    ),
                 },
-                _ => panic!("Failed to extract the decorated array literal element type for {:?}", exp),
+                _ => panic!(
+                    "Failed to extract the decorated array literal element type for {:?}",
+                    exp
+                ),
             };
             let mut args = typ_to_ids(&typ);
             let len = mk_nat(es.len());

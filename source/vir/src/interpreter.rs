@@ -905,40 +905,33 @@ fn eval_array_index(
     // We made partial progress, so convert the internal array back to SST
     // and reassemble a call from the rest of the args
     let ok_arr = |array_exp: &Exp, index_exp: &Exp| {
-        Ok(exp_new(Binary(
-            crate::ast::BinaryOp::ArrayIndex,
-            array_exp.clone(),
-            index_exp.clone(),
-        )))
+        Ok(exp_new(Binary(crate::ast::BinaryOp::ArrayIndex, array_exp.clone(), index_exp.clone())))
     };
     let ok = ok_arr(arr, index_exp);
     // For now, the only possible function is array_index
     match &arr.x {
-        Interp(Array(s)) => {
-            match &index_exp.x {
-                    Const(Constant::Int(i)) => match BigInt::to_usize(i) {
-                        None => {
-                            let msg = "Computation tried to index into an array using a value that does not fit into usize";
-                            state.msgs.push(warning(&exp.span, msg));
-                            ok
-                        }
-                        Some(index) => {
-                            if index < s.len() {
-                                Ok(s[index].clone())
-                            } else {
-                                let msg = "Computation tried to index past the length of an array";
-                                state.msgs.push(warning(&exp.span, msg));
-                                ok
-                            }
-                        }
-                    },
-                    _ => ok,
+        Interp(Array(s)) => match &index_exp.x {
+            Const(Constant::Int(i)) => match BigInt::to_usize(i) {
+                None => {
+                    let msg = "Computation tried to index into an array using a value that does not fit into usize";
+                    state.msgs.push(warning(&exp.span, msg));
+                    ok
                 }
-        }
+                Some(index) => {
+                    if index < s.len() {
+                        Ok(s[index].clone())
+                    } else {
+                        let msg = "Computation tried to index past the length of an array";
+                        state.msgs.push(warning(&exp.span, msg));
+                        ok
+                    }
+                }
+            },
+            _ => ok,
+        },
         _ => ok,
     }
 }
-
 
 /********************
  * Core interpreter *
@@ -981,7 +974,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
             Some(e) => Ok(e.clone()),
         },
-        NullaryOpr(op) => { 
+        NullaryOpr(op) => {
             match op {
                 crate::ast::NullaryOpr::ConstGeneric(typ) => {
                     match &**typ {
@@ -989,7 +982,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             let var_id = VarIdent(id.clone(), VarIdentDisambiguate::TypParamBare);
                             match state.env.get(&var_id) {
                                 None => {
-                                    state.log(format!("Failed to find a match for const generic {:?}", var_id));
+                                    state.log(format!(
+                                        "Failed to find a match for const generic {:?}",
+                                        var_id
+                                    ));
                                     // "Hide" the variable, so that we don't accidentally
                                     // mix free and bound variables while interpreting
                                     exp_new(Interp(InterpExp::FreeVar(var_id.clone())))
@@ -1000,9 +996,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => ok,
                     }
                 }
-                _ => ok
+                _ => ok,
             }
-        } 
+        }
         Unary(op, e) => {
             use Constant::*;
             use UnaryOp::*;
@@ -1497,7 +1493,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(CallFun::Fun(fun, resolved_method), typs, args) => {
-            let (fun, typs) = match resolved_method { None => (fun, typs), Some((f, ts)) => (f, ts) };
+            let (fun, typs) = match resolved_method {
+                None => (fun, typs),
+                Some((f, ts)) => (f, ts),
+            };
             if state.perf {
                 // Record the call for later performance analysis
                 match state.fun_calls.get_mut(fun) {
@@ -1544,8 +1543,15 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     // Account for const generics
                                     for (formal, actual) in typ_params.iter().zip(typs.iter()) {
                                         if let TypX::ConstInt(c) = &**actual {
-                                            let formal_id = VarIdent(formal.clone(), VarIdentDisambiguate::TypParamBare);
-                                            let value = SpannedTyped::new(&exp.span, &exp.typ, Const(Constant::Int(c.clone())));
+                                            let formal_id = VarIdent(
+                                                formal.clone(),
+                                                VarIdentDisambiguate::TypParamBare,
+                                            );
+                                            let value = SpannedTyped::new(
+                                                &exp.span,
+                                                &exp.typ,
+                                                Const(Constant::Int(c.clone())),
+                                            );
                                             state.env.insert(formal_id, value).unwrap();
                                         }
                                     }
@@ -1658,14 +1664,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     Ok(res)
 }
 
-fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr>
-{
+fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
     match &*typ {
         TypX::Datatype(_, typs, _) => {
             // Grab the type the sequence holds
             let inner_type = typs[0].clone();
             // Convert back to a standard SST representation
-            let s = seq_to_sst(span, inner_type.clone(), v); 
+            let s = seq_to_sst(span, inner_type.clone(), v);
             // Wrap the seq construction in unbox to account for the Poly type of the sequence functions
             let unbox_opr = crate::ast::UnaryOpr::Unbox(typ.clone());
             let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
@@ -1692,16 +1697,12 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr>
         }
         _ => Err(error(
             &span,
-            format!(
-                "Internal error: Expected to find a sequence type but found: {:?}",
-                typ
-            ),
+            format!("Internal error: Expected to find a sequence type but found: {:?}", typ),
         )),
     }
 }
 
-fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr>
-{
+fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
     let arr = array_to_sst(span, typ.clone(), v);
     // Wrap the construction in box to account for the Poly type of the sequence/array functions
     let box_opr = crate::ast::UnaryOpr::Box(typ.clone());
@@ -1717,12 +1718,8 @@ fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
         ExpX::Interp(InterpExp::FreeVar(v)) => {
             Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
         }
-        ExpX::Interp(InterpExp::Array(v)) => {
-            cleanup_array(&e.span, e.typ.clone(), v)
-        }
-        ExpX::Interp(InterpExp::Seq(v)) => {
-            cleanup_seq(&e.span, e.typ.clone(), v)
-        }
+        ExpX::Interp(InterpExp::Array(v)) => cleanup_array(&e.span, e.typ.clone(), v),
+        ExpX::Interp(InterpExp::Seq(v)) => cleanup_seq(&e.span, e.typ.clone(), v),
         ExpX::Interp(InterpExp::Closure(..)) => Err(error(
             &e.span,
             "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
