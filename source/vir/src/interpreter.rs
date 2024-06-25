@@ -674,15 +674,6 @@ fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     }
 }
 
-/// Identify array functions for which we provide custom interpretation
-fn is_array_fn(fun: &Fun) -> bool {
-    dbg!("Checking if function is array function {}", fun.path.clone());
-    match path_as_vstd_name(&fun.path).as_ref().map(|x| x.as_str()) {
-        Some("verus::builtin::array_index") => true,
-        _ => false,
-    }
-}
-
 fn strs_to_idents(s: Vec<&str>) -> Idents {
     let idents = s.iter().map(|s| Arc::new(s.to_string())).collect();
     Arc::new(idents)
@@ -899,66 +890,7 @@ fn eval_seq(
     }
 }
 
-/// Custom interpretation for array functions.
-/// Expects to be called after is_array_fn has already identified
-/// the relevant array function.  We still pass in the original Call Exp,
-/// so that we can return it as a default if we encounter symbolic values
-fn eval_array(
-    ctx: &Ctx,
-    state: &mut State,
-    exp: &Exp,
-    args: &Exps,
-) -> Result<Exp, VirErr> {
-    use ExpX::*;
-    use InterpExp::*;
-    dbg!("Starting eval_array");
-    match &exp.x {
-        Call(fun, typs, _old_args) => {
-            let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
-            // If we can't make any progress at all, we return the partially simplified call
-            let ok = Ok(exp_new(Call(fun.clone(), typs.clone(), args.clone())));
-            // We made partial progress, so convert the internal array back to SST
-            // and reassemble a call from the rest of the args
-            let ok_arr = |array_exp: &Exp, seq: &Vector<Exp>, args: &[Exp]| {
-                let mut new_args = vec![array_to_sst(&array_exp.span, typs[0].clone(), &seq)];
-                new_args.extend(args.iter().map(|arg| arg.clone()));
-                let new_args = Arc::new(new_args);
-                Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
-            };
-            // For now, the only possible function is array_index
-            match &args[0].x {
-                Interp(Array(s)) => match &args[1].x {
-                    UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
-                        Const(Constant::Int(index)) => match BigInt::to_usize(index) {
-                            None => {
-                                let msg = "Computation tried to index into an array using a value that does not fit into usize";
-                                state.msgs.push(warning(&exp.span, msg));
-                                ok_arr(&args[0], &s, &args[1..])
-                            }
-                            Some(index) => {
-                                if index < s.len() {
-                                    Ok(s[index].clone())
-                                } else {
-                                    let msg = "Computation tried to index past the length of an array";
-                                    state.msgs.push(warning(&exp.span, msg));
-                                    ok_arr(&args[0], &s, &args[1..])
-                                }
-                            }
-                        },
-                        _ => { dbg!("Failed to find Const(Constant::Int).  Found {:?}", &e.x); ok_arr(&args[0], &s, &args[1..]) },
-                    },
-                    _ => { dbg!("Failed to find UnaryOpr(crate::ast::UnaryOpr::Box(_), e).  Found {:?}", &args[1].x); ok_arr(&args[0], &s, &args[1..]) },
-                },
-                _ => { dbg!("Failed to find Interp(Array(s)).  Got {:?}", &args[0].x); ok },
-            }
-        }
-        _ => panic!(
-            "Expected sequence expression to be a Call.  Got {:} instead.",
-            exp.x.to_user_string(&ctx.global)
-        ),
-    }
-}
-
+/// Custom interpretation for array_index
 fn eval_array_index(
     state: &mut State,
     exp: &Exp,
@@ -1586,55 +1518,51 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_args = Arc::new(new_args?);
 
-            if is_array_fn(&fun) {
-                eval_array(ctx, state, exp, &new_args)
-            } else {
-                match is_sequence_fn(&fun) {
-                    Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
-                    None => {
-                        // Try to find the function's body
-                        match ctx.fun_ssts.get(fun) {
-                            None => {
-                                eprintln!("Failed to find a body for function {:?}", fun);
-                                // We don't have the body for this function, so we can't simplify further
-                                exp_new(Call(
-                                    CallFun::Fun(fun.clone(), resolved_method.clone()),
-                                    typs.clone(),
-                                    new_args.clone(),
-                                ))
-                            }
-                            Some(SstInfo { typ_params, params, body, memoize, .. }) => {
-                                match state.lookup_call(&fun, &new_args, *memoize) {
-                                    Some(prev_result) => {
-                                        state.cache_hits += 1;
-                                        Ok(prev_result)
+            match is_sequence_fn(&fun) {
+                Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
+                None => {
+                    // Try to find the function's body
+                    match ctx.fun_ssts.get(fun) {
+                        None => {
+                            eprintln!("Failed to find a body for function {:?}", fun);
+                            // We don't have the body for this function, so we can't simplify further
+                            exp_new(Call(
+                                CallFun::Fun(fun.clone(), resolved_method.clone()),
+                                typs.clone(),
+                                new_args.clone(),
+                            ))
+                        }
+                        Some(SstInfo { typ_params, params, body, memoize, .. }) => {
+                            match state.lookup_call(&fun, &new_args, *memoize) {
+                                Some(prev_result) => {
+                                    state.cache_hits += 1;
+                                    Ok(prev_result)
+                                }
+                                None => {
+                                    state.cache_misses += 1;
+                                    state.env.push_scope(true);
+                                    for (formal, actual) in params.iter().zip(new_args.iter()) {
+                                        let formal_id = formal.x.name.clone();
+                                        state.env.insert(formal_id, actual.clone()).unwrap();
                                     }
-                                    None => {
-                                        state.cache_misses += 1;
-                                        state.env.push_scope(true);
-                                        for (formal, actual) in params.iter().zip(new_args.iter()) {
-                                            let formal_id = formal.x.name.clone();
-                                            state.env.insert(formal_id, actual.clone()).unwrap();
+                                    // Account for const generics
+                                    for (formal, actual) in typ_params.iter().zip(typs.iter()) {
+                                        if let TypX::ConstInt(c) = &**actual {
+                                            let formal_id = VarIdent(formal.clone(), VarIdentDisambiguate::TypParamBare);
+                                            let value = SpannedTyped::new(&exp.span, &exp.typ, Const(Constant::Int(c.clone())));
+                                            state.env.insert(formal_id, value).unwrap();
                                         }
-                                        // Account for const generics
-                                        for (formal, actual) in typ_params.iter().zip(typs.iter()) {
-                                            if let TypX::ConstInt(c) = &**actual {
-                                                let formal_id = VarIdent(formal.clone(), VarIdentDisambiguate::TypParamBare);
-                                                let value = SpannedTyped::new(&exp.span, &exp.typ, Const(Constant::Int(c.clone())));
-                                                state.env.insert(formal_id, value).unwrap();
-                                            }
-                                        }
-                                        let result = eval_expr_internal(ctx, state, &body);
-                                        state.env.pop_scope();
-                                        state.insert_call(fun, &new_args, &result.clone()?, *memoize);
-                                        result
                                     }
+                                    let result = eval_expr_internal(ctx, state, &body);
+                                    state.env.pop_scope();
+                                    state.insert_call(fun, &new_args, &result.clone()?, *memoize);
+                                    result
                                 }
                             }
                         }
                     }
                 }
-        }
+            }
         }
         Call(CallFun::Recursive(_), _, _) => ok,
         Call(fun @ CallFun::InternalFun(_), typs, args) => {
