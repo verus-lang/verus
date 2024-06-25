@@ -1519,7 +1519,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     // Try to find the function's body
                     match ctx.fun_ssts.get(fun) {
                         None => {
-                            eprintln!("Failed to find a body for function {:?}", fun);
                             // We don't have the body for this function, so we can't simplify further
                             exp_new(Call(
                                 CallFun::Fun(fun.clone(), resolved_method.clone()),
