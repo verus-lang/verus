@@ -362,8 +362,8 @@ impl ExpX {
                 (format!("{:?}({})", func, args), 90)
             }
             ExecFnByName(func) => (format!("{:?}", func), 99),
-            NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => {
-                ("const_generic".to_string(), 99)
+            NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)) => {
+                (format!("const_generic({:?})", c).to_string(), 99)
             }
             NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => ("".to_string(), 99),
@@ -596,6 +596,14 @@ impl ExpX {
                         (format!("[{}]", v), 99)
                     }
                     Closure(e, _ctx) => (format!("{}", e.x.to_user_string(global)), 99),
+                    Array(s) => {
+                        let v = s
+                            .iter()
+                            .map(|e| e.x.to_user_string(global))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        (format!("[{}]", v), 99)
+                    }
                 }
             }
             FuelConst(i) => (format!("fuel({i:})"), 99),

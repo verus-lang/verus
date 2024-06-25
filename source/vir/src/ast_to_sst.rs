@@ -321,7 +321,7 @@ impl<'a> State<'a> {
             ExpX::Call(CallFun::Fun(fun, resolved_method), typs, args) => {
                 let (fun, typs) =
                     if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };
-                if let Some(SstInfo { inline, params, memoize: _, body }) =
+                if let Some(SstInfo { inline, typ_params: _, params, memoize: _, body }) =
                     fun_ssts.borrow().get(fun)
                 {
                     if inline.do_inline {
