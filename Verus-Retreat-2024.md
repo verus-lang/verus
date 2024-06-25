@@ -7,6 +7,15 @@ We are planning 3 days of "official" semi-structured time (Tuesday the 25th thro
 
 Sessions will begin at 9:30 AM.  We will be meeting in the [Collaborative Innovation Center (CIC)](https://www.cylab.cmu.edu/about/visiting.html), room 2101.
 
+---
+
+# The up-to-date-agenda is in a separate document during the event
+
+# If you would like access, email andrea@lattuada.me
+
+
+---
+
 ## Additional Potential Topics
 - Proof stability
 - Syntactic suggestions (1 hour max)
