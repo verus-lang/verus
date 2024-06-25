@@ -65,7 +65,7 @@ This is a tentative program.
    - Separating and identifying [trusted vs. untrusted code](https://github.com/verus-lang/verus/discussions/112)
    - Ensures clauses for spec functions
 
-*6:00 PM -- Collaboration Dinner at [Butterjoint](https://maps.app.goo.gl/wVz6SbFGEf9T58pQ7)*
+*6:30 PM -- Collaboration Dinner at [Butterjoint](https://maps.app.goo.gl/wVz6SbFGEf9T58pQ7)*
 
 ### Wednesday, June 26th
 
