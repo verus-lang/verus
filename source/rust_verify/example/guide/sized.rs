@@ -14,6 +14,7 @@ verus! {
     global size_of Foo == 16;
     // ANCHOR_END: sized_foo
 
+    /*
     // ANCHOR: sized_check
     #[repr(C)]
     struct Bar {
@@ -25,6 +26,7 @@ verus! {
         assert(core::mem::size_of::<Foo>() == 16); // succeeds; Foo's size was set above
         assert(core::mem::size_of::<Bar>() == 16); // fails; the size of Bar has not been set
     }
+    */
 
     // ANCHOR_END: sized_check
 }
