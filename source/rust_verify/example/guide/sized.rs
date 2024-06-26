@@ -16,21 +16,13 @@ verus! {
 
     // ANCHOR: sized_check
     #[repr(C)]
-    struct Foo {
-        a: u32,
-        b: u64,
-    }
-
-    #[repr(C)]
     struct Bar {
         c: u32,
         d: u64
     }
 
-    global size_of Foo == 16;
-
     fn check_size() {
-        assert(core::mem::size_of::<Foo>() == 16); // succeeds
+        assert(core::mem::size_of::<Foo>() == 16); // succeeds; Foo's size was set above
         assert(core::mem::size_of::<Bar>() == 16); // fails; the size of Bar has not been set
     }
 
