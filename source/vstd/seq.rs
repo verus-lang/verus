@@ -66,15 +66,14 @@ impl<A> Seq<A> {
 
     /// Appends the value `a` to the end of the sequence.
     /// This always increases the length of the sequence by 1.
-    /// We need to annotate the type of the element in the sequence, e.g., `10 as int`;
-    /// otherwise, the type checker will not be able to infer the type of the sequence,
-    /// which can be either `Seq<int>` or `Seq<nat>`.
+    /// This often requires annotating the type of the element literal in the sequence,
+    /// e.g., `10int`.
     ///
     /// ## Example
     ///
     /// ```rust
     /// proof fn push_test() {
-    ///     assert(seq![10 as int, 11, 12].push(13) =~= seq![10, 11, 12, 13]);
+    ///     assert(seq![10int, 11, 12].push(13) =~= seq![10, 11, 12, 13]);
     /// }
     /// ```
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::push"]
@@ -82,10 +81,6 @@ impl<A> Seq<A> {
 
     /// Updates the sequence at the given index, replacing the element with the given
     /// value, and leaves all other entries unchanged.
-    /// Note that in this example, we do not need to annotate the type of the element
-    /// in the sequence, because `s.update(2, -5)` updates the element to a negative
-    /// value, indicating the type of the sequence cannot be `Seq<nat>`.
-    ///
     ///
     /// ## Example
     ///
@@ -124,9 +119,9 @@ impl<A> Seq<A> {
     ///
     /// ```rust
     /// proof fn subrange_test() {
-    ///     let s = seq![10 as int, 11, 12, 13, 14];
-    ///     //                         ^-------^
-    ///     //          0          1   2   3   4   5
+    ///     let s = seq![10int, 11, 12, 13, 14];
+    ///     //                      ^-------^
+    ///     //           0      1   2   3   4   5
     ///     let sub = s.subrange(2, 4);
     ///     assert(sub =~= seq![12, 13]);
     /// }
