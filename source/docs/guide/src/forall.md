@@ -131,7 +131,7 @@ which suppresses the note:
 {{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_succeeds4}}
 ```
 
-## Good triggers and bad triggers
+## Good triggers, valid triggers, and bad triggers
 
 So ... which trigger is better, `s[i]` or `is_even(s[i])`?
 Unfortunately, there's no one best answer to this kind of question.
@@ -139,7 +139,7 @@ There are tradeoffs between the two different choices.
 The trigger `s[i]` leads to more pattern matches than `is_even(s[i])`.
 More matches means that the SMT solver is more likely to find relevant
 instantiations that help a proof succeed.
-However, more matches also means that the SMT solver is more likely to generate
+However, more matches also mean that the SMT solver is more likely to generate
 irrelevant instantiations that clog up the SMT solver with useless information,
 slowing down the proof.
 
@@ -147,19 +147,19 @@ In this case, `s[i]` is probably a good trigger to choose.
 It matches whenever the function `test_use_forall_succeeds4`
 talks about an element of the sequence `s`,
 yielding a fact that is likely to be useful for reasoning about `s`.
-By contrast, suppose we chose the following bad trigger, `0 <= i`:
+
+In practice, a valid trigger needs to follow two rules: 
+
+1. A trigger for a statement needs to contain all of its non-free variables, meaning those variables that are instantiated by a forall or an exist.
+2. A trigger cannot contain equality or disequality (`==`, `===`, `!=`, or `!==`), any basic integer arithmetic operator (like `<=` or `+`), or any basic boolean operator (like `&&`)[^1]
+
+Suppose we want to choose the following invalid trigger, `0 <= i`:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_bad1}}
 ```
 
-In principle, this would match any value that is greater than or equal to 0,
-which would include values that have nothing to do with `s` and are unlikely
-to be relevant to `s`.
-In practice, Verus doesn't even let you do this:
-triggers cannot contain equality or disequality (`==`, `===`, `!=`, or `!==`),
-any basic integer arithmetic operator (like `<=` or `+`),
-or any basic boolean operator (like `&&`):
+this will result in the following error: 
 
 ```
 error: trigger must be a function call, a field access, or a bitwise operator
@@ -168,16 +168,22 @@ error: trigger must be a function call, a field access, or a bitwise operator
     |                        ^^^^^^^^^^^^^^^^^^^^
 ```
 
-If we really wanted, we could work around this by introducing an extra function:
+Even if `0 <= i`  was a valid trigger, it would match any value that is greater than or equal to 0,
+which would include values that have nothing to do with `s` and are unlikely
+to be relevant to `s`, making it a bad choice for a trigger.
+
+However, if we still really wanted to, we could make it a valid trigger by introducing an extra function:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_bad2}}
 ```
 
-but this trigger fails to match, because the code doesn't explicitly mention `nonnegative(3)`
+but this trigger fails to match because the code doesn't explicitly mention `nonnegative(3)`
 (you'd have to add an explicit `assert(nonnegative(3))` to make the code work).
 This is probably just as well; `s[i]` is simply a better trigger than `nonnegative(i)`,
 because `s[i]` mentions `s`, and the whole point of
 `forall|i: int| 0 <= i < s.len() ==> is_even(s[i])`
 is to say something about the elements of `s`,
 not to say something about nonnegative numbers.
+
+[^1]: For a better understanding of triggers please go [here](multitriggers.md)
