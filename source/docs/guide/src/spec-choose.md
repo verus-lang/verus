@@ -1,3 +1,3 @@
-# `choose`
+# Such that (`choose`)
 
-The `choose` operator is explained in [exists and choose](exists.md).
+The such-that operator (`choose`) is explained in [exists and choose](exists.md).

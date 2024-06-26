@@ -117,7 +117,7 @@
   - [Chained operators](./reference-chained-op.md)
   - [Implication (`==>`, `<==`, and `<==>`)](./reference-implication.md)
   - [Quantifiers (`forall`, `exists`)](./spec-quantifiers.md)
-  - [`choose`](./spec-choose.md)
+  - [Such that (`choose`)](./spec-choose.md)
   - [Function expressions]()
   - [Trigger annotations](./trigger-annotations.md)
   - [The view function `@`](./reference-at-sign.md)
