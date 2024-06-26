@@ -13,6 +13,7 @@
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
 #![cfg_attr(verus_keep_ghost, feature(strict_provenance))]
+#![cfg_attr(rustfmt, rustfmt::skip)]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

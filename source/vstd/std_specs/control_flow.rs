@@ -1,3 +1,5 @@
+#![cfg_attr(rustfmt, rustfmt::skip)]
+
 use super::super::prelude::*;
 use core::convert::Infallible;
 use core::ops::ControlFlow;

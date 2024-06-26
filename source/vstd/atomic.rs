@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+#![cfg_attr(rustfmt, rustfmt::skip)]
 
 use core::sync::atomic::{
     AtomicBool, AtomicI16, AtomicI32, AtomicI64, AtomicI8, AtomicIsize, AtomicU16, AtomicU32,

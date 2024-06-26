@@ -1,5 +1,7 @@
 //! The [`calc`] macro provides support for reasoning about a structured proof calculation.
 #![allow(unused_imports)]
+#![cfg_attr(rustfmt, rustfmt::skip)]
+
 use super::pervasive::*;
 use super::prelude::*;
 
