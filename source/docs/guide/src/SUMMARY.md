@@ -146,6 +146,7 @@
   - [Cyclic definitions]()
 - [Misc. Rust features]()
   - [Statics](./static.md)
+  - [char](./char.md)
 - [Command line]()
   - [--record](./reference-flag-record.md)
 - [Planned future work]()
