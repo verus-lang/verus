@@ -361,7 +361,15 @@ macro_rules! seq_internal {
     [$($elem:expr),* $(,)?] => {
         $crate::vstd::seq::Seq::empty()
             $(.push($elem))*
-    }
+    };
+    [$elem:expr; $n:expr] => {
+        $crate::vstd::seq::Seq::new(
+            $n,
+            $crate::vstd::prelude::closure_to_fn_spec(
+                |_x: _| $elem
+            ),
+        )
+    };
 }
 
 /// Creates a [`Seq`] containing the given elements.
