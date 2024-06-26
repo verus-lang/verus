@@ -127,14 +127,7 @@ pub proof fn lemma_new_first_element_still_sorted_by<T>(
         s.len() == 0 || less_than(x, s[0]),
         total_ordering(less_than),
     ensures
-        // Review: It's unfortunate that we seem to need this to help
-        // lemma_merge_sorted_with_ensures go through
-        ({ 
-           let tmp = seq![x]; 
-           tmp[0] == x &&
-           tmp =~= Seq::empty().push(x) &&
-           sorted_by(tmp.add(s), less_than) 
-        }),
+        sorted_by(seq![x].add(s), less_than),
 {
     broadcast use group_seq_axioms;
 
