@@ -25,10 +25,9 @@
     - [Loops and invariants](while.md)
         - [Loops with break](break.md)
     - [Lexicographic decreases clauses and mutual recursion](lex_mutual.md)
-- [Datatypes: struct and enum]() <!--- Andrea --->
-    - [Defining datatypes]() <!--- Andrea --->
-    - [Querying the discriminant (`#[is_variant]`)]() <!--- Andrea --->
-    - [Proving properties of fields]() <!--- Andrea --->
+- [Datatypes: struct and enum](datatypes.md)
+    - [Struct](datatypes_struct.md)
+    - [Enum](datatypes_enum.md)
 - [Basic libraries and spec closures](vstd.md)
     - [Specification libraries: Seq, Set, Map](spec_lib.md)
     - [INTERLUDE: using assert and assume to develop proofs](develop_proofs.md)
