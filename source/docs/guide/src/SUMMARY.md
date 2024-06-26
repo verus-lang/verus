@@ -111,7 +111,7 @@
   - [Quantifiers (`forall`, `exists`)](./spec-quantifiers.md)
   - [Such that (`choose`)](./spec-choose.md)
   - [Function expressions]()
-  - [Trigger annotations](./trigger-annotations.md)
+  - [Advanced triggers](./advanced_triggers.md)
   - [The view function `@`](./reference-at-sign.md)
   - [Spec index operator `[]`](./reference-spec-index.md)
 - [Proof features]()
