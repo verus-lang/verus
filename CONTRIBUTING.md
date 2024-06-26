@@ -8,6 +8,14 @@ upcoming features, and we reserve GitHub issues for actionable issues (bugs) wit
 existing features. Don't worry though: if we think an issue should be a discussion (or
 viceversa) we can always move it later.
 
+## Reporting an issue
+
+Verus has a convenient feature to record an execution run, along with necessary files (including the source to your crate) to help debug and fix issues.  When reporting an issue, we would appreciate if you run Verus with this feature.
+
+To record an execution run, simply add `--record` to the verus command that triggers the issue.  This will produce a `.zip` file (named with the current date/time) that you can attach when opening a GitHub issue.
+
+If you want to aid us in debugging (or are unable to share your full recording, which includes the full crate for us to be able to reproduce your issue), you can attempt to minimize the issue before recording it.  For automatic minimization of a crate or file (producing a smaller file that triggers the same error), see [source/tools/minimizers/README.md](./source/tools/minimizers/README.md) for more details.
+
 ## Editing the source code of Verus
 
 Before committing any changes to the source code,
@@ -171,7 +179,3 @@ vargo build --vstd-no-verify
 # for tests
 vargo test --vstd-no-verify -p rust_verify_test --test <test file> <test name>
 ```
-
-## Automatically minimizing an issue/error example
-
-If you have a large file that produces some sort of error in Verus, you can automatically minimize it to a smaller/simpler file that produces the same error. See [source/tools/minimizers/README.md](./source/tools/minimizers/README.md) for more details.
