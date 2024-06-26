@@ -44,7 +44,7 @@
 - [Higher-order executable functions]()
     - [Passing functions as values](./exec_funs_as_values.md)
     - [Closures]()
-- [SMT solving, automation, and where automation fails](smt_failures.md) <!--- Chris --->
+- [SMT solving, automation, and where automation fails](smt_failures.md)
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
     - [Integers and nonlinear arithmetic](nonlinear.md)
     - [Bit vectors and bitwise operations](bitvec.md)
@@ -52,12 +52,13 @@
     - [Recursive functions]() <!--- Chris --->
     - [Extensional equality](extensional_equality.md)
     - [Libraries: incomplete axioms for Seq, Set, Map]() <!--- Chris --->
-- [Improving SMT performance]() <!--- Chris --->
+- [Managing proof performance and why it's critical](smt_perf_overview.md)
+    - [Measuring verification performance](performance.md)
+    - [Quantifier profiling](profiling.md)
     - [Modules, hiding, opaque, reveal]() <!--- Chris --->
-    - [Quantifier profiling](profiling.md) <!--- Bryan --->
     - [Hiding local proofs with `assert (...) by { ... }`](assert_by.md)
-    - [Structured proof by calculation](calc.md) <!--- JayB --->
-    - [Proof by computation](assert_by_compute.md) <!--- Bryan --->
+    - [Structured proof by calculation](calc.md)
+    - [Proof by computation](assert_by_compute.md)
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces](breaking_proofs_into_pieces.md)
 - [Mutation, references, and borrowing]() <!--- Andrea --->
@@ -77,9 +78,7 @@
     - [String literals]() <!--- Andrea --->
 - [Macros]()
 - [Tools and command-line options]()
-    - [Proof Debugger]() <!--- Chanhee --->
     - [IDE Support](ide_support.md)
-    - [Syntax Highlighting]()
 
 - [Verification and Rust]()
   - [Why Rust?]()
