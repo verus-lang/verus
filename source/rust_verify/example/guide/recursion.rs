@@ -286,7 +286,6 @@ fn for_loop_triangle(n: u32) -> (sum: u32)
 
     for idx in iter: 0..n
         invariant
-            idx == idx,
             sum == triangle(idx as nat),
             triangle(n as nat) < 0x1_0000_0000,
     {
