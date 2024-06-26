@@ -27,7 +27,7 @@ a `u8` value is an integer constrained to be greater than or equal to `0` and le
 {{#include ../../../rust_verify/example/guide/integers.rs:test_u8}}
 ```
 
-(The bounds of `usize` and `isize` are platform dependent.
+<!-- (The bounds of `usize` and `isize` are platform dependent.
 By default, Verus assumes that these types may be either 32 bits or 64 bits wide,
 but this can be configured with the directive:
 
@@ -35,7 +35,7 @@ but this can be configured with the directive:
 global size_of usize == 8;
 ```
 
-(This would set the size of `usize` to 8 bytes, and add a static assertion to check it matches the target.)
+(This would set the size of `usize` to 8 bytes, and add a static assertion to check it matches the target.) -->
 
 # Using integer types in specifications
 
