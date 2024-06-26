@@ -136,8 +136,8 @@ which suppresses the note:
 In practice, a valid trigger needs to follow two rules: 
 
 1. A trigger for a statement needs to contain all of its non-free variables, meaning those variables that are instantiated by a forall or an exist.
-    In orde to achive this you can split the trigger in multiple parts. You can learn more about this in the [next chapter](https://verus-lang.github.io/verus/guide/multitriggers.html)
-3. A trigger cannot contain equality or disequality (`==`, `===`, `!=`, or `!==`), any basic integer arithmetic operator (like `<=` or `+`), or any basic boolean operator (like `&&`)[^1]
+    In order to achieve this, you can split the trigger into multiple parts. You can learn more about this in the [next chapter](https://verus-lang.github.io/verus/guide/multitriggers.html)
+3. A trigger cannot contain equality or disequality (`==`, `===`, `!=`, or `!==`), any basic integer arithmetic operator (like `<=` or `+`), or any basic boolean operator (like `&&`)
 
 Suppose we want to choose the following invalid trigger, `0 <= i`:
 
@@ -191,9 +191,8 @@ Examples for bad choices of triggers would be `0 <= i` and `nonnegative(i)` from
 which would include values that have nothing to do with `s` and are unlikely
 to be relevant to `s`.
 
-- Furthermore, `nonnegative(i)` dosn't mention `s`, and the whole point of
+- Furthermore, `nonnegative(i)` doesn't mention `s`, and the whole point of
 `forall|i: int| 0 <= i < s.len() ==> is_even(s[i])`
 is to say something about the elements of `s`,
 not to say something about nonnegative numbers.
 
-[^1]: For a better understanding of triggers please go [here]()
