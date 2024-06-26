@@ -2,7 +2,6 @@
 
 Verus does not have direct access to the result of `core::mem::size_of<T>()` during verification. The size of most types is undefined by default (with the exception of `usize`/`isize`; see below). To use the size of `Sized` types in spec code, the `global size_of` directive may be used to set the size of the type and add a static assertion for the Rust compiler to check that the provided size matches the result of `core::mem::size_of<T>()`. Note that checking this assertion requires the `--compile` flag, as the assertion is checked by Rust, not Verus.
 
-
 For example:
 
 ```rust
