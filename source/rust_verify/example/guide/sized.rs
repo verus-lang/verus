@@ -13,7 +13,13 @@ verus! {
 
     global size_of Foo == 16;
     // ANCHOR_END: sized_foo
-
+    
+    /*
+    // ANCHOR: layout_foo
+    global layout Foo is size == 16, align == 8;
+    // ANCHOR_END: layout_foo
+    */
+    
     /*
     // ANCHOR: sized_check
     #[repr(C)]
