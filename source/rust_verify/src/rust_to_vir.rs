@@ -433,8 +433,7 @@ fn check_item<'tcx>(
                     );
                     true
                 } else if let Some(
-                    RustItem::StructuralEq
-                    | RustItem::StructuralPartialEq
+                    RustItem::StructuralPartialEq
                     | RustItem::PartialEq
                     | RustItem::Eq,
                 ) = rust_item
@@ -731,6 +730,7 @@ fn check_item<'tcx>(
             origin: OpaqueTyOrigin::AsyncFn(_),
             in_trait: _,
             lifetime_mapping: _,
+            precise_capturing_args: None,
         }) => {
             return Ok(());
         }
@@ -1134,6 +1134,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<(Krate, ItemToModu
                     }
                 },
                 OwnerNode::Crate(_mod_) => (),
+                OwnerNode::Synthetic => todo!("TODO(1.79.0)"),
             }
         }
     }
