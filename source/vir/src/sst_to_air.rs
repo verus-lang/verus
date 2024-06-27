@@ -108,8 +108,8 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
                 &typs.iter().map(monotyp_to_path).collect(),
             );
         }
-        MonoTypX::Decorate(_, typ) => {
-            return monotyp_to_path(typ);
+        MonoTypX::Decorate(dec, typ) => {
+            return crate::def::monotyp_decorate(*dec, &monotyp_to_path(typ));
         }
     };
     Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
