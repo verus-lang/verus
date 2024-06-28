@@ -82,6 +82,7 @@ const VARIANT_FIELD_INTERNAL_SEPARATOR: &str = "/?";
 const PROJECT_SEPARATOR: &str = "/";
 const MONOTYPE_APP_BEGIN: &str = "<";
 const MONOTYPE_APP_END: &str = ">";
+const MONOTYPE_DECORATE: &str = "$%";
 const TRAIT_DEFAULT_SEPARATOR: &str = "%default%";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
@@ -540,6 +541,18 @@ pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
         *last = ident;
         Arc::new(PathX { krate: datatype.krate.clone(), segments: Arc::new(segments) })
     }
+}
+
+pub fn monotyp_decorate(dec: crate::ast::TypDecoration, path: &Path) -> Path {
+    let id = Arc::new(format!(
+        "{}{}{}{}{}",
+        MONOTYPE_DECORATE,
+        dec as u32,
+        MONOTYPE_APP_BEGIN,
+        path_to_string(path),
+        MONOTYPE_APP_END
+    ));
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
 }
 
 pub fn name_as_vstd_name(name: &String) -> Option<String> {

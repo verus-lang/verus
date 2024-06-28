@@ -1495,12 +1495,12 @@ pub(crate) fn expr_to_stm_opt(
 
             // Parameters and return types must have been boxed by poly.rs
             assert!(matches!(
-                &*body.typ,
+                &*undecorate_typ(&body.typ),
                 TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. }
             ));
             for p in params.iter() {
                 assert!(matches!(
-                    &*p.a,
+                    &*undecorate_typ(&p.a),
                     TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. }
                 ));
             }
