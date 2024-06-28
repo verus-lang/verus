@@ -1548,40 +1548,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
             let args: Result<Vec<vir::ast::Expr>, VirErr> =
                 exprs.iter().map(|e| expr_to_vir(bctx, e, modifier)).collect();
-            let array_lit = mk_expr(ExprX::ArrayLiteral(Arc::new(args?)));
-            array_lit
-            /*
-            let len = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(exprs.len() as u128)))?;
-            let fun = vir::fun!("vstd" => "array", "array_new");
-            let array_vir_typ = mid_ty_to_vir(
-                bctx.ctxt.tcx,
-                &bctx.ctxt.verus_items,
-                bctx.fun_id,
-                expr.span,
-                &bctx.types.expr_ty(expr),
-                false,
-            )?;
-            let typ_args = match &*array_vir_typ {
-                TypX::Primitive(Primitive::Array, typs) => typs.clone(),
-                _ => {
-                    return err_span(
-                        expr.span,
-                        "Verus internal error: expected Primitive::Array",
-                    );
-                }
-            };
-            let autospec_usage = AutospecUsage::IfMarked;
-                //if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
-            let call_target = CallTarget::Fun(
-                vir::ast::CallTargetKind::Static,
-                fun,
-                typ_args,
-                Arc::new(vec![]),
-                autospec_usage,
-            );
-            let args = Arc::new(vec![len, array_lit]);
-            mk_expr(ExprX::Call(call_target, args))
-            */
+            mk_expr(ExprX::ArrayLiteral(Arc::new(args?)))
         }
         ExprKind::Repeat(e, _array_len) => {
             if bctx.ctxt.no_vstd {

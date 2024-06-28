@@ -553,7 +553,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                         );
                         let arg1 = &args[1];
                         let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
-                            .expect("invalid parameter for builtin::array_index at arg1, arg1 must be an integer");
+                            .expect("invalid parameter for builtin::array_index at arg1; arg1 must be an integer");
                         mk_expr(ExprX::Binary(BinaryOp::ArrayIndex, arg0, arg1))
                     }
                     _ => panic!(

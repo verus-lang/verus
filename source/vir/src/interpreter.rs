@@ -901,13 +901,7 @@ fn eval_array_index(
     use InterpExp::*;
     let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
     // If we can't make any progress at all, we return the partially simplified call
-    //let ok = Ok(exp_new(Call(fun.clone(), typs.clone(), args.clone())));
-    // We made partial progress, so convert the internal array back to SST
-    // and reassemble a call from the rest of the args
-    let ok_arr = |array_exp: &Exp, index_exp: &Exp| {
-        Ok(exp_new(Binary(crate::ast::BinaryOp::ArrayIndex, array_exp.clone(), index_exp.clone())))
-    };
-    let ok = ok_arr(arr, index_exp);
+    let ok = Ok(exp_new(Binary(crate::ast::BinaryOp::ArrayIndex, arr.clone(), index_exp.clone())));
     // For now, the only possible function is array_index
     match &arr.x {
         Interp(Array(s)) => match &index_exp.x {
@@ -1539,7 +1533,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                         let formal_id = formal.x.name.clone();
                                         state.env.insert(formal_id, actual.clone()).unwrap();
                                     }
-                                    // Account for const generics
+                                    // Account for const generics by adding, e.g., { N => 7 } to the environment
                                     for (formal, actual) in typ_params.iter().zip(typs.iter()) {
                                         if let TypX::ConstInt(c) = &**actual {
                                             let formal_id = VarIdent(

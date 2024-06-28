@@ -223,12 +223,8 @@ fn check_trigger_expr(
                 }
                 Ok(())
             }
-            ExpX::ArrayLiteral(exprs) => {
-                // REVIEW: Should array literals be allowed in triggers?
-                for e in exprs.iter() {
-                    check_trigger_expr(state, e, free_vars, lets)?;
-                }
-                Ok(())
+            ExpX::ArrayLiteral(_) => {
+                Err(error(&exp.span, "triggers cannot contain array literals"))
             }
             ExpX::Loc(..) | ExpX::VarLoc(..) => Ok(()),
             ExpX::ExecFnByName(..) => Ok(()),
