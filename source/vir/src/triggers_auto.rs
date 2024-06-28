@@ -323,7 +323,11 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
                 args.map(|e| gather_terms(ctxt, ctx, &e.a, depth + 1)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
-            (is_pure, Arc::new(TermX::App(App::Ctor(path.clone(), variant), Arc::new(terms))))
+            if crate::def::is_tuple(path, &variant) {
+                (false, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
+            } else {
+                (is_pure, Arc::new(TermX::App(App::Ctor(path.clone(), variant), Arc::new(terms))))
+            }
         }
         ExpX::NullaryOpr(_) => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![])))),
         ExpX::Unary(UnaryOp::Trigger(_), e1) => gather_terms(ctxt, ctx, e1, depth),
