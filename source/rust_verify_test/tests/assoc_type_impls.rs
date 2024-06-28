@@ -716,6 +716,147 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] wildcard_assoc_type_lifetime verus_code! {
+        // https://github.com/verus-lang/verus/issues/1158
+        struct S<A>(A);
+
+        trait Foo {
+            type T<'a>;
+
+            fn foo<'a>(x: Self::T<'a>) -> S<Self::T<'a>> {
+                S(x)
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_type_lifetime_for verus_code! {
+        // https://github.com/verus-lang/verus/issues/1161
+        pub trait Foo {
+            type T<'a>;
+        }
+
+        pub trait From<T> {}
+
+        pub trait Mapper<S: From<Self::U>> {
+            type U: From<S>;
+        }
+
+        pub struct MapFoo<F, M>(F, M);
+
+        impl<F, M> Foo for MapFoo<F, M> where
+            F: Foo,
+            for <'a>M: Mapper<F::T<'a>>,
+            for <'a>F::T<'a>: From<<M as Mapper<F::T<'a>>>::U>,
+            for <'a><M as Mapper<F::T<'a>>>::U: From<F::T<'a>>,
+        {
+            type T<'a> = <M as Mapper<F::T<'a>>>::U;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_type_lifetime_for_rename verus_code! {
+        // https://github.com/verus-lang/verus/issues/1161
+        pub trait Bar {
+            type U<'a>;
+        }
+
+        pub trait Foo<S>
+            where
+                S: for<'b> Bar<U<'b> = Self::T<'b>>,
+        {
+            type T<'c>;
+            fn foo_<'b>(&self, o: Self::T<'b>);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_type_lifetime_for_syntax verus_code! {
+        // https://github.com/verus-lang/verus/issues/1161
+        pub trait T {
+            type X;
+        }
+
+        trait U {
+            type Y<'a>;
+        }
+
+        struct S<A>(A);
+
+        impl<A> T for S<A> where A: U, for<'a> A::Y<'a>: T {
+            type X = S<A>;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_type_lifetime_equality_syntax verus_code! {
+        // https://github.com/verus-lang/verus/issues/1161
+        trait T {
+            type X<'a>;
+            fn f<'a>(s: Self::X<'a>);
+        }
+
+        struct S<A>(A);
+
+        impl<A> S<A> where
+            for<'a> A: T<X<'a> = &'a [u8]>,
+        {
+            fn f<'a>(&self, s: &'a [u8]) {
+                A::f(s)
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] assoc_type_lifetime_trait_impl_worklist verus_code! {
+        // https://github.com/verus-lang/verus/issues/1161
+        trait Foo
+        {
+            type R<'a>;
+            fn foo<'a>(&self, s: &'a [u8]) -> Self::R<'a>;
+        }
+
+        trait Bar<Other>
+        where
+            Self: Foo,
+            Other: Foo,
+        {
+            fn bar(&self, other: &Other);
+        }
+
+        impl<U1, U2, V1, V2> Bar<Pair<U2, V2>> for Pair<U1, V1>
+        where
+            U1: Foo,
+            U2: for<'a> Foo<R<'a> = ()>,
+            V1: Foo,
+            V2: Foo,
+        {
+            fn bar(&self, c: &Pair<U2, V2>) {
+            }
+        }
+
+
+        struct Pair<S, T>(S, T);
+
+        impl<S, T> Foo for Pair<S, T>
+        where
+            S: Foo,
+            T: Foo,
+        {
+            type R<'a> = T::R<'a>;
+            fn foo<'a>(&self, s: &'a [u8]) -> Self::R<'a> {
+                self.1.foo(s)
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] mention_external_trait_with_assoc_type verus_code! {
         use vstd::prelude::*;
         fn foo<A: IntoIterator>(a: &A) {

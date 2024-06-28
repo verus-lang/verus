@@ -185,6 +185,24 @@ pub fn demote_external_traits(
     Ok(Arc::new(kratex))
 }
 
+pub fn rewrite_one_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> Typ {
+    match &**typ {
+        TypX::Projection { trait_typ_args, trait_path, name } if trait_path == from_path => {
+            Arc::new(TypX::Projection {
+                trait_typ_args: trait_typ_args.clone(),
+                trait_path: to_path.clone(),
+                name: name.clone(),
+            })
+        }
+        _ => typ.clone(),
+    }
+}
+
+pub fn rewrite_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> Typ {
+    let ft = |t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
+    crate::ast_visitor::map_typ_visitor(typ, &ft).expect("rewrite_external_typ")
+}
+
 pub fn rewrite_external_bounds(
     from_path: &Path,
     to_path: &Path,
@@ -203,18 +221,27 @@ pub fn rewrite_external_bounds(
         };
         bs.push(b);
     }
-    let ft = |_: &mut (), t: &Typ| match &**t {
-        TypX::Projection { trait_typ_args, trait_path, name } if trait_path == from_path => {
-            Ok(Arc::new(TypX::Projection {
-                trait_typ_args: trait_typ_args.clone(),
-                trait_path: to_path.clone(),
-                name: name.clone(),
-            }))
-        }
-        _ => Ok(t.clone()),
-    };
+    let ft = |_: &mut (), t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
     crate::ast_visitor::map_generic_bounds_visitor(&Arc::new(bs), &mut (), &ft)
         .expect("rewrite_external_bounds")
+}
+
+pub fn rewrite_external_function(
+    from_path: &Path,
+    to_path: &Path,
+    function: &Function,
+) -> Function {
+    let ft = |_: &mut (), t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
+    let mut map: VisitorScopeMap = ScopeMap::new();
+    crate::ast_visitor::map_function_visitor_env(
+        function,
+        &mut map,
+        &mut (),
+        &|_state, _, expr| Ok(expr.clone()),
+        &|_state, _, stmt| Ok(vec![stmt.clone()]),
+        &ft,
+    )
+    .expect("rewrite_external_typ")
 }
 
 /*
@@ -506,7 +533,7 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
     for bound in typ_bounds.iter() {
         let exprx = match &**bound {
             GenericBoundX::Trait(path, typ_args) => {
-                if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
+                if !ctx.trait_map.contains_key(path) {
                     continue;
                 }
                 let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
@@ -540,7 +567,7 @@ pub(crate) fn trait_bounds_to_sst(
     for bound in typ_bounds.iter() {
         let expx = match &**bound {
             GenericBoundX::Trait(path, typ_args) => {
-                if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
+                if !ctx.trait_map.contains_key(path) {
                     continue;
                 }
                 let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
@@ -570,7 +597,7 @@ pub(crate) fn trait_bound_to_air(
     path: &Path,
     typ_args: &Typs,
 ) -> Option<air::ast::Expr> {
-    if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
+    if !ctx.trait_map.contains_key(path) {
         return None;
     }
     let mut typ_exprs: Vec<air::ast::Expr> = Vec::new();
@@ -632,7 +659,7 @@ pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<
     bound_exprs
 }
 
-pub fn traits_to_air(ctx: &Ctx, krate: &Krate) -> Commands {
+pub fn traits_to_air(_ctx: &Ctx, krate: &Krate) -> Commands {
     // Axioms about broadcast_forall and spec functions need justification
     // for any trait bounds.
     let mut commands: Vec<Command> = Vec::new();
@@ -640,18 +667,56 @@ pub fn traits_to_air(ctx: &Ctx, krate: &Krate) -> Commands {
     // Declare predicates for bounds
     //   (declare-fun tr_bound%T (... Dcr Type ...) Bool)
     for tr in krate.traits.iter() {
-        if ctx.bound_traits.contains(&tr.x.name) {
-            let mut tparams: Vec<air::ast::Typ> = Vec::new();
-            tparams.extend(crate::def::types().iter().map(|s| str_typ(s))); // Self
-            for _ in tr.x.typ_params.iter() {
-                tparams.extend(crate::def::types().iter().map(|s| str_typ(s)));
-            }
-            let decl_trait_bound = Arc::new(DeclX::Fun(
-                crate::def::trait_bound(&tr.x.name),
-                Arc::new(tparams),
-                air::ast_util::bool_typ(),
-            ));
-            commands.push(Arc::new(CommandX::Global(decl_trait_bound)));
+        let mut tparams: Vec<air::ast::Typ> = Vec::new();
+        tparams.extend(crate::def::types().iter().map(|s| str_typ(s))); // Self
+        for _ in tr.x.typ_params.iter() {
+            tparams.extend(crate::def::types().iter().map(|s| str_typ(s)));
+        }
+        let decl_trait_bound = Arc::new(DeclX::Fun(
+            crate::def::trait_bound(&tr.x.name),
+            Arc::new(tparams),
+            air::ast_util::bool_typ(),
+        ));
+        commands.push(Arc::new(CommandX::Global(decl_trait_bound)));
+    }
+    Arc::new(commands)
+}
+
+pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
+    // forall typ_params. #[trigger] tr_bound%T(typ_params) ==> typ_bounds
+    // Example:
+    //   trait T<A: U> where Self: Q<A> {}
+    // -->
+    //   forall Self, A. tr_bound%T(Self, A) ==> tr_bound%U(A) && tr_bound%Q(Self, A)
+    let mut commands: Vec<Command> = Vec::new();
+    for tr in traits {
+        let mut typ_params: Vec<crate::ast::Ident> =
+            (*tr.x.typ_params).iter().map(|(x, _)| x.clone()).collect();
+        typ_params.insert(0, crate::def::trait_self_type_param());
+        let typ_args: Vec<Typ> =
+            typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
+        if let Some(tr_bound) = trait_bound_to_air(ctx, &tr.x.name, &Arc::new(typ_args)) {
+            let all_bounds =
+                tr.x.typ_bounds.iter().chain(tr.x.assoc_typs_bounds.iter()).cloned().collect();
+            let typ_bounds = trait_bounds_to_air(ctx, &Arc::new(all_bounds));
+            let qname = format!(
+                "{}_{}",
+                crate::ast_util::path_as_friendly_rust_name(&tr.x.name),
+                crate::def::QID_TRAIT_TYPE_BOUNDS
+            );
+            let trigs = vec![tr_bound.clone()];
+            let bind = crate::func_to_air::func_bind_trig(
+                ctx,
+                qname,
+                &Arc::new(typ_params),
+                &Arc::new(vec![]),
+                &trigs,
+                false,
+            );
+            let imply = air::ast_util::mk_implies(&tr_bound, &air::ast_util::mk_and(&typ_bounds));
+            let forall = mk_bind_expr(&bind, &imply);
+            let axiom = Arc::new(DeclX::Axiom(forall));
+            commands.push(Arc::new(CommandX::Global(axiom)));
         }
     }
     Arc::new(commands)
@@ -659,7 +724,6 @@ pub fn traits_to_air(ctx: &Ctx, krate: &Krate) -> Commands {
 
 pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     // Axiom for bounds predicates (based on trait impls)
-    assert!(ctx.bound_traits.contains(&imp.x.trait_path));
     // forall typ_params. typ_bounds ==> tr_bound%T(...typ_args...)
     // Example:
     //   trait T1 {}
@@ -795,6 +859,19 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
             traits.push(t.clone());
         }
     }
+
+    // Also remove any duplicate auto-imported trait impls:
+    let mut trait_impls: Vec<TraitImpl> = Vec::new();
+    let mut trait_impl_set: HashSet<Path> = HashSet::new();
+    for ti in &kratex.trait_impls {
+        if ti.x.auto_imported && trait_impl_set.contains(&ti.x.impl_path) {
+            continue;
+        }
+        trait_impls.push(ti.clone());
+        trait_impl_set.insert(ti.x.impl_path.clone());
+    }
+
     kratex.traits = traits;
+    kratex.trait_impls = trait_impls;
     Ok(Arc::new(kratex))
 }

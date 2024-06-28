@@ -1624,6 +1624,29 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_bounds_axioms verus_code! {
+        trait T {
+            spec fn f() -> int;
+        }
+
+        trait U: T {}
+
+        struct S<C>(C);
+
+        impl<C: T> T for S<C> {
+            spec fn f() -> int {
+                <C as T>::f()
+            }
+        }
+
+        proof fn test<C: U>(x: &S<C>) {
+            assert(<C as T>::f() == <S<C> as T>::f());
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_broadcast_forall1 verus_code! {
         trait T {
             spec fn f(&self) -> bool;

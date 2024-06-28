@@ -51,9 +51,11 @@ jobs:
           workflow_conclusion: success
           path: ./_site/verusdoc
       
-      - name: add papers page
-        run: |
-          cp -R source/docs/research ./_site/research
+      - name: add publications and projects page
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: source/docs/publications-and-projects
+          destination: ./_site/publications-and-projects
 
       - name: upload artifact
         uses: actions/upload-pages-artifact@v1

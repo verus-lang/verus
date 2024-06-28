@@ -7,7 +7,7 @@ pub(crate) enum IdKind {
     Datatype,
     Variant,
     TypParam,
-    Lifetime,
+    Lifetime(bool),
     Fun,
     Local,
     Builtin,
@@ -16,9 +16,9 @@ pub(crate) enum IdKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct Id {
-    kind: IdKind,
-    rename_count: usize,
-    raw_id: String,
+    pub(crate) kind: IdKind,
+    pub(crate) rename_count: usize,
+    pub(crate) raw_id: String,
 }
 
 impl Id {
@@ -143,10 +143,11 @@ pub(crate) enum Bound {
     Copy,
     Clone,
     Sized,
+    Allocator,
     Thin,
     Pointee,
     Id(Id),
-    Trait { trait_path: Id, args: Vec<Typ>, equality: Option<(Id, Typ)> },
+    Trait { trait_path: Id, args: Vec<Typ>, equality: Option<(Id, Vec<Id>, Typ)> },
     Fn(ClosureKind, Typ, Typ),
 }
 

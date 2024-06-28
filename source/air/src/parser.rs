@@ -707,12 +707,17 @@ impl Parser {
     }
 
     pub fn lines_to_model(&self, lines: &Vec<String>) -> ModelDefs {
-        let mut model_bytes: Vec<u8> = Vec::new();
-        for line in lines {
-            writeln!(model_bytes, "{}", line).expect("model_bytes");
-        }
-        let mut parser = sise::Parser::new(&model_bytes[..]);
-        let node = sise::read_into_tree(&mut parser).unwrap();
+        let node = parse_sexpression(lines);
         self.node_to_model(&node).expect("failed to parse SMT model")
     }
+}
+
+pub(crate) fn parse_sexpression(lines: &Vec<String>) -> Node {
+    let mut model_bytes: Vec<u8> = Vec::new();
+    for line in lines {
+        writeln!(model_bytes, "{}", line).expect("model_bytes");
+    }
+    let mut parser = sise::Parser::new(&model_bytes[..]);
+    let node = sise::read_into_tree(&mut parser).unwrap();
+    node
 }

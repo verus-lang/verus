@@ -717,17 +717,21 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
     external_info: &ExternalInfo,
 ) -> bool {
     let generics = tcx.generics_of(def_id);
-    for param in generics.params.iter() {
-        if !param.pure_wrt_drop {
-            return false;
+    for (i, param) in generics.params.iter().enumerate() {
+        if i == 0 && param.name == kw::SelfUpper {
+            continue;
         }
         match &param.kind {
-            GenericParamDefKind::Lifetime { .. } => {} // ignore
+            GenericParamDefKind::Lifetime { .. } => continue,
             GenericParamDefKind::Type { has_default: false, synthetic: true | false } => {}
             GenericParamDefKind::Type { has_default: true, .. } => {
                 return false;
             }
+            GenericParamDefKind::Const { is_host_effect: true, .. } => continue,
             GenericParamDefKind::Const { .. } => {}
+        }
+        if !param.pure_wrt_drop {
+            return false;
         }
     }
     let predicates = tcx.predicates_of(def_id);
@@ -962,7 +966,19 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
             let norm = at.normalize(*ty);
             if norm.value != *ty {
-                return t_rec(&norm.value);
+                let mut has_infer = false;
+                for arg in norm.value.walk().into_iter() {
+                    if let GenericArgKind::Type(t) = arg.unpack() {
+                        if let TyKind::Infer(..) = t.kind() {
+                            // It's not clear why normalize returns Infer
+                            // but it's not what we want
+                            has_infer = true;
+                        }
+                    }
+                }
+                if !has_infer {
+                    return t_rec(&norm.value);
+                }
             }
             // If normalization isn't possible, return a projection type:
             let assoc_item = tcx.associated_item(t.def_id);
@@ -1049,9 +1065,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Coroutine(..) => unsupported_err!(span, "generator types"),
         TyKind::CoroutineWitness(..) => unsupported_err!(span, "generator witness types"),
         TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
-        TyKind::Placeholder(..) => unsupported_err!(span, "type inference placeholder types"),
-        TyKind::Infer(..) => unsupported_err!(span, "type inference placeholder types"),
-        TyKind::Error(..) => unsupported_err!(span, "type inference placeholder error types"),
+        TyKind::Placeholder(..) => unsupported_err!(span, "type inference Placeholder types"),
+        TyKind::Infer(..) => unsupported_err!(span, "type inference Infer types"),
+        TyKind::Error(..) => unsupported_err!(span, "type inference error types"),
     };
     Ok(t)
 }
@@ -1069,7 +1085,6 @@ pub(crate) fn mid_ty_to_vir_datatype<'tcx>(
 }
 */
 
-// TODO: rename this back to mid_ty_to_vir
 pub(crate) fn mid_ty_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,

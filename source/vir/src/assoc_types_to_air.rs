@@ -45,53 +45,6 @@ pub fn assoc_type_decls_to_air(_ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
     Arc::new(commands)
 }
 
-pub fn assoc_type_trait_bounds_to_air(
-    ctx: &Ctx,
-    traits: &Vec<Trait>,
-) -> Result<Commands, crate::ast::VirErr> {
-    let mut commands: Vec<Command> = Vec::new();
-    for tr in traits {
-        for bound in tr.x.assoc_typs_bounds.iter() {
-            // forall Self, typ_params. typ_bounds ==> bound
-            if let crate::ast::GenericBoundX::Trait(path, typ_args) = &**bound {
-                if let Some(tr_bound) = crate::traits::trait_bound_to_air(ctx, path, typ_args) {
-                    //let x = crate::ast_util::path_as_friendly_rust_name(&tr.x.name);
-                    //dbg!(x, &path, &typ_args);
-                    let qname = format!(
-                        "{}_{}",
-                        crate::ast_util::path_as_friendly_rust_name(&tr.x.name),
-                        crate::def::QID_ASSOC_TYPE_BOUND
-                    );
-                    let trigs = vec![tr_bound.clone()];
-                    let mut typ_params: Vec<crate::ast::Ident> =
-                        (*tr.x.typ_params).iter().map(|(x, _)| x.clone()).collect();
-                    typ_params.insert(0, crate::def::trait_self_type_param());
-                    let bind = crate::func_to_air::func_bind_trig(
-                        ctx,
-                        qname,
-                        &Arc::new(typ_params),
-                        &Arc::new(vec![]),
-                        &trigs,
-                        false,
-                    );
-                    let req_bounds = crate::traits::trait_bounds_to_air(ctx, &tr.x.typ_bounds);
-                    let imply =
-                        air::ast_util::mk_implies(&air::ast_util::mk_and(&req_bounds), &tr_bound);
-                    let forall = mk_bind_expr(&bind, &imply);
-                    let axiom = Arc::new(DeclX::Axiom(forall));
-                    commands.push(Arc::new(CommandX::Global(axiom)));
-                }
-            } else {
-                return Err(crate::messages::error(
-                    &tr.span,
-                    "not yet supported: complex associated type bounds",
-                ));
-            }
-        }
-    }
-    Ok(Arc::new(commands))
-}
-
 pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Commands {
     let mut commands: Vec<Command> = Vec::new();
     for assoc in assocs {

@@ -561,7 +561,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         const MyArray: [u32; 3] = [31, 32, 33];
-        
+
         proof fn mytest() {
             assert([41u32, 42][1] == 42) by (compute_only);
             assert(MyArray[1] == 32) by (compute_only);

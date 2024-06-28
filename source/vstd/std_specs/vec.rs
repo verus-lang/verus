@@ -19,21 +19,6 @@ pub struct ExVec<T, A: Allocator>(Vec<T, A>);
 #[verifier::external_body]
 pub struct ExGlobal(alloc::alloc::Global);
 
-impl<T, A: Allocator> View for Vec<T, A> {
-    type V = Seq<T>;
-
-    spec fn view(&self) -> Seq<T>;
-}
-
-impl<T: DeepView, A: Allocator> DeepView for Vec<T, A> {
-    type V = Seq<T::V>;
-
-    open spec fn deep_view(&self) -> Seq<T::V> {
-        let v = self.view();
-        Seq::new(v.len(), |i: int| v[i].deep_view())
-    }
-}
-
 pub trait VecAdditionalSpecFns<T>: View<V = Seq<T>> {
     spec fn spec_index(&self, i: int) -> T
         recommends

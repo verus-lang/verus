@@ -77,7 +77,6 @@ pub struct Ctx {
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) spec_fn_types: Vec<usize>,
     pub(crate) uses_array: bool,
-    pub(crate) bound_traits: HashSet<Path>,
     pub(crate) fndef_types: Vec<Fun>,
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
@@ -511,7 +510,6 @@ impl Ctx {
         mono_types: Vec<MonoTyp>,
         spec_fn_types: Vec<usize>,
         uses_array: bool,
-        bound_traits: HashSet<Path>,
         fndef_types: Vec<Fun>,
         debug: bool,
     ) -> Result<Self, VirErr> {
@@ -554,7 +552,6 @@ impl Ctx {
             mono_types,
             spec_fn_types,
             uses_array,
-            bound_traits,
             fndef_types,
             fndef_type_set,
             functions,

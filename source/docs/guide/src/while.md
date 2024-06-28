@@ -61,3 +61,14 @@ they must be listed explicitly in the loop invariants.
 for large functions with large while loops;
 verification runs faster if Verus breaks the surrounding function and the loops into separate pieces
 and verifies them modularly.)
+
+Verus does allow you to opt-out of this behavior, meaning that your loops will inherit
+information from the surrounding context.  This will simplify your loop invariants,
+but verification time may increase for medium-to-large functions.
+To opt-out for a single function or while loop, you can add the attribute 
+`#[verifier::spinoff_loop(false)]`.  You can also opt-out at the module or
+crate level, by adding the `#![verifier::spinoff_loop(false)]` attribute
+to the module or the root of the crate.  You can then override the global
+setting locally by adding `#[verifier::spinoff_loop(true)]` on individual
+functions or loops.
+

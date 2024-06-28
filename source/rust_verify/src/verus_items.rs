@@ -578,9 +578,11 @@ pub(crate) enum RustItem {
     CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
+    Allocator,
     TryTraitBranch,
     ResidualTraitFromResidual,
     IntoIterFn,
+    ManuallyDrop,
     Destruct,
 }
 
@@ -622,6 +624,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     if tcx.lang_items().into_iter_fn() == Some(def_id) {
         return Some(RustItem::IntoIterFn);
     }
+    if tcx.lang_items().manually_drop() == Some(def_id) {
+        return Some(RustItem::ManuallyDrop);
+    }
     if tcx.lang_items().destruct_trait() == Some(def_id) {
         return Some(RustItem::Destruct);
     }
@@ -660,6 +665,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
 
     if rust_path == Some("alloc::alloc::Global") {
         return Some(RustItem::AllocGlobal);
+    }
+    if rust_path == Some("core::alloc::Allocator") {
+        return Some(RustItem::Allocator);
     }
 
     if let Some(rust_path) = rust_path {

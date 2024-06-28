@@ -88,6 +88,7 @@ pub struct Context {
     pub(crate) smt_log: Emitter,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
+    pub(crate) rlimit_count: u64,
     pub(crate) state: ContextState,
     pub(crate) expected_solver_version: Option<String>,
     pub(crate) profile_logfile_name: Option<String>,
@@ -126,6 +127,7 @@ impl Context {
             smt_log: Emitter::new(message_interface.clone(), true, true, None),
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
+            rlimit_count: 0,
             state: ContextState::NotStarted,
             expected_solver_version: None,
             profile_logfile_name: None,
@@ -180,6 +182,10 @@ impl Context {
 
     pub fn get_time(&self) -> (Duration, Duration) {
         (self.time_smt_init, self.time_smt_run)
+    }
+
+    pub fn get_rlimit_count(&self) -> u64 {
+        self.rlimit_count
     }
 
     pub fn set_expected_solver_version(&mut self, version: String) {
@@ -379,6 +385,11 @@ impl Context {
         query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
         self.ensure_started();
+
+        if let Err(e) = crate::smt_verify::smt_update_statistics(self) {
+            return e;
+        }
+
         self.air_initial_log.log_query(query);
         let query = match crate::typecheck::check_query(self, query) {
             Ok(query) => query,

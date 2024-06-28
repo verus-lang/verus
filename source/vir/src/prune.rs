@@ -385,6 +385,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     if let Some(module_path) = &datatype.x.owning_module {
                         reach(&mut state.reached_modules, &mut state.worklist_modules, module_path);
                     }
+                    traverse_generic_bounds(ctxt, state, &datatype.x.typ_bounds, false);
                     crate::ast_visitor::map_datatype_visitor_env(&datatype, state, &ft).unwrap();
                 }
                 ReachedType::SpecFn(arity) => {
@@ -539,7 +540,7 @@ pub fn prune_krate_for_module_or_krate(
     current_crate: Option<&Krate>,
     module: Option<Path>,
     fun: Option<&Fun>,
-) -> (Krate, Vec<MonoTyp>, Vec<usize>, bool, HashSet<Path>, Vec<Fun>) {
+) -> (Krate, Vec<MonoTyp>, Vec<usize>, bool, Vec<Fun>) {
     assert!(module.is_some() != current_crate.is_some());
 
     let mut root_modules: HashSet<Path> = HashSet::new();
@@ -913,11 +914,10 @@ pub fn prune_krate_for_module_or_krate(
             .filter(|a| state.reached_assoc_type_impls.contains(&a.x.prune_name()))
             .cloned()
             .collect(),
-        // TODO: once we've explicitly declared all traits (internal and external) to Verus,
-        // we should consider filtering away unreached traits entirely,
-        // and getting rid of reached_bound_traits and reached_assoc_type_decls.
-        // That way, we'd guarantee that there are no unreached contents in any TraitX fields.
-        traits,
+        traits: traits
+            .into_iter()
+            .filter(|t| state.reached_bound_traits.contains(&t.x.name))
+            .collect(),
         trait_impls: krate
             .trait_impls
             .iter()
@@ -937,13 +937,5 @@ pub fn prune_krate_for_module_or_krate(
     let mut mono_abstract_datatypes: Vec<MonoTyp> =
         state.mono_abstract_datatypes.into_iter().collect();
     mono_abstract_datatypes.sort();
-    let State { reached_bound_traits, .. } = state;
-    (
-        Arc::new(kratex),
-        mono_abstract_datatypes,
-        spec_fn_types,
-        state.uses_array,
-        reached_bound_traits,
-        fndef_types,
-    )
+    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, state.uses_array, fndef_types)
 }

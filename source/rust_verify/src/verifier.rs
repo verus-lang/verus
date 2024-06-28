@@ -241,6 +241,13 @@ pub struct BucketStats {
     pub time_smt_run: Duration,
     /// total time to verify the bucket
     pub time_verify: Duration,
+    /// total rlimit count for the bucket
+    pub rlimit_count: u64,
+}
+
+pub struct FunctionSmtStats {
+    pub smt_time: Duration,
+    pub rlimit_count: u64,
 }
 
 pub struct Verifier {
@@ -268,9 +275,9 @@ pub struct Verifier {
     /// time spent importing VIR from other crates
     pub time_import: Duration,
     /// execution times for each bucket run in parallel
-    pub bucket_times: HashMap<BucketId, BucketStats>,
+    pub bucket_stats: HashMap<BucketId, BucketStats>,
     /// smt runtimes for each function per bucket
-    pub func_times: HashMap<BucketId, HashMap<Fun, Duration>>,
+    pub func_times: HashMap<BucketId, HashMap<Fun, FunctionSmtStats>>,
 
     // If we've already created the log directory, this is the path to it:
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
@@ -366,6 +373,12 @@ impl std::ops::Add for RunCommandQueriesResult {
     }
 }
 
+struct VerifyBucketOut {
+    time_smt_init: Duration,
+    time_smt_run: Duration,
+    rlimit_count: u64,
+}
+
 impl Verifier {
     pub fn new(args: Args) -> Verifier {
         Verifier {
@@ -383,7 +396,7 @@ impl Verifier {
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
 
-            bucket_times: HashMap::new(),
+            bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
 
             created_log_dir: Arc::new(std::sync::Mutex::new(None)),
@@ -417,7 +430,7 @@ impl Verifier {
             time_import: Duration::new(0, 0),
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
-            bucket_times: HashMap::new(),
+            bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
             created_log_dir: self.created_log_dir.clone(),
             created_solver_log_dir: self.created_solver_log_dir.clone(),
@@ -439,7 +452,7 @@ impl Verifier {
         self.count_errors += other.count_errors;
         self.time_vir += other.time_vir;
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
-        self.bucket_times.extend(other.bucket_times);
+        self.bucket_stats.extend(other.bucket_stats);
         self.func_times.extend(other.func_times);
     }
 
@@ -711,7 +724,7 @@ impl Verifier {
         );
 
         let time1 = Instant::now();
-        let bucket_time = self.bucket_times.get_mut(bucket_id).expect("bucket time not found");
+        let bucket_time = self.bucket_stats.get_mut(bucket_id).expect("bucket time not found");
         bucket_time.time_air += time1 - time0;
 
         let mut is_first_check = true;
@@ -839,7 +852,7 @@ impl Verifier {
                     let time1 = Instant::now();
 
                     let bucket_time =
-                        self.bucket_times.get_mut(bucket_id).expect("bucket time not found");
+                        self.bucket_stats.get_mut(bucket_id).expect("bucket time not found");
                     bucket_time.time_air += time1 - time0;
                 }
                 ValidityResult::UnexpectedOutput(err) => {
@@ -890,7 +903,7 @@ impl Verifier {
             ));
             let time1 = Instant::now();
 
-            let bucket_time = self.bucket_times.get_mut(bucket_id).expect("bucket time not found");
+            let bucket_time = self.bucket_stats.get_mut(bucket_id).expect("bucket time not found");
             bucket_time.time_air += time1 - time0;
         }
     }
@@ -1172,7 +1185,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
-    ) -> Result<(Duration, Duration), VirErr> {
+    ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         assert!(!(self.args.profile && self.args.profile_all));
@@ -1205,6 +1218,7 @@ impl Verifier {
 
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
+        let mut spunoff_rlimit_count = 0;
 
         let module = &ctx.module_path();
         air_context.blank_line();
@@ -1246,10 +1260,9 @@ impl Verifier {
         );
 
         let trait_commands = vir::traits::traits_to_air(ctx, &krate);
-        let assoc_type_bounds_commands =
-            vir::assoc_types_to_air::assoc_type_trait_bounds_to_air(ctx, &krate.traits)?;
+        let trait_type_bounds_commands = vir::traits::trait_bound_axioms(ctx, &krate.traits);
         let trait_commands = Arc::new(
-            trait_commands.iter().chain(assoc_type_bounds_commands.iter()).cloned().collect(),
+            trait_commands.iter().chain(trait_type_bounds_commands.iter()).cloned().collect(),
         );
         self.run_commands(
             bucket_id,
@@ -1369,6 +1382,7 @@ impl Verifier {
                         let mut any_timed_out = false;
                         let mut failed_assert_ids = vec![];
                         let mut func_curr_smt_time = Duration::ZERO;
+                        let mut func_curr_smt_rlimit_count = 0;
                         for cmds in commands_with_context_list.iter() {
                             if is_recommend && cmds.skip_recommends {
                                 continue;
@@ -1436,6 +1450,7 @@ impl Verifier {
                                 &mut air_context
                             };
                             let iter_curr_smt_time = query_air_context.get_time().1;
+                            let iter_curr_smt_rlimit_count = query_air_context.get_rlimit_count();
                             if let Some(rlimit) = function.x.attrs.rlimit {
                                 Self::set_rlimit(&mut query_air_context, rlimit);
                             }
@@ -1460,10 +1475,13 @@ impl Verifier {
                             );
                             func_curr_smt_time +=
                                 query_air_context.get_time().1 - iter_curr_smt_time;
+                            func_curr_smt_rlimit_count +=
+                                query_air_context.get_rlimit_count() - iter_curr_smt_rlimit_count;
                             if do_spinoff {
                                 let (time_smt_init, time_smt_run) = query_air_context.get_time();
                                 spunoff_time_smt_init += time_smt_init;
                                 spunoff_time_smt_run += time_smt_run;
+                                spunoff_rlimit_count += query_air_context.get_rlimit_count();
                             }
                             if function.x.attrs.rlimit.is_some() {
                                 self.set_default_rlimit(&mut query_air_context);
@@ -1571,8 +1589,11 @@ impl Verifier {
                         if commands_with_context_list.len() != 0 {
                             let func_time =
                                 self.func_times.entry(bucket_id.clone()).or_insert(HashMap::new());
-                            *func_time.entry(function.x.name.clone()).or_insert(Duration::ZERO) +=
-                                func_curr_smt_time;
+                            let func_stats = func_time.entry(function.x.name.clone()).or_insert(
+                                FunctionSmtStats { smt_time: Duration::ZERO, rlimit_count: 0 },
+                            );
+                            func_stats.smt_time += func_curr_smt_time;
+                            func_stats.rlimit_count += func_curr_smt_rlimit_count;
                         }
 
                         if matches!(query_op, QueryOp::Body(Style::Normal)) {
@@ -1696,8 +1717,13 @@ impl Verifier {
         ctx.fun = None;
 
         let (time_smt_init, time_smt_run) = air_context.get_time();
+        let rlimit_count = air_context.get_rlimit_count();
 
-        Ok((time_smt_init + spunoff_time_smt_init, time_smt_run + spunoff_time_smt_run))
+        Ok(VerifyBucketOut {
+            time_smt_init: time_smt_init + spunoff_time_smt_init,
+            time_smt_run: time_smt_run + spunoff_time_smt_run,
+            rlimit_count: rlimit_count + spunoff_rlimit_count,
+        })
     }
 
     fn verify_bucket_outer(
@@ -1710,7 +1736,7 @@ impl Verifier {
     ) -> Result<vir::context::GlobalCtx, VirErr> {
         let time_verify_start = Instant::now();
 
-        self.bucket_times.insert(bucket_id.clone(), Default::default());
+        self.bucket_stats.insert(bucket_id.clone(), Default::default());
 
         let bucket_name = bucket_id.friendly_name();
         let user_filter = self.user_filter.as_ref().unwrap();
@@ -1720,21 +1746,14 @@ impl Verifier {
             reporter
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
-
-        let (
-            pruned_krate,
-            mono_abstract_datatypes,
-            spec_fn_types,
-            uses_array,
-            bound_traits,
-            fndef_types,
-        ) = vir::prune::prune_krate_for_module_or_krate(
-            &krate,
-            &Arc::new(self.crate_name.clone().expect("crate_name")),
-            None,
-            Some(bucket_id.module().clone()),
-            bucket_id.function(),
-        );
+        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, uses_array, fndef_types) =
+            vir::prune::prune_krate_for_module_or_krate(
+                &krate,
+                &Arc::new(self.crate_name.clone().expect("crate_name")),
+                None,
+                Some(bucket_id.module().clone()),
+                bucket_id.function(),
+            );
         let module = pruned_krate
             .modules
             .iter()
@@ -1748,7 +1767,6 @@ impl Verifier {
             mono_abstract_datatypes,
             spec_fn_types,
             uses_array,
-            bound_traits,
             fndef_types,
             self.args.debugger,
         )?;
@@ -1759,17 +1777,18 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &poly_krate, &self.args.log_args.vir_log_option);
         }
 
-        let (time_smt_init, time_smt_run) =
+        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
             self.verify_bucket(reporter, &poly_krate, source_map, bucket_id, &mut ctx)?;
 
         global_ctx = ctx.free();
 
         let time_verify_end = Instant::now();
 
-        let time_bucket = self.bucket_times.get_mut(bucket_id).expect("bucket should exist");
-        time_bucket.time_smt_init = time_smt_init;
-        time_bucket.time_smt_run = time_smt_run;
-        time_bucket.time_verify = time_verify_end - time_verify_start;
+        let stats_bucket = self.bucket_stats.get_mut(bucket_id).expect("bucket should exist");
+        stats_bucket.time_smt_init = time_smt_init;
+        stats_bucket.time_smt_run = time_smt_run;
+        stats_bucket.time_verify = time_verify_end - time_verify_start;
+        stats_bucket.rlimit_count = rlimit_count;
 
         if self.args.trace {
             reporter.report_now(
@@ -2471,7 +2490,7 @@ impl Verifier {
         vir_crates.push(vir_crate);
         let unpruned_crate =
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
-        let (vir_crate, _, _, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
+        let (vir_crate, _, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
             &Arc::new(crate_name.clone()),
             Some(&current_vir_crate),

@@ -26,7 +26,6 @@ pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirE
 #[macro_export]
 macro_rules! unsupported_err {
     ($span: expr, $msg: expr) => {{
-        dbg!();
         unsupported_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
@@ -41,7 +40,6 @@ macro_rules! unsupported_err {
 macro_rules! unsupported_err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
-            dbg!();
             crate::util::unsupported_err_span($span, $msg.to_string())?;
         }
     };
@@ -57,7 +55,6 @@ macro_rules! unsupported_err_unless {
 macro_rules! err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
-            dbg!();
             crate::util::err_span($span, $msg)?;
         }
     };

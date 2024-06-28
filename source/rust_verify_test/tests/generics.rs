@@ -53,6 +53,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_decorated_datatype_encodings verus_code! {
+        // https://github.com/verus-lang/verus/issues/758
+        mod m {
+            pub(crate) struct Seq<A>(A);
+        }
+        use crate::m::*;
+        struct S;
+        spec fn f<B>(s: Seq<&S>) -> Seq<B>;
+        proof fn test(x: Seq<&S>) {
+            let b = f::<S>(x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] const_generics_int_ranges verus_code! {
         proof fn test<const N : u8>() {
             assert (0 <= N);
