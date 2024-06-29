@@ -183,7 +183,7 @@ test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
     type_fail verus_code! {
-        proof fn test(x: u32, y: u32, z:u32, m:int) by(integer_ring) // FAILS (not supported)
+        proof fn test(x: u32, y: u32, z:u32, m:int) by(integer_ring) // FAILS: should all be int type
             requires
               (x-y) % m == 0
             ensures
@@ -239,7 +239,7 @@ test_verify_one_file! {
         pub proof fn test(x: int, y: int, m: int) by(integer_ring)
             ensures
                 ((x % m) * y) % m == (x * y) % m,
-                ((x % m) * (y % m)) % m == (x) % m, // FAILS
+                ((x % m) * (y % m)) % m == (x) % m, // FAILS: postcondition not satisfied
                 (x * (y % m)) % m == (x * y) % m
         {}
     } => Err(err) => assert_one_fails(err)
@@ -253,7 +253,7 @@ test_verify_one_file! {
             ensures
                 ((x % m) * y) % m == (x * y) % m,
                 ((x % m) * (y % m)) % m == (x) % m, // FAILS
-                (x * (y % m)) % m == (x) % m // also FAILS (but should not report this, since we stop at the first failure)
+                (x * (y % m)) % m == (x) % m // also fails (but should not report this, since we stop at the first failure)
         {}
     } => Err(err) => assert_one_fails(err)
 }
@@ -263,7 +263,7 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     neq_not_supported verus_code! {
         proof fn test(x: int, y: int, z:int, m:int) by(integer_ring)
-            requires (x-y) % m != 0  //FAILS (not supported)
+            requires (x-y) % m != 0  // FAILS: Unsupported expression
             ensures (x*z + y*z) % m == 0
         {}
     } => Err(err) => assert_one_fails(err)
@@ -274,7 +274,7 @@ test_verify_one_file! {
     #[cfg_attr(not(feature = "singular"), ignore)]
     gt_not_supported verus_code! {
         proof fn test(x: int, y: int, z:int, m:int) by(integer_ring)
-            requires (x-y) % m > 0  //FAILS (not supported)
+            requires (x-y) % m > 0  // FAILS: Unsupported expression
             ensures (x*z + y*z) % m == 0
         {}
     } => Err(err) => assert_one_fails(err)
@@ -286,7 +286,7 @@ test_verify_one_file! {
     lt_not_supported verus_code! {
         proof fn test(x: int, y: int, z:int, m:int) by(integer_ring)
             requires (x-y) % m == 0
-            ensures (x*z + y*z) % m < 0 //FAILS (not supported)
+            ensures (x*z + y*z) % m < 0 // FAILS: Unsupported expression
         {}
     } => Err(err) => assert_one_fails(err)
 }

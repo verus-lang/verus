@@ -462,17 +462,27 @@ pub fn relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
         .expect("span")
 }
 
+fn assert_diagnostic_fails(diag: &Diagnostic) {
+    // Expect "FAILS" to appear in the diagnostic.
+    let fail_diag_text =
+        relevant_error_span(&diag.spans).text.iter().find(|x| x.text.contains("FAILS"));
+    assert!(fail_diag_text.is_some());
+    let fail_text = &fail_diag_text.unwrap().text;
+
+    // Check expected message, if specified.
+    let expect_re = regex::Regex::new(r"(?m)FAILS:\s*(?<expect>.+)").unwrap();
+    let Some(caps) = expect_re.captures(fail_text) else { return };
+    let expect = &caps["expect"];
+
+    println!("expect message to contain: {expect:?}");
+    assert!(diag.message.contains(expect));
+}
+
 /// Assert that one verification failure happened on source lines containing the string "FAILS".
 #[allow(dead_code)]
 pub fn assert_one_fails(err: TestErr) {
     assert_eq!(err.errors.len(), 1);
-    assert!(
-        relevant_error_span(&err.errors[0].spans)
-            .text
-            .iter()
-            .find(|x| x.text.contains("FAILS"))
-            .is_some()
-    );
+    assert_diagnostic_fails(&err.errors[0]);
 }
 
 /// When this testcase has ONE verification failure,
@@ -494,13 +504,7 @@ pub fn assert_expand_fails(err: TestErr, span_count: usize) {
 pub fn assert_fails(err: TestErr, count: usize) {
     assert_eq!(err.errors.len(), count);
     for c in 0..count {
-        assert!(
-            relevant_error_span(&err.errors[c].spans)
-                .text
-                .iter()
-                .find(|x| x.text.contains("FAILS"))
-                .is_some()
-        );
+        assert_diagnostic_fails(&err.errors[c]);
     }
 }
 
@@ -537,10 +541,9 @@ pub fn assert_rust_error_msg_all(err: TestErr, expected_msg: &str) {
 
 #[allow(dead_code)]
 pub fn assert_spans_contain(err: &Diagnostic, needle: &str) {
-    assert!(
-        err.spans
-            .iter()
-            .find(|s| s.label.is_some() && s.label.as_ref().unwrap().contains(needle))
-            .is_some()
-    );
+    assert!(err
+        .spans
+        .iter()
+        .find(|s| s.label.is_some() && s.label.as_ref().unwrap().contains(needle))
+        .is_some());
 }
