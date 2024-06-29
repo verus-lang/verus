@@ -541,9 +541,10 @@ pub fn assert_rust_error_msg_all(err: TestErr, expected_msg: &str) {
 
 #[allow(dead_code)]
 pub fn assert_spans_contain(err: &Diagnostic, needle: &str) {
-    assert!(err
-        .spans
-        .iter()
-        .find(|s| s.label.is_some() && s.label.as_ref().unwrap().contains(needle))
-        .is_some());
+    assert!(
+        err.spans
+            .iter()
+            .find(|s| s.label.is_some() && s.label.as_ref().unwrap().contains(needle))
+            .is_some()
+    );
 }
