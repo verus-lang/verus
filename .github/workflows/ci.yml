@@ -229,7 +229,7 @@ jobs:
 
       - name: update release
         id: update_release
-        uses: utaal/action-update-release@v0.0.6
+        uses: utaal/action-update-release@v0.0.8
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -239,6 +239,7 @@ jobs:
             Rolling release from Continuous Integration
           new_tag: ${{ env.TAG_NAME }}
           delete_tags_prefix: release/rolling/
+          delete_assets: true
 
       - name: upload release for x86-linux
         uses: actions/upload-release-asset@v1
