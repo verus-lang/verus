@@ -213,7 +213,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let binders = R::map_vec(binders, &mut |b| self.visit_binder_exp(b))?;
                 R::ret(|| exp_new(ExpX::Ctor(path.clone(), ident.clone(), R::get_vec_a(binders))))
             }
-
             ExpX::NullaryOpr(NullaryOpr::ConstGeneric(t)) => {
                 let t = self.visit_typ(t)?;
                 R::ret(|| exp_new(ExpX::NullaryOpr(NullaryOpr::ConstGeneric(R::get(t)))))
@@ -343,6 +342,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 R::ret(|| {
                     exp_new(ExpX::Bind(Spanned::new(bnd.span.clone(), R::get(bndx)), R::get(e1)))
                 })
+            }
+            ExpX::ArrayLiteral(es) => {
+                let es = self.visit_exps(es)?;
+                R::ret(|| exp_new(ExpX::ArrayLiteral(R::get_vec_a(es))))
             }
             ExpX::Interp(_) => R::ret(|| exp.clone()),
         }

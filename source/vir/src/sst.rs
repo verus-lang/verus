@@ -83,6 +83,7 @@ pub enum ExpX {
     WithTriggers(Trigs, Exp),
     Bind(Bnd, Exp),
     ExecFnByName(Fun),
+    ArrayLiteral(Exps),
     // only used internally by the interpreter; should never be seen outside it
     Interp(InterpExp),
     FuelConst(usize),

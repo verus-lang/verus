@@ -555,3 +555,31 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 5)
 }
+
+test_verify_one_file! {
+    #[test] array_literals verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: [u32; 3] = [31, 32, 33];
+
+        proof fn mytest() {
+            assert([41u32, 42][1] == 42) by (compute_only);
+            assert(MyArray[1] == 32) by (compute_only);
+            let x = 0;
+            assert(MyArray[x] == 31) by (compute);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] array_incompletely_resolved verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: [u32; 3] = [1, 2, 3];
+
+        proof fn test() {
+            let x:int = 0;
+            assert(MyArray[x] == 2) by (compute_only);     // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}

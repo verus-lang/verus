@@ -132,11 +132,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_array_literals_spec_fn_unsupported_1 verus_code! {
+    #[test] test_array_literals_spec_fn_supported_1 verus_code! {
         spec fn test() -> [u64; 3] {
             [3, 4, 5]
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected pure mathematical expression")
+    } => Ok(())
 }
 
 test_verify_one_file! {
