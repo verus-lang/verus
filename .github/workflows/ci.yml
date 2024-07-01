@@ -236,19 +236,18 @@ jobs:
         run: |
           ls -Al .
 
-      - name: create release
-        id: create_release
-        uses: viperproject/create-nightly-release@v1
+      - name: update release
+        id: update_release
+        uses: utaal/action-update-release@v0.0.6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ env.TAG_NAME }}
-          release_name: Rolling Release ${{ env.RELEASE_NAME }}
-          keep_num: 2
-          body: |
+          id: 163437062
+          new_name: Rolling Release ${{ env.RELEASE_NAME }}
+          new_body: |
             Rolling release from Continuous Integration
-
-            <!-- Automatically created nightly release: This release can safely be deleted by the nightly-release action -->
+          new_tag: ${{ env.TAG_NAME }}
+          delete_tags_prefix: release/rolling/
 
       - name: upload release for x86-linux
         uses: actions/upload-release-asset@v1
