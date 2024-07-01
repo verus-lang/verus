@@ -587,16 +587,16 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 
         // uninterpreted integer versions for bitvector Ops.
         // These all apply on unbounded ints (an unbounded int can be written
-        // as infinite binary string; negative integers have 1s going infinitely to the left.)
+        // as infinite binary string; negative integers have 1s going infinitely to the left).
         //
         // For XOR, AND, OR, SHR, and signed-NOT,
         // the unbounded int versions are identical
         // to the finite-width versions (axioms for these are below).
         //
-        // For SHR and unsigned-NOT, we can add a clip around the unbounded-function to
-        // get a clip around the unbounded operation to get the finite-width operation.
+        // For SHL and unsigned-NOT, we can add a clip around the unbounded-function to
+        // get the finite-width operation.
         //
-        // Note: BitShr is underspecified if second argument is negative
+        // Note: BitShr/BitShl are underspecified if second argument is negative
 
         (declare-fun [bit_xor] ([Poly] [Poly]) Int)
         (declare-fun [bit_and] ([Poly] [Poly]) Int)

@@ -951,10 +951,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     //
                     // For SHL, the clip *is* meaningful.
 
-                    let (fname, mut args) = match bo {
-                        BitwiseOp::BitXor => (crate::def::BIT_XOR, vec![]),
-                        BitwiseOp::BitAnd => (crate::def::BIT_AND, vec![]),
-                        BitwiseOp::BitOr => (crate::def::BIT_OR, vec![]),
+                    let fname = match bo {
+                        BitwiseOp::BitXor => crate::def::BIT_XOR,
+                        BitwiseOp::BitAnd => crate::def::BIT_AND,
+                        BitwiseOp::BitOr => crate::def::BIT_OR,
                         BitwiseOp::Shl(width, signed) => {
                             // The clip (below) is based on the type so we need to make
                             // sure that the clip is what we expected based on Shl's arguments
@@ -964,12 +964,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                                     format!("Verus Internal Error: BitShl: type doesn't match"),
                                 ));
                             }
-                            (crate::def::BIT_SHL, vec![])
+                            crate::def::BIT_SHL
                         }
-                        BitwiseOp::Shr(_) => (crate::def::BIT_SHR, vec![]),
+                        BitwiseOp::Shr(_) => crate::def::BIT_SHR,
                     };
-                    args.push(box_lh);
-                    args.push(box_rh);
+                    let args = vec![box_lh, box_rh];
                     let bit_expr = ExprX::Apply(Arc::new(fname.to_string()), Arc::new(args));
 
                     return clip_bitwise_result(bit_expr, exp);

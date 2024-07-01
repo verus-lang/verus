@@ -304,8 +304,13 @@ pub enum UnaryOp {
     /// boolean not
     Not,
     /// bitwise not
-    /// - for unsigned, we need a bitwidth
-    /// - None = signed bit-not; the operation is independent of bitwidth
+    /// Semantics:
+    ///   Flip every bit in the infinite binary representation of
+    ///   (equivalently, compute -x-1)
+    ///   Then, if the bitwidth argument is non-None, clip to the given bitwidth
+    /// Note that:
+    ///  1. A bitwise 'not' on a SIGNED integer can be encoded as BitNot(None)
+    ///  2. A bitwise 'not' on an UNSIGNED integer of width w can be encoded as BitNot(Some(w))
     BitNot(Option<IntegerTypeBitwidth>),
     /// Mark an expression as a member of an SMT quantifier trigger group.
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
