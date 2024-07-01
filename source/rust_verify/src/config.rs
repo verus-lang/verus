@@ -421,7 +421,6 @@ pub fn parse_args_with_imports(
 
     let error = |msg: String| -> ! {
         eprintln!("Error: {}", msg);
-        print_usage();
         std::process::exit(-1)
     };
 
@@ -601,7 +600,7 @@ pub fn parse_args_with_imports(
         profile_all: {
             if matches.opt_present(OPT_PROFILE_ALL) {
                 if !matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("Must pass --verify-module when using profile-all. To capture a full project's profile, consider --capture-profiles".to_string())
+                    error("Must pass --verify-module when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
                 }
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --profile-all are mutually exclusive".to_string())
