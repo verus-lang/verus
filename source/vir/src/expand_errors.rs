@@ -130,7 +130,7 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
-        StmX::OpenInvariant(_, _, _, stm, _) => {
+        StmX::OpenInvariant(_, stm) => {
             if get_fuel_at_id(stm, a_id, fuels) {
                 return true;
             }

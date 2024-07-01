@@ -457,19 +457,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
-            StmX::OpenInvariant(inv, ident, ty, body, atomicity) => {
-                let inv = self.visit_exp(inv)?;
-                let ty = self.visit_typ(ty)?;
+            StmX::OpenInvariant(ns_exp, body) => {
+                let ns_exp = self.visit_exp(ns_exp)?;
                 let body = self.visit_stm(body)?;
-                R::ret(|| {
-                    stm_new(StmX::OpenInvariant(
-                        R::get(inv),
-                        ident.clone(),
-                        R::get(ty),
-                        R::get(body),
-                        *atomicity,
-                    ))
-                })
+                R::ret(|| stm_new(StmX::OpenInvariant(R::get(ns_exp), R::get(body))))
             }
             StmX::Block(stms) => {
                 let stms = R::map_vec(stms, &mut |s| self.visit_stm(s))?;
