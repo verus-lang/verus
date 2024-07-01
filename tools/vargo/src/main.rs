@@ -312,7 +312,7 @@ fn run() -> Result<(), String> {
             return Err(format!("rustup failed"));
         }
         let active_toolchain_re = Regex::new(
-            r"^(([A-Za-z0-9.-]+)-[A-Za-z0-9_]+-[A-Za-z0-9]+-[A-Za-z0-9-]+) \(overridden by '(.*)'\)",
+            r"^(([a-z0-9.]+(?:-[0-9]{4}-[0-9]{2}-[0-9]{2})?)(?:-[A-Za-z0-9_]+)+) \(overridden by '(.*)'\)",
         )
         .unwrap();
         let stdout = std::str::from_utf8(&output.stdout)
