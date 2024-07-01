@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, MaskSpec, Mode, Params,
-    Path, PathX, Primitive, SpannedTyped, Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, MaskSpec, Mode, Params, Path, PathX,
+    Primitive, SpannedTyped, Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
     VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{

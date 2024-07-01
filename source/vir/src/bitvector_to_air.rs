@@ -878,15 +878,13 @@ fn do_arith_then_clip(
         int_range = None;
     }
     if int_range == Some(IntRange::Nat) {
-        if lhs_extend == Extend::Zero && rhs_extend == Extend::Zero
+        if lhs_extend == Extend::Zero
+            && rhs_extend == Extend::Zero
             && (*arith_op == ArithOp::Add || *arith_op == ArithOp::Mul)
         {
             int_range = None;
         } else {
-            return Err(error(
-                span,
-                format!("not supported: nat cast here"),
-            ));
+            return Err(error(span, format!("not supported: nat cast here")));
         }
     }
 
@@ -922,8 +920,8 @@ fn do_arith_then_clip(
                     (Extend::Zero, Extend::Sign) => {
                         // If X fits in N bits, unsigned
                         // and Y fits in M bits, signed then:
-                        // hi: (2^N - 1) + (2^(M-1) - 1) <= 2^max(N+1, M) - 1     
-                        // lo: (-2^(M-1))             
+                        // hi: (2^N - 1) + (2^(M-1) - 1) <= 2^max(N+1, M) - 1
+                        // lo: (-2^(M-1))
                         // which all fit in signed max(N+2, M+1)
 
                         let w = std::cmp::max(lhs_w + 2, rhs_w + 1);
@@ -961,7 +959,7 @@ fn do_arith_then_clip(
                     }
                 };
                 (w, Extend::Sign)
-            },
+            }
             ArithOp::Mul => match (lhs_extend, rhs_extend) {
                 (Extend::Zero, Extend::Zero) => (lhs_w + rhs_w, Extend::Zero),
                 (Extend::Zero, Extend::Sign) | (Extend::Sign, Extend::Zero) => {
