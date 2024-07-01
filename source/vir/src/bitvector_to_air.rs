@@ -812,7 +812,7 @@ fn width_of_int_range(state: &mut State, span: &Span, range: &IntRange) -> Resul
             Ok(bitwidth_exact(state, IntegerTypeBitwidth::ArchWordSize))
         }
         IntRange::Int | IntRange::Nat => {
-            Err(error(span, format!("int/nat not supported in bit-vector query")))
+            Err(error(span, format!("symbolic int/nat not supported in bit-vector query")))
         }
         IntRange::Char => Err(error(span, format!("char not supported in bit-vector query"))),
     }
@@ -873,6 +873,23 @@ fn do_arith_then_clip(
     let lhs_expr = bv_lhs.expr.clone();
     let rhs_expr = bv_rhs.expr.clone();
 
+    let mut int_range = int_range;
+    if int_range == Some(IntRange::Int) {
+        int_range = None;
+    }
+    if int_range == Some(IntRange::Nat) {
+        if lhs_extend == Extend::Zero && rhs_extend == Extend::Zero
+            && (*arith_op == ArithOp::Add || *arith_op == ArithOp::Mul)
+        {
+            int_range = None;
+        } else {
+            return Err(error(
+                span,
+                format!("not supported: nat cast here"),
+            ));
+        }
+    }
+
     if matches!(arith_op, ArithOp::Add | ArithOp::Mul | ArithOp::Sub) {
         let op = match arith_op {
             ArithOp::Add => air::ast::BinaryOp::BitAdd,
@@ -884,36 +901,73 @@ fn do_arith_then_clip(
         // How can we represent the result losslessly?
         let (lossless_w, lossless_extend) = match arith_op {
             ArithOp::Add => {
-                // If X and Y fit in N bits, unsigned,
-                // then (X + Y) fits in N+1 bits, unsigned
+                match (lhs_extend, rhs_extend) {
+                    (Extend::Zero, Extend::Zero) => {
+                        // If X and Y fit in N bits, unsigned,
+                        // then (X + Y) fits in N+1 bits, unsigned
+                        //  (2^N - 1) + (2^N - 1) <= (2^N - 1)
 
-                // If X and Y fit in N bits, one signed and the other signed or unsigned,
-                // then (X + Y) fits in N+1 bits, signed
+                        let w = std::cmp::max(lhs_w, rhs_w) + 1;
+                        (w, Extend::Zero)
+                    }
+                    (Extend::Sign, Extend::Sign) => {
+                        // If X and Y fit in N bits, signed
+                        // then (X + Y) fits in N+1 bits, signed
+                        //  (2^(N-1) - 1) + (2^(N-1) - 1) <= (2^N - 1)
+                        //  -2^(N-1) - 2^(N-1) >= -2^N
 
-                let w = std::cmp::max(lhs_w, rhs_w) + 1;
-                let extend = match (lhs_extend, rhs_extend) {
-                    (Extend::Zero, Extend::Zero) => Extend::Zero,
-                    (Extend::Sign, _) => Extend::Sign,
-                    (_, Extend::Sign) => Extend::Sign,
-                };
-                (w, extend)
+                        let w = std::cmp::max(lhs_w, rhs_w) + 1;
+                        (w, Extend::Sign)
+                    }
+                    (Extend::Zero, Extend::Sign) => {
+                        // If X fits in N bits, unsigned
+                        // and Y fits in M bits, signed then:
+                        // hi: (2^N - 1) + (2^(M-1) - 1) <= 2^max(N+1, M) - 1     
+                        // lo: (-2^(M-1))             
+                        // which all fit in signed max(N+2, M+1)
+
+                        let w = std::cmp::max(lhs_w + 2, rhs_w + 1);
+                        (w, Extend::Sign)
+                    }
+                    (Extend::Sign, Extend::Zero) => {
+                        let w = std::cmp::max(lhs_w + 1, rhs_w + 2);
+                        (w, Extend::Sign)
+                    }
+                }
             }
-            ArithOp::Sub => match rhs_extend {
-                Extend::Zero => {
-                    let w = std::cmp::max(lhs_w, rhs_w + 1) + 1;
-                    (w, Extend::Sign)
-                }
-                Extend::Sign => {
-                    let w = std::cmp::max(lhs_w, rhs_w) + 1;
-                    (w, Extend::Sign)
-                }
+            ArithOp::Sub => {
+                let w = match (lhs_extend, rhs_extend) {
+                    (Extend::Zero, Extend::Zero) => {
+                        // max: 2^a - 1
+                        // min: -2^b + 1
+                        // all fit in signed max(a+1, b+1)
+                        std::cmp::max(lhs_w + 1, rhs_w + 1)
+                    }
+                    (Extend::Zero, Extend::Sign) => {
+                        // max: (2^a - 1) - (-2^(b-1)) <= 2^max(a+1, b) - 1
+                        // min: -2^a - (2^(b-1) - 1) >= -2^max(a+1, b)
+                        // all fit in signed max(a+2, b+1)
+                        std::cmp::max(lhs_w + 2, rhs_w + 1)
+                    }
+                    (Extend::Sign, Extend::Zero) => {
+                        // max: (2^(a-1) - 1)
+                        // min: -2^(a-1) - 2^b + 1 >= -2^max(a, b+1)
+                        std::cmp::max(lhs_w + 1, rhs_w + 2)
+                    }
+                    (Extend::Sign, Extend::Sign) => {
+                        // max: 2^(a-1) - 1 + 2^(b-1) <= 2^max(a+b) - 1
+                        // min: -2^(a-1) - 2^(b-1) + 1 >= -2^max(a+b)
+                        std::cmp::max(lhs_w + 1, rhs_w + 1)
+                    }
+                };
+                (w, Extend::Sign)
             },
             ArithOp::Mul => match (lhs_extend, rhs_extend) {
                 (Extend::Zero, Extend::Zero) => (lhs_w + rhs_w, Extend::Zero),
                 (Extend::Zero, Extend::Sign) | (Extend::Sign, Extend::Zero) => {
                     (lhs_w + rhs_w, Extend::Sign)
                 }
-                (Extend::Sign, Extend::Sign) => (lhs_w + rhs_w - 1, Extend::Sign),
+                (Extend::Sign, Extend::Sign) => (lhs_w + rhs_w, Extend::Sign),
             },
             _ => unreachable!(),
         };
@@ -933,7 +987,7 @@ fn do_arith_then_clip(
 
                 if ir_w <= lossless_w {
                     // For add, mul, sub:
-                    // `clip(a op b)` is the same as `clip(a) op clip(b)`
+                    // `clip(a op b, rng) = clip(a, rng) op[rng] clip(b, rng)
                     // Thus, if we're going to form a clip, we can do it before the op
 
                     let lhs_expr = extend_or_trunc(&lhs_expr, lhs_extend, lhs_w, ir_w);

@@ -117,6 +117,10 @@ proof fn test_signed(x: i8, y: i8, z: i8, u: u8) {
     assert(u > 128 ==> u > x) by(bit_vector);
 }
 
+proof fn prove_associativity(a: u8, b: i8, c: u8) {
+    assert((a + b) + c == a + (b + c)) by(bit_vector);
+}
+
 } // verus!
 #[verifier::external_body]
 fn main() {}

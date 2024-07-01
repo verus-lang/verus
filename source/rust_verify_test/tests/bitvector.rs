@@ -446,3 +446,333 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] test_extreme_cases_arithmetic1 verus_code! {
+        fn test_arith_4_4() {
+            assert(((-1i32) ^ (7i32)) + ((-1i32) ^ (7i32)) == -16) by(bit_vector);
+            assert(((-1i32) ^ (7i32)) - ((-1i32) ^ (7i32)) == 0) by(bit_vector);
+            assert(((-1i32) ^ (7i32)) * ((-1i32) ^ (7i32)) == 64) by(bit_vector);
+            assert(((-1i32) ^ (7i32)) + !(-8i32) == -1) by(bit_vector);
+            assert(((-1i32) ^ (7i32)) - !(-8i32) == -15) by(bit_vector);
+            assert(((-1i32) ^ (7i32)) * !(-8i32) == -56) by(bit_vector);
+            assert(!(-8i32) + ((-1i32) ^ (7i32)) == -1) by(bit_vector);
+            assert(!(-8i32) - ((-1i32) ^ (7i32)) == 15) by(bit_vector);
+            assert(!(-8i32) * ((-1i32) ^ (7i32)) == -56) by(bit_vector);
+            assert(!(-8i32) + !(-8i32) == 14) by(bit_vector);
+            assert(!(-8i32) - !(-8i32) == 0) by(bit_vector);
+            assert(!(-8i32) * !(-8i32) == 49) by(bit_vector);
+            assert(((-1i32) ^ (7i32)) + 0 == -8) by(bit_vector);
+            assert(((-1i32) ^ (7i32)) - 0 == -8) by(bit_vector);
+            assert(((-1i32) ^ (7i32)) * 0 == 0) by(bit_vector);
+            assert(((-1i32) ^ (7i32)) + 15 == 7) by(bit_vector);
+            assert(((-1i32) ^ (7i32)) - 15 == -23) by(bit_vector);
+            assert(((-1i32) ^ (7i32)) * 15 == -120) by(bit_vector);
+            assert(!(-8i32) + 0 == 7) by(bit_vector);
+            assert(!(-8i32) - 0 == 7) by(bit_vector);
+            assert(!(-8i32) * 0 == 0) by(bit_vector);
+            assert(!(-8i32) + 15 == 22) by(bit_vector);
+            assert(!(-8i32) - 15 == -8) by(bit_vector);
+            assert(!(-8i32) * 15 == 105) by(bit_vector);
+            assert(0 + ((-1i32) ^ (7i32)) == -8) by(bit_vector);
+            assert(0 - ((-1i32) ^ (7i32)) == 8) by(bit_vector);
+            assert(0 * ((-1i32) ^ (7i32)) == 0) by(bit_vector);
+            assert(0 + !(-8i32) == 7) by(bit_vector);
+            assert(0 - !(-8i32) == -7) by(bit_vector);
+            assert(0 * !(-8i32) == 0) by(bit_vector);
+            assert(15 + ((-1i32) ^ (7i32)) == 7) by(bit_vector);
+            assert(15 - ((-1i32) ^ (7i32)) == 23) by(bit_vector);
+            assert(15 * ((-1i32) ^ (7i32)) == -120) by(bit_vector);
+            assert(15 + !(-8i32) == 22) by(bit_vector);
+            assert(15 - !(-8i32) == 8) by(bit_vector);
+            assert(15 * !(-8i32) == 105) by(bit_vector);
+            assert(0 + 0 == 0) by(bit_vector);
+            assert(0 - 0 == 0) by(bit_vector);
+            assert(0 * 0 == 0) by(bit_vector);
+            assert(0 + 15 == 15) by(bit_vector);
+            assert(0 - 15 == -15) by(bit_vector);
+            assert(0 * 15 == 0) by(bit_vector);
+            assert(15 + 0 == 15) by(bit_vector);
+            assert(15 - 0 == 15) by(bit_vector);
+            assert(15 * 0 == 0) by(bit_vector);
+            assert(15 + 15 == 30) by(bit_vector);
+            assert(15 - 15 == 0) by(bit_vector);
+            assert(15 * 15 == 225) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_extreme_cases_arithmetic2 verus_code! {
+        fn test_arith_8_8() {
+            assert(((-1i32) ^ (127i32)) + ((-1i32) ^ (127i32)) == -256) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) - ((-1i32) ^ (127i32)) == 0) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) * ((-1i32) ^ (127i32)) == 16384) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) + !(-128i32) == -1) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) - !(-128i32) == -255) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) * !(-128i32) == -16256) by(bit_vector);
+            assert(!(-128i32) + ((-1i32) ^ (127i32)) == -1) by(bit_vector);
+            assert(!(-128i32) - ((-1i32) ^ (127i32)) == 255) by(bit_vector);
+            assert(!(-128i32) * ((-1i32) ^ (127i32)) == -16256) by(bit_vector);
+            assert(!(-128i32) + !(-128i32) == 254) by(bit_vector);
+            assert(!(-128i32) - !(-128i32) == 0) by(bit_vector);
+            assert(!(-128i32) * !(-128i32) == 16129) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) + 0 == -128) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) - 0 == -128) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) * 0 == 0) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) + 255 == 127) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) - 255 == -383) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) * 255 == -32640) by(bit_vector);
+            assert(!(-128i32) + 0 == 127) by(bit_vector);
+            assert(!(-128i32) - 0 == 127) by(bit_vector);
+            assert(!(-128i32) * 0 == 0) by(bit_vector);
+            assert(!(-128i32) + 255 == 382) by(bit_vector);
+            assert(!(-128i32) - 255 == -128) by(bit_vector);
+            assert(!(-128i32) * 255 == 32385) by(bit_vector);
+            assert(0 + ((-1i32) ^ (127i32)) == -128) by(bit_vector);
+            assert(0 - ((-1i32) ^ (127i32)) == 128) by(bit_vector);
+            assert(0 * ((-1i32) ^ (127i32)) == 0) by(bit_vector);
+            assert(0 + !(-128i32) == 127) by(bit_vector);
+            assert(0 - !(-128i32) == -127) by(bit_vector);
+            assert(0 * !(-128i32) == 0) by(bit_vector);
+            assert(255 + ((-1i32) ^ (127i32)) == 127) by(bit_vector);
+            assert(255 - ((-1i32) ^ (127i32)) == 383) by(bit_vector);
+            assert(255 * ((-1i32) ^ (127i32)) == -32640) by(bit_vector);
+            assert(255 + !(-128i32) == 382) by(bit_vector);
+            assert(255 - !(-128i32) == 128) by(bit_vector);
+            assert(255 * !(-128i32) == 32385) by(bit_vector);
+            assert(0 + 0 == 0) by(bit_vector);
+            assert(0 - 0 == 0) by(bit_vector);
+            assert(0 * 0 == 0) by(bit_vector);
+            assert(0 + 255 == 255) by(bit_vector);
+            assert(0 - 255 == -255) by(bit_vector);
+            assert(0 * 255 == 0) by(bit_vector);
+            assert(255 + 0 == 255) by(bit_vector);
+            assert(255 - 0 == 255) by(bit_vector);
+            assert(255 * 0 == 0) by(bit_vector);
+            assert(255 + 255 == 510) by(bit_vector);
+            assert(255 - 255 == 0) by(bit_vector);
+            assert(255 * 255 == 65025) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_extreme_cases_arithmetic3 verus_code! {
+        fn test_arith_8_16() {
+            assert(((-1i32) ^ (127i32)) + ((-1i32) ^ (32767i32)) == -32896) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) - ((-1i32) ^ (32767i32)) == 32640) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) * ((-1i32) ^ (32767i32)) == 4194304) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) + !(-32768i32) == 32639) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) - !(-32768i32) == -32895) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) * !(-32768i32) == -4194176) by(bit_vector);
+            assert(!(-128i32) + ((-1i32) ^ (32767i32)) == -32641) by(bit_vector);
+            assert(!(-128i32) - ((-1i32) ^ (32767i32)) == 32895) by(bit_vector);
+            assert(!(-128i32) * ((-1i32) ^ (32767i32)) == -4161536) by(bit_vector);
+            assert(!(-128i32) + !(-32768i32) == 32894) by(bit_vector);
+            assert(!(-128i32) - !(-32768i32) == -32640) by(bit_vector);
+            assert(!(-128i32) * !(-32768i32) == 4161409) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) + 0 == -128) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) - 0 == -128) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) * 0 == 0) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) + 65535 == 65407) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) - 65535 == -65663) by(bit_vector);
+            assert(((-1i32) ^ (127i32)) * 65535 == -8388480) by(bit_vector);
+            assert(!(-128i32) + 0 == 127) by(bit_vector);
+            assert(!(-128i32) - 0 == 127) by(bit_vector);
+            assert(!(-128i32) * 0 == 0) by(bit_vector);
+            assert(!(-128i32) + 65535 == 65662) by(bit_vector);
+            assert(!(-128i32) - 65535 == -65408) by(bit_vector);
+            assert(!(-128i32) * 65535 == 8322945) by(bit_vector);
+            assert(0 + ((-1i32) ^ (32767i32)) == -32768) by(bit_vector);
+            assert(0 - ((-1i32) ^ (32767i32)) == 32768) by(bit_vector);
+            assert(0 * ((-1i32) ^ (32767i32)) == 0) by(bit_vector);
+            assert(0 + !(-32768i32) == 32767) by(bit_vector);
+            assert(0 - !(-32768i32) == -32767) by(bit_vector);
+            assert(0 * !(-32768i32) == 0) by(bit_vector);
+            assert(255 + ((-1i32) ^ (32767i32)) == -32513) by(bit_vector);
+            assert(255 - ((-1i32) ^ (32767i32)) == 33023) by(bit_vector);
+            assert(255 * ((-1i32) ^ (32767i32)) == -8355840) by(bit_vector);
+            assert(255 + !(-32768i32) == 33022) by(bit_vector);
+            assert(255 - !(-32768i32) == -32512) by(bit_vector);
+            assert(255 * !(-32768i32) == 8355585) by(bit_vector);
+            assert(0 + 0 == 0) by(bit_vector);
+            assert(0 - 0 == 0) by(bit_vector);
+            assert(0 * 0 == 0) by(bit_vector);
+            assert(0 + 65535 == 65535) by(bit_vector);
+            assert(0 - 65535 == -65535) by(bit_vector);
+            assert(0 * 65535 == 0) by(bit_vector);
+            assert(255 + 0 == 255) by(bit_vector);
+            assert(255 - 0 == 255) by(bit_vector);
+            assert(255 * 0 == 0) by(bit_vector);
+            assert(255 + 65535 == 65790) by(bit_vector);
+            assert(255 - 65535 == -65280) by(bit_vector);
+            assert(255 * 65535 == 16711425) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_extreme_cases_arithmetic4 verus_code! {
+        fn test_arith_16_8() {
+            assert(((-1i32) ^ (32767i32)) + ((-1i32) ^ (127i32)) == -32896) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) - ((-1i32) ^ (127i32)) == -32640) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) * ((-1i32) ^ (127i32)) == 4194304) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) + !(-128i32) == -32641) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) - !(-128i32) == -32895) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) * !(-128i32) == -4161536) by(bit_vector);
+            assert(!(-32768i32) + ((-1i32) ^ (127i32)) == 32639) by(bit_vector);
+            assert(!(-32768i32) - ((-1i32) ^ (127i32)) == 32895) by(bit_vector);
+            assert(!(-32768i32) * ((-1i32) ^ (127i32)) == -4194176) by(bit_vector);
+            assert(!(-32768i32) + !(-128i32) == 32894) by(bit_vector);
+            assert(!(-32768i32) - !(-128i32) == 32640) by(bit_vector);
+            assert(!(-32768i32) * !(-128i32) == 4161409) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) + 0 == -32768) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) - 0 == -32768) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) * 0 == 0) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) + 255 == -32513) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) - 255 == -33023) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) * 255 == -8355840) by(bit_vector);
+            assert(!(-32768i32) + 0 == 32767) by(bit_vector);
+            assert(!(-32768i32) - 0 == 32767) by(bit_vector);
+            assert(!(-32768i32) * 0 == 0) by(bit_vector);
+            assert(!(-32768i32) + 255 == 33022) by(bit_vector);
+            assert(!(-32768i32) - 255 == 32512) by(bit_vector);
+            assert(!(-32768i32) * 255 == 8355585) by(bit_vector);
+            assert(0 + ((-1i32) ^ (127i32)) == -128) by(bit_vector);
+            assert(0 - ((-1i32) ^ (127i32)) == 128) by(bit_vector);
+            assert(0 * ((-1i32) ^ (127i32)) == 0) by(bit_vector);
+            assert(0 + !(-128i32) == 127) by(bit_vector);
+            assert(0 - !(-128i32) == -127) by(bit_vector);
+            assert(0 * !(-128i32) == 0) by(bit_vector);
+            assert(65535 + ((-1i32) ^ (127i32)) == 65407) by(bit_vector);
+            assert(65535 - ((-1i32) ^ (127i32)) == 65663) by(bit_vector);
+            assert(65535 * ((-1i32) ^ (127i32)) == -8388480) by(bit_vector);
+            assert(65535 + !(-128i32) == 65662) by(bit_vector);
+            assert(65535 - !(-128i32) == 65408) by(bit_vector);
+            assert(65535 * !(-128i32) == 8322945) by(bit_vector);
+            assert(0 + 0 == 0) by(bit_vector);
+            assert(0 - 0 == 0) by(bit_vector);
+            assert(0 * 0 == 0) by(bit_vector);
+            assert(0 + 255 == 255) by(bit_vector);
+            assert(0 - 255 == -255) by(bit_vector);
+            assert(0 * 255 == 0) by(bit_vector);
+            assert(65535 + 0 == 65535) by(bit_vector);
+            assert(65535 - 0 == 65535) by(bit_vector);
+            assert(65535 * 0 == 0) by(bit_vector);
+            assert(65535 + 255 == 65790) by(bit_vector);
+            assert(65535 - 255 == 65280) by(bit_vector);
+            assert(65535 * 255 == 16711425) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_extreme_cases_arithmetic5 verus_code! {
+        fn test_arith_15_16() {
+            assert(((-1i32) ^ (16383i32)) + ((-1i32) ^ (32767i32)) == -49152) by(bit_vector);
+            assert(((-1i32) ^ (16383i32)) - ((-1i32) ^ (32767i32)) == 16384) by(bit_vector);
+            assert(((-1i32) ^ (16383i32)) * ((-1i32) ^ (32767i32)) == 536870912) by(bit_vector);
+            assert(((-1i32) ^ (16383i32)) + !(-32768i32) == 16383) by(bit_vector);
+            assert(((-1i32) ^ (16383i32)) - !(-32768i32) == -49151) by(bit_vector);
+            assert(((-1i32) ^ (16383i32)) * !(-32768i32) == -536854528) by(bit_vector);
+            assert(!(-16384i32) + ((-1i32) ^ (32767i32)) == -16385) by(bit_vector);
+            assert(!(-16384i32) - ((-1i32) ^ (32767i32)) == 49151) by(bit_vector);
+            assert(!(-16384i32) * ((-1i32) ^ (32767i32)) == -536838144) by(bit_vector);
+            assert(!(-16384i32) + !(-32768i32) == 49150) by(bit_vector);
+            assert(!(-16384i32) - !(-32768i32) == -16384) by(bit_vector);
+            assert(!(-16384i32) * !(-32768i32) == 536821761) by(bit_vector);
+            assert(((-1i32) ^ (16383i32)) + 0 == -16384) by(bit_vector);
+            assert(((-1i32) ^ (16383i32)) - 0 == -16384) by(bit_vector);
+            assert(((-1i32) ^ (16383i32)) * 0 == 0) by(bit_vector);
+            assert(((-1i32) ^ (16383i32)) + 65535 == 49151) by(bit_vector);
+            assert(((-1i32) ^ (16383i32)) - 65535 == -81919) by(bit_vector);
+            assert(((-1i32) ^ (16383i32)) * 65535 == -1073725440) by(bit_vector);
+            assert(!(-16384i32) + 0 == 16383) by(bit_vector);
+            assert(!(-16384i32) - 0 == 16383) by(bit_vector);
+            assert(!(-16384i32) * 0 == 0) by(bit_vector);
+            assert(!(-16384i32) + 65535 == 81918) by(bit_vector);
+            assert(!(-16384i32) - 65535 == -49152) by(bit_vector);
+            assert(!(-16384i32) * 65535 == 1073659905) by(bit_vector);
+            assert(0 + ((-1i32) ^ (32767i32)) == -32768) by(bit_vector);
+            assert(0 - ((-1i32) ^ (32767i32)) == 32768) by(bit_vector);
+            assert(0 * ((-1i32) ^ (32767i32)) == 0) by(bit_vector);
+            assert(0 + !(-32768i32) == 32767) by(bit_vector);
+            assert(0 - !(-32768i32) == -32767) by(bit_vector);
+            assert(0 * !(-32768i32) == 0) by(bit_vector);
+            assert(32767 + ((-1i32) ^ (32767i32)) == -1) by(bit_vector);
+            assert(32767 - ((-1i32) ^ (32767i32)) == 65535) by(bit_vector);
+            assert(32767 * ((-1i32) ^ (32767i32)) == -1073709056) by(bit_vector);
+            assert(32767 + !(-32768i32) == 65534) by(bit_vector);
+            assert(32767 - !(-32768i32) == 0) by(bit_vector);
+            assert(32767 * !(-32768i32) == 1073676289) by(bit_vector);
+            assert(0 + 0 == 0) by(bit_vector);
+            assert(0 - 0 == 0) by(bit_vector);
+            assert(0 * 0 == 0) by(bit_vector);
+            assert(0 + 65535 == 65535) by(bit_vector);
+            assert(0 - 65535 == -65535) by(bit_vector);
+            assert(0 * 65535 == 0) by(bit_vector);
+            assert(32767 + 0 == 32767) by(bit_vector);
+            assert(32767 - 0 == 32767) by(bit_vector);
+            assert(32767 * 0 == 0) by(bit_vector);
+            assert(32767 + 65535 == 98302) by(bit_vector);
+            assert(32767 - 65535 == -32768) by(bit_vector);
+            assert(32767 * 65535 == 2147385345) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_extreme_cases_arithmetic6 verus_code! {
+        fn test_arith_16_15() {
+            assert(((-1i32) ^ (32767i32)) + ((-1i32) ^ (16383i32)) == -49152) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) - ((-1i32) ^ (16383i32)) == -16384) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) * ((-1i32) ^ (16383i32)) == 536870912) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) + !(-16384i32) == -16385) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) - !(-16384i32) == -49151) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) * !(-16384i32) == -536838144) by(bit_vector);
+            assert(!(-32768i32) + ((-1i32) ^ (16383i32)) == 16383) by(bit_vector);
+            assert(!(-32768i32) - ((-1i32) ^ (16383i32)) == 49151) by(bit_vector);
+            assert(!(-32768i32) * ((-1i32) ^ (16383i32)) == -536854528) by(bit_vector);
+            assert(!(-32768i32) + !(-16384i32) == 49150) by(bit_vector);
+            assert(!(-32768i32) - !(-16384i32) == 16384) by(bit_vector);
+            assert(!(-32768i32) * !(-16384i32) == 536821761) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) + 0 == -32768) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) - 0 == -32768) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) * 0 == 0) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) + 32767 == -1) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) - 32767 == -65535) by(bit_vector);
+            assert(((-1i32) ^ (32767i32)) * 32767 == -1073709056) by(bit_vector);
+            assert(!(-32768i32) + 0 == 32767) by(bit_vector);
+            assert(!(-32768i32) - 0 == 32767) by(bit_vector);
+            assert(!(-32768i32) * 0 == 0) by(bit_vector);
+            assert(!(-32768i32) + 32767 == 65534) by(bit_vector);
+            assert(!(-32768i32) - 32767 == 0) by(bit_vector);
+            assert(!(-32768i32) * 32767 == 1073676289) by(bit_vector);
+            assert(0 + ((-1i32) ^ (16383i32)) == -16384) by(bit_vector);
+            assert(0 - ((-1i32) ^ (16383i32)) == 16384) by(bit_vector);
+            assert(0 * ((-1i32) ^ (16383i32)) == 0) by(bit_vector);
+            assert(0 + !(-16384i32) == 16383) by(bit_vector);
+            assert(0 - !(-16384i32) == -16383) by(bit_vector);
+            assert(0 * !(-16384i32) == 0) by(bit_vector);
+            assert(65535 + ((-1i32) ^ (16383i32)) == 49151) by(bit_vector);
+            assert(65535 - ((-1i32) ^ (16383i32)) == 81919) by(bit_vector);
+            assert(65535 * ((-1i32) ^ (16383i32)) == -1073725440) by(bit_vector);
+            assert(65535 + !(-16384i32) == 81918) by(bit_vector);
+            assert(65535 - !(-16384i32) == 49152) by(bit_vector);
+            assert(65535 * !(-16384i32) == 1073659905) by(bit_vector);
+            assert(0 + 0 == 0) by(bit_vector);
+            assert(0 - 0 == 0) by(bit_vector);
+            assert(0 * 0 == 0) by(bit_vector);
+            assert(0 + 32767 == 32767) by(bit_vector);
+            assert(0 - 32767 == -32767) by(bit_vector);
+            assert(0 * 32767 == 0) by(bit_vector);
+            assert(65535 + 0 == 65535) by(bit_vector);
+            assert(65535 - 0 == 65535) by(bit_vector);
+            assert(65535 * 0 == 0) by(bit_vector);
+            assert(65535 + 32767 == 98302) by(bit_vector);
+            assert(65535 - 32767 == 32768) by(bit_vector);
+            assert(65535 * 32767 == 2147385345) by(bit_vector);
+        }
+    } => Ok(())
+}

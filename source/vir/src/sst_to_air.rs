@@ -1,6 +1,6 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, InvAtomicity, MaskSpec, Mode, Params,
+    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, MaskSpec, Mode, Params,
     Path, PathX, Primitive, SpannedTyped, Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
     VariantCheck, VirErr, Visibility,
 };
@@ -2439,8 +2439,7 @@ pub(crate) fn body_stm_to_air(
         }
     }
 
-    let mut local =
-        if !is_bit_vector_mode { local_shared.clone() } else { local_bv_shared.clone() };
+    let mut local = local_shared.clone();
     for e in crate::traits::trait_bounds_to_air(ctx, typ_bounds) {
         // The outer query already has this in reqs, but inner queries need it separately:
         local_shared.push(Arc::new(DeclX::Axiom(e)));
@@ -2491,18 +2490,6 @@ pub(crate) fn body_stm_to_air(
         stmts = new_stmts;
     }
 
-<<<<<<< HEAD
-||||||| parent of fecfc5e1 (bitvector encoding overhaul)
-    let mut local = if !is_bit_vector_mode {
-        state.local_shared.clone()
-    } else {
-        state.local_bv_shared.clone()
-    };
-
-=======
-    let mut local = state.local_shared.clone();
-
->>>>>>> fecfc5e1 (bitvector encoding overhaul)
     let assertion = one_stmt(stmts);
 
     if !is_integer_ring {
