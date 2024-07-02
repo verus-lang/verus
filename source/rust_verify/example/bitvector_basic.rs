@@ -93,6 +93,34 @@ proof fn test9(b1: u32, b2: u32, b3: u32) {
     assert(zero & b3 == 0u32);
 }
 
+proof fn test10(a: u8, b: u8) {
+    // We can write conditions about overflow in bit_vector assertion
+    assert((a & b) == 0 ==> (a | b) == (a + b) && (a + b) < 256) by(bit_vector);
+}
+
+proof fn test11(x: u32, y: u32) {
+    // XOR operation is independent of bitwidth so we don't need bit_vector solver to do this:
+    assert((x as u64) ^ (y as u64) == (x ^ y) as u64);
+}
+
+proof fn test_usize(x: usize, y: usize, z: usize) {
+    assert(((x & y) & z) == (x & (y & z))) by(bit_vector);
+}
+
+proof fn test_signed(x: i8, y: i8, z: i8, u: u8) {
+    assert(!(x & y) == (!x | !y)) by(bit_vector);
+    assert((!z) == (!(z as i32))) by(bit_vector);
+    assert((z & (128u8 as i8)) != 0 <==> z < 0) by(bit_vector);
+
+    // Compare signed vs unsigned
+    assert(u > -1) by(bit_vector);
+    assert(u > 128 ==> u > x) by(bit_vector);
+}
+
+proof fn prove_associativity(a: u8, b: i8, c: u8) {
+    assert((a + b) + c == a + (b + c)) by(bit_vector);
+}
+
 } // verus!
 #[verifier::external_body]
 fn main() {}

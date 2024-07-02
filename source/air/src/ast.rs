@@ -36,6 +36,8 @@ pub enum UnaryOp {
     Not,
     BitNot,
     BitExtract(u32, u32),
+    BitZeroExtend(u32),
+    BitSignExtend(u32),
 }
 
 /// These are Z3 special relations x <= y that are documented at
@@ -77,11 +79,16 @@ pub enum BinaryOp {
     BitSub,
     BitMul,
     BitUDiv,
+    BitUMod,
     BitULt,
     BitUGt,
     BitULe,
     BitUGe,
-    BitUMod,
+    BitSLt,
+    BitSGt,
+    BitSLe,
+    BitSGe,
+    AShr,
     LShr,
     Shl,
     BitConcat,
