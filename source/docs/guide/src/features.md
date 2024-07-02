@@ -334,7 +334,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Generic associated types</td>
-    <td>Partially supported (with lifetimes)</td>
+    <td>Partially supported (only lifetimes are supported)</td>
   </tr>
   <tr>
     <td>Higher-ranked trait bounds</td>
