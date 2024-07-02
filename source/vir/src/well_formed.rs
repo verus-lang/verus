@@ -1149,6 +1149,32 @@ pub fn check_crate(
                 }
             }
         }
+        if function.x.attrs.broadcast_forall {
+            use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
+            let mut f_find_trigger = |_: &mut VisitorScopeMap, expr: &Expr| match &expr.x {
+                ExprX::WithTriggers { .. } => VisitorControlFlow::Stop(()),
+                ExprX::Unary(UnaryOp::Trigger(..), _) => VisitorControlFlow::Stop(()),
+                ExprX::Quant(..) => VisitorControlFlow::Return,
+                _ => VisitorControlFlow::Recurse,
+            };
+            let mut found_trigger = false;
+            for expr in function.x.require.iter().chain(function.x.ensure.iter()) {
+                let control = crate::ast_visitor::expr_visitor_dfs(
+                    expr,
+                    &mut air::scope_map::ScopeMap::new(),
+                    &mut f_find_trigger,
+                );
+                if control == VisitorControlFlow::Stop(()) {
+                    found_trigger = true;
+                }
+            }
+            if !found_trigger {
+                diags.push(VirErrAs::Warning(error(
+                    &function.span,
+                    "broadcast functions should have explicit #[trigger] or #![trigger ...]",
+                )));
+            }
+        }
     }
     for function in krate.functions.iter() {
         if function.x.attrs.is_decrease_by
