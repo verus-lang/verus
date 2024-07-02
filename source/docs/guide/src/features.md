@@ -321,7 +321,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Supported</td>
   </tr>
   <tr>
-    <td>Super-traits</td>
+    <td>Trait bounds on trait declarations</td>
     <td>Supported</td>
   </tr>
   <tr>
