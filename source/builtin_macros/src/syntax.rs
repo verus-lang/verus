@@ -1040,7 +1040,7 @@ impl Visitor {
                                 #[verus::internal(size_of_broadcast_proof)]
                                 #[verifier::external_body]
                                 #[allow(non_snake_case)]
-                                broadcast proof fn #lemma_ident()
+                                pub broadcast proof fn #lemma_ident()
                                     ensures
                                         ::vstd::layout::size_of::<#type_>() == #size_lit,
                                         #ensures_align
