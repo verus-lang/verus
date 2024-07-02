@@ -229,7 +229,7 @@ jobs:
 
       - name: update release
         id: update_release
-        uses: utaal/action-update-release@v0.0.8
+        uses: utaal/action-update-release@v0.1.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
