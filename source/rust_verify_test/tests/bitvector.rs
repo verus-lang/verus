@@ -776,3 +776,46 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_double_arch_ok verus_code! {
+        proof fn test_works_both(a: usize, b: usize, c: u32) {
+            assert(
+                (usize::BITS == 64 ==> (((c as usize) << 32) >> 32 == c))
+                && (usize::BITS == 32 ==> (a as u32) == (b as u32) ==> a == b)) by(bit_vector);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_double_arch_fail32 verus_code! {
+        proof fn test(c: u32) {
+            assert(((c as usize) << 32) >> 32 == c) by(bit_vector);
+        }
+    } => Err(err) => assert_fails_bv_32bit(err)
+}
+
+test_verify_one_file! {
+    #[test] test_double_arch_fail64 verus_code! {
+        proof fn test(a: usize, b: usize) {
+            assert((a as u32) == (b as u32) ==> a == b) by(bit_vector);
+        }
+    } => Err(err) => assert_fails_bv_64bit(err)
+}
+
+test_verify_one_file! {
+    #[test] test_double_arch_fail_both verus_code! {
+        proof fn test_works_neither(a: usize, b: usize) {
+            assert((a as u32) == (b as u32)) by(bit_vector);
+        }
+    } => Err(err) => assert_fails_bv_32bit_64bit(err)
+}
+
+test_verify_one_file! {
+    #[test] test_double_arch_fail64_req_ens verus_code! {
+        proof fn test_only_32_2(a: usize) by(bit_vector)
+            requires (a as u32) != a
+            ensures false
+        { }
+    } => Err(err) => assert_fails_bv_64bit(err)
+}
