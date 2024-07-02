@@ -63,6 +63,7 @@ pub mod rust_to_vir_trait;
 #[cfg(feature = "singular")]
 pub mod singular;
 mod spans;
+mod trait_conflicts;
 mod user_filter;
 pub mod util;
 pub mod verifier;

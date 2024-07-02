@@ -1262,6 +1262,7 @@ pub(crate) fn check_generic_bound<'tcx>(
         || Some(trait_def_id) == tcx.get_diagnostic_item(rustc_span::sym::Send)
     {
         // Rust language marker traits are ignored in VIR
+        // TODO: these should not be ignored in VIR
         Ok(None)
     } else {
         let vir_args = args
