@@ -147,6 +147,7 @@
 - [Misc. Rust features]()
   - [Statics](./static.md)
   - [char](./char.md)
+  - [Type layout](./type-layout.md)
 - [Command line]()
   - [--record](./reference-flag-record.md)
 - [Planned future work]()
