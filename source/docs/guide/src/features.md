@@ -14,6 +14,10 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Supported</td>
   </tr>
   <tr>
+    <td>Associated constants</td>
+    <td>Not supported</td>
+  </tr>
+  <tr>
     <td>Structs</td>
     <td>Supported</td>
   </tr>
@@ -313,12 +317,28 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Supported</td>
   </tr>
   <tr>
+    <td>Default implementations</td>
+    <td>Supported</td>
+  </tr>
+  <tr>
+    <td>Trait bounds on trait declarations</td>
+    <td>Supported</td>
+  </tr>
+  <tr>
     <td>Traits with type arguments</td>
     <td>Partially supported</td>
   </tr>
   <tr>
     <td>Associated types</td>
     <td>Partially supported</td>
+  </tr>
+  <tr>
+    <td>Generic associated types</td>
+    <td>Partially supported (only lifetimes are supported)</td>
+  </tr>
+  <tr>
+    <td>Higher-ranked trait bounds</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td><code>Clone</code></td>
