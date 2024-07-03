@@ -229,7 +229,7 @@ jobs:
 
       - name: update release
         id: update_release
-        uses: utaal/action-update-release@v0.1.6
+        uses: utaal/action-update-release@v0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -237,10 +237,9 @@ jobs:
           new_name: Rolling Release ${{ env.RELEASE_NAME }}
           new_body: |
             Rolling release from Continuous Integration
-          new_tag: ${{ env.TAG_NAME }}
           delete_tags_prefix: release/rolling/
           delete_assets: true
-          new_draft_status: false
+          new_draft_status: true
 
       - name: upload release for x86-linux
         uses: actions/upload-release-asset@v1
@@ -271,3 +270,12 @@ jobs:
           asset_path: ./verus-x86-win/verus-x86-win.zip
           asset_name: verus-${{ env.RELEASE_NAME }}-x86-win.zip
           asset_content_type: application/zip
+
+      - name: publish release
+        uses: utaal/action-update-release@v0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          id: 163437062
+          new_tag: ${{ env.TAG_NAME }}
+          new_draft_status: false
