@@ -86,17 +86,17 @@
   - [Borrowing and lifetimes]()
   - [Mutable borrows]()
   - [Interior mutability](./interior_mutability.md)
-  - [Alternatives to unsafe]()
+  - [Alternatives to unsafe](./alt-unsafe.md)
 
 - [Understanding the guarantees of a verified program]()
-  - [Assumptions and trusted components]()
-  - [Identifying a project's TCB]()
+  - [Assumptions and trusted components](./tcb.md)
   - [Memory safety is conditional on verification](./memory-safety.md)
+  - [Calling verified code from unverified code](./call-from-unverified-code.md)
 
 - [Project setup and development]()
   - [Working with crates]()
   - [Invoking Verus code from Rust]()
-  - [Documentation with Rustdoc]()
+  - [Documentation with Rustdoc](./verusdoc.md)
 
 
 
