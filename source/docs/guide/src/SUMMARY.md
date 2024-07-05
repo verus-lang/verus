@@ -42,7 +42,7 @@
     - [Ambient (`broadcast`) lemmas](broadcast_proof.md)
 - [Higher-order executable functions]()
     - [Passing functions as values](./exec_funs_as_values.md)
-    - [Closures]()
+    - [Closures](./exec_closures.md)
 - [SMT solving, automation, and where automation fails](smt_failures.md) <!--- Chris --->
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
     - [Integers and nonlinear arithmetic](nonlinear.md)
@@ -146,6 +146,7 @@
 - [Misc. Rust features]()
   - [Statics](./static.md)
   - [char](./char.md)
+  - [Unions](./reference-unions.md)
 - [Command line]()
   - [--record](./reference-flag-record.md)
 - [Planned future work]()

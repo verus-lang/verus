@@ -152,6 +152,40 @@ fn test_vec_map() {
 }
 // ANCHOR_END: vec_map_example
 
+// ANCHOR: vec_map_example_with_closure
+fn test_vec_map_with_closure() {
+    let double = |x: u8| -> (res: u8)
+        requires 0 <= x < 128
+        ensures res == 2 * x
+    {
+        2 * x
+    };
+
+    assert(forall |x| 0 <= x < 128 ==> call_requires(double, (x,)));
+    assert(forall |x, y| call_ensures(double, (x,), y) ==> y == 2 * x);
+
+    let mut v = Vec::new();
+    v.push(0);
+    v.push(10);
+    v.push(20);
+    let w = vec_map(&v, double);
+    assert(w[2] == 40);
+}
+// ANCHOR_END: vec_map_example_with_closure
+
+// ANCHOR: closure_capture
+fn example_closure_capture() {
+    let x: u8 = 20;
+
+    let f = || {
+        // Inside the closure, we have seamless access to
+        // variables defined outside the closure.
+        assert(x == 20);
+        x
+    };
+}
+// ANCHOR_END: closure_capture
+
 fn main() {
 }
 
