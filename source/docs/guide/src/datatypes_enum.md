@@ -38,7 +38,7 @@ If an `enum` field reuses a name, you can qualify the field access:
 ```
 
 For variants like `Shape` declared with round parentheses `()`,
-you can use Verus' `->' tuple-like syntax to acces a single field
+you can use Verus' `->' tuple-like syntax to access a single field
 without a match destruction:
 ```rust
 {{#include ../../../rust_verify/example/guide/datatypes.rs:rect_height}}
