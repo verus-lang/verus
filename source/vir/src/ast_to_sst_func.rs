@@ -1,6 +1,11 @@
 use crate::ast::{
-    Fun, Function, FunctionKind, Ident, Idents, MaskSpec, Mode, Param, ParamX, Params,
+    Expr, ExprX, Fun, Function, FunctionKind, Ident, Idents, MaskSpec, Mode, Param, ParamX, Params,
     SpannedTyped, Typ, TypX, VarBinder, VarBinderX, VarIdent, VirErr,
+};
+use crate::ast_to_sst::{
+    check_pure_expr, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks,
+    expr_to_one_stm_with_post, expr_to_pure_exp_check, expr_to_pure_exp_skip_checks,
+    expr_to_stm_opt, expr_to_stm_or_error, stms_to_one_stm, State,
 };
 use crate::ast_visitor;
 use crate::context::Ctx;
@@ -106,19 +111,19 @@ fn func_body_to_sst(
     diagnostics: &impl air::messages::Diagnostics,
     fun_ssts: SstMap,
     function: &Function,
-    body: &crate::ast::Expr,
+    body: &Expr,
     not_verifying_owning_bucket: bool,
 ) -> Result<(SstMap, FuncBodySst), VirErr> {
     let pars = params_to_pars(&function.x.params, false);
 
     // ast --> sst
-    let mut state = crate::ast_to_sst::State::new(diagnostics);
+    let mut state = State::new(diagnostics);
     state.declare_params(&pars);
     state.view_as_spec = true;
     state.fun_ssts = fun_ssts;
     // Use expr_to_pure_exp_skip_checks here
     // because spec precondition checking is performed as a separate query
-    let body_exp = crate::ast_to_sst::expr_to_pure_exp_skip_checks(&ctx, &mut state, &body)?;
+    let body_exp = expr_to_pure_exp_skip_checks(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(ctx, diagnostics, &state.fun_ssts, &body_exp)?;
     let inline =
         SstInline { typ_params: function.x.typ_params.clone(), do_inline: function.x.attrs.inline };
@@ -139,19 +144,18 @@ fn func_body_to_sst(
         )?;
 
     // Check termination and/or recommends
-    let mut check_state = crate::ast_to_sst::State::new(diagnostics);
+    let mut check_state = State::new(diagnostics);
     // don't check recommends during decreases checking; these are separate passes:
     check_state.disable_recommends = 1;
     check_state.declare_params(&pars);
     check_state.view_as_spec = true;
     check_state.fun_ssts = state.fun_ssts;
     check_state.check_spec_decreases = Some((function.x.name.clone(), scc_rep));
-    let check_body_stm =
-        crate::ast_to_sst::expr_to_one_stm_with_post(&ctx, &mut check_state, &body)?;
+    let check_body_stm = expr_to_one_stm_with_post(&ctx, &mut check_state, &body)?;
     let check_body_stm =
         check_state.finalize_stm(ctx, diagnostics, &check_state.fun_ssts, &check_body_stm)?;
 
-    let mut proof_body: Vec<crate::ast::Expr> = Vec::new();
+    let mut proof_body: Vec<Expr> = Vec::new();
     let decrease_when = if let Some(req) = &function.x.decrease_when {
         // "when" means the function is only defined if the requirements hold
 
@@ -159,7 +163,7 @@ fn func_body_to_sst(
         let mut reqs = crate::traits::trait_bounds_to_ast(ctx, &req.span, &function.x.typ_bounds);
         reqs.push(req.clone());
         for expr in reqs {
-            let assumex = crate::ast::ExprX::AssertAssume { is_assume: true, expr: expr.clone() };
+            let assumex = ExprX::AssertAssume { is_assume: true, expr: expr.clone() };
             proof_body.push(SpannedTyped::new(
                 &req.span,
                 &Arc::new(TypX::Tuple(Arc::new(vec![]))),
@@ -169,7 +173,7 @@ fn func_body_to_sst(
         proof_body.push(req.clone()); // check spec preconditions
 
         // Skip checks because we check decrease_when below
-        let exp = crate::ast_to_sst::expr_to_pure_exp_skip_checks(ctx, &mut check_state, req)?;
+        let exp = expr_to_pure_exp_skip_checks(ctx, &mut check_state, req)?;
         let exp = check_state.finalize_exp(ctx, diagnostics, &check_state.fun_ssts, &exp)?;
         Some(exp)
     } else {
@@ -182,7 +186,7 @@ fn func_body_to_sst(
                 decrease_by_fun.x.body.as_ref().expect("decreases_by has body").clone();
             ast_visitor::expr_visitor_check(&decrease_by_fun_body, &mut |_scope_map, expr| {
                 match &expr.x {
-                    crate::ast::ExprX::Return(_) => Err(error(
+                    ExprX::Return(_) => Err(error(
                         &expr.span,
                         "explicit returns are not allowed in decreases_by function",
                     )),
@@ -196,11 +200,11 @@ fn func_body_to_sst(
     }
     let mut proof_body_stms: Vec<Stm> = Vec::new();
     for expr in proof_body {
-        let (mut stms, exp) = crate::ast_to_sst::expr_to_stm_opt(ctx, &mut check_state, &expr)?;
+        let (mut stms, exp) = expr_to_stm_opt(ctx, &mut check_state, &expr)?;
         assert!(!matches!(exp, crate::ast_to_sst::ReturnValue::Never));
         proof_body_stms.append(&mut stms);
     }
-    let proof_body_stm = crate::ast_to_sst::stms_to_one_stm(&body.span, proof_body_stms);
+    let proof_body_stm = stms_to_one_stm(&body.span, proof_body_stms);
     let proof_body_stm =
         check_state.finalize_stm(ctx, diagnostics, &check_state.fun_ssts, &proof_body_stm)?;
     check_state.finalize();
@@ -233,7 +237,7 @@ fn req_ens_to_sst(
     diagnostics: &impl air::messages::Diagnostics,
     fun_ssts: &SstMap,
     function: &Function,
-    specs: &Vec<crate::ast::Expr>,
+    specs: &Vec<Expr>,
     pre: bool,
 ) -> Result<(Pars, Vec<Exp>), VirErr> {
     let mut pars = params_to_pre_post_pars(&function.x.params, pre);
@@ -245,7 +249,7 @@ fn req_ens_to_sst(
     let mut exps: Vec<Exp> = Vec::new();
     for e in specs.iter() {
         // Use expr_to_exp_skip_checks because we check req/ens in body
-        let exp = crate::ast_to_sst::expr_to_exp_skip_checks(ctx, diagnostics, fun_ssts, &pars, e)?;
+        let exp = expr_to_exp_skip_checks(ctx, diagnostics, fun_ssts, &pars, e)?;
         exps.push(exp);
     }
     Ok((pars, exps))
@@ -283,9 +287,8 @@ pub fn func_decl_to_sst(
             .as_ref()
             .expect("expected FnDef axioms to have been generated in ast_simplify");
         for fndef_axiom in fndef_axioms.iter() {
-            let mut state = crate::ast_to_sst::State::new(diagnostics);
-            let exp =
-                crate::ast_to_sst::expr_to_pure_exp_skip_checks(ctx, &mut state, fndef_axiom)?;
+            let mut state = State::new(diagnostics);
+            let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, fndef_axiom)?;
             let exp = state.finalize_exp(ctx, diagnostics, &fun_ssts, &exp)?;
             state.finalize();
 
@@ -379,7 +382,7 @@ pub fn func_axioms_to_sst(
                 let params = params_to_pre_post_pars(params, false);
                 // Use expr_to_bind_decls_exp_skip_checks, skipping checks on req_ens,
                 // because the requires/ensures are checked when the function itself is checked
-                let exp = crate::ast_to_sst::expr_to_bind_decls_exp_skip_checks(
+                let exp = expr_to_bind_decls_exp_skip_checks(
                     ctx,
                     diagnostics,
                     &fun_ssts,
@@ -399,11 +402,10 @@ pub fn func_axioms_to_sst(
 }
 
 pub(crate) fn map_expr_rename_vars(
-    e: &Arc<SpannedTyped<crate::ast::ExprX>>,
+    e: &Arc<SpannedTyped<ExprX>>,
     req_ens_e_rename: &HashMap<VarIdent, VarIdent>,
-) -> Result<Arc<SpannedTyped<crate::ast::ExprX>>, Message> {
+) -> Result<Arc<SpannedTyped<ExprX>>, Message> {
     ast_visitor::map_expr_visitor(e, &|expr| {
-        use crate::ast::ExprX;
         Ok(match &expr.x {
             ExprX::Var(i) => expr.new_x(ExprX::Var(req_ens_e_rename.get(i).unwrap_or(i).clone())),
             ExprX::VarLoc(i) => {
@@ -453,7 +455,7 @@ pub fn func_def_to_sst(
             (HashMap::new(), function, false)
         };
 
-    let mut state = crate::ast_to_sst::State::new(diagnostics);
+    let mut state = State::new(diagnostics);
     state.fun_ssts = fun_ssts;
 
     let mut ens_params = (*function.x.params).clone();
@@ -490,13 +492,12 @@ pub fn func_def_to_sst(
         let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
         if ctx.checking_spec_preconditions() {
             // TODO: apply trait_typs_substs here?
-            let (stms, exp) =
-                crate::ast_to_sst::expr_to_pure_exp_check(ctx, &mut state, &e_with_req_ens_params)?;
+            let (stms, exp) = expr_to_pure_exp_check(ctx, &mut state, &e_with_req_ens_params)?;
             req_stms.extend(stms);
             req_stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
         } else {
             // skip checks because we call expr_to_pure_exp_check above
-            let exp = crate::ast_to_sst::expr_to_exp_skip_checks(
+            let exp = expr_to_exp_skip_checks(
                 ctx,
                 diagnostics,
                 &state.fun_ssts,
@@ -516,12 +517,11 @@ pub fn func_def_to_sst(
     for e in inv_spec_exprs.iter() {
         let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
         let exp = if ctx.checking_spec_preconditions() {
-            let (stms, exp) =
-                crate::ast_to_sst::expr_to_pure_exp_check(ctx, &mut state, &e_with_req_ens_params)?;
+            let (stms, exp) = expr_to_pure_exp_check(ctx, &mut state, &e_with_req_ens_params)?;
             req_stms.extend(stms);
             exp
         } else {
-            crate::ast_to_sst::expr_to_exp_skip_checks(
+            expr_to_exp_skip_checks(
                 ctx,
                 diagnostics,
                 &state.fun_ssts,
@@ -544,7 +544,7 @@ pub fn func_def_to_sst(
 
     for e in function.x.decrease.iter() {
         if ctx.checking_spec_preconditions() {
-            let stms = crate::ast_to_sst::check_pure_expr(ctx, &mut state, &e)?;
+            let stms = check_pure_expr(ctx, &mut state, &e)?;
             req_stms.extend(stms);
         }
     }
@@ -554,8 +554,7 @@ pub fn func_def_to_sst(
         for e in req_ens_function.x.ensure.iter() {
             let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
             if ctx.checking_spec_preconditions() {
-                let stms =
-                    crate::ast_to_sst::check_pure_expr(ctx, &mut state, &e_with_req_ens_params)?;
+                let stms = check_pure_expr(ctx, &mut state, &e_with_req_ens_params)?;
                 let stms: Vec<_> = stms
                     .iter()
                     .map(|stm| subst_stm(&trait_typ_substs, &HashMap::new(), &stm))
@@ -563,7 +562,7 @@ pub fn func_def_to_sst(
                 ens_spec_precondition_stms.extend(stms);
             } else {
                 // skip checks because we call expr_to_pure_exp_check above
-                let exp = crate::ast_to_sst::expr_to_exp_skip_checks(
+                let exp = expr_to_exp_skip_checks(
                     ctx,
                     diagnostics,
                     &state.fun_ssts,
@@ -577,26 +576,19 @@ pub fn func_def_to_sst(
     }
     for e in function.x.ensure.iter() {
         if ctx.checking_spec_preconditions() {
-            ens_spec_precondition_stms
-                .extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, &e)?);
+            ens_spec_precondition_stms.extend(check_pure_expr(ctx, &mut state, &e)?);
         } else {
             // skip checks because we call expr_to_pure_exp_check above
-            enss.push(crate::ast_to_sst::expr_to_exp_skip_checks(
-                ctx,
-                diagnostics,
-                &state.fun_ssts,
-                &ens_pars,
-                &e,
-            )?);
+            enss.push(expr_to_exp_skip_checks(ctx, diagnostics, &state.fun_ssts, &ens_pars, &e)?);
         }
     }
 
     // AST --> SST
-    let mut stm = crate::ast_to_sst::expr_to_one_stm_with_post(&ctx, &mut state, &body)?;
+    let mut stm = expr_to_one_stm_with_post(&ctx, &mut state, &body)?;
     if ctx.checking_spec_preconditions() && trait_typ_substs.len() == 0 {
         if let Some(fun) = &function.x.decrease_by {
             let decrease_by_fun = &ctx.func_map[fun];
-            let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
+            let (body_stms, _exp) = expr_to_stm_or_error(
                 &ctx,
                 &mut state,
                 decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
@@ -604,7 +596,7 @@ pub fn func_def_to_sst(
             req_stms.extend(body_stms);
         }
         req_stms.push(stm);
-        stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
+        stm = stms_to_one_stm(&body.span, req_stms);
     }
 
     let stm = state.finalize_stm(&ctx, diagnostics, &state.fun_ssts, &stm)?;
@@ -635,7 +627,7 @@ pub fn func_def_to_sst(
     }
 
     state.finalize();
-    let crate::ast_to_sst::State { local_decls, statics, fun_ssts, .. } = state;
+    let State { local_decls, statics, fun_ssts, .. } = state;
 
     Ok((
         fun_ssts,
