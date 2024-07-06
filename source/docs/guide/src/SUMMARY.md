@@ -157,7 +157,7 @@
   - [Expression attributes]()
     - [`auto`]()
     - [`trigger`]()
-    - [`truncate`]()
+    - [`truncate`](./reference-attr-truncate.md)
 - [Misc. Rust features]()
   - [Statics](./static.md)
   - [char](./char.md)

@@ -49,10 +49,6 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Static items</td>
     <td><a href="static.html">Partially supported</a></td>
   </tr>
-  <tr>
-    <td>Unions</td>
-    <td>Supported</td>
-  </tr>
   </tbody>
   <thead><tr><th colspan="2"><strong>Struct/enum definitions</strong></th></tr></thead>
   <tbody>
@@ -400,7 +396,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Unions</td>
-    <td>Supported</td>
+    <td><a href="reference-unions.html">Supported</a></td>
   </tr>
   <tr>
     <td><cod>UnsafeCell</code></td>
