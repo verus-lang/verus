@@ -4,11 +4,11 @@ use crate::ast::{
     VariantCheck,
 };
 use crate::ast_to_sst::get_function;
+use crate::ast_to_sst_func::SstInfo;
+use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::func_to_air::SstInfo;
-use crate::func_to_air::SstMap;
 use crate::messages::Span;
 use crate::sst::FunctionSst;
 use crate::sst::PostConditionSst;
@@ -1015,7 +1015,7 @@ fn split_precondition(
             &ctx,
             &DiagnosticsVoid {},
             fun_ssts,
-            &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
+            &crate::ast_to_sst_func::params_to_pars(params, true), // REVIEW: is `true` here desirable?
             &e,
         )
         .expect("expr_to_exp_as_spec_skip_checks");

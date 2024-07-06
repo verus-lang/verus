@@ -2,11 +2,11 @@ use rustc_session::config::ErrorOutputType;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::Function;
+use vir::ast_to_sst_func::SstMap;
 use vir::context::Ctx;
 use vir::expand_errors::{
     cons_id, CanExpandFurther, ExpansionContext, ExpansionTree, Introduction,
 };
-use vir::func_to_air::SstMap;
 use vir::sst::FunctionSst;
 use vir::sst::{AssertId, Exp};
 
