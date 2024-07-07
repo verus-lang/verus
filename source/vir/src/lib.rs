@@ -51,7 +51,7 @@ pub mod layout;
 mod loop_inference;
 pub mod messages;
 pub mod modes;
-mod mono;
+pub mod mono;
 pub mod poly;
 pub mod prelude;
 pub mod printer;

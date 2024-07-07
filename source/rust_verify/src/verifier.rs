@@ -1770,6 +1770,7 @@ impl Verifier {
             fndef_types,
             self.args.debugger,
         )?;
+        vir::mono::mono_krate_for_module(&mut ctx, &pruned_krate);
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
