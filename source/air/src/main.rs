@@ -1,5 +1,7 @@
 use air::ast::CommandX;
-use air::context::{Context, UsageInfo, ValidityResult};
+#[cfg(feature = "axiom-usage-info")]
+use air::context::UsageInfo;
+use air::context::{Context, ValidityResult};
 use air::messages::{AirMessage, AirMessageLabel, Reporter};
 use air::profiler::{Profiler, PROVER_LOG_FILE};
 use getopts::Options;
@@ -138,6 +140,13 @@ pub fn main() {
         let result =
             air_context.command(&*message_interface, &reporter, &command, Default::default());
         match result {
+            #[cfg(not(feature = "axiom-usage-info"))]
+            ValidityResult::Valid() => {
+                if let CommandX::CheckValid(_) = &**command {
+                    count_verified += 1;
+                }
+            }
+            #[cfg(feature = "axiom-usage-info")]
             ValidityResult::Valid(usage_info) => {
                 if let CommandX::CheckValid(_) = &**command {
                     count_verified += 1;

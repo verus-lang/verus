@@ -359,6 +359,7 @@ struct RunCommandQueriesResult {
     invalidity: bool,
     timed_out: bool,
     not_skipped: bool,
+    #[cfg(feature = "axiom-usage-info")]
     used_axioms: Option<Vec<air::ast::Ident>>,
 }
 
@@ -370,6 +371,7 @@ impl std::ops::Add for RunCommandQueriesResult {
             invalidity: self.invalidity || rhs.invalidity,
             timed_out: self.timed_out || rhs.timed_out,
             not_skipped: self.not_skipped || rhs.not_skipped,
+            #[cfg(feature = "axiom-usage-info")]
             used_axioms: match (self.used_axioms, rhs.used_axioms) {
                 (Some(u), None) => Some(u),
                 (None, Some(u)) => Some(u),
@@ -536,7 +538,10 @@ impl Verifier {
     /// to validate user code.
     fn check_internal_result(result: ValidityResult) {
         match result {
+            #[cfg(feature = "axiom-usage-info")]
             ValidityResult::Valid(air::context::UsageInfo::None) => {}
+            #[cfg(not(feature = "axiom-usage-info"))]
+            ValidityResult::Valid() => {}
             ValidityResult::TypeError(err) => {
                 util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                 panic!("internal error: ill-typed AIR code: {}", err)
@@ -739,9 +744,20 @@ impl Verifier {
         let mut only_check_earlier = false;
         let mut invalidity = false;
         let mut timed_out = false;
+        #[cfg(feature = "axiom-usage-info")]
         let mut used_axioms = None;
         loop {
             match result {
+                #[cfg(not(feature = "axiom-usage-info"))]
+                ValidityResult::Valid() => {
+                    if (is_check_valid && is_first_check && level == Some(MessageLevel::Error))
+                        || is_singular
+                    {
+                        self.count_verified += 1;
+                    }
+                    break;
+                }
+                #[cfg(feature = "axiom-usage-info")]
                 ValidityResult::Valid(usage_info) => {
                     if (is_check_valid && is_first_check && level == Some(MessageLevel::Error))
                         || is_singular
@@ -887,6 +903,7 @@ impl Verifier {
         }
 
         RunCommandQueriesResult {
+            #[cfg(feature = "axiom-usage-info")]
             used_axioms,
             invalidity,
             timed_out,
@@ -948,6 +965,7 @@ impl Verifier {
                 invalidity: false,
                 timed_out: false,
                 not_skipped: false,
+                #[cfg(feature = "axiom-usage-info")]
                 used_axioms: None,
             };
         }
@@ -956,6 +974,7 @@ impl Verifier {
             invalidity: false,
             timed_out: false,
             not_skipped: false,
+            #[cfg(feature = "axiom-usage-info")]
             used_axioms: None,
         };
         let CommandsWithContextX {
@@ -1085,6 +1104,7 @@ impl Verifier {
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
+        #[cfg(feature = "axiom-usage-info")]
         if self.args.broadcast_usage_info {
             air_context.enable_usage_info();
         }
@@ -1481,7 +1501,8 @@ impl Verifier {
                                 invalidity: command_invalidity,
                                 timed_out: command_timed_out,
                                 not_skipped: command_not_skipped,
-                                used_axioms: command_used_axioms,
+                                #[cfg(feature = "axiom-usage-info")]
+                                    used_axioms: command_used_axioms,
                             } = self.run_commands_queries(
                                 reporter,
                                 source_map,
@@ -1514,6 +1535,7 @@ impl Verifier {
                             any_invalid |= command_invalidity;
                             any_timed_out |= command_timed_out;
 
+                            #[cfg(feature = "axiom-usage-info")]
                             if let Some(used_axioms) = command_used_axioms {
                                 if used_axioms.len() > 0 {
                                     let axioms_list = used_axioms

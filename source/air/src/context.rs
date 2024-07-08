@@ -36,6 +36,7 @@ pub(crate) struct AxiomInfo {
     pub(crate) decl: Decl,
 }
 
+#[cfg(feature = "axiom-usage-info")]
 #[derive(Debug)]
 pub enum UsageInfo {
     None,
@@ -44,7 +45,7 @@ pub enum UsageInfo {
 
 #[derive(Debug)]
 pub enum ValidityResult {
-    Valid(UsageInfo),
+    Valid(#[cfg(feature = "axiom-usage-info")] UsageInfo),
     Invalid(Option<Model>, Option<ArcDynMessage>, Option<AssertId>),
     Canceled,
     TypeError(TypeError),
@@ -480,21 +481,33 @@ impl Context {
         match &**command {
             CommandX::Push => {
                 self.push();
-                ValidityResult::Valid(UsageInfo::None)
+                ValidityResult::Valid(
+                    #[cfg(feature = "axiom-usage-info")]
+                    UsageInfo::None,
+                )
             }
             CommandX::Pop => {
                 self.pop();
-                ValidityResult::Valid(UsageInfo::None)
+                ValidityResult::Valid(
+                    #[cfg(feature = "axiom-usage-info")]
+                    UsageInfo::None,
+                )
             }
             CommandX::SetOption(option, value) => {
                 self.set_z3_param(option, value);
-                ValidityResult::Valid(UsageInfo::None)
+                ValidityResult::Valid(
+                    #[cfg(feature = "axiom-usage-info")]
+                    UsageInfo::None,
+                )
             }
             CommandX::Global(decl) => {
                 if let Err(err) = self.global(&decl) {
                     ValidityResult::TypeError(err)
                 } else {
-                    ValidityResult::Valid(UsageInfo::None)
+                    ValidityResult::Valid(
+                        #[cfg(feature = "axiom-usage-info")]
+                        UsageInfo::None,
+                    )
                 }
             }
             CommandX::CheckValid(query) => {
