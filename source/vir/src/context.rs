@@ -612,14 +612,14 @@ impl Ctx {
         let decl = mk_unnamed_axiom(distinct);
         commands.push(Arc::new(CommandX::Global(decl)));
         for group in &self.reveal_groups {
-            crate::func_to_air::broadcast_forall_group_axioms(
+            crate::sst_to_air_func::broadcast_forall_group_axioms(
                 self,
                 &mut commands,
                 group,
                 &self.global.crate_name,
             );
         }
-        crate::func_to_air::module_reveal_axioms(self, &mut commands, &self.module.x.reveals);
+        crate::sst_to_air_func::module_reveal_axioms(self, &mut commands, &self.module.x.reveals);
         Arc::new(commands)
     }
 }

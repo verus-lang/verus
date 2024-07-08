@@ -11,12 +11,12 @@ use crate::def::{
     QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
     QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
 };
-use crate::func_to_air::{func_bind, func_bind_trig, func_def_args};
 use crate::messages::Span;
 use crate::sst::{Par, ParPurpose, ParX};
 use crate::sst_to_air::{
     datatype_id, expr_has_type, monotyp_to_path, path_to_air_ident, typ_invariant, typ_to_air,
 };
+use crate::sst_to_air_func::{func_bind, func_bind_trig, func_def_args};
 use crate::util::vec_map;
 use air::ast::{Command, CommandX, Commands, DeclX, Expr, ExprX};
 use air::ast_util::{

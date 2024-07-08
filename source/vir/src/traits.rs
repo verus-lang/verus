@@ -346,7 +346,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
             if !method_impls.contains(&(impl_path, method)) {
                 // Create a shell Function for trait_impl, with these purposes:
                 // - used as a recursion::Node::Fun in the call graph
-                // - for spec functions, used by func_to_air to create a definition axiom
+                // - for spec functions, used by sst_to_air_func to create a definition axiom
                 let inherit_kind = FunctionKind::TraitMethodImpl {
                     method: default_function.x.name.clone(),
                     impl_path: impl_path.clone(),
@@ -705,7 +705,7 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
                 crate::def::QID_TRAIT_TYPE_BOUNDS
             );
             let trigs = vec![tr_bound.clone()];
-            let bind = crate::func_to_air::func_bind_trig(
+            let bind = crate::sst_to_air_func::func_bind_trig(
                 ctx,
                 qname,
                 &Arc::new(typ_params),
@@ -740,7 +740,7 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     let name =
         format!("{}_{}", path_as_friendly_rust_name(&imp.x.impl_path), crate::def::QID_TRAIT_IMPL);
     let trigs = vec![tr_bound.clone()];
-    let bind = crate::func_to_air::func_bind_trig(
+    let bind = crate::sst_to_air_func::func_bind_trig(
         ctx,
         name,
         &imp.x.typ_params,
