@@ -10,11 +10,11 @@ use vir::ast::Visibility;
 use vir::ast::{
     Fun, Function, FunctionKind, ImplPath, ItemKind, Krate, Mode, Path, TraitImpl, VirErr,
 };
+use vir::ast_to_sst_func::SstMap;
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::context::FunctionCtx;
 use vir::def::{CommandsWithContext, SnapPos};
-use vir::func_to_air::SstMap;
 use vir::recursion::Node;
 use vir::sst::FunctionSst;
 use vir::update_cell::UpdateCell;
@@ -223,12 +223,14 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
         for (function, _vis_abs) in scc_functions.iter() {
             self.ctx.fun = mk_fun_ctx(&function, false);
-            let decl_commands = vir::func_to_air::func_decl_to_air(
+            let func_decl_sst = vir::ast_to_sst_func::func_decl_to_sst(
                 self.ctx,
                 self.reporter,
                 &self.sst_map,
                 &function,
             )?;
+            let decl_commands =
+                vir::sst_to_air_func::func_decl_to_air(self.ctx, &function, func_decl_sst)?;
             self.ctx.fun = None;
 
             pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
@@ -240,15 +242,20 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
             let mut sst_map = UpdateCell::new(HashMap::new());
             std::mem::swap(&mut sst_map, &mut self.sst_map);
-            let (decl_commands, check_commands, mut new_sst_map) =
-                vir::func_to_air::func_axioms_to_air(
-                    self.ctx,
-                    self.reporter,
-                    sst_map,
-                    &function,
-                    is_visible_to(&vis_abs, &module),
-                    not_verifying_owning_bucket,
-                )?;
+            let (mut new_sst_map, func_axioms_sst) = vir::ast_to_sst_func::func_axioms_to_sst(
+                self.ctx,
+                self.reporter,
+                sst_map,
+                &function,
+                is_visible_to(&vis_abs, &module),
+                not_verifying_owning_bucket,
+            )?;
+            let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
+                self.ctx,
+                &function,
+                func_axioms_sst,
+                is_visible_to(&vis_abs, &module),
+            )?;
             std::mem::swap(&mut new_sst_map, &mut self.sst_map);
             self.ctx.fun = None;
 
@@ -305,11 +312,11 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         let mut sst_map = UpdateCell::new(HashMap::new());
         std::mem::swap(&mut sst_map, &mut self.sst_map);
         let (mut new_sst_map, function_sst) =
-            vir::func_to_air::func_def_to_sst(self.ctx, self.reporter, sst_map, &function)?;
+            vir::ast_to_sst_func::func_def_to_sst(self.ctx, self.reporter, sst_map, &function)?;
         std::mem::swap(&mut new_sst_map, &mut self.sst_map);
 
         let (commands, snap_map) =
-            vir::func_to_air::func_sst_to_air(self.ctx, &function, &function_sst)?;
+            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function, &function_sst)?;
 
         self.ctx.fun = None;
 
@@ -325,7 +332,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         self.ctx.fun = mk_fun_ctx(&function, false /*recommend*/);
 
         let (commands, snap_map) =
-            vir::func_to_air::func_sst_to_air(self.ctx, &function, &expanded_function_sst)?;
+            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function, &expanded_function_sst)?;
         let commands = focus_commands_with_context_on_assert_id(commands, assert_id);
 
         self.ctx.fun = None;

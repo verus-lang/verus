@@ -4,11 +4,11 @@ use crate::ast::{
     VariantCheck,
 };
 use crate::ast_to_sst::get_function;
+use crate::ast_to_sst_func::SstInfo;
+use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::func_to_air::SstInfo;
-use crate::func_to_air::SstMap;
 use crate::messages::Span;
 use crate::sst::FunctionSst;
 use crate::sst::PostConditionSst;
@@ -122,7 +122,13 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
-        StmX::Loop { body, .. } => {
+        StmX::Loop { body, cond, .. } => {
+            if let Some((cond_stm, _cond_exp)) = cond {
+                if get_fuel_at_id(cond_stm, a_id, fuels) {
+                    return true;
+                }
+            }
+
             let mut inside_fuels = HashMap::<Fun, u32>::new();
             if get_fuel_at_id(body, a_id, &mut inside_fuels) {
                 std::mem::swap(&mut inside_fuels, fuels);
@@ -130,7 +136,7 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
-        StmX::OpenInvariant(_, _, _, stm, _) => {
+        StmX::OpenInvariant(_, stm) => {
             if get_fuel_at_id(stm, a_id, fuels) {
                 return true;
             }
@@ -1015,7 +1021,7 @@ fn split_precondition(
             &ctx,
             &DiagnosticsVoid {},
             fun_ssts,
-            &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
+            &crate::ast_to_sst_func::params_to_pars(params, true), // REVIEW: is `true` here desirable?
             &e,
         )
         .expect("expr_to_exp_as_spec_skip_checks");

@@ -1369,14 +1369,22 @@ impl Visitor {
         let attrs = std::mem::take(&mut unary.attrs);
 
         let arg = &mut *unary.expr;
-        let (inner_attrs, n_inputs) = match &mut *arg {
+        let (inner_attrs, closure_input_types) = match &mut *arg {
             Expr::Closure(closure) => {
                 if closure.requires.is_some() || closure.ensures.is_some() {
                     let err = "quantifiers cannot have requires/ensures";
                     *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
                     return true;
                 }
-                (std::mem::take(&mut closure.inner_attrs), closure.inputs.len())
+                let closure_input_types = closure
+                    .inputs
+                    .iter()
+                    .map(|arg| match arg {
+                        Pat::Type(pat_ty) => Some(pat_ty.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                (std::mem::take(&mut closure.inner_attrs), closure_input_types)
             }
             _ => panic!("expected closure for quantifier"),
         };
@@ -1424,10 +1432,22 @@ impl Visitor {
                 *expr = quote_verbatim!(builtin, span, attrs => #builtin::exists(#arg));
             }
             UnOp::Choose(..) => {
-                if n_inputs == 1 {
-                    *expr = quote_verbatim!(builtin, span, attrs => #builtin::choose(#arg));
-                } else {
-                    *expr = quote_verbatim!(builtin, span, attrs => #builtin::choose_tuple(#arg));
+                fn in_ty_to_ty_arg(arg: &Option<syn_verus::PatType>) -> TokenStream {
+                    match arg {
+                        Some(arg) => arg.ty.to_token_stream(),
+                        None => quote! { _ },
+                    }
+                }
+                match &closure_input_types[..] {
+                    [in_ty] => {
+                        let targ = in_ty_to_ty_arg(in_ty);
+                        *expr = quote_verbatim!(builtin, span, attrs => #builtin::choose::<#targ, _>(#arg));
+                    }
+                    _ => {
+                        let targs: Punctuated<TokenStream, syn_verus::token::Comma> =
+                            closure_input_types.iter().map(in_ty_to_ty_arg).collect();
+                        *expr = quote_verbatim!(builtin, span, attrs => #builtin::choose_tuple::<(#targs,), _>(#arg));
+                    }
                 }
             }
             _ => panic!("unary"),

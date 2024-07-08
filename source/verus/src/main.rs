@@ -290,6 +290,11 @@ fn run() -> Result<std::process::ExitStatus, String> {
         .args(&args)
         .stdin(std::process::Stdio::inherit());
 
+    // HOTFIX: On Windows, libraries are in the bin directory, not in the lib directory,
+    // so we currently need the old behavior of rustup of adding the bin directory to the PATH.
+    #[cfg(windows)]
+    cmd.env("RUSTUP_WINDOWS_PATH_ADD_BIN", "1");
+
     if !record && record_history_project_dirs.is_none() {
         match platform::exec(&mut cmd) {
             Err(e) => {

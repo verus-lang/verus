@@ -1,8 +1,7 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBoundKind, InvAtomicity, MaskSpec, Mode, Params, Path, PathX, Primitive,
-    SpannedTyped, Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VariantCheck, VirErr,
-    Visibility,
+    IntRange, IntegerTypeBoundKind, MaskSpec, Mode, Params, Path, PathX, Primitive, SpannedTyped,
+    Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     bitwidth_from_type, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
@@ -11,15 +10,15 @@ use crate::ast_util::{
 use crate::bitvector_to_air::{bv_exp_to_expr, BvExprCtxt};
 use crate::context::Ctx;
 use crate::def::{
-    fn_inv_name, fn_namespace_name, fun_to_string, is_variant_ident, new_internal_qid,
-    new_user_qid_name, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_open_inv,
-    prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident,
-    static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, unique_local,
-    variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX, ProverChoice,
-    SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
-    FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE,
-    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
-    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name, path_to_string,
+    prefix_box, prefix_ensures, prefix_fuel_id, prefix_open_inv, prefix_pre_var, prefix_requires,
+    prefix_spec_fn_type, prefix_unbox, snapshot_ident, static_name, suffix_global_id,
+    suffix_local_unique_id, suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident,
+    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
+    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
+    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII,
+    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
@@ -37,7 +36,8 @@ use air::ast::{
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
     mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_nat, mk_not,
-    mk_option_command, mk_or, mk_sub, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
+    mk_option_command, mk_or, mk_sub, mk_unnamed_axiom, mk_xor, str_apply, str_ident, str_typ,
+    str_var, string_var,
 };
 use num_bigint::BigInt;
 use std::collections::{BTreeMap, HashSet};
@@ -108,8 +108,8 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
                 &typs.iter().map(monotyp_to_path).collect(),
             );
         }
-        MonoTypX::Decorate(_, typ) => {
-            return monotyp_to_path(typ);
+        MonoTypX::Decorate(dec, typ) => {
+            return crate::def::monotyp_decorate(*dec, &monotyp_to_path(typ));
         }
     };
     Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
@@ -470,45 +470,6 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Air(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
-}
-
-fn get_inv_typ_args(typ: &Typ) -> Typs {
-    match &**typ {
-        TypX::Datatype(_, typs, _) => typs.clone(),
-        TypX::Decorate(_, typ) | TypX::Boxed(typ) => get_inv_typ_args(typ),
-        _ => {
-            panic!("get_inv_typ_args failed, expected some Invariant type");
-        }
-    }
-}
-
-fn call_inv(
-    ctx: &Ctx,
-    outer: Expr,
-    inner: Expr,
-    typ_args: &Typs,
-    typ: &Typ,
-    atomicity: InvAtomicity,
-) -> Expr {
-    let inv_fn_ident =
-        suffix_global_id(&fun_to_air_ident(&fn_inv_name(&ctx.global.vstd_crate_name, atomicity)));
-    let boxed_inner = try_box(ctx, inner.clone(), typ).unwrap_or(inner);
-
-    let mut args: Vec<Expr> = typ_args.iter().map(typ_to_ids).flatten().collect();
-    args.push(outer);
-    args.push(boxed_inner);
-    ident_apply(&inv_fn_ident, &args)
-}
-
-fn call_namespace(ctx: &Ctx, arg: Expr, typ_args: &Typs, atomicity: InvAtomicity) -> Expr {
-    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name(
-        &ctx.global.vstd_crate_name,
-        atomicity,
-    )));
-
-    let mut args: Vec<Expr> = typ_args.iter().map(typ_to_ids).flatten().collect();
-    args.push(arg);
-    ident_apply(&inv_fn_ident, &args)
 }
 
 pub fn mask_set_from_spec(spec: &MaskSpec, function_name: &Fun, args: &Vec<Expr>) -> MaskSet {
@@ -1664,7 +1625,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             for (x, typ) in typ_inv_vars.iter() {
                 let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
                 if let Some(expr) = typ_inv {
-                    local.push(Arc::new(DeclX::Axiom(expr)));
+                    local.push(mk_unnamed_axiom(expr));
                 }
             }
 
@@ -1716,7 +1677,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut local = state.local_bv_shared.clone();
             for req in requires_air.iter() {
-                local.push(Arc::new(DeclX::Axiom(req.clone())));
+                local.push(mk_unnamed_axiom(req.clone()));
             }
 
             let mut air_body: Vec<Stmt> = Vec::new();
@@ -2058,7 +2019,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 for (x, typ) in typ_inv_vars.iter() {
                     let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
                     if let Some(expr) = typ_inv {
-                        local.push(Arc::new(DeclX::Axiom(expr)));
+                        local.push(mk_unnamed_axiom(expr));
                     }
                 }
             }
@@ -2226,48 +2187,26 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
-        StmX::OpenInvariant(inv_exp, uid, typ, body_stm, atomicity) => {
+        StmX::OpenInvariant(namespace_exp, body_stm) => {
             let mut stmts = vec![];
 
-            // Build the inv_expr. Note: In the SST, this should have been assigned
-            // to a tmp variable
-            // to ensure that its value is constant across the entire invariant block.
-            // We will be referencing it later.
-            let inv_expr = exp_to_expr(ctx, inv_exp, &ExprCtxt::new())?;
+            // Build the names_expr. Note: In the SST, this should have been assigned
+            // to an expression whose value is constant for the entire block.
+            let namespace_expr = exp_to_expr(ctx, namespace_exp, &ExprCtxt::new())?;
 
             // Assert that the namespace of the inv we are opening is in the mask set
-            let typ_args = get_inv_typ_args(&inv_exp.typ);
-            let namespace_expr = call_namespace(ctx, inv_expr.clone(), &typ_args, *atomicity);
             if !ctx.checking_spec_preconditions() {
-                state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts, None);
+                state.mask.assert_contains(&namespace_exp.span, &namespace_expr, &mut stmts, None);
             }
-
-            // add an 'assume' that inv holds
-            let inner_var = SpannedTyped::new(&stm.span, typ, ExpX::Var(uid.clone()));
-            let inner_expr = exp_to_expr(ctx, &inner_var, &ExprCtxt::new())?;
-            let ty_inv_opt = typ_invariant(ctx, typ, &inner_expr);
-            if let Some(ty_inv) = ty_inv_opt {
-                stmts.push(Arc::new(StmtX::Assume(ty_inv)));
-            }
-            let main_inv = call_inv(ctx, inv_expr, inner_expr, &typ_args, &typ, *atomicity);
-            stmts.push(Arc::new(StmtX::Assume(main_inv.clone())));
 
             // process the body
             // first remove the namespace from the mask set so that we cannot re-open
             // the same invariant inside
-            let mut inner_mask = state.mask.remove_element(inv_exp.span.clone(), namespace_expr);
+            let mut inner_mask =
+                state.mask.remove_element(namespace_exp.span.clone(), namespace_expr);
             swap(&mut state.mask, &mut inner_mask);
             stmts.append(&mut stm_to_stmts(ctx, state, body_stm)?);
             swap(&mut state.mask, &mut inner_mask);
-
-            // assert the invariant still holds
-            // Note that we re-use main_inv here; but main_inv references the variable
-            // given by `uid` which may have been assigned to since the start of the block.
-            // so this may evaluate differently in the SMT.
-            if !ctx.checking_spec_preconditions() {
-                let error = error(&body_stm.span, "Cannot show invariant holds at end of block");
-                stmts.push(Arc::new(StmtX::Assert(None, error, None, main_inv)));
-            }
 
             stmts
         }
@@ -2409,7 +2348,7 @@ fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
         let or = Arc::new(ExprX::Multi(air::ast::MultiOp::Or, Arc::new(disjuncts)));
         mk_bind_expr(&bind, &or)
     };
-    local.push(Arc::new(DeclX::Axiom(fuel_expr)));
+    local.push(mk_unnamed_axiom(fuel_expr));
 }
 
 fn mk_static_prelude(ctx: &Ctx, statics: &Vec<Fun>) -> Vec<Stmt> {
@@ -2514,7 +2453,7 @@ pub(crate) fn body_stm_to_air(
         if !is_bit_vector_mode { local_shared.clone() } else { local_bv_shared.clone() };
     for e in crate::traits::trait_bounds_to_air(ctx, typ_bounds) {
         // The outer query already has this in reqs, but inner queries need it separately:
-        local_shared.push(Arc::new(DeclX::Axiom(e)));
+        local_shared.push(Arc::new(DeclX::Axiom(air::ast::Axiom { named: None, expr: e })));
     }
 
     let mut state = State {
@@ -2569,7 +2508,7 @@ pub(crate) fn body_stm_to_air(
         for param in params.iter() {
             let typ_inv = typ_invariant(ctx, &param.x.typ, &ident_var(&param.x.name.lower()));
             if let Some(expr) = typ_inv {
-                local.push(Arc::new(DeclX::Axiom(expr)));
+                local.push(mk_unnamed_axiom(expr));
             }
         }
     }
@@ -2582,7 +2521,7 @@ pub(crate) fn body_stm_to_air(
             let expr_ctxt = &ExprCtxt::new_mode(ExprMode::BodyPre);
             exp_to_expr(ctx, &req, expr_ctxt)?
         };
-        local.push(Arc::new(DeclX::Axiom(e)));
+        local.push(mk_unnamed_axiom(e));
     }
 
     if is_integer_ring {

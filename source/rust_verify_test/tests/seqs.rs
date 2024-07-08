@@ -29,6 +29,9 @@ test_verify_one_file! {
             let s7 = seq![true ==> false, false ==> true];
             assert(!s7.index(0));
             assert(s7.index(1));
+            let s8: Seq<int> = seq![5; 10];
+            assert(s8[0] == 5);
+            assert(s8.len() == 10);
 
             assert(s1.to_set().finite()) by {
                 seq_to_set_is_finite(s1);

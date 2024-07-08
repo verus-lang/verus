@@ -2,8 +2,8 @@
 // (Z3 and the Z3 crate will also type-check, but their type errors are uninformative panics)
 
 use crate::ast::{
-    BinaryOp, BindX, Binder, BinderX, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp,
-    Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
+    Axiom, BinaryOp, BindX, Binder, BinderX, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident,
+    MultiOp, Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
 use crate::context::Context;
 use crate::messages::MessageInterface;
@@ -535,7 +535,7 @@ pub(crate) fn check_decl(
             check_typs(typing, &typs_vec)
         }
         DeclX::Var(_, typ) => check_typ(typing, typ),
-        DeclX::Axiom(expr) => {
+        DeclX::Axiom(Axiom { named: _, expr }) => {
             expect_typ(&check_expr(typing, expr)?, &bt(), "axiom expects expression of type bool")
         }
     };
