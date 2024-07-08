@@ -1333,3 +1333,53 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] loop_invariant_except_break_nonlinear verus_code! {
+        fn integer_square_root(n: u32) -> (result: u32)
+            requires
+                n >= 1,
+            ensures
+                1 <= result <= n,
+                1 <= result * result <= n,
+                n < (result + 1) * (result + 1),
+        {
+            let mut result: u32 = 1;
+            loop
+                invariant_except_break
+                    1 <= result <= n,
+                    1 <= result * result <= n,
+                    n != 1 ==> (1 <= result < n),
+                ensures
+                    1 <= result - 1 <= n,
+                    1 <= (result - 1) * (result - 1) <= n,
+                    n < result * result,
+
+            {
+                if result == 1 {
+                } else {
+                    assert(1 <= result < (result * result) <= u32::MAX) by (nonlinear_arith)
+                        requires
+                            1 < result <= n <= u32::MAX,
+                            1 <= result * result <= n,
+                    { }
+                }
+                result += 1;
+                if result >= 3 {
+                    assert(1 <= result < (result * result) <= u64::MAX) by (nonlinear_arith)
+                        requires
+                            3 <= result <= n,
+                    { }
+                } else {
+                    assert(1 <= result <= (result * result) <= u64::MAX) by (nonlinear_arith)
+                        requires 1 <= result < 3,
+                    { }
+                }
+                if result as u64 * result as u64 > n as u64 {
+                    break;
+                }
+            }
+            result - 1
+        }
+    } => Ok(())
+}
