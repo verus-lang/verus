@@ -72,6 +72,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
                 crate::hir_hide_reveal_rewrite::ResOrSymbol::Symbol(sym) => {
                     let matching_impls: Vec<_> = tcx
                         .inherent_impls(ty_res.def_id())
+                        .expect("TODO(1.79.0)")
                         .iter()
                         .filter_map(|impl_def_id| {
                             let ident = rustc_span::symbol::Ident::from_str(sym.as_str());
@@ -119,7 +120,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
         return Err(vir::messages::error(span, "Fuel must be a u32 value"));
     };
     let fuel_n: u32 =
-        fuel_val.try_into().map_err(|_| vir::messages::error(span, "Fuel must be a u32 value"))?;
+        fuel_val.get().try_into().map_err(|_| vir::messages::error(span, "Fuel must be a u32 value"))?;
 
     let fun = Arc::new(FunX { path });
     if let Some(mk_expr) = mk_expr {
