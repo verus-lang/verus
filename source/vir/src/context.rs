@@ -12,7 +12,7 @@ use crate::scc::Graph;
 use crate::sst::BndInfo;
 use crate::sst_to_air::fun_to_air_ident;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp};
-use air::ast_util::str_typ;
+use air::ast_util::{mk_unnamed_axiom, str_typ};
 use num_bigint::BigUint;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -80,6 +80,7 @@ pub struct Ctx {
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
+    pub fun_ident_map: HashMap<Ident, Fun>,
     pub(crate) reveal_groups: Vec<crate::ast::RevealGroup>,
     pub(crate) reveal_group_set: HashSet<Fun>,
     // Ensure a unique identifier for each quantifier in a given function
@@ -520,9 +521,11 @@ impl Ctx {
             datatypes_invs(&module.x.path, &datatype_is_transparent, &krate.datatypes);
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
+        let mut fun_ident_map: HashMap<Ident, Fun> = HashMap::new();
         let funcs_with_ensure_predicate: HashMap<Fun, bool> = HashMap::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
+            fun_ident_map.insert(fun_to_air_ident(&function.x.name), function.x.name.clone());
             functions.push(function.clone());
         }
         let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
@@ -535,6 +538,7 @@ impl Ctx {
         }
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
+        fun_ident_map.extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&g), g.clone())));
         let quantifier_count = Cell::new(0);
         let string_hashes = RefCell::new(HashMap::new());
 
@@ -553,6 +557,7 @@ impl Ctx {
             fndef_type_set,
             functions,
             func_map,
+            fun_ident_map,
             reveal_groups: krate.reveal_groups.clone(),
             reveal_group_set,
             quantifier_count,
@@ -604,7 +609,7 @@ impl Ctx {
             commands.push(Arc::new(CommandX::Global(decl)));
         }
         let distinct = Arc::new(air::ast::ExprX::Multi(MultiOp::Distinct, Arc::new(ids)));
-        let decl = Arc::new(DeclX::Axiom(distinct));
+        let decl = mk_unnamed_axiom(distinct);
         commands.push(Arc::new(CommandX::Global(decl)));
         for group in &self.reveal_groups {
             crate::func_to_air::broadcast_forall_group_axioms(

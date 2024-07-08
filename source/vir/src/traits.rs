@@ -10,7 +10,7 @@ use crate::def::Spanned;
 use crate::messages::{error, warning, Span, ToAny};
 use crate::sst_to_air::typ_to_ids;
 use air::ast::{Command, CommandX, Commands, DeclX};
-use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, str_typ};
+use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, mk_unnamed_axiom, str_typ};
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -715,7 +715,7 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
             );
             let imply = air::ast_util::mk_implies(&tr_bound, &air::ast_util::mk_and(&typ_bounds));
             let forall = mk_bind_expr(&bind, &imply);
-            let axiom = Arc::new(DeclX::Axiom(forall));
+            let axiom = Arc::new(DeclX::Axiom(air::ast::Axiom { named: None, expr: forall }));
             commands.push(Arc::new(CommandX::Global(axiom)));
         }
     }
@@ -751,7 +751,7 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     let req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
     let imply = mk_implies(&air::ast_util::mk_and(&req_bounds), &tr_bound);
     let forall = mk_bind_expr(&bind, &imply);
-    let axiom = Arc::new(DeclX::Axiom(forall));
+    let axiom = mk_unnamed_axiom(forall);
     Arc::new(vec![Arc::new(CommandX::Global(axiom))])
 }
 

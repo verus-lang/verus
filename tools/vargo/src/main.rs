@@ -856,7 +856,10 @@ fn run() -> Result<(), String> {
                 new_args.into_iter().map(|(_, x)| x).collect(),
             );
             let dashdash_pos = new_args.iter().position(|x| x == "--").expect("-- in args");
-            let feature_args = filter_features(&feature_args, ["singular"].into_iter().collect());
+            let feature_args = filter_features(
+                &feature_args,
+                ["singular", "axiom-usage-info"].into_iter().collect(),
+            );
             new_args.splice(dashdash_pos..dashdash_pos, feature_args);
             if nextest {
                 args.get(cmd_position + 1)
@@ -1002,8 +1005,10 @@ fn run() -> Result<(), String> {
             for p in packages {
                 let rust_verify_forward_args;
                 let extra_args = if p == &"rust_verify" {
-                    let feature_args =
-                        filter_features(&feature_args, ["singular"].into_iter().collect());
+                    let feature_args = filter_features(
+                        &feature_args,
+                        ["singular", "axiom-usage-info"].into_iter().collect(),
+                    );
                     rust_verify_forward_args = cargo_forward_args
                         .iter()
                         .chain(feature_args.iter())

@@ -176,6 +176,12 @@ pub enum StmtX {
     Switch(Stmts),
 }
 
+#[derive(Debug)]
+pub struct Axiom {
+    pub named: Option<Ident>,
+    pub expr: Expr,
+}
+
 pub type Field = Binder<Typ>;
 pub type Fields = Binders<Typ>;
 pub type Variant = Binder<Fields>;
@@ -192,7 +198,7 @@ pub enum DeclX {
     Const(Ident, Typ),
     Fun(Ident, Typs, Typ),
     Var(Ident, Typ),
-    Axiom(Expr),
+    Axiom(Axiom),
 }
 
 pub type Query = Arc<QueryX>;

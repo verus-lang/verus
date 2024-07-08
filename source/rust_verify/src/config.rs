@@ -101,6 +101,8 @@ pub struct ArgsX {
     pub trace: bool,
     pub report_long_running: bool,
     pub use_crate_name: bool,
+    #[cfg(feature = "axiom-usage-info")]
+    pub broadcast_usage_info: bool,
 }
 
 impl ArgsX {
@@ -142,6 +144,8 @@ impl ArgsX {
             trace: Default::default(),
             report_long_running: Default::default(),
             use_crate_name: Default::default(),
+            #[cfg(feature = "axiom-usage-info")]
+            broadcast_usage_info: Default::default(),
         }
     }
 }
@@ -267,6 +271,8 @@ pub fn parse_args_with_imports(
     const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
+    #[cfg(feature = "axiom-usage-info")]
+    const EXTENDED_BROADCAST_USAGE_INFO: &str = "broadcast-usage-info";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -287,6 +293,11 @@ pub fn parse_args_with_imports(
         (
             EXTENDED_USE_CRATE_NAME,
             "Use the crate name in paths (useful when verifying vstd without --export)",
+        ),
+        #[cfg(feature = "axiom-usage-info")]
+        (
+            EXTENDED_BROADCAST_USAGE_INFO,
+            "Print usage info for broadcasted axioms, lemmas, and groups",
         ),
     ];
 
@@ -629,6 +640,8 @@ pub fn parse_args_with_imports(
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
         use_crate_name: extended.get(EXTENDED_USE_CRATE_NAME).is_some(),
+        #[cfg(feature = "axiom-usage-info")]
+        broadcast_usage_info: extended.get(EXTENDED_BROADCAST_USAGE_INFO).is_some(),
     };
 
     (Arc::new(args), unmatched)

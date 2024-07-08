@@ -427,5 +427,5 @@ pub fn check_singular_valid(
         }
     }
 
-    return ValidityResult::Valid;
+    return ValidityResult::Valid(air::context::UsageInfo::None);
 }
