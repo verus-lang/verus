@@ -315,7 +315,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         ResultDetermination::Undetermined(true) => {
             context.state = ContextState::FoundResult;
 
-            let usage_info = if context.enable_usage_info {
+            let usage_info = if context.usage_info_enabled {
                 context.smt_log.log_word("get-unsat-core");
 
                 let smt_data = context.smt_log.take_pipe_data();

@@ -1085,6 +1085,9 @@ impl Verifier {
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
+        if self.args.broadcast_usage_info {
+            air_context.enable_usage_info();
+        }
 
         air_context.blank_line();
         air_context.comment("Prelude");
@@ -1099,8 +1102,6 @@ impl Verifier {
 
         air_context.blank_line();
         air_context.comment(&("MODULE '".to_string() + &bucket_id.friendly_name() + "'"));
-
-        air_context.set_usage_info(self.args.broadcast_usage_info);
 
         Ok(air_context)
     }
@@ -1194,8 +1195,6 @@ impl Verifier {
                 }
             }
         }
-
-        air_context.set_usage_info(self.args.broadcast_usage_info);
 
         Ok(air_context)
     }

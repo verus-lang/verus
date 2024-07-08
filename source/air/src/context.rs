@@ -97,7 +97,7 @@ pub struct Context {
     pub(crate) expected_solver_version: Option<String>,
     pub(crate) profile_logfile_name: Option<String>,
     pub(crate) disable_incremental_solving: bool,
-    pub(crate) enable_usage_info: bool,
+    pub(crate) usage_info_enabled: bool,
     pub(crate) check_valid_used: bool,
 }
 
@@ -135,7 +135,7 @@ impl Context {
             expected_solver_version: None,
             profile_logfile_name: None,
             disable_incremental_solving: false,
-            enable_usage_info: false,
+            usage_info_enabled: false,
             check_valid_used: false,
         };
         context.axiom_infos.push_scope(false);
@@ -214,8 +214,10 @@ impl Context {
         self.air_final_log.log_set_option("disable_incremental_solving", "true");
     }
 
-    pub fn set_usage_info(&mut self, enable_usage_info: bool) {
-        self.enable_usage_info = enable_usage_info;
+    pub fn enable_usage_info(&mut self) {
+        assert!(matches!(self.state, ContextState::NotStarted));
+        self.usage_info_enabled = true;
+        self.set_z3_param_bool("produce-unsat-cores", true, true);
     }
 
     // emit blank line into log files
@@ -250,7 +252,6 @@ impl Context {
             self.set_z3_param_bool("smt.delay_units", true, true);
             self.set_z3_param_u32("smt.arith.solver", 2, true);
             self.set_z3_param_bool("smt.arith.nl", false, true);
-            self.set_z3_param_bool("produce-unsat-cores", true, true);
             self.set_z3_param_bool("pi.enabled", false, true);
             self.set_z3_param_bool("rewriter.sort_disjunctions", false, true);
         } else if option == "disable_incremental_solving" && value {
