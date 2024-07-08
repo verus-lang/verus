@@ -31,6 +31,7 @@ pub mod ast;
 pub mod ast_simplify;
 pub mod ast_sort;
 mod ast_to_sst;
+pub mod ast_to_sst_func;
 pub mod ast_util;
 mod ast_visitor;
 pub mod autospec;
