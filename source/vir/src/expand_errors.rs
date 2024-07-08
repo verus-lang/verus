@@ -122,7 +122,13 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
-        StmX::Loop { body, .. } => {
+        StmX::Loop { body, cond, .. } => {
+            if let Some((cond_stm, _cond_exp)) = cond {
+                if get_fuel_at_id(cond_stm, a_id, fuels) {
+                    return true;
+                }
+            }
+
             let mut inside_fuels = HashMap::<Fun, u32>::new();
             if get_fuel_at_id(body, a_id, &mut inside_fuels) {
                 std::mem::swap(&mut inside_fuels, fuels);
