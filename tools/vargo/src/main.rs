@@ -856,7 +856,10 @@ fn run() -> Result<(), String> {
                 new_args.into_iter().map(|(_, x)| x).collect(),
             );
             let dashdash_pos = new_args.iter().position(|x| x == "--").expect("-- in args");
-            let feature_args = filter_features(&feature_args, ["singular"].into_iter().collect());
+            let feature_args = filter_features(
+                &feature_args,
+                ["singular", "axiom-usage-info"].into_iter().collect(),
+            );
             new_args.splice(dashdash_pos..dashdash_pos, feature_args);
             if nextest {
                 args.get(cmd_position + 1)
@@ -1002,8 +1005,10 @@ fn run() -> Result<(), String> {
             for p in packages {
                 let rust_verify_forward_args;
                 let extra_args = if p == &"rust_verify" {
-                    let feature_args =
-                        filter_features(&feature_args, ["singular"].into_iter().collect());
+                    let feature_args = filter_features(
+                        &feature_args,
+                        ["singular", "axiom-usage-info"].into_iter().collect(),
+                    );
                     rust_verify_forward_args = cargo_forward_args
                         .iter()
                         .chain(feature_args.iter())
@@ -1038,15 +1043,12 @@ set -x
             );
             use std::fmt::Write;
 
-            for (from_f_name, is_exe) in [
-                (format!("libbuiltin.rlib"), false),
-                (format!("{}builtin_macros.{}", LIB_PRE, LIB_DL), false),
-                (
-                    format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
-                    false,
-                ),
-                (format!("rust_verify{}", EXE), true),
-                (format!("verus{}", EXE), true),
+            for from_f_name in [
+                format!("libbuiltin.rlib"),
+                format!("{}builtin_macros.{}", LIB_PRE, LIB_DL),
+                format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
+                format!("rust_verify{}", EXE),
+                format!("verus{}", EXE),
             ]
             .into_iter()
             {
@@ -1077,14 +1079,12 @@ set -x
                     std::fs::copy(&from_f, &to_f)
                         .map_err(|x| format!("could not copy file ({})", x))?;
 
-                    if is_exe {
-                        writeln!(
-                            &mut macos_prepare_script,
-                            "xattr -d com.apple.quarantine {}",
-                            from_f_name
-                        )
-                        .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
-                    }
+                    writeln!(
+                        &mut macos_prepare_script,
+                        "xattr -d com.apple.quarantine {}",
+                        from_f_name
+                    )
+                    .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
                 } else {
                     dependency_missing = true;
                 }
@@ -1222,8 +1222,7 @@ set -x
 
             #[cfg(target_os = "macos")]
             {
-                let macos_prepare_script_path =
-                    target_verus_dir.join("set_permissions_and_allow_gatekeeper.sh");
+                let macos_prepare_script_path = target_verus_dir.join("macos_allow_gatekeeper.sh");
                 std::fs::write(&macos_prepare_script_path, macos_prepare_script)
                     .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
                 std::fs::set_permissions(

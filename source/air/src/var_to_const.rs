@@ -1,6 +1,6 @@
 // Replace declare-var and assign with declare-const and assume
 use crate::ast::{
-    BinaryOp, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX, Snapshots, Stmt, StmtX, Typ,
+    Axiom, BinaryOp, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX, Snapshots, Stmt, StmtX, Typ,
 };
 use crate::ast_util::string_var;
 use indexmap::IndexMap;
@@ -231,8 +231,11 @@ pub(crate) fn lower_query(query: &Query) -> (Query, Snapshots, Vec<Decl>) {
     let mut local_vars: Vec<Decl> = Vec::new();
 
     for decl in local.iter() {
-        if let DeclX::Axiom(expr) = &**decl {
-            let decl_x = DeclX::Axiom(lower_expr(&versions, &snapshots, expr));
+        if let DeclX::Axiom(Axiom { named, expr }) = &**decl {
+            let decl_x = DeclX::Axiom(Axiom {
+                named: named.clone(),
+                expr: lower_expr(&versions, &snapshots, expr),
+            });
             decls.push(Arc::new(decl_x));
         } else {
             decls.push(decl.clone());

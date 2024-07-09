@@ -10,9 +10,9 @@ use crate::ast::{
     InequalityOp, IntRange, IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp,
     VarBinders, VirErr,
 };
+use crate::ast_to_sst_func::{SstInfo, SstMap};
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::context::GlobalCtx;
-use crate::func_to_air::{SstInfo, SstMap};
 use crate::messages::{error, warning, Message, Span, ToAny};
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use crate::unicode::valid_unicode_scalar_bigint;

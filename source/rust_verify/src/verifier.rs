@@ -359,6 +359,8 @@ struct RunCommandQueriesResult {
     invalidity: bool,
     timed_out: bool,
     not_skipped: bool,
+    #[cfg(feature = "axiom-usage-info")]
+    used_axioms: Option<Vec<air::ast::Ident>>,
 }
 
 impl std::ops::Add for RunCommandQueriesResult {
@@ -369,6 +371,13 @@ impl std::ops::Add for RunCommandQueriesResult {
             invalidity: self.invalidity || rhs.invalidity,
             timed_out: self.timed_out || rhs.timed_out,
             not_skipped: self.not_skipped || rhs.not_skipped,
+            #[cfg(feature = "axiom-usage-info")]
+            used_axioms: match (self.used_axioms, rhs.used_axioms) {
+                (Some(u), None) => Some(u),
+                (None, Some(u)) => Some(u),
+                (None, None) => None,
+                (Some(_), Some(_)) => panic!("only the primary query should contain used_axioms"),
+            },
         }
     }
 }
@@ -529,7 +538,10 @@ impl Verifier {
     /// to validate user code.
     fn check_internal_result(result: ValidityResult) {
         match result {
-            ValidityResult::Valid => {}
+            #[cfg(feature = "axiom-usage-info")]
+            ValidityResult::Valid(air::context::UsageInfo::None) => {}
+            #[cfg(not(feature = "axiom-usage-info"))]
+            ValidityResult::Valid() => {}
             ValidityResult::TypeError(err) => {
                 util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                 panic!("internal error: ill-typed AIR code: {}", err)
@@ -732,13 +744,29 @@ impl Verifier {
         let mut only_check_earlier = false;
         let mut invalidity = false;
         let mut timed_out = false;
+        #[cfg(feature = "axiom-usage-info")]
+        let mut used_axioms = None;
         loop {
             match result {
-                ValidityResult::Valid => {
+                #[cfg(not(feature = "axiom-usage-info"))]
+                ValidityResult::Valid() => {
                     if (is_check_valid && is_first_check && level == Some(MessageLevel::Error))
                         || is_singular
                     {
                         self.count_verified += 1;
+                    }
+                    break;
+                }
+                #[cfg(feature = "axiom-usage-info")]
+                ValidityResult::Valid(usage_info) => {
+                    if (is_check_valid && is_first_check && level == Some(MessageLevel::Error))
+                        || is_singular
+                    {
+                        self.count_verified += 1;
+
+                        if let air::context::UsageInfo::UsedAxioms(axioms) = usage_info {
+                            assert!(used_axioms.replace(axioms).is_none());
+                        }
                     }
                     break;
                 }
@@ -875,6 +903,8 @@ impl Verifier {
         }
 
         RunCommandQueriesResult {
+            #[cfg(feature = "axiom-usage-info")]
+            used_axioms,
             invalidity,
             timed_out,
             not_skipped: matches!(**command, CommandX::CheckValid(_)),
@@ -935,11 +965,18 @@ impl Verifier {
                 invalidity: false,
                 timed_out: false,
                 not_skipped: false,
+                #[cfg(feature = "axiom-usage-info")]
+                used_axioms: None,
             };
         }
 
-        let mut result =
-            RunCommandQueriesResult { invalidity: false, timed_out: false, not_skipped: false };
+        let mut result = RunCommandQueriesResult {
+            invalidity: false,
+            timed_out: false,
+            not_skipped: false,
+            #[cfg(feature = "axiom-usage-info")]
+            used_axioms: None,
+        };
         let CommandsWithContextX {
             context,
             commands,
@@ -1067,6 +1104,10 @@ impl Verifier {
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
+        #[cfg(feature = "axiom-usage-info")]
+        if self.args.broadcast_usage_info {
+            air_context.enable_usage_info();
+        }
 
         air_context.blank_line();
         air_context.comment("Prelude");
@@ -1174,6 +1215,7 @@ impl Verifier {
                 }
             }
         }
+
         Ok(air_context)
     }
 
@@ -1290,7 +1332,7 @@ impl Verifier {
             if !is_visible_to(&function.x.visibility, module) || function.x.attrs.is_decrease_by {
                 continue;
             }
-            let commands = vir::func_to_air::func_name_to_air(ctx, reporter, &function)?;
+            let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, &function)?;
             let comment =
                 "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
             self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
@@ -1363,7 +1405,7 @@ impl Verifier {
                         commands_with_context_list,
                         snap_map,
                         profile_rerun,
-                        function_sst,
+                        func_def_sst,
                     } => {
                         let level = match query_op {
                             QueryOp::SpecTermination => MessageLevel::Error,
@@ -1382,6 +1424,7 @@ impl Verifier {
                         let mut any_timed_out = false;
                         let mut failed_assert_ids = vec![];
                         let mut func_curr_smt_time = Duration::ZERO;
+
                         let mut func_curr_smt_rlimit_count = 0;
                         for cmds in commands_with_context_list.iter() {
                             if is_recommend && cmds.skip_recommends {
@@ -1458,6 +1501,8 @@ impl Verifier {
                                 invalidity: command_invalidity,
                                 timed_out: command_timed_out,
                                 not_skipped: command_not_skipped,
+                                #[cfg(feature = "axiom-usage-info")]
+                                    used_axioms: command_used_axioms,
                             } = self.run_commands_queries(
                                 reporter,
                                 source_map,
@@ -1489,6 +1534,37 @@ impl Verifier {
 
                             any_invalid |= command_invalidity;
                             any_timed_out |= command_timed_out;
+
+                            #[cfg(feature = "axiom-usage-info")]
+                            if let Some(used_axioms) = command_used_axioms {
+                                if used_axioms.len() > 0 {
+                                    let axioms_list = used_axioms
+                                        .iter()
+                                        .map(|x| {
+                                            let funx = &function_opgen.ctx().fun_ident_map[x];
+                                            let is_reveal_group = krate
+                                                .reveal_groups
+                                                .iter()
+                                                .find(|g| &g.x.name == funx)
+                                                .is_some();
+                                            format!(
+                                                "  -{} {}",
+                                                if is_reveal_group { " (group)" } else { "" },
+                                                fun_as_friendly_rust_name(&funx,),
+                                            )
+                                        })
+                                        .collect::<Vec<String>>()
+                                        .join(",\n");
+                                    let msg = format!(
+                                        "{} used these broadcasted lemmas and broadcast groups:\n{}",
+                                        op.to_friendly_desc()
+                                            .unwrap_or("checking this function".to_owned()),
+                                        axioms_list,
+                                    );
+                                    reporter
+                                        .report(&vir::messages::note(&function.span, msg).to_any());
+                                }
+                            }
 
                             if let Some(profile_file_name) = profile_file_name {
                                 if command_not_skipped && query_air_context.check_valid_used() {
@@ -1578,7 +1654,7 @@ impl Verifier {
                                         commands_with_context_list.clone(),
                                         snap_map.clone(),
                                         function,
-                                        function_sst.clone(),
+                                        func_def_sst.clone(),
                                     );
                                     flush_diagnostics_to_report = true;
                                 }
