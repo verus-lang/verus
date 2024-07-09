@@ -1405,7 +1405,7 @@ impl Verifier {
                         commands_with_context_list,
                         snap_map,
                         profile_rerun,
-                        function_sst,
+                        func_def_sst,
                     } => {
                         let level = match query_op {
                             QueryOp::SpecTermination => MessageLevel::Error,
@@ -1654,7 +1654,7 @@ impl Verifier {
                                         commands_with_context_list.clone(),
                                         snap_map.clone(),
                                         function,
-                                        function_sst.clone(),
+                                        func_def_sst.clone(),
                                     );
                                     flush_diagnostics_to_report = true;
                                 }

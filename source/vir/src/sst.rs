@@ -206,44 +206,60 @@ pub struct LocalDeclX {
     pub mutable: bool,
 }
 
-#[derive(Clone)]
-pub struct FunctionSst {
-    pub reqs: Exps,
-    pub post_condition: PostConditionSst,
-    pub mask_set: crate::inv_masks::MaskSet, // Actually AIR
-    pub body: Stm,
-    pub local_decls: Vec<LocalDecl>,
-    pub statics: Vec<Fun>,
-}
-
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum PostConditionKind {
     Ensures,
     DecreasesImplicitLemma,
     DecreasesBy,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct PostConditionSst {
     /// Identifier that holds the return value.
     /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
     pub dest: Option<VarIdent>,
     /// Post-conditions (only used in non-recommends-checking mode)
-    pub ens_exps: Vec<Exp>,
+    pub ens_exps: Exps,
     /// Recommends checks (only used in recommends-checking mode)
-    pub ens_spec_precondition_stms: Vec<Stm>,
+    pub ens_spec_precondition_stms: Stms,
     /// Extra info about PostCondition for error reporting
     pub kind: PostConditionKind,
 }
 
-pub struct PostConditionInfo {
-    /// Identifier that holds the return value.
-    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
-    pub dest: Option<VarIdent>,
-    /// Post-conditions (only used in non-recommends-checking mode)
-    pub ens_exprs: Vec<(Span, air::ast::Expr)>,
-    /// Recommends checks (only used in recommends-checking mode)
-    pub ens_spec_precondition_stms: Vec<Stm>,
-    /// Extra info about PostCondition for error reporting
-    pub kind: PostConditionKind,
+#[derive(Debug)]
+pub struct FuncDeclSst {
+    pub req_inv_pars: Pars,
+    pub ens_pars: Pars,
+    pub post_pars: Pars,
+    pub reqs: Exps,
+    pub enss: Exps,
+    pub inv_masks: Arc<Vec<Exps>>,
+    pub fndef_axioms: Exps,
+}
+
+#[derive(Debug)]
+pub struct FuncBodySst {
+    pub pars: Pars,
+    pub decrease_when: Option<Exp>,
+    pub termination_decls: Arc<Vec<LocalDecl>>,
+    pub termination_stm: Stm,
+    pub is_recursive: bool,
+    pub body_exp: Exp,
+}
+
+#[derive(Debug)]
+pub struct FuncAxiomsSst {
+    pub pars: Pars,
+    pub spec_axioms: Option<FuncBodySst>,
+    pub proof_exec_axioms: Option<(Pars, Exp)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncDefSst {
+    pub reqs: Exps,
+    pub post_condition: Arc<PostConditionSst>,
+    pub mask_set: Arc<crate::inv_masks::MaskSet>, // Actually AIR
+    pub body: Stm,
+    pub local_decls: Arc<Vec<LocalDecl>>,
+    pub statics: Arc<Vec<Fun>>,
 }

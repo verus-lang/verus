@@ -12,8 +12,10 @@ use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message};
-use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
-use crate::sst::{FunctionSst, LocalDecl, PostConditionKind, PostConditionSst};
+use crate::sst::{BndX, Exp, ExpX, Exps, Par, ParPurpose, ParX, Pars, Stm, StmX};
+use crate::sst::{
+    FuncAxiomsSst, FuncBodySst, FuncDeclSst, FuncDefSst, PostConditionKind, PostConditionSst,
+};
 use crate::sst_to_air::{exp_to_expr, ExprCtxt, ExprMode};
 use crate::sst_util::{subst_exp, subst_stm};
 use crate::update_cell::UpdateCell;
@@ -34,31 +36,6 @@ pub struct SstInfo {
 }
 
 pub type SstMap = UpdateCell<HashMap<Fun, SstInfo>>;
-
-pub struct FuncBodySst {
-    pub pars: Pars,
-    pub decrease_when: Option<Exp>,
-    pub termination_decls: Vec<LocalDecl>,
-    pub termination_stm: Stm,
-    pub is_recursive: bool,
-    pub body_exp: Exp,
-}
-
-pub struct FuncAxiomsSst {
-    pub pars: Pars,
-    pub spec_axioms: Option<FuncBodySst>,
-    pub proof_exec_axioms: Option<(Pars, Exp)>,
-}
-
-pub struct FuncDeclSst {
-    pub req_inv_pars: Pars,
-    pub ens_pars: Pars,
-    pub post_pars: Pars,
-    pub reqs: Vec<Exp>,
-    pub enss: Vec<Exp>,
-    pub inv_masks: Vec<Vec<Exp>>,
-    pub fndef_axioms: Vec<Exp>,
-}
 
 pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
     param.map_x(|p| {
@@ -224,7 +201,7 @@ fn func_body_to_sst(
         FuncBodySst {
             pars,
             decrease_when,
-            termination_decls,
+            termination_decls: Arc::new(termination_decls),
             termination_stm,
             is_recursive,
             body_exp,
@@ -267,14 +244,14 @@ pub fn func_decl_to_sst(
         req_ens_to_sst(ctx, diagnostics, fun_ssts, function, &function.x.ensure, false)?;
     let post_pars = params_to_pre_post_pars(&function.x.params, false);
 
-    let mut inv_masks: Vec<Vec<Exp>> = Vec::new();
+    let mut inv_masks: Vec<Exps> = Vec::new();
     match &function.x.mask_spec {
         None => {}
         Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
             for e in es.iter() {
                 let (_pars, inv_mask) =
                     req_ens_to_sst(ctx, diagnostics, fun_ssts, function, &vec![e.clone()], true)?;
-                inv_masks.push(inv_mask);
+                inv_masks.push(Arc::new(inv_mask));
             }
         }
     }
@@ -329,10 +306,10 @@ pub fn func_decl_to_sst(
         req_inv_pars: pars,
         ens_pars,
         post_pars,
-        reqs,
-        enss,
-        inv_masks,
-        fndef_axioms: fndef_axiom_exps,
+        reqs: Arc::new(reqs),
+        enss: Arc::new(enss),
+        inv_masks: Arc::new(inv_masks),
+        fndef_axioms: Arc::new(fndef_axiom_exps),
     })
 }
 
@@ -350,7 +327,7 @@ pub fn func_axioms_to_sst(
             // Body
             if public_body {
                 if let Some(body) = &function.x.body {
-                    let (fun_ssts, function_sst) = func_body_to_sst(
+                    let (fun_ssts, func_def_sst) = func_body_to_sst(
                         ctx,
                         diagnostics,
                         fun_ssts,
@@ -360,7 +337,7 @@ pub fn func_axioms_to_sst(
                     )?;
                     let axioms = FuncAxiomsSst {
                         pars: params_to_pars(&function.x.params, false),
-                        spec_axioms: Some(function_sst),
+                        spec_axioms: Some(func_def_sst),
                         proof_exec_axioms: None,
                     };
                     return Ok((fun_ssts, axioms));
@@ -424,11 +401,11 @@ pub fn func_def_to_sst(
     diagnostics: &impl air::messages::Diagnostics,
     fun_ssts: SstMap,
     function: &Function,
-) -> Result<(SstMap, FunctionSst), VirErr> {
+) -> Result<(SstMap, FuncDefSst), VirErr> {
     let body = match &function.x.body {
         Some(body) => body,
         _ => {
-            panic!("func_def_to_air should only be called for function with a body");
+            panic!("func_def_to_sst should only be called for function with a body");
         }
     };
 
@@ -631,18 +608,18 @@ pub fn func_def_to_sst(
 
     Ok((
         fun_ssts,
-        FunctionSst {
+        FuncDefSst {
             reqs: Arc::new(reqs),
-            post_condition: PostConditionSst {
+            post_condition: Arc::new(PostConditionSst {
                 dest,
-                ens_exps: enss,
-                ens_spec_precondition_stms,
+                ens_exps: Arc::new(enss),
+                ens_spec_precondition_stms: Arc::new(ens_spec_precondition_stms),
                 kind: PostConditionKind::Ensures,
-            },
-            mask_set,
+            }),
+            mask_set: Arc::new(mask_set),
             body: stm,
-            local_decls: local_decls,
-            statics: statics.into_iter().collect(),
+            local_decls: Arc::new(local_decls),
+            statics: Arc::new(statics.into_iter().collect()),
         },
     ))
 }

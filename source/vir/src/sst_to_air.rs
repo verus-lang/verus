@@ -1,7 +1,8 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
     IntRange, IntegerTypeBoundKind, MaskSpec, Mode, Params, Path, PathX, Primitive, SpannedTyped,
-    Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VariantCheck, VirErr, Visibility,
+    Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarIdent, VariantCheck, VirErr,
+    Visibility,
 };
 use crate::ast_util::{
     bitwidth_from_type, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
@@ -26,7 +27,7 @@ use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
 };
-use crate::sst::{FunctionSst, PostConditionInfo, PostConditionKind};
+use crate::sst::{FuncDefSst, PostConditionKind, Stms};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -43,6 +44,18 @@ use num_bigint::BigInt;
 use std::collections::{BTreeMap, HashSet};
 use std::mem::swap;
 use std::sync::Arc;
+
+pub struct PostConditionInfo {
+    /// Identifier that holds the return value.
+    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
+    pub dest: Option<VarIdent>,
+    /// Post-conditions (only used in non-recommends-checking mode)
+    pub ens_exprs: Vec<(Span, Expr)>,
+    /// Recommends checks (only used in recommends-checking mode)
+    pub ens_spec_precondition_stms: Stms,
+    /// Extra info about PostCondition for error reporting
+    pub kind: PostConditionKind,
+}
 
 #[inline(always)]
 pub(crate) fn fun_to_air_ident(fun: &Fun) -> Ident {
@@ -2371,14 +2384,14 @@ pub(crate) fn body_stm_to_air(
     typ_params: &Idents,
     typ_bounds: &crate::ast::GenericBounds,
     params: &Params,
-    function_sst: &FunctionSst,
+    func_def_sst: &FuncDefSst,
     hidden: &Vec<Fun>,
     is_integer_ring: bool,
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
-    let FunctionSst { reqs, post_condition, mask_set, body: stm, local_decls, statics } =
-        function_sst;
+    let FuncDefSst { reqs, post_condition, mask_set, body: stm, local_decls, statics } =
+        func_def_sst;
 
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
@@ -2391,7 +2404,7 @@ pub(crate) fn body_stm_to_air(
             local_shared.push(Arc::new(DeclX::Const(x.lower(), str_typ(t))));
         }
     }
-    for decl in local_decls {
+    for decl in local_decls.iter() {
         local_shared.push(if decl.mutable {
             Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         } else {
@@ -2424,7 +2437,7 @@ pub(crate) fn body_stm_to_air(
             has_mut_params = true;
         }
     }
-    for decl in local_decls {
+    for decl in local_decls.iter() {
         declared.insert(decl.ident.clone(), decl.typ.clone());
     }
 
@@ -2465,7 +2478,7 @@ pub(crate) fn body_stm_to_air(
         sids: vec![initial_sid.clone()],
         snap_map: Vec::new(),
         assign_map: indexmap::IndexMap::new(),
-        mask: mask_set.clone(),
+        mask: (**mask_set).clone(),
         post_condition_info: PostConditionInfo {
             dest: post_condition.dest.clone(),
             ens_exprs,

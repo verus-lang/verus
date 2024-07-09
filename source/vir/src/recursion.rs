@@ -17,7 +17,7 @@ use crate::scc::Graph;
 use crate::sst::PostConditionKind;
 use crate::sst::PostConditionSst;
 use crate::sst::{
-    BndX, CallFun, Dest, Exp, ExpX, Exps, FunctionSst, InternalFun, LocalDecl, LocalDeclX, Stm,
+    BndX, CallFun, Dest, Exp, ExpX, Exps, FuncDefSst, InternalFun, LocalDecl, LocalDeclX, Stm,
     StmX, UniqueIdent,
 };
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
@@ -301,7 +301,7 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
 pub(crate) fn check_termination_commands(
     ctx: &Ctx,
     function: &Function,
-    local_decls: Vec<LocalDecl>,
+    local_decls: &Arc<Vec<LocalDecl>>,
     stm_block: Stm,
     uses_decreases_by: bool,
 ) -> Result<Vec<CommandsWithContext>, VirErr> {
@@ -313,22 +313,22 @@ pub(crate) fn check_termination_commands(
         &function.x.typ_params,
         &function.x.typ_bounds,
         &function.x.params,
-        &FunctionSst {
-            post_condition: PostConditionSst {
+        &FuncDefSst {
+            post_condition: Arc::new(PostConditionSst {
                 dest: None,
                 kind: if uses_decreases_by {
                     PostConditionKind::DecreasesBy
                 } else {
                     PostConditionKind::DecreasesImplicitLemma
                 },
-                ens_exps: vec![],
-                ens_spec_precondition_stms: vec![],
-            },
+                ens_exps: Arc::new(vec![]),
+                ens_spec_precondition_stms: Arc::new(vec![]),
+            }),
             body: stm_block,
-            local_decls,
-            statics: vec![],
+            local_decls: local_decls.clone(),
+            statics: Arc::new(vec![]),
             reqs: Arc::new(vec![]),
-            mask_set: MaskSet::empty(),
+            mask_set: Arc::new(MaskSet::empty()),
         },
         &vec![],
         false,

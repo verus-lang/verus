@@ -11,8 +11,8 @@ use crate::def::{
     FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
 use crate::messages::{MessageLabel, Span};
-use crate::sst::FunctionSst;
-use crate::sst::{BndX, Exp, ExpX, ParPurpose, Pars};
+use crate::sst::FuncDefSst;
+use crate::sst::{BndX, ExpX, Exps, ParPurpose, Pars};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
 };
@@ -175,9 +175,9 @@ fn func_body_to_air(
     decl_commands: &mut Vec<Command>,
     check_commands: &mut Vec<CommandsWithContext>,
     function: &Function,
-    func_body_sst: crate::ast_to_sst_func::FuncBodySst,
+    func_body_sst: crate::sst::FuncBodySst,
 ) -> Result<(), VirErr> {
-    let crate::ast_to_sst_func::FuncBodySst {
+    let crate::sst::FuncBodySst {
         pars,
         decrease_when,
         termination_decls,
@@ -228,7 +228,7 @@ fn func_body_to_air(
     let termination_commands = crate::recursion::check_termination_commands(
         ctx,
         function,
-        termination_decls,
+        &termination_decls,
         termination_stm,
         function.x.decrease_by.is_some(),
     )?;
@@ -330,7 +330,7 @@ fn req_ens_to_air(
     commands: &mut Vec<Command>,
     params: &Pars,
     typing_invs: &Vec<Expr>,
-    specs: Vec<Exp>,
+    specs: &Exps,
     typ_params: &Idents,
     typs: &air::ast::Typs,
     name: &Ident,
@@ -364,13 +364,13 @@ fn req_ens_to_air(
         for e in typing_invs {
             exprs.push(e.clone());
         }
-        for exp in specs.into_iter() {
+        for exp in specs.iter() {
             let expr_ctxt = if is_singular {
                 ExprCtxt::new_mode_singular(ExprMode::Spec, true)
             } else {
                 ExprCtxt::new_mode(ExprMode::Spec)
             };
-            let expr = exp_to_expr(ctx, &exp, &expr_ctxt)?;
+            let expr = exp_to_expr(ctx, exp, &expr_ctxt)?;
             let loc_expr = match msg {
                 None => expr,
                 Some(msg) => {
@@ -468,7 +468,7 @@ pub fn func_name_to_air(
 pub fn func_decl_to_air(
     ctx: &mut Ctx,
     function: &Function,
-    func_decl_sst: crate::ast_to_sst_func::FuncDeclSst,
+    func_decl_sst: crate::sst::FuncDeclSst,
 ) -> Result<Commands, VirErr> {
     let (is_trait_method_impl, inherit_fn_ens) = match &function.x.kind {
         FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {
@@ -514,7 +514,7 @@ pub fn func_decl_to_air(
             &mut decl_commands,
             &func_decl_sst.req_inv_pars,
             &vec![],
-            func_decl_sst.reqs,
+            &func_decl_sst.reqs,
             &function.x.typ_params,
             &req_typs,
             &prefix_requires(&fun_to_air_ident(&function.x.name)),
@@ -530,13 +530,13 @@ pub fn func_decl_to_air(
     match &function.x.mask_spec {
         None => {}
         Some(_) => {
-            for (i, e) in func_decl_sst.inv_masks.into_iter().enumerate() {
+            for (i, e) in func_decl_sst.inv_masks.iter().enumerate() {
                 let _ = req_ens_to_air(
                     ctx,
                     &mut decl_commands,
                     &func_decl_sst.req_inv_pars,
                     &vec![],
-                    e,
+                    &e,
                     &function.x.typ_params,
                     &req_typs,
                     &prefix_open_inv(&fun_to_air_ident(&function.x.name), i),
@@ -593,7 +593,7 @@ pub fn func_decl_to_air(
         &mut decl_commands,
         &func_decl_sst.ens_pars,
         &ens_typing_invs,
-        func_decl_sst.enss,
+        &func_decl_sst.enss,
         &function.x.typ_params,
         &Arc::new(ens_typs),
         &prefix_ensures(&fun_to_air_ident(&function.x.name)),
@@ -605,8 +605,8 @@ pub fn func_decl_to_air(
     )?;
     ctx.funcs_with_ensure_predicate.insert(function.x.name.clone(), has_ens_pred);
 
-    for exp in func_decl_sst.fndef_axioms {
-        let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
+    for exp in func_decl_sst.fndef_axioms.iter() {
+        let expr = exp_to_expr(ctx, exp, &ExprCtxt::new_mode(ExprMode::Spec))?;
         let axiom = mk_unnamed_axiom(expr);
         decl_commands.push(Arc::new(CommandX::Global(axiom)));
     }
@@ -628,7 +628,7 @@ pub fn func_decl_to_air(
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
     function: &Function,
-    func_axioms_sst: crate::ast_to_sst_func::FuncAxiomsSst,
+    func_axioms_sst: crate::sst::FuncAxiomsSst,
     public_body: bool,
 ) -> Result<(Commands, Vec<CommandsWithContext>), VirErr> {
     let mut decl_commands: Vec<Command> = Vec::new();
@@ -779,7 +779,7 @@ pub fn func_axioms_to_air(
 pub fn func_sst_to_air(
     ctx: &Ctx,
     function: &Function,
-    function_sst: &FunctionSst,
+    func_def_sst: &FuncDefSst,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
     let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
@@ -787,7 +787,7 @@ pub fn func_sst_to_air(
         &function.x.typ_params,
         &function.x.typ_bounds,
         &function.x.params,
-        function_sst,
+        func_def_sst,
         &function.x.attrs.hidden,
         function.x.attrs.integer_ring,
         function.x.attrs.bit_vector,
