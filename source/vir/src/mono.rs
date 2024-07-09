@@ -22,6 +22,7 @@ specialized, hinders this.
 use crate::ast::{Function, Krate, KrateX};
 use crate::poly;
 use crate::{
+    ast::{CallTarget, ExprX, Fun, Typs},
     ast_visitor::{self, VisitorScopeMap},
     context::Ctx,
 };
@@ -29,18 +30,19 @@ use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 
 pub(crate) fn collect_specializations_from_function(ctx: &Ctx, function: &Function) {
-    let mut invocations: Vec<String> = vec![];
+    let mut invocations: Vec<(Fun, Typs)> = vec![];
     let Some(body) = &function.x.body else {
         return;
     };
-    if function.x.name.path.krate.as_ref().map(|a| a.as_str()) == Some("vstd") {
-        // Temporarily bypass this to test on simpler functions
-        return;
-    }
     let mut map: VisitorScopeMap = ScopeMap::new();
-    ast_visitor::expr_visitor_dfs(body, &mut map, &mut |scope_map, expr| {
-        invocations.push("aa".to_string());
-        ast_visitor::VisitorControlFlow::Stop(())
+    ast_visitor::expr_visitor_dfs::<(), _>(body, &mut map, &mut |scope_map, expr| {
+        match &expr.x {
+            ExprX::Call(CallTarget::Fun(_, f, typs, _, _), _) => {
+                invocations.push((f.clone(), typs.clone()));
+            }
+            _ => (),
+        }
+        ast_visitor::VisitorControlFlow::Recurse
     });
     println!("{:?}, {invocations:?}", function.x.name.path);
 }
