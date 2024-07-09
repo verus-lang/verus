@@ -300,7 +300,7 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
 
 pub(crate) fn check_termination_commands(
     ctx: &Ctx,
-    function: &Function,
+    function: &crate::sst::FunctionSst,
     local_decls: &Arc<Vec<LocalDecl>>,
     stm_block: Stm,
     uses_decreases_by: bool,
@@ -312,7 +312,7 @@ pub(crate) fn check_termination_commands(
         &function.span,
         &function.x.typ_params,
         &function.x.typ_bounds,
-        &function.x.params,
+        &function.x.pars,
         &FuncDefSst {
             post_condition: Arc::new(PostConditionSst {
                 dest: None,

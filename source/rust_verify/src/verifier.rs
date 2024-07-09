@@ -1332,7 +1332,8 @@ impl Verifier {
             if !is_visible_to(&function.x.visibility, module) || function.x.attrs.is_decrease_by {
                 continue;
             }
-            let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, &function)?;
+            let function_sst = vir::ast_to_sst_func::function_to_sst(ctx, &function);
+            let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, &function_sst)?;
             let comment =
                 "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
             self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);

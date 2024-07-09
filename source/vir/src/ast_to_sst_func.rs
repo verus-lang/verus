@@ -14,7 +14,8 @@ use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message};
 use crate::sst::{BndX, Exp, ExpX, Exps, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst::{
-    FuncAxiomsSst, FuncBodySst, FuncDeclSst, FuncDefSst, PostConditionKind, PostConditionSst,
+    FuncAxiomsSst, FuncBodySst, FuncDeclSst, FuncDefSst, FunctionSst, FunctionSstHas, FunctionSstX,
+    PostConditionKind, PostConditionSst,
 };
 use crate::sst_to_air::{exp_to_expr, ExprCtxt, ExprMode};
 use crate::sst_util::{subst_exp, subst_stm};
@@ -43,7 +44,13 @@ pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
         if *is_mut && !allow_is_mut {
             panic!("mut unexpected here");
         }
-        ParX { name: name.clone(), typ: typ.clone(), mode: *mode, purpose: ParPurpose::Regular }
+        ParX {
+            name: name.clone(),
+            typ: typ.clone(),
+            mode: *mode,
+            is_mut: *is_mut,
+            purpose: ParPurpose::Regular,
+        }
     })
 }
 
@@ -62,6 +69,7 @@ pub(crate) fn params_to_pre_post_pars(params: &Params, pre: bool) -> Pars {
                         name: p.name.clone(),
                         typ: p.typ.clone(),
                         mode: p.mode,
+                        is_mut: p.is_mut,
                         purpose: ParPurpose::MutPre,
                     }));
                 }
@@ -70,6 +78,7 @@ pub(crate) fn params_to_pre_post_pars(params: &Params, pre: bool) -> Pars {
                         name: p.name.clone(),
                         typ: p.typ.clone(),
                         mode: p.mode,
+                        is_mut: p.is_mut,
                         purpose: if param.x.is_mut {
                             ParPurpose::MutPost
                         } else {
@@ -622,4 +631,31 @@ pub fn func_def_to_sst(
             statics: Arc::new(statics.into_iter().collect()),
         },
     ))
+}
+
+pub fn function_to_sst(ctx: &Ctx, function: &Function) -> FunctionSst {
+    let has = FunctionSstHas {
+        has_body: function.x.body.is_some(),
+        has_fuel: function.x.fuel > 0,
+        has_requires: function.x.require.len() > 0,
+        has_ensures: function.x.ensure.len() > 0,
+        has_decrease: function.x.decrease.len() > 0,
+        has_decrease_by: function.x.decrease_by.is_some(),
+        has_mask_spec: function.x.mask_spec.is_some(),
+        has_return_name: function.x.has_return_name(),
+        is_recursive: crate::recursion::fun_is_recursive(ctx, function),
+    };
+    let functionx = FunctionSstX {
+        name: function.x.name.clone(),
+        kind: function.x.kind.clone(),
+        mode: function.x.mode,
+        typ_params: function.x.typ_params.clone(),
+        typ_bounds: function.x.typ_bounds.clone(),
+        pars: params_to_pars(&function.x.params, true),
+        ret: param_to_par(&function.x.ret, true),
+        item_kind: function.x.item_kind,
+        attrs: function.x.attrs.clone(),
+        has,
+    };
+    function.new_x(functionx)
 }
