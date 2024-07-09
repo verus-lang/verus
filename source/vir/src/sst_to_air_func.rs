@@ -1,6 +1,6 @@
 use crate::ast::{
-    Fun, Function, FunctionKind, Ident, Idents, ItemKind, Mode, ParamX, SpannedTyped, Typ, TypX,
-    Typs, VarBinder, VarBinderX, VarIdent, VirErr,
+    Fun, FunctionKind, Ident, Idents, ItemKind, Mode, SpannedTyped, Typ, TypX, Typs, VarBinder,
+    VarBinderX, VarIdent, VirErr,
 };
 use crate::ast_util::{LowerUniqueVar, QUANT_FORALL};
 use crate::context::Ctx;
@@ -12,7 +12,7 @@ use crate::def::{
 };
 use crate::messages::{MessageLabel, Span};
 use crate::sst::FuncDefSst;
-use crate::sst::{BndX, ExpX, Exps, ParPurpose, Pars};
+use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParPurpose, ParX, Pars};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
 };
@@ -174,7 +174,7 @@ fn func_body_to_air(
     ctx: &Ctx,
     decl_commands: &mut Vec<Command>,
     check_commands: &mut Vec<CommandsWithContext>,
-    function: &Function,
+    function: &FunctionSst,
     func_body_sst: crate::sst::FuncBodySst,
 ) -> Result<(), VirErr> {
     let crate::sst::FuncBodySst {
@@ -204,14 +204,14 @@ fn func_body_to_air(
         FunctionKind::TraitMethodImpl { .. } => true,
         FunctionKind::ForeignTraitMethodImpl { .. } => true,
     };
-    if function.x.decrease.len() > 0 || function_kind_needs_trait_bounds {
+    if function.x.has.has_decrease || function_kind_needs_trait_bounds {
         // conditions on type arguments:
         // (*always* needed in trait dispatch to make sure different implementations of the same
         // trait don't conflict and contradict each other)
         def_reqs.extend(crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds));
     }
-    if function.x.decrease.len() > 0 {
-        for param in function.x.params.iter() {
+    if function.x.has.has_decrease {
+        for param in function.x.pars.iter() {
             let arg = ident_var(&param.x.name.lower());
             if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
                 def_reqs.push(pre.clone());
@@ -230,13 +230,13 @@ fn func_body_to_air(
         function,
         &termination_decls,
         termination_stm,
-        function.x.decrease_by.is_some(),
+        function.x.has.has_decrease_by,
     )?;
     check_commands.extend(termination_commands.iter().cloned());
 
     // non-recursive:
     //   (axiom (fuel_bool_default fuel%f))
-    if function.x.fuel > 0 {
+    if function.x.has.has_fuel {
         let axiom_expr = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_fuel)]);
         let fuel_axiom = mk_unnamed_axiom(axiom_expr);
         decl_commands.push(Arc::new(CommandX::Global(fuel_axiom)));
@@ -397,17 +397,17 @@ fn req_ens_to_air(
 pub fn func_name_to_air(
     ctx: &Ctx,
     _diagnostics: &impl air::messages::Diagnostics,
-    function: &Function,
+    function: &FunctionSst,
 ) -> Result<Commands, VirErr> {
     let mut commands: Vec<Command> = Vec::new();
     let declare_rec = |commands: &mut Vec<Command>| {
         // Check whether we need to declare the recursive version too
-        if function.x.body.is_some() {
-            if crate::recursion::fun_is_recursive(ctx, &function) {
+        if function.x.has.has_body {
+            if function.x.has.is_recursive {
                 let rec_f =
                     suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
                 let mut rec_typs =
-                    vec_map(&*function.x.params, |param| typ_to_air(ctx, &param.x.typ));
+                    vec_map(&*function.x.pars, |param| typ_to_air(ctx, &param.x.typ));
                 for _ in function.x.typ_params.iter() {
                     for x in crate::def::types().iter().rev() {
                         rec_typs.insert(0, str_typ(x));
@@ -429,7 +429,7 @@ pub fn func_name_to_air(
             return Ok(Arc::new(commands));
         }
 
-        let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(ctx, &param.x.typ));
+        let mut all_typs = vec_map(&function.x.pars, |param| typ_to_air(ctx, &param.x.typ));
         for _ in function.x.typ_params.iter() {
             for x in crate::def::types().iter().rev() {
                 all_typs.insert(0, str_typ(x));
@@ -467,7 +467,7 @@ pub fn func_name_to_air(
 
 pub fn func_decl_to_air(
     ctx: &mut Ctx,
-    function: &Function,
+    function: &FunctionSst,
     func_decl_sst: crate::sst::FuncDeclSst,
 ) -> Result<Commands, VirErr> {
     let (is_trait_method_impl, inherit_fn_ens) = match &function.x.kind {
@@ -495,11 +495,11 @@ pub fn func_decl_to_air(
     };
 
     let req_typs: Arc<Vec<_>> =
-        Arc::new(function.x.params.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect());
+        Arc::new(function.x.pars.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect());
     let mut decl_commands: Vec<Command> = Vec::new();
 
     // Requires
-    if function.x.require.len() > 0 {
+    if function.x.has.has_requires {
         assert!(!is_trait_method_impl);
 
         let msg = match (function.x.mode, &function.x.attrs.custom_req_err) {
@@ -527,33 +527,30 @@ pub fn func_decl_to_air(
     }
 
     // Inv mask
-    match &function.x.mask_spec {
-        None => {}
-        Some(_) => {
-            for (i, e) in func_decl_sst.inv_masks.iter().enumerate() {
-                let _ = req_ens_to_air(
-                    ctx,
-                    &mut decl_commands,
-                    &func_decl_sst.req_inv_pars,
-                    &vec![],
-                    &e,
-                    &function.x.typ_params,
-                    &req_typs,
-                    &prefix_open_inv(&fun_to_air_ident(&function.x.name), i),
-                    &None,
-                    function.x.attrs.integer_ring,
-                    int_typ(),
-                    None,
-                    None,
-                );
-            }
+    if function.x.has.has_mask_spec {
+        for (i, e) in func_decl_sst.inv_masks.iter().enumerate() {
+            let _ = req_ens_to_air(
+                ctx,
+                &mut decl_commands,
+                &func_decl_sst.req_inv_pars,
+                &vec![],
+                &e,
+                &function.x.typ_params,
+                &req_typs,
+                &prefix_open_inv(&fun_to_air_ident(&function.x.name), i),
+                &None,
+                function.x.attrs.integer_ring,
+                int_typ(),
+                None,
+                None,
+            );
         }
     }
 
     // Ensures
     let mut ens_typs: Vec<_> = function
         .x
-        .params
+        .pars
         .iter()
         .flat_map(|param| {
             let air_typ = typ_to_air(ctx, &param.x.typ);
@@ -562,8 +559,8 @@ pub fn func_decl_to_air(
         .collect();
     let mut ens_typing_invs: Vec<Expr> = Vec::new();
     if matches!(function.x.mode, Mode::Exec | Mode::Proof) {
-        if function.x.has_return_name() {
-            let ParamX { name, typ, .. } = &function.x.ret.x;
+        if function.x.has.has_return_name {
+            let ParX { name, typ, .. } = &function.x.ret.x;
             ens_typs.push(typ_to_air(ctx, &typ));
             if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&name.lower())) {
                 ens_typing_invs.push(expr);
@@ -579,7 +576,7 @@ pub fn func_decl_to_air(
             }
         }
     } else {
-        assert!(function.x.ensure.len() == 0); // no ensures allowed on spec functions yet
+        assert!(!function.x.has.has_ensures); // no ensures allowed on spec functions yet
     }
 
     if is_trait_method_impl {
@@ -627,7 +624,7 @@ pub fn func_decl_to_air(
 
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
-    function: &Function,
+    function: &FunctionSst,
     func_axioms_sst: crate::sst::FuncAxiomsSst,
     public_body: bool,
 ) -> Result<(Commands, Vec<CommandsWithContext>), VirErr> {
@@ -657,7 +654,7 @@ pub fn func_axioms_to_air(
                     // (if trait bounds are satisfied)
                     let mut args: Vec<Expr> =
                         trait_typ_args.iter().map(typ_to_ids).flatten().collect();
-                    for p in function.x.params.iter() {
+                    for p in function.x.pars.iter() {
                         args.push(ident_var(&p.x.name.lower()));
                     }
                     let default_name = crate::def::trait_default_name(f_trait);
@@ -692,7 +689,7 @@ pub fn func_axioms_to_air(
                 let ids = suffix_typ_param_ids(&typ_param);
                 f_args.extend(ids.iter().map(|x| ident_var(&x.lower())));
             }
-            for param in function.x.params.iter() {
+            for param in function.x.pars.iter() {
                 let arg = ident_var(&param.x.name.lower());
                 f_args.push(arg.clone());
                 if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
@@ -778,7 +775,7 @@ pub fn func_axioms_to_air(
 
 pub fn func_sst_to_air(
     ctx: &Ctx,
-    function: &Function,
+    function: &FunctionSst,
     func_def_sst: &FuncDefSst,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
     let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
@@ -786,7 +783,7 @@ pub fn func_sst_to_air(
         &function.span,
         &function.x.typ_params,
         &function.x.typ_bounds,
-        &function.x.params,
+        &function.x.pars,
         func_def_sst,
         &function.x.attrs.hidden,
         function.x.attrs.integer_ring,

@@ -229,8 +229,9 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
                 &self.sst_map,
                 &function,
             )?;
+            let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
             let decl_commands =
-                vir::sst_to_air_func::func_decl_to_air(self.ctx, &function, func_decl_sst)?;
+                vir::sst_to_air_func::func_decl_to_air(self.ctx, &function_sst, func_decl_sst)?;
             self.ctx.fun = None;
 
             pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
@@ -250,9 +251,10 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
                 is_visible_to(&vis_abs, &module),
                 not_verifying_owning_bucket,
             )?;
+            let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
             let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
                 self.ctx,
-                &function,
+                &function_sst,
                 func_axioms_sst,
                 is_visible_to(&vis_abs, &module),
             )?;
@@ -315,8 +317,9 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             vir::ast_to_sst_func::func_def_to_sst(self.ctx, self.reporter, sst_map, &function)?;
         std::mem::swap(&mut new_sst_map, &mut self.sst_map);
 
+        let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
         let (commands, snap_map) =
-            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function, &func_def_sst)?;
+            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function_sst, &func_def_sst)?;
 
         self.ctx.fun = None;
 
@@ -331,8 +334,9 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
     ) -> Result<Op, VirErr> {
         self.ctx.fun = mk_fun_ctx(&function, false /*recommend*/);
 
+        let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
         let (commands, snap_map) =
-            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function, &expanded_function_sst)?;
+            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function_sst, &expanded_function_sst)?;
         let commands = focus_commands_with_context_on_assert_id(commands, assert_id);
 
         self.ctx.fun = None;

@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBoundKind, MaskSpec, Mode, Params, Path, PathX, Primitive, SpannedTyped,
-    Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarIdent, VariantCheck, VirErr,
+    IntRange, IntegerTypeBoundKind, MaskSpec, Mode, Path, PathX, Primitive, SpannedTyped, Typ,
+    TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarIdent, VariantCheck, VirErr,
     Visibility,
 };
 use crate::ast_util::{
@@ -27,7 +27,7 @@ use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
 };
-use crate::sst::{FuncDefSst, PostConditionKind, Stms};
+use crate::sst::{FuncDefSst, Pars, PostConditionKind, Stms};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -2383,7 +2383,7 @@ pub(crate) fn body_stm_to_air(
     func_span: &Span,
     typ_params: &Idents,
     typ_bounds: &crate::ast::GenericBounds,
-    params: &Params,
+    params: &Pars,
     func_def_sst: &FuncDefSst,
     hidden: &Vec<Fun>,
     is_integer_ring: bool,

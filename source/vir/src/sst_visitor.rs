@@ -507,6 +507,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     name: par.x.name.clone(),
                     typ: R::get(t),
                     mode: par.x.mode,
+                    is_mut: par.x.is_mut,
                     purpose: par.x.purpose,
                 },
             )

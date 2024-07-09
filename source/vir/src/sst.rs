@@ -103,6 +103,7 @@ pub struct ParX {
     pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
+    pub is_mut: bool,
     pub purpose: ParPurpose,
 }
 
@@ -262,4 +263,32 @@ pub struct FuncDefSst {
     pub body: Stm,
     pub local_decls: Arc<Vec<LocalDecl>>,
     pub statics: Arc<Vec<Fun>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionSstHas {
+    pub has_body: bool,
+    pub has_fuel: bool,
+    pub has_requires: bool,
+    pub has_ensures: bool,
+    pub has_decrease: bool,
+    pub has_decrease_by: bool,
+    pub has_mask_spec: bool,
+    pub has_return_name: bool,
+    pub is_recursive: bool,
+}
+
+pub type FunctionSst = Arc<Spanned<FunctionSstX>>;
+#[derive(Debug, Clone)]
+pub struct FunctionSstX {
+    pub name: Fun,
+    pub kind: crate::ast::FunctionKind,
+    pub mode: crate::ast::Mode,
+    pub typ_params: crate::ast::Idents,
+    pub typ_bounds: crate::ast::GenericBounds,
+    pub pars: Pars,
+    pub ret: Par,
+    pub item_kind: crate::ast::ItemKind,
+    pub attrs: crate::ast::FunctionAttrs,
+    pub has: FunctionSstHas,
 }
