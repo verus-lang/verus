@@ -357,10 +357,11 @@ impl Printer {
                 })
             }))
         }));
-        if datatypes.len() > 0 {
-            node!((declare-datatypes {decls} {defns}))
-        } else {
+        if self.print_as_smt && datatypes.len() == 0 {
+            // cvc5 doesn't like empty declare-datatypes
             nodes!(assert true)
+        } else {
+            node!((declare-datatypes {decls} {defns}))
         }
     }
 
