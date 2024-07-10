@@ -565,6 +565,9 @@ pub(crate) enum RustItem {
     FnOnce,
     FnMut,
     Drop,
+    Sized,
+    Copy,
+    Clone,
     StructuralEq,
     StructuralPartialEq,
     Eq,
@@ -574,7 +577,7 @@ pub(crate) enum RustItem {
     BoxNew,
     ArcNew,
     RcNew,
-    Clone,
+    CloneClone,
     CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
@@ -630,10 +633,16 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     if tcx.lang_items().destruct_trait() == Some(def_id) {
         return Some(RustItem::Destruct);
     }
-
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);
     let rust_path = rust_path.as_ref().map(|x| x.as_str());
+    get_rust_item_str(rust_path)
+}
 
+pub(crate) fn get_rust_item_path(rust_path: &vir::ast::Path) -> Option<RustItem> {
+    get_rust_item_str(Some(&vir::ast_util::path_as_friendly_rust_name(rust_path)))
+}
+
+pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     // We could use rust's diagnostic_items for these, but they are only defined when cfg(not(test))
     // and they may get changed without us noticing, so we are using paths instead
     if rust_path == Some("core::cmp::Eq") {
@@ -656,8 +665,17 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
         return Some(RustItem::RcNew);
     }
 
-    if rust_path == Some("core::clone::Clone::clone") {
+    if rust_path == Some("core::marker::Sized") {
+        return Some(RustItem::Sized);
+    }
+    if rust_path == Some("core::marker::Copy") {
+        return Some(RustItem::Copy);
+    }
+    if rust_path == Some("core::clone::Clone") {
         return Some(RustItem::Clone);
+    }
+    if rust_path == Some("core::clone::Clone::clone") {
+        return Some(RustItem::CloneClone);
     }
     if rust_path == Some("core::clone::Clone::clone_from") {
         return Some(RustItem::CloneFrom);

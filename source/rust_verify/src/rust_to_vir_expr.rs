@@ -1308,7 +1308,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         if let Some(flag) = expr_vattrs.loop_isolation {
             flag
         } else if let Some(flag) =
-            crate::attributes::get_spinoff_loop_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
+            crate::attributes::get_loop_isolation_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
         {
             flag
         } else {

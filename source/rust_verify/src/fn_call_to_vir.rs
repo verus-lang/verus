@@ -97,7 +97,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 ),
             );
         }
-        Some(RustItem::Clone) => {
+        Some(RustItem::CloneClone) => {
             // Special case `clone` for standard Rc and Arc types
             // (Could also handle it for other types where cloning is the identity
             // operation in the SMT encoding.)

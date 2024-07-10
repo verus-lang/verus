@@ -362,6 +362,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         let t = ReachedType::Datatype(crate::def::option_type_path());
                         reach_type(ctxt, state, &t);
                     }
+                    ExprX::Fuel(fueled_f, _, is_broadcast_use) if *is_broadcast_use => {
+                        reach_function(ctxt, state, fueled_f);
+                    }
                     _ => {}
                 }
                 Ok(e.clone())

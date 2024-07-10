@@ -10,13 +10,13 @@ use vir::ast::Visibility;
 use vir::ast::{
     Fun, Function, FunctionKind, ImplPath, ItemKind, Krate, Mode, Path, TraitImpl, VirErr,
 };
+use vir::ast_to_sst_func::SstMap;
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::context::FunctionCtx;
 use vir::def::{CommandsWithContext, SnapPos};
-use vir::func_to_air::SstMap;
 use vir::recursion::Node;
-use vir::sst::FunctionSst;
+use vir::sst::FuncDefSst;
 use vir::update_cell::UpdateCell;
 
 #[derive(Clone, Copy, Debug)]
@@ -58,7 +58,7 @@ pub enum OpKind {
         commands_with_context_list: Arc<Vec<CommandsWithContext>>,
         snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
         profile_rerun: bool,
-        function_sst: Option<FunctionSst>,
+        func_def_sst: Option<FuncDefSst>,
     },
 }
 
@@ -223,12 +223,15 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
         for (function, _vis_abs) in scc_functions.iter() {
             self.ctx.fun = mk_fun_ctx(&function, false);
-            let decl_commands = vir::func_to_air::func_decl_to_air(
+            let func_decl_sst = vir::ast_to_sst_func::func_decl_to_sst(
                 self.ctx,
                 self.reporter,
                 &self.sst_map,
                 &function,
             )?;
+            let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
+            let decl_commands =
+                vir::sst_to_air_func::func_decl_to_air(self.ctx, &function_sst, func_decl_sst)?;
             self.ctx.fun = None;
 
             pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
@@ -240,15 +243,21 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
             let mut sst_map = UpdateCell::new(HashMap::new());
             std::mem::swap(&mut sst_map, &mut self.sst_map);
-            let (decl_commands, check_commands, mut new_sst_map) =
-                vir::func_to_air::func_axioms_to_air(
-                    self.ctx,
-                    self.reporter,
-                    sst_map,
-                    &function,
-                    is_visible_to(&vis_abs, &module),
-                    not_verifying_owning_bucket,
-                )?;
+            let (mut new_sst_map, func_axioms_sst) = vir::ast_to_sst_func::func_axioms_to_sst(
+                self.ctx,
+                self.reporter,
+                sst_map,
+                &function,
+                is_visible_to(&vis_abs, &module),
+                not_verifying_owning_bucket,
+            )?;
+            let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
+            let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
+                self.ctx,
+                &function_sst,
+                func_axioms_sst,
+                is_visible_to(&vis_abs, &module),
+            )?;
             std::mem::swap(&mut new_sst_map, &mut self.sst_map);
             self.ctx.fun = None;
 
@@ -304,28 +313,30 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
         let mut sst_map = UpdateCell::new(HashMap::new());
         std::mem::swap(&mut sst_map, &mut self.sst_map);
-        let (mut new_sst_map, function_sst) =
-            vir::func_to_air::func_def_to_sst(self.ctx, self.reporter, sst_map, &function)?;
+        let (mut new_sst_map, func_def_sst) =
+            vir::ast_to_sst_func::func_def_to_sst(self.ctx, self.reporter, sst_map, &function)?;
         std::mem::swap(&mut new_sst_map, &mut self.sst_map);
 
+        let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
         let (commands, snap_map) =
-            vir::func_to_air::func_sst_to_air(self.ctx, &function, &function_sst)?;
+            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function_sst, &func_def_sst)?;
 
         self.ctx.fun = None;
 
-        Ok(vec![Op::query(QueryOp::Body(style), commands, snap_map, &function, Some(function_sst))])
+        Ok(vec![Op::query(QueryOp::Body(style), commands, snap_map, &function, Some(func_def_sst))])
     }
 
     fn handle_proof_body_expand(
         &mut self,
         function: Function,
         assert_id: &AssertId,
-        expanded_function_sst: &FunctionSst,
+        expanded_function_sst: &FuncDefSst,
     ) -> Result<Op, VirErr> {
         self.ctx.fun = mk_fun_ctx(&function, false /*recommend*/);
 
+        let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
         let (commands, snap_map) =
-            vir::func_to_air::func_sst_to_air(self.ctx, &function, &expanded_function_sst)?;
+            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function_sst, &expanded_function_sst)?;
         let commands = focus_commands_with_context_on_assert_id(commands, assert_id);
 
         self.ctx.fun = None;
@@ -358,7 +369,7 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
     pub fn start_expand_errors_if_possible(&mut self, op: &Op, assert_id: AssertId) {
         if let Op {
             function: Some(function),
-            kind: OpKind::Query { function_sst: Some(fsst), .. },
+            kind: OpKind::Query { func_def_sst: Some(fsst), .. },
         } = &op
         {
             let mut driver = ExpandErrorsDriver::new(function, &assert_id, fsst.clone());
@@ -393,12 +404,12 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
                 self.expand_errors_driver = None;
                 return Some(Err(output));
             }
-            Some((assert_id, function_sst)) => {
+            Some((assert_id, func_def_sst)) => {
                 let function = driver.function.clone();
                 // TODO propagate error properly
                 let op = self
                     .op_generator
-                    .handle_proof_body_expand(function, &assert_id, &function_sst)
+                    .handle_proof_body_expand(function, &assert_id, &func_def_sst)
                     .unwrap();
                 return Some(Ok(op));
             }
@@ -429,7 +440,7 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
         commands_with_context_list: Arc<Vec<CommandsWithContext>>,
         snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
         function: &Function,
-        function_sst: Option<FunctionSst>,
+        func_def_sst: Option<FuncDefSst>,
     ) {
         let op = Op {
             kind: OpKind::Query {
@@ -437,7 +448,7 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
                 commands_with_context_list,
                 snap_map,
                 profile_rerun: true,
-                function_sst,
+                func_def_sst,
             },
             function: Some(function.clone()),
         };
@@ -569,7 +580,7 @@ impl Op {
         commands: Arc<Vec<CommandsWithContext>>,
         snap_map: Vec<(vir::messages::Span, SnapPos)>,
         f: &Function,
-        function_sst: Option<FunctionSst>,
+        func_def_sst: Option<FuncDefSst>,
     ) -> Self {
         Op {
             kind: OpKind::Query {
@@ -577,7 +588,7 @@ impl Op {
                 commands_with_context_list: commands,
                 snap_map: Arc::new(snap_map),
                 profile_rerun: false,
-                function_sst,
+                func_def_sst,
             },
             function: Some(f.clone()),
         }

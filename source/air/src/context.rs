@@ -36,9 +36,16 @@ pub(crate) struct AxiomInfo {
     pub(crate) decl: Decl,
 }
 
+#[cfg(feature = "axiom-usage-info")]
+#[derive(Debug)]
+pub enum UsageInfo {
+    None,
+    UsedAxioms(Vec<Ident>),
+}
+
 #[derive(Debug)]
 pub enum ValidityResult {
-    Valid,
+    Valid(#[cfg(feature = "axiom-usage-info")] UsageInfo),
     Invalid(Option<Model>, Option<ArcDynMessage>, Option<AssertId>),
     Canceled,
     TypeError(TypeError),
@@ -93,6 +100,7 @@ pub struct Context {
     pub(crate) expected_solver_version: Option<String>,
     pub(crate) profile_logfile_name: Option<String>,
     pub(crate) disable_incremental_solving: bool,
+    pub(crate) usage_info_enabled: bool,
     pub(crate) check_valid_used: bool,
 }
 
@@ -132,6 +140,7 @@ impl Context {
             expected_solver_version: None,
             profile_logfile_name: None,
             disable_incremental_solving: false,
+            usage_info_enabled: false,
             check_valid_used: false,
         };
         context.axiom_infos.push_scope(false);
@@ -209,6 +218,12 @@ impl Context {
         self.air_initial_log.log_set_option("disable_incremental_solving", "true");
         self.air_middle_log.log_set_option("disable_incremental_solving", "true");
         self.air_final_log.log_set_option("disable_incremental_solving", "true");
+    }
+
+    pub fn enable_usage_info(&mut self) {
+        assert!(matches!(self.state, ContextState::NotStarted));
+        self.usage_info_enabled = true;
+        self.set_z3_param_bool("produce-unsat-cores", true, true);
     }
 
     // emit blank line into log files
@@ -473,21 +488,33 @@ impl Context {
         match &**command {
             CommandX::Push => {
                 self.push();
-                ValidityResult::Valid
+                ValidityResult::Valid(
+                    #[cfg(feature = "axiom-usage-info")]
+                    UsageInfo::None,
+                )
             }
             CommandX::Pop => {
                 self.pop();
-                ValidityResult::Valid
+                ValidityResult::Valid(
+                    #[cfg(feature = "axiom-usage-info")]
+                    UsageInfo::None,
+                )
             }
             CommandX::SetOption(option, value) => {
                 self.set_z3_param(option, value);
-                ValidityResult::Valid
+                ValidityResult::Valid(
+                    #[cfg(feature = "axiom-usage-info")]
+                    UsageInfo::None,
+                )
             }
             CommandX::Global(decl) => {
                 if let Err(err) = self.global(&decl) {
                     ValidityResult::TypeError(err)
                 } else {
-                    ValidityResult::Valid
+                    ValidityResult::Valid(
+                        #[cfg(feature = "axiom-usage-info")]
+                        UsageInfo::None,
+                    )
                 }
             }
             CommandX::CheckValid(query) => {

@@ -28,7 +28,7 @@ fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Nod
                     (_, true, _, ValidityResult::TypeError(s)) => {
                         panic!("type error: {}", s);
                     }
-                    (_, _, true, ValidityResult::Valid) => {}
+                    (_, _, true, ValidityResult::Valid(..)) => {} // REVIEW: test unsat_core output
                     (_, _, false, ValidityResult::Invalid(..)) => {}
                     (CommandX::CheckValid(_), _, _, res) => {
                         panic!("unexpected result {:?}", res);

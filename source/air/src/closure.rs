@@ -1,8 +1,8 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, Binders, Constant, Decl, DeclX, Expr, ExprX, Exprs, Ident, MultiOp,
-    Qid, Quant, Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, Typs, UnaryOp,
+    Axiom, BinaryOp, BindX, Binder, Binders, Constant, Decl, DeclX, Expr, ExprX, Exprs, Ident,
+    MultiOp, Qid, Quant, Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, Typs, UnaryOp,
 };
-use crate::ast_util::{ident_binder, mk_and, mk_eq, mk_forall};
+use crate::ast_util::{ident_binder, mk_and, mk_eq, mk_forall, mk_unnamed_axiom};
 use crate::context::Context;
 use crate::typecheck::{typ_eq, DeclaredX};
 use crate::util::vec_map;
@@ -255,7 +255,7 @@ fn simplify_array(
             let let_bind = Arc::new(BindX::Let(Arc::new(vec![bind_temp])));
             let let_and = Arc::new(ExprX::Bind(let_bind, mk_and(&conjuncts)));
             let forall = mk_forall(&bs, &trigs, Some(Arc::new(qid)), &let_and);
-            let decl = Arc::new(DeclX::Axiom(forall));
+            let decl = mk_unnamed_axiom(forall);
             state.generated_decls.push(decl);
             closure_fun
         }
@@ -343,7 +343,7 @@ fn simplify_lambda(
                 trigs
             });
             let forall = mk_forall(&bs, &trigs, qid.clone(), &eq);
-            let decl = Arc::new(DeclX::Axiom(forall));
+            let decl = mk_unnamed_axiom(forall);
             state.generated_decls.push(decl);
 
             closure_fun
@@ -457,7 +457,7 @@ fn simplify_choose(
             let trigs = Arc::new(vec![trig]);
             let forall_qid = None; // The forall uses a trivial trigger, so no need to profile
             let forall = mk_forall(&bs, &trigs, forall_qid, &imply);
-            let decl = Arc::new(DeclX::Axiom(forall));
+            let decl = mk_unnamed_axiom(forall);
             state.generated_decls.push(decl);
 
             closure_fun
@@ -744,9 +744,9 @@ pub(crate) fn simplify_decl(ctxt: &mut Context, decl: &Decl) -> (Vec<Decl>, Decl
         DeclX::Const(..) => decl.clone(),
         DeclX::Fun(..) => decl.clone(),
         DeclX::Var(..) => decl.clone(),
-        DeclX::Axiom(expr) => {
+        DeclX::Axiom(Axiom { named, expr }) => {
             let (_, expr, _) = simplify_expr(ctxt, &mut state, expr);
-            Arc::new(DeclX::Axiom(expr))
+            Arc::new(DeclX::Axiom(Axiom { named: named.clone(), expr }))
         }
     };
     (state.generated_decls, decl)
