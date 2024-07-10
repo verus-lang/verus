@@ -122,6 +122,7 @@ impl Context {
                 snapshots: HashSet::new(),
                 break_labels_local: HashSet::new(),
                 break_labels_in_scope: crate::scope_map::ScopeMap::new(),
+                solver: solver.clone(),
             },
             debug: false,
             ignore_unexpected_smt: false,
