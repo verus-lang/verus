@@ -27,12 +27,15 @@ use crate::{
     context::Ctx,
 };
 use air::scope_map::ScopeMap;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-pub(crate) fn collect_specializations_from_function(ctx: &Ctx, function: &Function) {
+pub(crate) fn collect_specializations_from_function(
+    ctx: &Ctx,
+    function: &Function,
+) -> Vec<(Fun, Typs)> {
     let mut invocations: Vec<(Fun, Typs)> = vec![];
     let Some(body) = &function.x.body else {
-        return;
+        return vec![];
     };
     let mut map: VisitorScopeMap = ScopeMap::new();
     ast_visitor::expr_visitor_dfs::<(), _>(body, &mut map, &mut |scope_map, expr| {
@@ -44,9 +47,13 @@ pub(crate) fn collect_specializations_from_function(ctx: &Ctx, function: &Functi
         }
         ast_visitor::VisitorControlFlow::Recurse
     });
-    println!("{:?}, {invocations:?}", function.x.name.path);
+    invocations
 }
-pub fn mono_krate_for_module(ctx: &mut Ctx, krate: &Krate) {
+/**
+Collect all polymorphic function invocations in a module
+ */
+pub fn mono_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> HashMap<Fun, Vec<Typs>> {
+    let mut invocations: HashMap<Fun, Vec<Typs>> = HashMap::new();
     let KrateX {
         functions,
         reveal_groups,
@@ -61,6 +68,9 @@ pub fn mono_krate_for_module(ctx: &mut Ctx, krate: &Krate) {
         arch,
     } = &**krate;
     for f in functions.iter() {
-        collect_specializations_from_function(ctx, f);
+        for (fun, typs) in collect_specializations_from_function(ctx, f).into_iter() {
+            invocations.entry(fun).or_insert_with(Vec::new).push(typs)
+        }
     }
+    invocations
 }

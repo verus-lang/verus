@@ -35,7 +35,7 @@ use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
-use vir::ast::{Fun, Krate, VirErr};
+use vir::ast::{Fun, Krate, Typs, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{
     path_to_string, CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos,
@@ -1227,6 +1227,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
+        polymorphic_invocations: HashMap<Fun, Vec<Typs>>,
     ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
@@ -1333,6 +1334,9 @@ impl Verifier {
                 continue;
             }
             let function_sst = vir::ast_to_sst_func::function_to_sst(ctx, &function);
+            if let Some(specialization) = polymorphic_invocations.get(&function.x.name) {
+                println!("Function {:?} specialized to {:?}", function.x.name, specialization);
+            }
             let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, &function_sst)?;
             let comment =
                 "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
@@ -1847,7 +1851,7 @@ impl Verifier {
             fndef_types,
             self.args.debugger,
         )?;
-        vir::mono::mono_krate_for_module(&mut ctx, &pruned_krate);
+        let polymorphic_invocations = vir::mono::mono_krate_for_module(&mut ctx, &pruned_krate);
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
@@ -1855,8 +1859,14 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &poly_krate, &self.args.log_args.vir_log_option);
         }
 
-        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
-            self.verify_bucket(reporter, &poly_krate, source_map, bucket_id, &mut ctx)?;
+        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } = self.verify_bucket(
+            reporter,
+            &poly_krate,
+            source_map,
+            bucket_id,
+            &mut ctx,
+            polymorphic_invocations,
+        )?;
 
         global_ctx = ctx.free();
 
@@ -2107,13 +2117,11 @@ impl Verifier {
                         // if it is the active bucket, mark it as done, and reset the active bucket
                         if let Some(m) = active_bucket {
                             if m == id {
-                                assert!(
-                                    messages
-                                        .get_mut(id)
-                                        .expect("message id out of range")
-                                        .1
-                                        .is_empty()
-                                );
+                                assert!(messages
+                                    .get_mut(id)
+                                    .expect("message id out of range")
+                                    .1
+                                    .is_empty());
                                 active_bucket = None;
                             }
                         }
