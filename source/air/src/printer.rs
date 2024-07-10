@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs, Ident,
-    MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
+    Axiom, BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs,
+    Ident, MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
 };
 use crate::context::SmtSolver;
 use crate::def::mk_skolem_id;
@@ -94,8 +94,8 @@ impl Printer {
         match &**typ {
             TypX::Bool => str_to_node("Bool"),
             TypX::Int => str_to_node("Int"),
-            TypX::Lambda if self.print_as_smt => str_to_node(crate::def::FUNCTION),
-            TypX::Lambda => str_to_node("Fun"),
+            TypX::Fun if self.print_as_smt => str_to_node(crate::def::FUNCTION),
+            TypX::Fun => str_to_node("Fun"),
             TypX::Named(name) => str_to_node(&name.clone()),
             TypX::BitVec(size) => Node::List(vec![
                 str_to_node("_"),
@@ -136,7 +136,7 @@ impl Printer {
                 }
                 Node::List(nodes)
             }
-            ExprX::ApplyLambda(typ, expr0, exprs) => {
+            ExprX::ApplyFun(typ, expr0, exprs) => {
                 let mut nodes: Vec<Node> = Vec::new();
                 nodes.push(str_to_node("apply"));
                 nodes.push(self.typ_to_node(typ));
@@ -377,6 +377,15 @@ impl Printer {
         nodes!(declare-var {str_to_node(x)} {self.typ_to_node(typ)})
     }
 
+    pub fn axiom_to_node(&self, axiom: &Axiom) -> Node {
+        let Axiom { named, expr } = axiom;
+        if let Some(named) = named {
+            nodes!(axiom ({str_to_node("!")} {self.expr_to_node(expr)} {str_to_node(":named")} {str_to_node(named)}))
+        } else {
+            nodes!(axiom {self.expr_to_node(expr)})
+        }
+    }
+
     pub fn decl_to_node(&self, decl: &Decl) -> Node {
         match &**decl {
             DeclX::Sort(x) => self.sort_decl_to_node(x),
@@ -384,7 +393,7 @@ impl Printer {
             DeclX::Const(x, typ) => self.const_decl_to_node(x, typ),
             DeclX::Fun(x, typs, typ) => self.fun_decl_to_node(x, typs, typ),
             DeclX::Var(x, typ) => self.var_decl_to_node(x, typ),
-            DeclX::Axiom(expr) => nodes!(axiom {self.expr_to_node(expr)}),
+            DeclX::Axiom(axiom) => self.axiom_to_node(axiom),
         }
     }
 

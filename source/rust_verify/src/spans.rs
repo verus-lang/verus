@@ -168,9 +168,8 @@ impl SpanContextX {
         pos: BytePos,
         source_map: Option<&SourceMap>,
     ) -> Option<(BytePos, BytePos, BytePos, BytePos)> {
-        let ExternSourceFile { original_start_pos, original_end_pos, info } = self
-            .pos_to_extern_source_file(imported_crate, pos)
-            .expect("span source file not found");
+        let ExternSourceFile { original_start_pos, original_end_pos, info } =
+            self.pos_to_extern_source_file(imported_crate, pos)?;
         if let Some(source_map) = source_map {
             // If rustc didn't originally load the file into the source_map,
             // we can try to request that it load the file on demand.

@@ -1308,7 +1308,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         if let Some(flag) = expr_vattrs.loop_isolation {
             flag
         } else if let Some(flag) =
-            crate::attributes::get_spinoff_loop_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
+            crate::attributes::get_loop_isolation_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
         {
             flag
         } else {
@@ -1423,7 +1423,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let expr_typ = typ_of_node(bctx, expr.span, &expr.hir_id, false)?;
 
                     let is_spec_fn = match &*undecorate_typ(&vir_fun.typ) {
-                        TypX::Lambda(..) => true,
+                        TypX::SpecFn(..) => true,
                         _ => false,
                     };
 
@@ -1606,11 +1606,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let c = vir::ast::Constant::Char(c);
                 mk_expr(ExprX::Const(c))
             }
-            LitKind::Str(..) => {
-                return err_span(
-                    expr.span,
-                    "Unsupported string constant (use new_strlit(\"...\") instead)",
-                );
+            LitKind::Str(s, _str_style) => {
+                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
+                mk_expr(ExprX::Const(c))
             }
             _ => {
                 return err_span(expr.span, "Unsupported constant type");
@@ -2191,7 +2189,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 typ_args,
                 // arbitrary impl_path
                 // REVIEW: why is this needed?
-                Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_lambda_type(0))]),
+                Arc::new(vec![ImplPath::TraitImplPath(vir::def::prefix_spec_fn_type(0))]),
                 AutospecUsage::Final,
             );
             let args = Arc::new(vec![tgt_vir.clone(), idx_vir.clone()]);
@@ -2326,7 +2324,6 @@ fn expr_assign_to_vir_innermost<'tcx>(
                     bctx.fun_id,
                     lhs.span,
                     &bctx.types.expr_ty_adjusted(lhs),
-                    false,
                     true,
                 )?
                 .1;

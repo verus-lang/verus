@@ -55,7 +55,6 @@ where
             match &**typ {
                 TypX::Bool
                 | TypX::Int(_)
-                | TypX::StrSlice
                 | TypX::TypParam(_)
                 | TypX::TypeId
                 | TypX::ConstInt(_)
@@ -65,7 +64,7 @@ where
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                     }
                 }
-                TypX::Lambda(ts, tr) => {
+                TypX::SpecFn(ts, tr) => {
                     for t in ts.iter() {
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                     }
@@ -116,7 +115,6 @@ where
     match &**typ {
         TypX::Bool
         | TypX::Int(_)
-        | TypX::StrSlice
         | TypX::TypParam(_)
         | TypX::TypeId
         | TypX::ConstInt(_)
@@ -125,10 +123,10 @@ where
             let ts = map_typs_visitor_env(ts, env, ft)?;
             ft(env, &Arc::new(TypX::Tuple(ts)))
         }
-        TypX::Lambda(ts, tr) => {
+        TypX::SpecFn(ts, tr) => {
             let ts = map_typs_visitor_env(ts, env, ft)?;
             let tr = map_typ_visitor_env(tr, env, ft)?;
-            ft(env, &Arc::new(TypX::Lambda(ts, tr)))
+            ft(env, &Arc::new(TypX::SpecFn(ts, tr)))
         }
         TypX::AnonymousClosure(ts, tr, id) => {
             let ts = map_typs_visitor_env(ts, env, ft)?;
@@ -1404,6 +1402,7 @@ where
         trait_typ_args,
         trait_typ_arg_impls,
         owning_module,
+        auto_imported,
     } = &imp.x;
     let impx = TraitImplX {
         impl_path: impl_path.clone(),
@@ -1413,6 +1412,7 @@ where
         trait_typ_args: map_typs_visitor_env(trait_typ_args, env, ft)?,
         trait_typ_arg_impls: trait_typ_arg_impls.clone(),
         owning_module: owning_module.clone(),
+        auto_imported: *auto_imported,
     };
     Ok(Spanned::new(imp.span.clone(), impx))
 }

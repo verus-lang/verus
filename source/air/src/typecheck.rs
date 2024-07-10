@@ -2,8 +2,8 @@
 // (Z3 and the Z3 crate will also type-check, but their type errors are uninformative panics)
 
 use crate::ast::{
-    BinaryOp, BindX, Binder, BinderX, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp,
-    Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
+    Axiom, BinaryOp, BindX, Binder, BinderX, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident,
+    MultiOp, Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
 use crate::context::{Context, SmtSolver};
 use crate::messages::MessageInterface;
@@ -56,7 +56,7 @@ fn typ_name(typ: &Typ) -> String {
     match &**typ {
         TypX::Bool => "Bool".to_string(),
         TypX::Int => "Int".to_string(),
-        TypX::Lambda => "Fun".to_string(),
+        TypX::Fun => "Fun".to_string(),
         TypX::Named(x) => x.to_string(),
         TypX::BitVec(n) => format!("BitVec{}", n),
     }
@@ -74,7 +74,7 @@ fn check_typ(typing: &Typing, typ: &Typ) -> Result<(), TypeError> {
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int => Ok(()),
-        TypX::Lambda => Ok(()),
+        TypX::Fun => Ok(()),
         TypX::Named(x) => match typing.get(x) {
             Some(DeclaredX::Type) => Ok(()),
             _ => Err(format!("use of undeclared type {}", x)),
@@ -208,10 +208,10 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             Some(DeclaredX::Fun(f_typs, f_typ)) => check_exprs(typing, x, &f_typs, &f_typ, es),
             _ => Err(format!("use of undeclared function {}", x)),
         },
-        ExprX::ApplyLambda(t, e0, es) => {
+        ExprX::ApplyFun(t, e0, es) => {
             let t0 = check_expr(typing, e0)?;
             match &*t0 {
-                TypX::Lambda => {
+                TypX::Fun => {
                     for e in es.iter() {
                         check_expr(typing, e)?;
                     }
@@ -408,7 +408,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     expect_typ(&t1, &bt(), "forall/exists body must have type bool")?;
                     t1
                 }
-                BindX::Lambda(_, _, _) => Arc::new(TypX::Lambda),
+                BindX::Lambda(_, _, _) => Arc::new(TypX::Fun),
                 BindX::Choose(..) => t1,
             };
             // Done
@@ -538,11 +538,9 @@ pub(crate) fn check_decl(
             check_typs(typing, &typs_vec)
         }
         DeclX::Var(_, typ) => check_typ(typing, typ),
-        DeclX::Axiom(expr) => expect_typ(
-            &check_expr(&mut context.typing, expr)?,
-            &bt(),
-            "axiom expects expression of type bool",
-        ),
+        DeclX::Axiom(Axiom { named: _, expr }) => {
+            expect_typ(&check_expr(typing, expr)?, &bt(), "axiom expects expression of type bool")
+        }
     };
     match result {
         Ok(()) => Ok(crate::closure::simplify_decl(context, decl)),

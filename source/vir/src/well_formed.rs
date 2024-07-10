@@ -19,6 +19,7 @@ struct Ctxt {
     pub(crate) reveal_groups: HashSet<Fun>,
     pub(crate) dts: HashMap<Path, Datatype>,
     pub(crate) krate: Krate,
+    unpruned_krate: Krate,
 }
 
 #[warn(unused_must_use)]
@@ -40,7 +41,7 @@ fn check_path_and_get_datatype<'a>(
     span: &crate::messages::Span,
 ) -> Result<&'a Datatype, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
-        for dt in &ctxt.krate.datatypes {
+        for dt in &ctxt.unpruned_krate.datatypes {
             match &dt.x.proxy {
                 Some(proxy) => {
                     if &proxy.x == path {
@@ -99,7 +100,7 @@ fn check_path_and_get_function<'a>(
 ) -> Result<&'a Function, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
         // Linear scan, but this only happens if this uncommon error message triggers
-        for function in &ctxt.krate.functions {
+        for function in &ctxt.unpruned_krate.functions {
             match &function.x.proxy {
                 Some(proxy) => {
                     if &proxy.x == path {
@@ -755,15 +756,6 @@ fn check_function(
         }
     }
 
-    if function.x.attrs.nonlinear {
-        if function.x.mode == Mode::Spec {
-            return Err(error(
-                &function.span,
-                "#[verifier(nonlinear) is only allowed on proof and exec functions",
-            ));
-        }
-    }
-
     if function.x.publish.is_some() && function.x.mode != Mode::Spec {
         return Err(error(
             &function.span,
@@ -1021,6 +1013,7 @@ pub fn check_one_crate(krate: &Krate) -> Result<(), VirErr> {
 
 pub fn check_crate(
     krate: &Krate,
+    unpruned_krate: Krate,
     diags: &mut Vec<VirErrAs>,
     no_verify: bool,
 ) -> Result<(), VirErr> {
@@ -1187,7 +1180,7 @@ pub fn check_crate(
             }
         }
     }
-    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone() };
+    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone(), unpruned_krate };
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags, no_verify)?;
     }

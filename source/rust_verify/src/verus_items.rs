@@ -147,7 +147,6 @@ pub(crate) enum ExprItem {
 pub(crate) enum CompilableOprItem {
     Implies,
     // SmartPtrNew,
-    NewStrLit,
     GhostExec,
     GhostNew,
     TrackedNew,
@@ -276,7 +275,6 @@ pub(crate) enum InvariantItem {
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum VstdItem {
-    StrSlice,
     SeqFn(vir::interpreter::SeqFn),
     Invariant(InvariantItem),
     ExecNonstaticCall,
@@ -391,8 +389,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
 
         ("verus::builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),
         // TODO ("verus::builtin::smartptr_new",    VerusItem::CompilableOpr(CompilableOprItem::SmartPtrNew)),
-        // TODO: replace with builtin:
-        ("verus::vstd::string::new_strlit",    VerusItem::CompilableOpr(CompilableOprItem::NewStrLit)),
         ("verus::builtin::ghost_exec",              VerusItem::CompilableOpr(CompilableOprItem::GhostExec)),
         ("verus::builtin::Ghost::new",              VerusItem::CompilableOpr(CompilableOprItem::GhostNew)),
         ("verus::builtin::Tracked::new",            VerusItem::CompilableOpr(CompilableOprItem::TrackedNew)),
@@ -461,7 +457,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),
         ("verus::vstd::invariant::open_invariant_end",          VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenInvariantEnd)),
 
-        ("verus::vstd::string::StrSlice",      VerusItem::Vstd(VstdItem::StrSlice, None)),
         ("verus::vstd::seq::Seq::empty",       VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Empty   ), Some(Arc::new("seq::Seq::empty"      .to_owned())))),
         ("verus::vstd::seq::Seq::new",         VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::New     ), Some(Arc::new("seq::Seq::new"        .to_owned())))),
         ("verus::vstd::seq::Seq::push",        VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Push    ), Some(Arc::new("seq::Seq::push"       .to_owned())))),
@@ -570,6 +565,9 @@ pub(crate) enum RustItem {
     FnOnce,
     FnMut,
     Drop,
+    Sized,
+    Copy,
+    Clone,
     StructuralEq,
     StructuralPartialEq,
     Eq,
@@ -579,13 +577,15 @@ pub(crate) enum RustItem {
     BoxNew,
     ArcNew,
     RcNew,
-    Clone,
+    CloneClone,
     CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
+    Allocator,
     TryTraitBranch,
     ResidualTraitFromResidual,
     IntoIterFn,
+    ManuallyDrop,
     Destruct,
 }
 
@@ -627,13 +627,22 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     if tcx.lang_items().into_iter_fn() == Some(def_id) {
         return Some(RustItem::IntoIterFn);
     }
+    if tcx.lang_items().manually_drop() == Some(def_id) {
+        return Some(RustItem::ManuallyDrop);
+    }
     if tcx.lang_items().destruct_trait() == Some(def_id) {
         return Some(RustItem::Destruct);
     }
-
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);
     let rust_path = rust_path.as_ref().map(|x| x.as_str());
+    get_rust_item_str(rust_path)
+}
 
+pub(crate) fn get_rust_item_path(rust_path: &vir::ast::Path) -> Option<RustItem> {
+    get_rust_item_str(Some(&vir::ast_util::path_as_friendly_rust_name(rust_path)))
+}
+
+pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     // We could use rust's diagnostic_items for these, but they are only defined when cfg(not(test))
     // and they may get changed without us noticing, so we are using paths instead
     if rust_path == Some("core::cmp::Eq") {
@@ -656,8 +665,17 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
         return Some(RustItem::RcNew);
     }
 
-    if rust_path == Some("core::clone::Clone::clone") {
+    if rust_path == Some("core::marker::Sized") {
+        return Some(RustItem::Sized);
+    }
+    if rust_path == Some("core::marker::Copy") {
+        return Some(RustItem::Copy);
+    }
+    if rust_path == Some("core::clone::Clone") {
         return Some(RustItem::Clone);
+    }
+    if rust_path == Some("core::clone::Clone::clone") {
+        return Some(RustItem::CloneClone);
     }
     if rust_path == Some("core::clone::Clone::clone_from") {
         return Some(RustItem::CloneFrom);
@@ -665,6 +683,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
 
     if rust_path == Some("alloc::alloc::Global") {
         return Some(RustItem::AllocGlobal);
+    }
+    if rust_path == Some("core::alloc::Allocator") {
+        return Some(RustItem::Allocator);
     }
 
     if let Some(rust_path) = rust_path {

@@ -7,7 +7,7 @@ pub(crate) enum IdKind {
     Datatype,
     Variant,
     TypParam,
-    Lifetime,
+    Lifetime(bool),
     Fun,
     Local,
     Builtin,
@@ -16,9 +16,9 @@ pub(crate) enum IdKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct Id {
-    kind: IdKind,
-    rename_count: usize,
-    raw_id: String,
+    pub(crate) kind: IdKind,
+    pub(crate) rename_count: usize,
+    pub(crate) raw_id: String,
 }
 
 impl Id {
@@ -28,6 +28,9 @@ impl Id {
     pub(crate) fn to_string(&self) -> String {
         crate::lifetime_emit::encode_id(self.kind, self.rename_count, &self.raw_id)
     }
+    pub(crate) fn is_typ_param(&self) -> bool {
+        self.kind == IdKind::TypParam
+    }
 }
 
 pub(crate) type Typ = Box<TypX>;
@@ -35,6 +38,8 @@ pub(crate) type Typ = Box<TypX>;
 pub(crate) enum TypX {
     Primitive(String),
     TypParam(Id),
+    // inside trait declarations, Self is special:
+    TraitSelf,
     Never,
     Ref(Typ, Option<Id>, Mutability),
     Phantom(Typ),
@@ -47,6 +52,7 @@ pub(crate) enum TypX {
         // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
         trait_as_datatype: Typ,
         name: Id,
+        assoc_typ_args: Vec<Id>,
     },
     Closure,
     FnDef,
@@ -136,9 +142,12 @@ pub(crate) enum ClosureKind {
 pub(crate) enum Bound {
     Copy,
     Clone,
+    Sized,
+    Allocator,
+    Thin,
+    Pointee,
     Id(Id),
-    // use TypX::Datatype to represent Trait bound
-    Trait(Typ),
+    Trait { trait_path: Id, args: Vec<Typ>, equality: Option<(Id, Vec<Id>, Typ)> },
     Fn(ClosureKind, Typ, Typ),
 }
 
@@ -161,28 +170,24 @@ pub(crate) struct TraitDecl {
     pub(crate) name: Id,
     pub(crate) generic_params: Vec<GenericParam>,
     pub(crate) generic_bounds: Vec<GenericBound>,
-    pub(crate) assoc_typs: Vec<(Id, Vec<GenericBound>)>,
+    pub(crate) assoc_typs: Vec<(Id, Vec<GenericParam>, Vec<GenericBound>)>,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-pub(crate) struct AssocTypeImpl {
+#[derive(Debug)]
+pub(crate) struct TraitImpl {
+    pub(crate) span: Option<Span>,
     pub(crate) self_typ: Typ,
     pub(crate) generic_params: Vec<GenericParam>,
     pub(crate) generic_bounds: Vec<GenericBound>,
     // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
     pub(crate) trait_as_datatype: Typ,
-}
-
-#[derive(Debug)]
-pub(crate) struct AssocTypeImplType {
-    pub(crate) name: Id,
-    pub(crate) typ: Typ,
+    pub(crate) assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)>,
 }
 
 #[derive(Debug)]
 pub(crate) struct DatatypeDecl {
     pub(crate) name: Id,
-    pub(crate) span: Span,
+    pub(crate) span: Option<Span>,
     // Does the type implement the Copy trait? (e.g. impl<A: Copy> Copy for S<A> {})
     // If so, for each GenericParam A say whether clone and copy require A: Clone and A: Copy
     pub(crate) implements_copy: Option<Vec<bool>>,

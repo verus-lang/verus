@@ -61,7 +61,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(r1), TypX::Int(r2)) => r1 == r2,
         (TypX::Tuple(t1), TypX::Tuple(t2)) => n_types_equal(t1, t2),
-        (TypX::Lambda(ts1, t1), TypX::Lambda(ts2, t2)) => {
+        (TypX::SpecFn(ts1, t1), TypX::SpecFn(ts2, t2)) => {
             n_types_equal(ts1, ts2) && types_equal(t1, t2)
         }
         (TypX::AnonymousClosure(ts1, t1, id1), TypX::AnonymousClosure(ts2, t2, id2)) => {
@@ -93,7 +93,6 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::TypeId, TypX::TypeId) => true,
         (TypX::ConstInt(i1), TypX::ConstInt(i2)) => i1 == i2,
         (TypX::Air(a1), TypX::Air(a2)) => a1 == a2,
-        (TypX::StrSlice, TypX::StrSlice) => true,
         (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
@@ -101,7 +100,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
         (TypX::Tuple(_), _) => false,
-        (TypX::Lambda(_, _), _) => false,
+        (TypX::SpecFn(_, _), _) => false,
         (TypX::AnonymousClosure(_, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
         (TypX::Primitive(_, _), _) => false,
@@ -112,7 +111,6 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::TypeId, _) => false,
         (TypX::ConstInt(_), _) => false,
         (TypX::Air(_), _) => false,
-        (TypX::StrSlice, _) => false,
         (TypX::FnDef(..), _) => false,
     }
 }
@@ -383,6 +381,13 @@ pub fn is_visible_to_opt(target_visibility: &Visibility, source_module: &Option<
     }
 }
 
+pub fn is_visible_to_or_true(target_visibility: &Visibility, source_module: &Option<Path>) -> bool {
+    match (&target_visibility.restricted_to, source_module) {
+        (_, None) => true,
+        (_, Some(source_module)) => is_visible_to(target_visibility, source_module),
+    }
+}
+
 impl Visibility {
     pub(crate) fn is_private_to(&self, module: &Option<Path>) -> bool {
         module.is_some() && module == &self.restricted_to
@@ -625,7 +630,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Int(IntRange::U(n)) => format!("u{n}"),
         TypX::Int(IntRange::I(n)) => format!("i{n}"),
         TypX::Tuple(typs) => format!("({})", typs_to_comma_separated_str(typs)),
-        TypX::Lambda(atyps, rtyp) => format!(
+        TypX::SpecFn(atyps, rtyp) => format!(
             "spec_fn({}) -> {}",
             typs_to_comma_separated_str(atyps),
             typ_to_diagnostic_str(rtyp)
@@ -640,6 +645,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             match prim {
                 crate::ast::Primitive::Array => format!("[{typs_str}; N]"),
                 crate::ast::Primitive::Slice => format!("[{typs_str}]"),
+                crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
                 crate::ast::Primitive::Ptr => format!("*mut {typs_str}"),
             }
         }
@@ -696,7 +702,6 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::TypeId => format!("typeid"),
         TypX::ConstInt(_) => format!("constint"),
         TypX::Air(_) => panic!("unexpected air type here"),
-        TypX::StrSlice => format!("StrSlice"),
         TypX::FnDef(f, typs, _res) => format!(
             "FnDef({}){}",
             path_as_friendly_rust_name(&f.path),

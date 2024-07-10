@@ -82,9 +82,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     #[allow(non_snake_case)]
     let FnDefSingleton = str_to_node(FNDEF_SINGLETON);
 
-    let box_strslice = str_to_node(BOX_STRSLICE);
-    let unbox_strslice = str_to_node(UNBOX_STRSLICE);
-
     let char_lo_1 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_1_MIN));
     let char_hi_1 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_1_MAX));
     let char_lo_2 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_2_MIN));
@@ -123,17 +120,9 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let uint_not = str_to_node(UINT_NOT);
     let singular_mod = str_to_node(SINGULAR_MOD);
 
-    let strslice = str_to_node(STRSLICE);
-
-    let strslice_is_ascii = str_to_node(STRSLICE_IS_ASCII);
-    let strslice_len = str_to_node(STRSLICE_LEN);
-    let strslice_get_char = str_to_node(STRSLICE_GET_CHAR);
-    let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
-    let new_strlit = str_to_node(STRSLICE_NEW_STRLIT);
-    let from_strlit = str_to_node(STRSLICE_FROM_STRLIT);
-
     let type_id_array = str_to_node(TYPE_ID_ARRAY);
     let type_id_slice = str_to_node(TYPE_ID_SLICE);
+    let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
     let type_id_ptr = str_to_node(TYPE_ID_PTR);
 
     let mut prelude = nodes_vec!(
@@ -154,14 +143,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             ))
         ))
 
-        // Strings
-        (declare-sort [strslice] 0)
-        (declare-fun [strslice_is_ascii] ([strslice]) Bool)
-        (declare-fun [strslice_len] ([strslice]) Int)
-        (declare-fun [strslice_get_char] ([strslice] Int) Int)
-        (declare-fun [new_strlit] (Int) [strslice])
-        (declare-fun [from_strlit] ([strslice]) Int)
-
         // FnDef
         (declare-datatypes (([FnDef] 0)) ((([FnDefSingleton]))))
 
@@ -174,13 +155,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [unbox_int] ([Poly]) Int)
         (declare-fun [unbox_bool] ([Poly]) Bool)
         (declare-fun [unbox_fndef] ([Poly]) [FnDef])
-        (declare-fun [box_strslice] ([strslice]) [Poly])
-        (declare-fun [unbox_strslice] ([Poly]) [strslice])
         (declare-sort [typ] 0)
         (declare-const [type_id_bool] [typ])
         (declare-const [type_id_int] [typ])
         (declare-const [type_id_nat] [typ])
-        (declare-const [type_id_strslice] [typ])
         (declare-const [type_id_char] [typ])
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
@@ -198,6 +176,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [decorate_const_ptr] ([decoration]) [decoration])
         (declare-fun [type_id_array] ([decoration] [typ] [decoration] [typ]) [typ])
         (declare-fun [type_id_slice] ([decoration] [typ]) [typ])
+        (declare-const [type_id_strslice] [typ])
         (declare-fun [type_id_ptr] ([decoration] [typ]) [typ])
         (declare-fun [has_type] ([Poly] [typ]) Bool)
         (declare-fun [as_type] ([Poly] [typ]) [Poly])
@@ -298,36 +277,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :pattern (([has_type] x [type_id_char]))
             :qid prelude_box_unbox_char
             :skolemid skolem_prelude_box_unbox_char
-        )))
-
-        // String literals
-        (axiom (forall ((x Int)) (!
-            (= ([from_strlit] ([new_strlit] x)) x)
-            :pattern (([new_strlit] x))
-            :qid prelude_strlit_injective
-            :skolemid skolem_prelude_strlit_injective
-        )))
-
-        (axiom (forall ((x [Poly])) (!
-            (=>
-                ([has_type] x [type_id_strslice])
-                (= x ([box_strslice] ([unbox_strslice] x)))
-            )
-            :pattern (([has_type] x [type_id_strslice]))
-            :qid prelude_box_unbox_strslice
-            :skolemid skolem_prelude_box_unbox_strslice
-        )))
-        (axiom (forall ((x [strslice])) (!
-            (= x ([unbox_strslice] ([box_strslice] x)))
-            :pattern (([box_strslice] x))
-            :qid prelude_unbox_box_strslice
-            :skolemid skolem_prelude_unbox_box_strslice
-        )))
-        (axiom (forall ((x [strslice])) (!
-            ([has_type] ([box_strslice] x) [type_id_strslice])
-            :pattern ((has_type ([box_strslice] x) [type_id_strslice]))
-            :qid prelude_has_type_strslice
-            :skolemid skolem_prelude_has_type_strslice
         )))
 
         // Extensional equality
@@ -689,6 +638,31 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     );
     prelude.extend(height_axioms);
     prelude
+}
+
+pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {
+    let strslice = str_to_node(strslice_name);
+    let strslice_is_ascii = str_to_node(STRSLICE_IS_ASCII);
+    let strslice_len = str_to_node(STRSLICE_LEN);
+    let strslice_get_char = str_to_node(STRSLICE_GET_CHAR);
+    let new_strlit = str_to_node(STRSLICE_NEW_STRLIT);
+    let from_strlit = str_to_node(STRSLICE_FROM_STRLIT);
+    nodes_vec!(
+        // Strings
+        (declare-fun [strslice_is_ascii] ([strslice]) Bool)
+        (declare-fun [strslice_len] ([strslice]) Int)
+        (declare-fun [strslice_get_char] ([strslice] Int) Int)
+        (declare-fun [new_strlit] (Int) [strslice])
+        (declare-fun [from_strlit] ([strslice]) Int)
+
+        // String literals
+        (axiom (forall ((x Int)) (!
+            (= ([from_strlit] ([new_strlit] x)) x)
+            :pattern (([new_strlit] x))
+            :qid prelude_strlit_injective
+            :skolemid skolem_prelude_strlit_injective
+        )))
+    )
 }
 
 pub(crate) fn datatype_height_axiom(

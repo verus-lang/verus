@@ -10,9 +10,9 @@ use crate::ast::{
     InequalityOp, IntRange, IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp,
     VarBinders, VirErr,
 };
+use crate::ast_to_sst_func::{SstInfo, SstMap};
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::context::GlobalCtx;
-use crate::func_to_air::{SstInfo, SstMap};
 use crate::messages::{error, warning, Message, Span, ToAny};
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use crate::unicode::valid_unicode_scalar_bigint;
@@ -254,7 +254,7 @@ impl SyntacticEquality for Typ {
             (Bool, Bool) => Some(true),
             (Int(l), Int(r)) => Some(l == r),
             (Tuple(typs_l), Tuple(typs_r)) => typs_l.syntactic_eq(typs_r),
-            (Lambda(formals_l, res_l), Lambda(formals_r, res_r)) => {
+            (SpecFn(formals_l, res_l), SpecFn(formals_r, res_r)) => {
                 Some(formals_l.syntactic_eq(formals_r)? && res_l.syntactic_eq(res_r)?)
             }
             (Datatype(path_l, typs_l, _), Datatype(path_r, typs_r, _)) => {

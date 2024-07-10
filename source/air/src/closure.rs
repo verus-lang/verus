@@ -1,8 +1,8 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Qid,
-    Quant, Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, Typs, UnaryOp,
+    Axiom, BinaryOp, BindX, Binder, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp,
+    Qid, Quant, Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, Typs, UnaryOp,
 };
-use crate::ast_util::{ident_binder, mk_and, mk_eq, mk_forall};
+use crate::ast_util::{ident_binder, mk_and, mk_eq, mk_forall, mk_unnamed_axiom};
 use crate::context::Context;
 use crate::typecheck::{typ_eq, DeclaredX};
 use crate::util::vec_map;
@@ -13,7 +13,7 @@ use std::sync::Arc;
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub(crate) enum App {
     Apply(Ident),
-    ApplyLambda,
+    ApplyFun,
     Unary(UnaryOp),
     Binary(BinaryOp),
     Multi(MultiOp),
@@ -209,7 +209,7 @@ fn simplify_lambda(
     ctxt.typing.decls.pop_scope();
 
     let param_typs = Arc::new(vec_map(&**binders, |b| b.a.clone()));
-    let typ = Arc::new(TypX::Lambda);
+    let typ = Arc::new(TypX::Fun);
     let holes = Arc::new(vec_map(&closure_state.holes, |(_, typ, _)| typ.clone()));
     let closure = ClosureTermX { terms, params: param_typs.clone(), holes: holes.clone() };
     let closure = Arc::new(closure);
@@ -248,7 +248,7 @@ fn simplify_lambda(
                 trigs
             });
             let forall = mk_forall(&bs, &trigs, qid.clone(), &eq);
-            let decl = Arc::new(DeclX::Axiom(forall));
+            let decl = mk_unnamed_axiom(forall);
             state.generated_decls.push(decl);
 
             closure_fun
@@ -370,7 +370,7 @@ fn simplify_choose(
             let trigs = Arc::new(vec![trig]);
             let forall_qid = None; // The forall uses a trivial trigger, so no need to profile
             let forall = mk_forall(&bs, &trigs, forall_qid, &imply);
-            let decl = Arc::new(DeclX::Axiom(forall));
+            let decl = mk_unnamed_axiom(forall);
             state.generated_decls.push(decl);
 
             closure_fun
@@ -449,7 +449,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             let (es, t) = enclose(state, App::Apply(x.clone()), es, ts);
             (typ, Arc::new(ExprX::Apply(x.clone(), Arc::new(es))), t)
         }
-        ExprX::ApplyLambda(typ, e0, args) => {
+        ExprX::ApplyFun(typ, e0, args) => {
             let mut es: Vec<&Expr> = vec![e0];
             for e in args.iter() {
                 es.push(e);
@@ -457,7 +457,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             let (es, ts) = simplify_exprs_ref(ctxt, state, &es);
             let mut typs = vec_map(&ts, |(typ, _)| typ.clone());
             typs.remove(0);
-            let (es, t) = enclose(state, App::ApplyLambda, es, ts);
+            let (es, t) = enclose(state, App::ApplyFun, es, ts);
             let apply_fun = mk_apply(ctxt, state, Arc::new(typs), typ.clone());
             (typ.clone(), Arc::new(ExprX::Apply(apply_fun, Arc::new(es))), t)
         }
@@ -664,9 +664,9 @@ pub(crate) fn simplify_decl(ctxt: &mut Context, decl: &Decl) -> (Vec<Decl>, Decl
         DeclX::Const(..) => decl.clone(),
         DeclX::Fun(..) => decl.clone(),
         DeclX::Var(..) => decl.clone(),
-        DeclX::Axiom(expr) => {
+        DeclX::Axiom(Axiom { named, expr }) => {
             let (_, expr, _) = simplify_expr(ctxt, &mut state, expr);
-            Arc::new(DeclX::Axiom(expr))
+            Arc::new(DeclX::Axiom(Axiom { named: named.clone(), expr }))
         }
     };
     (state.generated_decls, decl)

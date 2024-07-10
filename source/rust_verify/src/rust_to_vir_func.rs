@@ -2,6 +2,7 @@ use crate::attributes::{
     get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, VerifierAttrs,
 };
 use crate::context::{BodyCtxt, Context};
+use crate::rust_to_vir::ExternalInfo;
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
     check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
@@ -12,8 +13,8 @@ use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
-    def::Res, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnRetTy, FnSig, Generics, HirId,
-    MaybeOwner, MutTy, Param, PrimTy, QPath, Ty, TyKind, Unsafety,
+    Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HirId, MaybeOwner, Param,
+    Unsafety,
 };
 use rustc_middle::ty::{
     BoundRegion, BoundRegionKind, BoundVar, Clause, GenericArgKind, GenericArgsRef, Region, TyCtxt,
@@ -114,57 +115,59 @@ pub(crate) fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx B
     find_body_krate(ctxt.krate, body_id)
 }
 
-fn check_new_strlit<'tcx>(ctx: &Context<'tcx>, sig: &'tcx FnSig<'tcx>) -> Result<(), VirErr> {
-    let (decl, span) = match sig {
-        FnSig { decl, span, .. } => (decl, span),
-    };
-
-    let sig_span = span;
-    let expected_input_num = 1;
-
-    if decl.inputs.len() != expected_input_num {
-        return err_span(*sig_span, format!("Expected one argument to new_strlit"));
+fn compare_external_ty<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    verus_items: &crate::verus_items::VerusItems,
+    param_env_src: DefId,
+    span: Span,
+    ty1: &rustc_middle::ty::Ty<'tcx>,
+    ty2: &rustc_middle::ty::Ty<'tcx>,
+    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
+) -> Result<bool, VirErr> {
+    if let Some((from_path, to_path)) = external_trait_from_to {
+        // TODO, but low priority, since this is just a check for trusted declarations:
+        // rewrite the original MIR Ty or write a comparison function that traverses two MIR Tys.
+        // For now, it's easier to just use less precise VIR types for the comparison:
+        let t1 = mid_ty_to_vir(tcx, verus_items, param_env_src, span, ty1, true)?;
+        let t2 = mid_ty_to_vir(tcx, verus_items, param_env_src, span, ty2, true)?;
+        let t1 = vir::traits::rewrite_external_typ(&from_path, &to_path, &t1);
+        Ok(vir::ast_util::types_equal(&t1, &t2))
+    } else {
+        Ok(ty1 == ty2)
     }
+}
 
-    let (kind, span) = match &decl.inputs[0].kind {
-        TyKind::Ref(_, MutTy { ty, mutbl: _ }) => (&ty.kind, ty.span),
-        _ => {
-            dbg!(&decl.inputs[0]);
-            return err_span(decl.inputs[0].span, format!("expected a str"));
+fn compare_external_sig<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    verus_items: &crate::verus_items::VerusItems,
+    param_env_src: DefId,
+    span: Span,
+    sig1: &rustc_middle::ty::FnSig<'tcx>,
+    sig2: &rustc_middle::ty::FnSig<'tcx>,
+    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
+) -> Result<bool, VirErr> {
+    use rustc_middle::ty::FnSig;
+    // Ignore abi for the sake of comparison
+    // Useful for rust-intrinsics
+    let FnSig { inputs_and_output: io1, c_variadic: c1, unsafety: u1, abi: _ } = sig1;
+    let FnSig { inputs_and_output: io2, c_variadic: c2, unsafety: u2, abi: _ } = sig2;
+    if io1.len() != io2.len() {
+        return Ok(false);
+    }
+    for (ty1, ty2) in io1.iter().zip(io2.iter()) {
+        if !compare_external_ty(
+            tcx,
+            verus_items,
+            param_env_src,
+            span,
+            &ty1,
+            &ty2,
+            external_trait_from_to,
+        )? {
+            return Ok(false);
         }
-    };
-
-    let (res, span) = match kind {
-        TyKind::Path(QPath::Resolved(_, path)) => (path.res, path.span),
-        _ => return err_span(span, format!("expected str")),
-    };
-
-    if res != Res::PrimTy(PrimTy::Str) {
-        return err_span(span, format!("expected a str"));
     }
-
-    let (kind, span) = match decl.output {
-        FnRetTy::Return(Ty { hir_id: _, kind, span }) => (kind, span),
-        _ => return err_span(*sig_span, format!("expected a return type of StrSlice")),
-    };
-
-    let (res, span) = match kind {
-        TyKind::Path(QPath::Resolved(_, path)) => (path.res, path.span),
-        _ => return err_span(*span, format!("expected a StrSlice")),
-    };
-
-    let id = match res {
-        Res::Def(_, id) => id,
-        _ => return err_span(span, format!("")),
-    };
-
-    if !matches!(
-        ctx.verus_items.id_to_name.get(&id),
-        Some(&crate::verus_items::VerusItem::Vstd(crate::verus_items::VstdItem::StrSlice, _))
-    ) {
-        return err_span(span, format!("expected a StrSlice"));
-    }
-    Ok(())
+    Ok(c1 == c2 && u1 == u2)
 }
 
 pub(crate) fn handle_external_fn<'tcx>(
@@ -178,8 +181,9 @@ pub(crate) fn handle_external_fn<'tcx>(
     body_id: &CheckItemFnEither<&BodyId, &[Ident]>,
     mode: Mode,
     vattrs: &VerifierAttrs,
+    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
     external_fn_specification_via_external_trait: Option<DefId>,
-    external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
+    external_info: &mut ExternalInfo,
 ) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool), VirErr> {
     // This function is the proxy, and we need to look up the actual path.
 
@@ -290,12 +294,16 @@ pub(crate) fn handle_external_fn<'tcx>(
     let poly_sig2 =
         ctxt.tcx.instantiate_bound_regions(poly_sig2, |br| substs2_late[usize::from(br.var)]).0;
 
-    // Ignore abi for the sake of comparison
-    // Useful for rust-intrinsics
-    let mut poly_sig1 = poly_sig1;
-    poly_sig1.abi = poly_sig2.abi;
-
-    if poly_sig1 != poly_sig2 {
+    let poly_sig_eq = compare_external_sig(
+        ctxt.tcx,
+        &ctxt.verus_items,
+        id,
+        sig.span,
+        &poly_sig1,
+        &poly_sig2,
+        &external_trait_from_to,
+    )?;
+    if !poly_sig_eq {
         return err_span(
             sig.span,
             format!(
@@ -322,7 +330,11 @@ pub(crate) fn handle_external_fn<'tcx>(
         None,
         &mut external_preds,
     );
-    if !predicates_match(ctxt.tcx, &proxy_preds, &external_preds) {
+    // TODO, but low priority, since this is just a check for trusted declarations:
+    // predicates_match for external_trait case (would need to rename from_path -> to_path)
+    let preds_match = external_trait_from_to.is_some()
+        || predicates_match(ctxt.tcx, &proxy_preds, &external_preds);
+    if !preds_match {
         let err = err_span_bare(
             sig.span,
             "external_fn_specification trait bound mismatch")
@@ -344,7 +356,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     let has_self_parameter = has_self_parameter(ctxt, external_id);
 
     if matches!(kind, FunctionKind::ForeignTraitMethodImpl { .. }) {
-        external_fn_specification_trait_method_impls.push((external_id, sig.span));
+        external_info.external_fn_specification_trait_method_impls.push((external_id, sig.span));
     }
 
     Ok((external_path, external_item_visibility, kind, has_self_parameter))
@@ -503,6 +515,47 @@ fn create_reveal_group<'tcx>(
     err_span(span, "reveal_group must have body")
 }
 
+fn make_attributes(
+    vattrs: &crate::attributes::VerifierAttrs,
+    uses_ghost_blocks: bool,
+    hidden: Arc<Vec<Fun>>,
+    custom_req_err: Option<String>,
+    autospec: Option<Fun>,
+    print_zero_args: bool,
+    print_as_method: bool,
+    span: Span,
+) -> Result<vir::ast::FunctionAttrs, VirErr> {
+    if vattrs.nonlinear && vattrs.spinoff_prover {
+        return err_span(
+            span,
+            "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith",
+        );
+    }
+    let fattrs = FunctionAttrsX {
+        uses_ghost_blocks,
+        inline: vattrs.inline,
+        hidden,
+        custom_req_err,
+        no_auto_trigger: vattrs.no_auto_trigger,
+        broadcast_forall: vattrs.broadcast_forall,
+        bit_vector: vattrs.bit_vector,
+        autospec,
+        atomic: vattrs.atomic,
+        integer_ring: vattrs.integer_ring,
+        is_decrease_by: vattrs.decreases_by,
+        check_recommends: vattrs.check_recommends,
+        nonlinear: vattrs.nonlinear,
+        spinoff_prover: vattrs.spinoff_prover,
+        memoize: vattrs.memoize,
+        rlimit: vattrs.rlimit,
+        print_zero_args,
+        print_as_method,
+        prophecy_dependent: vattrs.prophecy_dependent,
+        size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
+    };
+    Ok(Arc::new(fattrs))
+}
+
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     functions: &mut Vec<vir::ast::Function>,
@@ -519,18 +572,23 @@ pub(crate) fn check_item_fn<'tcx>(
     body_id: CheckItemFnEither<&BodyId, &[Ident]>,
     external_trait: Option<DefId>,
     external_fn_specification_via_external_trait: Option<DefId>,
-    external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
+    external_info: &mut ExternalInfo,
 ) -> Result<Option<Fun>, VirErr> {
     let this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
 
     let is_verus_spec = this_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
-    let is_new_strlit = ctxt.verus_items.id_to_name.get(&id)
-        == Some(&crate::verus_items::VerusItem::CompilableOpr(
-            crate::verus_items::CompilableOprItem::NewStrLit,
-        ));
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
+
+    let external_trait_from_to = if let Some(to_trait_id) = external_trait {
+        let from_trait_id = ctxt.tcx.parent(id);
+        let from_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, from_trait_id);
+        let to_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, to_trait_id);
+        Some((from_path, to_path))
+    } else {
+        None
+    };
 
     let (path, proxy, visibility, kind, has_self_param) = if vattrs.external_fn_specification
         || external_fn_specification_via_external_trait.is_some()
@@ -539,13 +597,6 @@ pub(crate) fn check_item_fn<'tcx>(
             return err_span(
                 sig.span,
                 "`external_fn_specification` attribute not supported with VERUS_SPEC",
-            );
-        }
-
-        if is_new_strlit {
-            return err_span(
-                sig.span,
-                "`external_fn_specification` attribute not supported with new_strlit",
             );
         }
 
@@ -559,8 +610,9 @@ pub(crate) fn check_item_fn<'tcx>(
             &body_id,
             mode,
             &vattrs,
+            &external_trait_from_to,
             external_fn_specification_via_external_trait,
-            external_fn_specification_trait_method_impls,
+            external_info,
         )?;
 
         let proxy = (*ctxt.spanned_new(sig.span, this_path.clone())).clone();
@@ -608,23 +660,6 @@ pub(crate) fn check_item_fn<'tcx>(
             check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?
         }
     };
-
-    if is_new_strlit {
-        check_new_strlit(&ctxt, sig)?;
-    }
-
-    if is_new_strlit {
-        let mut erasure_info = ctxt.erasure_info.borrow_mut();
-        unsupported_err_unless!(
-            vattrs.external_body,
-            sig.span,
-            "StrSlice::new must be external_body"
-        );
-
-        erasure_info.ignored_functions.push((id, sig.span.data()));
-        erasure_info.external_functions.push(name);
-        return Ok(None);
-    }
 
     let (sig_typ_params, sig_typ_bounds) = check_generics_bounds_no_polarity(
         ctxt.tcx,
@@ -913,15 +948,8 @@ pub(crate) fn check_item_fn<'tcx>(
         let typ_params = Arc::new(typ_params);
         let mut typ_bounds = Arc::new(typ_bounds);
 
-        if let Some(to_trait_id) = external_trait {
-            let from_trait_id = ctxt.tcx.parent(id);
-            let from_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, from_trait_id);
-            let to_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, to_trait_id);
-            typ_bounds = crate::rust_to_vir_trait::rewrite_external_bounds(
-                &from_path,
-                &to_path,
-                &typ_bounds,
-            );
+        if let Some((from_path, to_path)) = &external_trait_from_to {
+            typ_bounds = vir::traits::rewrite_external_bounds(from_path, to_path, &typ_bounds);
         }
         (typ_params, typ_bounds)
     };
@@ -961,7 +989,7 @@ pub(crate) fn check_item_fn<'tcx>(
         }
         publish
     };
-    let autospec = vattrs.autospec.map(|method_name| {
+    let autospec = vattrs.autospec.clone().map(|method_name| {
         let this_path =
             crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(ctxt.tcx, id);
         let path = autospec_fun(&this_path, method_name.clone());
@@ -974,28 +1002,16 @@ pub(crate) fn check_item_fn<'tcx>(
             "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith",
         );
     }
-    let fattrs = FunctionAttrsX {
-        uses_ghost_blocks: vattrs.verus_macro,
-        inline: vattrs.inline,
-        hidden: Arc::new(header.hidden),
-        custom_req_err: vattrs.custom_req_err,
-        no_auto_trigger: vattrs.no_auto_trigger,
-        broadcast_forall: vattrs.broadcast_forall,
-        bit_vector: vattrs.bit_vector,
+    let fattrs = make_attributes(
+        &vattrs,
+        vattrs.verus_macro,
+        Arc::new(header.hidden),
+        vattrs.custom_req_err.clone(),
         autospec,
-        atomic: vattrs.atomic,
-        integer_ring: vattrs.integer_ring,
-        is_decrease_by: vattrs.decreases_by,
-        check_recommends: vattrs.check_recommends,
-        nonlinear: vattrs.nonlinear,
-        spinoff_prover: vattrs.spinoff_prover,
-        memoize: vattrs.memoize,
-        rlimit: vattrs.rlimit,
-        print_zero_args: n_params == 0,
-        print_as_method: has_self_param,
-        prophecy_dependent: vattrs.prophecy_dependent,
-        size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
-    };
+        n_params == 0,
+        has_self_param,
+        sig.span,
+    )?;
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
     if let Some(decrease_when) = &header.decrease_when {
@@ -1047,7 +1063,7 @@ pub(crate) fn check_item_fn<'tcx>(
         mask_spec: header.invariant_mask,
         item_kind: ItemKind::Function,
         publish,
-        attrs: Arc::new(fattrs),
+        attrs: fattrs,
         body: body_with_mut_redecls,
         extra_dependencies: header.extra_dependencies,
     };
@@ -1055,8 +1071,12 @@ pub(crate) fn check_item_fn<'tcx>(
     if vattrs.external_fn_specification {
         func = fix_external_fn_specification_trait_method_decl_typs(sig.span, func)?;
     }
-
     let function = ctxt.spanned_new(sig.span, func);
+    let function = if let Some((from_path, to_path)) = &external_trait_from_to {
+        vir::traits::rewrite_external_function(from_path, to_path, &function)
+    } else {
+        function
+    };
     functions.push(function);
     if is_verus_spec { Ok(None) } else { Ok(Some(name)) }
 }
@@ -1549,8 +1569,17 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         let path = autospec_fun(&path, method_name.clone());
         Arc::new(FunX { path })
     });
-    let mut fattrs: FunctionAttrsX = Default::default();
-    fattrs.autospec = autospec;
+    let fattrs = make_attributes(
+        &vattrs,
+        false,
+        Arc::new(vec![]),
+        vattrs.custom_req_err.clone(),
+        autospec,
+        false,
+        false,
+        span,
+    )?;
+
     let func = FunctionX {
         name: name.clone(),
         proxy: None,
@@ -1573,7 +1602,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         mask_spec: None,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
         publish: get_publish(&vattrs).0,
-        attrs: Arc::new(fattrs),
+        attrs: fattrs,
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],
     };

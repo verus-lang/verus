@@ -1,5 +1,6 @@
 use crate::attributes::VerifierAttrs;
 use crate::context::Context;
+use crate::rust_to_vir::ExternalInfo;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, process_predicate_bounds,
 };
@@ -12,8 +13,8 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    Fun, Function, FunctionKind, GenericBound, GenericBoundX, GenericBounds, Ident, KrateX, TraitX,
-    TypX, VirErr, Visibility,
+    Fun, Function, FunctionKind, GenericBound, GenericBoundX, Ident, KrateX, TraitX, TypX, VirErr,
+    Visibility,
 };
 use vir::def::{trait_self_type_param, VERUS_SPEC};
 
@@ -66,27 +67,6 @@ pub(crate) fn external_trait_specification_of<'tcx>(
     Ok(ex_trait_ref_for)
 }
 
-pub(crate) fn rewrite_external_bounds(
-    from_path: &vir::ast::Path,
-    to_path: &vir::ast::Path,
-    bounds: &GenericBounds,
-) -> GenericBounds {
-    let mut bs: Vec<GenericBound> = Vec::new();
-    for bound in bounds.iter() {
-        let b = match &**bound {
-            GenericBoundX::Trait(path, ts) if path == from_path => {
-                Arc::new(GenericBoundX::Trait(to_path.clone(), ts.clone()))
-            }
-            GenericBoundX::TypEquality(path, ts, x, t) if path == from_path => Arc::new(
-                GenericBoundX::TypEquality(to_path.clone(), ts.clone(), x.clone(), t.clone()),
-            ),
-            _ => bound.clone(),
-        };
-        bs.push(b);
-    }
-    Arc::new(bs)
-}
-
 pub(crate) fn translate_trait<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
@@ -97,7 +77,7 @@ pub(crate) fn translate_trait<'tcx>(
     trait_generics: &'tcx Generics,
     trait_items: &'tcx [TraitItemRef],
     trait_vattrs: &VerifierAttrs,
-    external_fn_specification_trait_method_impls: &mut Vec<(DefId, rustc_span::Span)>,
+    external_info: &mut ExternalInfo,
 ) -> Result<(), VirErr> {
     let tcx = ctxt.tcx;
     let orig_trait_path = def_id_to_vir_path(tcx, &ctxt.verus_items, trait_def_id);
@@ -288,7 +268,7 @@ pub(crate) fn translate_trait<'tcx>(
                     body_id,
                     ex_trait_id_for,
                     ex_item_id_for,
-                    external_fn_specification_trait_method_impls,
+                    external_info,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);
@@ -322,7 +302,7 @@ pub(crate) fn translate_trait<'tcx>(
                     let proxy_predicates = tcx.item_bounds(owner_id.to_def_id());
                     let preds1 = external_predicates.instantiate(tcx, ex_trait_ref_for.args);
                     let preds2 = proxy_predicates.instantiate(tcx, ex_trait_ref_for.args);
-                    // TODO, but kiw priority, since this is just a check for trusted declarations:
+                    // TODO, but low priority, since this is just a check for trusted declarations:
                     // crate::rust_to_vir_func::predicates_match(tcx, true, &preds1.iter().collect(), &preds2.iter().collect())?;
                     // (would need to fix up the TyKind::Alias projections inside the clauses)
 
@@ -345,11 +325,16 @@ pub(crate) fn translate_trait<'tcx>(
     let mut methods = vir::headers::make_trait_decls(methods)?;
     vir.functions.append(&mut methods);
     let mut assoc_typs_bounds = Arc::new(assoc_typs_bounds);
-    if ex_trait_id_for.is_some() {
-        typ_bounds = rewrite_external_bounds(&orig_trait_path, &trait_path, &typ_bounds);
+    let target_trait_id = if let Some(target_trait_id) = ex_trait_id_for {
+        typ_bounds =
+            vir::traits::rewrite_external_bounds(&orig_trait_path, &trait_path, &typ_bounds);
         assoc_typs_bounds =
-            rewrite_external_bounds(&orig_trait_path, &trait_path, &assoc_typs_bounds);
-    }
+            vir::traits::rewrite_external_bounds(&orig_trait_path, &trait_path, &assoc_typs_bounds);
+        target_trait_id
+    } else {
+        trait_def_id
+    };
+    external_info.trait_ids.push(target_trait_id);
     let traitx = TraitX {
         name: trait_path,
         proxy: ex_trait_id_for.map(|_| (*ctxt.spanned_new(trait_span, orig_trait_path)).clone()),

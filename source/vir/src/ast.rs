@@ -201,6 +201,9 @@ pub enum TypDecoration {
 pub enum Primitive {
     Array,
     Slice,
+    /// StrSlice type. Currently the vstd StrSlice struct is "seen" as this type
+    /// despite the fact that it is in fact a datatype
+    StrSlice,
     Ptr, // Mut ptr, unless Const decoration is applied
 }
 
@@ -216,9 +219,8 @@ pub enum TypX {
     Int(IntRange),
     /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
     Tuple(Typs),
-    /// `FnSpec` type (TODO rename from 'Lambda' to just 'FnSpec')
-    /// (t1, ..., tn) -> t0.
-    Lambda(Typs, Typ),
+    /// `spec_fn` type (t1, ..., tn) -> t0.
+    SpecFn(Typs, Typ),
     /// Executable function types (with a requires and ensures)
     AnonymousClosure(Typs, Typ, usize),
     /// Corresponds to Rust's FnDef type
@@ -231,9 +233,6 @@ pub enum TypX {
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs, ImplPaths),
-    /// StrSlice type. Currently the vstd StrSlice struct is "seen" as this type
-    /// despite the fact that it is in fact a datatype
-    StrSlice,
     /// Other primitive type (applied to type arguments)
     Primitive(Primitive, Typs),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
@@ -969,6 +968,28 @@ pub enum FunctionKind {
     },
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode, Copy)]
+pub enum ItemKind {
+    Function,
+    /// This function is actually a const declaration;
+    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
+    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
+    /// and the body is restricted to a subset of expressions that are spec-safe.
+    Const,
+    /// Static is kind of similar to const, in that we treat it as a 0-argument function.
+    /// The main difference is what happens when you reference the static or const.
+    /// For a const, it's as if you call the function every time you reference it.
+    /// For a static, it's as if you call the function once at the beginning of the program.
+    /// The difference is most obvious when the item of a type that is not Copy.
+    /// For example, if a const/static has type PCell, then:
+    ///  - If it's a const, it will get a different id() every time it is referenced from code
+    ///  - If it's a static, every use will have the same id()
+    /// This initially seems a bit paradoxical; const and static can only call 'const' functions,
+    /// so they can only be deterministic, right? But for something like cell, the 'id'
+    /// (the nondeterministic part) is purely ghost.
+    Static,
+}
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1038,28 +1059,6 @@ pub struct FunctionX {
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode, Copy)]
-pub enum ItemKind {
-    Function,
-    /// This function is actually a const declaration;
-    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
-    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
-    /// and the body is restricted to a subset of expressions that are spec-safe.
-    Const,
-    /// Static is kind of similar to const, in that we treat it as a 0-argument function.
-    /// The main difference is what happens when you reference the static or const.
-    /// For a const, it's as if you call the function every time you reference it.
-    /// For a static, it's as if you call the function once at the beginning of the program.
-    /// The difference is most obvious when the item of a type that is not Copy.
-    /// For example, if a const/static has type PCell, then:
-    ///  - If it's a const, it will get a different id() every time it is referenced from code
-    ///  - If it's a static, every use will have the same id()
-    /// This initially seems a bit paradoxical; const and static can only call 'const' functions,
-    /// so they can only be deterministic, right? But for something like cell, the 'id'
-    /// (the nondeterministic part) is purely ghost.
-    Static,
 }
 
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;
@@ -1180,6 +1179,8 @@ pub struct TraitImplX {
     pub trait_typ_args: Typs,
     pub trait_typ_arg_impls: Arc<Spanned<ImplPaths>>,
     pub owning_module: Option<Path>,
+    // Not declared directly to Verus, but imported based on related traits and types:
+    pub auto_imported: bool,
 }
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]

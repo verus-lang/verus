@@ -59,7 +59,7 @@ const PREFIX_FNDEF_TYPE_ID: &str = "FNDEF%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
 const PREFIX_CLOSURE_TYPE: &str = "anonymous_closure%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
-const PREFIX_LAMBDA_TYPE: &str = "fun%";
+const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
@@ -67,6 +67,7 @@ const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
 const SLICE_TYPE: &str = "slice%";
+const STRSLICE_TYPE: &str = "strslice%";
 const ARRAY_TYPE: &str = "array%";
 const PTR_TYPE: &str = "ptr_mut%";
 const PREFIX_SNAPSHOT: &str = "snap%";
@@ -81,6 +82,7 @@ const VARIANT_FIELD_INTERNAL_SEPARATOR: &str = "/?";
 const PROJECT_SEPARATOR: &str = "/";
 const MONOTYPE_APP_BEGIN: &str = "<";
 const MONOTYPE_APP_END: &str = ">";
+const MONOTYPE_DECORATE: &str = "$%";
 const TRAIT_DEFAULT_SEPARATOR: &str = "%default%";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
@@ -130,16 +132,13 @@ pub const T_HEIGHT: &str = "Height";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
-pub const BOX_STRSLICE: &str = "S";
 pub const BOX_FNDEF: &str = "F";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
-pub const UNBOX_STRSLICE: &str = "%S";
 pub const UNBOX_FNDEF: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_INT: &str = "INT";
-pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_CHAR: &str = "CHAR";
 pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
@@ -158,6 +157,7 @@ pub const DECORATE_NEVER: &str = "NEVER";
 pub const DECORATE_CONST_PTR: &str = "CONST_PTR";
 pub const TYPE_ID_ARRAY: &str = "ARRAY";
 pub const TYPE_ID_SLICE: &str = "SLICE";
+pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_PTR: &str = "PTR";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
@@ -192,11 +192,12 @@ pub const QID_ACCESSOR: &str = "accessor";
 pub const QID_INVARIANT: &str = "invariant";
 pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
 pub const QID_TRAIT_IMPL: &str = "trait_impl";
+pub const QID_TRAIT_TYPE_BOUNDS: &str = "trait_type_bounds";
+pub const QID_ASSOC_TYPE_BOUND: &str = "assoc_type_bound";
 pub const QID_ASSOC_TYPE_IMPL: &str = "assoc_type_impl";
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
 
-pub const STRSLICE: &str = "StrSlice";
 pub const STRSLICE_IS_ASCII: &str = "str%strslice_is_ascii";
 pub const STRSLICE_LEN: &str = "str%strslice_len";
 pub const STRSLICE_GET_CHAR: &str = "str%strslice_get_char";
@@ -360,6 +361,11 @@ pub fn slice_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
+pub fn strslice_type() -> Path {
+    let ident = Arc::new(STRSLICE_TYPE.to_string());
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
 pub fn array_type() -> Path {
     let ident = Arc::new(ARRAY_TYPE.to_string());
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
@@ -396,8 +402,8 @@ pub fn prefix_tuple_param(i: usize) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TUPLE_PARAM, i))
 }
 
-pub fn prefix_lambda_type(i: usize) -> Path {
-    let ident = Arc::new(format!("{}{}", PREFIX_LAMBDA_TYPE, i));
+pub fn prefix_spec_fn_type(i: usize) -> Path {
+    let ident = Arc::new(format!("{}{}", PREFIX_SPEC_FN_TYPE, i));
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
@@ -421,7 +427,7 @@ pub fn trait_bound(trait_path: &Path) -> Ident {
 }
 
 pub fn prefix_type_id_fun(i: usize) -> Ident {
-    prefix_type_id(&prefix_lambda_type(i))
+    prefix_type_id(&prefix_spec_fn_type(i))
 }
 
 pub fn prefix_box(ident: &Path) -> Ident {
@@ -537,6 +543,18 @@ pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
     }
 }
 
+pub fn monotyp_decorate(dec: crate::ast::TypDecoration, path: &Path) -> Path {
+    let id = Arc::new(format!(
+        "{}{}{}{}{}",
+        MONOTYPE_DECORATE,
+        dec as u32,
+        MONOTYPE_APP_BEGIN,
+        path_to_string(path),
+        MONOTYPE_APP_END
+    ));
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
+}
+
 pub fn name_as_vstd_name(name: &String) -> Option<String> {
     let name = if let Some(x) = name.strip_prefix(crate::def::VERUSLIB_PREFIX) {
         if let Some(x) = x.strip_prefix(crate::def::PERVASIVE_PREFIX) {
@@ -633,7 +651,7 @@ pub enum ProverChoice {
     Singular,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CommandContext {
     pub fun: Fun,
     pub span: crate::messages::Span,
@@ -651,6 +669,7 @@ impl CommandContext {
     }
 }
 
+#[derive(Debug)]
 #[derive(Clone)]
 pub struct CommandsWithContextX {
     pub context: CommandContext,
@@ -734,10 +753,10 @@ pub fn fn_namespace_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fu
     })
 }
 
-pub fn strslice_defn_path(vstd_crate_name: &Ident) -> Path {
+pub fn strslice_module_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
         krate: Some(vstd_crate_name.clone()),
-        segments: Arc::new(vec![Arc::new("string".to_string()), Arc::new(STRSLICE.to_string())]),
+        segments: Arc::new(vec![Arc::new("string".to_string())]),
     })
 }
 

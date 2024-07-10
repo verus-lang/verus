@@ -1,5 +1,6 @@
 use crate::attributes::get_verifier_attrs;
 use crate::context::{BodyCtxt, Context};
+use crate::rust_to_vir::ExternalInfo;
 use crate::util::{err_span, unsupported_err_span};
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
@@ -646,6 +647,140 @@ pub(crate) fn mid_ty_simplify<'tcx>(
     }
 }
 
+// Return true if we support the type and therefore can use a trait impl that mentions it
+// (This is meant to be a quick prefilter; if it incorrectly returns true, we may end up
+// dropping the results of trait_impl_to_vir, which is ok.)
+pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    type_walker: rustc_middle::ty::walk::TypeWalker<'tcx>,
+    external_info: &ExternalInfo,
+) -> bool {
+    let mut all_types_supported = true;
+    for arg in type_walker {
+        if let rustc_middle::ty::GenericArgKind::Type(t) = arg.unpack() {
+            let supported = match t.kind() {
+                TyKind::Bool => true,
+                TyKind::Uint(_) | TyKind::Int(_) => true,
+                TyKind::Char => true,
+                TyKind::Ref(_, _, rustc_ast::Mutability::Not) => true,
+                TyKind::Param(_) => true,
+                TyKind::Never => true,
+                TyKind::Tuple(_) => true,
+                TyKind::Slice(_) => true,
+                TyKind::RawPtr(_) => true,
+                TyKind::Array(..) => true,
+                TyKind::Closure(..) => true,
+                TyKind::FnDef(..) => true,
+                TyKind::Str => true,
+
+                TyKind::Alias(rustc_middle::ty::AliasKind::Opaque, _) => false,
+                TyKind::Alias(rustc_middle::ty::AliasKind::Weak, _) => false,
+                TyKind::Float(..) => false,
+                TyKind::Foreign(..) => false,
+                TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => false,
+                TyKind::FnPtr(..) => false,
+                TyKind::Dynamic(..) => false,
+                TyKind::Coroutine(..) => false,
+                TyKind::CoroutineWitness(..) => false,
+                TyKind::Bound(..) => false,
+                TyKind::Placeholder(..) => false,
+                TyKind::Infer(..) => false,
+                TyKind::Error(..) => false,
+
+                TyKind::Adt(rustc_middle::ty::AdtDef(adt_def_data), _) => {
+                    external_info.type_ids.contains(&adt_def_data.did)
+                }
+                TyKind::Alias(
+                    rustc_middle::ty::AliasKind::Projection | rustc_middle::ty::AliasKind::Inherent,
+                    t,
+                ) => {
+                    let trait_def = tcx.generics_of(t.def_id).parent;
+                    let t_args: Vec<_> =
+                        t.args.iter().filter(|x| x.as_region().is_none()).collect();
+                    t_args.iter().find(|x| x.as_type().is_none()).is_none()
+                        && trait_def.is_some()
+                        && t_args.len() >= 1
+                }
+            };
+            all_types_supported = all_types_supported && supported;
+        }
+    }
+    all_types_supported
+}
+
+// Return true if we support the generics and therefore can use a trait impl that mentions it
+// (This is meant to be a quick prefilter; if it incorrectly returns true, we may end up
+// dropping the results of trait_impl_to_vir, which is ok.)
+pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    def_id: DefId,
+    external_info: &ExternalInfo,
+) -> bool {
+    let generics = tcx.generics_of(def_id);
+    for (i, param) in generics.params.iter().enumerate() {
+        if i == 0 && param.name == kw::SelfUpper {
+            continue;
+        }
+        match &param.kind {
+            GenericParamDefKind::Lifetime { .. } => continue,
+            GenericParamDefKind::Type { has_default: false, synthetic: true | false } => {}
+            GenericParamDefKind::Type { has_default: true, .. } => {
+                return false;
+            }
+            GenericParamDefKind::Const { is_host_effect: true, .. } => continue,
+            GenericParamDefKind::Const { .. } => {}
+        }
+        if !param.pure_wrt_drop {
+            return false;
+        }
+    }
+    let predicates = tcx.predicates_of(def_id);
+    for (predicate, _span) in predicates.predicates.iter() {
+        match predicate.kind().skip_binder() {
+            ClauseKind::RegionOutlives(_) | ClauseKind::TypeOutlives(_) => {}
+            ClauseKind::Trait(TraitPredicate { trait_ref, polarity: ImplPolarity::Positive }) => {
+                let trait_def_id = trait_ref.def_id;
+                if Some(trait_def_id) == tcx.lang_items().fn_trait()
+                    || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
+                    || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
+                {
+                    continue;
+                }
+                if !external_info.trait_id_set.contains(&trait_def_id) {
+                    return false;
+                }
+                for arg in trait_ref.args.types() {
+                    if !mid_ty_filter_for_external_impls(tcx, arg.walk(), external_info) {
+                        return false;
+                    }
+                }
+            }
+            ClauseKind::Projection(pred) => {
+                if Some(pred.projection_ty.def_id) == tcx.lang_items().fn_once_output() {
+                    continue;
+                }
+                if pred.term.ty().is_none() {
+                    return false;
+                }
+                let trait_def_id = pred.projection_ty.trait_def_id(tcx);
+                if !external_info.trait_id_set.contains(&trait_def_id) {
+                    return false;
+                }
+                for arg in pred.projection_ty.args.types() {
+                    if !mid_ty_filter_for_external_impls(tcx, arg.walk(), external_info) {
+                        return false;
+                    }
+                }
+            }
+            ClauseKind::ConstArgHasType(..) => {}
+            _ => {
+                return false;
+            }
+        }
+    }
+    true
+}
+
 // returns VIR Typ and whether Ghost/Tracked was erased from around the outside of the VIR Typ
 pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -653,15 +788,14 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     param_env_src: DefId,
     span: Span,
     ty: &rustc_middle::ty::Ty<'tcx>,
-    as_datatype: bool,
     allow_mut_ref: bool,
 ) -> Result<(Typ, bool), VirErr> {
     use vir::ast::TypDecoration;
     let t_rec = |t: &rustc_middle::ty::Ty<'tcx>| {
-        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, as_datatype, allow_mut_ref)
+        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, allow_mut_ref)
     };
-    let t_rec_flags = |t: &rustc_middle::ty::Ty<'tcx>, as_datatype: bool, allow_mut_ref: bool| {
-        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, as_datatype, allow_mut_ref)
+    let t_rec_flags = |t: &rustc_middle::ty::Ty<'tcx>, allow_mut_ref: bool| {
+        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, allow_mut_ref)
     };
     let t = match ty.kind() {
         TyKind::Bool => (Arc::new(TypX::Bool), false),
@@ -698,6 +832,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typs = Arc::new(vec![typ]);
             (Arc::new(TypX::Primitive(Primitive::Slice, typs)), false)
         }
+        TyKind::Str => (Arc::new(TypX::Primitive(Primitive::StrSlice, Arc::new(vec![]))), false),
         TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty, mutbl }) => {
             let typ = t_rec(ty)?.0;
             let typs = Arc::new(vec![typ]);
@@ -710,32 +845,14 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             (dec_typ, false)
         }
         TyKind::Array(ty, const_len) => {
-            let typ = mid_ty_to_vir_ghost(
-                tcx,
-                verus_items,
-                param_env_src,
-                span,
-                ty,
-                as_datatype,
-                allow_mut_ref,
-            )?
-            .0;
+            let typ =
+                mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, allow_mut_ref)?.0;
             let len = mid_ty_const_to_vir(tcx, Some(span), const_len)?;
             let typs = Arc::new(vec![typ, len]);
             (Arc::new(TypX::Primitive(Primitive::Array, typs)), false)
         }
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             let did = adt_def_data.did;
-            let is_strslice = matches!(
-                verus_items.id_to_name.get(&did),
-                Some(&crate::verus_items::VerusItem::Vstd(
-                    crate::verus_items::VstdItem::StrSlice,
-                    _
-                ))
-            );
-            if is_strslice && !as_datatype {
-                return Ok((Arc::new(TypX::StrSlice), false));
-            }
             let verus_item = verus_items.id_to_name.get(&did);
             if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Int)) = verus_item {
                 (Arc::new(TypX::Int(IntRange::Int)), false)
@@ -808,7 +925,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                             panic!("expected first type argument of spec_fn to be a tuple");
                         }
                     };
-                    return Ok((Arc::new(TypX::Lambda(param_typs, ret_typ)), false));
+                    return Ok((Arc::new(TypX::SpecFn(param_typs, ret_typ)), false));
                 }
                 let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
                 let impl_paths = get_impl_paths(tcx, verus_items, param_env_src, did, args, None);
@@ -849,7 +966,19 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
             let norm = at.normalize(*ty);
             if norm.value != *ty {
-                return t_rec(&norm.value);
+                let mut has_infer = false;
+                for arg in norm.value.walk().into_iter() {
+                    if let GenericArgKind::Type(t) = arg.unpack() {
+                        if let TyKind::Infer(..) = t.kind() {
+                            // It's not clear why normalize returns Infer
+                            // but it's not what we want
+                            has_infer = true;
+                        }
+                    }
+                }
+                if !has_infer {
+                    return t_rec(&norm.value);
+                }
             }
             // If normalization isn't possible, return a projection type:
             let assoc_item = tcx.associated_item(t.def_id);
@@ -869,7 +998,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let mut trait_typ_args = Vec::new();
                     for ty in t_args.iter() {
                         let ty = ty.as_type().expect("already checked for as_type");
-                        trait_typ_args.push(t_rec_flags(&ty, false, false)?.0);
+                        trait_typ_args.push(t_rec_flags(&ty, false)?.0);
                     }
                     let trait_typ_args = Arc::new(trait_typ_args);
                     let proj = TypX::Projection { trait_typ_args, trait_path, name };
@@ -910,7 +1039,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                             param_env_src,
                             span,
                             &t,
-                            as_datatype,
                             allow_mut_ref,
                         )?);
                     }
@@ -927,10 +1055,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let typx = TypX::FnDef(fun, Arc::new(typ_args), resolved);
             (Arc::new(typx), false)
         }
-
         TyKind::Float(..) => unsupported_err!(span, "floating point types"),
         TyKind::Foreign(..) => unsupported_err!(span, "foreign types"),
-        TyKind::Str => unsupported_err!(span, "str type"),
         TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => {
             unsupported_err!(span, "&mut types, except in special cases")
         }
@@ -939,9 +1065,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Coroutine(..) => unsupported_err!(span, "generator types"),
         TyKind::CoroutineWitness(..) => unsupported_err!(span, "generator witness types"),
         TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
-        TyKind::Placeholder(..) => unsupported_err!(span, "type inference placeholder types"),
-        TyKind::Infer(..) => unsupported_err!(span, "type inference placeholder types"),
-        TyKind::Error(..) => unsupported_err!(span, "type inference placeholder error types"),
+        TyKind::Placeholder(..) => unsupported_err!(span, "type inference Placeholder types"),
+        TyKind::Infer(..) => unsupported_err!(span, "type inference Infer types"),
+        TyKind::Error(..) => unsupported_err!(span, "type inference error types"),
     };
     Ok(t)
 }
@@ -959,7 +1085,6 @@ pub(crate) fn mid_ty_to_vir_datatype<'tcx>(
 }
 */
 
-// TODO: rename this back to mid_ty_to_vir
 pub(crate) fn mid_ty_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
@@ -968,7 +1093,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
     ty: &rustc_middle::ty::Ty<'tcx>,
     allow_mut_ref: bool,
 ) -> Result<Typ, VirErr> {
-    Ok(mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, false, allow_mut_ref)?.0)
+    Ok(mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, allow_mut_ref)?.0)
 }
 
 pub(crate) fn mid_ty_const_to_vir<'tcx>(
@@ -1137,6 +1262,7 @@ pub(crate) fn check_generic_bound<'tcx>(
         || Some(trait_def_id) == tcx.get_diagnostic_item(rustc_span::sym::Send)
     {
         // Rust language marker traits are ignored in VIR
+        // TODO: these should not be ignored in VIR
         Ok(None)
     } else {
         let vir_args = args

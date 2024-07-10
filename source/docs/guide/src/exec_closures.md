@@ -1,13 +1,21 @@
-# Exec closures
+# Closures
 
-In the previous sections, we discussed how Verus uses closure syntax `|x| { ... }`
-as part of various `spec`-mode features (mathematical functions, quantifiers).
-Verus also supports closures as they are used in ordinary Rust, that is,
-to define anonymous, _executable_ functions that may be passed around and called.
+In the previous chapter, we saw how to pass functions as values, which we did by referencing
+function items by name. However, it is more common in Rust to creating functions
+using _closures_.
 
+## Preconditions and postconditions on a closure
 
+Verus allows you to specify `requires` and `ensures` on a closure just like you can for
+any other function.
+Here's an example, calling the `vec_map` function we defined in the
+[previous chapter](./exec_funs_as_values.md'):
 
-## Closure Contexts and function traits: `FnOnce`, `FnMut`, and `Fn`
+```rust
+{{#include ../../../rust_verify/example/guide/higher_order_fns.rs:vec_map_example_with_closure}}
+```
+
+## Closure capturing
 
 One of the most challenging aspects of closures, in general, is that closures
 can capture variables from the surrounding context.
@@ -34,4 +42,12 @@ though it does handle moving and immutable borrows easily.
 Therefore, Verus has better support for `Fn` and `FnOnce`---it does not yet take advantage of the
 capturing capabilities supported by Rust's `FnMut`.
 
+Fortunately, both move-captures and immutable-reference-captures are easy to handle,
+as we can simply take their values inside the closure to be whatever they are at the program
+point of the closure expression.
 
+Example:
+
+```rust
+{{#include ../../../rust_verify/example/guide/higher_order_fns.rs:closure_capture}}
+```

@@ -36,10 +36,17 @@ pub(crate) struct AxiomInfo {
     pub(crate) decl: Decl,
 }
 
+#[cfg(feature = "axiom-usage-info")]
+#[derive(Debug)]
+pub enum UsageInfo {
+    None,
+    UsedAxioms(Vec<Ident>),
+}
+
 #[derive(Debug)]
 pub enum ValidityResult {
-    Valid,
-    Invalid(Option<Model>, ArcDynMessage, Option<AssertId>),
+    Valid(#[cfg(feature = "axiom-usage-info")] UsageInfo),
+    Invalid(Option<Model>, Option<ArcDynMessage>, Option<AssertId>),
     Canceled,
     TypeError(TypeError),
     UnexpectedOutput(String),
@@ -50,7 +57,7 @@ pub(crate) enum ContextState {
     NotStarted,
     ReadyForQuery,
     FoundResult,
-    FoundInvalid(Vec<AssertionInfo>, Model),
+    FoundInvalid(Vec<AssertionInfo>, Option<Model>),
     Canceled,
     NoMoreQueriesAllowed,
 }
@@ -92,10 +99,12 @@ pub struct Context {
     pub(crate) smt_log: Emitter,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
+    pub(crate) rlimit_count: u64,
     pub(crate) state: ContextState,
     pub(crate) expected_solver_version: Option<String>,
     pub(crate) profile_logfile_name: Option<String>,
     pub(crate) disable_incremental_solving: bool,
+    pub(crate) usage_info_enabled: bool,
     pub(crate) check_valid_used: bool,
     pub(crate) solver: SmtSolver,
 }
@@ -151,10 +160,12 @@ impl Context {
             smt_log: Emitter::new(message_interface.clone(), true, true, None, solver.clone()),
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
+            rlimit_count: 0,
             state: ContextState::NotStarted,
             expected_solver_version: None,
             profile_logfile_name: None,
             disable_incremental_solving: false,
+            usage_info_enabled: false,
             check_valid_used: false,
             solver,
         };
@@ -211,6 +222,10 @@ impl Context {
         (self.time_smt_init, self.time_smt_run)
     }
 
+    pub fn get_rlimit_count(&self) -> u64 {
+        self.rlimit_count
+    }
+
     pub fn set_expected_solver_version(&mut self, version: String) {
         self.expected_solver_version = Some(version);
     }
@@ -234,6 +249,12 @@ impl Context {
         self.air_initial_log.log_set_option("disable_incremental_solving", "true");
         self.air_middle_log.log_set_option("disable_incremental_solving", "true");
         self.air_final_log.log_set_option("disable_incremental_solving", "true");
+    }
+
+    pub fn enable_usage_info(&mut self) {
+        assert!(matches!(self.state, ContextState::NotStarted));
+        self.usage_info_enabled = true;
+        self.set_z3_param_bool("produce-unsat-cores", true, true);
     }
 
     // emit blank line into log files
@@ -416,6 +437,11 @@ impl Context {
         query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
         self.ensure_started();
+
+        if let Err(e) = crate::smt_verify::smt_update_statistics(self) {
+            return e;
+        }
+
         self.air_initial_log.log_query(query);
         let query = match crate::typecheck::check_query(self, query) {
             Ok(query) => query,
@@ -453,7 +479,7 @@ impl Context {
         only_check_earlier: bool,
         query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
-        if let ContextState::FoundInvalid(infos, air_model) = self.state.clone() {
+        if let ContextState::FoundInvalid(infos, Some(air_model)) = self.state.clone() {
             let res = crate::smt_verify::smt_check_assertion(
                 self,
                 diagnostics,
@@ -465,7 +491,7 @@ impl Context {
             self.check_valid_used = true;
             res
         } else {
-            panic!("check_valid_again expected query to be ValidityResult::Invalid");
+            panic!("check_valid_again expected query to be ValidityResult::Invalid(_, Some(_))");
         }
     }
 
@@ -499,21 +525,33 @@ impl Context {
         match &**command {
             CommandX::Push => {
                 self.push();
-                ValidityResult::Valid
+                ValidityResult::Valid(
+                    #[cfg(feature = "axiom-usage-info")]
+                    UsageInfo::None,
+                )
             }
             CommandX::Pop => {
                 self.pop();
-                ValidityResult::Valid
+                ValidityResult::Valid(
+                    #[cfg(feature = "axiom-usage-info")]
+                    UsageInfo::None,
+                )
             }
             CommandX::SetOption(option, value) => {
                 self.set_z3_param(option, value);
-                ValidityResult::Valid
+                ValidityResult::Valid(
+                    #[cfg(feature = "axiom-usage-info")]
+                    UsageInfo::None,
+                )
             }
             CommandX::Global(decl) => {
                 if let Err(err) = self.global(&decl) {
                     ValidityResult::TypeError(err)
                 } else {
-                    ValidityResult::Valid
+                    ValidityResult::Valid(
+                        #[cfg(feature = "axiom-usage-info")]
+                        UsageInfo::None,
+                    )
                 }
             }
             CommandX::CheckValid(query) => {

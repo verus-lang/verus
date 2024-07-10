@@ -157,7 +157,20 @@ impl<P: PCM> Resource<P> {
 
     // Operations with shared references
     #[verifier::external_body]
-    pub proof fn join_shared<'a>(
+    pub proof fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
+        &'a Self)
+        requires
+            self.loc() == other.loc(),
+        ensures
+            out.loc() == self.loc(),
+            incl(self.value(), out.value()),
+            incl(other.value(), out.value()),
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
+    pub proof fn join_shared_to_target<'a>(
         tracked &'a self,
         tracked other: &'a Self,
         target: P,
@@ -169,7 +182,7 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             out.value() == target,
     {
-        unimplemented!();
+        self.join_shared(other).weaken(target)
     }
 
     #[verifier::external_body]

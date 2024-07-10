@@ -103,6 +103,8 @@ pub struct ArgsX {
     pub report_long_running: bool,
     pub use_crate_name: bool,
     pub cvc5: bool,
+    #[cfg(feature = "axiom-usage-info")]
+    pub broadcast_usage_info: bool,
 }
 
 impl ArgsX {
@@ -145,6 +147,8 @@ impl ArgsX {
             report_long_running: Default::default(),
             use_crate_name: Default::default(),
             cvc5: Default::default(),
+            #[cfg(feature = "axiom-usage-info")]
+            broadcast_usage_info: Default::default(),
         }
     }
 
@@ -275,6 +279,8 @@ pub fn parse_args_with_imports(
     const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
+    #[cfg(feature = "axiom-usage-info")]
+    const EXTENDED_BROADCAST_USAGE_INFO: &str = "broadcast-usage-info";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -296,6 +302,11 @@ pub fn parse_args_with_imports(
         (
             EXTENDED_USE_CRATE_NAME,
             "Use the crate name in paths (useful when verifying vstd without --export)",
+        ),
+        #[cfg(feature = "axiom-usage-info")]
+        (
+            EXTENDED_BROADCAST_USAGE_INFO,
+            "Print usage info for broadcasted axioms, lemmas, and groups",
         ),
     ];
 
@@ -430,7 +441,6 @@ pub fn parse_args_with_imports(
 
     let error = |msg: String| -> ! {
         eprintln!("Error: {}", msg);
-        print_usage();
         std::process::exit(-1)
     };
 
@@ -610,7 +620,7 @@ pub fn parse_args_with_imports(
         profile_all: {
             if matches.opt_present(OPT_PROFILE_ALL) {
                 if !matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("Must pass --verify-module when using profile-all. To capture a full project's profile, consider --capture-profiles".to_string())
+                    error("Must pass --verify-module when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
                 }
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --profile-all are mutually exclusive".to_string())
@@ -640,6 +650,8 @@ pub fn parse_args_with_imports(
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
         use_crate_name: extended.get(EXTENDED_USE_CRATE_NAME).is_some(),
         cvc5: extended.get(EXTENDED_CVC5).is_some(),
+        #[cfg(feature = "axiom-usage-info")]
+        broadcast_usage_info: extended.get(EXTENDED_BROADCAST_USAGE_INFO).is_some(),
     };
 
     (Arc::new(args), unmatched)

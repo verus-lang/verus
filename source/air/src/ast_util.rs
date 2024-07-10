@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Constant, DeclX, Expr, ExprX, Exprs,
-    Ident, MultiOp, Qid, Quant, Trigger, Typ, TypX, Typs, UnaryOp,
+    Axiom, BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Constant, Decl, DeclX, Expr,
+    ExprX, Exprs, Ident, MultiOp, Qid, Quant, Trigger, Typ, TypX, Typs, UnaryOp,
 };
 use crate::context::SmtSolver;
 use std::fmt::Debug;
@@ -302,4 +302,8 @@ pub fn mk_neg(e: &Expr) -> Expr {
 
 pub fn mk_sub(e1: &Expr, e2: &Expr) -> Expr {
     Arc::new(ExprX::Multi(MultiOp::Sub, Arc::new(vec![e1.clone(), e2.clone()])))
+}
+
+pub fn mk_unnamed_axiom(expr: Expr) -> Decl {
+    Arc::new(DeclX::Axiom(Axiom { named: None, expr: expr.clone() }))
 }

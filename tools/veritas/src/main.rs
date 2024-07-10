@@ -7,8 +7,33 @@ const BUILD_VERUS_SCRIPT_FILENAME: &str = "build_verus.sh";
 const GET_Z3_SCRIPT_FILENAME: &str = "get-z3.sh";
 const VERUS_PROJECT_NAME: &str = "verus";
 
+struct VeritasError {
+    loc: (String, u32, u32),
+    message: String,
+}
+
 mod printing {
+    use super::VeritasError;
     use yansi::{self, Paint};
+
+    macro_rules! verror {
+        ($($arg:tt)*) => {{
+            $crate::VeritasError {
+                loc: (::std::file!().to_string(), ::std::line!(), ::std::column!()),
+                message: ::std::format!($($arg)*),
+            }
+        }};
+    }
+
+    pub(crate) use verror;
+
+    pub fn error(VeritasError { loc, message }: &VeritasError) -> ! {
+        println!(
+            "{}",
+            format!("error [{}:{}:{}]: {}", loc.0, loc.1, loc.2, message).red()
+        );
+        std::process::exit(1);
+    }
 
     pub fn info(msg: &str) {
         eprintln!("■■■ {} ■■■", format!("info: {}", msg).blue());
@@ -28,7 +53,7 @@ mod printing {
 use std::{path::PathBuf, process::Command};
 
 #[allow(unused_imports)]
-use printing::{info, log_command, warn};
+use printing::{info, log_command, verror, warn};
 use serde::{Deserialize, Serialize};
 
 mod digest {
@@ -84,15 +109,15 @@ mod digest {
 }
 
 trait ExitStatusExt {
-    fn success_or_err(&self) -> Result<(), String>;
+    fn success_or_err(&self) -> Result<(), VeritasError>;
 }
 
 impl ExitStatusExt for std::process::ExitStatus {
-    fn success_or_err(&self) -> Result<(), String> {
+    fn success_or_err(&self) -> Result<(), VeritasError> {
         if self.success() {
             Ok(())
         } else {
-            Err(format!(
+            Err(verror!(
                 "process returned failure (exit code {})",
                 self.code()
                     .as_ref()
@@ -107,18 +132,18 @@ struct ReposCache {
     repos_cache_path: PathBuf,
 }
 
-fn env_var_dir_or_err(var: &str) -> Result<PathBuf, String> {
+fn env_var_dir_or_err(var: &str) -> Result<PathBuf, VeritasError> {
     let path = std::env::var(var)
-        .map_err(|_| format!("{} env var not set", var))
+        .map_err(|_| verror!("{} env var not set", var))
         .map(std::path::PathBuf::from)?;
     if !path.is_dir() {
-        return Err("REPOS_CACHE env var is not a directory".to_string());
+        return Err(verror!("REPOS_CACHE env var is not a directory"));
     }
     Ok(path)
 }
 
 impl ReposCache {
-    fn init() -> Result<Self, String> {
+    fn init() -> Result<Self, VeritasError> {
         let repos_cache_path = env_var_dir_or_err(REPOS_CACHE_PATH_VAR)?;
         Ok(ReposCache { repos_cache_path })
     }
@@ -127,13 +152,13 @@ impl ReposCache {
         &mut self,
         repo_name: &str,
         repo_url: &str,
-    ) -> Result<git2::Repository, String> {
+    ) -> Result<git2::Repository, VeritasError> {
         let repo_path = self
             .repos_cache_path
             .join(repo_name.to_owned() + "-" + &digest::str_digest(&repo_url));
 
         let repo = git2::Repository::init_bare(&repo_path)
-            .map_err(|e| format!("failed to init bare repo: {}", e))?;
+            .map_err(|e| verror!("failed to init bare repo: {}", e))?;
         let mut origin_remote = repo
             .find_remote("origin")
             .ok()
@@ -146,7 +171,7 @@ impl ReposCache {
                 None,
                 None,
             )
-            .map_err(|e| format!("failed to fetch origin: {}", e))?;
+            .map_err(|e| verror!("failed to fetch origin: {}", e))?;
         std::mem::drop(origin_remote);
 
         Ok(repo)
@@ -158,7 +183,7 @@ struct Z3Cache {
 }
 
 impl Z3Cache {
-    fn init() -> Result<Self, String> {
+    fn init() -> Result<Self, VeritasError> {
         let z3_cache_path = env_var_dir_or_err(Z3_CACHE_PATH_VAR)?;
         Ok(Z3Cache { z3_cache_path })
     }
@@ -167,7 +192,7 @@ impl Z3Cache {
         &mut self,
         workdir: &mut WorkDir,
         version: &str,
-    ) -> Result<PathBuf, String> {
+    ) -> Result<PathBuf, VeritasError> {
         let z3_path = self.z3_cache_path.join("z3-".to_owned() + version);
         if z3_path.exists() {
             return Ok(z3_path);
@@ -182,7 +207,7 @@ impl Z3Cache {
                 .arg(&z3_path),
         )
         .status()
-        .map_err(|e| format!("cannot execute verus build script: {}", e))?;
+        .map_err(|e| verror!("cannot execute verus build script: {}", e))?;
         result.success_or_err()?;
         Ok(z3_path)
     }
@@ -198,15 +223,15 @@ struct Checkout {
 }
 
 impl WorkDir {
-    fn init() -> Result<Self, String> {
+    fn init() -> Result<Self, VeritasError> {
         let workdir_path = env_var_dir_or_err(WORKDIR_PATH_VAR)?;
         let workdir_path = workdir_path.join("work");
         if workdir_path.exists() {
             std::fs::remove_dir_all(&workdir_path)
-                .map_err(|e| format!("cannot delete workdir {}: {}", workdir_path.display(), e))?;
+                .map_err(|e| verror!("cannot delete workdir {}: {}", workdir_path.display(), e))?;
         }
         std::fs::create_dir(&workdir_path)
-            .map_err(|e| format!("cannot create workdir {}: {}", workdir_path.display(), e))?;
+            .map_err(|e| verror!("cannot create workdir {}: {}", workdir_path.display(), e))?;
 
         Ok(WorkDir { workdir_path })
     }
@@ -216,15 +241,15 @@ impl WorkDir {
         cache: &mut ReposCache,
         repo_name: &str,
         repo_url: &str,
-        refspec: &str,
-    ) -> Result<Checkout, String> {
+        revspec: &str,
+    ) -> Result<Checkout, VeritasError> {
         let work_path = self
             .workdir_path
-            .join(repo_name.to_owned() + "-" + &digest::str_digest(refspec));
+            .join(repo_name.to_owned() + "-" + &digest::str_digest(revspec));
 
         let cached_repo = cache.ensure_cache_repo(repo_name, repo_url)?;
         let repository = git2::Repository::init(work_path)
-            .map_err(|e| format!("failed to init repo in work path: {}", e))?;
+            .map_err(|e| verror!("failed to init repo in work path: {}", e))?;
         let mut origin_remote = repository
             .find_remote("origin")
             .ok()
@@ -237,23 +262,24 @@ impl WorkDir {
         let mut fetch_options = git2::FetchOptions::new();
         fetch_options.depth(1);
         origin_remote
-            .fetch(&[refspec], Some(&mut fetch_options), None)
-            .map_err(|e| format!("failed to fetch {} from origin: {}", refspec, e))?;
+            .fetch(&[revspec], Some(&mut fetch_options), None)
+            .map_err(|e| verror!("failed to fetch {} from origin: {}", revspec, e))?;
         std::mem::drop(origin_remote);
-        let remote_refspec = format!("remotes/origin/{refspec}");
+        let remote_revspec = format!("remotes/origin/{revspec}");
         let (object, reference) = repository
-            .revparse_ext(&remote_refspec)
-            .map_err(|e| format!("failed to find {}: {}", refspec, e))?;
+            .revparse_ext(&remote_revspec)
+            .or_else(|_e| repository.revparse_ext(revspec))
+            .map_err(|e| verror!("failed to find {}: {}", revspec, e))?;
         repository
             .checkout_tree(&object, None)
-            .map_err(|e| format!("cannot checkout {}: {}", refspec, e))?;
+            .map_err(|e| verror!("cannot checkout {}: {}", revspec, e))?;
         match &reference {
             Some(gref) => repository
                 .set_head(gref.name().unwrap())
-                .map_err(|e| format!("cannot set head: {}", e))?,
+                .map_err(|e| verror!("cannot set head: {}", e))?,
             None => repository
                 .set_head_detached(object.id())
-                .map_err(|e| format!("cannot set head: {}", e))?,
+                .map_err(|e| verror!("cannot set head: {}", e))?,
         }
         let hash = object.id().to_string();
         std::mem::drop(object);
@@ -262,11 +288,11 @@ impl WorkDir {
         Ok(Checkout { repository, hash })
     }
 
-    fn scratch(&mut self) -> Result<PathBuf, String> {
+    fn scratch(&mut self) -> Result<PathBuf, VeritasError> {
         let scratch_path = self.workdir_path.join("scratch");
         if scratch_path.exists() {
             std::fs::remove_dir_all(&scratch_path).map_err(|e| {
-                format!(
+                verror!(
                     "cannot delete scratch dir {}: {}",
                     scratch_path.display(),
                     e
@@ -274,7 +300,7 @@ impl WorkDir {
             })?;
         }
         std::fs::create_dir(&scratch_path).map_err(|e| {
-            format!(
+            verror!(
                 "cannot create scratch dir {}: {}",
                 scratch_path.display(),
                 e
@@ -288,7 +314,7 @@ impl WorkDir {
 struct RunConfigurationProject {
     name: String,
     git_url: String,
-    refspec: String,
+    revspec: String,
     crate_root: String,
     extra_args: Option<Vec<String>>,
     prepare_script: Option<String>,
@@ -301,7 +327,7 @@ fn verus_verify_vstd_default() -> bool {
 #[derive(Debug, Serialize, Deserialize, Hash)]
 struct RunConfiguration {
     verus_git_url: String,
-    verus_refspec: String,
+    verus_revspec: String,
     verus_features: Vec<String>,
     #[serde(default = "verus_verify_vstd_default")]
     verus_verify_vstd: bool,
@@ -343,26 +369,26 @@ struct VerusOutput {
     verification_results: VerusOutputVerificationResults,
 }
 
-fn run(run_configuration_path: &str) -> Result<(), String> {
+fn run(run_configuration_path: &str) -> Result<(), VeritasError> {
     let run_configuration_path = std::path::Path::new(run_configuration_path);
     let run_configuration: RunConfiguration = {
         let mut run_configuration: RunConfiguration = toml::from_str(
             &std::fs::read_to_string(run_configuration_path).map_err(|e| {
-                format!(
+                verror!(
                     "cannot read configuration file {}: {}",
                     run_configuration_path.display(),
                     e
                 )
             })?,
         )
-        .map_err(|e| format!("cannot parse run configuration: {}", e))?;
+        .map_err(|e| verror!("cannot parse run configuration: {}", e))?;
         if run_configuration.verus_verify_vstd {
             run_configuration.projects.insert(
                 0,
                 RunConfigurationProject {
                     name: "verus-vstd".to_owned(),
                     git_url: run_configuration.verus_git_url.clone(),
-                    refspec: run_configuration.verus_refspec.clone(),
+                    revspec: run_configuration.verus_revspec.clone(),
                     crate_root: "source/vstd/vstd.rs".to_owned(),
                     extra_args: Some(vec![
                         "--no-vstd".to_owned(),
@@ -384,13 +410,13 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
 
     info(&format!(
         "checking out verus {}",
-        run_configuration.verus_refspec
+        run_configuration.verus_revspec
     ));
     let verus_checkout = workdir.checkout(
         &mut repos_cache,
         VERUS_PROJECT_NAME,
         &run_configuration.verus_git_url,
-        &run_configuration.verus_refspec,
+        &run_configuration.verus_revspec,
     )?;
     info(&format!("checked out verus commit {}", verus_checkout.hash));
     info("building verus");
@@ -400,12 +426,12 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
         .expect("no workdir in work repository");
     let z3_version = {
         let get_z3_src = std::fs::read_to_string(verus_workdir.join("source/tools/get-z3.sh"))
-            .map_err(|e| format!("cannot read get-z3.sh: {}", e))?;
+            .map_err(|e| verror!("cannot read get-z3.sh: {}", e))?;
         let z3_version_regex =
             regex::Regex::new(r#"z3_version="([^"]+)""#).expect("invalid regex for z3_version");
         z3_version_regex
             .captures(&get_z3_src)
-            .ok_or_else(|| "cannot find z3_version in get_z3.sh".to_string())?
+            .ok_or_else(|| verror!("cannot find z3_version in get_z3.sh"))?
             .get(1)
             .expect("no capture group")
             .as_str()
@@ -414,7 +440,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
     info(&format!("getting z3 {z3_version}"));
     let z3_cached = z3_cache.ensure_z3_version(&mut workdir, &z3_version)?;
     std::fs::copy(&z3_cached, verus_workdir.join("source/z3"))
-        .map_err(|e| format!("cannot copy z3 to verus source: {}", e))?;
+        .map_err(|e| verror!("cannot copy z3 to verus source: {}", e))?;
 
     let features_args = if run_configuration.verus_features.len() > 0 {
         Some("--features".to_string())
@@ -434,7 +460,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
             .arg(std::path::Path::new(RUNNER_PATH).join(BUILD_VERUS_SCRIPT_FILENAME)),
     )
     .status()
-    .map_err(|e| format!("cannot execute verus build script: {}", e))?;
+    .map_err(|e| verror!("cannot execute verus build script: {}", e))?;
     result.success_or_err()?;
     let verus_build_duration = verus_build_start.elapsed();
 
@@ -454,7 +480,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
         run_output_path.display()
     ));
     std::fs::create_dir(&run_output_path).map_err(|e| {
-        format!(
+        verror!(
             "cannot create output dir {}: {}",
             run_output_path.display(),
             e
@@ -470,7 +496,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
             &mut repos_cache,
             &project.name,
             &project.git_url,
-            &project.refspec,
+            &project.revspec,
         )?;
         let proj_workdir = proj_checkout
             .repository
@@ -484,7 +510,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                     .arg(prepare_script),
             )
             .status()
-            .map_err(|e| format!("cannot execute prepare script for {}: {}", &project.name, e))?;
+            .map_err(|e| verror!("cannot execute prepare script for {}: {}", &project.name, e))?;
             result.success_or_err()?;
         }
         let project_verification_start = std::time::Instant::now();
@@ -500,7 +526,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                 .arg("--no-report-long-running"),
         )
         .output()
-        .map_err(|e| format!("cannot execute verus on {}: {}", &project.name, e))?;
+        .map_err(|e| verror!("cannot execute verus on {}: {}", &project.name, e))?;
         let project_verification_duration = project_verification_start.elapsed();
 
         let project_run_configuration_digest = digest::obj_digest(&project);
@@ -532,7 +558,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                         "success": output.status.success(),
                         "stderr": String::from_utf8_lossy(&output.stderr),
                         "verus_git_url": run_configuration.verus_git_url,
-                        "verus_refspec": run_configuration.verus_refspec,
+                        "verus_revspec": run_configuration.verus_revspec,
                         "verus_features": run_configuration.verus_features,
                         "run_configuration": project,
                         "verification_duration_ms": duration_ms_value,
@@ -560,7 +586,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
             &project_output_path_json,
             serde_json::to_string_pretty(&output_json).unwrap(),
         )
-        .map_err(|e| format!("cannot write output json: {}", e))?;
+        .map_err(|e| verror!("cannot write output json: {}", e))?;
 
         project_summaries.push((
             project.clone(),
@@ -602,7 +628,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
 
         let run_configuration_json_value: serde_json::Value =
             serde_json::to_value(&run_configuration)
-                .map_err(|e| format!("cannot convert run configuration to json: {}", e))?;
+                .map_err(|e| verror!("cannot convert run configuration to json: {}", e))?;
         let project_summaries = project_summaries
             .iter()
             .map(
@@ -635,7 +661,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                                 project_commit_hash: project_checkout_hash.clone(),
                             }
                         })
-                        .map_err(|e| format!("cannot convert summary to json: {}", e))?;
+                        .map_err(|e| verror!("cannot convert summary to json: {}", e))?;
                     let serde_json::Value::Object(mut project_summary_json_map) =
                         project_summary_json
                     else {
@@ -652,10 +678,10 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                     Ok(serde_json::Value::Object(project_summary_json_map))
                 },
             )
-            .collect::<Result<Vec<_>, String>>()?;
+            .collect::<Result<Vec<_>, VeritasError>>()?;
         let project_summaries_json_value: serde_json::Value =
             serde_json::to_value(&project_summaries)
-                .map_err(|e| format!("cannot convert summary to json: {}", e))?;
+                .map_err(|e| verror!("cannot convert summary to json: {}", e))?;
 
         let mut summary = serde_json::Map::new();
         summary.insert("run_configuration".to_owned(), run_configuration_json_value);
@@ -679,7 +705,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
         &summary_output_path,
         serde_json::to_string_pretty(&summary).expect("valid json"),
     )
-    .map_err(|e| format!("cannot write summary toml: {}", e))?;
+    .map_err(|e| verror!("cannot write summary toml: {}", e))?;
     info(&format!(
         "output written to {}",
         run_output_path
@@ -701,7 +727,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
         writeln!(
             &mut summary_md,
             "veritas report for verus `{}` (`{}`) with features: `{}`",
-            run_configuration.verus_refspec,
+            run_configuration.verus_revspec,
             verus_checkout.hash,
             run_configuration.verus_features.join(" ")
         )
@@ -709,7 +735,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
         writeln!(&mut summary_md).unwrap();
         writeln!(
             &mut summary_md,
-            "| project | refspec | outcome | total verus time (ms) | smt run time (ms) |"
+            "| project | revspec | outcome | total verus time (ms) | smt run time (ms) |"
         )
         .unwrap();
         writeln!(
@@ -731,7 +757,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
                 project_run_configuration.name,
                 format!(
                     "`{}` (`{}`)",
-                    &project_run_configuration.refspec, &project_checkout_hash
+                    &project_run_configuration.revspec, &project_checkout_hash
                 ),
                 project_summary
                     .as_ref()
@@ -765,14 +791,14 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
             .write(true)
             .open(&summary_md_output_path)
             .map_err(|e| {
-                format!(
+                verror!(
                     "cannot open {} for writing: {}",
                     summary_md_output_path.display(),
                     e
                 )
             })?;
         std::io::Write::write(&mut summary_md_file, &summary_md.as_bytes()).map_err(|e| {
-            format!(
+            verror!(
                 "cannot write to {}: {}",
                 summary_md_output_path.display(),
                 e
@@ -792,12 +818,7 @@ fn run(run_configuration_path: &str) -> Result<(), String> {
 }
 
 fn main() {
-    use yansi::Paint;
-
-    fn error(err: &str) -> ! {
-        println!("{}", format!("error: {}", err).red());
-        std::process::exit(1);
-    }
+    use printing::error;
 
     let mut args = std::env::args();
     let program = args.next().expect("no program name");
@@ -809,7 +830,7 @@ fn main() {
     let matches = match opts.parse(&args) {
         Ok(m) => m,
         Err(f) => {
-            error(&f.to_string());
+            error(&verror!("{}", f));
         }
     };
 

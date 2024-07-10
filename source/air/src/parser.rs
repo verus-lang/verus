@@ -1,7 +1,7 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
-    Decls, Expr, ExprX, Exprs, Ident, MultiOp, Qid, Quant, QueryX, Relation, Stmt, StmtX, Stmts,
-    Trigger, Triggers, Typ, TypX, UnaryOp,
+    Axiom, BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl,
+    DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Qid, Quant, QueryX, Relation, Stmt, StmtX,
+    Stmts, Trigger, Triggers, Typ, TypX, UnaryOp,
 };
 use crate::def::mk_skolem_id;
 use crate::messages::ArcDynMessageLabel;
@@ -109,7 +109,7 @@ impl Parser {
         match node {
             Node::Atom(s) if s.to_string() == "Bool" => Ok(Arc::new(TypX::Bool)),
             Node::Atom(s) if s.to_string() == "Int" => Ok(Arc::new(TypX::Int)),
-            Node::Atom(s) if s.to_string() == "Fun" => Ok(Arc::new(TypX::Lambda)),
+            Node::Atom(s) if s.to_string() == "Fun" => Ok(Arc::new(TypX::Fun)),
             Node::Atom(s) if is_symbol(s) => Ok(Arc::new(TypX::Named(Arc::new(s.clone())))),
             Node::List(nodes) if is_bitvec(nodes).is_some() => {
                 Ok(Arc::new(TypX::BitVec(is_bitvec(nodes).unwrap())))
@@ -221,7 +221,7 @@ impl Parser {
                         let typ = self.node_to_typ(&nodes[1])?;
                         let f = self.node_to_expr(&nodes[2])?;
                         let args = self.nodes_to_exprs(&nodes[3..])?;
-                        return Ok(Arc::new(ExprX::ApplyLambda(typ, f, args)));
+                        return Ok(Arc::new(ExprX::ApplyFun(typ, f, args)));
                     }
                     _ => {}
                 }
@@ -444,6 +444,28 @@ impl Parser {
         }
     }
 
+    fn nodes_to_named(&self, nodes: &[Node]) -> Result<Option<Ident>, String> {
+        let mut named = None;
+        let mut consume_named = false;
+
+        for node in nodes {
+            match node {
+                Node::Atom(s) if s.to_string() == ":named" => {
+                    consume_named = true;
+                }
+                Node::Atom(s) if consume_named && named.is_none() => {
+                    named = Some(Arc::new(s.clone()));
+                    consume_named = false;
+                }
+                _ => {
+                    return Err(format!("expected :named; found {}", node_to_string(node)));
+                }
+            }
+        }
+
+        Ok(named)
+    }
+
     fn node_to_quant_or_lambda_expr(
         &self,
         quantchooselambda: QuantOrChooseOrLambda,
@@ -621,9 +643,19 @@ impl Parser {
                     let typ = self.node_to_typ(t)?;
                     Ok(Arc::new(DeclX::Var(Arc::new(x.clone()), typ)))
                 }
-                [Node::Atom(s), e] if s.to_string() == "axiom" => {
+                [Node::Atom(s), axiom_node] if s.to_string() == "axiom" => {
+                    let (e, named) = match &axiom_node {
+                        Node::List(nodes) if nodes.len() >= 2 => match &nodes[0] {
+                            Node::Atom(s) if s.to_string() == "!" => {
+                                let named = self.nodes_to_named(&nodes[2..])?;
+                                (&nodes[1], named)
+                            }
+                            _ => (axiom_node, None),
+                        },
+                        _ => (axiom_node, None),
+                    };
                     let expr = self.node_to_expr(e)?;
-                    Ok(Arc::new(DeclX::Axiom(expr)))
+                    Ok(Arc::new(DeclX::Axiom(Axiom { named, expr })))
                 }
                 _ => Err(format!("expected declaration, found: {}", node_to_string(node))),
             },
@@ -703,12 +735,17 @@ impl Parser {
     }
 
     pub fn lines_to_model(&self, lines: &Vec<String>) -> ModelDefs {
-        let mut model_bytes: Vec<u8> = Vec::new();
-        for line in lines {
-            writeln!(model_bytes, "{}", line).expect("model_bytes");
-        }
-        let mut parser = sise::Parser::new(&model_bytes[..]);
-        let node = sise::read_into_tree(&mut parser).unwrap();
+        let node = parse_sexpression(lines);
         self.node_to_model(&node).expect("failed to parse SMT model")
     }
+}
+
+pub(crate) fn parse_sexpression(lines: &Vec<String>) -> Node {
+    let mut model_bytes: Vec<u8> = Vec::new();
+    for line in lines {
+        writeln!(model_bytes, "{}", line).expect("model_bytes");
+    }
+    let mut parser = sise::Parser::new(&model_bytes[..]);
+    let node = sise::read_into_tree(&mut parser).unwrap();
+    node
 }

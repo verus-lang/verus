@@ -73,13 +73,13 @@ fn check_each_lemma_valid(bundle: &SMBundle) -> parse::Result<()> {
         match &t.kind {
             TransitionKind::ReadonlyTransition => {
                 return Err(Error::new(
-                    l.func.sig.generics.span(),
+                    l.func.span(),
                     format!("'inductive' lemma does not make sense for a 'readonly' transition"),
                 ));
             }
             TransitionKind::Property => {
                 return Err(Error::new(
-                    l.func.sig.generics.span(),
+                    l.func.span(),
                     format!("'inductive' lemma does not make sense for a 'property' definition"),
                 ));
             }

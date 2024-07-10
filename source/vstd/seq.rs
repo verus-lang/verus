@@ -66,12 +66,14 @@ impl<A> Seq<A> {
 
     /// Appends the value `a` to the end of the sequence.
     /// This always increases the length of the sequence by 1.
+    /// This often requires annotating the type of the element literal in the sequence,
+    /// e.g., `10int`.
     ///
     /// ## Example
     ///
     /// ```rust
     /// proof fn push_test() {
-    ///     assert(seq![10, 11, 12].push(13) =~= seq![10, 11, 12, 13]);
+    ///     assert(seq![10int, 11, 12].push(13) =~= seq![10, 11, 12, 13]);
     /// }
     /// ```
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::push"]
@@ -117,9 +119,9 @@ impl<A> Seq<A> {
     ///
     /// ```rust
     /// proof fn subrange_test() {
-    ///     let s = seq![10, 11, 12, 13, 14];
-    ///     //                  ^-------^
-    ///     //          0   1   2   3   4   5
+    ///     let s = seq![10int, 11, 12, 13, 14];
+    ///     //                      ^-------^
+    ///     //           0      1   2   3   4   5
     ///     let sub = s.subrange(2, 4);
     ///     assert(sub =~= seq![12, 13]);
     /// }
@@ -359,7 +361,15 @@ macro_rules! seq_internal {
     [$($elem:expr),* $(,)?] => {
         $crate::vstd::seq::Seq::empty()
             $(.push($elem))*
-    }
+    };
+    [$elem:expr; $n:expr] => {
+        $crate::vstd::seq::Seq::new(
+            $n,
+            $crate::vstd::prelude::closure_to_fn_spec(
+                |_x: _| $elem
+            ),
+        )
+    };
 }
 
 /// Creates a [`Seq`] containing the given elements.
@@ -367,7 +377,7 @@ macro_rules! seq_internal {
 /// ## Example
 ///
 /// ```rust
-/// let s = seq![11, 12, 13];
+/// let s = seq![11int, 12, 13];
 ///
 /// assert(s.len() == 3);
 /// assert(s[0] == 11);

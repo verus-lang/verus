@@ -176,6 +176,7 @@ pub fn unreached<A>() -> A
     panic!("unreached_external")
 }
 
+#[allow(unused_variables)]  // when built with cfg(not(feature = "std"))
 #[verifier::external_body]  /* vattr */
 pub fn print_u64(i: u64) {
     println!("{}", i);

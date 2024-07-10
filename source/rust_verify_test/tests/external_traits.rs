@@ -342,6 +342,24 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait5 verus_code! {
+        #[verifier::external]
+        trait T {
+            type X;
+            fn f() -> Self::X;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            type X;
+
+            fn f() -> Self::X;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_defaults verus_code! {
         #[verifier::external]
         trait T {

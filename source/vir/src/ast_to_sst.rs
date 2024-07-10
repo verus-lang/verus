@@ -1,14 +1,15 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX,
-    VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
+    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
+    LoopInvariantKind, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
+    VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
+use crate::ast_to_sst_func::{SstInfo, SstMap};
 use crate::ast_util::{types_equal, undecorate_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
-use crate::func_to_air::{SstInfo, SstMap};
 use crate::interpreter::eval_expr;
 use crate::messages::{error, error_with_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
@@ -1495,12 +1496,12 @@ pub(crate) fn expr_to_stm_opt(
 
             // Parameters and return types must have been boxed by poly.rs
             assert!(matches!(
-                &*body.typ,
+                &*undecorate_typ(&body.typ),
                 TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. }
             ));
             for p in params.iter() {
                 assert!(matches!(
-                    &*p.a,
+                    &*undecorate_typ(&p.a),
                     TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. }
                 ));
             }
@@ -1933,27 +1934,29 @@ pub(crate) fn expr_to_stm_opt(
             // We assert the (hopefully simplified) result of calling the interpreter
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
-            let interp_exp = eval_expr(
-                &ctx.global,
-                &state.finalize_exp(ctx, state.diagnostics, &state.fun_ssts, &expr)?,
-                state.diagnostics,
-                &mut state.fun_ssts,
-                ctx.global.rlimit,
-                ctx.global.arch,
-                *mode,
-                &mut ctx.global.interpreter_log.lock().unwrap(),
-            )?;
-            let err = error_with_label(
-                &expr.span.clone(),
-                "assertion failed",
-                format!("simplified to {}", interp_exp.x.to_user_string(&ctx.global)),
-            );
-            if matches!(mode, ComputeMode::Z3) {
-                let assert = Spanned::new(
-                    expr.span.clone(),
-                    StmX::Assert(state.next_assert_id(), Some(err), interp_exp),
+            if !ctx.checking_spec_preconditions_for_non_spec() {
+                let interp_exp = eval_expr(
+                    &ctx.global,
+                    &state.finalize_exp(ctx, state.diagnostics, &state.fun_ssts, &expr)?,
+                    state.diagnostics,
+                    &mut state.fun_ssts,
+                    ctx.global.rlimit,
+                    ctx.global.arch,
+                    *mode,
+                    &mut ctx.global.interpreter_log.lock().unwrap(),
+                )?;
+                let err = error_with_label(
+                    &expr.span.clone(),
+                    "assertion failed",
+                    format!("simplified to {}", interp_exp.x.to_user_string(&ctx.global)),
                 );
-                stms.push(assert);
+                if matches!(mode, ComputeMode::Z3) {
+                    let assert = Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(err), interp_exp),
+                    );
+                    stms.push(assert);
+                }
             }
             let assume = Spanned::new(expr.span.clone(), StmX::Assume(expr));
             stms.push(assume);
@@ -2093,34 +2096,83 @@ pub(crate) fn expr_to_stm_opt(
             }
         }
         ExprX::OpenInvariant(inv, binder, body, atomicity) => {
+            // let inv_tmp = inv;
+            // OpenInvariantBlock(inv_tmp.namespace(), {
+            //   let mut inner = inner_tmp;
+            //   assume(inv_tmp.inv(inner));
+            //
+            //   ...
+            //
+            //   assert(inv_tmp.inv(inner));
+            // });
+
             // Evaluate `inv`
             let (mut stms0, big_inv_exp) = expr_to_stm_opt(ctx, state, inv)?;
             let big_inv_exp = unwrap_or_return_never!(big_inv_exp, stms0);
 
-            // Assign it to a constant temp variable to ensure it is constant
-            // across the entire block.
-            let (temp_id, temp_var) = state.declare_temp_var_stm(&big_inv_exp.span, &inv.typ);
-            stms0.push(init_var(&big_inv_exp.span, &temp_id, &big_inv_exp));
+            // Assign it to a constant tmp variable to ensure it is constant
+            // across the entire block. sst_to_air also relies on this.
+            let (inv_tmp_id, inv_tmp_var) = state.declare_temp_var_stm(&big_inv_exp.span, &inv.typ);
+            stms0.push(init_var(&big_inv_exp.span, &inv_tmp_id, &big_inv_exp));
+
+            // Declare the inner_tmp variable
+            let mut stms1 = vec![];
+            let inner_typ = &binder.a;
+            let (_uid, arb_exp) = state.declare_temp_var_stm(&big_inv_exp.span, &inner_typ);
+            let has_typ = sst_has_type(
+                &expr.span,
+                &crate::poly::coerce_exp_to_poly(ctx, &arb_exp),
+                &inner_typ,
+            );
+            stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(has_typ)));
+
+            // Assign to the bound variable
+            let ident = state.get_var_unique_id(&binder.name);
+            state.local_decls.push(Arc::new(LocalDeclX {
+                ident: ident.clone(),
+                typ: inner_typ.clone(),
+                mutable: true,
+            }));
+            stms1.push(init_var(&expr.span, &ident, &arb_exp));
+            let inner_var = SpannedTyped::new(&expr.span, &inner_typ, ExpX::Var(ident));
+
+            // Assume the invariant
+            let typ_args = get_inv_typ_args(&big_inv_exp.typ);
+            let main_inv = call_inv(ctx, &inv_tmp_var, &inner_var, &typ_args, *atomicity);
+            stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(main_inv.clone())));
 
             // Process the body
 
             state.push_scope();
-            let ident = state.declare_var_stm(
-                &binder.name,
-                &binder.a,
-                /* mutable */ true,
-                /* maybe_need_rename */ true,
-            );
             let (body_stms, body_e) = expr_to_stm_opt(ctx, state, body)?;
             state.pop_scope();
 
             let body_stm = stms_to_one_stm(&expr.span, body_stms);
-            stms0.push(Spanned::new(
-                expr.span.clone(),
-                StmX::OpenInvariant(temp_var, ident, binder.a.clone(), body_stm, *atomicity),
-            ));
+            stms1.push(body_stm);
 
-            let _body_e = unwrap_or_return_never!(body_e, stms0);
+            // Assert the invariant at the end
+
+            match body_e.to_value() {
+                Some(_e) => {
+                    if !ctx.checking_spec_preconditions() {
+                        let error =
+                            error(&expr.span, "Cannot show invariant holds at end of block");
+                        // Note, we re-use the `main_inv` exp here, but it contains a mutable
+                        stms1.push(Spanned::new(
+                            expr.span.clone(),
+                            StmX::Assert(state.next_assert_id(), Some(error), main_inv),
+                        ));
+                    }
+                }
+                None => {
+                    // It might be impossible to reach the end of the block
+                    stms1.push(assume_false(&expr.span));
+                }
+            }
+
+            let block_stm = stms_to_one_stm(&expr.span, stms1);
+            let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
+            stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(ns_exp, block_stm)));
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
         ExprX::Return(e1) => {
@@ -2462,4 +2514,31 @@ fn closure_emit_postconditions(
             stms.push(stm);
         }
     }
+}
+
+fn get_inv_typ_args(typ: &Typ) -> Typs {
+    match &**typ {
+        TypX::Datatype(_, typs, _) => typs.clone(),
+        TypX::Decorate(_, typ) | TypX::Boxed(typ) => get_inv_typ_args(typ),
+        _ => {
+            panic!("get_inv_typ_args failed, expected some Invariant type");
+        }
+    }
+}
+
+fn call_inv(ctx: &Ctx, outer: &Exp, inner: &Exp, typ_args: &Typs, atomicity: InvAtomicity) -> Exp {
+    let call_fun =
+        CallFun::Fun(crate::def::fn_inv_name(&ctx.global.vstd_crate_name, atomicity), None);
+    let inner = crate::poly::coerce_exp_to_poly(ctx, inner);
+    let outer = crate::poly::coerce_exp_to_poly(ctx, outer);
+    let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![outer.clone(), inner.clone()]));
+    SpannedTyped::new(&outer.span, &Arc::new(TypX::Bool), expx)
+}
+
+fn call_namespace(ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicity) -> Exp {
+    let call_fun =
+        CallFun::Fun(crate::def::fn_namespace_name(&ctx.global.vstd_crate_name, atomicity), None);
+    let arg = crate::poly::coerce_exp_to_poly(ctx, arg);
+    let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![arg.clone()]));
+    SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
 }

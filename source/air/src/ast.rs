@@ -18,8 +18,8 @@ pub type Typs = Arc<Vec<Typ>>;
 pub enum TypX {
     Bool,
     Int,
-    // Lambda deliberately omits argument, return types to make box/unbox for generics easier
-    Lambda,
+    // Fun deliberately omits argument, return types to make box/unbox for generics easier
+    Fun,
     Named(Ident),
     BitVec(u32),
 }
@@ -138,8 +138,8 @@ pub enum ExprX {
     // Old(snap, x) reads x from snapshot snap
     Old(Ident, Ident),
     Apply(Ident, Exprs),
-    // ApplyLambda applies function Expr to arguments Exprs, returning a value of type Typ
-    ApplyLambda(Typ, Expr, Exprs),
+    // ApplyFun applies Expr of type Fun to arguments Exprs, returning a value of type Typ
+    ApplyFun(Typ, Expr, Exprs),
     Unary(UnaryOp, Expr),
     Binary(BinaryOp, Expr, Expr),
     Multi(MultiOp, Exprs),
@@ -176,6 +176,12 @@ pub enum StmtX {
     Switch(Stmts),
 }
 
+#[derive(Debug)]
+pub struct Axiom {
+    pub named: Option<Ident>,
+    pub expr: Expr,
+}
+
 pub type Field = Binder<Typ>;
 pub type Fields = Binders<Typ>;
 pub type Variant = Binder<Fields>;
@@ -192,7 +198,7 @@ pub enum DeclX {
     Const(Ident, Typ),
     Fun(Ident, Typs, Typ),
     Var(Ident, Typ),
-    Axiom(Expr),
+    Axiom(Axiom),
 }
 
 pub type Query = Arc<QueryX>;

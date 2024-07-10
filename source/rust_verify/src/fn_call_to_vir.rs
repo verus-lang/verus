@@ -97,7 +97,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                 ),
             );
         }
-        Some(RustItem::Clone) => {
+        Some(RustItem::CloneClone) => {
             // Special case `clone` for standard Rc and Arc types
             // (Could also handle it for other types where cloning is the identity
             // operation in the SMT encoding.)
@@ -733,21 +733,6 @@ fn verus_item_to_vir<'tcx, 'a>(
                 ))
             }
         },
-        VerusItem::CompilableOpr(CompilableOprItem::NewStrLit) => {
-            record_compilable_operator(bctx, expr, CompilableOperator::NewStrLit);
-            let s = if let ExprKind::Lit(lit0) = &args[0].kind {
-                if let rustc_ast::LitKind::Str(s, _) = lit0.node {
-                    s
-                } else {
-                    panic!("unexpected arguments to new_strlit")
-                }
-            } else {
-                panic!("unexpected arguments to new_strlit")
-            };
-
-            let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
-            mk_expr(ExprX::Const(c))
-        }
         VerusItem::CompilableOpr(
             compilable_opr @ (CompilableOprItem::GhostExec | CompilableOprItem::TrackedExec),
         ) => {
@@ -1611,7 +1596,7 @@ fn mk_is_smaller_than<'tcx>(
         let mk_cmp = |lt: bool| -> Result<vir::ast::Expr, VirErr> {
             let e0 = expr_to_vir(bctx, exp0, ExprModifier::REGULAR)?;
             let e1 = expr_to_vir(bctx, exp1, ExprModifier::REGULAR)?;
-            if vir::recursion::height_is_int(&e0.typ) {
+            if vir::recursion::height_is_int(&e0.typ) && vir::recursion::height_is_int(&e1.typ) {
                 if lt {
                     // 0 <= x < y
                     let zerox = ExprX::Const(vir::ast_util::const_int_from_u128(0));

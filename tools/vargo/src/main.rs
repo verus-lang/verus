@@ -412,7 +412,7 @@ fn run() -> Result<(), String> {
                 }
                 Some(version?.as_str())
             })
-            .ok_or(format!("undexpected z3 version output ({})", stdout_str))?;
+            .ok_or(format!("unexpected z3 version output ({})", stdout_str))?;
         if version != consts::EXPECTED_Z3_VERSION {
             return Err(format!(
                 "Verus expects z3 version \"{}\", found version \"{}\"\n\
@@ -449,17 +449,19 @@ fn run() -> Result<(), String> {
         .map(|p| args_bucket.remove(p))
         .is_some();
 
-    match util::version_info(&repo_root) {
+    let verus_version = match util::version_info(&repo_root) {
         Ok(version_info) => {
-            std::env::set_var("VARGO_BUILD_VERSION", version_info.version);
-            std::env::set_var("VARGO_BUILD_SHA", version_info.sha);
+            std::env::set_var("VARGO_BUILD_VERSION", &version_info.version);
+            std::env::set_var("VARGO_BUILD_SHA", &version_info.sha);
+            Some(version_info)
         }
         Err(err) => {
             warn(
                 format!("could not obtain version info from git, this will result in a binary with an unknown version: {}", err).as_str()
-            )
+            );
+            None
         }
-    }
+    };
 
     std::env::set_var(
         "VARGO_BUILD_PROFILE",
@@ -854,7 +856,10 @@ fn run() -> Result<(), String> {
                 new_args.into_iter().map(|(_, x)| x).collect(),
             );
             let dashdash_pos = new_args.iter().position(|x| x == "--").expect("-- in args");
-            let feature_args = filter_features(&feature_args, ["singular"].into_iter().collect());
+            let feature_args = filter_features(
+                &feature_args,
+                ["singular", "axiom-usage-info"].into_iter().collect(),
+            );
             new_args.splice(dashdash_pos..dashdash_pos, feature_args);
             if nextest {
                 args.get(cmd_position + 1)
@@ -1000,8 +1005,10 @@ fn run() -> Result<(), String> {
             for p in packages {
                 let rust_verify_forward_args;
                 let extra_args = if p == &"rust_verify" {
-                    let feature_args =
-                        filter_features(&feature_args, ["singular"].into_iter().collect());
+                    let feature_args = filter_features(
+                        &feature_args,
+                        ["singular", "axiom-usage-info"].into_iter().collect(),
+                    );
                     rust_verify_forward_args = cargo_forward_args
                         .iter()
                         .chain(feature_args.iter())
@@ -1025,6 +1032,16 @@ fn run() -> Result<(), String> {
 
             let mut dependencies_mtime = None;
             let mut dependency_missing = false;
+
+            let mut macos_prepare_script = format!(
+                r#"
+#!/bin/bash
+set -e
+set -x
+
+"#
+            );
+            use std::fmt::Write;
 
             for from_f_name in [
                 format!("libbuiltin.rlib"),
@@ -1061,6 +1078,13 @@ fn run() -> Result<(), String> {
 
                     std::fs::copy(&from_f, &to_f)
                         .map_err(|x| format!("could not copy file ({})", x))?;
+
+                    writeln!(
+                        &mut macos_prepare_script,
+                        "xattr -d com.apple.quarantine {}",
+                        from_f_name
+                    )
+                    .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
                 } else {
                     dependency_missing = true;
                 }
@@ -1077,6 +1101,16 @@ fn run() -> Result<(), String> {
                 }
                 std::fs::copy(&from_f, &to_f)
                     .map_err(|x| format!("could not copy file ({})", x))?;
+
+                let dest_file_name = to_f
+                    .file_name()
+                    .ok_or(format!("could not get file name for z3"))?;
+                writeln!(
+                    &mut macos_prepare_script,
+                    "xattr -d com.apple.quarantine {}",
+                    dest_file_name.to_string_lossy()
+                )
+                .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
             }
 
             let fingerprint_path = target_verus_dir.join(".vstd-fingerprint");
@@ -1184,6 +1218,26 @@ fn run() -> Result<(), String> {
                         info("vstd fresh");
                     }
                 }
+            }
+
+            #[cfg(target_os = "macos")]
+            {
+                let macos_prepare_script_path = target_verus_dir.join("macos_allow_gatekeeper.sh");
+                std::fs::write(&macos_prepare_script_path, macos_prepare_script)
+                    .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
+                std::fs::set_permissions(
+                    &macos_prepare_script_path,
+                    <std::fs::Permissions as std::os::unix::fs::PermissionsExt>::from_mode(0o755),
+                )
+                .map_err(|x| {
+                    format!("could not set permissions on macos prepare script ({})", x)
+                })?;
+            }
+
+            if let Some(version_info) = verus_version {
+                let version_info_path = target_verus_dir.join("version.txt");
+                std::fs::write(&version_info_path, version_info.version)
+                    .map_err(|x| format!("could not write to version file ({})", x))?;
             }
 
             let verus_root_path = target_verus_dir.join(VERUS_ROOT_FILE);

@@ -91,7 +91,8 @@ and in fact, Verus may not even let you prove it.
 The proposition `call_ensures(f, args, expected_return_value)`
 says that `expected_return_value` is a _possible_ return value of `f(args)`;
 however, it says nothing about _other_ possible return values.
-In general, `f` may be deterministic! Just because `expected_return_value` is one possible return
+In general, `f` may be nondeterministic!
+Just because `expected_return_value` is one possible return
 value does not mean it is only one.
 
 When faced with this situation, **what you really want is to write**:
