@@ -1623,27 +1623,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Cast(source, _) => {
             let source_vir = expr_to_vir(bctx, source, modifier)?;
 
-            let source_ty = bctx.types.expr_ty_adjusted(source);
-            let to_ty = bctx.types.expr_ty(expr);
-            match is_ptr_cast(bctx, expr.span, source_ty, to_ty)? {
-                Some(PtrCastKind::Trivial) => {
-                    return Ok(source_vir);
-                }
-                Some(PtrCastKind::Complex(fun, typ_args)) => {
-                    let autospec_usage =
-                        if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
-                    let call_target = CallTarget::Fun(
-                        vir::ast::CallTargetKind::Static,
-                        fun,
-                        typ_args,
-                        Arc::new(vec![]),
-                        autospec_usage,
-                    );
-                    let args = Arc::new(vec![source_vir]);
-                    let x = ExprX::Call(call_target, args);
-                    return mk_expr(x);
-                }
-                None => {}
+            if let Some(expr) = maybe_do_ptr_cast(bctx, expr, source, &source_vir)? {
+                return Ok(expr);
             }
 
             let source_vir_ty = &source_vir.typ;
@@ -1653,6 +1634,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     Ok(mk_ty_clip(&to_vir_ty, &source_vir, expr_vattrs.truncate))
                 }
                 _ => {
+                    let source_ty = bctx.types.expr_ty_adjusted(source);
+                    let to_ty = bctx.types.expr_ty(expr);
                     return err_span(
                         expr.span,
                         format!(
@@ -2694,7 +2677,7 @@ fn remove_decoration_typs_for_unsizing<'tcx>(
 
 enum PtrCastKind {
     Trivial,
-    Complex(vir::ast::Fun, vir::ast::Typs),
+    Complex(vir::ast::Fun, vir::ast::Typs, bool),
 }
 
 fn is_ptr_cast<'tcx>(
@@ -2730,7 +2713,7 @@ fn is_ptr_cast<'tcx>(
                 )?;
                 let fun = vir::fun!("vstd" => "raw_ptr", "cast_ptr_to_thin_ptr");
                 let typs = Arc::new(vec![src_ty, dst_ty]);
-                return Ok(Some(PtrCastKind::Complex(fun, typs)));
+                return Ok(Some(PtrCastKind::Complex(fun, typs, false)));
             }
 
             //match (ty1.kind(), ty2.kind()) {
@@ -2738,6 +2721,66 @@ fn is_ptr_cast<'tcx>(
             //}
             return Ok(None);
         }
+        (TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty: ty1, mutbl: _ }), _ty2)
+            if crate::rust_to_vir_base::is_integer_ty(&bctx.ctxt.verus_items, &dst) =>
+        {
+            let src_ty = mid_ty_to_vir(
+                bctx.ctxt.tcx,
+                &bctx.ctxt.verus_items,
+                bctx.fun_id,
+                span,
+                ty1,
+                false,
+            )?;
+            let typs = Arc::new(vec![src_ty]);
+            let fun = vir::fun!("vstd" => "raw_ptr", "cast_ptr_to_usize");
+
+            // cast_ptr_to_usize casts to a usize; we might need to do an additional
+            // clip afterwards, so return with clip=true
+            return Ok(Some(PtrCastKind::Complex(fun, typs, true)));
+        }
         _ => Ok(None),
+    }
+}
+
+pub(crate) fn maybe_do_ptr_cast<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    dst_expr: &Expr,
+    src_expr: &Expr,
+    src_vir: &vir::ast::Expr,
+) -> Result<Option<vir::ast::Expr>, VirErr> {
+    let source_ty = bctx.types.expr_ty_adjusted(src_expr);
+    let to_ty = bctx.types.expr_ty(dst_expr);
+    match is_ptr_cast(bctx, dst_expr.span, source_ty, to_ty)? {
+        Some(PtrCastKind::Trivial) => {
+            return Ok(Some(src_vir.clone()));
+        }
+        Some(PtrCastKind::Complex(fun, typ_args, clip)) => {
+            let autospec_usage =
+                if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+            let call_target = CallTarget::Fun(
+                vir::ast::CallTargetKind::Static,
+                fun,
+                typ_args,
+                Arc::new(vec![]),
+                autospec_usage,
+            );
+            let args = Arc::new(vec![src_vir.clone()]);
+            let x = ExprX::Call(call_target, args);
+            let expr_typ = typ_of_node(bctx, dst_expr.span, &dst_expr.hir_id, false)?;
+
+            if clip {
+                let expr_attrs = bctx.ctxt.tcx.hir().attrs(dst_expr.hir_id);
+                let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
+
+                let expr =
+                    bctx.spanned_typed_new(dst_expr.span, &Arc::new(TypX::Int(IntRange::USize)), x);
+                return Ok(Some(mk_ty_clip(&expr_typ, &expr, expr_vattrs.truncate)));
+            } else {
+                let expr = bctx.spanned_typed_new(dst_expr.span, &expr_typ, x);
+                return Ok(Some(expr));
+            }
+        }
+        None => Ok(None),
     }
 }

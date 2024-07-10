@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 use super::prelude::*;
+use super::layout::*;
 
 verus! {
 
@@ -77,6 +78,13 @@ pub tracked struct PointsTo<T> {
     no_copy: NoCopy,
 }
 
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub tracked struct PointsToBytes<T> {
+    phantom: core::marker::PhantomData<T>,
+    no_copy: NoCopy,
+}
+
 // Don't use std Option here in order to avoid circular dependency issues
 // with verifying the standard library.
 // (Also, using our own enum here lets us have more meaningful
@@ -92,6 +100,9 @@ pub ghost struct PointsToData<T> {
     pub opt_value: MemContents<T>,
 }
 
+//pub ghost struct PointsToBytesData<T> {
+//    pub provena
+//}
 impl<T: ?Sized> View for *mut T {
     type V = PtrData;
 
@@ -137,6 +148,23 @@ impl<T> PointsTo<T> {
     #[verifier::inline]
     pub open spec fn value(&self) -> T {
         self.opt_value().value()
+    }
+
+    #[verifier::external_body]
+    pub proof fn is_nonnull(tracked &self)
+        ensures
+            self@.ptr@.addr != 0,
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
+    pub proof fn leak_contents(tracked &mut self)
+        ensures
+            self.ptr() == old(self).ptr(),
+            self.is_uninit()
+    {
+        unimplemented!();
     }
 }
 
@@ -257,6 +285,20 @@ pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (resu
     ptr as *mut [T]
 }
 
+pub open spec fn spec_cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> usize {
+    ptr@.addr
+}
+
+#[verifier::external_body]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_ptr_to_usize")]
+#[verifier::when_used_as_spec(spec_cast_ptr_to_usize)]
+pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
+    ensures
+        result == spec_cast_ptr_to_usize(ptr),
+{
+    ptr as usize
+}
+
 //////////////////////////////////////
 // Reading and writing
 /// core::ptr::write
@@ -369,5 +411,166 @@ pub broadcast group group_raw_ptr_axioms {
     axiom_ptr_mut_from_data,
     ptrs_mut_eq,
 }
+
+// Exposing provenance
+#[verifier::external_body]
+tracked struct IsExposed {}
+
+impl Clone for IsExposed {
+    #[verifier::external_body]
+    fn clone(&self) -> (s: Self)
+        ensures
+            s == self,
+    {
+        IsExposed {  }
+    }
+}
+
+impl Copy for IsExposed {
+
+}
+
+impl IsExposed {
+    pub spec fn view(self) -> Provenance;
+}
+
+#[verifier::external_body]
+fn expose_addr<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>)
+    ensures
+        provenance@@ == m@.provenance,
+{
+    let _ = m as usize;
+    Tracked::assume_new()
+}
+
+#[verifier::external_body]
+fn from_exposed_addr<T: Sized>(addr: usize, Tracked(provenance): Tracked<IsExposed>) -> (p: *mut T)
+    ensures
+        p == ptr_mut_from_data::<T>(
+            PtrData { addr: addr, provenance: provenance@, metadata: Metadata::Thin },
+        ),
+{
+    addr as *mut T
+}
+
+// PointsToRaw
+// Variable-sized uninitialized memory
+// Note reading from uninitialized memory is UB
+
+#[verifier::external_body]
+pub tracked struct PointsToRaw {
+    // TODO implement this as Map<usize, PointsTo<u8>> or something
+    no_copy: NoCopy,
+}
+
+impl PointsToRaw {
+    pub open spec fn provenance(self) -> Provenance;
+    pub open spec fn dom(self) -> Set<int>;
+
+    pub open spec fn is_range(self, start: int, len: int) -> bool {
+        super::set_lib::set_int_range(start, start + len) =~= self.dom()
+    }
+
+    pub open spec fn contains_range(self, start: int, len: int) -> bool {
+        super::set_lib::set_int_range(start, start + len) <= self.dom()
+    }
+
+    #[verifier::external_body]
+    pub proof fn empty(provenance: Provenance) -> (tracked points_to_raw: Self)
+        ensures
+            points_to_raw.dom() == Set::<int>::empty(),
+            points_to_raw.provenance() == provenance
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
+    pub proof fn split(tracked self, range: Set<int>) -> (tracked res: (Self, Self))
+        requires
+            range.subset_of(self.dom()),
+        ensures
+            res.0.provenance() == self.provenance(),
+            res.1.provenance() == self.provenance(),
+            res.0.dom() == range,
+            res.1.dom() == self.dom().difference(range),
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
+    pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
+        requires
+            self.provenance() == other.provenance(),
+        ensures
+            joined.provenance() == self.provenance(),
+            joined.dom() == self.dom() + other.dom(),
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
+    pub proof fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
+        requires
+            is_sized::<V>(),
+            start as int % align_of::<V>() as int == 0,
+            self.is_range(start as int, size_of::<V>() as int),
+            start > 0,
+        ensures
+            points_to.ptr() == ptr_mut_from_data::<V>(PtrData {
+                addr: start,
+                provenance: self.provenance(),
+                metadata: Metadata::Thin,
+            }),
+            points_to.is_uninit(),
+    {
+        unimplemented!();
+    }
+}
+
+impl<V> PointsTo<V> {
+    #[verifier::external_body]
+    pub proof fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
+        requires
+            self.is_uninit(),
+        ensures
+            points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() as int),
+            points_to_raw.provenance() == self.ptr()@.provenance,
+            is_sized::<V>(),
+    {
+        unimplemented!();
+    }
+}
+
+// Allocation and deallocation
+/*
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub tracked struct DeallocRange {
+    phantom: core::marker::PhantomData,
+    no_copy: NoCopy,
+}
+
+pub ghost struct DeallocRangeData {
+    pub addr: int,
+    pub size: nat,
+    pub align: nat,
+}
+
+impl DeallocRange {
+    spec fn view(&self) -> DeallocRangeData;
+}
+
+#[verifier::external_body]
+pub fn alloc(size: usize, align: usize)
+    -> (pt: (*mut u8, Tracked<PointsToBytes>, Tracked<DeallocRange>))
+    requires
+        valid_layout(size, align)
+    ensures
+        pt.1@.is_range(pt.0.addr(), size as int),
+        pt.2@@ == (DeallocRawData { addr: pt.0.addr(), size: size as nat, align: align as nat }),
+        pt.0.addr() % align as int == 0,
+{
+}
+*/
 
 } // verus!
