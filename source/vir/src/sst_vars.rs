@@ -171,14 +171,9 @@ pub(crate) fn stm_assign(
             };
             Spanned::new(stm.span.clone(), loop_x)
         }
-        StmX::OpenInvariant(inv, ident, ty, body_stm, atomicity) => {
-            assigned.insert(ident.clone());
-            modified.insert(ident.clone());
+        StmX::OpenInvariant(ns_exp, body_stm) => {
             let body_stm = stm_assign(assign_map, declared, assigned, modified, body_stm);
-            Spanned::new(
-                stm.span.clone(),
-                StmX::OpenInvariant(inv.clone(), ident.clone(), ty.clone(), body_stm, *atomicity),
-            )
+            Spanned::new(stm.span.clone(), StmX::OpenInvariant(ns_exp.clone(), body_stm))
         }
         StmX::Block(stms) => {
             let mut pre_assigned = assigned.clone();

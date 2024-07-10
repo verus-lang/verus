@@ -915,7 +915,6 @@ pub broadcast proof fn lemma_multiply_divide_lt(a: int, b: int, c: int)
 /// Proof that adding an integer to a fraction is equivalent to adding
 /// that integer times the denominator to the numerator. Specifically,
 /// `x / d + j == (x + j * d) / d`.
-#[verifier::spinoff_prover]
 pub broadcast proof fn lemma_hoist_over_denominator(x: int, j: int, d: nat)
     requires
         0 < d,
@@ -923,16 +922,21 @@ pub broadcast proof fn lemma_hoist_over_denominator(x: int, j: int, d: nat)
         #![trigger x / d as int + j]
         x / d as int + j == (x + j * d) / d as int,
 {
-    lemma_div_auto(d as int);
-    let f = |u: int| x / d as int + u == (x + u * d) / d as int;
-    // OBSERVE: push precondition on its on scope
-    assert(f(0) && (forall|i: int| i >= 0 && #[trigger] f(i) ==> #[trigger] f(add1(i, 1))) && (
-    forall|i: int| i <= 0 && #[trigger] f(i) ==> #[trigger] f(sub1(i, 1)))) by {
-        broadcast use group_mul_properties_internal;
-
+    let dd = d as int;
+    let q = x / dd;
+    let r = x % dd;
+    assert(x == dd * q + r) by {
+        lemma_fundamental_div_mod(x, dd);
     }
-    lemma_mul_induction(f);
-    assert(f(j));
+    assert(j * dd == dd * j) by {
+        lemma_mul_is_commutative(j, dd);
+    }
+    assert(x + j * dd == dd * (q + j) + r) by {
+        lemma_mul_is_distributive_add(dd, q, j);
+    }
+    assert((x + j * dd) / dd == q + j) by {
+        lemma_fundamental_div_mod_converse(x + j * d, dd, q + j, r);
+    }
 }
 
 /// Proof that, for nonnegative integer `a` and positive integers `b` and `c`,

@@ -153,14 +153,27 @@ fn tail_triangle(n: u32, idx: u32, sum: &mut u32)
 
 // ANCHOR: mono
 proof fn triangle_is_monotonic(i: nat, j: nat)
-    requires
-        i <= j,
     ensures
-        triangle(i) <= triangle(j),
+        i <= j ==> triangle(i) <= triangle(j),
     decreases j,
 {
-    if i < j {
+    // We prove the statement `i <= j ==> triangle(i) <= triangle(j)`
+    // by induction on `j`.
+
+    if j == 0 {
+        // The base case (`j == 0`) is trivial since it's only
+        // necessary to reason about when `i` and `j` are both 0.
+        // So no proof lines are needed for this case.
+    }
+    else {
+        // In the induction step, we can assume the statement is true
+        // for `j - 1`. In Verus, we can get that fact into scope with
+        // a recursive call substituting `j - 1` for `j`.
+
         triangle_is_monotonic(i, (j - 1) as nat);
+
+        // Once we know it's true for `j - 1`, the rest of the proof
+        // is trivial.
     }
 }
 

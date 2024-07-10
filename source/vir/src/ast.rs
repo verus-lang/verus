@@ -968,6 +968,28 @@ pub enum FunctionKind {
     },
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode, Copy)]
+pub enum ItemKind {
+    Function,
+    /// This function is actually a const declaration;
+    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
+    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
+    /// and the body is restricted to a subset of expressions that are spec-safe.
+    Const,
+    /// Static is kind of similar to const, in that we treat it as a 0-argument function.
+    /// The main difference is what happens when you reference the static or const.
+    /// For a const, it's as if you call the function every time you reference it.
+    /// For a static, it's as if you call the function once at the beginning of the program.
+    /// The difference is most obvious when the item of a type that is not Copy.
+    /// For example, if a const/static has type PCell, then:
+    ///  - If it's a const, it will get a different id() every time it is referenced from code
+    ///  - If it's a static, every use will have the same id()
+    /// This initially seems a bit paradoxical; const and static can only call 'const' functions,
+    /// so they can only be deterministic, right? But for something like cell, the 'id'
+    /// (the nondeterministic part) is purely ghost.
+    Static,
+}
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1037,28 +1059,6 @@ pub struct FunctionX {
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode, Copy)]
-pub enum ItemKind {
-    Function,
-    /// This function is actually a const declaration;
-    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
-    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
-    /// and the body is restricted to a subset of expressions that are spec-safe.
-    Const,
-    /// Static is kind of similar to const, in that we treat it as a 0-argument function.
-    /// The main difference is what happens when you reference the static or const.
-    /// For a const, it's as if you call the function every time you reference it.
-    /// For a static, it's as if you call the function once at the beginning of the program.
-    /// The difference is most obvious when the item of a type that is not Copy.
-    /// For example, if a const/static has type PCell, then:
-    ///  - If it's a const, it will get a different id() every time it is referenced from code
-    ///  - If it's a static, every use will have the same id()
-    /// This initially seems a bit paradoxical; const and static can only call 'const' functions,
-    /// so they can only be deterministic, right? But for something like cell, the 'id'
-    /// (the nondeterministic part) is purely ghost.
-    Static,
 }
 
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;
