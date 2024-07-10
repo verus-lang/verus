@@ -68,7 +68,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
                     (axiom (forall ((x Height)) (partial-order x x)))
                     (axiom (forall ((x Height) (y Height)) (=> (and (partial-order x y) (partial-order y x)) (= x y))))
                     (axiom (forall ((x Height) (y Height) (z Height)) (=> (and (partial-order x y) (partial-order y z)) (partial-order x z))))
-                    (axiom (forall ((x Height) (y Height)) (! (= (height_lt x y) (and (partial-order x y) (not (= x y)))))))),
+                    (axiom (forall ((x Height) (y Height)) (= (height_lt x y) (and (partial-order x y) (not (= x y))))))),
     };
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
