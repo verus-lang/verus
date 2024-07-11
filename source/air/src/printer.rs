@@ -148,6 +148,8 @@ impl Printer {
                     UnaryOp::Not => "not",
                     UnaryOp::BitNot => "bvnot",
                     UnaryOp::BitExtract(_, _) => "extract",
+                    UnaryOp::BitZeroExtend(_) => "zero_extend",
+                    UnaryOp::BitSignExtend(_) => "sign_extend",
                 };
                 // ( (_ extract numeral numeral) BitVec )
                 match op {
@@ -158,6 +160,16 @@ impl Printer {
                         nodes_in.push(str_to_node(sop));
                         nodes_in.push(str_to_node(&high.to_string()));
                         nodes_in.push(str_to_node(&low.to_string()));
+                        nodes.push(Node::List(nodes_in));
+                        nodes.push(self.expr_to_node(expr));
+                        Node::List(nodes)
+                    }
+                    UnaryOp::BitZeroExtend(w) | UnaryOp::BitSignExtend(w) => {
+                        let mut nodes: Vec<Node> = Vec::new();
+                        let mut nodes_in: Vec<Node> = Vec::new();
+                        nodes_in.push(str_to_node("_"));
+                        nodes_in.push(str_to_node(sop));
+                        nodes_in.push(str_to_node(&w.to_string()));
                         nodes.push(Node::List(nodes_in));
                         nodes.push(self.expr_to_node(expr));
                         Node::List(nodes)
@@ -200,7 +212,12 @@ impl Printer {
                     BinaryOp::BitUGt => "bvugt",
                     BinaryOp::BitULe => "bvule",
                     BinaryOp::BitUGe => "bvuge",
+                    BinaryOp::BitSLt => "bvslt",
+                    BinaryOp::BitSGt => "bvsgt",
+                    BinaryOp::BitSLe => "bvsle",
+                    BinaryOp::BitSGe => "bvsge",
                     BinaryOp::LShr => "bvlshr",
+                    BinaryOp::AShr => "bvashr",
                     BinaryOp::Shl => "bvshl",
                     BinaryOp::BitConcat => "concat",
                 };

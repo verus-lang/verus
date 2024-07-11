@@ -51,6 +51,7 @@ const PREFIX_RECURSIVE: &str = "rec%";
 const SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
 pub const PREFIX_EXPAND_ERRORS_TEMP_VAR: &str = "expand%";
+const BITVEC_TMP_DECL_SEPARATOR: &str = "bitvectmp%";
 const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
@@ -172,12 +173,12 @@ pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 pub const EXT_EQ: &str = "ext_eq";
 
-pub const UINT_XOR: &str = "uintxor";
-pub const UINT_AND: &str = "uintand";
-pub const UINT_OR: &str = "uintor";
-pub const UINT_SHR: &str = "uintshr";
-pub const UINT_SHL: &str = "uintshl";
-pub const UINT_NOT: &str = "uintnot";
+pub const BIT_XOR: &str = "bitxor";
+pub const BIT_AND: &str = "bitand";
+pub const BIT_OR: &str = "bitor";
+pub const BIT_SHR: &str = "bitshr";
+pub const BIT_SHL: &str = "bitshl";
+pub const BIT_NOT: &str = "bitnot";
 pub const SINGULAR_MOD: &str = "singular_mod";
 
 // List of QID suffixes we add to internally generated quantifiers
@@ -822,6 +823,10 @@ pub fn unique_var_name(
         }
         VarIdentDisambiguate::ExpandErrorsDecl(id) => {
             out.push_str(EXPAND_ERRORS_DECL_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
+        VarIdentDisambiguate::BitVectorToAirDecl(id) => {
+            out.push_str(BITVEC_TMP_DECL_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
     }
