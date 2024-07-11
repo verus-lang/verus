@@ -26,7 +26,7 @@ use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
 };
-use crate::sst::{FuncDefSst, Pars, PostConditionKind, Stms};
+use crate::sst::{FuncCheckSst, Pars, PostConditionKind, Stms};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -2366,14 +2366,14 @@ pub(crate) fn body_stm_to_air(
     typ_params: &Idents,
     typ_bounds: &crate::ast::GenericBounds,
     params: &Pars,
-    func_def_sst: &FuncDefSst,
+    func_check_sst: &FuncCheckSst,
     hidden: &Vec<Fun>,
     is_integer_ring: bool,
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
-    let FuncDefSst { reqs, post_condition, mask_set, body: stm, local_decls, statics } =
-        func_def_sst;
+    let FuncCheckSst { reqs, post_condition, mask_set, body: stm, local_decls, statics } =
+        func_check_sst;
 
     if is_bit_vector_mode {
         if is_integer_ring {
