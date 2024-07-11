@@ -513,9 +513,9 @@ impl PointsToRaw {
     pub proof fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
             is_sized::<V>(),
+            size_of::<V>() > 0,
             start as int % align_of::<V>() as int == 0,
             self.is_range(start as int, size_of::<V>() as int),
-            start > 0,
         ensures
             points_to.ptr() == ptr_mut_from_data::<V>(PtrData {
                 addr: start,
