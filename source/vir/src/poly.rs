@@ -615,10 +615,17 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::ExecFnByName(fun) => mk_expr(ExprX::ExecFnByName(fun.clone())),
         ExprX::Choose { params, cond, body } => {
+            // body is derived from cond but triggers are selected on the user-provided cond
+            let natives = crate::triggers::predict_native_quant_vars(params, &vec![cond]);
             let mut bs: Vec<VarBinder<Typ>> = Vec::new();
             state.types.push_scope(true);
             for binder in params.iter() {
-                let typ = coerce_typ_to_poly(ctx, &binder.a);
+                let native = natives.contains(&binder.name);
+                let typ = if native {
+                    coerce_typ_to_native(ctx, &binder.a)
+                } else {
+                    coerce_typ_to_poly(ctx, &binder.a)
+                };
                 let _ = state.types.insert(binder.name.clone(), typ.clone());
                 bs.push(binder.new_a(typ));
             }
