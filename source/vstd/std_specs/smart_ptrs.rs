@@ -2,7 +2,7 @@ use super::super::prelude::*;
 
 use alloc::rc::Rc;
 use core::alloc::Allocator;
-use std::sync::Arc;
+use alloc::sync::Arc;
 
 verus! {
 
