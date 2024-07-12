@@ -109,9 +109,10 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::ConstInt(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::Primitive(Primitive::StrSlice, _) => ReachedType::StrSlice,
-        TypX::Primitive(Primitive::Array | Primitive::Slice | Primitive::Ptr | Primitive::Global, _) => {
-            ReachedType::Primitive
-        }
+        TypX::Primitive(
+            Primitive::Array | Primitive::Slice | Primitive::Ptr | Primitive::Global,
+            _,
+        ) => ReachedType::Primitive,
     }
 }
 

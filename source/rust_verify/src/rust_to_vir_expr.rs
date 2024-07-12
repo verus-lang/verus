@@ -1076,7 +1076,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?;
-            let typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, new_expr.typ.clone()));
+            let typ =
+                Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, new_expr.typ.clone()));
             Arc::make_mut(&mut new_expr).typ = typ;
             Ok(new_expr)
         }
@@ -1241,8 +1242,11 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?;
-            let typ =
-                Arc::new(TypX::Decorate(vir::ast::TypDecoration::ConstPtr, None, new_expr.typ.clone()));
+            let typ = Arc::new(TypX::Decorate(
+                vir::ast::TypDecoration::ConstPtr,
+                None,
+                new_expr.typ.clone(),
+            ));
             Arc::make_mut(&mut new_expr).typ = typ;
             Ok(new_expr)
         }

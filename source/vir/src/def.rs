@@ -573,7 +573,6 @@ pub fn monotyp_decorate2(dec: crate::ast::TypDecoration, args: &Vec<Path>) -> Pa
         MONOTYPE_APP_END
     ));
     Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
-
 }
 
 pub fn name_as_vstd_name(name: &String) -> Option<String> {

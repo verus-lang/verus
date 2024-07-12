@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
     GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Path, PathX, Primitive, Typ,
-    TypX, Typs, VarIdent, VirErr, VirErrAs, TypDecorationArg
+    TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -858,7 +858,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 let rust_item = verus_items::get_rust_item(tcx, did);
 
                 if let Some(RustItem::AllocGlobal) = rust_item {
-                    return Ok((Arc::new(TypX::Primitive(Primitive::Global, Arc::new(vec![]))), false))
+                    return Ok((
+                        Arc::new(TypX::Primitive(Primitive::Global, Arc::new(vec![]))),
+                        false,
+                    ));
                 }
 
                 let mut typ_args: Vec<(Typ, bool)> = Vec::new();
@@ -876,7 +879,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 if Some(did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
                     let (t0, ghost) = &typ_args[0];
                     let alloc_dec = Some(TypDecorationArg { allocator_typ: typ_args[1].0.clone() });
-                    return Ok((Arc::new(TypX::Decorate(TypDecoration::Box, alloc_dec, t0.clone())), *ghost));
+                    return Ok((
+                        Arc::new(TypX::Decorate(TypDecoration::Box, alloc_dec, t0.clone())),
+                        *ghost,
+                    ));
                 }
                 if typ_args.len() >= 1 {
                     let (t0, ghost) = &typ_args[0];
@@ -895,12 +901,14 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         }
                         (_, Some(RustItem::Rc)) => {
                             assert!(typ_args.len() == 2);
-                            let alloc_dec = Some(TypDecorationArg { allocator_typ: typ_args[1].0.clone() });
+                            let alloc_dec =
+                                Some(TypDecorationArg { allocator_typ: typ_args[1].0.clone() });
                             return decorate(TypDecoration::Rc, alloc_dec, *ghost);
                         }
                         (_, Some(RustItem::Arc)) => {
                             assert!(typ_args.len() == 2);
-                            let alloc_dec = Some(TypDecorationArg { allocator_typ: typ_args[1].0.clone() });
+                            let alloc_dec =
+                                Some(TypDecorationArg { allocator_typ: typ_args[1].0.clone() });
                             return decorate(TypDecoration::Arc, alloc_dec, *ghost);
                         }
                         _ => {}

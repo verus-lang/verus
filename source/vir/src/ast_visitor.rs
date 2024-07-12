@@ -1,8 +1,8 @@
 use crate::ast::{
     Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
     Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, MaskSpec, Param, ParamX,
-    Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ, TypX, Typs,
-    UnaryOpr, VarIdent, Variant, VirErr, TypDecorationArg,
+    Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ,
+    TypDecorationArg, TypX, Typs, UnaryOpr, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::error;
@@ -96,7 +96,7 @@ where
                         Some(TypDecorationArg { allocator_typ }) => {
                             expr_visitor_control_flow!(typ_visitor_dfs(allocator_typ, ft));
                         }
-                        None => { }
+                        None => {}
                     }
                     expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                 }

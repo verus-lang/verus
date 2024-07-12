@@ -78,8 +78,8 @@ because x is used both for f and for +.
 use crate::ast::{
     AssocTypeImpl, BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr,
     Function, FunctionKind, FunctionX, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp, Param,
-    ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, VarBinder, VarIdent, Variant, TypDecorationArg,
+    ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypDecorationArg, TypX,
+    Typs, UnaryOp, UnaryOpr, VarBinder, VarIdent, Variant,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -215,7 +215,9 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
                 }
             }
         }
-        TypX::Decorate(d, targ, t) => Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_native(ctx, t))),
+        TypX::Decorate(d, targ, t) => {
+            Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_native(ctx, t)))
+        }
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::Primitive(_, _) => {
             if typ_as_mono(typ).is_none() {
@@ -240,7 +242,9 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(..) | TypX::Primitive(_, _) => Arc::new(TypX::Boxed(typ.clone())),
-        TypX::Decorate(d, targ, t) => Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t))),
+        TypX::Decorate(d, targ, t) => {
+            Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t)))
+        }
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => typ.clone(),

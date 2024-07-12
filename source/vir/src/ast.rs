@@ -160,7 +160,7 @@ pub enum IntRange {
     PartialEq,
     Eq,
     PartialOrd,
-    Ord,
+    Ord
 )]
 pub enum TypDecoration {
     /// &T

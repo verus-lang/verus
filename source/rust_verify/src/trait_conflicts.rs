@@ -130,7 +130,7 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
             };
             let mut ts = vec![t.clone()];
             match targ {
-                None => { }
+                None => {}
                 Some(TypDecorationArg { allocator_typ }) => {
                     ts.push(allocator_typ.clone());
                 }

@@ -2,8 +2,8 @@ use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Fun,
     FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp, IntRange,
     IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant,
-    SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp, VarBinder,
-    VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility, TypDecorationArg,
+    SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
+    VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -72,16 +72,17 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         }
         (TypX::Primitive(p1, ts1), TypX::Primitive(p2, ts2)) => p1 == p2 && n_types_equal(ts1, ts2),
         (TypX::Decorate(d1, a1, t1), TypX::Decorate(d2, a2, t2)) => {
-            d1 == d2 && types_equal(t1, t2)
-            && (match (a1, a2) {
-                (None, None) => true,
-                (
-                  Some(TypDecorationArg { allocator_typ: at1 }),
-                  Some(TypDecorationArg { allocator_typ: at2 })
-                ) => types_equal(at1, at2),
-                (Some(..), None) => false,
-                (None, Some(..)) => false,
-            })
+            d1 == d2
+                && types_equal(t1, t2)
+                && (match (a1, a2) {
+                    (None, None) => true,
+                    (
+                        Some(TypDecorationArg { allocator_typ: at1 }),
+                        Some(TypDecorationArg { allocator_typ: at2 }),
+                    ) => types_equal(at1, at2),
+                    (Some(..), None) => false,
+                    (None, Some(..)) => false,
+                })
         }
         (TypX::Boxed(t1), TypX::Boxed(t2)) => types_equal(t1, t2),
         (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
@@ -671,11 +672,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 format!("[Internal Error *const decoration] {}", typ_to_diagnostic_str(typ))
             }
         },
-        TypX::Decorate(
-            decoration @ (TypDecoration::Ghost | TypDecoration::Tracked),
-            _,
-            typ,
-        ) => {
+        TypX::Decorate(decoration @ (TypDecoration::Ghost | TypDecoration::Tracked), _, typ) => {
             format!("{:?}<{}>", decoration, typ_to_diagnostic_str(typ))
         }
         TypX::Decorate(
@@ -684,7 +681,9 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             typ,
         ) => {
             let allocator = match arg {
-                Some(TypDecorationArg { allocator_typ }) => format!(", {}", typ_to_diagnostic_str(allocator_typ)),
+                Some(TypDecorationArg { allocator_typ }) => {
+                    format!(", {}", typ_to_diagnostic_str(allocator_typ))
+                }
                 _ => "".to_string(),
             };
             format!("{:?}<{}{}>", decoration, typ_to_diagnostic_str(typ), allocator)

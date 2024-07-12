@@ -1,8 +1,8 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
     IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, MaskSpec, Mode, Path, PathX, Primitive,
-    SpannedTyped, Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarIdent, VariantCheck,
-    VirErr, Visibility, TypDecorationArg,
+    SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ, LowerUniqueVar,
@@ -126,8 +126,10 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
             return crate::def::monotyp_decorate(*dec, &monotyp_to_path(typ));
         }
         MonoTypX::Decorate2(dec, typs) => {
-            return crate::def::monotyp_decorate2(*dec,
-                &typs.iter().map(monotyp_to_path).collect());
+            return crate::def::monotyp_decorate2(
+                *dec,
+                &typs.iter().map(monotyp_to_path).collect(),
+            );
         }
     };
     Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
@@ -157,7 +159,10 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::Primitive(
-            Primitive::Array | Primitive::Slice | Primitive::StrSlice | Primitive::Ptr
+            Primitive::Array
+            | Primitive::Slice
+            | Primitive::StrSlice
+            | Primitive::Ptr
             | Primitive::Global,
             _,
         ) => match typ_as_mono(typ) {
@@ -228,7 +233,10 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
             assert!(ds_typ1.len() == 2);
             let ds_typ2 = monotyp_to_id(&typs[1]);
             assert!(ds_typ2.len() == 2);
-            let ds = str_apply(decoration_str(*d), &vec![ds_typ1[0].clone(), ds_typ1[1].clone(), ds_typ2[0].clone()]);
+            let ds = str_apply(
+                decoration_str(*d),
+                &vec![ds_typ1[0].clone(), ds_typ1[1].clone(), ds_typ2[0].clone()],
+            );
             vec![ds, ds_typ2[1].clone()]
         }
         MonoTypX::Decorate(_, typ) => monotyp_to_id(typ),
@@ -292,13 +300,17 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
             let ds = str_apply(decoration_str(*d), &vec![ds_typ[0].clone()]);
             vec![ds, ds_typ[1].clone()]
         }
-        TypX::Decorate(d, Some(TypDecorationArg { allocator_typ }), typ) if crate::context::DECORATE => {
+        TypX::Decorate(d, Some(TypDecorationArg { allocator_typ }), typ)
+            if crate::context::DECORATE =>
+        {
             let ds_typ1 = typ_to_ids(allocator_typ);
             assert!(ds_typ1.len() == 2);
             let ds_typ2 = typ_to_ids(typ);
             assert!(ds_typ2.len() == 2);
-            let ds = str_apply(decoration_str(*d),
-                &vec![ds_typ1[0].clone(), ds_typ1[1].clone(), ds_typ2[0].clone()]);
+            let ds = str_apply(
+                decoration_str(*d),
+                &vec![ds_typ1[0].clone(), ds_typ1[1].clone(), ds_typ2[0].clone()],
+            );
             vec![ds, ds_typ2[1].clone()]
         }
         TypX::Decorate(_, _, typ) => typ_to_ids(typ),
