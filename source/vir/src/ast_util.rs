@@ -645,6 +645,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 crate::ast::Primitive::Slice => format!("[{typs_str}]"),
                 crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
                 crate::ast::Primitive::Ptr => format!("*mut {typs_str}"),
+                crate::ast::Primitive::Global => format!("Global"),
             }
         }
         TypX::Datatype(path, typs, _) => format!(

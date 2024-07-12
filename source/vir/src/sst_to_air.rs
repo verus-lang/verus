@@ -87,6 +87,7 @@ pub(crate) fn primitive_path(name: &Primitive) -> Path {
         Primitive::Slice => crate::def::slice_type(),
         Primitive::StrSlice => crate::def::strslice_type(),
         Primitive::Ptr => crate::def::ptr_type(),
+        Primitive::Global => crate::def::global_type(),
     }
 }
 
@@ -96,6 +97,7 @@ pub(crate) fn primitive_type_id(name: &Primitive) -> Ident {
         Primitive::Slice => crate::def::TYPE_ID_SLICE,
         Primitive::StrSlice => crate::def::TYPE_ID_STRSLICE,
         Primitive::Ptr => crate::def::TYPE_ID_PTR,
+        Primitive::Global => crate::def::TYPE_ID_GLOBAL,
     })
 }
 
@@ -155,7 +157,8 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::Primitive(
-            Primitive::Array | Primitive::Slice | Primitive::StrSlice | Primitive::Ptr,
+            Primitive::Array | Primitive::Slice | Primitive::StrSlice | Primitive::Ptr
+            | Primitive::Global,
             _,
         ) => match typ_as_mono(typ) {
             None => panic!("should be boxed"),

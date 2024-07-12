@@ -71,6 +71,7 @@ const SLICE_TYPE: &str = "slice%";
 const STRSLICE_TYPE: &str = "strslice%";
 const ARRAY_TYPE: &str = "array%";
 const PTR_TYPE: &str = "ptr_mut%";
+const GLOBAL_TYPE: &str = "allocator_global%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
@@ -160,6 +161,7 @@ pub const TYPE_ID_ARRAY: &str = "ARRAY";
 pub const TYPE_ID_SLICE: &str = "SLICE";
 pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_PTR: &str = "PTR";
+pub const TYPE_ID_GLOBAL: &str = "ALLOCATOR_GLOBAL";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
@@ -374,6 +376,11 @@ pub fn array_type() -> Path {
 
 pub fn ptr_type() -> Path {
     let ident = Arc::new(PTR_TYPE.to_string());
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
+pub fn global_type() -> Path {
+    let ident = Arc::new(GLOBAL_TYPE.to_string());
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 

@@ -855,6 +855,12 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             } else if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Nat)) = verus_item {
                 (Arc::new(TypX::Int(IntRange::Nat)), false)
             } else {
+                let rust_item = verus_items::get_rust_item(tcx, did);
+
+                if let Some(RustItem::AllocGlobal) = rust_item {
+                    return Ok((Arc::new(TypX::Primitive(Primitive::Global, Arc::new(vec![]))), false))
+                }
+
                 let mut typ_args: Vec<(Typ, bool)> = Vec::new();
                 for arg in args.iter() {
                     match arg.unpack() {
@@ -878,7 +884,6 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         Ok((Arc::new(TypX::Decorate(d, darg, t0.clone())), ghost))
                     };
                     let verus_item = verus_items.id_to_name.get(&did);
-                    let rust_item = verus_items::get_rust_item(tcx, did);
                     match (verus_item, rust_item) {
                         (Some(VerusItem::BuiltinType(BuiltinTypeItem::Ghost)), _) => {
                             assert!(typ_args.len() == 1);

@@ -188,6 +188,7 @@ fn datatypes_invs(
                         TypX::Primitive(Primitive::Slice, _) => {}
                         TypX::Primitive(Primitive::StrSlice, _) => {}
                         TypX::Primitive(Primitive::Ptr, _) => {}
+                        TypX::Primitive(Primitive::Global, _) => {}
                     }
                 }
             }
