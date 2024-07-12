@@ -17,7 +17,7 @@ use crate::sst::{
     Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_array_index, sst_conjoin, sst_equal,
+    free_vars_exp, free_vars_stm, sst_array_index, sst_bitwidth, sst_conjoin, sst_equal,
     sst_has_type, sst_int_literal, sst_le, sst_lt,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
@@ -1426,10 +1426,10 @@ pub(crate) fn expr_to_stm_opt(
                     if let BinaryOp::Bitwise(bitwise, mode) = op {
                         match (*mode, state.checking_bounds_for_mode(ctx, *mode), bitwise) {
                             (_, false, _) => {}
-                            (Mode::Exec, true, BitwiseOp::Shr | BitwiseOp::Shl) => {
+                            (Mode::Exec, true, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
                                 let zero = sst_int_literal(&expr.span, 0);
-                                let bitwidth =
-                                    bitwidth_sst_from_typ(&expr.span, &e1.typ, &ctx.global.arch);
+                                let bitwidth = sst_bitwidth(&expr.span, w, &ctx.global.arch);
+
                                 let assert_exp = sst_conjoin(
                                     &expr.span,
                                     &vec![
@@ -1445,7 +1445,11 @@ pub(crate) fn expr_to_stm_opt(
                                 let assert = Spanned::new(expr.span.clone(), assert);
                                 stms1.push(assert);
                             }
-                            (Mode::Proof | Mode::Spec, true, BitwiseOp::Shr | BitwiseOp::Shl) => {}
+                            (
+                                Mode::Proof | Mode::Spec,
+                                true,
+                                BitwiseOp::Shr(..) | BitwiseOp::Shl(..),
+                            ) => {}
                             (_, true, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                                 // no overflow check needed
                             }
@@ -1934,27 +1938,29 @@ pub(crate) fn expr_to_stm_opt(
             // We assert the (hopefully simplified) result of calling the interpreter
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
-            let interp_exp = eval_expr(
-                &ctx.global,
-                &state.finalize_exp(ctx, state.diagnostics, &state.fun_ssts, &expr)?,
-                state.diagnostics,
-                &mut state.fun_ssts,
-                ctx.global.rlimit,
-                ctx.global.arch,
-                *mode,
-                &mut ctx.global.interpreter_log.lock().unwrap(),
-            )?;
-            let err = error_with_label(
-                &expr.span.clone(),
-                "assertion failed",
-                format!("simplified to {}", interp_exp.x.to_user_string(&ctx.global)),
-            );
-            if matches!(mode, ComputeMode::Z3) {
-                let assert = Spanned::new(
-                    expr.span.clone(),
-                    StmX::Assert(state.next_assert_id(), Some(err), interp_exp),
+            if !ctx.checking_spec_preconditions_for_non_spec() {
+                let interp_exp = eval_expr(
+                    &ctx.global,
+                    &state.finalize_exp(ctx, state.diagnostics, &state.fun_ssts, &expr)?,
+                    state.diagnostics,
+                    &mut state.fun_ssts,
+                    ctx.global.rlimit,
+                    ctx.global.arch,
+                    *mode,
+                    &mut ctx.global.interpreter_log.lock().unwrap(),
+                )?;
+                let err = error_with_label(
+                    &expr.span.clone(),
+                    "assertion failed",
+                    format!("simplified to {}", interp_exp.x.to_user_string(&ctx.global)),
                 );
-                stms.push(assert);
+                if matches!(mode, ComputeMode::Z3) {
+                    let assert = Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(err), interp_exp),
+                    );
+                    stms.push(assert);
+                }
             }
             let assume = Spanned::new(expr.span.clone(), StmX::Assume(expr));
             stms.push(assume);

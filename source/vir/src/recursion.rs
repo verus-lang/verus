@@ -8,17 +8,13 @@ use crate::ast_to_sst_func::{params_to_pars, SstMap};
 use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
 use crate::context::Ctx;
 use crate::def::{
-    decrease_at_entry, rename_rec_param, unique_bound, unique_local, CommandsWithContext, Spanned,
-    FUEL_PARAM, FUEL_TYPE,
+    decrease_at_entry, rename_rec_param, unique_bound, unique_local, Spanned, FUEL_PARAM, FUEL_TYPE,
 };
-use crate::inv_masks::MaskSet;
 use crate::messages::{error, Span};
 use crate::scc::Graph;
-use crate::sst::PostConditionKind;
-use crate::sst::PostConditionSst;
 use crate::sst::{
-    BndX, CallFun, Dest, Exp, ExpX, Exps, FunctionSst, InternalFun, LocalDecl, LocalDeclX, Stm,
-    StmX, UniqueIdent,
+    BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
+    UniqueIdent,
 };
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
@@ -251,11 +247,11 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     function: &Function,
     body: &Exp,
     fuel: Option<usize>,
-) -> Result<(bool, Exp, crate::recursion::Node), VirErr> {
+) -> Result<(Exp, crate::recursion::Node), VirErr> {
     let caller_node = Node::Fun(function.x.name.clone());
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&caller_node);
     if !fun_is_recursive(ctx, function) {
-        return Ok((false, body.clone(), scc_rep));
+        return Ok((body.clone(), scc_rep));
     }
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
@@ -295,48 +291,7 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
         _ => exp.clone(),
     });
 
-    Ok((true, body, scc_rep))
-}
-
-pub(crate) fn check_termination_commands(
-    ctx: &Ctx,
-    function: &Function,
-    local_decls: Vec<LocalDecl>,
-    stm_block: Stm,
-    uses_decreases_by: bool,
-) -> Result<Vec<CommandsWithContext>, VirErr> {
-    // TODO: If we decide to support debugging decreases failures, we should plumb _snap_map
-    // up to the VIR model
-    let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
-        ctx,
-        &function.span,
-        &function.x.typ_params,
-        &function.x.typ_bounds,
-        &function.x.params,
-        &FunctionSst {
-            post_condition: PostConditionSst {
-                dest: None,
-                kind: if uses_decreases_by {
-                    PostConditionKind::DecreasesBy
-                } else {
-                    PostConditionKind::DecreasesImplicitLemma
-                },
-                ens_exps: vec![],
-                ens_spec_precondition_stms: vec![],
-            },
-            body: stm_block,
-            local_decls,
-            statics: vec![],
-            reqs: Arc::new(vec![]),
-            mask_set: MaskSet::empty(),
-        },
-        &vec![],
-        false,
-        false,
-        false,
-    )?;
-
-    Ok(commands)
+    Ok((body, scc_rep))
 }
 
 fn check_termination<'a>(

@@ -125,6 +125,8 @@
 - [Function specifications]()
   - [requires / ensures]()
   - [opens_invariants](./reference-opens-invariants.md)
+  - [Traits and signature inheritance](./reference-signature-inheritance.md)
+  - [Specifications on FnOnce](./reference-signature-fnonce.md)
   - [recommends]()
 - [Loop specifications]()
   - [invariant]()

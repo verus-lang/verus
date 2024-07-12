@@ -72,6 +72,7 @@ pub enum VarIdentDisambiguate {
     VirSubst(u64),
     VirTemp(u64),
     ExpandErrorsDecl(u64),
+    BitVectorToAirDecl(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -304,7 +305,14 @@ pub enum UnaryOp {
     /// boolean not
     Not,
     /// bitwise not
-    BitNot,
+    /// Semantics:
+    ///   Flip every bit in the infinite binary representation of
+    ///   (equivalently, compute -x-1)
+    ///   Then, if the bitwidth argument is non-None, clip to the given bitwidth
+    /// Note that:
+    ///  1. A bitwise 'not' on a SIGNED integer can be encoded as BitNot(None)
+    ///  2. A bitwise 'not' on an UNSIGNED integer of width w can be encoded as BitNot(Some(w))
+    BitNot(Option<IntegerTypeBitwidth>),
     /// Mark an expression as a member of an SMT quantifier trigger group.
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
     Trigger(TriggerAnnotation),
@@ -405,14 +413,27 @@ pub enum ArithOp {
     EuclideanMod,
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum IntegerTypeBitwidth {
+    Width(u32),
+    ArchWordSize,
+}
+
 /// Bitwise operation
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BitwiseOp {
     BitXor,
     BitAnd,
     BitOr,
-    Shr,
-    Shl,
+    // Shift right. The bitwidth argument is only needed to do a bounds-check;
+    // the actual result, when computed on unbounded integers, is independent
+    // of the bitwidth.
+    Shr(IntegerTypeBitwidth),
+    // Shift left up to w bits, ignoring everything to the left of w.
+    // To interpret the result as an unbounded int,
+    // either zero-extend or sign-extend, depending on the bool argument.
+    // (True = sign-extend, False = zero-extend)
+    Shl(IntegerTypeBitwidth, bool),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -968,6 +989,28 @@ pub enum FunctionKind {
     },
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode, Copy)]
+pub enum ItemKind {
+    Function,
+    /// This function is actually a const declaration;
+    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
+    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
+    /// and the body is restricted to a subset of expressions that are spec-safe.
+    Const,
+    /// Static is kind of similar to const, in that we treat it as a 0-argument function.
+    /// The main difference is what happens when you reference the static or const.
+    /// For a const, it's as if you call the function every time you reference it.
+    /// For a static, it's as if you call the function once at the beginning of the program.
+    /// The difference is most obvious when the item of a type that is not Copy.
+    /// For example, if a const/static has type PCell, then:
+    ///  - If it's a const, it will get a different id() every time it is referenced from code
+    ///  - If it's a static, every use will have the same id()
+    /// This initially seems a bit paradoxical; const and static can only call 'const' functions,
+    /// so they can only be deterministic, right? But for something like cell, the 'id'
+    /// (the nondeterministic part) is purely ghost.
+    Static,
+}
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1037,28 +1080,6 @@ pub struct FunctionX {
     /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
     /// Useful only for trusted fns.
     pub extra_dependencies: Vec<Fun>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode, Copy)]
-pub enum ItemKind {
-    Function,
-    /// This function is actually a const declaration;
-    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
-    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
-    /// and the body is restricted to a subset of expressions that are spec-safe.
-    Const,
-    /// Static is kind of similar to const, in that we treat it as a 0-argument function.
-    /// The main difference is what happens when you reference the static or const.
-    /// For a const, it's as if you call the function every time you reference it.
-    /// For a static, it's as if you call the function once at the beginning of the program.
-    /// The difference is most obvious when the item of a type that is not Copy.
-    /// For example, if a const/static has type PCell, then:
-    ///  - If it's a const, it will get a different id() every time it is referenced from code
-    ///  - If it's a static, every use will have the same id()
-    /// This initially seems a bit paradoxical; const and static can only call 'const' functions,
-    /// so they can only be deterministic, right? But for something like cell, the 'id'
-    /// (the nondeterministic part) is purely ghost.
-    Static,
 }
 
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;

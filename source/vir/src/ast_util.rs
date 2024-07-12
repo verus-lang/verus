@@ -1,9 +1,9 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Fun,
     FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp, IntRange,
-    ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
-    TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp, VarBinder, VarBinderX, VarBinders,
-    VarIdent, Variant, Variants, Visibility,
+    IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant,
+    SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp, VarBinder,
+    VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -185,6 +185,15 @@ pub fn allowed_bitvector_type(typ: &Typ) -> bool {
     }
 }
 
+pub fn is_integer_type_signed(typ: &Typ) -> bool {
+    match &*undecorate_typ(typ) {
+        TypX::Int(IntRange::U(_) | IntRange::USize | IntRange::Nat) => false,
+        TypX::Int(IntRange::I(_) | IntRange::ISize | IntRange::Int) => true,
+        TypX::Boxed(typ) => is_integer_type_signed(typ),
+        _ => panic!("is_integer_type_signed expected integer type"),
+    }
+}
+
 pub fn is_integer_type(typ: &Typ) -> bool {
     match &*undecorate_typ(typ) {
         TypX::Int(_) => true,
@@ -199,12 +208,6 @@ pub fn int_range_from_type(typ: &Typ) -> Option<IntRange> {
         TypX::Boxed(typ) => int_range_from_type(typ),
         _ => None,
     }
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub enum IntegerTypeBitwidth {
-    Width(u32),
-    ArchWordSize,
 }
 
 impl fmt::Display for IntegerTypeBitwidth {
@@ -241,22 +244,6 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<IntegerTypeBitwidth> {
         TypX::Boxed(in_et) => bitwidth_from_type(&*in_et),
         _ => None,
     }
-}
-
-pub(crate) fn fixed_integer_const(n: &String, typ: &Typ) -> bool {
-    let typ = undecorate_typ(typ);
-    if let TypX::Int(IntRange::U(bits)) = &*typ {
-        if let Ok(u) = n.parse::<u128>() {
-            return *bits == 128 || u < 2u128 << bits;
-        }
-    }
-    if let TypX::Int(IntRange::I(bits)) = &*typ {
-        if let Ok(i) = n.parse::<i128>() {
-            return *bits == 128
-                || -((2u128 << (bits - 1)) as i128) <= i && i < (2u128 << (bits - 1)) as i128;
-        }
-    }
-    false
 }
 
 impl IntRange {

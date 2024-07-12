@@ -291,6 +291,7 @@ pub fn main() {
                                         "function" : vir::ast_util::fun_as_friendly_rust_name(f),
                                         "time" : t.time_millis,
                                         "rlimit-count" : t.rlimit_count,
+                                        "success" : !verifier.func_fails.contains(f),
                                     })
                                  }).collect::<Vec<serde_json::Value>>()).unwrap_or_default(),
                             })

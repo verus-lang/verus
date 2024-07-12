@@ -90,6 +90,7 @@ pub(crate) struct State {
     trait_to_name: HashMap<Path, Id>,
     datatype_to_name: HashMap<Path, Id>,
     variant_to_name: HashMap<String, Id>,
+    unmangle_names: HashMap<String, String>,
     pub(crate) trait_decl_set: HashSet<Path>,
     pub(crate) trait_decls: Vec<TraitDecl>,
     pub(crate) datatype_decls: Vec<DatatypeDecl>,
@@ -125,6 +126,7 @@ impl State {
             trait_to_name: HashMap::new(),
             datatype_to_name: HashMap::new(),
             variant_to_name: HashMap::new(),
+            unmangle_names: HashMap::new(),
             trait_decl_set: HashSet::new(),
             trait_decls: Vec::new(),
             datatype_decls: Vec::new(),
@@ -139,9 +141,10 @@ impl State {
         }
     }
 
-    fn id<Key: Clone + Eq + std::hash::Hash>(
+    fn id_with_unmangle<Key: Clone + Eq + std::hash::Hash>(
         rename_count: &mut usize,
         key_to_name: &mut HashMap<Key, Id>,
+        unmangle_names: Option<&mut HashMap<String, String>>,
         kind: IdKind,
         key: &Key,
         mk_raw_id: impl Fn() -> String,
@@ -151,21 +154,38 @@ impl State {
             return name.clone();
         }
         *rename_count += 1;
-        let name = Id::new(kind, *rename_count, mk_raw_id());
+        let raw_id = mk_raw_id();
+        let name = Id::new(kind, *rename_count, raw_id.clone());
         key_to_name.insert(key.clone(), name.clone());
+        if let Some(unmangle_names) = unmangle_names {
+            unmangle_names.insert(name.to_string(), raw_id);
+        }
         name
+    }
+
+    fn id<Key: Clone + Eq + std::hash::Hash>(
+        rename_count: &mut usize,
+        key_to_name: &mut HashMap<Key, Id>,
+        kind: IdKind,
+        key: &Key,
+        mk_raw_id: impl Fn() -> String,
+    ) -> Id {
+        Self::id_with_unmangle(rename_count, key_to_name, None, kind, key, mk_raw_id)
     }
 
     fn local<S: Into<String>>(&mut self, raw_id: S, local_id_index: usize) -> Id {
         let raw_id = raw_id.into();
         let f = || raw_id.clone();
-        Self::id(
+        let key = (raw_id.to_string(), local_id_index);
+        let name = Self::id_with_unmangle(
             &mut self.rename_count,
             &mut self.id_to_name,
+            Some(&mut self.unmangle_names),
             IdKind::Local,
-            &(raw_id.to_string(), local_id_index),
+            &key,
             f,
-        )
+        );
+        name
     }
 
     fn field<S: Into<String>>(&mut self, raw_id: S) -> Id {
@@ -174,7 +194,11 @@ impl State {
         Self::id(&mut self.rename_count, &mut self.field_to_name, IdKind::Field, &raw_id, f)
     }
 
-    fn typ_param<S: Into<String>>(&mut self, raw_id: S, maybe_impl_index: Option<u32>) -> Id {
+    pub(crate) fn typ_param<S: Into<String>>(
+        &mut self,
+        raw_id: S,
+        maybe_impl_index: Option<u32>,
+    ) -> Id {
         let raw_id = raw_id.into();
         let (is_impl, impl_index) = match (raw_id.starts_with("impl "), maybe_impl_index) {
             (false, _) => (false, None),
@@ -207,14 +231,21 @@ impl State {
         Self::id(&mut self.rename_count, &mut self.fun_to_name, IdKind::Fun, fun, f)
     }
 
-    fn trait_name<'tcx>(&mut self, path: &Path) -> Id {
+    pub(crate) fn trait_name<'tcx>(&mut self, path: &Path) -> Id {
         let f = || path.segments.last().expect("path").to_string();
         Self::id(&mut self.rename_count, &mut self.trait_to_name, IdKind::Trait, path, f)
     }
 
-    fn datatype_name<'tcx>(&mut self, path: &Path) -> Id {
+    pub(crate) fn datatype_name<'tcx>(&mut self, path: &Path) -> Id {
         let f = || path.segments.last().expect("path").to_string();
-        Self::id(&mut self.rename_count, &mut self.datatype_to_name, IdKind::Datatype, path, f)
+        Self::id_with_unmangle(
+            &mut self.rename_count,
+            &mut self.datatype_to_name,
+            Some(&mut self.unmangle_names),
+            IdKind::Datatype,
+            path,
+            f,
+        )
     }
 
     fn variant<S: Into<String>>(&mut self, raw_id: S) -> Id {
@@ -223,18 +254,22 @@ impl State {
         Self::id(&mut self.rename_count, &mut self.variant_to_name, IdKind::Variant, &raw_id, f)
     }
 
+    pub(crate) fn restart_names(&mut self) {
+        self.id_to_name.clear();
+        self.field_to_name.clear();
+        self.typ_param_to_name.clear();
+        self.lifetime_to_name.clear();
+        self.fun_to_name.clear();
+        self.trait_to_name.clear();
+        self.datatype_to_name.clear();
+        self.variant_to_name.clear();
+    }
+
     pub(crate) fn unmangle_names<S: Into<String>>(&self, s: S) -> String {
         let mut s = s.into();
-        for ((k, _), v) in self.id_to_name.iter() {
-            let sv = v.to_string();
-            if s.contains(&sv) {
-                s = s.replace(&sv, k);
-            }
-        }
-        for (k, v) in self.datatype_to_name.iter() {
-            let sv = v.to_string();
-            if s.contains(&sv) {
-                s = s.replace(&sv, &k.segments.last().expect("segments").to_string());
+        for (name, raw_id) in &self.unmangle_names {
+            if s.contains(name) {
+                s = s.replace(name, raw_id);
             }
         }
         s
@@ -2190,8 +2225,9 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
         }
     }
 
+    let span = Some(ctxt.tcx.def_span(impl_id));
     let trait_impl =
-        TraitImpl { generic_params, generic_bounds, self_typ, trait_as_datatype, assoc_typs };
+        TraitImpl { span, generic_params, generic_bounds, self_typ, trait_as_datatype, assoc_typs };
     state.trait_impls.push(trait_impl);
 }
 
@@ -2455,6 +2491,7 @@ fn erase_datatype<'tcx>(
         &mut generic_bounds,
     );
     let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
+    let span = Some(span);
     let decl =
         DatatypeDecl { name, span, implements_copy, generic_params, generic_bounds, datatype };
     state.datatype_decls.push(decl);

@@ -1262,3 +1262,11 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] arithmetic_trigger_choose_issue923 verus_code! {
+        proof fn foo(a: nat, b: nat) {
+            let i = choose|i: nat| a == #[trigger] (b * i);
+        }
+    } => Ok(())
+}

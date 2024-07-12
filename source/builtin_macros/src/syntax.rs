@@ -2290,20 +2290,17 @@ impl VisitMut for Visitor {
                             let left = quote_spanned! { left.span() => (#left) };
                             *expr = quote_verbatim!(span, attrs => #left.spec_gt(#right));
                         }
-                        BinOp::Add(..) if !self.inside_bitvector => {
+                        BinOp::Add(..) => {
                             let left = quote_spanned! { left.span() => (#left) };
                             *expr = quote_verbatim!(span, attrs => #left.spec_add(#right));
                         }
-                        BinOp::Sub(..) if !self.inside_bitvector => {
+                        BinOp::Sub(..) => {
                             let left = quote_spanned! { left.span() => (#left) };
                             *expr = quote_verbatim!(span, attrs => #left.spec_sub(#right));
                         }
-                        BinOp::Mul(..) if !self.inside_bitvector => {
+                        BinOp::Mul(..) => {
                             let left = quote_spanned! { left.span() => (#left) };
                             *expr = quote_verbatim!(span, attrs => #left.spec_mul(#right));
-                        }
-                        BinOp::Add(..) | BinOp::Sub(..) | BinOp::Mul(..) => {
-                            *expr = quote_verbatim!(span, attrs => compile_error!("Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators, instead of `+` `-` `*`. (see the functions builtin::add(left, right), builtin::sub(left, right), and builtin::mul(left, right))"));
                         }
                         BinOp::Div(..) => {
                             let left = quote_spanned! { left.span() => (#left) };

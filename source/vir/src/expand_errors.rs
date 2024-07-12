@@ -10,7 +10,7 @@ use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::messages::Span;
-use crate::sst::FunctionSst;
+use crate::sst::FuncCheckSst;
 use crate::sst::PostConditionSst;
 use crate::sst::{AssertId, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX};
 use crate::sst_util::{sst_conjoin, sst_equal_ext, sst_implies, sst_not, subst_typ_for_datatype};
@@ -175,20 +175,22 @@ pub fn do_expansion(
     ctx: &Ctx,
     ectx: &ExpansionContext,
     fun_ssts: &SstMap,
-    function_sst: &FunctionSst,
+    func_check_sst: &FuncCheckSst,
     assert_id: &AssertId,
-) -> (FunctionSst, ExpansionTree) {
-    let mut fsst = function_sst.clone();
+) -> (FuncCheckSst, ExpansionTree) {
+    let mut fsst = func_check_sst.clone();
+    let mut local_decls = (*fsst.local_decls).clone();
     let (body, tree) = do_expansion_body(
         ctx,
         ectx,
         fun_ssts,
-        &function_sst.post_condition,
-        &function_sst.body,
+        &func_check_sst.post_condition,
+        &func_check_sst.body,
         assert_id,
-        &mut fsst.local_decls,
+        &mut local_decls,
     );
     fsst.body = body;
+    fsst.local_decls = Arc::new(local_decls);
     (fsst, tree)
 }
 
@@ -586,15 +588,13 @@ fn expand_exp_rec(
 
                 let fuel = can_inline.unwrap();
                 if let Some(fuel) = fuel {
-                    let (is_rec, e, _node) =
-                        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
-                            ctx,
-                            &function,
-                            &inline_exp,
-                            Some(fuel - 1),
-                        )
-                        .unwrap();
-                    assert!(is_rec);
+                    let (e, _node) = crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
+                        ctx,
+                        &function,
+                        &inline_exp,
+                        Some(fuel - 1),
+                    )
+                    .unwrap();
                     inline_exp = e;
                 }
 

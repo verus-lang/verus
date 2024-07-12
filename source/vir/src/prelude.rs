@@ -2,12 +2,14 @@ use crate::ast::Path;
 use crate::def::*;
 use crate::sst_to_air::path_to_air_ident;
 use air::ast::Ident;
+use air::context::SmtSolver;
 use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes, nodes_vec};
 use sise::Node;
 
 pub struct PreludeConfig {
     pub arch_word_bits: crate::ast::ArchWordBits,
+    pub solver: SmtSolver,
 }
 
 pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
@@ -53,6 +55,21 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let Poly = str_to_node(POLY);
     #[allow(non_snake_case)]
     let Height = str_to_node(T_HEIGHT);
+    let height_axioms = match config.solver {
+        SmtSolver::Z3 => nodes_vec!(
+        (axiom (forall ((x [Height]) (y [Height])) (!
+            (= ([height_lt] x y) (and ([height_le] x y) (not (= x y))))
+            :pattern (([height_lt] x y))
+            :qid prelude_height_lt
+            :skolemid skolem_prelude_height_lt
+            )))),
+        SmtSolver::Cvc5 => nodes_vec!(
+                    (declare-fun partial-order (Height Height) Bool)
+                    (axiom (forall ((x Height)) (partial-order x x)))
+                    (axiom (forall ((x Height) (y Height)) (=> (and (partial-order x y) (partial-order y x)) (= x y))))
+                    (axiom (forall ((x Height) (y Height) (z Height)) (=> (and (partial-order x y) (partial-order y z)) (partial-order x z))))
+                    (axiom (forall ((x Height) (y Height)) (= (height_lt x y) (and (partial-order x y) (not (= x y))))))),
+    };
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
     let box_fndef = str_to_node(BOX_FNDEF);
@@ -95,12 +112,12 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let const_int = str_to_node(CONST_INT);
     let ext_eq = str_to_node(EXT_EQ);
 
-    let uint_xor = str_to_node(UINT_XOR);
-    let uint_and = str_to_node(UINT_AND);
-    let uint_or = str_to_node(UINT_OR);
-    let uint_shr = str_to_node(UINT_SHR);
-    let uint_shl = str_to_node(UINT_SHL);
-    let uint_not = str_to_node(UINT_NOT);
+    let bit_xor = str_to_node(BIT_XOR);
+    let bit_and = str_to_node(BIT_AND);
+    let bit_or = str_to_node(BIT_OR);
+    let bit_shr = str_to_node(BIT_SHR);
+    let bit_shl = str_to_node(BIT_SHL);
+    let bit_not = str_to_node(BIT_NOT);
     let singular_mod = str_to_node(SINGULAR_MOD);
 
     let type_id_array = str_to_node(TYPE_ID_ARRAY);
@@ -108,7 +125,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
     let type_id_ptr = str_to_node(TYPE_ID_PTR);
 
-    nodes_vec!(
+    let mut prelude = nodes_vec!(
         // Fuel
         (declare-sort [FuelId] 0)
         (declare-sort [Fuel] 0)
@@ -550,48 +567,107 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_mod_unsigned_in_bounds
         )))
 
-        // Decreases
-        (declare-fun [height] ([Poly]) [Height])
-        (declare-fun [height_lt] ([Height] [Height]) Bool)
-        (axiom (forall ((x [Height]) (y [Height])) (!
-            (= ([height_lt] x y) (and ([height_le] x y) (not (= x y))))
-            :pattern (([height_lt] x y))
-            :qid prelude_height_lt
-            :skolemid skolem_prelude_height_lt
-        )))
-        (declare-fun [height_rec_fun] ([Poly]) [Poly])
-        (declare-fun [check_decrease_int] (Int Int Bool) Bool)
-        (axiom (forall ((cur Int) (prev Int) (otherwise Bool)) (!
-            (= ([check_decrease_int] cur prev otherwise)
-                (or
-                    (and (<= 0 cur) (< cur prev))
-                    (and (= cur prev) otherwise)
-                )
+        // uninterpreted integer versions for bitvector Ops.
+        // These all apply on unbounded ints (an unbounded int can be written
+        // as infinite binary string; negative integers have 1s going infinitely to the left).
+        //
+        // For XOR, AND, OR, SHR, and signed-NOT,
+        // the unbounded int versions are identical
+        // to the finite-width versions (axioms for these are below).
+        //
+        // For SHL and unsigned-NOT, we can add a clip around the unbounded-function to
+        // get the finite-width operation.
+        //
+        // Note: BitShr/BitShl are underspecified if second argument is negative
+
+        (declare-fun [bit_xor] ([Poly] [Poly]) Int)
+        (declare-fun [bit_and] ([Poly] [Poly]) Int)
+        (declare-fun [bit_or]  ([Poly] [Poly]) Int)
+        (declare-fun [bit_shr] ([Poly] [Poly]) Int)
+        (declare-fun [bit_shl] ([Poly] [Poly]) Int)
+        (declare-fun [bit_not] ([Poly]) Int)
+
+        // bounds on bit-ops
+
+        // For XOR, AND, and OR:
+        // If the two arguments fit in uN/iN, then the output fits in uN/iN
+        (axiom (forall ((x [Poly]) (y [Poly]) (bits Int)) (!
+            (=>
+              (and ([u_inv] bits ([unbox_int] x)) ([u_inv] bits ([unbox_int] y)))
+              ([u_inv] bits ([bit_xor] x y))
             )
-            :pattern (([check_decrease_int] cur prev otherwise))
-            :qid prelude_check_decrease_int
-            :skolemid skolem_prelude_check_decrease_int
+            :pattern (([u_clip] bits ([bit_xor] x y)))
+            :qid prelude_bit_xor_u_inv
+            :skolemid skolem_prelude_bit_xor_u_inv
         )))
-        (declare-fun [check_decrease_height] ([Poly] [Poly] Bool) Bool)
-        (axiom (forall ((cur [Poly]) (prev [Poly]) (otherwise Bool)) (!
-            (= ([check_decrease_height] cur prev otherwise)
-                (or
-                    ([height_lt] ([height] cur) ([height] prev))
-                    (and (= ([height] cur) ([height] prev)) otherwise)
-                )
+        (axiom (forall ((x [Poly]) (y [Poly]) (bits Int)) (!
+            (=>
+              (and ([i_inv] bits ([unbox_int] x)) ([i_inv] bits ([unbox_int] y)))
+              ([i_inv] bits ([bit_xor] x y))
             )
-            :pattern (([check_decrease_height] cur prev otherwise))
-            :qid prelude_check_decrease_height
-            :skolemid skolem_prelude_check_decrease_height
+            :pattern (([i_clip] bits ([bit_xor] x y)))
+            :qid prelude_bit_xor_i_inv
+            :skolemid skolem_prelude_bit_xor_i_inv
+        )))
+        (axiom (forall ((x [Poly]) (y [Poly]) (bits Int)) (!
+            (=>
+              (and ([u_inv] bits ([unbox_int] x)) ([u_inv] bits ([unbox_int] y)))
+              ([u_inv] bits ([bit_or] x y))
+            )
+            :pattern (([u_clip] bits ([bit_or] x y)))
+            :qid prelude_bit_or_u_inv
+            :skolemid skolem_prelude_bit_or_u_inv
+        )))
+        (axiom (forall ((x [Poly]) (y [Poly]) (bits Int)) (!
+            (=>
+              (and ([i_inv] bits ([unbox_int] x)) ([i_inv] bits ([unbox_int] y)))
+              ([i_inv] bits ([bit_or] x y))
+            )
+            :pattern (([i_clip] bits ([bit_or] x y)))
+            :qid prelude_bit_or_i_inv
+            :skolemid skolem_prelude_bit_or_i_inv
+        )))
+        (axiom (forall ((x [Poly]) (y [Poly]) (bits Int)) (!
+            (=>
+              (and ([u_inv] bits ([unbox_int] x)) ([u_inv] bits ([unbox_int] y)))
+              ([u_inv] bits ([bit_and] x y))
+            )
+            :pattern (([u_clip] bits ([bit_and] x y)))
+            :qid prelude_bit_and_u_inv
+            :skolemid skolem_prelude_bit_and_u_inv
+        )))
+        (axiom (forall ((x [Poly]) (y [Poly]) (bits Int)) (!
+            (=>
+              (and ([i_inv] bits ([unbox_int] x)) ([i_inv] bits ([unbox_int] y)))
+              ([i_inv] bits ([bit_and] x y))
+            )
+            :pattern (([i_clip] bits ([bit_and] x y)))
+            :qid prelude_bit_and_i_inv
+            :skolemid skolem_prelude_bit_and_i_inv
         )))
 
-        // uninterpreted integer versions for bitvector Ops. first argument is bit-width
-        (declare-fun [uint_xor] (Int [Poly] [Poly]) Int)
-        (declare-fun [uint_and] (Int [Poly] [Poly]) Int)
-        (declare-fun [uint_or]  (Int [Poly] [Poly]) Int)
-        (declare-fun [uint_shr] (Int [Poly] [Poly]) Int)
-        (declare-fun [uint_shl] (Int [Poly] [Poly]) Int)
-        (declare-fun [uint_not] (Int [Poly]) Int)
+        // For shr, if the *first* argument fits in uN/iN,
+        // and the second arg is >= 0, then the output fits in uN/iN
+        (axiom (forall ((x [Poly]) (y [Poly]) (bits Int)) (!
+            (=>
+              (and ([u_inv] bits ([unbox_int] x)) (<= 0 ([unbox_int] y)))
+              ([u_inv] bits ([bit_shr] x y))
+            )
+            :pattern (([u_clip] bits ([bit_shr] x y)))
+            :qid prelude_bit_shr_u_inv
+            :skolemid skolem_prelude_bit_shr_u_inv
+        )))
+        (axiom (forall ((x [Poly]) (y [Poly]) (bits Int)) (!
+            (=>
+              (and ([i_inv] bits ([unbox_int] x)) (<= 0 ([unbox_int] y)))
+              ([i_inv] bits ([bit_shr] x y))
+            )
+            :pattern (([i_clip] bits ([bit_shr] x y)))
+            :qid prelude_bit_shr_i_inv
+            :skolemid skolem_prelude_bit_shr_i_inv
+        )))
+
+        // Nothing for shl
 
         (declare-fun [singular_mod] (Int Int) Int)
         (axiom (forall ((x Int) (y Int)) (!
@@ -624,7 +700,38 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 
         (declare-fun [closure_req] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly]) Bool)
         (declare-fun [closure_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
-    )
+
+        // Decreases
+        (declare-fun [height] ([Poly]) [Height])
+        (declare-fun [height_lt] ([Height] [Height]) Bool)
+        (declare-fun [height_rec_fun] ([Poly]) [Poly])
+        (declare-fun [check_decrease_int] (Int Int Bool) Bool)
+        (axiom (forall ((cur Int) (prev Int) (otherwise Bool)) (!
+            (= ([check_decrease_int] cur prev otherwise)
+                (or
+                    (and (<= 0 cur) (< cur prev))
+                    (and (= cur prev) otherwise)
+                )
+            )
+            :pattern (([check_decrease_int] cur prev otherwise))
+            :qid prelude_check_decrease_int
+            :skolemid skolem_prelude_check_decrease_int
+        )))
+        (declare-fun [check_decrease_height] ([Poly] [Poly] Bool) Bool)
+        (axiom (forall ((cur [Poly]) (prev [Poly]) (otherwise Bool)) (!
+            (= ([check_decrease_height] cur prev otherwise)
+                (or
+                    ([height_lt] ([height] cur) ([height] prev))
+                    (and (= ([height] cur) ([height] prev)) otherwise)
+                )
+            )
+            :pattern (([check_decrease_height] cur prev otherwise))
+            :qid prelude_check_decrease_height
+            :skolemid skolem_prelude_check_decrease_height
+        )))
+    );
+    prelude.extend(height_axioms);
+    prelude
 }
 
 pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {

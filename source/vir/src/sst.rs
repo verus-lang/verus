@@ -103,6 +103,7 @@ pub struct ParX {
     pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
+    pub is_mut: bool,
     pub purpose: ParPurpose,
 }
 
@@ -206,44 +207,84 @@ pub struct LocalDeclX {
     pub mutable: bool,
 }
 
-#[derive(Clone)]
-pub struct FunctionSst {
-    pub reqs: Exps,
-    pub post_condition: PostConditionSst,
-    pub mask_set: crate::inv_masks::MaskSet, // Actually AIR
-    pub body: Stm,
-    pub local_decls: Vec<LocalDecl>,
-    pub statics: Vec<Fun>,
-}
-
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum PostConditionKind {
     Ensures,
     DecreasesImplicitLemma,
     DecreasesBy,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct PostConditionSst {
     /// Identifier that holds the return value.
     /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
     pub dest: Option<VarIdent>,
     /// Post-conditions (only used in non-recommends-checking mode)
-    pub ens_exps: Vec<Exp>,
+    pub ens_exps: Exps,
     /// Recommends checks (only used in recommends-checking mode)
-    pub ens_spec_precondition_stms: Vec<Stm>,
+    pub ens_spec_precondition_stms: Stms,
     /// Extra info about PostCondition for error reporting
     pub kind: PostConditionKind,
 }
 
-pub struct PostConditionInfo {
-    /// Identifier that holds the return value.
-    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
-    pub dest: Option<VarIdent>,
-    /// Post-conditions (only used in non-recommends-checking mode)
-    pub ens_exprs: Vec<(Span, air::ast::Expr)>,
-    /// Recommends checks (only used in recommends-checking mode)
-    pub ens_spec_precondition_stms: Vec<Stm>,
-    /// Extra info about PostCondition for error reporting
-    pub kind: PostConditionKind,
+#[derive(Debug)]
+pub struct FuncDeclSst {
+    pub req_inv_pars: Pars,
+    pub ens_pars: Pars,
+    pub post_pars: Pars,
+    pub reqs: Exps,
+    pub enss: Exps,
+    pub inv_masks: Arc<Vec<Exps>>,
+    pub fndef_axioms: Exps,
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncCheckSst {
+    pub reqs: Exps,
+    pub post_condition: Arc<PostConditionSst>,
+    pub mask_set: Arc<crate::inv_masks::MaskSet>, // Actually AIR
+    pub body: Stm,
+    pub local_decls: Arc<Vec<LocalDecl>>,
+    pub statics: Arc<Vec<Fun>>,
+}
+
+#[derive(Debug)]
+pub struct FuncSpecBodySst {
+    pub decrease_when: Option<Exp>,
+    pub termination_check: Option<FuncCheckSst>,
+    pub body_exp: Exp,
+}
+
+#[derive(Debug)]
+pub struct FuncAxiomsSst {
+    pub spec_axioms: Option<FuncSpecBodySst>,
+    pub proof_exec_axioms: Option<(Pars, Exp)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionSstHas {
+    pub has_body: bool,
+    pub has_fuel: bool,
+    pub has_requires: bool,
+    pub has_ensures: bool,
+    pub has_decrease: bool,
+    pub has_mask_spec: bool,
+    pub has_return_name: bool,
+    pub is_recursive: bool,
+}
+
+pub type FunctionSst = Arc<Spanned<FunctionSstX>>;
+#[derive(Debug, Clone)]
+pub struct FunctionSstX {
+    pub name: Fun,
+    pub kind: crate::ast::FunctionKind,
+    pub vis_abs: crate::ast::Visibility,
+    pub mode: crate::ast::Mode,
+    pub typ_params: crate::ast::Idents,
+    pub typ_bounds: crate::ast::GenericBounds,
+    pub pars: Pars,
+    pub ret: Par,
+    pub item_kind: crate::ast::ItemKind,
+    pub attrs: crate::ast::FunctionAttrs,
+    pub has: FunctionSstHas,
 }

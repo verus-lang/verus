@@ -1,3 +1,4 @@
+use air::context::SmtSolver;
 use getopts::Options;
 use std::{collections::HashSet, sync::Arc};
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
@@ -101,6 +102,7 @@ pub struct ArgsX {
     pub trace: bool,
     pub report_long_running: bool,
     pub use_crate_name: bool,
+    pub cvc5: bool,
     #[cfg(feature = "axiom-usage-info")]
     pub broadcast_usage_info: bool,
 }
@@ -144,9 +146,14 @@ impl ArgsX {
             trace: Default::default(),
             report_long_running: Default::default(),
             use_crate_name: Default::default(),
+            cvc5: Default::default(),
             #[cfg(feature = "axiom-usage-info")]
             broadcast_usage_info: Default::default(),
         }
+    }
+
+    pub fn solver(&self) -> SmtSolver {
+        if self.cvc5 { SmtSolver::Cvc5 } else { SmtSolver::Z3 }
     }
 }
 
@@ -269,6 +276,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
     const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
+    const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
     #[cfg(feature = "axiom-usage-info")]
@@ -289,6 +297,7 @@ pub fn parse_args_with_imports(
             EXTENDED_USE_INTERNAL_PROFILER,
             "Use an internal profiler that shows internal quantifier instantiations",
         ),
+        (EXTENDED_CVC5, "Use the cvc5 SMT solver, rather than the default (Z3)"),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
         (
             EXTENDED_USE_CRATE_NAME,
@@ -640,6 +649,7 @@ pub fn parse_args_with_imports(
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
         use_crate_name: extended.get(EXTENDED_USE_CRATE_NAME).is_some(),
+        cvc5: extended.get(EXTENDED_CVC5).is_some(),
         #[cfg(feature = "axiom-usage-info")]
         broadcast_usage_info: extended.get(EXTENDED_BROADCAST_USAGE_INFO).is_some(),
     };

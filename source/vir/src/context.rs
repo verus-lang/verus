@@ -13,6 +13,7 @@ use crate::sst::BndInfo;
 use crate::sst_to_air::fun_to_air_ident;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp};
 use air::ast_util::{mk_unnamed_axiom, str_typ};
+use air::context::SmtSolver;
 use num_bigint::BigUint;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -52,6 +53,7 @@ pub struct GlobalCtx {
     pub arch: crate::ast::ArchWordBits,
     pub crate_name: Ident,
     pub vstd_crate_name: Ident,
+    pub solver: SmtSolver,
 }
 
 // Context for verifying one function
@@ -212,6 +214,7 @@ impl GlobalCtx {
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
+        solver: SmtSolver,
         after_simplify: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
@@ -456,6 +459,7 @@ impl GlobalCtx {
             crate_name,
             vstd_crate_name,
             func_call_graph_log,
+            solver,
         })
     }
 
@@ -481,6 +485,7 @@ impl GlobalCtx {
             crate_name: self.crate_name.clone(),
             vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
+            solver: self.solver.clone(),
         }
     }
 
