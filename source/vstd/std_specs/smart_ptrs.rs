@@ -1,8 +1,8 @@
 use super::super::prelude::*;
 
 use alloc::rc::Rc;
-use core::alloc::Allocator;
 use alloc::sync::Arc;
+use core::alloc::Allocator;
 
 verus! {
 
