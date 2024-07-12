@@ -5,7 +5,7 @@ use crate::ast::{
     Axiom, BinaryOp, BindX, Binder, BinderX, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident,
     MultiOp, Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
-use crate::context::Context;
+use crate::context::{Context, SmtSolver};
 use crate::messages::MessageInterface;
 use crate::printer::{node_to_string, Printer};
 use crate::scope_map::ScopeMap;
@@ -28,6 +28,7 @@ pub struct Typing {
     pub(crate) snapshots: HashSet<Ident>,
     pub(crate) break_labels_local: HashSet<Ident>,
     pub(crate) break_labels_in_scope: ScopeMap<Ident, ()>,
+    pub(crate) solver: SmtSolver,
 }
 
 impl Typing {
@@ -451,7 +452,8 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         Ok(t) => Ok(t),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(typing.message_interface.clone(), false).expr_to_node(expr),
+                &Printer::new(typing.message_interface.clone(), false, typing.solver.clone())
+                    .expr_to_node(expr),
             );
             Err(format!("error '{}' in expression '{}'", err, node_str))
         }
@@ -543,7 +545,8 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
         Ok(()) => Ok(()),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(typing.message_interface.clone(), false).stmt_to_node(stmt),
+                &Printer::new(typing.message_interface.clone(), false, typing.solver.clone())
+                    .stmt_to_node(stmt),
             );
             Err(format!("error '{}' in statement '{}'", err, node_str))
         }
@@ -573,7 +576,8 @@ pub(crate) fn check_decl(
         Ok(()) => Ok(crate::closure::simplify_decl(context, decl)),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(context.message_interface.clone(), false).decl_to_node(decl),
+                &Printer::new(context.message_interface.clone(), false, context.solver.clone())
+                    .decl_to_node(decl),
             );
             Err(format!("error '{}' in declaration '{}'", err, node_str))
         }

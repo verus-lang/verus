@@ -38,6 +38,7 @@ use air::ast_util::{
     mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_nat, mk_not, mk_option_command,
     mk_or, mk_sub, mk_unnamed_axiom, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
+use air::context::SmtSolver;
 use num_bigint::BigInt;
 use std::collections::{BTreeMap, HashSet};
 use std::mem::swap;
@@ -1661,10 +1662,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             .clone(),
                         stm.span.clone(),
                         "assert_nonlinear_by".to_string(),
-                        Arc::new(vec![
-                            mk_option_command("smt.arith.solver", "6"),
-                            Arc::new(CommandX::CheckValid(query)),
-                        ]),
+                        match ctx.global.solver {
+                            SmtSolver::Z3 => Arc::new(vec![
+                                mk_option_command("smt.arith.solver", "6"),
+                                Arc::new(CommandX::CheckValid(query)),
+                            ]),
+                            SmtSolver::Cvc5 =>
+                            // TODO: What cvc5 settings would help here?
+                            // TODO: Can we even adjust the settings at this point?
+                            {
+                                Arc::new(vec![Arc::new(CommandX::CheckValid(query))])
+                            }
+                        },
                         ProverChoice::Nonlinear,
                         true,
                     ));
@@ -1682,7 +1691,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let queries = bv_to_queries(ctx, requires, ensures)?;
 
             for (query, error_desc) in queries.into_iter() {
-                let mut bv_commands = mk_bitvector_option();
+                let mut bv_commands = mk_bitvector_option(&ctx.global.solver);
                 bv_commands.push(Arc::new(CommandX::CheckValid(query)));
                 state.commands.push(CommandsWithContextX::new(
                     ctx.fun
@@ -2384,7 +2393,7 @@ pub(crate) fn body_stm_to_air(
         let mut commands = vec![];
 
         for (query, error_desc) in queries.into_iter() {
-            let mut bv_commands = mk_bitvector_option();
+            let mut bv_commands = mk_bitvector_option(&ctx.global.solver);
             bv_commands.push(Arc::new(CommandX::CheckValid(query)));
             commands.push(CommandsWithContextX::new(
                 ctx.fun.as_ref().expect("function expected here").current_fun.clone(),
@@ -2579,7 +2588,22 @@ pub(crate) fn body_stm_to_air(
     } else {
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
         let commands = if is_nonlinear {
-            vec![mk_option_command("smt.arith.solver", "6"), Arc::new(CommandX::CheckValid(query))]
+            match ctx.global.solver {
+                SmtSolver::Z3 => vec![
+                    mk_option_command("smt.arith.solver", "6"),
+                    Arc::new(CommandX::CheckValid(query)),
+                ],
+                SmtSolver::Cvc5 =>
+                // TODO: What cvc5 settings would help here?
+                // TODO: Can we even adjust the settings at this point?
+                {
+                    vec![Arc::new(CommandX::CheckValid(query))]
+                }
+            }
+        } else if is_bit_vector_mode {
+            let mut bv_commands = mk_bitvector_option(&ctx.global.solver);
+            bv_commands.push(Arc::new(CommandX::CheckValid(query)));
+            bv_commands
         } else {
             vec![Arc::new(CommandX::CheckValid(query))]
         };

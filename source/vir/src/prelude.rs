@@ -2,12 +2,14 @@ use crate::ast::Path;
 use crate::def::*;
 use crate::sst_to_air::path_to_air_ident;
 use air::ast::Ident;
+use air::context::SmtSolver;
 use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes, nodes_vec};
 use sise::Node;
 
 pub struct PreludeConfig {
     pub arch_word_bits: crate::ast::ArchWordBits,
+    pub solver: SmtSolver,
 }
 
 pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
@@ -53,6 +55,21 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let Poly = str_to_node(POLY);
     #[allow(non_snake_case)]
     let Height = str_to_node(T_HEIGHT);
+    let height_axioms = match config.solver {
+        SmtSolver::Z3 => nodes_vec!(
+        (axiom (forall ((x [Height]) (y [Height])) (!
+            (= ([height_lt] x y) (and ([height_le] x y) (not (= x y))))
+            :pattern (([height_lt] x y))
+            :qid prelude_height_lt
+            :skolemid skolem_prelude_height_lt
+            )))),
+        SmtSolver::Cvc5 => nodes_vec!(
+                    (declare-fun partial-order (Height Height) Bool)
+                    (axiom (forall ((x Height)) (partial-order x x)))
+                    (axiom (forall ((x Height) (y Height)) (=> (and (partial-order x y) (partial-order y x)) (= x y))))
+                    (axiom (forall ((x Height) (y Height) (z Height)) (=> (and (partial-order x y) (partial-order y z)) (partial-order x z))))
+                    (axiom (forall ((x Height) (y Height)) (= (height_lt x y) (and (partial-order x y) (not (= x y))))))),
+    };
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
     let box_fndef = str_to_node(BOX_FNDEF);
@@ -108,7 +125,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
     let type_id_ptr = str_to_node(TYPE_ID_PTR);
 
-    nodes_vec!(
+    let mut prelude = nodes_vec!(
         // Fuel
         (declare-sort [FuelId] 0)
         (declare-sort [Fuel] 0)
@@ -550,41 +567,6 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_mod_unsigned_in_bounds
         )))
 
-        // Decreases
-        (declare-fun [height] ([Poly]) [Height])
-        (declare-fun [height_lt] ([Height] [Height]) Bool)
-        (axiom (forall ((x [Height]) (y [Height])) (!
-            (= ([height_lt] x y) (and ([height_le] x y) (not (= x y))))
-            :pattern (([height_lt] x y))
-            :qid prelude_height_lt
-            :skolemid skolem_prelude_height_lt
-        )))
-        (declare-fun [height_rec_fun] ([Poly]) [Poly])
-        (declare-fun [check_decrease_int] (Int Int Bool) Bool)
-        (axiom (forall ((cur Int) (prev Int) (otherwise Bool)) (!
-            (= ([check_decrease_int] cur prev otherwise)
-                (or
-                    (and (<= 0 cur) (< cur prev))
-                    (and (= cur prev) otherwise)
-                )
-            )
-            :pattern (([check_decrease_int] cur prev otherwise))
-            :qid prelude_check_decrease_int
-            :skolemid skolem_prelude_check_decrease_int
-        )))
-        (declare-fun [check_decrease_height] ([Poly] [Poly] Bool) Bool)
-        (axiom (forall ((cur [Poly]) (prev [Poly]) (otherwise Bool)) (!
-            (= ([check_decrease_height] cur prev otherwise)
-                (or
-                    ([height_lt] ([height] cur) ([height] prev))
-                    (and (= ([height] cur) ([height] prev)) otherwise)
-                )
-            )
-            :pattern (([check_decrease_height] cur prev otherwise))
-            :qid prelude_check_decrease_height
-            :skolemid skolem_prelude_check_decrease_height
-        )))
-
         // uninterpreted integer versions for bitvector Ops.
         // These all apply on unbounded ints (an unbounded int can be written
         // as infinite binary string; negative integers have 1s going infinitely to the left).
@@ -718,7 +700,38 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 
         (declare-fun [closure_req] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly]) Bool)
         (declare-fun [closure_ens] (/*[decoration] skipped */ [typ] [decoration] [typ] [Poly] [Poly] [Poly]) Bool)
-    )
+
+        // Decreases
+        (declare-fun [height] ([Poly]) [Height])
+        (declare-fun [height_lt] ([Height] [Height]) Bool)
+        (declare-fun [height_rec_fun] ([Poly]) [Poly])
+        (declare-fun [check_decrease_int] (Int Int Bool) Bool)
+        (axiom (forall ((cur Int) (prev Int) (otherwise Bool)) (!
+            (= ([check_decrease_int] cur prev otherwise)
+                (or
+                    (and (<= 0 cur) (< cur prev))
+                    (and (= cur prev) otherwise)
+                )
+            )
+            :pattern (([check_decrease_int] cur prev otherwise))
+            :qid prelude_check_decrease_int
+            :skolemid skolem_prelude_check_decrease_int
+        )))
+        (declare-fun [check_decrease_height] ([Poly] [Poly] Bool) Bool)
+        (axiom (forall ((cur [Poly]) (prev [Poly]) (otherwise Bool)) (!
+            (= ([check_decrease_height] cur prev otherwise)
+                (or
+                    ([height_lt] ([height] cur) ([height] prev))
+                    (and (= ([height] cur) ([height] prev)) otherwise)
+                )
+            )
+            :pattern (([check_decrease_height] cur prev otherwise))
+            :qid prelude_check_decrease_height
+            :skolemid skolem_prelude_check_decrease_height
+        )))
+    );
+    prelude.extend(height_axioms);
+    prelude
 }
 
 pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {

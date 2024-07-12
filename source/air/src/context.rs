@@ -72,6 +72,12 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
     }
 }
 
+#[derive(Clone)]
+pub enum SmtSolver {
+    Z3,
+    Cvc5,
+}
+
 pub struct Context {
     pub(crate) message_interface: Arc<dyn crate::messages::MessageInterface>,
     smt_process: Option<SmtProcess>,
@@ -100,10 +106,14 @@ pub struct Context {
     pub(crate) disable_incremental_solving: bool,
     pub(crate) usage_info_enabled: bool,
     pub(crate) check_valid_used: bool,
+    pub(crate) solver: SmtSolver,
 }
 
 impl Context {
-    pub fn new(message_interface: Arc<dyn crate::messages::MessageInterface>) -> Self {
+    pub fn new(
+        message_interface: Arc<dyn crate::messages::MessageInterface>,
+        solver: SmtSolver,
+    ) -> Self {
         let mut context = Context {
             message_interface: message_interface.clone(),
             smt_process: None,
@@ -121,14 +131,33 @@ impl Context {
                 snapshots: HashSet::new(),
                 break_labels_local: HashSet::new(),
                 break_labels_in_scope: crate::scope_map::ScopeMap::new(),
+                solver: solver.clone(),
             },
             debug: false,
             ignore_unexpected_smt: false,
             rlimit: 0,
-            air_initial_log: Emitter::new(message_interface.clone(), false, false, None),
-            air_middle_log: Emitter::new(message_interface.clone(), false, false, None),
-            air_final_log: Emitter::new(message_interface.clone(), false, false, None),
-            smt_log: Emitter::new(message_interface.clone(), true, true, None),
+            air_initial_log: Emitter::new(
+                message_interface.clone(),
+                false,
+                false,
+                None,
+                solver.clone(),
+            ),
+            air_middle_log: Emitter::new(
+                message_interface.clone(),
+                false,
+                false,
+                None,
+                solver.clone(),
+            ),
+            air_final_log: Emitter::new(
+                message_interface.clone(),
+                false,
+                false,
+                None,
+                solver.clone(),
+            ),
+            smt_log: Emitter::new(message_interface.clone(), true, true, None, solver.clone()),
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
             rlimit_count: 0,
@@ -138,6 +167,7 @@ impl Context {
             disable_incremental_solving: false,
             usage_info_enabled: false,
             check_valid_used: false,
+            solver,
         };
         context.axiom_infos.push_scope(false);
         context.lambda_map.push_scope(false);
@@ -151,7 +181,7 @@ impl Context {
     pub fn get_smt_process(&mut self) -> &mut SmtProcess {
         // Only start the smt process if there are queries to run
         if self.smt_process.is_none() {
-            self.smt_process = Some(SmtProcess::launch());
+            self.smt_process = Some(SmtProcess::launch(&self.solver));
         }
         self.smt_process.as_mut().unwrap()
     }
@@ -180,6 +210,10 @@ impl Context {
         self.debug
     }
 
+    pub fn get_solver(&self) -> &SmtSolver {
+        &self.solver
+    }
+
     pub fn set_ignore_unexpected_smt(&mut self, ignore_unexpected_smt: bool) {
         self.ignore_unexpected_smt = ignore_unexpected_smt;
     }
@@ -203,9 +237,11 @@ impl Context {
 
     pub fn set_rlimit(&mut self, rlimit: u32) {
         self.rlimit = rlimit;
-        self.air_initial_log.log_set_option("rlimit", &rlimit.to_string());
-        self.air_middle_log.log_set_option("rlimit", &rlimit.to_string());
-        self.air_final_log.log_set_option("rlimit", &rlimit.to_string());
+        if matches!(self.solver, SmtSolver::Z3) {
+            self.air_initial_log.log_set_option("rlimit", &rlimit.to_string());
+            self.air_middle_log.log_set_option("rlimit", &rlimit.to_string());
+            self.air_final_log.log_set_option("rlimit", &rlimit.to_string());
+        }
     }
 
     pub fn disable_incremental_solving(&mut self) {
@@ -246,15 +282,23 @@ impl Context {
 
     pub(crate) fn set_z3_param_bool(&mut self, option: &str, value: bool, write_to_logs: bool) {
         if option == "air_recommended_options" && value {
-            self.set_z3_param_bool("auto_config", false, true);
-            self.set_z3_param_bool("smt.mbqi", false, true);
-            self.set_z3_param_u32("smt.case_split", 3, true);
-            self.set_z3_param_f64("smt.qi.eager_threshold", 100.0, true);
-            self.set_z3_param_bool("smt.delay_units", true, true);
-            self.set_z3_param_u32("smt.arith.solver", 2, true);
-            self.set_z3_param_bool("smt.arith.nl", false, true);
-            self.set_z3_param_bool("pi.enabled", false, true);
-            self.set_z3_param_bool("rewriter.sort_disjunctions", false, true);
+            match self.solver {
+                SmtSolver::Z3 => {
+                    self.set_z3_param_bool("auto_config", false, true);
+                    self.set_z3_param_bool("smt.mbqi", false, true);
+                    self.set_z3_param_u32("smt.case_split", 3, true);
+                    self.set_z3_param_f64("smt.qi.eager_threshold", 100.0, true);
+                    self.set_z3_param_bool("smt.delay_units", true, true);
+                    self.set_z3_param_u32("smt.arith.solver", 2, true);
+                    self.set_z3_param_bool("smt.arith.nl", false, true);
+                    self.set_z3_param_bool("pi.enabled", false, true);
+                    self.set_z3_param_bool("rewriter.sort_disjunctions", false, true);
+                }
+                SmtSolver::Cvc5 => {
+                    self.smt_log.log_node(&node!((set-logic {str_to_node("ALL")})));
+                    self.set_z3_param_bool("incremental", true, true);
+                }
+            }
         } else if option == "disable_incremental_solving" && value {
             self.disable_incremental_solving = true;
             if write_to_logs {
@@ -268,7 +312,7 @@ impl Context {
     }
 
     pub(crate) fn set_z3_param_u32(&mut self, option: &str, value: u32, write_to_logs: bool) {
-        if option == "rlimit" && write_to_logs {
+        if option == "rlimit" && write_to_logs && matches!(self.solver, SmtSolver::Z3) {
             self.set_rlimit(value);
         } else {
             if write_to_logs {

@@ -1,5 +1,5 @@
 use crate::ast::CommandX;
-use crate::context::ValidityResult;
+use crate::context::{SmtSolver, ValidityResult};
 use crate::messages::Reporter;
 #[allow(unused_imports)]
 use crate::parser::Parser;
@@ -12,7 +12,8 @@ use sise::Node;
 fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {
     let message_interface = std::sync::Arc::new(crate::messages::AirMessageInterface {});
     let reporter = Reporter {};
-    let mut air_context = crate::context::Context::new(message_interface.clone());
+    // TODO: Support testing with cvc5 too
+    let mut air_context = crate::context::Context::new(message_interface.clone(), SmtSolver::Z3);
     air_context.set_z3_param("air_recommended_options", "true");
     match Parser::new(message_interface.clone()).nodes_to_commands(&nodes) {
         Ok(commands) => {

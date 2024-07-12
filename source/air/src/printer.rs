@@ -2,6 +2,7 @@ use crate::ast::{
     Axiom, BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs,
     Ident, MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
 };
+use crate::context::SmtSolver;
 use crate::def::mk_skolem_id;
 use crate::util::vec_map;
 use sise::{Node, Writer};
@@ -77,14 +78,16 @@ pub struct Printer {
     message_interface: Arc<dyn crate::messages::MessageInterface>,
     // print as SMT, not as AIR
     print_as_smt: bool,
+    solver: SmtSolver,
 }
 
 impl Printer {
     pub fn new(
         message_interface: Arc<dyn crate::messages::MessageInterface>,
         print_as_smt: bool,
+        solver: SmtSolver,
     ) -> Self {
-        Printer { message_interface, print_as_smt }
+        Printer { message_interface, print_as_smt, solver }
     }
 
     pub(crate) fn typ_to_node(&self, typ: &Typ) -> Node {
@@ -239,8 +242,9 @@ impl Printer {
                     nodes.push(self.expr_to_node(expr));
                 }
                 match op {
-                    MultiOp::Distinct if exprs.len() == 0 => {
+                    MultiOp::Distinct if exprs.len() <= 1 => {
                         // Z3 doesn't like the expression "(distinct)"
+                        // cvc5 doesn't like the singleton expression "(distinct expr)"
                         return Node::Atom("true".to_string());
                     }
                     _ => {}
@@ -265,8 +269,10 @@ impl Printer {
                         if let Some(s) = qid {
                             nodes.push(str_to_node(":qid"));
                             nodes.push(str_to_node(s));
-                            nodes.push(str_to_node(":skolemid"));
-                            nodes.push(str_to_node(&mk_skolem_id(s)));
+                            if matches!(self.solver, SmtSolver::Z3) {
+                                nodes.push(str_to_node(":skolemid"));
+                                nodes.push(str_to_node(&mk_skolem_id(s)));
+                            }
                         }
                         Node::List(nodes)
                     }
@@ -368,7 +374,12 @@ impl Printer {
                 })
             }))
         }));
-        node!((declare-datatypes {decls} {defns}))
+        if self.print_as_smt && datatypes.len() == 0 {
+            // cvc5 doesn't like empty declare-datatypes
+            nodes!(assert true)
+        } else {
+            node!((declare-datatypes {decls} {defns}))
+        }
     }
 
     pub fn const_decl_to_node(&self, x: &Ident, typ: &Typ) -> Node {
