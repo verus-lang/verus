@@ -16,7 +16,7 @@ use vir::ast_util::is_visible_to;
 use vir::context::FunctionCtx;
 use vir::def::{CommandsWithContext, SnapPos};
 use vir::recursion::Node;
-use vir::sst::FuncDefSst;
+use vir::sst::FuncCheckSst;
 use vir::update_cell::UpdateCell;
 
 #[derive(Clone, Copy, Debug)]
@@ -58,7 +58,7 @@ pub enum OpKind {
         commands_with_context_list: Arc<Vec<CommandsWithContext>>,
         snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
         profile_rerun: bool,
-        func_def_sst: Option<FuncDefSst>,
+        func_check_sst: Option<FuncCheckSst>,
     },
 }
 
@@ -313,24 +313,30 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
         let mut sst_map = UpdateCell::new(HashMap::new());
         std::mem::swap(&mut sst_map, &mut self.sst_map);
-        let (mut new_sst_map, func_def_sst) =
+        let (mut new_sst_map, func_check_sst) =
             vir::ast_to_sst_func::func_def_to_sst(self.ctx, self.reporter, sst_map, &function)?;
         std::mem::swap(&mut new_sst_map, &mut self.sst_map);
 
         let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
         let (commands, snap_map) =
-            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function_sst, &func_def_sst)?;
+            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function_sst, &func_check_sst)?;
 
         self.ctx.fun = None;
 
-        Ok(vec![Op::query(QueryOp::Body(style), commands, snap_map, &function, Some(func_def_sst))])
+        Ok(vec![Op::query(
+            QueryOp::Body(style),
+            commands,
+            snap_map,
+            &function,
+            Some(func_check_sst),
+        )])
     }
 
     fn handle_proof_body_expand(
         &mut self,
         function: Function,
         assert_id: &AssertId,
-        expanded_function_sst: &FuncDefSst,
+        expanded_function_sst: &FuncCheckSst,
     ) -> Result<Op, VirErr> {
         self.ctx.fun = mk_fun_ctx(&function, false /*recommend*/);
 
@@ -369,7 +375,7 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
     pub fn start_expand_errors_if_possible(&mut self, op: &Op, assert_id: AssertId) {
         if let Op {
             function: Some(function),
-            kind: OpKind::Query { func_def_sst: Some(fsst), .. },
+            kind: OpKind::Query { func_check_sst: Some(fsst), .. },
         } = &op
         {
             let mut driver = ExpandErrorsDriver::new(function, &assert_id, fsst.clone());
@@ -404,12 +410,12 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
                 self.expand_errors_driver = None;
                 return Some(Err(output));
             }
-            Some((assert_id, func_def_sst)) => {
+            Some((assert_id, func_check_sst)) => {
                 let function = driver.function.clone();
                 // TODO propagate error properly
                 let op = self
                     .op_generator
-                    .handle_proof_body_expand(function, &assert_id, &func_def_sst)
+                    .handle_proof_body_expand(function, &assert_id, &func_check_sst)
                     .unwrap();
                 return Some(Ok(op));
             }
@@ -440,7 +446,7 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
         commands_with_context_list: Arc<Vec<CommandsWithContext>>,
         snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
         function: &Function,
-        func_def_sst: Option<FuncDefSst>,
+        func_check_sst: Option<FuncCheckSst>,
     ) {
         let op = Op {
             kind: OpKind::Query {
@@ -448,7 +454,7 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
                 commands_with_context_list,
                 snap_map,
                 profile_rerun: true,
-                func_def_sst,
+                func_check_sst,
             },
             function: Some(function.clone()),
         };
@@ -580,7 +586,7 @@ impl Op {
         commands: Arc<Vec<CommandsWithContext>>,
         snap_map: Vec<(vir::messages::Span, SnapPos)>,
         f: &Function,
-        func_def_sst: Option<FuncDefSst>,
+        func_check_sst: Option<FuncCheckSst>,
     ) -> Self {
         Op {
             kind: OpKind::Query {
@@ -588,7 +594,7 @@ impl Op {
                 commands_with_context_list: commands,
                 snap_map: Arc::new(snap_map),
                 profile_rerun: false,
-                func_def_sst,
+                func_check_sst,
             },
             function: Some(f.clone()),
         }

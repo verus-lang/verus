@@ -427,7 +427,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             match op {
                 UnaryOp::Not
                 | UnaryOp::Clip { .. }
-                | UnaryOp::BitNot
+                | UnaryOp::BitNot(_)
                 | UnaryOp::StrLen
                 | UnaryOp::StrIsAscii => {
                     let e1 = coerce_expr_to_native(ctx, &e1);
