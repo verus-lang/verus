@@ -15,10 +15,6 @@ verus! {
 #[verifier::reject_recursive_types(A)]
 pub struct ExVec<T, A: Allocator>(Vec<T, A>);
 
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExGlobal(alloc::alloc::Global);
-
 pub trait VecAdditionalSpecFns<T>: View<V = Seq<T>> {
     spec fn spec_index(&self, i: int) -> T
         recommends
