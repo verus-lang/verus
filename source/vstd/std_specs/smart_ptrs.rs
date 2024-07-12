@@ -1,7 +1,9 @@
 use super::super::prelude::*;
 
+use alloc::boxed::Box;
 use alloc::rc::Rc;
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use core::alloc::Allocator;
 
 verus! {
