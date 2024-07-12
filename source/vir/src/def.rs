@@ -71,6 +71,7 @@ const SLICE_TYPE: &str = "slice%";
 const STRSLICE_TYPE: &str = "strslice%";
 const ARRAY_TYPE: &str = "array%";
 const PTR_TYPE: &str = "ptr_mut%";
+const GLOBAL_TYPE: &str = "allocator_global%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
@@ -160,6 +161,7 @@ pub const TYPE_ID_ARRAY: &str = "ARRAY";
 pub const TYPE_ID_SLICE: &str = "SLICE";
 pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_PTR: &str = "PTR";
+pub const TYPE_ID_GLOBAL: &str = "ALLOCATOR_GLOBAL";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
@@ -377,6 +379,11 @@ pub fn ptr_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
+pub fn global_type() -> Path {
+    let ident = Arc::new(GLOBAL_TYPE.to_string());
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
 pub fn prefix_type_id(path: &Path) -> Ident {
     Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(path))
 }
@@ -551,6 +558,18 @@ pub fn monotyp_decorate(dec: crate::ast::TypDecoration, path: &Path) -> Path {
         dec as u32,
         MONOTYPE_APP_BEGIN,
         path_to_string(path),
+        MONOTYPE_APP_END
+    ));
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
+}
+
+pub fn monotyp_decorate2(dec: crate::ast::TypDecoration, args: &Vec<Path>) -> Path {
+    let id = Arc::new(format!(
+        "{}{}{}{}{}",
+        MONOTYPE_DECORATE,
+        dec as u32,
+        MONOTYPE_APP_BEGIN,
+        vec_map(args, |x| path_to_string(x)).join(PATHS_SEPARATOR),
         MONOTYPE_APP_END
     ));
     Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })

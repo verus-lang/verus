@@ -12,7 +12,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
         TypX::Datatype(path, _, _) => ctx.datatype_map[path].x.ext_equal,
-        TypX::Decorate(_, t) => auto_ext_equal_typ(ctx, t),
+        TypX::Decorate(_, _, t) => auto_ext_equal_typ(ctx, t),
         TypX::Boxed(typ) => auto_ext_equal_typ(ctx, typ),
         TypX::TypParam(_) => false,
         TypX::Projection { .. } => false,
@@ -23,6 +23,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
         TypX::Primitive(crate::ast::Primitive::StrSlice, _) => true,
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
+        TypX::Primitive(crate::ast::Primitive::Global, _) => false,
         TypX::FnDef(..) => false,
     }
 }

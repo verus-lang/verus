@@ -206,6 +206,12 @@ pub enum Primitive {
     /// despite the fact that it is in fact a datatype
     StrSlice,
     Ptr, // Mut ptr, unless Const decoration is applied
+    Global,
+}
+
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone)]
+pub struct TypDecorationArg {
+    pub allocator_typ: Typ,
 }
 
 /// Rust type, but without Box, Rc, Arc, etc.
@@ -238,7 +244,7 @@ pub enum TypX {
     Primitive(Primitive, Typs),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
     /// (though needed sometimes to encode trait resolution)
-    Decorate(TypDecoration, Typ),
+    Decorate(TypDecoration, Option<TypDecorationArg>, Typ),
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
     Boxed(Typ),
     /// Type parameter (inherently SMT-boxed, and cannot be unboxed)

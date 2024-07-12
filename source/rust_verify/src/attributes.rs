@@ -1087,4 +1087,6 @@ pub const RUSTC_ATTRS_OK_TO_IGNORE: &[&str] = &[
     // for verification.
     // https://rust-lang.github.io/rfcs/2229-capture-disjoint-fields.html
     "rustc_insignificant_dtor",
+    // Boxes
+    "rustc_box",
 ];

@@ -2523,7 +2523,7 @@ fn closure_emit_postconditions(
 fn get_inv_typ_args(typ: &Typ) -> Typs {
     match &**typ {
         TypX::Datatype(_, typs, _) => typs.clone(),
-        TypX::Decorate(_, typ) | TypX::Boxed(typ) => get_inv_typ_args(typ),
+        TypX::Decorate(_, _, typ) | TypX::Boxed(typ) => get_inv_typ_args(typ),
         _ => {
             panic!("get_inv_typ_args failed, expected some Invariant type");
         }

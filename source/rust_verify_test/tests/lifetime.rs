@@ -593,6 +593,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] rc_with_tracked_issue870 verus_code! {
         use std::rc::Rc;
+        use vstd::*;
 
         tracked struct X { }
 
@@ -608,6 +609,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] arc_with_tracked_issue870 verus_code! {
         use std::sync::Arc;
+        use vstd::*;
 
         tracked struct X { }
 
@@ -622,6 +624,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] box_with_tracked_issue870 verus_code! {
+        use vstd::*;
+
         tracked struct X { }
 
         fn test<'a>() -> Box<Tracked<&'a X>> {

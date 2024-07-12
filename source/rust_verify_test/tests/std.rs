@@ -7,6 +7,7 @@ test_verify_one_file! {
     #[test] rc_arc verus_code! {
         use std::rc::Rc;
         use std::sync::Arc;
+        use vstd::*;
 
         fn foo() {
             let x = Rc::new(5);
@@ -61,8 +62,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] box_new verus_code! {
+        use vstd::*;
+
         fn foo() {
-            let x:Box<u32> = Box::new(5);
+            let x: Box<u32> = Box::new(5);
             assert(*x == 5);
         }
     } => Ok(())
@@ -364,4 +367,42 @@ test_verify_one_file! {
             assert(a1.deep_view() =~~= a2.deep_view()); // TODO: get rid of this?
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] vec_macro verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+
+        fn test() {
+            let v = vec![7, 8, 9];
+            assert(v.len() == 3);
+            assert(v[0] == 7);
+            assert(v[1] == 8);
+            assert(v[2] == 9);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] box_globals_no_trait_conflict verus_code! {
+        use vstd::*;
+        use core::alloc::Allocator;
+
+        trait Tr {
+            spec fn some_int() -> int;
+        }
+
+        spec fn some_int0<A: Allocator>() -> int;
+
+        spec fn some_int<A: Allocator>(b: Box<u8, A>) -> int {
+            some_int0::<A>()
+        }
+
+        proof fn test<A: Allocator>(b: Box<u8, A>, c: Box<u8>)
+            requires b == c
+        {
+            assert(some_int(b) == some_int(c)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }

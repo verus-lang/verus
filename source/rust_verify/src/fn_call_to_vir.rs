@@ -78,15 +78,15 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     }
 
     match rust_item {
-        Some(RustItem::BoxNew) => {
+        Some(RustItem::BoxNew) if bctx.in_ghost => {
             record_compilable_operator(bctx, expr, CompilableOperator::BoxNew);
             return mk_one_vir_arg(bctx, expr.span, &args);
         }
-        Some(RustItem::RcNew) => {
+        Some(RustItem::RcNew) if bctx.in_ghost => {
             record_compilable_operator(bctx, expr, CompilableOperator::RcNew);
             return mk_one_vir_arg(bctx, expr.span, &args);
         }
-        Some(RustItem::ArcNew) => {
+        Some(RustItem::ArcNew) if bctx.in_ghost => {
             record_compilable_operator(bctx, expr, CompilableOperator::ArcNew);
             return mk_one_vir_arg(bctx, expr.span, &args);
         }

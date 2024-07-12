@@ -1,8 +1,8 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
     IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, MaskSpec, Mode, Path, PathX, Primitive,
-    SpannedTyped, Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarIdent, VariantCheck,
-    VirErr, Visibility,
+    SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ, LowerUniqueVar,
@@ -87,6 +87,7 @@ pub(crate) fn primitive_path(name: &Primitive) -> Path {
         Primitive::Slice => crate::def::slice_type(),
         Primitive::StrSlice => crate::def::strslice_type(),
         Primitive::Ptr => crate::def::ptr_type(),
+        Primitive::Global => crate::def::global_type(),
     }
 }
 
@@ -96,6 +97,7 @@ pub(crate) fn primitive_type_id(name: &Primitive) -> Ident {
         Primitive::Slice => crate::def::TYPE_ID_SLICE,
         Primitive::StrSlice => crate::def::TYPE_ID_STRSLICE,
         Primitive::Ptr => crate::def::TYPE_ID_PTR,
+        Primitive::Global => crate::def::TYPE_ID_GLOBAL,
     })
 }
 
@@ -123,6 +125,12 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
         MonoTypX::Decorate(dec, typ) => {
             return crate::def::monotyp_decorate(*dec, &monotyp_to_path(typ));
         }
+        MonoTypX::Decorate2(dec, typs) => {
+            return crate::def::monotyp_decorate2(
+                *dec,
+                &typs.iter().map(monotyp_to_path).collect(),
+            );
+        }
     };
     Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
 }
@@ -146,12 +154,16 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 }
             }
         }
-        TypX::Decorate(_, t) => typ_to_air(ctx, t),
+        TypX::Decorate(_, _, t) => typ_to_air(ctx, t),
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::Primitive(
-            Primitive::Array | Primitive::Slice | Primitive::StrSlice | Primitive::Ptr,
+            Primitive::Array
+            | Primitive::Slice
+            | Primitive::StrSlice
+            | Primitive::Ptr
+            | Primitive::Global,
             _,
         ) => match typ_as_mono(typ) {
             None => panic!("should be boxed"),
@@ -215,7 +227,23 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
             let ds = str_apply(decoration_str(*d), &vec![ds_typ[0].clone()]);
             vec![ds, ds_typ[1].clone()]
         }
+        MonoTypX::Decorate2(d, typs) if crate::context::DECORATE => {
+            assert!(typs.len() == 2);
+            let ds_typ1 = monotyp_to_id(&typs[0]);
+            assert!(ds_typ1.len() == 2);
+            let ds_typ2 = monotyp_to_id(&typs[1]);
+            assert!(ds_typ2.len() == 2);
+            let ds = str_apply(
+                decoration_str(*d),
+                &vec![ds_typ1[0].clone(), ds_typ1[1].clone(), ds_typ2[0].clone()],
+            );
+            vec![ds, ds_typ2[1].clone()]
+        }
         MonoTypX::Decorate(_, typ) => monotyp_to_id(typ),
+        MonoTypX::Decorate2(_, typs) => {
+            assert!(typs.len() == 2);
+            monotyp_to_id(&typs[1])
+        }
         MonoTypX::Primitive(name, typs) => {
             let f_name = primitive_type_id(name);
             let mut args: Vec<Expr> = Vec::new();
@@ -266,13 +294,26 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
         TypX::FnDef(fun, typs, _resolved_fun) => mk_id(fndef_id(fun, typs)),
         TypX::Datatype(path, typs, _) => mk_id(datatype_id(path, typs)),
         TypX::Primitive(name, typs) => mk_id(primitive_id(&name, typs)),
-        TypX::Decorate(d, typ) if crate::context::DECORATE => {
+        TypX::Decorate(d, None, typ) if crate::context::DECORATE => {
             let ds_typ = typ_to_ids(typ);
             assert!(ds_typ.len() == 2);
             let ds = str_apply(decoration_str(*d), &vec![ds_typ[0].clone()]);
             vec![ds, ds_typ[1].clone()]
         }
-        TypX::Decorate(_, typ) => typ_to_ids(typ),
+        TypX::Decorate(d, Some(TypDecorationArg { allocator_typ }), typ)
+            if crate::context::DECORATE =>
+        {
+            let ds_typ1 = typ_to_ids(allocator_typ);
+            assert!(ds_typ1.len() == 2);
+            let ds_typ2 = typ_to_ids(typ);
+            assert!(ds_typ2.len() == 2);
+            let ds = str_apply(
+                decoration_str(*d),
+                &vec![ds_typ1[0].clone(), ds_typ1[1].clone(), ds_typ2[0].clone()],
+            );
+            vec![ds, ds_typ2[1].clone()]
+        }
+        TypX::Decorate(_, _, typ) => typ_to_ids(typ),
         TypX::Boxed(typ) => typ_to_ids(typ),
         TypX::TypParam(x) => {
             suffix_typ_param_ids(x).iter().map(|x| ident_var(&x.lower())).collect()
@@ -442,7 +483,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         }
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_box, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::BOX_FNDEF)),
-        TypX::Decorate(_, t) => return try_box(ctx, expr, t),
+        TypX::Decorate(_, _, t) => return try_box(ctx, expr, t),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
@@ -473,7 +514,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Tuple(_) => None,
         TypX::SpecFn(typs, _) => Some(prefix_unbox(&prefix_spec_fn_type(typs.len()))),
         TypX::AnonymousClosure(..) => unimplemented!(),
-        TypX::Decorate(_, t) => return try_unbox(ctx, expr, t),
+        TypX::Decorate(_, _, t) => return try_unbox(ctx, expr, t),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,

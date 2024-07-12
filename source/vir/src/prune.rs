@@ -101,7 +101,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::AnonymousClosure(..) => ReachedType::None,
         TypX::Datatype(path, _, _) => ReachedType::Datatype(path.clone()),
         TypX::FnDef(..) => ReachedType::None,
-        TypX::Decorate(_, t) => typ_to_reached_type(t),
+        TypX::Decorate(_, _, t) => typ_to_reached_type(t),
         TypX::Boxed(t) => typ_to_reached_type(t),
         TypX::TypParam(_) => ReachedType::None,
         TypX::Projection { trait_typ_args, .. } => typ_to_reached_type(&trait_typ_args[0]),
@@ -109,9 +109,10 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::ConstInt(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::Primitive(Primitive::StrSlice, _) => ReachedType::StrSlice,
-        TypX::Primitive(Primitive::Array | Primitive::Slice | Primitive::Ptr, _) => {
-            ReachedType::Primitive
-        }
+        TypX::Primitive(
+            Primitive::Array | Primitive::Slice | Primitive::Ptr | Primitive::Global,
+            _,
+        ) => ReachedType::Primitive,
     }
 }
 
@@ -221,7 +222,7 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         TypX::Air(_) => {
             panic!("unexpected TypX")
         }
-        TypX::Decorate(_, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
+        TypX::Decorate(_, _, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
         TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) => {}
         TypX::Projection { trait_typ_args: _, trait_path, name, .. } => {
             reach_assoc_type_decl(ctxt, state, &(trait_path.clone(), name.clone()));

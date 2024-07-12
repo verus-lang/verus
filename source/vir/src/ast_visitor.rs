@@ -1,8 +1,8 @@
 use crate::ast::{
     Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
     Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, MaskSpec, Param, ParamX,
-    Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ, TypX, Typs,
-    UnaryOpr, VarIdent, Variant, VirErr,
+    Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ,
+    TypDecorationArg, TypX, Typs, UnaryOpr, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::error;
@@ -91,7 +91,13 @@ where
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                     }
                 }
-                TypX::Decorate(_, t) => {
+                TypX::Decorate(_, targ, t) => {
+                    match targ {
+                        Some(TypDecorationArg { allocator_typ }) => {
+                            expr_visitor_control_flow!(typ_visitor_dfs(allocator_typ, ft));
+                        }
+                        None => {}
+                    }
                     expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                 }
                 TypX::Boxed(t) => {
@@ -147,9 +153,16 @@ where
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             ft(env, &Arc::new(TypX::FnDef(fun.clone(), Arc::new(ts), res_fun.clone())))
         }
-        TypX::Decorate(d, t) => {
+        TypX::Decorate(d, targ, t) => {
+            let targ = match targ {
+                Some(TypDecorationArg { allocator_typ }) => {
+                    let t = map_typ_visitor_env(allocator_typ, env, ft)?;
+                    Some(TypDecorationArg { allocator_typ: t })
+                }
+                None => None,
+            };
             let t = map_typ_visitor_env(t, env, ft)?;
-            ft(env, &Arc::new(TypX::Decorate(*d, t)))
+            ft(env, &Arc::new(TypX::Decorate(*d, targ, t)))
         }
         TypX::Boxed(t) => {
             let t = map_typ_visitor_env(t, env, ft)?;
