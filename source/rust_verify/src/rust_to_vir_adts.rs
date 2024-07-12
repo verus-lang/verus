@@ -454,6 +454,14 @@ pub(crate) fn check_item_external<'tcx>(
     }
     external_info.type_ids.insert(external_adt_def.did());
 
+    if crate::verus_items::get_rust_item(ctxt.tcx, external_adt_def.did()) == Some(crate::verus_items::RustItem::AllocGlobal) {
+        // Don't need to add this to the krate, since we handle this as as a VIR Primitive.
+        // We only get this far so we can add ourselves to the type_ids list.
+        // note: seems that Global is added to lang_items in future version of Rust,
+        // which makes it easier to get the ID so we can simplify this.
+        return Ok(());
+    }
+
     crate::rust_to_vir_base::check_item_external_generics(generics, substs_ref, false, span)?;
 
     // Check that there are no trait bounds. This is unusual for datatypes, anyway,

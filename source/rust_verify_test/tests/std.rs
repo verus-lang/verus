@@ -7,6 +7,7 @@ test_verify_one_file! {
     #[test] rc_arc verus_code! {
         use std::rc::Rc;
         use std::sync::Arc;
+        use vstd::*;
 
         fn foo() {
             let x = Rc::new(5);
@@ -371,6 +372,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] vec_macro verus_code! {
         use vstd::*;
+        use vstd::prelude::*;
 
         fn test() {
             let v = vec![7, 8, 9];
