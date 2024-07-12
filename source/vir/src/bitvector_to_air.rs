@@ -651,7 +651,7 @@ fn vir_typ_to_air(state: &mut State, span: &Span, typ: &Typ) -> Result<air::ast:
     match &**typ {
         TypX::Int(range) => Ok(air::ast_util::bv_typ(width_of_int_range(state, span, range)?)),
         TypX::Bool => Ok(bool_typ()),
-        TypX::Decorate(_, t) => vir_typ_to_air(state, span, t),
+        TypX::Decorate(_, _, t) => vir_typ_to_air(state, span, t),
         TypX::Boxed(t) => vir_typ_to_air(state, span, t),
         _ => Err(error(span, format!("unsupported type in bitvector {:?}", &typ))),
     }

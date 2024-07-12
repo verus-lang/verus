@@ -31,6 +31,7 @@ use crate::verus_items::RustItem;
 use std::collections::{HashMap, HashSet};
 use vir::ast::{
     AssocTypeImpl, GenericBoundX, GenericBounds, Ident, Path, Primitive, TypDecoration,
+    TypDecorationArg,
 };
 
 // General purpose type to represent various types, where N comes from the TypNum enum:
@@ -113,7 +114,7 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
             };
             gen_num_typ(n, gen_typs(state, ts))
         }
-        vir::ast::TypX::Decorate(d, t) => {
+        vir::ast::TypX::Decorate(d, targ, t) => {
             let n = match d {
                 TypDecoration::Ref => TypNum::Ref,
                 TypDecoration::MutRef => TypNum::MutRef,
@@ -125,7 +126,14 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
                 TypDecoration::Never => TypNum::Never,
                 TypDecoration::ConstPtr => TypNum::ConstPtr,
             };
-            gen_num_typ(n, vec![gen_typ(state, t)])
+            let mut ts = vec![t.clone()];
+            match targ {
+                None => { }
+                Some(TypDecorationArg { allocator_typ }) => {
+                    ts.push(allocator_typ.clone());
+                }
+            }
+            gen_num_typ(n, gen_typs(state, &ts))
         }
         vir::ast::TypX::Boxed(t) => gen_typ(state, t),
         vir::ast::TypX::TypParam(x) => {
@@ -150,7 +158,7 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
     }
 }
 
-fn gen_typs(state: &mut State, typs: &vir::ast::Typs) -> Vec<Typ> {
+fn gen_typs(state: &mut State, typs: &Vec<vir::ast::Typ>) -> Vec<Typ> {
     typs.iter().map(|t| gen_typ(state, t)).collect()
 }
 

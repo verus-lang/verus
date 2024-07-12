@@ -1035,6 +1035,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 | vir::ast::TypDecoration::Box
                 | vir::ast::TypDecoration::Rc
                 | vir::ast::TypDecoration::Arc,
+                _,
                 inner_typ,
             ) = &**typ
             {
@@ -1075,7 +1076,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?;
-            let typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, new_expr.typ.clone()));
+            let typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, new_expr.typ.clone()));
             Arc::make_mut(&mut new_expr).typ = typ;
             Ok(new_expr)
         }
@@ -1241,7 +1242,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustment_idx - 1,
             )?;
             let typ =
-                Arc::new(TypX::Decorate(vir::ast::TypDecoration::ConstPtr, new_expr.typ.clone()));
+                Arc::new(TypX::Decorate(vir::ast::TypDecoration::ConstPtr, None, new_expr.typ.clone()));
             Arc::make_mut(&mut new_expr).typ = typ;
             Ok(new_expr)
         }
@@ -1661,7 +1662,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
             let mut new_expr = expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)?;
             let typ = &mut Arc::make_mut(&mut new_expr).typ;
-            *typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, typ.clone()));
+            *typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, typ.clone()));
             Ok(new_expr)
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
@@ -1727,6 +1728,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     | vir::ast::TypDecoration::Box
                     | vir::ast::TypDecoration::Rc
                     | vir::ast::TypDecoration::Arc,
+                    _,
                     inner_typ,
                 ) = &**typ
                 {
@@ -2159,7 +2161,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             // We only support for the special case of (Vec, usize) arguments
             let t1 = &tgt_vir.typ;
             let t1 = match &**t1 {
-                TypX::Decorate(_, t) => t,
+                TypX::Decorate(_, _, t) => t,
                 _ => t1,
             };
             let (fun, typ_args) = match &**t1 {

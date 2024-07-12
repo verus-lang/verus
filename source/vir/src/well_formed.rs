@@ -421,7 +421,7 @@ fn check_one_expr(
             }
 
             let u_expr_typ = match &*expr.typ {
-                TypX::Decorate(crate::ast::TypDecoration::Ref, typ) => &typ,
+                TypX::Decorate(crate::ast::TypDecoration::Ref, None, typ) => &typ,
                 _ => &expr.typ,
             };
             let typs = match &**u_expr_typ {

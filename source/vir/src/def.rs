@@ -556,6 +556,19 @@ pub fn monotyp_decorate(dec: crate::ast::TypDecoration, path: &Path) -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
 }
 
+pub fn monotyp_decorate2(dec: crate::ast::TypDecoration, args: &Vec<Path>) -> Path {
+    let id = Arc::new(format!(
+        "{}{}{}{}{}",
+        MONOTYPE_DECORATE,
+        dec as u32,
+        MONOTYPE_APP_BEGIN,
+        vec_map(args, |x| path_to_string(x)).join(PATHS_SEPARATOR),
+        MONOTYPE_APP_END
+    ));
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
+
+}
+
 pub fn name_as_vstd_name(name: &String) -> Option<String> {
     let name = if let Some(x) = name.strip_prefix(crate::def::VERUSLIB_PREFIX) {
         if let Some(x) = x.strip_prefix(crate::def::PERVASIVE_PREFIX) {
