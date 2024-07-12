@@ -641,6 +641,16 @@ pub fn func_def_to_sst(
 }
 
 pub fn function_to_sst(ctx: &Ctx, function: &Function) -> FunctionSst {
+    let vis = function.x.visibility.clone();
+    let restricted_to = if function.x.publish.is_none() {
+        // private to owning_module
+        function.x.owning_module.clone()
+    } else {
+        // public
+        None
+    };
+    let vis_abs = crate::ast::Visibility { restricted_to, ..vis };
+
     let has = FunctionSstHas {
         has_body: function.x.body.is_some(),
         has_fuel: function.x.fuel > 0,
@@ -651,9 +661,11 @@ pub fn function_to_sst(ctx: &Ctx, function: &Function) -> FunctionSst {
         has_return_name: function.x.has_return_name(),
         is_recursive: crate::recursion::fun_is_recursive(ctx, function),
     };
+
     let functionx = FunctionSstX {
         name: function.x.name.clone(),
         kind: function.x.kind.clone(),
+        vis_abs,
         mode: function.x.mode,
         typ_params: function.x.typ_params.clone(),
         typ_bounds: function.x.typ_bounds.clone(),

@@ -6,7 +6,6 @@ use rustc_session::config::ErrorOutputType;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use vir::ast::Visibility;
 use vir::ast::{
     Fun, Function, FunctionKind, ImplPath, ItemKind, Krate, Mode, Path, TraitImpl, VirErr,
 };
@@ -75,7 +74,7 @@ pub struct OpGenerator<'a, D: Diagnostics> {
     reporter: &'a D,
 
     sst_map: SstMap,
-    func_map: HashMap<Fun, (Function, Visibility)>,
+    func_map: HashMap<Fun, Function>,
     trait_impl_map: HashMap<Path, TraitImpl>,
 
     scc_idx: usize,
@@ -94,7 +93,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         reporter: &'a D,
         bucket: Bucket,
     ) -> Self {
-        let mut func_map: HashMap<Fun, (Function, Visibility)> = HashMap::new();
+        let mut func_map: HashMap<Fun, Function> = HashMap::new();
         let module = ctx.module_path();
         for function in &krate.functions {
             assert!(!func_map.contains_key(&function.x.name));
@@ -103,16 +102,8 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             if !is_visible_to(&vis, &module) || function.x.attrs.is_decrease_by {
                 continue;
             }
-            let restricted_to = if function.x.publish.is_none() {
-                // private to owning_module
-                function.x.owning_module.clone()
-            } else {
-                // public
-                None
-            };
-            let vis_abs = Visibility { restricted_to, ..vis };
 
-            func_map.insert(function.x.name.clone(), (function.clone(), vis_abs));
+            func_map.insert(function.x.name.clone(), function.clone());
         }
 
         let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
@@ -169,7 +160,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         for node in self.ctx.global.func_call_graph.get_scc_nodes(&scc_rep) {
             match &node {
                 Node::Fun(f) => {
-                    if let Some((func, _)) = self.func_map.get(f) {
+                    if let Some(func) = self.func_map.get(f) {
                         let f_ops =
                             self.handle_proof_body_normal_for_proof_and_exec(func.clone())?;
                         ops.extend(f_ops);
@@ -196,7 +187,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
     fn handle_specs_scc_component(&mut self, scc_rep: &Node) -> Result<(Vec<Op>, Vec<Op>), VirErr> {
         let scc_nodes = self.ctx.global.func_call_graph.get_scc_nodes(scc_rep);
-        let mut scc_functions: Vec<(Function, Visibility)> = Vec::new();
+        let mut scc_functions: Vec<Function> = Vec::new();
 
         // In an 'exec' function, the req% and ens% definitions conceptually go with
         // the FnDefImplPath node, which represents the trait bound
@@ -208,8 +199,8 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         for node in scc_nodes.into_iter() {
             match node {
                 Node::Fun(f) => {
-                    if let Some(pair) = self.func_map.get(&f) {
-                        scc_functions.push(pair.clone());
+                    if let Some(function) = self.func_map.get(&f) {
+                        scc_functions.push(function.clone());
                     }
                 }
                 _ => {}
@@ -221,7 +212,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         let mut query_ops = vec![];
         let mut post_ops = vec![];
 
-        for (function, _vis_abs) in scc_functions.iter() {
+        for function in scc_functions.iter() {
             self.ctx.fun = mk_fun_ctx(&function, false);
             let func_decl_sst = vir::ast_to_sst_func::func_decl_to_sst(
                 self.ctx,
@@ -237,26 +228,26 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
         }
 
-        for (function, vis_abs) in scc_functions.iter() {
+        for function in scc_functions.iter() {
             self.ctx.fun = mk_fun_ctx_dec(&function, true, true);
             let not_verifying_owning_bucket = !self.bucket.contains(&function.x.name);
 
             let mut sst_map = UpdateCell::new(HashMap::new());
             std::mem::swap(&mut sst_map, &mut self.sst_map);
+            let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
             let (mut new_sst_map, func_axioms_sst) = vir::ast_to_sst_func::func_axioms_to_sst(
                 self.ctx,
                 self.reporter,
                 sst_map,
                 &function,
-                is_visible_to(&vis_abs, &module),
+                is_visible_to(&function_sst.x.vis_abs, &module),
                 not_verifying_owning_bucket,
             )?;
-            let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
             let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
                 self.ctx,
                 &function_sst,
                 func_axioms_sst,
-                is_visible_to(&vis_abs, &module),
+                is_visible_to(&function_sst.x.vis_abs, &module),
             )?;
             std::mem::swap(&mut new_sst_map, &mut self.sst_map);
             self.ctx.fun = None;

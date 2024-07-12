@@ -278,6 +278,7 @@ pub type FunctionSst = Arc<Spanned<FunctionSstX>>;
 pub struct FunctionSstX {
     pub name: Fun,
     pub kind: crate::ast::FunctionKind,
+    pub vis_abs: crate::ast::Visibility,
     pub mode: crate::ast::Mode,
     pub typ_params: crate::ast::Idents,
     pub typ_bounds: crate::ast::GenericBounds,
