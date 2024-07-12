@@ -61,8 +61,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] box_new verus_code! {
+        use vstd::*;
+
         fn foo() {
-            let x:Box<u32> = Box::new(5);
+            let x: Box<u32> = Box::new(5);
             assert(*x == 5);
         }
     } => Ok(())
