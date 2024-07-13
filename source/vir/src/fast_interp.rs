@@ -1,6 +1,6 @@
 use num_bigint::BigInt;
 use std::rc::Rc;
-use crate::ast::{BinaryOp, BinaryOpr, UnaryOp, UnaryOpr, IntegerTypeBoundKind, Fun, Constant, Mode, FieldOpr, IntegerTypeBitwidth, VarIdent, VirErr};
+use crate::ast::{BinaryOp, BinaryOpr, UnaryOp, UnaryOpr, IntegerTypeBoundKind, Fun, Constant, Mode, FieldOpr, IntegerTypeBitwidth, VarIdent, VirErr, IntRange};
 use crate::sst::{Exp, ExpX, BndX, CallFun};
 use std::collections::HashMap;
 use air::scope_map::ScopeMap;
@@ -12,6 +12,8 @@ use crate::ast_util::get_variant_and_idx;
 use crate::sst_util::free_vars_exp;
 use crate::interpreter::SyntacticEquality;
 use std::ops::ControlFlow;
+use num_traits::identities::Zero;
+use num_traits::{Euclid, One};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum Value {
@@ -20,7 +22,13 @@ enum Value {
     Ctor(u32, Rc<Vec<Value>>),
 
     Symbol(u32),
-    BinaryOp(BinaryOp, Rc<Value>, Rc<Value>),
+    Unsimplified(Rc<Unsimplified>),
+}
+
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum Unsimplified {
+    UnaryOp(IUnaryOp, Value),
+    BinaryOp(BinaryOp, Value, Value),
 }
 
 enum CallFrame {
@@ -71,12 +79,14 @@ enum PreOp {
     Label(LabelId),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum IUnaryOp {
     Not,
     BitNot(Option<IntegerTypeBitwidth>),
     IntegerTypeBound(IntegerTypeBoundKind),
     IsVariant(u32),
     GetField(u32, u32),
+    Clip(IntRange),
 }
 
 enum ITernaryOp {
@@ -364,7 +374,12 @@ impl<'a> State<'a> {
             ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. }, e) => {
                 self.push_exp(e);
             }
-            ExpX::Unary(UnaryOp::Clip { .. }, _e) => todo!(),
+            ExpX::Unary(UnaryOp::Clip { range, truncate: _ }, e) => {
+                self.push_exp(e);
+                if !matches!(range, IntRange::Int) {
+                    self.do_unary(IUnaryOp::Clip(*range))
+                }
+            }
             ExpX::Unary(UnaryOp::HeightTrigger, _e) => todo!(),
             ExpX::Unary(UnaryOp::StrLen, _e) => todo!(),
             ExpX::Unary(UnaryOp::StrIsAscii, _e) => todo!(),
@@ -731,29 +746,100 @@ impl InterpreterCtx {
     }
 }
 
-fn exec_unary(_val: &mut Value, _op: &IUnaryOp) {
-    todo!();
+fn exec_unary(val: &mut Value, op: &IUnaryOp) {
+    let no_eval = || Value::Unsimplified(Rc::new(Unsimplified::UnaryOp(*op, val.clone())));
+
+    let v = match op {
+        IUnaryOp::Not => {
+            match val {
+                Value::Bool(b) => Value::Bool(!*b),
+                _ => no_eval(),
+            }
+        }
+        IUnaryOp::Clip(_range) => {
+            todo!();
+        }
+        _ => todo!(),
+    };
+    *val = v;
 }
 
-fn exec_binary(val: &mut Value, val2: Value, op: &BinaryOp) {
-    let no_eval = || Value::BinaryOp(*op, Rc::new(val.clone()), Rc::new(val2.clone()));
+impl Value {
+    pub fn zero() -> Self { Value::Int(BigInt::zero()) }
+}
+
+fn exec_binary(val1: &mut Value, val2: Value, op: &BinaryOp) {
+    let no_eval = || Value::Unsimplified(Rc::new(Unsimplified::BinaryOp(*op,
+        val1.clone(), val2.clone())));
 
     let v = match op {
         BinaryOp::Eq(_) => {
-            match val.syntactic_eq(&val2) {
+            match val1.syntactic_eq(&val2) {
                 None => no_eval(),
                 Some(b) => Value::Bool(b),
             }
         }
         BinaryOp::Ne => {
-            match val.syntactic_eq(&val2) {
+            match val1.syntactic_eq(&val2) {
                 None => no_eval(),
                 Some(b) => Value::Bool(!b),
             }
         }
+        BinaryOp::Arith(op, _mode) => {
+            use crate::ast::ArithOp::*;
+            match (&*val1, &val2) {
+                // Ideal case where both sides are concrete
+                (Value::Int(i1), Value::Int(i2)) => {
+                    match op {
+                        Add => Value::Int(i1 + i2),
+                        Sub => Value::Int(i1 - i2),
+                        Mul => Value::Int(i1 * i2),
+                        EuclideanDiv => {
+                            if i2.is_zero() {
+                                no_eval() // Treat as symbolic instead of erroring
+                            } else {
+                                Value::Int(i1.div_euclid(i2))
+                            }
+                        }
+                        EuclideanMod => {
+                            if i2.is_zero() {
+                                no_eval() // Treat as symbolic instead of erroring
+                            } else {
+                                Value::Int(i1.rem_euclid(i2))
+                            }
+                        }
+                    }
+                }
+                // Special cases for certain concrete values
+                (Value::Int(i1), _) if i1.is_zero() && matches!(op, Add) => val2.clone(),
+                (Value::Int(i1), _) if i1.is_zero() && matches!(op, Mul) => Value::zero(),
+                (Value::Int(i1), _) if i1.is_one() && matches!(op, Mul) => val2.clone(),
+                (_, Value::Int(i2)) if i2.is_zero() => {
+                    match op {
+                        Add | Sub => val1.clone(),
+                        Mul => Value::zero(),
+                        EuclideanDiv => no_eval(),
+                        EuclideanMod => no_eval(),
+                    }
+                }
+                (_, Value::Int(i2)) if i2.is_one() && matches!(op, EuclideanMod) => {
+                    Value::zero()
+                }
+                (_, Value::Int(i2)) if i2.is_one() && matches!(op, Mul | EuclideanDiv) => {
+                    val1.clone()
+                }
+                _ => {
+                    match op {
+                        // X - X => 0
+                        Sub if val1.definitely_eq(&val2) => Value::zero(),
+                        _ => no_eval(),
+                    }
+                }
+            }
+        }
         _ => todo!(),
     };
-    *val = v;
+    *val1 = v;
 }
 
 fn exec_ternary(_val: &mut Value, _val2: Value, _val3: Value, _op: &ITernaryOp) {
