@@ -178,7 +178,7 @@ pub enum InterpExp {
  *****************************************************************/
 
 /// Trait to compute syntactic equality of two objects.
-trait SyntacticEquality {
+pub trait SyntacticEquality {
     /// Compute syntactic equality. Returns `Some(b)` if syntactically, equality can be guaranteed,
     /// where `b` iff `self == other`. Otherwise, returns `None`.
     fn syntactic_eq(&self, other: &Self) -> Option<bool>;
