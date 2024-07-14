@@ -689,7 +689,7 @@ impl InterpreterCtx {
                 Op::Binary(op) => {
                     let rhs = stack.pop().unwrap();
                     let idx = stack.len() - 1;
-                    exec_binary(&mut stack[idx], rhs, op);
+                    exec_binary(&mut stack[idx], rhs, op, ctx);
                 }
                 Op::Ternary(op) => {
                     let r3 = stack.pop().unwrap();
@@ -915,7 +915,7 @@ impl Value {
     pub fn zero() -> Self { Value::Int(BigInt::zero()) }
 }
 
-fn exec_binary(val1: &mut Value, val2: Value, op: &BinaryOp) {
+fn exec_binary(val1: &mut Value, val2: Value, op: &BinaryOp, ctx: &Ctx) {
     let no_eval = || Value::Unsimplified(Rc::new(Unsimplified::BinaryOp(*op,
         val1.clone(), val2.clone())));
 
@@ -1007,6 +1007,69 @@ fn exec_binary(val1: &mut Value, val2: Value, op: &BinaryOp) {
                         // X - X => 0
                         Sub if val1.definitely_eq(&val2) => Value::zero(),
                         _ => no_eval(),
+                    }
+                }
+            }
+        }
+        BinaryOp::Bitwise(op, _) => {
+            use crate::ast::BitwiseOp::*;
+            match (&*val1, &val2) {
+                // Ideal case where both sides are concrete
+                (Value::Int(i1), Value::Int(i2)) => match op {
+                    BitXor => Value::Int(i1 ^ i2),
+                    BitAnd => Value::Int(i1 & i2),
+                    BitOr => Value::Int(i1 | i2),
+                    Shr(_) => match i2.to_u128() {
+                        None => no_eval(),
+                        Some(i2) => Value::Int(i1 >> i2),
+                    },
+                    Shl(w, signed) => {
+                        if *signed {
+                            match (i1.to_i128(), i2.to_u128()) {
+                                (Some(i1), Some(i2)) => {
+                                    let i1_shifted =
+                                        if i2 >= 128 { 0i128 } else { i1 << i2 };
+                                    match crate::interpreter::i128_to_width(i1_shifted, *w, ctx.global.arch) {
+                                        Some(i) => Value::Int(i),
+                                        None => no_eval(),
+                                    }
+                                }
+                                _ => no_eval(),
+                            }
+                        } else {
+                            match (i1.to_u128(), i2.to_u128()) {
+                                (Some(i1), Some(i2)) => {
+                                    let i1_shifted =
+                                        if i2 >= 128 { 0u128 } else { i1 << i2 };
+                                    match crate::interpreter::u128_to_width(i1_shifted, *w, ctx.global.arch) {
+                                        Some(i) => Value::Int(i),
+                                        None => no_eval(),
+                                    }
+                                }
+                                _ => no_eval(),
+                            }
+                        }
+                    }
+                },
+                // Special cases for certain concrete values
+                (Value::Int(i), _) | (_, Value::Int(i))
+                    if i.is_zero() && matches!(op, BitAnd) =>
+                {
+                    Value::zero()
+                }
+                (Value::Int(i1), _) if i1.is_zero() && matches!(op, BitOr) => {
+                    val2.clone()
+                }
+                (_, Value::Int(i2)) if i2.is_zero() && matches!(op, BitOr) => {
+                    val1.clone()
+                }
+                _ => {
+                    match op {
+                        // X ^ X => 0
+                        BitXor if val1.definitely_eq(&val2) => Value::zero(),
+                        // X & X = X, X | X = X
+                        BitAnd | BitOr if val1.definitely_eq(&val2) => val1.clone(),
+                        _ => no_eval()
                     }
                 }
             }
