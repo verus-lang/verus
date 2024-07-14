@@ -911,7 +911,7 @@ fn exec_unary(val: &mut Value, op: &IUnaryOp, ctx: &Ctx, msgs: &mut Vec<Message>
         }
         IUnaryOp::GetFieldAnyVariant(field_idx) => {
             match &*val {
-                Value::Ctor(variant_idx, fields) => {
+                Value::Ctor(_variant_idx, fields) => {
                     fields[*field_idx as usize].clone()
                 }
                 _ => no_eval()
