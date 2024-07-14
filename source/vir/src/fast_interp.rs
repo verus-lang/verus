@@ -681,7 +681,6 @@ impl InterpreterCtx {
         //std::thread::sleep(ten_millis);
 
         loop {
-            dbg!(&self.ops[instr_ptr as usize]);
             match &self.ops[instr_ptr as usize] {
                 Op::Unary(op) => {
                     let idx = stack.len() - 1;
@@ -771,7 +770,6 @@ impl InterpreterCtx {
                 }
                 Op::ConditionalJmp { offset, true_addr, false_addr, other_addr } => {
                     let v = &stack[stack.len() - *offset as usize];
-                    dbg!("ConditionalJump on: "); dbg!(&v);
                     instr_ptr = match v {
                         Value::Bool(false) => *false_addr,
                         Value::Bool(true) => *true_addr,
