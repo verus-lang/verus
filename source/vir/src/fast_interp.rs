@@ -93,6 +93,7 @@ enum IUnaryOp {
     IntegerTypeBound(IntegerTypeBoundKind),
     IsVariant(u32),
     GetField(u32, u32),
+    GetFieldAnyVariant(u32),
     Clip(IntRange),
 }
 
@@ -215,7 +216,7 @@ impl<'a> State<'a> {
         // offset should be 1 more than the # of args
         // e.g., if there are 2 args, then the closure is in the 3rd-to-last slot
         self.pre_ops.push(PreOp::DynCall { closure: offset_of_closure });
-        self.frame_size -= offset_of_closure;
+        self.frame_size -= offset_of_closure - 1;
     }
 
     fn normal_call(&mut self, proc_id: ProcId, n_args: usize) {
@@ -558,7 +559,7 @@ impl<'a> State<'a> {
                 for (i, captured_var) in captured.iter().enumerate() {
                     self.var_locs.insert(captured_var.clone(), Var::InStack(self.frame_size)).unwrap();
                     self.push_move(self.frame_size);
-                    self.do_unary(IUnaryOp::GetField(0, i.try_into().unwrap()));
+                    self.do_unary(IUnaryOp::GetFieldAnyVariant(i.try_into().unwrap()));
                 }
 
                 self.push_exp(body);
@@ -676,9 +677,6 @@ impl InterpreterCtx {
         let mut call_stack: Vec<CallFrame> = Vec::with_capacity(1000);
         let mut memoize_cache = HashMap::<(u32, Vec<Value>), Value>::new();
         let mut msgs: Vec<Message> = vec![];
-
-        //let ten_millis = core::time::Duration::from_millis(15000);
-        //std::thread::sleep(ten_millis);
 
         loop {
             match &self.ops[instr_ptr as usize] {
@@ -901,6 +899,22 @@ fn exec_unary(val: &mut Value, op: &IUnaryOp, ctx: &Ctx, msgs: &mut Vec<Message>
                     _ => no_eval(),
                 },
                 _ => no_eval(),
+            }
+        }
+        IUnaryOp::GetField(expected_variant_idx, field_idx) => {
+            match &*val {
+                Value::Ctor(variant_idx, fields) if expected_variant_idx == variant_idx => {
+                    fields[*field_idx as usize].clone()
+                }
+                _ => no_eval()
+            }
+        }
+        IUnaryOp::GetFieldAnyVariant(field_idx) => {
+            match &*val {
+                Value::Ctor(variant_idx, fields) => {
+                    fields[*field_idx as usize].clone()
+                }
+                _ => no_eval()
             }
         }
         _ => {
