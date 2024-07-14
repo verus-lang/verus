@@ -1,6 +1,8 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
 use num_bigint::BigInt;
 use std::rc::Rc;
-use crate::ast::{BinaryOp, BinaryOpr, UnaryOp, UnaryOpr, IntegerTypeBoundKind, Fun, Constant, Mode, FieldOpr, IntegerTypeBitwidth, VarIdent, VirErr, IntRange};
+use crate::ast::{BinaryOp, BinaryOpr, UnaryOp, UnaryOpr, IntegerTypeBoundKind, Fun, Constant, Mode, FieldOpr, IntegerTypeBitwidth, VarIdent, VirErr, IntRange, ArchWordBits};
 use crate::sst::{Exp, ExpX, BndX, CallFun};
 use std::collections::HashMap;
 use air::scope_map::ScopeMap;
@@ -13,9 +15,12 @@ use crate::sst_util::free_vars_exp;
 use crate::interpreter::SyntacticEquality;
 use std::ops::ControlFlow;
 use num_traits::identities::Zero;
-use num_traits::{Euclid, One};
+use num_traits::{Euclid, One, ToPrimitive, FromPrimitive};
+use crate::messages::{Message, warning};
+use crate::unicode::valid_unicode_scalar_bigint;
+use crate::ast_to_sst_func::SstInfo;
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum Value {
     Bool(bool),
     Int(BigInt),
@@ -25,10 +30,11 @@ enum Value {
     Unsimplified(Rc<Unsimplified>),
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum Unsimplified {
     UnaryOp(IUnaryOp, Value),
     BinaryOp(BinaryOp, Value, Value),
+    TernaryOp(ITernaryOp, Value, Value, Value),
 }
 
 enum CallFrame {
@@ -43,6 +49,7 @@ struct ProcId(usize);
 #[derive(Clone, Copy)]
 struct LabelId(usize);
 
+#[derive(Debug)]
 enum Op {
     Unary(IUnaryOp),
     Binary(BinaryOp),
@@ -79,7 +86,7 @@ enum PreOp {
     Label(LabelId),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 enum IUnaryOp {
     Not,
     BitNot(Option<IntegerTypeBitwidth>),
@@ -89,6 +96,7 @@ enum IUnaryOp {
     Clip(IntRange),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum ITernaryOp {
     IfThenElse,
 }
@@ -153,7 +161,9 @@ impl<'a> State<'a> {
     }
 
     fn do_move(&mut self, src: Offset, dst: Offset) {
-        self.pre_ops.push(PreOp::Move { src, dst });
+        if src != dst {
+            self.pre_ops.push(PreOp::Move { src, dst });
+        }
     }
 
     fn pop(&mut self, n: u32) {
@@ -428,12 +438,13 @@ impl<'a> State<'a> {
                     CallType::Fun(fun, cached) => {
                         let proc_id = self.get_proc_id_inserting_if_necessary(&fun);
                         if cached {
-                            self.normal_call(proc_id, args.len());
-                        } else {
                             self.cached_call(proc_id, args.len());
+                        } else {
+                            self.normal_call(proc_id, args.len());
                         }
                     }
                     CallType::Uninterp => {
+                        dbg!(call_fun);
                         todo!();
                     }
                 }
@@ -495,6 +506,7 @@ impl<'a> State<'a> {
     fn compile_procedure(&mut self, procedure: &Procedure) {
         self.frame_size = 0;
         self.var_locs = ScopeMap::new();
+        self.var_locs.push_scope(false);
 
         match procedure {
             Procedure::Exp(exp) => {
@@ -519,7 +531,7 @@ impl<'a> State<'a> {
                 }
 
                 self.push_exp(&fun_sst.body);
-                self.do_move(0, self.frame_size);
+                self.do_move(1, self.frame_size);
                 self.pop(self.frame_size - 1);
                 self.do_return();
             }
@@ -541,15 +553,29 @@ impl<'a> State<'a> {
                 }
 
                 self.push_exp(body);
-                self.do_move(0, self.frame_size);
+                self.do_move(1, self.frame_size);
                 self.pop(self.frame_size - 1);
                 self.do_return();
             }
         }
     }
 
-    fn get_call_type(&self, _fun: &CallFun) -> CallType {
-        todo!();
+    fn get_call_type(&self, call_fun: &CallFun) -> CallType {
+        let fun = match call_fun {
+            CallFun::Fun(fun, None) => fun,
+            CallFun::Fun(_fun, Some((fun, _typs))) => fun,
+            CallFun::Recursive(..) => { return CallType::Uninterp; }
+            CallFun::InternalFun(..) => { return CallType::Uninterp; }
+        };
+        let fun_ssts = self.fun_ssts.borrow();
+        match fun_ssts.get(fun) {
+            None => {
+                CallType::Uninterp
+            }
+            Some(SstInfo { params: _, body: _, memoize, inline: _ }) => {
+                CallType::Fun(fun.clone(), *memoize)
+            }
+        }
     }
 }
 
@@ -635,17 +661,22 @@ impl InterpreterCtx {
         my_proc_id
     }
 
-    fn run(&self, proc_id: ProcId) -> Value {
+    fn run(&self, proc_id: ProcId, ctx: &Ctx) -> Value {
         let mut instr_ptr = self.proc_addresses[proc_id.0];
         let mut stack: Vec<Value> = Vec::with_capacity(1000);
         let mut call_stack: Vec<CallFrame> = Vec::with_capacity(1000);
         let mut memoize_cache = HashMap::<(u32, Vec<Value>), Value>::new();
+        let mut msgs: Vec<Message> = vec![];
+
+        //let ten_millis = core::time::Duration::from_millis(15000);
+        //std::thread::sleep(ten_millis);
 
         loop {
+            dbg!(&self.ops[instr_ptr as usize]);
             match &self.ops[instr_ptr as usize] {
                 Op::Unary(op) => {
                     let idx = stack.len() - 1;
-                    exec_unary(&mut stack[idx], op);
+                    exec_unary(&mut stack[idx], op, ctx, &mut msgs);
                 }
                 Op::Binary(op) => {
                     let rhs = stack.pop().unwrap();
@@ -681,6 +712,7 @@ impl InterpreterCtx {
                 Op::MemoizedCall { addr, n_args } => {
                     let args = stack[stack.len() - *n_args as usize ..].to_vec();
                     let key = (*addr, args);
+                    println!("memoize call");
                     match memoize_cache.get(&key) {
                         Some(ret) => {
                             stack.truncate(stack.len() - *n_args as usize);
@@ -716,6 +748,7 @@ impl InterpreterCtx {
                     match frame {
                         CallFrame::Call { return_addr, memoize } => {
                             if let Some(key) = memoize {
+                                println!("memoize");
                                 memoize_cache.insert(key, stack[stack.len() - 1].clone());
                             }
                             instr_ptr = return_addr;
@@ -746,7 +779,7 @@ impl InterpreterCtx {
     }
 }
 
-fn exec_unary(val: &mut Value, op: &IUnaryOp) {
+fn exec_unary(val: &mut Value, op: &IUnaryOp, ctx: &Ctx, msgs: &mut Vec<Message>) {
     let no_eval = || Value::Unsimplified(Rc::new(Unsimplified::UnaryOp(*op, val.clone())));
 
     let v = match op {
@@ -756,10 +789,116 @@ fn exec_unary(val: &mut Value, op: &IUnaryOp) {
                 _ => no_eval(),
             }
         }
-        IUnaryOp::Clip(_range) => {
+        IUnaryOp::Clip(range) => {
+            match &*val {
+                Value::Int(i) => {
+                    let in_range = |lower: BigInt, upper: BigInt| !(i < &lower || i > &upper);
+                    let apply_range = |lower: BigInt, upper: BigInt| {
+                        if !in_range(lower, upper) {
+                            //let msg =
+                            //    "Computation clipped an integer that was out of range";
+                            // msgs.push(warning(&exp.span, msg)); // TODO
+                            // NOTE(tjh): I think we should consider doing the truncation
+                            no_eval()
+                        } else {
+                            val.clone()
+                        }
+                    };
+                    let apply_unicode_scalar_range = |msgs: &mut Vec<Message>| {
+                        if !valid_unicode_scalar_bigint(i) {
+                            //let msg =
+                            //    "Computation clipped an integer that was out of range";
+                            // msgs.push(warning(&exp.span, msg)); // TODO
+                            no_eval()
+                        } else {
+                            val.clone()
+                        }
+                    };
+                    match range {
+                        IntRange::Int => val.clone(),
+                        IntRange::Nat => apply_range(BigInt::zero(), i.clone()),
+                        IntRange::Char => apply_unicode_scalar_range(msgs),
+                        IntRange::U(n) => {
+                            apply_range(
+                                BigInt::zero(),
+                                (BigInt::one() << n) - BigInt::one(),
+                            )
+                        }
+                        IntRange::I(n) => apply_range(
+                            -1 * (BigInt::one() << (n - 1)),
+                            (BigInt::one() << (n - 1)) - BigInt::one(),
+                        ),
+                        IntRange::USize => {
+                            let lower = BigInt::zero();
+                            let upper = |n| (BigInt::one() << n) - BigInt::one();
+                            match ctx.global.arch {
+                                ArchWordBits::Either32Or64 => {
+                                    if in_range(lower.clone(), upper(32)) {
+                                        // then must be in range of 64 too
+                                        val.clone()
+                                    } else {
+                                        // may or may not be in range of 64, we must conservatively give up.
+                                        // TODO state.msgs.push(warning(&exp.span, "Computation clipped an arch-dependent integer that was out of range"));
+                                        no_eval()
+                                    }
+                                }
+                                ArchWordBits::Exactly(n) => apply_range(lower, upper(n)),
+                            }
+                        }
+                        IntRange::ISize => {
+                            let lower = |n| -1 * (BigInt::one() << (n - 1));
+                            let upper = |n| (BigInt::one() << (n - 1)) - BigInt::one();
+                            match ctx.global.arch {
+                                ArchWordBits::Either32Or64 => {
+                                    if in_range(lower(32), upper(32)) {
+                                        // then must be in range of 64 too
+                                        val.clone()
+                                    } else {
+                                        // may or may not be in range of 64, we must conservatively give up.
+                                        // TODO state.msgs.push(warning(&exp.span, "Computation clipped an arch-dependent integer that was out of range"));
+                                        no_eval()
+                                    }
+                                }
+                                ArchWordBits::Exactly(n) => apply_range(lower(n), upper(n)),
+                            }
+                        }
+                    }
+                }
+                _ => no_eval(),
+            }
+        }
+        IUnaryOp::IntegerTypeBound(kind) => {
+            // We're about to take an exponent, so bound this
+            // by something reasonable.
+            match &*val {
+                Value::Int(i) => match i.to_u32() {
+                    Some(i) if i <= 1024 => match kind {
+                        IntegerTypeBoundKind::ArchWordBits => match &ctx.global.arch {
+                            ArchWordBits::Exactly(b) => {
+                                Value::Int(BigInt::from_u32(*b).unwrap())
+                            }
+                            _ => no_eval()
+                        },
+                        _ if i == 0 => Value::Int(BigInt::from_usize(0).unwrap()),
+                        IntegerTypeBoundKind::UnsignedMax => {
+                            Value::Int(BigInt::from_usize(2).unwrap().pow(i) - 1)
+                        }
+                        IntegerTypeBoundKind::SignedMax => {
+                            Value::Int(BigInt::from_usize(2).unwrap().pow(i - 1) - 1)
+                        }
+                        IntegerTypeBoundKind::SignedMin => {
+                            Value::Int(-BigInt::from_usize(2).unwrap().pow(i - 1))
+                        }
+                    },
+                    _ => no_eval(),
+                },
+                _ => no_eval(),
+            }
+        }
+        _ => {
+            dbg!(&op);
             todo!();
         }
-        _ => todo!(),
     };
     *val = v;
 }
@@ -783,6 +922,21 @@ fn exec_binary(val1: &mut Value, val2: Value, op: &BinaryOp) {
             match val1.syntactic_eq(&val2) {
                 None => no_eval(),
                 Some(b) => Value::Bool(!b),
+            }
+        }
+        BinaryOp::Inequality(op) => {
+            match (&*val1, &val2) {
+                (Value::Int(i1), Value::Int(i2)) => {
+                    use crate::ast::InequalityOp::*;
+                    let b = match op {
+                        Le => i1 <= i2,
+                        Ge => i1 >= i2,
+                        Lt => i1 < i2,
+                        Gt => i1 > i2,
+                    };
+                    Value::Bool(b)
+                }
+                _ => no_eval(),
             }
         }
         BinaryOp::Arith(op, _mode) => {
@@ -837,13 +991,27 @@ fn exec_binary(val1: &mut Value, val2: Value, op: &BinaryOp) {
                 }
             }
         }
-        _ => todo!(),
+        _ => {
+            dbg!(&op);
+            todo!();
+        }
     };
     *val1 = v;
 }
 
-fn exec_ternary(_val: &mut Value, _val2: Value, _val3: Value, _op: &ITernaryOp) {
-    todo!();
+fn exec_ternary(val1: &mut Value, val2: Value, val3: Value, op: &ITernaryOp) {
+    let no_eval = || Value::Unsimplified(Rc::new(Unsimplified::TernaryOp(*op,
+        val1.clone(), val2.clone(), val3.clone())));
+    let v = match op {
+        ITernaryOp::IfThenElse => {
+            match &*val1 {
+                Value::Bool(true) => val2.clone(),
+                Value::Bool(false) => val3.clone(),
+                _ => no_eval(),
+            }
+        }
+    };
+    *val1 = v;
 }
 
 impl SyntacticEquality for Value {
@@ -929,7 +1097,7 @@ impl ModuleLevelInterpreterCtx {
         let interpreter_ctx = self.with_config(&config);
 
         let proc_id = interpreter_ctx.compile(ctx, fun_ssts, exp);
-        let ret_value = interpreter_ctx.run(proc_id);
+        let ret_value = interpreter_ctx.run(proc_id, ctx);
 
         match ret_value {
             Value::Bool(b) => Ok(crate::sst_util::sst_bool(&exp.span, b)),
