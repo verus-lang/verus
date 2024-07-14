@@ -175,7 +175,7 @@ fn func_body_to_air(
     decl_commands: &mut Vec<Command>,
     check_commands: &mut Vec<CommandsWithContext>,
     function: &FunctionSst,
-    func_body_sst: crate::sst::FuncSpecBodySst,
+    func_body_sst: &crate::sst::FuncSpecBodySst,
 ) -> Result<(), VirErr> {
     let crate::sst::FuncSpecBodySst { decrease_when, termination_check, body_exp } = func_body_sst;
     let pars = &function.x.pars;
@@ -237,7 +237,7 @@ fn func_body_to_air(
 
     // non-recursive:
     //   (axiom (fuel_bool_default fuel%f))
-    if function.x.has.has_fuel {
+    if function.x.fuel > 0 {
         let axiom_expr = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_fuel)]);
         let fuel_axiom = mk_unnamed_axiom(axiom_expr);
         decl_commands.push(Arc::new(CommandX::Global(fuel_axiom)));
@@ -466,11 +466,8 @@ pub fn func_name_to_air(
     Ok(Arc::new(commands))
 }
 
-pub fn func_decl_to_air(
-    ctx: &mut Ctx,
-    function: &FunctionSst,
-    func_decl_sst: crate::sst::FuncDeclSst,
-) -> Result<Commands, VirErr> {
+pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Commands, VirErr> {
+    let func_decl_sst = &function.x.decl;
     let (is_trait_method_impl, inherit_fn_ens) = match &function.x.kind {
         FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {
             if ctx.funcs_with_ensure_predicate[method] {
@@ -626,9 +623,9 @@ pub fn func_decl_to_air(
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
     function: &FunctionSst,
-    func_axioms_sst: crate::sst::FuncAxiomsSst,
     public_body: bool,
 ) -> Result<(Commands, Vec<CommandsWithContext>), VirErr> {
+    let func_axioms_sst = &function.x.axioms;
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<CommandsWithContext> = Vec::new();
     let is_singular = function.x.attrs.integer_ring;
@@ -636,7 +633,7 @@ pub fn func_axioms_to_air(
         Mode::Spec => {
             // Body
             if public_body {
-                if let Some(func_body_sst) = func_axioms_sst.spec_axioms {
+                if let Some(func_body_sst) = &func_axioms_sst.spec_axioms {
                     func_body_to_air(
                         ctx,
                         &mut decl_commands,
@@ -717,7 +714,7 @@ pub fn func_axioms_to_air(
                 // so we can just return here.
                 return Ok((Arc::new(decl_commands), check_commands));
             }
-            if let Some((params, exp)) = func_axioms_sst.proof_exec_axioms {
+            if let Some((params, exp)) = &func_axioms_sst.proof_exec_axioms {
                 let span = &function.span;
                 use crate::triggers::{typ_boxing, TriggerBoxing};
                 let mut vars: Vec<(VarIdent, TriggerBoxing)> = Vec::new();
@@ -734,7 +731,7 @@ pub fn func_axioms_to_air(
                 }
                 let triggers = crate::triggers::build_triggers(ctx, span, &vars, &exp, false)?;
                 let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers);
-                let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp);
+                let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp.clone());
                 let forall: Arc<SpannedTyped<ExpX>> =
                     SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);
                 let expr_ctxt = if is_singular {

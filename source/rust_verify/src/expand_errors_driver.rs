@@ -1,7 +1,6 @@
 use rustc_session::config::ErrorOutputType;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::Function;
 use vir::ast_to_sst_func::SstMap;
 use vir::context::Ctx;
 use vir::expand_errors::{
@@ -71,12 +70,12 @@ pub enum ExpandErrorsResult {
 
 pub struct ExpandErrorsDriver {
     /// The function we're operating on.
-    pub function: Function,
+    pub function: vir::sst::FunctionSst,
 
     /// Initial ID to be expanded, should be length 1.
     base_id: AssertId,
     /// FuncCheckSst from the query that prompted the expand-errors mechancism.
-    base_func_check_sst: FuncCheckSst,
+    base_func_check_sst: Arc<FuncCheckSst>,
     /// Pre-computed context information
     ectx: ExpansionContext,
 
@@ -85,7 +84,7 @@ pub struct ExpandErrorsDriver {
     /// with assert_ids 42_1_0, 42_1_1, 42_2_2, 42_2_3.
     /// The ExapansionTree is the tree that explains how 42_1
     /// was expanded into its sub-assertions.
-    expansions: HashMap<AssertId, (ExpansionTree, FuncCheckSst)>,
+    expansions: HashMap<AssertId, (ExpansionTree, Arc<FuncCheckSst>)>,
 
     /// The ID for the query we're currently running.
     /// Becomes empty [] when execution finishes.
@@ -129,7 +128,11 @@ enum Style {
 
 impl ExpandErrorsDriver {
     /// Create a new driver object which will repeatedly expand the given assert_id
-    pub fn new(function: &Function, assert_id: &AssertId, func_check_sst: FuncCheckSst) -> Self {
+    pub fn new(
+        function: &vir::sst::FunctionSst,
+        assert_id: &AssertId,
+        func_check_sst: Arc<FuncCheckSst>,
+    ) -> Self {
         assert!(assert_id.len() == 1);
         Self {
             function: function.clone(),
@@ -200,7 +203,7 @@ impl ExpandErrorsDriver {
     /// The client is responsible for focusing on the 42_1 assert.
     ///
     /// Returns None if we're done.
-    pub fn get_current(&self) -> Option<(AssertId, FuncCheckSst)> {
+    pub fn get_current(&self) -> Option<(AssertId, Arc<FuncCheckSst>)> {
         if self.current.len() > 0 {
             let parent_id = self.current[..self.current.len() - 1].to_vec();
             let fsst = self.expansions.get(&parent_id).unwrap().1.clone();
