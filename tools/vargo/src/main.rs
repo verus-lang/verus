@@ -92,46 +92,46 @@ impl SmtSolverType {
     }
 }
 
-pub struct SmtSolver {
+pub struct SmtSolverBinary {
     pub stype: SmtSolverType,
-    pub path: Option<std::path::PathBuf>,
+    pub path: std::path::PathBuf,
 }
 
-impl SmtSolver {
-    pub fn new(stype: SmtSolverType, vargo_nest: u64) -> Self {
-        let path = SmtSolver::find_path(&stype, vargo_nest);
-        SmtSolver { stype, path }
-    }
+impl SmtSolverBinary {
+    pub fn find_path(solver_type: SmtSolverType, vargo_nest: u64) -> Option<Self> {
+        let find_path_inner = || {
+            let file_name = if std::env::var(solver_type.env_var_name()).is_ok() {
+                std::env::var(solver_type.env_var_name()).unwrap()
+            } else {
+                solver_type.executable_name()
+            };
+            let path = std::path::Path::new(&file_name);
 
-    pub fn find_path(solver_type: &SmtSolverType, vargo_nest: u64) -> Option<std::path::PathBuf> {
-        let file_name = if std::env::var(solver_type.env_var_name()).is_ok() {
-            std::env::var(solver_type.env_var_name()).unwrap()
-        } else {
-            solver_type.executable_name()
-        };
-        let path = std::path::Path::new(&file_name);
-
-        if !path.is_file() && vargo_nest == 0 {
-            // When we fail to find Z3, we warn the user but optimistically continue
-            // Since we don't currently use cvc5, we don't warn the user about it, and we bail out
-            match solver_type {
-                SmtSolverType::Z3 => warn(format!("{file_name} not found -- this is likely to cause errors or a broken build\nrun `tools/get-z3.(sh|ps1)` first").as_str()),
-                SmtSolverType::Cvc5 => return None,
+            if !path.is_file() && vargo_nest == 0 {
+                // When we fail to find Z3, we warn the user but optimistically continue
+                // Since we don't currently use cvc5, we don't warn the user about it, and we bail out
+                match solver_type {
+                    SmtSolverType::Z3 => warn(format!("{file_name} not found -- this is likely to cause errors or a broken build\nrun `tools/get-z3.(sh|ps1)` first").as_str()),
+                    SmtSolverType::Cvc5 => return None,
+                }
             }
+            if std::env::var(solver_type.env_var_name()).is_err() && path.is_file() {
+                std::env::set_var(solver_type.env_var_name(), path);
+            }
+            Some(path.to_path_buf())
+        };
+        let path = find_path_inner();
+        if matches!(solver_type, SmtSolverType::Z3) {
+            assert!(path.is_some());
         }
-        if std::env::var(solver_type.env_var_name()).is_err() && path.is_file() {
-            std::env::set_var(solver_type.env_var_name(), path);
-        }
-        Some(path.to_path_buf())
+        path.map(|path| SmtSolverBinary {
+            stype: solver_type,
+            path,
+        })
     }
 
     fn check_version(&self) -> Result<(), String> {
-        if self.path.is_none() {
-            // Don't perform the version check if we didn't find the solver
-            return Ok(());
-        }
-        let solver_path = self.path.as_ref().unwrap();
-        let output = std::process::Command::new(solver_path)
+        let output = std::process::Command::new(&self.path)
             .arg("--version")
             .output()
             .map_err(|x| format!("could not execute {}: {}", self.stype.to_str(), x))?;
@@ -188,14 +188,8 @@ impl SmtSolver {
         target_verus_dir: &std::path::PathBuf,
         macos_prepare_script: &mut String,
     ) -> Result<(), String> {
-        if self.path.is_none() {
-            // Nothing to copy, since we didn't find the solver
-            return Ok(());
-        }
-        let solver_path = self.path.as_ref().unwrap();
-
-        if solver_path.is_file() {
-            let from_f = &solver_path;
+        if self.path.is_file() {
+            let from_f = &self.path;
             let to_f = target_verus_dir.join(self.stype.executable_name());
             if to_f.exists() {
                 // If we directly overwrite a binary it can cause
@@ -509,8 +503,9 @@ fn run() -> Result<(), String> {
         std::env::set_var("VARGO_TOOLCHAIN", toolchain);
     }
 
-    let z3 = SmtSolver::new(SmtSolverType::Z3, vargo_nest);
-    let cvc5 = SmtSolver::new(SmtSolverType::Cvc5, vargo_nest);
+    let solver_binary_z3 = SmtSolverBinary::find_path(SmtSolverType::Z3, vargo_nest)
+        .expect("find_path for Z3 always returns a path");
+    let solver_binary_cvc5 = SmtSolverBinary::find_path(SmtSolverType::Cvc5, vargo_nest);
 
     let cargo_toml = toml::from_str::<toml::Value>(
         &std::fs::read_to_string("Cargo.toml")
@@ -551,8 +546,10 @@ fn run() -> Result<(), String> {
     };
 
     if vargo_nest == 0 && task != Task::Fmt && !no_solver_version_check {
-        z3.check_version()?;
-        cvc5.check_version()?;
+        solver_binary_z3.check_version()?;
+        if let Some(cvc5) = &solver_binary_cvc5 {
+            cvc5.check_version()?;
+        }
     }
 
     if task == Task::Cmd {
@@ -1221,8 +1218,10 @@ set -x
                 }
             }
 
-            z3.copy_to_target_dir(&target_verus_dir, &mut macos_prepare_script)?;
-            cvc5.copy_to_target_dir(&target_verus_dir, &mut macos_prepare_script)?;
+            solver_binary_z3.copy_to_target_dir(&target_verus_dir, &mut macos_prepare_script)?;
+            if let Some(cvc5) = &solver_binary_cvc5 {
+                cvc5.copy_to_target_dir(&target_verus_dir, &mut macos_prepare_script)?;
+            }
 
             let fingerprint_path = target_verus_dir.join(".vstd-fingerprint");
 
