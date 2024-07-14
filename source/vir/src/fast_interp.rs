@@ -166,8 +166,11 @@ impl<'a> State<'a> {
         }
     }
 
-    fn pop(&mut self, n: u32) {
-        self.pre_ops.push(PreOp::Pop(n));
+    fn do_pop(&mut self, n: u32) {
+        if n > 0 {
+            self.pre_ops.push(PreOp::Pop(n));
+            self.frame_size -= n;
+        }
     }
 
     fn fresh_label(&mut self) -> LabelId {
@@ -451,18 +454,24 @@ impl<'a> State<'a> {
             }
             ExpX::Bind(bnd, body) => match &bnd.x {
                 BndX::Let(binders) => {
-                    self.var_locs.push_scope(false);
+                    let mut v = vec![];
                     for binder in binders.iter() {
                         self.push_exp(&binder.a);
                         let uid = binder.name.clone();
-                        self.var_locs.insert(uid,
-                            Var::InStack(self.frame_size - 1)).unwrap();
+                        v.push((uid, Var::InStack(self.frame_size - 1)));
                     }
+
+                    self.var_locs.push_scope(false);
+                    for (uid, var) in v.into_iter() {
+                        self.var_locs.insert(uid, var).unwrap();
+                    }
+
                     self.push_exp(body);
+
                     self.var_locs.pop_scope();
 
                     self.do_move(1, (binders.len() + 1).try_into().unwrap());
-                    self.pop(binders.len().try_into().unwrap());
+                    self.do_pop(binders.len().try_into().unwrap());
                 }
                 BndX::Lambda(binders, _triggers) => {
                     // use e here, not body, to make sure
@@ -532,7 +541,7 @@ impl<'a> State<'a> {
 
                 self.push_exp(&fun_sst.body);
                 self.do_move(1, self.frame_size);
-                self.pop(self.frame_size - 1);
+                self.do_pop(self.frame_size - 1);
                 self.do_return();
             }
             Procedure::Closure(captured, params, body) => {
@@ -554,7 +563,7 @@ impl<'a> State<'a> {
 
                 self.push_exp(body);
                 self.do_move(1, self.frame_size);
-                self.pop(self.frame_size - 1);
+                self.do_pop(self.frame_size - 1);
                 self.do_return();
             }
         }
@@ -762,6 +771,7 @@ impl InterpreterCtx {
                 }
                 Op::ConditionalJmp { offset, true_addr, false_addr, other_addr } => {
                     let v = &stack[stack.len() - *offset as usize];
+                    dbg!("ConditionalJump on: "); dbg!(&v);
                     instr_ptr = match v {
                         Value::Bool(false) => *false_addr,
                         Value::Bool(true) => *true_addr,
@@ -922,6 +932,18 @@ fn exec_binary(val1: &mut Value, val2: Value, op: &BinaryOp) {
             match val1.syntactic_eq(&val2) {
                 None => no_eval(),
                 Some(b) => Value::Bool(!b),
+            }
+        }
+        BinaryOp::And => {
+            match val1 {
+                Value::Bool(true) => val2.clone(),
+                _ => no_eval(),
+            }
+        }
+        BinaryOp::Or => {
+            match val1 {
+                Value::Bool(false) => val2.clone(),
+                _ => no_eval(),
             }
         }
         BinaryOp::Inequality(op) => {
