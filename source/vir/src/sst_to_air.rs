@@ -436,7 +436,18 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
         TypX::ConstInt(_) => None,
-        TypX::Primitive(_, _) => None,
+        TypX::Primitive(p, _) => {
+            match p {
+                Primitive::Array | Primitive::Slice | Primitive::Ptr => {
+                    // Each of these is like an abstract Datatype
+                    if typ_as_mono(typ).is_none() {
+                        panic!("abstract datatype should be boxed")
+                    }
+                }
+                Primitive::StrSlice | Primitive::Global => {}
+            }
+            None
+        }
         TypX::FnDef(..) => None,
     }
 }
