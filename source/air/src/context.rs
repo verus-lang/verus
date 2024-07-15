@@ -72,10 +72,16 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum SmtSolver {
     Z3,
     Cvc5,
+}
+
+impl Default for SmtSolver {
+    fn default() -> Self {
+        SmtSolver::Z3
+    }
 }
 
 pub struct Context {
@@ -99,7 +105,7 @@ pub struct Context {
     pub(crate) smt_log: Emitter,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
-    pub(crate) rlimit_count: u64,
+    pub(crate) rlimit_count: Option<u64>,
     pub(crate) state: ContextState,
     pub(crate) expected_solver_version: Option<String>,
     pub(crate) profile_logfile_name: Option<String>,
@@ -160,7 +166,10 @@ impl Context {
             smt_log: Emitter::new(message_interface.clone(), true, true, None, solver.clone()),
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
-            rlimit_count: 0,
+            rlimit_count: match solver {
+                SmtSolver::Z3 => Some(0),
+                SmtSolver::Cvc5 => None,
+            },
             state: ContextState::NotStarted,
             expected_solver_version: None,
             profile_logfile_name: None,
@@ -222,7 +231,7 @@ impl Context {
         (self.time_smt_init, self.time_smt_run)
     }
 
-    pub fn get_rlimit_count(&self) -> u64 {
+    pub fn get_rlimit_count(&self) -> Option<u64> {
         self.rlimit_count
     }
 
@@ -438,8 +447,10 @@ impl Context {
     ) -> ValidityResult {
         self.ensure_started();
 
-        if let Err(e) = crate::smt_verify::smt_update_statistics(self) {
-            return e;
+        if matches!(self.solver, SmtSolver::Z3) {
+            if let Err(e) = crate::smt_verify::smt_update_statistics(self) {
+                return e;
+            }
         }
 
         self.air_initial_log.log_query(query);

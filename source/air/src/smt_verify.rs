@@ -369,6 +369,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
 }
 
 pub(crate) fn smt_update_statistics(context: &mut Context) -> Result<(), ValidityResult> {
+    assert!(matches!(context.solver, SmtSolver::Z3)); // the CVC5 output format for statistics is different
+
     context.smt_log.log_get_info("all-statistics");
     let smt_data = context.smt_log.take_pipe_data();
     let smt_output = context.get_smt_process().send_commands(smt_data);
@@ -400,7 +402,7 @@ pub(crate) fn smt_update_statistics(context: &mut Context) -> Result<(), Validit
             "expected rlimit-count in smt statistics"
         )));
     };
-    context.rlimit_count = rlimit_count;
+    context.rlimit_count = Some(rlimit_count);
 
     Ok(())
 }

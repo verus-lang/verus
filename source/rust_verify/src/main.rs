@@ -118,7 +118,7 @@ pub fn main() {
 
         struct SmtStats {
             time_millis: u128,
-            rlimit_count: u64,
+            rlimit_count: Option<u64>, // at the moment, only available for Z3
         }
 
         let mut smt_run_stats: Vec<(&std::sync::Arc<vir::ast::PathX>, SmtStats)> = verifier
@@ -137,7 +137,10 @@ pub fn main() {
             .collect::<Vec<_>>();
         smt_run_stats.sort_by(|(_, a), (_, b)| b.time_millis.cmp(&a.time_millis));
         let total_smt_run: u128 = smt_run_stats.iter().map(|(_, v)| v.time_millis).sum();
-        let total_rlimit_count: u64 = smt_run_stats.iter().map(|(_, v)| v.rlimit_count).sum();
+        let rlimit_counts: Option<Vec<u64>> =
+            smt_run_stats.iter().map(|(_, v)| v.rlimit_count).collect();
+        let total_rlimit_count: Option<u64> =
+            rlimit_counts.map(|rlimit_counts| rlimit_counts.iter().sum());
 
         let mut smt_function_breakdown = {
             let mod_fun_times: Vec<_> = verifier
@@ -373,17 +376,23 @@ pub fn main() {
                     }
                 }
                 println!(
-                    "        total smt-run:         {:>10} ms, {:>8} rlimit ({} threads)",
-                    total_smt_run, total_rlimit_count, verifier.num_threads,
+                    "        total smt-run:         {:>10} ms{} ({} threads)",
+                    total_smt_run,
+                    total_rlimit_count
+                        .map(|rc| format!(", {:>8} rlimit", rc))
+                        .unwrap_or(format!("")),
+                    verifier.num_threads,
                 );
                 if verifier.args.time_expanded {
                     for (i, (m, t)) in smt_run_stats.iter().take(3).enumerate() {
                         println!(
-                            "            {}. {:<40} {:>10} ms, {:>8} rlimit",
+                            "            {}. {:<40} {:>10} ms{}",
                             i + 1,
                             rust_verify::verifier::module_name(m),
                             t.time_millis,
-                            t.rlimit_count,
+                            t.rlimit_count
+                                .map(|rc| format!(", {:>8} rlimit", rc))
+                                .unwrap_or(format!("")),
                         );
                     }
                 }
