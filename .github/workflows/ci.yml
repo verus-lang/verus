@@ -90,6 +90,7 @@ jobs:
               echo cvc5 version `./cvc5 --version`
               vargo build
               vargo run -p rust_verify -- -V cvc5 rust_verify/example/assorted_demo.rs
+              ;;
             *)
               VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
               VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test
