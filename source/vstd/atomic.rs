@@ -36,7 +36,7 @@ macro_rules! make_unsigned_integer_atomic {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
-            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
+            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
             atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
         }
     };
@@ -70,7 +70,7 @@ macro_rules! make_signed_integer_atomic {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
-            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
+            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
             atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
         }
     };
@@ -81,7 +81,7 @@ macro_rules! make_bool_atomic {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
-            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
+            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
             atomic_bool_methods!($at_ident, $p_ident, $rust_ty, $value_ty);
         }
     };
@@ -187,7 +187,7 @@ macro_rules! atomic_types_generic {
 pub type AtomicCellId = int;
 
 macro_rules! atomic_common_methods {
-    ($at_ident: ty, $p_ident: ty, $p_data_ident: ty, $rust_ty: ty, $value_ty: ty) => {
+    ($at_ident: ty, $p_ident: ty, $p_data_ident: ty, $rust_ty: ty, $value_ty: ty, [ $($addr:tt)* ]) => {
         verus!{
 
         pub spec fn id(&self) -> int;
@@ -238,11 +238,11 @@ macro_rules! atomic_common_methods {
                 equal(self.id(), perm.view().patomic)
                 && match ret {
                     Result::Ok(r) =>
-                           current == old(perm).view().value
+                           current $($addr)* == old(perm).view().value $($addr)*
                         && equal(perm.view().value, new)
                         && equal(r, old(perm).view().value),
                     Result::Err(r) =>
-                           current != old(perm).view().value
+                           current $($addr)* != old(perm).view().value $($addr)*
                         && equal(perm.view().value, old(perm).view().value)
                         && equal(r, old(perm).view().value),
                 },
@@ -265,7 +265,7 @@ macro_rules! atomic_common_methods {
                 equal(self.id(), perm.view().patomic)
                 && match ret {
                     Result::Ok(r) =>
-                           current == old(perm).view().value
+                           current $($addr)* == old(perm).view().value $($addr)*
                         && equal(perm.view().value, new)
                         && equal(r, old(perm).view().value),
                     Result::Err(r) =>
@@ -656,7 +656,8 @@ impl<T> PAtomicPtr<T> {
         PermissionPtr::<T>,
         PermissionDataPtr::<T>,
         AtomicPtr::<T>,
-        *mut T
+        *mut T,
+        [ .view().addr ]
     );
 }
 
