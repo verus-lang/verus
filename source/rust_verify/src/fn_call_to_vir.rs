@@ -3,8 +3,9 @@ use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, is_smt_arith, is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, remove_host_arg,
-    typ_of_node, typ_of_node_expect_mut_ref,
+    bitwidth_and_signedness_of_integer_type, def_id_to_vir_path, is_smt_arith,
+    is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, remove_host_arg, typ_of_node,
+    typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
     check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array, extract_tuple,
@@ -77,15 +78,15 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     }
 
     match rust_item {
-        Some(RustItem::BoxNew) => {
+        Some(RustItem::BoxNew) if bctx.in_ghost => {
             record_compilable_operator(bctx, expr, CompilableOperator::BoxNew);
             return mk_one_vir_arg(bctx, expr.span, &args);
         }
-        Some(RustItem::RcNew) => {
+        Some(RustItem::RcNew) if bctx.in_ghost => {
             record_compilable_operator(bctx, expr, CompilableOperator::RcNew);
             return mk_one_vir_arg(bctx, expr.span, &args);
         }
-        Some(RustItem::ArcNew) => {
+        Some(RustItem::ArcNew) if bctx.in_ghost => {
             record_compilable_operator(bctx, expr, CompilableOperator::ArcNew);
             return mk_one_vir_arg(bctx, expr.span, &args);
         }
@@ -1296,10 +1297,22 @@ fn verus_item_to_vir<'tcx, 'a>(
                             }
                         }
                         verus_items::SpecBitwiseItem::Shl => {
-                            BinaryOp::Bitwise(BitwiseOp::Shl, Mode::Spec)
+                            let (Some(w), s) = bitwidth_and_signedness_of_integer_type(
+                                &bctx.ctxt.verus_items,
+                                bctx.types.expr_ty(expr),
+                            ) else {
+                                return err_span(expr.span, "expected finite integer width");
+                            };
+                            BinaryOp::Bitwise(BitwiseOp::Shl(w, s), Mode::Spec)
                         }
                         verus_items::SpecBitwiseItem::Shr => {
-                            BinaryOp::Bitwise(BitwiseOp::Shr, Mode::Spec)
+                            let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
+                                &bctx.ctxt.verus_items,
+                                bctx.types.expr_ty(expr),
+                            ) else {
+                                return err_span(expr.span, "expected finite integer width");
+                            };
+                            BinaryOp::Bitwise(BitwiseOp::Shr(w), Mode::Spec)
                         }
                     }
                 }

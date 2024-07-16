@@ -102,7 +102,11 @@ fn check_well_founded_typ(
             }
             true
         }
-        TypX::Decorate(_, t) => {
+        TypX::Decorate(_, _targ, t) => {
+            // We don't need to check the allocator type argument
+            // (We can consider it to be AcceptRecursiveType::Accept.
+            // This is ok because, e.g., the spec-encoding of Box<T, Allocator> doesn't
+            // depends on the spec-encoding of Allocator)
             check_well_founded_typ(datatypes, datatypes_well_founded, typ_param_accept, t)
         }
         TypX::Projection { .. } => {
@@ -236,7 +240,7 @@ fn check_positive_uses(
             }
             Ok(())
         }
-        TypX::Decorate(_, t) => check_positive_uses(datatype, global, local, polarity, t),
+        TypX::Decorate(_, _, t) => check_positive_uses(datatype, global, local, polarity, t),
         TypX::Primitive(_, ts) => {
             for t in ts.iter() {
                 check_positive_uses(datatype, global, local, polarity, t)?;

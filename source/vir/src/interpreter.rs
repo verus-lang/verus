@@ -7,8 +7,8 @@
 
 use crate::ast::{
     ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents,
-    InequalityOp, IntRange, IntegerTypeBoundKind, PathX, SpannedTyped, Typ, TypX, UnaryOp,
-    VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
+    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, SpannedTyped, Typ,
+    TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::{SstInfo, SstMap};
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
@@ -596,6 +596,20 @@ fn i128_to_arch_width(i: i128, arch: ArchWordBits) -> Option<BigInt> {
     }
 }
 
+fn u128_to_width(u: u128, width: IntegerTypeBitwidth, arch: ArchWordBits) -> Option<BigInt> {
+    match width {
+        IntegerTypeBitwidth::Width(w) => Some(u128_to_fixed_width(u, w)),
+        IntegerTypeBitwidth::ArchWordSize => u128_to_arch_width(u, arch),
+    }
+}
+
+fn i128_to_width(i: i128, width: IntegerTypeBitwidth, arch: ArchWordBits) -> Option<BigInt> {
+    match width {
+        IntegerTypeBitwidth::Width(w) => Some(i128_to_fixed_width(i, w)),
+        IntegerTypeBitwidth::ArchWordSize => i128_to_arch_width(i, arch),
+    }
+}
+
 /// Displays data for profiling/debugging the interpreter
 fn display_perf_stats(state: &State) {
     if state.perf {
@@ -1003,7 +1017,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     // Explicitly enumerate UnaryOps, in case more are added
                     match op {
                         Not => bool_new(!b),
-                        BitNot
+                        BitNot(..)
                         | Clip { .. }
                         | HeightTrigger
                         | Trigger(_)
@@ -1022,32 +1036,17 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 Const(Int(i)) => {
                     // Explicitly enumerate UnaryOps, in case more are added
                     match op {
-                        BitNot => {
-                            use IntRange::*;
-                            let r = match *undecorate_typ(&e.typ) {
-                                TypX::Int(U(n)) => {
-                                    let i = i.to_u128().unwrap();
-                                    Some(u128_to_fixed_width(!i, n))
-                                }
-                                TypX::Int(I(n)) => {
-                                    let i = i.to_i128().unwrap();
-                                    Some(i128_to_fixed_width(!i, n))
-                                }
-                                TypX::Int(USize) => {
-                                    let i = i.to_u128().unwrap();
-                                    u128_to_arch_width(!i, ctx.arch)
-                                }
-                                TypX::Int(ISize) => {
-                                    let i = i.to_i128().unwrap();
-                                    i128_to_arch_width(!i, ctx.arch)
-                                }
-
-                                _ => panic!(
-                                    "Type checker should not allow bitwise ops on non-fixed-width types"
-                                ),
-                            };
-                            r.map(int_new).unwrap_or(ok)
-                        }
+                        BitNot(None) => match i.to_i128() {
+                            Some(i) => int_new(BigInt::from_i128(!i).unwrap()),
+                            None => ok,
+                        },
+                        BitNot(Some(w)) => match i.to_u128() {
+                            Some(i) => match u128_to_width(!i, *w, ctx.arch) {
+                                Some(i) => int_new(i),
+                                None => ok,
+                            },
+                            None => ok,
+                        },
                         Clip { range, truncate: _ } => {
                             let in_range =
                                 |lower: BigInt, upper: BigInt| !(i < &lower || i > &upper);
@@ -1379,54 +1378,37 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             BitXor => int_new(i1 ^ i2),
                             BitAnd => int_new(i1 & i2),
                             BitOr => int_new(i1 | i2),
-                            Shr | Shl => match i2.to_u128() {
-                                None => ok_e2(e2),
-                                Some(shift) => {
-                                    use IntRange::*;
-                                    let r = match *undecorate_typ(&exp.typ) {
-                                        TypX::Int(U(n)) => {
-                                            let i1 = i1.to_u128().unwrap();
-                                            let res = if matches!(op, Shr) {
-                                                i1 >> shift
-                                            } else {
-                                                i1 << shift
-                                            };
-                                            Some(u128_to_fixed_width(res, n))
-                                        }
-                                        TypX::Int(I(n)) => {
-                                            let i1 = i1.to_i128().unwrap();
-                                            let res = if matches!(op, Shr) {
-                                                i1 >> shift
-                                            } else {
-                                                i1 << shift
-                                            };
-                                            Some(i128_to_fixed_width(res, n))
-                                        }
-                                        TypX::Int(USize) => {
-                                            let i1 = i1.to_u128().unwrap();
-                                            let res = if matches!(op, Shr) {
-                                                i1 >> shift
-                                            } else {
-                                                i1 << shift
-                                            };
-                                            u128_to_arch_width(res, ctx.arch)
-                                        }
-                                        TypX::Int(ISize) => {
-                                            let i1 = i1.to_i128().unwrap();
-                                            let res = if matches!(op, Shr) {
-                                                i1 >> shift
-                                            } else {
-                                                i1 << shift
-                                            };
-                                            i128_to_arch_width(res, ctx.arch)
-                                        }
-                                        _ => panic!(
-                                            "Type checker should not allow bitwise ops on non-fixed-width types"
-                                        ),
-                                    };
-                                    r.map(int_new).unwrap_or(ok)
-                                }
+                            Shr(_) => match i2.to_u128() {
+                                None => ok,
+                                Some(i2) => int_new(i1 >> i2),
                             },
+                            Shl(w, signed) => {
+                                if *signed {
+                                    match (i1.to_i128(), i2.to_u128()) {
+                                        (Some(i1), Some(i2)) => {
+                                            let i1_shifted =
+                                                if i2 >= 128 { 0i128 } else { i1 << i2 };
+                                            match i128_to_width(i1_shifted, *w, ctx.arch) {
+                                                Some(i) => int_new(i),
+                                                None => ok,
+                                            }
+                                        }
+                                        _ => ok,
+                                    }
+                                } else {
+                                    match (i1.to_u128(), i2.to_u128()) {
+                                        (Some(i1), Some(i2)) => {
+                                            let i1_shifted =
+                                                if i2 >= 128 { 0u128 } else { i1 << i2 };
+                                            match u128_to_width(i1_shifted, *w, ctx.arch) {
+                                                Some(i) => int_new(i),
+                                                None => ok,
+                                            }
+                                        }
+                                        _ => ok,
+                                    }
+                                }
+                            }
                         },
                         // Special cases for certain concrete values
                         (Const(Int(i)), _) | (_, Const(Int(i)))

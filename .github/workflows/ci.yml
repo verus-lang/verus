@@ -39,7 +39,7 @@ jobs:
     runs-on: macos-14
     strategy:
       matrix:
-        features: ['', 'record-history', 'no-std', 'no-alloc', 'singular']
+        features: ['', 'record-history', 'no-std', 'no-alloc', 'singular', 'cvc5']
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -84,6 +84,12 @@ jobs:
               cd vstd
               unset -f cargo
               cargo build --no-default-features
+              ;;
+            "cvc5")
+              ./tools/get-cvc5.sh
+              echo cvc5 version `./cvc5 --version`
+              vargo build
+              vargo run -p rust_verify -- -V cvc5 rust_verify/example/assorted_demo.rs
               ;;
             *)
               VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air

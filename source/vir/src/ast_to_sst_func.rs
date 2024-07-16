@@ -14,8 +14,8 @@ use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message};
 use crate::sst::{BndX, Exp, ExpX, Exps, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst::{
-    FuncAxiomsSst, FuncBodySst, FuncDeclSst, FuncDefSst, FunctionSst, FunctionSstHas, FunctionSstX,
-    PostConditionKind, PostConditionSst,
+    FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
+    FunctionSstX, PostConditionKind, PostConditionSst,
 };
 use crate::sst_to_air::{exp_to_expr, ExprCtxt, ExprMode};
 use crate::sst_util::{subst_exp, subst_stm};
@@ -100,7 +100,7 @@ fn func_body_to_sst(
     function: &Function,
     body: &Expr,
     not_verifying_owning_bucket: bool,
-) -> Result<(SstMap, FuncBodySst), VirErr> {
+) -> Result<(SstMap, FuncSpecBodySst), VirErr> {
     let pars = params_to_pars(&function.x.params, false);
 
     // ast --> sst
@@ -126,10 +126,9 @@ fn func_body_to_sst(
     state.finalize();
 
     // Rewrite recursive calls to use fuel
-    let (is_recursive, body_exp, scc_rep) =
-        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
-            ctx, function, &body_exp, None,
-        )?;
+    let (body_exp, scc_rep) = crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
+        ctx, function, &body_exp, None,
+    )?;
 
     // Check termination and/or recommends
     let mut check_state = State::new(diagnostics);
@@ -197,27 +196,40 @@ fn func_body_to_sst(
         check_state.finalize_stm(ctx, diagnostics, &check_state.fun_ssts, &proof_body_stm)?;
     check_state.finalize();
 
-    let (mut termination_decls, termination_stm) = crate::recursion::check_termination_stm(
-        ctx,
-        diagnostics,
-        &check_state.fun_ssts,
-        function,
-        Some(proof_body_stm),
-        &check_body_stm,
-    )?;
-    termination_decls.splice(0..0, check_state.local_decls.into_iter());
+    let termination_check = if crate::recursion::fun_is_recursive(ctx, function) {
+        let (mut termination_decls, termination_stm) = crate::recursion::check_termination_stm(
+            ctx,
+            diagnostics,
+            &check_state.fun_ssts,
+            function,
+            Some(proof_body_stm),
+            &check_body_stm,
+        )?;
+        termination_decls.splice(0..0, check_state.local_decls.into_iter());
 
-    Ok((
-        check_state.fun_ssts,
-        FuncBodySst {
-            pars,
-            decrease_when,
-            termination_decls: Arc::new(termination_decls),
-            termination_stm,
-            is_recursive,
-            body_exp,
-        },
-    ))
+        let termination_check = FuncCheckSst {
+            post_condition: Arc::new(crate::sst::PostConditionSst {
+                dest: None,
+                kind: if function.x.decrease_by.is_some() {
+                    PostConditionKind::DecreasesBy
+                } else {
+                    PostConditionKind::DecreasesImplicitLemma
+                },
+                ens_exps: Arc::new(vec![]),
+                ens_spec_precondition_stms: Arc::new(vec![]),
+            }),
+            body: termination_stm,
+            local_decls: Arc::new(termination_decls),
+            statics: Arc::new(vec![]),
+            reqs: Arc::new(vec![]),
+            mask_set: Arc::new(crate::inv_masks::MaskSet::empty()),
+        };
+        Some(termination_check)
+    } else {
+        None
+    };
+
+    Ok((check_state.fun_ssts, FuncSpecBodySst { decrease_when, termination_check, body_exp }))
 }
 
 fn req_ens_to_sst(
@@ -332,13 +344,12 @@ pub fn func_axioms_to_sst(
     public_body: bool,
     not_verifying_owning_bucket: bool,
 ) -> Result<(SstMap, FuncAxiomsSst), VirErr> {
-    let pars = params_to_pars(&function.x.params, true);
     match function.x.mode {
         Mode::Spec => {
             // Body
             if public_body {
                 if let Some(body) = &function.x.body {
-                    let (fun_ssts, func_def_sst) = func_body_to_sst(
+                    let (fun_ssts, func_check_sst) = func_body_to_sst(
                         ctx,
                         diagnostics,
                         fun_ssts,
@@ -347,8 +358,7 @@ pub fn func_axioms_to_sst(
                         not_verifying_owning_bucket,
                     )?;
                     let axioms = FuncAxiomsSst {
-                        pars: params_to_pars(&function.x.params, false),
-                        spec_axioms: Some(func_def_sst),
+                        spec_axioms: Some(func_check_sst),
                         proof_exec_axioms: None,
                     };
                     return Ok((fun_ssts, axioms));
@@ -363,7 +373,7 @@ pub fn func_axioms_to_sst(
                 // so we can just return here.
                 return Ok((
                     fun_ssts,
-                    FuncAxiomsSst { pars, spec_axioms: None, proof_exec_axioms: None },
+                    FuncAxiomsSst { spec_axioms: None, proof_exec_axioms: None },
                 ));
             }
             if let Some((params, req_ens)) = &function.x.broadcast_forall {
@@ -377,16 +387,13 @@ pub fn func_axioms_to_sst(
                     &params,
                     req_ens,
                 )?;
-                let axioms = FuncAxiomsSst {
-                    pars,
-                    spec_axioms: None,
-                    proof_exec_axioms: Some((params, exp)),
-                };
+                let axioms =
+                    FuncAxiomsSst { spec_axioms: None, proof_exec_axioms: Some((params, exp)) };
                 return Ok((fun_ssts, axioms));
             }
         }
     }
-    Ok((fun_ssts, FuncAxiomsSst { pars, spec_axioms: None, proof_exec_axioms: None }))
+    Ok((fun_ssts, FuncAxiomsSst { spec_axioms: None, proof_exec_axioms: None }))
 }
 
 pub(crate) fn map_expr_rename_vars(
@@ -412,7 +419,7 @@ pub fn func_def_to_sst(
     diagnostics: &impl air::messages::Diagnostics,
     fun_ssts: SstMap,
     function: &Function,
-) -> Result<(SstMap, FuncDefSst), VirErr> {
+) -> Result<(SstMap, FuncCheckSst), VirErr> {
     let body = match &function.x.body {
         Some(body) => body,
         _ => {
@@ -619,7 +626,7 @@ pub fn func_def_to_sst(
 
     Ok((
         fun_ssts,
-        FuncDefSst {
+        FuncCheckSst {
             reqs: Arc::new(reqs),
             post_condition: Arc::new(PostConditionSst {
                 dest,
@@ -636,20 +643,31 @@ pub fn func_def_to_sst(
 }
 
 pub fn function_to_sst(ctx: &Ctx, function: &Function) -> FunctionSst {
+    let vis = function.x.visibility.clone();
+    let restricted_to = if function.x.publish.is_none() {
+        // private to owning_module
+        function.x.owning_module.clone()
+    } else {
+        // public
+        None
+    };
+    let vis_abs = crate::ast::Visibility { restricted_to, ..vis };
+
     let has = FunctionSstHas {
         has_body: function.x.body.is_some(),
         has_fuel: function.x.fuel > 0,
         has_requires: function.x.require.len() > 0,
         has_ensures: function.x.ensure.len() > 0,
         has_decrease: function.x.decrease.len() > 0,
-        has_decrease_by: function.x.decrease_by.is_some(),
         has_mask_spec: function.x.mask_spec.is_some(),
         has_return_name: function.x.has_return_name(),
         is_recursive: crate::recursion::fun_is_recursive(ctx, function),
     };
+
     let functionx = FunctionSstX {
         name: function.x.name.clone(),
         kind: function.x.kind.clone(),
+        vis_abs,
         mode: function.x.mode,
         typ_params: function.x.typ_params.clone(),
         typ_bounds: function.x.typ_bounds.clone(),

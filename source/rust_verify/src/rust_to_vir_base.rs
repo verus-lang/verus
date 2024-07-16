@@ -24,8 +24,8 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    GenericBoundX, Idents, ImplPath, IntRange, Path, PathX, Primitive, Typ, TypX, Typs, VarIdent,
-    VirErr, VirErrAs,
+    GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Path, PathX, Primitive, Typ,
+    TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -562,6 +562,21 @@ pub(crate) fn get_range(typ: &Typ) -> IntRange {
     }
 }
 
+pub(crate) fn bitwidth_and_signedness_of_integer_type<'tcx>(
+    verus_items: &crate::verus_items::VerusItems,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> (Option<IntegerTypeBitwidth>, bool) {
+    match mk_range(verus_items, &ty) {
+        IntRange::U(w) => (Some(IntegerTypeBitwidth::Width(w)), false),
+        IntRange::I(w) => (Some(IntegerTypeBitwidth::Width(w)), true),
+        IntRange::USize => (Some(IntegerTypeBitwidth::ArchWordSize), false),
+        IntRange::ISize => (Some(IntegerTypeBitwidth::ArchWordSize), true),
+        IntRange::Nat => (None, false),
+        IntRange::Int => (None, true),
+        IntRange::Char => panic!("bitwidth_and_signedness_of_integer_type did not expect char"),
+    }
+}
+
 pub(crate) fn mk_range<'tcx>(
     verus_items: &crate::verus_items::VerusItems,
     ty: &rustc_middle::ty::Ty<'tcx>,
@@ -589,25 +604,6 @@ pub(crate) fn mk_range<'tcx>(
         TyKind::Int(rustc_middle::ty::IntTy::I128) => IntRange::I(128),
         TyKind::Int(rustc_middle::ty::IntTy::Isize) => IntRange::ISize,
         _ => panic!("mk_range {:?}", ty),
-    }
-}
-
-pub(crate) fn ty_is_global_allocator<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    ty: &rustc_middle::ty::Ty<'tcx>,
-) -> bool {
-    match ty.kind() {
-        TyKind::Adt(AdtDef(adt_def_data), args) => {
-            let did = adt_def_data.did;
-            let rust_item = verus_items::get_rust_item(tcx, did);
-            if let Some(RustItem::AllocGlobal) = rust_item {
-                assert!(args.len() == 0);
-                true
-            } else {
-                false
-            }
-        }
-        _ => false,
     }
 }
 
@@ -803,11 +799,11 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Char => (Arc::new(TypX::Int(IntRange::Char)), false),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
             let (t0, ghost) = t_rec(tys)?;
-            (Arc::new(TypX::Decorate(TypDecoration::Ref, t0.clone())), ghost)
+            (Arc::new(TypX::Decorate(TypDecoration::Ref, None, t0.clone())), ghost)
         }
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
             let (t0, ghost) = t_rec(tys)?;
-            (Arc::new(TypX::Decorate(TypDecoration::MutRef, t0.clone())), ghost)
+            (Arc::new(TypX::Decorate(TypDecoration::MutRef, None, t0.clone())), ghost)
         }
         TyKind::Param(param) if param.name == kw::SelfUpper => {
             (Arc::new(TypX::TypParam(vir::def::trait_self_type_param())), false)
@@ -818,7 +814,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Never => {
             // All types are inhabited in SMT; we pick an arbitrary inhabited type for Never
             let tuple0 = Arc::new(TypX::Tuple(Arc::new(vec![])));
-            (Arc::new(TypX::Decorate(TypDecoration::Never, tuple0)), false)
+            (Arc::new(TypX::Decorate(TypDecoration::Never, None, tuple0)), false)
         }
         TyKind::Tuple(_) => {
             let mut typs: Vec<Typ> = Vec::new();
@@ -839,7 +835,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
 
             let typ = Arc::new(TypX::Primitive(Primitive::Ptr, typs));
             let dec_typ = match mutbl {
-                Mutability::Not => Arc::new(TypX::Decorate(TypDecoration::ConstPtr, typ)),
+                Mutability::Not => Arc::new(TypX::Decorate(TypDecoration::ConstPtr, None, typ)),
                 Mutability::Mut => typ,
             };
             (dec_typ, false)
@@ -859,6 +855,15 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             } else if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Nat)) = verus_item {
                 (Arc::new(TypX::Int(IntRange::Nat)), false)
             } else {
+                let rust_item = verus_items::get_rust_item(tcx, did);
+
+                if let Some(RustItem::AllocGlobal) = rust_item {
+                    return Ok((
+                        Arc::new(TypX::Primitive(Primitive::Global, Arc::new(vec![]))),
+                        false,
+                    ));
+                }
+
                 let mut typ_args: Vec<(Typ, bool)> = Vec::new();
                 for arg in args.iter() {
                     match arg.unpack() {
@@ -873,41 +878,38 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 }
                 if Some(did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
                     let (t0, ghost) = &typ_args[0];
-
-                    let allocator_arg = match args[1].unpack() {
-                        rustc_middle::ty::GenericArgKind::Type(t) => t,
-                        _ => {
-                            panic!("Box expected type arg");
-                        }
-                    };
-                    if !ty_is_global_allocator(tcx, &allocator_arg) {
-                        unsupported_err!(span, "Box with allocator other than Global")
-                    }
-                    return Ok((Arc::new(TypX::Decorate(TypDecoration::Box, t0.clone())), *ghost));
+                    let alloc_dec = Some(TypDecorationArg { allocator_typ: typ_args[1].0.clone() });
+                    return Ok((
+                        Arc::new(TypX::Decorate(TypDecoration::Box, alloc_dec, t0.clone())),
+                        *ghost,
+                    ));
                 }
                 if typ_args.len() >= 1 {
                     let (t0, ghost) = &typ_args[0];
-                    let decorate = |d: TypDecoration, ghost: bool| {
-                        Ok((Arc::new(TypX::Decorate(d, t0.clone())), ghost))
+                    let decorate = |d: TypDecoration, darg, ghost: bool| {
+                        Ok((Arc::new(TypX::Decorate(d, darg, t0.clone())), ghost))
                     };
                     let verus_item = verus_items.id_to_name.get(&did);
-                    let rust_item = verus_items::get_rust_item(tcx, did);
                     match (verus_item, rust_item) {
                         (Some(VerusItem::BuiltinType(BuiltinTypeItem::Ghost)), _) => {
                             assert!(typ_args.len() == 1);
-                            return decorate(TypDecoration::Ghost, true);
+                            return decorate(TypDecoration::Ghost, None, true);
                         }
                         (Some(VerusItem::BuiltinType(BuiltinTypeItem::Tracked)), _) => {
                             assert!(typ_args.len() == 1);
-                            return decorate(TypDecoration::Tracked, true);
+                            return decorate(TypDecoration::Tracked, None, true);
                         }
                         (_, Some(RustItem::Rc)) => {
                             assert!(typ_args.len() == 2);
-                            return decorate(TypDecoration::Rc, *ghost);
+                            let alloc_dec =
+                                Some(TypDecorationArg { allocator_typ: typ_args[1].0.clone() });
+                            return decorate(TypDecoration::Rc, alloc_dec, *ghost);
                         }
                         (_, Some(RustItem::Arc)) => {
                             assert!(typ_args.len() == 2);
-                            return decorate(TypDecoration::Arc, *ghost);
+                            let alloc_dec =
+                                Some(TypDecorationArg { allocator_typ: typ_args[1].0.clone() });
+                            return decorate(TypDecoration::Arc, alloc_dec, *ghost);
                         }
                         _ => {}
                     }

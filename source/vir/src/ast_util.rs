@@ -1,9 +1,9 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Fun,
     FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp, IntRange,
-    ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
-    TriggerAnnotation, Typ, TypDecoration, TypX, Typs, UnaryOp, VarBinder, VarBinderX, VarBinders,
-    VarIdent, Variant, Variants, Visibility,
+    IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant,
+    SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
+    VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -71,7 +71,19 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
             path1 == path2 && n_types_equal(ts1, ts2)
         }
         (TypX::Primitive(p1, ts1), TypX::Primitive(p2, ts2)) => p1 == p2 && n_types_equal(ts1, ts2),
-        (TypX::Decorate(d1, t1), TypX::Decorate(d2, t2)) => d1 == d2 && types_equal(t1, t2),
+        (TypX::Decorate(d1, a1, t1), TypX::Decorate(d2, a2, t2)) => {
+            d1 == d2
+                && types_equal(t1, t2)
+                && (match (a1, a2) {
+                    (None, None) => true,
+                    (
+                        Some(TypDecorationArg { allocator_typ: at1 }),
+                        Some(TypDecorationArg { allocator_typ: at2 }),
+                    ) => types_equal(at1, at2),
+                    (Some(..), None) => false,
+                    (None, Some(..)) => false,
+                })
+        }
         (TypX::Boxed(t1), TypX::Boxed(t2)) => types_equal(t1, t2),
         (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
         (
@@ -104,7 +116,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::AnonymousClosure(_, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
         (TypX::Primitive(_, _), _) => false,
-        (TypX::Decorate(_, _), _) => false,
+        (TypX::Decorate(..), _) => false,
         (TypX::Boxed(_), _) => false,
         (TypX::TypParam(_), _) => false,
         (TypX::Projection { .. }, _) => false,
@@ -121,7 +133,7 @@ pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
 
 pub fn typ_args_for_datatype_typ(typ: &Typ) -> &Typs {
     match &**typ {
-        TypX::Decorate(_, t) => typ_args_for_datatype_typ(t),
+        TypX::Decorate(_, _, t) => typ_args_for_datatype_typ(t),
         TypX::Datatype(_, args, _) => args,
         _ => {
             panic!("typ_args_for_datatype_typ expected datatype type");
@@ -173,7 +185,7 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
 }
 
 pub fn undecorate_typ(typ: &Typ) -> Typ {
-    if let TypX::Decorate(_, t) = &**typ { undecorate_typ(t) } else { typ.clone() }
+    if let TypX::Decorate(_, _, t) = &**typ { undecorate_typ(t) } else { typ.clone() }
 }
 
 pub fn allowed_bitvector_type(typ: &Typ) -> bool {
@@ -182,6 +194,15 @@ pub fn allowed_bitvector_type(typ: &Typ) -> bool {
         TypX::Int(IntRange::U(_) | IntRange::I(_) | IntRange::USize | IntRange::ISize) => true,
         TypX::Boxed(typ) => allowed_bitvector_type(typ),
         _ => false,
+    }
+}
+
+pub fn is_integer_type_signed(typ: &Typ) -> bool {
+    match &*undecorate_typ(typ) {
+        TypX::Int(IntRange::U(_) | IntRange::USize | IntRange::Nat) => false,
+        TypX::Int(IntRange::I(_) | IntRange::ISize | IntRange::Int) => true,
+        TypX::Boxed(typ) => is_integer_type_signed(typ),
+        _ => panic!("is_integer_type_signed expected integer type"),
     }
 }
 
@@ -199,12 +220,6 @@ pub fn int_range_from_type(typ: &Typ) -> Option<IntRange> {
         TypX::Boxed(typ) => int_range_from_type(typ),
         _ => None,
     }
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub enum IntegerTypeBitwidth {
-    Width(u32),
-    ArchWordSize,
 }
 
 impl fmt::Display for IntegerTypeBitwidth {
@@ -241,22 +256,6 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<IntegerTypeBitwidth> {
         TypX::Boxed(in_et) => bitwidth_from_type(&*in_et),
         _ => None,
     }
-}
-
-pub(crate) fn fixed_integer_const(n: &String, typ: &Typ) -> bool {
-    let typ = undecorate_typ(typ);
-    if let TypX::Int(IntRange::U(bits)) = &*typ {
-        if let Ok(u) = n.parse::<u128>() {
-            return *bits == 128 || u < 2u128 << bits;
-        }
-    }
-    if let TypX::Int(IntRange::I(bits)) = &*typ {
-        if let Ok(i) = n.parse::<i128>() {
-            return *bits == 128
-                || -((2u128 << (bits - 1)) as i128) <= i && i < (2u128 << (bits - 1)) as i128;
-        }
-    }
-    false
 }
 
 impl IntRange {
@@ -647,6 +646,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 crate::ast::Primitive::Slice => format!("[{typs_str}]"),
                 crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
                 crate::ast::Primitive::Ptr => format!("*mut {typs_str}"),
+                crate::ast::Primitive::Global => format!("Global"),
             }
         }
         TypX::Datatype(path, typs, _) => format!(
@@ -658,13 +658,13 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 format!("")
             }
         ),
-        TypX::Decorate(TypDecoration::Ref, typ) => {
+        TypX::Decorate(TypDecoration::Ref, _, typ) => {
             format!("&{}", typ_to_diagnostic_str(typ))
         }
-        TypX::Decorate(TypDecoration::MutRef, typ) => {
+        TypX::Decorate(TypDecoration::MutRef, _, typ) => {
             format!("&mut {}", typ_to_diagnostic_str(typ))
         }
-        TypX::Decorate(TypDecoration::ConstPtr, typ) => match &**typ {
+        TypX::Decorate(TypDecoration::ConstPtr, _, typ) => match &**typ {
             TypX::Primitive(crate::ast::Primitive::Ptr, typs) => {
                 format!("*const {}", typ_to_diagnostic_str(&typs[0]))
             }
@@ -672,17 +672,23 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 format!("[Internal Error *const decoration] {}", typ_to_diagnostic_str(typ))
             }
         },
-        TypX::Decorate(
-            decoration @ (TypDecoration::Box
-            | TypDecoration::Rc
-            | TypDecoration::Arc
-            | TypDecoration::Ghost
-            | TypDecoration::Tracked),
-            typ,
-        ) => {
+        TypX::Decorate(decoration @ (TypDecoration::Ghost | TypDecoration::Tracked), _, typ) => {
             format!("{:?}<{}>", decoration, typ_to_diagnostic_str(typ))
         }
-        TypX::Decorate(TypDecoration::Never, _typ) => {
+        TypX::Decorate(
+            decoration @ (TypDecoration::Box | TypDecoration::Rc | TypDecoration::Arc),
+            arg,
+            typ,
+        ) => {
+            let allocator = match arg {
+                Some(TypDecorationArg { allocator_typ }) => {
+                    format!(", {}", typ_to_diagnostic_str(allocator_typ))
+                }
+                _ => "".to_string(),
+            };
+            format!("{:?}<{}{}>", decoration, typ_to_diagnostic_str(typ), allocator)
+        }
+        TypX::Decorate(TypDecoration::Never, _, _typ) => {
             format!("!")
         }
         TypX::Boxed(typ) => typ_to_diagnostic_str(typ),

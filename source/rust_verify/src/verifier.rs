@@ -8,7 +8,7 @@ use crate::util::error;
 use crate::verus_items::VerusItems;
 use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
-use air::context::{QueryContext, ValidityResult};
+use air::context::{QueryContext, SmtSolver, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
@@ -242,12 +242,12 @@ pub struct BucketStats {
     /// total time to verify the bucket
     pub time_verify: Duration,
     /// total rlimit count for the bucket
-    pub rlimit_count: u64,
+    pub rlimit_count: Option<u64>,
 }
 
 pub struct FunctionSmtStats {
     pub smt_time: Duration,
-    pub rlimit_count: u64,
+    pub rlimit_count: Option<u64>,
 }
 
 pub struct Verifier {
@@ -257,6 +257,8 @@ pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
     pub count_errors: u64,
+    /// Functions that failed to verify
+    pub func_fails: HashSet<Fun>,
     pub args: Args,
     pub user_filter: Option<UserFilter>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
@@ -385,7 +387,7 @@ impl std::ops::Add for RunCommandQueriesResult {
 struct VerifyBucketOut {
     time_smt_init: Duration,
     time_smt_run: Duration,
-    rlimit_count: u64,
+    rlimit_count: Option<u64>,
 }
 
 impl Verifier {
@@ -395,6 +397,7 @@ impl Verifier {
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
+            func_fails: HashSet::new(),
             args,
             user_filter: None,
             erasure_hints: None,
@@ -429,6 +432,7 @@ impl Verifier {
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
+            func_fails: HashSet::new(),
             args: self.args.clone(),
             user_filter: self.user_filter.clone(),
             erasure_hints: self.erasure_hints.clone(),
@@ -459,6 +463,7 @@ impl Verifier {
     pub fn merge(&mut self, other: Self) {
         self.count_verified += other.count_verified;
         self.count_errors += other.count_errors;
+        self.func_fails.extend(other.func_fails);
         self.time_vir += other.time_vir;
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
         self.bucket_stats.extend(other.bucket_stats);
@@ -777,6 +782,7 @@ impl Verifier {
                 ValidityResult::Canceled => {
                     if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
+                        self.func_fails.insert(context.fun.clone());
                         invalidity = true;
                     }
                     if self.expand_flag {
@@ -821,6 +827,7 @@ impl Verifier {
 
                     if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
+                        self.func_fails.insert(context.fun.clone());
                         invalidity = true;
                         if let Some(hint) = hint_upon_failure.take() {
                             reporter.report_as(&hint.to_any(), MessageLevel::Note);
@@ -1049,7 +1056,8 @@ impl Verifier {
         prelude_config: vir::prelude::PreludeConfig,
         profile_file_name: Option<&std::path::PathBuf>,
     ) -> Result<air::context::Context, VirErr> {
-        let mut air_context = air::context::Context::new(message_interface.clone());
+        let mut air_context =
+            air::context::Context::new(message_interface.clone(), self.args.solver);
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debugger);
         if let Some(profile_file_name) = profile_file_name {
@@ -1143,6 +1151,7 @@ impl Verifier {
         context_counter: usize,
         span: &vir::messages::Span,
         profile_file_name: Option<&std::path::PathBuf>,
+        spinoff_reason: &str,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             message_interface.clone(),
@@ -1150,12 +1159,14 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_file_name,
         )?;
 
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
+        air_context.blank_line();
+        air_context.comment(&format!("query spun off because: {}", spinoff_reason));
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
@@ -1251,16 +1262,22 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
-            air_context.set_expected_solver_version(crate::consts::EXPECTED_Z3_VERSION.to_string());
+            air_context.set_expected_solver_version(match self.args.solver {
+                air::context::SmtSolver::Z3 => crate::consts::EXPECTED_Z3_VERSION.to_string(),
+                air::context::SmtSolver::Cvc5 => crate::consts::EXPECTED_CVC5_VERSION.to_string(),
+            });
         }
 
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
-        let mut spunoff_rlimit_count = 0;
+        let mut spunoff_rlimit_count: Option<u64> = match self.args.solver {
+            SmtSolver::Z3 => Some(0),
+            SmtSolver::Cvc5 => None,
+        };
 
         let module = &ctx.module_path();
         air_context.blank_line();
@@ -1406,7 +1423,7 @@ impl Verifier {
                         commands_with_context_list,
                         snap_map,
                         profile_rerun,
-                        func_def_sst,
+                        func_check_sst,
                     } => {
                         let level = match query_op {
                             QueryOp::SpecTermination => MessageLevel::Error,
@@ -1426,7 +1443,10 @@ impl Verifier {
                         let mut failed_assert_ids = vec![];
                         let mut func_curr_smt_time = Duration::ZERO;
 
-                        let mut func_curr_smt_rlimit_count = 0;
+                        let mut func_curr_smt_rlimit_count = match self.args.solver {
+                            air::context::SmtSolver::Z3 => Some(0),
+                            air::context::SmtSolver::Cvc5 => None,
+                        };
                         for cmds in commands_with_context_list.iter() {
                             if is_recommend && cmds.skip_recommends {
                                 continue;
@@ -1467,6 +1487,17 @@ impl Verifier {
                             };
 
                             let mut query_air_context = if do_spinoff {
+                                let spinoff_reason = if cmds.prover_choice
+                                    == vir::def::ProverChoice::Nonlinear
+                                {
+                                    "nonlinear"
+                                } else if cmds.prover_choice == vir::def::ProverChoice::BitVector {
+                                    "bitvector"
+                                } else if *profile_rerun {
+                                    "profile_rerun"
+                                } else {
+                                    "spinoff_all"
+                                };
                                 spinoff_z3_context = self.new_air_context_with_bucket_context(
                                     message_interface.clone(),
                                     function_opgen.ctx(),
@@ -1483,6 +1514,7 @@ impl Verifier {
                                     spinoff_context_counter,
                                     &cmds.context.span,
                                     profile_file_name.as_ref(),
+                                    spinoff_reason,
                                 )?;
                                 // for bitvector, only one query, no push/pop
                                 if cmds.prover_choice == vir::def::ProverChoice::BitVector {
@@ -1521,13 +1553,24 @@ impl Verifier {
                             );
                             func_curr_smt_time +=
                                 query_air_context.get_time().1 - iter_curr_smt_time;
-                            func_curr_smt_rlimit_count +=
-                                query_air_context.get_rlimit_count() - iter_curr_smt_rlimit_count;
+                            if let Some(func_curr_smt_rlimit_count) =
+                                &mut func_curr_smt_rlimit_count
+                            {
+                                *func_curr_smt_rlimit_count += query_air_context
+                                    .get_rlimit_count()
+                                    .expect("rlimit count in query context")
+                                    - iter_curr_smt_rlimit_count
+                                        .expect("rlimit count in query context");
+                            }
                             if do_spinoff {
                                 let (time_smt_init, time_smt_run) = query_air_context.get_time();
                                 spunoff_time_smt_init += time_smt_init;
                                 spunoff_time_smt_run += time_smt_run;
-                                spunoff_rlimit_count += query_air_context.get_rlimit_count();
+                                if let Some(spunoff_rlimit_count) = &mut spunoff_rlimit_count {
+                                    *spunoff_rlimit_count += query_air_context
+                                        .get_rlimit_count()
+                                        .expect("rlimit count in query context");
+                                }
                             }
                             if function.x.attrs.rlimit.is_some() {
                                 self.set_default_rlimit(&mut query_air_context);
@@ -1655,7 +1698,7 @@ impl Verifier {
                                         commands_with_context_list.clone(),
                                         snap_map.clone(),
                                         function,
-                                        func_def_sst.clone(),
+                                        func_check_sst.clone(),
                                     );
                                     flush_diagnostics_to_report = true;
                                 }
@@ -1667,10 +1710,17 @@ impl Verifier {
                             let func_time =
                                 self.func_times.entry(bucket_id.clone()).or_insert(HashMap::new());
                             let func_stats = func_time.entry(function.x.name.clone()).or_insert(
-                                FunctionSmtStats { smt_time: Duration::ZERO, rlimit_count: 0 },
+                                FunctionSmtStats {
+                                    smt_time: Duration::ZERO,
+                                    rlimit_count: matches!(self.args.solver, SmtSolver::Z3)
+                                        .then(|| 0),
+                                },
                             );
                             func_stats.smt_time += func_curr_smt_time;
-                            func_stats.rlimit_count += func_curr_smt_rlimit_count;
+                            if let Some(rlimit_count) = &mut func_stats.rlimit_count {
+                                *rlimit_count += func_curr_smt_rlimit_count
+                                    .expect("current rlimit count should be present");
+                            }
                         }
 
                         if matches!(query_op, QueryOp::Body(Style::Normal)) {
@@ -1799,7 +1849,9 @@ impl Verifier {
         Ok(VerifyBucketOut {
             time_smt_init: time_smt_init + spunoff_time_smt_init,
             time_smt_run: time_smt_run + spunoff_time_smt_run,
-            rlimit_count: rlimit_count + spunoff_rlimit_count,
+            rlimit_count: rlimit_count.map(|rlimit_count| {
+                rlimit_count + spunoff_rlimit_count.expect("spunoff rlimit count should be present")
+            }),
         })
     }
 
@@ -1911,6 +1963,7 @@ impl Verifier {
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(call_graph_log)),
+            self.args.solver,
             false,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;

@@ -239,31 +239,27 @@ pub struct FuncDeclSst {
     pub fndef_axioms: Exps,
 }
 
-#[derive(Debug)]
-pub struct FuncBodySst {
-    pub pars: Pars,
-    pub decrease_when: Option<Exp>,
-    pub termination_decls: Arc<Vec<LocalDecl>>,
-    pub termination_stm: Stm,
-    pub is_recursive: bool,
-    pub body_exp: Exp,
-}
-
-#[derive(Debug)]
-pub struct FuncAxiomsSst {
-    pub pars: Pars,
-    pub spec_axioms: Option<FuncBodySst>,
-    pub proof_exec_axioms: Option<(Pars, Exp)>,
-}
-
 #[derive(Debug, Clone)]
-pub struct FuncDefSst {
+pub struct FuncCheckSst {
     pub reqs: Exps,
     pub post_condition: Arc<PostConditionSst>,
     pub mask_set: Arc<crate::inv_masks::MaskSet>, // Actually AIR
     pub body: Stm,
     pub local_decls: Arc<Vec<LocalDecl>>,
     pub statics: Arc<Vec<Fun>>,
+}
+
+#[derive(Debug)]
+pub struct FuncSpecBodySst {
+    pub decrease_when: Option<Exp>,
+    pub termination_check: Option<FuncCheckSst>,
+    pub body_exp: Exp,
+}
+
+#[derive(Debug)]
+pub struct FuncAxiomsSst {
+    pub spec_axioms: Option<FuncSpecBodySst>,
+    pub proof_exec_axioms: Option<(Pars, Exp)>,
 }
 
 #[derive(Debug, Clone)]
@@ -273,7 +269,6 @@ pub struct FunctionSstHas {
     pub has_requires: bool,
     pub has_ensures: bool,
     pub has_decrease: bool,
-    pub has_decrease_by: bool,
     pub has_mask_spec: bool,
     pub has_return_name: bool,
     pub is_recursive: bool,
@@ -284,6 +279,7 @@ pub type FunctionSst = Arc<Spanned<FunctionSstX>>;
 pub struct FunctionSstX {
     pub name: Fun,
     pub kind: crate::ast::FunctionKind,
+    pub vis_abs: crate::ast::Visibility,
     pub mode: crate::ast::Mode,
     pub typ_params: crate::ast::Idents,
     pub typ_bounds: crate::ast::GenericBounds,

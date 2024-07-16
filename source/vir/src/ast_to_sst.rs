@@ -17,8 +17,7 @@ use crate::sst::{
     Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_conjoin, sst_int_literal, sst_le,
-    sst_lt,
+    free_vars_exp, free_vars_stm, sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::triggers::{typ_boxing, TriggerBoxing};
@@ -1426,10 +1425,10 @@ pub(crate) fn expr_to_stm_opt(
                     if let BinaryOp::Bitwise(bitwise, mode) = op {
                         match (*mode, state.checking_bounds_for_mode(ctx, *mode), bitwise) {
                             (_, false, _) => {}
-                            (Mode::Exec, true, BitwiseOp::Shr | BitwiseOp::Shl) => {
+                            (Mode::Exec, true, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
                                 let zero = sst_int_literal(&expr.span, 0);
-                                let bitwidth =
-                                    bitwidth_sst_from_typ(&expr.span, &e1.typ, &ctx.global.arch);
+                                let bitwidth = sst_bitwidth(&expr.span, w, &ctx.global.arch);
+
                                 let assert_exp = sst_conjoin(
                                     &expr.span,
                                     &vec![
@@ -1445,7 +1444,11 @@ pub(crate) fn expr_to_stm_opt(
                                 let assert = Spanned::new(expr.span.clone(), assert);
                                 stms1.push(assert);
                             }
-                            (Mode::Proof | Mode::Spec, true, BitwiseOp::Shr | BitwiseOp::Shl) => {}
+                            (
+                                Mode::Proof | Mode::Spec,
+                                true,
+                                BitwiseOp::Shr(..) | BitwiseOp::Shl(..),
+                            ) => {}
                             (_, true, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                                 // no overflow check needed
                             }
@@ -2502,7 +2505,7 @@ fn closure_emit_postconditions(
 fn get_inv_typ_args(typ: &Typ) -> Typs {
     match &**typ {
         TypX::Datatype(_, typs, _) => typs.clone(),
-        TypX::Decorate(_, typ) | TypX::Boxed(typ) => get_inv_typ_args(typ),
+        TypX::Decorate(_, _, typ) | TypX::Boxed(typ) => get_inv_typ_args(typ),
         _ => {
             panic!("get_inv_typ_args failed, expected some Invariant type");
         }

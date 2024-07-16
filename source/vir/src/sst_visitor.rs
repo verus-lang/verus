@@ -1,8 +1,8 @@
 use crate::ast::{BinaryOpr, NullaryOpr, SpannedTyped, Typ, UnaryOpr, VarBinder, VarIdent, VirErr};
 use crate::def::Spanned;
 use crate::sst::{
-    Bnd, BndX, Dest, Exp, ExpX, FuncAxiomsSst, FuncBodySst, FuncDeclSst, FuncDefSst, LocalDecl,
-    LocalDeclX, LoopInv, Par, ParX, PostConditionSst, Stm, StmX, Trigs, UniqueIdent,
+    Bnd, BndX, Dest, Exp, ExpX, FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst,
+    LocalDecl, LocalDeclX, LoopInv, Par, ParX, PostConditionSst, Stm, StmX, Trigs, UniqueIdent,
 };
 pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
 use air::ast::Binder;
@@ -569,25 +569,34 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         })
     }
 
-    fn visit_func_body(&mut self, decl: &FuncBodySst) -> Result<R::Ret<FuncBodySst>, Err> {
-        let pars = self.visit_pars(&decl.pars)?;
-        let decrease_when = R::map_opt(&decl.decrease_when, &mut |e| self.visit_exp(e))?;
-        let termination_decls =
-            R::map_vec(&decl.termination_decls, &mut |decl| self.visit_local_decl(decl))?;
-        let termination_stm = self.visit_stm(&decl.termination_stm)?;
-        let body_exp = self.visit_exp(&decl.body_exp)?;
-        R::ret(|| FuncBodySst {
-            pars: R::get_vec_a(pars),
+    fn visit_func_check(&mut self, def: &FuncCheckSst) -> Result<R::Ret<FuncCheckSst>, Err> {
+        let reqs = self.visit_exps(&def.reqs)?;
+        let post_condition = self.visit_postcondition(&def.post_condition)?;
+        let body = self.visit_stm(&def.body)?;
+        let local_decls = R::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
+        R::ret(|| FuncCheckSst {
+            reqs: R::get_vec_a(reqs),
+            post_condition: Arc::new(R::get(post_condition)),
+            mask_set: def.mask_set.clone(),
+            body: R::get(body),
+            local_decls: R::get_vec_a(local_decls),
+            statics: def.statics.clone(),
+        })
+    }
+
+    fn visit_func_body(&mut self, spec: &FuncSpecBodySst) -> Result<R::Ret<FuncSpecBodySst>, Err> {
+        let decrease_when = R::map_opt(&spec.decrease_when, &mut |e| self.visit_exp(e))?;
+        let termination_check =
+            R::map_opt(&spec.termination_check, &mut |c| self.visit_func_check(c))?;
+        let body_exp = self.visit_exp(&spec.body_exp)?;
+        R::ret(|| FuncSpecBodySst {
             decrease_when: R::get_opt(decrease_when),
-            termination_decls: R::get_vec_a(termination_decls),
-            termination_stm: R::get(termination_stm),
-            is_recursive: decl.is_recursive,
+            termination_check: R::get_opt(termination_check),
             body_exp: R::get(body_exp),
         })
     }
 
     fn visit_func_axioms(&mut self, axioms: &FuncAxiomsSst) -> Result<R::Ret<FuncAxiomsSst>, Err> {
-        let pars = self.visit_pars(&axioms.pars)?;
         let spec_axioms = R::map_opt(&axioms.spec_axioms, &mut |f| self.visit_func_body(f))?;
         let proof_exec_axioms = R::map_opt(&axioms.proof_exec_axioms, &mut |(pars, exp)| {
             let pars = self.visit_pars(&pars)?;
@@ -595,24 +604,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             R::ret(|| (R::get_vec_a(pars), R::get(exp)))
         })?;
         R::ret(|| FuncAxiomsSst {
-            pars: R::get_vec_a(pars),
             spec_axioms: R::get_opt(spec_axioms),
             proof_exec_axioms: R::get_opt(proof_exec_axioms),
-        })
-    }
-
-    fn visit_func_def(&mut self, def: &FuncDefSst) -> Result<R::Ret<FuncDefSst>, Err> {
-        let reqs = self.visit_exps(&def.reqs)?;
-        let post_condition = self.visit_postcondition(&def.post_condition)?;
-        let body = self.visit_stm(&def.body)?;
-        let local_decls = R::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
-        R::ret(|| FuncDefSst {
-            reqs: R::get_vec_a(reqs),
-            post_condition: Arc::new(R::get(post_condition)),
-            mask_set: def.mask_set.clone(),
-            body: R::get(body),
-            local_decls: R::get_vec_a(local_decls),
-            statics: def.statics.clone(),
         })
     }
 }

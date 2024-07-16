@@ -248,6 +248,26 @@ impl Parser {
                             _ => None,
                         }
                     }
+                    Node::List(nodes)
+                        if nodes.len() == 3
+                            && nodes[0] == Node::Atom("_".to_string())
+                            && (nodes[1] == Node::Atom("zero_extend".to_string())
+                                || nodes[1] == Node::Atom("sign_extend".to_string())) =>
+                    {
+                        match &nodes[2] {
+                            Node::Atom(s2) => match s2.parse::<u32>() {
+                                Ok(n) => {
+                                    if nodes[1] == Node::Atom("zero_extend".to_string()) {
+                                        Some(UnaryOp::BitZeroExtend(n))
+                                    } else {
+                                        Some(UnaryOp::BitSignExtend(n))
+                                    }
+                                }
+                                _ => None,
+                            },
+                            _ => None,
+                        }
+                    }
                     _ => None,
                 };
                 let bop = match &nodes[0] {
