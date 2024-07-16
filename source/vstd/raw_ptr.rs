@@ -415,7 +415,7 @@ pub broadcast group group_raw_ptr_axioms {
 
 // Exposing provenance
 #[verifier::external_body]
-tracked struct IsExposed {}
+pub tracked struct IsExposed {}
 
 impl Clone for IsExposed {
     #[verifier::external_body]
@@ -432,11 +432,12 @@ impl Copy for IsExposed {
 }
 
 impl IsExposed {
-    pub spec fn view(self) -> Provenance;
+    pub open spec fn view(self) -> Provenance { self.provenance() }
+    pub spec fn provenance(self) -> Provenance;
 }
 
 #[verifier::external_body]
-fn expose_addr<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>)
+pub fn expose_provenance<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>)
     ensures
         provenance@@ == m@.provenance,
 {
@@ -445,7 +446,7 @@ fn expose_addr<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>)
 }
 
 #[verifier::external_body]
-fn from_exposed_addr<T: Sized>(addr: usize, Tracked(provenance): Tracked<IsExposed>) -> (p: *mut T)
+pub fn with_exposed_provenance<T: Sized>(addr: usize, Tracked(provenance): Tracked<IsExposed>) -> (p: *mut T)
     ensures
         p == ptr_mut_from_data::<T>(
             PtrData { addr: addr, provenance: provenance@, metadata: Metadata::Thin },
