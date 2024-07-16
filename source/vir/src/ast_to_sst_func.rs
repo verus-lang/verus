@@ -31,6 +31,7 @@ pub struct SstInline {
 
 pub struct SstInfo {
     pub(crate) inline: SstInline,
+    pub(crate) typ_params: Idents,
     pub(crate) params: Params,
     pub(crate) memoize: bool,
     pub(crate) body: Exp,
@@ -115,6 +116,7 @@ fn func_body_to_sst(
         SstInline { typ_params: function.x.typ_params.clone(), do_inline: function.x.attrs.inline };
     let info = SstInfo {
         inline,
+        typ_params: function.x.typ_params.clone(),
         params: function.x.params.clone(),
         memoize: function.x.attrs.memoize,
         body: body_exp.clone(),

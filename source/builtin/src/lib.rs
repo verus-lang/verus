@@ -1437,3 +1437,10 @@ pub const fn global_size_of<T>(_bytes: usize) {
 pub fn inline_air_stmt(_s: &str) {
     unimplemented!()
 }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::array_index"]
+#[verifier::spec]
+pub fn array_index<T, const N: usize>(_a: [T; N], _i: int) -> T {
+    unimplemented!()
+}

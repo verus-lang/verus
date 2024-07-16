@@ -12,7 +12,7 @@ use crate::ast::{
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner, is_visible_to_or_true};
 use crate::ast_visitor::VisitorScopeMap;
 use crate::datatype_to_air::is_datatype_transparent;
-use crate::def::{array_index_fun, fn_inv_name, fn_namespace_name, Spanned};
+use crate::def::{fn_inv_name, fn_namespace_name, Spanned};
 use crate::poly::MonoTyp;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -30,6 +30,7 @@ enum ReachedType {
     SpecFn(usize),
     Datatype(Path),
     StrSlice,
+    Array,
     Primitive,
 }
 
@@ -88,6 +89,7 @@ struct State {
     worklist_modules: Vec<Path>,
     mono_abstract_datatypes: HashSet<MonoTyp>,
     spec_fn_types: HashSet<usize>,
+    uses_array: bool,
     fndef_types: HashSet<Fun>,
 }
 
@@ -109,10 +111,10 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::ConstInt(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::Primitive(Primitive::StrSlice, _) => ReachedType::StrSlice,
-        TypX::Primitive(
-            Primitive::Array | Primitive::Slice | Primitive::Ptr | Primitive::Global,
-            _,
-        ) => ReachedType::Primitive,
+        TypX::Primitive(Primitive::Array, _) => ReachedType::Array,
+        TypX::Primitive(Primitive::Slice | Primitive::Ptr | Primitive::Global, _) => {
+            ReachedType::Primitive
+        }
     }
 }
 
@@ -344,9 +346,6 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             reach_function(ctxt, state, resolved);
                         }
                     }
-                    ExprX::ArrayLiteral(..) => {
-                        reach_function(ctxt, state, &array_index_fun(&ctxt.vstd_crate_name));
-                    }
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
                         // references to these particular names.
@@ -396,6 +395,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 }
                 ReachedType::SpecFn(arity) => {
                     state.spec_fn_types.insert(*arity);
+                }
+                ReachedType::Array => {
+                    state.uses_array = true;
                 }
                 ReachedType::StrSlice => {
                     let module_path = crate::def::strslice_module_path(&ctxt.vstd_crate_name);
@@ -543,7 +545,7 @@ pub fn prune_krate_for_module_or_krate(
     current_crate: Option<&Krate>,
     module: Option<Path>,
     fun: Option<&Fun>,
-) -> (Krate, Vec<MonoTyp>, Vec<usize>, Vec<Fun>) {
+) -> (Krate, Vec<MonoTyp>, Vec<usize>, bool, Vec<Fun>) {
     assert!(module.is_some() != current_crate.is_some());
 
     let mut root_modules: HashSet<Path> = HashSet::new();
@@ -940,5 +942,5 @@ pub fn prune_krate_for_module_or_krate(
     let mut mono_abstract_datatypes: Vec<MonoTyp> =
         state.mono_abstract_datatypes.into_iter().collect();
     mono_abstract_datatypes.sort();
-    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, fndef_types)
+    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, state.uses_array, fndef_types)
 }

@@ -183,6 +183,9 @@ pub const BIT_SHL: &str = "bitshl";
 pub const BIT_NOT: &str = "bitnot";
 pub const SINGULAR_MOD: &str = "singular_mod";
 
+pub const ARRAY_NEW: &str = "array_new";
+pub const ARRAY_INDEX: &str = "array_index";
+
 // List of QID suffixes we add to internally generated quantifiers
 pub const QID_BOX_AXIOM: &str = "box_axiom";
 pub const QID_UNBOX_AXIOM: &str = "unbox_axiom";
@@ -874,17 +877,10 @@ pub fn break_label(i: u64) -> Ident {
     Arc::new(format!("{}{}", PREFIX_BREAK_LABEL, i))
 }
 
-pub fn array_index_fun(vstd_crate_name: &Ident) -> Fun {
-    Arc::new(FunX { path: array_index_path(vstd_crate_name) })
-}
-
-pub fn array_index_path(vstd_crate_name: &Ident) -> Path {
+pub fn array_new_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
         krate: Some(vstd_crate_name.clone()),
-        segments: Arc::new(vec![
-            Arc::new("array".to_string()),
-            Arc::new("array_index".to_string()),
-        ]),
+        segments: Arc::new(vec![Arc::new("array".to_string()), Arc::new("array_new".to_string())]),
     })
 }
 

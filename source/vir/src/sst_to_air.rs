@@ -141,6 +141,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Bool => bool_typ(),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::SpecFn(..) => Arc::new(air::ast::TypX::Fun),
+        TypX::Primitive(Primitive::Array, _) => Arc::new(air::ast::TypX::Fun),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
@@ -159,11 +160,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::Primitive(
-            Primitive::Array
-            | Primitive::Slice
-            | Primitive::StrSlice
-            | Primitive::Ptr
-            | Primitive::Global,
+            Primitive::Slice | Primitive::StrSlice | Primitive::Ptr | Primitive::Global,
             _,
         ) => match typ_as_mono(typ) {
             None => panic!("should be boxed"),
@@ -411,6 +408,9 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::SpecFn(..) => {
             Some(expr_has_typ(&try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ))
         }
+        TypX::Primitive(Primitive::Array, _) => {
+            Some(expr_has_typ(&try_box(ctx, expr.clone(), typ).expect("try_box array"), typ))
+        }
         TypX::Datatype(path, _, _) => {
             if ctx.datatype_is_transparent[path] {
                 if ctx.datatypes_with_invariant.contains(path) {
@@ -484,6 +484,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
         TypX::Tuple(_) => None,
         TypX::SpecFn(typs, _) => Some(prefix_box(&prefix_spec_fn_type(typs.len()))),
+        TypX::Primitive(Primitive::Array, _) => Some(prefix_box(&crate::def::array_type())),
         TypX::AnonymousClosure(..) => unimplemented!(),
         TypX::Datatype(..) => {
             if let Some(prefix) = datatype_box_prefix(ctx, typ) {
@@ -520,6 +521,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
                 prefix_typ_as_mono(prefix_unbox, typ, "abstract datatype")
             }
         }
+        TypX::Primitive(Primitive::Array, _) => Some(prefix_unbox(&crate::def::array_type())),
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_unbox, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::UNBOX_FNDEF)),
         TypX::Tuple(_) => None,
@@ -794,6 +796,43 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::ExecFnByName(_fun) => {
             Arc::new(ExprX::Apply(str_ident(crate::def::FNDEF_SINGLETON), Arc::new(vec![])))
         }
+        ExpX::ArrayLiteral(es) => {
+            let mut exprs: Vec<Expr> = vec![];
+            for e in es.iter() {
+                exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
+            }
+            let typ = match &*exp.typ {
+                TypX::Decorate(_dec, _, t) => match &**t {
+                    TypX::Boxed(t) => match &**t {
+                        TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                        _ => {
+                            panic!("Failed to extract the array literal element type for {:?}", exp)
+                        }
+                    },
+                    _ => panic!(
+                        "Failed to extract the array literal element boxed type for {:?}",
+                        exp
+                    ),
+                },
+                TypX::Boxed(t) => match &**t {
+                    TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                    _ => panic!(
+                        "Failed to directly extract the array literal element type for {:?}",
+                        exp
+                    ),
+                },
+                _ => panic!(
+                    "Failed to extract the decorated array literal element type for {:?}",
+                    exp
+                ),
+            };
+            let mut args = typ_to_ids(&typ);
+            let len = mk_nat(es.len());
+            let array_lit = Arc::new(ExprX::Array(Arc::new(exprs)));
+            args.push(len);
+            args.push(array_lit);
+            str_apply(crate::def::ARRAY_NEW, &args)
+        }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)) => {
             str_apply(crate::def::CONST_INT, &vec![typ_to_id(c)])
         }
@@ -1006,6 +1045,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         exp_to_expr(ctx, rhs, expr_ctxt)?,
                     ]),
                 ),
+                BinaryOp::ArrayIndex => ExprX::ApplyFun(
+                    str_typ(POLY),
+                    exp_to_expr(ctx, lhs, expr_ctxt)?,
+                    Arc::new(vec![exp_to_expr(ctx, rhs, expr_ctxt)?]),
+                ),
+                // here the binary bitvector Ops are translated into the integer versions
+                // Similar to typ_invariant(), make obvious range according to bit-width
                 BinaryOp::Bitwise(bo, _) => {
                     let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
                     let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
@@ -1062,6 +1108,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         }
                         BinaryOp::Bitwise(..) => unreachable!(),
                         BinaryOp::StrGetChar => unreachable!(),
+                        BinaryOp::ArrayIndex => unreachable!(),
                     };
                     ExprX::Binary(aop, lh, rh)
                 }

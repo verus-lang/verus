@@ -133,6 +133,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             let m2 = typ_as_mono(t)?;
             Some(Arc::new(MonoTypX::Decorate2(*d, Arc::new(vec![m1, m2]))))
         }
+        TypX::Primitive(Primitive::Array, _) => None,
         TypX::Primitive(name, typs) => {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Primitive(*name, Arc::new(monotyps))))
@@ -174,6 +175,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => false,
+        TypX::Primitive(Primitive::Array, _) => false,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -200,6 +202,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
 pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
+        TypX::Primitive(Primitive::Array, _) => typ.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -522,11 +525,17 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 Eq(_) | Ne => (false, false),
                 Bitwise(..) => (true, false),
                 StrGetChar { .. } => (true, false),
+                ArrayIndex { .. } => (true, false),
             };
             if native {
                 let e1 = coerce_expr_to_native(ctx, &e1);
                 let e2 = coerce_expr_to_native(ctx, &e2);
-                mk_expr(ExprX::Binary(*op, e1, e2))
+                if *op == ArrayIndex {
+                    let typ = coerce_typ_to_poly(ctx, &expr.typ);
+                    mk_expr_typ(&typ, ExprX::Binary(*op, e1, e2))
+                } else {
+                    mk_expr(ExprX::Binary(*op, e1, e2))
+                }
             } else if poly {
                 let e1 = coerce_expr_to_poly(ctx, &e1);
                 let e2 = coerce_expr_to_poly(ctx, &e2);

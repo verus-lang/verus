@@ -89,6 +89,8 @@ pub struct Context {
     smt_process: Option<SmtProcess>,
     pub(crate) axiom_infos: ScopeMap<Ident, Arc<AxiomInfo>>,
     pub(crate) axiom_infos_count: u64,
+    pub(crate) array_map: ScopeMap<ClosureTerm, Ident>,
+    pub(crate) array_count: u64,
     pub(crate) lambda_map: ScopeMap<ClosureTerm, Ident>,
     pub(crate) lambda_count: u64,
     pub(crate) choose_map: ScopeMap<ClosureTerm, Ident>,
@@ -125,6 +127,8 @@ impl Context {
             smt_process: None,
             axiom_infos: ScopeMap::new(),
             axiom_infos_count: 0,
+            array_map: ScopeMap::new(),
+            array_count: 0,
             lambda_map: ScopeMap::new(),
             lambda_count: 0,
             choose_map: ScopeMap::new(),
@@ -179,6 +183,7 @@ impl Context {
             solver,
         };
         context.axiom_infos.push_scope(false);
+        context.array_map.push_scope(false);
         context.lambda_map.push_scope(false);
         context.choose_map.push_scope(false);
         context.apply_map.push_scope(false);
@@ -364,6 +369,7 @@ impl Context {
 
     pub(crate) fn push_name_scope(&mut self) {
         self.axiom_infos.push_scope(false);
+        self.array_map.push_scope(false);
         self.lambda_map.push_scope(false);
         self.choose_map.push_scope(false);
         self.apply_map.push_scope(false);
@@ -372,6 +378,7 @@ impl Context {
 
     pub(crate) fn pop_name_scope(&mut self) {
         self.axiom_infos.pop_scope();
+        self.array_map.pop_scope();
         self.lambda_map.pop_scope();
         self.choose_map.pop_scope();
         self.apply_map.pop_scope();

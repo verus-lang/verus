@@ -17,8 +17,7 @@ use crate::sst::{
     Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    free_vars_exp, free_vars_stm, sst_array_index, sst_bitwidth, sst_conjoin, sst_equal,
-    sst_has_type, sst_int_literal, sst_le, sst_lt,
+    free_vars_exp, free_vars_stm, sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::triggers::{typ_boxing, TriggerBoxing};
@@ -322,7 +321,7 @@ impl<'a> State<'a> {
             ExpX::Call(CallFun::Fun(fun, resolved_method), typs, args) => {
                 let (fun, typs) =
                     if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };
-                if let Some(SstInfo { inline, params, memoize: _, body }) =
+                if let Some(SstInfo { inline, typ_params: _, params, memoize: _, body }) =
                     fun_ssts.borrow().get(fun)
                 {
                     if inline.do_inline {
@@ -1561,25 +1560,8 @@ pub(crate) fn expr_to_stm_opt(
                 };
                 exps.push(e0);
             }
-
-            let (_uid, v) = state.declare_temp_var_stm(&expr.span, &expr.typ);
-
-            // assume the type invariant
-            // (this implies that v.len() == len because of a vstd axiom,
-            // array_len_matches_n)
-            let has_typ = sst_has_type(&expr.span, &v, &expr.typ);
-            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(has_typ)));
-            for (i, exp) in exps.into_iter().enumerate() {
-                // assume v[i] == exp
-                let elem_i_eq = sst_equal(
-                    &expr.span,
-                    &sst_array_index(ctx, &expr.span, &v, &sst_int_literal(&expr.span, i as i128)),
-                    &exp,
-                );
-                stms.push(Spanned::new(expr.span.clone(), StmX::Assume(elem_i_eq)));
-            }
-
-            Ok((stms, ReturnValue::Some(v)))
+            let array_lit = mk_exp(ExpX::ArrayLiteral(Arc::new(exps)));
+            Ok((stms, ReturnValue::Some(array_lit)))
         }
         ExprX::ExecFnByName(fun) => {
             let v = mk_exp(ExpX::ExecFnByName(fun.clone()));
@@ -2123,7 +2105,7 @@ pub(crate) fn expr_to_stm_opt(
             let mut stms1 = vec![];
             let inner_typ = &binder.a;
             let (_uid, arb_exp) = state.declare_temp_var_stm(&big_inv_exp.span, &inner_typ);
-            let has_typ = sst_has_type(
+            let has_typ = crate::sst_util::sst_has_type(
                 &expr.span,
                 &crate::poly::coerce_exp_to_poly(ctx, &arb_exp),
                 &inner_typ,
