@@ -330,9 +330,10 @@ impl<'a> State<'a> {
         binders: &VarBinders<T>,
         e: &Exp,
         to_typ: impl Fn(&T) -> Typ,
-    ) -> (Vec<(T, VarIdent)>, Exp) {
+    ) -> (Vec<(T, VarIdent)>, Vec<Stm>, Exp) {
         let mut v = vec![];
         let mut substs = HashMap::<VarIdent, Exp>::new();
+        let mut typ_invs = vec![];
         for binder in binders.iter() {
             let new_name = VarIdent(
                 binder.name.0.clone(),
@@ -348,10 +349,12 @@ impl<'a> State<'a> {
             let var_exp = SpannedTyped::new(span, &typ, ExpX::Var(new_name.clone()));
             substs.insert(binder.name.clone(), var_exp);
 
+            typ_invs.push(crate::ast_to_sst::assume_has_typ(&new_name, &typ, span));
+
             v.push((binder.a.clone(), new_name));
         }
         let new_exp = crate::sst_util::subst_exp(&HashMap::new(), &substs, &e);
-        (v, new_exp)
+        (v, typ_invs, new_exp)
     }
 }
 
@@ -607,7 +610,7 @@ fn expand_exp_rec(
         }
         ExpX::Bind(bnd, e) => match &bnd.x {
             BndX::Let(binders) => {
-                let (new_ids, e) =
+                let (new_ids, _, e) =
                     state.mk_fresh_ids(&exp.span, binders, e, |e: &Exp| e.typ.clone());
                 let mut stms = vec![];
                 for (exp, uniq_id) in new_ids {
@@ -621,11 +624,16 @@ fn expand_exp_rec(
             BndX::Quant(Quant { quant: q @ (Forall | Exists) }, binders, _trigs)
                 if (*q == Exists) == negate =>
             {
-                let (_, e) = state.mk_fresh_ids(&exp.span, binders, e, |t: &Typ| t.clone());
+                let (_, typ_invs, e) =
+                    state.mk_fresh_ids(&exp.span, binders, e, |t: &Typ| t.clone());
                 let (stm, tree) = expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate);
                 let intro = Introduction::Forall(binders.clone());
 
-                let dead_end = mk_stm(StmX::DeadEnd(stm));
+                let mut stms = typ_invs;
+                stms.push(stm);
+                let sstm = mk_stm(StmX::Block(Arc::new(stms)));
+
+                let dead_end = mk_stm(StmX::DeadEnd(sstm));
                 let assume_stm = mk_stm(StmX::Assume(exp.clone()));
                 let full_stm = mk_stm(StmX::Block(Arc::new(vec![dead_end, assume_stm])));
 
