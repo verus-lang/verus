@@ -1722,7 +1722,7 @@ fn check_function(
         }
         record.infer_spec_for_loop_iter_modes = None;
 
-        if function.x.mode != Mode::Spec {
+        if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
             crate::user_defined_type_invariants::annotate_user_defined_invariants(
                 &mut Arc::make_mut(&mut *function).x,
                 &record.type_inv_info,

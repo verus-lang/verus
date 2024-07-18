@@ -1582,6 +1582,11 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: false, expr, fun } => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
+
+            if state.view_as_spec {
+                return Ok((stms, exp));
+            }
+
             let exp = unwrap_or_return_never!(exp, stms);
 
             let tmp = state.make_tmp_var_for_exp(&mut stms, exp);

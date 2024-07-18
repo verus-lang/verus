@@ -1109,8 +1109,7 @@ test_verify_one_file! {
             }
         }
 
-        const x: X = X { i: 20, j: 5 }; // FAILS
-    } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
-    // TODO
-    // } => Err(err) => assert_fails_type_invariant_error(err, 1)
+        const x: X = X { i: 20, j: 5 } // FAILS
+            ;
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
 }
