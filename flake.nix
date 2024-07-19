@@ -10,7 +10,7 @@
 # 1. `nix develop` This will drop you in a shell environment where all dependencies are (should be) available
 # afterwards, when running this the first time, continue the installation:
 # 2. in ./source/: `vargo build --release` (building verus)
-# 3. run `PATH=source/target-verus/release:$PATH (this adds verus to the path)
+# 3. run `PATH=$(realpath .)/source/target-verus/release:$PATH (this adds verus to the path)
 
 {
   inputs = {
