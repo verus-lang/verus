@@ -77,6 +77,7 @@
           export PATH=$PATH:''${CARGO_HOME}/bin
           export PATH=$PATH:''${RUSTUP_HOME}/toolchains/$RUSTC_VERSION-x86_64-unknown-linux-gnu/bin/
           export VERUS_Z3_PATH=$(which z3)
+          export VERUS_CVC5_PATH=$(which cvc5)
         '';
       };
     });
