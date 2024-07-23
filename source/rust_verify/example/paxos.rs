@@ -173,6 +173,66 @@ tokenized_state_machine!{
         //    self.one_b_max_vote_msg =~= self.one_b_max_vote
         //}
 
+        #[invariant]
+        pub spec fn vote_prop(&self) -> bool {
+            forall |x| #[trigger] self.vote.dom().contains(x) ==>
+                self.proposal.dom().contains(x.1)
+                && self.proposal[x.1] == self.vote[x]
+        }
+
+        #[invariant]
+        pub spec fn decisions_come_from_quorum(&self) -> bool {
+            forall |x| #[trigger] self.decision.contains(x) ==> exists |q: Quorum|
+                forall |n: Node| member(n, q) ==> vote(n, x.1, self.decision[x])
+        }
+
+        #[invariant]
+        pub spec fn vote_good_round(&self) -> bool {
+            forall |x| #[trigger] self.vote.dom().contains(x) ==> x.1 != NoRound
+        }
+
+        #[invariant]
+        pub spec fn properties_choosable_and_proposal(&self) -> bool {
+            forall |R1:round, R2:round, V1:value, Q:quorum|
+                R2 > R1 && proposal.dom().contains(R2) && V1 != proposal[R2] ==>
+                exists |N:node| member(N, Q) && left_rnd.contains((N,R1))
+                    && vote.dom().contains((N,R1)) && vote[(N,R1)] == V1
+        }
+
+        #[invariant]
+        pub spec fn properties_one_b_left_rnd(&self) -> bool {
+            forall |N: Node, R1: Round, R2: Round|
+                one_b.contains((N, R2)) && R2 > R1 ==> left_rnd.contains((N, R1))
+        }
+
+        #[invariant]
+        pub spec fn defn_one_b1(&self) -> bool {
+            forall |x|
+              self.one_b.contains(x) ==> exists |RMAX: Round, V: Value|
+                  self.one_b_max_vote.contains((x.0, x.1, RMAX, V))
+        }
+
+        #[invariant]
+        pub spec fn defn_one_b2(&self) -> bool {
+            forall |x|
+              self.one_b_max_vote.contains(x) ==>
+                  self.one_b.contains((x.0, x.1))
+        }
+
+        #[invariant]
+        pub spec fn defn_left_rnd1(&self) -> bool {
+            forall |x|
+                self.left_rnd(x) ==> exists |R2: Round, RMAX: Round, V: Value|
+                    R2 > x.1 && self.one_b_max_vote.contains((x.0, R2, RMAX, V))
+        }
+
+        #[invariant]
+        pub spec fn defn_left_rnd2(&self) -> bool {
+            forall |N: Node, R: Round, R2: Round, RMAX: Round, V: Value|
+                self.one_b_max_vote.contains((N, R2, RMAX, V)) && R2 > R
+                    ==> self.left_rnd((R2, R))
+        }
+
         #[inductive(initialize)]
         fn initialize_inductive(post: Self) { }
        
@@ -187,6 +247,7 @@ tokenized_state_machine!{
        
         #[inductive(decide)]
         fn decide_inductive(pre: Self, post: Self, n: Node, r: Round, v: Value, q: Quorum) { }
+
 
 
     }
