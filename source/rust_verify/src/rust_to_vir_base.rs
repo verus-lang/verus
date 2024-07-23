@@ -660,7 +660,6 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
                 TyKind::Char => true,
                 TyKind::Ref(_, _, rustc_ast::Mutability::Not) => true,
                 TyKind::Param(_) => true,
-                TyKind::Never => true,
                 TyKind::Tuple(_) => true,
                 TyKind::Slice(_) => true,
                 TyKind::RawPtr(_) => true,
@@ -668,6 +667,13 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
                 TyKind::Closure(..) => true,
                 TyKind::FnDef(..) => true,
                 TyKind::Str => true,
+
+                // HACK for now:
+                // See https://github.com/rust-lang/rust/issues/64715
+                // See https://github.com/rust-lang/rust/blob/master/library/core/src/convert/mod.rs
+                // The "impl<T> From<!> for T" causes a real conflict with "impl<T> From<T> for T",
+                // so don't auto-import ! for now.
+                TyKind::Never => false,
 
                 TyKind::Alias(rustc_middle::ty::AliasKind::Opaque, _) => false,
                 TyKind::Alias(rustc_middle::ty::AliasKind::Weak, _) => false,
@@ -727,7 +733,7 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
             GenericParamDefKind::Const { is_host_effect: true, .. } => continue,
             GenericParamDefKind::Const { .. } => {}
         }
-        if !param.pure_wrt_drop {
+        if param.pure_wrt_drop {
             return false;
         }
     }
