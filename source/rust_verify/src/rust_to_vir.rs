@@ -37,17 +37,37 @@ use vir::ast::{
 
 // Used to collect all needed external trait implementations
 pub(crate) struct ExternalInfo {
-    // all known traits (both declared-in-verus and #[verifier::external_trait_specification])
+    // all known local traits (both declared-in-verus and #[verifier::external_trait_specification])
     // TODO: include marker traits, once we're confident we can handle them
-    pub(crate) trait_ids: Vec<DefId>,
+    pub(crate) local_trait_ids: Vec<DefId>,
     // all known traits (both declared-in-verus and #[verifier::external_trait_specification])
     pub(crate) trait_id_set: HashSet<DefId>,
     // all known datatypes (both declared-in-verus and #[verifier::external_type_specification])
-    pub(crate) type_ids: HashSet<DefId>,
+    type_paths: HashSet<Path>,
+    // type_id_map[d] will be true if path(d) is in type_paths; otherwise false or absent
+    type_id_map: HashMap<DefId, bool>,
     // all non-external trait impls
     pub(crate) internal_trait_impls: HashSet<DefId>,
     // all #[verifier::external_fn_specification] functions that implement a trait
     pub(crate) external_fn_specification_trait_method_impls: Vec<(DefId, rustc_span::Span)>,
+}
+
+impl ExternalInfo {
+    pub(crate) fn add_type_id(&mut self, def_id: DefId) {
+        self.type_id_map.insert(def_id, true);
+    }
+
+    pub(crate) fn has_type_id<'tcx>(&mut self, ctxt: &Context<'tcx>, def_id: DefId) -> bool {
+        match self.type_id_map.get(&def_id).copied() {
+            None => {
+                let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, def_id);
+                let has = self.type_paths.contains(&path);
+                self.type_id_map.insert(def_id, has);
+                has
+            }
+            Some(b) => b,
+        }
+    }
 }
 
 fn check_item<'tcx>(
@@ -322,7 +342,6 @@ fn check_item<'tcx>(
                 enum_def,
                 generics,
                 adt_def,
-                external_info,
             )?;
         }
         ItemKind::Union(variant_data, generics) => {
@@ -348,7 +367,6 @@ fn check_item<'tcx>(
                 variant_data,
                 generics,
                 adt_def,
-                external_info,
             )?;
         }
         ItemKind::Impl(impll) => {
@@ -796,55 +814,110 @@ fn trait_impl_to_vir<'tcx>(
 
 fn collect_external_trait_impls<'tcx>(
     ctxt: &Context<'tcx>,
+    imported: &Vec<Krate>,
     krate: &mut KrateX,
-    external_info: &ExternalInfo,
+    external_info: &mut ExternalInfo,
 ) -> Result<(), VirErr> {
+    let tcx = ctxt.tcx;
+    let mut considered_impls: HashSet<DefId> = HashSet::new();
     let mut collected_impls: HashSet<DefId> = HashSet::new();
 
-    let tcx = ctxt.tcx;
-    for trait_id in &external_info.trait_ids {
-        for c in tcx.crates(()) {
-            'impls: for (impl_def_id, _) in tcx.implementations_of_trait((*c, *trait_id)) {
-                if external_info.internal_trait_impls.contains(impl_def_id) {
-                    // already processed our own trait impls
-                    continue;
-                }
-                let trait_ref = if let Some(trait_ref) = tcx.impl_trait_ref(impl_def_id) {
-                    trait_ref
-                } else {
-                    continue;
-                };
-                for arg in trait_ref.skip_binder().args.iter() {
-                    if !crate::rust_to_vir_base::mid_ty_filter_for_external_impls(
-                        tcx,
-                        arg.walk(),
-                        external_info,
-                    ) {
-                        continue 'impls;
-                    }
-                }
-                if !crate::rust_to_vir_base::mid_generics_filter_for_external_impls(
-                    tcx,
-                    *impl_def_id,
-                    external_info,
-                ) {
-                    continue;
-                }
-                let span = tcx.def_span(impl_def_id);
-                let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, *impl_def_id);
-                let module_path = impl_path.pop_segment();
-                if let Ok((_trait_path, _types, trait_impl)) =
-                    trait_impl_to_vir(ctxt, span, span, *impl_def_id, None, module_path, true)
-                {
-                    krate.trait_impls.push(trait_impl);
-                    collected_impls.insert(*impl_def_id);
-                } else {
-                    // Ideally, our filtering should prevent us from reaching here.
-                    // Probably, we didn't want to include the external impl anyway,
-                    // so drop it rather than failing.
-                    // TODO: add a mode for rust_verify_test that fails if this is reached.
-                }
+    // All known datatypes:
+    for k in imported.iter().map(|k| &**k).chain(vec![&*krate].into_iter()) {
+        for d in k.datatypes.iter() {
+            external_info.type_paths.insert(d.x.path.clone());
+        }
+    }
+
+    // Traits declared to Verus (as internal or external) in earlier crates
+    let mut old_traits: HashSet<Path> = HashSet::new();
+    // Traits declared to Verus (as internal or external) only in current crate
+    // (may be current crate's external declaration of trait from another crate)
+    let mut new_traits: HashSet<Path> = HashSet::new();
+
+    // First, collect all traits known to Verus:
+    for t in imported.iter().flat_map(|k| k.traits.iter()) {
+        old_traits.insert(t.x.name.clone());
+    }
+    for t in krate.traits.iter() {
+        if !old_traits.contains(&t.x.name) {
+            new_traits.insert(t.x.name.clone());
+        }
+    }
+    let mut all_traits = old_traits;
+    all_traits.extend(new_traits.iter().cloned());
+    let mut all_trait_ids: Vec<DefId> = Vec::new();
+    for c in tcx.crates(()) {
+        assert!(*c != rustc_span::def_id::LOCAL_CRATE);
+        for trait_id in tcx.traits(*c) {
+            let path = def_id_to_vir_path(tcx, &ctxt.verus_items, *trait_id);
+            if all_traits.contains(&path) {
+                all_trait_ids.push(*trait_id);
             }
+        }
+    }
+    // LOCAL_CRATE traits are separate:
+    all_trait_ids.extend(external_info.local_trait_ids.iter().cloned());
+    external_info.trait_id_set.extend(all_trait_ids.iter().cloned());
+
+    // Next, collect all possible new implementations of traits known to Verus:
+    let mut auto_import_impls: Vec<DefId> = Vec::new();
+    for trait_id in all_trait_ids {
+        let path = def_id_to_vir_path(tcx, &ctxt.verus_items, trait_id);
+        for impl_def_id in tcx.all_impls(trait_id) {
+            if considered_impls.contains(&impl_def_id) {
+                continue;
+            }
+            considered_impls.insert(impl_def_id);
+            if external_info.internal_trait_impls.contains(&impl_def_id) {
+                // already processed our own trait impls
+                continue;
+            }
+            let is_new_trait = new_traits.contains(&path);
+            let is_local_impl = impl_def_id.krate == rustc_span::def_id::LOCAL_CRATE;
+            if is_new_trait || is_local_impl {
+                // Either the trait is new to us, or the impl is new to us
+                auto_import_impls.push(impl_def_id);
+            }
+        }
+    }
+
+    // Process only the new implementations that could be visible to Verus:
+    'impls: for impl_def_id in auto_import_impls {
+        let trait_ref = if let Some(trait_ref) = tcx.impl_trait_ref(&impl_def_id) {
+            trait_ref
+        } else {
+            continue;
+        };
+        for arg in trait_ref.skip_binder().args.iter() {
+            if !crate::rust_to_vir_base::mid_ty_filter_for_external_impls(
+                ctxt,
+                arg.walk(),
+                external_info,
+            ) {
+                continue 'impls;
+            }
+        }
+        if !crate::rust_to_vir_base::mid_generics_filter_for_external_impls(
+            ctxt,
+            impl_def_id,
+            external_info,
+        ) {
+            continue;
+        }
+        let span = tcx.def_span(&impl_def_id);
+        let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
+        let module_path = impl_path.pop_segment();
+        if let Ok((_trait_path, _types, trait_impl)) =
+            trait_impl_to_vir(ctxt, span, span, impl_def_id, None, module_path, true)
+        {
+            krate.trait_impls.push(trait_impl);
+            collected_impls.insert(impl_def_id);
+        } else {
+            // Ideally, our filtering should prevent us from reaching here.
+            // Probably, we didn't want to include the external impl anyway,
+            // so drop it rather than failing.
+            // TODO: add a mode for rust_verify_test that fails if this is reached.
         }
     }
 
@@ -874,9 +947,6 @@ fn collect_external_trait_impls<'tcx>(
     }
 
     for (impl_path, (impl_def_id, funs)) in new_trait_impls.iter() {
-        if collected_impls.contains(impl_def_id) {
-            continue;
-        }
         let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
         let trait_did = trait_ref.skip_binder().def_id;
         let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_did);
@@ -910,6 +980,10 @@ fn collect_external_trait_impls<'tcx>(
                     ),
                 );
             }
+        }
+
+        if collected_impls.contains(impl_def_id) {
+            continue;
         }
 
         let module_path = impl_path.pop_segment();
@@ -977,7 +1051,10 @@ impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
 
 pub type ItemToModuleMap = HashMap<ItemId, Option<Path>>;
 
-pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<(Krate, ItemToModuleMap), VirErr> {
+pub fn crate_to_vir<'tcx>(
+    ctxt: &mut Context<'tcx>,
+    imported: &Vec<Krate>,
+) -> Result<(Krate, ItemToModuleMap), VirErr> {
     let mut vir: KrateX = KrateX {
         functions: Vec::new(),
         reveal_groups: Vec::new(),
@@ -993,12 +1070,16 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<(Krate, ItemToModu
     };
 
     let mut external_info = ExternalInfo {
-        trait_ids: Vec::new(),
+        local_trait_ids: Vec::new(),
         trait_id_set: HashSet::new(),
-        type_ids: HashSet::new(),
+        type_paths: HashSet::new(),
+        type_id_map: HashMap::new(),
         internal_trait_impls: HashSet::new(),
         external_fn_specification_trait_method_impls: Vec::new(),
     };
+
+    // TODO: when we stop ignoring these traits,
+    // they should probably declared explicitly as external traits
     let tcx = ctxt.tcx;
     external_info.trait_id_set.insert(tcx.lang_items().sized_trait().expect("lang_item"));
     external_info.trait_id_set.insert(tcx.lang_items().copy_trait().expect("lang_item"));
@@ -1142,7 +1223,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &mut Context<'tcx>) -> Result<(Krate, ItemToModu
     vir.external_fns = erasure_info.external_functions.clone();
     vir.path_as_rust_names = vir::ast_util::get_path_as_rust_names_for_krate(&ctxt.vstd_crate_name);
 
-    collect_external_trait_impls(ctxt, &mut vir, &external_info)?;
+    collect_external_trait_impls(ctxt, imported, &mut vir, &mut external_info)?;
 
     Ok((Arc::new(vir), item_to_module))
 }

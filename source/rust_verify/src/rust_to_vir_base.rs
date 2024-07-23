@@ -647,9 +647,9 @@ pub(crate) fn mid_ty_simplify<'tcx>(
 // (This is meant to be a quick prefilter; if it incorrectly returns true, we may end up
 // dropping the results of trait_impl_to_vir, which is ok.)
 pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
-    tcx: TyCtxt<'tcx>,
+    ctxt: &Context<'tcx>,
     type_walker: rustc_middle::ty::walk::TypeWalker<'tcx>,
-    external_info: &ExternalInfo,
+    external_info: &mut ExternalInfo,
 ) -> bool {
     let mut all_types_supported = true;
     for arg in type_walker {
@@ -684,13 +684,13 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
                 TyKind::Error(..) => false,
 
                 TyKind::Adt(rustc_middle::ty::AdtDef(adt_def_data), _) => {
-                    external_info.type_ids.contains(&adt_def_data.did)
+                    external_info.has_type_id(ctxt, adt_def_data.did)
                 }
                 TyKind::Alias(
                     rustc_middle::ty::AliasKind::Projection | rustc_middle::ty::AliasKind::Inherent,
                     t,
                 ) => {
-                    let trait_def = tcx.generics_of(t.def_id).parent;
+                    let trait_def = ctxt.tcx.generics_of(t.def_id).parent;
                     let t_args: Vec<_> =
                         t.args.iter().filter(|x| x.as_region().is_none()).collect();
                     t_args.iter().find(|x| x.as_type().is_none()).is_none()
@@ -708,10 +708,11 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
 // (This is meant to be a quick prefilter; if it incorrectly returns true, we may end up
 // dropping the results of trait_impl_to_vir, which is ok.)
 pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
-    tcx: TyCtxt<'tcx>,
+    ctxt: &Context<'tcx>,
     def_id: DefId,
-    external_info: &ExternalInfo,
+    external_info: &mut ExternalInfo,
 ) -> bool {
+    let tcx = ctxt.tcx;
     let generics = tcx.generics_of(def_id);
     for (i, param) in generics.params.iter().enumerate() {
         if i == 0 && param.name == kw::SelfUpper {
@@ -746,7 +747,7 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
                     return false;
                 }
                 for arg in trait_ref.args.types() {
-                    if !mid_ty_filter_for_external_impls(tcx, arg.walk(), external_info) {
+                    if !mid_ty_filter_for_external_impls(ctxt, arg.walk(), external_info) {
                         return false;
                     }
                 }
@@ -763,7 +764,7 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
                     return false;
                 }
                 for arg in pred.projection_ty.args.types() {
-                    if !mid_ty_filter_for_external_impls(tcx, arg.walk(), external_info) {
+                    if !mid_ty_filter_for_external_impls(ctxt, arg.walk(), external_info) {
                         return false;
                     }
                 }

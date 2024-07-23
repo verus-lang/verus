@@ -2547,7 +2547,6 @@ impl Verifier {
 
         let mut crate_names: Vec<String> = vec![crate_name.clone()];
         crate_names.extend(other_crate_names.into_iter());
-        let mut vir_crates: Vec<Krate> = other_vir_crates;
         // TODO vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
 
         let erasure_info = ErasureInfo {
@@ -2586,7 +2585,8 @@ impl Verifier {
         // Convert HIR -> VIR
         let time1 = Instant::now();
         let (vir_crate, item_to_module_map) =
-            crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
+            crate::rust_to_vir::crate_to_vir(&mut ctxt, &other_vir_crates)
+                .map_err(map_err_diagnostics)?;
 
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
@@ -2617,6 +2617,7 @@ impl Verifier {
         // - traits::demote_foreign_traits
         // - GlobalCtx::new
         // - well_formed::check_crate
+        let mut vir_crates: Vec<Krate> = other_vir_crates;
         vir_crates.push(vir_crate);
         let unpruned_crate =
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
