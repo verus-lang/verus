@@ -51,11 +51,11 @@ tokenized_state_machine!{
             pub decision: Map<(Node, Round), Value>,
 
             // Extra relations added in EPR-ization
-            #[sharding(not_tokenized)]
-            pub one_b: Set<(Node, Round)>,
+            //#[sharding(not_tokenized)]
+            //pub one_b: Set<(Node, Round)>,
 
-            #[sharding(not_tokenized)]
-            pub left_rnd: Set<(Node, Round)>,
+            //#[sharding(not_tokenized)]
+            //pub left_rnd: Set<(Node, Round)>,
         }
 
         init!{
@@ -67,8 +67,8 @@ tokenized_state_machine!{
                 init vote = Map::<(Node, Round), Value>::empty();
                 init vote_msg = Set::<(Node, Round, Value)>::empty();
                 init decision = Map::<(Node, Round), Value>::empty();
-                init one_b = Set::<(Node, Round)>::empty();
-                init left_rnd = Set::<(Node, Round)>::empty();
+                //init one_b = Set::<(Node, Round)>::empty();
+                //init left_rnd = Set::<(Node, Round)>::empty();
             }
         }
 
@@ -106,13 +106,13 @@ tokenized_state_machine!{
                 ));
 
                 update one_b_max_vote = pre.one_b_max_vote.insert((n, r, maxr, v));
-                update one_b = pre.one_b.insert((n, r));
-                update left_rnd = Set::new(|p: (Node, Round)|
+                //update one_b = pre.one_b.insert((n, r));
+                /*update left_rnd = Set::new(|p: (Node, Round)|
                     if p.0 == n {
                         pre.left_rnd.contains(p)
                     } else {
                         pre.left_rnd.contains(p) || r > p.1
-                    });
+                    });*/
             }
         }
 
@@ -141,7 +141,7 @@ tokenized_state_machine!{
                 //require !pre.left_rnd.contains((n, r));
                 require !(exists |R:Round,RMAX:Round,V:Value|
                     pre.one_b_max_vote.contains((n,R,RMAX,V)) && R > r);
-                require !(pre.proposal.dom().contains(r) && pre.proposal[r] == v);
+                require pre.proposal.dom().contains(r) && pre.proposal[r] == v;
 
                 update vote = pre.vote.insert((n, r), v);
             }
@@ -154,7 +154,13 @@ tokenized_state_machine!{
                 have vote_msg >= ( Set::new(|x: (Node, Round, Value)| member(x.0, q) && x.1 == r && x.2 == v) );
                 //require forall |N: Node| member(N, q) ==> pre.vote_msg.contains((N, r, v));
 
-                add decision (union)= [ (n, r) => v ];                
+                add decision (union)= [ (n, r) => v ]
+
+                by {
+                    if pre.decision.dom().contains((n, r)) {
+                        assert(pre.decision[(n, r)] == v);
+                    }
+                };
             }
         }
 
@@ -182,8 +188,14 @@ tokenized_state_machine!{
 
         #[invariant]
         pub spec fn decisions_come_from_quorum(&self) -> bool {
-            forall |x| #[trigger] self.decision.contains(x) ==> exists |q: Quorum|
-                forall |n: Node| member(n, q) ==> vote(n, x.1, self.decision[x])
+            forall |x| #[trigger] self.decision.contains_key(x) ==> exists |q: Quorum|
+                self.stuff(q, x.0, x.1)
+        }
+
+
+        pub open spec fn stuff(self, q: Quorum, n0: Node, r: Round) -> bool {
+            forall |n: Node| #[trigger] member(n, q) ==>
+                self.vote.dom().contains((n, r)) && self.vote[(n, r)] == self.decision[(n0, r)]
         }
 
         #[invariant]
@@ -193,18 +205,23 @@ tokenized_state_machine!{
 
         #[invariant]
         pub spec fn properties_choosable_and_proposal(&self) -> bool {
-            forall |R1:round, R2:round, V1:value, Q:quorum|
-                R2 > R1 && proposal.dom().contains(R2) && V1 != proposal[R2] ==>
-                exists |N:node| member(N, Q) && left_rnd.contains((N,R1))
-                    && vote.dom().contains((N,R1)) && vote[(N,R1)] == V1
+            forall |R1:Round, R2:Round, Q:Quorum|
+                R2 > R1 && self.proposal.dom().contains(R2) ==>
+                    self.stuff2(R1, R2, Q)
+        }
+
+        pub open spec fn stuff2(&self, R1: Round, R2: Round, Q: Quorum) -> bool {
+            exists |N:Node| member(N, Q) && self.left_rnd(N,R1)
+                && (self.vote.dom().contains((N,R1)) ==> self.vote[(N,R1)] == self.proposal[R2])
         }
 
         #[invariant]
         pub spec fn properties_one_b_left_rnd(&self) -> bool {
             forall |N: Node, R1: Round, R2: Round|
-                one_b.contains((N, R2)) && R2 > R1 ==> left_rnd.contains((N, R1))
+                self.one_b(N, R2) && R2 > R1 ==> self.left_rnd(N, R1)
         }
 
+        /*
         #[invariant]
         pub spec fn defn_one_b1(&self) -> bool {
             forall |x|
@@ -232,21 +249,154 @@ tokenized_state_machine!{
                 self.one_b_max_vote.contains((N, R2, RMAX, V)) && R2 > R
                     ==> self.left_rnd((R2, R))
         }
+        */
+
+        pub open spec fn one_b(&self, N: Node, R: Round) -> bool {
+            exists |RMAX: Round, V: Value|
+                self.one_b_max_vote.contains((N, R, RMAX, V))
+        }
+
+        pub open spec fn left_rnd(&self, N: Node, R: Round) -> bool {
+            exists |R2: Round, RMAX: Round, V: Value|
+                R2 > R && self.one_b_max_vote.contains((N, R2, RMAX, V))
+        }
 
         #[inductive(initialize)]
         fn initialize_inductive(post: Self) { }
        
         #[inductive(join_round)]
-        fn join_round_inductive(pre: Self, post: Self, n: Node, r: Round, maxr: Round, v: Value) { }
+        fn join_round_inductive(pre: Self, post: Self, n: Node, r: Round, maxr: Round, v: Value) {
+            assert forall |x| #[trigger] post.decision.contains_key(x)
+                implies exists |q: Quorum| post.stuff(q, x.0, x.1)
+            by {
+                let q1 = choose |q1: Quorum| pre.stuff(q1, x.0, x.1);
+                assert(post.stuff(q1, x.0, x.1));
+            }
+
+            assert forall |R1:Round, R2:Round, Q:Quorum|
+                R2 > R1 && post.proposal.dom().contains(R2) implies post.stuff2(R1, R2, Q)
+            by {
+                assert(pre.stuff2(R1, R2, Q));
+                let N = choose |N: Node| member(N, Q) && pre.left_rnd(N,R1)
+                  && (pre.vote.dom().contains((N,R1)) ==> pre.vote[(N,R1)] == pre.proposal[R2]);
+                assert(member(N, Q) && pre.left_rnd(N,R1)
+                  && (pre.vote.dom().contains((N,R1)) ==> pre.vote[(N,R1)] == pre.proposal[R2]));
+                assert(member(N, Q));
+
+                let (r2, rmax, v) = choose |R2: Round, RMAX: Round, V: Value|
+                    R2 > R1 && pre.one_b_max_vote.contains((N, R2, RMAX, V));
+                assert(post.one_b_max_vote.contains((N, r2, rmax, v)));
+                assert(post.left_rnd(N,R1));
+
+                if post.vote.dom().contains((N,R1)) {
+                    assert(post.vote[(N,R1)] == post.proposal[R2]);
+                }
+            }
+        }
        
         #[inductive(propose)]
-        fn propose_inductive(pre: Self, post: Self, r: Round, q: Quorum, maxr: Round, v: Value) { }
+        fn propose_inductive(pre: Self, post: Self, r: Round, q: Quorum, maxr: Round, v: Value) {
+            assert forall |x| #[trigger] post.decision.contains_key(x)
+                implies exists |q: Quorum| post.stuff(q, x.0, x.1)
+            by {
+                let q1 = choose |q1: Quorum| pre.stuff(q1, x.0, x.1);
+                assert(post.stuff(q1, x.0, x.1));
+            }
+
+            assert forall |R1:Round, R2:Round, Q:Quorum|
+                R2 > R1 && post.proposal.dom().contains(R2) implies post.stuff2(R1, R2, Q)
+            by {
+                assert(pre.stuff2(R1, R2, Q));
+                /*let N = choose |N: Node| member(N, Q) && pre.left_rnd(N,R1)
+                  && (pre.vote.dom().contains((N,R1)) ==> pre.vote[(N,R1)] == pre.proposal[R2]);
+                assert(member(N, Q) && pre.left_rnd(N,R1)
+                  && (pre.vote.dom().contains((N,R1)) ==> pre.vote[(N,R1)] == pre.proposal[R2]));
+                assert(member(N, Q));
+
+                let (r2, rmax, v) = choose |R2: Round, RMAX: Round, V: Value|
+                    R2 > R1 && pre.one_b_max_vote.contains((N, R2, RMAX, V));
+                assert(post.one_b_max_vote.contains((N, r2, rmax, v)));
+                assert(post.left_rnd(N,R1));
+
+                if post.vote.dom().contains((N,R1)) {
+                    assert(post.vote[(N,R1)] == post.proposal[R2]);
+                }*/
+            }
+        }
        
         #[inductive(cast_vote)]
-        fn cast_vote_inductive(pre: Self, post: Self, n: Node, v: Value, r: Round) { }
+        fn cast_vote_inductive(pre: Self, post: Self, n: Node, v: Value, r: Round) {
+            assert forall |x| #[trigger] post.decision.contains_key(x)
+                implies exists |q: Quorum| post.stuff(q, x.0, x.1)
+            by {
+                let q1 = choose |q1: Quorum| pre.stuff(q1, x.0, x.1);
+                assert(post.stuff(q1, x.0, x.1));
+            }
+
+            assert forall |R1:Round, R2:Round, Q:Quorum|
+                R2 > R1 && post.proposal.dom().contains(R2) implies post.stuff2(R1, R2, Q)
+            by {
+                assert(pre.stuff2(R1, R2, Q));
+                /*let N = choose |N: Node| member(N, Q) && pre.left_rnd(N,R1)
+                  && (pre.vote.dom().contains((N,R1)) ==> pre.vote[(N,R1)] == pre.proposal[R2]);
+                assert(member(N, Q) && pre.left_rnd(N,R1)
+                  && (pre.vote.dom().contains((N,R1)) ==> pre.vote[(N,R1)] == pre.proposal[R2]));
+                assert(member(N, Q));
+
+                let (r2, rmax, v) = choose |R2: Round, RMAX: Round, V: Value|
+                    R2 > R1 && pre.one_b_max_vote.contains((N, R2, RMAX, V));
+                assert(post.one_b_max_vote.contains((N, r2, rmax, v)));
+                assert(post.left_rnd(N,R1));
+
+                if post.vote.dom().contains((N,R1)) {
+                    assert(post.vote[(N,R1)] == post.proposal[R2]);
+                }*/
+            }
+        }
        
         #[inductive(decide)]
-        fn decide_inductive(pre: Self, post: Self, n: Node, r: Round, v: Value, q: Quorum) { }
+        fn decide_inductive(pre: Self, post: Self, n: Node, r: Round, v: Value, q: Quorum) {
+            if pre.decision.dom().contains((n, r)) {
+                assert(pre.decision[(n, r)] == v);
+            }
+
+            assert forall |x| #[trigger] post.decision.contains_key(x)
+                implies exists |q: Quorum| post.stuff(q, x.0, x.1)
+            by {
+                if x.0 == n && x.1 == r {
+                    assert forall |n2: Node| #[trigger] member(n2, q) implies
+                        post.vote.dom().contains((n2, r))
+                        && post.vote[(n2, r)] == post.decision[(n, r)]
+                    by {
+                        assert(pre.vote_msg.contains((n2, r, v)));
+                        //assert(post.vote.dom().contains((n2, r)));
+                        //assert(post.vote[(n2, r)] == post.decision[(n, r)]);
+                    }
+                    assert(post.stuff(q, x.0, x.1));
+                } else {
+                    let q1 = choose |q1: Quorum| pre.stuff(q1, x.0, x.1);
+                    /*
+                    assert(pre.stuff(q1, x.0, x.1));
+                    let n0 = x.0;
+                    let r = x.1;
+                    assert forall |n: Node| #[trigger] member(n, q1) implies
+                        post.vote.dom().contains((n, r))
+                        && post.vote[(n, r)] == post.decision[(n0, r)]
+                    by {
+                        assert(post.vote.dom().contains((n, r)));
+                        assert(post.vote[(n, r)] == post.decision[(n0, r)]);
+                    }*/
+                    assert(post.stuff(q1, x.0, x.1));
+                }
+            }
+
+            assert forall |R1:Round, R2:Round, Q:Quorum|
+                R2 > R1 && post.proposal.dom().contains(R2) implies post.stuff2(R1, R2, Q)
+            by {
+                assert(pre.stuff2(R1, R2, Q));
+            }
+
+        }
 
 
 
