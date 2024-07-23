@@ -9,7 +9,9 @@ verus! {
 impl<T, const N: usize> View for [T; N] {
     type V = Seq<T>;
 
-    spec fn view(&self) -> Seq<T>;
+    open spec fn view(&self) -> Seq<T> {
+        Seq::new(N as nat, |i: int| array_index(*self, i))
+    }
 }
 
 impl<T: DeepView, const N: usize> DeepView for [T; N] {
@@ -68,13 +70,6 @@ pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
         (#[trigger] ar@.len()) == N,
 {
     admit();
-}
-
-// Referenced by Verus' internal encoding for array literals
-#[doc(hidden)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_index")]
-pub open spec fn array_index<T, const N: usize>(ar: &[T; N], i: int) -> T {
-    ar.view().index(i)
 }
 
 pub open spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);

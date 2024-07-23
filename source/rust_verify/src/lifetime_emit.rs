@@ -262,6 +262,12 @@ impl EmitState {
         }
     }
 
+    pub(crate) fn begin_span_opt(&mut self, span: Option<Span>) {
+        if let Some(span) = span {
+            self.begin_span(span);
+        }
+    }
+
     pub(crate) fn end_span(&mut self, span: Span) {
         let line = self.lines.last_mut().expect("write buffer");
         let column = line.text.len();
@@ -270,6 +276,11 @@ impl EmitState {
         }
     }
 
+    pub(crate) fn end_span_opt(&mut self, span: Option<Span>) {
+        if let Some(span) = span {
+            self.end_span(span);
+        }
+    }
     pub(crate) fn write_spanned<S: Into<String>>(&mut self, str: S, span: Span) {
         let s = str.into();
         let line = self.lines.last_mut().expect("write buffer");
@@ -742,7 +753,7 @@ fn emit_generic_params(state: &mut EmitState, generics: &Vec<GenericParam>) {
     }
 }
 
-fn emit_generic_bound(bound: &GenericBound, bare: bool, emit_sized: bool) -> String {
+fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
     let mut buf = String::new();
     if !bound.bound_vars.is_empty() {
         buf += "for<";
@@ -764,9 +775,12 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool, emit_sized: bool) -> Str
             buf += "Clone";
         }
         Bound::Sized => {
-            if emit_sized {
+            if *bound.typ == TypX::TraitSelf {
                 buf += "Sized";
             }
+        }
+        Bound::Allocator => {
+            buf += "Allocator";
         }
         Bound::Pointee => {
             buf += "Pointee";
@@ -795,7 +809,7 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool, emit_sized: bool) -> Str
 }
 
 // Return (bare bounds ": U", where bounds "where ...")
-fn simplify_assoc_typ_bounds(
+pub(crate) fn simplify_assoc_typ_bounds(
     trait_name: &Id,
     assoc_name: &Id,
     bounds: Vec<GenericBound>,
@@ -832,7 +846,6 @@ fn emit_generic_bounds(
     state: &mut EmitState,
     params: &Vec<GenericParam>,
     bounds: &Vec<GenericBound>,
-    emit_sized: bool,
 ) {
     use std::collections::HashSet;
     let mut printed_where = false;
@@ -845,24 +858,19 @@ fn emit_generic_bounds(
     let mut sized: HashSet<Id> = HashSet::new();
     for bound in bounds.iter() {
         print_where(state, &mut printed_where);
-        state.write(emit_generic_bound(bound, false, emit_sized));
+        state.write(emit_generic_bound(bound, false));
         state.write(", ");
-        if !emit_sized && bound.bound == Bound::Sized {
+        if bound.bound == Bound::Sized {
             if let TypX::TypParam(x) = &*bound.typ {
                 sized.insert(x.clone());
             }
         }
     }
-    if !emit_sized {
-        for param in params {
-            print_where(state, &mut printed_where);
-            if param.const_typ.is_none()
-                && param.name.is_typ_param()
-                && !sized.contains(&param.name)
-            {
-                state.write(param.name.to_string());
-                state.write(" : ?Sized, ");
-            }
+    for param in params {
+        print_where(state, &mut printed_where);
+        if param.const_typ.is_none() && param.name.is_typ_param() && !sized.contains(&param.name) {
+            state.write(param.name.to_string());
+            state.write(" : ?Sized, ");
         }
     }
 }
@@ -901,7 +909,7 @@ pub(crate) fn emit_fun_decl(state: &mut EmitState, f: &FunDecl) {
         }
     }
     state.end_span(f.sig_span);
-    emit_generic_bounds(state, &f.generic_params, &f.generic_bounds, false);
+    emit_generic_bounds(state, &f.generic_params, &f.generic_bounds);
     match &*f.body {
         (_, ExpX::Block(..)) => {
             emit_exp(state, &f.body);
@@ -972,7 +980,7 @@ fn emit_copy_clone(
     state.write(format!(" {bound_name} for "));
     state.write(d.name.to_string());
     emit_generic_params(state, &generic_args);
-    emit_generic_bounds(state, &vec![], &generic_bounds, false);
+    emit_generic_bounds(state, &vec![], &generic_bounds);
     state.write(" ");
     state.write(body);
 }
@@ -983,7 +991,7 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
     state.write("trait ");
     state.write(&t.name.to_string());
     emit_generic_params(state, &t.generic_params);
-    emit_generic_bounds(state, &t.generic_params, &t.generic_bounds, true);
+    emit_generic_bounds(state, &t.generic_params, &t.generic_bounds);
     state.write(" {");
     state.push_indent();
     for (a, params, bounds) in &t.assoc_typs {
@@ -998,11 +1006,11 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
             state.write(" : ");
             let bounds_strs: Vec<_> = bares
                 .iter()
-                .map(|bound| emit_generic_bound(bound, true, false))
+                .map(|bound| emit_generic_bound(bound, true))
                 .chain(unsize.into_iter())
                 .collect();
             state.write(bounds_strs.join("+"));
-            emit_generic_bounds(state, &vec![], &wheres, false);
+            emit_generic_bounds(state, &vec![], &wheres);
         }
         state.write(";");
     }
@@ -1013,19 +1021,19 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
 pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     state.newdecl();
     state.newline();
+    state.begin_span_opt(d.span);
     let d_keyword = match &*d.datatype {
         Datatype::Struct(..) => "struct ",
         Datatype::Enum(..) => "enum ",
         Datatype::Union(..) => "union ",
     };
-    state.newline();
-    state.write_spanned(d_keyword, d.span);
+    state.write(d_keyword);
     state.write(&d.name.to_string());
     emit_generic_params(state, &d.generic_params);
     let suffix_where = match &*d.datatype {
-        Datatype::Struct(Fields::Pos(..)) => d.generic_bounds.len() > 0,
+        Datatype::Struct(Fields::Pos(..)) => true,
         _ => {
-            emit_generic_bounds(state, &d.generic_params, &d.generic_bounds, false);
+            emit_generic_bounds(state, &d.generic_params, &d.generic_bounds);
             false
         }
     };
@@ -1034,7 +1042,7 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
             let suffix = if suffix_where { "" } else { ";" };
             emit_fields(state, fields, suffix);
             if suffix_where {
-                emit_generic_bounds(state, &d.generic_params, &d.generic_bounds, false);
+                emit_generic_bounds(state, &d.generic_params, &d.generic_bounds);
                 state.write(";");
             }
         }
@@ -1051,6 +1059,7 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
             state.write("}");
         }
     }
+    state.end_span_opt(d.span);
     if let Some(copy_bounds) = &d.implements_copy {
         let clone_body = "{ fn clone(&self) -> Self { panic!() } }";
         emit_copy_clone(state, d, copy_bounds, &Bound::Clone, "Clone", clone_body);
@@ -1059,16 +1068,18 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
 }
 
 pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
-    let TraitImpl { trait_as_datatype, self_typ, generic_params, generic_bounds, assoc_typs } = t;
+    let TraitImpl { span, trait_as_datatype, self_typ, generic_params, generic_bounds, assoc_typs } =
+        t;
     state.newdecl();
     state.newline();
+    state.begin_span_opt(*span);
     state.write("impl");
     emit_generic_params(state, &generic_params);
     state.write(" ");
     state.write(&trait_as_datatype.to_string());
     state.write(" for ");
     state.write(&self_typ.to_string());
-    emit_generic_bounds(state, &generic_params, &generic_bounds, false);
+    emit_generic_bounds(state, &generic_params, &generic_bounds);
     state.write(" {");
     state.push_indent();
     for (name, params, typ) in assoc_typs {
@@ -1082,4 +1093,5 @@ pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
     }
     state.newline_unindent();
     state.write("}");
+    state.end_span_opt(*span);
 }

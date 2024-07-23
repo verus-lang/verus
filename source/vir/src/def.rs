@@ -51,6 +51,7 @@ const PREFIX_RECURSIVE: &str = "rec%";
 const SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
 pub const PREFIX_EXPAND_ERRORS_TEMP_VAR: &str = "expand%";
+const BITVEC_TMP_DECL_SEPARATOR: &str = "bitvectmp%";
 const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
@@ -70,6 +71,7 @@ const SLICE_TYPE: &str = "slice%";
 const STRSLICE_TYPE: &str = "strslice%";
 const ARRAY_TYPE: &str = "array%";
 const PTR_TYPE: &str = "ptr_mut%";
+const GLOBAL_TYPE: &str = "allocator_global%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
@@ -82,6 +84,7 @@ const VARIANT_FIELD_INTERNAL_SEPARATOR: &str = "/?";
 const PROJECT_SEPARATOR: &str = "/";
 const MONOTYPE_APP_BEGIN: &str = "<";
 const MONOTYPE_APP_END: &str = ">";
+const MONOTYPE_DECORATE: &str = "$%";
 const TRAIT_DEFAULT_SEPARATOR: &str = "%default%";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
@@ -158,6 +161,7 @@ pub const TYPE_ID_ARRAY: &str = "ARRAY";
 pub const TYPE_ID_SLICE: &str = "SLICE";
 pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_PTR: &str = "PTR";
+pub const TYPE_ID_GLOBAL: &str = "ALLOCATOR_GLOBAL";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
@@ -171,13 +175,16 @@ pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 pub const EXT_EQ: &str = "ext_eq";
 
-pub const UINT_XOR: &str = "uintxor";
-pub const UINT_AND: &str = "uintand";
-pub const UINT_OR: &str = "uintor";
-pub const UINT_SHR: &str = "uintshr";
-pub const UINT_SHL: &str = "uintshl";
-pub const UINT_NOT: &str = "uintnot";
+pub const BIT_XOR: &str = "bitxor";
+pub const BIT_AND: &str = "bitand";
+pub const BIT_OR: &str = "bitor";
+pub const BIT_SHR: &str = "bitshr";
+pub const BIT_SHL: &str = "bitshl";
+pub const BIT_NOT: &str = "bitnot";
 pub const SINGULAR_MOD: &str = "singular_mod";
+
+pub const ARRAY_NEW: &str = "array_new";
+pub const ARRAY_INDEX: &str = "array_index";
 
 // List of QID suffixes we add to internally generated quantifiers
 pub const QID_BOX_AXIOM: &str = "box_axiom";
@@ -375,6 +382,11 @@ pub fn ptr_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
+pub fn global_type() -> Path {
+    let ident = Arc::new(GLOBAL_TYPE.to_string());
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
 pub fn prefix_type_id(path: &Path) -> Ident {
     Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(path))
 }
@@ -542,6 +554,30 @@ pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
     }
 }
 
+pub fn monotyp_decorate(dec: crate::ast::TypDecoration, path: &Path) -> Path {
+    let id = Arc::new(format!(
+        "{}{}{}{}{}",
+        MONOTYPE_DECORATE,
+        dec as u32,
+        MONOTYPE_APP_BEGIN,
+        path_to_string(path),
+        MONOTYPE_APP_END
+    ));
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
+}
+
+pub fn monotyp_decorate2(dec: crate::ast::TypDecoration, args: &Vec<Path>) -> Path {
+    let id = Arc::new(format!(
+        "{}{}{}{}{}",
+        MONOTYPE_DECORATE,
+        dec as u32,
+        MONOTYPE_APP_BEGIN,
+        vec_map(args, |x| path_to_string(x)).join(PATHS_SEPARATOR),
+        MONOTYPE_APP_END
+    ));
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
+}
+
 pub fn name_as_vstd_name(name: &String) -> Option<String> {
     let name = if let Some(x) = name.strip_prefix(crate::def::VERUSLIB_PREFIX) {
         if let Some(x) = x.strip_prefix(crate::def::PERVASIVE_PREFIX) {
@@ -638,7 +674,7 @@ pub enum ProverChoice {
     Singular,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct CommandContext {
     pub fun: Fun,
     pub span: crate::messages::Span,
@@ -656,6 +692,7 @@ impl CommandContext {
     }
 }
 
+#[derive(Debug)]
 #[derive(Clone)]
 pub struct CommandsWithContextX {
     pub context: CommandContext,
@@ -810,6 +847,10 @@ pub fn unique_var_name(
             out.push_str(EXPAND_ERRORS_DECL_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
+        VarIdentDisambiguate::BitVectorToAirDecl(id) => {
+            out.push_str(BITVEC_TMP_DECL_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
     }
     out
 }
@@ -836,17 +877,10 @@ pub fn break_label(i: u64) -> Ident {
     Arc::new(format!("{}{}", PREFIX_BREAK_LABEL, i))
 }
 
-pub fn array_index_fun(vstd_crate_name: &Ident) -> Fun {
-    Arc::new(FunX { path: array_index_path(vstd_crate_name) })
-}
-
-pub fn array_index_path(vstd_crate_name: &Ident) -> Path {
+pub fn array_new_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
         krate: Some(vstd_crate_name.clone()),
-        segments: Arc::new(vec![
-            Arc::new("array".to_string()),
-            Arc::new("array_index".to_string()),
-        ]),
+        segments: Arc::new(vec![Arc::new("array".to_string()), Arc::new("array_new".to_string())]),
     })
 }
 

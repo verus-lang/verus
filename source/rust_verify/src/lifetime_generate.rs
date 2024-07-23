@@ -90,6 +90,7 @@ pub(crate) struct State {
     trait_to_name: HashMap<Path, Id>,
     datatype_to_name: HashMap<Path, Id>,
     variant_to_name: HashMap<String, Id>,
+    unmangle_names: HashMap<String, String>,
     pub(crate) trait_decl_set: HashSet<Path>,
     pub(crate) trait_decls: Vec<TraitDecl>,
     pub(crate) datatype_decls: Vec<DatatypeDecl>,
@@ -104,7 +105,7 @@ pub(crate) struct State {
     remaining_typs_needed_for_each_impl: HashMap<DefId, (Id, Vec<DefId>)>,
     enclosing_fun_id: Option<DefId>,
     enclosing_trait_ids: Vec<DefId>,
-    inside_trait_assoc_type: u32,
+    inside_trait_decl: u32,
     // inner for<'a> can conflict with outer fn f<'a>, so rename the inner 'a
     rename_bound_for: Vec<Id>,
 }
@@ -125,6 +126,7 @@ impl State {
             trait_to_name: HashMap::new(),
             datatype_to_name: HashMap::new(),
             variant_to_name: HashMap::new(),
+            unmangle_names: HashMap::new(),
             trait_decl_set: HashSet::new(),
             trait_decls: Vec::new(),
             datatype_decls: Vec::new(),
@@ -134,14 +136,15 @@ impl State {
             remaining_typs_needed_for_each_impl: HashMap::new(),
             enclosing_fun_id: None,
             enclosing_trait_ids: Vec::new(),
-            inside_trait_assoc_type: 0,
+            inside_trait_decl: 0,
             rename_bound_for: Vec::new(),
         }
     }
 
-    fn id<Key: Clone + Eq + std::hash::Hash>(
+    fn id_with_unmangle<Key: Clone + Eq + std::hash::Hash>(
         rename_count: &mut usize,
         key_to_name: &mut HashMap<Key, Id>,
+        unmangle_names: Option<&mut HashMap<String, String>>,
         kind: IdKind,
         key: &Key,
         mk_raw_id: impl Fn() -> String,
@@ -151,21 +154,38 @@ impl State {
             return name.clone();
         }
         *rename_count += 1;
-        let name = Id::new(kind, *rename_count, mk_raw_id());
+        let raw_id = mk_raw_id();
+        let name = Id::new(kind, *rename_count, raw_id.clone());
         key_to_name.insert(key.clone(), name.clone());
+        if let Some(unmangle_names) = unmangle_names {
+            unmangle_names.insert(name.to_string(), raw_id);
+        }
         name
+    }
+
+    fn id<Key: Clone + Eq + std::hash::Hash>(
+        rename_count: &mut usize,
+        key_to_name: &mut HashMap<Key, Id>,
+        kind: IdKind,
+        key: &Key,
+        mk_raw_id: impl Fn() -> String,
+    ) -> Id {
+        Self::id_with_unmangle(rename_count, key_to_name, None, kind, key, mk_raw_id)
     }
 
     fn local<S: Into<String>>(&mut self, raw_id: S, local_id_index: usize) -> Id {
         let raw_id = raw_id.into();
         let f = || raw_id.clone();
-        Self::id(
+        let key = (raw_id.to_string(), local_id_index);
+        let name = Self::id_with_unmangle(
             &mut self.rename_count,
             &mut self.id_to_name,
+            Some(&mut self.unmangle_names),
             IdKind::Local,
-            &(raw_id.to_string(), local_id_index),
+            &key,
             f,
-        )
+        );
+        name
     }
 
     fn field<S: Into<String>>(&mut self, raw_id: S) -> Id {
@@ -174,7 +194,11 @@ impl State {
         Self::id(&mut self.rename_count, &mut self.field_to_name, IdKind::Field, &raw_id, f)
     }
 
-    fn typ_param<S: Into<String>>(&mut self, raw_id: S, maybe_impl_index: Option<u32>) -> Id {
+    pub(crate) fn typ_param<S: Into<String>>(
+        &mut self,
+        raw_id: S,
+        maybe_impl_index: Option<u32>,
+    ) -> Id {
         let raw_id = raw_id.into();
         let (is_impl, impl_index) = match (raw_id.starts_with("impl "), maybe_impl_index) {
             (false, _) => (false, None),
@@ -207,14 +231,21 @@ impl State {
         Self::id(&mut self.rename_count, &mut self.fun_to_name, IdKind::Fun, fun, f)
     }
 
-    fn trait_name<'tcx>(&mut self, path: &Path) -> Id {
+    pub(crate) fn trait_name<'tcx>(&mut self, path: &Path) -> Id {
         let f = || path.segments.last().expect("path").to_string();
         Self::id(&mut self.rename_count, &mut self.trait_to_name, IdKind::Trait, path, f)
     }
 
-    fn datatype_name<'tcx>(&mut self, path: &Path) -> Id {
+    pub(crate) fn datatype_name<'tcx>(&mut self, path: &Path) -> Id {
         let f = || path.segments.last().expect("path").to_string();
-        Self::id(&mut self.rename_count, &mut self.datatype_to_name, IdKind::Datatype, path, f)
+        Self::id_with_unmangle(
+            &mut self.rename_count,
+            &mut self.datatype_to_name,
+            Some(&mut self.unmangle_names),
+            IdKind::Datatype,
+            path,
+            f,
+        )
     }
 
     fn variant<S: Into<String>>(&mut self, raw_id: S) -> Id {
@@ -223,18 +254,22 @@ impl State {
         Self::id(&mut self.rename_count, &mut self.variant_to_name, IdKind::Variant, &raw_id, f)
     }
 
+    pub(crate) fn restart_names(&mut self) {
+        self.id_to_name.clear();
+        self.field_to_name.clear();
+        self.typ_param_to_name.clear();
+        self.lifetime_to_name.clear();
+        self.fun_to_name.clear();
+        self.trait_to_name.clear();
+        self.datatype_to_name.clear();
+        self.variant_to_name.clear();
+    }
+
     pub(crate) fn unmangle_names<S: Into<String>>(&self, s: S) -> String {
         let mut s = s.into();
-        for ((k, _), v) in self.id_to_name.iter() {
-            let sv = v.to_string();
-            if s.contains(&sv) {
-                s = s.replace(&sv, k);
-            }
-        }
-        for (k, v) in self.datatype_to_name.iter() {
-            let sv = v.to_string();
-            if s.contains(&sv) {
-                s = s.replace(&sv, &k.segments.last().expect("segments").to_string());
+        for (name, raw_id) in &self.unmangle_names {
+            if s.contains(name) {
+                s = s.replace(name, raw_id);
             }
         }
         s
@@ -383,11 +418,10 @@ fn adt_args<'a, 'tcx>(
     if rust_item == Some(RustItem::Box)
         || rust_item == Some(RustItem::Rc)
         || rust_item == Some(RustItem::Arc)
+        || rust_item == Some(RustItem::AllocGlobal)
+        || rust_item == Some(RustItem::ManuallyDrop)
     {
-        // For Box, Rc, Arc, skip the second argument (the Allocator)
-        // which is currently restricted to always be `Global`.
-        assert!(args.len() == 2);
-        (false, &args[0..1])
+        (false, args)
     } else {
         (true, args)
     }
@@ -435,7 +469,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
         | TyKind::Str
         | TyKind::Float(_) => Box::new(TypX::Primitive(ty.to_string())),
         TyKind::Param(p) if p.name == kw::SelfUpper => {
-            if state.inside_trait_assoc_type > 0 {
+            if state.inside_trait_decl > 0 {
                 Box::new(TypX::TraitSelf)
             } else {
                 Box::new(TypX::TypParam(state.typ_param("Self", None)))
@@ -483,16 +517,24 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 },
                 _ => match rust_item {
                     Some(RustItem::Box) => {
-                        assert!(typ_args.len() == 1);
+                        assert!(typ_args.len() == 2);
                         Id::new(IdKind::Builtin, 0, "Box".to_owned())
                     }
                     Some(RustItem::Rc) => {
-                        assert!(typ_args.len() == 1);
+                        assert!(typ_args.len() == 2);
                         Id::new(IdKind::Builtin, 0, "Rc".to_owned())
                     }
                     Some(RustItem::Arc) => {
-                        assert!(typ_args.len() == 1);
+                        assert!(typ_args.len() == 2);
                         Id::new(IdKind::Builtin, 0, "Arc".to_owned())
+                    }
+                    Some(RustItem::AllocGlobal) => {
+                        assert!(typ_args.len() == 0);
+                        Id::new(IdKind::Builtin, 0, "Global".to_owned())
+                    }
+                    Some(RustItem::ManuallyDrop) => {
+                        assert!(typ_args.len() == 1);
+                        Id::new(IdKind::Builtin, 0, "ManuallyDrop".to_owned())
                     }
                     _ => state.datatype_name(&path),
                 },
@@ -1725,10 +1767,13 @@ fn erase_mir_bound<'a, 'tcx>(
     let tcx = ctxt.tcx;
     erase_trait(ctxt, state, id);
     let trait_path = def_id_to_vir_path(tcx, &ctxt.verus_items, id);
+    let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
     if Some(id) == tcx.lang_items().copy_trait() {
         Some(Bound::Copy)
     } else if Some(id) == tcx.lang_items().sized_trait() {
         Some(Bound::Sized)
+    } else if Some(RustItem::Allocator) == rust_item {
+        Some(Bound::Allocator)
     } else if Some(id) == tcx.lang_items().pointee_trait() {
         // The Rust documentation says Pointee "is automatically implemented for every type",
         // so it's a special case here
@@ -2180,8 +2225,9 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
         }
     }
 
+    let span = Some(ctxt.tcx.def_span(impl_id));
     let trait_impl =
-        TraitImpl { generic_params, generic_bounds, self_typ, trait_as_datatype, assoc_typs };
+        TraitImpl { span, generic_params, generic_bounds, self_typ, trait_as_datatype, assoc_typs };
     state.trait_impls.push(trait_impl);
 }
 
@@ -2205,7 +2251,7 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
 
     let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Vec<GenericBound>)> = Vec::new();
     let assoc_items = ctxt.tcx.associated_items(trait_id);
-    state.inside_trait_assoc_type += 1;
+    state.inside_trait_decl += 1;
     for assoc_item in assoc_items.in_definition_order() {
         match assoc_item.kind {
             rustc_middle::ty::AssocKind::Const => {}
@@ -2308,7 +2354,7 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
             state.reach_impl_assoc(impl_id);
         }
     }
-    state.inside_trait_assoc_type -= 1;
+    state.inside_trait_decl -= 1;
 
     assert!(state.enclosing_trait_ids.pop().is_some());
 }
@@ -2445,6 +2491,7 @@ fn erase_datatype<'tcx>(
         &mut generic_bounds,
     );
     let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
+    let span = Some(span);
     let decl =
         DatatypeDecl { name, span, implements_copy, generic_params, generic_bounds, datatype };
     state.datatype_decls.push(decl);
@@ -2537,7 +2584,9 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
         return;
     }
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
-    if let Some(RustItem::Rc | RustItem::Arc) = rust_item {
+    if let Some(RustItem::Rc | RustItem::Arc | RustItem::AllocGlobal | RustItem::ManuallyDrop) =
+        rust_item
+    {
         return;
     }
 

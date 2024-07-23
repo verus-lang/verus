@@ -892,12 +892,12 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::Tuple(es) | ExprX::ArrayLiteral(es) => {
             let modes = vec_map_result(es, |e| check_expr(ctxt, record, typing, outer_mode, e))?;
-            Ok(modes.into_iter().fold(outer_mode, mode_join))
+            Ok(modes.into_iter().fold(Mode::Exec, mode_join))
         }
         ExprX::Ctor(path, variant, binders, update) => {
             let datatype = &ctxt.datatypes[path].clone();
             let variant = datatype.x.get_variant(variant);
-            let mut mode = mode_join(outer_mode, datatype.x.mode);
+            let mut mode = datatype.x.mode;
             if let Some(update) = update {
                 mode = mode_join(mode, check_expr(ctxt, record, typing, outer_mode, update)?);
             }

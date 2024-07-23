@@ -746,7 +746,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 false,
             )?;
             if let Some((_, decoration)) = is_ref_mut.and_then(|(_, w)| w) {
-                Arc::new(TypX::Decorate(decoration, typ))
+                Arc::new(TypX::Decorate(decoration, None, typ))
             } else {
                 typ
             }

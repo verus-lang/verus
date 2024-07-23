@@ -1,5 +1,7 @@
 use air::ast::CommandX;
-use air::context::{Context, ValidityResult};
+#[cfg(feature = "axiom-usage-info")]
+use air::context::UsageInfo;
+use air::context::{Context, SmtSolver, ValidityResult};
 use air::messages::{AirMessage, AirMessageLabel, Reporter};
 use air::profiler::{Profiler, PROVER_LOG_FILE};
 use getopts::Options;
@@ -103,7 +105,7 @@ pub fn main() {
         .expect("parse error");
 
     // Start AIR
-    let mut air_context = Context::new(message_interface.clone());
+    let mut air_context = Context::new(message_interface.clone(), SmtSolver::Z3);
     let debug = matches.opt_present("debug");
     air_context.set_debug(debug);
     let profile_all = matches.opt_present("profile_all");
@@ -138,9 +140,27 @@ pub fn main() {
         let result =
             air_context.command(&*message_interface, &reporter, &command, Default::default());
         match result {
-            ValidityResult::Valid => {
+            #[cfg(not(feature = "axiom-usage-info"))]
+            ValidityResult::Valid() => {
                 if let CommandX::CheckValid(_) = &**command {
                     count_verified += 1;
+                }
+            }
+            #[cfg(feature = "axiom-usage-info")]
+            ValidityResult::Valid(usage_info) => {
+                if let CommandX::CheckValid(_) = &**command {
+                    count_verified += 1;
+
+                    if let UsageInfo::UsedAxioms(axioms) = usage_info {
+                        println!(
+                            "Query used named axioms: {}",
+                            axioms
+                                .iter()
+                                .map(|x| (**x).clone())
+                                .collect::<Vec<String>>()
+                                .join(", ")
+                        )
+                    }
                 }
             }
             ValidityResult::TypeError(err) => {

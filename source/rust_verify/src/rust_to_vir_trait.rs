@@ -334,7 +334,7 @@ pub(crate) fn translate_trait<'tcx>(
     } else {
         trait_def_id
     };
-    external_info.trait_ids.push(target_trait_id);
+    external_info.local_trait_ids.push(target_trait_id);
     let traitx = TraitX {
         name: trait_path,
         proxy: ex_trait_id_for.map(|_| (*ctxt.spanned_new(trait_span, orig_trait_path)).clone()),

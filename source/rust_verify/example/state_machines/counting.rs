@@ -125,7 +125,145 @@ tokenized_state_machine!{ CountingPermissions<T> {
    
     #[inductive(delete_ref)]
     fn delete_ref_inductive(pre: Self, post: Self, t1: T) { }
-
 }}
+
+verus!{
+
+tracked struct Instance<T> {
+    tracked instance: CountingPermissions::Instance<T>,
+}
+
+tracked struct MainCounter<T> {
+    tracked token: CountingPermissions::main_counter<T>,
+}
+
+tracked struct ReadRef<T> {
+    tracked token: CountingPermissions::read_ref<T>
+}
+
+impl<T> MainCounter<T> {
+    pub closed spec fn instance(self) -> Instance<T> {
+        Instance { instance: self.token@.instance }
+    }
+
+    pub closed spec fn value(self) -> Option<(nat, T)> {
+        self.token@.value
+    }
+}
+
+impl<T> ReadRef<T> {
+    pub closed spec fn instance(self) -> Instance<T> {
+        Instance { instance: self.token@.instance }
+    }
+
+    pub closed spec fn value(self) -> T {
+        self.token@.key
+    }
+
+    pub closed spec fn wf(self) -> bool {
+        self.token@.count == 1
+    }
+}
+
+impl<T> Instance<T> {
+    proof fn new() -> (tracked res: (Instance<T>, MainCounter<T>))
+        ensures
+            res.1.instance() == res.0,
+            res.1.value() === None
+    {
+        let tracked (Tracked(inst), Tracked(c), Tracked(_r)) =
+            CountingPermissions::Instance::new(None);
+        (Instance { instance: inst }, MainCounter { token: c })
+    }
+
+    proof fn writeable_to_readable(
+        tracked &self,
+        tracked counter: &mut MainCounter<T>,
+        tracked t: T
+    )
+        requires
+            old(counter).instance() == self,
+            old(counter).value() === None,
+        ensures
+            counter.instance() == self,
+            counter.value() === Some((0, t)),
+    {
+        self.instance.writeable_to_readable(t, t, &mut counter.token);
+    }
+
+    proof fn readable_to_writeable(
+        tracked &self,
+        tracked counter: &mut MainCounter<T>,
+    ) -> (tracked t: T)
+        requires
+            old(counter).instance() == self,
+            match old(counter).value() {
+                None => false,
+                Some((count, _)) => count == 0,
+            }
+        ensures
+            counter.instance() == self,
+            counter.value() === None,
+            t == old(counter).value().unwrap().1,
+    {
+        self.instance.readable_to_writeable(&mut counter.token)
+    }
+
+    proof fn new_ref(
+        tracked &self,
+        tracked counter: &mut MainCounter<T>,
+    ) -> (tracked read_ref: ReadRef<T>)
+        requires
+            old(counter).instance() == self,
+            old(counter).value().is_some()
+        ensures
+            counter.instance() == self,
+            match old(counter).value() {
+                None => false,
+                Some((count, t)) =>
+                    counter.value() == Some((count + 1, t))
+                      && read_ref.value() == t
+            },
+            read_ref.wf(),
+    {
+        ReadRef { token: self.instance.new_ref(&mut counter.token) }
+    }
+
+    proof fn delete_ref(
+        tracked &self,
+        tracked counter: &mut MainCounter<T>,
+        tracked read_ref: ReadRef<T>,
+    )
+        requires
+            old(counter).instance() == self,
+            old(counter).value().is_some(),
+            read_ref.instance() == self,
+            read_ref.wf(),
+        ensures
+            counter.instance() == self,
+            match old(counter).value() {
+                None => false,
+                Some((count, t)) =>
+                    count >= 1
+                      && counter.value() == Some(((count - 1) as nat, t))
+            },
+    {
+        self.instance.delete_ref(read_ref.token@.key, &mut counter.token, read_ref.token)
+    }
+
+    proof fn read_ref_guards<'a>(
+        tracked &self,
+        tracked read_ref: &'a ReadRef<T>,
+    ) -> (tracked borrowed_t: &'a T)
+        requires read_ref.wf(),
+            read_ref.instance() == self,
+        ensures
+            borrowed_t == read_ref.value()
+    {
+        self.instance.read_ref_guards(read_ref.value(), &read_ref.token)
+    }
+}
+
+}
 
 fn main() { }

@@ -14,3 +14,6 @@ pub mod result;
 
 #[cfg(feature = "alloc")]
 pub mod vec;
+
+#[cfg(feature = "alloc")]
+pub mod smart_ptrs;

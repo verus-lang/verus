@@ -1,10 +1,10 @@
 # Supported Rust Features
 
-Quick reference for supported Rust features. Note that this list does not include all _Verus_ features, as Verus has many spec/proof features without any standard Rust equivalent---this list only concerns Rust features. See [the guide](./modes.md) for more information about Verus' distinction between executable Rust code, specification code, and proof code.
+Quick reference for supported Rust features. Note that this list does not include all _Verus_ features, and Verus has many spec/proof features without any standard Rust equivalent---this list only concerns Rust features. See [the guide](./modes.md) for more information about Verus' distinction between executable Rust code, specification code, and proof code.
 
 Note that Verus is in active development. If a feature is unsupported, it might be genuinely hard, or it might just be low priority. See the [github issues](https://github.com/verus-lang/verus/issues) or [discussions](https://github.com/verus-lang/verus/discussions) for information on planned features.
 
-**Last Updated: 2023-12-11**
+**Last Updated: 2024-06-26**
 
 <div class="table-wrapper"><table>
   <thead><tr><th colspan="2"><strong>Items</strong></th></tr></thead>
@@ -12,6 +12,10 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   <tr>
     <td>Functions, methods, associated functions</td>
     <td>Supported</td>
+  </tr>
+  <tr>
+    <td>Associated constants</td>
+    <td>Not supported</td>
   </tr>
   <tr>
     <td>Structs</td>
@@ -45,10 +49,6 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Static items</td>
     <td><a href="static.html">Partially supported</a></td>
   </tr>
-  <tr>
-    <td>Unions</td>
-    <td>Not supported</td>
-  </tr>
   </tbody>
   <thead><tr><th colspan="2"><strong>Struct/enum definitions</strong></th></tr></thead>
   <tbody>
@@ -66,7 +66,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Const generics</td>
-    <td>Not supported</td>
+    <td>Partially Supported</td>
   </tr>
   <tr>
     <td>Custom discriminants</td>
@@ -105,11 +105,11 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td><code>for</code></td>
-    <td>Not supported</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td><code>?</code></td>
-    <td>Not supported</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Async blocks</td>
@@ -121,7 +121,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Unsafe blocks</td>
-    <td>Not supported</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td><code>&</code></td>
@@ -145,15 +145,15 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Array expressions</td>
-    <td>Partially supported (no fill expressions)</td>
+    <td>Partially supported (no fill expressions with `const` arguments)</td>
   </tr>
   <tr>
     <td>Range expressions</td>
-    <td>Not supported</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Index expressions</td>
-    <td>Not supported</td>
+    <td>Partially supported</td>
   </tr>
   <tr>
     <td>Tuple expressions</td>
@@ -219,15 +219,15 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Strings</td>
-    <td>Supported (<a href="https://verus-lang.github.io/verus/verusdoc/vstd/string/index.html">vstd equivalent</a>)</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Vec</td>
-    <td>Supported (<a href="https://verus-lang.github.io/verus/verusdoc/vstd/vec/struct.Vec.html">vstd equivalent</a>)</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Option / Result</td>
-    <td>Supported (<a href="https://verus-lang.github.io/verus/verusdoc/vstd/option/enum.Option.html">vstd equivalent</a>)</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td>Floating point</td>
@@ -313,12 +313,28 @@ Note that Verus is in active development. If a feature is unsupported, it might 
     <td>Supported</td>
   </tr>
   <tr>
+    <td>Default implementations</td>
+    <td>Supported</td>
+  </tr>
+  <tr>
+    <td>Trait bounds on trait declarations</td>
+    <td>Supported</td>
+  </tr>
+  <tr>
     <td>Traits with type arguments</td>
     <td>Partially supported</td>
   </tr>
   <tr>
     <td>Associated types</td>
-    <td>Not supported</td>
+    <td>Partially supported</td>
+  </tr>
+  <tr>
+    <td>Generic associated types</td>
+    <td>Partially supported (only lifetimes are supported)</td>
+  </tr>
+  <tr>
+    <td>Higher-ranked trait bounds</td>
+    <td>Supported</td>
   </tr>
   <tr>
     <td><code>Clone</code></td>
@@ -380,7 +396,7 @@ Note that Verus is in active development. If a feature is unsupported, it might 
   </tr>
   <tr>
     <td>Unions</td>
-    <td>Not supported</td>
+    <td><a href="reference-unions.html">Supported</a></td>
   </tr>
   <tr>
     <td><cod>UnsafeCell</code></td>

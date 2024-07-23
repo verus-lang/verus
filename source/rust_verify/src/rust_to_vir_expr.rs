@@ -6,9 +6,10 @@ use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::rust_intrinsics_to_vir::int_intrinsic_constant_to_vir;
 use crate::rust_to_vir_base::{
-    auto_deref_supported_for_ty, def_id_to_vir_path, get_impl_paths_for_clauses, get_range,
-    is_smt_arith, is_smt_equality, local_to_var, mid_ty_simplify, mid_ty_to_vir,
-    mid_ty_to_vir_ghost, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
+    auto_deref_supported_for_ty, bitwidth_and_signedness_of_integer_type, def_id_to_vir_path,
+    get_impl_paths_for_clauses, get_range, is_smt_arith, is_smt_equality, local_to_var,
+    mid_ty_simplify, mid_ty_to_vir, mid_ty_to_vir_ghost, mk_range, typ_of_node,
+    typ_of_node_expect_mut_ref,
 };
 use crate::spans::err_air_span;
 use crate::util::{
@@ -189,7 +190,7 @@ pub(crate) fn check_lit_int(
                 Ok(())
             }
             _ => {
-                return err_span(span, "integer literal out of range");
+                return err_span(span, format!("integer literal out of range {:?}", range));
             }
         }
     } else {
@@ -1034,6 +1035,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 | vir::ast::TypDecoration::Box
                 | vir::ast::TypDecoration::Rc
                 | vir::ast::TypDecoration::Arc,
+                _,
                 inner_typ,
             ) = &**typ
             {
@@ -1074,7 +1076,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?;
-            let typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, new_expr.typ.clone()));
+            let typ =
+                Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, new_expr.typ.clone()));
             Arc::make_mut(&mut new_expr).typ = typ;
             Ok(new_expr)
         }
@@ -1239,8 +1242,11 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?;
-            let typ =
-                Arc::new(TypX::Decorate(vir::ast::TypDecoration::ConstPtr, new_expr.typ.clone()));
+            let typ = Arc::new(TypX::Decorate(
+                vir::ast::TypDecoration::ConstPtr,
+                None,
+                new_expr.typ.clone(),
+            ));
             Arc::make_mut(&mut new_expr).typ = typ;
             Ok(new_expr)
         }
@@ -1308,7 +1314,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         if let Some(flag) = expr_vattrs.loop_isolation {
             flag
         } else if let Some(flag) =
-            crate::attributes::get_spinoff_loop_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
+            crate::attributes::get_loop_isolation_walk_parents(bctx.ctxt.tcx, bctx.fun_id)
         {
             flag
         } else {
@@ -1660,7 +1666,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
             let mut new_expr = expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)?;
             let typ = &mut Arc::make_mut(&mut new_expr).typ;
-            *typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, typ.clone()));
+            *typ = Arc::new(TypX::Decorate(vir::ast::TypDecoration::Ref, None, typ.clone()));
             Ok(new_expr)
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
@@ -1682,7 +1688,18 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Unary(op, arg) => match op {
             UnOp::Not => {
                 let not_op = match (tc.expr_ty_adjusted(arg)).kind() {
-                    TyKind::Adt(_, _) | TyKind::Uint(_) | TyKind::Int(_) => UnaryOp::BitNot,
+                    TyKind::Adt(_, _) | TyKind::Uint(_) | TyKind::Int(_) => {
+                        let (Some(w), s) = bitwidth_and_signedness_of_integer_type(
+                            &bctx.ctxt.verus_items,
+                            bctx.types.expr_ty(expr),
+                        ) else {
+                            return err_span(
+                                expr.span,
+                                "expected bool or finite integer width for !",
+                            );
+                        };
+                        UnaryOp::BitNot(if s { None } else { Some(w) })
+                    }
                     TyKind::Bool => UnaryOp::Not,
                     _ => panic!("Internal error on UnOp::Not translation"),
                 };
@@ -1715,6 +1732,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     | vir::ast::TypDecoration::Box
                     | vir::ast::TypDecoration::Rc
                     | vir::ast::TypDecoration::Arc,
+                    _,
                     inner_typ,
                 ) = &**typ
                 {
@@ -1747,7 +1765,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 _ => (),
             }
             let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
-            let vop = binopkind_to_binaryop(op, tc, lhs, rhs, mode_for_ghostness);
+            let vop = binopkind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?;
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?;
             match op.node {
                 BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
@@ -2147,7 +2165,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             // We only support for the special case of (Vec, usize) arguments
             let t1 = &tgt_vir.typ;
             let t1 = match &**t1 {
-                TypX::Decorate(_, t) => t,
+                TypX::Decorate(_, _, t) => t,
                 _ => t1,
             };
             let (fun, typ_args) = match &**t1 {
@@ -2218,13 +2236,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
     }
 }
 
-fn binopkind_to_binaryop(
+fn binopkind_to_binaryop<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     op: &Spanned<BinOpKind>,
     tc: &rustc_middle::ty::TypeckResults,
     lhs: &Expr,
     rhs: &Expr,
     mode_for_ghostness: Mode,
-) -> BinaryOp {
+) -> Result<BinaryOp, VirErr> {
     let vop = match op.node {
         BinOpKind::And => BinaryOp::And,
         BinOpKind::Or => BinaryOp::Or,
@@ -2283,10 +2302,26 @@ fn binopkind_to_binaryop(
                 _ => panic!("bitwise OR for this type not supported"),
             }
         }
-        BinOpKind::Shr => BinaryOp::Bitwise(BitwiseOp::Shr, mode_for_ghostness),
-        BinOpKind::Shl => BinaryOp::Bitwise(BitwiseOp::Shl, mode_for_ghostness),
+        BinOpKind::Shl => {
+            let (Some(w), s) = bitwidth_and_signedness_of_integer_type(
+                &bctx.ctxt.verus_items,
+                bctx.types.expr_ty(lhs),
+            ) else {
+                return err_span(lhs.span, "expected finite integer width for <<");
+            };
+            BinaryOp::Bitwise(BitwiseOp::Shl(w, s), mode_for_ghostness)
+        }
+        BinOpKind::Shr => {
+            let (Some(w), _s) = bitwidth_and_signedness_of_integer_type(
+                &bctx.ctxt.verus_items,
+                bctx.types.expr_ty(lhs),
+            ) else {
+                return err_span(lhs.span, "expected finite integer width for >>");
+            };
+            BinaryOp::Bitwise(BitwiseOp::Shr(w), mode_for_ghostness)
+        }
     };
-    vop
+    Ok(vop)
 }
 
 fn expr_assign_to_vir_innermost<'tcx>(
@@ -2337,7 +2372,10 @@ fn expr_assign_to_vir_innermost<'tcx>(
         })
     }
     let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
-    let op = op_kind.map(|op| binopkind_to_binaryop(op, tc, lhs, rhs, mode_for_ghostness));
+    let op = match op_kind {
+        Some(op) => Some(binopkind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?),
+        None => None,
+    };
     let init_not_mut = init_not_mut(bctx, lhs)?;
     mk_expr(ExprX::Assign {
         init_not_mut,

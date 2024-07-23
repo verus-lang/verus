@@ -10,7 +10,7 @@ use crate::def::Spanned;
 use crate::messages::{error, warning, Span, ToAny};
 use crate::sst_to_air::typ_to_ids;
 use air::ast::{Command, CommandX, Commands, DeclX};
-use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, str_typ};
+use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, mk_unnamed_axiom, str_typ};
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -346,7 +346,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
             if !method_impls.contains(&(impl_path, method)) {
                 // Create a shell Function for trait_impl, with these purposes:
                 // - used as a recursion::Node::Fun in the call graph
-                // - for spec functions, used by func_to_air to create a definition axiom
+                // - for spec functions, used by sst_to_air_func to create a definition axiom
                 let inherit_kind = FunctionKind::TraitMethodImpl {
                     method: default_function.x.name.clone(),
                     impl_path: impl_path.clone(),
@@ -533,7 +533,7 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
     for bound in typ_bounds.iter() {
         let exprx = match &**bound {
             GenericBoundX::Trait(path, typ_args) => {
-                if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
+                if !ctx.trait_map.contains_key(path) {
                     continue;
                 }
                 let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
@@ -567,7 +567,7 @@ pub(crate) fn trait_bounds_to_sst(
     for bound in typ_bounds.iter() {
         let expx = match &**bound {
             GenericBoundX::Trait(path, typ_args) => {
-                if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
+                if !ctx.trait_map.contains_key(path) {
                     continue;
                 }
                 let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
@@ -597,7 +597,7 @@ pub(crate) fn trait_bound_to_air(
     path: &Path,
     typ_args: &Typs,
 ) -> Option<air::ast::Expr> {
-    if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
+    if !ctx.trait_map.contains_key(path) {
         return None;
     }
     let mut typ_exprs: Vec<air::ast::Expr> = Vec::new();
@@ -659,7 +659,7 @@ pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<
     bound_exprs
 }
 
-pub fn traits_to_air(ctx: &Ctx, krate: &Krate) -> Commands {
+pub fn traits_to_air(_ctx: &Ctx, krate: &Krate) -> Commands {
     // Axioms about broadcast_forall and spec functions need justification
     // for any trait bounds.
     let mut commands: Vec<Command> = Vec::new();
@@ -667,19 +667,17 @@ pub fn traits_to_air(ctx: &Ctx, krate: &Krate) -> Commands {
     // Declare predicates for bounds
     //   (declare-fun tr_bound%T (... Dcr Type ...) Bool)
     for tr in krate.traits.iter() {
-        if ctx.bound_traits.contains(&tr.x.name) {
-            let mut tparams: Vec<air::ast::Typ> = Vec::new();
-            tparams.extend(crate::def::types().iter().map(|s| str_typ(s))); // Self
-            for _ in tr.x.typ_params.iter() {
-                tparams.extend(crate::def::types().iter().map(|s| str_typ(s)));
-            }
-            let decl_trait_bound = Arc::new(DeclX::Fun(
-                crate::def::trait_bound(&tr.x.name),
-                Arc::new(tparams),
-                air::ast_util::bool_typ(),
-            ));
-            commands.push(Arc::new(CommandX::Global(decl_trait_bound)));
+        let mut tparams: Vec<air::ast::Typ> = Vec::new();
+        tparams.extend(crate::def::types().iter().map(|s| str_typ(s))); // Self
+        for _ in tr.x.typ_params.iter() {
+            tparams.extend(crate::def::types().iter().map(|s| str_typ(s)));
         }
+        let decl_trait_bound = Arc::new(DeclX::Fun(
+            crate::def::trait_bound(&tr.x.name),
+            Arc::new(tparams),
+            air::ast_util::bool_typ(),
+        ));
+        commands.push(Arc::new(CommandX::Global(decl_trait_bound)));
     }
     Arc::new(commands)
 }
@@ -707,7 +705,7 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
                 crate::def::QID_TRAIT_TYPE_BOUNDS
             );
             let trigs = vec![tr_bound.clone()];
-            let bind = crate::func_to_air::func_bind_trig(
+            let bind = crate::sst_to_air_func::func_bind_trig(
                 ctx,
                 qname,
                 &Arc::new(typ_params),
@@ -717,7 +715,7 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
             );
             let imply = air::ast_util::mk_implies(&tr_bound, &air::ast_util::mk_and(&typ_bounds));
             let forall = mk_bind_expr(&bind, &imply);
-            let axiom = Arc::new(DeclX::Axiom(forall));
+            let axiom = Arc::new(DeclX::Axiom(air::ast::Axiom { named: None, expr: forall }));
             commands.push(Arc::new(CommandX::Global(axiom)));
         }
     }
@@ -726,7 +724,6 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
 
 pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     // Axiom for bounds predicates (based on trait impls)
-    assert!(ctx.bound_traits.contains(&imp.x.trait_path));
     // forall typ_params. typ_bounds ==> tr_bound%T(...typ_args...)
     // Example:
     //   trait T1 {}
@@ -743,7 +740,7 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     let name =
         format!("{}_{}", path_as_friendly_rust_name(&imp.x.impl_path), crate::def::QID_TRAIT_IMPL);
     let trigs = vec![tr_bound.clone()];
-    let bind = crate::func_to_air::func_bind_trig(
+    let bind = crate::sst_to_air_func::func_bind_trig(
         ctx,
         name,
         &imp.x.typ_params,
@@ -754,7 +751,7 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     let req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
     let imply = mk_implies(&air::ast_util::mk_and(&req_bounds), &tr_bound);
     let forall = mk_bind_expr(&bind, &imply);
-    let axiom = Arc::new(DeclX::Axiom(forall));
+    let axiom = mk_unnamed_axiom(forall);
     Arc::new(vec![Arc::new(CommandX::Global(axiom))])
 }
 

@@ -250,3 +250,17 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "expected choose_tuple to have type")
 }
+
+test_verify_one_file! {
+    #[test] test1_choose_tuple_no_ascription_regression_1183 verus_code! {
+        spec fn less_than(x: int, y: int) -> bool {
+            x < y
+        }
+
+        proof fn test_choose_succeeds2() {
+            assert(less_than(3, 7));  // promote i = 3, i = 7 as a witness
+            let (x, y) = choose|i: int, j: int| less_than(i, j);
+            assert(x < y);
+        }
+    } => Ok(())
+}

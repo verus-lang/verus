@@ -4,13 +4,13 @@ use crate::ast::{
     VariantCheck,
 };
 use crate::ast_to_sst::get_function;
+use crate::ast_to_sst_func::SstInfo;
+use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::func_to_air::SstInfo;
-use crate::func_to_air::SstMap;
 use crate::messages::Span;
-use crate::sst::FunctionSst;
+use crate::sst::FuncCheckSst;
 use crate::sst::PostConditionSst;
 use crate::sst::{AssertId, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX};
 use crate::sst_util::{sst_conjoin, sst_equal_ext, sst_implies, sst_not, subst_typ_for_datatype};
@@ -122,7 +122,13 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
-        StmX::Loop { body, .. } => {
+        StmX::Loop { body, cond, .. } => {
+            if let Some((cond_stm, _cond_exp)) = cond {
+                if get_fuel_at_id(cond_stm, a_id, fuels) {
+                    return true;
+                }
+            }
+
             let mut inside_fuels = HashMap::<Fun, u32>::new();
             if get_fuel_at_id(body, a_id, &mut inside_fuels) {
                 std::mem::swap(&mut inside_fuels, fuels);
@@ -130,7 +136,7 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
-        StmX::OpenInvariant(_, _, _, stm, _) => {
+        StmX::OpenInvariant(_, stm) => {
             if get_fuel_at_id(stm, a_id, fuels) {
                 return true;
             }
@@ -169,20 +175,22 @@ pub fn do_expansion(
     ctx: &Ctx,
     ectx: &ExpansionContext,
     fun_ssts: &SstMap,
-    function_sst: &FunctionSst,
+    func_check_sst: &FuncCheckSst,
     assert_id: &AssertId,
-) -> (FunctionSst, ExpansionTree) {
-    let mut fsst = function_sst.clone();
+) -> (FuncCheckSst, ExpansionTree) {
+    let mut fsst = func_check_sst.clone();
+    let mut local_decls = (*fsst.local_decls).clone();
     let (body, tree) = do_expansion_body(
         ctx,
         ectx,
         fun_ssts,
-        &function_sst.post_condition,
-        &function_sst.body,
+        &func_check_sst.post_condition,
+        &func_check_sst.body,
         assert_id,
-        &mut fsst.local_decls,
+        &mut local_decls,
     );
     fsst.body = body;
+    fsst.local_decls = Arc::new(local_decls);
     (fsst, tree)
 }
 
@@ -322,9 +330,10 @@ impl<'a> State<'a> {
         binders: &VarBinders<T>,
         e: &Exp,
         to_typ: impl Fn(&T) -> Typ,
-    ) -> (Vec<(T, VarIdent)>, Exp) {
+    ) -> (Vec<(T, VarIdent)>, Vec<Stm>, Exp) {
         let mut v = vec![];
         let mut substs = HashMap::<VarIdent, Exp>::new();
+        let mut typ_invs = vec![];
         for binder in binders.iter() {
             let new_name = VarIdent(
                 binder.name.0.clone(),
@@ -340,10 +349,12 @@ impl<'a> State<'a> {
             let var_exp = SpannedTyped::new(span, &typ, ExpX::Var(new_name.clone()));
             substs.insert(binder.name.clone(), var_exp);
 
+            typ_invs.push(crate::ast_to_sst::assume_has_typ(&new_name, &typ, span));
+
             v.push((binder.a.clone(), new_name));
         }
         let new_exp = crate::sst_util::subst_exp(&HashMap::new(), &substs, &e);
-        (v, new_exp)
+        (v, typ_invs, new_exp)
     }
 }
 
@@ -580,15 +591,13 @@ fn expand_exp_rec(
 
                 let fuel = can_inline.unwrap();
                 if let Some(fuel) = fuel {
-                    let (is_rec, e, _node) =
-                        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
-                            ctx,
-                            &function,
-                            &inline_exp,
-                            Some(fuel - 1),
-                        )
-                        .unwrap();
-                    assert!(is_rec);
+                    let (e, _node) = crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
+                        ctx,
+                        &function,
+                        &inline_exp,
+                        Some(fuel - 1),
+                    )
+                    .unwrap();
                     inline_exp = e;
                 }
 
@@ -601,7 +610,7 @@ fn expand_exp_rec(
         }
         ExpX::Bind(bnd, e) => match &bnd.x {
             BndX::Let(binders) => {
-                let (new_ids, e) =
+                let (new_ids, _, e) =
                     state.mk_fresh_ids(&exp.span, binders, e, |e: &Exp| e.typ.clone());
                 let mut stms = vec![];
                 for (exp, uniq_id) in new_ids {
@@ -615,11 +624,16 @@ fn expand_exp_rec(
             BndX::Quant(Quant { quant: q @ (Forall | Exists) }, binders, _trigs)
                 if (*q == Exists) == negate =>
             {
-                let (_, e) = state.mk_fresh_ids(&exp.span, binders, e, |t: &Typ| t.clone());
+                let (_, typ_invs, e) =
+                    state.mk_fresh_ids(&exp.span, binders, e, |t: &Typ| t.clone());
                 let (stm, tree) = expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate);
                 let intro = Introduction::Forall(binders.clone());
 
-                let dead_end = mk_stm(StmX::DeadEnd(stm));
+                let mut stms = typ_invs;
+                stms.push(stm);
+                let sstm = mk_stm(StmX::Block(Arc::new(stms)));
+
+                let dead_end = mk_stm(StmX::DeadEnd(sstm));
                 let assume_stm = mk_stm(StmX::Assume(exp.clone()));
                 let full_stm = mk_stm(StmX::Block(Arc::new(vec![dead_end, assume_stm])));
 
@@ -1015,7 +1029,7 @@ fn split_precondition(
             &ctx,
             &DiagnosticsVoid {},
             fun_ssts,
-            &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
+            &crate::ast_to_sst_func::params_to_pars(params, true), // REVIEW: is `true` here desirable?
             &e,
         )
         .expect("expr_to_exp_as_spec_skip_checks");

@@ -360,6 +360,34 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_auto_import verus_code! {
+        #[verifier::external]
+        trait T {}
+
+        #[verifier::external]
+        impl T for bool {}
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+        }
+
+        trait U {
+            type X: T;
+        }
+
+        impl U for u8 {
+            type X = S;
+        }
+
+        struct S;
+
+        #[verifier::external]
+        impl T for S where bool: T {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_defaults verus_code! {
         #[verifier::external]
         trait T {

@@ -1,8 +1,9 @@
 use crate::ast::{
-    BinaryOp, BindX, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, StmtX, TypX, UnaryOp,
+    Axiom, BinaryOp, BindX, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, StmtX, TypX,
+    UnaryOp,
 };
 use crate::ast_util::{ident_var, mk_and, mk_not};
-use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
+use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, SmtSolver, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
 use crate::messages::{ArcDynMessage, Diagnostics};
 pub use crate::model::{Model, ModelDef};
@@ -97,7 +98,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
             context.smt_log.log_decl(decl);
         }
         DeclX::Var(_, _) => {}
-        DeclX::Axiom(expr) => {
+        DeclX::Axiom(Axiom { named, expr }) => {
             let expr = elim_zero_args_expr(expr);
             let mut infos: Vec<AssertionInfo> = Vec::new();
             let mut axiom_infos: Vec<AxiomInfo> = Vec::new();
@@ -110,7 +111,23 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
                     .expect("internal error: duplicate assert_info");
                 smt_add_decl(context, &info.decl);
             }
-            context.smt_log.log_assert(&labeled_expr);
+            context.smt_log.log_assert(named, &labeled_expr);
+        }
+    }
+}
+
+impl SmtSolver {
+    pub fn reason_unknown_canceled_str(&self) -> &str {
+        match self {
+            SmtSolver::Z3 => "(:reason-unknown \"canceled\")",
+            SmtSolver::Cvc5 => "(:reason-unknown resourceout)",
+        }
+    }
+
+    pub fn reason_unknown_incomplete_str(&self) -> &str {
+        match self {
+            SmtSolver::Z3 => "(:reason-unknown \"(incomplete",
+            SmtSolver::Cvc5 => "(:reason-unknown incomplete)",
         }
     }
 }
@@ -146,7 +163,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
         }
         if only_check_earlier && !found_enabled {
             // no earlier assertions to check
-            return ValidityResult::Valid;
+            return ValidityResult::Valid(
+                #[cfg(feature = "axiom-usage-info")]
+                crate::context::UsageInfo::None,
+            );
         }
         Some(mk_and(&disabled))
     } else {
@@ -186,15 +206,13 @@ pub(crate) fn smt_check_assertion<'ctx>(
     }
 
     if let Some(disabled_expr) = disabled_expr {
-        context.smt_log.log_assert(&disabled_expr);
+        context.smt_log.log_assert(&None, &disabled_expr);
     }
 
-    let mut discovered_error = None;
-    let mut discovered_assert_id = None;
-    let mut discovered_additional_info: Vec<ArcDynMessage> = Vec::new();
-
-    context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
-    context.set_z3_param_u32("rlimit", context.rlimit, false);
+    if matches!(context.solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
+        context.set_z3_param_u32("rlimit", context.rlimit, false);
+    }
 
     context.smt_log.log_word("check-sat");
 
@@ -233,7 +251,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         } else if line == "sat" {
             assert!(unsat == None);
             unsat = Some(SmtOutput::Sat);
-        } else if line == "unknown" {
+        } else if line == "unknown" || line == "cvc5 interrupted by timeout." {
             assert!(unsat == None);
             unsat = Some(SmtOutput::Unknown);
         } else if context.ignore_unexpected_smt {
@@ -246,13 +264,21 @@ pub(crate) fn smt_check_assertion<'ctx>(
         }
     }
 
-    context.smt_log.log_set_option("rlimit", "0");
-    context.set_z3_param_u32("rlimit", 0, false);
+    if matches!(context.solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", "0");
+        context.set_z3_param_u32("rlimit", 0, false);
+    }
 
     let unsat = unsat.expect("expected sat/unsat/unknown from SMT solver");
-    let unsat = match unsat {
-        SmtOutput::Unsat => true,
-        SmtOutput::Sat => false,
+
+    enum ResultDetermination<T> {
+        Determined(ValidityResult),
+        Undetermined(T),
+    }
+
+    let unsat_result = match unsat {
+        SmtOutput::Unsat => ResultDetermination::Undetermined(true),
+        SmtOutput::Sat => ResultDetermination::Undetermined(false),
         SmtOutput::Unknown => {
             context.smt_log.log_get_info("reason-unknown");
             let smt_data = context.smt_log.take_pipe_data();
@@ -267,14 +293,14 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
             let mut reason = None;
             for line in smt_output {
-                if line == "(:reason-unknown \"canceled\")" {
+                if line == context.solver.reason_unknown_canceled_str() {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Canceled);
                 } else if line == "(:reason-unknown \"unknown\")" {
                     // it appears this sometimes happens when rlimit is exceeded
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Unknown);
-                } else if line.starts_with("(:reason-unknown \"(incomplete") {
+                } else if line.starts_with(context.solver.reason_unknown_incomplete_str()) {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
                 } else if line
@@ -296,80 +322,163 @@ pub(crate) fn smt_check_assertion<'ctx>(
             match reason.expect("expected :reason-unknown") {
                 SmtReasonUnknown::Canceled | SmtReasonUnknown::Unknown => {
                     context.state = ContextState::Canceled;
-                    return ValidityResult::Canceled;
+                    ResultDetermination::Determined(ValidityResult::Canceled)
                 }
-                SmtReasonUnknown::Incomplete => false,
+                SmtReasonUnknown::Incomplete => ResultDetermination::Undetermined(false),
             }
         }
     };
 
-    if unsat {
-        context.state = ContextState::FoundResult;
-        ValidityResult::Valid
-    } else {
-        context.smt_log.log_word("get-model");
+    match unsat_result {
+        ResultDetermination::Determined(r) => r,
+        ResultDetermination::Undetermined(true) => {
+            context.state = ContextState::FoundResult;
 
-        let smt_data = context.smt_log.take_pipe_data();
-        let smt_output = context.get_smt_process().send_commands(smt_data);
+            #[cfg(feature = "axiom-usage-info")]
+            let usage_info = if context.usage_info_enabled {
+                context.smt_log.log_word("get-unsat-core");
 
-        if smt_output.iter().any(|line| line.contains("model is not available")) {
-            // when we don't use incremental solving, sometime the model is not available when the z3 result is unknown
-            context.state = ContextState::FoundInvalid(infos, None);
-            return ValidityResult::Invalid(None, None, None);
-        };
+                let smt_data = context.smt_log.take_pipe_data();
+                let smt_output = context.get_smt_process().send_commands(smt_data);
 
-        let model = crate::parser::Parser::new(context.message_interface.clone())
-            .lines_to_model(&smt_output);
-        let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
-        for def in model.iter() {
-            model_defs.insert(def.name.clone(), def.clone());
+                let mut smt_output = smt_output.into_iter();
+                let unsat_core_str =
+                    smt_output.next().expect("expected one line in the unsat core output");
+                assert!(smt_output.next().is_none());
+
+                let fun_names: Vec<Ident> = unsat_core_str
+                    .strip_prefix('(')
+                    .expect("invalid unsat core")
+                    .strip_suffix(')')
+                    .expect("invalid unsat core")
+                    .split_terminator(' ')
+                    .map(|x| Arc::new(x.to_owned()))
+                    .collect();
+                crate::context::UsageInfo::UsedAxioms(fun_names)
+            } else {
+                crate::context::UsageInfo::None
+            };
+
+            ValidityResult::Valid(
+                #[cfg(feature = "axiom-usage-info")]
+                usage_info,
+            )
         }
-        for info in infos.iter_mut() {
-            if let Some(def) = model_defs.get(&info.label) {
-                if *def.body == "true" {
-                    discovered_error = Some(info.clone());
-                    discovered_assert_id = Some(info.assert_id.clone());
-
-                    // Disable this label in subsequent check-sat calls to get additional errors
-                    info.disabled = true;
-                    let disable_label = mk_not(&ident_var(&info.label));
-                    context.smt_log.log_assert(&disable_label);
-
-                    break;
-                }
-            }
-        }
-        let discovered_error = discovered_error.expect("discovered_error");
-        let mut axiom_infos: Vec<Arc<AxiomInfo>> =
-            context.axiom_infos.map().values().cloned().collect();
-        axiom_infos.sort_by_key(|info| info.label.clone()); // stabilize order
-        for info in axiom_infos {
-            if let Some(def) = model_defs.get(&info.label) {
-                if *def.body == "true"
-                    && (info.filter.is_none() || info.filter == discovered_error.filter)
-                {
-                    discovered_additional_info.append(&mut info.labels.clone());
-                    break;
-                }
-            }
-        }
-
-        if context.debug {
-            println!("Z3 model: {:?}", &model);
-        }
-
-        // Attach the additional info to the error
-        // For example, the error might be something like "precondition not satisfied"
-        // (an error which comes from the air assert statement)
-        // and the additional info might tell you _which_ precondition failed
-        // (a label that comes from one of the axioms associated
-        // to the function precondition)
-
-        let error = discovered_error.error;
-        let e = context.message_interface.append_labels(&error, &discovered_additional_info);
-        context.state = ContextState::FoundInvalid(infos, Some(air_model.clone()));
-        ValidityResult::Invalid(Some(air_model), Some(e), discovered_assert_id.unwrap())
+        ResultDetermination::Undetermined(false) => smt_get_model(context, infos, air_model),
     }
+}
+
+pub(crate) fn smt_update_statistics(context: &mut Context) -> Result<(), ValidityResult> {
+    assert!(matches!(context.solver, SmtSolver::Z3)); // the CVC5 output format for statistics is different
+
+    context.smt_log.log_get_info("all-statistics");
+    let smt_data = context.smt_log.take_pipe_data();
+    let smt_output = context.get_smt_process().send_commands(smt_data);
+    let statistics = crate::parser::parse_sexpression(&smt_output);
+    let stats_map = statistics
+        .as_list()
+        .unwrap()
+        .chunks(2)
+        .map(|chunk| {
+            let [key, value] = chunk else {
+                return Err(ValidityResult::UnexpectedOutput(format!(
+                    "expected key-value pair in statistics"
+                )));
+            };
+            let Some((key, value)) = key
+                .as_atom()
+                .map(|key| &key.as_str()[1..])
+                .and_then(|key| value.as_atom().map(|value| (key, value.as_str())))
+            else {
+                return Err(ValidityResult::UnexpectedOutput(format!(
+                    "expected key-value pair in statistics"
+                )));
+            };
+            Ok((key, value))
+        })
+        .collect::<Result<HashMap<&str, &str>, ValidityResult>>()?;
+    let Some(rlimit_count) = stats_map["rlimit-count"].parse().ok() else {
+        return Err(ValidityResult::UnexpectedOutput(format!(
+            "expected rlimit-count in smt statistics"
+        )));
+    };
+    context.rlimit_count = Some(rlimit_count);
+
+    Ok(())
+}
+
+fn smt_get_model(
+    context: &mut Context,
+    mut infos: Vec<AssertionInfo>,
+    air_model: Model,
+) -> ValidityResult {
+    let mut discovered_error: Option<AssertionInfo> = None;
+    let mut discovered_assert_id: Option<Option<Arc<Vec<u64>>>> = None;
+    let mut discovered_additional_info: Vec<ArcDynMessage> = Vec::new();
+
+    context.smt_log.log_word("get-model");
+
+    let smt_data = context.smt_log.take_pipe_data();
+    let smt_output = context.get_smt_process().send_commands(smt_data);
+
+    if smt_output.iter().any(|line| line.contains("model is not available")) {
+        // when we don't use incremental solving, sometime the model is not available when the z3 result is unknown
+        context.state = ContextState::FoundInvalid(infos, None);
+        return ValidityResult::Invalid(None, None, None);
+    };
+
+    let model =
+        crate::parser::Parser::new(context.message_interface.clone()).lines_to_model(&smt_output);
+    let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
+    for def in model.iter() {
+        model_defs.insert(def.name.clone(), def.clone());
+    }
+    for info in infos.iter_mut() {
+        if let Some(def) = model_defs.get(&info.label) {
+            if *def.body == "true" {
+                discovered_error = Some(info.clone());
+                discovered_assert_id = Some(info.assert_id.clone());
+
+                // Disable this label in subsequent check-sat calls to get additional errors
+                info.disabled = true;
+                let disable_label = mk_not(&ident_var(&info.label));
+                context.smt_log.log_assert(&None, &disable_label);
+
+                break;
+            }
+        }
+    }
+    let discovered_error = discovered_error.expect("discovered_error");
+    let mut axiom_infos: Vec<Arc<AxiomInfo>> =
+        context.axiom_infos.map().values().cloned().collect();
+    axiom_infos.sort_by_key(|info| info.label.clone());
+    // stabilize order
+    for info in axiom_infos {
+        if let Some(def) = model_defs.get(&info.label) {
+            if *def.body == "true"
+                && (info.filter.is_none() || info.filter == discovered_error.filter)
+            {
+                discovered_additional_info.append(&mut info.labels.clone());
+                break;
+            }
+        }
+    }
+
+    if context.debug {
+        println!("Z3 model: {:?}", &model);
+    }
+
+    // Attach the additional info to the error
+    // For example, the error might be something like "precondition not satisfied"
+    // (an error which comes from the air assert statement)
+    // and the additional info might tell you _which_ precondition failed
+    // (a label that comes from one of the axioms associated
+    // to the function precondition)
+
+    let error = discovered_error.error;
+    let e = context.message_interface.append_labels(&error, &discovered_additional_info);
+    context.state = ContextState::FoundInvalid(infos, Some(air_model.clone()));
+    ValidityResult::Invalid(Some(air_model), Some(e), discovered_assert_id.unwrap())
 }
 
 pub(crate) fn smt_check_query<'ctx>(
@@ -413,7 +522,7 @@ pub(crate) fn smt_check_query<'ctx>(
 
     // check assertion
     let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, labeled_assertion));
-    context.smt_log.log_assert(&not_expr);
+    context.smt_log.log_assert(&None, &not_expr);
     let result =
         smt_check_assertion(context, diagnostics, infos, air_model, false, report_long_running);
 

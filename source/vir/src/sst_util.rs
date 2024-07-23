@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Ident, InequalityOp,
-    IntRange, IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
-    VarBinder, VarBinderX, VarBinders,
+    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX,
+    Typs, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::get_variant;
 use crate::context::GlobalCtx;
@@ -206,6 +206,13 @@ fn subst_exp_rec(
             free_vars.pop_scope();
             SpannedTyped::new(&exp.span, &typ, ExpX::Bind(bnd, e1))
         }
+        ExpX::ArrayLiteral(exprs) => {
+            let mut new_exprs: Vec<Exp> = Vec::new();
+            for e in exprs.iter() {
+                new_exprs.push(subst_exp_rec(typ_substs, substs, free_vars, e));
+            }
+            mk_exp(ExpX::ArrayLiteral(Arc::new(new_exprs)))
+        }
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)
         }
@@ -282,9 +289,10 @@ impl BinaryOp {
                 BitXor => (22, 22, 23),
                 BitAnd => (24, 24, 25),
                 BitOr => (20, 20, 21),
-                Shr | Shl => (26, 26, 27),
+                Shr(..) | Shl(..) => (26, 26, 27),
             },
             StrGetChar => (90, 90, 90),
+            ArrayIndex => (90, 90, 90),
         }
     }
 }
@@ -354,15 +362,15 @@ impl ExpX {
                 (format!("{:?}({})", func, args), 90)
             }
             ExecFnByName(func) => (format!("{:?}", func), 99),
-            NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => {
-                ("const_generic".to_string(), 99)
+            NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)) => {
+                (format!("const_generic({:?})", c).to_string(), 99)
             }
             NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::TypEqualityBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::ConstTypBound(..)) => ("".to_string(), 99),
             NullaryOpr(crate::ast::NullaryOpr::NoInferSpecForLoopIter) => ("no_in".to_string(), 99),
             Unary(op, exp) => match op {
-                UnaryOp::Not | UnaryOp::BitNot => {
+                UnaryOp::Not | UnaryOp::BitNot(_) => {
                     (format!("!{}", exp.x.to_string_prec(global, 99)), 90)
                 }
                 UnaryOp::Clip { .. } => (format!("clip({})", exp.x.to_user_string(global)), 99),
@@ -446,15 +454,18 @@ impl ExpX {
                         BitXor => "^",
                         BitAnd => "&",
                         BitOr => "|",
-                        Shr => ">>",
-                        Shl => "<<",
+                        Shr(..) => ">>",
+                        Shl(..) => "<<",
                     },
-                    StrGetChar => "ignored", // This is our only non-inline BinaryOp, so it needs special handling below
+                    StrGetChar => "ignored", // This is a non-inline BinaryOp, so it needs special handling below
+                    ArrayIndex => "ignored", // This is a non-inline BinaryOp, so it needs special handling below
                 };
                 if let BinaryOp::StrGetChar = op {
                     (format!("{}.get_char({})", left, e2.x.to_user_string(global)), prec_exp)
                 } else if let HeightCompare { .. } = op {
                     (format!("height_compare({left}, {right})"), prec_exp)
+                } else if let ArrayIndex { .. } = op {
+                    (format!("array_index({left}, {right})"), prec_exp)
                 } else {
                     (format!("{} {} {}", left, op_str, right), prec_exp)
                 }
@@ -567,6 +578,11 @@ impl ExpX {
                     args.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", e.x.to_user_string(global), args), 99)
             }
+            ArrayLiteral(es) => {
+                let v =
+                    es.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
+                (format!("[{}]", v), 99)
+            }
             Interp(e) => {
                 use InterpExp::*;
                 match e {
@@ -580,6 +596,14 @@ impl ExpX {
                         (format!("[{}]", v), 99)
                     }
                     Closure(e, _ctx) => (format!("{}", e.x.to_user_string(global)), 99),
+                    Array(s) => {
+                        let v = s
+                            .iter()
+                            .map(|e| e.x.to_user_string(global))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        (format!("[{}]", v), 99)
+                    }
                 }
             }
             FuelConst(i) => (format!("fuel({i:})"), 99),
@@ -608,10 +632,8 @@ pub fn sst_arch_word_bits(span: &Span) -> Exp {
 ///   - If the input type is `u8`, then it returns a constant `8`
 ///   - If the input type is `usize`, then it returns the symbolic `arch_word_bits`
 
-pub fn bitwidth_sst_from_typ(span: &Span, t: &Typ, arch: &crate::ast::ArchWordBits) -> Exp {
-    let bitwidth = crate::ast_util::bitwidth_from_type(t)
-        .expect("bitwidth_sst_from_typ expects bounded integer type");
-    match bitwidth.to_exact(arch) {
+pub fn sst_bitwidth(span: &Span, w: &IntegerTypeBitwidth, arch: &crate::ast::ArchWordBits) -> Exp {
+    match w.to_exact(arch) {
         Some(w) => sst_int_literal(span, w as i128),
         None => sst_arch_word_bits(span),
     }
@@ -685,37 +707,6 @@ pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
         span,
         &Arc::new(TypX::Int(IntRange::Int)),
         ExpX::Const(crate::ast_util::const_int_from_i128(i)),
-    )
-}
-
-pub fn sst_array_index(ctx: &crate::context::Ctx, span: &Span, ar: &Exp, idx: &Exp) -> Exp {
-    let t = match &*ar.typ {
-        TypX::Boxed(t) => t,
-        _ => {
-            panic!("sst_array_index expected boxed Array type");
-        }
-    };
-    let (elem_ty, n_ty) = match &**t {
-        TypX::Primitive(crate::ast::Primitive::Array, typs) => (&typs[0], &typs[1]),
-        _ => {
-            panic!("sst_array_index expected boxed Array type");
-        }
-    };
-
-    let idx_boxed = SpannedTyped::new(
-        &idx.span,
-        &Arc::new(TypX::Boxed(idx.typ.clone())),
-        ExpX::UnaryOpr(UnaryOpr::Box(idx.typ.clone()), idx.clone()),
-    );
-
-    SpannedTyped::new(
-        span,
-        elem_ty,
-        ExpX::Call(
-            CallFun::Fun(crate::def::array_index_fun(&ctx.global.vstd_crate_name), None),
-            Arc::new(vec![elem_ty.clone(), n_ty.clone()]),
-            Arc::new(vec![ar.clone(), idx_boxed]),
-        ),
     )
 }
 

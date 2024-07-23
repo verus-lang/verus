@@ -1,7 +1,8 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs, Ident,
-    MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
+    Axiom, BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs,
+    Ident, MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
 };
+use crate::context::SmtSolver;
 use crate::def::mk_skolem_id;
 use crate::util::vec_map;
 use sise::{Node, Writer};
@@ -77,14 +78,16 @@ pub struct Printer {
     message_interface: Arc<dyn crate::messages::MessageInterface>,
     // print as SMT, not as AIR
     print_as_smt: bool,
+    solver: SmtSolver,
 }
 
 impl Printer {
     pub fn new(
         message_interface: Arc<dyn crate::messages::MessageInterface>,
         print_as_smt: bool,
+        solver: SmtSolver,
     ) -> Self {
-        Printer { message_interface, print_as_smt }
+        Printer { message_interface, print_as_smt, solver }
     }
 
     pub(crate) fn typ_to_node(&self, typ: &Typ) -> Node {
@@ -148,6 +151,8 @@ impl Printer {
                     UnaryOp::Not => "not",
                     UnaryOp::BitNot => "bvnot",
                     UnaryOp::BitExtract(_, _) => "extract",
+                    UnaryOp::BitZeroExtend(_) => "zero_extend",
+                    UnaryOp::BitSignExtend(_) => "sign_extend",
                 };
                 // ( (_ extract numeral numeral) BitVec )
                 match op {
@@ -158,6 +163,16 @@ impl Printer {
                         nodes_in.push(str_to_node(sop));
                         nodes_in.push(str_to_node(&high.to_string()));
                         nodes_in.push(str_to_node(&low.to_string()));
+                        nodes.push(Node::List(nodes_in));
+                        nodes.push(self.expr_to_node(expr));
+                        Node::List(nodes)
+                    }
+                    UnaryOp::BitZeroExtend(w) | UnaryOp::BitSignExtend(w) => {
+                        let mut nodes: Vec<Node> = Vec::new();
+                        let mut nodes_in: Vec<Node> = Vec::new();
+                        nodes_in.push(str_to_node("_"));
+                        nodes_in.push(str_to_node(sop));
+                        nodes_in.push(str_to_node(&w.to_string()));
                         nodes.push(Node::List(nodes_in));
                         nodes.push(self.expr_to_node(expr));
                         Node::List(nodes)
@@ -200,7 +215,12 @@ impl Printer {
                     BinaryOp::BitUGt => "bvugt",
                     BinaryOp::BitULe => "bvule",
                     BinaryOp::BitUGe => "bvuge",
+                    BinaryOp::BitSLt => "bvslt",
+                    BinaryOp::BitSGt => "bvsgt",
+                    BinaryOp::BitSLe => "bvsle",
+                    BinaryOp::BitSGe => "bvsge",
                     BinaryOp::LShr => "bvlshr",
+                    BinaryOp::AShr => "bvashr",
                     BinaryOp::Shl => "bvshl",
                     BinaryOp::BitConcat => "concat",
                 };
@@ -222,8 +242,9 @@ impl Printer {
                     nodes.push(self.expr_to_node(expr));
                 }
                 match op {
-                    MultiOp::Distinct if exprs.len() == 0 => {
+                    MultiOp::Distinct if exprs.len() <= 1 => {
                         // Z3 doesn't like the expression "(distinct)"
+                        // cvc5 doesn't like the singleton expression "(distinct expr)"
                         return Node::Atom("true".to_string());
                     }
                     _ => {}
@@ -232,6 +253,14 @@ impl Printer {
             }
             ExprX::IfElse(expr1, expr2, expr3) => {
                 nodes!(ite {self.expr_to_node(expr1)} {self.expr_to_node(expr2)} {self.expr_to_node(expr3)})
+            }
+            ExprX::Array(exprs) => {
+                let mut nodes: Vec<Node> = Vec::new();
+                nodes.push(str_to_node("array"));
+                for expr in exprs.iter() {
+                    nodes.push(self.expr_to_node(expr));
+                }
+                Node::List(nodes)
             }
             ExprX::Bind(bind, expr) => {
                 let with_triggers = |expr: &Expr, triggers: &Triggers, qid: &Qid| {
@@ -248,8 +277,10 @@ impl Printer {
                         if let Some(s) = qid {
                             nodes.push(str_to_node(":qid"));
                             nodes.push(str_to_node(s));
-                            nodes.push(str_to_node(":skolemid"));
-                            nodes.push(str_to_node(&mk_skolem_id(s)));
+                            if matches!(self.solver, SmtSolver::Z3) {
+                                nodes.push(str_to_node(":skolemid"));
+                                nodes.push(str_to_node(&mk_skolem_id(s)));
+                            }
                         }
                         Node::List(nodes)
                     }
@@ -351,7 +382,12 @@ impl Printer {
                 })
             }))
         }));
-        node!((declare-datatypes {decls} {defns}))
+        if self.print_as_smt && datatypes.len() == 0 {
+            // cvc5 doesn't like empty declare-datatypes
+            nodes!(assert true)
+        } else {
+            node!((declare-datatypes {decls} {defns}))
+        }
     }
 
     pub fn const_decl_to_node(&self, x: &Ident, typ: &Typ) -> Node {
@@ -366,6 +402,15 @@ impl Printer {
         nodes!(declare-var {str_to_node(x)} {self.typ_to_node(typ)})
     }
 
+    pub fn axiom_to_node(&self, axiom: &Axiom) -> Node {
+        let Axiom { named, expr } = axiom;
+        if let Some(named) = named {
+            nodes!(axiom ({str_to_node("!")} {self.expr_to_node(expr)} {str_to_node(":named")} {str_to_node(named)}))
+        } else {
+            nodes!(axiom {self.expr_to_node(expr)})
+        }
+    }
+
     pub fn decl_to_node(&self, decl: &Decl) -> Node {
         match &**decl {
             DeclX::Sort(x) => self.sort_decl_to_node(x),
@@ -373,7 +418,7 @@ impl Printer {
             DeclX::Const(x, typ) => self.const_decl_to_node(x, typ),
             DeclX::Fun(x, typs, typ) => self.fun_decl_to_node(x, typs, typ),
             DeclX::Var(x, typ) => self.var_decl_to_node(x, typ),
-            DeclX::Axiom(expr) => nodes!(axiom {self.expr_to_node(expr)}),
+            DeclX::Axiom(axiom) => self.axiom_to_node(axiom),
         }
     }
 

@@ -436,3 +436,22 @@ test_verify_one_file_with_options! {
         assert_expand_fails(err, 0);
     }
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_forall_requiring_type_invariants ["--expand-errors"] => verus_code! {
+        spec fn stuff(i: nat) -> bool;
+        spec fn bar() -> bool;
+
+        spec fn foo() -> bool {
+            (forall |i: nat| stuff(i))
+            &&
+            bar() // EXPAND-ERRORS
+        }
+
+        fn test()
+            requires forall |i: nat| stuff(i),
+        {
+            assert(foo()); // FAILS
+        }
+    } => Err(e) => assert_expand_fails(e, 1)
+}
