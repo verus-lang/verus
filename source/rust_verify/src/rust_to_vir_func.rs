@@ -2,12 +2,12 @@ use crate::attributes::{
     get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, VerifierAttrs,
 };
 use crate::context::{BodyCtxt, Context};
-use crate::rust_to_vir::ExternalInfo;
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
     check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
+use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, err_span_bare, unsupported_err_span};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};

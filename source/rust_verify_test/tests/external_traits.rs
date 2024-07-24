@@ -380,10 +380,18 @@ test_verify_one_file! {
             type X = S;
         }
 
+        impl U for u16 {
+            type X = [S; 3];
+        }
+
         struct S;
 
         #[verifier::external]
         impl T for S where bool: T {}
+
+        #[verifier::external]
+        impl<A: T, const N: usize> T for [A; N] {
+        }
     } => Ok(())
 }
 

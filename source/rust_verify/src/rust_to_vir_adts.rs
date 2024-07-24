@@ -1,10 +1,10 @@
 use crate::attributes::{get_mode, VerifierAttrs};
 use crate::context::Context;
-use crate::rust_to_vir::ExternalInfo;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
     mk_visibility_from_vis,
 };
+use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::err_span;
 use air::ast_util::str_ident;
