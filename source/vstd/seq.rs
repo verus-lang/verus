@@ -358,6 +358,13 @@ pub broadcast group group_seq_axioms {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! seq_internal {
+    [] => {
+        $crate::vstd::seq::Seq::empty()
+    };
+    [$elem:expr] => {
+        $crate::vstd::seq::Seq::empty()
+            .push($elem)
+    };
     [$($elem:expr),* $(,)?] => {
         $crate::vstd::seq::Seq::empty()
             $(.push($elem))*
