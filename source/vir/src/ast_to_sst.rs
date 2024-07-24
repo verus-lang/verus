@@ -10,7 +10,6 @@ use crate::ast_to_sst_func::{SstInfo, SstMap};
 use crate::ast_util::{types_equal, undecorate_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
-use crate::interpreter::eval_expr;
 use crate::messages::{error, error_with_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, ParPurpose,
@@ -1921,16 +1920,9 @@ pub(crate) fn expr_to_stm_opt(
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
             if !ctx.checking_spec_preconditions_for_non_spec() {
-                let interp_exp = eval_expr(
-                    &ctx.global,
-                    &state.finalize_exp(ctx, state.diagnostics, &state.fun_ssts, &expr)?,
-                    state.diagnostics,
-                    &mut state.fun_ssts,
-                    ctx.global.rlimit,
-                    ctx.global.arch,
-                    *mode,
-                    &mut ctx.global.interpreter_log.lock().unwrap(),
-                )?;
+                let mut m = crate::fast_interp::ModuleLevelInterpreterCtx::new();
+                let exp = state.finalize_exp(ctx, state.diagnostics, &state.fun_ssts, &expr)?;
+                let interp_exp = m.eval(ctx, &state.fun_ssts, &exp)?;
                 let err = error_with_label(
                     &expr.span.clone(),
                     "assertion failed",

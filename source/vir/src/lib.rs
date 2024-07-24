@@ -46,6 +46,7 @@ pub mod expand_errors;
 pub mod headers;
 mod heuristics;
 pub mod interpreter;
+pub mod fast_interp;
 mod inv_masks;
 pub mod layout;
 mod loop_inference;

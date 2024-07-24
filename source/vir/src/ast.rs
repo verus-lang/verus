@@ -368,7 +368,7 @@ pub struct FieldOpr {
     pub check: VariantCheck,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
 pub enum IntegerTypeBoundKind {
     UnsignedMax,
     SignedMin,

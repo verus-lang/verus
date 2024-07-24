@@ -558,6 +558,13 @@ impl FunctionX {
     }
 }
 
+pub fn get_variant_and_idx<'a>(variants: &'a Variants, variant: &Ident) -> (&'a Variant, usize) {
+    match variants.iter().position(|v| v.name == *variant) {
+        Some(idx) => (&variants[idx], idx),
+        None => panic!("internal error: missing variant {}", &variant),
+    }
+}
+
 pub fn get_variant<'a>(variants: &'a Variants, variant: &Ident) -> &'a Variant {
     match variants.iter().find(|v| v.name == *variant) {
         Some(variant) => variant,

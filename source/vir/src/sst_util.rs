@@ -11,17 +11,18 @@ use crate::messages::Span;
 use crate::sst::{BndX, CallFun, Exp, ExpX, InternalFun, Stm, Trig, Trigs, UniqueIdent};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::sync::Arc;
 
-pub(crate) fn free_vars_exp(exp: &Exp) -> HashMap<UniqueIdent, Typ> {
+pub(crate) fn free_vars_exp(exp: &Exp) -> IndexMap<UniqueIdent, Typ> {
     free_vars_exp_scope(exp, &mut crate::sst_visitor::VisitorScopeMap::new())
 }
 
 fn free_vars_exp_scope(
     exp: &Exp,
     scope_map: &mut crate::sst_visitor::VisitorScopeMap,
-) -> HashMap<UniqueIdent, Typ> {
-    let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
+) -> IndexMap<UniqueIdent, Typ> {
+    let mut vars: IndexMap<UniqueIdent, Typ> = IndexMap::new();
     crate::sst_visitor::exp_visitor_dfs::<(), _>(exp, scope_map, &mut |e, scope_map| {
         match &e.x {
             ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(x) => {
@@ -34,8 +35,8 @@ fn free_vars_exp_scope(
     vars
 }
 
-pub(crate) fn free_vars_stm(stm: &Stm) -> HashMap<UniqueIdent, Typ> {
-    let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
+pub(crate) fn free_vars_stm(stm: &Stm) -> IndexMap<UniqueIdent, Typ> {
+    let mut vars: IndexMap<UniqueIdent, Typ> = IndexMap::new();
     crate::sst_visitor::stm_exp_visitor_dfs::<(), _>(stm, &mut |exp, scope_map| {
         vars.extend(free_vars_exp_scope(exp, scope_map).into_iter());
         crate::sst_visitor::VisitorControlFlow::Recurse

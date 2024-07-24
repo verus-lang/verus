@@ -180,7 +180,7 @@ pub enum InterpExp {
  *****************************************************************/
 
 /// Trait to compute syntactic equality of two objects.
-trait SyntacticEquality {
+pub trait SyntacticEquality {
     /// Compute syntactic equality. Returns `Some(b)` if syntactically, equality can be guaranteed,
     /// where `b` iff `self == other`. Otherwise, returns `None`.
     fn syntactic_eq(&self, other: &Self) -> Option<bool>;
@@ -596,14 +596,14 @@ fn i128_to_arch_width(i: i128, arch: ArchWordBits) -> Option<BigInt> {
     }
 }
 
-fn u128_to_width(u: u128, width: IntegerTypeBitwidth, arch: ArchWordBits) -> Option<BigInt> {
+pub fn u128_to_width(u: u128, width: IntegerTypeBitwidth, arch: ArchWordBits) -> Option<BigInt> {
     match width {
         IntegerTypeBitwidth::Width(w) => Some(u128_to_fixed_width(u, w)),
         IntegerTypeBitwidth::ArchWordSize => u128_to_arch_width(u, arch),
     }
 }
 
-fn i128_to_width(i: i128, width: IntegerTypeBitwidth, arch: ArchWordBits) -> Option<BigInt> {
+pub fn i128_to_width(i: i128, width: IntegerTypeBitwidth, arch: ArchWordBits) -> Option<BigInt> {
     match width {
         IntegerTypeBitwidth::Width(w) => Some(i128_to_fixed_width(i, w)),
         IntegerTypeBitwidth::ArchWordSize => i128_to_arch_width(i, arch),
