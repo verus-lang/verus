@@ -430,6 +430,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 traverse_generic_bounds(ctxt, state, &tr.x.typ_bounds, true);
                 traverse_generic_bounds(ctxt, state, &tr.x.assoc_typs_bounds, true);
             }
+            continue;
         }
         if let Some(i) = state.worklist_trait_impls.pop() {
             if let Some(trait_impl) = ctxt.trait_impl_map.get(&i) {
@@ -443,6 +444,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 traverse_generic_bounds(ctxt, state, &ti.x.typ_bounds, false);
                 crate::ast_visitor::map_trait_impl_visitor_env(&ti, state, &ft).unwrap();
             }
+            continue;
         }
         if let Some(a) = state.worklist_assoc_type_decls.pop() {
             let typs: Vec<ReachedType> = state.reached_types.iter().cloned().collect();
@@ -490,6 +492,14 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
         }
         break;
     }
+    assert!(state.worklist_functions.len() == 0);
+    assert!(state.worklist_reveal_groups.len() == 0);
+    assert!(state.worklist_types.len() == 0);
+    assert!(state.worklist_bound_traits.len() == 0);
+    assert!(state.worklist_trait_impls.len() == 0);
+    assert!(state.worklist_assoc_type_decls.len() == 0);
+    assert!(state.worklist_assoc_type_impls.len() == 0);
+    assert!(state.worklist_modules.len() == 0);
 }
 
 impl TraitX {
