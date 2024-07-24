@@ -13,8 +13,8 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    Fun, FunX, Function, FunctionKind, Ident, ImplPath, Krate, KrateX, Path, Trait, TraitImpl, Typ,
-    Typs, VirErr,
+    AssocTypeImpl, AssocTypeImplX, Fun, FunX, Function, FunctionKind, Ident, ImplPath, Krate,
+    KrateX, Path, Trait, TraitImpl, Typ, Typs, VirErr,
 };
 
 // Used to collect all needed external trait implementations
@@ -115,17 +115,16 @@ fn trait_impl_to_vir<'tcx>(
 
 fn translate_assoc_type<'tcx>(
     ctxt: &Context<'tcx>,
-    vir: &mut KrateX,
     name: Ident,
     impll_generics_span: Span,
     impll_generics: Option<&'tcx rustc_hir::Generics<'tcx>>,
     impl_item_span: Span,
     impl_item_id: DefId,
     impl_def_id: DefId,
-    impl_path: &Path,
     trait_path: Path,
     trait_typ_args: Typs,
-) -> Result<(), VirErr> {
+) -> Result<AssocTypeImpl, VirErr> {
+    let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
     let ty = ctxt.tcx.type_of(impl_item_id).skip_binder();
     let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, impl_item_id, impl_item_span, &ty, false)?;
@@ -178,7 +177,7 @@ fn translate_assoc_type<'tcx>(
         }
     }
 
-    let assocx = vir::ast::AssocTypeImplX {
+    let assocx = AssocTypeImplX {
         name,
         impl_path: impl_path.clone(),
         typ_params,
@@ -188,8 +187,7 @@ fn translate_assoc_type<'tcx>(
         typ,
         impl_paths: Arc::new(impl_paths),
     };
-    vir.assoc_type_impls.push(ctxt.spanned_new(impl_item_span, assocx));
-    Ok(())
+    Ok(ctxt.spanned_new(impl_item_span, assocx))
 }
 
 pub(crate) fn translate_impl<'tcx>(
@@ -392,19 +390,18 @@ pub(crate) fn translate_impl<'tcx>(
                 if let ImplItemKind::Type(_ty) = impl_item.kind {
                     if let Some((trait_path, trait_typ_args)) = trait_path_typ_args.clone() {
                         let name = Arc::new(impl_item.ident.to_string());
-                        translate_assoc_type(
+                        let assoc_type_impl = translate_assoc_type(
                             ctxt,
-                            vir,
                             name,
                             impll.generics.span,
                             Some(&impll.generics),
                             impl_item.span,
                             impl_item.owner_id.to_def_id(),
                             impl_def_id,
-                            &impl_path,
                             trait_path,
                             trait_typ_args,
                         )?;
+                        vir.assoc_type_impls.push(assoc_type_impl);
                     } else {
                         unsupported_err!(item.span, "unsupported item ref in impl", impl_item_ref);
                     }
@@ -466,6 +463,9 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     all_trait_ids.extend(external_info.local_trait_ids.iter().cloned());
     external_info.trait_id_set.extend(all_trait_ids.iter().cloned());
 
+    let trait_map: HashMap<Path, Trait> =
+        krate.traits.iter().map(|t| (t.x.name.clone(), t.clone())).collect();
+
     // Next, collect all possible new implementations of traits known to Verus:
     let mut auto_import_impls: Vec<DefId> = Vec::new();
     for trait_id in all_trait_ids {
@@ -496,7 +496,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             continue;
         };
         for arg in trait_ref.skip_binder().args.iter() {
-            if !crate::rust_to_vir_base::mid_ty_filter_for_external_impls(
+            if !crate::rust_to_vir_base::mid_arg_filter_for_external_impls(
                 ctxt,
                 arg.walk(),
                 external_info,
@@ -512,12 +512,47 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             continue;
         }
         let span = tcx.def_span(&impl_def_id);
-        let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
+        let impl_path = def_id_to_vir_path(tcx, &ctxt.verus_items, impl_def_id);
         let module_path = impl_path.pop_segment();
-        if let Ok((_trait_path, _types, trait_impl)) =
+        if let Ok((trait_path, trait_typ_args, trait_impl)) =
             trait_impl_to_vir(ctxt, span, span, impl_def_id, None, module_path, true)
         {
+            let mut assoc_type_impls: Vec<AssocTypeImpl> = Vec::new();
+            for assoc_item in tcx.associated_items(impl_def_id).in_definition_order() {
+                match assoc_item.kind {
+                    rustc_middle::ty::AssocKind::Type => {
+                        let name = Arc::new(assoc_item.ident(tcx).to_string());
+                        if !trait_map[&trait_path].x.assoc_typs.contains(&name) {
+                            continue;
+                        }
+                        if !crate::rust_to_vir_base::mid_ty_filter_for_external_impls(
+                            ctxt,
+                            &tcx.type_of(assoc_item.def_id).skip_binder(),
+                            external_info,
+                        ) {
+                            continue 'impls;
+                        }
+                        if let Ok(assoc_type_impl) = translate_assoc_type(
+                            ctxt,
+                            name,
+                            span,
+                            None,
+                            span,
+                            assoc_item.def_id,
+                            impl_def_id,
+                            trait_path.clone(),
+                            trait_typ_args.clone(),
+                        ) {
+                            assoc_type_impls.push(assoc_type_impl);
+                        } else {
+                            continue 'impls;
+                        }
+                    }
+                    _ => {}
+                }
+            }
             krate.trait_impls.push(trait_impl);
+            krate.assoc_type_impls.append(&mut assoc_type_impls);
             collected_impls.insert(impl_def_id);
         } else {
             // Ideally, our filtering should prevent us from reaching here.
@@ -539,23 +574,23 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     let mut new_trait_impls = IndexMap::<Path, (DefId, Vec<(DefId, rustc_span::Span)>)>::new();
 
     for (def_id, span) in external_info.external_fn_specification_trait_method_impls.iter() {
-        let trait_method_impl = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, *def_id);
+        let trait_method_impl = def_id_to_vir_path(tcx, &ctxt.verus_items, *def_id);
         let trait_impl = trait_method_impl.pop_segment();
         match new_trait_impls.get_mut(&trait_impl) {
             Some(m) => {
                 m.1.push((*def_id, *span));
             }
             None => {
-                let impl_def_id = ctxt.tcx.impl_of_method(*def_id).unwrap();
+                let impl_def_id = tcx.impl_of_method(*def_id).unwrap();
                 new_trait_impls.insert(trait_impl, (impl_def_id, vec![(*def_id, *span)]));
             }
         }
     }
 
     for (impl_path, (impl_def_id, funs)) in new_trait_impls.iter() {
-        let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+        let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
         let trait_did = trait_ref.skip_binder().def_id;
-        let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_did);
+        let trait_path = def_id_to_vir_path(tcx, &ctxt.verus_items, trait_did);
         let Some(traitt) = trait_map.get(&trait_path) else {
             continue;
         };
@@ -564,7 +599,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
 
         let mut methods_we_have = IndexSet::<vir::ast::Ident>::new();
         for (fun_def_id, fun_span) in funs.iter() {
-            let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, *fun_def_id);
+            let path = def_id_to_vir_path(tcx, &ctxt.verus_items, *fun_def_id);
             if !methods_we_have.insert(path.last_segment()) {
                 return err_span(*fun_span, "duplicate external_fn_specification for this method");
             }
