@@ -77,7 +77,27 @@ tokenized_state_machine!{
                 have decision >= [ (n1, r1) => let v1 ];
                 have decision >= [ (n2, r2) => let v2 ];
 
-                assert v1 == v2;
+                assert v1 == v2
+
+                by {
+                    let q1 = choose |q: Quorum| pre.stuff(q, n1, r1);
+                    let q2 = choose |q: Quorum| pre.stuff(q, n2, r2);
+                    //let n = intersect(q1, q2);
+                    quorum_axiom(q1, q2);
+                    let n = intersect(q1, q2);
+                    assert(pre.vote[(n, r1)] == v1);
+                    assert(pre.vote[(n, r2)] == v2);
+                    if r1 < r2 {
+                        assert(pre.stuff2(r1, r2, q1));
+                        assert(v1 == v2);
+                    } else if r1 > r2 {
+                        assert(pre.stuff2(r2, r1, q2));
+                        assert(v1 == v2);
+                    } else {
+                        assert(r1 == r2);
+                        assert(v1 == v2);
+                    }
+                };
             }
         }
 
@@ -126,8 +146,10 @@ tokenized_state_machine!{
                 require (
                   (maxr == NoRound && forall |N:Node,MAXR:Round| !(member(N, q) && r > MAXR && pre.vote.dom().contains((N,MAXR)))) ||
                     (maxr != NoRound &&
-                      (exists |N:Node| member(N, q) && r > maxr && pre.vote.dom().contains((N,maxr)) && pre.vote[(N,maxr)] == v) &&
-                      (forall |N:Node,MAXR:Round| (member(N, q) && r > MAXR && pre.vote.dom().contains((N,MAXR))) ==> MAXR <= maxr)
+                      (exists |N:Node| member(N, q) && pre.one_b_max_vote.contains((N, r, maxr, v))) &&
+                      (forall |N:Node,MAXR:Round,V:Value|
+                        //(member(N, q) && r > MAXR && pre.vote.dom().contains((N,MAXR))) ==> MAXR <= maxr)
+                        member(N, q) && pre.one_b_max_vote.contains((N, r, MAXR, V)) && MAXR != NoRound ==> MAXR <= maxr)
                    )
                 );
 
@@ -158,7 +180,18 @@ tokenized_state_machine!{
 
                 by {
                     if pre.decision.dom().contains((n, r)) {
-                        assert(pre.decision[(n, r)] == v);
+                        let q1 = choose |q: Quorum| pre.stuff(q, n, r);
+                        let q2 = q;
+                        quorum_axiom(q1, q2);
+                        let n0 = intersect(q1, q2);
+
+                        assert(pre.vote[(n0, r)] == pre.decision[(n, r)]);
+
+                        let x = (n0, r, v);
+                        assert(member(x.0, q));
+                        assert(pre.vote_msg.contains((n0, r, v)));
+
+                        assert(pre.vote[(n0, r)] == v);
                     }
                 };
             }
@@ -170,6 +203,27 @@ tokenized_state_machine!{
         pub spec fn one_b_max_vote_msg_correct(&self) -> bool {
             forall |x| #[trigger] self.vote_msg.contains(x) ==> self.vote.dom().contains((x.0, x.1))
               && self.vote[(x.0, x.1)] == x.2
+        }
+
+        #[invariant]
+        pub spec fn one_b_max_vote1(&self) -> bool {
+            forall |N: Node, R1: Round, R2: Round, V1: Value|
+                #[trigger] self.one_b_max_vote.contains((N,R2,NoRound,V1)) && R2 > R1 ==>
+                    !(#[trigger] self.vote.dom().contains((N, R1)))
+        }
+
+        #[invariant]
+        pub spec fn one_b_max_vote2(&self) -> bool {
+            forall |N: Node, R: Round, RMAX: Round, V: Value|
+              #[trigger] self.one_b_max_vote.contains((N,R,RMAX,V)) && RMAX != NoRound ==>
+                  R > RMAX && self.vote.dom().contains((N,RMAX)) && self.vote[(N, RMAX)] == V
+        }
+
+        #[invariant]
+        pub spec fn one_b_max_vote3(&self) -> bool {
+            forall |N: Node, R: Round, RMAX: Round, ROTHER: Round, V: Value|
+                #[trigger] self.one_b_max_vote.contains((N,R,RMAX,V)) && RMAX != NoRound && R > ROTHER && ROTHER > RMAX
+                    ==> !(#[trigger] self.vote.dom().contains((N, ROTHER)))
         }
 
 
@@ -211,7 +265,7 @@ tokenized_state_machine!{
         }
 
         pub open spec fn stuff2(&self, R1: Round, R2: Round, Q: Quorum) -> bool {
-            exists |N:Node| member(N, Q) && self.left_rnd(N,R1)
+            exists |N:Node| (#[trigger] member(N, Q)) && self.left_rnd(N,R1)
                 && (self.vote.dom().contains((N,R1)) ==> self.vote[(N,R1)] == self.proposal[R2])
         }
 
@@ -306,21 +360,67 @@ tokenized_state_machine!{
             assert forall |R1:Round, R2:Round, Q:Quorum|
                 R2 > R1 && post.proposal.dom().contains(R2) implies post.stuff2(R1, R2, Q)
             by {
-                assert(pre.stuff2(R1, R2, Q));
-                /*let N = choose |N: Node| member(N, Q) && pre.left_rnd(N,R1)
-                  && (pre.vote.dom().contains((N,R1)) ==> pre.vote[(N,R1)] == pre.proposal[R2]);
-                assert(member(N, Q) && pre.left_rnd(N,R1)
-                  && (pre.vote.dom().contains((N,R1)) ==> pre.vote[(N,R1)] == pre.proposal[R2]));
-                assert(member(N, Q));
+                if R2 == r {
+                    let N = intersect(Q, q);
+                    quorum_axiom(Q, q);
+                    assert(member(N, Q));
+                    assert(member(N, q));
+                    if maxr == NoRound {
+                        assert(member(N, Q));
+                        let (R, V) = choose |R: Round, V: Value|
+                            pre.one_b_max_vote.contains((N, r, R, V));
+                        assert(post.one_b_max_vote.contains((N, r, R, V)));
+                        assert(post.left_rnd(N, R1));
+                        assert((post.vote.dom().contains((N,R1)) ==> post.vote[(N,R1)] == post.proposal[R2]));
 
-                let (r2, rmax, v) = choose |R2: Round, RMAX: Round, V: Value|
-                    R2 > R1 && pre.one_b_max_vote.contains((N, R2, RMAX, V));
-                assert(post.one_b_max_vote.contains((N, r2, rmax, v)));
-                assert(post.left_rnd(N,R1));
+                        assert(post.stuff2(R1, R2, Q));
+                    } else if R1 < maxr {
+                        assert(pre.stuff2(R1, maxr, Q)); // trigger
+                        assert(post.stuff2(R1, R2, Q));
+                    } else if R1 == maxr {
+                        assert(post.stuff2(R1, R2, Q));
+                    } else if R1 > maxr {
+                        assert(post.stuff2(R1, R2, Q));
+                    }
+                    /*
+                        assert(member(N, Q));
+                        let (Rx, Vx) = choose |Rx: Round, Vx: Value|
+                            pre.one_b_max_vote.contains((N, r, Rx, Vx));
+                        assert(Rx <= maxr);
 
-                if post.vote.dom().contains((N,R1)) {
-                    assert(post.vote[(N,R1)] == post.proposal[R2]);
-                }*/
+                        //let N2 = choose |N: Node| member(N, q) && r > maxr && pre.vote.dom().contains((N,maxr)) && pre.vote[(N,maxr)] == v;
+                        //assert(member(N2, q) && r > maxr && pre.vote.dom().contains((N2,maxr)) && pre.vote[(N2,maxr)] == v);
+
+
+                        assert(member(N, Q));
+                        assert(post.left_rnd(N, R1));
+                        if post.vote.dom().contains((N,R1)) {
+                            //assert(post.vote[(N2,R1)] == v);
+                            assert(pre.vote[(N, R1)] == v);
+                            assert(post.vote[(N,R1)] == post.proposal[R2]);
+                        }
+
+                        assert(post.stuff2(R1, R2, Q));
+                    }
+                     */
+                } else {
+                    assert(pre.stuff2(R1, R2, Q));
+                    /*let N = choose |N: Node| member(N, Q) && pre.left_rnd(N,R1)
+                      && (pre.vote.dom().contains((N,R1)) ==> pre.vote[(N,R1)] == pre.proposal[R2]);
+                    assert(member(N, Q) && pre.left_rnd(N,R1)
+                      && (pre.vote.dom().contains((N,R1)) ==> pre.vote[(N,R1)] == pre.proposal[R2]));
+                    assert(member(N, Q));
+
+                    let (r2, rmax, v) = choose |R2: Round, RMAX: Round, V: Value|
+                        R2 > R1 && pre.one_b_max_vote.contains((N, R2, RMAX, V));
+                    assert(post.one_b_max_vote.contains((N, r2, rmax, v)));
+                    assert(post.left_rnd(N,R1));
+
+                    if post.vote.dom().contains((N,R1)) {
+                        assert(post.vote[(N,R1)] == post.proposal[R2]);
+                    }*/
+                    assert(post.stuff2(R1, R2, Q));
+                }
             }
         }
        
