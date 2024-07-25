@@ -42,6 +42,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     pub fn with_capacity(capacity: usize) -> (result: Self)
         requires
             obeys_key_model::<Key>(),
+            forall|k1: Key, k2: Key| k1@ == k2@ ==> k1 == k2,
         ensures
             result@ == Map::<<Key as View>::V, Value>::empty(),
     {
