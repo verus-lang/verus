@@ -140,9 +140,7 @@ pub fn demote_external_traits(
                             "the implementation for Drop must be marked opens_invariants none",
                         ));
                     }
-                    if !matches!(&function.x.unwind_spec,
-                        Some(crate::ast::UnwindSpec::NoUnwind))
-                    {
+                    if !matches!(&function.x.unwind_spec, Some(crate::ast::UnwindSpec::NoUnwind)) {
                         return Err(error(
                             &function.span,
                             "the implementation for Drop must be marked no_unwind",
