@@ -1,7 +1,7 @@
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function,
     FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern,
-    PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, VarIdent, VirErr,
+    PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -1620,6 +1620,13 @@ fn check_function(
     }
     if let Some(mask_spec) = &function.x.mask_spec {
         for expr in mask_spec.exprs().iter() {
+            let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+            check_expr_has_mode(ctxt, record, &mut dec_typing, Mode::Spec, expr, Mode::Spec)?;
+        }
+    }
+    match &function.x.unwind_spec {
+        None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
+        Some(UnwindSpec::NoUnwindWhen(expr)) => {
             let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
             check_expr_has_mode(ctxt, record, &mut dec_typing, Mode::Spec, expr, Mode::Spec)?;
         }

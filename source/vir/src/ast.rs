@@ -555,6 +555,10 @@ pub enum HeaderExprX {
     /// `extra_dependency(f)` means that recursion-checking should act as if the current
     /// function calls `f`
     ExtraDependency(Fun),
+    /// This function will not unwind
+    NoUnwind,
+    /// This function will not unwind if the given condition holds (function of arguments)
+    NoUnwindWhen(Expr),
 }
 
 /// Primitive constant values
@@ -969,6 +973,14 @@ pub enum MaskSpec {
     InvariantOpensExcept(Exprs),
 }
 
+/// Function specification of its invariant mask
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum UnwindSpec {
+    NoUnwind,
+    NoUnwindWhen(Expr),
+    MayUnwind,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum FunctionKind {
     Static,
@@ -1075,6 +1087,8 @@ pub struct FunctionX {
     pub fndef_axioms: Option<Exprs>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: Option<MaskSpec>,
+    /// UnwindSpec that specifies if the function is allowed to unwind
+    pub unwind_spec: Option<UnwindSpec>,
     /// Allows the item to be a const declaration or static
     pub item_kind: ItemKind,
     /// For public spec functions, publish == None means that the body is private

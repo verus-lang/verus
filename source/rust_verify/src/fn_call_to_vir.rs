@@ -66,6 +66,8 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                         | SpecItem::OpensInvariantsAny
                         | SpecItem::OpensInvariants
                         | SpecItem::OpensInvariantsExcept
+                        | SpecItem::NoUnwind
+                        | SpecItem::NoUnwindWhen
                 ) | VerusItem::Directive(DirectiveItem::ExtraDependency)
             )
         )
@@ -413,6 +415,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_spec_fn_no_proof_args(bctx, expr);
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
                 let header = Arc::new(HeaderExprX::DecreasesWhen(arg));
+                mk_expr(ExprX::Header(header))
+            }
+            SpecItem::NoUnwind => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let header = Arc::new(HeaderExprX::NoUnwind);
+                mk_expr(ExprX::Header(header))
+            }
+            SpecItem::NoUnwindWhen => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                let header = Arc::new(HeaderExprX::NoUnwindWhen(arg));
                 mk_expr(ExprX::Header(header))
             }
             SpecItem::Admit => {
