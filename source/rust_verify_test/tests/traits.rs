@@ -2648,6 +2648,7 @@ test_verify_one_file! {
         impl Drop for A {
             fn drop(&mut self)
                 requires false
+                no_unwind
             {
             }
         }
@@ -2661,6 +2662,7 @@ test_verify_one_file! {
         impl Drop for A {
             fn drop(&mut self)
                 opens_invariants none
+                no_unwind
             { }
         }
     } => Ok(())
@@ -2688,6 +2690,7 @@ test_verify_one_file! {
             #[verifier::external_body]
             fn drop(&mut self)
                 opens_invariants none
+                no_unwind
             {
                 let x = 1 / 0;
             }
@@ -2715,10 +2718,24 @@ test_verify_one_file! {
 
         impl Drop for A {
             fn drop(&mut self)
+                no_unwind
             {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "the implementation for Drop must be marked opens_invariants none")
+}
+
+test_verify_one_file! {
+    #[test] diallow_unwind_on_drop verus_code! {
+        struct A { v: u64 }
+
+        impl Drop for A {
+            fn drop(&mut self)
+                opens_invariants none
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "the implementation for Drop must be marked no_unwind")
 }
 
 test_verify_one_file! {
