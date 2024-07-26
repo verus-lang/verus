@@ -561,3 +561,29 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 4)
 }
+
+test_verify_one_file! {
+    #[test] no_unwind_box_rc_arc_new verus_code! {
+        use vstd::prelude::*;
+        use std::rc::Rc;
+        use std::sync::Arc;
+
+        fn test_box()
+            no_unwind
+        {
+            let b = Box::new(8); // FAILS
+        }
+
+        fn test_rc()
+            no_unwind
+        {
+            let b = Rc::new(8); // FAILS
+        }
+
+        fn test_arc()
+            no_unwind
+        {
+            let b = Arc::new(8); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
