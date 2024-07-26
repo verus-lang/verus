@@ -2911,6 +2911,7 @@ impl Hash for Signature {
         self.ensures.hash(state);
         self.decreases.hash(state);
         self.invariants.hash(state);
+        self.unwind.hash(state);
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
@@ -2931,6 +2932,15 @@ impl Hash for SignatureInvariants {
         H: Hasher,
     {
         self.set.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for SignatureUnwind {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.when.hash(state);
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]

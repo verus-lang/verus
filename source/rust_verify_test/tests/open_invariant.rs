@@ -497,6 +497,7 @@ test_verify_one_file! {
 
         fn test_inside_open()
           opens_invariants [ 1int ]
+          no_unwind
         {
         }
 

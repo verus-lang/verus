@@ -79,7 +79,7 @@ use crate::ast::{
     AssocTypeImpl, BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr,
     Function, FunctionKind, FunctionX, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp, Param,
     ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypDecorationArg, TypX,
-    Typs, UnaryOp, UnaryOpr, VarBinder, VarIdent, Variant,
+    Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarIdent, Variant,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -857,6 +857,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind,
         publish,
         attrs,
@@ -904,10 +905,12 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
 
     let mut state = State { types, is_trait, in_exec_closure: false };
 
+    let native_expr =
+        |state: &mut State, e: &Expr| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e));
     let native_exprs = |state: &mut State, es: &Exprs| {
         let mut exprs: Vec<Expr> = Vec::new();
         for e in es.iter() {
-            exprs.push(coerce_expr_to_native(ctx, &poly_expr(ctx, state, e)));
+            exprs.push(native_expr(state, e));
         }
         Arc::new(exprs)
     };
@@ -932,6 +935,14 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
             Some(MaskSpec::InvariantOpensExcept(native_exprs(&mut state, es)))
         }
         None => None,
+    };
+    let unwind_spec = match unwind_spec {
+        None => None,
+        Some(UnwindSpec::MayUnwind) => Some(UnwindSpec::MayUnwind),
+        Some(UnwindSpec::NoUnwind) => Some(UnwindSpec::NoUnwind),
+        Some(UnwindSpec::NoUnwindWhen(e)) => {
+            Some(UnwindSpec::NoUnwindWhen(native_expr(&mut state, e)))
+        }
     };
 
     let body = if let Some(body) = body {
@@ -1028,6 +1039,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind: *item_kind,
         publish: *publish,
         attrs: attrs.clone(),
