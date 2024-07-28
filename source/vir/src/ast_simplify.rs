@@ -256,6 +256,33 @@ fn pattern_to_exprs_rec(
     }
 }
 
+fn pattern_has_or(pattern: &Pattern) -> bool {
+    match &pattern.x {
+        PatternX::Wildcard(_) => false,
+        PatternX::Var { name: _, mutable: _ } => false,
+        PatternX::Binding { name: _, mutable: _, sub_pat } => pattern_has_or(sub_pat),
+        PatternX::Tuple(patterns) => {
+            for pat in patterns.iter() {
+                if pattern_has_or(pat) {
+                    return true;
+                }
+            }
+            false
+        }
+        PatternX::Constructor(_path, _variant, patterns) => {
+            for binder in patterns.iter() {
+                if pattern_has_or(&binder.a) {
+                    return true;
+                }
+            }
+            false
+        }
+        PatternX::Or(_pat1, _pat2) => true,
+        PatternX::Expr(_e) => false,
+        PatternX::Range(_lower, _upper) => false,
+    }
+}
+
 // note that this gets called *bottom up*
 // that is, if node A is the parent of children B and C,
 // then simplify_one_expr is called first on B and C, and then on A
@@ -461,6 +488,13 @@ fn simplify_one_expr(
                 let test = match &arm.x.guard.x {
                     ExprX::Const(Constant::Bool(true)) => test_pattern,
                     _ => {
+                        if pattern_has_or(&arm.x.pattern) {
+                            return Err(error(
+                                &arm.x.pattern.span,
+                                "Not supported: pattern containing both an or-pattern (|) and an if-guard",
+                            ));
+                        }
+
                         let guard = arm.x.guard.clone();
                         let test_exp = ExprX::Binary(BinaryOp::And, test_pattern, guard);
                         let test = SpannedTyped::new(&arm.x.pattern.span, &t_bool, test_exp);
@@ -1234,6 +1268,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.rlimit,
         ctx.interpreter_log.clone(),
         ctx.func_call_graph_log.clone(),
+        ctx.solver.clone(),
         true,
     )?;
     Ok(krate)

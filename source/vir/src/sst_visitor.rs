@@ -1,6 +1,10 @@
 use crate::ast::{BinaryOpr, NullaryOpr, SpannedTyped, Typ, UnaryOpr, VarBinder, VarIdent, VirErr};
 use crate::def::Spanned;
-use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, LoopInv, Stm, StmX, Trigs, UniqueIdent};
+use crate::sst::{
+    Bnd, BndX, Dest, Exp, ExpX, FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst,
+    LocalDecl, LocalDeclX, LoopInv, Par, ParX, PostConditionSst, Stm, StmX, Trigs, UniqueIdent,
+    UnwindSst,
+};
 pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
 use air::ast::Binder;
 use air::scope_map::ScopeMap;
@@ -121,6 +125,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         R::map_vec(exps, &mut |e| self.visit_exp(e))
     }
 
+    fn visit_stms(&mut self, stms: &Vec<Stm>) -> Result<R::Vec<Stm>, Err> {
+        R::map_vec(stms, &mut |s| self.visit_stm(s))
+    }
+
     fn visit_triggers(&mut self, trigs: &Trigs) -> Result<R::Ret<Trigs>, Err> {
         let mut triggers = R::vec();
         for trigger in trigs.iter() {
@@ -213,7 +221,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let binders = R::map_vec(binders, &mut |b| self.visit_binder_exp(b))?;
                 R::ret(|| exp_new(ExpX::Ctor(path.clone(), ident.clone(), R::get_vec_a(binders))))
             }
-
             ExpX::NullaryOpr(NullaryOpr::ConstGeneric(t)) => {
                 let t = self.visit_typ(t)?;
                 R::ret(|| exp_new(ExpX::NullaryOpr(NullaryOpr::ConstGeneric(R::get(t)))))
@@ -344,6 +351,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     exp_new(ExpX::Bind(Spanned::new(bnd.span.clone(), R::get(bndx)), R::get(e1)))
                 })
             }
+            ExpX::ArrayLiteral(es) => {
+                let es = self.visit_exps(es)?;
+                R::ret(|| exp_new(ExpX::ArrayLiteral(R::get_vec_a(es))))
+            }
             ExpX::Interp(_) => R::ret(|| exp.clone()),
         }
     }
@@ -457,22 +468,13 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
-            StmX::OpenInvariant(inv, ident, ty, body, atomicity) => {
-                let inv = self.visit_exp(inv)?;
-                let ty = self.visit_typ(ty)?;
+            StmX::OpenInvariant(ns_exp, body) => {
+                let ns_exp = self.visit_exp(ns_exp)?;
                 let body = self.visit_stm(body)?;
-                R::ret(|| {
-                    stm_new(StmX::OpenInvariant(
-                        R::get(inv),
-                        ident.clone(),
-                        R::get(ty),
-                        R::get(body),
-                        *atomicity,
-                    ))
-                })
+                R::ret(|| stm_new(StmX::OpenInvariant(R::get(ns_exp), R::get(body))))
             }
             StmX::Block(stms) => {
-                let stms = R::map_vec(stms, &mut |s| self.visit_stm(s))?;
+                let stms = self.visit_stms(stms)?;
                 R::ret(|| stm_new(StmX::Block(R::get_vec_a(stms))))
             }
             StmX::ClosureInner { body, typ_inv_vars } => {
@@ -498,6 +500,130 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             }
             StmX::Air(_) => R::ret(|| stm.clone()),
         }
+    }
+
+    fn visit_par(&mut self, par: &Par) -> Result<R::Ret<Par>, Err> {
+        let t = self.visit_typ(&par.x.typ)?;
+        R::ret(|| {
+            Spanned::new(
+                par.span.clone(),
+                ParX {
+                    name: par.x.name.clone(),
+                    typ: R::get(t),
+                    mode: par.x.mode,
+                    is_mut: par.x.is_mut,
+                    purpose: par.x.purpose,
+                },
+            )
+        })
+    }
+
+    fn visit_pars(&mut self, exps: &Vec<Par>) -> Result<R::Vec<Par>, Err> {
+        R::map_vec(exps, &mut |p| self.visit_par(p))
+    }
+
+    fn visit_local_decl(&mut self, local_decl: &LocalDecl) -> Result<R::Ret<LocalDecl>, Err> {
+        let typ = self.visit_typ(&local_decl.typ)?;
+        R::ret(|| {
+            Arc::new(LocalDeclX {
+                ident: local_decl.ident.clone(),
+                typ: R::get(typ),
+                mutable: local_decl.mutable,
+            })
+        })
+    }
+
+    fn visit_postcondition(
+        &mut self,
+        post: &PostConditionSst,
+    ) -> Result<R::Ret<PostConditionSst>, Err> {
+        let ens_exps = self.visit_exps(&post.ens_exps)?;
+        let ens_spec_precondition_stms = self.visit_stms(&post.ens_spec_precondition_stms)?;
+        R::ret(|| PostConditionSst {
+            dest: post.dest.clone(),
+            ens_exps: R::get_vec_a(ens_exps),
+            ens_spec_precondition_stms: R::get_vec_a(ens_spec_precondition_stms),
+            kind: post.kind,
+        })
+    }
+
+    fn visit_func_decl(&mut self, func_decl: &FuncDeclSst) -> Result<R::Ret<FuncDeclSst>, Err> {
+        let req_inv_pars = self.visit_pars(&func_decl.req_inv_pars)?;
+        let ens_pars = self.visit_pars(&func_decl.ens_pars)?;
+        let post_pars = self.visit_pars(&func_decl.post_pars)?;
+        let reqs = self.visit_exps(&func_decl.reqs)?;
+        let enss = self.visit_exps(&func_decl.enss)?;
+        let fndef_axioms = self.visit_exps(&func_decl.fndef_axioms)?;
+        let mut inv_masks = R::vec();
+        for es in func_decl.inv_masks.iter() {
+            let es = self.visit_exps(es)?;
+            R::push(&mut inv_masks, R::ret(|| R::get_vec_a(es))?);
+        }
+        let unwind_condition =
+            R::map_opt(&func_decl.unwind_condition, &mut |exp| self.visit_exp(exp))?;
+        R::ret(|| FuncDeclSst {
+            req_inv_pars: R::get_vec_a(req_inv_pars),
+            ens_pars: R::get_vec_a(ens_pars),
+            post_pars: R::get_vec_a(post_pars),
+            reqs: R::get_vec_a(reqs),
+            enss: R::get_vec_a(enss),
+            inv_masks: R::get_vec_a(inv_masks),
+            unwind_condition: R::get_opt(unwind_condition),
+            fndef_axioms: R::get_vec_a(fndef_axioms),
+        })
+    }
+
+    fn visit_func_check(&mut self, def: &FuncCheckSst) -> Result<R::Ret<FuncCheckSst>, Err> {
+        let reqs = self.visit_exps(&def.reqs)?;
+        let post_condition = self.visit_postcondition(&def.post_condition)?;
+        let body = self.visit_stm(&def.body)?;
+        let local_decls = R::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
+        let unwind = self.visit_unwind(&def.unwind)?;
+
+        R::ret(|| FuncCheckSst {
+            reqs: R::get_vec_a(reqs),
+            post_condition: Arc::new(R::get(post_condition)),
+            mask_set: def.mask_set.clone(),
+            unwind: R::get(unwind),
+            body: R::get(body),
+            local_decls: R::get_vec_a(local_decls),
+            statics: def.statics.clone(),
+        })
+    }
+
+    fn visit_unwind(&mut self, unwind: &UnwindSst) -> Result<R::Ret<UnwindSst>, Err> {
+        match unwind {
+            UnwindSst::MayUnwind | UnwindSst::NoUnwind => R::ret(|| unwind.clone()),
+            UnwindSst::NoUnwindWhen(exp) => {
+                let exp = self.visit_exp(exp)?;
+                R::ret(|| UnwindSst::NoUnwindWhen(R::get(exp)))
+            }
+        }
+    }
+
+    fn visit_func_body(&mut self, spec: &FuncSpecBodySst) -> Result<R::Ret<FuncSpecBodySst>, Err> {
+        let decrease_when = R::map_opt(&spec.decrease_when, &mut |e| self.visit_exp(e))?;
+        let termination_check =
+            R::map_opt(&spec.termination_check, &mut |c| self.visit_func_check(c))?;
+        let body_exp = self.visit_exp(&spec.body_exp)?;
+        R::ret(|| FuncSpecBodySst {
+            decrease_when: R::get_opt(decrease_when),
+            termination_check: R::get_opt(termination_check),
+            body_exp: R::get(body_exp),
+        })
+    }
+
+    fn visit_func_axioms(&mut self, axioms: &FuncAxiomsSst) -> Result<R::Ret<FuncAxiomsSst>, Err> {
+        let spec_axioms = R::map_opt(&axioms.spec_axioms, &mut |f| self.visit_func_body(f))?;
+        let proof_exec_axioms = R::map_opt(&axioms.proof_exec_axioms, &mut |(pars, exp)| {
+            let pars = self.visit_pars(&pars)?;
+            let exp = self.visit_exp(&exp)?;
+            R::ret(|| (R::get_vec_a(pars), R::get(exp)))
+        })?;
+        R::ret(|| FuncAxiomsSst {
+            spec_axioms: R::get_opt(spec_axioms),
+            proof_exec_axioms: R::get_opt(proof_exec_axioms),
+        })
     }
 }
 

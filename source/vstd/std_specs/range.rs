@@ -68,7 +68,6 @@ impl<
         &&& self.cur.spec_is_lt(self.end) || self.cur
             == self.end
         // TODO (not important): use new "matches ==>" syntax here
-
         &&& if let Some(init) = init {
             &&& init.start == init.cur
             &&& init.start == self.start

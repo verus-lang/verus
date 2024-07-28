@@ -11,17 +11,17 @@ use crate::def::{
     QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
     QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
 };
-use crate::func_to_air::{func_bind, func_bind_trig, func_def_args};
 use crate::messages::Span;
 use crate::sst::{Par, ParPurpose, ParX};
 use crate::sst_to_air::{
     datatype_id, expr_has_type, monotyp_to_path, path_to_air_ident, typ_invariant, typ_to_air,
 };
+use crate::sst_to_air_func::{func_bind, func_bind_trig, func_def_args};
 use crate::util::vec_map;
 use air::ast::{Command, CommandX, Commands, DeclX, Expr, ExprX};
 use air::ast_util::{
-    ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies, str_apply,
-    str_ident, str_typ,
+    ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
+    mk_unnamed_axiom, str_apply, str_ident, str_typ,
 };
 use std::sync::Arc;
 
@@ -57,6 +57,7 @@ fn field_to_par(span: &Span, f: &Field) -> Par {
             name: crate::ast_util::str_unique_var(&("_".to_string() + &f.name), dis),
             typ: f.a.0.clone(),
             mode: f.a.1,
+            is_mut: false,
             purpose: ParPurpose::Regular,
         },
     )
@@ -72,7 +73,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
         TypX::Datatype(path, _, _) => ctx.datatype_map[path].x.ext_equal,
-        TypX::Decorate(_, t) => uses_ext_equal(ctx, t),
+        TypX::Decorate(_, _, t) => uses_ext_equal(ctx, t),
         TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
         TypX::TypParam(_) => true,
         TypX::Projection { .. } => true,
@@ -83,6 +84,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
         TypX::Primitive(crate::ast::Primitive::StrSlice, _) => false,
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
+        TypX::Primitive(crate::ast::Primitive::Global, _) => false,
         TypX::FnDef(..) => false,
     }
 }
@@ -101,6 +103,7 @@ fn datatype_or_fun_to_air_commands(
     tparams: &Idents,
     variants: &Variants,
     is_fun: bool,
+    is_array: bool,
     declare_box: bool,
     add_height: bool,
     add_ext_equal: bool,
@@ -150,6 +153,7 @@ fn datatype_or_fun_to_air_commands(
                 name: x.clone(),
                 typ: typ.clone(),
                 mode: Mode::Exec,
+                is_mut: false,
                 purpose: ParPurpose::Regular,
             },
         )
@@ -178,7 +182,7 @@ fn datatype_or_fun_to_air_commands(
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_BOX_AXIOM);
         let bind = func_bind(ctx, name, &Arc::new(vec![]), &x_params(&datatyp), &box_x, false);
         let forall = mk_bind_expr(&bind, &mk_eq(&x_var, &unbox_box_x));
-        axiom_commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Axiom(forall)))));
+        axiom_commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));
 
         // unbox axiom:
         //   forall typs, x. has_type(x, T(typs)) => x == box(unbox(x))
@@ -186,7 +190,7 @@ fn datatype_or_fun_to_air_commands(
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_UNBOX_AXIOM);
         let bind = func_bind(ctx, name, tparams, &x_params(&vpolytyp), &has, false);
         let forall = mk_bind_expr(&bind, &mk_implies(&has, &mk_eq(&x_var, &box_unbox_x)));
-        axiom_commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Axiom(forall)))));
+        axiom_commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));
     }
 
     // function axiom
@@ -208,6 +212,7 @@ fn datatype_or_fun_to_air_commands(
                 name,
                 typ: vpolytyp.clone(),
                 mode: Mode::Exec,
+                is_mut: false,
                 purpose: ParPurpose::Regular,
             };
             params.push(Spanned::new(span.clone(), parx));
@@ -248,7 +253,7 @@ fn datatype_or_fun_to_air_commands(
             func_bind_trig(ctx, name, tparams, &Arc::new(vec![x_param(&datatyp)]), &trigs, false);
         let imply = mk_implies(&inner_forall, &has_box_mk_fun);
         let forall = mk_bind_expr(&bind, &imply);
-        let axiom = Arc::new(DeclX::Axiom(forall));
+        let axiom = mk_unnamed_axiom(forall);
         axiom_commands.push(Arc::new(CommandX::Global(axiom)));
 
         // SpecFn apply axiom:
@@ -263,7 +268,7 @@ fn datatype_or_fun_to_air_commands(
         let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, false);
         let imply = mk_implies(&mk_and(&pre), &has_app);
         let forall = mk_bind_expr(&bind, &imply);
-        let axiom = Arc::new(DeclX::Axiom(forall));
+        let axiom = mk_unnamed_axiom(forall);
         axiom_commands.push(Arc::new(CommandX::Global(axiom)));
 
         // SpecFn height axiom:
@@ -281,7 +286,7 @@ fn datatype_or_fun_to_air_commands(
         let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, false);
         let imply = mk_implies(&mk_and(&pre), &height_lt);
         let forall = mk_bind_expr(&bind, &imply);
-        let axiom = Arc::new(DeclX::Axiom(forall));
+        let axiom = mk_unnamed_axiom(forall);
         axiom_commands.push(Arc::new(CommandX::Global(axiom)));
     }
 
@@ -311,7 +316,7 @@ fn datatype_or_fun_to_air_commands(
             let bind = func_bind(ctx, name, tparams, &params, &has_ctor, false);
             let imply = mk_implies(&mk_and(&pre), &has_ctor);
             let forall = mk_bind_expr(&bind, &imply);
-            let axiom = Arc::new(DeclX::Axiom(forall));
+            let axiom = mk_unnamed_axiom(forall);
             axiom_commands.push(Arc::new(CommandX::Global(axiom)));
         }
         for field in variant.fields.iter() {
@@ -341,7 +346,7 @@ fn datatype_or_fun_to_air_commands(
                 func_bind_trig(ctx, name, &Arc::new(vec![]), &x_params(&datatyp), &trigs, false);
             let eq = mk_eq(&xfield, &xfield_internal);
             let forall = mk_bind_expr(&bind, &eq);
-            let axiom = Arc::new(DeclX::Axiom(forall));
+            let axiom = mk_unnamed_axiom(forall);
             axiom_commands.push(Arc::new(CommandX::Global(axiom)));
 
             if ctx.datatypes_with_invariant.contains(dpath) {
@@ -355,14 +360,14 @@ fn datatype_or_fun_to_air_commands(
                         func_bind_trig(ctx, name, tparams, &x_params(&vpolytyp), &trigs, false);
                     let imply = mk_implies(&has, &inv_f);
                     let forall = mk_bind_expr(&bind, &imply);
-                    let axiom = Arc::new(DeclX::Axiom(forall));
+                    let axiom = mk_unnamed_axiom(forall);
                     axiom_commands.push(Arc::new(CommandX::Global(axiom)));
                 }
             }
         }
     }
 
-    if !ctx.datatypes_with_invariant.contains(dpath) && declare_box && !is_fun {
+    if !ctx.datatypes_with_invariant.contains(dpath) && declare_box && !is_fun && !is_array {
         // If there are no visible refinement types (e.g. no refinement type fields,
         // or type is completely abstract to us), then has_type always holds:
         //   forall typs, x. has_type(box(x), T(typs))
@@ -370,7 +375,7 @@ fn datatype_or_fun_to_air_commands(
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_HAS_TYPE_ALWAYS);
         let bind = func_bind(ctx, name, tparams, &x_params(&datatyp), &has_box, false);
         let forall = mk_bind_expr(&bind, &has_box);
-        axiom_commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Axiom(forall)))));
+        axiom_commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));
     }
 
     // height axiom
@@ -496,7 +501,7 @@ fn datatype_or_fun_to_air_commands(
             let bind = func_bind(ctx, name, tparams, &params, &ext_eq_xy, false);
             let imply = mk_implies(&mk_and(pre), &ext_eq_xy);
             let forall = mk_bind_expr(&bind, &imply);
-            let axiom = Arc::new(DeclX::Axiom(forall));
+            let axiom = mk_unnamed_axiom(forall);
             Arc::new(CommandX::Global(axiom))
         };
         for variant in variants.iter() {
@@ -615,6 +620,29 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &Arc::new(tparams),
             &Arc::new(vec![]),
             true,
+            false,
+            true,
+            false,
+            true,
+        );
+    }
+
+    if ctx.uses_array {
+        datatype_or_fun_to_air_commands(
+            ctx,
+            &mut field_commands,
+            &mut token_commands,
+            &mut box_commands,
+            &mut axiom_commands,
+            &ctx.global.no_span,
+            &crate::def::array_type(),
+            &Arc::new(air::ast::TypX::Fun),
+            None,
+            Some(Arc::new(TypX::Primitive(crate::ast::Primitive::Array, Arc::new(vec![])))),
+            &Arc::new(vec![Arc::new("T".to_string()), Arc::new("N".to_string())]),
+            &Arc::new(vec![]),
+            false,
+            true,
             true,
             false,
             true,
@@ -640,6 +668,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             Some(crate::poly::monotyp_to_typ(monotyp)),
             &Arc::new(vec![]),
             &Arc::new(vec![]),
+            false,
             false,
             true,
             false,
@@ -675,6 +704,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &Arc::new(tparams),
             &datatype.x.variants,
             false,
+            false,
             is_transparent,
             is_transparent,
             is_transparent && datatype.x.ext_equal,
@@ -695,6 +725,16 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         ));
         token_commands.push(Arc::new(CommandX::Global(decl_type_id)));
     }
+
+    let array_commands = if ctx.uses_array {
+        let nodes = crate::prelude::array_functions(&prefix_box(&crate::def::array_type()));
+        let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+            .nodes_to_commands(&nodes)
+            .expect("internal error: malformed strslice functions");
+        (*cmds).clone()
+    } else {
+        vec![]
+    };
 
     let strslice_monotyp = Arc::new(crate::poly::MonoTypX::Primitive(
         crate::ast::Primitive::StrSlice,
@@ -720,6 +760,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     commands.append(&mut token_commands);
     commands.append(&mut box_commands);
     commands.append(&mut axiom_commands);
+    commands.extend(array_commands);
     commands.extend(strslice_commands);
     Arc::new(commands)
 }

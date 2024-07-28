@@ -50,4 +50,24 @@ proof fn seq_example(a: Seq<int>, b: Seq<int>, c: Seq<int>, d: Seq<int>) {
 }
 // ANCHOR_END: seq_example
 
+// ANCHOR: fibonacci_memoize
+#[verifier::memoize]
+spec fn fibonacci(n: nat) -> nat
+    decreases n
+{
+    if n == 0 {
+        0
+    } else if n == 1 {
+        1
+    } else {
+        fibonacci((n - 2) as nat) + fibonacci((n - 1) as nat)
+    }
+}
+
+proof fn test_fibonacci() {
+    assert(fibonacci(63) == 6557470319842) by(compute_only);
+}
+// ANCHOR_END: fibonacci_memoize
+
+
 } // verus!

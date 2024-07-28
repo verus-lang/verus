@@ -691,7 +691,7 @@ pub(crate) fn parse_attrs_walk_parents<'tcx>(
     }
 }
 
-pub(crate) fn get_spinoff_loop_walk_parents<'tcx>(
+pub(crate) fn get_loop_isolation_walk_parents<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     def_id: rustc_span::def_id::DefId,
 ) -> Option<bool> {
@@ -1087,4 +1087,6 @@ pub const RUSTC_ATTRS_OK_TO_IGNORE: &[&str] = &[
     // for verification.
     // https://rust-lang.github.io/rfcs/2229-capture-disjoint-fields.html
     "rustc_insignificant_dtor",
+    // Boxes
+    "rustc_box",
 ];

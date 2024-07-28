@@ -25,10 +25,9 @@
     - [Loops and invariants](while.md)
         - [Loops with break](break.md)
     - [Lexicographic decreases clauses and mutual recursion](lex_mutual.md)
-- [Datatypes: struct and enum]() <!--- Andrea --->
-    - [Defining datatypes]() <!--- Andrea --->
-    - [Querying the discriminant (`#[is_variant]`)]() <!--- Andrea --->
-    - [Proving properties of fields]() <!--- Andrea --->
+- [Datatypes: struct and enum](datatypes.md)
+    - [Struct](datatypes_struct.md)
+    - [Enum](datatypes_enum.md)
 - [Basic libraries and spec closures](vstd.md)
     - [Specification libraries: Seq, Set, Map](spec_lib.md)
     - [INTERLUDE: using assert and assume to develop proofs](develop_proofs.md)
@@ -43,8 +42,8 @@
     - [Ambient (`broadcast`) lemmas](broadcast_proof.md)
 - [Higher-order executable functions]()
     - [Passing functions as values](./exec_funs_as_values.md)
-    - [Closures]()
-- [SMT solving, automation, and where automation fails](smt_failures.md) <!--- Chris --->
+    - [Closures](./exec_closures.md)
+- [SMT solving, automation, and where automation fails](smt_failures.md)
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
     - [Integers and nonlinear arithmetic](nonlinear.md)
     - [Bit vectors and bitwise operations](bitvec.md)
@@ -52,12 +51,13 @@
     - [Recursive functions]() <!--- Chris --->
     - [Extensional equality](extensional_equality.md)
     - [Libraries: incomplete axioms for Seq, Set, Map]() <!--- Chris --->
-- [Improving SMT performance]() <!--- Chris --->
+- [Managing proof performance and why it's critical](smt_perf_overview.md)
+    - [Measuring verification performance](performance.md)
+    - [Quantifier profiling](profiling.md)
     - [Modules, hiding, opaque, reveal]() <!--- Chris --->
-    - [Quantifier profiling](profiling.md) <!--- Bryan --->
     - [Hiding local proofs with `assert (...) by { ... }`](assert_by.md)
-    - [Structured proof by calculation](calc.md) <!--- JayB --->
-    - [Proof by computation](assert_by_compute.md) <!--- Bryan --->
+    - [Structured proof by calculation](calc.md)
+    - [Proof by computation](assert_by_compute.md)
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces](breaking_proofs_into_pieces.md)
 - [Mutation, references, and borrowing]() <!--- Andrea --->
@@ -65,21 +65,13 @@
     - [Assertions containing mutable references]() <!--- Andrea --->
 - [Traits]()
 - [Ghost and tracked variables]()
-- [Low-level pointers and concurrency]()
-- [Attributes and directives]()
-    - [external and external_body]()
-    - [inline]()
-    - [opaque]()
-    - [decreases_by]()
-    - [when_used_as_spec]()
+- [Concurrency and Unsafe Code](concurrency_and_unsafe.md)
 - [Strings]() <!--- Andrea --->
     - [String library]() <!--- Andrea --->
     - [String literals]() <!--- Andrea --->
 - [Macros]()
 - [Tools and command-line options]()
-    - [Proof Debugger]() <!--- Chanhee --->
     - [IDE Support](ide_support.md)
-    - [Syntax Highlighting]()
 
 - [Verification and Rust]()
   - [Why Rust?]()
@@ -87,17 +79,17 @@
   - [Borrowing and lifetimes]()
   - [Mutable borrows]()
   - [Interior mutability](./interior_mutability.md)
-  - [Alternatives to unsafe]()
+  - [Alternatives to unsafe](./alt-unsafe.md)
 
 - [Understanding the guarantees of a verified program]()
-  - [Assumptions and trusted components]()
-  - [Identifying a project's TCB]()
+  - [Assumptions and trusted components](./tcb.md)
   - [Memory safety is conditional on verification](./memory-safety.md)
+  - [Calling verified code from unverified code](./call-from-unverified-code.md)
 
 - [Project setup and development]()
   - [Working with crates]()
   - [Invoking Verus code from Rust]()
-  - [Documentation with Rustdoc]()
+  - [Documentation with Rustdoc](./verusdoc.md)
 
 
 
@@ -109,7 +101,7 @@
   - [Function modes]()
   - [Variable modes](./reference-var-modes.md)
 - [Spec expressions](./spec-expressions.md)
-  - [Rust subset]()
+  - [Rust subset](./spec-rust-subset.md)
   - [Arithmetic](./spec-arithmetic.md)
   - [Spec equality (`==`)](./spec-equality.md)
   - [Extensional equality (`=~=`, `=~~=`)](./ref-extensional-equality.md)
@@ -127,13 +119,15 @@
   - [assert ... by](./reference-assert-by.md)
   - [assert forall ... by](./reference-assert-forall-by.md)
   - [assert ... by(bit_vector)](./reference-assert-by-bit-vector.md)
-  - [assert ... by(nonlinear_arith)]()
-  - [assert ... by(compute) / by(compute_only)]()
-  - [reveal]()
-  - [fuel]()
+  - [assert ... by(nonlinear_arith)](./reference-assert-by-nonlinear.md)
+  - [assert ... by(compute) / by(compute_only)](./reference-assert-by-compute.md)
+  - [reveal, reveal_with_fuel, hide](./reference-reveal-hide.md)
 - [Function specifications]()
   - [requires / ensures]()
   - [opens_invariants](./reference-opens-invariants.md)
+  - [no_unwind](./reference-unwind-sig.md)
+  - [Traits and signature inheritance](./reference-signature-inheritance.md)
+  - [Specifications on FnOnce](./reference-signature-fnonce.md)
   - [recommends]()
 - [Loop specifications]()
   - [invariant]()
@@ -144,9 +138,11 @@
   - [decreases ... via ...]()
   - [Datatype ordering]()
   - [Cyclic definitions]()
+- [Attribute list](./reference-attributes.md)
 - [Misc. Rust features]()
   - [Statics](./static.md)
   - [char](./char.md)
+  - [Unions](./reference-unions.md)
 - [Command line]()
   - [--record](./reference-flag-record.md)
 - [Planned future work]()

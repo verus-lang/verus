@@ -72,7 +72,7 @@ test_both! {
                 proof { inner = 0u8; }
             }); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_vir_error_msg(err, "Cannot show invariant holds at end of block")
 }
 
 test_both! {
@@ -497,6 +497,7 @@ test_verify_one_file! {
 
         fn test_inside_open()
           opens_invariants [ 1int ]
+          no_unwind
         {
         }
 
@@ -751,4 +752,44 @@ test_verify_one_file! {
             });
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] inv_typ_invariants verus_code!{
+        use vstd::invariant::*;
+
+        #[allow(unreachable_code)]
+        pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>) {
+            open_local_invariant!(&i => inner => {
+                assert(inner <= 255);
+                loop {
+                    assert(inner <= 255);
+                }
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] switching_inv_to_a_different_const_should_still_use_original_const verus_code!{
+        use vstd::invariant::*;
+
+        struct Pred { }
+        impl InvariantPredicate<u8, u8> for Pred {
+            open spec fn inv(k: u8, v: u8) -> bool {
+                k == v
+            }
+        }
+
+        pub fn X(Tracked(i): Tracked<LocalInvariant<u8, u8, Pred>>) {
+            let tracked mut i = i;
+            open_local_invariant!(&i => inner => {
+                proof {
+                    inner = 7u8;
+                    i = LocalInvariant::new(7u8, 7u8, 1337);
+                    assert(i.inv(inner));
+                }
+            });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Cannot show invariant holds at end of block")
 }

@@ -4,21 +4,17 @@ use crate::ast::{
     VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
+use crate::ast_to_sst_func::{params_to_pars, SstMap};
 use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
 use crate::context::Ctx;
 use crate::def::{
-    decrease_at_entry, rename_rec_param, unique_bound, unique_local, CommandsWithContext, Spanned,
-    FUEL_PARAM, FUEL_TYPE,
+    decrease_at_entry, rename_rec_param, unique_bound, unique_local, Spanned, FUEL_PARAM, FUEL_TYPE,
 };
-use crate::func_to_air::{params_to_pars, SstMap};
-use crate::inv_masks::MaskSet;
 use crate::messages::{error, Span};
 use crate::scc::Graph;
-use crate::sst::PostConditionKind;
-use crate::sst::PostConditionSst;
 use crate::sst::{
-    BndX, CallFun, Dest, Exp, ExpX, Exps, FunctionSst, InternalFun, LocalDecl, LocalDeclX, Stm,
-    StmX, UniqueIdent,
+    BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
+    UniqueIdent,
 };
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
@@ -231,7 +227,7 @@ pub(crate) fn mk_decreases_at_entry(
             span.clone(),
             StmX::Assign {
                 lhs: Dest {
-                    dest: crate::ast_to_sst::var_loc_exp(&span, &typ, uniq_ident),
+                    dest: SpannedTyped::new(&span, &typ, ExpX::VarLoc(uniq_ident)),
                     is_init: true,
                 },
                 rhs: exp_for_decrease(ctx, exp)?,
@@ -251,11 +247,11 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     function: &Function,
     body: &Exp,
     fuel: Option<usize>,
-) -> Result<(bool, Exp, crate::recursion::Node), VirErr> {
+) -> Result<(Exp, crate::recursion::Node), VirErr> {
     let caller_node = Node::Fun(function.x.name.clone());
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&caller_node);
     if !fun_is_recursive(ctx, function) {
-        return Ok((false, body.clone(), scc_rep));
+        return Ok((body.clone(), scc_rep));
     }
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0 {
@@ -295,65 +291,7 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
         _ => exp.clone(),
     });
 
-    Ok((true, body, scc_rep))
-}
-
-pub(crate) fn check_termination_commands(
-    ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
-    fun_ssts: &SstMap,
-    function: &Function,
-    mut local_decls: Vec<LocalDecl>,
-    proof_body: Stm,
-    body: &Stm,
-    uses_decreases_by: bool,
-) -> Result<Vec<CommandsWithContext>, VirErr> {
-    if !fun_is_recursive(ctx, function) {
-        return Ok(vec![]);
-    }
-
-    let (ctxt, decreases_exps, stm) =
-        check_termination(ctx, diagnostics, fun_ssts, function, body)?;
-
-    let (mut decls, mut stm_assigns) =
-        mk_decreases_at_entry(&ctxt.ctx, &body.span, None, &decreases_exps)?;
-    stm_assigns.push(proof_body);
-    stm_assigns.push(stm.clone());
-    let stm_block = Spanned::new(body.span.clone(), StmX::Block(Arc::new(stm_assigns)));
-
-    // TODO: If we decide to support debugging decreases failures, we should plumb _snap_map
-    // up to the VIR model
-    local_decls.append(&mut decls);
-    let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
-        ctx,
-        &function.span,
-        &function.x.typ_params,
-        &function.x.typ_bounds,
-        &function.x.params,
-        &FunctionSst {
-            post_condition: PostConditionSst {
-                dest: None,
-                kind: if uses_decreases_by {
-                    PostConditionKind::DecreasesBy
-                } else {
-                    PostConditionKind::DecreasesImplicitLemma
-                },
-                ens_exps: vec![],
-                ens_spec_precondition_stms: vec![],
-            },
-            body: stm_block,
-            local_decls,
-            statics: vec![],
-            reqs: Arc::new(vec![]),
-            mask_set: MaskSet::empty(),
-        },
-        &vec![],
-        false,
-        false,
-        false,
-    )?;
-
-    Ok(commands)
+    Ok((body, scc_rep))
 }
 
 fn check_termination<'a>(
@@ -446,6 +384,7 @@ pub(crate) fn check_termination_stm(
     diagnostics: &impl Diagnostics,
     fun_ssts: &SstMap,
     function: &Function,
+    proof_body: Option<Stm>,
     body: &Stm,
 ) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
     if !fun_is_recursive(ctx, &function) {
@@ -457,6 +396,9 @@ pub(crate) fn check_termination_stm(
 
     let (decls, mut stm_assigns) =
         mk_decreases_at_entry(&ctxt.ctx, &stm.span, None, &decreases_exps)?;
+    if let Some(proof_body) = proof_body {
+        stm_assigns.push(proof_body);
+    }
     stm_assigns.push(stm.clone());
     let stm_block = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stm_assigns)));
     Ok((decls, stm_block))

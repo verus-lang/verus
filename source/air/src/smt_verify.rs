@@ -1,8 +1,9 @@
 use crate::ast::{
-    BinaryOp, BindX, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, StmtX, TypX, UnaryOp,
+    Axiom, BinaryOp, BindX, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, StmtX, TypX,
+    UnaryOp,
 };
 use crate::ast_util::{ident_var, mk_and, mk_not};
-use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
+use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, SmtSolver, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
 use crate::messages::{ArcDynMessage, Diagnostics};
 pub use crate::model::{Model, ModelDef};
@@ -97,7 +98,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
             context.smt_log.log_decl(decl);
         }
         DeclX::Var(_, _) => {}
-        DeclX::Axiom(expr) => {
+        DeclX::Axiom(Axiom { named, expr }) => {
             let expr = elim_zero_args_expr(expr);
             let mut infos: Vec<AssertionInfo> = Vec::new();
             let mut axiom_infos: Vec<AxiomInfo> = Vec::new();
@@ -110,7 +111,23 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
                     .expect("internal error: duplicate assert_info");
                 smt_add_decl(context, &info.decl);
             }
-            context.smt_log.log_assert(&labeled_expr);
+            context.smt_log.log_assert(named, &labeled_expr);
+        }
+    }
+}
+
+impl SmtSolver {
+    pub fn reason_unknown_canceled_str(&self) -> &str {
+        match self {
+            SmtSolver::Z3 => "(:reason-unknown \"canceled\")",
+            SmtSolver::Cvc5 => "(:reason-unknown resourceout)",
+        }
+    }
+
+    pub fn reason_unknown_incomplete_str(&self) -> &str {
+        match self {
+            SmtSolver::Z3 => "(:reason-unknown \"(incomplete",
+            SmtSolver::Cvc5 => "(:reason-unknown incomplete)",
         }
     }
 }
@@ -146,7 +163,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
         }
         if only_check_earlier && !found_enabled {
             // no earlier assertions to check
-            return ValidityResult::Valid;
+            return ValidityResult::Valid(
+                #[cfg(feature = "axiom-usage-info")]
+                crate::context::UsageInfo::None,
+            );
         }
         Some(mk_and(&disabled))
     } else {
@@ -186,11 +206,13 @@ pub(crate) fn smt_check_assertion<'ctx>(
     }
 
     if let Some(disabled_expr) = disabled_expr {
-        context.smt_log.log_assert(&disabled_expr);
+        context.smt_log.log_assert(&None, &disabled_expr);
     }
 
-    context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
-    context.set_z3_param_u32("rlimit", context.rlimit, false);
+    if matches!(context.solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
+        context.set_z3_param_u32("rlimit", context.rlimit, false);
+    }
 
     context.smt_log.log_word("check-sat");
 
@@ -229,7 +251,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         } else if line == "sat" {
             assert!(unsat == None);
             unsat = Some(SmtOutput::Sat);
-        } else if line == "unknown" {
+        } else if line == "unknown" || line == "cvc5 interrupted by timeout." {
             assert!(unsat == None);
             unsat = Some(SmtOutput::Unknown);
         } else if context.ignore_unexpected_smt {
@@ -242,12 +264,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
         }
     }
 
-    if let Err(err) = smt_update_statistics(context) {
-        return err;
+    if matches!(context.solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", "0");
+        context.set_z3_param_u32("rlimit", 0, false);
     }
-
-    context.smt_log.log_set_option("rlimit", "0");
-    context.set_z3_param_u32("rlimit", 0, false);
 
     let unsat = unsat.expect("expected sat/unsat/unknown from SMT solver");
 
@@ -273,14 +293,14 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
             let mut reason = None;
             for line in smt_output {
-                if line == "(:reason-unknown \"canceled\")" {
+                if line == context.solver.reason_unknown_canceled_str() {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Canceled);
                 } else if line == "(:reason-unknown \"unknown\")" {
                     // it appears this sometimes happens when rlimit is exceeded
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Unknown);
-                } else if line.starts_with("(:reason-unknown \"(incomplete") {
+                } else if line.starts_with(context.solver.reason_unknown_incomplete_str()) {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
                 } else if line
@@ -313,13 +333,44 @@ pub(crate) fn smt_check_assertion<'ctx>(
         ResultDetermination::Determined(r) => r,
         ResultDetermination::Undetermined(true) => {
             context.state = ContextState::FoundResult;
-            ValidityResult::Valid
+
+            #[cfg(feature = "axiom-usage-info")]
+            let usage_info = if context.usage_info_enabled {
+                context.smt_log.log_word("get-unsat-core");
+
+                let smt_data = context.smt_log.take_pipe_data();
+                let smt_output = context.get_smt_process().send_commands(smt_data);
+
+                let mut smt_output = smt_output.into_iter();
+                let unsat_core_str =
+                    smt_output.next().expect("expected one line in the unsat core output");
+                assert!(smt_output.next().is_none());
+
+                let fun_names: Vec<Ident> = unsat_core_str
+                    .strip_prefix('(')
+                    .expect("invalid unsat core")
+                    .strip_suffix(')')
+                    .expect("invalid unsat core")
+                    .split_terminator(' ')
+                    .map(|x| Arc::new(x.to_owned()))
+                    .collect();
+                crate::context::UsageInfo::UsedAxioms(fun_names)
+            } else {
+                crate::context::UsageInfo::None
+            };
+
+            ValidityResult::Valid(
+                #[cfg(feature = "axiom-usage-info")]
+                usage_info,
+            )
         }
         ResultDetermination::Undetermined(false) => smt_get_model(context, infos, air_model),
     }
 }
 
 pub(crate) fn smt_update_statistics(context: &mut Context) -> Result<(), ValidityResult> {
+    assert!(matches!(context.solver, SmtSolver::Z3)); // the CVC5 output format for statistics is different
+
     context.smt_log.log_get_info("all-statistics");
     let smt_data = context.smt_log.take_pipe_data();
     let smt_output = context.get_smt_process().send_commands(smt_data);
@@ -351,7 +402,7 @@ pub(crate) fn smt_update_statistics(context: &mut Context) -> Result<(), Validit
             "expected rlimit-count in smt statistics"
         )));
     };
-    context.rlimit_count = rlimit_count;
+    context.rlimit_count = Some(rlimit_count);
 
     Ok(())
 }
@@ -391,7 +442,7 @@ fn smt_get_model(
                 // Disable this label in subsequent check-sat calls to get additional errors
                 info.disabled = true;
                 let disable_label = mk_not(&ident_var(&info.label));
-                context.smt_log.log_assert(&disable_label);
+                context.smt_log.log_assert(&None, &disable_label);
 
                 break;
             }
@@ -471,7 +522,7 @@ pub(crate) fn smt_check_query<'ctx>(
 
     // check assertion
     let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, labeled_assertion));
-    context.smt_log.log_assert(&not_expr);
+    context.smt_log.log_assert(&None, &not_expr);
     let result =
         smt_check_assertion(context, diagnostics, infos, air_model, false, report_long_running);
 

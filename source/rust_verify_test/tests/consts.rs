@@ -300,3 +300,44 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] arrays verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: [u32; 3] = [1, 2, 3];
+
+        proof fn test() {
+            assert(MyArray[2] == 3);
+        }
+
+        fn exec_test() {
+            let x = MyArray[1];
+            assert(x == 2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] array_out_of_bounds verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: [u32; 3] = [1, 2, 3];
+
+        proof fn test() {
+            assert(MyArray[5] == 3);    // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] array_incorrect_value verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: [u32; 3] = [1, 2, 3];
+
+        proof fn test() {
+            assert(MyArray[1] == 42);    // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

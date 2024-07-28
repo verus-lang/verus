@@ -12,7 +12,8 @@ use crate::scc::Graph;
 use crate::sst::BndInfo;
 use crate::sst_to_air::fun_to_air_ident;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp};
-use air::ast_util::str_typ;
+use air::ast_util::{mk_unnamed_axiom, str_typ};
+use air::context::SmtSolver;
 use num_bigint::BigUint;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -52,6 +53,7 @@ pub struct GlobalCtx {
     pub arch: crate::ast::ArchWordBits,
     pub crate_name: Ident,
     pub vstd_crate_name: Ident,
+    pub solver: SmtSolver,
 }
 
 // Context for verifying one function
@@ -76,10 +78,12 @@ pub struct Ctx {
     pub(crate) datatypes_with_invariant: HashSet<Path>,
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) spec_fn_types: Vec<usize>,
+    pub(crate) uses_array: bool,
     pub(crate) fndef_types: Vec<Fun>,
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
+    pub fun_ident_map: HashMap<Ident, Fun>,
     pub(crate) reveal_groups: Vec<crate::ast::RevealGroup>,
     pub(crate) reveal_group_set: HashSet<Fun>,
     // Ensure a unique identifier for each quantifier in a given function
@@ -179,12 +183,17 @@ fn datatypes_invs(
                         TypX::Bool | TypX::AnonymousClosure(..) => {}
                         TypX::Tuple(_) | TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
-                        TypX::Primitive(Primitive::Array, _) => {
-                            roots.insert(container_path.clone());
+                        TypX::Primitive(
+                            Primitive::Array | Primitive::Slice | Primitive::Ptr,
+                            _,
+                        ) => {
+                            // Each of these is like an abstract Datatype
+                            if crate::poly::typ_as_mono(&field.a.0).is_none() {
+                                roots.insert(container_path.clone());
+                            }
                         }
-                        TypX::Primitive(Primitive::Slice, _) => {}
                         TypX::Primitive(Primitive::StrSlice, _) => {}
-                        TypX::Primitive(Primitive::Ptr, _) => {}
+                        TypX::Primitive(Primitive::Global, _) => {}
                     }
                 }
             }
@@ -211,6 +220,7 @@ impl GlobalCtx {
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
+        solver: SmtSolver,
         after_simplify: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
@@ -455,6 +465,7 @@ impl GlobalCtx {
             crate_name,
             vstd_crate_name,
             func_call_graph_log,
+            solver,
         })
     }
 
@@ -480,6 +491,7 @@ impl GlobalCtx {
             crate_name: self.crate_name.clone(),
             vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
+            solver: self.solver.clone(),
         }
     }
 
@@ -508,6 +520,7 @@ impl Ctx {
         module: Module,
         mono_types: Vec<MonoTyp>,
         spec_fn_types: Vec<usize>,
+        uses_array: bool,
         fndef_types: Vec<Fun>,
         debug: bool,
     ) -> Result<Self, VirErr> {
@@ -520,9 +533,11 @@ impl Ctx {
             datatypes_invs(&module.x.path, &datatype_is_transparent, &krate.datatypes);
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
+        let mut fun_ident_map: HashMap<Ident, Fun> = HashMap::new();
         let funcs_with_ensure_predicate: HashMap<Fun, bool> = HashMap::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
+            fun_ident_map.insert(fun_to_air_ident(&function.x.name), function.x.name.clone());
             functions.push(function.clone());
         }
         let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
@@ -535,6 +550,7 @@ impl Ctx {
         }
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
+        fun_ident_map.extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&g), g.clone())));
         let quantifier_count = Cell::new(0);
         let string_hashes = RefCell::new(HashMap::new());
 
@@ -549,10 +565,12 @@ impl Ctx {
             datatypes_with_invariant,
             mono_types,
             spec_fn_types,
+            uses_array,
             fndef_types,
             fndef_type_set,
             functions,
             func_map,
+            fun_ident_map,
             reveal_groups: krate.reveal_groups.clone(),
             reveal_group_set,
             quantifier_count,
@@ -604,17 +622,17 @@ impl Ctx {
             commands.push(Arc::new(CommandX::Global(decl)));
         }
         let distinct = Arc::new(air::ast::ExprX::Multi(MultiOp::Distinct, Arc::new(ids)));
-        let decl = Arc::new(DeclX::Axiom(distinct));
+        let decl = mk_unnamed_axiom(distinct);
         commands.push(Arc::new(CommandX::Global(decl)));
         for group in &self.reveal_groups {
-            crate::func_to_air::broadcast_forall_group_axioms(
+            crate::sst_to_air_func::broadcast_forall_group_axioms(
                 self,
                 &mut commands,
                 group,
                 &self.global.crate_name,
             );
         }
-        crate::func_to_air::module_reveal_axioms(self, &mut commands, &self.module.x.reveals);
+        crate::sst_to_air_func::module_reveal_axioms(self, &mut commands, &self.module.x.reveals);
         Arc::new(commands)
     }
 }

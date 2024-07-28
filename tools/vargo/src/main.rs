@@ -8,7 +8,7 @@
 #[path = "../../common/consts.rs"]
 mod consts;
 
-const MINIMUM_VERUSFMT_VERSION: [u64; 3] = [0, 3, 0];
+const MINIMUM_VERUSFMT_VERSION: [u64; 3] = [0, 4, 0];
 
 mod util;
 
@@ -39,6 +39,179 @@ impl From<FFileTime> for FileTime {
             seconds: value.seconds(),
             nanos: value.nanoseconds(),
         }
+    }
+}
+
+#[derive(Clone)]
+pub enum SmtSolverType {
+    Z3,
+    Cvc5,
+}
+
+impl SmtSolverType {
+    pub fn executable_name(&self) -> String {
+        let base = match self {
+            SmtSolverType::Z3 => "z3",
+            SmtSolverType::Cvc5 => "cvc5",
+        };
+        if cfg!(target_os = "windows") {
+            format!(".\\{}.exe", base)
+        } else {
+            format!("./{}", base)
+        }
+    }
+
+    pub fn env_var_name(&self) -> &str {
+        match self {
+            SmtSolverType::Z3 => "VERUS_Z3_PATH",
+            SmtSolverType::Cvc5 => "VERUS_CVC5_PATH",
+        }
+    }
+
+    pub fn to_str(&self) -> &str {
+        match self {
+            SmtSolverType::Z3 => "Z3",
+            SmtSolverType::Cvc5 => "cvc5",
+        }
+    }
+
+    pub fn version_re(&self) -> Regex {
+        match self {
+            SmtSolverType::Z3 => Regex::new(r"Z3 version (\d+\.\d+\.\d+) - \d+ bit")
+                .expect("failed to compile Z3 version regex"),
+            SmtSolverType::Cvc5 => Regex::new(r"This is cvc5 version (\d+\.\d+\.\d+)")
+                .expect("failed to compile cvc5 version regex"),
+        }
+    }
+
+    pub fn expected_version(&self) -> String {
+        match self {
+            SmtSolverType::Z3 => consts::EXPECTED_Z3_VERSION.to_string(),
+            SmtSolverType::Cvc5 => consts::EXPECTED_CVC5_VERSION.to_string(),
+        }
+    }
+}
+
+pub struct SmtSolverBinary {
+    pub stype: SmtSolverType,
+    pub path: std::path::PathBuf,
+}
+
+impl SmtSolverBinary {
+    pub fn find_path(solver_type: SmtSolverType, vargo_nest: u64) -> Option<Self> {
+        let find_path_inner = || {
+            let file_name = if std::env::var(solver_type.env_var_name()).is_ok() {
+                std::env::var(solver_type.env_var_name()).unwrap()
+            } else {
+                solver_type.executable_name()
+            };
+            let path = std::path::Path::new(&file_name);
+
+            if !path.is_file() && vargo_nest == 0 {
+                // When we fail to find Z3, we warn the user but optimistically continue
+                // Since we don't currently use cvc5, we don't warn the user about it, and we bail out
+                match solver_type {
+                    SmtSolverType::Z3 => warn(format!("{file_name} not found -- this is likely to cause errors or a broken build\nrun `tools/get-z3.(sh|ps1)` first").as_str()),
+                    SmtSolverType::Cvc5 => return None,
+                }
+            }
+            if std::env::var(solver_type.env_var_name()).is_err() && path.is_file() {
+                std::env::set_var(solver_type.env_var_name(), path);
+            }
+            Some(path.to_path_buf())
+        };
+        let path = find_path_inner();
+        if matches!(solver_type, SmtSolverType::Z3) {
+            assert!(path.is_some());
+        }
+        path.map(|path| SmtSolverBinary {
+            stype: solver_type,
+            path,
+        })
+    }
+
+    fn check_version(&self) -> Result<(), String> {
+        let output = std::process::Command::new(&self.path)
+            .arg("--version")
+            .output()
+            .map_err(|x| format!("could not execute {}: {}", self.stype.to_str(), x))?;
+        if !output.status.success() {
+            return Err(format!(
+                "{} returned non-zero exit code",
+                self.stype.to_str()
+            ));
+        }
+        let stdout_str = std::str::from_utf8(&output.stdout)
+            .map_err(|x| {
+                format!(
+                    "{} version output is not valid utf8 ({})",
+                    self.stype.to_str(),
+                    x
+                )
+            })?
+            .to_string();
+
+        let version = self
+            .stype
+            .version_re()
+            .captures(&stdout_str)
+            .and_then(|captures| {
+                let mut captures = captures.iter();
+                let _ = captures.next()?;
+                let version = captures.next()?;
+                if captures.next() != None {
+                    return None;
+                }
+                Some(version?.as_str())
+            })
+            .ok_or(format!(
+                "unexpected {} version output ({})",
+                self.stype.to_str(),
+                stdout_str
+            ))?;
+        if version != self.stype.expected_version() {
+            let name = self.stype.to_str().to_lowercase();
+            return Err(format!(
+                "Verus expects {name} version \"{}\", found version \"{}\"\n\
+            Run ./tools/get-{name}.(sh|ps1) to update {name} first.\n\
+            If you need a build with a custom {name} version, re-run with --no-solver-version-check.",
+                self.stype.expected_version(),
+                version
+            ));
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn copy_to_target_dir(
+        &self,
+        target_verus_dir: &std::path::PathBuf,
+        macos_prepare_script: &mut String,
+    ) -> Result<(), String> {
+        if self.path.is_file() {
+            let from_f = &self.path;
+            let to_f = target_verus_dir.join(self.stype.executable_name());
+            if to_f.exists() {
+                // If we directly overwrite a binary it can cause
+                // a code-signing issue on macs. To work around this, we
+                // delete the old file first before moving the new one.
+                std::fs::remove_file(&to_f).unwrap();
+            }
+            std::fs::copy(&from_f, &to_f).map_err(|x| format!("could not copy file ({})", x))?;
+
+            let dest_file_name = to_f.file_name().ok_or(format!(
+                "could not get file name for {}",
+                self.stype.to_str()
+            ))?;
+            macos_prepare_script.push_str(
+                format!(
+                    "\nxattr -d com.apple.quarantine {}\n",
+                    dest_file_name.to_string_lossy()
+                )
+                .as_str(),
+            );
+        }
+        Ok(())
     }
 }
 
@@ -170,12 +343,6 @@ fn clean_vstd(target_verus_dir: &std::path::PathBuf) -> Result<(), String> {
     }
     Ok(())
 }
-
-const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") {
-    ".\\z3.exe"
-} else {
-    "./z3"
-};
 
 fn filter_features(
     feature_args: &Vec<String>,
@@ -312,7 +479,7 @@ fn run() -> Result<(), String> {
             return Err(format!("rustup failed"));
         }
         let active_toolchain_re = Regex::new(
-            r"^(([A-Za-z0-9.-]+)-[A-Za-z0-9_]+-[A-Za-z0-9]+-[A-Za-z0-9-]+) \(overridden by '(.*)'\)",
+            r"^(([A-Za-z0-9.-]+)-(?:aarch64|x86_64)-[A-Za-z0-9]+-[A-Za-z0-9-]+) \(overridden by '(.*)'\)"
         )
         .unwrap();
         let stdout = std::str::from_utf8(&output.stdout)
@@ -336,19 +503,9 @@ fn run() -> Result<(), String> {
         std::env::set_var("VARGO_TOOLCHAIN", toolchain);
     }
 
-    let z3_file_name = if std::env::var("VERUS_Z3_PATH").is_ok() {
-        std::env::var("VERUS_Z3_PATH").unwrap()
-    } else {
-        Z3_FILE_NAME.to_string()
-    };
-    let z3_path = std::path::Path::new(&z3_file_name);
-
-    if !z3_path.is_file() && vargo_nest == 0 {
-        warn(format!("{z3_file_name} not found -- this is likely to cause errors or a broken build\nrun `tools/get-z3.(sh|ps1)` first").as_str());
-    }
-    if std::env::var("VERUS_Z3_PATH").is_err() && z3_path.is_file() {
-        std::env::set_var("VERUS_Z3_PATH", z3_path);
-    }
+    let solver_binary_z3 = SmtSolverBinary::find_path(SmtSolverType::Z3, vargo_nest)
+        .expect("find_path for Z3 always returns a path");
+    let solver_binary_cvc5 = SmtSolverBinary::find_path(SmtSolverType::Cvc5, vargo_nest);
 
     let cargo_toml = toml::from_str::<toml::Value>(
         &std::fs::read_to_string("Cargo.toml")
@@ -389,38 +546,9 @@ fn run() -> Result<(), String> {
     };
 
     if vargo_nest == 0 && task != Task::Fmt && !no_solver_version_check {
-        let output = std::process::Command::new(z3_path)
-            .arg("--version")
-            .output()
-            .map_err(|x| format!("could not execute z3: {}", x))?;
-        if !output.status.success() {
-            return Err(format!("z3 returned non-zero exit code"));
-        }
-        let stdout_str = std::str::from_utf8(&output.stdout)
-            .map_err(|x| format!("z3 version output is not valid utf8 ({})", x))?
-            .to_string();
-        let z3_version_re = Regex::new(r"Z3 version (\d+\.\d+\.\d+) - \d+ bit")
-            .expect("failed to compile z3 version regex");
-        let version = z3_version_re
-            .captures(&stdout_str)
-            .and_then(|captures| {
-                let mut captures = captures.iter();
-                let _ = captures.next()?;
-                let version = captures.next()?;
-                if captures.next() != None {
-                    return None;
-                }
-                Some(version?.as_str())
-            })
-            .ok_or(format!("unexpected z3 version output ({})", stdout_str))?;
-        if version != consts::EXPECTED_Z3_VERSION {
-            return Err(format!(
-                "Verus expects z3 version \"{}\", found version \"{}\"\n\
-            Run ./tools/get-z3.(sh|ps1) to update z3 first.\n\
-            If you need a build with a custom z3 version, re-run with --no-solver-version-check.",
-                consts::EXPECTED_Z3_VERSION,
-                version
-            ));
+        solver_binary_z3.check_version()?;
+        if let Some(cvc5) = &solver_binary_cvc5 {
+            cvc5.check_version()?;
         }
     }
 
@@ -856,7 +984,10 @@ fn run() -> Result<(), String> {
                 new_args.into_iter().map(|(_, x)| x).collect(),
             );
             let dashdash_pos = new_args.iter().position(|x| x == "--").expect("-- in args");
-            let feature_args = filter_features(&feature_args, ["singular"].into_iter().collect());
+            let feature_args = filter_features(
+                &feature_args,
+                ["singular", "axiom-usage-info"].into_iter().collect(),
+            );
             new_args.splice(dashdash_pos..dashdash_pos, feature_args);
             if nextest {
                 args.get(cmd_position + 1)
@@ -1002,8 +1133,10 @@ fn run() -> Result<(), String> {
             for p in packages {
                 let rust_verify_forward_args;
                 let extra_args = if p == &"rust_verify" {
-                    let feature_args =
-                        filter_features(&feature_args, ["singular"].into_iter().collect());
+                    let feature_args = filter_features(
+                        &feature_args,
+                        ["singular", "axiom-usage-info"].into_iter().collect(),
+                    );
                     rust_verify_forward_args = cargo_forward_args
                         .iter()
                         .chain(feature_args.iter())
@@ -1038,15 +1171,12 @@ set -x
             );
             use std::fmt::Write;
 
-            for (from_f_name, is_exe) in [
-                (format!("libbuiltin.rlib"), false),
-                (format!("{}builtin_macros.{}", LIB_PRE, LIB_DL), false),
-                (
-                    format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
-                    false,
-                ),
-                (format!("rust_verify{}", EXE), true),
-                (format!("verus{}", EXE), true),
+            for from_f_name in [
+                format!("libbuiltin.rlib"),
+                format!("{}builtin_macros.{}", LIB_PRE, LIB_DL),
+                format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
+                format!("rust_verify{}", EXE),
+                format!("verus{}", EXE),
             ]
             .into_iter()
             {
@@ -1077,40 +1207,20 @@ set -x
                     std::fs::copy(&from_f, &to_f)
                         .map_err(|x| format!("could not copy file ({})", x))?;
 
-                    if is_exe {
-                        writeln!(
-                            &mut macos_prepare_script,
-                            "xattr -d com.apple.quarantine {}",
-                            from_f_name
-                        )
-                        .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
-                    }
+                    writeln!(
+                        &mut macos_prepare_script,
+                        "xattr -d com.apple.quarantine {}",
+                        from_f_name
+                    )
+                    .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
                 } else {
                     dependency_missing = true;
                 }
             }
 
-            if z3_path.is_file() {
-                let from_f = &z3_path;
-                let to_f = target_verus_dir.join(Z3_FILE_NAME);
-                if to_f.exists() {
-                    // If we directly overwrite a binary it can cause
-                    // a code-signing issue on macs. To work around this, we
-                    // delete the old file first before moving the new one.
-                    std::fs::remove_file(&to_f).unwrap();
-                }
-                std::fs::copy(&from_f, &to_f)
-                    .map_err(|x| format!("could not copy file ({})", x))?;
-
-                let dest_file_name = to_f
-                    .file_name()
-                    .ok_or(format!("could not get file name for z3"))?;
-                writeln!(
-                    &mut macos_prepare_script,
-                    "xattr -d com.apple.quarantine {}",
-                    dest_file_name.to_string_lossy()
-                )
-                .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
+            solver_binary_z3.copy_to_target_dir(&target_verus_dir, &mut macos_prepare_script)?;
+            if let Some(cvc5) = &solver_binary_cvc5 {
+                cvc5.copy_to_target_dir(&target_verus_dir, &mut macos_prepare_script)?;
             }
 
             let fingerprint_path = target_verus_dir.join(".vstd-fingerprint");
@@ -1222,8 +1332,7 @@ set -x
 
             #[cfg(target_os = "macos")]
             {
-                let macos_prepare_script_path =
-                    target_verus_dir.join("set_permissions_and_allow_gatekeeper.sh");
+                let macos_prepare_script_path = target_verus_dir.join("macos_allow_gatekeeper.sh");
                 std::fs::write(&macos_prepare_script_path, macos_prepare_script)
                     .map_err(|x| format!("could not write to macos prepare script ({})", x))?;
                 std::fs::set_permissions(

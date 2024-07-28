@@ -339,13 +339,13 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::CastToInteger => 0,
                 UnaryOp::HeightTrigger => 1,
-                UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot => 1,
+                UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
                 UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {
-                UnaryOp::BitNot => (
+                UnaryOp::BitNot(_) => (
                     true,
                     Arc::new(TermX::App(App::BitOp(BitOpName::BitNot), Arc::new(vec![term1]))),
                 ),
@@ -389,6 +389,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 Ne | Inequality(_) | Arith(..) => 1,
                 Bitwise(..) => 1,
                 StrGetChar => fail_on_strop(),
+                ArrayIndex => 1,
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
@@ -397,8 +398,8 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     let bop = match bp {
                         BitwiseOp::BitXor => BitOpName::BitXor,
                         BitwiseOp::BitAnd => BitOpName::BitAnd,
-                        BitwiseOp::Shr => BitOpName::Shr,
-                        BitwiseOp::Shl => BitOpName::Shl,
+                        BitwiseOp::Shr(..) => BitOpName::Shr,
+                        BitwiseOp::Shl(..) => BitOpName::Shl,
                         BitwiseOp::BitOr => BitOpName::BitOr,
                     };
                     (true, Arc::new(TermX::App(App::BitOp(bop), Arc::new(vec![term1, term2]))))
@@ -424,6 +425,12 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Bind(_, _) => {
             // REVIEW: we could at least look for matching loops here
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
+        }
+        ExpX::ArrayLiteral(es) => {
+            let (is_pures, terms): (Vec<bool>, Vec<Term>) =
+                es.iter().map(|e| gather_terms(ctxt, ctx, e, depth + 1)).unzip();
+            let is_pure = is_pures.into_iter().all(|b| b);
+            (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
         }
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)

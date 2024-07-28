@@ -379,6 +379,7 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
     #![allow(unused_macros)]
     #![feature(exclusive_range_pattern)]
     #![feature(strict_provenance)]
+    #![feature(allocator_api)]
 
     use builtin::*;
     use builtin_macros::*;
@@ -543,4 +544,31 @@ pub fn assert_spans_contain(err: &Diagnostic, needle: &str) {
             .find(|s| s.label.is_some() && s.label.as_ref().unwrap().contains(needle))
             .is_some()
     );
+}
+
+#[allow(dead_code)]
+pub fn assert_fails_bv(err: TestErr, fail32: bool, fail64: bool) {
+    assert_eq!(err.errors.len(), (if fail32 { 1 } else { 0 }) + (if fail64 { 1 } else { 0 }));
+    if fail32 {
+        assert!(err.errors[0].message.contains("with arch-size set to 32 bits"));
+    }
+    if fail64 {
+        let i = err.errors.len() - 1;
+        assert!(err.errors[i].message.contains("with arch-size set to 64 bits"));
+    }
+}
+
+#[allow(dead_code)]
+pub fn assert_fails_bv_32bit(err: TestErr) {
+    assert_fails_bv(err, true, false);
+}
+
+#[allow(dead_code)]
+pub fn assert_fails_bv_64bit(err: TestErr) {
+    assert_fails_bv(err, false, true);
+}
+
+#[allow(dead_code)]
+pub fn assert_fails_bv_32bit_64bit(err: TestErr) {
+    assert_fails_bv(err, true, true);
 }

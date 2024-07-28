@@ -66,9 +66,9 @@ Verus does allow you to opt-out of this behavior, meaning that your loops will i
 information from the surrounding context.  This will simplify your loop invariants,
 but verification time may increase for medium-to-large functions.
 To opt-out for a single function or while loop, you can add the attribute 
-`#[verifier::spinoff_loop(false)]`.  You can also opt-out at the module or
-crate level, by adding the `#![verifier::spinoff_loop(false)]` attribute
+`#[verifier::loop_isolation(false)]`.  You can also opt-out at the module or
+crate level, by adding the `#![verifier::loop_isolation(false)]` attribute
 to the module or the root of the crate.  You can then override the global
-setting locally by adding `#[verifier::spinoff_loop(true)]` on individual
+setting locally by adding `#[verifier::loop_isolation(true)]` on individual
 functions or loops.
 
