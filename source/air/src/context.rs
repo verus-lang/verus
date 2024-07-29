@@ -72,10 +72,16 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum SmtSolver {
     Z3,
     Cvc5,
+}
+
+impl Default for SmtSolver {
+    fn default() -> Self {
+        SmtSolver::Z3
+    }
 }
 
 pub struct Context {
@@ -83,6 +89,8 @@ pub struct Context {
     smt_process: Option<SmtProcess>,
     pub(crate) axiom_infos: ScopeMap<Ident, Arc<AxiomInfo>>,
     pub(crate) axiom_infos_count: u64,
+    pub(crate) array_map: ScopeMap<ClosureTerm, Ident>,
+    pub(crate) array_count: u64,
     pub(crate) lambda_map: ScopeMap<ClosureTerm, Ident>,
     pub(crate) lambda_count: u64,
     pub(crate) choose_map: ScopeMap<ClosureTerm, Ident>,
@@ -99,7 +107,7 @@ pub struct Context {
     pub(crate) smt_log: Emitter,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
-    pub(crate) rlimit_count: u64,
+    pub(crate) rlimit_count: Option<u64>,
     pub(crate) state: ContextState,
     pub(crate) expected_solver_version: Option<String>,
     pub(crate) profile_logfile_name: Option<String>,
@@ -119,6 +127,8 @@ impl Context {
             smt_process: None,
             axiom_infos: ScopeMap::new(),
             axiom_infos_count: 0,
+            array_map: ScopeMap::new(),
+            array_count: 0,
             lambda_map: ScopeMap::new(),
             lambda_count: 0,
             choose_map: ScopeMap::new(),
@@ -160,7 +170,10 @@ impl Context {
             smt_log: Emitter::new(message_interface.clone(), true, true, None, solver.clone()),
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
-            rlimit_count: 0,
+            rlimit_count: match solver {
+                SmtSolver::Z3 => Some(0),
+                SmtSolver::Cvc5 => None,
+            },
             state: ContextState::NotStarted,
             expected_solver_version: None,
             profile_logfile_name: None,
@@ -170,6 +183,7 @@ impl Context {
             solver,
         };
         context.axiom_infos.push_scope(false);
+        context.array_map.push_scope(false);
         context.lambda_map.push_scope(false);
         context.choose_map.push_scope(false);
         context.apply_map.push_scope(false);
@@ -222,7 +236,7 @@ impl Context {
         (self.time_smt_init, self.time_smt_run)
     }
 
-    pub fn get_rlimit_count(&self) -> u64 {
+    pub fn get_rlimit_count(&self) -> Option<u64> {
         self.rlimit_count
     }
 
@@ -355,6 +369,7 @@ impl Context {
 
     pub(crate) fn push_name_scope(&mut self) {
         self.axiom_infos.push_scope(false);
+        self.array_map.push_scope(false);
         self.lambda_map.push_scope(false);
         self.choose_map.push_scope(false);
         self.apply_map.push_scope(false);
@@ -363,6 +378,7 @@ impl Context {
 
     pub(crate) fn pop_name_scope(&mut self) {
         self.axiom_infos.pop_scope();
+        self.array_map.pop_scope();
         self.lambda_map.pop_scope();
         self.choose_map.pop_scope();
         self.apply_map.pop_scope();
@@ -438,8 +454,10 @@ impl Context {
     ) -> ValidityResult {
         self.ensure_started();
 
-        if let Err(e) = crate::smt_verify::smt_update_statistics(self) {
-            return e;
+        if matches!(self.solver, SmtSolver::Z3) {
+            if let Err(e) = crate::smt_verify::smt_update_statistics(self) {
+                return e;
+            }
         }
 
         self.air_initial_log.log_query(query);

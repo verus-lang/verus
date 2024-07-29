@@ -79,7 +79,7 @@ use crate::ast::{
     AssocTypeImpl, BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr,
     Function, FunctionKind, FunctionX, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp, Param,
     ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypDecorationArg, TypX,
-    Typs, UnaryOp, UnaryOpr, VarBinder, VarIdent, Variant,
+    Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarIdent, Variant,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -133,6 +133,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             let m2 = typ_as_mono(t)?;
             Some(Arc::new(MonoTypX::Decorate2(*d, Arc::new(vec![m1, m2]))))
         }
+        TypX::Primitive(Primitive::Array, _) => None,
         TypX::Primitive(name, typs) => {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Primitive(*name, Arc::new(monotyps))))
@@ -174,6 +175,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => false,
+        TypX::Primitive(Primitive::Array, _) => false,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -200,6 +202,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
 pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
+        TypX::Primitive(Primitive::Array, _) => typ.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -524,11 +527,17 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 Eq(_) | Ne => (false, false),
                 Bitwise(..) => (true, false),
                 StrGetChar { .. } => (true, false),
+                ArrayIndex { .. } => (true, false),
             };
             if native {
                 let e1 = coerce_expr_to_native(ctx, &e1);
                 let e2 = coerce_expr_to_native(ctx, &e2);
-                mk_expr(ExprX::Binary(*op, e1, e2))
+                if *op == ArrayIndex {
+                    let typ = coerce_typ_to_poly(ctx, &expr.typ);
+                    mk_expr_typ(&typ, ExprX::Binary(*op, e1, e2))
+                } else {
+                    mk_expr(ExprX::Binary(*op, e1, e2))
+                }
             } else if poly {
                 let e1 = coerce_expr_to_poly(ctx, &e1);
                 let e2 = coerce_expr_to_poly(ctx, &e2);
@@ -850,6 +859,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind,
         publish,
         attrs,
@@ -897,10 +907,12 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
 
     let mut state = State { types, is_trait, in_exec_closure: false };
 
+    let native_expr =
+        |state: &mut State, e: &Expr| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e));
     let native_exprs = |state: &mut State, es: &Exprs| {
         let mut exprs: Vec<Expr> = Vec::new();
         for e in es.iter() {
-            exprs.push(coerce_expr_to_native(ctx, &poly_expr(ctx, state, e)));
+            exprs.push(native_expr(state, e));
         }
         Arc::new(exprs)
     };
@@ -925,6 +937,14 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
             Some(MaskSpec::InvariantOpensExcept(native_exprs(&mut state, es)))
         }
         None => None,
+    };
+    let unwind_spec = match unwind_spec {
+        None => None,
+        Some(UnwindSpec::MayUnwind) => Some(UnwindSpec::MayUnwind),
+        Some(UnwindSpec::NoUnwind) => Some(UnwindSpec::NoUnwind),
+        Some(UnwindSpec::NoUnwindWhen(e)) => {
+            Some(UnwindSpec::NoUnwindWhen(native_expr(&mut state, e)))
+        }
     };
 
     let body = if let Some(body) = body {
@@ -1021,6 +1041,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind: *item_kind,
         publish: *publish,
         attrs: attrs.clone(),

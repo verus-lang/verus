@@ -143,6 +143,20 @@ pub fn opens_invariants_except<A>(_a: A) {
 }
 
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::no_unwind"]
+#[verifier::proof]
+pub fn no_unwind() {
+    unimplemented!();
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::no_unwind_when"]
+#[verifier::proof]
+pub fn no_unwind_when(_b: bool) {
+    unimplemented!();
+}
+
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::reveal_hide"]
 #[verifier::proof]
 pub fn reveal_hide_(_f: fn(), _n: u32) {
@@ -1435,5 +1449,12 @@ pub const fn global_size_of<T>(_bytes: usize) {
 #[rustc_diagnostic_item = "verus::builtin::inline_air_stmt"]
 #[verifier::proof]
 pub fn inline_air_stmt(_s: &str) {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::array_index"]
+#[verifier::spec]
+pub fn array_index<T, const N: usize>(_a: [T; N], _i: int) -> T {
     unimplemented!()
 }

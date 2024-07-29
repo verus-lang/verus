@@ -28,7 +28,6 @@ impl<A> Seq<A> {
 
     /// Applies the function `f` to each element of the sequence, and returns
     /// the resulting sequence.
-    /// The `int` parameter of `f` is the index of the element being mapped.
     // TODO(verus): rename to map, because this is what everybody wants.
     pub open spec fn map_values<B>(self, f: spec_fn(A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(self[i]))

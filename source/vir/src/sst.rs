@@ -83,6 +83,7 @@ pub enum ExpX {
     WithTriggers(Trigs, Exp),
     Bind(Bnd, Exp),
     ExecFnByName(Fun),
+    ArrayLiteral(Exps),
     // only used internally by the interpreter; should never be seen outside it
     Interp(InterpExp),
     FuelConst(usize),
@@ -208,6 +209,13 @@ pub struct LocalDeclX {
     pub mutable: bool,
 }
 
+#[derive(Debug, Clone)]
+pub enum UnwindSst {
+    MayUnwind,
+    NoUnwind,
+    NoUnwindWhen(Exp),
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum PostConditionKind {
     Ensures,
@@ -236,6 +244,7 @@ pub struct FuncDeclSst {
     pub reqs: Exps,
     pub enss: Exps,
     pub inv_masks: Arc<Vec<Exps>>,
+    pub unwind_condition: Option<Exp>,
     pub fndef_axioms: Exps,
 }
 
@@ -244,6 +253,7 @@ pub struct FuncCheckSst {
     pub reqs: Exps,
     pub post_condition: Arc<PostConditionSst>,
     pub mask_set: Arc<crate::inv_masks::MaskSet>, // Actually AIR
+    pub unwind: UnwindSst,
     pub body: Stm,
     pub local_decls: Arc<Vec<LocalDecl>>,
     pub statics: Arc<Vec<Fun>>,

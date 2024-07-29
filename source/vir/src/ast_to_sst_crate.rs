@@ -46,6 +46,7 @@ pub fn ast_to_sst_krate(
                 };
                 let info = SstInfo {
                     inline,
+                    typ_params: func_sst.x.typ_params.clone(),
                     pars: func_sst.x.pars.clone(),
                     memoize: func_sst.x.attrs.memoize,
                     body: spec_body.body_exp.clone(),

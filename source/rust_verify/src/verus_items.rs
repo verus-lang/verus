@@ -104,6 +104,8 @@ pub(crate) enum SpecItem {
     OpensInvariantsAny,
     OpensInvariants,
     OpensInvariantsExcept,
+    NoUnwind,
+    NoUnwindWhen,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -129,6 +131,7 @@ pub(crate) enum ExprItem {
     GetVariantField,
     GetUnionField,
     IsVariant,
+    ArrayIndex,
     StrSliceLen,
     StrSliceGetChar,
     StrSliceIsAscii,
@@ -278,7 +281,6 @@ pub(crate) enum VstdItem {
     SeqFn(vir::interpreter::SeqFn),
     Invariant(InvariantItem),
     ExecNonstaticCall,
-    ArrayIndex,
     ArrayIndexGet,
     ArrayAsSlice,
     ArrayFillForCopyTypes,
@@ -359,6 +361,9 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::opens_invariants",        VerusItem::Spec(SpecItem::OpensInvariants)),
         ("verus::builtin::opens_invariants_except", VerusItem::Spec(SpecItem::OpensInvariantsExcept)),
 
+        ("verus::builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),
+        ("verus::builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),
+
         ("verus::builtin::forall",                  VerusItem::Quant(QuantItem::Forall)),
         ("verus::builtin::exists",                  VerusItem::Quant(QuantItem::Exists)),
 
@@ -374,6 +379,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::get_variant_field",       VerusItem::Expr(ExprItem::GetVariantField)),
         ("verus::builtin::get_union_field",         VerusItem::Expr(ExprItem::GetUnionField)),
         ("verus::builtin::is_variant",              VerusItem::Expr(ExprItem::IsVariant)),
+        ("verus::builtin::array_index",             VerusItem::Expr(ExprItem::ArrayIndex)),
         ("verus::builtin::strslice_len",            VerusItem::Expr(ExprItem::StrSliceLen)),
         ("verus::builtin::strslice_get_char",       VerusItem::Expr(ExprItem::StrSliceGetChar)),
         ("verus::builtin::strslice_is_ascii",       VerusItem::Expr(ExprItem::StrSliceIsAscii)),
@@ -477,7 +483,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
-        ("verus::vstd::array::array_index", VerusItem::Vstd(VstdItem::ArrayIndex, Some(Arc::new("array::array_index".to_owned())))),
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),
         ("verus::vstd::array::array_as_slice", VerusItem::Vstd(VstdItem::ArrayAsSlice, Some(Arc::new("array::array_as_slice".to_owned())))),
         ("verus::vstd::array::array_fill_for_copy_types", VerusItem::Vstd(VstdItem::ArrayFillForCopyTypes, Some(Arc::new("array::array_fill_for_copy_types".to_owned())))),

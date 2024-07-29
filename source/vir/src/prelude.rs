@@ -209,7 +209,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
             :skolemid skolem_prelude_as_type
         )))
         (axiom (forall ((x Fun)) (!
-            (= (mk_fun x) x)
+            (= ([mk_fun] x) x)
             :pattern (([mk_fun] x))
             :qid prelude_mk_fun
             :skolemid skolem_prelude_mk_fun
@@ -734,6 +734,56 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     );
     prelude.extend(height_axioms);
     prelude
+}
+
+pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
+    let box_array = str_to_node(box_array);
+    let array_new = str_to_node(ARRAY_NEW);
+    let typ = str_to_node(TYPE);
+    let decoration = str_to_node(DECORATION);
+    let has_type = str_to_node(HAS_TYPE);
+    let type_id_array = str_to_node(TYPE_ID_ARRAY);
+    let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
+    #[allow(non_snake_case)]
+    let Poly = str_to_node(POLY);
+
+    nodes_vec!(
+        // array literals
+        (declare-fun [array_new] ([decoration] [typ] Int Fun) [Poly])
+        (axiom (forall ((Tdcr [decoration]) (T [typ]) (N Int) (Fn Fun)) (!
+            (= ([array_new] Tdcr T N Fn) ([box_array] Fn))
+            :pattern (([array_new] Tdcr T N Fn))
+            :qid prelude_array_new
+            :skolemid skolem_prelude_array_new
+        )))
+        (axiom
+            (forall ((Tdcr [decoration]) (T [typ]) (N Int) (Fn Fun)) (!
+                (=>
+                    (forall ((i Int)) (!
+                        (=> (and (<= 0 i) (< i N))
+                            ([has_type] (apply [Poly] Fn i) T)
+                        )
+                        :pattern (([has_type] (apply [Poly] Fn i) T))
+                        :qid prelude_has_type_array_elts
+                        :skolemid skolem_prelude_has_type_array_elts
+                    ))
+                    ([has_type] ([array_new] Tdcr T N Fn) ([type_id_array] Tdcr T $ ([type_id_const_int] N)))
+                )
+                :pattern (([array_new] Tdcr T N Fn))
+                :qid prelude_has_type_array_new
+                :skolemid skolem_prelude_has_type_array_new
+            ))
+        )
+        (axiom (forall ((Tdcr [decoration]) (T [typ]) (Ndcr [decoration]) (N [typ]) (Fn Fun) (i Int)) (!
+            (=>
+                ([has_type] ([box_array] Fn) ([type_id_array] Tdcr T Ndcr N))
+                ([has_type] (apply [Poly] Fn i) T)
+            )
+            :pattern ((apply [Poly] Fn i) ([has_type] ([box_array] Fn) ([type_id_array] Tdcr T Ndcr N)))
+            :qid prelude_has_type_array_index
+            :skolemid skolem_prelude_has_type_array_index
+        )))
+    )
 }
 
 pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {

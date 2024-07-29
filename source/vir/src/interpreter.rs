@@ -8,7 +8,7 @@
 use crate::ast::{
     ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents,
     InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, SpannedTyped, Typ,
-    TypX, UnaryOp, VarBinders, VirErr,
+    TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::{SstInfo, SstMap};
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
@@ -171,6 +171,8 @@ pub enum InterpExp {
     Seq(Vector<Exp>),
     /// A lambda expression that carries with it the original context
     Closure(Exp, HashMap<UniqueIdent, Exp>),
+    /// Optimized representation of intermediate array values
+    Array(Vector<Exp>),
 }
 
 /*****************************************************************
@@ -526,14 +528,16 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
                 InterpExp::FreeVar(id) => dohash!(0, id),
                 InterpExp::Seq(exps) => dohash!(1; hash_exps_vector(exps)),
                 InterpExp::Closure(e, _ctx) => dohash!(2; hash_exp(e)),
+                InterpExp::Array(exps) => dohash!(3; hash_exps_vector(exps)),
             }
         }
         StaticVar(f) => dohash!(16, f),
         ExecFnByName(fun) => {
             dohash!(17, fun);
         }
+        ArrayLiteral(es) => dohash!(18; hash_exps(es)),
         FuelConst(i) => {
-            dohash!(18, i);
+            dohash!(19, i);
         }
     }
 }
@@ -711,6 +715,14 @@ fn seq_to_sst(span: &Span, typ: Typ, s: &Vector<Exp>) -> Exp {
         exp_new(ExpX::Call(CallFun::Fun(fun_push.clone(), None), typs.clone(), args))
     });
     seq
+}
+
+/// Convert an interpreter-internal array representation back into a
+/// representation we can pass to AIR
+fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
+    let exp_new = |e: ExpX| SpannedTyped::new(span, &typ, e);
+    let exps = Arc::new(arr.iter().cloned().collect());
+    exp_new(ExpX::ArrayLiteral(exps))
 }
 
 /// Custom interpretation for sequence functions.
@@ -892,6 +904,43 @@ fn eval_seq(
     }
 }
 
+/// Custom interpretation for array_index
+fn eval_array_index(
+    state: &mut State,
+    exp: &Exp,
+    arr: &Exp,
+    index_exp: &Exp,
+) -> Result<Exp, VirErr> {
+    use ExpX::*;
+    use InterpExp::*;
+    let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
+    // If we can't make any progress at all, we return the partially simplified call
+    let ok = Ok(exp_new(Binary(crate::ast::BinaryOp::ArrayIndex, arr.clone(), index_exp.clone())));
+    // For now, the only possible function is array_index
+    match &arr.x {
+        Interp(Array(s)) => match &index_exp.x {
+            Const(Constant::Int(i)) => match BigInt::to_usize(i) {
+                None => {
+                    let msg = "Computation tried to index into an array using a value that does not fit into usize";
+                    state.msgs.push(warning(&exp.span, msg));
+                    ok
+                }
+                Some(index) => {
+                    if index < s.len() {
+                        Ok(s[index].clone())
+                    } else {
+                        let msg = "Computation tried to index past the length of an array";
+                        state.msgs.push(warning(&exp.span, msg));
+                        ok
+                    }
+                }
+            },
+            _ => ok,
+        },
+        _ => ok,
+    }
+}
+
 /********************
  * Core interpreter *
  ********************/
@@ -933,7 +982,31 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
             Some(e) => Ok(e.clone()),
         },
-        NullaryOpr(_) => ok,
+        NullaryOpr(op) => {
+            match op {
+                crate::ast::NullaryOpr::ConstGeneric(typ) => {
+                    match &**typ {
+                        TypX::TypParam(id) => {
+                            let var_id = VarIdent(id.clone(), VarIdentDisambiguate::TypParamBare);
+                            match state.env.get(&var_id) {
+                                None => {
+                                    state.log(format!(
+                                        "Failed to find a match for const generic {:?}",
+                                        var_id
+                                    ));
+                                    // "Hide" the variable, so that we don't accidentally
+                                    // mix free and bound variables while interpreting
+                                    exp_new(Interp(InterpExp::FreeVar(var_id.clone())))
+                                }
+                                Some(e) => Ok(e.clone()),
+                            }
+                        }
+                        _ => ok,
+                    }
+                }
+                _ => ok,
+            }
+        }
         Unary(op, e) => {
             use Constant::*;
             use UnaryOp::*;
@@ -1080,12 +1153,16 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 Box(_) => match &e.x {
                     // Sequences move through box
                     Interp(InterpExp::Seq(s)) => exp_new(Interp(InterpExp::Seq(s.clone()))),
+                    // Arrays move through box
+                    Interp(InterpExp::Array(s)) => exp_new(Interp(InterpExp::Array(s.clone()))),
                     _ => ok,
                 },
                 Unbox(_) => match &e.x {
                     UnaryOpr(Box(_), inner_e) => Ok(inner_e.clone()),
                     // Sequences move through unbox
                     Interp(InterpExp::Seq(s)) => exp_new(Interp(InterpExp::Seq(s.clone()))),
+                    // Arrays move through unbox
+                    Interp(InterpExp::Array(s)) => exp_new(Interp(InterpExp::Array(s.clone()))),
                     _ => ok,
                 },
                 HasType(_) => ok,
@@ -1356,6 +1433,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                     }
                 }
+                ArrayIndex => {
+                    let e2 = eval_expr_internal(ctx, state, e2)?;
+                    eval_array_index(state, exp, &e1, &e2)
+                }
                 HeightCompare { .. } | StrGetChar => ok_e2(e2.clone()),
             }
         }
@@ -1388,6 +1469,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(CallFun::Fun(fun, resolved_method), typs, args) => {
+            let (fun, typs) = match resolved_method {
+                None => (fun, typs),
+                Some((f, ts)) => (f, ts),
+            };
             if state.perf {
                 // Record the call for later performance analysis
                 match state.fun_calls.get_mut(fun) {
@@ -1417,7 +1502,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 new_args.clone(),
                             ))
                         }
-                        Some(SstInfo { pars, body, memoize, .. }) => {
+                        Some(SstInfo { typ_params, pars, body, memoize, .. }) => {
                             match state.lookup_call(&fun, &new_args, *memoize) {
                                 Some(prev_result) => {
                                     state.cache_hits += 1;
@@ -1429,6 +1514,21 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     for (formal, actual) in pars.iter().zip(new_args.iter()) {
                                         let formal_id = formal.x.name.clone();
                                         state.env.insert(formal_id, actual.clone()).unwrap();
+                                    }
+                                    // Account for const generics by adding, e.g., { N => 7 } to the environment
+                                    for (formal, actual) in typ_params.iter().zip(typs.iter()) {
+                                        if let TypX::ConstInt(c) = &**actual {
+                                            let formal_id = VarIdent(
+                                                formal.clone(),
+                                                VarIdentDisambiguate::TypParamBare,
+                                            );
+                                            let value = SpannedTyped::new(
+                                                &exp.span,
+                                                &exp.typ,
+                                                Const(Constant::Int(c.clone())),
+                                            );
+                                            state.env.insert(formal_id, value).unwrap();
+                                        }
                                     }
                                     let result = eval_expr_internal(ctx, state, &body);
                                     state.env.pop_scope();
@@ -1513,10 +1613,17 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let new_bnds = new_bnds?;
             exp_new(Ctor(path.clone(), id.clone(), Arc::new(new_bnds)))
         }
+        ArrayLiteral(exprs) => {
+            let new_exprs: Result<Vec<Exp>, VirErr> =
+                exprs.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+            let im_vec: Vector<Exp> = new_exprs?.into_iter().collect();
+            exp_new(Interp(InterpExp::Array(im_vec)))
+        }
         Interp(e) => match e {
             InterpExp::FreeVar(_) => ok,
             InterpExp::Seq(_) => ok,
             InterpExp::Closure(_, _) => ok,
+            InterpExp::Array(_) => ok,
         },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) | StaticVar(..) => ok,
@@ -1532,6 +1639,53 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     Ok(res)
 }
 
+fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
+    match &*typ {
+        TypX::Datatype(_, typs, _) => {
+            // Grab the type the sequence holds
+            let inner_type = typs[0].clone();
+            // Convert back to a standard SST representation
+            let s = seq_to_sst(span, inner_type.clone(), v);
+            // Wrap the seq construction in unbox to account for the Poly type of the sequence functions
+            let unbox_opr = crate::ast::UnaryOpr::Unbox(typ.clone());
+            let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
+            let unboxed_e = SpannedTyped::new(span, &typ.clone(), unboxed_expx);
+            Ok(unboxed_e)
+        }
+        TypX::Boxed(t) => {
+            match &**t {
+                TypX::Datatype(_, typs, _) => {
+                    // Grab the type the sequence holds
+                    let inner_type = typs[0].clone();
+                    // Convert back to a standard SST sequence representation
+                    let s = seq_to_sst(span, inner_type.clone(), v);
+                    Ok(s)
+                }
+                _ => Err(error(
+                    &span,
+                    format!(
+                        "Internal error: Inside box, expected to find a sequence type but found: {:?}",
+                        typ,
+                    ),
+                )),
+            }
+        }
+        _ => Err(error(
+            &span,
+            format!("Internal error: Expected to find a sequence type but found: {:?}", typ),
+        )),
+    }
+}
+
+fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
+    let arr = array_to_sst(span, typ.clone(), v);
+    // Wrap the construction in box to account for the Poly type of the sequence/array functions
+    let box_opr = crate::ast::UnaryOpr::Box(typ.clone());
+    let boxed_expx = crate::sst::ExpX::UnaryOpr(box_opr, arr);
+    let boxed_e = SpannedTyped::new(span, &typ.clone(), boxed_expx);
+    Ok(boxed_e)
+}
+
 /// Restore the free variables we hid during interpretation
 /// and any sequence expressions we partially simplified during interpretation
 fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
@@ -1539,47 +1693,8 @@ fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
         ExpX::Interp(InterpExp::FreeVar(v)) => {
             Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
         }
-        ExpX::Interp(InterpExp::Seq(v)) => {
-            match &*e.typ {
-                TypX::Datatype(_, typs, _) => {
-                    // Grab the type the sequence holds
-                    let inner_type = typs[0].clone();
-                    // Convert back to a standard SST sequence representation
-                    let s = seq_to_sst(&e.span, inner_type.clone(), v);
-                    // Wrap the sequence construction in unbox to account for the Poly
-                    // type of the sequence functions
-                    let unbox_opr = crate::ast::UnaryOpr::Unbox(e.typ.clone());
-                    let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
-                    let unboxed_e = SpannedTyped::new(&e.span, &e.typ.clone(), unboxed_expx);
-                    Ok(unboxed_e)
-                }
-                TypX::Boxed(t) => {
-                    match &**t {
-                        TypX::Datatype(_, typs, _) => {
-                            // Grab the type the sequence holds
-                            let inner_type = typs[0].clone();
-                            // Convert back to a standard SST sequence representation
-                            let s = seq_to_sst(&e.span, inner_type.clone(), v);
-                            Ok(s)
-                        }
-                        _ => Err(error(
-                            &e.span,
-                            format!(
-                                "Internal error: Expected to find a sequence type but found: {:?}",
-                                e.typ,
-                            ),
-                        )),
-                    }
-                }
-                _ => Err(error(
-                    &e.span,
-                    format!(
-                        "Internal error: Expected to find a sequence type but found: {:?}",
-                        e.typ
-                    ),
-                )),
-            }
-        }
+        ExpX::Interp(InterpExp::Array(v)) => cleanup_array(&e.span, e.typ.clone(), v),
+        ExpX::Interp(InterpExp::Seq(v)) => cleanup_seq(&e.span, e.typ.clone(), v),
         ExpX::Interp(InterpExp::Closure(..)) => Err(error(
             &e.span,
             "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",

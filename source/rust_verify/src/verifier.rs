@@ -8,7 +8,7 @@ use crate::util::error;
 use crate::verus_items::VerusItems;
 use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
-use air::context::{QueryContext, ValidityResult};
+use air::context::{QueryContext, SmtSolver, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
@@ -242,12 +242,12 @@ pub struct BucketStats {
     /// total time to verify the bucket
     pub time_verify: Duration,
     /// total rlimit count for the bucket
-    pub rlimit_count: u64,
+    pub rlimit_count: Option<u64>,
 }
 
 pub struct FunctionSmtStats {
     pub smt_time: Duration,
-    pub rlimit_count: u64,
+    pub rlimit_count: Option<u64>,
 }
 
 pub struct Verifier {
@@ -387,7 +387,7 @@ impl std::ops::Add for RunCommandQueriesResult {
 struct VerifyBucketOut {
     time_smt_init: Duration,
     time_smt_run: Duration,
-    rlimit_count: u64,
+    rlimit_count: Option<u64>,
 }
 
 impl Verifier {
@@ -1057,7 +1057,7 @@ impl Verifier {
         profile_file_name: Option<&std::path::PathBuf>,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context =
-            air::context::Context::new(message_interface.clone(), self.args.solver());
+            air::context::Context::new(message_interface.clone(), self.args.solver);
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debugger);
         if let Some(profile_file_name) = profile_file_name {
@@ -1159,7 +1159,7 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver() },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_file_name,
         )?;
 
@@ -1263,20 +1263,22 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver() },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
-            air_context.set_expected_solver_version(if self.args.cvc5 {
-                crate::consts::EXPECTED_CVC5_VERSION.to_string()
-            } else {
-                crate::consts::EXPECTED_Z3_VERSION.to_string()
+            air_context.set_expected_solver_version(match self.args.solver {
+                air::context::SmtSolver::Z3 => crate::consts::EXPECTED_Z3_VERSION.to_string(),
+                air::context::SmtSolver::Cvc5 => crate::consts::EXPECTED_CVC5_VERSION.to_string(),
             });
         }
 
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
-        let mut spunoff_rlimit_count = 0;
+        let mut spunoff_rlimit_count: Option<u64> = match self.args.solver {
+            SmtSolver::Z3 => Some(0),
+            SmtSolver::Cvc5 => None,
+        };
 
         let module = &ctx.module_path();
         air_context.blank_line();
@@ -1438,7 +1440,10 @@ impl Verifier {
                         let mut failed_assert_ids = vec![];
                         let mut func_curr_smt_time = Duration::ZERO;
 
-                        let mut func_curr_smt_rlimit_count = 0;
+                        let mut func_curr_smt_rlimit_count = match self.args.solver {
+                            air::context::SmtSolver::Z3 => Some(0),
+                            air::context::SmtSolver::Cvc5 => None,
+                        };
                         for cmds in commands_with_context_list.iter() {
                             if is_recommend && cmds.skip_recommends {
                                 continue;
@@ -1545,13 +1550,24 @@ impl Verifier {
                             );
                             func_curr_smt_time +=
                                 query_air_context.get_time().1 - iter_curr_smt_time;
-                            func_curr_smt_rlimit_count +=
-                                query_air_context.get_rlimit_count() - iter_curr_smt_rlimit_count;
+                            if let Some(func_curr_smt_rlimit_count) =
+                                &mut func_curr_smt_rlimit_count
+                            {
+                                *func_curr_smt_rlimit_count += query_air_context
+                                    .get_rlimit_count()
+                                    .expect("rlimit count in query context")
+                                    - iter_curr_smt_rlimit_count
+                                        .expect("rlimit count in query context");
+                            }
                             if do_spinoff {
                                 let (time_smt_init, time_smt_run) = query_air_context.get_time();
                                 spunoff_time_smt_init += time_smt_init;
                                 spunoff_time_smt_run += time_smt_run;
-                                spunoff_rlimit_count += query_air_context.get_rlimit_count();
+                                if let Some(spunoff_rlimit_count) = &mut spunoff_rlimit_count {
+                                    *spunoff_rlimit_count += query_air_context
+                                        .get_rlimit_count()
+                                        .expect("rlimit count in query context");
+                                }
                             }
                             if function.x.attrs.rlimit.is_some() {
                                 self.set_default_rlimit(&mut query_air_context);
@@ -1691,10 +1707,17 @@ impl Verifier {
                             let func_time =
                                 self.func_times.entry(bucket_id.clone()).or_insert(HashMap::new());
                             let func_stats = func_time.entry(function.x.name.clone()).or_insert(
-                                FunctionSmtStats { smt_time: Duration::ZERO, rlimit_count: 0 },
+                                FunctionSmtStats {
+                                    smt_time: Duration::ZERO,
+                                    rlimit_count: matches!(self.args.solver, SmtSolver::Z3)
+                                        .then(|| 0),
+                                },
                             );
                             func_stats.smt_time += func_curr_smt_time;
-                            func_stats.rlimit_count += func_curr_smt_rlimit_count;
+                            if let Some(rlimit_count) = &mut func_stats.rlimit_count {
+                                *rlimit_count += func_curr_smt_rlimit_count
+                                    .expect("current rlimit count should be present");
+                            }
                         }
 
                         if matches!(query_op, QueryOp::Body(Style::Normal)) {
@@ -1823,7 +1846,9 @@ impl Verifier {
         Ok(VerifyBucketOut {
             time_smt_init: time_smt_init + spunoff_time_smt_init,
             time_smt_run: time_smt_run + spunoff_time_smt_run,
-            rlimit_count: rlimit_count + spunoff_rlimit_count,
+            rlimit_count: rlimit_count.map(|rlimit_count| {
+                rlimit_count + spunoff_rlimit_count.expect("spunoff rlimit count should be present")
+            }),
         })
     }
 
@@ -1847,8 +1872,7 @@ impl Verifier {
             reporter
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
-
-        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, fndef_types) =
+        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, uses_array, fndef_types) =
             vir::prune::prune_krate_for_module_or_krate(
                 &krate,
                 &Arc::new(self.crate_name.clone().expect("crate_name")),
@@ -1868,6 +1892,7 @@ impl Verifier {
             module,
             mono_abstract_datatypes,
             spec_fn_types,
+            uses_array,
             fndef_types,
             self.args.debugger,
         )?;
@@ -1942,7 +1967,7 @@ impl Verifier {
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(call_graph_log)),
-            self.args.solver(),
+            self.args.solver,
             false,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
@@ -2526,7 +2551,6 @@ impl Verifier {
 
         let mut crate_names: Vec<String> = vec![crate_name.clone()];
         crate_names.extend(other_crate_names.into_iter());
-        let mut vir_crates: Vec<Krate> = other_vir_crates;
         // TODO vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
 
         let erasure_info = ErasureInfo {
@@ -2565,7 +2589,8 @@ impl Verifier {
         // Convert HIR -> VIR
         let time1 = Instant::now();
         let (vir_crate, item_to_module_map) =
-            crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
+            crate::rust_to_vir::crate_to_vir(&mut ctxt, &other_vir_crates)
+                .map_err(map_err_diagnostics)?;
 
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
@@ -2596,10 +2621,11 @@ impl Verifier {
         // - traits::demote_foreign_traits
         // - GlobalCtx::new
         // - well_formed::check_crate
+        let mut vir_crates: Vec<Krate> = other_vir_crates;
         vir_crates.push(vir_crate);
         let unpruned_crate =
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
-        let (vir_crate, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
+        let (vir_crate, _, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
             &Arc::new(crate_name.clone()),
             Some(&current_vir_crate),

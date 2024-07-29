@@ -5,10 +5,10 @@ use crate::ast::{
 use crate::ast_util::{LowerUniqueVar, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{
-    new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_open_inv,
-    prefix_pre_var, prefix_recursive_fun, prefix_requires, static_name, suffix_global_id,
-    suffix_typ_param_id, suffix_typ_param_ids, CommandsWithContext, SnapPos, Spanned, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
+    new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_no_unwind_when,
+    prefix_open_inv, prefix_pre_var, prefix_recursive_fun, prefix_requires, static_name,
+    suffix_global_id, suffix_typ_param_id, suffix_typ_param_ids, CommandsWithContext, SnapPos,
+    Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
 use crate::messages::{MessageLabel, Span};
 use crate::sst::FuncCheckSst;
@@ -543,6 +543,25 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
                 None,
             );
         }
+    }
+
+    // Unwind spec
+    if let Some(e) = &func_decl_sst.unwind_condition {
+        let _ = req_ens_to_air(
+            ctx,
+            &mut decl_commands,
+            &func_decl_sst.req_inv_pars,
+            &vec![],
+            &Arc::new(vec![e.clone()]),
+            &function.x.typ_params,
+            &req_typs,
+            &prefix_no_unwind_when(&fun_to_air_ident(&function.x.name)),
+            &None,
+            function.x.attrs.integer_ring,
+            bool_typ(),
+            None,
+            None,
+        );
     }
 
     // Ensures

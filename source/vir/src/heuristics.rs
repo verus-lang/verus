@@ -1,6 +1,7 @@
 use crate::ast::{BinaryOp, BinaryOpr, Mode, Typ, TypX, UnaryOp, UnaryOpr};
 use crate::context::Ctx;
 use crate::sst::{BndX, Exp, ExpX};
+use std::sync::Arc;
 
 fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
@@ -91,7 +92,8 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
             | BinaryOp::Xor
             | BinaryOp::Arith(..)
             | BinaryOp::Bitwise(..)
-            | BinaryOp::StrGetChar => exp.clone(),
+            | BinaryOp::StrGetChar
+            | BinaryOp::ArrayIndex => exp.clone(),
         },
         ExpX::BinaryOpr(BinaryOpr::ExtEq(..), _, _) => exp.clone(),
         ExpX::If(e1, e2, e3) => {
@@ -110,6 +112,10 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
             }
             BndX::Lambda(..) | BndX::Choose(..) => exp.clone(),
         },
+        ExpX::ArrayLiteral(es) => {
+            let es = es.iter().map(|e| insert_ext_eq_in_assert(ctx, e)).collect();
+            exp.new_x(ExpX::ArrayLiteral(Arc::new(es)))
+        }
         ExpX::Const(_)
         | ExpX::Var(_)
         | ExpX::StaticVar(_)

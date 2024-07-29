@@ -102,7 +102,7 @@ pub struct ArgsX {
     pub trace: bool,
     pub report_long_running: bool,
     pub use_crate_name: bool,
-    pub cvc5: bool,
+    pub solver: SmtSolver,
     #[cfg(feature = "axiom-usage-info")]
     pub broadcast_usage_info: bool,
 }
@@ -146,14 +146,10 @@ impl ArgsX {
             trace: Default::default(),
             report_long_running: Default::default(),
             use_crate_name: Default::default(),
-            cvc5: Default::default(),
+            solver: Default::default(),
             #[cfg(feature = "axiom-usage-info")]
             broadcast_usage_info: Default::default(),
         }
-    }
-
-    pub fn solver(&self) -> SmtSolver {
-        if self.cvc5 { SmtSolver::Cvc5 } else { SmtSolver::Z3 }
     }
 }
 
@@ -649,7 +645,7 @@ pub fn parse_args_with_imports(
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
         use_crate_name: extended.get(EXTENDED_USE_CRATE_NAME).is_some(),
-        cvc5: extended.get(EXTENDED_CVC5).is_some(),
+        solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         #[cfg(feature = "axiom-usage-info")]
         broadcast_usage_info: extended.get(EXTENDED_BROADCAST_USAGE_INFO).is_some(),
     };

@@ -1,6 +1,6 @@
 use crate::ast::{
-    Axiom, BinaryOp, BindX, Binder, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp,
-    Qid, Quant, Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, Typs, UnaryOp,
+    Axiom, BinaryOp, BindX, Binder, Binders, Constant, Decl, DeclX, Expr, ExprX, Exprs, Ident,
+    MultiOp, Qid, Quant, Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, Typs, UnaryOp,
 };
 use crate::ast_util::{ident_binder, mk_and, mk_eq, mk_forall, mk_unnamed_axiom};
 use crate::context::Context;
@@ -171,6 +171,101 @@ fn simplify_var(ctxt: &mut Context, state: &mut State, x: &Ident) -> (Typ, Optio
     (typ, term)
 }
 
+fn simplify_closure_app(
+    ctxt: &mut Context,
+    state: &mut State,
+    typ: Typ,
+    app: Expr,
+) -> (Typ, Expr, Option<Term>) {
+    if state.closure_states.len() == 0 {
+        (typ, app, None)
+    } else {
+        // REVIEW: when we're nested in a closure, it's easiest to just rerun
+        // the simplifier on the simplified inner closure, so we can generate the
+        // correct holes in the outer closure.  This is inefficient, though,
+        // on unusually deeply nested, treelike closures.
+        simplify_expr(ctxt, state, &app)
+    }
+}
+
+fn simplify_array(
+    ctxt: &mut Context,
+    state: &mut State,
+    exprs: &Exprs,
+) -> (Typ, Expr, Option<Term>) {
+    let closure_state =
+        ClosureState { typing_depth: ctxt.typing.decls.num_scopes(), holes: Vec::new() };
+    let mut es: Vec<Expr> = Vec::new();
+    let mut terms: Vec<Term> = Vec::new();
+    let mut typs: Vec<Typ> = Vec::new();
+    state.closure_states.push(closure_state);
+    for e in exprs.iter() {
+        let (typ, e, t) = simplify_expr(ctxt, state, e);
+        let (e, t) =
+            enclose_force_hole(state.closure_states.last_mut().unwrap(), typ.clone(), e, t);
+        es.push(e);
+        terms.push(t);
+        typs.push(typ);
+    }
+    let closure_state = state.closure_states.pop().unwrap();
+    let typ = Arc::new(TypX::Fun);
+    let holes = Arc::new(vec_map(&closure_state.holes, |(_, typ, _)| typ.clone()));
+    let closure = ClosureTermX { terms, params: Arc::new(vec![]), holes: holes.clone() };
+    let closure = Arc::new(closure);
+    let closure_fun = match ctxt.array_map.get(&closure) {
+        None => {
+            let name = format!("{}{}", crate::def::ARRAY, ctxt.array_count);
+            let closure_fun = Arc::new(name);
+            ctxt.array_count += 1;
+            let _ = ctxt.array_map.insert(closure, closure_fun.clone());
+
+            // f(holes): Fun
+            let decl = Arc::new(DeclX::Fun(closure_fun.clone(), holes.clone(), typ.clone()));
+            state.generated_decls.push(decl);
+            insert_fun_typing(ctxt, &closure_fun, &holes, &typ);
+
+            // forall holes. #[trigger f(captures)] ... apply(f(captures), i) == ei ...
+            // (and use let binding to avoid repeating f(captures))
+            let mut xholes: Vec<Expr> = Vec::new();
+            let mut bs: Vec<Binder<Typ>> = Vec::new();
+            for (x, typ, _) in closure_state.holes.iter() {
+                xholes.push(Arc::new(ExprX::Var(x.clone())));
+                bs.push(ident_binder(x, typ));
+            }
+            let call = Arc::new(ExprX::Apply(closure_fun.clone(), Arc::new(xholes)));
+            let call_x = Arc::new(crate::def::TEMP.to_string());
+            let apply_fun = if typs.len() > 0 {
+                Some(mk_apply(ctxt, state, Arc::new(vec![Arc::new(TypX::Int)]), typs[0].clone()))
+            } else {
+                None
+            };
+            let mut conjuncts: Vec<Expr> = Vec::new();
+            for (i, e) in es.iter().enumerate() {
+                // apply(f(captures), i) == ei
+                let expr_i = Arc::new(ExprX::Const(Constant::Nat(Arc::new(i.to_string()))));
+                let args = Arc::new(vec![Arc::new(ExprX::Var(call_x.clone())), expr_i]);
+                let apply = Arc::new(ExprX::Apply(apply_fun.clone().unwrap(), args));
+                let eq = Arc::new(ExprX::Binary(BinaryOp::Eq, apply.clone(), e.clone()));
+                conjuncts.push(eq);
+            }
+            let trig = Arc::new(vec![call.clone()]);
+            let trigs = Arc::new(vec![trig]);
+            let qid = crate::def::ARRAY_QID.to_string();
+            let bind_temp = ident_binder(&call_x, &call);
+            let let_bind = Arc::new(BindX::Let(Arc::new(vec![bind_temp])));
+            let let_and = Arc::new(ExprX::Bind(let_bind, mk_and(&conjuncts)));
+            let forall = mk_forall(&bs, &trigs, Some(Arc::new(qid)), &let_and);
+            let decl = mk_unnamed_axiom(forall);
+            state.generated_decls.push(decl);
+            closure_fun
+        }
+        Some(closure_fun) => closure_fun.clone(),
+    };
+    let exprs = vec_map(&closure_state.holes, |(_, _, e)| e.clone());
+    let app = Arc::new(ExprX::Apply(closure_fun, Arc::new(exprs)));
+    simplify_closure_app(ctxt, state, typ, app)
+}
+
 fn simplify_lambda(
     ctxt: &mut Context,
     state: &mut State,
@@ -257,15 +352,7 @@ fn simplify_lambda(
     };
     let exprs = vec_map(&closure_state.holes, |(_, _, e)| e.clone());
     let app = Arc::new(ExprX::Apply(closure_fun, Arc::new(exprs)));
-    if state.closure_states.len() == 0 {
-        (typ, app, None)
-    } else {
-        // REVIEW: when we're nested in a closure, it's easiest to just rerun
-        // the simplifier on the simplified inner closure, so we can generate the
-        // correct holes in the outer closure.  This is inefficient, though,
-        // on unusually deeply nested, treelike closures.
-        simplify_expr(ctxt, state, &app)
-    }
+    simplify_closure_app(ctxt, state, typ, app)
 }
 
 fn simplify_choose(
@@ -380,15 +467,7 @@ fn simplify_choose(
 
     let exprs = vec_map(&closure_state.holes, |(_, _, e)| e.clone());
     let app = Arc::new(ExprX::Apply(closure_fun, Arc::new(exprs)));
-    if state.closure_states.len() == 0 {
-        (typ_body, app, None)
-    } else {
-        // REVIEW: when we're nested in a closure, it's easiest to just rerun
-        // the simplifier on the simplified inner closure, so we can generate the
-        // correct holes in the outer closure.  This is inefficient, though,
-        // on unusually deeply nested, treelike closures.
-        simplify_expr(ctxt, state, &app)
-    }
+    simplify_closure_app(ctxt, state, typ_body, app)
 }
 
 fn simplify_exprs(
@@ -525,6 +604,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             let (es, t) = enclose(state, App::IfElse, es, ts);
             (typ, Arc::new(ExprX::IfElse(es[0].clone(), es[1].clone(), es[2].clone())), t)
         }
+        ExprX::Array(exprs) => simplify_array(ctxt, state, exprs),
         ExprX::Bind(bind, e1) => match &**bind {
             BindX::Let(binders) => {
                 let mut es: Vec<Expr> = Vec::new();

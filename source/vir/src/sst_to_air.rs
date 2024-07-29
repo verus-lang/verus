@@ -1,8 +1,8 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
     IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, MaskSpec, Mode, Path, PathX, Primitive,
-    SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
-    VarIdent, VariantCheck, VirErr, Visibility,
+    SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec,
+    VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ, LowerUniqueVar,
@@ -11,20 +11,21 @@ use crate::bitvector_to_air::bv_to_queries;
 use crate::context::Ctx;
 use crate::def::{
     fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name, path_to_string,
-    prefix_box, prefix_ensures, prefix_fuel_id, prefix_open_inv, prefix_pre_var, prefix_requires,
-    prefix_spec_fn_type, prefix_unbox, snapshot_ident, static_name, suffix_global_id,
-    suffix_local_unique_id, suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident,
-    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
-    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII,
-    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
-    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv,
+    prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident,
+    static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, unique_local,
+    variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX, ProverChoice,
+    SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
+    FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE,
+    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
+    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
+    UnwindSst,
 };
 use crate::sst::{FuncCheckSst, Pars, PostConditionKind, Stms};
 use crate::sst_vars::{get_loc_var, AssignMap};
@@ -141,6 +142,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Bool => bool_typ(),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::SpecFn(..) => Arc::new(air::ast::TypX::Fun),
+        TypX::Primitive(Primitive::Array, _) => Arc::new(air::ast::TypX::Fun),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
@@ -159,11 +161,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::Primitive(
-            Primitive::Array
-            | Primitive::Slice
-            | Primitive::StrSlice
-            | Primitive::Ptr
-            | Primitive::Global,
+            Primitive::Slice | Primitive::StrSlice | Primitive::Ptr | Primitive::Global,
             _,
         ) => match typ_as_mono(typ) {
             None => panic!("should be boxed"),
@@ -411,6 +409,9 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::SpecFn(..) => {
             Some(expr_has_typ(&try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ))
         }
+        TypX::Primitive(Primitive::Array, _) => {
+            Some(expr_has_typ(&try_box(ctx, expr.clone(), typ).expect("try_box array"), typ))
+        }
         TypX::Datatype(path, _, _) => {
             if ctx.datatype_is_transparent[path] {
                 if ctx.datatypes_with_invariant.contains(path) {
@@ -436,7 +437,18 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
         TypX::ConstInt(_) => None,
-        TypX::Primitive(_, _) => None,
+        TypX::Primitive(p, _) => {
+            match p {
+                Primitive::Array | Primitive::Slice | Primitive::Ptr => {
+                    // Each of these is like an abstract Datatype
+                    if typ_as_mono(typ).is_none() {
+                        panic!("abstract datatype should be boxed")
+                    }
+                }
+                Primitive::StrSlice | Primitive::Global => {}
+            }
+            None
+        }
         TypX::FnDef(..) => None,
     }
 }
@@ -473,6 +485,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
         TypX::Tuple(_) => None,
         TypX::SpecFn(typs, _) => Some(prefix_box(&prefix_spec_fn_type(typs.len()))),
+        TypX::Primitive(Primitive::Array, _) => Some(prefix_box(&crate::def::array_type())),
         TypX::AnonymousClosure(..) => unimplemented!(),
         TypX::Datatype(..) => {
             if let Some(prefix) = datatype_box_prefix(ctx, typ) {
@@ -509,6 +522,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
                 prefix_typ_as_mono(prefix_unbox, typ, "abstract datatype")
             }
         }
+        TypX::Primitive(Primitive::Array, _) => Some(prefix_unbox(&crate::def::array_type())),
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_unbox, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::UNBOX_FNDEF)),
         TypX::Tuple(_) => None,
@@ -783,6 +797,43 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::ExecFnByName(_fun) => {
             Arc::new(ExprX::Apply(str_ident(crate::def::FNDEF_SINGLETON), Arc::new(vec![])))
         }
+        ExpX::ArrayLiteral(es) => {
+            let mut exprs: Vec<Expr> = vec![];
+            for e in es.iter() {
+                exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
+            }
+            let typ = match &*exp.typ {
+                TypX::Decorate(_dec, _, t) => match &**t {
+                    TypX::Boxed(t) => match &**t {
+                        TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                        _ => {
+                            panic!("Failed to extract the array literal element type for {:?}", exp)
+                        }
+                    },
+                    _ => panic!(
+                        "Failed to extract the array literal element boxed type for {:?}",
+                        exp
+                    ),
+                },
+                TypX::Boxed(t) => match &**t {
+                    TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                    _ => panic!(
+                        "Failed to directly extract the array literal element type for {:?}",
+                        exp
+                    ),
+                },
+                _ => panic!(
+                    "Failed to extract the decorated array literal element type for {:?}",
+                    exp
+                ),
+            };
+            let mut args = typ_to_ids(&typ);
+            let len = mk_nat(es.len());
+            let array_lit = Arc::new(ExprX::Array(Arc::new(exprs)));
+            args.push(len);
+            args.push(array_lit);
+            str_apply(crate::def::ARRAY_NEW, &args)
+        }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)) => {
             str_apply(crate::def::CONST_INT, &vec![typ_to_id(c)])
         }
@@ -995,6 +1046,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         exp_to_expr(ctx, rhs, expr_ctxt)?,
                     ]),
                 ),
+                BinaryOp::ArrayIndex => ExprX::ApplyFun(
+                    str_typ(POLY),
+                    exp_to_expr(ctx, lhs, expr_ctxt)?,
+                    Arc::new(vec![exp_to_expr(ctx, rhs, expr_ctxt)?]),
+                ),
+                // here the binary bitvector Ops are translated into the integer versions
+                // Similar to typ_invariant(), make obvious range according to bit-width
                 BinaryOp::Bitwise(bo, _) => {
                     let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
                     let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
@@ -1051,6 +1109,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         }
                         BinaryOp::Bitwise(..) => unreachable!(),
                         BinaryOp::StrGetChar => unreachable!(),
+                        BinaryOp::ArrayIndex => unreachable!(),
                     };
                     ExprX::Binary(aop, lh, rh)
                 }
@@ -1189,6 +1248,17 @@ struct LoopInfo {
     decrease: crate::sst::Exps,
 }
 
+enum ReasonForNoUnwind {
+    Function,
+    OpenInvariant(Span),
+}
+
+enum UnwindAir {
+    MayUnwind,
+    NoUnwind(ReasonForNoUnwind),
+    NoUnwindWhen(Expr),
+}
+
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
     may_be_used_in_old: HashSet<UniqueIdent>, // vars that might have a 'PRE' snapshot, needed for while loop generation
@@ -1198,6 +1268,7 @@ struct State {
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
     assign_map: AssignMap, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
     mask: MaskSet,         // set of invariants that are allowed to be opened
+    unwind: UnwindAir,
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
     static_prelude: Vec<Stmt>,
@@ -1457,6 +1528,61 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 let error = error(&stm.span, description);
                 let filter = Some(fun_to_air_ident(&func.x.name));
                 stmts.push(Arc::new(StmtX::Assert(assert_id.clone(), error, filter, e_req)));
+            }
+
+            let callee_unwind_spec = func.x.unwind_spec_or_default();
+            let callee_never_unwinds = matches!(callee_unwind_spec, UnwindSpec::NoUnwind);
+            if !matches!(state.unwind, UnwindAir::MayUnwind)
+                && !callee_never_unwinds
+                && !ctx.checking_spec_preconditions()
+            {
+                let e1 = match &state.unwind {
+                    UnwindAir::MayUnwind => unreachable!(),
+                    UnwindAir::NoUnwind(_) => Arc::new(ExprX::Const(Constant::Bool(true))),
+                    UnwindAir::NoUnwindWhen(expr) => expr.clone(),
+                };
+                let e2 = match &callee_unwind_spec {
+                    UnwindSpec::MayUnwind => Arc::new(ExprX::Const(Constant::Bool(false))),
+                    UnwindSpec::NoUnwind => unreachable!(),
+                    UnwindSpec::NoUnwindWhen(_) => {
+                        let f_unwind = prefix_no_unwind_when(&fun_to_air_ident(&func.x.name));
+                        Arc::new(ExprX::Apply(f_unwind, req_args.clone()))
+                    }
+                };
+                let error = match &state.unwind {
+                    UnwindAir::MayUnwind => unreachable!(),
+                    UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
+                        &stm.span,
+                        "cannot show this call will not unwind, in function marked 'no_unwind'",
+                        "this call might unwind",
+                    ),
+                    UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
+                        error_with_label(
+                            &stm.span,
+                            "cannot show this call will not unwind",
+                            "this call might unwind",
+                        )
+                        .secondary_label(span, "unwinding is not allowed in this invariant block")
+                    }
+                    UnwindAir::NoUnwindWhen(_e) => error_with_label(
+                        &stm.span,
+                        "cannot show this call will not unwind, in function marked 'no_unwind'",
+                        "this call might unwind",
+                    ),
+                };
+                let error = if let UnwindSpec::NoUnwindWhen(e) = &callee_unwind_spec {
+                    error.secondary_label(
+                        &e.span,
+                        "this conditition needs to hold to show that the callee will not unwind",
+                    )
+                } else {
+                    error.secondary_label(
+                        &func.span,
+                        "perhaps you need to mark this function as 'no_unwind'?",
+                    )
+                };
+                let e = mk_implies(&e1, &e2);
+                stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
             }
 
             let callee_mask_set =
@@ -1893,8 +2019,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // All closure funcs are assumed to have mask set 'full'
             let mut mask = MaskSet::full();
             std::mem::swap(&mut state.mask, &mut mask);
+            // Right now all closures are assumed to unwind
+            let mut unwind = UnwindAir::MayUnwind;
+            std::mem::swap(&mut state.unwind, &mut unwind);
+
             let mut body_stmts = stm_to_stmts(ctx, state, body)?;
             std::mem::swap(&mut state.mask, &mut mask);
+            std::mem::swap(&mut state.unwind, &mut unwind);
 
             stmts.append(&mut body_stmts);
 
@@ -2252,9 +2383,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // the same invariant inside
             let mut inner_mask =
                 state.mask.remove_element(namespace_exp.span.clone(), namespace_expr);
+            // Disallow unwinding inside the invariant block
+            let mut inner_unwind =
+                UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(stm.span.clone()));
             swap(&mut state.mask, &mut inner_mask);
+            swap(&mut state.unwind, &mut inner_unwind);
             stmts.append(&mut stm_to_stmts(ctx, state, body_stm)?);
             swap(&mut state.mask, &mut inner_mask);
+            swap(&mut state.unwind, &mut inner_unwind);
 
             stmts
         }
@@ -2425,7 +2561,7 @@ pub(crate) fn body_stm_to_air(
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
-    let FuncCheckSst { reqs, post_condition, mask_set, body: stm, local_decls, statics } =
+    let FuncCheckSst { reqs, post_condition, mask_set, body: stm, local_decls, statics, unwind } =
         func_check_sst;
 
     if is_bit_vector_mode {
@@ -2496,6 +2632,16 @@ pub(crate) fn body_stm_to_air(
         ens_exprs.push((ens.span.clone(), e));
     }
 
+    let unwind_air = match unwind {
+        UnwindSst::MayUnwind => UnwindAir::MayUnwind,
+        UnwindSst::NoUnwind => UnwindAir::NoUnwind(ReasonForNoUnwind::Function),
+        UnwindSst::NoUnwindWhen(exp) => {
+            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+            let e = exp_to_expr(ctx, &exp, expr_ctxt)?;
+            UnwindAir::NoUnwindWhen(e)
+        }
+    };
+
     let mut may_be_used_in_old = HashSet::<UniqueIdent>::new();
     for param in params.iter() {
         if param.x.is_mut {
@@ -2518,6 +2664,7 @@ pub(crate) fn body_stm_to_air(
         snap_map: Vec::new(),
         assign_map: indexmap::IndexMap::new(),
         mask: (**mask_set).clone(),
+        unwind: unwind_air,
         post_condition_info: PostConditionInfo {
             dest: post_condition.dest.clone(),
             ens_exprs,

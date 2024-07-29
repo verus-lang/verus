@@ -22,7 +22,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
         ExpX::Call(CallFun::Fun(fun, resolved_method), typs, args) => {
             let (fun, typs) =
                 if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };
-            if let Some(SstInfo { inline, pars, memoize: _, body }) = fun_ssts.get(fun) {
+            if let Some(SstInfo { inline, pars, body, .. }) = fun_ssts.get(fun) {
                 if inline.do_inline {
                     let typ_params = &inline.typ_params;
                     let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();

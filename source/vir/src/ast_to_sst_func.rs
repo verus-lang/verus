@@ -1,7 +1,7 @@
 use crate::ast::{
     Expr, ExprX, Fun, Function, FunctionKind, Ident, Idents, ItemKind, MaskSpec, Mode, Param,
-    ParamX, Params, Path, SpannedTyped, Typ, TypX, UnaryOp, VarBinder, VarBinderX, VarIdent,
-    VirErr,
+    ParamX, Params, Path, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX,
+    VarIdent, VirErr,
 };
 use crate::ast_to_sst::{
     check_pure_expr, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks,
@@ -16,7 +16,7 @@ use crate::messages::{error, Message};
 use crate::sst::{BndX, Exp, ExpX, Exps, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
-    FunctionSstX, PostConditionKind, PostConditionSst,
+    FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
 };
 use crate::sst_to_air::{exp_to_expr, ExprCtxt, ExprMode};
 use crate::sst_util::{subst_exp, subst_stm};
@@ -31,6 +31,7 @@ pub struct SstInline {
 
 pub struct SstInfo {
     pub(crate) inline: SstInline,
+    pub(crate) typ_params: Idents,
     pub(crate) pars: Pars,
     pub(crate) memoize: bool,
     pub(crate) body: Exp,
@@ -278,6 +279,7 @@ fn func_body_to_sst(
                 statics: Arc::new(vec![]),
                 reqs: Arc::new(vec![]),
                 mask_set: Arc::new(crate::inv_masks::MaskSet::empty()),
+                unwind: UnwindSst::NoUnwind,
             };
             Some(termination_check)
         } else {
@@ -329,6 +331,17 @@ pub fn func_decl_to_sst(
             }
         }
     }
+
+    let unwind_condition = match &function.x.unwind_spec {
+        None => None,
+        Some(UnwindSpec::NoUnwind) => None,
+        Some(UnwindSpec::MayUnwind) => None,
+        Some(UnwindSpec::NoUnwindWhen(e)) => {
+            let (_pars, exps) = req_ens_to_sst(ctx, diagnostics, function, &vec![e.clone()], true)?;
+            assert!(exps.len() == 1);
+            Some(exps[0].clone())
+        }
+    };
 
     let mut fndef_axiom_exps: Vec<Exp> = Vec::new();
     if crate::ast_simplify::need_fndef_axiom(&ctx.fndef_type_set, function) {
@@ -388,6 +401,7 @@ pub fn func_decl_to_sst(
         reqs: Arc::new(reqs),
         enss: Arc::new(enss),
         inv_masks: Arc::new(inv_masks),
+        unwind_condition,
         fndef_axioms: Arc::new(fndef_axiom_exps),
     })
 }
@@ -568,6 +582,32 @@ pub fn func_def_to_sst(
         MaskSpec::InvariantOpensExcept(_exprs) => MaskSet::from_list_complement(inv_spec_air_exprs),
     };
 
+    let unwind = match req_ens_function.x.unwind_spec_or_default() {
+        UnwindSpec::MayUnwind => UnwindSst::MayUnwind,
+        UnwindSpec::NoUnwind => UnwindSst::NoUnwind,
+        UnwindSpec::NoUnwindWhen(e) => {
+            let e_with_req_ens_params = map_expr_rename_vars(&e, &req_ens_e_rename)?;
+            let exp = if ctx.checking_spec_preconditions() {
+                let (stms, exp) = crate::ast_to_sst::expr_to_pure_exp_check(
+                    ctx,
+                    &mut state,
+                    &e_with_req_ens_params,
+                )?;
+                req_stms.extend(stms);
+                exp
+            } else {
+                crate::ast_to_sst::expr_to_exp_skip_checks(
+                    ctx,
+                    diagnostics,
+                    &req_pars,
+                    &e_with_req_ens_params,
+                )?
+            };
+            let exp = state.finalize_exp(ctx, &exp)?;
+            UnwindSst::NoUnwindWhen(exp)
+        }
+    };
+
     for e in function.x.decrease.iter() {
         if ctx.checking_spec_preconditions() {
             let stms = check_pure_expr(ctx, &mut state, &e)?;
@@ -650,6 +690,7 @@ pub fn func_def_to_sst(
             kind: PostConditionKind::Ensures,
         }),
         mask_set: Arc::new(mask_set),
+        unwind,
         body: stm,
         local_decls: Arc::new(local_decls),
         statics: Arc::new(statics.into_iter().collect()),

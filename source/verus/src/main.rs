@@ -43,6 +43,7 @@ const RUST_VERIFY_FILE_NAME: &str =
     if cfg!(target_os = "windows") { "rust_verify.exe" } else { "rust_verify" };
 
 const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\z3.exe" } else { "./z3" };
+const CVC5_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\cvc5.exe" } else { "./cvc5" };
 
 fn main() {
     match run() {
@@ -196,6 +197,18 @@ fn run() -> Result<std::process::ExitStatus, String> {
             Some(maybe_z3_path)
         } else {
             None
+        }
+    };
+
+    if std::env::var("VERUS_CVC5_PATH").ok().is_none() {
+        let mut maybe_cvc5_path = parent.join(CVC5_FILE_NAME);
+        if maybe_cvc5_path.exists() {
+            if !maybe_cvc5_path.is_absolute() {
+                maybe_cvc5_path = std::env::current_dir()
+                    .expect("working directory invalid")
+                    .join(maybe_cvc5_path);
+            }
+            cmd.env("VERUS_CVC5_PATH", &maybe_cvc5_path);
         }
     };
 

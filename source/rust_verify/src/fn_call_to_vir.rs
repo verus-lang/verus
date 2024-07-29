@@ -66,6 +66,8 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                         | SpecItem::OpensInvariantsAny
                         | SpecItem::OpensInvariants
                         | SpecItem::OpensInvariantsExcept
+                        | SpecItem::NoUnwind
+                        | SpecItem::NoUnwindWhen
                 ) | VerusItem::Directive(DirectiveItem::ExtraDependency)
             )
         )
@@ -415,6 +417,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let header = Arc::new(HeaderExprX::DecreasesWhen(arg));
                 mk_expr(ExprX::Header(header))
             }
+            SpecItem::NoUnwind => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let header = Arc::new(HeaderExprX::NoUnwind);
+                mk_expr(ExprX::Header(header))
+            }
+            SpecItem::NoUnwindWhen => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                let header = Arc::new(HeaderExprX::NoUnwindWhen(arg));
+                mk_expr(ExprX::Header(header))
+            }
             SpecItem::Admit => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 0, expr.span, "expected admit", args);
@@ -543,6 +557,24 @@ fn verus_item_to_vir<'tcx, 'a>(
                     }
                 }
                 err_span(expr.span, "only a variable binding is allowed as the argument to old")
+            }
+            ExprItem::ArrayIndex => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                match &expr.kind {
+                    ExprKind::Call(_, args) if args.len() == 2 => {
+                        let arg0 = args.first().unwrap();
+                        let arg0 = expr_to_vir(bctx, arg0, ExprModifier::REGULAR).expect(
+                            "invalid parameter for builtin::array_index at arg0, arg0 must be self",
+                        );
+                        let arg1 = &args[1];
+                        let arg1 = expr_to_vir(bctx, arg1, ExprModifier::REGULAR)
+                            .expect("invalid parameter for builtin::array_index at arg1; arg1 must be an integer");
+                        mk_expr(ExprX::Binary(BinaryOp::ArrayIndex, arg0, arg1))
+                    }
+                    _ => panic!(
+                        "Expected a call for builtin::array_index with two argument but did not receive it"
+                    ),
+                }
             }
             ExprItem::StrSliceLen => {
                 record_spec_fn_no_proof_args(bctx, expr);

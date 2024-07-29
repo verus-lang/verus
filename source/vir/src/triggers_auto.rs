@@ -392,6 +392,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 Ne | Inequality(_) | Arith(..) => 1,
                 Bitwise(..) => 1,
                 StrGetChar => fail_on_strop(),
+                ArrayIndex => 1,
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
@@ -427,6 +428,12 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Bind(_, _) => {
             // REVIEW: we could at least look for matching loops here
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
+        }
+        ExpX::ArrayLiteral(es) => {
+            let (is_pures, terms): (Vec<bool>, Vec<Term>) =
+                es.iter().map(|e| gather_terms(ctxt, ctx, e, depth + 1)).unzip();
+            let is_pure = is_pures.into_iter().all(|b| b);
+            (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
         }
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)

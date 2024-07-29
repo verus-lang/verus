@@ -47,6 +47,7 @@ const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_OPEN_INV: &str = "openinv%";
+const PREFIX_NO_UNWIND_WHEN: &str = "no_unwind_when%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
@@ -182,6 +183,9 @@ pub const BIT_SHR: &str = "bitshr";
 pub const BIT_SHL: &str = "bitshl";
 pub const BIT_NOT: &str = "bitnot";
 pub const SINGULAR_MOD: &str = "singular_mod";
+
+pub const ARRAY_NEW: &str = "array_new";
+pub const ARRAY_INDEX: &str = "array_index";
 
 // List of QID suffixes we add to internally generated quantifiers
 pub const QID_BOX_AXIOM: &str = "box_axiom";
@@ -464,6 +468,10 @@ pub fn prefix_ensures(ident: &Ident) -> Ident {
 
 pub fn prefix_open_inv(ident: &Ident, i: usize) -> Ident {
     Arc::new(format!("{}{}%{}", PREFIX_OPEN_INV, i, ident))
+}
+
+pub fn prefix_no_unwind_when(ident: &Ident) -> Ident {
+    Arc::new(PREFIX_NO_UNWIND_WHEN.to_string() + ident)
 }
 
 fn prefix_path(prefix: String, path: &Path) -> Path {
@@ -874,17 +882,10 @@ pub fn break_label(i: u64) -> Ident {
     Arc::new(format!("{}{}", PREFIX_BREAK_LABEL, i))
 }
 
-pub fn array_index_fun(vstd_crate_name: &Ident) -> Fun {
-    Arc::new(FunX { path: array_index_path(vstd_crate_name) })
-}
-
-pub fn array_index_path(vstd_crate_name: &Ident) -> Path {
+pub fn array_new_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
         krate: Some(vstd_crate_name.clone()),
-        segments: Arc::new(vec![
-            Arc::new("array".to_string()),
-            Arc::new("array_index".to_string()),
-        ]),
+        segments: Arc::new(vec![Arc::new("array".to_string()), Arc::new("array_new".to_string())]),
     })
 }
 

@@ -151,6 +151,8 @@ pub enum ExprX {
     Binary(BinaryOp, Expr, Expr),
     Multi(MultiOp, Exprs),
     IfElse(Expr, Expr, Expr),
+    // (array t e0 ... en) creates a TypX::Fun mapping 0..n of type Int to e0..en (each of type t)
+    Array(Exprs),
     Bind(Bind, Expr),
     // Sometimes an axiom will have additional error messages. If an assert fails
     // and this axiom was relevant, then we append the error labels to the Message.

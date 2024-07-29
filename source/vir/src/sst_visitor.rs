@@ -6,7 +6,7 @@ use crate::def::Spanned;
 use crate::sst::{
     Bnd, BndX, Dest, Exp, ExpX, FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst,
     FunctionSst, FunctionSstX, LocalDecl, LocalDeclX, LoopInv, Par, ParX, PostConditionSst, Stm,
-    StmX, Trigs, UniqueIdent,
+    StmX, Trigs, UniqueIdent, UnwindSst,
 };
 pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
 use air::ast::Binder;
@@ -224,7 +224,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let binders = R::map_vec(binders, &mut |b| self.visit_binder_exp(b))?;
                 R::ret(|| exp_new(ExpX::Ctor(path.clone(), ident.clone(), R::get_vec_a(binders))))
             }
-
             ExpX::NullaryOpr(NullaryOpr::ConstGeneric(t)) => {
                 let t = self.visit_typ(t)?;
                 R::ret(|| exp_new(ExpX::NullaryOpr(NullaryOpr::ConstGeneric(R::get(t)))))
@@ -354,6 +353,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 R::ret(|| {
                     exp_new(ExpX::Bind(Spanned::new(bnd.span.clone(), R::get(bndx)), R::get(e1)))
                 })
+            }
+            ExpX::ArrayLiteral(es) => {
+                let es = self.visit_exps(es)?;
+                R::ret(|| exp_new(ExpX::ArrayLiteral(R::get_vec_a(es))))
             }
             ExpX::Interp(_) => R::ret(|| exp.clone()),
         }
@@ -596,6 +599,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             let es = self.visit_exps(es)?;
             R::push(&mut inv_masks, R::ret(|| R::get_vec_a(es))?);
         }
+        let unwind_condition =
+            R::map_opt(&func_decl.unwind_condition, &mut |exp| self.visit_exp(exp))?;
         R::ret(|| FuncDeclSst {
             req_inv_pars: R::get_vec_a(req_inv_pars),
             ens_pars: R::get_vec_a(ens_pars),
@@ -603,6 +608,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             reqs: R::get_vec_a(reqs),
             enss: R::get_vec_a(enss),
             inv_masks: R::get_vec_a(inv_masks),
+            unwind_condition: R::get_opt(unwind_condition),
             fndef_axioms: R::get_vec_a(fndef_axioms),
         })
     }
@@ -612,14 +618,27 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let post_condition = self.visit_postcondition(&def.post_condition)?;
         let body = self.visit_stm(&def.body)?;
         let local_decls = R::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
+        let unwind = self.visit_unwind(&def.unwind)?;
+
         R::ret(|| FuncCheckSst {
             reqs: R::get_vec_a(reqs),
             post_condition: Arc::new(R::get(post_condition)),
             mask_set: def.mask_set.clone(),
+            unwind: R::get(unwind),
             body: R::get(body),
             local_decls: R::get_vec_a(local_decls),
             statics: def.statics.clone(),
         })
+    }
+
+    fn visit_unwind(&mut self, unwind: &UnwindSst) -> Result<R::Ret<UnwindSst>, Err> {
+        match unwind {
+            UnwindSst::MayUnwind | UnwindSst::NoUnwind => R::ret(|| unwind.clone()),
+            UnwindSst::NoUnwindWhen(exp) => {
+                let exp = self.visit_exp(exp)?;
+                R::ret(|| UnwindSst::NoUnwindWhen(R::get(exp)))
+            }
+        }
     }
 
     fn visit_func_body(&mut self, spec: &FuncSpecBodySst) -> Result<R::Ret<FuncSpecBodySst>, Err> {

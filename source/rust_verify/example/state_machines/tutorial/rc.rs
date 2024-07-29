@@ -348,10 +348,15 @@ impl<S> MyRc<S> {
         } = self;
         let tracked perm = inst.reader_guard(reader@.key, &reader);
         let inner_rc_ref = &ptr.borrow(Tracked(&perm.0));
+
+        let count;
+        let tracked mut inner_rc_perm_opt = None;
+        let tracked mut inner_rc_dealloc_opt = None;
+
         open_local_invariant!(inv.borrow() => g => {
             let tracked GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
 
-            let count = inner_rc_ref.rc_cell.take(Tracked(&mut rc_perm));
+            count = inner_rc_ref.rc_cell.take(Tracked(&mut rc_perm));
             if count >= 2 {
                 let count = count - 1;
                 inner_rc_ref.rc_cell.put(Tracked(&mut rc_perm), count);
@@ -376,11 +381,19 @@ impl<S> MyRc<S> {
                 let count = count - 1;
                 inner_rc.rc_cell.put(Tracked(&mut rc_perm), count);
 
-                ptr.dispose(Tracked(inner_rc_perm), Tracked(inner_rc_dealloc));
+                proof {
+                    inner_rc_perm_opt = Some(inner_rc_perm);
+                    inner_rc_dealloc_opt = Some(inner_rc_dealloc);
+                }
             }
 
             proof { g = GhostStuff { rc_perm, rc_token }; }
         });
+
+        if count < 2 {
+            ptr.dispose(Tracked(inner_rc_perm_opt.tracked_unwrap()),
+                Tracked(inner_rc_dealloc_opt.tracked_unwrap()));
+        }
     }
 }
 
