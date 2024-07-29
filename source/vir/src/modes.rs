@@ -1,7 +1,7 @@
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function,
     FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern,
-    PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, VarIdent, VirErr,
+    PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -892,12 +892,12 @@ fn check_expr_handle_mut_arg(
         }
         ExprX::Tuple(es) | ExprX::ArrayLiteral(es) => {
             let modes = vec_map_result(es, |e| check_expr(ctxt, record, typing, outer_mode, e))?;
-            Ok(modes.into_iter().fold(outer_mode, mode_join))
+            Ok(modes.into_iter().fold(Mode::Exec, mode_join))
         }
         ExprX::Ctor(path, variant, binders, update) => {
             let datatype = &ctxt.datatypes[path].clone();
             let variant = datatype.x.get_variant(variant);
-            let mut mode = mode_join(outer_mode, datatype.x.mode);
+            let mut mode = datatype.x.mode;
             if let Some(update) = update {
                 mode = mode_join(mode, check_expr(ctxt, record, typing, outer_mode, update)?);
             }
@@ -1620,6 +1620,13 @@ fn check_function(
     }
     if let Some(mask_spec) = &function.x.mask_spec {
         for expr in mask_spec.exprs().iter() {
+            let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+            check_expr_has_mode(ctxt, record, &mut dec_typing, Mode::Spec, expr, Mode::Spec)?;
+        }
+    }
+    match &function.x.unwind_spec {
+        None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
+        Some(UnwindSpec::NoUnwindWhen(expr)) => {
             let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
             check_expr_has_mode(ctxt, record, &mut dec_typing, Mode::Spec, expr, Mode::Spec)?;
         }

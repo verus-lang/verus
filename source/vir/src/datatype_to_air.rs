@@ -73,7 +73,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
         TypX::Datatype(path, _, _) => ctx.datatype_map[path].x.ext_equal,
-        TypX::Decorate(_, t) => uses_ext_equal(ctx, t),
+        TypX::Decorate(_, _, t) => uses_ext_equal(ctx, t),
         TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
         TypX::TypParam(_) => true,
         TypX::Projection { .. } => true,
@@ -84,6 +84,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
         TypX::Primitive(crate::ast::Primitive::StrSlice, _) => false,
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
+        TypX::Primitive(crate::ast::Primitive::Global, _) => false,
         TypX::FnDef(..) => false,
     }
 }
@@ -102,6 +103,7 @@ fn datatype_or_fun_to_air_commands(
     tparams: &Idents,
     variants: &Variants,
     is_fun: bool,
+    is_array: bool,
     declare_box: bool,
     add_height: bool,
     add_ext_equal: bool,
@@ -365,7 +367,7 @@ fn datatype_or_fun_to_air_commands(
         }
     }
 
-    if !ctx.datatypes_with_invariant.contains(dpath) && declare_box && !is_fun {
+    if !ctx.datatypes_with_invariant.contains(dpath) && declare_box && !is_fun && !is_array {
         // If there are no visible refinement types (e.g. no refinement type fields,
         // or type is completely abstract to us), then has_type always holds:
         //   forall typs, x. has_type(box(x), T(typs))
@@ -618,6 +620,29 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &Arc::new(tparams),
             &Arc::new(vec![]),
             true,
+            false,
+            true,
+            false,
+            true,
+        );
+    }
+
+    if ctx.uses_array {
+        datatype_or_fun_to_air_commands(
+            ctx,
+            &mut field_commands,
+            &mut token_commands,
+            &mut box_commands,
+            &mut axiom_commands,
+            &ctx.global.no_span,
+            &crate::def::array_type(),
+            &Arc::new(air::ast::TypX::Fun),
+            None,
+            Some(Arc::new(TypX::Primitive(crate::ast::Primitive::Array, Arc::new(vec![])))),
+            &Arc::new(vec![Arc::new("T".to_string()), Arc::new("N".to_string())]),
+            &Arc::new(vec![]),
+            false,
+            true,
             true,
             false,
             true,
@@ -643,6 +668,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             Some(crate::poly::monotyp_to_typ(monotyp)),
             &Arc::new(vec![]),
             &Arc::new(vec![]),
+            false,
             false,
             true,
             false,
@@ -678,6 +704,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &Arc::new(tparams),
             &datatype.x.variants,
             false,
+            false,
             is_transparent,
             is_transparent,
             is_transparent && datatype.x.ext_equal,
@@ -698,6 +725,16 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
         ));
         token_commands.push(Arc::new(CommandX::Global(decl_type_id)));
     }
+
+    let array_commands = if ctx.uses_array {
+        let nodes = crate::prelude::array_functions(&prefix_box(&crate::def::array_type()));
+        let cmds = air::parser::Parser::new(Arc::new(crate::messages::VirMessageInterface {}))
+            .nodes_to_commands(&nodes)
+            .expect("internal error: malformed strslice functions");
+        (*cmds).clone()
+    } else {
+        vec![]
+    };
 
     let strslice_monotyp = Arc::new(crate::poly::MonoTypX::Primitive(
         crate::ast::Primitive::StrSlice,
@@ -723,6 +760,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     commands.append(&mut token_commands);
     commands.append(&mut box_commands);
     commands.append(&mut axiom_commands);
+    commands.extend(array_commands);
     commands.extend(strslice_commands);
     Arc::new(commands)
 }

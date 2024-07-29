@@ -6369,6 +6369,22 @@ impl Debug for Lite<syn::Signature> {
             }
             formatter.field("invariants", Print::ref_cast(val));
         }
+        if let Some(val) = &_val.unwind {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::SignatureUnwind);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("unwind", Print::ref_cast(val));
+        }
         formatter.finish()
     }
 }
@@ -6417,6 +6433,29 @@ impl Debug for Lite<syn::SignatureInvariants> {
         let _val = &self.value;
         let mut formatter = formatter.debug_struct("SignatureInvariants");
         formatter.field("set", Lite(&_val.set));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::SignatureUnwind> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("SignatureUnwind");
+        if let Some(val) = &_val.when {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print((syn::token::When, syn::Expr));
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(&_val.1), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("when", Print::ref_cast(val));
+        }
         formatter.finish()
     }
 }

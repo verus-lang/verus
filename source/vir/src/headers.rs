@@ -1,6 +1,6 @@
 use crate::ast::{
     Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind,
-    LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwrapParameter, VarIdent, VirErr,
+    LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent, VirErr,
 };
 use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
@@ -23,6 +23,7 @@ pub struct Header {
     pub decrease_when: Option<Expr>,
     pub decrease_by: Option<Fun>,
     pub invariant_mask: Option<MaskSpec>,
+    pub unwind_spec: Option<UnwindSpec>,
     pub extra_dependencies: Vec<Fun>,
 }
 
@@ -39,6 +40,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut decrease_when: Option<Expr> = None;
     let mut decrease_by: Option<Fun> = None;
     let mut invariant_mask: Option<MaskSpec> = None;
+    let mut unwind_spec: Option<UnwindSpec> = None;
     let mut n = 0;
     let mut unwrap_parameter_allowed = true;
     for stmt in block.iter() {
@@ -161,6 +163,21 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         }
                         invariant_mask = Some(MaskSpec::InvariantOpensExcept(es.clone()));
                     }
+                    HeaderExprX::NoUnwind | HeaderExprX::NoUnwindWhen(_) => {
+                        match unwind_spec {
+                            None => {}
+                            _ => {
+                                return Err(error(&stmt.span, "only one unwind spec allowed"));
+                            }
+                        }
+                        unwind_spec = match &**header {
+                            HeaderExprX::NoUnwind => Some(UnwindSpec::NoUnwind),
+                            HeaderExprX::NoUnwindWhen(expr) => {
+                                Some(UnwindSpec::NoUnwindWhen(expr.clone()))
+                            }
+                            _ => unreachable!(),
+                        };
+                    }
                 },
                 _ => break,
             },
@@ -195,6 +212,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         decrease_when,
         decrease_by,
         invariant_mask,
+        unwind_spec,
         extra_dependencies,
     })
 }
@@ -292,6 +310,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         broadcast_forall: _,
         fndef_axioms: _,
         mask_spec,
+        unwind_spec,
         item_kind: _,
         publish: _,
         attrs: _,
@@ -356,6 +375,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
     methodx.decrease_when = decrease_when;
     methodx.decrease_by = decrease_by;
     methodx.mask_spec = mask_spec;
+    methodx.unwind_spec = unwind_spec;
     methodx.extra_dependencies = extra_dependencies;
     assert!(methodx.body.is_none());
     Ok(crate::def::Spanned::new(method.span.clone(), methodx))

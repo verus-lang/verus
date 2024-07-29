@@ -13,6 +13,7 @@ use crate::sst::BndInfo;
 use crate::sst_to_air::fun_to_air_ident;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp};
 use air::ast_util::{mk_unnamed_axiom, str_typ};
+use air::context::SmtSolver;
 use num_bigint::BigUint;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -52,6 +53,7 @@ pub struct GlobalCtx {
     pub arch: crate::ast::ArchWordBits,
     pub crate_name: Ident,
     pub vstd_crate_name: Ident,
+    pub solver: SmtSolver,
 }
 
 // Context for verifying one function
@@ -76,10 +78,12 @@ pub struct Ctx {
     pub(crate) datatypes_with_invariant: HashSet<Path>,
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) spec_fn_types: Vec<usize>,
+    pub(crate) uses_array: bool,
     pub(crate) fndef_types: Vec<Fun>,
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
+    pub func_sst_map: HashMap<Fun, crate::sst::FunctionSst>,
     pub fun_ident_map: HashMap<Ident, Fun>,
     pub(crate) reveal_groups: Vec<crate::ast::RevealGroup>,
     pub(crate) reveal_group_set: HashSet<Fun>,
@@ -180,12 +184,17 @@ fn datatypes_invs(
                         TypX::Bool | TypX::AnonymousClosure(..) => {}
                         TypX::Tuple(_) | TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
-                        TypX::Primitive(Primitive::Array, _) => {
-                            roots.insert(container_path.clone());
+                        TypX::Primitive(
+                            Primitive::Array | Primitive::Slice | Primitive::Ptr,
+                            _,
+                        ) => {
+                            // Each of these is like an abstract Datatype
+                            if crate::poly::typ_as_mono(&field.a.0).is_none() {
+                                roots.insert(container_path.clone());
+                            }
                         }
-                        TypX::Primitive(Primitive::Slice, _) => {}
                         TypX::Primitive(Primitive::StrSlice, _) => {}
-                        TypX::Primitive(Primitive::Ptr, _) => {}
+                        TypX::Primitive(Primitive::Global, _) => {}
                     }
                 }
             }
@@ -212,6 +221,7 @@ impl GlobalCtx {
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
+        solver: SmtSolver,
         after_simplify: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
@@ -456,6 +466,7 @@ impl GlobalCtx {
             crate_name,
             vstd_crate_name,
             func_call_graph_log,
+            solver,
         })
     }
 
@@ -481,6 +492,7 @@ impl GlobalCtx {
             crate_name: self.crate_name.clone(),
             vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
+            solver: self.solver.clone(),
         }
     }
 
@@ -509,6 +521,7 @@ impl Ctx {
         module: Module,
         mono_types: Vec<MonoTyp>,
         spec_fn_types: Vec<usize>,
+        uses_array: bool,
         fndef_types: Vec<Fun>,
         debug: bool,
     ) -> Result<Self, VirErr> {
@@ -553,10 +566,12 @@ impl Ctx {
             datatypes_with_invariant,
             mono_types,
             spec_fn_types,
+            uses_array,
             fndef_types,
             fndef_type_set,
             functions,
             func_map,
+            func_sst_map: HashMap::new(),
             fun_ident_map,
             reveal_groups: krate.reveal_groups.clone(),
             reveal_group_set,

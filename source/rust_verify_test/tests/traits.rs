@@ -2443,6 +2443,99 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_specialize_dispatch_by_bound_copy verus_code! {
+        struct S;
+        trait T { spec fn f() -> int; }
+        impl T for S { spec fn f() -> int { 200 } }
+        impl<A: Copy> T for A { spec fn f() -> int { 100 } }
+        proof fn test() {
+            assert(<S as T>::f() == 100);
+            assert(<S as T>::f() == 200); // FAILS
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
+    // TODO: } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_specialize_dispatch_by_bound_tuple verus_code! {
+        struct S;
+        trait T { spec fn f() -> int; }
+        impl T for S { spec fn f() -> int { 200 } }
+        impl<A: core::marker::Tuple> T for A { spec fn f() -> int { 100 } }
+        proof fn test() {
+            assert(<S as T>::f() == 100);
+            assert(<S as T>::f() == 200); // FAILS
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
+    // TODO: } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_specialize_dispatch_by_bound_sized verus_code! {
+        struct S([u8]);
+        trait T { spec fn f() -> int; }
+        impl T for S { spec fn f() -> int { 200 } }
+        impl<A: Sized> T for A { spec fn f() -> int { 100 } }
+        proof fn test() {
+            assert(<S as T>::f() == 100);
+            assert(<S as T>::f() == 200); // FAILS
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
+    // TODO: } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_specialize_dispatch_by_bound_send verus_code! {
+        struct S;
+        impl !Send for S {}
+        trait T { spec fn f() -> int; }
+        impl T for S { spec fn f() -> int { 200 } }
+        impl<A: Send> T for A { spec fn f() -> int { 100 } }
+        proof fn test() {
+            assert(<S as T>::f() == 100);
+            assert(<S as T>::f() == 200); // FAILS
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
+    // TODO: } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_specialize_dispatch_by_bound_sync verus_code! {
+        struct S;
+        impl !Sync for S {}
+        trait T { spec fn f() -> int; }
+        impl T for S { spec fn f() -> int { 200 } }
+        impl<A: Sync> T for A { spec fn f() -> int { 100 } }
+        proof fn test() {
+            assert(<S as T>::f() == 100);
+            assert(<S as T>::f() == 200); // FAILS
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
+    // TODO: } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_specialize_dispatch_by_bound_unpin verus_code! {
+        struct S;
+        impl !Unpin for S {}
+        trait T { spec fn f() -> int; }
+        impl T for S { spec fn f() -> int { 200 } }
+        impl<A: Unpin> T for A { spec fn f() -> int { 100 } }
+        proof fn test() {
+            assert(<S as T>::f() == 100);
+            assert(<S as T>::f() == 200); // FAILS
+            assert(false);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
+    // TODO: } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_defaults verus_code! {
         trait T {
             spec fn f() -> int { 3 }
@@ -2555,6 +2648,7 @@ test_verify_one_file! {
         impl Drop for A {
             fn drop(&mut self)
                 requires false
+                no_unwind
             {
             }
         }
@@ -2568,6 +2662,7 @@ test_verify_one_file! {
         impl Drop for A {
             fn drop(&mut self)
                 opens_invariants none
+                no_unwind
             { }
         }
     } => Ok(())
@@ -2595,6 +2690,7 @@ test_verify_one_file! {
             #[verifier::external_body]
             fn drop(&mut self)
                 opens_invariants none
+                no_unwind
             {
                 let x = 1 / 0;
             }
@@ -2622,10 +2718,24 @@ test_verify_one_file! {
 
         impl Drop for A {
             fn drop(&mut self)
+                no_unwind
             {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "the implementation for Drop must be marked opens_invariants none")
+}
+
+test_verify_one_file! {
+    #[test] diallow_unwind_on_drop verus_code! {
+        struct A { v: u64 }
+
+        impl Drop for A {
+            fn drop(&mut self)
+                opens_invariants none
+            {
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "the implementation for Drop must be marked no_unwind")
 }
 
 test_verify_one_file! {

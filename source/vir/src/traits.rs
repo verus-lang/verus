@@ -140,6 +140,12 @@ pub fn demote_external_traits(
                             "the implementation for Drop must be marked opens_invariants none",
                         ));
                     }
+                    if !matches!(&function.x.unwind_spec, Some(crate::ast::UnwindSpec::NoUnwind)) {
+                        return Err(error(
+                            &function.span,
+                            "the implementation for Drop must be marked no_unwind",
+                        ));
+                    }
                 }
                 check_modes(function, &function.span)?;
                 functionx.kind = FunctionKind::Static;
@@ -412,6 +418,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     broadcast_forall: None,
                     fndef_axioms: None,
                     mask_spec: None,
+                    unwind_spec: None,
                     item_kind: default_function.x.item_kind,
                     publish: default_function.x.publish,
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
@@ -659,7 +666,7 @@ pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<
     bound_exprs
 }
 
-pub fn traits_to_air(_ctx: &Ctx, krate: &Krate) -> Commands {
+pub fn traits_to_air(_ctx: &Ctx, krate: &crate::sst::KrateSst) -> Commands {
     // Axioms about broadcast_forall and spec functions need justification
     // for any trait bounds.
     let mut commands: Vec<Command> = Vec::new();

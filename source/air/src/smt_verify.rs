@@ -3,7 +3,7 @@ use crate::ast::{
     UnaryOp,
 };
 use crate::ast_util::{ident_var, mk_and, mk_not};
-use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
+use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, SmtSolver, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
 use crate::messages::{ArcDynMessage, Diagnostics};
 pub use crate::model::{Model, ModelDef};
@@ -116,6 +116,22 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
     }
 }
 
+impl SmtSolver {
+    pub fn reason_unknown_canceled_str(&self) -> &str {
+        match self {
+            SmtSolver::Z3 => "(:reason-unknown \"canceled\")",
+            SmtSolver::Cvc5 => "(:reason-unknown resourceout)",
+        }
+    }
+
+    pub fn reason_unknown_incomplete_str(&self) -> &str {
+        match self {
+            SmtSolver::Z3 => "(:reason-unknown \"(incomplete",
+            SmtSolver::Cvc5 => "(:reason-unknown incomplete)",
+        }
+    }
+}
+
 pub type ReportLongRunning<'a> =
     (std::time::Duration, Box<dyn FnMut(std::time::Duration, bool) -> () + 'a>);
 
@@ -193,8 +209,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
         context.smt_log.log_assert(&None, &disabled_expr);
     }
 
-    context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
-    context.set_z3_param_u32("rlimit", context.rlimit, false);
+    if matches!(context.solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
+        context.set_z3_param_u32("rlimit", context.rlimit, false);
+    }
 
     context.smt_log.log_word("check-sat");
 
@@ -233,7 +251,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         } else if line == "sat" {
             assert!(unsat == None);
             unsat = Some(SmtOutput::Sat);
-        } else if line == "unknown" {
+        } else if line == "unknown" || line == "cvc5 interrupted by timeout." {
             assert!(unsat == None);
             unsat = Some(SmtOutput::Unknown);
         } else if context.ignore_unexpected_smt {
@@ -246,12 +264,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
         }
     }
 
-    if let Err(err) = smt_update_statistics(context) {
-        return err;
+    if matches!(context.solver, SmtSolver::Z3) {
+        context.smt_log.log_set_option("rlimit", "0");
+        context.set_z3_param_u32("rlimit", 0, false);
     }
-
-    context.smt_log.log_set_option("rlimit", "0");
-    context.set_z3_param_u32("rlimit", 0, false);
 
     let unsat = unsat.expect("expected sat/unsat/unknown from SMT solver");
 
@@ -277,14 +293,14 @@ pub(crate) fn smt_check_assertion<'ctx>(
 
             let mut reason = None;
             for line in smt_output {
-                if line == "(:reason-unknown \"canceled\")" {
+                if line == context.solver.reason_unknown_canceled_str() {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Canceled);
                 } else if line == "(:reason-unknown \"unknown\")" {
                     // it appears this sometimes happens when rlimit is exceeded
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Unknown);
-                } else if line.starts_with("(:reason-unknown \"(incomplete") {
+                } else if line.starts_with(context.solver.reason_unknown_incomplete_str()) {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
                 } else if line
@@ -353,6 +369,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
 }
 
 pub(crate) fn smt_update_statistics(context: &mut Context) -> Result<(), ValidityResult> {
+    assert!(matches!(context.solver, SmtSolver::Z3)); // the CVC5 output format for statistics is different
+
     context.smt_log.log_get_info("all-statistics");
     let smt_data = context.smt_log.take_pipe_data();
     let smt_output = context.get_smt_process().send_commands(smt_data);
@@ -384,7 +402,7 @@ pub(crate) fn smt_update_statistics(context: &mut Context) -> Result<(), Validit
             "expected rlimit-count in smt statistics"
         )));
     };
-    context.rlimit_count = rlimit_count;
+    context.rlimit_count = Some(rlimit_count);
 
     Ok(())
 }

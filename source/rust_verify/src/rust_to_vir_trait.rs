@@ -1,10 +1,10 @@
 use crate::attributes::VerifierAttrs;
 use crate::context::Context;
-use crate::rust_to_vir::ExternalInfo;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, process_predicate_bounds,
 };
 use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
+use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
 use rustc_hir::{Generics, TraitFn, TraitItem, TraitItemKind, TraitItemRef};
@@ -334,7 +334,7 @@ pub(crate) fn translate_trait<'tcx>(
     } else {
         trait_def_id
     };
-    external_info.trait_ids.push(target_trait_id);
+    external_info.local_trait_ids.push(target_trait_id);
     let traitx = TraitX {
         name: trait_path,
         proxy: ex_trait_id_for.map(|_| (*ctxt.spanned_new(trait_span, orig_trait_path)).clone()),

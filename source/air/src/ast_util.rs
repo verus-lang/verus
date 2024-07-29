@@ -2,6 +2,7 @@ use crate::ast::{
     Axiom, BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Constant, Decl, DeclX, Expr,
     ExprX, Exprs, Ident, MultiOp, Qid, Quant, Trigger, Typ, TypX, Typs, UnaryOp,
 };
+use crate::context::SmtSolver;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -275,13 +276,20 @@ pub fn mk_option_command(s1: &str, s2: &str) -> Command {
     Arc::new(CommandX::SetOption(Arc::new(String::from(s1)), Arc::new(String::from(s2))))
 }
 
-pub fn mk_bitvector_option() -> Vec<Command> {
-    vec![
-        mk_option_command("sat.euf", "true"),
-        mk_option_command("tactic.default_tactic", "sat"),
-        mk_option_command("smt.ematching", "false"),
-        mk_option_command("smt.case_split", "0"),
-    ]
+pub fn mk_bitvector_option(solver: &SmtSolver) -> Vec<Command> {
+    match solver {
+        SmtSolver::Z3 => vec![
+            mk_option_command("sat.euf", "true"),
+            mk_option_command("tactic.default_tactic", "sat"),
+            mk_option_command("smt.ematching", "false"),
+            mk_option_command("smt.case_split", "0"),
+        ],
+        SmtSolver::Cvc5 =>
+        // TODO: What options are best for cvc5 here?
+        {
+            vec![]
+        }
+    }
 }
 
 pub fn mk_nat<S: ToString>(n: S) -> Expr {

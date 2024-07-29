@@ -72,6 +72,7 @@ pub enum VarIdentDisambiguate {
     VirSubst(u64),
     VirTemp(u64),
     ExpandErrorsDecl(u64),
+    BitVectorToAirDecl(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -205,6 +206,12 @@ pub enum Primitive {
     /// despite the fact that it is in fact a datatype
     StrSlice,
     Ptr, // Mut ptr, unless Const decoration is applied
+    Global,
+}
+
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone)]
+pub struct TypDecorationArg {
+    pub allocator_typ: Typ,
 }
 
 /// Rust type, but without Box, Rc, Arc, etc.
@@ -237,7 +244,7 @@ pub enum TypX {
     Primitive(Primitive, Typs),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
     /// (though needed sometimes to encode trait resolution)
-    Decorate(TypDecoration, Typ),
+    Decorate(TypDecoration, Option<TypDecorationArg>, Typ),
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
     Boxed(Typ),
     /// Type parameter (inherently SMT-boxed, and cannot be unboxed)
@@ -304,7 +311,14 @@ pub enum UnaryOp {
     /// boolean not
     Not,
     /// bitwise not
-    BitNot,
+    /// Semantics:
+    ///   Flip every bit in the infinite binary representation of
+    ///   (equivalently, compute -x-1)
+    ///   Then, if the bitwidth argument is non-None, clip to the given bitwidth
+    /// Note that:
+    ///  1. A bitwise 'not' on a SIGNED integer can be encoded as BitNot(None)
+    ///  2. A bitwise 'not' on an UNSIGNED integer of width w can be encoded as BitNot(Some(w))
+    BitNot(Option<IntegerTypeBitwidth>),
     /// Mark an expression as a member of an SMT quantifier trigger group.
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
     Trigger(TriggerAnnotation),
@@ -315,6 +329,9 @@ pub enum UnaryOp {
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
+    /// Internal consistency check to make sure sst_elaborate gets called
+    /// (appears only briefly in SST before sst_elaborate is called)
+    MustBeElaborated,
     /// We don't give users direct access to the "height" function and Height types.
     /// However, it's useful to be able to trigger on the "height" function
     /// when using HeightCompare.  We manage this by having triggers.rs convert
@@ -405,14 +422,27 @@ pub enum ArithOp {
     EuclideanMod,
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum IntegerTypeBitwidth {
+    Width(u32),
+    ArchWordSize,
+}
+
 /// Bitwise operation
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BitwiseOp {
     BitXor,
     BitAnd,
     BitOr,
-    Shr,
-    Shl,
+    // Shift right. The bitwidth argument is only needed to do a bounds-check;
+    // the actual result, when computed on unbounded integers, is independent
+    // of the bitwidth.
+    Shr(IntegerTypeBitwidth),
+    // Shift left up to w bits, ignoring everything to the left of w.
+    // To interpret the result as an unbounded int,
+    // either zero-extend or sign-extend, depending on the bool argument.
+    // (True = sign-extend, False = zero-extend)
+    Shl(IntegerTypeBitwidth, bool),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -465,6 +495,8 @@ pub enum BinaryOp {
     Bitwise(BitwiseOp, Mode),
     /// Used only for handling builtin::strslice_get_char
     StrGetChar,
+    /// Used only for handling builtin::array_index
+    ArrayIndex,
 }
 
 /// More complex binary operations (requires Clone rather than Copy)
@@ -526,6 +558,10 @@ pub enum HeaderExprX {
     /// `extra_dependency(f)` means that recursion-checking should act as if the current
     /// function calls `f`
     ExtraDependency(Fun),
+    /// This function will not unwind
+    NoUnwind,
+    /// This function will not unwind if the given condition holds (function of arguments)
+    NoUnwindWhen(Expr),
 }
 
 /// Primitive constant values
@@ -940,6 +976,14 @@ pub enum MaskSpec {
     InvariantOpensExcept(Exprs),
 }
 
+/// Function specification of its invariant mask
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum UnwindSpec {
+    NoUnwind,
+    NoUnwindWhen(Expr),
+    MayUnwind,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum FunctionKind {
     Static,
@@ -1046,6 +1090,8 @@ pub struct FunctionX {
     pub fndef_axioms: Option<Exprs>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: Option<MaskSpec>,
+    /// UnwindSpec that specifies if the function is allowed to unwind
+    pub unwind_spec: Option<UnwindSpec>,
     /// Allows the item to be a const declaration or static
     pub item_kind: ItemKind,
     /// For public spec functions, publish == None means that the body is private
