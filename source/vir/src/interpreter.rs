@@ -1025,7 +1025,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         | StrLen
                         | StrIsAscii
                         | InferSpecForLoopIter { .. } => ok,
-                        MustBeFinalized => {
+                        MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
                         CastToInteger => {
@@ -1125,7 +1125,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 }
                             }
                         }
-                        MustBeFinalized => {
+                        MustBeFinalized | UnaryOp::MustBeElaborated => {
                             panic!("Found MustBeFinalized op {:?} after calling finalize_exp", exp)
                         }
                         CastToInteger => {
@@ -1502,7 +1502,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 new_args.clone(),
                             ))
                         }
-                        Some(SstInfo { typ_params, params, body, memoize, .. }) => {
+                        Some(SstInfo { typ_params, pars, body, memoize, .. }) => {
                             match state.lookup_call(&fun, &new_args, *memoize) {
                                 Some(prev_result) => {
                                     state.cache_hits += 1;
@@ -1511,7 +1511,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 None => {
                                     state.cache_misses += 1;
                                     state.env.push_scope(true);
-                                    for (formal, actual) in params.iter().zip(new_args.iter()) {
+                                    for (formal, actual) in pars.iter().zip(new_args.iter()) {
                                         let formal_id = formal.x.name.clone();
                                         state.env.insert(formal_id, actual.clone()).unwrap();
                                     }
@@ -1851,7 +1851,7 @@ pub fn eval_expr(
     global: &GlobalCtx,
     exp: &Exp,
     diagnostics: &(impl air::messages::Diagnostics + ?Sized),
-    fun_ssts: &mut SstMap,
+    fun_ssts: SstMap,
     rlimit: f32,
     arch: ArchWordBits,
     mode: ComputeMode,
@@ -1863,7 +1863,7 @@ pub fn eval_expr(
     let builder =
         thread::Builder::new().name("interpreter".to_string()).stack_size(1024 * 1024 * 1024); // 1 GB
     let mut taken_log = log.take();
-    let (taken_log, res) = fun_ssts.update(|fun_ssts| {
+    let (taken_log, res) = {
         let handler = {
             // Create local versions that we own and hence can pass to the closure
             let exp = exp.clone();
@@ -1872,18 +1872,18 @@ pub fn eval_expr(
                     let res = eval_expr_launch(
                         &global,
                         exp,
-                        &fun_ssts,
+                        &*fun_ssts,
                         rlimit,
                         arch,
                         mode,
                         &mut taken_log,
                     );
-                    (fun_ssts, (taken_log, res))
+                    (taken_log, res)
                 })
                 .unwrap()
         };
         handler.join().unwrap()
-    });
+    };
     *log = taken_log;
     let (e, msgs) = res?;
     msgs.iter().for_each(|m| diagnostics.report(&m.clone().to_any()));

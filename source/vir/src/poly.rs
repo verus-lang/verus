@@ -461,7 +461,9 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } => {
                     mk_expr_typ(&e1.typ, ExprX::Unary(*op, e1.clone()))
                 }
-                UnaryOp::MustBeFinalized => panic!("internal error: MustBeFinalized in AST"),
+                UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
+                    panic!("internal error: MustBeFinalized in AST")
+                }
                 UnaryOp::CastToInteger => {
                     let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
                     mk_expr(ExprX::UnaryOpr(unbox, e1.clone()))

@@ -1,9 +1,12 @@
-use crate::ast::{BinaryOpr, NullaryOpr, SpannedTyped, Typ, UnaryOpr, VarBinder, VarIdent, VirErr};
+use crate::ast::{
+    BinaryOpr, GenericBound, GenericBoundX, NullaryOpr, SpannedTyped, Typ, UnaryOpr, VarBinder,
+    VarIdent, VirErr,
+};
 use crate::def::Spanned;
 use crate::sst::{
     Bnd, BndX, Dest, Exp, ExpX, FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst,
-    LocalDecl, LocalDeclX, LoopInv, Par, ParX, PostConditionSst, Stm, StmX, Trigs, UniqueIdent,
-    UnwindSst,
+    FunctionSst, FunctionSstX, LocalDecl, LocalDeclX, LoopInv, Par, ParX, PostConditionSst, Stm,
+    StmX, Trigs, UniqueIdent, UnwindSst,
 };
 pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
 use air::ast::Binder;
@@ -18,7 +21,7 @@ pub(crate) trait Scoper {
     fn insert_binding_exp(&mut self, _binder: &VarBinder<Exp>, _bnd_source: &Bnd) {}
 }
 
-struct NoScoper;
+pub(crate) struct NoScoper;
 impl Scoper for NoScoper {}
 
 pub type VisitorScopeMap = ScopeMap<VarIdent, bool>;
@@ -399,6 +402,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
+            StmX::AssertCompute(assert_id, exp, compute) => {
+                let exp = self.visit_exp(exp)?;
+                R::ret(|| stm_new(StmX::AssertCompute(assert_id.clone(), R::get(exp), *compute)))
+            }
             StmX::Assume(exp) => {
                 let exp = self.visit_exp(exp)?;
                 R::ret(|| stm_new(StmX::Assume(R::get(exp))))
@@ -533,6 +540,39 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         })
     }
 
+    fn visit_generic_bound(&mut self, bound: &GenericBound) -> Result<R::Ret<GenericBound>, Err> {
+        match &**bound {
+            GenericBoundX::Trait(p, ts) => {
+                let ts = self.visit_typs(ts)?;
+                R::ret(|| Arc::new(GenericBoundX::Trait(p.clone(), R::get_vec_a(ts))))
+            }
+            GenericBoundX::TypEquality(p, ts, x, t) => {
+                let ts = self.visit_typs(ts)?;
+                let t = self.visit_typ(t)?;
+                R::ret(|| {
+                    Arc::new(GenericBoundX::TypEquality(
+                        p.clone(),
+                        R::get_vec_a(ts),
+                        x.clone(),
+                        R::get(t),
+                    ))
+                })
+            }
+            GenericBoundX::ConstTyp(t1, t2) => {
+                let t1 = self.visit_typ(t1)?;
+                let t2 = self.visit_typ(t2)?;
+                R::ret(|| Arc::new(GenericBoundX::ConstTyp(R::get(t1), R::get(t2))))
+            }
+        }
+    }
+
+    fn visit_generic_bounds(
+        &mut self,
+        bounds: &Vec<GenericBound>,
+    ) -> Result<R::Vec<GenericBound>, Err> {
+        R::map_vec(bounds, &mut |b| self.visit_generic_bound(b))
+    }
+
     fn visit_postcondition(
         &mut self,
         post: &PostConditionSst,
@@ -623,6 +663,43 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         R::ret(|| FuncAxiomsSst {
             spec_axioms: R::get_opt(spec_axioms),
             proof_exec_axioms: R::get_opt(proof_exec_axioms),
+        })
+    }
+
+    fn visit_function(&mut self, f: &FunctionSst) -> Result<R::Ret<FunctionSst>, Err> {
+        let typ_bounds = self.visit_generic_bounds(&f.x.typ_bounds)?;
+        let pars = self.visit_pars(&f.x.pars)?;
+        let ret = self.visit_par(&f.x.ret)?;
+        let decl = self.visit_func_decl(&f.x.decl)?;
+        let axioms = self.visit_func_axioms(&f.x.axioms)?;
+        let exec_proof_check =
+            R::map_opt(&f.x.exec_proof_check, &mut |c| self.visit_func_check(c))?;
+        let recommends_check =
+            R::map_opt(&f.x.recommends_check, &mut |c| self.visit_func_check(c))?;
+        R::ret(|| {
+            Spanned::new(
+                f.span.clone(),
+                FunctionSstX {
+                    name: f.x.name.clone(),
+                    kind: f.x.kind.clone(),
+                    vis_abs: f.x.vis_abs.clone(),
+                    owning_module: f.x.owning_module.clone(),
+                    mode: f.x.mode,
+                    fuel: f.x.fuel,
+                    typ_params: f.x.typ_params.clone(),
+                    typ_bounds: R::get_vec_a(typ_bounds),
+                    pars: R::get_vec_a(pars),
+                    ret: R::get(ret),
+                    item_kind: f.x.item_kind,
+                    publish: f.x.publish,
+                    attrs: f.x.attrs.clone(),
+                    has: f.x.has.clone(),
+                    decl: Arc::new(R::get(decl)),
+                    axioms: Arc::new(R::get(axioms)),
+                    exec_proof_check: R::get_opt(exec_proof_check).map(|c| Arc::new(c)),
+                    recommends_check: R::get_opt(recommends_check).map(|c| Arc::new(c)),
+                },
+            )
         })
     }
 }

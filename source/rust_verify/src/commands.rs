@@ -1,22 +1,17 @@
 use crate::buckets::Bucket;
 use crate::expand_errors_driver::{ExpandErrorsDriver, ExpandErrorsResult};
 use air::ast::{AssertId, Command};
-use air::messages::Diagnostics;
 use rustc_session::config::ErrorOutputType;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use vir::ast::{
-    Fun, Function, FunctionKind, ImplPath, ItemKind, Krate, Mode, Path, TraitImpl, VirErr,
-};
-use vir::ast_to_sst_func::SstMap;
+use vir::ast::{Fun, FunctionKind, ImplPath, ItemKind, Mode, Path, TraitImpl, VirErr};
+use vir::ast_to_sst_func::{mk_fun_ctx, mk_fun_ctx_dec, SstMap};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
-use vir::context::FunctionCtx;
 use vir::def::{CommandsWithContext, SnapPos};
 use vir::recursion::Node;
-use vir::sst::FuncCheckSst;
-use vir::update_cell::UpdateCell;
+use vir::sst::{FuncCheckSst, FunctionSst};
 
 #[derive(Clone, Copy, Debug)]
 pub enum ContextOp {
@@ -57,52 +52,44 @@ pub enum OpKind {
         commands_with_context_list: Arc<Vec<CommandsWithContext>>,
         snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
         profile_rerun: bool,
-        func_check_sst: Option<FuncCheckSst>,
+        func_check_sst: Option<Arc<FuncCheckSst>>,
     },
 }
 
 #[derive(Clone)]
 pub struct Op {
     pub kind: OpKind,
-    /// Function the op is associated with (always Some for Query kind).
-    pub function: Option<Function>,
+    /// FunctionSst the op is associated with (always Some for Query kind).
+    pub function: Option<FunctionSst>,
 }
 
-pub struct OpGenerator<'a, D: Diagnostics> {
+pub struct OpGenerator<'a> {
     pub ctx: &'a mut vir::context::Ctx,
     bucket: Bucket,
-    reporter: &'a D,
 
     sst_map: SstMap,
-    func_map: HashMap<Fun, Function>,
+    func_map: HashMap<Fun, FunctionSst>,
     trait_impl_map: HashMap<Path, TraitImpl>,
 
     scc_idx: usize,
 }
 
-pub struct FunctionOpGenerator<'a: 'b, 'b, D: Diagnostics> {
-    op_generator: &'b mut OpGenerator<'a, D>,
+pub struct FunctionOpGenerator<'a: 'b, 'b> {
+    op_generator: &'b mut OpGenerator<'a>,
     current_queue: VecDeque<Op>,
     expand_errors_driver: Option<ExpandErrorsDriver>,
 }
 
-impl<'a, D: Diagnostics> OpGenerator<'a, D> {
+impl<'a> OpGenerator<'a> {
     pub fn new(
         ctx: &'a mut vir::context::Ctx,
-        krate: &Krate,
-        reporter: &'a D,
+        krate: &vir::sst::KrateSst,
+        sst_map: SstMap,
         bucket: Bucket,
     ) -> Self {
-        let mut func_map: HashMap<Fun, Function> = HashMap::new();
-        let module = ctx.module_path();
+        let mut func_map: HashMap<Fun, FunctionSst> = HashMap::new();
         for function in &krate.functions {
             assert!(!func_map.contains_key(&function.x.name));
-
-            let vis = function.x.visibility.clone();
-            if !is_visible_to(&vis, &module) || function.x.attrs.is_decrease_by {
-                continue;
-            }
-
             func_map.insert(function.x.name.clone(), function.clone());
         }
 
@@ -112,18 +99,10 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             trait_impl_map.insert(imp.x.impl_path.clone(), imp.clone());
         }
 
-        OpGenerator {
-            ctx,
-            func_map,
-            trait_impl_map,
-            bucket,
-            reporter,
-            sst_map: UpdateCell::new(HashMap::new()),
-            scc_idx: 0,
-        }
+        OpGenerator { ctx, func_map, trait_impl_map, bucket, sst_map, scc_idx: 0 }
     }
 
-    pub fn next<'b>(&'b mut self) -> Result<Option<FunctionOpGenerator<'a, 'b, D>>, VirErr>
+    pub fn next<'b>(&'b mut self) -> Result<Option<FunctionOpGenerator<'a, 'b>>, VirErr>
     where
         'a: 'b,
     {
@@ -145,7 +124,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
     fn handle_proof_body_normal_for_proof_and_exec(
         &mut self,
-        function: Function,
+        function: FunctionSst,
     ) -> Result<Vec<Op>, VirErr> {
         if function.x.mode == Mode::Spec && !matches!(function.x.item_kind, ItemKind::Const) {
             Ok(vec![])
@@ -187,7 +166,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
     fn handle_specs_scc_component(&mut self, scc_rep: &Node) -> Result<(Vec<Op>, Vec<Op>), VirErr> {
         let scc_nodes = self.ctx.global.func_call_graph.get_scc_nodes(scc_rep);
-        let mut scc_functions: Vec<Function> = Vec::new();
+        let mut scc_functions: Vec<FunctionSst> = Vec::new();
 
         // In an 'exec' function, the req% and ens% definitions conceptually go with
         // the FnDefImplPath node, which represents the trait bound
@@ -213,46 +192,25 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         let mut post_ops = vec![];
 
         for function in scc_functions.iter() {
-            self.ctx.fun = mk_fun_ctx(&function, false);
-            let func_decl_sst = vir::ast_to_sst_func::func_decl_to_sst(
-                self.ctx,
-                self.reporter,
-                &self.sst_map,
-                &function,
-            )?;
-            let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
-            let decl_commands =
-                vir::sst_to_air_func::func_decl_to_air(self.ctx, &function_sst, func_decl_sst)?;
+            self.ctx.fun = mk_fun_ctx(function, false);
+            let decl_commands = vir::sst_to_air_func::func_decl_to_air(self.ctx, function)?;
             self.ctx.fun = None;
 
             pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
         }
 
         for function in scc_functions.iter() {
-            self.ctx.fun = mk_fun_ctx_dec(&function, true, true);
-            let not_verifying_owning_bucket = !self.bucket.contains(&function.x.name);
+            self.ctx.fun = mk_fun_ctx_dec(function, true, true);
+            let verifying_owning_bucket = self.bucket.contains(&function.x.name);
 
-            let mut sst_map = UpdateCell::new(HashMap::new());
-            std::mem::swap(&mut sst_map, &mut self.sst_map);
-            let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
-            let (mut new_sst_map, func_axioms_sst) = vir::ast_to_sst_func::func_axioms_to_sst(
-                self.ctx,
-                self.reporter,
-                sst_map,
-                &function,
-                is_visible_to(&function_sst.x.vis_abs, &module),
-                not_verifying_owning_bucket,
-            )?;
             let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
                 self.ctx,
-                &function_sst,
-                func_axioms_sst,
-                is_visible_to(&function_sst.x.vis_abs, &module),
+                function,
+                is_visible_to(&function.x.vis_abs, &module),
             )?;
-            std::mem::swap(&mut new_sst_map, &mut self.sst_map);
             self.ctx.fun = None;
 
-            if !not_verifying_owning_bucket {
+            if verifying_owning_bucket {
                 let snap_map = vec![];
                 let commands = Arc::new(check_commands);
                 query_ops.push(Op::query(
@@ -264,7 +222,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
                 ));
             }
 
-            let op_kind = if function.x.broadcast_forall.is_some() {
+            let op_kind = if function.x.axioms.proof_exec_axioms.is_some() {
                 ContextOp::Broadcast
             } else {
                 ContextOp::SpecDefinition
@@ -277,7 +235,11 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         Ok((ops, post_ops))
     }
 
-    fn handle_proof_body(&mut self, function: Function, style: Style) -> Result<Vec<Op>, VirErr> {
+    fn handle_proof_body(
+        &mut self,
+        function: FunctionSst,
+        style: Style,
+    ) -> Result<Vec<Op>, VirErr> {
         if let FunctionKind::TraitMethodImpl { inherit_body_from: Some(..), .. } = &function.x.kind
         {
             // We are inheriting a trait default method.
@@ -290,9 +252,6 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
         if !self.bucket.contains(fun) {
             return Ok(vec![]);
         }
-        if function.x.body.is_none() {
-            return Ok(vec![]);
-        }
 
         let recommend = match style {
             Style::Normal => false,
@@ -302,15 +261,15 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
 
         self.ctx.fun = mk_fun_ctx(&function, recommend);
 
-        let mut sst_map = UpdateCell::new(HashMap::new());
-        std::mem::swap(&mut sst_map, &mut self.sst_map);
-        let (mut new_sst_map, func_check_sst) =
-            vir::ast_to_sst_func::func_def_to_sst(self.ctx, self.reporter, sst_map, &function)?;
-        std::mem::swap(&mut new_sst_map, &mut self.sst_map);
+        let func_check_sst =
+            if recommend { &function.x.recommends_check } else { &function.x.exec_proof_check };
 
-        let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
+        let Some(func_check_sst) = func_check_sst else {
+            return Ok(vec![]);
+        };
+
         let (commands, snap_map) =
-            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function_sst, &func_check_sst)?;
+            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function, func_check_sst)?;
 
         self.ctx.fun = None;
 
@@ -319,21 +278,20 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
             commands,
             snap_map,
             &function,
-            Some(func_check_sst),
+            Some(func_check_sst.clone()),
         )])
     }
 
     fn handle_proof_body_expand(
         &mut self,
-        function: Function,
+        function: FunctionSst,
         assert_id: &AssertId,
-        expanded_function_sst: &FuncCheckSst,
+        expanded_function_sst: &Arc<FuncCheckSst>,
     ) -> Result<Op, VirErr> {
         self.ctx.fun = mk_fun_ctx(&function, false /*recommend*/);
 
-        let function_sst = vir::ast_to_sst_func::function_to_sst(self.ctx, &function);
         let (commands, snap_map) =
-            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function_sst, &expanded_function_sst)?;
+            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function, &expanded_function_sst)?;
         let commands = focus_commands_with_context_on_assert_id(commands, assert_id);
 
         self.ctx.fun = None;
@@ -342,7 +300,7 @@ impl<'a, D: Diagnostics> OpGenerator<'a, D> {
     }
 }
 
-impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
+impl<'a, 'b> FunctionOpGenerator<'a, 'b> {
     pub fn next(&mut self) -> Option<Op> {
         let op_opt = self.current_queue.pop_front();
         if let Some(op) = &op_opt {
@@ -371,7 +329,7 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
         {
             let mut driver = ExpandErrorsDriver::new(function, &assert_id, fsst.clone());
 
-            self.op_generator.ctx.fun = mk_fun_ctx(&function, false);
+            self.op_generator.ctx.fun = mk_fun_ctx(function, false);
             driver.report(
                 &self.op_generator.ctx,
                 &self.op_generator.sst_map,
@@ -436,8 +394,8 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
         query_op: QueryOp,
         commands_with_context_list: Arc<Vec<CommandsWithContext>>,
         snap_map: Arc<Vec<(vir::messages::Span, SnapPos)>>,
-        function: &Function,
-        func_check_sst: Option<FuncCheckSst>,
+        function: &FunctionSst,
+        func_check_sst: Option<Arc<FuncCheckSst>>,
     ) {
         let op = Op {
             kind: OpKind::Query {
@@ -460,7 +418,7 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
 
     fn handle_proof_body_recommends(
         &mut self,
-        function: Function,
+        function: FunctionSst,
         from_error: bool,
     ) -> Result<Vec<Op>, VirErr> {
         self.op_generator.handle_proof_body(
@@ -468,25 +426,6 @@ impl<'a, 'b, D: Diagnostics> FunctionOpGenerator<'a, 'b, D> {
             if from_error { Style::RecommendsFollowupFromError } else { Style::RecommendsChecked },
         )
     }
-}
-
-pub fn mk_fun_ctx_dec(
-    f: &Function,
-    checking_spec_preconditions: bool,
-    checking_spec_decreases: bool,
-) -> Option<FunctionCtx> {
-    Some(vir::context::FunctionCtx {
-        checking_spec_preconditions,
-        checking_spec_preconditions_for_non_spec: checking_spec_preconditions
-            && f.x.mode != Mode::Spec,
-        checking_spec_decreases,
-        module_for_chosen_triggers: f.x.owning_module.clone(),
-        current_fun: f.x.name.clone(),
-    })
-}
-
-pub fn mk_fun_ctx(f: &Function, checking_spec_preconditions: bool) -> Option<FunctionCtx> {
-    mk_fun_ctx_dec(f, checking_spec_preconditions, false)
 }
 
 fn focus_commands_with_context_on_assert_id(
@@ -560,14 +499,14 @@ impl Op {
         }
     }
 
-    pub fn get_function(&self) -> Function {
+    pub fn get_function(&self) -> FunctionSst {
         self.function.clone().expect("function")
     }
 
     pub fn context(
         context_op: ContextOp,
         commands: Arc<Vec<Command>>,
-        f: Option<Function>,
+        f: Option<FunctionSst>,
     ) -> Self {
         Op { kind: OpKind::Context(context_op, commands), function: f }
     }
@@ -576,8 +515,8 @@ impl Op {
         query_op: QueryOp,
         commands: Arc<Vec<CommandsWithContext>>,
         snap_map: Vec<(vir::messages::Span, SnapPos)>,
-        f: &Function,
-        func_check_sst: Option<FuncCheckSst>,
+        f: &FunctionSst,
+        func_check_sst: Option<Arc<FuncCheckSst>>,
     ) -> Self {
         Op {
             kind: OpKind::Query {

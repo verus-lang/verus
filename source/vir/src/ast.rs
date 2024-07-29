@@ -329,6 +329,9 @@ pub enum UnaryOp {
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
+    /// Internal consistency check to make sure sst_elaborate gets called
+    /// (appears only briefly in SST before sst_elaborate is called)
+    MustBeElaborated,
     /// We don't give users direct access to the "height" function and Height types.
     /// However, it's useful to be able to trigger on the "height" function
     /// when using HeightCompare.  We manage this by having triggers.rs convert

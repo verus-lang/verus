@@ -899,7 +899,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: TupleField should have been removed before here")
             }
-            UnaryOp::MustBeFinalized => {
+            UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", exp)
             }
             UnaryOp::InferSpecForLoopIter { .. } => {
@@ -1735,6 +1735,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 state.map_span(&stm, SpanKind::Full);
             }
             vec![Arc::new(StmtX::Assert(assert_id.clone(), error, None, air_expr))]
+        }
+        StmX::AssertCompute(..) => {
+            panic!("AssertCompute should be removed by sst_elaborate")
         }
         StmX::Return { base_error, ret_exp, inside_body, assert_id } => {
             let skip = if ctx.checking_spec_preconditions() {

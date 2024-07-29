@@ -381,7 +381,10 @@ impl ExpX {
                 UnaryOp::StrIsAscii => {
                     (format!("{}.is_ascii()", exp.x.to_string_prec(global, 99)), 90)
                 }
-                UnaryOp::Trigger(..) | UnaryOp::CoerceMode { .. } | UnaryOp::MustBeFinalized => {
+                UnaryOp::Trigger(..)
+                | UnaryOp::CoerceMode { .. }
+                | UnaryOp::MustBeFinalized
+                | UnaryOp::MustBeElaborated => {
                     return exp.x.to_string_prec(global, precedence);
                 }
                 UnaryOp::InferSpecForLoopIter { .. } => {

@@ -145,7 +145,8 @@ fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Resul
             UnaryOp::Trigger(_)
             | UnaryOp::HeightTrigger
             | UnaryOp::CoerceMode { .. }
-            | UnaryOp::MustBeFinalized => {
+            | UnaryOp::MustBeFinalized
+            | UnaryOp::MustBeElaborated => {
                 // recurse inside coercions
                 check_trigger_expr_arg(state, expect_boxed, arg)
             }
@@ -268,6 +269,7 @@ fn check_trigger_expr(
                 | UnaryOp::HeightTrigger
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
+                | UnaryOp::MustBeElaborated
                 | UnaryOp::CastToInteger => Ok(()),
                 UnaryOp::InferSpecForLoopIter { .. } => {
                     Err(error(&exp.span, "triggers cannot contain loop spec inference"))
