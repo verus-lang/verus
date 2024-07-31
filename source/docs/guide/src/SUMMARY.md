@@ -24,6 +24,7 @@
     - [Recursive exec and proof functions, proofs by induction](induction.md)
     - [Loops and invariants](while.md)
         - [Loops with break](break.md)
+        - [For Loops](for.md)
     - [Lexicographic decreases clauses and mutual recursion](lex_mutual.md)
 - [Datatypes: struct and enum](datatypes.md)
     - [Struct](datatypes_struct.md)
