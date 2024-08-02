@@ -46,6 +46,11 @@ layout: default
                   {{ project.venue }},
                 </div>
                 {{ project.date | date: "%B, %Y" }}
+                <br/>
+                {% if project.award %}
+                  <b> <a href="https://www.vecteezy.com/free-vector/award-symbol"><img style="vertical-align:middle" alt="Award icon from Vecteezy.com" src="award.jpg"/></a> 
+                  {{ project.award }}</b>
+                {% endif %}
             </li>
         {% endfor %}
 
