@@ -6,7 +6,7 @@ use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::{ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
-use rustc_hir::{GenericParam, Generics, HirId, QPath, Ty};
+use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::fold::BoundVarReplacerDelegate;
 use rustc_middle::ty::Visibility;
@@ -1457,12 +1457,30 @@ where
     Ok(bounds)
 }
 
+// REVIEW: Consider using rustc_middle generics instead of hir generics
 pub(crate) fn check_item_external_generics<'tcx>(
+    self_generics: Option<(&'tcx Generics, DefId)>,
     generics: &'tcx Generics<'tcx>,
+    skip_implicit_lifetimes: bool,
     substs_ref: &rustc_middle::ty::GenericArgs<'tcx>,
     skip_self: bool,
     span: Span,
 ) -> Result<(), VirErr> {
+    let mut generics_params: Vec<GenericParam> = vec![];
+    if let Some((gen, _)) = self_generics {
+        generics_params.extend(gen.params.iter().cloned());
+    }
+    generics_params.extend(generics.params.iter().cloned());
+
+    if skip_implicit_lifetimes {
+        generics_params = generics_params
+            .into_iter()
+            .filter(|gp| {
+                !matches!(gp.kind, GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided })
+            })
+            .collect();
+    }
+
     use rustc_middle::ty::ScalarInt;
     // Check that the generics match (important because we do the substitution to get
     // the types from the external definition)
@@ -1480,8 +1498,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
             span,
             format!(
                 "expected generics to match: \n expected {}\n found {}",
-                generics
-                    .params
+                generics_params
                     .iter()
                     .map(|x| x.name.ident().to_string())
                     .collect::<Vec<_>>()
@@ -1491,10 +1508,10 @@ pub(crate) fn check_item_external_generics<'tcx>(
         )
     };
 
-    if substs_ref.len() != generics.params.len() {
+    if substs_ref.len() != generics_params.len() {
         return err();
     }
-    for (generic_arg, generic_param) in substs_ref.iter().zip(generics.params.iter()) {
+    for (generic_arg, generic_param) in substs_ref.iter().zip(generics_params.iter()) {
         // So if we have like
         //    struct ProxyName<X, 'a>(External<X, 'a>);
         // We need to check the <X, 'a> line up
@@ -1506,8 +1523,6 @@ pub(crate) fn check_item_external_generics<'tcx>(
                 return err();
             }
         };
-        use rustc_hir::GenericParamKind;
-        use rustc_hir::LifetimeParamKind;
 
         match (generic_arg.unpack(), &generic_param.kind) {
             (
@@ -1809,5 +1824,14 @@ pub(crate) fn remove_host_arg<'tcx>(
         Ok(tcx.mk_args(&s))
     } else {
         Ok(substs)
+    }
+}
+
+pub(crate) fn ty_remove_references<'tcx>(
+    ty: &'tcx rustc_middle::ty::Ty<'tcx>,
+) -> &'tcx rustc_middle::ty::Ty<'tcx> {
+    match ty.kind() {
+        TyKind::Ref(_, t, Mutability::Not) => ty_remove_references(&t),
+        _ => ty,
     }
 }

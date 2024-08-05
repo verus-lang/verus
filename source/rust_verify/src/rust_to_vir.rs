@@ -645,5 +645,7 @@ pub fn crate_to_vir<'tcx>(
         &mut external_info,
     )?;
 
+    crate::rust_to_vir_adts::setup_type_invariants(&mut vir)?;
+
     Ok((Arc::new(vir), item_to_module))
 }

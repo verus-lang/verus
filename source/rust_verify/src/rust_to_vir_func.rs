@@ -17,7 +17,8 @@ use rustc_hir::{
     Unsafety,
 };
 use rustc_middle::ty::{
-    BoundRegion, BoundRegionKind, BoundVar, Clause, GenericArgKind, GenericArgsRef, Region, TyCtxt,
+    AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, GenericArgKind, GenericArgsRef, Region,
+    TyCtxt, TyKind,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
@@ -552,6 +553,7 @@ fn make_attributes(
         print_as_method,
         prophecy_dependent: vattrs.prophecy_dependent,
         size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
+        is_type_invariant_fn: vattrs.type_invariant_fn,
     };
     Ok(Arc::new(fattrs))
 }
@@ -1002,6 +1004,11 @@ pub(crate) fn check_item_fn<'tcx>(
             "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith",
         );
     }
+
+    if vattrs.type_invariant_fn {
+        check_generics_for_invariant_fn(ctxt.tcx, id, self_generics, generics, sig.span)?;
+    }
+
     let fattrs = make_attributes(
         &vattrs,
         vattrs.verus_macro,
@@ -1223,6 +1230,67 @@ fn fix_external_fn_specification_trait_method_decl_typs(
         })
     } else {
         Ok(func)
+    }
+}
+
+fn check_generics_for_invariant_fn<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    id: DefId,
+    self_generics: Option<(&'tcx Generics, DefId)>,
+    generics: &'tcx Generics<'tcx>,
+    span: Span,
+) -> Result<(), VirErr> {
+    let fn_sig = tcx.fn_sig(id);
+    let fn_sig = fn_sig.skip_binder();
+    let inputs = fn_sig.inputs().skip_binder();
+
+    if inputs.len() != 1 {
+        return err_span(span, "#[verifier::type_invariant]: expected 1 parameter");
+    }
+    if tcx.trait_of_item(id).is_some() {
+        return err_span(span, "#[verifier::type_invariant] function cannot be a trait function");
+    }
+
+    let ty = crate::rust_to_vir_base::ty_remove_references(&inputs[0]);
+
+    match ty.kind() {
+        TyKind::Adt(AdtDef(adt_def_data), substs) => {
+            let adt_def = tcx.adt_def(adt_def_data.did);
+            if adt_def.is_union() {
+                return err_span(
+                    span,
+                    "not supported: #[verifier::type_invariant] for union types",
+                );
+            }
+            assert!(adt_def.is_struct() || adt_def.is_enum());
+            crate::rust_to_vir_base::check_item_external_generics(
+                self_generics,
+                generics,
+                true,
+                substs,
+                false,
+                span,
+            )?;
+
+            let datatype_predicates = adt_def.predicates(tcx);
+            let func_predicates = tcx.predicates_of(id);
+            let preds1 = datatype_predicates.instantiate(tcx, substs).predicates;
+            let preds2 = func_predicates.instantiate(tcx, substs).predicates;
+            let preds_match = crate::rust_to_vir_func::predicates_match(tcx, &preds1, &preds2);
+            if !preds_match {
+                println!("datatype_predicates: {:#?}", datatype_predicates.predicates);
+                println!("func_predicates: {:#?}", func_predicates.predicates);
+                return err_span(span, "#[verifier::type_invariant]: trait bounds should match");
+            }
+
+            Ok(())
+        }
+        _ => {
+            return err_span(
+                span,
+                "type_invariant: expected parameter to be a datatype declared in this crate",
+            );
+        }
     }
 }
 

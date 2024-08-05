@@ -453,6 +453,9 @@ where
                 ExprX::AssertAssume { is_assume: _, expr: e1 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                 }
+                ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: _, expr: e1, fun: _ } => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                }
                 ExprX::AssertBy { vars, require, ensure, proof } => {
                     map.push_scope(true);
                     for binder in vars.iter() {
@@ -987,6 +990,14 @@ where
         ExprX::AssertAssume { is_assume, expr: e1 } => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::AssertAssume { is_assume: *is_assume, expr: expr1 }
+        }
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume, expr: e1, fun } => {
+            let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            ExprX::AssertAssumeUserDefinedTypeInvariant {
+                is_assume: *is_assume,
+                expr: expr1,
+                fun: fun.clone(),
+            }
         }
         ExprX::AssertBy { vars, require, ensure, proof } => {
             let vars =

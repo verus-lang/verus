@@ -365,6 +365,14 @@ impl<'a> State<'a> {
         self.assert_id_counter += 1;
         Some(Arc::new(aid))
     }
+
+    /// Creates a new tmp var and adds a Stm to the stms vec asserting the new
+    /// temp var is equal to the given exp. Returns an exp for the temp var.
+    pub fn make_tmp_var_for_exp(&mut self, stms: &mut Vec<Stm>, exp: Exp) -> Exp {
+        let (temp_id, temp_var) = self.declare_temp_var_stm(&exp.span, &exp.typ);
+        stms.push(init_var(&exp.span, &temp_id, &exp));
+        temp_var
+    }
 }
 
 pub(crate) fn var_loc_exp(span: &Span, typ: &Typ, lhs: UniqueIdent) -> Exp {
@@ -1572,6 +1580,22 @@ pub(crate) fn expr_to_stm_opt(
             let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: false, expr, fun } => {
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
+
+            if state.view_as_spec {
+                return Ok((stms, exp));
+            }
+
+            let exp = unwrap_or_return_never!(exp, stms);
+
+            let tmp = state.make_tmp_var_for_exp(&mut stms, exp);
+            assert_satisfies_user_defined_type_invariant(ctx, state, &tmp, &mut stms, fun);
+            Ok((stms, ReturnValue::Some(tmp)))
+        }
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: true, expr: _, fun: _ } => {
+            panic!("not implemented yet: assume type invariant");
+        }
         ExprX::AssertBy { vars, require, ensure, proof } => {
             // deadend {
             //   assume(require)
@@ -2409,4 +2433,39 @@ fn call_namespace(ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicity
     let arg = crate::poly::coerce_exp_to_poly(ctx, arg);
     let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![arg.clone()]));
     SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
+}
+
+pub fn assert_satisfies_user_defined_type_invariant(
+    ctx: &Ctx,
+    state: &mut State,
+    exp: &Exp,
+    stms: &mut Vec<Stm>,
+    fun: &Fun,
+) {
+    let typs = match &*exp.typ {
+        TypX::Datatype(_path, typs, ..) => typs.clone(),
+        _ => panic!("assert_satisfies_user_defined_type_invariant: expected datatype"),
+    };
+    let call_fun = CallFun::Fun(fun.clone(), None);
+    let arg = crate::poly::coerce_exp_to_poly(ctx, exp);
+    let expx = ExpX::Call(call_fun, typs, Arc::new(vec![arg.clone()]));
+    let exp = SpannedTyped::new(&arg.span, &Arc::new(TypX::Bool), expx);
+
+    if state.checking_recommends(ctx) {
+        stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
+    } else {
+        let exp = state.make_tmp_var_for_exp(stms, exp);
+
+        let function = ctx.func_map.get(fun).unwrap();
+        let error = crate::messages::error(
+            &exp.span,
+            "constructed value may fail to meet its declared type invariant",
+        )
+        .secondary_label(&function.span, "type invariant declared here");
+        stms.push(Spanned::new(
+            exp.span.clone(),
+            StmX::Assert(state.next_assert_id(), Some(error), exp.clone()),
+        ));
+        stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
+    }
 }

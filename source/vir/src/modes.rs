@@ -122,11 +122,17 @@ struct Ctxt {
     pub(crate) special_paths: SpecialPaths,
 }
 
+pub(crate) struct TypeInvInfo {
+    pub ctor_needs_check: HashMap<crate::messages::AstId, bool>,
+    pub field_loc_needs_check: HashMap<crate::messages::AstId, bool>,
+}
+
 // Accumulated data recorded during mode checking
 struct Record {
     pub(crate) erasure_modes: ErasureModes,
     // Modes of InferSpecForLoopIter
     infer_spec_for_loop_iter_modes: Option<Vec<(Span, Mode)>>,
+    type_inv_info: TypeInvInfo,
 }
 
 enum VarMode {
@@ -619,6 +625,10 @@ fn get_var_loc_mode(
                 rcvr,
                 init_not_mut,
             )?;
+            record
+                .type_inv_info
+                .field_loc_needs_check
+                .insert(expr.span.id, rcvr_mode != Mode::Spec);
             let datatype = &ctxt.datatypes[datatype].x;
             assert!(datatype.variants.len() == 1);
             let (_, field_mode, _) = &datatype.variants[0]
@@ -911,6 +921,8 @@ fn check_expr_handle_mut_arg(
                 }
             }
 
+            record.type_inv_info.ctor_needs_check.insert(expr.span.id, mode != Mode::Spec);
+
             Ok(mode)
         }
         ExprX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(Mode::Exec),
@@ -1185,6 +1197,9 @@ fn check_expr_handle_mut_arg(
             Ok(outer_mode)
         }
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
+        ExprX::AssertAssumeUserDefinedTypeInvariant { .. } => {
+            panic!("internal error: AssertAssumeUserDefinedTypeInvariant shouldn't exist here")
+        }
         ExprX::AssertAssume { is_assume: _, expr: e } => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return Err(error(&expr.span, "cannot use assert or assume in exec mode"));
@@ -1532,6 +1547,10 @@ fn check_function(
     typing: &mut Typing,
     function: &mut Function,
 ) -> Result<(), VirErr> {
+    // Reset this, we only need it per-function
+    record.type_inv_info =
+        TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
+
     let mut fun_typing0 = typing.push_var_scope();
 
     if function.x.attrs.prophecy_dependent {
@@ -1702,6 +1721,15 @@ fn check_function(
             *function = function.new_x(functionx);
         }
         record.infer_spec_for_loop_iter_modes = None;
+
+        if function.x.mode != Mode::Spec || function.x.ret.x.mode != Mode::Spec {
+            crate::user_defined_type_invariants::annotate_user_defined_invariants(
+                &mut Arc::make_mut(&mut *function).x,
+                &record.type_inv_info,
+                &ctxt.funs,
+                &ctxt.datatypes,
+            )?;
+        }
     }
     drop(fun_typing);
     drop(fun_typing0);
@@ -1729,7 +1757,9 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
         fun_mode: Mode::Exec,
         special_paths,
     };
-    let mut record = Record { erasure_modes, infer_spec_for_loop_iter_modes: None };
+    let type_inv_info =
+        TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
+    let mut record = Record { erasure_modes, infer_spec_for_loop_iter_modes: None, type_inv_info };
     let mut state = State {
         vars: ScopeMap::new(),
         in_forall_stmt: false,

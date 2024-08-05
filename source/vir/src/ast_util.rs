@@ -392,6 +392,10 @@ impl Visibility {
         module.is_some() && module == &self.restricted_to
     }
 
+    pub fn is_public(&self) -> bool {
+        matches!(self, Visibility { restricted_to: None })
+    }
+
     pub fn public() -> Self {
         Visibility { restricted_to: None }
     }
