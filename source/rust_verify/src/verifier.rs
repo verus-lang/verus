@@ -1900,7 +1900,6 @@ impl Verifier {
             fndef_types,
             self.args.debugger,
         )?;
-        let polymorphic_invocations = vir::mono::mono_krate_for_module(&mut ctx, &pruned_krate);
         let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
@@ -1914,6 +1913,8 @@ impl Verifier {
             &self.get_bucket(bucket_id).funs,
             &poly_krate,
         )?;
+        let polymorphic_invocations = vir::mono::mono_krate_for_module(&krate_sst);
+        println!("{polymorphic_invocations:?}");
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } = self.verify_bucket(
             reporter,

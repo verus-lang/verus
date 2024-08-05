@@ -19,56 +19,48 @@ primitive type such as `bool` or `int` to poly, even though we know `f(bool)` is
 specialized, hinders this.
 3. We want to ensure the generated AIR code can be type-checked by AIR.
  */
-use crate::ast::{Function, Krate, KrateX};
-use crate::poly;
+use crate::ast::Fun;
+use crate::sst::{CallFun, Exp, ExpX, KrateSstX};
+use crate::sst_visitor::{self, Visitor};
 use crate::{
-    ast::{CallTarget, ExprX, Fun, Typs},
-    ast_visitor::{self, VisitorScopeMap},
-    context::Ctx,
+    ast::Typs,
+    sst::{FunctionSst, KrateSst},
 };
-use air::scope_map::ScopeMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-pub(crate) fn collect_specializations_from_function(
-    ctx: &Ctx,
-    function: &Function,
-) -> Vec<(Fun, Typs)> {
-    let mut invocations: Vec<(Fun, Typs)> = vec![];
-    let Some(body) = &function.x.body else {
-        return vec![];
-    };
-    let mut map: VisitorScopeMap = ScopeMap::new();
-    ast_visitor::expr_visitor_dfs::<(), _>(body, &mut map, &mut |scope_map, expr| {
-        match &expr.x {
-            ExprX::Call(CallTarget::Fun(_, f, typs, _, _), _) => {
-                invocations.push((f.clone(), typs.clone()));
+struct SpecializationVisitor {
+    invocations: Vec<(Fun, Typs)>,
+}
+impl SpecializationVisitor {
+    fn new() -> Self {
+        Self { invocations: vec![] }
+    }
+}
+impl Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for SpecializationVisitor {
+    fn visit_exp(&mut self, exp: &Exp) -> Result<(), ()> {
+        match &exp.x {
+            ExpX::Call(CallFun::Fun(f, _), typs, _) => {
+                self.invocations.push((f.clone(), typs.clone()));
             }
             _ => (),
         }
-        ast_visitor::VisitorControlFlow::Recurse
-    });
-    invocations
+        self.visit_exp_rec(exp)
+    }
+}
+
+pub(crate) fn collect_specializations_from_function(function: &FunctionSst) -> Vec<(Fun, Typs)> {
+    let mut visitor = SpecializationVisitor::new();
+    visitor.visit_function(function).unwrap();
+    visitor.invocations
 }
 /**
 Collect all polymorphic function invocations in a module
  */
-pub fn mono_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> HashMap<Fun, Vec<Typs>> {
+pub fn mono_krate_for_module(krate: &KrateSst) -> HashMap<Fun, Vec<Typs>> {
     let mut invocations: HashMap<Fun, Vec<Typs>> = HashMap::new();
-    let KrateX {
-        functions,
-        reveal_groups,
-        datatypes,
-        traits,
-        trait_impls,
-        assoc_type_impls,
-        modules: module_ids,
-        external_fns,
-        external_types,
-        path_as_rust_names,
-        arch,
-    } = &**krate;
+    let KrateSstX { functions, .. } = &**krate;
     for f in functions.iter() {
-        for (fun, typs) in collect_specializations_from_function(ctx, f).into_iter() {
+        for (fun, typs) in collect_specializations_from_function(f).into_iter() {
             invocations.entry(fun).or_insert_with(Vec::new).push(typs)
         }
     }
