@@ -20,7 +20,7 @@ specialized, hinders this.
 3. We want to ensure the generated AIR code can be type-checked by AIR.
  */
 use crate::ast::Fun;
-use crate::sst::{CallFun, Exp, ExpX, KrateSstX};
+use crate::sst::{CallFun, Exp, ExpX, KrateSstX, Stm};
 use crate::sst_visitor::{self, Visitor};
 use crate::{
     ast::Typs,
@@ -28,6 +28,12 @@ use crate::{
 };
 use std::collections::HashMap;
 
+/**
+Utility for walking through the expression tree.
+
+This must be doubly recursive on both expressions and statements, hence its
+structure mirrors `StmExpVisitorDfs`.
+ */
 struct SpecializationVisitor {
     invocations: Vec<(Fun, Typs)>,
 }
@@ -45,6 +51,9 @@ impl Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for SpecializationVis
             _ => (),
         }
         self.visit_exp_rec(exp)
+    }
+    fn visit_stm(&mut self, stm: &Stm) -> Result<(), ()> {
+        self.visit_stm_rec(stm)
     }
 }
 
