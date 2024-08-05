@@ -35,7 +35,7 @@ use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
-use vir::ast::{Fun, Krate, VirErr};
+use vir::ast::{Fun, Krate, Typs, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{
     path_to_string, CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos,
@@ -1239,6 +1239,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
+        polymorphic_invocations: HashMap<Fun, Vec<Typs>>,
     ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
@@ -1347,6 +1348,9 @@ impl Verifier {
         // Declare the function symbols
         for function in &krate.functions {
             ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
+            if let Some(specialization) = polymorphic_invocations.get(&function.x.name) {
+                println!("Function {:?} specialized to {:?}", function.x.name, specialization);
+            }
             let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, function)?;
             let comment =
                 "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
@@ -1909,9 +1913,18 @@ impl Verifier {
             &self.get_bucket(bucket_id).funs,
             &poly_krate,
         )?;
+        let polymorphic_invocations = vir::mono::mono_krate_for_module(&krate_sst);
+        println!("{polymorphic_invocations:?}");
 
-        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
-            self.verify_bucket(reporter, &krate_sst, sst_map, source_map, bucket_id, &mut ctx)?;
+        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } = self.verify_bucket(
+            reporter,
+            &krate_sst,
+            sst_map,
+            source_map,
+            bucket_id,
+            &mut ctx,
+            polymorphic_invocations,
+        )?;
 
         global_ctx = ctx.free();
 
