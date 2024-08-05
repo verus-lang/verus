@@ -66,6 +66,44 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_set verus_code! {
+        use std::collections::HashSet;
+        use vstd::prelude::*;
+        fn test()
+        {
+            broadcast use vstd::std_specs::hash::group_hash_axioms;
+            let mut m = HashSet::<u32>::new();
+            assert(m@ == Set::<u32>::empty());
+
+            m.insert(3);
+            m.insert(6);
+            assert(m@.contains(3));
+
+            let b = m.contains(&3);
+            assert(b);
+
+            let n = m.len();
+            assert(n == 2);
+
+            let v = m.get(&6);
+            match v {
+                Some(v) => assert(*v == 6),
+                None => assert(false),
+            };
+
+            m.remove(&6);
+            assert(!m@.contains(6));
+            assert(m@.contains(3));
+
+            m.clear();
+            assert(!m@.contains(3));
+            let b = m.contains(&3);
+            assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_hash_map_box verus_code! {
         use std::collections::HashMap;
         use vstd::prelude::*;
@@ -96,6 +134,42 @@ test_verify_one_file! {
 
             m.clear();
             let b = m.contains_key(&3);
+            assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_set_box verus_code! {
+        use std::collections::HashSet;
+        use vstd::prelude::*;
+
+        fn test()
+        {
+            broadcast use vstd::std_specs::hash::group_hash_axioms;
+            let mut m = HashSet::<Box<u32>>::new();
+            assert(m@ == Set::<Box<u32>>::empty());
+
+            let three = Box::<u32>::new(3);
+            let six = Box::<u32>::new(6);
+            m.insert(three);
+            m.insert(six);
+
+            let b = m.contains(&3);
+            assert(b);
+
+            let v = m.get(&6);
+            match v {
+                Some(v) => assert(*v == 6),
+                None => assert(false),
+            };
+
+            m.remove(&6);
+            assert(!m@.contains(six));
+            assert(m@.contains(three));
+
+            m.clear();
+            let b = m.contains(&3);
             assert(!b);
         }
     } => Ok(())
@@ -158,6 +232,61 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_set_struct verus_code! {
+        use core::hash::{Hash, Hasher};
+        use std::collections::HashSet;
+        use vstd::prelude::*;
+
+        #[derive(PartialEq, Eq)]
+        struct MyStruct
+        {
+            pub i: u16,
+            pub j: i32,
+        }
+
+        impl Hash for MyStruct
+        {
+            #[verifier::external_body]
+            fn hash<H>(&self, state: &mut H)
+                where
+                    H: Hasher
+            {
+                self.i.hash(state);
+                self.j.hash(state);
+            }
+        }
+
+        fn test()
+        {
+            broadcast use vstd::std_specs::hash::group_hash_axioms;
+            assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
+
+            let mut m = HashSet::<MyStruct>::new();
+            assert(m@ == Set::<MyStruct>::empty());
+            let s1 = MyStruct{ i: 3, j: 7 };
+            m.insert(s1);
+
+            let s2 = MyStruct{ i: 3, j: 7 };
+            assert(m@.contains(s2));
+
+            let b = m.contains(&s2);
+            assert(b);
+
+            let v = m.get(&s2);
+            match v {
+                Some(v) => assert(*v == s2),
+                None => assert(false),
+            }
+
+            m.clear();
+            assert(!m@.contains(s2));
+            let b = m.contains(&s2);
+            assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_hash_map_struct_fails verus_code! {
         use core::hash::{Hash, Hasher};
         use std::collections::HashMap;
@@ -193,6 +322,46 @@ test_verify_one_file! {
 
             let s2 = MyStruct{ i: 3, j: 7 };
             assert(m@[s2] == 4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_hash_set_struct_fails verus_code! {
+        use core::hash::{Hash, Hasher};
+        use std::collections::HashSet;
+        use vstd::prelude::*;
+
+        #[derive(PartialEq, Eq)]
+        struct MyStruct
+        {
+            pub i: u16,
+            pub j: i32,
+        }
+
+        impl Hash for MyStruct
+        {
+            #[verifier::external_body]
+            fn hash<H>(&self, state: &mut H)
+                where
+                    H: Hasher
+            {
+                self.i.hash(state);
+                self.j.hash(state);
+            }
+        }
+
+        fn test()
+        {
+            broadcast use vstd::std_specs::hash::group_hash_axioms;
+            // Missing `assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());`
+
+            let mut m = HashSet::<MyStruct>::new();
+            let s1 = MyStruct{ i: 3, j: 7 };
+            m.insert(s1);
+
+            let s2 = MyStruct{ i: 3, j: 7 };
+            assert(m@.contains(s2)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -277,6 +446,84 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_set_with_view verus_code! {
+        use core::hash::{Hash, Hasher};
+        use vstd::hash_set::HashSetWithView;
+        use vstd::prelude::*;
+
+        #[derive(PartialEq, Eq)]
+        struct MyStruct
+        {
+            pub i: u16,
+            pub j: i32,
+        }
+
+        impl Hash for MyStruct
+        {
+            #[verifier::external_body]
+            fn hash<H>(&self, state: &mut H)
+                where
+                    H: Hasher
+            {
+                self.i.hash(state);
+                self.j.hash(state);
+            }
+        }
+
+        impl View for MyStruct
+        {
+            type V = (MyStruct, int);
+            open spec fn view(&self) -> Self::V
+            {
+                (*self, self.i + self.j)
+            }
+        }
+
+        fn test()
+        {
+            assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
+
+            let mut m = HashSetWithView::<MyStruct>::new();
+            assert(m@ == Set::<(MyStruct, int)>::empty());
+            let s1 = MyStruct{ i: 3, j: 7 };
+            m.insert(s1);
+
+            let s2 = MyStruct{ i: 3, j: 7 };
+            let ghost w: (MyStruct, int) = (MyStruct{ i: 3, j: 7 }, 10);
+            assert(s1@ == w);
+            assert(s2@ == w);
+            assert(m@.contains(w));
+
+            assert(m@.len() == 1);
+            assert(m.len() == 1) by {
+                vstd::hash_set::axiom_hash_set_with_view_spec_len(&m);
+            }
+            let n = m.len();
+            assert(n == 1);
+
+            let b = m.contains(&s2);
+            assert(b);
+
+            let v = m.get(&s2);
+            match v {
+                Some(v) => assert(*v == s2),
+                None => assert(false),
+            }
+
+            m.remove(&s2);
+            assert(!m@.contains(w));
+
+            let s3 = MyStruct{ i: 3, j: 7 };
+            m.insert(s3);
+            m.clear();
+            assert(!m@.contains(w));
+            let b = m.contains(&s2);
+            assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_hash_map_with_view_fails verus_code! {
         use core::hash::{Hash, Hasher};
         use vstd::hash_map::HashMapWithView;
@@ -322,6 +569,51 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_hash_set_with_view_fails verus_code! {
+        use core::hash::{Hash, Hasher};
+        use vstd::hash_set::HashSetWithView;
+        use vstd::prelude::*;
+
+        #[derive(PartialEq, Eq)]
+        struct MyStruct
+        {
+            pub i: u16,
+            pub j: i32,
+        }
+
+        impl Hash for MyStruct
+        {
+            #[verifier::external_body]
+            fn hash<H>(&self, state: &mut H)
+                where
+                    H: Hasher
+            {
+                self.i.hash(state);
+                self.j.hash(state);
+            }
+        }
+
+        impl View for MyStruct
+        {
+            type V = (MyStruct, int);
+            open spec fn view(&self) -> Self::V
+            {
+                (*self, self.i + self.j)
+            }
+        }
+
+        fn test()
+        {
+            // Missing assume(vstd::std_specs::hash::obeys_key_model::<MyStruct>());
+
+            let mut m = HashSetWithView::<MyStruct>::new(); // FAILS
+            let s = MyStruct{ i: 3, j: 7 };
+            m.insert(s);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test_string_hash_map verus_code! {
         use vstd::hash_map::StringHashMap;
         use vstd::prelude::*;
@@ -362,6 +654,51 @@ test_verify_one_file! {
             m.clear();
             assert(!m@.contains_key(three@));
             let b = m.contains_key(three.as_str());
+            assert(!b);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_string_hash_set verus_code! {
+        use vstd::hash_set::StringHashSet;
+        use vstd::prelude::*;
+        fn test()
+        {
+            let mut m = StringHashSet::new();
+            assert(m@ == Set::<Seq<char>>::empty());
+
+            let three: String = "three".to_string();
+            let six: String = "six".to_string();
+            m.insert(three.clone());
+            m.insert(six.clone());
+            assert(!(three@ =~= six@)) by {
+                reveal_strlit("three");
+                reveal_strlit("six");
+            }
+
+            let b = m.contains(three.as_str());
+            assert(b);
+
+            assert(m.len() == 2) by {
+                vstd::hash_set::axiom_string_hash_set_spec_len(&m);
+            }
+            let n = m.len();
+            assert(n == 2);
+
+            let v = m.get(six.as_str());
+            match v {
+                Some(v) => assert((*v)@ == six@),
+                None => assert(false),
+            };
+
+            m.remove(six.as_str());
+            assert(!m@.contains(six@));
+            assert(m@.contains(three@));
+
+            m.clear();
+            assert(!m@.contains(three@));
+            let b = m.contains(three.as_str());
             assert(!b);
         }
     } => Ok(())
