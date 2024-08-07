@@ -1046,11 +1046,16 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         exp_to_expr(ctx, rhs, expr_ctxt)?,
                     ]),
                 ),
-                BinaryOp::ArrayIndex => ExprX::ApplyFun(
-                    str_typ(POLY),
-                    exp_to_expr(ctx, lhs, expr_ctxt)?,
-                    Arc::new(vec![exp_to_expr(ctx, rhs, expr_ctxt)?]),
-                ),
+                BinaryOp::ArrayIndex => {
+                    let ts = match &*lhs.typ {
+                        TypX::Primitive(Primitive::Array, ts) if ts.len() == 2 => ts,
+                        _ => panic!("internal error: unexpected ArrayIndex type"),
+                    };
+                    let mut args: Vec<Expr> = ts.iter().map(typ_to_ids).flatten().collect();
+                    args.push(exp_to_expr(ctx, lhs, expr_ctxt)?);
+                    args.push(exp_to_expr(ctx, rhs, expr_ctxt)?);
+                    ExprX::Apply(str_ident(crate::def::ARRAY_INDEX), Arc::new(args))
+                }
                 // here the binary bitvector Ops are translated into the integer versions
                 // Similar to typ_invariant(), make obvious range according to bit-width
                 BinaryOp::Bitwise(bo, _) => {

@@ -120,7 +120,29 @@ test_verify_one_file! {
             assert(x.view().len() == 6);
             assert(x.view()[0] == 12); // FAILS
         }
-    } => Err(err) => assert_fails(err, 1)
+
+        fn test4() {
+            let a1: [u8; 3] = [10, 20, 30];
+            let a2: [u8; 3] = [10, 20, 40];
+            assert(a1 != a2);
+            assert(a1@ != a2@);
+            assert(a1@.contains(30));
+            assert(a2@.contains(30)); // FAILS
+        }
+
+        proof fn test5() {
+            let s1: Seq<int> = [10, 20, 30]@;
+            let s2: Seq<int> = [10, 20, 40]@;
+            assert(s1 != s2);
+            assert(s1 == s2); // FAILS
+        }
+
+        proof fn test6() {
+            let s: Seq<int> = [10, 20, 30]@;
+            assert(s.contains(30));
+            assert(s.contains(40)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file! {

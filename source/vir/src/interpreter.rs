@@ -904,6 +904,10 @@ fn eval_seq(
     }
 }
 
+fn unbox(e: &Exp) -> Exp {
+    if let ExpX::UnaryOpr(crate::ast::UnaryOpr::Box(_), e) = &e.x { e.clone() } else { e.clone() }
+}
+
 /// Custom interpretation for array_index
 fn eval_array_index(
     state: &mut State,
@@ -918,7 +922,7 @@ fn eval_array_index(
     let ok = Ok(exp_new(Binary(crate::ast::BinaryOp::ArrayIndex, arr.clone(), index_exp.clone())));
     // For now, the only possible function is array_index
     match &arr.x {
-        Interp(Array(s)) => match &index_exp.x {
+        Interp(Array(s)) => match &unbox(index_exp).x {
             Const(Constant::Int(i)) => match BigInt::to_usize(i) {
                 None => {
                     let msg = "Computation tried to index into an array using a value that does not fit into usize";

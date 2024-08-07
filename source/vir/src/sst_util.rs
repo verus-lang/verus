@@ -467,7 +467,7 @@ impl ExpX {
                     (format!("{}.get_char({})", left, e2.x.to_user_string(global)), prec_exp)
                 } else if let HeightCompare { .. } = op {
                     (format!("height_compare({left}, {right})"), prec_exp)
-                } else if let ArrayIndex { .. } = op {
+                } else if let ArrayIndex = op {
                     (format!("array_index({left}, {right})"), prec_exp)
                 } else {
                     (format!("{} {} {}", left, op_str, right), prec_exp)

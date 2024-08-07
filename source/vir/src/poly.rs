@@ -516,6 +516,14 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let typ = expr.typ.clone();
             mk_expr_typ(&typ, ExprX::Loc(expr))
         }
+        ExprX::Binary(BinaryOp::ArrayIndex, e1, e2) => {
+            let e1 = poly_expr(ctx, state, e1);
+            let e2 = poly_expr(ctx, state, e2);
+            let e1 = coerce_expr_to_native(ctx, &e1);
+            let e2 = coerce_expr_to_poly(ctx, &e2);
+            let typ = coerce_typ_to_poly(ctx, &expr.typ);
+            mk_expr_typ(&typ, ExprX::Binary(BinaryOp::ArrayIndex, e1, e2))
+        }
         ExprX::Binary(op, e1, e2) => {
             let e1 = poly_expr(ctx, state, e1);
             let e2 = poly_expr(ctx, state, e2);
@@ -527,17 +535,12 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 Eq(_) | Ne => (false, false),
                 Bitwise(..) => (true, false),
                 StrGetChar { .. } => (true, false),
-                ArrayIndex { .. } => (true, false),
+                ArrayIndex => unreachable!("ArrayIndex"),
             };
             if native {
                 let e1 = coerce_expr_to_native(ctx, &e1);
                 let e2 = coerce_expr_to_native(ctx, &e2);
-                if *op == ArrayIndex {
-                    let typ = coerce_typ_to_poly(ctx, &expr.typ);
-                    mk_expr_typ(&typ, ExprX::Binary(*op, e1, e2))
-                } else {
-                    mk_expr(ExprX::Binary(*op, e1, e2))
-                }
+                mk_expr(ExprX::Binary(*op, e1, e2))
             } else if poly {
                 let e1 = coerce_expr_to_poly(ctx, &e1);
                 let e2 = coerce_expr_to_poly(ctx, &e2);
