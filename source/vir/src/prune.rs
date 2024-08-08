@@ -77,7 +77,6 @@ struct Ctxt {
     typ_to_trigger_broadcasts: HashMap<ReachedType, Vec<Fun>>,
     // Map each revealed broadcast function f to its ReachBroadcastFunction
     fun_revealed_broadcast_map: HashMap<Fun, ReachBroadcastFunction>,
-    all_functions_in_each_module: HashMap<Path, Vec<Fun>>,
     all_reveal_groups_in_each_module: HashMap<Path, Vec<Fun>>,
     vstd_crate_name: Ident,
     assert_by_compute: bool,
@@ -537,21 +536,6 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             continue;
         }
         if let Some(m) = state.worklist_modules.pop() {
-            if let Some(fs) = ctxt.all_functions_in_each_module.get(&m) {
-                for f in fs {
-                    let function = &ctxt.function_map[f];
-                    if let Some(reach) = ctxt.fun_revealed_broadcast_map.get(f) {
-                        if reach.reach_triggers.len() > 0 {
-                            continue;
-                        }
-                    }
-                    if function.x.attrs.broadcast_forall && function.x.body.is_none() {
-                        // If we reach m, we reach all broadcast_forall functions in m
-                        // that didn't have triggers to prune on
-                        reach_function(ctxt, state, f);
-                    }
-                }
-            }
             if let Some(fs) = ctxt.all_reveal_groups_in_each_module.get(&m) {
                 for f in fs {
                     if state.reached_functions.contains(f) {
@@ -694,8 +678,7 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
         }
         if calls.len() == 0 && typs.len() == 0 {
             // For the case of a trigger with no function calls (e.g. a trigger on an
-            // arithmetic op), we fall back to the module-based pruning.
-            // TODO: remove module-based pruning
+            // arithmetic op), we don't prune.
             return vec![];
         }
         trigs.push((calls, typs));
@@ -932,7 +915,6 @@ pub fn prune_krate_for_module_or_krate(
     let mut typ_to_trait_impls: HashMap<ReachedType, Vec<ImplName>> = HashMap::new();
     let mut trait_impl_map: HashMap<ImplName, ReachTraitImpl> = HashMap::new();
     let mut method_map: HashMap<(ReachedType, Fun), Vec<Fun>> = HashMap::new();
-    let mut all_functions_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     let mut all_reveal_groups_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     let mut fun_to_trigger_broadcasts: HashMap<Fun, Vec<Fun>> = HashMap::new();
     let mut typ_to_trigger_broadcasts: HashMap<ReachedType, Vec<Fun>> = HashMap::new();
@@ -950,11 +932,6 @@ pub fn prune_krate_for_module_or_krate(
             }
             method_map.get_mut(&key).unwrap().push(f.x.name.clone());
         }
-        let module = f.x.owning_module.clone().expect("owning_module");
-        if !all_functions_in_each_module.contains_key(&module) {
-            all_functions_in_each_module.insert(module.clone(), Vec::new());
-        }
-        all_functions_in_each_module.get_mut(&module).unwrap().push(f.x.name.clone());
         if revealed_functions.contains(&f.x.name) {
             let reach_triggers = collect_broadcast_triggers(f);
             for (trig_funs, trig_typs) in &reach_triggers {
@@ -1059,7 +1036,6 @@ pub fn prune_krate_for_module_or_krate(
         fun_to_trigger_broadcasts,
         typ_to_trigger_broadcasts,
         fun_revealed_broadcast_map,
-        all_functions_in_each_module,
         all_reveal_groups_in_each_module,
         vstd_crate_name,
         assert_by_compute,
