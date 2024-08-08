@@ -218,6 +218,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/1236
+    #[test] test_array_type_id verus_code! {
+        use vstd::prelude::*;
+        struct X;
+        fn test2<'a>(p: &'a Option<[X; 75]>) -> (res: &'a [X; 75])
+            requires
+                p.is_some()
+            ensures
+                Some(*res) == p
+        {
+            p.as_ref().unwrap()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_array_repeat_tracked verus_code! {
         tracked struct X { }
 
