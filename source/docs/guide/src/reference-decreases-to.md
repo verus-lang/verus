@@ -31,7 +31,7 @@ The _decreases-to_ relation is a partial order on all values where:
  * If `a` is a datatype (struct or enum)
     and `b` is the value of one of its fields, then `a` decreases-to `b`.
  * If `a` is a `spec_fn`, then `a` decreases-to `a(i)`.
- * If `a` is a `Seq`, then `a` decreases-to `a[i].
+ * If `a` is a `Seq`, then `a` decreases-to `a[i]`.
 
 Note that values of different types _are_ comparable. For example, if struct `X` has a field
 of type `Y`, then a value of type `X` may decrease-to a value of type `Y`.
