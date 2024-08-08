@@ -1,8 +1,8 @@
 use crate::ast::{
     Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
     Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, MaskSpec, Param, ParamX,
-    Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ, TypX, Typs,
-    UnaryOpr, VarIdent, Variant, VirErr,
+    Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ,
+    TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::messages::error;
@@ -91,7 +91,13 @@ where
                         expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                     }
                 }
-                TypX::Decorate(_, t) => {
+                TypX::Decorate(_, targ, t) => {
+                    match targ {
+                        Some(TypDecorationArg { allocator_typ }) => {
+                            expr_visitor_control_flow!(typ_visitor_dfs(allocator_typ, ft));
+                        }
+                        None => {}
+                    }
                     expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
                 }
                 TypX::Boxed(t) => {
@@ -147,9 +153,16 @@ where
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             ft(env, &Arc::new(TypX::FnDef(fun.clone(), Arc::new(ts), res_fun.clone())))
         }
-        TypX::Decorate(d, t) => {
+        TypX::Decorate(d, targ, t) => {
+            let targ = match targ {
+                Some(TypDecorationArg { allocator_typ }) => {
+                    let t = map_typ_visitor_env(allocator_typ, env, ft)?;
+                    Some(TypDecorationArg { allocator_typ: t })
+                }
+                None => None,
+            };
             let t = map_typ_visitor_env(t, env, ft)?;
-            ft(env, &Arc::new(TypX::Decorate(*d, t)))
+            ft(env, &Arc::new(TypX::Decorate(*d, targ, t)))
         }
         TypX::Boxed(t) => {
             let t = map_typ_visitor_env(t, env, ft)?;
@@ -440,6 +453,9 @@ where
                 ExprX::AssertAssume { is_assume: _, expr: e1 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                 }
+                ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: _, expr: e1, fun: _ } => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                }
                 ExprX::AssertBy { vars, require, ensure, proof } => {
                     map.push_scope(true);
                     for binder in vars.iter() {
@@ -637,6 +653,7 @@ where
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind: _,
         publish: _,
         attrs: _,
@@ -675,6 +692,14 @@ where
             for e in es.iter() {
                 expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
             }
+        }
+    }
+    match unwind_spec {
+        None => {}
+        Some(UnwindSpec::MayUnwind) => {}
+        Some(UnwindSpec::NoUnwind) => {}
+        Some(UnwindSpec::NoUnwindWhen(e)) => {
+            expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
         }
     }
 
@@ -966,6 +991,14 @@ where
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::AssertAssume { is_assume: *is_assume, expr: expr1 }
         }
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume, expr: e1, fun } => {
+            let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            ExprX::AssertAssumeUserDefinedTypeInvariant {
+                is_assume: *is_assume,
+                expr: expr1,
+                fun: fun.clone(),
+            }
+        }
         ExprX::AssertBy { vars, require, ensure, proof } => {
             let vars =
                 vec_map_result(&**vars, |x| x.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
@@ -1224,6 +1257,7 @@ where
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind,
         publish,
         attrs,
@@ -1301,6 +1335,14 @@ where
             })?)))
         }
     };
+    let unwind_spec = match unwind_spec {
+        None => None,
+        Some(UnwindSpec::MayUnwind) => Some(UnwindSpec::MayUnwind),
+        Some(UnwindSpec::NoUnwind) => Some(UnwindSpec::NoUnwind),
+        Some(UnwindSpec::NoUnwindWhen(e)) => {
+            Some(UnwindSpec::NoUnwindWhen(map_expr_visitor_env(e, map, env, fe, fs, ft)?))
+        }
+    };
     let attrs = attrs.clone();
     let extra_dependencies = extra_dependencies.clone();
     let item_kind = *item_kind;
@@ -1352,6 +1394,7 @@ where
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind,
         publish,
         attrs,

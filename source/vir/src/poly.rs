@@ -78,8 +78,8 @@ because x is used both for f and for +.
 use crate::ast::{
     AssocTypeImpl, BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr,
     Function, FunctionKind, FunctionX, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp, Param,
-    ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, VarBinder, VarIdent, Variant,
+    ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypDecorationArg, TypX,
+    Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarIdent, Variant,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -97,6 +97,7 @@ pub enum MonoTypX {
     Int(IntRange),
     Datatype(Path, MonoTyps),
     Decorate(crate::ast::TypDecoration, MonoTyp),
+    Decorate2(crate::ast::TypDecoration, MonoTyps),
     Primitive(Primitive, MonoTyps),
 }
 
@@ -126,7 +127,13 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Datatype(path.clone(), Arc::new(monotyps))))
         }
-        TypX::Decorate(d, t) => typ_as_mono(t).map(|m| Arc::new(MonoTypX::Decorate(*d, m))),
+        TypX::Decorate(d, None, t) => typ_as_mono(t).map(|m| Arc::new(MonoTypX::Decorate(*d, m))),
+        TypX::Decorate(d, Some(TypDecorationArg { allocator_typ }), t) => {
+            let m1 = typ_as_mono(allocator_typ)?;
+            let m2 = typ_as_mono(t)?;
+            Some(Arc::new(MonoTypX::Decorate2(*d, Arc::new(vec![m1, m2]))))
+        }
+        TypX::Primitive(Primitive::Array, _) => None,
         TypX::Primitive(name, typs) => {
             let monotyps = monotyps_as_mono(typs)?;
             Some(Arc::new(MonoTypX::Primitive(*name, Arc::new(monotyps))))
@@ -155,13 +162,20 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
             let typs = vec_map(&**typs, monotyp_to_typ);
             Arc::new(TypX::Primitive(*name, Arc::new(typs)))
         }
-        MonoTypX::Decorate(d, typ) => Arc::new(TypX::Decorate(*d, monotyp_to_typ(typ))),
+        MonoTypX::Decorate(d, typ) => Arc::new(TypX::Decorate(*d, None, monotyp_to_typ(typ))),
+        MonoTypX::Decorate2(d, typs) => {
+            assert!(typs.len() == 2);
+            let allocator_typ = monotyp_to_typ(&typs[0]);
+            let typ = monotyp_to_typ(&typs[1]);
+            Arc::new(TypX::Decorate(*d, Some(TypDecorationArg { allocator_typ }), typ))
+        }
     }
 }
 
 pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => false,
+        TypX::Primitive(Primitive::Array, _) => false,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -173,7 +187,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
                 typ_as_mono(typ).is_none()
             }
         }
-        TypX::Decorate(_, t) => typ_is_poly(ctx, t),
+        TypX::Decorate(_, _, t) => typ_is_poly(ctx, t),
         // Note: we rely on rust_to_vir_base normalizing TypX::Projection { .. }.
         // If it normalized to a projection, it is poly; otherwise it is handled by
         // one of the other TypX::* cases.
@@ -188,6 +202,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
 pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
+        TypX::Primitive(Primitive::Array, _) => typ.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
@@ -203,7 +218,9 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
                 }
             }
         }
-        TypX::Decorate(d, t) => Arc::new(TypX::Decorate(*d, coerce_typ_to_native(ctx, t))),
+        TypX::Decorate(d, targ, t) => {
+            Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_native(ctx, t)))
+        }
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::Primitive(_, _) => {
             if typ_as_mono(typ).is_none() {
@@ -228,7 +245,9 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         }
         TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(..) | TypX::Primitive(_, _) => Arc::new(TypX::Boxed(typ.clone())),
-        TypX::Decorate(d, t) => Arc::new(TypX::Decorate(*d, coerce_typ_to_poly(_ctx, t))),
+        TypX::Decorate(d, targ, t) => {
+            Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t)))
+        }
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => typ.clone(),
@@ -427,7 +446,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             match op {
                 UnaryOp::Not
                 | UnaryOp::Clip { .. }
-                | UnaryOp::BitNot
+                | UnaryOp::BitNot(_)
                 | UnaryOp::StrLen
                 | UnaryOp::StrIsAscii => {
                     let e1 = coerce_expr_to_native(ctx, &e1);
@@ -442,7 +461,9 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } => {
                     mk_expr_typ(&e1.typ, ExprX::Unary(*op, e1.clone()))
                 }
-                UnaryOp::MustBeFinalized => panic!("internal error: MustBeFinalized in AST"),
+                UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
+                    panic!("internal error: MustBeFinalized in AST")
+                }
                 UnaryOp::CastToInteger => {
                     let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
                     mk_expr(ExprX::UnaryOpr(unbox, e1.clone()))
@@ -495,6 +516,14 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let typ = expr.typ.clone();
             mk_expr_typ(&typ, ExprX::Loc(expr))
         }
+        ExprX::Binary(BinaryOp::ArrayIndex, e1, e2) => {
+            let e1 = poly_expr(ctx, state, e1);
+            let e2 = poly_expr(ctx, state, e2);
+            let e1 = coerce_expr_to_native(ctx, &e1);
+            let e2 = coerce_expr_to_poly(ctx, &e2);
+            let typ = coerce_typ_to_poly(ctx, &expr.typ);
+            mk_expr_typ(&typ, ExprX::Binary(BinaryOp::ArrayIndex, e1, e2))
+        }
         ExprX::Binary(op, e1, e2) => {
             let e1 = poly_expr(ctx, state, e1);
             let e2 = poly_expr(ctx, state, e2);
@@ -506,6 +535,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 Eq(_) | Ne => (false, false),
                 Bitwise(..) => (true, false),
                 StrGetChar { .. } => (true, false),
+                ArrayIndex => unreachable!("ArrayIndex"),
             };
             if native {
                 let e1 = coerce_expr_to_native(ctx, &e1);
@@ -615,10 +645,17 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::ExecFnByName(fun) => mk_expr(ExprX::ExecFnByName(fun.clone())),
         ExprX::Choose { params, cond, body } => {
+            // body is derived from cond but triggers are selected on the user-provided cond
+            let natives = crate::triggers::predict_native_quant_vars(params, &vec![cond]);
             let mut bs: Vec<VarBinder<Typ>> = Vec::new();
             state.types.push_scope(true);
             for binder in params.iter() {
-                let typ = coerce_typ_to_poly(ctx, &binder.a);
+                let native = natives.contains(&binder.name);
+                let typ = if native {
+                    coerce_typ_to_native(ctx, &binder.a)
+                } else {
+                    coerce_typ_to_poly(ctx, &binder.a)
+                };
                 let _ = state.types.insert(binder.name.clone(), typ.clone());
                 bs.push(binder.new_a(typ));
             }
@@ -654,6 +691,14 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         ExprX::AssertAssume { is_assume, expr: e1 } => {
             let e1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1));
             mk_expr(ExprX::AssertAssume { is_assume: *is_assume, expr: e1 })
+        }
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume, expr: e1, fun } => {
+            let e1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1));
+            mk_expr(ExprX::AssertAssumeUserDefinedTypeInvariant {
+                is_assume: *is_assume,
+                expr: e1,
+                fun: fun.clone(),
+            })
         }
         ExprX::AssertBy { vars, require, ensure, proof } => {
             let mut bs: Vec<VarBinder<Typ>> = Vec::new();
@@ -825,6 +870,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind,
         publish,
         attrs,
@@ -872,10 +918,12 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
 
     let mut state = State { types, is_trait, in_exec_closure: false };
 
+    let native_expr =
+        |state: &mut State, e: &Expr| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e));
     let native_exprs = |state: &mut State, es: &Exprs| {
         let mut exprs: Vec<Expr> = Vec::new();
         for e in es.iter() {
-            exprs.push(coerce_expr_to_native(ctx, &poly_expr(ctx, state, e)));
+            exprs.push(native_expr(state, e));
         }
         Arc::new(exprs)
     };
@@ -900,6 +948,14 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
             Some(MaskSpec::InvariantOpensExcept(native_exprs(&mut state, es)))
         }
         None => None,
+    };
+    let unwind_spec = match unwind_spec {
+        None => None,
+        Some(UnwindSpec::MayUnwind) => Some(UnwindSpec::MayUnwind),
+        Some(UnwindSpec::NoUnwind) => Some(UnwindSpec::NoUnwind),
+        Some(UnwindSpec::NoUnwindWhen(e)) => {
+            Some(UnwindSpec::NoUnwindWhen(native_expr(&mut state, e)))
+        }
     };
 
     let body = if let Some(body) = body {
@@ -996,6 +1052,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind: *item_kind,
         publish: *publish,
         attrs: attrs.clone(),

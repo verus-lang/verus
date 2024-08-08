@@ -1,27 +1,24 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, LoopInvariantKind, Mode, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX,
-    VarBinders, VarIdent, VarIdentDisambiguate, VariantCheck, VirErr,
+    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
+    LoopInvariantKind, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
+    VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{types_equal, undecorate_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
-use crate::func_to_air::{SstInfo, SstMap};
-use crate::interpreter::eval_expr;
 use crate::messages::{error, error_with_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, ParPurpose,
     Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    bitwidth_sst_from_typ, free_vars_exp, free_vars_stm, sst_array_index, sst_conjoin, sst_equal,
-    sst_has_type, sst_int_literal, sst_le, sst_lt,
+    free_vars_exp, free_vars_stm, sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
-use crate::triggers::{typ_boxing, TriggerBoxing};
-use crate::util::{vec_map, vec_map_result};
+use crate::util::vec_map_result;
 use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX};
 use air::messages::Diagnostics;
@@ -71,8 +68,6 @@ pub(crate) struct State<'a> {
     only_generate_pure_exp: u64,
     // If > 0, disable checking recommends
     pub(crate) disable_recommends: u64,
-    // Mapping from a function's name to the SST version of its body.  Used by the interpreter.
-    pub fun_ssts: SstMap,
     // Diagnostic output
     pub diagnostics: &'a (dyn Diagnostics + 'a),
     // If inside a closure
@@ -143,7 +138,6 @@ impl<'a> State<'a> {
             rename_delayed: HashMap::new(),
             only_generate_pure_exp: 0,
             disable_recommends: 0,
-            fun_ssts: crate::update_cell::UpdateCell::new(HashMap::new()),
             diagnostics,
             containing_closure: None,
             statics: IndexSet::new(),
@@ -304,116 +298,21 @@ impl<'a> State<'a> {
     }
 
     // Erase unused unique ids from Vars and process inline functions
-    pub(crate) fn finalize_exp<D: Diagnostics + ?Sized>(
-        &self,
-        ctx: &Ctx,
-        diagnostics: &D,
-        fun_ssts: &SstMap,
-        exp: &Exp,
-    ) -> Result<Exp, VirErr> {
+    pub(crate) fn finalize_exp(&self, _ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
         let exp = map_exp_visitor(exp, &mut |exp| match &exp.x {
             ExpX::Var(x) if self.rename_delayed.contains_key(x) => {
                 SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(self.rename_delayed[x].clone()))
             }
+            ExpX::Unary(UnaryOp::MustBeFinalized, e1) => e1.clone(),
             _ => exp.clone(),
         });
-        let exp = crate::sst_visitor::map_exp_visitor_result(&exp, &mut |exp| match &exp.x {
-            ExpX::Call(CallFun::Fun(fun, resolved_method), typs, args) => {
-                let (fun, typs) =
-                    if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };
-                if let Some(SstInfo { inline, params, memoize: _, body }) =
-                    fun_ssts.borrow().get(fun)
-                {
-                    if inline.do_inline {
-                        let typ_params = &inline.typ_params;
-                        let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
-                        let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
-                        assert!(typ_params.len() == typs.len());
-                        for (name, typ) in typ_params.iter().zip(typs.iter()) {
-                            assert!(!typ_substs.contains_key(name));
-                            let typ = crate::poly::coerce_typ_to_poly(ctx, typ);
-                            typ_substs.insert(name.clone(), typ.clone());
-                        }
-                        assert!(params.len() == args.len());
-                        for (param, arg) in params.iter().zip(args.iter()) {
-                            let unique = unique_local(&param.x.name);
-                            assert!(!substs.contains_key(&unique));
-                            substs.insert(unique, arg.clone());
-                        }
-                        let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
-                        // keep the original outer span for better trigger messages
-                        let e = SpannedTyped::new(&exp.span, &e.typ, e.x.clone());
-                        return Ok(e);
-                    }
-                }
-                Ok(exp.clone())
-            }
-            ExpX::Bind(bnd, body) => match &bnd.x {
-                BndX::Quant(quant, bs, trigs) => {
-                    assert!(trigs.len() == 0);
-                    let mut vars: Vec<(VarIdent, TriggerBoxing)> = Vec::new();
-                    for b in bs.iter() {
-                        match &*b.a {
-                            TypX::TypeId => vars.push((
-                                crate::def::suffix_typ_param_var(&b.name),
-                                TriggerBoxing::TypeId,
-                            )),
-                            _ => vars.push((b.name.clone(), typ_boxing(ctx, &b.a))),
-                        }
-                    }
-                    let trigs =
-                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, false)?;
-                    let bnd =
-                        Spanned::new(bnd.span.clone(), BndX::Quant(*quant, bs.clone(), trigs));
-                    Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
-                }
-                BndX::Choose(bs, trigs, cond) => {
-                    assert!(trigs.len() == 0);
-                    let vars = vec_map(bs, |b| (b.name.clone(), typ_boxing(ctx, &b.a)));
-                    let trigs =
-                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &cond, false)?;
-                    let bnd = Spanned::new(
-                        bnd.span.clone(),
-                        BndX::Choose(bs.clone(), trigs, cond.clone()),
-                    );
-                    Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
-                }
-                BndX::Lambda(bs, trigs) => {
-                    assert!(trigs.len() == 0);
-                    let vars = vec_map(bs, |b| (b.name.clone(), typ_boxing(ctx, &b.a)));
-                    let trigs =
-                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &body, true)?;
-                    if trigs.len() > 0 {
-                        let msg = "#[trigger] on a spec_fn closure is deprecated - \
-                            generally spec_fn closures don't need triggers because spec_fn \
-                            closures are triggered automatically by calls to to closures. \
-                            If you think you need additional triggers, see the discussion in \
-                            https://github.com/verus-lang/verus/pull/331 \
-                            for alternatives.";
-                        diagnostics.report(&warning(&exp.span, msg).to_any());
-                    }
-                    let bnd = Spanned::new(bnd.span.clone(), BndX::Lambda(bs.clone(), trigs));
-                    Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
-                }
-                _ => Ok(exp.clone()),
-            },
-            // remove MustBeFinalized marker to vouch that finalize_exp was called
-            ExpX::Unary(UnaryOp::MustBeFinalized, e1) => Ok(e1.clone()),
-            _ => Ok(exp.clone()),
-        });
-        exp
+        Ok(exp)
     }
 
     // Erase unused unique ids from Vars, perform inlining, choose triggers,
     // and perform splitting if necessary
-    pub(crate) fn finalize_stm(
-        &self,
-        ctx: &Ctx,
-        diagnostics: &impl Diagnostics,
-        fun_ssts: &SstMap,
-        stm: &Stm,
-    ) -> Result<Stm, VirErr> {
-        map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, diagnostics, fun_ssts, exp))
+    pub(crate) fn finalize_stm(&self, ctx: &Ctx, stm: &Stm) -> Result<Stm, VirErr> {
+        map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, exp))
     }
 
     pub(crate) fn finalize(&mut self) {
@@ -466,6 +365,14 @@ impl<'a> State<'a> {
         self.assert_id_counter += 1;
         Some(Arc::new(aid))
     }
+
+    /// Creates a new tmp var and adds a Stm to the stms vec asserting the new
+    /// temp var is equal to the given exp. Returns an exp for the temp var.
+    pub fn make_tmp_var_for_exp(&mut self, stms: &mut Vec<Stm>, exp: Exp) -> Exp {
+        let (temp_id, temp_var) = self.declare_temp_var_stm(&exp.span, &exp.typ);
+        stms.push(init_var(&exp.span, &temp_id, &exp));
+        temp_var
+    }
 }
 
 pub(crate) fn var_loc_exp(span: &Span, typ: &Typ, lhs: UniqueIdent) -> Exp {
@@ -484,6 +391,17 @@ pub(crate) fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
 
 pub(crate) fn get_function(ctx: &Ctx, span: &Span, name: &Fun) -> Result<Function, VirErr> {
     match ctx.func_map.get(name) {
+        None => Err(error(span, format!("could not find function {:?}", &name))),
+        Some(func) => Ok(func.clone()),
+    }
+}
+
+pub(crate) fn get_function_sst(
+    ctx: &Ctx,
+    span: &Span,
+    name: &Fun,
+) -> Result<crate::sst::FunctionSst, VirErr> {
+    match ctx.func_sst_map.get(name) {
         None => Err(error(span, format!("could not find function {:?}", &name))),
         Some(func) => Ok(func.clone()),
     }
@@ -746,7 +664,6 @@ pub(crate) fn expr_to_pure_exp_check(
 pub(crate) fn expr_to_decls_exp_skip_checks(
     ctx: &Ctx,
     diagnostics: &impl Diagnostics,
-    fun_ssts: &SstMap,
     view_as_spec: bool,
     params: &Pars,
     expr: &Expr,
@@ -755,7 +672,7 @@ pub(crate) fn expr_to_decls_exp_skip_checks(
     state.view_as_spec = view_as_spec;
     state.declare_params(params);
     let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, expr)?;
-    let exp = state.finalize_exp(ctx, diagnostics, fun_ssts, &exp)?;
+    let exp = state.finalize_exp(ctx, &exp)?;
     state.finalize();
     Ok((state.local_decls, exp))
 }
@@ -763,14 +680,13 @@ pub(crate) fn expr_to_decls_exp_skip_checks(
 pub(crate) fn expr_to_bind_decls_exp_skip_checks(
     ctx: &Ctx,
     diagnostics: &impl Diagnostics,
-    fun_ssts: &SstMap,
     params: &Pars,
     expr: &Expr,
 ) -> Result<Exp, VirErr> {
     let mut state = State::new(diagnostics);
     state.declare_params(params);
     let exp = expr_to_pure_exp_skip_checks(ctx, &mut state, expr)?;
-    let exp = state.finalize_exp(ctx, diagnostics, &fun_ssts, &exp)?;
+    let exp = state.finalize_exp(ctx, &exp)?;
     state.finalize();
     Ok(exp)
 }
@@ -778,21 +694,10 @@ pub(crate) fn expr_to_bind_decls_exp_skip_checks(
 pub(crate) fn expr_to_exp_skip_checks(
     ctx: &Ctx,
     diagnostics: &impl Diagnostics,
-    fun_ssts: &SstMap,
     params: &Pars,
     expr: &Expr,
 ) -> Result<Exp, VirErr> {
-    Ok(expr_to_decls_exp_skip_checks(ctx, diagnostics, fun_ssts, false, params, expr)?.1)
-}
-
-pub(crate) fn expr_to_exp_as_spec_skip_checks(
-    ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
-    fun_ssts: &SstMap,
-    params: &Pars,
-    expr: &Expr,
-) -> Result<Exp, VirErr> {
-    Ok(expr_to_decls_exp_skip_checks(ctx, diagnostics, fun_ssts, true, params, expr)?.1)
+    Ok(expr_to_decls_exp_skip_checks(ctx, diagnostics, false, params, expr)?.1)
 }
 
 /// Convert an expr to (Vec<Stm>, Exp).
@@ -1425,10 +1330,10 @@ pub(crate) fn expr_to_stm_opt(
                     if let BinaryOp::Bitwise(bitwise, mode) = op {
                         match (*mode, state.checking_bounds_for_mode(ctx, *mode), bitwise) {
                             (_, false, _) => {}
-                            (Mode::Exec, true, BitwiseOp::Shr | BitwiseOp::Shl) => {
+                            (Mode::Exec, true, BitwiseOp::Shr(w) | BitwiseOp::Shl(w, _)) => {
                                 let zero = sst_int_literal(&expr.span, 0);
-                                let bitwidth =
-                                    bitwidth_sst_from_typ(&expr.span, &e1.typ, &ctx.global.arch);
+                                let bitwidth = sst_bitwidth(&expr.span, w, &ctx.global.arch);
+
                                 let assert_exp = sst_conjoin(
                                     &expr.span,
                                     &vec![
@@ -1444,7 +1349,11 @@ pub(crate) fn expr_to_stm_opt(
                                 let assert = Spanned::new(expr.span.clone(), assert);
                                 stms1.push(assert);
                             }
-                            (Mode::Proof | Mode::Spec, true, BitwiseOp::Shr | BitwiseOp::Shl) => {}
+                            (
+                                Mode::Proof | Mode::Spec,
+                                true,
+                                BitwiseOp::Shr(..) | BitwiseOp::Shl(..),
+                            ) => {}
                             (_, true, BitwiseOp::BitXor | BitwiseOp::BitAnd | BitwiseOp::BitOr) => {
                                 // no overflow check needed
                             }
@@ -1478,7 +1387,7 @@ pub(crate) fn expr_to_stm_opt(
             let trigs = Arc::new(vec![]); // real triggers will be set by finalize_exp
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
             let e = mk_exp(ExpX::Bind(bnd, exp));
-            let e = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e));
+            let e = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, e));
             Ok((check_stms, ReturnValue::Some(e)))
         }
         ExprX::Closure(params, body) => {
@@ -1495,12 +1404,12 @@ pub(crate) fn expr_to_stm_opt(
 
             // Parameters and return types must have been boxed by poly.rs
             assert!(matches!(
-                &*body.typ,
+                &*undecorate_typ(&body.typ),
                 TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. }
             ));
             for p in params.iter() {
                 assert!(matches!(
-                    &*p.a,
+                    &*undecorate_typ(&p.a),
                     TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. }
                 ));
             }
@@ -1556,25 +1465,8 @@ pub(crate) fn expr_to_stm_opt(
                 };
                 exps.push(e0);
             }
-
-            let (_uid, v) = state.declare_temp_var_stm(&expr.span, &expr.typ);
-
-            // assume the type invariant
-            // (this implies that v.len() == len because of a vstd axiom,
-            // array_len_matches_n)
-            let has_typ = sst_has_type(&expr.span, &v, &expr.typ);
-            stms.push(Spanned::new(expr.span.clone(), StmX::Assume(has_typ)));
-            for (i, exp) in exps.into_iter().enumerate() {
-                // assume v[i] == exp
-                let elem_i_eq = sst_equal(
-                    &expr.span,
-                    &sst_array_index(ctx, &expr.span, &v, &sst_int_literal(&expr.span, i as i128)),
-                    &exp,
-                );
-                stms.push(Spanned::new(expr.span.clone(), StmX::Assume(elem_i_eq)));
-            }
-
-            Ok((stms, ReturnValue::Some(v)))
+            let array_lit = mk_exp(ExpX::ArrayLiteral(Arc::new(exps)));
+            Ok((stms, ReturnValue::Some(array_lit)))
         }
         ExprX::ExecFnByName(fun) => {
             let v = mk_exp(ExpX::ExecFnByName(fun.clone()));
@@ -1594,13 +1486,13 @@ pub(crate) fn expr_to_stm_opt(
             let bnd_choosex = BndX::Choose(params.clone(), trigs.clone(), cond_exp.clone());
             let bnd_choose = Spanned::new(body.span.clone(), bnd_choosex);
             let e_choose = mk_exp(ExpX::Bind(bnd_choose, body_exp));
-            let e_choose = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_choose));
+            let e_choose = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, e_choose));
             if state.checking_recommends(ctx) {
                 let quant = crate::ast::Quant { quant: air::ast::Quant::Exists };
                 let bnd_exists =
                     Spanned::new(body.span.clone(), BndX::Quant(quant, params.clone(), trigs));
                 let e_exists = mk_exp(ExpX::Bind(bnd_exists, cond_exp.clone()));
-                let e_exists = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e_exists));
+                let e_exists = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, e_exists));
                 let error = error(
                     &cond_exp.span,
                     "recommendation not met: cannot prove that there exists values that satisfy the condition of the choose expression",
@@ -1687,6 +1579,22 @@ pub(crate) fn expr_to_stm_opt(
             let exp = expr_to_pure_exp_skip_checks(ctx, state, e)?;
             let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
+        }
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: false, expr, fun } => {
+            let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
+
+            if state.view_as_spec {
+                return Ok((stms, exp));
+            }
+
+            let exp = unwrap_or_return_never!(exp, stms);
+
+            let tmp = state.make_tmp_var_for_exp(&mut stms, exp);
+            assert_satisfies_user_defined_type_invariant(ctx, state, &tmp, &mut stms, fun);
+            Ok((stms, ReturnValue::Some(tmp)))
+        }
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: true, expr: _, fun: _ } => {
+            panic!("not implemented yet: assume type invariant");
         }
         ExprX::AssertBy { vars, require, ensure, proof } => {
             // deadend {
@@ -1924,38 +1832,25 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
         }
-        ExprX::AssertCompute(e, mode) => {
+        ExprX::AssertCompute(e, compute) => {
             // We won't have the context to check recommends, so skip them
             state.disable_recommends += 1;
-            let (mut stms, expr) = expr_to_pure_exp_check(ctx, state, &e)?;
+            let (mut stms, exp) = expr_to_pure_exp_check(ctx, state, &e)?;
             state.disable_recommends -= 1;
-            let ret = ReturnValue::ImplicitUnit(expr.span.clone());
+            let ret = ReturnValue::ImplicitUnit(exp.span.clone());
             // We assert the (hopefully simplified) result of calling the interpreter
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
-            let interp_exp = eval_expr(
-                &ctx.global,
-                &state.finalize_exp(ctx, state.diagnostics, &state.fun_ssts, &expr)?,
-                state.diagnostics,
-                &mut state.fun_ssts,
-                ctx.global.rlimit,
-                ctx.global.arch,
-                *mode,
-                &mut ctx.global.interpreter_log.lock().unwrap(),
-            )?;
-            let err = error_with_label(
-                &expr.span.clone(),
-                "assertion failed",
-                format!("simplified to {}", interp_exp.x.to_user_string(&ctx.global)),
-            );
-            if matches!(mode, ComputeMode::Z3) {
-                let assert = Spanned::new(
-                    expr.span.clone(),
-                    StmX::Assert(state.next_assert_id(), Some(err), interp_exp),
-                );
+            if !ctx.checking_spec_preconditions_for_non_spec() {
+                let id = match compute {
+                    ComputeMode::Z3 => state.next_assert_id(),
+                    ComputeMode::ComputeOnly => None,
+                };
+                let assert =
+                    Spanned::new(exp.span.clone(), StmX::AssertCompute(id, exp.clone(), *compute));
                 stms.push(assert);
             }
-            let assume = Spanned::new(expr.span.clone(), StmX::Assume(expr));
+            let assume = Spanned::new(exp.span.clone(), StmX::Assume(exp));
             stms.push(assume);
             Ok((stms, ret))
         }
@@ -2093,34 +1988,83 @@ pub(crate) fn expr_to_stm_opt(
             }
         }
         ExprX::OpenInvariant(inv, binder, body, atomicity) => {
+            // let inv_tmp = inv;
+            // OpenInvariantBlock(inv_tmp.namespace(), {
+            //   let mut inner = inner_tmp;
+            //   assume(inv_tmp.inv(inner));
+            //
+            //   ...
+            //
+            //   assert(inv_tmp.inv(inner));
+            // });
+
             // Evaluate `inv`
             let (mut stms0, big_inv_exp) = expr_to_stm_opt(ctx, state, inv)?;
             let big_inv_exp = unwrap_or_return_never!(big_inv_exp, stms0);
 
-            // Assign it to a constant temp variable to ensure it is constant
-            // across the entire block.
-            let (temp_id, temp_var) = state.declare_temp_var_stm(&big_inv_exp.span, &inv.typ);
-            stms0.push(init_var(&big_inv_exp.span, &temp_id, &big_inv_exp));
+            // Assign it to a constant tmp variable to ensure it is constant
+            // across the entire block. sst_to_air also relies on this.
+            let (inv_tmp_id, inv_tmp_var) = state.declare_temp_var_stm(&big_inv_exp.span, &inv.typ);
+            stms0.push(init_var(&big_inv_exp.span, &inv_tmp_id, &big_inv_exp));
+
+            // Declare the inner_tmp variable
+            let mut stms1 = vec![];
+            let inner_typ = &binder.a;
+            let (_uid, arb_exp) = state.declare_temp_var_stm(&big_inv_exp.span, &inner_typ);
+            let has_typ = crate::sst_util::sst_has_type(
+                &expr.span,
+                &crate::poly::coerce_exp_to_poly(ctx, &arb_exp),
+                &inner_typ,
+            );
+            stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(has_typ)));
+
+            // Assign to the bound variable
+            let ident = state.get_var_unique_id(&binder.name);
+            state.local_decls.push(Arc::new(LocalDeclX {
+                ident: ident.clone(),
+                typ: inner_typ.clone(),
+                mutable: true,
+            }));
+            stms1.push(init_var(&expr.span, &ident, &arb_exp));
+            let inner_var = SpannedTyped::new(&expr.span, &inner_typ, ExpX::Var(ident));
+
+            // Assume the invariant
+            let typ_args = get_inv_typ_args(&big_inv_exp.typ);
+            let main_inv = call_inv(ctx, &inv_tmp_var, &inner_var, &typ_args, *atomicity);
+            stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(main_inv.clone())));
 
             // Process the body
 
             state.push_scope();
-            let ident = state.declare_var_stm(
-                &binder.name,
-                &binder.a,
-                /* mutable */ true,
-                /* maybe_need_rename */ true,
-            );
             let (body_stms, body_e) = expr_to_stm_opt(ctx, state, body)?;
             state.pop_scope();
 
             let body_stm = stms_to_one_stm(&expr.span, body_stms);
-            stms0.push(Spanned::new(
-                expr.span.clone(),
-                StmX::OpenInvariant(temp_var, ident, binder.a.clone(), body_stm, *atomicity),
-            ));
+            stms1.push(body_stm);
 
-            let _body_e = unwrap_or_return_never!(body_e, stms0);
+            // Assert the invariant at the end
+
+            match body_e.to_value() {
+                Some(_e) => {
+                    if !ctx.checking_spec_preconditions() {
+                        let error =
+                            error(&expr.span, "Cannot show invariant holds at end of block");
+                        // Note, we re-use the `main_inv` exp here, but it contains a mutable
+                        stms1.push(Spanned::new(
+                            expr.span.clone(),
+                            StmX::Assert(state.next_assert_id(), Some(error), main_inv),
+                        ));
+                    }
+                }
+                None => {
+                    // It might be impossible to reach the end of the block
+                    stms1.push(assume_false(&expr.span));
+                }
+            }
+
+            let block_stm = stms_to_one_stm(&expr.span, stms1);
+            let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
+            stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(ns_exp, block_stm)));
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
         ExprX::Return(e1) => {
@@ -2461,5 +2405,67 @@ fn closure_emit_postconditions(
             );
             stms.push(stm);
         }
+    }
+}
+
+fn get_inv_typ_args(typ: &Typ) -> Typs {
+    match &**typ {
+        TypX::Datatype(_, typs, _) => typs.clone(),
+        TypX::Decorate(_, _, typ) | TypX::Boxed(typ) => get_inv_typ_args(typ),
+        _ => {
+            panic!("get_inv_typ_args failed, expected some Invariant type");
+        }
+    }
+}
+
+fn call_inv(ctx: &Ctx, outer: &Exp, inner: &Exp, typ_args: &Typs, atomicity: InvAtomicity) -> Exp {
+    let call_fun =
+        CallFun::Fun(crate::def::fn_inv_name(&ctx.global.vstd_crate_name, atomicity), None);
+    let inner = crate::poly::coerce_exp_to_poly(ctx, inner);
+    let outer = crate::poly::coerce_exp_to_poly(ctx, outer);
+    let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![outer.clone(), inner.clone()]));
+    SpannedTyped::new(&outer.span, &Arc::new(TypX::Bool), expx)
+}
+
+fn call_namespace(ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicity) -> Exp {
+    let call_fun =
+        CallFun::Fun(crate::def::fn_namespace_name(&ctx.global.vstd_crate_name, atomicity), None);
+    let arg = crate::poly::coerce_exp_to_poly(ctx, arg);
+    let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![arg.clone()]));
+    SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
+}
+
+pub fn assert_satisfies_user_defined_type_invariant(
+    ctx: &Ctx,
+    state: &mut State,
+    exp: &Exp,
+    stms: &mut Vec<Stm>,
+    fun: &Fun,
+) {
+    let typs = match &*exp.typ {
+        TypX::Datatype(_path, typs, ..) => typs.clone(),
+        _ => panic!("assert_satisfies_user_defined_type_invariant: expected datatype"),
+    };
+    let call_fun = CallFun::Fun(fun.clone(), None);
+    let arg = crate::poly::coerce_exp_to_poly(ctx, exp);
+    let expx = ExpX::Call(call_fun, typs, Arc::new(vec![arg.clone()]));
+    let exp = SpannedTyped::new(&arg.span, &Arc::new(TypX::Bool), expx);
+
+    if state.checking_recommends(ctx) {
+        stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
+    } else {
+        let exp = state.make_tmp_var_for_exp(stms, exp);
+
+        let function = ctx.func_map.get(fun).unwrap();
+        let error = crate::messages::error(
+            &exp.span,
+            "constructed value may fail to meet its declared type invariant",
+        )
+        .secondary_label(&function.span, "type invariant declared here");
+        stms.push(Spanned::new(
+            exp.span.clone(),
+            StmX::Assert(state.next_assert_id(), Some(error), exp.clone()),
+        ));
+        stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
     }
 }

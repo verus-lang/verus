@@ -1,13 +1,12 @@
 use rustc_session::config::ErrorOutputType;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::Function;
+use vir::ast_to_sst_func::SstMap;
 use vir::context::Ctx;
 use vir::expand_errors::{
     cons_id, CanExpandFurther, ExpansionContext, ExpansionTree, Introduction,
 };
-use vir::func_to_air::SstMap;
-use vir::sst::FunctionSst;
+use vir::sst::FuncCheckSst;
 use vir::sst::{AssertId, Exp};
 
 const MAX_FAILURES: u64 = 4;
@@ -71,21 +70,21 @@ pub enum ExpandErrorsResult {
 
 pub struct ExpandErrorsDriver {
     /// The function we're operating on.
-    pub function: Function,
+    pub function: vir::sst::FunctionSst,
 
     /// Initial ID to be expanded, should be length 1.
     base_id: AssertId,
-    /// FunctionSst from the query that prompted the expand-errors mechancism.
-    base_function_sst: FunctionSst,
+    /// FuncCheckSst from the query that prompted the expand-errors mechancism.
+    base_func_check_sst: Arc<FuncCheckSst>,
     /// Pre-computed context information
     ectx: ExpansionContext,
 
     /// Maps an ID to the expansion of that ID.
-    /// For example, 42_1 might point to a FunctionSst
+    /// For example, 42_1 might point to a FuncCheckSst
     /// with assert_ids 42_1_0, 42_1_1, 42_2_2, 42_2_3.
     /// The ExapansionTree is the tree that explains how 42_1
     /// was expanded into its sub-assertions.
-    expansions: HashMap<AssertId, (ExpansionTree, FunctionSst)>,
+    expansions: HashMap<AssertId, (ExpansionTree, Arc<FuncCheckSst>)>,
 
     /// The ID for the query we're currently running.
     /// Becomes empty [] when execution finishes.
@@ -129,13 +128,17 @@ enum Style {
 
 impl ExpandErrorsDriver {
     /// Create a new driver object which will repeatedly expand the given assert_id
-    pub fn new(function: &Function, assert_id: &AssertId, function_sst: FunctionSst) -> Self {
+    pub fn new(
+        function: &vir::sst::FunctionSst,
+        assert_id: &AssertId,
+        func_check_sst: Arc<FuncCheckSst>,
+    ) -> Self {
         assert!(assert_id.len() == 1);
         Self {
             function: function.clone(),
             base_id: assert_id.clone(),
-            ectx: vir::expand_errors::get_expansion_ctx(&function_sst.body, assert_id),
-            base_function_sst: function_sst,
+            ectx: vir::expand_errors::get_expansion_ctx(&func_check_sst.body, assert_id),
+            base_func_check_sst: func_check_sst,
             expansions: HashMap::new(),
             results: HashMap::new(),
             caps: vec![assert_id[0] + 1],
@@ -192,15 +195,15 @@ impl ExpandErrorsDriver {
         }
     }
 
-    /// Get the current assert_id to query, and the FunctionSst
+    /// Get the current assert_id to query, and the FuncCheckSst
     /// which has an assertion for that id.
-    /// For example, if the 'current' is 42_1, then the FunctionSst
+    /// For example, if the 'current' is 42_1, then the FuncCheckSst
     /// will be the expansion of '42', which
     /// may have asserts for 42_0, 42_1, 42_2, ...
     /// The client is responsible for focusing on the 42_1 assert.
     ///
     /// Returns None if we're done.
-    pub fn get_current(&self) -> Option<(AssertId, FunctionSst)> {
+    pub fn get_current(&self) -> Option<(AssertId, Arc<FuncCheckSst>)> {
         if self.current.len() > 0 {
             let parent_id = self.current[..self.current.len() - 1].to_vec();
             let fsst = self.expansions.get(&parent_id).unwrap().1.clone();
@@ -235,15 +238,15 @@ impl ExpandErrorsDriver {
 
     fn expand(&mut self, ctx: &Ctx, fun_ssts: &SstMap, assert_id: &AssertId) -> u64 {
         assert!(ctx.fun.as_ref().unwrap().current_fun == self.function.x.name);
-        let function_sst = if &self.base_id == assert_id {
-            &self.base_function_sst
+        let func_check_sst = if &self.base_id == assert_id {
+            &self.base_func_check_sst
         } else {
             let parent_id = assert_id[..assert_id.len() - 1].to_vec();
             &self.expansions.get(&parent_id).unwrap().1
         };
 
         let (new_function_sst, expansion_tree) =
-            vir::expand_errors::do_expansion(ctx, &self.ectx, fun_ssts, function_sst, assert_id);
+            vir::expand_errors::do_expansion(ctx, &self.ectx, fun_ssts, func_check_sst, assert_id);
         let num_leaves = expansion_tree.count_leaves();
         self.add_lines_to_output(&assert_id, &expansion_tree, num_leaves == 1);
         self.expansions.insert(assert_id.clone(), (expansion_tree, new_function_sst));

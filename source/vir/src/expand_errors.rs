@@ -1,18 +1,17 @@
 use crate::ast::{
-    BinaryOp, BinaryOpr, FieldOpr, Fun, Function, Ident, Params, Path, Quant, SpannedTyped, Typ,
-    TypX, Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant,
-    VariantCheck,
+    BinaryOp, BinaryOpr, FieldOpr, Fun, Ident, Path, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
 };
-use crate::ast_to_sst::get_function;
+use crate::ast_to_sst::get_function_sst;
+use crate::ast_to_sst_func::SstInfo;
+use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::func_to_air::SstInfo;
-use crate::func_to_air::SstMap;
 use crate::messages::Span;
-use crate::sst::FunctionSst;
 use crate::sst::PostConditionSst;
 use crate::sst::{AssertId, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX};
+use crate::sst::{FuncCheckSst, FunctionSst};
 use crate::sst_util::{sst_conjoin, sst_equal_ext, sst_implies, sst_not, subst_typ_for_datatype};
 use crate::sst_visitor::map_stm_prev_visitor;
 use air::ast::Quant::{Exists, Forall};
@@ -98,6 +97,7 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
         | StmX::Assert(assert_id, ..)
         | StmX::Return { assert_id, .. } => *assert_id == Some(a_id.clone()),
         StmX::AssertBitVector { requires: _, ensures: _ }
+        | StmX::AssertCompute(..)
         | StmX::Assume(..)
         | StmX::Assign { .. }
         | StmX::RevealString { .. }
@@ -122,7 +122,13 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
-        StmX::Loop { body, .. } => {
+        StmX::Loop { body, cond, .. } => {
+            if let Some((cond_stm, _cond_exp)) = cond {
+                if get_fuel_at_id(cond_stm, a_id, fuels) {
+                    return true;
+                }
+            }
+
             let mut inside_fuels = HashMap::<Fun, u32>::new();
             if get_fuel_at_id(body, a_id, &mut inside_fuels) {
                 std::mem::swap(&mut inside_fuels, fuels);
@@ -130,7 +136,7 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
-        StmX::OpenInvariant(_, _, _, stm, _) => {
+        StmX::OpenInvariant(_, stm) => {
             if get_fuel_at_id(stm, a_id, fuels) {
                 return true;
             }
@@ -169,21 +175,23 @@ pub fn do_expansion(
     ctx: &Ctx,
     ectx: &ExpansionContext,
     fun_ssts: &SstMap,
-    function_sst: &FunctionSst,
+    func_check_sst: &Arc<FuncCheckSst>,
     assert_id: &AssertId,
-) -> (FunctionSst, ExpansionTree) {
-    let mut fsst = function_sst.clone();
+) -> (Arc<FuncCheckSst>, ExpansionTree) {
+    let mut fsst = (**func_check_sst).clone();
+    let mut local_decls = (*fsst.local_decls).clone();
     let (body, tree) = do_expansion_body(
         ctx,
         ectx,
         fun_ssts,
-        &function_sst.post_condition,
-        &function_sst.body,
+        &func_check_sst.post_condition,
+        &func_check_sst.body,
         assert_id,
-        &mut fsst.local_decls,
+        &mut local_decls,
     );
     fsst.body = body;
-    (fsst, tree)
+    fsst.local_decls = Arc::new(local_decls);
+    (Arc::new(fsst), tree)
 }
 
 pub fn do_expansion_body(
@@ -267,7 +275,7 @@ fn do_expansion_if_assert_id_matches(
             Some(expand_exp(ctx, ectx, fun_ssts, assert_id, the_exp, local_decls))
         }
         StmX::Call { assert_id: Some(a_id), fun, typ_args, args, .. } if a_id == assert_id => {
-            let preconditions = split_precondition(ctx, fun_ssts, &stm.span, fun, typ_args, args);
+            let preconditions = split_precondition(ctx, &stm.span, fun, typ_args, args);
             // There might be multiple preconditions, there might be some preconditions
             // with multiple conjuncts ... we want to handle these all the same way,
             // so the easiest thing is conjoin everything and then use the common-case
@@ -295,8 +303,8 @@ fn do_expansion_if_assert_id_matches(
     }
 }
 
-struct State<'a> {
-    fun_ssts: &'a SstMap,
+struct State {
+    fun_ssts: SstMap,
     tmp_var_count: u64,
     base_id: AssertId,
     assert_id_count: u64,
@@ -309,7 +317,7 @@ pub fn cons_id(assert_id: &AssertId, idx: u64) -> AssertId {
     Arc::new(aid)
 }
 
-impl<'a> State<'a> {
+impl State {
     fn get_next_assert_id(&mut self) -> AssertId {
         let id = cons_id(&self.base_id, self.assert_id_count);
         self.assert_id_count += 1;
@@ -322,9 +330,10 @@ impl<'a> State<'a> {
         binders: &VarBinders<T>,
         e: &Exp,
         to_typ: impl Fn(&T) -> Typ,
-    ) -> (Vec<(T, VarIdent)>, Exp) {
+    ) -> (Vec<(T, VarIdent)>, Vec<Stm>, Exp) {
         let mut v = vec![];
         let mut substs = HashMap::<VarIdent, Exp>::new();
+        let mut typ_invs = vec![];
         for binder in binders.iter() {
             let new_name = VarIdent(
                 binder.name.0.clone(),
@@ -340,10 +349,12 @@ impl<'a> State<'a> {
             let var_exp = SpannedTyped::new(span, &typ, ExpX::Var(new_name.clone()));
             substs.insert(binder.name.clone(), var_exp);
 
+            typ_invs.push(crate::ast_to_sst::assume_has_typ(&new_name, &typ, span));
+
             v.push((binder.a.clone(), new_name));
         }
         let new_exp = crate::sst_util::subst_exp(&HashMap::new(), &substs, &e);
-        (v, new_exp)
+        (v, typ_invs, new_exp)
     }
 }
 
@@ -363,7 +374,7 @@ fn expand_exp(
     }
 
     let mut state = State {
-        fun_ssts,
+        fun_ssts: fun_ssts.clone(),
         tmp_var_count: tmp_var_count_start,
         assert_id_count: 0,
         base_id: assert_id.clone(),
@@ -564,7 +575,7 @@ fn expand_exp_rec(
             } else {
                 (args.clone(), None)
             };
-            let function = get_function(ctx, &exp.span, fun_name).unwrap();
+            let function = get_function_sst(ctx, &exp.span, fun_name).unwrap();
             let can_inline =
                 can_inline_function(ctx, state, ectx, function.clone(), fuel_arg, &exp.span);
             if let Err(err) = can_inline {
@@ -573,22 +584,19 @@ fn expand_exp_rec(
                 // Don't unfold yet
                 leaf(state, CanExpandFurther::Yes)
             } else {
-                let SstInfo { inline, params, body, .. } =
-                    state.fun_ssts.borrow().get(fun_name).unwrap();
+                let SstInfo { inline, pars, body, .. } = state.fun_ssts.get(fun_name).unwrap();
                 let mut inline_exp =
-                    inline_expression(ctx, &args, typs, params, &inline.typ_params, body);
+                    inline_expression(ctx, &args, typs, pars, &inline.typ_params, body);
 
                 let fuel = can_inline.unwrap();
                 if let Some(fuel) = fuel {
-                    let (is_rec, e, _node) =
-                        crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
-                            ctx,
-                            &function,
-                            &inline_exp,
-                            Some(fuel - 1),
-                        )
-                        .unwrap();
-                    assert!(is_rec);
+                    let (e, _node) = crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
+                        ctx,
+                        &function,
+                        &inline_exp,
+                        Some(fuel - 1),
+                    )
+                    .unwrap();
                     inline_exp = e;
                 }
 
@@ -601,7 +609,7 @@ fn expand_exp_rec(
         }
         ExpX::Bind(bnd, e) => match &bnd.x {
             BndX::Let(binders) => {
-                let (new_ids, e) =
+                let (new_ids, _, e) =
                     state.mk_fresh_ids(&exp.span, binders, e, |e: &Exp| e.typ.clone());
                 let mut stms = vec![];
                 for (exp, uniq_id) in new_ids {
@@ -615,11 +623,16 @@ fn expand_exp_rec(
             BndX::Quant(Quant { quant: q @ (Forall | Exists) }, binders, _trigs)
                 if (*q == Exists) == negate =>
             {
-                let (_, e) = state.mk_fresh_ids(&exp.span, binders, e, |t: &Typ| t.clone());
+                let (_, typ_invs, e) =
+                    state.mk_fresh_ids(&exp.span, binders, e, |t: &Typ| t.clone());
                 let (stm, tree) = expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate);
                 let intro = Introduction::Forall(binders.clone());
 
-                let dead_end = mk_stm(StmX::DeadEnd(stm));
+                let mut stms = typ_invs;
+                stms.push(stm);
+                let sstm = mk_stm(StmX::Block(Arc::new(stms)));
+
+                let dead_end = mk_stm(StmX::DeadEnd(sstm));
                 let assume_stm = mk_stm(StmX::Assume(exp.clone()));
                 let full_stm = mk_stm(StmX::Block(Arc::new(vec![dead_end, assume_stm])));
 
@@ -887,7 +900,7 @@ fn can_inline_function(
     ctx: &Ctx,
     state: &State,
     ectx: &ExpansionContext,
-    fun_to_inline: Function,
+    fun_to_inline: FunctionSst,
     cur_fuel_level: Option<usize>,
     span: &Span,
 ) -> Result<Option<usize>, Option<String>> {
@@ -899,7 +912,7 @@ fn can_inline_function(
     let type_err = Err(Some("not bool type".to_string()));
 
     let fun_owner = match &ctx.fun {
-        Some(f) => get_function(ctx, span, &f.current_fun).unwrap(),
+        Some(f) => get_function_sst(ctx, span, &f.current_fun).unwrap(),
         None => {
             return Err(Some(
                 "Internal error: cannot find the owning function of this function call".to_string(),
@@ -940,7 +953,7 @@ fn can_inline_function(
             return foreign_module_err;
         }
 
-        let body = match fun_to_inline.x.body.as_ref() {
+        let body = match fun_to_inline.x.axioms.spec_axioms.as_ref() {
             Some(body) => body,
             None => {
                 return uninterp_err;
@@ -964,7 +977,7 @@ fn can_inline_function(
         }
 
         // Note: this should never happen
-        if !is_bool_type(&body.typ) {
+        if !is_bool_type(&body.body_exp.typ) {
             return type_err;
         }
 
@@ -974,11 +987,11 @@ fn can_inline_function(
         let fun = &fun_to_inline.x.name;
         let fun_ssts = &state.fun_ssts;
 
-        if fun_ssts.borrow().get(fun).is_none() {
+        if fun_ssts.get(fun).is_none() {
             return Err(Some(format!("Internal error: not in SstMap")));
         }
 
-        if fun_to_inline.x.decrease.len() != 0 {
+        if fun_to_inline.x.has.has_decrease {
             let f = match cur_fuel_level {
                 Some(f) => f,
                 None => fuel as usize,
@@ -990,15 +1003,8 @@ fn can_inline_function(
     }
 }
 
-fn split_precondition(
-    ctx: &Ctx,
-    fun_ssts: &SstMap,
-    span: &Span,
-    name: &Fun,
-    typs: &Typs,
-    args: &Exps,
-) -> Vec<Exp> {
-    let fun = get_function(ctx, span, name).unwrap();
+fn split_precondition(ctx: &Ctx, span: &Span, name: &Fun, typs: &Typs, args: &Exps) -> Vec<Exp> {
+    let fun = get_function_sst(ctx, span, name).unwrap();
     let mut exps: Vec<Exp> = Vec::new();
 
     // We split the `requires` expression on the call site.
@@ -1007,19 +1013,9 @@ fn split_precondition(
     //
     // Also, note that pervasive::assert consists of `requires` and `ensures`,
     // so we are also splitting pervasive::assert here.
-    let params = &fun.x.params;
+    let params = &fun.x.pars;
     let typ_params = &fun.x.typ_params;
-    for e in &**fun.x.require {
-        // skip checks on require, since this is checked when the function is checked
-        let exp = crate::ast_to_sst::expr_to_exp_as_spec_skip_checks(
-            &ctx,
-            &DiagnosticsVoid {},
-            fun_ssts,
-            &crate::func_to_air::params_to_pars(params, true), // REVIEW: is `true` here desirable?
-            &e,
-        )
-        .expect("expr_to_exp_as_spec_skip_checks");
-
+    for exp in fun.x.decl.reqs.iter().cloned() {
         // In requires, old(x) is really just x:
         let mut f_var_at = |e: &Exp| match &e.x {
             ExpX::VarAt(x, crate::ast::VarAt::Pre) => e.new_x(ExpX::Var(x.clone())),
@@ -1053,7 +1049,7 @@ pub fn inline_expression(
     ctx: &Ctx,
     args: &Exps,
     typs: &Typs,
-    params: &Params,
+    params: &crate::sst::Pars,
     typ_params: &crate::ast::Idents,
     body: &Exp,
 ) -> Exp {

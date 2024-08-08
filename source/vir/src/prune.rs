@@ -12,7 +12,7 @@ use crate::ast::{
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
-use crate::def::{array_index_fun, fn_inv_name, fn_namespace_name, Spanned};
+use crate::def::{fn_inv_name, fn_namespace_name, Spanned};
 use crate::poly::MonoTyp;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -30,6 +30,7 @@ enum ReachedType {
     SpecFn(usize),
     Datatype(Path),
     StrSlice,
+    Array,
     Primitive,
 }
 
@@ -99,6 +100,7 @@ struct State {
     worklist_modules: Vec<Path>,
     mono_abstract_datatypes: HashSet<MonoTyp>,
     spec_fn_types: HashSet<usize>,
+    uses_array: bool,
     fndef_types: HashSet<Fun>,
 }
 
@@ -112,7 +114,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::AnonymousClosure(..) => ReachedType::None,
         TypX::Datatype(path, _, _) => ReachedType::Datatype(path.clone()),
         TypX::FnDef(..) => ReachedType::None,
-        TypX::Decorate(_, t) => typ_to_reached_type(t),
+        TypX::Decorate(_, _, t) => typ_to_reached_type(t),
         TypX::Boxed(t) => typ_to_reached_type(t),
         TypX::TypParam(_) => ReachedType::None,
         TypX::Projection { trait_typ_args, .. } => typ_to_reached_type(&trait_typ_args[0]),
@@ -120,7 +122,8 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::ConstInt(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::Primitive(Primitive::StrSlice, _) => ReachedType::StrSlice,
-        TypX::Primitive(Primitive::Array | Primitive::Slice | Primitive::Ptr, _) => {
+        TypX::Primitive(Primitive::Array, _) => ReachedType::Array,
+        TypX::Primitive(Primitive::Slice | Primitive::Ptr | Primitive::Global, _) => {
             ReachedType::Primitive
         }
     }
@@ -255,7 +258,7 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
         TypX::Air(_) => {
             panic!("unexpected TypX")
         }
-        TypX::Decorate(_, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
+        TypX::Decorate(_, _, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
         TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) => {}
         TypX::Projection { trait_typ_args: _, trait_path, name, .. } => {
             reach_assoc_type_decl(ctxt, state, &(trait_path.clone(), name.clone()));
@@ -382,9 +385,6 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             reach_function(ctxt, state, resolved);
                         }
                     }
-                    ExprX::ArrayLiteral(..) => {
-                        reach_function(ctxt, state, &array_index_fun(&ctxt.vstd_crate_name));
-                    }
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
                         // references to these particular names.
@@ -402,6 +402,12 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     ExprX::Unary(crate::ast::UnaryOp::InferSpecForLoopIter { .. }, _) => {
                         let t = ReachedType::Datatype(crate::def::option_type_path());
                         reach_type(ctxt, state, &t);
+                    }
+                    ExprX::Fuel(fueled_f, _, is_broadcast_use) if *is_broadcast_use => {
+                        reach_function(ctxt, state, fueled_f);
+                    }
+                    ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: _, expr: _, fun } => {
+                        reach_function(ctxt, state, fun);
                     }
                     _ => {}
                 }
@@ -431,6 +437,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 }
                 ReachedType::SpecFn(arity) => {
                     state.spec_fn_types.insert(*arity);
+                }
+                ReachedType::Array => {
+                    state.uses_array = true;
                 }
                 ReachedType::StrSlice => {
                     let module_path = crate::def::strslice_module_path(&ctxt.vstd_crate_name);
@@ -463,6 +472,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 traverse_generic_bounds(ctxt, state, &tr.x.typ_bounds, true);
                 traverse_generic_bounds(ctxt, state, &tr.x.assoc_typs_bounds, true);
             }
+            continue;
         }
         if let Some(i) = state.worklist_trait_impls.pop() {
             if let Some(trait_impl) = ctxt.trait_impl_map.get(&i) {
@@ -476,6 +486,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 traverse_generic_bounds(ctxt, state, &ti.x.typ_bounds, false);
                 crate::ast_visitor::map_trait_impl_visitor_env(&ti, state, &ft).unwrap();
             }
+            continue;
         }
         if let Some(a) = state.worklist_assoc_type_decls.pop() {
             let typs: Vec<ReachedType> = state.reached_types.iter().cloned().collect();
@@ -527,6 +538,14 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
         }
         break;
     }
+    assert!(state.worklist_functions.len() == 0);
+    assert!(state.worklist_reveal_groups.len() == 0);
+    assert!(state.worklist_types.len() == 0);
+    assert!(state.worklist_bound_traits.len() == 0);
+    assert!(state.worklist_trait_impls.len() == 0);
+    assert!(state.worklist_assoc_type_decls.len() == 0);
+    assert!(state.worklist_assoc_type_impls.len() == 0);
+    assert!(state.worklist_modules.len() == 0);
 }
 
 impl TraitX {
@@ -648,7 +667,7 @@ pub fn prune_krate_for_module_or_krate(
     current_crate: Option<&Krate>,
     module: Option<Path>,
     fun: Option<&Fun>,
-) -> (Krate, Vec<MonoTyp>, Vec<usize>, Vec<Fun>) {
+) -> (Krate, Vec<MonoTyp>, Vec<usize>, bool, Vec<Fun>) {
     assert!(module.is_some() != current_crate.is_some());
 
     let mut root_modules: HashSet<Path> = HashSet::new();
@@ -1062,5 +1081,5 @@ pub fn prune_krate_for_module_or_krate(
     let mut mono_abstract_datatypes: Vec<MonoTyp> =
         state.mono_abstract_datatypes.into_iter().collect();
     mono_abstract_datatypes.sort();
-    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, fndef_types)
+    (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, state.uses_array, fndef_types)
 }

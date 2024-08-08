@@ -49,6 +49,14 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
             let expr = Arc::new(ExprX::IfElse(expr1, expr2, expr3));
             f(&expr)
         }
+        ExprX::Array(es) => {
+            let mut exprs: Vec<Expr> = Vec::new();
+            for e in es.iter() {
+                exprs.push(map_expr_visitor(e, f));
+            }
+            let expr = Arc::new(ExprX::Array(Arc::new(exprs)));
+            f(&expr)
+        }
         ExprX::Bind(bind, e1) => {
             let bind = match &**bind {
                 BindX::Let(bs) => {

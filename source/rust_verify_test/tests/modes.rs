@@ -1474,6 +1474,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] empty_tuple_ghost verus_code! {
+        spec fn f() -> () { () }
+
+        fn test() {
+            let x = Ghost(());
+            let y = Tracked(());
+            assert(f() == ());
+            assert(x@ == ());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] old_is_spec_issue963 verus_code! {
         struct X { }
 

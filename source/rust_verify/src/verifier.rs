@@ -8,7 +8,7 @@ use crate::util::error;
 use crate::verus_items::VerusItems;
 use air::ast::AssertId;
 use air::ast::{Command, CommandX, Commands};
-use air::context::{QueryContext, ValidityResult};
+use air::context::{QueryContext, SmtSolver, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
 use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
@@ -242,12 +242,12 @@ pub struct BucketStats {
     /// total time to verify the bucket
     pub time_verify: Duration,
     /// total rlimit count for the bucket
-    pub rlimit_count: u64,
+    pub rlimit_count: Option<u64>,
 }
 
 pub struct FunctionSmtStats {
     pub smt_time: Duration,
-    pub rlimit_count: u64,
+    pub rlimit_count: Option<u64>,
 }
 
 pub struct Verifier {
@@ -257,6 +257,8 @@ pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
     pub count_errors: u64,
+    /// Functions that failed to verify
+    pub func_fails: HashSet<Fun>,
     pub args: Args,
     pub user_filter: Option<UserFilter>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
@@ -359,6 +361,8 @@ struct RunCommandQueriesResult {
     invalidity: bool,
     timed_out: bool,
     not_skipped: bool,
+    #[cfg(feature = "axiom-usage-info")]
+    used_axioms: Option<Vec<air::ast::Ident>>,
 }
 
 impl std::ops::Add for RunCommandQueriesResult {
@@ -369,6 +373,13 @@ impl std::ops::Add for RunCommandQueriesResult {
             invalidity: self.invalidity || rhs.invalidity,
             timed_out: self.timed_out || rhs.timed_out,
             not_skipped: self.not_skipped || rhs.not_skipped,
+            #[cfg(feature = "axiom-usage-info")]
+            used_axioms: match (self.used_axioms, rhs.used_axioms) {
+                (Some(u), None) => Some(u),
+                (None, Some(u)) => Some(u),
+                (None, None) => None,
+                (Some(_), Some(_)) => panic!("only the primary query should contain used_axioms"),
+            },
         }
     }
 }
@@ -376,7 +387,7 @@ impl std::ops::Add for RunCommandQueriesResult {
 struct VerifyBucketOut {
     time_smt_init: Duration,
     time_smt_run: Duration,
-    rlimit_count: u64,
+    rlimit_count: Option<u64>,
 }
 
 impl Verifier {
@@ -386,6 +397,7 @@ impl Verifier {
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
+            func_fails: HashSet::new(),
             args,
             user_filter: None,
             erasure_hints: None,
@@ -420,6 +432,7 @@ impl Verifier {
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
+            func_fails: HashSet::new(),
             args: self.args.clone(),
             user_filter: self.user_filter.clone(),
             erasure_hints: self.erasure_hints.clone(),
@@ -450,6 +463,7 @@ impl Verifier {
     pub fn merge(&mut self, other: Self) {
         self.count_verified += other.count_verified;
         self.count_errors += other.count_errors;
+        self.func_fails.extend(other.func_fails);
         self.time_vir += other.time_vir;
         self.time_vir_rust_to_vir += other.time_vir_rust_to_vir;
         self.bucket_stats.extend(other.bucket_stats);
@@ -529,7 +543,10 @@ impl Verifier {
     /// to validate user code.
     fn check_internal_result(result: ValidityResult) {
         match result {
-            ValidityResult::Valid => {}
+            #[cfg(feature = "axiom-usage-info")]
+            ValidityResult::Valid(air::context::UsageInfo::None) => {}
+            #[cfg(not(feature = "axiom-usage-info"))]
+            ValidityResult::Valid() => {}
             ValidityResult::TypeError(err) => {
                 util::PANIC_ON_DROP_VEC.store(false, std::sync::atomic::Ordering::SeqCst);
                 panic!("internal error: ill-typed AIR code: {}", err)
@@ -732,13 +749,29 @@ impl Verifier {
         let mut only_check_earlier = false;
         let mut invalidity = false;
         let mut timed_out = false;
+        #[cfg(feature = "axiom-usage-info")]
+        let mut used_axioms = None;
         loop {
             match result {
-                ValidityResult::Valid => {
+                #[cfg(not(feature = "axiom-usage-info"))]
+                ValidityResult::Valid() => {
                     if (is_check_valid && is_first_check && level == Some(MessageLevel::Error))
                         || is_singular
                     {
                         self.count_verified += 1;
+                    }
+                    break;
+                }
+                #[cfg(feature = "axiom-usage-info")]
+                ValidityResult::Valid(usage_info) => {
+                    if (is_check_valid && is_first_check && level == Some(MessageLevel::Error))
+                        || is_singular
+                    {
+                        self.count_verified += 1;
+
+                        if let air::context::UsageInfo::UsedAxioms(axioms) = usage_info {
+                            assert!(used_axioms.replace(axioms).is_none());
+                        }
                     }
                     break;
                 }
@@ -749,6 +782,7 @@ impl Verifier {
                 ValidityResult::Canceled => {
                     if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
+                        self.func_fails.insert(context.fun.clone());
                         invalidity = true;
                     }
                     if self.expand_flag {
@@ -793,6 +827,7 @@ impl Verifier {
 
                     if is_first_check && level == Some(MessageLevel::Error) {
                         self.count_errors += 1;
+                        self.func_fails.insert(context.fun.clone());
                         invalidity = true;
                         if let Some(hint) = hint_upon_failure.take() {
                             reporter.report_as(&hint.to_any(), MessageLevel::Note);
@@ -875,6 +910,8 @@ impl Verifier {
         }
 
         RunCommandQueriesResult {
+            #[cfg(feature = "axiom-usage-info")]
+            used_axioms,
             invalidity,
             timed_out,
             not_skipped: matches!(**command, CommandX::CheckValid(_)),
@@ -935,11 +972,18 @@ impl Verifier {
                 invalidity: false,
                 timed_out: false,
                 not_skipped: false,
+                #[cfg(feature = "axiom-usage-info")]
+                used_axioms: None,
             };
         }
 
-        let mut result =
-            RunCommandQueriesResult { invalidity: false, timed_out: false, not_skipped: false };
+        let mut result = RunCommandQueriesResult {
+            invalidity: false,
+            timed_out: false,
+            not_skipped: false,
+            #[cfg(feature = "axiom-usage-info")]
+            used_axioms: None,
+        };
         let CommandsWithContextX {
             context,
             commands,
@@ -1012,7 +1056,8 @@ impl Verifier {
         prelude_config: vir::prelude::PreludeConfig,
         profile_file_name: Option<&std::path::PathBuf>,
     ) -> Result<air::context::Context, VirErr> {
-        let mut air_context = air::context::Context::new(message_interface.clone());
+        let mut air_context =
+            air::context::Context::new(message_interface.clone(), self.args.solver);
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debugger);
         if let Some(profile_file_name) = profile_file_name {
@@ -1067,6 +1112,10 @@ impl Verifier {
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
+        #[cfg(feature = "axiom-usage-info")]
+        if self.args.broadcast_usage_info {
+            air_context.enable_usage_info();
+        }
 
         air_context.blank_line();
         air_context.comment("Prelude");
@@ -1102,6 +1151,7 @@ impl Verifier {
         context_counter: usize,
         span: &vir::messages::Span,
         profile_file_name: Option<&std::path::PathBuf>,
+        spinoff_reason: &str,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = self.new_air_context_with_prelude(
             message_interface.clone(),
@@ -1109,12 +1159,14 @@ impl Verifier {
             bucket_id,
             Some((function_path, context_counter)),
             is_rerun,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_file_name,
         )?;
 
         // Write the span of spun-off query
         air_context.comment(&span.as_string);
+        air_context.blank_line();
+        air_context.comment(&format!("query spun off because: {}", spinoff_reason));
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
@@ -1174,6 +1226,7 @@ impl Verifier {
                 }
             }
         }
+
         Ok(air_context)
     }
 
@@ -1181,7 +1234,8 @@ impl Verifier {
     fn verify_bucket(
         &mut self,
         reporter: &impl Diagnostics,
-        krate: &Krate,
+        krate: &vir::sst::KrateSst,
+        sst_map: vir::ast_to_sst_func::SstMap,
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
@@ -1209,16 +1263,22 @@ impl Verifier {
             bucket_id,
             None,
             false,
-            PreludeConfig { arch_word_bits: ctx.arch_word_bits },
+            PreludeConfig { arch_word_bits: ctx.arch_word_bits, solver: self.args.solver },
             profile_all_file_name.as_ref(),
         )?;
         if self.args.solver_version_check {
-            air_context.set_expected_solver_version(crate::consts::EXPECTED_Z3_VERSION.to_string());
+            air_context.set_expected_solver_version(match self.args.solver {
+                air::context::SmtSolver::Z3 => crate::consts::EXPECTED_Z3_VERSION.to_string(),
+                air::context::SmtSolver::Cvc5 => crate::consts::EXPECTED_CVC5_VERSION.to_string(),
+            });
         }
 
         let mut spunoff_time_smt_init = Duration::ZERO;
         let mut spunoff_time_smt_run = Duration::ZERO;
-        let mut spunoff_rlimit_count = 0;
+        let mut spunoff_rlimit_count: Option<u64> = match self.args.solver {
+            SmtSolver::Z3 => Some(0),
+            SmtSolver::Cvc5 => None,
+        };
 
         let module = &ctx.module_path();
         air_context.blank_line();
@@ -1286,11 +1346,8 @@ impl Verifier {
 
         // Declare the function symbols
         for function in &krate.functions {
-            ctx.fun = crate::commands::mk_fun_ctx(&function, false);
-            if !is_visible_to(&function.x.visibility, module) || function.x.attrs.is_decrease_by {
-                continue;
-            }
-            let commands = vir::func_to_air::func_name_to_air(ctx, reporter, &function)?;
+            ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
+            let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, function)?;
             let comment =
                 "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
             self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
@@ -1301,7 +1358,7 @@ impl Verifier {
         let function_decl_commands = Arc::new(function_decl_commands);
 
         let bucket = self.get_bucket(bucket_id);
-        let mut opgen = OpGenerator::new(ctx, krate, reporter, bucket.clone());
+        let mut opgen = OpGenerator::new(ctx, krate, sst_map, bucket.clone());
         let mut all_context_ops = vec![];
         while let Some(mut function_opgen) = opgen.next()? {
             let diagnostics_to_report: std::cell::RefCell<
@@ -1363,7 +1420,7 @@ impl Verifier {
                         commands_with_context_list,
                         snap_map,
                         profile_rerun,
-                        function_sst,
+                        func_check_sst,
                     } => {
                         let level = match query_op {
                             QueryOp::SpecTermination => MessageLevel::Error,
@@ -1382,7 +1439,11 @@ impl Verifier {
                         let mut any_timed_out = false;
                         let mut failed_assert_ids = vec![];
                         let mut func_curr_smt_time = Duration::ZERO;
-                        let mut func_curr_smt_rlimit_count = 0;
+
+                        let mut func_curr_smt_rlimit_count = match self.args.solver {
+                            air::context::SmtSolver::Z3 => Some(0),
+                            air::context::SmtSolver::Cvc5 => None,
+                        };
                         for cmds in commands_with_context_list.iter() {
                             if is_recommend && cmds.skip_recommends {
                                 continue;
@@ -1423,6 +1484,17 @@ impl Verifier {
                             };
 
                             let mut query_air_context = if do_spinoff {
+                                let spinoff_reason = if cmds.prover_choice
+                                    == vir::def::ProverChoice::Nonlinear
+                                {
+                                    "nonlinear"
+                                } else if cmds.prover_choice == vir::def::ProverChoice::BitVector {
+                                    "bitvector"
+                                } else if *profile_rerun {
+                                    "profile_rerun"
+                                } else {
+                                    "spinoff_all"
+                                };
                                 spinoff_z3_context = self.new_air_context_with_bucket_context(
                                     message_interface.clone(),
                                     function_opgen.ctx(),
@@ -1439,6 +1511,7 @@ impl Verifier {
                                     spinoff_context_counter,
                                     &cmds.context.span,
                                     profile_file_name.as_ref(),
+                                    spinoff_reason,
                                 )?;
                                 // for bitvector, only one query, no push/pop
                                 if cmds.prover_choice == vir::def::ProverChoice::BitVector {
@@ -1458,6 +1531,8 @@ impl Verifier {
                                 invalidity: command_invalidity,
                                 timed_out: command_timed_out,
                                 not_skipped: command_not_skipped,
+                                #[cfg(feature = "axiom-usage-info")]
+                                    used_axioms: command_used_axioms,
                             } = self.run_commands_queries(
                                 reporter,
                                 source_map,
@@ -1475,13 +1550,24 @@ impl Verifier {
                             );
                             func_curr_smt_time +=
                                 query_air_context.get_time().1 - iter_curr_smt_time;
-                            func_curr_smt_rlimit_count +=
-                                query_air_context.get_rlimit_count() - iter_curr_smt_rlimit_count;
+                            if let Some(func_curr_smt_rlimit_count) =
+                                &mut func_curr_smt_rlimit_count
+                            {
+                                *func_curr_smt_rlimit_count += query_air_context
+                                    .get_rlimit_count()
+                                    .expect("rlimit count in query context")
+                                    - iter_curr_smt_rlimit_count
+                                        .expect("rlimit count in query context");
+                            }
                             if do_spinoff {
                                 let (time_smt_init, time_smt_run) = query_air_context.get_time();
                                 spunoff_time_smt_init += time_smt_init;
                                 spunoff_time_smt_run += time_smt_run;
-                                spunoff_rlimit_count += query_air_context.get_rlimit_count();
+                                if let Some(spunoff_rlimit_count) = &mut spunoff_rlimit_count {
+                                    *spunoff_rlimit_count += query_air_context
+                                        .get_rlimit_count()
+                                        .expect("rlimit count in query context");
+                                }
                             }
                             if function.x.attrs.rlimit.is_some() {
                                 self.set_default_rlimit(&mut query_air_context);
@@ -1489,6 +1575,37 @@ impl Verifier {
 
                             any_invalid |= command_invalidity;
                             any_timed_out |= command_timed_out;
+
+                            #[cfg(feature = "axiom-usage-info")]
+                            if let Some(used_axioms) = command_used_axioms {
+                                if used_axioms.len() > 0 {
+                                    let axioms_list = used_axioms
+                                        .iter()
+                                        .map(|x| {
+                                            let funx = &function_opgen.ctx().fun_ident_map[x];
+                                            let is_reveal_group = krate
+                                                .reveal_groups
+                                                .iter()
+                                                .find(|g| &g.x.name == funx)
+                                                .is_some();
+                                            format!(
+                                                "  -{} {}",
+                                                if is_reveal_group { " (group)" } else { "" },
+                                                fun_as_friendly_rust_name(&funx,),
+                                            )
+                                        })
+                                        .collect::<Vec<String>>()
+                                        .join(",\n");
+                                    let msg = format!(
+                                        "{} used these broadcasted lemmas and broadcast groups:\n{}",
+                                        op.to_friendly_desc()
+                                            .unwrap_or("checking this function".to_owned()),
+                                        axioms_list,
+                                    );
+                                    reporter
+                                        .report(&vir::messages::note(&function.span, msg).to_any());
+                                }
+                            }
 
                             if let Some(profile_file_name) = profile_file_name {
                                 if command_not_skipped && query_air_context.check_valid_used() {
@@ -1578,7 +1695,7 @@ impl Verifier {
                                         commands_with_context_list.clone(),
                                         snap_map.clone(),
                                         function,
-                                        function_sst.clone(),
+                                        func_check_sst.clone(),
                                     );
                                     flush_diagnostics_to_report = true;
                                 }
@@ -1590,10 +1707,17 @@ impl Verifier {
                             let func_time =
                                 self.func_times.entry(bucket_id.clone()).or_insert(HashMap::new());
                             let func_stats = func_time.entry(function.x.name.clone()).or_insert(
-                                FunctionSmtStats { smt_time: Duration::ZERO, rlimit_count: 0 },
+                                FunctionSmtStats {
+                                    smt_time: Duration::ZERO,
+                                    rlimit_count: matches!(self.args.solver, SmtSolver::Z3)
+                                        .then(|| 0),
+                                },
                             );
                             func_stats.smt_time += func_curr_smt_time;
-                            func_stats.rlimit_count += func_curr_smt_rlimit_count;
+                            if let Some(rlimit_count) = &mut func_stats.rlimit_count {
+                                *rlimit_count += func_curr_smt_rlimit_count
+                                    .expect("current rlimit count should be present");
+                            }
                         }
 
                         if matches!(query_op, QueryOp::Body(Style::Normal)) {
@@ -1722,7 +1846,9 @@ impl Verifier {
         Ok(VerifyBucketOut {
             time_smt_init: time_smt_init + spunoff_time_smt_init,
             time_smt_run: time_smt_run + spunoff_time_smt_run,
-            rlimit_count: rlimit_count + spunoff_rlimit_count,
+            rlimit_count: rlimit_count.map(|rlimit_count| {
+                rlimit_count + spunoff_rlimit_count.expect("spunoff rlimit count should be present")
+            }),
         })
     }
 
@@ -1746,8 +1872,7 @@ impl Verifier {
             reporter
                 .report_now(&note_bare(format!("verifying {bucket_name}{functions_msg}")).to_any());
         }
-
-        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, fndef_types) =
+        let (pruned_krate, mono_abstract_datatypes, spec_fn_types, uses_array, fndef_types) =
             vir::prune::prune_krate_for_module_or_krate(
                 &krate,
                 &Arc::new(self.crate_name.clone().expect("crate_name")),
@@ -1767,6 +1892,7 @@ impl Verifier {
             module,
             mono_abstract_datatypes,
             spec_fn_types,
+            uses_array,
             fndef_types,
             self.args.debugger,
         )?;
@@ -1777,8 +1903,15 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &poly_krate, &self.args.log_args.vir_log_option);
         }
 
+        let (krate_sst, sst_map) = vir::ast_to_sst_crate::ast_to_sst_krate(
+            &mut ctx,
+            reporter,
+            &self.get_bucket(bucket_id).funs,
+            &poly_krate,
+        )?;
+
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
-            self.verify_bucket(reporter, &poly_krate, source_map, bucket_id, &mut ctx)?;
+            self.verify_bucket(reporter, &krate_sst, sst_map, source_map, bucket_id, &mut ctx)?;
 
         global_ctx = ctx.free();
 
@@ -1834,6 +1967,7 @@ impl Verifier {
             self.args.rlimit,
             Arc::new(std::sync::Mutex::new(None)),
             Arc::new(std::sync::Mutex::new(call_graph_log)),
+            self.args.solver,
             false,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
@@ -1848,12 +1982,11 @@ impl Verifier {
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
         // The 'user_filter' handles the filter provided on the command line
-        // (--verify-module, --verify-funciton, etc.)
+        // (--verify-module, --verify-function, etc.)
         // Whereas the 'buckets' are the way we group obligations for parallelizing
         // and context pruning.
         // Buckets usually fall along module boundaries, but the user can create
-        // more buckets using #[spinoff_prover] can create
-        // more buckets.
+        // more buckets using #[spinoff_prover].
         //
         // For example, suppose module M has functions a, b, c, d.
         // with a and b both marked spinoff_prover.
@@ -2417,7 +2550,6 @@ impl Verifier {
 
         let mut crate_names: Vec<String> = vec![crate_name.clone()];
         crate_names.extend(other_crate_names.into_iter());
-        let mut vir_crates: Vec<Krate> = other_vir_crates;
         // TODO vec![vir::builtins::builtin_krate(&self.air_no_span.clone().unwrap())];
 
         let erasure_info = ErasureInfo {
@@ -2456,7 +2588,8 @@ impl Verifier {
         // Convert HIR -> VIR
         let time1 = Instant::now();
         let (vir_crate, item_to_module_map) =
-            crate::rust_to_vir::crate_to_vir(&mut ctxt).map_err(map_err_diagnostics)?;
+            crate::rust_to_vir::crate_to_vir(&mut ctxt, &other_vir_crates)
+                .map_err(map_err_diagnostics)?;
 
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
@@ -2487,10 +2620,11 @@ impl Verifier {
         // - traits::demote_foreign_traits
         // - GlobalCtx::new
         // - well_formed::check_crate
+        let mut vir_crates: Vec<Krate> = other_vir_crates;
         vir_crates.push(vir_crate);
         let unpruned_crate =
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
-        let (vir_crate, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
+        let (vir_crate, _, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
             &Arc::new(crate_name.clone()),
             Some(&current_vir_crate),
@@ -2740,6 +2874,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         &spans,
                         self.verifier.erasure_hints.as_ref().expect("erasure_hints"),
                         self.verifier.item_to_module_map.as_ref().expect("item_to_module_map"),
+                        self.verifier.vir_crate.as_ref().expect("vir_crate should be initialized"),
                         lifetime_log_file,
                     )
                 };

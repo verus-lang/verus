@@ -6,10 +6,16 @@ use super::view::*;
 
 verus! {
 
+pub open spec fn array_view<T, const N: usize>(a: [T; N]) -> Seq<T> {
+    Seq::new(N as nat, |i: int| array_index(a, i))
+}
+
 impl<T, const N: usize> View for [T; N] {
     type V = Seq<T>;
 
-    spec fn view(&self) -> Seq<T>;
+    open spec fn view(&self) -> Seq<T> {
+        array_view(*self)
+    }
 }
 
 impl<T: DeepView, const N: usize> DeepView for [T; N] {
@@ -40,6 +46,16 @@ impl<T, const N: usize> ArrayAdditionalSpecFns<T> for [T; N] {
     }
 }
 
+// Automatically introduce a[0], ..., a[N - 1] into SMT context
+pub broadcast proof fn lemma_array_index<T, const N: usize>(a: [T; N], i: int)
+    requires
+        0 <= i < N,
+    ensures
+        #![trigger array_index(a, i)]
+        a[i] == array_view(a)[i],
+{
+}
+
 impl<T, const N: usize> ArrayAdditionalExecFns<T> for [T; N] {
     #[verifier::external_body]
     fn set(&mut self, idx: usize, t: T)
@@ -68,13 +84,6 @@ pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
         (#[trigger] ar@.len()) == N,
 {
     admit();
-}
-
-// Referenced by Verus' internal encoding for array literals
-#[doc(hidden)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_index")]
-pub open spec fn array_index<T, const N: usize>(ar: &[T; N], i: int) -> T {
-    ar.view().index(i)
 }
 
 pub open spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
@@ -133,6 +142,7 @@ pub fn array_fill_for_copy_types<T: Copy, const N: usize>(t: T) -> (res: [T; N])
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_array_axioms {
     array_len_matches_n,
+    lemma_array_index,
     axiom_spec_array_as_slice,
     axiom_spec_array_fill_for_copy_type,
 }

@@ -6,4 +6,5 @@ date: 2024-07-11
 type: external
 pdf: https://www.usenix.org/conference/osdi24/presentation/zhou
 code: https://github.com/microsoft/verismo
+award: Best Paper Award
 ---

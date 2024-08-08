@@ -10,7 +10,7 @@ layout: default
       Please see below for <a href="#publications">research publications</a> about and using Verus, 
       as well as <a href="#projects">projects</a> built using Verus.
       To add your work here, please open a pull request that adds a new file to the 
-      <a href="https://github.com/verus-lang/verus/tree/main/source/docs/projects">'source/docs/projects' directory</a>.
+      <a href="https://github.com/verus-lang/verus/tree/main/source/docs/publications-and-projects">'source/docs/publications-and-projects' directory</a>.
     </div>
 
     <div class="main relative card header">
@@ -46,6 +46,11 @@ layout: default
                   {{ project.venue }},
                 </div>
                 {{ project.date | date: "%B, %Y" }}
+                <br/>
+                {% if project.award %}
+                  <b> <a href="https://www.vecteezy.com/free-vector/award-symbol"><img style="vertical-align:middle" alt="Award icon from Vecteezy.com" src="award.jpg"/></a> 
+                  {{ project.award }}</b>
+                {% endif %}
             </li>
         {% endfor %}
 

@@ -43,6 +43,7 @@ const RUST_VERIFY_FILE_NAME: &str =
     if cfg!(target_os = "windows") { "rust_verify.exe" } else { "rust_verify" };
 
 const Z3_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\z3.exe" } else { "./z3" };
+const CVC5_FILE_NAME: &str = if cfg!(target_os = "windows") { ".\\cvc5.exe" } else { "./cvc5" };
 
 fn main() {
     match run() {
@@ -199,6 +200,18 @@ fn run() -> Result<std::process::ExitStatus, String> {
         }
     };
 
+    if std::env::var("VERUS_CVC5_PATH").ok().is_none() {
+        let mut maybe_cvc5_path = parent.join(CVC5_FILE_NAME);
+        if maybe_cvc5_path.exists() {
+            if !maybe_cvc5_path.is_absolute() {
+                maybe_cvc5_path = std::env::current_dir()
+                    .expect("working directory invalid")
+                    .join(maybe_cvc5_path);
+            }
+            cmd.env("VERUS_CVC5_PATH", &maybe_cvc5_path);
+        }
+    };
+
     let original_args = args.clone();
 
     let source_file = record::find_source_file(&args);
@@ -289,6 +302,11 @@ fn run() -> Result<std::process::ExitStatus, String> {
         .arg(verusroot_path.join(RUST_VERIFY_FILE_NAME))
         .args(&args)
         .stdin(std::process::Stdio::inherit());
+
+    // HOTFIX: On Windows, libraries are in the bin directory, not in the lib directory,
+    // so we currently need the old behavior of rustup of adding the bin directory to the PATH.
+    #[cfg(windows)]
+    cmd.env("RUSTUP_WINDOWS_PATH_ADD_BIN", "1");
 
     if !record && record_history_project_dirs.is_none() {
         match platform::exec(&mut cmd) {

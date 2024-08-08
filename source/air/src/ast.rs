@@ -36,6 +36,8 @@ pub enum UnaryOp {
     Not,
     BitNot,
     BitExtract(u32, u32),
+    BitZeroExtend(u32),
+    BitSignExtend(u32),
 }
 
 /// These are Z3 special relations x <= y that are documented at
@@ -77,11 +79,16 @@ pub enum BinaryOp {
     BitSub,
     BitMul,
     BitUDiv,
+    BitUMod,
     BitULt,
     BitUGt,
     BitULe,
     BitUGe,
-    BitUMod,
+    BitSLt,
+    BitSGt,
+    BitSLe,
+    BitSGe,
+    AShr,
     LShr,
     Shl,
     BitConcat,
@@ -144,6 +151,8 @@ pub enum ExprX {
     Binary(BinaryOp, Expr, Expr),
     Multi(MultiOp, Exprs),
     IfElse(Expr, Expr, Expr),
+    // (array t e0 ... en) creates a TypX::Fun mapping 0..n of type Int to e0..en (each of type t)
+    Array(Exprs),
     Bind(Bind, Expr),
     // Sometimes an axiom will have additional error messages. If an assert fails
     // and this axiom was relevant, then we append the error labels to the Message.
@@ -176,6 +185,12 @@ pub enum StmtX {
     Switch(Stmts),
 }
 
+#[derive(Debug)]
+pub struct Axiom {
+    pub named: Option<Ident>,
+    pub expr: Expr,
+}
+
 pub type Field = Binder<Typ>;
 pub type Fields = Binders<Typ>;
 pub type Variant = Binder<Fields>;
@@ -192,7 +207,7 @@ pub enum DeclX {
     Const(Ident, Typ),
     Fun(Ident, Typs, Typ),
     Var(Ident, Typ),
-    Axiom(Expr),
+    Axiom(Axiom),
 }
 
 pub type Query = Arc<QueryX>;

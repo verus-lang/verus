@@ -1,10 +1,10 @@
 use crate::attributes::{get_mode, VerifierAttrs};
 use crate::context::Context;
-use crate::rust_to_vir::ExternalInfo;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,
     mk_visibility_from_vis,
 };
+use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::err_span;
 use air::ast_util::str_ident;
@@ -12,9 +12,11 @@ use rustc_ast::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
 use rustc_middle::ty::{GenericArgsRef, TyKind};
 use rustc_span::Span;
+use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    CtorPrintStyle, DatatypeTransparency, DatatypeX, Ident, KrateX, Mode, Path, Variant, VirErr,
+    CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Fun, Function, Ident, KrateX, Mode,
+    Path, TypX, Variant, VirErr,
 };
 use vir::ast_util::ident_binder;
 use vir::def::field_ident_from_rust;
@@ -149,7 +151,6 @@ pub(crate) fn check_item_struct<'tcx>(
             external_info,
         );
     }
-    external_info.type_ids.insert(adt_def.did());
 
     let def_id = id.owner_id.to_def_id();
     let (typ_params, typ_bounds) = check_generics_bounds_with_polarity(
@@ -199,6 +200,7 @@ pub(crate) fn check_item_struct<'tcx>(
         variants,
         mode,
         ext_equal: vattrs.ext_equal,
+        user_defined_invariant_fn: None,
     };
     vir.datatypes.push(ctxt.spanned_new(span, datatype));
     Ok(())
@@ -228,10 +230,8 @@ pub(crate) fn check_item_enum<'tcx>(
     enum_def: &'tcx EnumDef<'tcx>,
     generics: &'tcx Generics<'tcx>,
     adt_def: rustc_middle::ty::AdtDef<'tcx>,
-    external_info: &mut ExternalInfo,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_enum());
-    external_info.type_ids.insert(adt_def.did());
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
@@ -288,6 +288,7 @@ pub(crate) fn check_item_enum<'tcx>(
             variants: Arc::new(variants),
             mode: get_mode(Mode::Exec, attrs),
             ext_equal: vattrs.ext_equal,
+            user_defined_invariant_fn: None,
         },
     ));
     Ok(())
@@ -304,10 +305,8 @@ pub(crate) fn check_item_union<'tcx>(
     variant_data: &'tcx VariantData<'tcx>,
     generics: &'tcx Generics<'tcx>,
     adt_def: rustc_middle::ty::AdtDef<'tcx>,
-    external_info: &mut ExternalInfo,
 ) -> Result<(), VirErr> {
     assert!(adt_def.is_union());
-    external_info.type_ids.insert(adt_def.did());
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
@@ -388,6 +387,7 @@ pub(crate) fn check_item_union<'tcx>(
             variants: Arc::new(variants),
             mode: get_mode(Mode::Exec, attrs),
             ext_equal: vattrs.ext_equal,
+            user_defined_invariant_fn: None,
         },
     ));
     Ok(())
@@ -452,13 +452,25 @@ pub(crate) fn check_item_external<'tcx>(
             "external_type_specification: the external type needs to be a struct or enum",
         );
     }
-    external_info.type_ids.insert(external_adt_def.did());
 
-    crate::rust_to_vir_base::check_item_external_generics(generics, substs_ref, false, span)?;
+    if crate::verus_items::get_rust_item(ctxt.tcx, external_adt_def.did())
+        == Some(crate::verus_items::RustItem::AllocGlobal)
+    {
+        // Don't need to add this to the krate, since we handle this as as a VIR Primitive.
+        // We only get this far so we can add ourselves to the type_ids list.
+        // note: seems that Global is added to lang_items in future version of Rust,
+        // which makes it easier to get the ID so we can simplify this.
+        external_info.add_type_id(external_adt_def.did());
+        return Ok(());
+    }
 
-    // Check that there are no trait bounds. This is unusual for datatypes, anyway,
-    // except for Sized, which is often implicit, so we allow it.
-    // It might be fine to just allow this anyway.
+    // Check that the type args match.
+
+    crate::rust_to_vir_base::check_item_external_generics(
+        None, generics, false, substs_ref, false, span,
+    )?;
+
+    // Check that the trait bounds match.
 
     let external_predicates = external_adt_def.predicates(ctxt.tcx);
     let proxy_predicates = proxy_adt_def.predicates(ctxt.tcx);
@@ -536,6 +548,7 @@ pub(crate) fn check_item_external<'tcx>(
             variants,
             mode,
             ext_equal: vattrs.ext_equal,
+            user_defined_invariant_fn: None,
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else if external_adt_def.is_struct() {
@@ -571,6 +584,7 @@ pub(crate) fn check_item_external<'tcx>(
             variants,
             mode,
             ext_equal: vattrs.ext_equal,
+            user_defined_invariant_fn: None,
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else {
@@ -619,8 +633,70 @@ pub(crate) fn check_item_external<'tcx>(
             variants,
             mode,
             ext_equal: vattrs.ext_equal,
+            user_defined_invariant_fn: None,
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
+    }
+
+    Ok(())
+}
+
+pub(crate) fn setup_type_invariants(krate: &mut KrateX) -> Result<(), VirErr> {
+    let mut path_to_idx_opt = None;
+    let mut get_datatype_idx = |dts: &Vec<Datatype>, path: &Path| {
+        if path_to_idx_opt.is_none() {
+            let mut path_to_idx = HashMap::<Path, usize>::new();
+            for (i, dt) in dts.iter().enumerate() {
+                path_to_idx.insert(dt.x.path.clone(), i);
+            }
+            path_to_idx_opt = Some(path_to_idx);
+        }
+        path_to_idx_opt.as_ref().unwrap().get(path).cloned()
+    };
+    let get_fun_span = |fs: &Vec<Function>, fun: &Fun| {
+        for f in fs.iter() {
+            if &f.x.name == fun {
+                return f.span.clone();
+            }
+        }
+        panic!("get_fun_span failed");
+    };
+
+    for f in krate.functions.iter() {
+        if f.x.attrs.is_type_invariant_fn {
+            if f.x.params.len() != 1 {
+                return Err(vir::messages::error(
+                    &f.span,
+                    "#[verifier::type_invariant]: expected 1 parameter",
+                ));
+            }
+            let param_typ = &f.x.params[0].x.typ;
+            let param_typ = vir::ast_util::undecorate_typ(param_typ);
+            if let TypX::Datatype(path, ..) = &*param_typ {
+                if let Some(idx) = get_datatype_idx(&krate.datatypes, path) {
+                    let mut dt = (*krate.datatypes[idx]).clone();
+                    if let Some(f2) = &dt.x.user_defined_invariant_fn {
+                        return Err(vir::messages::error(
+                            &f.span,
+                            "type_invariant: multiple type invariants defined for the same type",
+                        )
+                        .primary_span(&get_fun_span(&krate.functions, f2)));
+                    }
+                    dt.x.user_defined_invariant_fn = Some(f.x.name.clone());
+                    krate.datatypes[idx] = Arc::new(dt);
+                } else {
+                    return Err(vir::messages::error(
+                        &f.span,
+                        "type_invariant: expected parameter to be a datatype declared in this crate",
+                    ));
+                }
+            } else {
+                return Err(vir::messages::error(
+                    &f.span,
+                    "type_invariant: expected parameter to be a datatype declared in this crate",
+                ));
+            }
+        }
     }
 
     Ok(())

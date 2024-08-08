@@ -145,13 +145,14 @@ fn check_trigger_expr_arg(state: &State, expect_boxed: bool, arg: &Exp) -> Resul
             UnaryOp::Trigger(_)
             | UnaryOp::HeightTrigger
             | UnaryOp::CoerceMode { .. }
-            | UnaryOp::MustBeFinalized => {
+            | UnaryOp::MustBeFinalized
+            | UnaryOp::MustBeElaborated => {
                 // recurse inside coercions
                 check_trigger_expr_arg(state, expect_boxed, arg)
             }
             UnaryOp::Not
             | UnaryOp::Clip { .. }
-            | UnaryOp::BitNot
+            | UnaryOp::BitNot(_)
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
             | UnaryOp::CastToInteger
@@ -191,7 +192,8 @@ fn check_trigger_expr(
         | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
         | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
         | ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::HeightTrigger, _) => {}
-        ExpX::Binary(BinaryOp::Bitwise(_, _), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
+        ExpX::Binary(BinaryOp::Bitwise(_, _) | BinaryOp::ArrayIndex, _, _) => {}
+        ExpX::Unary(UnaryOp::BitNot(_), _) => {}
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
         _ => {
@@ -222,6 +224,9 @@ fn check_trigger_expr(
                     check_trigger_expr_arg(state, true, &b.a)?;
                 }
                 Ok(())
+            }
+            ExpX::ArrayLiteral(_) => {
+                Err(error(&exp.span, "triggers cannot contain array literals"))
             }
             ExpX::Loc(..) | ExpX::VarLoc(..) => Ok(()),
             ExpX::ExecFnByName(..) => Ok(()),
@@ -257,7 +262,7 @@ fn check_trigger_expr(
                 Err(error(&exp.span, "triggers cannot contain loop spec inference"))
             }
             ExpX::Unary(op, arg) => match op {
-                UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::BitNot => {
+                UnaryOp::StrLen | UnaryOp::StrIsAscii | UnaryOp::BitNot(_) => {
                     check_trigger_expr_arg(state, true, arg)
                 }
                 UnaryOp::Clip { .. } => check_trigger_expr_arg(state, false, arg),
@@ -265,6 +270,7 @@ fn check_trigger_expr(
                 | UnaryOp::HeightTrigger
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
+                | UnaryOp::MustBeElaborated
                 | UnaryOp::CastToInteger => Ok(()),
                 UnaryOp::InferSpecForLoopIter { .. } => {
                     Err(error(&exp.span, "triggers cannot contain loop spec inference"))
@@ -291,6 +297,11 @@ fn check_trigger_expr(
                     )),
                     Inequality(_) => Err(error(&exp.span, "triggers cannot contain inequalities")),
                     StrGetChar | Bitwise(..) => {
+                        check_trigger_expr_arg(state, true, arg1)?;
+                        check_trigger_expr_arg(state, true, arg2)
+                    }
+                    ArrayIndex => {
+                        crate::ast_visitor::map_typ_visitor_env(&arg1.typ, free_vars, &ft).unwrap();
                         check_trigger_expr_arg(state, true, arg1)?;
                         check_trigger_expr_arg(state, true, arg2)
                     }

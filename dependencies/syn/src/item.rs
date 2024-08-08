@@ -949,6 +949,7 @@ ast_struct! {
         pub ensures: Option<Ensures>,
         pub decreases: Option<SignatureDecreases>,
         pub invariants: Option<SignatureInvariants>,
+        pub unwind: Option<SignatureUnwind>,
     }
 }
 
@@ -977,6 +978,7 @@ impl Signature {
         self.ensures = None;
         self.decreases = None;
         self.invariants = None;
+        self.unwind = None;
     }
 }
 
@@ -1725,6 +1727,7 @@ pub mod parsing {
             let ensures: Option<Ensures> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
+            let unwind: Option<SignatureUnwind> = input.parse()?;
 
             Ok(Signature {
                 publish,
@@ -1747,6 +1750,7 @@ pub mod parsing {
                 ensures,
                 decreases,
                 invariants,
+                unwind,
             })
         }
     }

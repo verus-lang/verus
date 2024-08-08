@@ -29,8 +29,8 @@ use syn_verus::{
     InvariantNameSetList, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
     ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
     ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends,
-    Requires, ReturnType, Signature, SignatureDecreases, SignatureInvariants, Stmt, Token,
-    TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
+    Requires, ReturnType, Signature, SignatureDecreases, SignatureInvariants, SignatureUnwind,
+    Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -376,6 +376,7 @@ impl Visitor {
         let ensures = self.take_ghost(&mut sig.ensures);
         let decreases = self.take_ghost(&mut sig.decreases);
         let opens_invariants = self.take_ghost(&mut sig.invariants);
+        let unwind = self.take_ghost(&mut sig.unwind);
         // TODO: wrap specs inside ghost blocks
         if let Some(Requires { token, mut exprs }) = requires {
             if exprs.exprs.len() > 0 {
@@ -539,6 +540,24 @@ impl Visitor {
                         Semi { spans: [bracket_token.span] },
                     ));
                 }
+            }
+        }
+        if let Some(SignatureUnwind { token, when }) = unwind {
+            if let Some((when_token, mut when_expr)) = when {
+                self.visit_expr_mut(&mut when_expr);
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(builtin, when_expr.span() => #builtin::no_unwind_when(#when_expr)),
+                    ),
+                    Semi { spans: [when_token.span] },
+                ));
+            } else {
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(builtin, token.span() => #builtin::no_unwind()),
+                    ),
+                    Semi { spans: [token.span] },
+                ));
             }
         }
 
@@ -1369,14 +1388,22 @@ impl Visitor {
         let attrs = std::mem::take(&mut unary.attrs);
 
         let arg = &mut *unary.expr;
-        let (inner_attrs, n_inputs) = match &mut *arg {
+        let (inner_attrs, closure_input_types) = match &mut *arg {
             Expr::Closure(closure) => {
                 if closure.requires.is_some() || closure.ensures.is_some() {
                     let err = "quantifiers cannot have requires/ensures";
                     *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
                     return true;
                 }
-                (std::mem::take(&mut closure.inner_attrs), closure.inputs.len())
+                let closure_input_types = closure
+                    .inputs
+                    .iter()
+                    .map(|arg| match arg {
+                        Pat::Type(pat_ty) => Some(pat_ty.clone()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>();
+                (std::mem::take(&mut closure.inner_attrs), closure_input_types)
             }
             _ => panic!("expected closure for quantifier"),
         };
@@ -1424,10 +1451,22 @@ impl Visitor {
                 *expr = quote_verbatim!(builtin, span, attrs => #builtin::exists(#arg));
             }
             UnOp::Choose(..) => {
-                if n_inputs == 1 {
-                    *expr = quote_verbatim!(builtin, span, attrs => #builtin::choose(#arg));
-                } else {
-                    *expr = quote_verbatim!(builtin, span, attrs => #builtin::choose_tuple(#arg));
+                fn in_ty_to_ty_arg(arg: &Option<syn_verus::PatType>) -> TokenStream {
+                    match arg {
+                        Some(arg) => arg.ty.to_token_stream(),
+                        None => quote! { _ },
+                    }
+                }
+                match &closure_input_types[..] {
+                    [in_ty] => {
+                        let targ = in_ty_to_ty_arg(in_ty);
+                        *expr = quote_verbatim!(builtin, span, attrs => #builtin::choose::<#targ, _>(#arg));
+                    }
+                    _ => {
+                        let targs: Punctuated<TokenStream, syn_verus::token::Comma> =
+                            closure_input_types.iter().map(in_ty_to_ty_arg).collect();
+                        *expr = quote_verbatim!(builtin, span, attrs => #builtin::choose_tuple::<(#targs,), _>(#arg));
+                    }
                 }
             }
             _ => panic!("unary"),
@@ -2270,20 +2309,17 @@ impl VisitMut for Visitor {
                             let left = quote_spanned! { left.span() => (#left) };
                             *expr = quote_verbatim!(span, attrs => #left.spec_gt(#right));
                         }
-                        BinOp::Add(..) if !self.inside_bitvector => {
+                        BinOp::Add(..) => {
                             let left = quote_spanned! { left.span() => (#left) };
                             *expr = quote_verbatim!(span, attrs => #left.spec_add(#right));
                         }
-                        BinOp::Sub(..) if !self.inside_bitvector => {
+                        BinOp::Sub(..) => {
                             let left = quote_spanned! { left.span() => (#left) };
                             *expr = quote_verbatim!(span, attrs => #left.spec_sub(#right));
                         }
-                        BinOp::Mul(..) if !self.inside_bitvector => {
+                        BinOp::Mul(..) => {
                             let left = quote_spanned! { left.span() => (#left) };
                             *expr = quote_verbatim!(span, attrs => #left.spec_mul(#right));
-                        }
-                        BinOp::Add(..) | BinOp::Sub(..) | BinOp::Mul(..) => {
-                            *expr = quote_verbatim!(span, attrs => compile_error!("Inside bit-vector assertion, use `add` `sub` `mul` for fixed-bit operators, instead of `+` `-` `*`. (see the functions builtin::add(left, right), builtin::sub(left, right), and builtin::mul(left, right))"));
                         }
                         BinOp::Div(..) => {
                             let left = quote_spanned! { left.span() => (#left) };
