@@ -79,6 +79,8 @@ struct Ctxt {
     all_functions_in_each_module: HashMap<Path, Vec<Fun>>,
     all_reveal_groups_in_each_module: HashMap<Path, Vec<Fun>>,
     vstd_crate_name: Ident,
+    assert_by_compute: bool,
+    assert_by_compute_seq_funs: Vec<Fun>,
 }
 
 #[derive(Default)]
@@ -301,6 +303,13 @@ fn reach_methods(ctxt: &Ctxt, state: &mut State, method_impls: Vec<Fun>) {
     }
 }
 
+fn reach_seq_funs(ctxt: &Ctxt, state: &mut State) {
+    assert!(ctxt.assert_by_compute);
+    for f in ctxt.assert_by_compute_seq_funs.iter() {
+        reach_function(ctxt, state, f);
+    }
+}
+
 fn traverse_typ(ctxt: &Ctxt, state: &mut State, t: &Typ) {
     reach_typ(ctxt, state, t);
     match &**t {
@@ -368,6 +377,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     reach_function_via_reveal(ctxt, state, f_trig);
                 }
             }
+            if ctxt.assert_by_compute && crate::interpreter::is_sequence_fn(&f).is_some() {
+                reach_seq_funs(ctxt, state);
+            }
             // note: the types in typ_bounds are handled below by map_function_visitor_env
             traverse_generic_bounds(ctxt, state, &function.x.typ_bounds, false);
             let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
@@ -408,6 +420,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                     }
                     ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: _, expr: _, fun } => {
                         reach_function(ctxt, state, fun);
+                    }
+                    ExprX::ArrayLiteral(..) if ctxt.assert_by_compute => {
+                        reach_seq_funs(ctxt, state);
                     }
                     _ => {}
                 }
@@ -756,6 +771,7 @@ pub fn prune_krate_for_module_or_krate(
 
     // Collect all functions that our module reveals:
     let mut revealed_functions: HashSet<Fun> = HashSet::new();
+    let mut assert_by_compute = false;
     for f in &krate.functions {
         if is_root_function(f) {
             if let Some(body) = &f.x.body {
@@ -765,6 +781,9 @@ pub fn prune_krate_for_module_or_krate(
                         match &e.x {
                             ExprX::Fuel(path, fuel, _is_broadcast_use) if *fuel > 0 => {
                                 revealed_functions.insert(path.clone());
+                            }
+                            ExprX::AssertCompute(..) => {
+                                assert_by_compute = true;
                             }
                             _ => {}
                         }
@@ -887,6 +906,7 @@ pub fn prune_krate_for_module_or_krate(
     let mut all_reveal_groups_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     let mut fun_to_trigger_broadcasts: HashMap<Fun, Vec<Fun>> = HashMap::new();
     let mut fun_revealed_broadcast_map: HashMap<Fun, ReachBroadcastFunction> = HashMap::new();
+    let mut assert_by_compute_seq_funs: Vec<Fun> = Vec::new();
     for f in &functions {
         function_map.insert(f.x.name.clone(), f.clone());
         if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. }
@@ -916,6 +936,9 @@ pub fn prune_krate_for_module_or_krate(
             }
             let reach_broadcast = ReachBroadcastFunction { reach_triggers };
             fun_revealed_broadcast_map.insert(f.x.name.clone(), reach_broadcast);
+        }
+        if assert_by_compute && crate::interpreter::is_seq_to_sst_fun(&f.x.name) {
+            assert_by_compute_seq_funs.push(f.x.name.clone());
         }
     }
     for f in &reveal_groups {
@@ -1001,6 +1024,8 @@ pub fn prune_krate_for_module_or_krate(
         all_functions_in_each_module,
         all_reveal_groups_in_each_module,
         vstd_crate_name,
+        assert_by_compute,
+        assert_by_compute_seq_funs,
     };
     traverse_reachable(&ctxt, &mut state);
 
