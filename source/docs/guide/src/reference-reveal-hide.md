@@ -7,7 +7,8 @@ while solving. For a spec function `f`:
  - `hide(f)` directs Verus to treat `f` as an uninterpreted function without reasoning
    about its definition.
 
-Technically speaking, Verus creates axiom of the form `forall |x| f(x) == (definition of f(x))`.
+Technically speaking, Verus handles "function unfolding" by
+creating axioms of the form `forall |x| f(x) == (definition of f(x))`.
 Thus, `reveal(f)` makes this axiom accessible to the solver,
 while `hide(f)` makes this axiom inaccessible.
 
