@@ -497,7 +497,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     let mut decl_commands: Vec<Command> = Vec::new();
 
     // Requires
-    if function.x.has.has_requires {
+    if function.x.has.has_requires && !function.x.attrs.broadcast_forall_only {
         assert!(!is_trait_method_impl);
 
         let msg = match (function.x.mode, &function.x.attrs.custom_req_err) {
@@ -602,21 +602,25 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
         ens_typing_invs = vec![];
     }
 
-    let has_ens_pred = req_ens_to_air(
-        ctx,
-        &mut decl_commands,
-        &func_decl_sst.ens_pars,
-        &ens_typing_invs,
-        &func_decl_sst.enss,
-        &function.x.typ_params,
-        &Arc::new(ens_typs),
-        &prefix_ensures(&fun_to_air_ident(&function.x.name)),
-        &None,
-        function.x.attrs.integer_ring,
-        bool_typ(),
-        inherit_fn_ens,
-        None,
-    )?;
+    let has_ens_pred = if function.x.attrs.broadcast_forall_only {
+        false
+    } else {
+        req_ens_to_air(
+            ctx,
+            &mut decl_commands,
+            &func_decl_sst.ens_pars,
+            &ens_typing_invs,
+            &func_decl_sst.enss,
+            &function.x.typ_params,
+            &Arc::new(ens_typs),
+            &prefix_ensures(&fun_to_air_ident(&function.x.name)),
+            &None,
+            function.x.attrs.integer_ring,
+            bool_typ(),
+            inherit_fn_ens,
+            None,
+        )?
+    };
     ctx.funcs_with_ensure_predicate.insert(function.x.name.clone(), has_ens_pred);
 
     for exp in func_decl_sst.fndef_axioms.iter() {

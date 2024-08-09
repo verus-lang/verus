@@ -219,7 +219,7 @@ impl<A> Seq<A> {
         requires
             a.len() == 0,
         ensures
-            a + b == b,
+            #[trigger] (a + b) == b,
     {
         assert(a + b =~= b);
     }
@@ -228,7 +228,7 @@ impl<A> Seq<A> {
         requires
             b.len() == 0,
         ensures
-            a + b == a,
+            #[trigger] (a + b) == a,
     {
         assert(a + b =~= a);
     }

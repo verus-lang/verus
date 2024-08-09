@@ -671,7 +671,7 @@ pub enum SeqFn {
 
 // TODO: Make the matching here more robust to changes in vstd
 /// Identify sequence functions for which we provide custom interpretation
-fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
+pub(crate) fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     use SeqFn::*;
     match path_as_vstd_name(&fun.path).as_ref().map(|x| x.as_str()) {
         Some("seq::Seq::empty") => Some(Empty),
@@ -691,6 +691,13 @@ fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
 fn strs_to_idents(s: Vec<&str>) -> Idents {
     let idents = s.iter().map(|s| Arc::new(s.to_string())).collect();
     Arc::new(idents)
+}
+
+pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
+    match is_sequence_fn(fun) {
+        Some(SeqFn::Empty | SeqFn::Push) => true,
+        _ => false,
+    }
 }
 
 /// Convert an interpreter-internal sequence representation back into a

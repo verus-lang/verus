@@ -1061,7 +1061,7 @@ impl Visitor {
                                 #[allow(non_snake_case)]
                                 broadcast proof fn #lemma_ident()
                                     ensures
-                                        ::vstd::layout::size_of::<#type_>() == #size_lit,
+                                        #[trigger] ::vstd::layout::size_of::<#type_>() == #size_lit,
                                         #ensures_align
                                 {
                                 }

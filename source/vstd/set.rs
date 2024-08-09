@@ -156,7 +156,7 @@ pub broadcast proof fn axiom_set_empty<A>(a: A)
 /// A call to `Set::new` with the predicate `f` contains `a` if and only if `f(a)` is true.
 pub broadcast proof fn axiom_set_new<A>(f: spec_fn(A) -> bool, a: A)
     ensures
-        Set::new(f).contains(a) == f(a),
+        #[trigger] Set::new(f).contains(a) == f(a),
 {
     admit();
 }
@@ -175,7 +175,7 @@ pub broadcast proof fn axiom_set_insert_different<A>(s: Set<A>, a1: A, a2: A)
     requires
         a1 != a2,
     ensures
-        s.insert(a2).contains(a1) == s.contains(a1),
+        #[trigger] s.insert(a2).contains(a1) == s.contains(a1),
 {
     admit();
 }
@@ -205,7 +205,7 @@ pub broadcast proof fn axiom_set_remove_different<A>(s: Set<A>, a1: A, a2: A)
     requires
         a1 != a2,
     ensures
-        s.remove(a2).contains(a1) == s.contains(a1),
+        #[trigger] s.remove(a2).contains(a1) == s.contains(a1),
 {
     admit();
 }
@@ -214,7 +214,7 @@ pub broadcast proof fn axiom_set_remove_different<A>(s: Set<A>, a1: A, a2: A)
 /// `s1` contains `a` and/or `s2` contains `a`.
 pub broadcast proof fn axiom_set_union<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
-        s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
+        #[trigger] s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
 {
     admit();
 }
@@ -223,7 +223,7 @@ pub broadcast proof fn axiom_set_union<A>(s1: Set<A>, s2: Set<A>, a: A)
 /// both `s1` and `s2` contain `a`.
 pub broadcast proof fn axiom_set_intersect<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
-        s1.intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)),
+        #[trigger] s1.intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)),
 {
     admit();
 }
@@ -232,7 +232,7 @@ pub broadcast proof fn axiom_set_intersect<A>(s1: Set<A>, s2: Set<A>, a: A)
 /// `s1` contains `a` and `s2` does not contain `a`.
 pub broadcast proof fn axiom_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
-        s1.difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
+        #[trigger] s1.difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
 {
     admit();
 }
@@ -240,7 +240,7 @@ pub broadcast proof fn axiom_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A)
 /// The complement of set `s` contains element `a` if and only if `s` does not contain `a`.
 pub broadcast proof fn axiom_set_complement<A>(s: Set<A>, a: A)
     ensures
-        s.complement().contains(a) == !s.contains(a),
+        #[trigger] s.complement().contains(a) == !s.contains(a),
 {
     admit();
 }
@@ -271,7 +271,7 @@ pub broadcast proof fn axiom_mk_map_index<K, V>(s: Set<K>, f: spec_fn(K) -> V, k
     requires
         s.contains(key),
     ensures
-        s.mk_map(f)[key] == f(key),
+        #[trigger] s.mk_map(f)[key] == f(key),
 {
     admit();
 }

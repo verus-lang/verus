@@ -938,6 +938,8 @@ pub struct FunctionAttrsX {
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
     pub broadcast_forall: bool,
+    /// Only create global axioms; don't declare req/ens functions (set by prune.rs)
+    pub broadcast_forall_only: bool,
     /// In triggers_auto, don't use this function as a trigger
     pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails
