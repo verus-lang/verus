@@ -104,6 +104,9 @@ struct State {
     spec_fn_types: HashSet<usize>,
     uses_array: bool,
     fndef_types: HashSet<Fun>,
+    // broadcast functions that are also defined or called normally
+    // (not just used for the broadcast)
+    broadcast_functions_fully_reached: HashSet<Fun>,
 }
 
 fn typ_to_reached_type(typ: &Typ) -> ReachedType {
@@ -159,7 +162,10 @@ fn reach<A: std::hash::Hash + std::cmp::Eq + Clone>(
     }
 }
 
-fn reach_function(ctxt: &Ctxt, state: &mut State, name: &Fun) {
+fn reach_function_inner(ctxt: &Ctxt, state: &mut State, name: &Fun, fully_reach: bool) {
+    if fully_reach {
+        state.broadcast_functions_fully_reached.insert(name.clone());
+    }
     if ctxt.function_map.contains_key(name) {
         reach(&mut state.reached_functions, &mut state.worklist_functions, name);
     }
@@ -168,13 +174,17 @@ fn reach_function(ctxt: &Ctxt, state: &mut State, name: &Fun) {
     }
 }
 
+fn reach_function(ctxt: &Ctxt, state: &mut State, name: &Fun) {
+    reach_function_inner(ctxt, state, name, true);
+}
+
 fn reach_function_via_reveal(ctxt: &Ctxt, state: &mut State, name: &Fun) {
     if let Some(broadcast) = ctxt.fun_revealed_broadcast_map.get(name) {
         // "name" is a revealed broadcast function
         // If any triggers are reachable, reach the function
         if broadcast.reach_triggers.len() == 0 {
             // No triggers, so there's nothing to base pruning on, so we can't prune
-            reach_function(ctxt, state, name);
+            reach_function_inner(ctxt, state, name, false);
         }
         'try_next_trigger: for (trig_funs, trig_typs) in &broadcast.reach_triggers {
             for f in trig_funs {
@@ -188,7 +198,7 @@ fn reach_function_via_reveal(ctxt: &Ctxt, state: &mut State, name: &Fun) {
                 }
             }
             // We found a reachable trigger, so reach the whole broadcast function:
-            reach_function(ctxt, state, name);
+            reach_function_inner(ctxt, state, name, false);
             break;
         }
     } else {
@@ -1078,10 +1088,20 @@ pub fn prune_krate_for_module_or_krate(
         module.is_none() || modules.iter().filter(|m| m.x.reveals.is_some()).count() <= 1
     );
 
+    let set_broadcast_only = |mut f: Function| {
+        if f.x.attrs.broadcast_forall
+            && !state.broadcast_functions_fully_reached.contains(&f.x.name)
+        {
+            Arc::make_mut(&mut Arc::make_mut(&mut f).x.attrs).broadcast_forall_only = true;
+        }
+        f
+    };
+
     let kratex = KrateX {
         functions: functions
             .into_iter()
             .filter(|f| state.reached_functions.contains(&f.x.name))
+            .map(set_broadcast_only)
             .collect(),
         reveal_groups: reveal_groups
             .into_iter()
