@@ -12,6 +12,8 @@
 //! *  SPDX-License-Identifier: MIT
 //! *******************************************************************************/
 //! Declares helper lemmas and predicates for non-linear arithmetic
+#![cfg_attr(rustfmt, rustfmt::skip)]
+
 #[cfg(verus_keep_ghost)]
 use super::super::super::math::{add as add1, sub as sub1};
 use super::super::super::prelude::*;

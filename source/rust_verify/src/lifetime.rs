@@ -169,7 +169,7 @@ macro_rules! ldbg {
 }
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
-pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
+pub fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
     queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
         let hir = tcx.hir();
         let krate = hir.krate();
@@ -401,6 +401,8 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     let rustc_args = vec![LIFETIME_DRIVER_ARG, LifetimeFileLoader::FILENAME, "--error-format=json"];
 
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        // avoid warning about jobserver fd
+        .env_remove("CARGO_MAKEFLAGS")
         .args(&rustc_args[..])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

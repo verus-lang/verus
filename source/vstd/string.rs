@@ -1,5 +1,6 @@
 #![feature(rustc_attrs)]
 #![allow(unused_imports)]
+#![cfg_attr(rustfmt, rustfmt::skip)]
 
 #[cfg(feature = "alloc")]
 use alloc::string::{self, String, ToString};

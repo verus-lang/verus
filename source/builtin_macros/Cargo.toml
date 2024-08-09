@@ -13,3 +13,6 @@ synstructure = "0.12"
 syn = "1.0"
 syn_verus = { path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
 prettyplease_verus = { path="../../dependencies/prettyplease" }
+
+[package.metadata.verus]
+is-builtin-macros = true
