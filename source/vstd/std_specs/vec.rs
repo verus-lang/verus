@@ -235,9 +235,19 @@ pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
     vec.truncate(len)
 }
 
+pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
+    requires
+        0 <= i < v.len(),
+    ensures
+        #[trigger] (decreases_to!(v => v[i])),
+{
+    admit();
+}
+
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_vec_axioms {
     axiom_spec_len,
+    axiom_vec_index_decreases,
 }
 
 } // verus!

@@ -192,6 +192,24 @@ pub broadcast proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
     admit();
 }
 
+pub proof fn axiom_seq_len_decreases<A, B>(s1: Seq<A>, s2: Seq<B>)
+    requires
+        s2.len() < s1.len(),
+    ensures
+        decreases_to!(s1 => s2),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_seq_subrange_decreases<A>(s: Seq<A>, i: int, j: int)
+    requires
+        s.subrange(i, j).len() < s.len(),
+    ensures
+        #[trigger] (decreases_to!(s => s.subrange(i, j))),
+{
+    axiom_seq_len_decreases(s, s.subrange(i, j));
+}
+
 pub broadcast proof fn axiom_seq_empty<A>()
     ensures
         #[trigger] Seq::<A>::empty().len() == 0,
@@ -336,6 +354,7 @@ pub broadcast proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_seq_axioms {
     axiom_seq_index_decreases,
+    axiom_seq_subrange_decreases,
     axiom_seq_empty,
     axiom_seq_new_len,
     axiom_seq_new_index,
