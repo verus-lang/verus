@@ -31,7 +31,7 @@ use core::hash::{BuildHasher, Hash, Hasher};
 use core::option::Option;
 use core::option::Option::None;
 use std::collections::hash_map::{DefaultHasher, RandomState};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 verus! {
 
@@ -428,6 +428,234 @@ pub fn ex_hash_map_clear<Key, Value, S>(m: &mut HashMap<Key, Value, S>)
     m.clear()
 }
 
+// We now specify the behavior of `HashSet`.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(Key)]
+#[verifier::reject_recursive_types(S)]
+pub struct ExHashSet<Key, S>(HashSet<Key, S>);
+
+impl<Key, S> View for HashSet<Key, S> {
+    type V = Set<Key>;
+
+    #[verifier::external_body]
+    closed spec fn view(&self) -> Set<Key>;
+}
+
+pub open spec fn spec_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> usize;
+
+pub broadcast proof fn axiom_spec_hash_set_len<Key, S>(m: &HashSet<Key, S>)
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> #[trigger] spec_hash_set_len(m)
+            == m@.len(),
+{
+    admit();
+}
+
+#[verifier::external_fn_specification]
+#[verifier::when_used_as_spec(spec_hash_set_len)]
+pub fn ex_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> (len: usize)
+    ensures
+        len == spec_hash_set_len(m),
+{
+    m.len()
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_new<Key>() -> (m: HashSet<Key, RandomState>)
+    ensures
+        m@ == Set::<Key>::empty(),
+{
+    HashSet::<Key>::new()
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_with_capacity<Key>(capacity: usize) -> (m: HashSet<Key, RandomState>)
+    ensures
+        m@ == Set::<Key>::empty(),
+{
+    HashSet::<Key>::with_capacity(capacity)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_reserve<Key, S>(m: &mut HashSet<Key, S>, additional: usize) where
+    Key: Eq + Hash,
+    S: BuildHasher,
+
+    ensures
+        m@ == old(m)@,
+{
+    m.reserve(additional)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_insert<Key, S>(m: &mut HashSet<Key, S>, k: Key) -> (result: bool) where
+    Key: Eq + Hash,
+    S: BuildHasher,
+
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+            &&& m@ == old(m)@.insert(k)
+            &&& match result {
+                true => old(m)@.contains(k),
+                false => !old(m)@.contains(k),
+            }
+        },
+{
+    m.insert(k)
+}
+
+// The specification for `contains` has a parameter `key: &Q`
+// where you'd expect to find `key: &Key`. This allows for the case
+// that `Key` can be borrowed as something other than `&Key`. For
+// instance, `Box<u32>` can be borrowed as `&u32` and `String` can be
+// borrowed as `&str`, so in those cases `Q` would be `u32` and `str`
+// respectively.
+// To deal with this, we have a specification function that opaquely
+// specifies what it means for a map to contain a borrowed key of type
+// `&Q`. And the postcondition of `contains` just says that its
+// result matches the output of that specification function. But this
+// isn't very helpful by itself, since there's no body to that
+// specification function. So we have special-case axioms that say
+// what this means in two important circumstances: (1) `Key = Q` and
+// (2) `Key = Box<Q>`.
+pub spec fn sets_contains_borrowed_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q) -> bool;
+
+pub broadcast proof fn axiom_sets_contains_deref_key<Q>(m: Set<Q>, k: &Q)
+    ensures
+        #[trigger] sets_contains_borrowed_key::<Q, Q>(m, k) <==> m.contains(*k),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_sets_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
+    ensures
+        #[trigger] sets_contains_borrowed_key::<Box<Q>, Q>(m, k) <==> m.contains(Box::new(*k)),
+{
+    admit();
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_contains<Key, S, Q>(m: &HashSet<Key, S>, k: &Q) -> (result: bool) where
+    Key: Borrow<Q> + Hash + Eq,
+    Q: Hash + Eq + ?Sized,
+    S: BuildHasher,
+
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result
+            == sets_contains_borrowed_key(m@, k),
+{
+    m.contains(k)
+}
+
+// The specification for `get` has a parameter `key: &Q` where you'd
+// expect to find `key: &Key`. This allows for the case that `Key` can
+// be borrowed as something other than `&Key`. For instance,
+// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
+// as `&str`, so in those cases `Q` would be `u32` and `str`
+// respectively.
+// To deal with this, we have a specification function that opaquely
+// specifies what it means for a map to map a borrowed key of type
+// `&Q` to a certain value. And the postcondition of `get` says that
+// its result matches the output of that specification function. (It
+// also says that its result corresponds to the output of
+// `contains_borrowed_key`, discussed above.) But this isn't very
+// helpful by itself, since there's no body to that specification
+// function. So we have special-case axioms that say what this means
+// in two important circumstances: (1) `Key = Q` and (2) `Key =
+// Box<Q>`.
+pub spec fn sets_borrowed_key_to_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q, v: &Key) -> bool;
+
+pub broadcast proof fn axiom_sets_deref_key_to_value<Q>(m: Set<Q>, k: &Q, v: &Q)
+    ensures
+        #[trigger] sets_borrowed_key_to_key::<Q, Q>(m, k, v) <==> m.contains(*k) && k == v,
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_sets_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &Box<Q>)
+    ensures
+        #[trigger] sets_borrowed_key_to_key::<Box<Q>, Q>(m, q, v) <==> (m.contains(*v) && Box::new(
+            *q,
+        ) == v),
+{
+    admit();
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_get<'a, Key, S, Q>(m: &'a HashSet<Key, S>, k: &Q) -> (result: Option<
+    &'a Key,
+>) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
+            Some(v) => sets_borrowed_key_to_key(m@, k, v),
+            None => !sets_contains_borrowed_key(m@, k),
+        },
+{
+    m.get(k)
+}
+
+// The specification for `remove` has a parameter `key: &Q` where
+// you'd expect to find `key: &Key`. This allows for the case that
+// `Key` can be borrowed as something other than `&Key`. For instance,
+// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
+// as `&str`, so in those cases `Q` would be `u32` and `str`
+// respectively. To deal with this, we have a specification function
+// that opaquely specifies what it means for two maps to be related by
+// a remove of a certain `&Q`. And the postcondition of `remove` says
+// that `old(self)@` and `self@` satisfy that relationship. (It also
+// says that its result corresponds to the output of
+// `contains_borrowed_key` and `maps_borrowed_key_to_value`, discussed
+// above.) But this isn't very helpful by itself, since there's no
+// body to that specification function. So we have special-case axioms
+// that say what this means in two important circumstances: (1) `Key =
+// Q` and (2) `Key = Box<Q>`.
+pub spec fn sets_borrowed_key_removed<Key, Q: ?Sized>(
+    old_m: Set<Key>,
+    new_m: Set<Key>,
+    k: &Q,
+) -> bool;
+
+pub broadcast proof fn axiom_sets_deref_key_removed<Q>(old_m: Set<Q>, new_m: Set<Q>, k: &Q)
+    ensures
+        #[trigger] sets_borrowed_key_removed::<Q, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
+            *k,
+        ),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_sets_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: Set<Box<Q>>, q: &Q)
+    ensures
+        #[trigger] sets_borrowed_key_removed::<Box<Q>, Q>(old_m, new_m, q) <==> new_m
+            == old_m.remove(Box::new(*q)),
+{
+    admit();
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_remove<Key, S, Q>(m: &mut HashSet<Key, S>, k: &Q) -> (result: bool) where
+    Key: Borrow<Q> + Hash + Eq,
+    Q: Hash + Eq + ?Sized,
+    S: BuildHasher,
+
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+            &&& sets_borrowed_key_removed(old(m)@, m@, k)
+            &&& result == sets_contains_borrowed_key(old(m)@, k)
+        },
+{
+    m.remove(k)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_clear<Key, S>(m: &mut HashSet<Key, S>)
+    ensures
+        m@ == Set::<Key>::empty(),
+{
+    m.clear()
+}
+
 #[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_hash_axioms {
     axiom_box_key_removed,
@@ -439,6 +667,13 @@ pub broadcast group group_hash_axioms {
     axiom_primitive_types_obey_hash_table_key_model,
     axiom_random_state_builds_valid_hashers,
     axiom_spec_hash_map_len,
+    axiom_sets_box_key_removed,
+    axiom_sets_contains_deref_key,
+    axiom_sets_contains_box,
+    axiom_sets_deref_key_removed,
+    axiom_sets_deref_key_to_value,
+    axiom_sets_box_key_to_value,
+    axiom_spec_hash_set_len,
 }
 
 } // verus!
