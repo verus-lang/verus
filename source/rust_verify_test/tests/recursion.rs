@@ -1994,13 +1994,13 @@ test_verify_one_file! {
             vbad(v) // FAILS
         }
 
-        struct X { 
+        struct X {
             y: Seq<X>,
         }
 
         proof fn bad() {
             let x0 = X { y: seq![] };
-            let t = seq![X { y: seq![ x0, x0 ] }]; 
+            let t = seq![X { y: seq![ x0, x0 ] }];
             assert(decreases_to!(t => t[0]));
             assert(decreases_to!(t[0] => t[0].y));
 
