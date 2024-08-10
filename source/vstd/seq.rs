@@ -192,9 +192,12 @@ pub broadcast proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
     admit();
 }
 
-pub proof fn axiom_seq_len_decreases<A, B>(s1: Seq<A>, s2: Seq<B>)
+pub proof fn axiom_seq_len_decreases<A>(s1: Seq<A>, s2: Seq<A>)
     requires
         s2.len() < s1.len(),
+        forall|i2: int|
+            0 <= i2 < s2.len() && #[trigger] trigger(s2[i2]) ==> exists|i1: int|
+                0 <= i1 < s1.len() && s1[i1] == s2[i2],
     ensures
         decreases_to!(s1 => s2),
 {
@@ -203,11 +206,19 @@ pub proof fn axiom_seq_len_decreases<A, B>(s1: Seq<A>, s2: Seq<B>)
 
 pub broadcast proof fn axiom_seq_subrange_decreases<A>(s: Seq<A>, i: int, j: int)
     requires
+        0 <= i <= j <= s.len(),
         s.subrange(i, j).len() < s.len(),
     ensures
         #[trigger] (decreases_to!(s => s.subrange(i, j))),
 {
-    axiom_seq_len_decreases(s, s.subrange(i, j));
+    broadcast use axiom_seq_subrange_len, axiom_seq_subrange_index;
+
+    let s2 = s.subrange(i, j);
+    assert forall|i2: int| 0 <= i2 < s2.len() && #[trigger] trigger(s2[i2]) implies exists|i1: int|
+        0 <= i1 < s.len() && s[i1] == s2[i2] by {
+        assert(s[i + i2] == s2[i2]);
+    }
+    axiom_seq_len_decreases(s, s2);
 }
 
 pub broadcast proof fn axiom_seq_empty<A>()
