@@ -30,6 +30,7 @@ pub enum Node {
     Datatype(Path),
     Trait(Path),
     TraitImpl(ImplPath),
+    TraitReqEns(ImplPath, bool),
     ModuleReveal(Path),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
@@ -414,11 +415,27 @@ pub(crate) fn expand_call_graph(
     }
 
     // Add D: T --> f and f --> T where f is one of D's methods that implements T
+    // Also add ReqEns(D: T, true) --> f --> ReqEns(D: T, false) to make T's requires/ensures
+    // as concrete as possible
     if let FunctionKind::TraitMethodImpl { trait_path, impl_path, .. } = function.x.kind.clone() {
         let t_node = Node::Trait(trait_path.clone());
         let impl_node = Node::TraitImpl(ImplPath::TraitImplPath(impl_path.clone()));
+        let req_ens_node_t = Node::TraitReqEns(ImplPath::TraitImplPath(impl_path.clone()), true);
+        let req_ens_node_f = Node::TraitReqEns(ImplPath::TraitImplPath(impl_path.clone()), false);
         call_graph.add_edge(impl_node, f_node.clone());
         call_graph.add_edge(f_node.clone(), t_node);
+        // There's a special case for requires/ensures of f, because these requires/ensures
+        // appear in the trait T, not in the implementation D: T.
+        // If we didn't extra edges for this case, the calls in requires/ensures
+        // might end up uninterpreted in the SMT encoding (which would be sound, but incomplete):
+        call_graph.add_edge(f_node.clone(), req_ens_node_f);
+        if function.x.mode == crate::ast::Mode::Spec {
+            // req_ens_node_t represents the spec functions defined by D: T;
+            // these spec functions may be useful for proving requires and ensures
+            // of other functions f' who depend on D: T:
+            // f' --> TraitReqEns(D': T' for f', false) --> TraitReqEns(D: T for f, true) --> f
+            call_graph.add_edge(req_ens_node_t, f_node.clone());
+        }
     }
 
     // Add f --> T for any function f with "where ...: T(...)"
