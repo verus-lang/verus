@@ -76,10 +76,12 @@ pub struct PPtr(pub usize);
 pub tracked struct PointsTo<V> {
     points_to: raw_ptr::PointsTo<V>,
     exposed: raw_ptr::IsExposed,
-    //dealloc: raw_ptr::Dealloc,
+    dealloc: Option<raw_ptr::Dealloc>,
 }
 
-broadcast use super::raw_ptr::group_raw_ptr_axioms;
+broadcast use super::raw_ptr::group_raw_ptr_axioms,
+    super::set_lib::group_set_lib_axioms,
+    super::set::group_set_axioms;
 
 impl PPtr {
     /// Use `addr` instead
@@ -134,6 +136,19 @@ impl<V> PointsTo<V> {
     pub closed spec fn wf(self) -> bool {
         &&& self.points_to.ptr()@.metadata == Metadata::Thin
         &&& self.points_to.ptr()@.provenance == self.exposed.provenance()
+        &&& match self.dealloc {
+            Some(dealloc) => {
+                &&& dealloc.addr() == self.points_to.ptr().addr()
+                &&& dealloc.size() == size_of::<V>()
+                &&& dealloc.align() == align_of::<V>()
+                &&& dealloc.provenance() == self.points_to.ptr()@.provenance
+                &&& size_of::<V>() > 0
+            }
+            None => {
+                size_of::<V>() == 0
+            }
+        }
+        &&& self.points_to.ptr().addr() != 0
     }
 
     pub closed spec fn opt_value(&self) -> MemContents<V> {
@@ -151,7 +166,9 @@ impl<V> PointsTo<V> {
     }
 
     #[verifier::inline]
-    pub open spec fn value(&self) -> V {
+    pub open spec fn value(&self) -> V
+        recommends self.is_init()
+    {
         self.opt_value().value()
     }
 
@@ -159,7 +176,6 @@ impl<V> PointsTo<V> {
         requires self.wf(),
         ensures self.addr() != 0,
     {
-        self.points_to.is_nonnull();
     }
 
     pub proof fn leak_contents(tracked &mut self)
@@ -207,6 +223,94 @@ impl Clone for PPtr {
 impl Copy for PPtr { }
 
 impl PPtr {
+    /// Allocates heap memory for type `V`, leaving it uninitialized.
+    pub fn empty<V>() -> (pt: (PPtr, Tracked<PointsTo<V>>))
+        ensures
+            pt.1@.wf(),
+            pt.1@.pptr() == pt.0,
+            pt.1@.is_uninit(),
+        opens_invariants none
+    {
+        layout_for_type_is_valid::<V>();
+        if core::mem::size_of::<V>() != 0 {
+            let (p, Tracked(points_to_raw), Tracked(dealloc)) =
+                allocate(core::mem::size_of::<V>(), core::mem::align_of::<V>());
+            let Tracked(exposed) = expose_provenance(p);
+            let tracked points_to = points_to_raw.into_typed::<V>(p.addr());
+            proof { points_to.is_nonnull(); }
+            let tracked pt = PointsTo { points_to, exposed, dealloc: Some(dealloc) };
+            let pptr = PPtr(p.addr());
+
+            return (pptr, Tracked(pt));
+        } else {
+            let p = core::mem::align_of::<V>();
+            assert(p % p == 0) by(nonlinear_arith) requires p != 0;
+            let tracked emp = PointsToRaw::empty(Provenance::null());
+            let tracked points_to = emp.into_typed(p);
+            let tracked pt = PointsTo { points_to, exposed: IsExposed::null(), dealloc: None };
+            let pptr = PPtr(p);
+
+            return (pptr, Tracked(pt));
+        }
+    }
+
+    /// Allocates heap memory for type `V`, leaving it initialized
+    /// with the given value `v`.
+    pub fn new<V>(v: V) -> (pt: (PPtr, Tracked<PointsTo<V>>))
+        ensures
+            pt.1@.wf(),
+            pt.1@.pptr() == pt.0,
+            pt.1@.opt_value() == MemContents::Init(v)
+        opens_invariants none
+    {
+        let (p, Tracked(mut pt)) = PPtr::empty::<V>();
+        p.put(Tracked(&mut pt), v);
+        (p, Tracked(pt))
+    }
+
+    /// Free the memory pointed to be `perm`.
+    /// Requires the memory to be uninitialized.
+    ///
+    /// This consumes `perm`, since it will no longer be safe to access
+    /// that memory location.
+    #[verifier::external_body]
+    pub fn free<V>(self, Tracked(perm): Tracked<PointsTo<V>>)
+        requires
+            perm.wf(),
+            perm.pptr() == self,
+            perm.is_uninit(),
+        opens_invariants none
+    {
+        if core::mem::size_of::<V>() != 0 {
+            let ptr: *mut u8 = with_exposed_provenance(self.0, Tracked(perm.exposed));
+            let tracked PointsTo { points_to, dealloc: dea, exposed } = perm;
+            let tracked points_to_raw = points_to.into_raw();
+            deallocate(ptr, core::mem::size_of::<V>(), core::mem::align_of::<V>(),
+                Tracked(points_to_raw), Tracked(dea.tracked_unwrap()));
+        }
+    }
+
+    /// Free the memory pointed to be `perm` and return the
+    /// value that was previously there.
+    /// Requires the memory to be initialized.
+    /// This consumes the [`PointsTo`] token, since the user is giving up
+    /// access to the memory by freeing it.
+    #[inline(always)]
+    pub fn into_inner<V>(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
+        requires
+            perm.wf(),
+            perm.pptr() == self,
+            perm.is_init(),
+        ensures
+            v == perm.value()
+        opens_invariants none
+    {
+        let tracked mut perm = perm;
+        let v = self.take(Tracked(&mut perm));
+        self.free::<V>(Tracked(perm));
+        v
+    }
+
     /// Moves `v` into the location pointed to by the pointer `self`.
     /// Requires the memory to be uninitialized, and leaves it initialized.
     ///
