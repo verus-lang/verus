@@ -675,6 +675,7 @@ impl<T> PAtomicPtr<T> {
             perm.view().value@.provenance == old(perm).view().value@.provenance,
             perm.view().value@.metadata == old(perm).view().value@.metadata,
         opens_invariants none
+        no_unwind
     {
         return self.ato.fetch_and(n, Ordering::SeqCst);
     }
@@ -691,6 +692,7 @@ impl<T> PAtomicPtr<T> {
             perm.view().value@.provenance == old(perm).view().value@.provenance,
             perm.view().value@.metadata == old(perm).view().value@.metadata,
         opens_invariants none
+        no_unwind
     {
         return self.ato.fetch_xor(n, Ordering::SeqCst);
     }
@@ -707,6 +709,7 @@ impl<T> PAtomicPtr<T> {
             perm.view().value@.provenance == old(perm).view().value@.provenance,
             perm.view().value@.metadata == old(perm).view().value@.metadata,
         opens_invariants none
+        no_unwind
     {
         return self.ato.fetch_or(n, Ordering::SeqCst);
     }
