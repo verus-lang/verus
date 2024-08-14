@@ -46,14 +46,13 @@ impl Provenance {
     pub spec fn null() -> Self;
 }
 
-// Metadata
-//
-// For thin pointers (i.e., when T: Sized), the metadata is ()
-// For slices, str, and dyn types this is nontrivial
-// See: https://doc.rust-lang.org/std/ptr/trait.Pointee.html
-//
-// TODO flesh out the metadata system for working with DSTs
-// It may make sense to use <T as Pointee>::Metadata directly.
+/// Metadata
+///
+/// For thin pointers (i.e., when T: Sized), the metadata is ()
+/// For slices, str, and dyn types this is nontrivial
+/// See: https://doc.rust-lang.org/std/ptr/trait.Pointee.html
+///
+/// TODO: This will eventually be replaced with <T as Pointee>::Metadata.
 #[verifier::external_body]
 pub ghost struct DynMetadata {}
 
@@ -163,6 +162,18 @@ impl<T> PointsTo<T> {
         ensures
             self.ptr() == old(self).ptr(),
             self.is_uninit()
+    {
+        unimplemented!();
+    }
+
+    /// Note: If both S and T are non-zero-sized, then this implies the pointers
+    /// have distinct addresses.
+    #[verifier::external_body]
+    pub proof fn is_disjoint<S>(&mut self, other: &PointsTo<S>)
+        ensures 
+            *old(self) == *self,
+            self.ptr() as int + size_of::<T>() <= other.ptr() as int
+                || other.ptr() as int + size_of::<S>() <= self.ptr() as int
     {
         unimplemented!();
     }
@@ -313,6 +324,7 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
         perm.ptr() == ptr,
         perm.opt_value() == MemContents::Init(v),
     opens_invariants none
+    no_unwind
 {
     unsafe {
         core::ptr::write(ptr, v);
@@ -332,6 +344,7 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
         perm.is_uninit(),
         v == old(perm).value(),
     opens_invariants none
+    no_unwind
 {
     unsafe { core::ptr::read(ptr) }
 }
@@ -345,6 +358,8 @@ pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T
         perm.is_init(),
     ensures
         v == perm.value(),
+    opens_invariants none
+    no_unwind
 {
     unsafe { &*ptr }
 }
@@ -440,6 +455,8 @@ impl IsExposed {
 pub fn expose_provenance<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>)
     ensures
         provenance@@ == m@.provenance,
+    opens_invariants none
+    no_unwind
 {
     let _ = m as usize;
     Tracked::assume_new()
@@ -451,6 +468,8 @@ pub fn with_exposed_provenance<T: Sized>(addr: usize, Tracked(provenance): Track
         p == ptr_mut_from_data::<T>(
             PtrData { addr: addr, provenance: provenance@, metadata: Metadata::Thin },
         ),
+    opens_invariants none
+    no_unwind
 {
     addr as *mut T
 }
