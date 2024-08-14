@@ -658,7 +658,12 @@ pub(crate) fn check_item_fn<'tcx>(
             decl,
             span: _,
         } => {
-            unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
+            if mode != Mode::Exec && *unsafety != Unsafety::Normal {
+                return err_span(
+                    sig.span,
+                    format!("'unsafe' only makes sense on exec-mode functions"),
+                );
+            }
             check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?
         }
     };

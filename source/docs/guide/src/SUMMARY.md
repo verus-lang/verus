@@ -81,7 +81,7 @@
   - [Interior mutability](./interior_mutability.md)
   - [Alternatives to unsafe](./alt-unsafe.md)
 
-- [Understanding the guarantees of a verified program]()
+- [Understanding the guarantees of a verified program](./guarantees.md)
   - [Assumptions and trusted components](./tcb.md)
   - [Memory safety is conditional on verification](./memory-safety.md)
   - [Calling verified code from unverified code](./call-from-unverified-code.md)
