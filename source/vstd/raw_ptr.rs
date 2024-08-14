@@ -149,8 +149,12 @@ impl<T> PointsTo<T> {
         self.opt_value().value()
     }
 
+    // ZST pointers are allowed to be null, so we need a precondition that size != 0.
+    // See https://doc.rust-lang.org/std/ptr/#safety
     #[verifier::external_body]
     pub proof fn is_nonnull(tracked &self)
+        requires
+            size_of::<T>() != 0,
         ensures
             self@.ptr@.addr != 0,
     {
@@ -241,6 +245,8 @@ pub open spec fn ptr_null<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> *c
 pub fn ex_ptr_null<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> (res: *const T)
     ensures
         res == ptr_null::<T>(),
+    opens_invariants none
+    no_unwind
 {
     core::ptr::null()
 }
@@ -256,6 +262,8 @@ pub open spec fn ptr_null_mut<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -
 pub fn ex_ptr_null_mut<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> (res: *mut T)
     ensures
         res == ptr_null_mut::<T>(),
+    opens_invariants none
+    no_unwind
 {
     core::ptr::null_mut()
 }
@@ -397,6 +405,8 @@ macro_rules! pointer_specs {
             #[verifier::when_used_as_spec(spec_addr)]
             pub fn ex_addr<T: ?Sized>(p: *$mu T) -> (addr: usize)
                 ensures addr == spec_addr(p)
+                opens_invariants none
+                no_unwind
             {
                 p.addr()
             }
@@ -409,6 +419,8 @@ macro_rules! pointer_specs {
             #[verifier::when_used_as_spec(spec_with_addr)]
             pub fn ex_with_addr<T: ?Sized>(p: *$mu T, addr: usize) -> (q: *$mu T)
                 ensures q == spec_with_addr(p, addr)
+                opens_invariants none
+                no_unwind
             {
                 p.with_addr(addr)
             }
@@ -448,6 +460,11 @@ impl Copy for IsExposed {
 impl IsExposed {
     pub open spec fn view(self) -> Provenance { self.provenance() }
     pub spec fn provenance(self) -> Provenance;
+
+    #[verifier::external_body]
+    pub proof fn null() -> (tracked exp: IsExposed)
+        ensures exp.provenance() == Provenance::null()
+    { unimplemented!() }
 }
 
 #[verifier::external_body]
@@ -528,11 +545,16 @@ impl PointsToRaw {
         unimplemented!();
     }
 
+    // In combination with PointsToRaw::empty(),
+    // This lets us create a PointsTo for a ZST for _any_ pointer (any address and provenance).
+    // (even null).
+    // Admittedly, this does violate 'strict provenance';
+    // https://doc.rust-lang.org/std/ptr/#using-strict-provenance)
+    // but that's ok.
     #[verifier::external_body]
     pub proof fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
             is_sized::<V>(),
-            size_of::<V>() > 0,
             start as int % align_of::<V>() as int == 0,
             self.is_range(start as int, size_of::<V>() as int),
         ensures
@@ -561,36 +583,76 @@ impl<V> PointsTo<V> {
     }
 }
 
-// Allocation and deallocation
-/*
+// Allocation and deallocation via the global allocator
+
 #[verifier::external_body]
-#[verifier::accept_recursive_types(T)]
-pub tracked struct DeallocRange {
-    phantom: core::marker::PhantomData,
+pub tracked struct Dealloc {
     no_copy: NoCopy,
 }
 
-pub ghost struct DeallocRangeData {
-    pub addr: int,
+pub ghost struct DeallocData {
+    pub addr: usize,
     pub size: nat,
     pub align: nat,
+    pub provenance: Provenance,
 }
 
-impl DeallocRange {
-    spec fn view(&self) -> DeallocRangeData;
+impl Dealloc {
+    pub spec fn view(self) -> DeallocData;
+
+    #[verifier::inline]
+    pub open spec fn addr(self) -> usize { self.view().addr }
+
+    #[verifier::inline]
+    pub open spec fn size(self) -> nat { self.view().size }
+
+    #[verifier::inline]
+    pub open spec fn align(self) -> nat { self.view().align }
+
+    #[verifier::inline]
+    pub open spec fn provenance(self) -> Provenance { self.view().provenance }
 }
 
+#[cfg(feature = "alloc")]
 #[verifier::external_body]
-pub fn alloc(size: usize, align: usize)
-    -> (pt: (*mut u8, Tracked<PointsToBytes>, Tracked<DeallocRange>))
+pub fn allocate(size: usize, align: usize)
+    -> (pt: (*mut u8, Tracked<PointsToRaw>, Tracked<Dealloc>))
     requires
-        valid_layout(size, align)
+        valid_layout(size, align),
+        size != 0
     ensures
-        pt.1@.is_range(pt.0.addr(), size as int),
-        pt.2@@ == (DeallocRawData { addr: pt.0.addr(), size: size as nat, align: align as nat }),
-        pt.0.addr() % align as int == 0,
+        pt.1@.is_range(pt.0.addr() as int, size as int),
+        pt.2@@ == (DeallocData { addr: pt.0.addr(), size: size as nat, align: align as nat, provenance: pt.1@.provenance() }),
+        pt.0.addr() as int % align as int == 0,
+        pt.0@.metadata == Metadata::Thin,
+        pt.0@.provenance == pt.1@.provenance()
+    opens_invariants none
 {
+    // SAFETY: valid_layout is a precondition
+    let layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(size, align) };
+    // SAFETY: size != 0
+    let p = unsafe { ::alloc::alloc::alloc(layout) };
+    (p, Tracked::assume_new(), Tracked::assume_new())
 }
-*/
+
+#[cfg(feature = "alloc")]
+#[verifier::external_body]
+pub fn deallocate(p: *mut u8, size: usize, align: usize,
+    Tracked(pt): Tracked<PointsToRaw>,
+    Tracked(dealloc): Tracked<Dealloc>,
+)
+    requires
+        dealloc.addr() == p.addr(),
+        dealloc.size() == size,
+        dealloc.align() == align,
+        dealloc.provenance() == pt.provenance(),
+        pt.is_range(dealloc.addr() as int, dealloc.size() as int),
+        p@.provenance == dealloc.provenance(),
+    opens_invariants none
+{
+    // SAFETY: ensured by dealloc token
+    let layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(size, align) };
+    unsafe { ::alloc::alloc::dealloc(p, layout); }
+}
 
 } // verus!
