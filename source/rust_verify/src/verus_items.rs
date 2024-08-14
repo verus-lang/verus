@@ -595,6 +595,7 @@ pub(crate) enum RustItem {
     ResidualTraitFromResidual,
     IntoIterFn,
     ManuallyDrop,
+    PhantomData,
     Destruct,
 }
 
@@ -638,6 +639,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().manually_drop() == Some(def_id) {
         return Some(RustItem::ManuallyDrop);
+    }
+    if tcx.lang_items().phantom_data() == Some(def_id) {
+        return Some(RustItem::PhantomData);
     }
     if tcx.lang_items().destruct_trait() == Some(def_id) {
         return Some(RustItem::Destruct);
