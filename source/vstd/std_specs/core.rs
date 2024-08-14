@@ -120,7 +120,8 @@ pub fn ex_iter_into_iter<I: Iterator>(i: I) -> (r: I)
 pub struct ExDuration(core::time::Duration);
 
 #[verifier::external_type_specification]
-#[verifier::accept_recursive_types(V)]
+#[verifier::external_body]
+#[verifier::reject_recursive_types_in_ground_variants(V)]
 pub struct ExPhantomData<V: ?Sized>(core::marker::PhantomData<V>);
 
 #[verifier::external_fn_specification]
