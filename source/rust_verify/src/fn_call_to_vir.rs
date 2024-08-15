@@ -989,7 +989,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let infcx = rustc_infer::infer::TyCtxtInferExt::infer_ctxt(tcx).build();
                 matches!(&*source_vir.typ, TypX::TypParam(_))
                     && infcx
-                        .type_implements_trait(integer_trait_def_id, vec![ty], tcx.param_env(bctx.fun_id))
+                        .type_implements_trait(
+                            integer_trait_def_id,
+                            vec![ty],
+                            tcx.param_env(bctx.fun_id),
+                        )
                         .must_apply_modulo_regions()
             };
             match ((&*source_ty, source_is_integer), &*to_ty) {
