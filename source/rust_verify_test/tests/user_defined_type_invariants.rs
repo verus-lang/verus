@@ -1113,3 +1113,212 @@ test_verify_one_file! {
             ;
     } => Err(err) => assert_fails_type_invariant_error(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] get_assumption verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        proof fn test_proof_mode(tracked x: X) {
+            use_type_invariant(&x);
+            // ok
+            assert(0 <= x.i < 15);
+        }
+
+        fn test(x: X) {
+            proof { use_type_invariant(&x); }
+            // ok
+            assert(0 <= x.i < 15);
+        }
+
+        fn test_tracked_type(x: Tracked<X>) {
+            proof { use_type_invariant(&x); }
+            // ok
+            assert(0 <= x@.i < 15);
+        }
+
+        fn test_fail() {
+            let x = X { i: 20, j: 20 }; // FAILS
+            proof { use_type_invariant(&x); }
+        }
+
+        fn test_fail2() {
+            let mut x = X { i: 2, j: 20 };
+            x.i = 20; // FAILS
+            proof { use_type_invariant(&x); }
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] get_assumption_fail_moved verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        fn throw_away(x: X) { }
+
+        fn test_move(x: X) {
+            throw_away(x);
+            // This specific case would actually be ok to allow
+            proof { use_type_invariant(&x); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "borrow of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] get_assumption_fail_uninitialized verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        fn test_unassigned() {
+            let x: X;
+            proof { use_type_invariant(&x); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "used binding `x` isn't initialized")
+}
+
+test_verify_one_file! {
+    #[test] get_assumption_fail_uninitialized_proof_mode verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        proof fn test_unassigned() {
+            let tracked x: X;
+            use_type_invariant(&x);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "used binding `x` isn't initialized")
+}
+
+test_verify_one_file! {
+    #[test] get_assumption_fail_not_datatype verus_code! {
+        fn test_int(x: int) {
+            proof { use_type_invariant(&x); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "this type is not a datatype")
+}
+
+test_verify_one_file! {
+    #[test] get_assumption_fail_no_invariant verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        fn test_normal_struct(x: X) {
+            proof { use_type_invariant(&x); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "this type does not have any type invariant")
+}
+
+test_verify_one_file! {
+    #[test] get_assumption_fail_private_invariant verus_code! {
+        mod hello_mod {
+            pub struct X {
+                i: u8,
+                j: u8,
+            }
+
+            impl X {
+                #[verifier::type_invariant]
+                spec fn the_inv(&self) -> bool {
+                    0 <= self.i < 15
+                }
+            }
+        }
+
+        fn test_normal_struct(x: hello_mod::X) {
+            proof { use_type_invariant(&x); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "type invariant function is not visible to this program point")
+}
+
+test_verify_one_file! {
+    #[test] get_assumption_fail_ghost_type verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        fn test_tracked_type(x: Ghost<X>) {
+            proof { use_type_invariant(&x); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot apply use_type_invariant for Ghost<_>")
+}
+
+test_verify_one_file! {
+    #[test] assert_type_inv_assign_ghost_type verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        fn test_ghost_type(x: Ghost<X>) {
+            let mut y = x;
+            proof {
+                let i = 22;
+                let j = 88;
+                // this is ok because it's all spec-mode
+                y@ = X { i, j };
+            }
+        }
+
+        fn test_tracked_type(x: Tracked<X>) {
+            let tracked mut y = x;
+            let i = 22;
+            let j = 88;
+            proof {
+                y@ = X { i, j }; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}

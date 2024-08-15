@@ -1580,7 +1580,7 @@ pub(crate) fn expr_to_stm_opt(
             let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
-        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: false, expr, fun } => {
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume, expr, fun } => {
             let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
 
             if state.view_as_spec {
@@ -1590,11 +1590,10 @@ pub(crate) fn expr_to_stm_opt(
             let exp = unwrap_or_return_never!(exp, stms);
 
             let tmp = state.make_tmp_var_for_exp(&mut stms, exp);
-            assert_satisfies_user_defined_type_invariant(ctx, state, &tmp, &mut stms, fun);
+            assert_assume_satisfies_user_defined_type_invariant(
+                ctx, state, &tmp, &mut stms, fun, *is_assume,
+            );
             Ok((stms, ReturnValue::Some(tmp)))
-        }
-        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: true, expr: _, fun: _ } => {
-            panic!("not implemented yet: assume type invariant");
         }
         ExprX::AssertBy { vars, require, ensure, proof } => {
             // deadend {
@@ -2435,16 +2434,17 @@ fn call_namespace(ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicity
     SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
 }
 
-pub fn assert_satisfies_user_defined_type_invariant(
+pub fn assert_assume_satisfies_user_defined_type_invariant(
     ctx: &Ctx,
     state: &mut State,
     exp: &Exp,
     stms: &mut Vec<Stm>,
     fun: &Fun,
+    is_assume: bool,
 ) {
-    let typs = match &*exp.typ {
+    let typs = match &*undecorate_typ(&exp.typ) {
         TypX::Datatype(_path, typs, ..) => typs.clone(),
-        _ => panic!("assert_satisfies_user_defined_type_invariant: expected datatype"),
+        _ => panic!("assert_assume_satisfies_user_defined_type_invariant: expected datatype"),
     };
     let call_fun = CallFun::Fun(fun.clone(), None);
     let arg = crate::poly::coerce_exp_to_poly(ctx, exp);
@@ -2462,10 +2462,12 @@ pub fn assert_satisfies_user_defined_type_invariant(
             "constructed value may fail to meet its declared type invariant",
         )
         .secondary_label(&function.span, "type invariant declared here");
-        stms.push(Spanned::new(
-            exp.span.clone(),
-            StmX::Assert(state.next_assert_id(), Some(error), exp.clone()),
-        ));
+        if !is_assume {
+            stms.push(Spanned::new(
+                exp.span.clone(),
+                StmX::Assert(state.next_assert_id(), Some(error), exp.clone()),
+            ));
+        }
         stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
     }
 }

@@ -339,6 +339,13 @@ pub fn assert_bit_vector(_: bool) {
     unimplemented!();
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::use_type_invariant"]
+#[verifier::proof]
+pub fn use_type_invariant<A>(_a: A) {
+    unimplemented!();
+}
+
 //
 // Ghost, Tracked
 //

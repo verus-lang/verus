@@ -4,6 +4,7 @@ use crate::ast::{
 };
 use crate::ast_util::undecorate_typ;
 use crate::def::Spanned;
+use crate::messages::Span;
 use crate::messages::{error, internal_error};
 use crate::modes::TypeInvInfo;
 use std::collections::HashMap;
@@ -21,7 +22,7 @@ use std::sync::Arc;
 //
 // NOTE: we may need to revisit after more general &mut support lands.
 
-pub fn annotate_user_defined_invariants(
+pub(crate) fn annotate_user_defined_invariants(
     functionx: &mut FunctionX,
     info: &TypeInvInfo,
     functions: &HashMap<Fun, Function>,
@@ -68,6 +69,38 @@ pub fn annotate_user_defined_invariants(
                         }
                     }
                     Ok(expr.clone())
+                }
+                ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: true, expr, fun: _ } => {
+                    // Check that this is fine, and fill in the correct 'fun'
+
+                    let typ = undecorate_typ(&expr.typ);
+                    if !matches!(&*typ, TypX::Datatype(..)) {
+                        return Err(error(&expr.span, "this type is not a datatype"));
+                    }
+                    if let Some(fun) = typ_get_user_defined_type_invariant(datatypes, &typ) {
+                        let function = functions.get(&fun).unwrap();
+                        if !crate::ast_util::is_visible_to(&function.x.visibility, module) {
+                            return Err(error(
+                                &expr.span,
+                                "type invariant function is not visible to this program point",
+                            )
+                            .secondary_span(&function.span));
+                        }
+                        Ok(SpannedTyped::new(
+                            &expr.span,
+                            &expr.typ,
+                            ExprX::AssertAssumeUserDefinedTypeInvariant {
+                                is_assume: true,
+                                expr: expr.clone(),
+                                fun,
+                            },
+                        ))
+                    } else {
+                        return Err(error(
+                            &expr.span,
+                            "this type does not have any type invariant",
+                        ));
+                    }
                 }
                 _ => Ok(expr.clone()),
             }
@@ -120,7 +153,7 @@ fn typ_has_user_defined_type_invariant(datatypes: &HashMap<Path, Datatype>, typ:
     typ_get_user_defined_type_invariant(datatypes, typ).is_some()
 }
 
-pub fn error_if_mut_ref_modifies_field_affecting_type_inv(
+fn error_if_mut_ref_modifies_field_affecting_type_inv(
     datatypes: &HashMap<Path, Datatype>,
     lhs: &Expr,
 ) -> Result<(), VirErr> {
@@ -143,7 +176,7 @@ pub fn error_if_mut_ref_modifies_field_affecting_type_inv(
 /// Emits the necessary proof obligations for user-defined type invariants
 /// after an assignment like `x.a.b.c = e;`
 /// In such a case, proof obligations may be necessary for `x.a.b`, `x.a`, and `x`.
-pub fn asserts_for_lhs(
+fn asserts_for_lhs(
     info: &TypeInvInfo,
     functions: &HashMap<Fun, Function>,
     datatypes: &HashMap<Path, Datatype>,
@@ -188,7 +221,7 @@ pub fn asserts_for_lhs(
     Ok(stmts)
 }
 
-pub fn loc_to_normal_expr(e: &Expr) -> Expr {
+fn loc_to_normal_expr(e: &Expr) -> Expr {
     crate::ast_visitor::map_expr_visitor(e, &mut |expr| match &expr.x {
         ExprX::VarLoc(ident) => {
             Ok(SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(ident.clone())))
@@ -196,4 +229,21 @@ pub fn loc_to_normal_expr(e: &Expr) -> Expr {
         _ => Ok(expr.clone()),
     })
     .unwrap()
+}
+
+/// The given type MUST have unmodified type decorations.
+/// (We need to check for the absence of the Ghost type.)
+pub fn check_typ_ok_for_use_typ_invariant(span: &Span, t: &Typ) -> Result<(), VirErr> {
+    match &**t {
+        TypX::Decorate(dec, _, t) => {
+            use crate::ast::TypDecoration::*;
+            match dec {
+                Ref | Box | Rc | Arc | Tracked => check_typ_ok_for_use_typ_invariant(span, t),
+                MutRef | Never | ConstPtr => Err(error(span, "this type is not a datatype")),
+                Ghost => Err(error(span, "cannot apply use_type_invariant for Ghost<_>")),
+            }
+        }
+        TypX::Datatype(..) => Ok(()),
+        _ => Err(error(span, "this type is not a datatype")),
+    }
 }
