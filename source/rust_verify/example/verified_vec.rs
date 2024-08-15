@@ -1,4 +1,4 @@
-// rust_verify/tests/example.rs
+// rust_verify/tests/example.rs ignore --- intending to deprecate PPtr, should update this to raw_ptr
 #![allow(unused_imports)]
 
 use builtin::*;
