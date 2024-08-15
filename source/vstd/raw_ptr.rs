@@ -314,12 +314,15 @@ pub open spec fn spec_cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> 
     )
 }
 
+/// Don't call this directly; use an `as`-cast instead.
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_ptr_to_thin_ptr")]
 #[verifier::when_used_as_spec(spec_cast_ptr_to_thin_ptr)]
 pub fn cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> (result: *mut U)
     ensures
         result == spec_cast_ptr_to_thin_ptr::<T, U>(ptr),
+    opens_invariants none
+    no_unwind
 {
     ptr as *mut U
 }
@@ -330,12 +333,15 @@ pub open spec fn spec_cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [
     )
 }
 
+/// Don't call this directly; use an `as`-cast instead.
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_array_ptr_to_slice_ptr")]
 #[verifier::when_used_as_spec(spec_cast_array_ptr_to_slice_ptr)]
 pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (result: *mut [T])
     ensures
         result == spec_cast_array_ptr_to_slice_ptr(ptr),
+    opens_invariants none
+    no_unwind
 {
     ptr as *mut [T]
 }
@@ -344,12 +350,15 @@ pub open spec fn spec_cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> usize {
     ptr@.addr
 }
 
+/// Don't call this directly; use an `as`-cast instead.
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_ptr_to_usize")]
 #[verifier::when_used_as_spec(spec_cast_ptr_to_usize)]
 pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
     ensures
         result == spec_cast_ptr_to_usize(ptr),
+    opens_invariants none
+    no_unwind
 {
     ptr as usize
 }
