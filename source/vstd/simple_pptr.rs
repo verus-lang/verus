@@ -249,7 +249,7 @@ impl PPtr {
                 points_to.is_nonnull();
             }
             let tracked pt = PointsTo { points_to, exposed, dealloc: Some(dealloc) };
-            let pptr = PPtr(p.addr());
+            let pptr = PPtr(p as usize);
 
             return (pptr, Tracked(pt));
         } else {
