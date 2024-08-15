@@ -891,6 +891,7 @@ fn erase_call<'tcx>(
                 BoxNew => Some((false, "box_new")),
                 GhostExec => None,
                 IntIntrinsic | Implies => None,
+                UseTypeInvariant => Some((false, "use_type_invariant")),
             };
             if let Some((true, method)) = builtin_method {
                 assert!(receiver.is_some());
@@ -901,7 +902,8 @@ fn erase_call<'tcx>(
             } else if let Some((false, func)) = builtin_method {
                 assert!(receiver.is_none());
                 assert!(args_slice.len() == 1);
-                let exp_opt = erase_expr(ctxt, state, expect_spec, &args_slice[0]);
+                let requires_arg = matches!(op, UseTypeInvariant);
+                let exp_opt = erase_expr(ctxt, state, expect_spec && !requires_arg, &args_slice[0]);
                 let exp = match exp_opt {
                     Some(exp) => exp,
                     None => {
