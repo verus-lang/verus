@@ -1,5 +1,21 @@
 #![allow(unused_imports)]
 
+/*!
+Tools and reasoning principles for [raw pointers](https://doc.rust-lang.org/std/primitive.pointer.html).  The tools here are meant to address "real Rust pointers, including all their subtleties on the Rust Abstract Machine, to the largest extent that is reasonable."
+
+For a gentler introduction to some of the concepts here, see [`PPtr`](vstd::simple_pptr), which uses a much-simplified pointer model.
+
+### Pointer model
+
+A pointer consists of an address (`ptr.addr()` or `ptr as usize`), a provenance `ptr@.provenance`,
+and a `ptr@.metadata` (which is trivial except for pointers to non-sized types).
+Note that in spec code, pointer equality requires *all 3* to be equal, whereas runtime equality (eq)
+only compares addresses and metadata.
+
+`*mut T` vs. `*const T` doesn't have any semantic different and Verus treats them as the same;
+they can be seamlessly cast to and fro.
+*/
+
 use super::prelude::*;
 use super::layout::*;
 
@@ -38,11 +54,20 @@ verus! {
 //
 //  - Our model here, likewise, simply declares Provenance as an
 //    abstract type.
+//
+//  - MiniRust currently declares a pointer has an Option<Provenance>;
+//    the model here gives provenance a special "null" value instead
+//    of using an option.
+//
+// More reading for reference:
+//  - https://doc.rust-lang.org/std/ptr/
+//  - https://github.com/minirust/minirust/tree/master
+
 #[verifier::external_body]
 pub ghost struct Provenance {}
 
 impl Provenance {
-    /// The provenance of the null ptr
+    /// The provenance of the null ptr (or really, "no provenance")
     pub spec fn null() -> Self;
 }
 
@@ -53,8 +78,6 @@ impl Provenance {
 /// See: https://doc.rust-lang.org/std/ptr/trait.Pointee.html
 ///
 /// TODO: This will eventually be replaced with <T as Pointee>::Metadata.
-#[verifier::external_body]
-pub ghost struct DynMetadata {}
 
 pub ghost enum Metadata {
     Thin,
@@ -64,11 +87,27 @@ pub ghost enum Metadata {
     Dyn(DynMetadata),
 }
 
+#[verifier::external_body]
+pub ghost struct DynMetadata {}
+
+/// Model of a pointer `*mut T` or `*const T` in Rust's abstract machine
+
 pub ghost struct PtrData {
     pub addr: usize,
     pub provenance: Provenance,
     pub metadata: Metadata,
 }
+
+/// Permission to access possibly-initialized, _typed_ memory.
+
+// ptr |--> Init(v) means:
+//   bytes in this memory are consistent with value v
+//   and we have all the ghost state associated with type V
+//
+// ptr |--> Uninit means:
+//   no knowledge about what's it memory
+//   (to be pedantic, the bytes might be initialized in rust's abstract machine,
+//   but we don't know so we have to pretend they're uninitialized)
 
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
@@ -77,12 +116,14 @@ pub tracked struct PointsTo<T> {
     no_copy: NoCopy,
 }
 
-#[verifier::external_body]
-#[verifier::accept_recursive_types(T)]
-pub tracked struct PointsToBytes<T> {
-    phantom: core::marker::PhantomData<T>,
-    no_copy: NoCopy,
-}
+//#[verifier::external_body]
+//#[verifier::accept_recursive_types(T)]
+//pub tracked struct PointsToBytes<T> {
+//    phantom: core::marker::PhantomData<T>,
+//    no_copy: NoCopy,
+//}
+
+/// Represents (typed) contents of memory.
 
 // Don't use std Option here in order to avoid circular dependency issues
 // with verifying the standard library.
@@ -149,7 +190,7 @@ impl<T> PointsTo<T> {
         self.opt_value().value()
     }
 
-    // ZST pointers are allowed to be null, so we need a precondition that size != 0.
+    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
     // See https://doc.rust-lang.org/std/ptr/#safety
     #[verifier::external_body]
     pub proof fn is_nonnull(tracked &self)
@@ -161,6 +202,8 @@ impl<T> PointsTo<T> {
         unimplemented!();
     }
 
+    /// "De-initialize" the memory by setting it to MemContents::Uninit
+    /// This is actually a pure no-op; we're just forgetting that the contents are there.
     #[verifier::external_body]
     pub proof fn leak_contents(tracked &mut self)
         ensures
@@ -320,8 +363,10 @@ pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
 
 //////////////////////////////////////
 // Reading and writing
-/// core::ptr::write
-/// (This does _not_ drop the contents)
+/// Calls `core::ptr::write`
+///
+/// This does _not_ drop the contents. If the memory is already initialized and you want
+/// to write without dropping, call [`PointsTo::leak_contents`] first.
 #[inline(always)]
 #[verifier::external_body]
 pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v: T)
@@ -340,7 +385,12 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
 }
 
 /// core::ptr::read
-/// (TODO this should work differently if T is Copy)
+///
+/// This leaves the data as "unitialized", i.e., performs a move.
+///
+/// TODO This needs to be made more general (i.e., should be able to read a Copy type
+/// without destroying it; should be able to leave the bytes intact without uninitializing them)
+
 #[inline(always)]
 #[verifier::external_body]
 pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: T)
@@ -467,6 +517,8 @@ impl IsExposed {
     { unimplemented!() }
 }
 
+/// Perform a provenance expose operation.
+
 #[verifier::external_body]
 pub fn expose_provenance<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>)
     ensures
@@ -477,6 +529,9 @@ pub fn expose_provenance<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>
     let _ = m as usize;
     Tracked::assume_new()
 }
+
+/// Construct a pointer with the given provenance from a _usize_ address.
+/// The provenance must have previously been exposed.
 
 #[verifier::external_body]
 pub fn with_exposed_provenance<T: Sized>(addr: usize, Tracked(provenance): Tracked<IsExposed>) -> (p: *mut T)
@@ -490,9 +545,15 @@ pub fn with_exposed_provenance<T: Sized>(addr: usize, Tracked(provenance): Track
     addr as *mut T
 }
 
-// PointsToRaw
-// Variable-sized uninitialized memory
-// Note reading from uninitialized memory is UB
+/// PointsToRaw
+/// Variable-sized uninitialized memory.
+///
+/// Permission is for an arbitrary set of addresses, not necessarily contiguous,
+/// and with a given provenance.
+
+// Note reading from uninitialized memory is UB, so we shouldn't give any
+// reading capabilities to PointsToRaw. Turning a PointsToRaw into a PointsTo
+// should always leave it as 'uninitialized'.
 
 #[verifier::external_body]
 pub tracked struct PointsToRaw {
@@ -550,7 +611,7 @@ impl PointsToRaw {
     // (even null).
     // Admittedly, this does violate 'strict provenance';
     // https://doc.rust-lang.org/std/ptr/#using-strict-provenance)
-    // but that's ok.
+    // but that's ok. It is still allowed in Rust's more permissive semantics.
     #[verifier::external_body]
     pub proof fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
@@ -585,6 +646,8 @@ impl<V> PointsTo<V> {
 
 // Allocation and deallocation via the global allocator
 
+/// Permission to perform a deallocation with the global allocator
+
 #[verifier::external_body]
 pub tracked struct Dealloc {
     no_copy: NoCopy,
@@ -594,6 +657,8 @@ pub ghost struct DeallocData {
     pub addr: usize,
     pub size: nat,
     pub align: nat,
+    /// This should probably be some kind of "allocation ID" (with "allocation ID" being
+    /// only one part of a full Provenance definition). 
     pub provenance: Provenance,
 }
 
@@ -612,6 +677,9 @@ impl Dealloc {
     #[verifier::inline]
     pub open spec fn provenance(self) -> Provenance { self.view().provenance }
 }
+
+/// Allocate with the global allocator.
+/// Precondition should be consistent with the [documented safety conditions on `alloc`](https://doc.rust-lang.org/alloc/alloc/trait.GlobalAlloc.html#tymethod.alloc).
 
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
@@ -634,6 +702,8 @@ pub fn allocate(size: usize, align: usize)
     let p = unsafe { ::alloc::alloc::alloc(layout) };
     (p, Tracked::assume_new(), Tracked::assume_new())
 }
+
+/// Deallocate with the global allocator.
 
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
