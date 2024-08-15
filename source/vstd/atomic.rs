@@ -649,7 +649,7 @@ make_signed_integer_atomic!(
 
 atomic_types_generic!(PAtomicPtr, PermissionPtr, PermissionDataPtr, AtomicPtr<T>, *mut T);
 
-#[verifier::verus_macro]
+#[cfg_attr(verus_keep_ghost, verifier::verus_macro)]
 impl<T> PAtomicPtr<T> {
     atomic_common_methods!(
         PAtomicPtr::<T>,
@@ -667,6 +667,7 @@ impl<T> PAtomicPtr<T> {
     #[inline(always)]
     #[verifier::external_body]  /* vattr */
     #[verifier::atomic]  /* vattr */
+    #[cfg(feature = "strict_provenance_atomic_ptr")]
     pub fn fetch_and(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret:
         *mut T)
         requires
@@ -686,6 +687,7 @@ impl<T> PAtomicPtr<T> {
     #[inline(always)]
     #[verifier::external_body]  /* vattr */
     #[verifier::atomic]  /* vattr */
+    #[cfg(feature = "strict_provenance_atomic_ptr")]
     pub fn fetch_xor(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret:
         *mut T)
         requires
@@ -705,6 +707,7 @@ impl<T> PAtomicPtr<T> {
     #[inline(always)]
     #[verifier::external_body]  /* vattr */
     #[verifier::atomic]  /* vattr */
+    #[cfg(feature = "strict_provenance_atomic_ptr")]
     pub fn fetch_or(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret: *mut T)
         requires
             equal(self.id(), old(perm).view().patomic),
