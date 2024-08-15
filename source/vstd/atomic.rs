@@ -661,13 +661,16 @@ impl<T> PAtomicPtr<T> {
     );
 }
 
-verus!{
+verus! {
+
 impl<T> PAtomicPtr<T> {
     #[inline(always)]
-    #[verifier::external_body] /* vattr */
-    #[verifier::atomic] /* vattr */
-    pub fn fetch_and(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret: *mut T)
-        requires equal(self.id(), old(perm).view().patomic),
+    #[verifier::external_body]  /* vattr */
+    #[verifier::atomic]  /* vattr */
+    pub fn fetch_and(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret:
+        *mut T)
+        requires
+            equal(self.id(), old(perm).view().patomic),
         ensures
             equal(old(perm).view().value, ret),
             perm.view().patomic == old(perm).view().patomic,
@@ -681,10 +684,12 @@ impl<T> PAtomicPtr<T> {
     }
 
     #[inline(always)]
-    #[verifier::external_body] /* vattr */
-    #[verifier::atomic] /* vattr */
-    pub fn fetch_xor(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret: *mut T)
-        requires equal(self.id(), old(perm).view().patomic),
+    #[verifier::external_body]  /* vattr */
+    #[verifier::atomic]  /* vattr */
+    pub fn fetch_xor(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret:
+        *mut T)
+        requires
+            equal(self.id(), old(perm).view().patomic),
         ensures
             equal(old(perm).view().value, ret),
             perm.view().patomic == old(perm).view().patomic,
@@ -698,10 +703,11 @@ impl<T> PAtomicPtr<T> {
     }
 
     #[inline(always)]
-    #[verifier::external_body] /* vattr */
-    #[verifier::atomic] /* vattr */
+    #[verifier::external_body]  /* vattr */
+    #[verifier::atomic]  /* vattr */
     pub fn fetch_or(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret: *mut T)
-        requires equal(self.id(), old(perm).view().patomic),
+        requires
+            equal(self.id(), old(perm).view().patomic),
         ensures
             equal(old(perm).view().value, ret),
             perm.view().patomic == old(perm).view().patomic,
@@ -714,4 +720,5 @@ impl<T> PAtomicPtr<T> {
         return self.ato.fetch_or(n, Ordering::SeqCst);
     }
 }
-}
+
+} // verus!

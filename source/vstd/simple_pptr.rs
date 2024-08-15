@@ -1,10 +1,9 @@
-use super::prelude::*;
-use super::raw_ptr::*;
-use super::raw_ptr;
 use super::layout::*;
+use super::prelude::*;
+use super::raw_ptr;
+use super::raw_ptr::*;
 
-
-verus!{
+verus! {
 
 /// `PPtr` (which stands for "permissioned pointer")
 /// is a wrapper around a raw pointer to a heap-allocated `V`.
@@ -62,7 +61,6 @@ verus!{
 ///  * `PointsTo` tokens are non-fungible. They can't be broken up or made variable-sized.
 ///
 /// ### Example (TODO)
-
 pub struct PPtr(pub usize);
 
 /// A `tracked` ghost object that gives the user permission to dereference a pointer
@@ -72,14 +70,15 @@ pub struct PPtr(pub usize);
 /// `View` object, [`PointsToData`].
 ///
 /// See the [`PPtr`] documentation for more details.
-
 pub tracked struct PointsTo<V> {
     points_to: raw_ptr::PointsTo<V>,
     exposed: raw_ptr::IsExposed,
     dealloc: Option<raw_ptr::Dealloc>,
 }
 
-broadcast use super::raw_ptr::group_raw_ptr_axioms,
+#[verusfmt::skip]
+broadcast use
+    super::raw_ptr::group_raw_ptr_axioms,
     super::set_lib::group_set_lib_axioms,
     super::set::group_set_axioms;
 
@@ -91,12 +90,11 @@ impl PPtr {
     }
 
     /// Cast a pointer to an integer.
-
     #[inline(always)]
     #[verifier::when_used_as_spec(spec_addr)]
     pub fn addr(self) -> (u: usize)
         ensures
-            u == self.addr()
+            u == self.addr(),
     {
         self.0
     }
@@ -112,11 +110,10 @@ impl PPtr {
     /// but dereferencing a pointer is an `unsafe` operation.
     /// With PPtr, casting to a pointer is likewise always possible,
     /// while dereferencing it is only allowed when the right preconditions are met.
-
     #[inline(always)]
     pub fn from_addr(u: usize) -> (s: Self)
         ensures
-            u == s.addr()
+            u == s.addr(),
     {
         PPtr(u)
     }
@@ -143,10 +140,8 @@ impl<V> PointsTo<V> {
                 &&& dealloc.align() == align_of::<V>()
                 &&& dealloc.provenance() == self.points_to.ptr()@.provenance
                 &&& size_of::<V>() > 0
-            }
-            None => {
-                size_of::<V>() == 0
-            }
+            },
+            None => { size_of::<V>() == 0 },
         }
         &&& self.points_to.ptr().addr() != 0
     }
@@ -167,23 +162,27 @@ impl<V> PointsTo<V> {
 
     #[verifier::inline]
     pub open spec fn value(&self) -> V
-        recommends self.is_init()
+        recommends
+            self.is_init(),
     {
         self.opt_value().value()
     }
 
     pub proof fn is_nonnull(tracked &self)
-        requires self.wf(),
-        ensures self.addr() != 0,
+        requires
+            self.wf(),
+        ensures
+            self.addr() != 0,
     {
     }
 
     pub proof fn leak_contents(tracked &mut self)
-        requires old(self).wf(),
+        requires
+            old(self).wf(),
         ensures
             self.wf(),
             self.pptr() == old(self).pptr(),
-            self.is_uninit()
+            self.is_uninit(),
     {
         self.points_to.leak_contents();
     }
@@ -191,22 +190,26 @@ impl<V> PointsTo<V> {
     /// Note: If both S and V are non-zero-sized, then this implies the pointers
     /// have distinct addresses.
     pub proof fn is_disjoint<S>(&mut self, other: &PointsTo<S>)
-        requires old(self).wf(), other.wf(),
-        ensures 
+        requires
+            old(self).wf(),
+            other.wf(),
+        ensures
             *old(self) == *self,
-            self.addr() + size_of::<V>() <= other.addr()
-              || other.addr() + size_of::<S>() <= self.addr()
+            self.addr() + size_of::<V>() <= other.addr() || other.addr() + size_of::<S>()
+                <= self.addr(),
     {
         self.points_to.is_disjoint(&other.points_to);
     }
 
     pub proof fn is_distinct<S>(&mut self, other: &PointsTo<S>)
-        requires old(self).wf(), other.wf(),
+        requires
+            old(self).wf(),
+            other.wf(),
             size_of::<V>() != 0,
             size_of::<S>() != 0,
-        ensures 
+        ensures
             *old(self) == *self,
-            self.addr() != other.addr()
+            self.addr() != other.addr(),
     {
         self.points_to.is_disjoint(&other.points_to);
     }
@@ -214,13 +217,16 @@ impl<V> PointsTo<V> {
 
 impl Clone for PPtr {
     fn clone(&self) -> (res: Self)
-        ensures res == *self
+        ensures
+            res == *self,
     {
         PPtr(self.0)
     }
 }
 
-impl Copy for PPtr { }
+impl Copy for PPtr {
+
+}
 
 impl PPtr {
     /// Allocates heap memory for type `V`, leaving it uninitialized.
@@ -233,18 +239,25 @@ impl PPtr {
     {
         layout_for_type_is_valid::<V>();
         if core::mem::size_of::<V>() != 0 {
-            let (p, Tracked(points_to_raw), Tracked(dealloc)) =
-                allocate(core::mem::size_of::<V>(), core::mem::align_of::<V>());
+            let (p, Tracked(points_to_raw), Tracked(dealloc)) = allocate(
+                core::mem::size_of::<V>(),
+                core::mem::align_of::<V>(),
+            );
             let Tracked(exposed) = expose_provenance(p);
             let tracked points_to = points_to_raw.into_typed::<V>(p.addr());
-            proof { points_to.is_nonnull(); }
+            proof {
+                points_to.is_nonnull();
+            }
             let tracked pt = PointsTo { points_to, exposed, dealloc: Some(dealloc) };
             let pptr = PPtr(p.addr());
 
             return (pptr, Tracked(pt));
         } else {
             let p = core::mem::align_of::<V>();
-            assert(p % p == 0) by(nonlinear_arith) requires p != 0;
+            assert(p % p == 0) by (nonlinear_arith)
+                requires
+                    p != 0,
+            ;
             let tracked emp = PointsToRaw::empty(Provenance::null());
             let tracked points_to = emp.into_typed(p);
             let tracked pt = PointsTo { points_to, exposed: IsExposed::null(), dealloc: None };
@@ -260,7 +273,7 @@ impl PPtr {
         ensures
             pt.1@.wf(),
             pt.1@.pptr() == pt.0,
-            pt.1@.opt_value() == MemContents::Init(v)
+            pt.1@.opt_value() == MemContents::Init(v),
         opens_invariants none
     {
         let (p, Tracked(mut pt)) = PPtr::empty::<V>();
@@ -285,8 +298,13 @@ impl PPtr {
             let ptr: *mut u8 = with_exposed_provenance(self.0, Tracked(perm.exposed));
             let tracked PointsTo { points_to, dealloc: dea, exposed } = perm;
             let tracked points_to_raw = points_to.into_raw();
-            deallocate(ptr, core::mem::size_of::<V>(), core::mem::align_of::<V>(),
-                Tracked(points_to_raw), Tracked(dea.tracked_unwrap()));
+            deallocate(
+                ptr,
+                core::mem::size_of::<V>(),
+                core::mem::align_of::<V>(),
+                Tracked(points_to_raw),
+                Tracked(dea.tracked_unwrap()),
+            );
         }
     }
 
@@ -302,7 +320,7 @@ impl PPtr {
             perm.pptr() == self,
             perm.is_init(),
         ensures
-            v == perm.value()
+            v == perm.value(),
         opens_invariants none
     {
         let tracked mut perm = perm;
@@ -325,7 +343,7 @@ impl PPtr {
         ensures
             perm.wf(),
             perm.pptr() == old(perm).pptr(),
-            perm.opt_value() == MemContents::Init(v)
+            perm.opt_value() == MemContents::Init(v),
         opens_invariants none
         no_unwind
     {
@@ -345,7 +363,7 @@ impl PPtr {
         requires
             old(perm).wf(),
             old(perm).pptr() == self,
-            old(perm).is_init()
+            old(perm).is_init(),
         ensures
             perm.wf(),
             perm.pptr() == old(perm).pptr(),
@@ -365,7 +383,7 @@ impl PPtr {
         requires
             old(perm).wf(),
             old(perm).pptr() == self,
-            old(perm).is_init()
+            old(perm).is_init(),
         ensures
             perm.wf(),
             perm.pptr() == old(perm).pptr(),
@@ -389,7 +407,7 @@ impl PPtr {
             perm.pptr() == self,
             perm.is_init(),
         ensures
-            *v === perm.value()
+            *v === perm.value(),
         opens_invariants none
         no_unwind
     {
@@ -429,4 +447,4 @@ impl PPtr {
     }
 }
 
-}
+} // verus!

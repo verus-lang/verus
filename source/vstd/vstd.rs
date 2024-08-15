@@ -41,13 +41,13 @@ pub mod pcm_lib;
 pub mod pervasive;
 #[cfg(feature = "alloc")]
 pub mod ptr;
-#[cfg(feature = "alloc")]
-pub mod simple_pptr;
 pub mod raw_ptr;
 pub mod seq;
 pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
+#[cfg(feature = "alloc")]
+pub mod simple_pptr;
 pub mod slice;
 pub mod state_machine_internal;
 pub mod storage_protocol;
