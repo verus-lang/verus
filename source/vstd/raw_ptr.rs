@@ -16,8 +16,8 @@ only compares addresses and metadata.
 they can be seamlessly cast to and fro.
 */
 
-use super::prelude::*;
 use super::layout::*;
+use super::prelude::*;
 
 verus! {
 
@@ -62,7 +62,6 @@ verus! {
 // More reading for reference:
 //  - https://doc.rust-lang.org/std/ptr/
 //  - https://github.com/minirust/minirust/tree/master
-
 #[verifier::external_body]
 pub ghost struct Provenance {}
 
@@ -78,7 +77,6 @@ impl Provenance {
 /// See: https://doc.rust-lang.org/std/ptr/trait.Pointee.html
 ///
 /// TODO: This will eventually be replaced with <T as Pointee>::Metadata.
-
 pub ghost enum Metadata {
     Thin,
     /// Length in bytes for a str; length in items for a
@@ -91,7 +89,6 @@ pub ghost enum Metadata {
 pub ghost struct DynMetadata {}
 
 /// Model of a pointer `*mut T` or `*const T` in Rust's abstract machine
-
 pub ghost struct PtrData {
     pub addr: usize,
     pub provenance: Provenance,
@@ -99,7 +96,6 @@ pub ghost struct PtrData {
 }
 
 /// Permission to access possibly-initialized, _typed_ memory.
-
 // ptr |--> Init(v) means:
 //   bytes in this memory are consistent with value v
 //   and we have all the ghost state associated with type V
@@ -108,7 +104,6 @@ pub ghost struct PtrData {
 //   no knowledge about what's it memory
 //   (to be pedantic, the bytes might be initialized in rust's abstract machine,
 //   but we don't know so we have to pretend they're uninitialized)
-
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
 pub tracked struct PointsTo<T> {
@@ -122,9 +117,7 @@ pub tracked struct PointsTo<T> {
 //    phantom: core::marker::PhantomData<T>,
 //    no_copy: NoCopy,
 //}
-
 /// Represents (typed) contents of memory.
-
 // Don't use std Option here in order to avoid circular dependency issues
 // with verifying the standard library.
 // (Also, using our own enum here lets us have more meaningful
@@ -208,7 +201,7 @@ impl<T> PointsTo<T> {
     pub proof fn leak_contents(tracked &mut self)
         ensures
             self.ptr() == old(self).ptr(),
-            self.is_uninit()
+            self.is_uninit(),
     {
         unimplemented!();
     }
@@ -217,10 +210,10 @@ impl<T> PointsTo<T> {
     /// have distinct addresses.
     #[verifier::external_body]
     pub proof fn is_disjoint<S>(&mut self, other: &PointsTo<S>)
-        ensures 
+        ensures
             *old(self) == *self,
-            self.ptr() as int + size_of::<T>() <= other.ptr() as int
-                || other.ptr() as int + size_of::<S>() <= self.ptr() as int
+            self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= self.ptr() as int,
     {
         unimplemented!();
     }
@@ -390,7 +383,6 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
 ///
 /// TODO This needs to be made more general (i.e., should be able to read a Copy type
 /// without destroying it; should be able to leave the bytes intact without uninitializing them)
-
 #[inline(always)]
 #[verifier::external_body]
 pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) -> (v: T)
@@ -509,17 +501,22 @@ impl Copy for IsExposed {
 }
 
 impl IsExposed {
-    pub open spec fn view(self) -> Provenance { self.provenance() }
+    pub open spec fn view(self) -> Provenance {
+        self.provenance()
+    }
+
     pub spec fn provenance(self) -> Provenance;
 
     #[verifier::external_body]
     pub proof fn null() -> (tracked exp: IsExposed)
-        ensures exp.provenance() == Provenance::null()
-    { unimplemented!() }
+        ensures
+            exp.provenance() == Provenance::null(),
+    {
+        unimplemented!()
+    }
 }
 
 /// Perform a provenance expose operation.
-
 #[verifier::external_body]
 pub fn expose_provenance<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>)
     ensures
@@ -533,9 +530,11 @@ pub fn expose_provenance<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>
 
 /// Construct a pointer with the given provenance from a _usize_ address.
 /// The provenance must have previously been exposed.
-
 #[verifier::external_body]
-pub fn with_exposed_provenance<T: Sized>(addr: usize, Tracked(provenance): Tracked<IsExposed>) -> (p: *mut T)
+pub fn with_exposed_provenance<T: Sized>(
+    addr: usize,
+    Tracked(provenance): Tracked<IsExposed>,
+) -> (p: *mut T)
     ensures
         p == ptr_mut_from_data::<T>(
             PtrData { addr: addr, provenance: provenance@, metadata: Metadata::Thin },
@@ -551,11 +550,9 @@ pub fn with_exposed_provenance<T: Sized>(addr: usize, Tracked(provenance): Track
 ///
 /// Permission is for an arbitrary set of addresses, not necessarily contiguous,
 /// and with a given provenance.
-
 // Note reading from uninitialized memory is UB, so we shouldn't give any
 // reading capabilities to PointsToRaw. Turning a PointsToRaw into a PointsTo
 // should always leave it as 'uninitialized'.
-
 #[verifier::external_body]
 pub tracked struct PointsToRaw {
     // TODO implement this as Map<usize, PointsTo<u8>> or something
@@ -564,6 +561,7 @@ pub tracked struct PointsToRaw {
 
 impl PointsToRaw {
     pub open spec fn provenance(self) -> Provenance;
+
     pub open spec fn dom(self) -> Set<int>;
 
     pub open spec fn is_range(self, start: int, len: int) -> bool {
@@ -578,7 +576,7 @@ impl PointsToRaw {
     pub proof fn empty(provenance: Provenance) -> (tracked points_to_raw: Self)
         ensures
             points_to_raw.dom() == Set::<int>::empty(),
-            points_to_raw.provenance() == provenance
+            points_to_raw.provenance() == provenance,
     {
         unimplemented!();
     }
@@ -620,11 +618,9 @@ impl PointsToRaw {
             start as int % align_of::<V>() as int == 0,
             self.is_range(start as int, size_of::<V>() as int),
         ensures
-            points_to.ptr() == ptr_mut_from_data::<V>(PtrData {
-                addr: start,
-                provenance: self.provenance(),
-                metadata: Metadata::Thin,
-            }),
+            points_to.ptr() == ptr_mut_from_data::<V>(
+                PtrData { addr: start, provenance: self.provenance(), metadata: Metadata::Thin },
+            ),
             points_to.is_uninit(),
     {
         unimplemented!();
@@ -646,9 +642,7 @@ impl<V> PointsTo<V> {
 }
 
 // Allocation and deallocation via the global allocator
-
 /// Permission to perform a deallocation with the global allocator
-
 #[verifier::external_body]
 pub tracked struct Dealloc {
     no_copy: NoCopy,
@@ -659,7 +653,7 @@ pub ghost struct DeallocData {
     pub size: nat,
     pub align: nat,
     /// This should probably be some kind of "allocation ID" (with "allocation ID" being
-    /// only one part of a full Provenance definition). 
+    /// only one part of a full Provenance definition).
     pub provenance: Provenance,
 }
 
@@ -667,34 +661,49 @@ impl Dealloc {
     pub spec fn view(self) -> DeallocData;
 
     #[verifier::inline]
-    pub open spec fn addr(self) -> usize { self.view().addr }
+    pub open spec fn addr(self) -> usize {
+        self.view().addr
+    }
 
     #[verifier::inline]
-    pub open spec fn size(self) -> nat { self.view().size }
+    pub open spec fn size(self) -> nat {
+        self.view().size
+    }
 
     #[verifier::inline]
-    pub open spec fn align(self) -> nat { self.view().align }
+    pub open spec fn align(self) -> nat {
+        self.view().align
+    }
 
     #[verifier::inline]
-    pub open spec fn provenance(self) -> Provenance { self.view().provenance }
+    pub open spec fn provenance(self) -> Provenance {
+        self.view().provenance
+    }
 }
 
 /// Allocate with the global allocator.
 /// Precondition should be consistent with the [documented safety conditions on `alloc`](https://doc.rust-lang.org/alloc/alloc/trait.GlobalAlloc.html#tymethod.alloc).
-
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
-pub fn allocate(size: usize, align: usize)
-    -> (pt: (*mut u8, Tracked<PointsToRaw>, Tracked<Dealloc>))
+pub fn allocate(size: usize, align: usize) -> (pt: (
+    *mut u8,
+    Tracked<PointsToRaw>,
+    Tracked<Dealloc>,
+))
     requires
         valid_layout(size, align),
-        size != 0
+        size != 0,
     ensures
         pt.1@.is_range(pt.0.addr() as int, size as int),
-        pt.2@@ == (DeallocData { addr: pt.0.addr(), size: size as nat, align: align as nat, provenance: pt.1@.provenance() }),
+        pt.2@@ == (DeallocData {
+            addr: pt.0.addr(),
+            size: size as nat,
+            align: align as nat,
+            provenance: pt.1@.provenance(),
+        }),
         pt.0.addr() as int % align as int == 0,
         pt.0@.metadata == Metadata::Thin,
-        pt.0@.provenance == pt.1@.provenance()
+        pt.0@.provenance == pt.1@.provenance(),
     opens_invariants none
 {
     // SAFETY: valid_layout is a precondition
@@ -705,10 +714,12 @@ pub fn allocate(size: usize, align: usize)
 }
 
 /// Deallocate with the global allocator.
-
 #[cfg(feature = "alloc")]
 #[verifier::external_body]
-pub fn deallocate(p: *mut u8, size: usize, align: usize,
+pub fn deallocate(
+    p: *mut u8,
+    size: usize,
+    align: usize,
     Tracked(pt): Tracked<PointsToRaw>,
     Tracked(dealloc): Tracked<Dealloc>,
 )
@@ -723,7 +734,9 @@ pub fn deallocate(p: *mut u8, size: usize, align: usize,
 {
     // SAFETY: ensured by dealloc token
     let layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(size, align) };
-    unsafe { ::alloc::alloc::dealloc(p, layout); }
+    unsafe {
+        ::alloc::alloc::dealloc(p, layout);
+    }
 }
 
 } // verus!
