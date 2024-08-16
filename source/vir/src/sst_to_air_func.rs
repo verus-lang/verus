@@ -109,6 +109,24 @@ fn func_def_quant(
     Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false), &f_imply))
 }
 
+pub(crate) fn hide_projections_air(
+    typ_params: &Idents,
+    holes: Vec<(Ident, Typ)>,
+) -> (Idents, Vec<Expr>) {
+    let mut typ_params: Vec<Ident> = (**typ_params).clone();
+    let mut eqs: Vec<Expr> = Vec::new();
+    for (x, t) in holes {
+        let xids = crate::def::suffix_typ_param_ids_types(&x);
+        let tids = typ_to_ids(&t);
+        assert!(xids.len() == tids.len());
+        for ((xa, _ta), tid) in xids.into_iter().zip(tids.into_iter()) {
+            eqs.push(mk_eq(&ident_var(&xa.lower()), &tid));
+        }
+        typ_params.push(x);
+    }
+    (Arc::new(typ_params), eqs)
+}
+
 pub(crate) fn module_reveal_axioms(
     _ctx: &Ctx,
     decl_commands: &mut Vec<Command>,
@@ -244,8 +262,14 @@ fn func_body_to_air(
     }
 
     // For trait method implementations, use trait method function name and add Self type argument
+    let mut impl_typ_params = function.x.typ_params.clone();
+    let mut impl_def_reqs: Vec<Expr> = Vec::new();
     let (name, rec_name, typ_args) =
         if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &function.x.kind {
+            let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
+            let (typ_params, eqs) = hide_projections_air(&function.x.typ_params, holes);
+            impl_typ_params = typ_params;
+            impl_def_reqs.extend(eqs);
             (method.clone(), function.x.name.clone(), trait_typ_args.clone())
         } else if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             let typ_args = vec_map(&function.x.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
@@ -311,10 +335,11 @@ fn func_body_to_air(
         rec_f_def
     };
 
+    def_reqs.extend(impl_def_reqs);
     let e_forall = func_def_quant(
         ctx,
         &suffix_global_id(&fun_to_air_ident(&name)),
-        &function.x.typ_params,
+        &impl_typ_params,
         &typ_args,
         pars,
         &def_reqs,
@@ -673,6 +698,8 @@ pub fn func_axioms_to_air(
                 {
                     // Emit axiom that says our method equals the default method we inherit from
                     // (if trait bounds are satisfied)
+                    let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
+                    let (typ_params, eqs) = hide_projections_air(&function.x.typ_params, holes);
                     let mut args: Vec<Expr> =
                         trait_typ_args.iter().map(typ_to_ids).flatten().collect();
                     for p in function.x.pars.iter() {
@@ -681,13 +708,15 @@ pub fn func_axioms_to_air(
                     let default_name = crate::def::trait_default_name(f_trait);
                     let default_name = &suffix_global_id(&fun_to_air_ident(&default_name));
                     let body = ident_apply(&default_name, &args);
+                    let mut pre = crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds);
+                    pre.extend(eqs);
                     let e_forall = func_def_quant(
                         ctx,
                         &suffix_global_id(&fun_to_air_ident(&f_trait)),
-                        &function.x.typ_params,
+                        &typ_params,
                         &trait_typ_args,
                         &function.x.pars,
-                        &crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds),
+                        &pre,
                         body,
                     )?;
                     let def_axiom = mk_unnamed_axiom(e_forall);

@@ -729,6 +729,39 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
     Arc::new(commands)
 }
 
+// Consider a trait impl like:
+//   impl<A, B: T> U<A, B, B::X> for S { ... }
+// This is an impl for U<S, A, B, B::X>.
+// Naively, we might generate axioms triggered on U<S, A, B, B::X>.
+// However, such a trigger could fail to match U<t0, t1, t2, t3>
+// if t3 didn't have exactly the form B::X.
+// So it's better to use a trigger that hides the B::X behind a fresh "hole" type parameter H0:
+//   U<S, A, B, H0>
+// with a restriction inside the axiom that H0 = B::X.
+// This function returns a new type with projections replace by holes,
+// along with a vector of H = typ equations.
+pub(crate) fn hide_projections(typs: &Typs) -> (Typs, Vec<(Ident, Typ)>) {
+    use crate::ast_visitor::{Rewrite, TypVisitor};
+    struct ProjVisitor {
+        holes: Vec<(Ident, Typ)>,
+    }
+    impl TypVisitor<Rewrite, ()> for ProjVisitor {
+        fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, ()> {
+            match &**typ {
+                TypX::Projection { .. } => {
+                    let x = crate::def::proj_param(self.holes.len());
+                    self.holes.push((x.clone(), typ.clone()));
+                    Ok(Arc::new(TypX::TypParam(x)))
+                }
+                _ => self.visit_typ_rec(typ),
+            }
+        }
+    }
+    let mut visitor = ProjVisitor { holes: Vec::new() };
+    let typs = visitor.visit_typs(typs).expect("hide_projections");
+    (Arc::new(typs), visitor.holes)
+}
+
 pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     // Axiom for bounds predicates (based on trait impls)
     // forall typ_params. typ_bounds ==> tr_bound%T(...typ_args...)
@@ -738,8 +771,10 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     //   impl<A: T1> T2<Set<A>> for S<Seq<A>>
     // -->
     //   forall A. tr_bound%T1(A) ==> tr_bound%T2(S<Seq<A>>, Set<A>)
+    let (trait_typ_args, holes) = crate::traits::hide_projections(&imp.x.trait_typ_args);
+    let (typ_params, eqs) = crate::sst_to_air_func::hide_projections_air(&imp.x.typ_params, holes);
     let tr_bound =
-        if let Some(tr_bound) = trait_bound_to_air(ctx, &imp.x.trait_path, &imp.x.trait_typ_args) {
+        if let Some(tr_bound) = trait_bound_to_air(ctx, &imp.x.trait_path, &trait_typ_args) {
             tr_bound
         } else {
             return Arc::new(vec![]);
@@ -750,12 +785,13 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     let bind = crate::sst_to_air_func::func_bind_trig(
         ctx,
         name,
-        &imp.x.typ_params,
+        &typ_params,
         &Arc::new(vec![]),
         &trigs,
         false,
     );
-    let req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
+    let mut req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
+    req_bounds.extend(eqs);
     let imply = mk_implies(&air::ast_util::mk_and(&req_bounds), &tr_bound);
     let forall = mk_bind_expr(&bind, &imply);
     let axiom = mk_unnamed_axiom(forall);

@@ -65,6 +65,7 @@ const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
+const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
@@ -432,6 +433,10 @@ pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
         PROJECT_SEPARATOR,
         name.to_string()
     ))
+}
+
+pub fn proj_param(i: usize) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_PROJECT_PARAM, i))
 }
 
 pub fn trait_bound(trait_path: &Path) -> Ident {
