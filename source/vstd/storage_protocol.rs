@@ -1,3 +1,5 @@
+#![cfg_attr(rustfmt, rustfmt::skip)]
+
 use super::pcm::Loc;
 use super::prelude::*;
 

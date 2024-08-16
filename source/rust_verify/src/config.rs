@@ -446,10 +446,6 @@ pub fn parse_args_with_imports(
                 print_usage();
                 std::process::exit(0);
             }
-            if m.free.len() == 0 && !m.opt_present("version") {
-                print_usage();
-                std::process::exit(-1);
-            }
             unmatched.insert(0, program.clone());
             (m, unmatched)
         }

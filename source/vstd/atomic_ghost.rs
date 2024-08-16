@@ -1,6 +1,7 @@
 //! Provides sequentially-consistent atomic memory locations with associated ghost state.
 //! See the [`atomic_with_ghost!`] documentation for more information.
 #![allow(unused_imports)]
+#![cfg_attr(rustfmt, rustfmt::skip)]
 
 use super::atomic::*;
 use super::invariant::*;
