@@ -336,7 +336,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_field_unsupported verus_code! {
+    #[test] test_mut_ref_field_unwind_fail verus_code! {
         struct X {
             i: u8,
             j: u8,
@@ -356,11 +356,11 @@ test_verify_one_file! {
             let mut x = X { i: 10, j: 8 };
             test(&mut x.i);
         }
-    } => Err(err) => assert_vir_error_msg(err, "unsupported: taking a &mut ref to a field from a datatype with a type invariant")
+    } => Err(err) => assert_vir_error_msg(err, "this function call takes a &mut ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked no_unwind")
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_field_nested_unsupported verus_code! {
+    #[test] test_mut_ref_field_nested_unwind_fail verus_code! {
         struct X {
             i: u8,
             j: u8,
@@ -385,7 +385,371 @@ test_verify_one_file! {
             let mut y = Y { x: X { i: 10, j: 8 } };
             let j = test(&mut y.x.i);
         }
-    } => Err(err) => assert_vir_error_msg(err, "unsupported: taking a &mut ref to a field from a datatype with a type invariant")
+    } => Err(err) => assert_vir_error_msg(err, "this function call takes a &mut ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked no_unwind")
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_tests verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        struct Y {
+            i: u8,
+            j: u8,
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                self.i == self.j
+            }
+        }
+
+        fn mutate_int(i: &mut u8) no_unwind { }
+
+        fn test1() {
+            let mut x = X { i: 10, j: 8 };
+            mutate_int(&mut x.j);
+        }
+
+        fn test2() {
+            let mut x = X { i: 10, j: 8 };
+            mutate_int(&mut x.i); // FAILS
+        }
+
+
+        fn mutate_int2(i: &mut u8, j: &mut u8)
+            ensures *i == *j
+            no_unwind
+        {
+            *i = 100;
+            *j = 100;
+        }
+
+        fn test4() {
+            let mut x = X { i: 10, j: 8 };
+            mutate_int2(&mut x.i, &mut x.j); // FAILS
+        }
+
+        fn test5() {
+            let mut y = Y { i: 8, j: 8 };
+            mutate_int2(&mut y.i, &mut y.j);
+        }
+
+        struct Z {
+            x: X,
+            y: Y
+        }
+
+        impl Z {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                self.x.i == self.y.i
+            }
+        }
+
+        fn mutate_int4_meet_all(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
+            ensures *a == 10, *b == 30, *c == 10, *d == 10
+            no_unwind
+        { assume(false); }
+
+        fn mutate_int4_fail_x(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
+            ensures *a == 20, *b == 30, *c == 20, *d == 20
+            no_unwind
+        { assume(false); }
+
+        fn mutate_int4_fail_y(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
+            ensures *a == 10, *b == 30, *c == 10, *d == 11
+            no_unwind
+        { assume(false); }
+
+        fn mutate_int4_fail_z(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
+            ensures *a == 10, *b == 30, *c == 11, *d == 11
+            no_unwind
+        { assume(false); }
+
+        fn test8() {
+            let x = X { i: 8, j: 8 };
+            let y = Y { i: 8, j: 8 };
+            let mut z = Z { x, y };
+            mutate_int4_meet_all(&mut z.x.i, &mut z.x.j, &mut z.y.i, &mut z.y.j);
+        }
+
+        fn test9() {
+            let mut x = X { i: 8, j: 8 };
+            let mut y = Y { i: 8, j: 8 };
+            let mut z = Z { x, y };
+            mutate_int4_fail_x(&mut z.x.i, &mut z.x.j, &mut z.y.i, &mut z.y.j); // FAILS
+        }
+
+        fn test10() {
+            let mut x = X { i: 8, j: 8 };
+            let mut y = Y { i: 8, j: 8 };
+            let mut z = Z { x, y };
+            mutate_int4_fail_y(&mut z.x.i, &mut z.x.j, &mut z.y.i, &mut z.y.j); // FAILS
+        }
+
+        fn test11() {
+            let mut x = X { i: 8, j: 8 };
+            let mut y = Y { i: 8, j: 8 };
+            let mut z = Z { x, y };
+            mutate_int4_fail_z(&mut z.x.i, &mut z.x.j, &mut z.y.i, &mut z.y.j); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_nested_calls verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                self.i <= self.j
+            }
+        }
+
+        fn set_to(i: &mut u8, x: u8, y: u8) -> (ret: u8)
+            ensures *i == x, ret == y
+            no_unwind
+        {
+            *i = x;
+            y
+        }
+
+        fn test_nested_calls() {
+            let mut x = X { i: 5, j: 10 };
+
+            // Set i to 2; then set j to 3
+            set_to(&mut x.j, set_to(&mut x.i, 2, 3), 0);
+        }
+
+        fn test_nested_calls2() {
+            let mut x = X { i: 5, j: 10 };
+
+            // Set j to 3; then set i to 2
+            // in principle this could be ok but right now we put an assertion right after
+            // the inner call.
+            set_to(&mut x.i,
+                set_to(&mut x.j, 3, 2) // FAILS
+                , 0);
+        }
+
+        fn test_nested_calls3() {
+            let mut x = X { i: 5, j: 10 };
+
+            // This should definitely fail one way or another, either at the call
+            // or at the assert
+            set_to(&mut x.i,
+                set_to(&mut x.j, 3, 2) // FAILS
+                , {
+                  assert(false);
+                 0 });
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_nested_calls_fail verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                self.i <= self.j
+            }
+        }
+
+        fn set_to(i: &mut u8, x: u8, y: u8) -> (ret: u8)
+            ensures *i == x, ret == y
+            no_unwind
+        {
+            *i = x;
+            y
+        }
+
+        fn test_nested_calls3() {
+            let mut x = X { i: 5, j: 10 };
+
+            // This should definitely fail one way or another, either at the call, the assert
+            // or a lifetime error ...
+            set_to(&mut x.i,
+                set_to(&mut x.j, 3, 2) // FAILS
+                , {
+                  assert(x.the_inv());
+                 0 });
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_nested_calls_fail2 verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                self.i <= self.j
+            }
+        }
+
+        fn set_to(i: &mut u8, x: u8, y: u8) -> (ret: u8)
+            ensures *i == x, ret == y
+            no_unwind
+        {
+            *i = x;
+            y
+        }
+
+        fn test_nested_calls3() {
+            let mut x = X { i: 5, j: 10 };
+
+            set_to(&mut x.i,
+                set_to(&mut x.j, 3, 2) // FAILS
+                , {
+                  proof { use_type_invariant(&x); }
+                 0 });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot borrow `x` as immutable because it is also borrowed as mutable")
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_nested_calls_fail3_two_phase_borrow verus_code! {
+        struct Y(u8);
+        struct X {
+            i: Y,
+            j: Y,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                self.i.0 <= self.j.0
+            }
+        }
+
+        impl Y {
+            fn set_to(&mut self, x: u8, y: u8) -> (ret: u8)
+                ensures self.0 == x, ret == y
+                no_unwind
+            {
+                self.0 = x;
+                y
+            }
+        }
+
+        fn test_nested_calls3() {
+            let mut x = X { i: Y(5), j: Y(10) };
+
+            // This should definitely fail one way or another, either at the call, the assert
+            // or a lifetime error ...
+            x.i.set_to(
+                x.j.set_to(3, 2) // FAILS
+                , {
+                  assert(false);
+                 0 });
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_nested_calls_fail4_two_phase_borrow verus_code! {
+        struct Y(u8);
+        struct X {
+            i: Y,
+            j: Y,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                self.i.0 <= self.j.0
+            }
+        }
+
+        impl Y {
+            fn set_to(&mut self, x: u8, y: u8) -> (ret: u8)
+                ensures self.0 == x, ret == y
+                no_unwind
+            {
+                self.0 = x;
+                y
+            }
+        }
+
+        fn test_nested_calls3() {
+            let mut x = X { i: Y(5), j: Y(10) };
+
+            // This should definitely fail one way or another, either at the call, the assert
+            // or a lifetime error ...
+            x.i.set_to(
+                x.j.set_to(3, 2) // FAILS
+                , {
+                  assert(x.the_inv());
+                 0 });
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_nested_calls_fail5_two_phase_borrow verus_code! {
+        struct Y(u8);
+        struct X {
+            i: Y,
+            j: Y,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                self.i.0 <= self.j.0
+            }
+        }
+
+        impl Y {
+            fn set_to(&mut self, x: u8, y: u8) -> (ret: u8)
+                ensures self.0 == x, ret == y
+                no_unwind
+            {
+                self.0 = x;
+                y
+            }
+        }
+
+        fn test_nested_calls3() {
+            let mut x = X { i: Y(5), j: Y(10) };
+
+            // This should definitely fail ... somewhere
+            // Right now, we call it a lifetime error, but that's because Verus
+            // lifetime-generate doesn't handle two-phase borrows correctly.
+            // therefore, the error message here will probably change once we support
+            // two-phase borrows. Either way, it needs to be an error.
+
+            x.i.set_to(
+                x.j.set_to(3, 2)
+                , {
+                  proof { use_type_invariant(&x); }
+                 0 });
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot borrow `x` as immutable because it is also borrowed as mutable")
 }
 
 test_verify_one_file! {
@@ -1035,8 +1399,7 @@ test_verify_one_file! {
             let mut y = x;
             stuff(&mut y.i);
         }
-    } => Err(err) => assert_vir_error_msg(err, "currently unsupported: taking a &mut ref to a field from a datatype with a type invariant")
-    //} => Err(err) => assert_vir_error_msg(err, "type invariant function is not visible to this program point")
+    } => Err(err) => assert_vir_error_msg(err, "type invariant function is not visible to this program point")
 }
 
 test_verify_one_file! {

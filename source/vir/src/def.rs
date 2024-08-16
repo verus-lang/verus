@@ -53,6 +53,7 @@ const SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
 pub const PREFIX_EXPAND_ERRORS_TEMP_VAR: &str = "expand%";
 const BITVEC_TMP_DECL_SEPARATOR: &str = "bitvectmp%";
+const USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR: &str = "userdeftypeinvpass%";
 const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
@@ -854,6 +855,10 @@ pub fn unique_var_name(
         }
         VarIdentDisambiguate::BitVectorToAirDecl(id) => {
             out.push_str(BITVEC_TMP_DECL_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
+        VarIdentDisambiguate::UserDefinedTypeInvariantPass(id) => {
+            out.push_str(USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
     }
