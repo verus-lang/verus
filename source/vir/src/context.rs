@@ -386,6 +386,18 @@ impl GlobalCtx {
                             ImplPath::FnDefImplPath(fun) =>   labelize("FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
                         }
                     }
+                    Node::TraitReqEns(impl_path, true) => {
+                        match impl_path {
+                            ImplPath::TraitImplPath(path) =>  labelize("ReqEns?TraitImplPath", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
+                            ImplPath::FnDefImplPath(fun) =>   labelize("ReqEns?FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
+                        }
+                    }
+                    Node::TraitReqEns(impl_path, false) => {
+                        match impl_path {
+                            ImplPath::TraitImplPath(path) =>  labelize("ReqEns!TraitImplPath", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
+                            ImplPath::FnDefImplPath(fun) =>   labelize("ReqEns!FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
+                        }
+                    }
                     Node::ModuleReveal(path) =>               labelize("ModuleReveal", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
                     Node::SpanInfo { span_infos_index: _, text: _ } => {
                         format!("shape=\"point\"")
@@ -407,6 +419,8 @@ impl GlobalCtx {
                     Node::Trait(path) => is_not_std(path),
                     Node::TraitImpl(ImplPath::TraitImplPath(path)) => is_not_std(path),
                     Node::TraitImpl(ImplPath::FnDefImplPath(fun)) => is_not_std(&fun.path),
+                    Node::TraitReqEns(ImplPath::TraitImplPath(path), _) => is_not_std(path),
+                    Node::TraitReqEns(ImplPath::FnDefImplPath(fun), _) => is_not_std(&fun.path),
                     Node::ModuleReveal(path) => is_not_std(path),
                     Node::SpanInfo { .. } => true,
                 };

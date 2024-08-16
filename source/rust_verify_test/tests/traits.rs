@@ -2116,6 +2116,58 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_impl_trait_bound_cycle4 verus_code! {
+        trait T {
+            spec fn f() -> bool;
+        }
+
+        trait U<A: T> {
+            spec fn p() -> bool
+                recommends
+                    A::f();
+        }
+
+        impl T for u8 {
+            spec fn f() -> bool decreases 0int {
+                <u32 as U<u8>>::p() // FAILS
+            }
+        }
+
+        impl U<u8> for u32 {
+            spec fn p() -> bool decreases 0int { true }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_impl_trait_req_ens_graph_edge verus_code! {
+        // https://github.com/verus-lang/verus/issues/1235
+        // tests Node::TraitReqEns
+        pub trait T {
+            spec fn f(&self) -> int;
+        }
+
+        pub trait U : T + Sized {
+            proof fn p1(v: Self)
+                ensures v.f() < 10;
+
+            proof fn p2(&self) {
+                Self::p1(*self);
+            }
+        }
+
+        impl T for u32 {
+            open spec fn f(&self) -> int { 5 }
+        }
+
+        impl U for u32 {
+            proof fn p1(v: Self) {
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] trait_fn_with_0_params verus_code! {
         trait Tr {
             spec fn f() -> int;
