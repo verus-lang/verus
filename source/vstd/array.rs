@@ -139,7 +139,6 @@ pub fn array_fill_for_copy_types<T: Copy, const N: usize>(t: T) -> (res: [T; N])
     [t;N]
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_array_axioms {
     array_len_matches_n,
     lemma_array_index,

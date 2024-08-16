@@ -365,7 +365,6 @@ pointer_specs!(ptr_mut_specs, ptr_mut_from_data, mut);
 
 pointer_specs!(ptr_const_specs, ptr_from_data, const);
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_raw_ptr_axioms {
     axiom_ptr_mut_from_data,
     ptrs_mut_eq,

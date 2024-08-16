@@ -240,8 +240,6 @@ pub(crate) enum Attr {
     BroadcastForall,
     // group together other BroadcastForall or RevealGroup
     RevealGroup,
-    // prune away a reveal_group if the reveal_group's module itself is unused
-    HiddenUnlessThisModuleIsUsed,
     // this reveal_group is revealed by default when the group's crate is imported
     RevealedByDefaultWhenThisCrateIsImported,
     // accept the trigger chosen by triggers_auto without printing any diagnostics
@@ -440,7 +438,7 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::BroadcastForall)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "prune_unless_this_module_is_used" => {
-                    v.push(Attr::HiddenUnlessThisModuleIsUsed)
+                    report_deprecated("prune_unless_this_module_is_used", "this has no effect");
                 }
                 AttrTree::Fun(_, arg, None)
                     if arg == "broadcast_use_by_default_when_this_crate_is_imported" =>
@@ -808,7 +806,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) accept_recursive_type_list: Vec<(String, AcceptRecursiveType)>,
     pub(crate) broadcast_forall: bool,
     pub(crate) reveal_group: bool,
-    pub(crate) prune_unless_this_module_is_used: bool,
     pub(crate) broadcast_use_by_default_when_this_crate_is_imported: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autospec: Option<String>,
@@ -913,7 +910,6 @@ pub(crate) fn get_verifier_attrs(
         accept_recursive_type_list: vec![],
         broadcast_forall: false,
         reveal_group: false,
-        prune_unless_this_module_is_used: false,
         broadcast_use_by_default_when_this_crate_is_imported: false,
         no_auto_trigger: false,
         autospec: None,
@@ -979,7 +975,6 @@ pub(crate) fn get_verifier_attrs(
             }
             Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::RevealGroup => vs.reveal_group = true,
-            Attr::HiddenUnlessThisModuleIsUsed => vs.prune_unless_this_module_is_used = true,
             Attr::RevealedByDefaultWhenThisCrateIsImported => {
                 vs.broadcast_use_by_default_when_this_crate_is_imported = true
             }

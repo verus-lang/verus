@@ -2365,7 +2365,11 @@ test_verify_one_file! {
                     guard t >= (Map::<int,int>::empty().insert(5, 7)) by { }; // FAILS
 
                     birds_eye let t = pre.t;
-                    assert(t.dom().contains(5) && t.index(5) == 7) by {
+                    assert(t.dom().contains(5)) by {
+                        assert(Map::<int,int>::empty().insert(5, 7).dom().contains(5));
+                        assert(Map::<int,int>::empty().insert(5, 7).index(5) == 7);
+                    };
+                    assert(t.index(5) == 7) by {
                         assert(Map::<int,int>::empty().insert(5, 7).dom().contains(5));
                         assert(Map::<int,int>::empty().insert(5, 7).index(5) == 7);
                     };

@@ -336,7 +336,6 @@ test_verify_one_file! {
             v2.push(v1.clone());
             let c2 = v2.clone();
             let ghost g2 = c2.deep_view() == v2.deep_view();
-            assert(c2.deep_view() =~= v2.deep_view()); // TODO: get rid of this
             assert(g2);
             assert(c2@ == v2@); // FAILS
         }

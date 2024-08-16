@@ -97,33 +97,99 @@ pub fn ex_default_hasher_finish(state: &DefaultHasher) -> (result: u64)
 #[verifier::external_body]
 pub spec fn obeys_key_model<Key: ?Sized>() -> bool;
 
-// This axiom states that any primitive type, or `Box` thereof,
+// These axioms state that any primitive type, or `Box` thereof,
 // obeys the requirements to be a key in a hash table that
 // conforms to our hash-table model.
-pub broadcast proof fn axiom_primitive_types_obey_hash_table_key_model()
+// (Declare each separately to enable pruning of unused primitive types.)
+pub broadcast proof fn axiom_bool_obeys_hash_table_key_model()
     ensures
-        obeys_key_model::<bool>(),
-        obeys_key_model::<u8>(),
-        obeys_key_model::<u16>(),
-        obeys_key_model::<u32>(),
-        obeys_key_model::<u64>(),
-        obeys_key_model::<u128>(),
-        obeys_key_model::<i8>(),
-        obeys_key_model::<i16>(),
-        obeys_key_model::<i32>(),
-        obeys_key_model::<i64>(),
-        obeys_key_model::<i128>(),
-        obeys_key_model::<Box<bool>>(),
-        obeys_key_model::<Box<u8>>(),
-        obeys_key_model::<Box<u16>>(),
-        obeys_key_model::<Box<u32>>(),
-        obeys_key_model::<Box<u64>>(),
-        obeys_key_model::<Box<u128>>(),
-        obeys_key_model::<Box<i8>>(),
-        obeys_key_model::<Box<i16>>(),
-        obeys_key_model::<Box<i32>>(),
-        obeys_key_model::<Box<i64>>(),
-        obeys_key_model::<Box<i128>>(),
+        #[trigger] obeys_key_model::<bool>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_u8_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<u8>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_u16_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<u16>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_u32_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<u32>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_u64_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<u64>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_u128_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<u128>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_i8_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<i8>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_i16_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<i16>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_i32_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<i32>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_i164_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<i64>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_i128_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<i128>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_box_bool_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<Box<bool>>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_box_integer_type_obeys_hash_table_key_model<Key: Integer + ?Sized>()
+    requires
+        obeys_key_model::<Key>(),
+    ensures
+        #[trigger] obeys_key_model::<Box<Key>>(),
 {
     admit();
 }
@@ -160,7 +226,7 @@ pub struct ExRandomState(RandomState);
 
 pub broadcast proof fn axiom_random_state_builds_valid_hashers()
     ensures
-        builds_valid_hashers::<RandomState>(),
+        #[trigger] builds_valid_hashers::<RandomState>(),
 {
     admit();
 }
@@ -428,7 +494,6 @@ pub fn ex_hash_map_clear<Key, Value, S>(m: &mut HashMap<Key, Value, S>)
     m.clear()
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_hash_axioms {
     axiom_box_key_removed,
     axiom_contains_deref_key,
@@ -436,7 +501,19 @@ pub broadcast group group_hash_axioms {
     axiom_deref_key_removed,
     axiom_maps_deref_key_to_value,
     axiom_maps_box_key_to_value,
-    axiom_primitive_types_obey_hash_table_key_model,
+    axiom_bool_obeys_hash_table_key_model,
+    axiom_u8_obeys_hash_table_key_model,
+    axiom_u16_obeys_hash_table_key_model,
+    axiom_u32_obeys_hash_table_key_model,
+    axiom_u64_obeys_hash_table_key_model,
+    axiom_u128_obeys_hash_table_key_model,
+    axiom_i8_obeys_hash_table_key_model,
+    axiom_i16_obeys_hash_table_key_model,
+    axiom_i32_obeys_hash_table_key_model,
+    axiom_i164_obeys_hash_table_key_model,
+    axiom_i128_obeys_hash_table_key_model,
+    axiom_box_bool_obeys_hash_table_key_model,
+    axiom_box_integer_type_obeys_hash_table_key_model,
     axiom_random_state_builds_valid_hashers,
     axiom_spec_hash_map_len,
 }
