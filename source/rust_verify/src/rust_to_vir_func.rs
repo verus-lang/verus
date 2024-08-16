@@ -501,7 +501,6 @@ fn create_reveal_group<'tcx>(
                 name: name.clone(),
                 visibility,
                 owning_module: Some(module_path.clone()),
-                prune_unless_this_module_is_used: vattrs.prune_unless_this_module_is_used,
                 broadcast_use_by_default_when_this_crate_is_imported,
                 members: Arc::new(members),
             };

@@ -409,7 +409,6 @@ pub broadcast proof fn axiom_set_choose_len<A>(s: Set<A>)
     admit();
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_set_axioms {
     axiom_set_empty,
     axiom_set_new,
