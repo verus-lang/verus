@@ -130,7 +130,8 @@ impl<V> PointsTo<V> {
     }
 
     // TODO make this a user-defined type invariant
-    pub closed spec fn wf(self) -> bool {
+    #[verifier::type_invariant]
+    closed spec fn wf(self) -> bool {
         &&& self.points_to.ptr()@.metadata == Metadata::Thin
         &&& self.points_to.ptr()@.provenance == self.exposed.provenance()
         &&& match self.dealloc {
@@ -169,30 +170,24 @@ impl<V> PointsTo<V> {
     }
 
     pub proof fn is_nonnull(tracked &self)
-        requires
-            self.wf(),
         ensures
             self.addr() != 0,
     {
+        use_type_invariant(self);
     }
 
     pub proof fn leak_contents(tracked &mut self)
-        requires
-            old(self).wf(),
         ensures
-            self.wf(),
             self.pptr() == old(self).pptr(),
             self.is_uninit(),
     {
+        use_type_invariant(&*self);
         self.points_to.leak_contents();
     }
 
     /// Note: If both S and V are non-zero-sized, then this implies the pointers
     /// have distinct addresses.
     pub proof fn is_disjoint<S>(&mut self, other: &PointsTo<S>)
-        requires
-            old(self).wf(),
-            other.wf(),
         ensures
             *old(self) == *self,
             self.addr() + size_of::<V>() <= other.addr() || other.addr() + size_of::<S>()
@@ -203,8 +198,6 @@ impl<V> PointsTo<V> {
 
     pub proof fn is_distinct<S>(&mut self, other: &PointsTo<S>)
         requires
-            old(self).wf(),
-            other.wf(),
             size_of::<V>() != 0,
             size_of::<S>() != 0,
         ensures
@@ -232,7 +225,6 @@ impl PPtr {
     /// Allocates heap memory for type `V`, leaving it uninitialized.
     pub fn empty<V>() -> (pt: (PPtr, Tracked<PointsTo<V>>))
         ensures
-            pt.1@.wf(),
             pt.1@.pptr() == pt.0,
             pt.1@.is_uninit(),
         opens_invariants none
@@ -271,7 +263,6 @@ impl PPtr {
     /// with the given value `v`.
     pub fn new<V>(v: V) -> (pt: (PPtr, Tracked<PointsTo<V>>))
         ensures
-            pt.1@.wf(),
             pt.1@.pptr() == pt.0,
             pt.1@.opt_value() == MemContents::Init(v),
         opens_invariants none
@@ -289,7 +280,6 @@ impl PPtr {
     #[verifier::external_body]
     pub fn free<V>(self, Tracked(perm): Tracked<PointsTo<V>>)
         requires
-            perm.wf(),
             perm.pptr() == self,
             perm.is_uninit(),
         opens_invariants none
@@ -316,7 +306,6 @@ impl PPtr {
     #[inline(always)]
     pub fn into_inner<V>(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
         requires
-            perm.wf(),
             perm.pptr() == self,
             perm.is_init(),
         ensures
@@ -337,16 +326,15 @@ impl PPtr {
     #[inline(always)]
     pub fn put<V>(self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
-            old(perm).wf(),
             old(perm).pptr() == self,
             old(perm).opt_value() == MemContents::Uninit::<V>,
         ensures
-            perm.wf(),
             perm.pptr() == old(perm).pptr(),
             perm.opt_value() == MemContents::Init(v),
         opens_invariants none
         no_unwind
     {
+        proof { use_type_invariant(&*perm); }
         let ptr: *mut V = with_exposed_provenance(self.0, Tracked(perm.exposed));
         ptr_mut_write(ptr, Tracked(&mut perm.points_to), v);
     }
@@ -361,17 +349,16 @@ impl PPtr {
     #[inline(always)]
     pub fn take<V>(self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (v: V)
         requires
-            old(perm).wf(),
             old(perm).pptr() == self,
             old(perm).is_init(),
         ensures
-            perm.wf(),
             perm.pptr() == old(perm).pptr(),
             perm.opt_value() == MemContents::Uninit::<V>,
             v == old(perm).value(),
         opens_invariants none
         no_unwind
     {
+        proof { use_type_invariant(&*perm); }
         let ptr: *mut V = with_exposed_provenance(self.0, Tracked(perm.exposed));
         ptr_mut_read(ptr, Tracked(&mut perm.points_to))
     }
@@ -381,17 +368,16 @@ impl PPtr {
     #[inline(always)]
     pub fn replace<V>(self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
         requires
-            old(perm).wf(),
             old(perm).pptr() == self,
             old(perm).is_init(),
         ensures
-            perm.wf(),
             perm.pptr() == old(perm).pptr(),
             perm.opt_value() == MemContents::Init(in_v),
             out_v == old(perm).value(),
         opens_invariants none
         no_unwind
     {
+        proof { use_type_invariant(&*perm); }
         let ptr: *mut V = with_exposed_provenance(self.0, Tracked(perm.exposed));
         let out_v = ptr_mut_read(ptr, Tracked(&mut perm.points_to));
         ptr_mut_write(ptr, Tracked(&mut perm.points_to), in_v);
@@ -403,7 +389,6 @@ impl PPtr {
     #[verifier::external_body]
     pub fn borrow<'a, V>(self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
-            perm.wf(),
             perm.pptr() == self,
             perm.is_init(),
         ensures
@@ -411,6 +396,7 @@ impl PPtr {
         opens_invariants none
         no_unwind
     {
+        proof { use_type_invariant(&*perm); }
         let ptr: *mut V = with_exposed_provenance(self.0, Tracked(perm.exposed));
         ptr_ref(ptr, Tracked(&perm.points_to))
     }
@@ -418,7 +404,6 @@ impl PPtr {
     #[inline(always)]
     pub fn write<V: Copy>(self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
         requires
-            old(perm).wf(),
             old(perm).pptr() == self,
         ensures
             perm.pptr() === old(perm).pptr(),
@@ -427,6 +412,7 @@ impl PPtr {
         no_unwind
     {
         proof {
+            use_type_invariant(&*perm);
             perm.leak_contents();
         }
         self.put(Tracked(&mut *perm), in_v);
@@ -435,7 +421,6 @@ impl PPtr {
     #[inline(always)]
     pub fn read<V: Copy>(self, Tracked(perm): Tracked<&PointsTo<V>>) -> (out_v: V)
         requires
-            perm.wf(),
             perm.pptr() == self,
             perm.is_init(),
         ensures
