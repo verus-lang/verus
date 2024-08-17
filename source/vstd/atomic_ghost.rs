@@ -101,6 +101,93 @@ macro_rules! declare_atomic_type {
         }
     };
 }
+macro_rules! declare_atomic_type_generic {
+    ($at_ident:ident, $patomic_ty:ident, $perm_ty:ty, $value_ty: ty, $atomic_pred_ty: ident) => {
+        verus!{
+
+        pub struct $atomic_pred_ty<T, Pred> { t: T, p: Pred }
+
+        impl<T, K, G, Pred> InvariantPredicate<(K, int), ($perm_ty, G)> for $atomic_pred_ty<T, Pred>
+            where Pred: AtomicInvariantPredicate<K, $value_ty, G>
+        {
+            open spec fn inv(k_loc: (K, int), perm_g: ($perm_ty, G)) -> bool {
+                let (k, loc) = k_loc;
+                let (perm, g) = perm_g;
+
+                perm.view().patomic == loc
+                  && Pred::atomic_inv(k, perm.view().value, g)
+            }
+        }
+
+        #[doc = concat!(
+            "Sequentially-consistent atomic memory location storing a `",
+            stringify!($value_ty),
+            "` and associated ghost state."
+        )]
+        ///
+        /// See the [`atomic_with_ghost!`] documentation for usage information.
+
+        pub struct $at_ident<T, K, G, Pred>
+            //where Pred: AtomicInvariantPredicate<K, $value_ty, G>
+        {
+            #[doc(hidden)]
+            pub patomic: $patomic_ty<T>,
+
+            #[doc(hidden)]
+            pub atomic_inv: Tracked<AtomicInvariant<(K, int), ($perm_ty, G), $atomic_pred_ty<T, Pred>>>,
+        }
+
+        impl<T, K, G, Pred> $at_ident<T, K, G, Pred>
+            where Pred: AtomicInvariantPredicate<K, $value_ty, G>
+        {
+            pub open spec fn well_formed(&self) -> bool {
+                self.atomic_inv@.constant().1 == self.patomic.id()
+            }
+
+            pub open spec fn constant(&self) -> K {
+                self.atomic_inv@.constant().0
+            }
+
+            #[inline(always)]
+            pub const fn new(Ghost(k): Ghost<K>, u: $value_ty, Tracked(g): Tracked<G>) -> (t: Self)
+                requires Pred::atomic_inv(k, u, g),
+                ensures t.well_formed() && t.constant() == k,
+            {
+
+                let (patomic, Tracked(perm)) = $patomic_ty::<T>::new(u);
+
+                let tracked pair = (perm, g);
+                let tracked atomic_inv = AtomicInvariant::new(
+                    (k, patomic.id()), pair, 0);
+
+                $at_ident {
+                    patomic,
+                    atomic_inv: Tracked(atomic_inv),
+                }
+            }
+
+            #[inline(always)]
+            pub fn load(&self) -> $value_ty
+                requires self.well_formed(),
+            {
+                atomic_with_ghost!(self => load(); g => { })
+            }
+
+            #[inline(always)]
+            pub fn into_inner(self) -> (res: ($value_ty, Tracked<G>))
+                requires self.well_formed(),
+                ensures Pred::atomic_inv(self.constant(), res.0, res.1@),
+            {
+                let Self { patomic, atomic_inv: Tracked(atomic_inv) } = self;
+                let tracked (perm, g) = atomic_inv.into_inner();
+                let v = patomic.into_inner(Tracked(perm));
+                (v, Tracked(g))
+            }
+        }
+
+        }
+    };
+}
 
 declare_atomic_type!(AtomicU64, PAtomicU64, PermissionU64, u64, AtomicPredU64);
 declare_atomic_type!(AtomicU32, PAtomicU32, PermissionU32, u32, AtomicPredU32);
@@ -115,6 +202,8 @@ declare_atomic_type!(AtomicI8, PAtomicI8, PermissionI8, i8, AtomicPredI8);
 declare_atomic_type!(AtomicIsize, PAtomicIsize, PermissionIsize, isize, AtomicPredIsize);
 
 declare_atomic_type!(AtomicBool, PAtomicBool, PermissionBool, bool, AtomicPredBool);
+
+declare_atomic_type_generic!(AtomicPtr, PAtomicPtr, PermissionPtr<T>, *mut T, AtomicPredPtr);
 
 /// Performs a given atomic operation on a given atomic
 /// while providing access to its ghost state.

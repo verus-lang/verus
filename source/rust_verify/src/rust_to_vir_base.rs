@@ -607,6 +607,26 @@ pub(crate) fn mk_range<'tcx>(
     }
 }
 
+pub(crate) fn is_integer_ty<'tcx>(
+    verus_items: &crate::verus_items::VerusItems,
+    ty: &rustc_middle::ty::Ty<'tcx>,
+) -> bool {
+    match ty.kind() {
+        TyKind::Adt(AdtDef(adt_def_data), _) => {
+            let did = adt_def_data.did;
+            let verus_item = verus_items.id_to_name.get(&did);
+            match verus_item {
+                Some(VerusItem::BuiltinType(BuiltinTypeItem::Int)) => true,
+                Some(VerusItem::BuiltinType(BuiltinTypeItem::Nat)) => true,
+                _ => false,
+            }
+        }
+        TyKind::Uint(_) => true,
+        TyKind::Int(_) => true,
+        _ => false,
+    }
+}
+
 pub(crate) fn mid_ty_simplify<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,

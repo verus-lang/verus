@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 
 use core::sync::atomic::{
-    AtomicBool, AtomicI16, AtomicI32, AtomicI64, AtomicI8, AtomicIsize, AtomicU16, AtomicU32,
-    AtomicU64, AtomicU8, AtomicUsize, Ordering,
+    AtomicBool, AtomicI16, AtomicI32, AtomicI64, AtomicI8, AtomicIsize, AtomicPtr, AtomicU16,
+    AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
 };
 
 use super::modes::*;
@@ -36,7 +36,7 @@ macro_rules! make_unsigned_integer_atomic {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
-            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
+            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
             atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
         }
     };
@@ -70,7 +70,7 @@ macro_rules! make_signed_integer_atomic {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
-            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
+            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
             atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub);
         }
     };
@@ -81,7 +81,7 @@ macro_rules! make_bool_atomic {
         atomic_types!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
         impl $at_ident {
-            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty);
+            atomic_common_methods!($at_ident, $p_ident, $p_data_ident, $rust_ty, $value_ty, []);
             atomic_bool_methods!($at_ident, $p_ident, $rust_ty, $value_ty);
         }
     };
@@ -99,6 +99,7 @@ macro_rules! atomic_types {
         #[verifier::external_body] /* vattr */
         pub tracked struct $p_ident {
             no_copy: NoCopy,
+            unusued: $value_ty,
         }
 
         pub ghost struct $p_data_ident {
@@ -133,10 +134,60 @@ macro_rules! atomic_types {
     };
 }
 
+macro_rules! atomic_types_generic {
+    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty) => {
+        verus! {
+
+        #[verifier::accept_recursive_types(T)]
+        #[verifier::external_body] /* vattr */
+        pub struct $at_ident <T> {
+            ato: $rust_ty,
+        }
+
+        #[verifier::accept_recursive_types(T)]
+        #[verifier::external_body] /* vattr */
+        pub tracked struct $p_ident <T> {
+            no_copy: NoCopy,
+            unusued: $value_ty,
+        }
+
+        #[verifier::accept_recursive_types(T)]
+        pub ghost struct $p_data_ident <T> {
+            pub patomic: int,
+            pub value: $value_ty,
+        }
+
+        impl<T> $p_ident <T> {
+            #[verifier::external_body] /* vattr */
+            pub spec fn view(self) -> $p_data_ident <T>;
+
+            pub open spec fn is_for(&self, patomic: $at_ident <T>) -> bool {
+                self.view().patomic == patomic.id()
+            }
+
+            pub open spec fn points_to(&self, v: $value_ty) -> bool {
+                self.view().value == v
+            }
+
+            #[verifier::inline]
+            pub open spec fn value(&self) -> $value_ty {
+                self.view().value
+            }
+
+            #[verifier::inline]
+            pub open spec fn id(&self) -> AtomicCellId {
+                self.view().patomic
+            }
+        }
+
+        }
+    };
+}
+
 pub type AtomicCellId = int;
 
 macro_rules! atomic_common_methods {
-    ($at_ident:ident, $p_ident:ident, $p_data_ident:ident, $rust_ty: ty, $value_ty: ty) => {
+    ($at_ident: ty, $p_ident: ty, $p_data_ident: ty, $rust_ty: ty, $value_ty: ty, [ $($addr:tt)* ]) => {
         verus!{
 
         pub spec fn id(&self) -> int;
@@ -187,11 +238,11 @@ macro_rules! atomic_common_methods {
                 equal(self.id(), perm.view().patomic)
                 && match ret {
                     Result::Ok(r) =>
-                           current == old(perm).view().value
+                           current $($addr)* == old(perm).view().value $($addr)*
                         && equal(perm.view().value, new)
                         && equal(r, old(perm).view().value),
                     Result::Err(r) =>
-                           current != old(perm).view().value
+                           current $($addr)* != old(perm).view().value $($addr)*
                         && equal(perm.view().value, old(perm).view().value)
                         && equal(r, old(perm).view().value),
                 },
@@ -214,7 +265,7 @@ macro_rules! atomic_common_methods {
                 equal(self.id(), perm.view().patomic)
                 && match ret {
                     Result::Ok(r) =>
-                           current == old(perm).view().value
+                           current $($addr)* == old(perm).view().value $($addr)*
                         && equal(perm.view().value, new)
                         && equal(r, old(perm).view().value),
                     Result::Err(r) =>
@@ -596,4 +647,81 @@ make_signed_integer_atomic!(
     wrapping_sub_isize
 );
 
-// TODO Support AtomicPtr
+atomic_types_generic!(PAtomicPtr, PermissionPtr, PermissionDataPtr, AtomicPtr<T>, *mut T);
+
+#[cfg_attr(verus_keep_ghost, verifier::verus_macro)]
+impl<T> PAtomicPtr<T> {
+    atomic_common_methods!(
+        PAtomicPtr::<T>,
+        PermissionPtr::<T>,
+        PermissionDataPtr::<T>,
+        AtomicPtr::<T>,
+        *mut T,
+        [ .view().addr ]
+    );
+}
+
+verus! {
+
+impl<T> PAtomicPtr<T> {
+    #[inline(always)]
+    #[verifier::external_body]  /* vattr */
+    #[verifier::atomic]  /* vattr */
+    #[cfg(feature = "strict_provenance_atomic_ptr")]
+    pub fn fetch_and(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret:
+        *mut T)
+        requires
+            equal(self.id(), old(perm).view().patomic),
+        ensures
+            equal(old(perm).view().value, ret),
+            perm.view().patomic == old(perm).view().patomic,
+            perm.view().value@.addr == (old(perm).view().value@.addr & n),
+            perm.view().value@.provenance == old(perm).view().value@.provenance,
+            perm.view().value@.metadata == old(perm).view().value@.metadata,
+        opens_invariants none
+        no_unwind
+    {
+        return self.ato.fetch_and(n, Ordering::SeqCst);
+    }
+
+    #[inline(always)]
+    #[verifier::external_body]  /* vattr */
+    #[verifier::atomic]  /* vattr */
+    #[cfg(feature = "strict_provenance_atomic_ptr")]
+    pub fn fetch_xor(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret:
+        *mut T)
+        requires
+            equal(self.id(), old(perm).view().patomic),
+        ensures
+            equal(old(perm).view().value, ret),
+            perm.view().patomic == old(perm).view().patomic,
+            perm.view().value@.addr == (old(perm).view().value@.addr ^ n),
+            perm.view().value@.provenance == old(perm).view().value@.provenance,
+            perm.view().value@.metadata == old(perm).view().value@.metadata,
+        opens_invariants none
+        no_unwind
+    {
+        return self.ato.fetch_xor(n, Ordering::SeqCst);
+    }
+
+    #[inline(always)]
+    #[verifier::external_body]  /* vattr */
+    #[verifier::atomic]  /* vattr */
+    #[cfg(feature = "strict_provenance_atomic_ptr")]
+    pub fn fetch_or(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret: *mut T)
+        requires
+            equal(self.id(), old(perm).view().patomic),
+        ensures
+            equal(old(perm).view().value, ret),
+            perm.view().patomic == old(perm).view().patomic,
+            perm.view().value@.addr == (old(perm).view().value@.addr | n),
+            perm.view().value@.provenance == old(perm).view().value@.provenance,
+            perm.view().value@.metadata == old(perm).view().value@.metadata,
+        opens_invariants none
+        no_unwind
+    {
+        return self.ato.fetch_or(n, Ordering::SeqCst);
+    }
+}
+
+} // verus!

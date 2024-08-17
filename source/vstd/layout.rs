@@ -75,6 +75,8 @@ pub fn ex_size_of<V>() -> (u: usize)
     ensures
         is_sized::<V>(),
         u as nat == size_of::<V>(),
+    opens_invariants none
+    no_unwind
 {
     core::mem::size_of::<V>()
 }
@@ -85,6 +87,8 @@ pub fn ex_align_of<V>() -> (u: usize)
     ensures
         is_sized::<V>(),
         u as nat == align_of::<V>(),
+    opens_invariants none
+    no_unwind
 {
     core::mem::align_of::<V>()
 }
@@ -99,6 +103,8 @@ pub exec fn layout_for_type_is_valid<V>()
         is_sized::<V>(),
         size_of::<V>() as usize as nat == size_of::<V>(),
         align_of::<V>() as usize as nat == align_of::<V>(),
+    opens_invariants none
+    no_unwind
 {
 }
 
