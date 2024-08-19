@@ -21,6 +21,7 @@ pub enum CompilableOperator {
     TrackedGet,
     TrackedBorrow,
     TrackedBorrowMut,
+    UseTypeInvariant,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).

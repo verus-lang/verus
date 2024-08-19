@@ -1197,6 +1197,10 @@ fn check_expr_handle_mut_arg(
             Ok(outer_mode)
         }
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: true, expr, fun: _ } => {
+            check_expr_has_mode(ctxt, record, typing, outer_mode, expr, Mode::Proof)?;
+            Ok(outer_mode)
+        }
         ExprX::AssertAssumeUserDefinedTypeInvariant { .. } => {
             panic!("internal error: AssertAssumeUserDefinedTypeInvariant shouldn't exist here")
         }

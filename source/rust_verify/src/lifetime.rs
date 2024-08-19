@@ -259,6 +259,7 @@ fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) { panic!() }
 fn index<'a, V, Idx, Output>(v: &'a V, index: Idx) -> &'a Output { panic!() }
 struct C<const N: usize, A: ?Sized>(Box<A>);
 struct Arr<A: ?Sized, const N: usize>(Box<A>);
+fn use_type_invariant<A>(a: A) -> A { a }
 fn main() {}
 ";
 

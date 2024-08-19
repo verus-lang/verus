@@ -331,6 +331,7 @@ pub(crate) enum VerusItem {
     UnaryOp(UnaryOpItem),
     Chained(ChainedItem),
     Assert(AssertItem),
+    UseTypeInvariant,
     WithTriggers,
     OpenInvariantBlock(OpenInvariantBlockItem),
     Vstd(VstdItem, Option<Ident>),
@@ -446,6 +447,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::assert_bitvector_by",     VerusItem::Assert(AssertItem::AssertBitvectorBy)),
         ("verus::builtin::assert_forall_by",        VerusItem::Assert(AssertItem::AssertForallBy)),
         ("verus::builtin::assert_bit_vector",       VerusItem::Assert(AssertItem::AssertBitVector)),
+        ("verus::builtin::use_type_invariant",      VerusItem::UseTypeInvariant),
 
         ("verus::builtin::with_triggers",           VerusItem::WithTriggers),
 
