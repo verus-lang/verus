@@ -1,8 +1,6 @@
 /// 1) Optimize generated SMT by pruning unreachable declarations and definitions.
 ///    This is strictly an optimization; it should not affect the SMT validity.
-/// 2) Also remove any broadcast_forall from any modules that are unreachable
-///    from this module.  This could, in principle, result in incompleteness.
-/// 3) Also compute names for abstract datatype sorts for the module,
+/// 2) Also compute names for abstract datatype sorts for the module,
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Expr, ExprX, Fun, Function,
