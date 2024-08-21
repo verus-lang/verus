@@ -22,6 +22,7 @@ use crate::def::{
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
+use crate::mono;
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
@@ -206,7 +207,11 @@ fn decoration_str(d: TypDecoration) -> &'static str {
 pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
     let mk_id = |t: Expr| -> Vec<Expr> {
         let ds = str_var(crate::def::DECORATE_NIL);
-        if crate::context::DECORATE { vec![ds, t] } else { vec![t] }
+        if crate::context::DECORATE {
+            vec![ds, t]
+        } else {
+            vec![t]
+        }
     };
     match &**typ {
         MonoTypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
@@ -255,7 +260,11 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
 
 fn big_int_to_expr(i: &BigInt) -> Expr {
     use num_traits::Zero;
-    if i >= &BigInt::zero() { mk_nat(i) } else { air::ast_util::mk_neg(&mk_nat(-i)) }
+    if i >= &BigInt::zero() {
+        mk_nat(i)
+    } else {
+        air::ast_util::mk_neg(&mk_nat(-i))
+    }
 }
 
 // SMT-level type identifiers.
@@ -279,7 +288,11 @@ fn big_int_to_expr(i: &BigInt) -> Expr {
 pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
     let mk_id = |t: Expr| -> Vec<Expr> {
         let ds = str_var(crate::def::DECORATE_NIL);
-        if crate::context::DECORATE { vec![ds, t] } else { vec![t] }
+        if crate::context::DECORATE {
+            vec![ds, t]
+        } else {
+            vec![t]
+        }
     };
     match &**typ {
         TypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
@@ -737,12 +750,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt)?,
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x))),
         ExpX::Call(f @ (CallFun::Fun(..) | CallFun::Recursive(_)), typs, args) => {
+            let (_, specialization) = mono::Specialization::from_exp(&exp.x)
+                .expect("Could not create specialization rom call site");
             let x_name = match f {
                 CallFun::Fun(x, _) => x.clone(),
                 CallFun::Recursive(x) => crate::def::prefix_recursive_fun(&x),
                 _ => panic!(),
             };
             let name = suffix_global_id(&fun_to_air_ident(&x_name));
+            let name = specialization.transform_ident(name);
             let mut exprs: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
             for arg in args.iter() {
                 exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
@@ -1335,7 +1351,11 @@ pub(crate) fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
 }
 
 pub(crate) fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
-    if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
+    if stmts.len() == 1 {
+        stmts[0].clone()
+    } else {
+        Arc::new(StmtX::Block(Arc::new(stmts)))
+    }
 }
 
 #[derive(Debug)]

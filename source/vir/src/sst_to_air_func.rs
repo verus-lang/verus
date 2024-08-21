@@ -16,6 +16,7 @@ use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParPurpose, ParX, Pars};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
 };
+use crate::mono;
 use crate::util::vec_map;
 use air::ast::{
     Axiom, BinaryOp, Bind, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant, Trigger,
@@ -399,6 +400,7 @@ pub fn func_name_to_air(
     ctx: &Ctx,
     _diagnostics: &impl air::messages::Diagnostics,
     function: &FunctionSst,
+    specialization: &mono::Specialization,
 ) -> Result<Commands, VirErr> {
     let mut commands: Vec<Command> = Vec::new();
     let declare_rec = |commands: &mut Vec<Command>| {
@@ -416,7 +418,8 @@ pub fn func_name_to_air(
                 }
                 rec_typs.push(str_typ(FUEL_TYPE));
                 let typ = typ_to_air(ctx, &function.x.ret.x.typ);
-                let rec_decl = Arc::new(DeclX::Fun(rec_f, Arc::new(rec_typs), typ));
+                let ident = specialization.transform_ident(rec_f);
+                let rec_decl = Arc::new(DeclX::Fun(ident, Arc::new(rec_typs), typ));
                 commands.push(Arc::new(CommandX::Global(rec_decl)));
             }
         }
@@ -446,6 +449,7 @@ pub fn func_name_to_air(
         }
         for name in names {
             let name = suffix_global_id(&fun_to_air_ident(&name));
+            let name = specialization.transform_ident(name);
             let decl = Arc::new(DeclX::Fun(name, all_typs.clone(), typ.clone()));
             commands.push(Arc::new(CommandX::Global(decl)));
         }

@@ -20,23 +20,50 @@ specialized, hinders this.
 3. We want to ensure the generated AIR code can be type-checked by AIR.
  */
 use crate::ast::Fun;
-use crate::ast_to_sst_func::FunctionCommon;
 use crate::ast_util::n_types_equal;
 use crate::sst::{CallFun, Exp, ExpX, KrateSstX, Stm};
 use crate::sst_visitor::{self, Visitor};
 use crate::{
-    ast::Typs,
+    ast::{Ident, TypX, Typs},
     sst::{FunctionSst, KrateSst},
 };
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 /**
-Stores one instance of specialization. This structure handles deduplication of
-essentially isomorphic call sites.
+This stores one instance of specialization of a particular function. This
+structure handles deduplication of essentially isomorphic call sites.
  */
 #[derive(Debug, Hash)]
 pub struct Specialization {
     typs: Typs,
+}
+impl Specialization {
+    pub fn empty() -> Self {
+        Self { typs: Arc::new(vec![]) }
+    }
+    pub fn from_exp(exp: &ExpX) -> Option<(&Fun, Self)> {
+        let ExpX::Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), typs, _) = exp else {
+            return None;
+        };
+        let result = Self { typs: typs.clone() };
+        Some((fun, result))
+    }
+    pub fn transform_ident(&self, ident: Ident) -> Ident {
+        if self.typs.is_empty() {
+            return ident;
+        }
+        // FIXME: Find a way to generate unique names given type arguments
+        let suffix = if n_types_equal(&self.typs, &Arc::new(vec![Arc::new(TypX::Bool)])) {
+            "_bool"
+        } else {
+            "_mystery"
+        };
+        Arc::new(ident.as_ref().clone() + suffix)
+    }
+    pub fn comment(&self) -> String {
+        format!(" specialized to {:?}", &self.typs)
+    }
 }
 impl PartialEq for Specialization {
     fn eq(&self, other: &Self) -> bool {
@@ -61,12 +88,8 @@ impl SpecializationVisitor {
 }
 impl Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for SpecializationVisitor {
     fn visit_exp(&mut self, exp: &Exp) -> Result<(), ()> {
-        match &exp.x {
-            ExpX::Call(CallFun::Fun(f, _), typs, _) => {
-                let spec = Specialization { typs: typs.clone() };
-                self.invocations.push((f.clone(), spec));
-            }
-            _ => (),
+        if let Some((fun, spec)) = Specialization::from_exp(&exp.x) {
+            self.invocations.push((fun.clone(), spec));
         }
         self.visit_exp_rec(exp)
     }
@@ -89,7 +112,6 @@ pub fn mono_krate_for_module(krate: &KrateSst) -> HashMap<Fun, HashSet<Specializ
     let mut invocations: HashMap<Fun, HashSet<Specialization>> = HashMap::new();
     let KrateSstX { functions, .. } = &**krate;
     for f in functions.iter() {
-        eprintln!("Collecting specializations from {:?}", f.x.name());
         for (fun, spec) in collect_specializations_from_function(f).into_iter() {
             invocations.entry(fun).or_insert_with(HashSet::new).insert(spec);
         }

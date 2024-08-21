@@ -15,6 +15,7 @@ use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
+use vir::mono::Specialization;
 
 use vir::messages::{
     message, note, note_bare, warning_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
@@ -1239,7 +1240,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
-        polymorphic_invocations: HashMap<Fun, HashSet<vir::mono::Specialization>>,
+        specializations: HashMap<Fun, HashSet<Specialization>>,
     ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
@@ -1346,16 +1347,31 @@ impl Verifier {
         let mut function_decl_commands = vec![];
 
         // Declare the function symbols
+        println!("{specializations:?}");
         for function in &krate.functions {
             ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
-            if let Some(specialization) = polymorphic_invocations.get(&function.x.name) {
-                println!("Function {:?} specialized to {:?}", function.x.name, specialization);
-            }
-            let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, function)?;
+            let commands = vir::sst_to_air_func::func_name_to_air(
+                ctx,
+                reporter,
+                function,
+                &Specialization::empty(),
+            )?;
             let comment =
                 "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
             self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
             function_decl_commands.push((commands.clone(), comment.clone()));
+
+            let Some(specs) = specializations.get(&function.x.name) else {
+                continue;
+            };
+            println!("Function {:?} specialized to {:?}", function.x.name, specs);
+            for spec in specs.iter() {
+                let commands =
+                    vir::sst_to_air_func::func_name_to_air(ctx, reporter, function, spec)?;
+                let inner_comment = comment.clone() + &spec.comment();
+                self.run_commands(bucket_id, reporter, &mut air_context, &commands, &inner_comment);
+                function_decl_commands.push((commands.clone(), comment.clone()));
+            }
         }
         ctx.fun = None;
 
@@ -1913,8 +1929,7 @@ impl Verifier {
             &self.get_bucket(bucket_id).funs,
             &poly_krate,
         )?;
-        let polymorphic_invocations = vir::mono::mono_krate_for_module(&krate_sst);
-        println!("{polymorphic_invocations:?}");
+        let specializations = vir::mono::mono_krate_for_module(&krate_sst);
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } = self.verify_bucket(
             reporter,
@@ -1923,7 +1938,7 @@ impl Verifier {
             source_map,
             bucket_id,
             &mut ctx,
-            polymorphic_invocations,
+            specializations,
         )?;
 
         global_ctx = ctx.free();
