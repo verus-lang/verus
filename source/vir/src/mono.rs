@@ -20,13 +20,30 @@ specialized, hinders this.
 3. We want to ensure the generated AIR code can be type-checked by AIR.
  */
 use crate::ast::Fun;
+use crate::ast_to_sst_func::FunctionCommon;
+use crate::ast_util::n_types_equal;
 use crate::sst::{CallFun, Exp, ExpX, KrateSstX, Stm};
 use crate::sst_visitor::{self, Visitor};
 use crate::{
     ast::Typs,
     sst::{FunctionSst, KrateSst},
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+
+/**
+Stores one instance of specialization. This structure handles deduplication of
+essentially isomorphic call sites.
+ */
+#[derive(Debug, Hash)]
+pub struct Specialization {
+    typs: Typs,
+}
+impl PartialEq for Specialization {
+    fn eq(&self, other: &Self) -> bool {
+        n_types_equal(&self.typs, &other.typs)
+    }
+}
+impl Eq for Specialization {}
 
 /**
 Utility for walking through the expression tree.
@@ -35,7 +52,7 @@ This must be doubly recursive on both expressions and statements, hence its
 structure mirrors `StmExpVisitorDfs`.
  */
 struct SpecializationVisitor {
-    invocations: Vec<(Fun, Typs)>,
+    invocations: Vec<(Fun, Specialization)>,
 }
 impl SpecializationVisitor {
     fn new() -> Self {
@@ -46,7 +63,8 @@ impl Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for SpecializationVis
     fn visit_exp(&mut self, exp: &Exp) -> Result<(), ()> {
         match &exp.x {
             ExpX::Call(CallFun::Fun(f, _), typs, _) => {
-                self.invocations.push((f.clone(), typs.clone()));
+                let spec = Specialization { typs: typs.clone() };
+                self.invocations.push((f.clone(), spec));
             }
             _ => (),
         }
@@ -57,7 +75,9 @@ impl Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for SpecializationVis
     }
 }
 
-pub(crate) fn collect_specializations_from_function(function: &FunctionSst) -> Vec<(Fun, Typs)> {
+pub(crate) fn collect_specializations_from_function(
+    function: &FunctionSst,
+) -> Vec<(Fun, Specialization)> {
     let mut visitor = SpecializationVisitor::new();
     visitor.visit_function(function).unwrap();
     visitor.invocations
@@ -65,12 +85,13 @@ pub(crate) fn collect_specializations_from_function(function: &FunctionSst) -> V
 /**
 Collect all polymorphic function invocations in a module
  */
-pub fn mono_krate_for_module(krate: &KrateSst) -> HashMap<Fun, Vec<Typs>> {
-    let mut invocations: HashMap<Fun, Vec<Typs>> = HashMap::new();
+pub fn mono_krate_for_module(krate: &KrateSst) -> HashMap<Fun, HashSet<Specialization>> {
+    let mut invocations: HashMap<Fun, HashSet<Specialization>> = HashMap::new();
     let KrateSstX { functions, .. } = &**krate;
     for f in functions.iter() {
-        for (fun, typs) in collect_specializations_from_function(f).into_iter() {
-            invocations.entry(fun).or_insert_with(Vec::new).push(typs)
+        eprintln!("Collecting specializations from {:?}", f.x.name());
+        for (fun, spec) in collect_specializations_from_function(f).into_iter() {
+            invocations.entry(fun).or_insert_with(HashSet::new).insert(spec);
         }
     }
     invocations

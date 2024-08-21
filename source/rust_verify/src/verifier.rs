@@ -35,7 +35,7 @@ use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
-use vir::ast::{Fun, Krate, Typs, VirErr};
+use vir::ast::{Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{
     path_to_string, CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos,
@@ -1239,7 +1239,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
-        polymorphic_invocations: HashMap<Fun, Vec<Typs>>,
+        polymorphic_invocations: HashMap<Fun, HashSet<vir::mono::Specialization>>,
     ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
@@ -2176,13 +2176,11 @@ impl Verifier {
                         // if it is the active bucket, mark it as done, and reset the active bucket
                         if let Some(m) = active_bucket {
                             if m == id {
-                                assert!(
-                                    messages
-                                        .get_mut(id)
-                                        .expect("message id out of range")
-                                        .1
-                                        .is_empty()
-                                );
+                                assert!(messages
+                                    .get_mut(id)
+                                    .expect("message id out of range")
+                                    .1
+                                    .is_empty());
                                 active_bucket = None;
                             }
                         }
