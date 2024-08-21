@@ -329,6 +329,9 @@ pub enum UnaryOp {
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
+    /// Internal consistency check to make sure sst_elaborate gets called
+    /// (appears only briefly in SST before sst_elaborate is called)
+    MustBeElaborated,
     /// We don't give users direct access to the "height" function and Height types.
     /// However, it's useful to be able to trigger on the "height" function
     /// when using HeightCompare.  We manage this by having triggers.rs convert
@@ -555,6 +558,10 @@ pub enum HeaderExprX {
     /// `extra_dependency(f)` means that recursion-checking should act as if the current
     /// function calls `f`
     ExtraDependency(Fun),
+    /// This function will not unwind
+    NoUnwind,
+    /// This function will not unwind if the given condition holds (function of arguments)
+    NoUnwindWhen(Expr),
 }
 
 /// Primitive constant values
@@ -812,6 +819,9 @@ pub enum ExprX {
     Header(HeaderExpr),
     /// Assert or assume
     AssertAssume { is_assume: bool, expr: Expr },
+    /// Assert or assume user-defined type invariant for `expr` and return `expr`
+    /// These are added in user_defined_type_invariants.rs
+    AssertAssumeUserDefinedTypeInvariant { is_assume: bool, expr: Expr, fun: Fun },
     /// Assert-forall or assert-by statement
     AssertBy { vars: VarBinders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
@@ -928,6 +938,8 @@ pub struct FunctionAttrsX {
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
     pub broadcast_forall: bool,
+    /// Only create global axioms; don't declare req/ens functions (set by prune.rs)
+    pub broadcast_forall_only: bool,
     /// In triggers_auto, don't use this function as a trigger
     pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails
@@ -960,6 +972,8 @@ pub struct FunctionAttrsX {
     pub prophecy_dependent: bool,
     /// broadcast proof from size_of global
     pub size_of_broadcast_proof: bool,
+    /// is type invariant
+    pub is_type_invariant_fn: bool,
 }
 
 /// Function specification of its invariant mask
@@ -967,6 +981,14 @@ pub struct FunctionAttrsX {
 pub enum MaskSpec {
     InvariantOpens(Exprs),
     InvariantOpensExcept(Exprs),
+}
+
+/// Function specification of its invariant mask
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum UnwindSpec {
+    NoUnwind,
+    NoUnwindWhen(Expr),
+    MayUnwind,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
@@ -1075,6 +1097,8 @@ pub struct FunctionX {
     pub fndef_axioms: Option<Exprs>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: Option<MaskSpec>,
+    /// UnwindSpec that specifies if the function is allowed to unwind
+    pub unwind_spec: Option<UnwindSpec>,
     /// Allows the item to be a const declaration or static
     pub item_kind: ItemKind,
     /// For public spec functions, publish == None means that the body is private
@@ -1101,10 +1125,6 @@ pub struct RevealGroupX {
     pub visibility: Visibility,
     /// Owning module
     pub owning_module: Option<Path>,
-    /// If true, then prune away group unless either the module that contains the group is used.
-    /// (Without this, importing vstd would recursively reach and encode all the
-    /// broadcast_forall declarations in all of vstd, defeating much of the purpose of prune.rs.)
-    pub prune_unless_this_module_is_used: bool,
     /// If Some(crate_name), this group is revealed by default for crates that import crate_name.
     /// No more than one such group is allowed in each crate.
     pub broadcast_use_by_default_when_this_crate_is_imported: Option<Ident>,
@@ -1162,6 +1182,7 @@ pub struct DatatypeX {
     pub mode: Mode,
     /// Generate ext_equal lemmas for datatype
     pub ext_equal: bool,
+    pub user_defined_invariant_fn: Option<Fun>,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;

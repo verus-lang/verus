@@ -83,6 +83,7 @@ pub struct Ctx {
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
+    pub func_sst_map: HashMap<Fun, crate::sst::FunctionSst>,
     pub fun_ident_map: HashMap<Ident, Fun>,
     pub(crate) reveal_groups: Vec<crate::ast::RevealGroup>,
     pub(crate) reveal_group_set: HashSet<Fun>,
@@ -385,6 +386,18 @@ impl GlobalCtx {
                             ImplPath::FnDefImplPath(fun) =>   labelize("FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
                         }
                     }
+                    Node::TraitReqEns(impl_path, true) => {
+                        match impl_path {
+                            ImplPath::TraitImplPath(path) =>  labelize("ReqEns?TraitImplPath", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
+                            ImplPath::FnDefImplPath(fun) =>   labelize("ReqEns?FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
+                        }
+                    }
+                    Node::TraitReqEns(impl_path, false) => {
+                        match impl_path {
+                            ImplPath::TraitImplPath(path) =>  labelize("ReqEns!TraitImplPath", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
+                            ImplPath::FnDefImplPath(fun) =>   labelize("ReqEns!FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
+                        }
+                    }
                     Node::ModuleReveal(path) =>               labelize("ModuleReveal", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
                     Node::SpanInfo { span_infos_index: _, text: _ } => {
                         format!("shape=\"point\"")
@@ -406,6 +419,8 @@ impl GlobalCtx {
                     Node::Trait(path) => is_not_std(path),
                     Node::TraitImpl(ImplPath::TraitImplPath(path)) => is_not_std(path),
                     Node::TraitImpl(ImplPath::FnDefImplPath(fun)) => is_not_std(&fun.path),
+                    Node::TraitReqEns(ImplPath::TraitImplPath(path), _) => is_not_std(path),
+                    Node::TraitReqEns(ImplPath::FnDefImplPath(fun), _) => is_not_std(&fun.path),
                     Node::ModuleReveal(path) => is_not_std(path),
                     Node::SpanInfo { .. } => true,
                 };
@@ -426,13 +441,16 @@ impl GlobalCtx {
             if f.x.attrs.is_decrease_by {
                 for g_node in func_call_graph.get_scc_nodes(&f_node) {
                     if f_node != g_node {
-                        let g =
+                        let g_opt =
                             krate.functions.iter().find(|g| Node::Fun(g.x.name.clone()) == g_node);
-                        return Err(crate::messages::error(
+                        let mut error = crate::messages::error(
                             &f.span,
                             "found cyclic dependency in decreases_by function",
-                        )
-                        .secondary_span(&g.unwrap().span));
+                        );
+                        if let Some(g) = g_opt {
+                            error = error.secondary_span(&g.span);
+                        }
+                        return Err(error);
                     }
                 }
             }
@@ -570,6 +588,7 @@ impl Ctx {
             fndef_type_set,
             functions,
             func_map,
+            func_sst_map: HashMap::new(),
             fun_ident_map,
             reveal_groups: krate.reveal_groups.clone(),
             reveal_group_set,

@@ -1,8 +1,8 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
     IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, MaskSpec, Mode, Path, PathX, Primitive,
-    SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
-    VarIdent, VariantCheck, VirErr, Visibility,
+    SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec,
+    VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
     fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ, LowerUniqueVar,
@@ -11,20 +11,21 @@ use crate::bitvector_to_air::bv_to_queries;
 use crate::context::Ctx;
 use crate::def::{
     fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name, path_to_string,
-    prefix_box, prefix_ensures, prefix_fuel_id, prefix_open_inv, prefix_pre_var, prefix_requires,
-    prefix_spec_fn_type, prefix_unbox, snapshot_ident, static_name, suffix_global_id,
-    suffix_local_unique_id, suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident,
-    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
-    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII,
-    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
-    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv,
+    prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident,
+    static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, unique_local,
+    variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX, ProverChoice,
+    SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
+    FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE,
+    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
+    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
+    UnwindSst,
 };
 use crate::sst::{FuncCheckSst, Pars, PostConditionKind, Stms};
 use crate::sst_vars::{get_loc_var, AssignMap};
@@ -898,7 +899,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: TupleField should have been removed before here")
             }
-            UnaryOp::MustBeFinalized => {
+            UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", exp)
             }
             UnaryOp::InferSpecForLoopIter { .. } => {
@@ -1045,11 +1046,16 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         exp_to_expr(ctx, rhs, expr_ctxt)?,
                     ]),
                 ),
-                BinaryOp::ArrayIndex => ExprX::ApplyFun(
-                    str_typ(POLY),
-                    exp_to_expr(ctx, lhs, expr_ctxt)?,
-                    Arc::new(vec![exp_to_expr(ctx, rhs, expr_ctxt)?]),
-                ),
+                BinaryOp::ArrayIndex => {
+                    let ts = match &*lhs.typ {
+                        TypX::Primitive(Primitive::Array, ts) if ts.len() == 2 => ts,
+                        _ => panic!("internal error: unexpected ArrayIndex type"),
+                    };
+                    let mut args: Vec<Expr> = ts.iter().map(typ_to_ids).flatten().collect();
+                    args.push(exp_to_expr(ctx, lhs, expr_ctxt)?);
+                    args.push(exp_to_expr(ctx, rhs, expr_ctxt)?);
+                    ExprX::Apply(str_ident(crate::def::ARRAY_INDEX), Arc::new(args))
+                }
                 // here the binary bitvector Ops are translated into the integer versions
                 // Similar to typ_invariant(), make obvious range according to bit-width
                 BinaryOp::Bitwise(bo, _) => {
@@ -1247,6 +1253,17 @@ struct LoopInfo {
     decrease: crate::sst::Exps,
 }
 
+enum ReasonForNoUnwind {
+    Function,
+    OpenInvariant(Span),
+}
+
+enum UnwindAir {
+    MayUnwind,
+    NoUnwind(ReasonForNoUnwind),
+    NoUnwindWhen(Expr),
+}
+
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
     may_be_used_in_old: HashSet<UniqueIdent>, // vars that might have a 'PRE' snapshot, needed for while loop generation
@@ -1256,6 +1273,7 @@ struct State {
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
     assign_map: AssignMap, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
     mask: MaskSet,         // set of invariants that are allowed to be opened
+    unwind: UnwindAir,
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
     static_prelude: Vec<Stmt>,
@@ -1517,6 +1535,61 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(Arc::new(StmtX::Assert(assert_id.clone(), error, filter, e_req)));
             }
 
+            let callee_unwind_spec = func.x.unwind_spec_or_default();
+            let callee_never_unwinds = matches!(callee_unwind_spec, UnwindSpec::NoUnwind);
+            if !matches!(state.unwind, UnwindAir::MayUnwind)
+                && !callee_never_unwinds
+                && !ctx.checking_spec_preconditions()
+            {
+                let e1 = match &state.unwind {
+                    UnwindAir::MayUnwind => unreachable!(),
+                    UnwindAir::NoUnwind(_) => Arc::new(ExprX::Const(Constant::Bool(true))),
+                    UnwindAir::NoUnwindWhen(expr) => expr.clone(),
+                };
+                let e2 = match &callee_unwind_spec {
+                    UnwindSpec::MayUnwind => Arc::new(ExprX::Const(Constant::Bool(false))),
+                    UnwindSpec::NoUnwind => unreachable!(),
+                    UnwindSpec::NoUnwindWhen(_) => {
+                        let f_unwind = prefix_no_unwind_when(&fun_to_air_ident(&func.x.name));
+                        Arc::new(ExprX::Apply(f_unwind, req_args.clone()))
+                    }
+                };
+                let error = match &state.unwind {
+                    UnwindAir::MayUnwind => unreachable!(),
+                    UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
+                        &stm.span,
+                        "cannot show this call will not unwind, in function marked 'no_unwind'",
+                        "this call might unwind",
+                    ),
+                    UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
+                        error_with_label(
+                            &stm.span,
+                            "cannot show this call will not unwind",
+                            "this call might unwind",
+                        )
+                        .secondary_label(span, "unwinding is not allowed in this invariant block")
+                    }
+                    UnwindAir::NoUnwindWhen(_e) => error_with_label(
+                        &stm.span,
+                        "cannot show this call will not unwind, in function marked 'no_unwind'",
+                        "this call might unwind",
+                    ),
+                };
+                let error = if let UnwindSpec::NoUnwindWhen(e) = &callee_unwind_spec {
+                    error.secondary_label(
+                        &e.span,
+                        "this conditition needs to hold to show that the callee will not unwind",
+                    )
+                } else {
+                    error.secondary_label(
+                        &func.span,
+                        "perhaps you need to mark this function as 'no_unwind'?",
+                    )
+                };
+                let e = mk_implies(&e1, &e2);
+                stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
+            }
+
             let callee_mask_set =
                 mask_set_from_spec(&func.x.mask_spec_or_default(), &func.x.name, &req_args);
             if !ctx.checking_spec_preconditions() {
@@ -1667,6 +1740,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 state.map_span(&stm, SpanKind::Full);
             }
             vec![Arc::new(StmtX::Assert(assert_id.clone(), error, None, air_expr))]
+        }
+        StmX::AssertCompute(..) => {
+            panic!("AssertCompute should be removed by sst_elaborate")
         }
         StmX::Return { base_error, ret_exp, inside_body, assert_id } => {
             let skip = if ctx.checking_spec_preconditions() {
@@ -1948,8 +2024,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // All closure funcs are assumed to have mask set 'full'
             let mut mask = MaskSet::full();
             std::mem::swap(&mut state.mask, &mut mask);
+            // Right now all closures are assumed to unwind
+            let mut unwind = UnwindAir::MayUnwind;
+            std::mem::swap(&mut state.unwind, &mut unwind);
+
             let mut body_stmts = stm_to_stmts(ctx, state, body)?;
             std::mem::swap(&mut state.mask, &mut mask);
+            std::mem::swap(&mut state.unwind, &mut unwind);
 
             stmts.append(&mut body_stmts);
 
@@ -2307,9 +2388,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // the same invariant inside
             let mut inner_mask =
                 state.mask.remove_element(namespace_exp.span.clone(), namespace_expr);
+            // Disallow unwinding inside the invariant block
+            let mut inner_unwind =
+                UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(stm.span.clone()));
             swap(&mut state.mask, &mut inner_mask);
+            swap(&mut state.unwind, &mut inner_unwind);
             stmts.append(&mut stm_to_stmts(ctx, state, body_stm)?);
             swap(&mut state.mask, &mut inner_mask);
+            swap(&mut state.unwind, &mut inner_unwind);
 
             stmts
         }
@@ -2480,7 +2566,7 @@ pub(crate) fn body_stm_to_air(
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
-    let FuncCheckSst { reqs, post_condition, mask_set, body: stm, local_decls, statics } =
+    let FuncCheckSst { reqs, post_condition, mask_set, body: stm, local_decls, statics, unwind } =
         func_check_sst;
 
     if is_bit_vector_mode {
@@ -2551,6 +2637,16 @@ pub(crate) fn body_stm_to_air(
         ens_exprs.push((ens.span.clone(), e));
     }
 
+    let unwind_air = match unwind {
+        UnwindSst::MayUnwind => UnwindAir::MayUnwind,
+        UnwindSst::NoUnwind => UnwindAir::NoUnwind(ReasonForNoUnwind::Function),
+        UnwindSst::NoUnwindWhen(exp) => {
+            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+            let e = exp_to_expr(ctx, &exp, expr_ctxt)?;
+            UnwindAir::NoUnwindWhen(e)
+        }
+    };
+
     let mut may_be_used_in_old = HashSet::<UniqueIdent>::new();
     for param in params.iter() {
         if param.x.is_mut {
@@ -2573,6 +2669,7 @@ pub(crate) fn body_stm_to_air(
         snap_map: Vec::new(),
         assign_map: indexmap::IndexMap::new(),
         mask: (**mask_set).clone(),
+        unwind: unwind_air,
         post_condition_info: PostConditionInfo {
             dest: post_condition.dest.clone(),
             ens_exprs,

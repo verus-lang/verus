@@ -1189,6 +1189,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             variants,
             mode: Mode::Exec,
             ext_equal: arity > 0,
+            user_defined_invariant_fn: None,
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }
@@ -1240,6 +1241,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             variants,
             mode: Mode::Exec,
             ext_equal: false,
+            user_defined_invariant_fn: None,
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }

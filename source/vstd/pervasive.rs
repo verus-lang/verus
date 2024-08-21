@@ -33,6 +33,11 @@ pub proof fn affirm(b: bool)
 {
 }
 
+// An artificial trigger that can be used in case no expression naturally serves as a trigger
+pub open spec fn trigger<A>(a: A) -> bool {
+    true
+}
+
 // TODO: when default trait methods are supported, most of these should be given defaults
 pub trait ForLoopGhostIterator {
     type ExecIter;

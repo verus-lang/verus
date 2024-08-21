@@ -248,7 +248,7 @@ pub broadcast proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, k
         m.dom().contains(key1),
         key1 != key2,
     ensures
-        m.insert(key2, value)[key1] == m[key1],
+        #[trigger] m.insert(key2, value)[key1] == m[key1],
 {
     admit();
 }
@@ -269,7 +269,7 @@ pub broadcast proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, k
         m.dom().contains(key1),
         key1 != key2,
     ensures
-        m.remove(key2)[key1] == m[key1],
+        #[trigger] m.remove(key2)[key1] == m[key1],
 {
     admit();
 }
@@ -295,7 +295,6 @@ pub broadcast proof fn axiom_map_ext_equal_deep<K, V>(m1: Map<K, V>, m2: Map<K, 
     admit();
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_map_axioms {
     axiom_map_index_decreases_finite,
     axiom_map_index_decreases_infinite,

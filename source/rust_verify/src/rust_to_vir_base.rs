@@ -1,12 +1,12 @@
 use crate::attributes::get_verifier_attrs;
 use crate::context::{BodyCtxt, Context};
-use crate::rust_to_vir::ExternalInfo;
+use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, unsupported_err_span};
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::{ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
-use rustc_hir::{GenericParam, Generics, HirId, QPath, Ty};
+use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::fold::BoundVarReplacerDelegate;
 use rustc_middle::ty::Visibility;
@@ -648,62 +648,69 @@ pub(crate) fn mid_ty_simplify<'tcx>(
 // dropping the results of trait_impl_to_vir, which is ok.)
 pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
     ctxt: &Context<'tcx>,
+    ty: &rustc_middle::ty::Ty<'tcx>,
+    external_info: &mut ExternalInfo,
+) -> bool {
+    match ty.kind() {
+        TyKind::Bool => true,
+        TyKind::Uint(_) | TyKind::Int(_) => true,
+        TyKind::Char => true,
+        TyKind::Ref(_, _, rustc_ast::Mutability::Not) => true,
+        TyKind::Param(_) => true,
+        TyKind::Tuple(_) => true,
+        TyKind::Slice(_) => true,
+        TyKind::RawPtr(_) => true,
+        TyKind::Array(..) => true,
+        TyKind::Closure(..) => true,
+        TyKind::FnDef(..) => true,
+        TyKind::Str => true,
+
+        // HACK for now:
+        // See https://github.com/rust-lang/rust/issues/64715
+        // See https://github.com/rust-lang/rust/blob/master/library/core/src/convert/mod.rs
+        // The "impl<T> From<!> for T" causes a real conflict with "impl<T> From<T> for T",
+        // so don't auto-import ! for now.
+        TyKind::Never => false,
+
+        TyKind::Alias(rustc_middle::ty::AliasKind::Opaque, _) => false,
+        TyKind::Alias(rustc_middle::ty::AliasKind::Weak, _) => false,
+        TyKind::Float(..) => false,
+        TyKind::Foreign(..) => false,
+        TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => false,
+        TyKind::FnPtr(..) => false,
+        TyKind::Dynamic(..) => false,
+        TyKind::Coroutine(..) => false,
+        TyKind::CoroutineWitness(..) => false,
+        TyKind::Bound(..) => false,
+        TyKind::Placeholder(..) => false,
+        TyKind::Infer(..) => false,
+        TyKind::Error(..) => false,
+
+        TyKind::Adt(rustc_middle::ty::AdtDef(adt_def_data), _) => {
+            external_info.has_type_id(ctxt, adt_def_data.did)
+        }
+        TyKind::Alias(
+            rustc_middle::ty::AliasKind::Projection | rustc_middle::ty::AliasKind::Inherent,
+            t,
+        ) => {
+            let trait_def = ctxt.tcx.generics_of(t.def_id).parent;
+            let t_args: Vec<_> = t.args.iter().filter(|x| x.as_region().is_none()).collect();
+            t_args.iter().find(|x| x.as_type().is_none()).is_none()
+                && trait_def.is_some()
+                && t_args.len() >= 1
+        }
+    }
+}
+
+pub(crate) fn mid_arg_filter_for_external_impls<'tcx>(
+    ctxt: &Context<'tcx>,
     type_walker: rustc_middle::ty::walk::TypeWalker<'tcx>,
     external_info: &mut ExternalInfo,
 ) -> bool {
     let mut all_types_supported = true;
     for arg in type_walker {
         if let rustc_middle::ty::GenericArgKind::Type(t) = arg.unpack() {
-            let supported = match t.kind() {
-                TyKind::Bool => true,
-                TyKind::Uint(_) | TyKind::Int(_) => true,
-                TyKind::Char => true,
-                TyKind::Ref(_, _, rustc_ast::Mutability::Not) => true,
-                TyKind::Param(_) => true,
-                TyKind::Tuple(_) => true,
-                TyKind::Slice(_) => true,
-                TyKind::RawPtr(_) => true,
-                TyKind::Array(..) => true,
-                TyKind::Closure(..) => true,
-                TyKind::FnDef(..) => true,
-                TyKind::Str => true,
-
-                // HACK for now:
-                // See https://github.com/rust-lang/rust/issues/64715
-                // See https://github.com/rust-lang/rust/blob/master/library/core/src/convert/mod.rs
-                // The "impl<T> From<!> for T" causes a real conflict with "impl<T> From<T> for T",
-                // so don't auto-import ! for now.
-                TyKind::Never => false,
-
-                TyKind::Alias(rustc_middle::ty::AliasKind::Opaque, _) => false,
-                TyKind::Alias(rustc_middle::ty::AliasKind::Weak, _) => false,
-                TyKind::Float(..) => false,
-                TyKind::Foreign(..) => false,
-                TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => false,
-                TyKind::FnPtr(..) => false,
-                TyKind::Dynamic(..) => false,
-                TyKind::Coroutine(..) => false,
-                TyKind::CoroutineWitness(..) => false,
-                TyKind::Bound(..) => false,
-                TyKind::Placeholder(..) => false,
-                TyKind::Infer(..) => false,
-                TyKind::Error(..) => false,
-
-                TyKind::Adt(rustc_middle::ty::AdtDef(adt_def_data), _) => {
-                    external_info.has_type_id(ctxt, adt_def_data.did)
-                }
-                TyKind::Alias(
-                    rustc_middle::ty::AliasKind::Projection | rustc_middle::ty::AliasKind::Inherent,
-                    t,
-                ) => {
-                    let trait_def = ctxt.tcx.generics_of(t.def_id).parent;
-                    let t_args: Vec<_> =
-                        t.args.iter().filter(|x| x.as_region().is_none()).collect();
-                    t_args.iter().find(|x| x.as_type().is_none()).is_none()
-                        && trait_def.is_some()
-                        && t_args.len() >= 1
-                }
-            };
+            let supported = mid_ty_filter_for_external_impls(ctxt, &t, external_info);
             all_types_supported = all_types_supported && supported;
         }
     }
@@ -753,7 +760,7 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
                     return false;
                 }
                 for arg in trait_ref.args.types() {
-                    if !mid_ty_filter_for_external_impls(ctxt, arg.walk(), external_info) {
+                    if !mid_arg_filter_for_external_impls(ctxt, arg.walk(), external_info) {
                         return false;
                     }
                 }
@@ -770,7 +777,7 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
                     return false;
                 }
                 for arg in pred.projection_ty.args.types() {
-                    if !mid_ty_filter_for_external_impls(ctxt, arg.walk(), external_info) {
+                    if !mid_arg_filter_for_external_impls(ctxt, arg.walk(), external_info) {
                         return false;
                     }
                 }
@@ -1450,12 +1457,30 @@ where
     Ok(bounds)
 }
 
+// REVIEW: Consider using rustc_middle generics instead of hir generics
 pub(crate) fn check_item_external_generics<'tcx>(
+    self_generics: Option<(&'tcx Generics, DefId)>,
     generics: &'tcx Generics<'tcx>,
+    skip_implicit_lifetimes: bool,
     substs_ref: &rustc_middle::ty::GenericArgs<'tcx>,
     skip_self: bool,
     span: Span,
 ) -> Result<(), VirErr> {
+    let mut generics_params: Vec<GenericParam> = vec![];
+    if let Some((gen, _)) = self_generics {
+        generics_params.extend(gen.params.iter().cloned());
+    }
+    generics_params.extend(generics.params.iter().cloned());
+
+    if skip_implicit_lifetimes {
+        generics_params = generics_params
+            .into_iter()
+            .filter(|gp| {
+                !matches!(gp.kind, GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided })
+            })
+            .collect();
+    }
+
     use rustc_middle::ty::ScalarInt;
     // Check that the generics match (important because we do the substitution to get
     // the types from the external definition)
@@ -1473,8 +1498,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
             span,
             format!(
                 "expected generics to match: \n expected {}\n found {}",
-                generics
-                    .params
+                generics_params
                     .iter()
                     .map(|x| x.name.ident().to_string())
                     .collect::<Vec<_>>()
@@ -1484,10 +1508,10 @@ pub(crate) fn check_item_external_generics<'tcx>(
         )
     };
 
-    if substs_ref.len() != generics.params.len() {
+    if substs_ref.len() != generics_params.len() {
         return err();
     }
-    for (generic_arg, generic_param) in substs_ref.iter().zip(generics.params.iter()) {
+    for (generic_arg, generic_param) in substs_ref.iter().zip(generics_params.iter()) {
         // So if we have like
         //    struct ProxyName<X, 'a>(External<X, 'a>);
         // We need to check the <X, 'a> line up
@@ -1499,8 +1523,6 @@ pub(crate) fn check_item_external_generics<'tcx>(
                 return err();
             }
         };
-        use rustc_hir::GenericParamKind;
-        use rustc_hir::LifetimeParamKind;
 
         match (generic_arg.unpack(), &generic_param.kind) {
             (
@@ -1802,5 +1824,14 @@ pub(crate) fn remove_host_arg<'tcx>(
         Ok(tcx.mk_args(&s))
     } else {
         Ok(substs)
+    }
+}
+
+pub(crate) fn ty_remove_references<'tcx>(
+    ty: &'tcx rustc_middle::ty::Ty<'tcx>,
+) -> &'tcx rustc_middle::ty::Ty<'tcx> {
+    match ty.kind() {
+        TyKind::Ref(_, t, Mutability::Not) => ty_remove_references(&t),
+        _ => ty,
     }
 }

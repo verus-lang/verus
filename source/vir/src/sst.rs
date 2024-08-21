@@ -149,6 +149,12 @@ pub enum StmX {
         requires: Exps,
         ensures: Exps,
     },
+    AssertQuery {
+        mode: AssertQueryMode,
+        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
+        body: Stm,
+    },
+    AssertCompute(Option<AssertId>, Exp, crate::ast::ComputeMode),
     Assume(Exp),
     Assign {
         lhs: Dest,
@@ -187,17 +193,12 @@ pub enum StmX {
         modified_vars: Arc<Vec<UniqueIdent>>,
     },
     OpenInvariant(Exp, Stm),
-    Block(Stms),
     ClosureInner {
         body: Stm,
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
     },
-    AssertQuery {
-        mode: AssertQueryMode,
-        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
-        body: Stm,
-    },
     Air(Arc<String>),
+    Block(Stms),
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;
@@ -206,6 +207,13 @@ pub struct LocalDeclX {
     pub ident: UniqueIdent,
     pub typ: Typ,
     pub mutable: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum UnwindSst {
+    MayUnwind,
+    NoUnwind,
+    NoUnwindWhen(Exp),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -236,6 +244,7 @@ pub struct FuncDeclSst {
     pub reqs: Exps,
     pub enss: Exps,
     pub inv_masks: Arc<Vec<Exps>>,
+    pub unwind_condition: Option<Exp>,
     pub fndef_axioms: Exps,
 }
 
@@ -244,19 +253,20 @@ pub struct FuncCheckSst {
     pub reqs: Exps,
     pub post_condition: Arc<PostConditionSst>,
     pub mask_set: Arc<crate::inv_masks::MaskSet>, // Actually AIR
+    pub unwind: UnwindSst,
     pub body: Stm,
     pub local_decls: Arc<Vec<LocalDecl>>,
     pub statics: Arc<Vec<Fun>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FuncSpecBodySst {
     pub decrease_when: Option<Exp>,
     pub termination_check: Option<FuncCheckSst>,
     pub body_exp: Exp,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FuncAxiomsSst {
     pub spec_axioms: Option<FuncSpecBodySst>,
     pub proof_exec_axioms: Option<(Pars, Exp)>,
@@ -265,7 +275,6 @@ pub struct FuncAxiomsSst {
 #[derive(Debug, Clone)]
 pub struct FunctionSstHas {
     pub has_body: bool,
-    pub has_fuel: bool,
     pub has_requires: bool,
     pub has_ensures: bool,
     pub has_decrease: bool,
@@ -280,12 +289,29 @@ pub struct FunctionSstX {
     pub name: Fun,
     pub kind: crate::ast::FunctionKind,
     pub vis_abs: crate::ast::Visibility,
+    pub owning_module: Option<Path>,
     pub mode: crate::ast::Mode,
+    pub fuel: u32,
     pub typ_params: crate::ast::Idents,
     pub typ_bounds: crate::ast::GenericBounds,
     pub pars: Pars,
     pub ret: Par,
     pub item_kind: crate::ast::ItemKind,
+    pub publish: Option<bool>,
     pub attrs: crate::ast::FunctionAttrs,
     pub has: FunctionSstHas,
+    pub decl: Arc<FuncDeclSst>,
+    pub axioms: Arc<FuncAxiomsSst>,
+    pub exec_proof_check: Option<Arc<FuncCheckSst>>,
+    pub recommends_check: Option<Arc<FuncCheckSst>>,
+}
+
+pub type KrateSst = Arc<KrateSstX>;
+#[derive(Debug)]
+pub struct KrateSstX {
+    pub functions: Vec<FunctionSst>,
+    pub datatypes: Vec<crate::ast::Datatype>,
+    pub traits: Vec<crate::ast::Trait>,
+    pub trait_impls: Vec<crate::ast::TraitImpl>,
+    pub assoc_type_impls: Vec<crate::ast::AssocTypeImpl>,
 }

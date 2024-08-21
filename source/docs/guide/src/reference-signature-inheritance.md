@@ -13,6 +13,8 @@ corresponding signature on the trait declaration.
     Furthermore, the user can add additional `ensures` clauses in the trait implementation.
  * The [`opens_invariants` signature](./reference-opens-invariants.md) is inherited
     in the trait implementation and cannot be modified.
+ * The [unwinding signature](./reference-unwind-sig.md) is inherited
+    in the trait implementation and cannot be modified.
 
 When a trait function is called, Verus will attempt to statically resolve the function
 to a particular trait implementation.  If this is possible, it uses the possibly-stronger 

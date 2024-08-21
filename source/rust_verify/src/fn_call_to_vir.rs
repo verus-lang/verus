@@ -66,6 +66,8 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                         | SpecItem::OpensInvariantsAny
                         | SpecItem::OpensInvariants
                         | SpecItem::OpensInvariantsExcept
+                        | SpecItem::NoUnwind
+                        | SpecItem::NoUnwindWhen
                 ) | VerusItem::Directive(DirectiveItem::ExtraDependency)
             )
         )
@@ -413,6 +415,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_spec_fn_no_proof_args(bctx, expr);
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
                 let header = Arc::new(HeaderExprX::DecreasesWhen(arg));
+                mk_expr(ExprX::Header(header))
+            }
+            SpecItem::NoUnwind => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let header = Arc::new(HeaderExprX::NoUnwind);
+                mk_expr(ExprX::Header(header))
+            }
+            SpecItem::NoUnwindWhen => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                let header = Arc::new(HeaderExprX::NoUnwindWhen(arg));
                 mk_expr(ExprX::Header(header))
             }
             SpecItem::Admit => {
@@ -934,6 +948,33 @@ fn verus_item_to_vir<'tcx, 'a>(
                     })
                 }
             }
+        }
+        VerusItem::UseTypeInvariant => {
+            record_compilable_operator(bctx, expr, CompilableOperator::UseTypeInvariant);
+            unsupported_err_unless!(args_len == 1, expr.span, "expected use_type_invariant", &args);
+            if !bctx.in_ghost {
+                return err_span(expr.span, "use_type_invariant must be in a 'proof' block");
+            }
+            let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+
+            // We need to check there's no 'Ghost' decoration.
+            let arg_typ = bctx.types.expr_ty_adjusted(&args[0]);
+            let t = mid_ty_to_vir(
+                tcx,
+                &bctx.ctxt.verus_items,
+                bctx.fun_id,
+                expr.span,
+                &arg_typ,
+                false,
+            )?;
+            vir::user_defined_type_invariants::check_typ_ok_for_use_typ_invariant(&exp.span, &t)?;
+
+            // The correct fun is filled in later, in the pass that elaborates these conditions
+            mk_expr(ExprX::AssertAssumeUserDefinedTypeInvariant {
+                is_assume: true,
+                expr: exp,
+                fun: vir::fun!("" => "use_type_invariant_fake_placeholder_fun"),
+            })
         }
         VerusItem::WithTriggers => {
             record_spec_fn_no_proof_args(bctx, expr);

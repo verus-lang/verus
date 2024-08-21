@@ -89,6 +89,11 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
     }
 }
 
+enum DTypId {
+    Expr(Expr),
+    Primitive(crate::ast::Primitive),
+}
+
 fn datatype_or_fun_to_air_commands(
     ctx: &Ctx,
     field_commands: &mut Vec<Command>,
@@ -98,7 +103,7 @@ fn datatype_or_fun_to_air_commands(
     span: &Span,
     dpath: &Path,
     dtyp: &air::ast::Typ,
-    dtyp_id: Option<Expr>,
+    dtyp_id: Option<DTypId>,
     datatyp: Option<Typ>,
     tparams: &Idents,
     variants: &Variants,
@@ -170,7 +175,11 @@ fn datatype_or_fun_to_air_commands(
     let unbox_x = ident_apply(&prefix_unbox(&dpath), &vec![x_var.clone()]);
     let box_unbox_x = ident_apply(&prefix_box(&dpath), &vec![unbox_x.clone()]);
     let unbox_box_x = ident_apply(&prefix_unbox(&dpath), &vec![box_x.clone()]);
-    let id = if let Some(dtyp_id) = dtyp_id { dtyp_id } else { datatype_id(dpath, &typ_args) };
+    let id = match dtyp_id {
+        Some(DTypId::Expr(e)) => e,
+        Some(DTypId::Primitive(p)) => crate::sst_to_air::primitive_id(&p, &typ_args),
+        None => datatype_id(dpath, &typ_args),
+    };
     let has = expr_has_type(&x_var, &id);
     let has_box = expr_has_type(&box_x, &id);
     let vpolytyp = Arc::new(TypX::Boxed(datatyp.clone()));
@@ -637,7 +646,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &ctx.global.no_span,
             &crate::def::array_type(),
             &Arc::new(air::ast::TypX::Fun),
-            None,
+            Some(DTypId::Primitive(crate::ast::Primitive::Array)),
             Some(Arc::new(TypX::Primitive(crate::ast::Primitive::Array, Arc::new(vec![])))),
             &Arc::new(vec![Arc::new("T".to_string()), Arc::new("N".to_string())]),
             &Arc::new(vec![]),
@@ -664,7 +673,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &ctx.global.no_span,
             &dpath,
             &str_typ(&path_to_air_ident(&dpath)),
-            Some(crate::sst_to_air::monotyp_to_id(monotyp).last().unwrap().clone()),
+            Some(DTypId::Expr(crate::sst_to_air::monotyp_to_id(monotyp).last().unwrap().clone())),
             Some(crate::poly::monotyp_to_typ(monotyp)),
             &Arc::new(vec![]),
             &Arc::new(vec![]),

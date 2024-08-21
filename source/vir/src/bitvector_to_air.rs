@@ -344,7 +344,7 @@ fn bv_exp_to_expr(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<BvExpr, Vir
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: TupleField should have been removed before here")
             }
-            UnaryOp::MustBeFinalized => {
+            UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", arg)
             }
             UnaryOp::StrLen | UnaryOp::StrIsAscii => panic!(

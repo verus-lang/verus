@@ -104,6 +104,8 @@ pub(crate) enum SpecItem {
     OpensInvariantsAny,
     OpensInvariants,
     OpensInvariantsExcept,
+    NoUnwind,
+    NoUnwindWhen,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -329,6 +331,7 @@ pub(crate) enum VerusItem {
     UnaryOp(UnaryOpItem),
     Chained(ChainedItem),
     Assert(AssertItem),
+    UseTypeInvariant,
     WithTriggers,
     OpenInvariantBlock(OpenInvariantBlockItem),
     Vstd(VstdItem, Option<Ident>),
@@ -358,6 +361,9 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::opens_invariants_any",    VerusItem::Spec(SpecItem::OpensInvariantsAny)),
         ("verus::builtin::opens_invariants",        VerusItem::Spec(SpecItem::OpensInvariants)),
         ("verus::builtin::opens_invariants_except", VerusItem::Spec(SpecItem::OpensInvariantsExcept)),
+
+        ("verus::builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),
+        ("verus::builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),
 
         ("verus::builtin::forall",                  VerusItem::Quant(QuantItem::Forall)),
         ("verus::builtin::exists",                  VerusItem::Quant(QuantItem::Exists)),
@@ -441,6 +447,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::assert_bitvector_by",     VerusItem::Assert(AssertItem::AssertBitvectorBy)),
         ("verus::builtin::assert_forall_by",        VerusItem::Assert(AssertItem::AssertForallBy)),
         ("verus::builtin::assert_bit_vector",       VerusItem::Assert(AssertItem::AssertBitVector)),
+        ("verus::builtin::use_type_invariant",      VerusItem::UseTypeInvariant),
 
         ("verus::builtin::with_triggers",           VerusItem::WithTriggers),
 

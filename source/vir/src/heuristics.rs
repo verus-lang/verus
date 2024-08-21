@@ -52,6 +52,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOp::Trigger(_)
             | UnaryOp::CoerceMode { .. }
             | UnaryOp::MustBeFinalized
+            | UnaryOp::MustBeElaborated
             | UnaryOp::HeightTrigger
             | UnaryOp::CastToInteger => {
                 exp.new_x(ExpX::Unary(*op, insert_ext_eq_in_assert(ctx, e)))

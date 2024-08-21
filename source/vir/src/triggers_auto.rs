@@ -328,7 +328,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::NullaryOpr(_) => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![])))),
         ExpX::Unary(UnaryOp::Trigger(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::Unary(UnaryOp::CoerceMode { .. }, e1) => gather_terms(ctxt, ctx, e1, depth),
-        ExpX::Unary(UnaryOp::MustBeFinalized, e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::Unary(UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated, e1) => {
+            gather_terms(ctxt, ctx, e1, depth)
+        }
         ExpX::Unary(UnaryOp::CastToInteger, _) => {
             panic!("internal error: CastToInteger should have been removed before here")
         }
@@ -337,6 +339,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::Not
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
+                | UnaryOp::MustBeElaborated
                 | UnaryOp::CastToInteger => 0,
                 UnaryOp::HeightTrigger => 1,
                 UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,

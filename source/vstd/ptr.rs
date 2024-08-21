@@ -182,7 +182,6 @@ pub broadcast proof fn points_to_height_axiom<V>(points_to: PointsTo<V>)
     admit();
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_ptr_axioms {
     points_to_height_axiom,
 }
@@ -574,6 +573,7 @@ impl<V> PPtr<V> {
             perm@.pptr === old(perm)@.pptr,
             perm@.value === Some(v),
         opens_invariants none
+        no_unwind
     {
         // See explanation about exposing pointers, above
         let ptr = self.uptr as usize as *mut V;
@@ -601,6 +601,7 @@ impl<V> PPtr<V> {
             perm@.value === None,
             v === old(perm)@.value.get_Some_0(),
         opens_invariants none
+        no_unwind
     {
         // See explanation about exposing pointers, above
         let ptr = self.uptr as usize as *mut V;
@@ -620,6 +621,7 @@ impl<V> PPtr<V> {
             perm@.value === Some(in_v),
             out_v === old(perm)@.value.get_Some_0(),
         opens_invariants none
+        no_unwind
     {
         // See explanation about exposing pointers, above
         let ptr = self.uptr as usize as *mut V;
@@ -642,6 +644,7 @@ impl<V> PPtr<V> {
         ensures
             *v === perm@.value.get_Some_0(),
         opens_invariants none
+        no_unwind
     {
         // See explanation about exposing pointers, above
         let ptr = self.uptr as usize as *mut V;
@@ -751,6 +754,7 @@ impl<V: Copy> PPtr<V> {
             perm@.pptr === old(perm)@.pptr,
             perm@.value === Some(in_v),
         opens_invariants none
+        no_unwind
     {
         proof {
             perm.leak_contents();
@@ -766,6 +770,7 @@ impl<V: Copy> PPtr<V> {
         ensures
             perm@.value === Some(out_v),
         opens_invariants none
+        no_unwind
     {
         *self.borrow(Tracked(&*perm))
     }

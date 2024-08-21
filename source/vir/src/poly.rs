@@ -79,7 +79,7 @@ use crate::ast::{
     AssocTypeImpl, BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr,
     Function, FunctionKind, FunctionX, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp, Param,
     ParamX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypDecorationArg, TypX,
-    Typs, UnaryOp, UnaryOpr, VarBinder, VarIdent, Variant,
+    Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarIdent, Variant,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -461,7 +461,9 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } => {
                     mk_expr_typ(&e1.typ, ExprX::Unary(*op, e1.clone()))
                 }
-                UnaryOp::MustBeFinalized => panic!("internal error: MustBeFinalized in AST"),
+                UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
+                    panic!("internal error: MustBeFinalized in AST")
+                }
                 UnaryOp::CastToInteger => {
                     let unbox = UnaryOpr::Unbox(Arc::new(TypX::Int(IntRange::Int)));
                     mk_expr(ExprX::UnaryOpr(unbox, e1.clone()))
@@ -514,6 +516,14 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let typ = expr.typ.clone();
             mk_expr_typ(&typ, ExprX::Loc(expr))
         }
+        ExprX::Binary(BinaryOp::ArrayIndex, e1, e2) => {
+            let e1 = poly_expr(ctx, state, e1);
+            let e2 = poly_expr(ctx, state, e2);
+            let e1 = coerce_expr_to_native(ctx, &e1);
+            let e2 = coerce_expr_to_poly(ctx, &e2);
+            let typ = coerce_typ_to_poly(ctx, &expr.typ);
+            mk_expr_typ(&typ, ExprX::Binary(BinaryOp::ArrayIndex, e1, e2))
+        }
         ExprX::Binary(op, e1, e2) => {
             let e1 = poly_expr(ctx, state, e1);
             let e2 = poly_expr(ctx, state, e2);
@@ -525,17 +535,12 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 Eq(_) | Ne => (false, false),
                 Bitwise(..) => (true, false),
                 StrGetChar { .. } => (true, false),
-                ArrayIndex { .. } => (true, false),
+                ArrayIndex => unreachable!("ArrayIndex"),
             };
             if native {
                 let e1 = coerce_expr_to_native(ctx, &e1);
                 let e2 = coerce_expr_to_native(ctx, &e2);
-                if *op == ArrayIndex {
-                    let typ = coerce_typ_to_poly(ctx, &expr.typ);
-                    mk_expr_typ(&typ, ExprX::Binary(*op, e1, e2))
-                } else {
-                    mk_expr(ExprX::Binary(*op, e1, e2))
-                }
+                mk_expr(ExprX::Binary(*op, e1, e2))
             } else if poly {
                 let e1 = coerce_expr_to_poly(ctx, &e1);
                 let e2 = coerce_expr_to_poly(ctx, &e2);
@@ -686,6 +691,14 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         ExprX::AssertAssume { is_assume, expr: e1 } => {
             let e1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1));
             mk_expr(ExprX::AssertAssume { is_assume: *is_assume, expr: e1 })
+        }
+        ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume, expr: e1, fun } => {
+            let e1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1));
+            mk_expr(ExprX::AssertAssumeUserDefinedTypeInvariant {
+                is_assume: *is_assume,
+                expr: e1,
+                fun: fun.clone(),
+            })
         }
         ExprX::AssertBy { vars, require, ensure, proof } => {
             let mut bs: Vec<VarBinder<Typ>> = Vec::new();
@@ -857,6 +870,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind,
         publish,
         attrs,
@@ -904,10 +918,12 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
 
     let mut state = State { types, is_trait, in_exec_closure: false };
 
+    let native_expr =
+        |state: &mut State, e: &Expr| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e));
     let native_exprs = |state: &mut State, es: &Exprs| {
         let mut exprs: Vec<Expr> = Vec::new();
         for e in es.iter() {
-            exprs.push(coerce_expr_to_native(ctx, &poly_expr(ctx, state, e)));
+            exprs.push(native_expr(state, e));
         }
         Arc::new(exprs)
     };
@@ -932,6 +948,14 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
             Some(MaskSpec::InvariantOpensExcept(native_exprs(&mut state, es)))
         }
         None => None,
+    };
+    let unwind_spec = match unwind_spec {
+        None => None,
+        Some(UnwindSpec::MayUnwind) => Some(UnwindSpec::MayUnwind),
+        Some(UnwindSpec::NoUnwind) => Some(UnwindSpec::NoUnwind),
+        Some(UnwindSpec::NoUnwindWhen(e)) => {
+            Some(UnwindSpec::NoUnwindWhen(native_expr(&mut state, e)))
+        }
     };
 
     let body = if let Some(body) = body {
@@ -1028,6 +1052,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         broadcast_forall,
         fndef_axioms,
         mask_spec,
+        unwind_spec,
         item_kind: *item_kind,
         publish: *publish,
         attrs: attrs.clone(),

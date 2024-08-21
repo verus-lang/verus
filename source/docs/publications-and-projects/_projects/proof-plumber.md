@@ -7,4 +7,5 @@ type: internal
 category: "Tooling"
 pdf: https://www.andrew.cmu.edu/user/bparno/papers/proof-plumber.pdf
 code: https://github.com/verus-lang/verus-analyzer
+award: Distinguished Paper Award
 ---

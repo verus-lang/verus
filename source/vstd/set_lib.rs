@@ -917,7 +917,6 @@ macro_rules! assert_sets_equal_internal {
     }
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_set_lib_axioms {
     axiom_is_empty,
 }

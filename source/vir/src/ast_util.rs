@@ -3,7 +3,7 @@ use crate::ast::{
     FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp, IntRange,
     IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant,
     SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
-    VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
+    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -392,6 +392,10 @@ impl Visibility {
         module.is_some() && module == &self.restricted_to
     }
 
+    pub fn is_public(&self) -> bool {
+        matches!(self, Visibility { restricted_to: None })
+    }
+
     pub fn public() -> Self {
         Visibility { restricted_to: None }
     }
@@ -554,6 +558,21 @@ impl FunctionX {
                 }
             }
             Some(mask_spec) => mask_spec.clone(),
+        }
+    }
+
+    pub fn unwind_spec_or_default(&self) -> UnwindSpec {
+        if matches!(self.kind, FunctionKind::TraitMethodImpl { .. }) {
+            // Always get the unwind spec from the trait method decl
+            panic!("mask_spec_or_default should not be called for TraitMethodImpl");
+        }
+
+        match &self.unwind_spec {
+            None => match self.mode {
+                Mode::Exec => UnwindSpec::MayUnwind,
+                Mode::Spec | Mode::Proof => UnwindSpec::NoUnwind,
+            },
+            Some(unwind_spec) => unwind_spec.clone(),
         }
     }
 }

@@ -1,7 +1,7 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Expr, ExprX, FieldOpr, Fun,
     Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, Trait, TypX, UnaryOp, UnaryOpr,
-    VirErr, VirErrAs,
+    UnwindSpec, VirErr, VirErrAs,
 };
 use crate::ast_util::{
     fun_as_friendly_rust_name, is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr,
@@ -479,6 +479,12 @@ fn check_function(
                 "trait method implementation cannot declare an opens_invariants spec; this can only be inherited from the trait declaration",
             ));
         }
+        if function.x.unwind_spec.is_some() {
+            return Err(error(
+                &function.span,
+                "trait method implementation cannot declare an unwind specification; this can only be inherited from the trait declaration",
+            ));
+        }
     }
 
     if function.x.attrs.is_decrease_by {
@@ -582,6 +588,12 @@ fn check_function(
     }
     if function.x.mask_spec.is_some() && function.x.mode == Mode::Spec {
         return Err(error(&function.span, "invariants cannot be opened in spec functions"));
+    }
+    if function.x.unwind_spec.is_some() && function.x.mode != Mode::Exec {
+        return Err(error(
+            &function.span,
+            "an 'unwind' specification can only be given on exec functions",
+        ));
     }
     if function.x.attrs.broadcast_forall {
         if function.x.mode != Mode::Proof {
@@ -802,6 +814,20 @@ fn check_function(
             }
         }
     }
+    match &function.x.unwind_spec {
+        None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
+        Some(UnwindSpec::NoUnwindWhen(expr)) => {
+            let msg = "unwind clause of public function";
+            let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+            check_expr(
+                ctxt,
+                function,
+                expr,
+                disallow_private_access,
+                Place::PreState("opens_invariants clause"),
+            )?;
+        }
+    }
     for expr in function.x.decrease.iter() {
         let msg = "'decreases' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
@@ -851,6 +877,41 @@ fn check_function(
         check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState)?;
     }
 
+    if function.x.attrs.is_type_invariant_fn {
+        if function.x.mode != Mode::Spec {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function must be `spec`",
+            ));
+        }
+        if !matches!(&*function.x.ret.x.typ, TypX::Bool) {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function must return bool",
+            ));
+        }
+        if !matches!(function.x.kind, FunctionKind::Static) {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function cannot be a trait function",
+            ));
+        }
+
+        // Not strictly needed, but probably a mistake on the user's part
+        if function.x.decrease_when.is_some() {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function should not have a 'when' clause (consider adding it as a conjunct in the body)",
+            ));
+        }
+        if function.x.require.len() > 0 {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function should not have a 'recommends' clause (consider adding it as a conjunct in the body)",
+            ));
+        }
+    }
+
     Ok(())
 }
 
@@ -859,6 +920,26 @@ fn check_datatype(ctxt: &Ctxt, dt: &Datatype) -> Result<(), VirErr> {
         for field in variant.fields.iter() {
             let typ = &field.a.0;
             check_typ(ctxt, typ, &dt.span)?;
+        }
+    }
+
+    if dt.x.user_defined_invariant_fn.is_some() {
+        if dt.x.proxy.is_some() {
+            return Err(error(
+                &dt.span,
+                "#[verifier::type_invariant] cannot be applied to a datatype that uses #[verifier::external_type_specification]",
+            ));
+        }
+        match &dt.x.transparency {
+            DatatypeTransparency::Never => {}
+            DatatypeTransparency::WhenVisible(vis) => {
+                if vis.is_public() {
+                    return Err(error(
+                        &dt.span,
+                        "#[verifier::type_invariant]: a struct with a type invariant cannot have any fields public to the crate",
+                    ));
+                }
+            }
         }
     }
 
@@ -1147,6 +1228,32 @@ pub fn check_crate(
                         "trait default methods do not yet support recursion and decreases",
                     ));
                 }
+            }
+        }
+        if function.x.attrs.broadcast_forall {
+            use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
+            let mut f_find_trigger = |_: &mut VisitorScopeMap, expr: &Expr| match &expr.x {
+                ExprX::WithTriggers { .. } => VisitorControlFlow::Stop(()),
+                ExprX::Unary(UnaryOp::Trigger(..), _) => VisitorControlFlow::Stop(()),
+                ExprX::Quant(..) => VisitorControlFlow::Return,
+                _ => VisitorControlFlow::Recurse,
+            };
+            let mut found_trigger = false;
+            for expr in function.x.require.iter().chain(function.x.ensure.iter()) {
+                let control = crate::ast_visitor::expr_visitor_dfs(
+                    expr,
+                    &mut air::scope_map::ScopeMap::new(),
+                    &mut f_find_trigger,
+                );
+                if control == VisitorControlFlow::Stop(()) {
+                    found_trigger = true;
+                }
+            }
+            if !found_trigger {
+                diags.push(VirErrAs::Warning(error(
+                    &function.span,
+                    "broadcast functions should have explicit #[trigger] or #![trigger ...]",
+                )));
             }
         }
     }

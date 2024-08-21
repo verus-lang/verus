@@ -1,10 +1,10 @@
 use crate::attributes::VerifierAttrs;
 use crate::context::Context;
-use crate::rust_to_vir::ExternalInfo;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, process_predicate_bounds,
 };
 use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
+use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
 use rustc_hir::{Generics, TraitFn, TraitItem, TraitItemKind, TraitItemRef};
@@ -128,7 +128,9 @@ pub(crate) fn translate_trait<'tcx>(
     let ex_trait_ref_for = external_trait_specification_of(tcx, trait_items, trait_vattrs)?;
     if let Some(ex_trait_ref_for) = ex_trait_ref_for {
         crate::rust_to_vir_base::check_item_external_generics(
+            None,
             trait_generics,
+            false,
             ex_trait_ref_for.args,
             true,
             trait_generics.span,

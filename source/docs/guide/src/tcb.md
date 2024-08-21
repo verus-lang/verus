@@ -21,15 +21,15 @@ to make them useful.
 The `#[verifier::external]` annotation tells Verus to ignore an item entirely.
 It can be applied to any item - a function, trait, trait implementation, type, etc.
 
-For many items (functions, types, trait declarations), this does not, on its own,
-introduce any new "assumptions" about that item, at least not on its own.
+For many items (functions, types, trait declarations), this does not, _on its own_,
+introduce any new "assumptions" about that item.
 Attempting to call an `external` function from a verified
 function, for example, will result in an error from Verus. In practice, a developer
 will often call an `external` function (say `f`) from an `external_body` function (say `g`),
 in which case, the `external_body` attribute introduces assumptions about `g`, thus
 _indirectly_ introducing assumptions about `f`.
 
-However, adding `#[verifier::external]` to a _trait implementation_ requires more
+Furthermore, adding `#[verifier::external]` to a _trait implementation_ requires even more
 careful consideration, as Verus relies on rustc's trait-checking for some things,
 so trait implementations can sometimes affect what code gets accepted or rejected.
 

@@ -1234,7 +1234,8 @@ impl Verifier {
     fn verify_bucket(
         &mut self,
         reporter: &impl Diagnostics,
-        krate: &Krate,
+        krate: &vir::sst::KrateSst,
+        sst_map: vir::ast_to_sst_func::SstMap,
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
@@ -1345,12 +1346,8 @@ impl Verifier {
 
         // Declare the function symbols
         for function in &krate.functions {
-            ctx.fun = crate::commands::mk_fun_ctx(&function, false);
-            if !is_visible_to(&function.x.visibility, module) || function.x.attrs.is_decrease_by {
-                continue;
-            }
-            let function_sst = vir::ast_to_sst_func::function_to_sst(ctx, &function);
-            let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, &function_sst)?;
+            ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
+            let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, function)?;
             let comment =
                 "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
             self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
@@ -1361,7 +1358,7 @@ impl Verifier {
         let function_decl_commands = Arc::new(function_decl_commands);
 
         let bucket = self.get_bucket(bucket_id);
-        let mut opgen = OpGenerator::new(ctx, krate, reporter, bucket.clone());
+        let mut opgen = OpGenerator::new(ctx, krate, sst_map, bucket.clone());
         let mut all_context_ops = vec![];
         while let Some(mut function_opgen) = opgen.next()? {
             let diagnostics_to_report: std::cell::RefCell<
@@ -1906,8 +1903,15 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &poly_krate, &self.args.log_args.vir_log_option);
         }
 
+        let (krate_sst, sst_map) = vir::ast_to_sst_crate::ast_to_sst_krate(
+            &mut ctx,
+            reporter,
+            &self.get_bucket(bucket_id).funs,
+            &poly_krate,
+        )?;
+
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
-            self.verify_bucket(reporter, &poly_krate, source_map, bucket_id, &mut ctx)?;
+            self.verify_bucket(reporter, &krate_sst, sst_map, source_map, bucket_id, &mut ctx)?;
 
         global_ctx = ctx.free();
 
@@ -1978,12 +1982,11 @@ impl Verifier {
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
         // The 'user_filter' handles the filter provided on the command line
-        // (--verify-module, --verify-funciton, etc.)
+        // (--verify-module, --verify-function, etc.)
         // Whereas the 'buckets' are the way we group obligations for parallelizing
         // and context pruning.
         // Buckets usually fall along module boundaries, but the user can create
-        // more buckets using #[spinoff_prover] can create
-        // more buckets.
+        // more buckets using #[spinoff_prover].
         //
         // For example, suppose module M has functions a, b, c, d.
         // with a and b both marked spinoff_prover.

@@ -47,6 +47,7 @@ const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_OPEN_INV: &str = "openinv%";
+const PREFIX_NO_UNWIND_WHEN: &str = "no_unwind_when%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
@@ -64,6 +65,7 @@ const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
+const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
@@ -433,6 +435,10 @@ pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
     ))
 }
 
+pub fn proj_param(i: usize) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_PROJECT_PARAM, i))
+}
+
 pub fn trait_bound(trait_path: &Path) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
 }
@@ -467,6 +473,10 @@ pub fn prefix_ensures(ident: &Ident) -> Ident {
 
 pub fn prefix_open_inv(ident: &Ident, i: usize) -> Ident {
     Arc::new(format!("{}{}%{}", PREFIX_OPEN_INV, i, ident))
+}
+
+pub fn prefix_no_unwind_when(ident: &Ident) -> Ident {
+    Arc::new(PREFIX_NO_UNWIND_WHEN.to_string() + ident)
 }
 
 fn prefix_path(prefix: String, path: &Path) -> Path {
