@@ -704,12 +704,12 @@ pub use assert_multisets_equal;
 verus! {
 
 impl<A> Multiset<A> {
-    /// Is `true` if called by an "empty" set, i.e., a set containing no elements and has length 0
+    /// Is `true` if called by an "empty" multiset, i.e., a multiset containing no elements and has length 0
     pub open spec fn is_empty(self) -> (b: bool) {
         self.len() == 0
     }
 
-    /// A singleton set has at least one element with multiplicity 1 and any two elements are equal.
+    /// A singleton multiset has at least one element with multiplicity 1 and any two elements are equal.
     pub open spec fn is_singleton(self) -> bool {
         &&& self.len() > 0
         &&& (forall|x: A| self.contains(x) ==> self.count(x) == 1)
