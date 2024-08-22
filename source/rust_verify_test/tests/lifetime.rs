@@ -760,3 +760,30 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "use of moved value")
 }
+
+test_verify_one_file! {
+    #[test] implicit_deref_in_reciever_issue1243 verus_code! {
+        struct X {
+        }
+
+        impl Clone for X {
+            fn clone(&self) -> Self {
+                X { }
+            }
+        }
+        impl Copy for X { }
+
+        impl X {
+            fn take_self(self) {
+            }
+
+            fn take_ref(&self) {
+                self.take_self();
+            }
+        }
+
+        fn take_ref_x(x: &X) {
+            x.take_self();
+        }
+    } => Ok(())
+}

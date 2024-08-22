@@ -1024,6 +1024,9 @@ fn erase_call<'tcx>(
                                     };
                                     exp = Box::new((exp.0, ExpX::AddrOf(m, exp)));
                                 }
+                                Adjust::Deref(None) => {
+                                    exp = Box::new((exp.0, ExpX::Deref(exp)));
+                                }
                                 _ => {}
                             }
                         }
