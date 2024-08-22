@@ -1,4 +1,9 @@
+#![cfg_attr(
+    not(verus_verify_core),
+    deprecated = "The vstd::ptr version of PPtr is deprecated. Use either:\n -- `PPtr<T>` in vstd::simple_pptr (for simple use-cases, with fixed-size typed heap allocations)\n -- `*mut T` with vstd::raw_ptr (for more advanced use-cases)"
+)]
 #![allow(unused_imports)]
+#![allow(deprecated)]
 
 use alloc::alloc::Layout;
 use core::{marker, mem, mem::MaybeUninit};

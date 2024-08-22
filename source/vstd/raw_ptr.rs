@@ -3,7 +3,7 @@
 /*!
 Tools and reasoning principles for [raw pointers](https://doc.rust-lang.org/std/primitive.pointer.html).  The tools here are meant to address "real Rust pointers, including all their subtleties on the Rust Abstract Machine, to the largest extent that is reasonable."
 
-For a gentler introduction to some of the concepts here, see [`PPtr`](vstd::simple_pptr), which uses a much-simplified pointer model.
+For a gentler introduction to some of the concepts here, see [`PPtr`](crate::simple_pptr), which uses a much-simplified pointer model.
 
 ### Pointer model
 
@@ -74,9 +74,9 @@ impl Provenance {
 ///
 /// For thin pointers (i.e., when T: Sized), the metadata is ()
 /// For slices, str, and dyn types this is nontrivial
-/// See: https://doc.rust-lang.org/std/ptr/trait.Pointee.html
+/// See: <https://doc.rust-lang.org/std/ptr/trait.Pointee.html>
 ///
-/// TODO: This will eventually be replaced with <T as Pointee>::Metadata.
+/// TODO: This will eventually be replaced with `<T as Pointee>::Metadata`.
 pub ghost enum Metadata {
     Thin,
     /// Length in bytes for a str; length in items for a

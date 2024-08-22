@@ -9,10 +9,14 @@ verus! {
 /// `PPtr` (which stands for "permissioned pointer")
 /// is a wrapper around a raw pointer to a heap-allocated `V`.
 /// This is designed to be simpler to use that Verus's
-/// [more general pointer support](`vstd::raw_ptr`),
+/// [more general pointer support](`crate::raw_ptr`),
 /// but also to serve as a better introductory point.
+/// Historically, `PPtr` was positioned as a "trusted primitives" of Verus,
+/// but now, it is implemented and verified from the more general pointer support,
+/// which operates on similar principles, but which is much precise to Rust's
+/// pointer semantics.
 ///
-/// Technically, it is a wrapper around `*mut mem::MaybeUninit<V>`, that is, the object
+/// Technically, `PPtr` is a wrapper around `*mut mem::MaybeUninit<V>`, that is, the object
 /// it points to may be uninitialized.
 ///
 /// In order to access (read or write) the value behind the pointer, the user needs
@@ -47,7 +51,7 @@ verus! {
 ///
 /// ### Differences from `PCell`.
 ///
-/// `PPtr` is similar to [`cell::PCell`], but has a few key differences:
+/// `PPtr` is similar to [`cell::PCell`](crate::cell::PCell), but has a few key differences:
 ///  * In `PCell<V>`, the type `V` is placed internally to the `PCell`, whereas with `PPtr`,
 ///    the type `V` is placed at some location on the heap.
 ///  * Since `PPtr` is just a pointer (represented by an integer), it can be `Copy`.
@@ -62,6 +66,8 @@ verus! {
 ///  * `PointsTo` tokens are non-fungible. They can't be broken up or made variable-sized.
 ///
 /// ### Example (TODO)
+// We want PPtr's fields to be public so the solver knows that equality of addresses
+// implies equality of PPtrs
 pub struct PPtr<V>(pub usize, pub PhantomData<V>);
 
 /// A `tracked` ghost object that gives the user permission to dereference a pointer
@@ -113,6 +119,15 @@ impl<V> PPtr<V> {
     /// while dereferencing it is only allowed when the right preconditions are met.
     #[inline(always)]
     pub fn from_addr(u: usize) -> (s: Self)
+        ensures
+            u == s.addr(),
+    {
+        PPtr(u, PhantomData)
+    }
+
+    /// Same as from_addr
+    #[inline(always)]
+    pub fn from_usize(u: usize) -> (s: Self)
         ensures
             u == s.addr(),
     {
@@ -440,5 +455,7 @@ impl<V> PPtr<V> {
         *self.borrow(Tracked(&*perm))
     }
 }
+
+pub use raw_ptr::MemContents;
 
 } // verus!

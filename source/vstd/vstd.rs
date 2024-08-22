@@ -83,7 +83,6 @@ pub broadcast group group_vstd_default {
     array::group_array_axioms,
     multiset::group_multiset_axioms,
     string::group_string_axioms,
-    ptr::group_ptr_axioms,
     std_specs::range::group_range_axioms,
     raw_ptr::group_raw_ptr_axioms,
 }

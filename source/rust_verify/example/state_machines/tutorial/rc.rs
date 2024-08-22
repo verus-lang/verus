@@ -9,7 +9,7 @@ use vstd::invariant::*;
 use vstd::modes::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
-use vstd::ptr::*;
+use vstd::simple_pptr::*;
 use vstd::{pervasive::*, *};
 
 verus! {
@@ -202,7 +202,7 @@ struct InnerRc<S> {
     pub s: S,
 }
 
-type MemPerms<S> = (ptr::PointsTo<InnerRc<S>>, ptr::Dealloc<InnerRc<S>>);
+type MemPerms<S> = simple_pptr::PointsTo<InnerRc<S>>;
 
 tracked struct GhostStuff<S> {
     pub tracked rc_perm: cell::PointsTo<u64>,
@@ -237,14 +237,13 @@ struct_with_invariants!{
 
     spec fn wf(self) -> bool {
         predicate {
-            &&& self.reader@@.key.0@.pptr == self.ptr.id()
-            &&& self.reader@@.key.1@.pptr == self.ptr.id()
+            &&& self.reader@@.key.pptr() == self.ptr
 
             &&& self.reader@@.instance == self.inst@
             &&& self.reader@@.count == 1
-            &&& self.reader@@.key.0@.value.is_Some()
+            &&& self.reader@@.key.is_init()
             &&& self.inv@.wf()
-            &&& self.reader@@.key.0@.value.get_Some_0().rc_cell == self.rc_cell
+            &&& self.reader@@.key.value().rc_cell == self.rc_cell
         }
 
         invariant on inv with (inst, rc_cell)
@@ -258,7 +257,7 @@ struct_with_invariants!{
 
 impl<S> MyRc<S> {
     spec fn view(self) -> S {
-        self.reader@@.key.0@.value.get_Some_0().s
+        self.reader@@.key.value().s
     }
 
     fn new(s: S) -> (rc: Self)
@@ -268,13 +267,13 @@ impl<S> MyRc<S> {
     {
         let (rc_cell, Tracked(rc_perm)) = PCell::new(1);
         let inner_rc = InnerRc::<S> { rc_cell, s };
-        let (ptr, Tracked(ptr_perm), Tracked(dealloc_perm)) = PPtr::new(inner_rc);
+        let (ptr, Tracked(ptr_perm)) = PPtr::new(inner_rc);
         let tracked (Tracked(inst), Tracked(mut rc_token), _) =
             RefCounter::Instance::initialize_empty(Option::None);
         let tracked reader = inst.do_deposit(
-            (ptr_perm, dealloc_perm),
+            ptr_perm,
             &mut rc_token,
-            (ptr_perm, dealloc_perm),
+            ptr_perm,
         );
         let tracked g = GhostStuff::<S> { rc_perm, rc_token };
         let tr_inst = Tracked(inst);
@@ -293,7 +292,7 @@ impl<S> MyRc<S> {
         let tracked inst = self.inst.borrow();
         let tracked reader = self.reader.borrow();
         let tracked perm = inst.reader_guard(reader@.key, &reader);
-        &self.ptr.borrow(Tracked(&perm.0)).s
+        &self.ptr.borrow(Tracked(perm)).s
     }
 
     fn clone(&self) -> (s: Self)
@@ -305,7 +304,7 @@ impl<S> MyRc<S> {
         let tracked inst = self.inst.borrow();
         let tracked reader = self.reader.borrow();
         let tracked perm = inst.reader_guard(reader@.key, &reader);
-        let inner_rc_ref = self.ptr.borrow(Tracked(&perm.0));
+        let inner_rc_ref = self.ptr.borrow(Tracked(perm));
         let tracked new_reader;
         open_local_invariant!(self.inv.borrow().borrow() => g => {
             let tracked GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
@@ -347,11 +346,10 @@ impl<S> MyRc<S> {
             rc_cell: _,
         } = self;
         let tracked perm = inst.reader_guard(reader@.key, &reader);
-        let inner_rc_ref = &ptr.borrow(Tracked(&perm.0));
+        let inner_rc_ref = &ptr.borrow(Tracked(perm));
 
         let count;
         let tracked mut inner_rc_perm_opt = None;
-        let tracked mut inner_rc_dealloc_opt = None;
 
         open_local_invariant!(inv.borrow() => g => {
             let tracked GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
@@ -368,7 +366,7 @@ impl<S> MyRc<S> {
                         reader);
                 }
             } else {
-                let tracked (mut inner_rc_perm, inner_rc_dealloc) = inst.dec_to_zero(
+                let tracked mut inner_rc_perm = inst.dec_to_zero(
                     reader.view().key,
                     &mut rc_token,
                     reader);
@@ -383,7 +381,6 @@ impl<S> MyRc<S> {
 
                 proof {
                     inner_rc_perm_opt = Some(inner_rc_perm);
-                    inner_rc_dealloc_opt = Some(inner_rc_dealloc);
                 }
             }
 
@@ -391,8 +388,7 @@ impl<S> MyRc<S> {
         });
 
         if count < 2 {
-            ptr.dispose(Tracked(inner_rc_perm_opt.tracked_unwrap()),
-                Tracked(inner_rc_dealloc_opt.tracked_unwrap()));
+            ptr.free(Tracked(inner_rc_perm_opt.tracked_unwrap()));
         }
     }
 }

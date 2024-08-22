@@ -4,7 +4,8 @@ verus! {
 
 mod doubly_linked_list {
     use vstd::prelude::*;
-    use vstd::ptr::{PPtr, PointsTo, Dealloc};
+    use vstd::simple_pptr::*;
+    use vstd::raw_ptr::MemContents;
     use vstd::assert_by_contradiction;
 
     // Single node in the list
@@ -14,7 +15,7 @@ mod doubly_linked_list {
         value: V,
     }
 
-    type MemPerms<V> = (PointsTo<Node<V>>, Dealloc<Node<V>>);
+    type MemPerms<V> = PointsTo<Node<V>>;
 
     // Doubly-linked list
     // Contains head pointer, tail pointer
@@ -45,11 +46,10 @@ mod doubly_linked_list {
 
         spec fn wf_perm(&self, i: nat) -> bool {
             &&& self.perms@.dom().contains(i)
-            &&& self.perms@[i].0@.pptr == self.ptrs@[i as int].id()
-            &&& self.perms@[i].1@.pptr == self.ptrs@[i as int].id()
-            &&& match self.perms@[i].0@.value {
-                Some(node) => node.prev == self.prev_of(i) && node.next == self.next_of(i),
-                None => false,
+            &&& self.perms@[i].pptr() == self.ptrs@[i as int]
+            &&& match self.perms@[i].opt_value() {
+                MemContents::Init(node) => node.prev == self.prev_of(i) && node.next == self.next_of(i),
+                MemContents::Uninit => false,
             }
         }
 
@@ -70,7 +70,7 @@ mod doubly_linked_list {
          {
             Seq::<V>::new(
                 self.ptrs@.len(),
-                |i: int| { self.perms@[i as nat].0@.value.get_Some_0().value },
+                |i: int| { self.perms@[i as nat].value().value },
             )
         }
 
@@ -95,14 +95,14 @@ mod doubly_linked_list {
                 self.well_formed(),
                 self@ == old(self)@.push(v),
         {
-            let (ptr, Tracked(perm), Tracked(dealloc)) = PPtr::new(
+            let (ptr, Tracked(perm)) = PPtr::<Node<V>>::new(
                 Node::<V> { prev: None, next: None, value: v },
             );
             proof {
                 self.ptrs@ = self.ptrs@.push(ptr);
                 self.perms.borrow_mut().tracked_insert(
                     (self.ptrs@.len() - 1) as nat,
-                    (perm, dealloc),
+                    perm,
                 );
             }
             self.tail = Some(ptr.clone());
@@ -130,11 +130,11 @@ mod doubly_linked_list {
                 Some(tail_ptr) => {
                     assert(self.ptrs@.len() > 0);
                     assert(self.wf_perm((self.ptrs@.len() - 1) as nat));
-                    let tracked (mut tail_perm, tail_dealloc) =  //: PermData<Node<V>> =
-                    self.perms.borrow_mut().tracked_remove((self.ptrs@.len() - 1) as nat);
+                    let tracked mut tail_perm: PointsTo<Node<V>> =
+                        self.perms.borrow_mut().tracked_remove((self.ptrs@.len() - 1) as nat);
                     let mut tail_node = tail_ptr.take(Tracked(&mut tail_perm));
                     let second_to_last_ptr = tail_node.prev;
-                    let (ptr, Tracked(perm), Tracked(dealloc)) = PPtr::new(
+                    let (ptr, Tracked(perm)) = PPtr::<Node<V>>::new(
                         Node::<V> { prev: Some(tail_ptr.clone()), next: None, value: v },
                     );
                     tail_node.prev = second_to_last_ptr;
@@ -143,9 +143,9 @@ mod doubly_linked_list {
                     proof {
                         self.perms.borrow_mut().tracked_insert(
                             (self.ptrs@.len() - 1) as nat,
-                            (tail_perm, tail_dealloc),
+                            tail_perm,
                         );
-                        self.perms.borrow_mut().tracked_insert(self.ptrs@.len(), (perm, dealloc));
+                        self.perms.borrow_mut().tracked_insert(self.ptrs@.len(), perm);
                         self.ptrs@ = self.ptrs@.push(ptr);
                     }
                     self.tail = Some(ptr);
@@ -177,10 +177,10 @@ mod doubly_linked_list {
         {
             assert(self.wf_perm((self.ptrs@.len() - 1) as nat));
             let last_ptr = self.tail.unwrap().clone();
-            let tracked (last_perm, last_dealloc) = self.perms.borrow_mut().tracked_remove(
+            let tracked last_perm = self.perms.borrow_mut().tracked_remove(
                 (self.ptrs@.len() - 1) as nat,
             );
-            let last_node = last_ptr.into_inner(Tracked(last_perm), Tracked(last_dealloc));
+            let last_node = last_ptr.into_inner(Tracked(last_perm));
             let v = last_node.value;
             match &last_node.prev {
                 None => {
@@ -199,7 +199,7 @@ mod doubly_linked_list {
                     assert(old(self)@.len() >= 2);
                     assert(old(self).wf_perm((self.ptrs@.len() - 2) as nat));
                     let ghost actual_penult_u64 = self.prev_of((self.ptrs@.len() - 1) as nat);
-                    let tracked (mut penult_perm, penult_dealloc) =
+                    let tracked mut penult_perm =
                         self.perms.borrow_mut().tracked_remove((self.ptrs@.len() - 2) as nat);
                     let mut penult_node = penult_ptr.take(Tracked(&mut penult_perm));
                     penult_node.next = None;
@@ -207,7 +207,7 @@ mod doubly_linked_list {
                     proof {
                         self.perms.borrow_mut().tracked_insert(
                             (self.ptrs@.len() - 2) as nat,
-                            (penult_perm, penult_dealloc),
+                            penult_perm,
                         );
                     }
                 },
@@ -239,8 +239,8 @@ mod doubly_linked_list {
         {
             assert(self.wf_perm(0));
             let first_ptr = self.head.unwrap().clone();
-            let tracked (first_perm, first_dealloc) = self.perms.borrow_mut().tracked_remove(0);
-            let first_node = first_ptr.into_inner(Tracked(first_perm), Tracked(first_dealloc));
+            let tracked first_perm = self.perms.borrow_mut().tracked_remove(0);
+            let first_node = first_ptr.into_inner(Tracked(first_perm));
             let v = first_node.value;
             match &first_node.next {
                 None => {
@@ -259,13 +259,12 @@ mod doubly_linked_list {
                     assert(old(self)@.len() >= 2);
                     assert(old(self).wf_perm(1));
                     let ghost actual_second_u64 = self.next_of(0);
-                    let tracked (mut second_perm, second_dealloc) =
-                        self.perms.borrow_mut().tracked_remove(1);
+                    let tracked mut second_perm = self.perms.borrow_mut().tracked_remove(1);
                     let mut second_node = second_ptr.take(Tracked(&mut second_perm));
                     second_node.prev = None;
                     second_ptr.put(Tracked(&mut second_perm), second_node);
                     proof {
-                        self.perms.borrow_mut().tracked_insert(1, (second_perm, second_dealloc));
+                        self.perms.borrow_mut().tracked_insert(1, second_perm);
                         assert forall|j: nat|
                             1 <= j && j < old(self)@.len() implies self.perms@.dom().contains(
                             j,
@@ -319,18 +318,18 @@ mod doubly_linked_list {
                 Some(head_ptr) => {
                     assert(self.ptrs@.len() > 0);
                     assert(self.wf_perm(0));
-                    let tracked (mut head_perm, head_dealloc) =
+                    let tracked mut head_perm =
                         self.perms.borrow_mut().tracked_remove(0);
                     let mut head_node = head_ptr.take(Tracked(&mut head_perm));
                     let second_ptr = head_node.next;
-                    let (ptr, Tracked(perm), Tracked(dealloc)) = PPtr::new(
+                    let (ptr, Tracked(perm)) = PPtr::new(
                         Node::<V> { prev: None, next: Some(head_ptr.clone()), value: v },
                     );
                     head_node.prev = Some(ptr.clone());
                     head_node.next = second_ptr;
                     head_ptr.put(Tracked(&mut head_perm), head_node);
                     proof {
-                        self.perms.borrow_mut().tracked_insert(0, (head_perm, head_dealloc));
+                        self.perms.borrow_mut().tracked_insert(0, head_perm);
                         assert forall|j: nat|
                             0 <= j && j < old(self)@.len() implies self.perms@.dom().contains(
                             j,
@@ -343,7 +342,7 @@ mod doubly_linked_list {
                                 |j: nat| (j - 1) as nat,
                             ),
                         );
-                        self.perms.borrow_mut().tracked_insert(0, (perm, dealloc));
+                        self.perms.borrow_mut().tracked_insert(0, perm);
                         self.ptrs@ = seq![ptr].add(self.ptrs@);
                     }
                     self.head = Some(ptr);
@@ -408,7 +407,7 @@ mod doubly_linked_list {
             let cur = self.cur.unwrap();
             assert(self.l.wf_perm(self.index()));
             let tracked perm = self.l.perms.borrow().tracked_borrow(self.index());
-            let node = cur.borrow(Tracked(&perm.0));
+            let node = cur.borrow(Tracked(perm));
             &node.value
         }
 
@@ -423,7 +422,7 @@ mod doubly_linked_list {
             assert(self.l.wf_perm(self.index()));
             let cur = self.cur.unwrap();
             let tracked perm = self.l.perms.borrow().tracked_borrow(self.index());
-            let node = cur.borrow(Tracked(&perm.0));
+            let node = cur.borrow(Tracked(perm));
             proof {
                 self.index@ = self.index@ + 1;
             }
