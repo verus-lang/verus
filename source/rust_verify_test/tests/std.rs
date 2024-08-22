@@ -415,5 +415,11 @@ test_verify_one_file! {
             assert(a == b);
             assert(a == PhantomData::<u64>);
         }
+
+        fn stuff2(a: PhantomData<u64>, b: PhantomData<u64>) {
+            assert(a == b);
+            let z = PhantomData::<u64>;
+            assert(a == z);
+        }
     } => Ok(())
 }

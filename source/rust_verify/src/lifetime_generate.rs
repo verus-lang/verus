@@ -1068,6 +1068,7 @@ fn erase_call<'tcx>(
                 }
                 // make sure datatype is generated
                 let _ = erase_ty(ctxt, state, &ctxt.types().node_type(expr.hir_id));
+
                 let variant_opt =
                     if is_variant { Some(state.variant(variant_name.to_string())) } else { None };
                 mk_exp(ExpX::DatatypeTuple(state.datatype_name(path), variant_opt, typ_args, args))
@@ -1215,6 +1216,15 @@ fn erase_expr<'tcx>(
                             get_adt_res_struct_enum(ctxt.tcx, res, expr.span).unwrap();
                         let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
                         let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
+
+                        let rust_item = verus_items::get_rust_item(ctxt.tcx, adt_def_id);
+                        if rust_item == Some(RustItem::PhantomData) {
+                            return mk_exp(ExpX::Var(Id::new(
+                                IdKind::Builtin,
+                                0,
+                                "PhantomData".to_owned(),
+                            )));
+                        }
 
                         let variant = if is_enum {
                             Some(state.variant(variant_name.to_string()))
