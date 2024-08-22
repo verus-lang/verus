@@ -99,7 +99,7 @@ macro_rules! atomic_types {
         #[verifier::external_body] /* vattr */
         pub tracked struct $p_ident {
             no_copy: NoCopy,
-            unusued: $value_ty,
+            unused: $value_ty,
         }
 
         pub ghost struct $p_data_ident {
