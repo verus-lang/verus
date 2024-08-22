@@ -17,7 +17,7 @@
  - [`rlimit`](#verifierrlimitn-and-verifierrlimitinfinity)
  - `trigger`
  - [`truncate`](#verifiertruncate)
- - [`type_invariant`](#verifiertypeinvariant)
+ - [`type_invariant`](#verifiertype_invariant)
  - `when_used_as_spec`
 
 ## `#[verifier::atomic]`
@@ -105,4 +105,4 @@ already elided if the enclosing function body has no legitimate verification err
 
 ## `#[verifier::type_invariant]`
 
-Declares that a spec function is a type invariant for some datatype. See [type invariants](./reference-type-invariant.md).
+Declares that a spec function is a type invariant for some datatype. See [type invariants](./reference-type-invariants.md).
