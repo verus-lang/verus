@@ -136,6 +136,7 @@
   - [decreases ... when ... via ...](./reference-decreases.md)
   - [Datatype ordering]()
   - [Cyclic definitions]()
+- [Type invariants](./reference-type-invariants.md)
 - [Attribute list](./reference-attributes.md)
 - [Misc. Rust features]()
   - [Statics](./static.md)

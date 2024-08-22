@@ -17,9 +17,10 @@
  - [`rlimit`](#verifierrlimitn-and-verifierrlimitinfinity)
  - `trigger`
  - [`truncate`](#verifiertruncate)
+ - [`type_invariant`](#verifiertypeinvariant)
  - `when_used_as_spec`
 
-## #[verifier::atomic]
+## `#[verifier::atomic]`
 
 The attribute `#[verifier::atomic]` can be applied to any _exec-mode_ function to indicate
 that it is "atomic" for the purposes of the atomicity check by
@@ -31,21 +32,21 @@ signature.
 
 This attribute is used by `vstd`'s [trusted atomic types](https://verus-lang.github.io/verus/verusdoc/vstd/atomic/index.html).
 
-## #[verifier::external]
+## `#[verifier::external]`
 
 Tells Verus to ignore the given item. Verus will error if any verified code attempts to
 reference the given item.
 
 This can have nontrivial implications for the TCB of a verified crate; see [here](./tcb.md).
 
-## #[verifier::inline]
+## `#[verifier::inline]`
 
 The attribute `#[verifier::inline]` can be applied to any _spec-mode_ function to indicate
 that that Verus should automatically expand its definition in the STM-LIB encoding.
 
 This has no effect on the semantics of the function but may impact triggering.
 
-## #[verifier::loop_isolation]
+## `#[verifier::loop_isolation]`
 
 The attributes `#[verifier::loop_isolation(false)]` and `#[verifier::loop_isolation(true)]`
 can be applied to modules, functions, or individual loops. For any loop, the most specific
@@ -60,18 +61,18 @@ body (absent any loop invariants).
    that depends only on variables not mutated by the loop body will also be available
    inside the loop.
 
-## #[verifier::memoize]
+## `#[verifier::memoize]`
 
 The attribute `#[verifier::memoize]` can be applied to any _spec-mode_ function to indicate
 that the [`by(compute)` and `by(compute_only)` prover-modes](./reference-assert-by-compute.md)
 should "memoize" the results of this function.
 
-## #[verifier::opaque]
+## `#[verifier::opaque]`
 
 Directs the solver to not automatically reveal the definition of this function.
 The definition can then be revealed locally via the [`reveal` and `reveal_with_fuel` directives](./reference-reveal-hide.md).
 
-## #[verifier::rlimit(n)] and #[verifier::rlimit(infinity)]
+## `#[verifier::rlimit(n)]` and `#[verifier::rlimit(infinity)]`
 
 The `rlimit` option can be applied to any function to configure the computation limit
 applied to the solver for that function. 
@@ -83,7 +84,7 @@ The rlmit may be set to `infinity` to remove the limit.
 
 The rlimit can also be configured with the `--rlimit` command line option.
 
-## #[verifier::truncate]
+## `#[verifier::truncate]`
 
 The `#[verifier::truncate]` attribute can be added to expressions to silence
 recommends-checking regarding out-of-range as-casts.
@@ -101,3 +102,7 @@ The only effect of the attribute is to silence the recommends-check, which is
 already elided if the enclosing function body has no legitimate verification errors.
 
 **Aside.** When truncation is intended, [the bit-vector solver mode](./reference-assert-by-bit-vector.md) is often useful for writing proofs about truncation.
+
+## `#[verifier::type_invariant]`
+
+Declares that a spec function is a type invariant for some datatype. See [type invariants](./reference-type-invariant.md).
