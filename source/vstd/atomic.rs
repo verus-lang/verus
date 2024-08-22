@@ -667,7 +667,7 @@ impl<T> PAtomicPtr<T> {
     #[inline(always)]
     #[verifier::external_body]  /* vattr */
     #[verifier::atomic]  /* vattr */
-    #[cfg(feature = "strict_provenance_atomic_ptr")]
+    #[cfg(any(verus_keep_ghost, feature = "strict_provenance_atomic_ptr"))]
     pub fn fetch_and(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret:
         *mut T)
         requires
@@ -687,7 +687,7 @@ impl<T> PAtomicPtr<T> {
     #[inline(always)]
     #[verifier::external_body]  /* vattr */
     #[verifier::atomic]  /* vattr */
-    #[cfg(feature = "strict_provenance_atomic_ptr")]
+    #[cfg(any(verus_keep_ghost, feature = "strict_provenance_atomic_ptr"))]
     pub fn fetch_xor(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret:
         *mut T)
         requires
@@ -707,7 +707,7 @@ impl<T> PAtomicPtr<T> {
     #[inline(always)]
     #[verifier::external_body]  /* vattr */
     #[verifier::atomic]  /* vattr */
-    #[cfg(feature = "strict_provenance_atomic_ptr")]
+    #[cfg(any(verus_keep_ghost, feature = "strict_provenance_atomic_ptr"))]
     pub fn fetch_or(&self, Tracked(perm): Tracked<&mut PermissionPtr<T>>, n: usize) -> (ret: *mut T)
         requires
             equal(self.id(), old(perm).view().patomic),
