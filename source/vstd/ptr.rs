@@ -131,7 +131,6 @@ verus! {
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 // TODO just replace this with `*mut V`
 #[repr(C)]
-#[verifier::external_body]
 #[verifier::accept_recursive_types(V)]
 pub struct PPtr<V> {
     pub uptr: *mut V,
@@ -303,13 +302,13 @@ impl PointsToRaw {
     }
 
     #[verifier::external_body]
-    pub proof fn into_typed<V>(tracked self, start: int) -> (tracked points_to: PointsTo<V>)
+    pub proof fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
             is_sized::<V>(),
-            start % align_of::<V>() as int == 0,
-            self.is_range(start, size_of::<V>() as int),
+            start as int % align_of::<V>() as int == 0,
+            self.is_range(start as int, size_of::<V>() as int),
         ensures
-            points_to@.pptr === start,
+            points_to@.pptr == start,
             points_to@.value === None,
     {
         unimplemented!();

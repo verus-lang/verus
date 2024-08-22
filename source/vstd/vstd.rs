@@ -13,6 +13,7 @@
 #![cfg_attr(verus_keep_ghost, feature(step_trait))]
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
 #![cfg_attr(verus_keep_ghost, feature(strict_provenance))]
+#![cfg_attr(verus_keep_ghost, feature(strict_provenance_atomic_ptr))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -45,6 +46,8 @@ pub mod seq;
 pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
+#[cfg(feature = "alloc")]
+pub mod simple_pptr;
 pub mod slice;
 pub mod state_machine_internal;
 pub mod storage_protocol;

@@ -141,6 +141,7 @@
   - [Statics](./static.md)
   - [char](./char.md)
   - [Unions](./reference-unions.md)
+  - [Pointers and cells](./reference-pointers-cells.md)
 - [Command line]()
   - [--record](./reference-flag-record.md)
 - [Planned future work]()
