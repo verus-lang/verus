@@ -2,6 +2,7 @@ use super::layout::*;
 use super::prelude::*;
 use super::raw_ptr;
 use super::raw_ptr::*;
+use core::marker::PhantomData;
 
 verus! {
 
@@ -61,7 +62,7 @@ verus! {
 ///  * `PointsTo` tokens are non-fungible. They can't be broken up or made variable-sized.
 ///
 /// ### Example (TODO)
-pub struct PPtr(pub usize);
+pub struct PPtr<V>(pub usize, pub PhantomData<V>);
 
 /// A `tracked` ghost object that gives the user permission to dereference a pointer
 /// for reading or writing, or to free the memory at that pointer.
@@ -82,10 +83,10 @@ broadcast use
     super::set_lib::group_set_lib_axioms,
     super::set::group_set_axioms;
 
-impl PPtr {
+impl<V> PPtr<V> {
     /// Use `addr` instead
     #[verifier::inline]
-    pub open spec fn spec_addr(p: PPtr) -> usize {
+    pub open spec fn spec_addr(p: PPtr<V>) -> usize {
         p.0
     }
 
@@ -115,14 +116,14 @@ impl PPtr {
         ensures
             u == s.addr(),
     {
-        PPtr(u)
+        PPtr(u, PhantomData)
     }
 }
 
 impl<V> PointsTo<V> {
     #[verifier::inline]
-    pub open spec fn pptr(&self) -> PPtr {
-        PPtr(self.addr())
+    pub open spec fn pptr(&self) -> PPtr<V> {
+        PPtr(self.addr(), PhantomData)
     }
 
     pub closed spec fn addr(self) -> usize {
@@ -208,22 +209,22 @@ impl<V> PointsTo<V> {
     }
 }
 
-impl Clone for PPtr {
+impl<V> Clone for PPtr<V> {
     fn clone(&self) -> (res: Self)
         ensures
             res == *self,
     {
-        PPtr(self.0)
+        PPtr(self.0, PhantomData)
     }
 }
 
-impl Copy for PPtr {
+impl<V> Copy for PPtr<V> {
 
 }
 
-impl PPtr {
+impl<V> PPtr<V> {
     /// Allocates heap memory for type `V`, leaving it uninitialized.
-    pub fn empty<V>() -> (pt: (PPtr, Tracked<PointsTo<V>>))
+    pub fn empty() -> (pt: (PPtr<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@.pptr() == pt.0,
             pt.1@.is_uninit(),
@@ -241,7 +242,7 @@ impl PPtr {
                 points_to.is_nonnull();
             }
             let tracked pt = PointsTo { points_to, exposed, dealloc: Some(dealloc) };
-            let pptr = PPtr(p as usize);
+            let pptr = PPtr(p as usize, PhantomData);
 
             return (pptr, Tracked(pt));
         } else {
@@ -253,7 +254,7 @@ impl PPtr {
             let tracked emp = PointsToRaw::empty(Provenance::null());
             let tracked points_to = emp.into_typed(p);
             let tracked pt = PointsTo { points_to, exposed: IsExposed::null(), dealloc: None };
-            let pptr = PPtr(p);
+            let pptr = PPtr(p, PhantomData);
 
             return (pptr, Tracked(pt));
         }
@@ -261,13 +262,13 @@ impl PPtr {
 
     /// Allocates heap memory for type `V`, leaving it initialized
     /// with the given value `v`.
-    pub fn new<V>(v: V) -> (pt: (PPtr, Tracked<PointsTo<V>>))
+    pub fn new(v: V) -> (pt: (PPtr<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@.pptr() == pt.0,
             pt.1@.opt_value() == MemContents::Init(v),
         opens_invariants none
     {
-        let (p, Tracked(mut pt)) = PPtr::empty::<V>();
+        let (p, Tracked(mut pt)) = PPtr::<V>::empty();
         p.put(Tracked(&mut pt), v);
         (p, Tracked(pt))
     }
@@ -278,7 +279,7 @@ impl PPtr {
     /// This consumes `perm`, since it will no longer be safe to access
     /// that memory location.
     #[verifier::external_body]
-    pub fn free<V>(self, Tracked(perm): Tracked<PointsTo<V>>)
+    pub fn free(self, Tracked(perm): Tracked<PointsTo<V>>)
         requires
             perm.pptr() == self,
             perm.is_uninit(),
@@ -304,7 +305,7 @@ impl PPtr {
     /// This consumes the [`PointsTo`] token, since the user is giving up
     /// access to the memory by freeing it.
     #[inline(always)]
-    pub fn into_inner<V>(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
+    pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
         requires
             perm.pptr() == self,
             perm.is_init(),
@@ -314,7 +315,7 @@ impl PPtr {
     {
         let tracked mut perm = perm;
         let v = self.take(Tracked(&mut perm));
-        self.free::<V>(Tracked(perm));
+        self.free(Tracked(perm));
         v
     }
 
@@ -324,7 +325,7 @@ impl PPtr {
     /// In the ghost perspective, this updates `perm.value`
     /// from `None` to `Some(v)`.
     #[inline(always)]
-    pub fn put<V>(self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
+    pub fn put(self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
             old(perm).pptr() == self,
             old(perm).opt_value() == MemContents::Uninit::<V>,
@@ -349,7 +350,7 @@ impl PPtr {
     /// from `Some(v)` to `None`,
     /// while returning the `v` as an `exec` value.
     #[inline(always)]
-    pub fn take<V>(self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (v: V)
+    pub fn take(self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (v: V)
         requires
             old(perm).pptr() == self,
             old(perm).is_init(),
@@ -370,7 +371,7 @@ impl PPtr {
     /// Swaps the `in_v: V` passed in as an argument with the value in memory.
     /// Requires the memory to be initialized, and leaves it initialized with the new value.
     #[inline(always)]
-    pub fn replace<V>(self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
+    pub fn replace(self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
         requires
             old(perm).pptr() == self,
             old(perm).is_init(),
@@ -393,7 +394,7 @@ impl PPtr {
     /// Given a shared borrow of the `PointsTo<V>`, obtain a shared borrow of `V`.
     #[inline(always)]
     #[verifier::external_body]
-    pub fn borrow<'a, V>(self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
+    pub fn borrow<'a>(self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
             perm.pptr() == self,
             perm.is_init(),
@@ -410,7 +411,7 @@ impl PPtr {
     }
 
     #[inline(always)]
-    pub fn write<V: Copy>(self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
+    pub fn write(self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) where V: Copy
         requires
             old(perm).pptr() == self,
         ensures
@@ -427,7 +428,7 @@ impl PPtr {
     }
 
     #[inline(always)]
-    pub fn read<V: Copy>(self, Tracked(perm): Tracked<&PointsTo<V>>) -> (out_v: V)
+    pub fn read(self, Tracked(perm): Tracked<&PointsTo<V>>) -> (out_v: V) where V: Copy
         requires
             perm.pptr() == self,
             perm.is_init(),
