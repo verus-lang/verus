@@ -1,4 +1,5 @@
 use crate::context::Context;
+use crate::external::CrateItems;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, mid_ty_const_to_vir, mid_ty_to_vir, mk_visibility, remove_host_arg,
     typ_path_and_ident_to_vir_path,
@@ -218,6 +219,7 @@ pub(crate) fn translate_impl<'tcx>(
     impll: &rustc_hir::Impl<'tcx>,
     module_path: Path,
     external_info: &mut ExternalInfo,
+    crate_items: &CrateItems,
 ) -> Result<(), VirErr> {
     let impl_def_id = item.owner_id.to_def_id();
     let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
@@ -344,14 +346,16 @@ pub(crate) fn translate_impl<'tcx>(
     for impl_item_ref in impll.items {
         let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
         let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
-        if trait_path_typ_args.is_some() {
-            let vattrs = ctxt.get_verifier_attrs(fn_attrs)?;
-            if vattrs.external {
+
+        if crate_items.is_impl_item_external(impl_item_ref.id) {
+            if trait_path_typ_args.is_some() {
+                // sanity check - this should be redundant with prior check in external.rs
                 return err_span(
                     item.span,
                     "an item in a trait impl cannot be marked external - you can either use external_body, or mark the entire trait impl as external",
                 );
             }
+            continue;
         }
 
         match impl_item_ref.kind {
