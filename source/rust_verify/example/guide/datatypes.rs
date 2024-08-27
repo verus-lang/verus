@@ -14,26 +14,25 @@ struct Point {
 
 // ANCHOR: point-impl
 impl Point {
-    spec fn len2(&self) -> int
-    {
-        self.x*self.x + self.y*self.y
+    spec fn len2(&self) -> int {
+        self.x * self.x + self.y * self.y
     }
 }
 
 fn rotate_90(p: Point) -> (o: Point)
-ensures o.len2() == p.len2()
+    ensures o.len2() == p.len2()
 {
-    let o = Point{x: -p.y, y: p.x};
-    assert((-p.y)*(-p.y) == p.y*p.y) by(nonlinear_arith);
+    let o = Point { x: -p.y, y: p.x };
+    assert((-p.y) * (-p.y) == p.y * p.y) by(nonlinear_arith);
     o
 }
 // ANCHOR_END: point-impl
 
 // ANCHOR: beverage
 enum Beverage {
-    Coffee{creamers: nat, sugar: bool},
-    Soda{flavor: Syrup},
-    Water{ice: bool},
+    Coffee { creamers: nat, sugar: bool },
+    Soda { flavor: Syrup },
+    Water { ice: bool },
 }
 // ANCHOR_END: beverage
 
@@ -46,16 +45,16 @@ enum Syrup {
 }
 // ANCHOR_END: syrup
 
-struct Dessert { }
+struct Dessert {}
 impl Dessert {
     fn new() -> Dessert {
-        Dessert{}
+        Dessert {}
     }
 }
 
 // ANCHOR: make_float
 fn make_float(bev: Beverage) -> Dessert
-requires bev is Soda
+    requires bev is Soda
 {
     Dessert::new(/*...*/)
 }
@@ -63,7 +62,7 @@ requires bev is Soda
 
 // ANCHOR: count_creamers
 proof fn sufficiently_creamy(bev: Beverage) -> bool
-requires bev is Coffee
+    requires bev is Coffee
 {
    bev->creamers >= 2
 }
@@ -71,9 +70,9 @@ requires bev is Coffee
 
 // ANCHOR: life
 enum Life {
-    Mammal{legs: int, has_pocket: bool},
-    Arthropod{legs: int, wings: int},
-    Plant{leaves: int},
+    Mammal { legs: int, has_pocket: bool },
+    Arthropod { legs: int, wings: int },
+    Plant { leaves: int },
 }
 
 spec fn is_insect(l: Life) -> bool
@@ -85,11 +84,10 @@ spec fn is_insect(l: Life) -> bool
 // ANCHOR: shape
 enum Shape {
     Circle(int),
-    Rect(int,int),
+    Rect(int, int),
 }
 
-spec fn area_2(s: Shape) -> int
-{
+spec fn area_2(s: Shape) -> int {
     match s {
         Shape::Circle(radius) => { radius * radius * 3 },
         Shape::Rect(width, height) => { width * height }
@@ -99,7 +97,7 @@ spec fn area_2(s: Shape) -> int
 
 // ANCHOR: rect_height
 spec fn rect_height(s: Shape) -> int
-recommends s is Rect
+    recommends s is Rect
 {
     s->1
 }
@@ -109,22 +107,22 @@ recommends s is Rect
 use Life::*;
 spec fn cuddly(l: Life) -> bool
 {
-    ||| l matches Mammal{legs, ..} && legs == 4
-    ||| l matches Arthropod{legs, wings} && legs == 8 && wings == 0
+    ||| l matches Mammal { legs, .. } && legs == 4
+    ||| l matches Arthropod { legs, wings } && legs == 8 && wings == 0
 }
 // ANCHOR_END: cuddly
 
 // ANCHOR: kangaroo
 spec fn is_kangaroo(l: Life) -> bool
 {
-    &&& l matches Life::Mammal{legs, has_pocket}
+    &&& l matches Life::Mammal { legs, has_pocket }
     &&& legs == 2
     &&& has_pocket
 }
 
 spec fn walks_upright(l: Life) -> bool
 {
-    l matches Life::Mammal{legs, ..} ==> legs==2
+    l matches Life::Mammal { legs, .. } ==> legs == 2
 }
 // ANCHOR_END: kangaroo
 
@@ -132,4 +130,3 @@ fn main() {
 }
 
 } // verus!
-
