@@ -150,9 +150,9 @@ error: possible arithmetic underflow/overflow
    |                    ^^^^^
 ```
 
-In **specification** code, however,
+In **ghost** code, however,
 common arithmetic operations
-(`+`, `-`, `*`, `/`, `%`) never overflow or wrap when used in spec mode.
+(`+`, `-`, `*`, `/`, `%`) never overflow or wrap.
 To make this possible, Verus widens the results of many operations;
 for example, adding two `u8` values is widened to type `int`.
 
@@ -176,13 +176,9 @@ you can add, subtract, or multiply one integer type with another:
 {{#include ../../../rust_verify/example/guide/integers.rs:test_sum_mixed}}
 ```
 
-Verus's widening process is determined on a case-by-case basic.
-Generally, operations are widened to `int` or `nat` if they might overflow;
-otherwise, they are not widened.
-For example,
-dividing a `u8` by another `u8` cannot overflow a `u8`, so the result remains as a `u8`
-without widening. 
-The [reference page](./spec-arithmetic.md) give a more precise account of the widening rules.
+In general in ghost code,
+Verus widens native Rust integer types to `int` for operators like `+`, `-`, and `*` that might overflow;
+the [reference page](./spec-arithmetic.md) describes the widening rules in more detail.
 
 Here are some more tips to keep in mind:
 
@@ -190,9 +186,10 @@ Here are some more tips to keep in mind:
     [Euclidean division and remainder](https://en.wikipedia.org/wiki/Euclidean_division),
     rather than Rust's truncating division and remainder,
     when operating on negative left-hand sides or negative right-hand sides.
- * Division-by-0 and mod-by-0 remain unspecified, even in spec code.
- * The named arithmetic functions, `add`, `sub`, and `mul`, do not perform widening, and thus
-    have truncating behavior, even in spec code. Verus also recognizes some Rust functions like
+ * Division-by-0 and mod-by-0 are errors in executable code and are unspecified in ghost code
+   (see [Ghost code vs. exec code](./ghost_vs_exec.md) for more detail).
+ * The named arithmetic functions, `add(x, y)`, `sub(x, y)`, and `mul(x, y)`, do not perform widening, and thus
+    have truncating behavior, even in ghost code. Verus also recognizes some Rust functions like
     [`wrapped_add`](https://doc.rust-lang.org/std/primitive.u32.html#method.wrapping_add)
     and [`checked_add`](https://doc.rust-lang.org/std/primitive.u32.html#method.checked_add),
-    which may be used in either exec or spec code.
+    which may be used in either executable or ghost code.

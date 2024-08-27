@@ -10,7 +10,7 @@ For the sake of this page, "integer type" means any of the following:
  * [`char`](./char.md)
 
 Note that this is more permissive than `as` in Rust exec code. For example, Rust does
-not permit using `as` to case from a `u16` to a `char`, but this is allowed in Verus
+not permit using `as` to cast from a `u16` to a `char`, but this is allowed in Verus
 spec code.
 
 ## Definition

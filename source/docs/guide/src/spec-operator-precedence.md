@@ -3,13 +3,15 @@
 | Operator                 | Associativity         |
 |--------------------------|-----------------------|
 | **Binds tighter**                                |
+| [`.` `->`](./datatypes_struct.md)                    | left                  |
+| [`is` `matches`](./datatypes_enum.md)                    | left                  |
 | [`*` `/` `%`](./spec-arithmetic.md)                    | left                  |
 | [`+` `-`](./spec-arithmetic.md)                      | left                  |
 | [`<<` `>>`](./spec-bit-operators.md)                    | left                  |
 | [`&`](./spec-bit-ops.md)                        | left                  |
 | [`^`](./spec-bit-ops.md)                        | left                  |
 | [<code>&#124;</code>](./spec-bit-ops.md)                   | left                  |
-| [`===` `!==` `==` `!=`](./spec-equality.md) `<=` `<` `>=` `>`  | requires parentheses  |
+| [`!==` `==` `!=`](./spec-equality.md) `<=` `<` `>=` `>`  | requires parentheses  |
 | `&&`                       | left                  |
 | <code>&#124;&#124;</code>             | left                  |
 | [`==>`](./reference-implication.md)                      | right                 |

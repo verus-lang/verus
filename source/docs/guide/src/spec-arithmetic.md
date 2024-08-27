@@ -1,7 +1,7 @@
 # Arithmetic in spec code
 
 **Note:** This reference page is about arithmetic in _Verus specification code_.
-This page is **not applicable** to arithmetic is _executable Rust code_.
+This page is **does not apply** to arithmetic is _executable Rust code_.
 
 For an introduction to Verus arithmetic, see
 [Integers and arithmetic](./integers.md).
