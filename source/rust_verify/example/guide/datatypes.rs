@@ -105,23 +105,20 @@ spec fn rect_height(s: Shape) -> int
 
 // ANCHOR: cuddly
 use Life::*;
-spec fn cuddly(l: Life) -> bool
-{
+spec fn cuddly(l: Life) -> bool {
     ||| l matches Mammal { legs, .. } && legs == 4
     ||| l matches Arthropod { legs, wings } && legs == 8 && wings == 0
 }
 // ANCHOR_END: cuddly
 
 // ANCHOR: kangaroo
-spec fn is_kangaroo(l: Life) -> bool
-{
+spec fn is_kangaroo(l: Life) -> bool {
     &&& l matches Life::Mammal { legs, has_pocket }
     &&& legs == 2
     &&& has_pocket
 }
 
-spec fn walks_upright(l: Life) -> bool
-{
+spec fn walks_upright(l: Life) -> bool {
     l matches Life::Mammal { legs, .. } ==> legs == 2
 }
 // ANCHOR_END: kangaroo
