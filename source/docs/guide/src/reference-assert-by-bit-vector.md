@@ -39,16 +39,16 @@ This includes:
 ## Internal operation
 
 Verus's bitvector solver encodes the expression by representing all integers using an SMT "bitvector" type.
-Most of the constraints on the expressions arise 
+Most of the above constraints arise 
 because of the fact that Verus has to choose a fixed bitwidth for any given expression.
 
 Note that, although the bitvector solver cannot handle free variables of type
 `int` or `nat`, it _can_ handle other kinds of expressions that are typed `int` or `nat`.
 For example, if `x` and `y` have type `u64`, then `x + y` has type `int`,
-but the bitvector solver know that `x + y` is representable with 65 bits.
+but the Verus bitvector solver knows that `x + y` is representable with 65 bits.
 
 ### Handling `usize` and `isize`
 
 If the expression uses any symbolic values whose width is architecture-dependent,
-and the architecture bitwidth has not been specified via a `global` directive,
+and the architecture bitwidth has not been specified via a [`global` directive](./reference-global.md),
 Verus will generate multiple queries, one for each possible bitwidth (32 bits or 64 bits).

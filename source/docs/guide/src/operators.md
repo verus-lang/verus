@@ -1,70 +1,64 @@
 # Expressions and operators for specifications
 
-To make specifications easier to read and write,
-Verus supports syntactic sugar for various arithmetic and boolean operations in ghost code.
-For example, you can write:
+Verus extends Rust's syntax with additional operators and expressions
+useful for writing specifications.
+For example:
+
+```rust
+forall|i: int, j: int| 0 <= i <= j < len ==> f(i, j)
+```
+
+This snippet illustrates:
+
+ * the `forall` quantifier, which we will [cover later](./forall.md)
+ * chained operators
+ * implication operators
+
+Here, we'll discuss the last two, along with Verus notation for conjunction, disjunction, and field access.
+
+## Chained inequalities
+
+Specifications can chain together multiple `<=`, `<`, `>=`, and `>` operations.
+For example,
+`0 <= i <= j < len` has the same meaning as `0 <= i && i <= j && j < len`.
+
+## Logical implication
+
+To make specifications more readable, Verus supports an _implication_ operator `==>`.
+The expression `a ==> b` (pronounced "`a` implies `b`") is logically equivalent to `!a || b`.
+As an example, the expression
 
 ```
 forall|i: int, j: int| 0 <= i <= j < len ==> f(i, j)
 ```
 
-This is equivalent to:
+means that for every pair `i` and `j` such that `0 <= i <= j < len`, `f(i, j)` is true.
+
+Note that `==>` has lower precedence that most other boolean operations.
+For example, `a ==> b && c` means `a ==> (b && c)`.
+Verus also supports two-way implication for booleans (`<==>`) with even lower precedence,
+so that `a <==> b && c` is equivalent to `a == (b && c)`.
+See [the reference for a full description of precedence
+in Verus](./spec-operator-precedence.md).
+
+## Conjunction and disjunction
+
+Because `&&`, `||`, and `==>` are so common in Verus specifications, it is often desirable to have
+low precedence versions of `&&` and `||`. Verus also supports "triple-and" (`&&&`) and
+"triple-or" (`|||`) which are equivalent to `&&` and `||` except for their precedence.
+Implication `==>` and equivalence `<==>` bind more tightly than either `&&&` or `|||`.
+`&&&` and `|||` are also convenient for the "bulleted list" form:
 
 ```
-forall|i: int, j: int| !(0 <= i && i <= j && j < len) || f(i, j)
+&&& a ==> b
+&&& c
+&&& d <==> e && f
 ```
 
-# Chained inequalities
+This has the same meaning as `(a ==> b) && c && (d <==> (e && f))`.
 
-In ghost code, you can chain together multiple `<=`, `<`, `>=`, and `>` operations,
-writing `0 <= i <= j < len` as a shorthand for `0 <= i && i <= j && j < len`, for example.
+## Accessing fields of a `struct` or `enum`
 
-(If any of the expressions are complex expressions,
-as in `0 <= f(x + 1, 3 * y) < n`,
-for efficiency's sake,
-Verus will automatically create a temporary variable for the complex expressions,
-as in `{let tmp = f(x + 1, 3 * y); 0 <= tmp < n}`,
-rather than duplicating the expressions.)
-
-# Boolean operators
-
-For boolean expressions `b1`, ..., `bn`,
-Verus supports the following abbreviations:
-
-| Expression                                                            | Meaning                                             | Name        |
-|-----------------------------------------------------------------------|-----------------------------------------------------|-------------|
-| b1 ==> b2                                                             | !b1 &#124;&#124; b2                                 | implies     |
-| b1 <== b2                                                             | b1 &#124;&#124; !b2                                 | explies     |
-| b1 <==> b2                                                            | b1 == b2                                            | equivalent  |
-| &&& b1 &&& b2 ... &&& bn                                              | b1 && b2 && ... && bn                               | prefix-and  |
-| &#124;&#124;&#124; b1 &#124;&#124;&#124; b2 ... &#124;&#124;&#124; bn | b1 &#124;&#124; b2 &#124;&#124; ... &#124;&#124; bn | prefix-or   |
-
-These abbreviations have lower precedence than
-[most other Rust expressions](https://doc.rust-lang.org/reference/expressions.html),
-so that, for example, `a ==> b && c` means `a ==> (b && c)`:
-
-| Operator                 | Associativity         |
-|--------------------------|-----------------------|
-| * / %                    | left                  |
-| + -                      | left                  |
-| << >>                    | left                  |
-| &                        | left                  |
-| ^                        | left                  |
-| &#124;                   | left                  |
-| === !== == != <= < >= >  | requires parentheses  |
-| &&                       | left                  |
-| &#124;&#124;             | left                  |
-| ==>                      | right                 |
-| <==                      | left                  |
-| <==>                     | requires parentheses  |
-| ..                       | left                  |
-| =                        | right                 |
-| closures, forall, exists | right                 |
-| &&&                      | left                  |
-| &#124;&#124;&#124;       | left                  |
-
-# Accessing fields of `structs` and `enum`s
-
-Verus has convenient syntax for accessing fields
+Verus has `->`, `is`, and `matches` syntax for accessing fields
 of [`struct`](datatypes_struct.md)s
-and [`enum`](datatypes_enum.md)s.
+and matching variants of [`enum`](datatypes_enum.md)s.
