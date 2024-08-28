@@ -3,8 +3,6 @@ use crate::ast::{
     UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
 };
 use crate::ast_to_sst::get_function_sst;
-use crate::ast_to_sst_func::SstInfo;
-use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -174,7 +172,6 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
 pub fn do_expansion(
     ctx: &Ctx,
     ectx: &ExpansionContext,
-    fun_ssts: &SstMap,
     func_check_sst: &Arc<FuncCheckSst>,
     assert_id: &AssertId,
 ) -> (Arc<FuncCheckSst>, ExpansionTree) {
@@ -183,7 +180,6 @@ pub fn do_expansion(
     let (body, tree) = do_expansion_body(
         ctx,
         ectx,
-        fun_ssts,
         &func_check_sst.post_condition,
         &func_check_sst.body,
         assert_id,
@@ -197,7 +193,6 @@ pub fn do_expansion(
 pub fn do_expansion_body(
     ctx: &Ctx,
     ectx: &ExpansionContext,
-    fun_ssts: &SstMap,
     post_condition_sst: &PostConditionSst,
     stm: &Stm,
     assert_id: &AssertId,
@@ -208,7 +203,6 @@ pub fn do_expansion_body(
         let maybe_expanded = do_expansion_if_assert_id_matches(
             ctx,
             ectx,
-            fun_ssts,
             post_condition_sst,
             one_stm,
             prev_stm,
@@ -238,7 +232,6 @@ pub fn do_expansion_body(
 fn do_expansion_if_assert_id_matches(
     ctx: &Ctx,
     ectx: &ExpansionContext,
-    fun_ssts: &SstMap,
     post_condition_sst: &PostConditionSst,
     stm: &Stm,
     prev_stm: Option<&Stm>,
@@ -272,7 +265,7 @@ fn do_expansion_if_assert_id_matches(
                 }
             }
 
-            Some(expand_exp(ctx, ectx, fun_ssts, assert_id, the_exp, local_decls))
+            Some(expand_exp(ctx, ectx, assert_id, the_exp, local_decls))
         }
         StmX::Call { assert_id: Some(a_id), fun, typ_args, args, .. } if a_id == assert_id => {
             let preconditions = split_precondition(ctx, &stm.span, fun, typ_args, args);
@@ -281,12 +274,11 @@ fn do_expansion_if_assert_id_matches(
             // so the easiest thing is conjoin everything and then use the common-case
             // logic, which will split it back up.
             let precondition = sst_conjoin(&stm.span, &preconditions);
-            Some(expand_exp(ctx, ectx, fun_ssts, assert_id, &precondition, local_decls))
+            Some(expand_exp(ctx, ectx, assert_id, &precondition, local_decls))
         }
         StmX::Return { assert_id: Some(a_id), ret_exp, .. } if a_id == assert_id => {
             let postcondition = sst_conjoin(&stm.span, &post_condition_sst.ens_exps);
-            let (stm, tree) =
-                expand_exp(ctx, ectx, fun_ssts, assert_id, &postcondition, local_decls);
+            let (stm, tree) = expand_exp(ctx, ectx, assert_id, &postcondition, local_decls);
             let stm = match (&post_condition_sst.dest, ret_exp) {
                 (Some(dest_uid), Some(ret_exp)) => Spanned::new(
                     stm.span.clone(),
@@ -304,7 +296,6 @@ fn do_expansion_if_assert_id_matches(
 }
 
 struct State {
-    fun_ssts: SstMap,
     tmp_var_count: u64,
     base_id: AssertId,
     assert_id_count: u64,
@@ -361,7 +352,6 @@ impl State {
 fn expand_exp(
     ctx: &Ctx,
     ectx: &ExpansionContext,
-    fun_ssts: &SstMap,
     assert_id: &AssertId,
     exp: &Exp,
     local_decls: &mut Vec<LocalDecl>,
@@ -374,7 +364,6 @@ fn expand_exp(
     }
 
     let mut state = State {
-        fun_ssts: fun_ssts.clone(),
         tmp_var_count: tmp_var_count_start,
         assert_id_count: 0,
         base_id: assert_id.clone(),
@@ -571,33 +560,27 @@ fn expand_exp_rec(
             let (args, fuel_arg) = if matches!(cf, CallFun::Recursive(_)) {
                 let main_args = Arc::new(args[..args.len() - 1].to_vec());
                 let fuel_arg = fuel_arg_to_int(&args[args.len() - 1]);
-                (main_args, Some(fuel_arg))
+                (main_args, fuel_arg)
             } else {
                 (args.clone(), None)
             };
             let function = get_function_sst(ctx, &exp.span, fun_name).unwrap();
-            let can_inline =
-                can_inline_function(ctx, state, ectx, function.clone(), fuel_arg, &exp.span);
+            let can_inline = can_inline_function(ctx, ectx, function.clone(), fuel_arg, &exp.span);
             if let Err(err) = can_inline {
                 leaf(state, CanExpandFurther::No(err))
             } else if did_split_yet {
                 // Don't unfold yet
                 leaf(state, CanExpandFurther::Yes)
             } else {
-                let SstInfo { inline, pars, body, .. } = state.fun_ssts.get(fun_name).unwrap();
-                let mut inline_exp =
-                    inline_expression(ctx, &args, typs, pars, &inline.typ_params, body);
+                let typ_params = &function.x.typ_params;
+                let pars = &function.x.pars;
+                let body = &function.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
+                let mut inline_exp = inline_expression(ctx, &args, typs, pars, typ_params, body);
 
                 let fuel = can_inline.unwrap();
                 if let Some(fuel) = fuel {
-                    let (e, _node) = crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
-                        ctx,
-                        &function,
-                        &inline_exp,
-                        Some(fuel - 1),
-                    )
-                    .unwrap();
-                    inline_exp = e;
+                    inline_exp =
+                        crate::recursion::rewrite_rec_call_with_fuel_const(&inline_exp, fuel - 1);
                 }
 
                 let (stm, tree) =
@@ -879,9 +862,10 @@ fn is_ctor_for_other(e: &Exp, variant: &Variant) -> bool {
     }
 }
 
-fn fuel_arg_to_int(e: &Exp) -> usize {
+fn fuel_arg_to_int(e: &Exp) -> Option<usize> {
     match &e.x {
-        ExpX::FuelConst(i) => *i,
+        ExpX::Var(_) => None,
+        ExpX::FuelConst(i) => Some(*i),
         _ => panic!(
             "Verus Internal Error: expected fuel constant trying to unfold recursive function for --expand-errors"
         ),
@@ -898,7 +882,6 @@ pub fn is_bool_type(t: &Typ) -> bool {
 
 fn can_inline_function(
     ctx: &Ctx,
-    state: &State,
     ectx: &ExpansionContext,
     fun_to_inline: FunctionSst,
     cur_fuel_level: Option<usize>,
@@ -985,9 +968,8 @@ fn can_inline_function(
         //    return Err(format!("exhaused fuel {fuel}"));
         //}
         let fun = &fun_to_inline.x.name;
-        let fun_ssts = &state.fun_ssts;
 
-        if fun_ssts.get(fun).is_none() {
+        if !ctx.func_sst_map.contains_key(fun) {
             return Err(Some(format!("Internal error: not in SstMap")));
         }
 

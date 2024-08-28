@@ -1,7 +1,7 @@
 use crate::ast::{
     ComputeMode, Fun, Ident, Mode, SpannedTyped, Typ, TypX, UnaryOp, VarIdent, VirErr,
 };
-use crate::ast_to_sst_func::{SstInfo, SstMap};
+use crate::ast_to_sst_func::SstMap;
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
 use crate::messages::{error_with_label, warning, ToAny};
@@ -15,16 +15,18 @@ use std::sync::Arc;
 fn elaborate_one_exp<D: Diagnostics + ?Sized>(
     ctx: &Ctx,
     diagnostics: &D,
-    fun_ssts: &HashMap<Fun, SstInfo>,
+    fun_ssts: &HashMap<Fun, FunctionSst>,
     exp: &Exp,
 ) -> Result<Exp, VirErr> {
     match &exp.x {
         ExpX::Call(CallFun::Fun(fun, resolved_method), typs, args) => {
             let (fun, typs) =
                 if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };
-            if let Some(SstInfo { inline, pars, body, .. }) = fun_ssts.get(fun) {
-                if inline.do_inline {
-                    let typ_params = &inline.typ_params;
+            if let Some(func) = fun_ssts.get(fun) {
+                if func.x.attrs.inline && func.x.axioms.spec_axioms.is_some() {
+                    let typ_params = &func.x.typ_params;
+                    let pars = &func.x.pars;
+                    let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
                     let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
                     let mut substs: HashMap<UniqueIdent, Exp> = HashMap::new();
                     assert!(typ_params.len() == typs.len());
@@ -131,7 +133,7 @@ fn elaborate_one_stm<D: Diagnostics + ?Sized>(
 struct ElaborateVisitor1<'a, 'b, 'c, D: Diagnostics> {
     ctx: &'a Ctx,
     diagnostics: &'b D,
-    fun_ssts: &'c HashMap<Fun, SstInfo>,
+    fun_ssts: &'c HashMap<Fun, FunctionSst>,
 }
 
 impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
@@ -164,7 +166,7 @@ impl<'a, 'b, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper> for ElaborateVis
 pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
     ctx: &'a Ctx,
     diagnostics: &'b D,
-    fun_ssts: &'c HashMap<Fun, SstInfo>,
+    fun_ssts: &'c HashMap<Fun, FunctionSst>,
     function: &mut FunctionSst,
 ) -> Result<(), VirErr> {
     let mut visitor = ElaborateVisitor1 { ctx, diagnostics, fun_ssts };
@@ -192,7 +194,6 @@ pub(crate) fn elaborate_function2<'a, 'b, D: Diagnostics>(
                 ctx,
                 function_ref,
                 &spec_body.body_exp,
-                None,
             )?;
             spec_body.body_exp = body_exp;
         }

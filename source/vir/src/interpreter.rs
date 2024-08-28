@@ -10,11 +10,11 @@ use crate::ast::{
     InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, SpannedTyped, Typ,
     TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
-use crate::ast_to_sst_func::{SstInfo, SstMap};
+use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::context::GlobalCtx;
 use crate::messages::{error, warning, Message, Span, ToAny};
-use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, Trigs, UniqueIdent};
+use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent};
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
@@ -154,7 +154,7 @@ impl State {
 /// Static context for the interpreter
 struct Ctx<'a> {
     /// Maps each function to the SST expression representing its body
-    fun_ssts: &'a HashMap<Fun, SstInfo>,
+    fun_ssts: &'a HashMap<Fun, FunctionSst>,
     /// We avoid infinite loops by running for a fixed number of intervals
     max_iterations: u64,
     arch: ArchWordBits,
@@ -1505,21 +1505,18 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 None => {
                     // Try to find the function's body
                     match ctx.fun_ssts.get(fun) {
-                        None => {
-                            // We don't have the body for this function, so we can't simplify further
-                            exp_new(Call(
-                                CallFun::Fun(fun.clone(), resolved_method.clone()),
-                                typs.clone(),
-                                new_args.clone(),
-                            ))
-                        }
-                        Some(SstInfo { typ_params, pars, body, memoize, .. }) => {
-                            match state.lookup_call(&fun, &new_args, *memoize) {
+                        Some(func) if func.x.axioms.spec_axioms.is_some() => {
+                            let memoize = func.x.attrs.memoize;
+                            match state.lookup_call(&fun, &new_args, memoize) {
                                 Some(prev_result) => {
                                     state.cache_hits += 1;
                                     Ok(prev_result)
                                 }
                                 None => {
+                                    let typ_params = &func.x.typ_params;
+                                    let pars = &func.x.pars;
+                                    let body =
+                                        &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
                                     state.cache_misses += 1;
                                     state.env.push_scope(true);
                                     for (formal, actual) in pars.iter().zip(new_args.iter()) {
@@ -1543,10 +1540,18 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     }
                                     let result = eval_expr_internal(ctx, state, &body);
                                     state.env.pop_scope();
-                                    state.insert_call(fun, &new_args, &result.clone()?, *memoize);
+                                    state.insert_call(fun, &new_args, &result.clone()?, memoize);
                                     result
                                 }
                             }
+                        }
+                        _ => {
+                            // We don't have the body for this function, so we can't simplify further
+                            exp_new(Call(
+                                CallFun::Fun(fun.clone(), resolved_method.clone()),
+                                typs.clone(),
+                                new_args.clone(),
+                            ))
                         }
                     }
                 }
@@ -1775,7 +1780,7 @@ fn eval_expr_top(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Simplificati
 fn eval_expr_launch(
     global: &GlobalCtx,
     exp: Exp,
-    fun_ssts: &HashMap<Fun, SstInfo>,
+    fun_ssts: &HashMap<Fun, FunctionSst>,
     rlimit: f32,
     arch: ArchWordBits,
     mode: ComputeMode,

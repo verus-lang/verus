@@ -1,7 +1,7 @@
 use crate::ast::{
-    Expr, ExprX, Fun, Function, FunctionKind, Ident, Idents, ItemKind, MaskSpec, Mode, Param,
-    ParamX, Params, Path, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX,
-    VarIdent, VirErr,
+    Expr, ExprX, Fun, Function, FunctionKind, Ident, ItemKind, MaskSpec, Mode, Param, ParamX,
+    Params, Path, SpannedTyped, Typ, TypX, UnaryOp, UnwindSpec, VarBinder, VarBinderX, VarIdent,
+    VirErr,
 };
 use crate::ast_to_sst::{
     check_pure_expr, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks,
@@ -24,20 +24,7 @@ use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-pub struct SstInline {
-    pub(crate) typ_params: Idents,
-    pub do_inline: bool,
-}
-
-pub struct SstInfo {
-    pub(crate) inline: SstInline,
-    pub(crate) typ_params: Idents,
-    pub(crate) pars: Pars,
-    pub(crate) memoize: bool,
-    pub(crate) body: Exp,
-}
-
-pub type SstMap = Arc<HashMap<Fun, SstInfo>>;
+pub type SstMap = Arc<HashMap<Fun, FunctionSst>>;
 
 pub trait FunctionCommon {
     fn name(&self) -> &Fun;
