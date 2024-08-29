@@ -269,7 +269,7 @@ pub struct FuncSpecBodySst {
 #[derive(Debug, Clone)]
 pub struct FuncAxiomsSst {
     pub spec_axioms: Option<FuncSpecBodySst>,
-    pub proof_exec_axioms: Option<(Pars, Exp)>,
+    pub proof_exec_axioms: Option<(Pars, Exp, Trigs)>,
 }
 
 #[derive(Debug, Clone)]

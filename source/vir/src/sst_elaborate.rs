@@ -172,6 +172,23 @@ pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
     let mut visitor = ElaborateVisitor1 { ctx, diagnostics, fun_ssts };
     *function = visitor.visit_function(function)?;
 
+    if function.x.axioms.proof_exec_axioms.is_some() {
+        let typ_params = function.x.typ_params.clone();
+        let span = function.span.clone();
+        let axioms = Arc::make_mut(&mut Arc::make_mut(function).x.axioms);
+        let (params, exp, triggers) = axioms.proof_exec_axioms.as_ref().unwrap();
+        assert!(triggers.len() == 0);
+        let mut vars: Vec<(VarIdent, TriggerBoxing)> = Vec::new();
+        for name in typ_params.iter() {
+            vars.push((crate::def::suffix_typ_param_id(&name), TriggerBoxing::TypeId));
+        }
+        for param in params.iter() {
+            vars.push((param.x.name.clone(), typ_boxing(ctx, &param.x.typ)));
+        }
+        let triggers = build_triggers(ctx, &span, &vars, exp, false)?;
+        axioms.proof_exec_axioms = Some((params.clone(), exp.clone(), triggers));
+    }
+
     Ok(())
 }
 

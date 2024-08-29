@@ -433,8 +433,10 @@ pub fn func_axioms_to_sst(
                 // Use expr_to_bind_decls_exp_skip_checks, skipping checks on req_ens,
                 // because the requires/ensures are checked when the function itself is checked
                 let exp = expr_to_bind_decls_exp_skip_checks(ctx, diagnostics, &params, req_ens)?;
-                let axioms =
-                    FuncAxiomsSst { spec_axioms: None, proof_exec_axioms: Some((params, exp)) };
+                let axioms = FuncAxiomsSst {
+                    spec_axioms: None,
+                    proof_exec_axioms: Some((params, exp, Arc::new(vec![]))),
+                };
                 return Ok(axioms);
             }
         }
