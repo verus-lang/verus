@@ -8,7 +8,7 @@ use crate::context::GlobalCtx;
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
-use crate::sst::{BndX, CallFun, Exp, ExpX, InternalFun, Stm, Trig, Trigs, UniqueIdent};
+use crate::sst::{BndX, CallFun, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -710,17 +710,5 @@ pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
         span,
         &Arc::new(TypX::Int(IntRange::Int)),
         ExpX::Const(crate::ast_util::const_int_from_i128(i)),
-    )
-}
-
-pub fn sst_has_type(span: &Span, e: &Exp, typ: &Typ) -> Exp {
-    SpannedTyped::new(
-        span,
-        &Arc::new(TypX::Bool),
-        ExpX::Call(
-            CallFun::InternalFun(InternalFun::HasType),
-            Arc::new(vec![typ.clone()]),
-            Arc::new(vec![e.clone()]),
-        ),
     )
 }

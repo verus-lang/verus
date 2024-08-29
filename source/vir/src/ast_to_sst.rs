@@ -2009,13 +2009,8 @@ pub(crate) fn expr_to_stm_opt(
             // Declare the inner_tmp variable
             let mut stms1 = vec![];
             let inner_typ = &binder.a;
-            let (_uid, arb_exp) = state.declare_temp_var_stm(&big_inv_exp.span, &inner_typ);
-            let has_typ = crate::sst_util::sst_has_type(
-                &expr.span,
-                &crate::poly::coerce_exp_to_poly(ctx, &arb_exp),
-                &inner_typ,
-            );
-            stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(has_typ)));
+            let (arb_id, arb_exp) = state.declare_temp_var_stm(&big_inv_exp.span, &inner_typ);
+            stms1.push(assume_has_typ(&arb_id, &inner_typ, &expr.span));
 
             // Assign to the bound variable
             let ident = state.get_var_unique_id(&binder.name);
