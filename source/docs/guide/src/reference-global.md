@@ -33,7 +33,7 @@ Layout information can only be provided to Verus via the `global` directive.
 ## With `usize` and `isize`
 
 For the integer types `usize` and `isize`, the `global` directive has additional behavior.
-Specifically. it influences the _integer range_ used in encoding `usize` and `isize` types.
+Specifically, it influences the _integer range_ used in encoding `usize` and `isize` types.
 
 For an integer literal `n`, the directive,
 
