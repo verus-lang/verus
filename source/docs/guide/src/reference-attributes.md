@@ -9,7 +9,7 @@
  - `external_type_specification`
  - `ext_equal`
  - [`inline`](#verifierinline)
- - [`loop_isolation`](#verifierloopisolation)
+ - [`loop_isolation`](#verifierloop_isolation)
  - [`memoize`](#verifiermemoize)
  - [`opaque`](#verifieropaque)
  - `reject_recursive_types`
