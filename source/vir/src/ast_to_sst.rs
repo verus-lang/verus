@@ -1063,7 +1063,7 @@ pub(crate) fn expr_to_stm_opt(
                 check_stms.extend(stms);
                 arg_exps.push(e);
             }
-            let call = ExpX::CallLambda(expr.typ.clone(), e0, Arc::new(arg_exps));
+            let call = ExpX::CallLambda(e0, Arc::new(arg_exps));
             Ok((check_stms, ReturnValue::Some(mk_exp(call))))
         }
         ExprX::Call(CallTarget::BuiltinSpecFun(bsf, ts, _impl_paths), args) => {

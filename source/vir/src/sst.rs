@@ -71,7 +71,7 @@ pub enum ExpX {
     Old(Ident, UniqueIdent),
     // call to spec function
     Call(CallFun, Typs, Exps),
-    CallLambda(Typ, Exp, Exps),
+    CallLambda(Exp, Exps),
     Ctor(Path, Ident, Binders<Exp>),
     NullaryOpr(NullaryOpr),
     Unary(UnaryOp, Exp),

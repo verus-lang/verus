@@ -214,11 +214,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let es = self.visit_exps(es)?;
                 R::ret(|| exp_new(ExpX::Call(R::get(fun), R::get_vec_a(ts), R::get_vec_a(es))))
             }
-            ExpX::CallLambda(typ, e0, es) => {
-                let typ = self.visit_typ(typ)?;
+            ExpX::CallLambda(e0, es) => {
                 let e0 = self.visit_exp(e0)?;
                 let es = self.visit_exps(es)?;
-                R::ret(|| exp_new(ExpX::CallLambda(R::get(typ), R::get(e0), R::get_vec_a(es))))
+                R::ret(|| exp_new(ExpX::CallLambda(R::get(e0), R::get_vec_a(es))))
             }
             ExpX::Ctor(path, ident, binders) => {
                 let binders = R::map_vec(binders, &mut |b| self.visit_binder_exp(b))?;

@@ -370,11 +370,9 @@ impl SyntacticEquality for Exp {
                     None
                 }
             }
-            (CallLambda(typ_l, exp_l, exps_l), CallLambda(typ_r, exp_r, exps_r)) => Some(
-                typ_l.syntactic_eq(typ_r)?
-                    && exp_l.syntactic_eq(exp_r)?
-                    && exps_l.syntactic_eq(exps_r)?,
-            ),
+            (CallLambda(exp_l, exps_l), CallLambda(exp_r, exps_r)) => {
+                Some(exp_l.syntactic_eq(exp_r)? && exps_l.syntactic_eq(exps_r)?)
+            }
 
             (Ctor(path_l, id_l, bnds_l), Ctor(path_r, id_r, bnds_r)) => {
                 if path_l != path_r || id_l != id_r {
@@ -509,8 +507,8 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
         Loc(e) => dohash!(4; hash_exp(e)),
         Old(id, uid) => dohash!(5, id, uid),
         Call(fun, typs, exps) => dohash!(6, fun, typs; hash_exps(exps)),
-        CallLambda(typ, lambda, args) => {
-            dohash!(7, typ; hash_exp(lambda));
+        CallLambda(lambda, args) => {
+            dohash!(7; hash_exp(lambda));
             hash_iter(state, args.iter().enumerate(), hash_exp);
         }
         Ctor(path, id, bnds) => dohash!(8, path, id; hash_binders_exp(bnds)),
@@ -792,11 +790,7 @@ fn eval_seq(
                                         int_i,
                                     ));
                                     let args = Arc::new(vec![boxed_i]);
-                                    let call = exp_new(CallLambda(
-                                        lambda.typ.clone(),
-                                        lambda.clone(),
-                                        args,
-                                    ));
+                                    let call = exp_new(CallLambda(lambda.clone(), args));
                                     eval_expr_internal(ctx, state, &call)
                                 })
                                 .collect();
@@ -1564,7 +1558,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let new_args = Arc::new(new_args?);
             exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
         }
-        CallLambda(_typ, lambda, args) => {
+        CallLambda(lambda, args) => {
             let lambda = eval_expr_internal(ctx, state, lambda)?;
             match &lambda.x {
                 Interp(InterpExp::Closure(lambda, context)) => match &lambda.x {

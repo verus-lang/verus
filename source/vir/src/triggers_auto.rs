@@ -309,7 +309,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 }
             }
         }
-        ExpX::CallLambda(_, e0, es) => {
+        ExpX::CallLambda(e0, es) => {
             // REVIEW: maybe we should include CallLambdas in the auto-triggers
             let depth = 1;
             let (_, term0) = gather_terms(ctxt, ctx, e0, depth);

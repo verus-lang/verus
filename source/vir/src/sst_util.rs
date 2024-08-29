@@ -576,7 +576,7 @@ impl ExpX {
                     }
                 }
             }
-            CallLambda(_typ, e, args) => {
+            CallLambda(e, args) => {
                 let args =
                     args.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", e.x.to_user_string(global), args), 99)
