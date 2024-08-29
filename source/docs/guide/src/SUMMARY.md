@@ -88,8 +88,9 @@
 
 # Installation, configuration, and tooling
 
-- [Tools and command-line options]()
-    - [IDE Support](ide_support.md)
+- [Installation and setup]()
+  - [IDE Support](ide_support.md)
+  - [Installing and configuring Singular](./install-singular.md)
 
 - [Project setup and development]()
   - [Working with crates]()
