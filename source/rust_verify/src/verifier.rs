@@ -1366,11 +1366,13 @@ impl Verifier {
             };
             println!("Function {:?} specialized to {:?}", function.x.name, specs);
             for spec in specs.iter() {
+                if spec.typs.len() > 0 {
                 let commands =
                     vir::sst_to_air_func::func_name_to_air(ctx, reporter, function, spec)?;
                 let inner_comment = comment.clone() + &spec.comment();
                 self.run_commands(bucket_id, reporter, &mut air_context, &commands, &inner_comment);
                 function_decl_commands.push((commands.clone(), comment.clone()));
+                }
             }
         }
         ctx.fun = None;

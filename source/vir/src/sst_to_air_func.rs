@@ -29,6 +29,7 @@ use air::ast_util::{
 use air::messages::ArcDynMessageLabel;
 use std::sync::Arc;
 
+
 // binder for forall (typ_params params)
 pub(crate) fn func_bind_trig(
     ctx: &Ctx,
@@ -177,8 +178,11 @@ fn func_body_to_air(
     check_commands: &mut Vec<CommandsWithContext>,
     function: &FunctionSst,
     func_body_sst: &crate::sst::FuncSpecBodySst,
+    specialization: &mono::Specialization,
 ) -> Result<(), VirErr> {
+    
     let crate::sst::FuncSpecBodySst { decrease_when, termination_check, body_exp } = func_body_sst;
+    let new_body_exp = specialization.transform_exp(&function.x.typ_params, body_exp); 
     let pars = &function.x.pars;
 
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
@@ -264,7 +268,7 @@ fn func_body_to_air(
     //   (axiom (forall (... fuel) (= (rec%f ... fuel) (rec%f ... zero) )))
     //   (axiom (forall (... fuel) (= (rec%f ... (succ fuel)) body[rec%f ... fuel] )))
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
-    let body_expr = exp_to_expr(&ctx, &body_exp, &ExprCtxt::new())?;
+    let body_expr = exp_to_expr(&ctx, &new_body_exp, &ExprCtxt::new())?;
     let def_body = if !function.x.has.is_recursive {
         body_expr
     } else {
@@ -461,8 +465,8 @@ pub fn func_name_to_air(
         // Declare static%foo, which represents the result of 'foo()' when executed
         // at the beginning of a program (here, `foo` is a 'static' item which we
         // represent as 0-argument function)
-        commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Const(
-            static_name(&function.x.name),
+        commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Const(specialization.transform_ident(
+            static_name(&function.x.name)),
             typ_to_air(ctx, &function.x.ret.x.typ),
         )))));
     }
@@ -647,6 +651,7 @@ pub fn func_axioms_to_air(
     ctx: &mut Ctx,
     function: &FunctionSst,
     public_body: bool,
+    specialization: &mono::Specialization,
 ) -> Result<(Commands, Vec<CommandsWithContext>), VirErr> {
     let func_axioms_sst = &function.x.axioms;
     let mut decl_commands: Vec<Command> = Vec::new();
@@ -663,8 +668,10 @@ pub fn func_axioms_to_air(
                         &mut check_commands,
                         function,
                         func_body_sst,
+                        specialization
                     )?;
                 }
+
                 if let FunctionKind::TraitMethodImpl {
                     trait_typ_args,
                     inherit_body_from: Some(f_trait),
@@ -738,6 +745,7 @@ pub fn func_axioms_to_air(
                 return Ok((Arc::new(decl_commands), check_commands));
             }
             if let Some((params, exp)) = &func_axioms_sst.proof_exec_axioms {
+                let new_body_exp = specialization.transform_exp(&function.x.typ_params, exp); 
                 let span = &function.span;
                 use crate::triggers::{typ_boxing, TriggerBoxing};
                 let mut vars: Vec<(VarIdent, TriggerBoxing)> = Vec::new();
@@ -752,7 +760,7 @@ pub fn func_axioms_to_air(
                     vars.push((param.x.name.clone(), typ_boxing(ctx, &param.x.typ)));
                     binders.push(crate::ast_util::par_to_binder(&param));
                 }
-                let triggers = crate::triggers::build_triggers(ctx, span, &vars, &exp, false)?;
+                let triggers = crate::triggers::build_triggers(ctx, span, &vars, &new_body_exp, false)?;
                 let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp.clone());
                 let forall: Arc<SpannedTyped<ExpX>> =
@@ -763,6 +771,7 @@ pub fn func_axioms_to_air(
                     ExprCtxt::new_mode(ExprMode::Spec)
                 };
                 let expr = exp_to_expr(ctx, &forall, &expr_ctxt)?;
+
                 let fuel_imply = if function.x.attrs.size_of_broadcast_proof {
                     // special broadcast lemma for size_of global
                     expr

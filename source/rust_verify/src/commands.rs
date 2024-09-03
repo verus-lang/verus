@@ -2,7 +2,6 @@ use crate::buckets::Bucket;
 use crate::expand_errors_driver::{ExpandErrorsDriver, ExpandErrorsResult};
 use air::ast::{AssertId, Command};
 use rustc_session::config::ErrorOutputType;
-use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use vir::ast::{Fun, FunctionKind, ImplPath, ItemKind, Mode, Path, TraitImpl, VirErr};
@@ -12,6 +11,9 @@ use vir::ast_util::is_visible_to;
 use vir::def::{CommandsWithContext, SnapPos};
 use vir::recursion::Node;
 use vir::sst::{FuncCheckSst, FunctionSst};
+use vir::mono::Specialization;
+use vir::mono::mono_krate_for_module;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, Debug)]
 pub enum ContextOp {
@@ -70,6 +72,7 @@ pub struct OpGenerator<'a> {
     sst_map: SstMap,
     func_map: HashMap<Fun, FunctionSst>,
     trait_impl_map: HashMap<Path, TraitImpl>,
+    specializations:  HashMap<Fun, HashSet<Specialization>>,
 
     scc_idx: usize,
 }
@@ -92,6 +95,7 @@ impl<'a> OpGenerator<'a> {
             assert!(!func_map.contains_key(&function.x.name));
             func_map.insert(function.x.name.clone(), function.clone());
         }
+        let specializations = mono_krate_for_module(krate);
 
         let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
         for imp in &krate.trait_impls {
@@ -99,7 +103,7 @@ impl<'a> OpGenerator<'a> {
             trait_impl_map.insert(imp.x.impl_path.clone(), imp.clone());
         }
 
-        OpGenerator { ctx, func_map, trait_impl_map, bucket, sst_map, scc_idx: 0 }
+        OpGenerator { ctx, func_map, trait_impl_map, bucket, sst_map, specializations, scc_idx: 0 }
     }
 
     pub fn next<'b>(&'b mut self) -> Result<Option<FunctionOpGenerator<'a, 'b>>, VirErr>
@@ -202,32 +206,56 @@ impl<'a> OpGenerator<'a> {
         for function in scc_functions.iter() {
             self.ctx.fun = mk_fun_ctx_dec(function, true, true);
             let verifying_owning_bucket = self.bucket.contains(&function.x.name);
-
-            let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
-                self.ctx,
-                function,
-                is_visible_to(&function.x.vis_abs, &module),
-            )?;
-            self.ctx.fun = None;
-
-            if verifying_owning_bucket {
-                let snap_map = vec![];
-                let commands = Arc::new(check_commands);
-                query_ops.push(Op::query(
-                    QueryOp::SpecTermination,
-                    commands,
-                    snap_map,
-                    &function,
-                    None,
-                ));
-            }
-
             let op_kind = if function.x.axioms.proof_exec_axioms.is_some() {
                 ContextOp::Broadcast
             } else {
                 ContextOp::SpecDefinition
             };
+            if let Some(specs) = self.specializations.get(&function.x.name) {
+                for spec in specs.iter() {
+                    let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
+                        self.ctx,
+                        function,
+                        is_visible_to(&function.x.vis_abs, &module),
+                        spec
+                    )?;
+                    self.ctx.fun = None;
+        
+                    if verifying_owning_bucket {
+                        let snap_map = vec![];
+                        let commands = Arc::new(check_commands);
+                        query_ops.push(Op::query(
+                            QueryOp::SpecTermination,
+                            commands,
+                            snap_map,
+                            &function,
+                            None,
+                        ));
+                }
             post_ops.push(Op::context(op_kind, decl_commands, Some(function.clone())));
+            } } else {
+                let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
+                    self.ctx,
+                    function,
+                    is_visible_to(&function.x.vis_abs, &module),
+                    &Specialization::empty()
+                )?;
+                self.ctx.fun = None;
+    
+                if verifying_owning_bucket {
+                    let snap_map = vec![];
+                    let commands = Arc::new(check_commands);
+                    query_ops.push(Op::query(
+                        QueryOp::SpecTermination,
+                        commands,
+                        snap_map,
+                        &function,
+                        None,
+                    ));
+                }
+                post_ops.push(Op::context(op_kind, decl_commands, Some(function.clone())));
+
+            };
         }
 
         let mut ops = pre_ops;
