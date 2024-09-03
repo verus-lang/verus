@@ -185,7 +185,7 @@ fn func_body_to_air(
     let new_body_exp = specialization.transform_exp(&function.x.typ_params, body_exp); 
     let pars = &function.x.pars;
 
-    let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
+    let id_fuel = prefix_fuel_id(&specialization.transform_ident(fun_to_air_ident(&function.x.name)));
     let mut def_reqs: Vec<Expr> = Vec::new();
     // Non-recursive function definitions are unconditional axioms that hold
     // for all type arguments and value arguments
@@ -260,6 +260,8 @@ fn func_body_to_air(
             let typ_args = vec_map(&function.x.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
             (function.x.name.clone(), function.x.name.clone(), Arc::new(typ_args))
         };
+    
+    
 
     // non-recursive:
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) body))))
@@ -279,8 +281,8 @@ fn func_body_to_air(
         let cycle_len = ctx.global.func_call_graph.shortest_cycle_back_to_self(&fun_node).len();
         assert!(cycle_len >= 1);
 
-        let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&rec_name)));
-        let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&rec_name));
+        let rec_f = specialization.transform_ident(suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&rec_name))));
+        let fuel_nat_f = specialization.transform_ident(prefix_fuel_nat(&fun_to_air_ident(&rec_name)));
         let args = func_def_args(&function.x.typ_params, pars);
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
@@ -300,8 +302,8 @@ fn func_body_to_air(
         let rec_f_def = ident_apply(&rec_f, &args_def);
         let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
-        let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
-        let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
+        let name_zero = format!("{}_fuel_to_zero", &specialization.transform_ident(fun_to_air_ident(&name)));
+        let name_body = format!("{}_fuel_to_body", &specialization.transform_ident(fun_to_air_ident(&name)));
         let bind_zero = func_bind(ctx, name_zero, &function.x.typ_params, pars, &rec_f_fuel, true);
         let bind_body = func_bind(ctx, name_body, &function.x.typ_params, pars, &rec_f_succ, true);
         let implies_body = mk_implies(&mk_and(&def_reqs), &eq_body);
@@ -318,7 +320,7 @@ fn func_body_to_air(
 
     let e_forall = func_def_quant(
         ctx,
-        &suffix_global_id(&fun_to_air_ident(&name)),
+        &specialization.transform_ident(suffix_global_id(&fun_to_air_ident(&name))),
         &function.x.typ_params,
         &typ_args,
         pars,
@@ -686,7 +688,7 @@ pub fn func_axioms_to_air(
                         args.push(ident_var(&p.x.name.lower()));
                     }
                     let default_name = crate::def::trait_default_name(f_trait);
-                    let default_name = &suffix_global_id(&fun_to_air_ident(&default_name));
+                    let default_name = specialization.transform_ident(suffix_global_id(&fun_to_air_ident(&default_name)));
                     let body = ident_apply(&default_name, &args);
                     let e_forall = func_def_quant(
                         ctx,
@@ -708,7 +710,7 @@ pub fn func_axioms_to_air(
                 return Ok((Arc::new(decl_commands), check_commands));
             }
 
-            let name = suffix_global_id(&fun_to_air_ident(&function.x.name));
+            let name = specialization.transform_ident(suffix_global_id(&fun_to_air_ident(&function.x.name)));
 
             // Return typing invariant
             let mut f_args: Vec<Expr> = Vec::new();
@@ -776,14 +778,14 @@ pub fn func_axioms_to_air(
                     // special broadcast lemma for size_of global
                     expr
                 } else {
-                    let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
+                    let id_fuel = prefix_fuel_id(&specialization.transform_ident(fun_to_air_ident(&function.x.name)));
                     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
                     mk_implies(&fuel_bool, &expr)
                 };
                 // let axiom = mk_unnamed_axiom(fuel_imply);
                 let axiom = Arc::new(DeclX::Axiom(Axiom {
                     named: if cfg!(feature = "axiom-usage-info") {
-                        Some(fun_to_air_ident(&function.x.name))
+                        Some(specialization.transform_ident(fun_to_air_ident(&function.x.name)))
                     } else {
                         None
                     },
@@ -801,6 +803,9 @@ pub fn func_sst_to_air(
     function: &FunctionSst,
     func_check_sst: &FuncCheckSst,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
+    for eq in func_check_sst.reqs.iter(){
+        println!("{:?}", eq);
+    }
     let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,
