@@ -30,12 +30,12 @@
     - [Enum](datatypes_enum.md)
 - [Libraries](vstd.md)
     - [Specification libraries: Seq, Set, Map](spec_lib.md)
-    - [INTERLUDE: using assert and assume to develop proofs](develop_proofs.md)
     - [Executable libraries: Vec](exec_lib.md)
 - [Spec closures](spec_closures.md)
 
 # Tutorial: Understanding the prover
 
+- [Using assert and assume to develop proofs](develop_proofs.md)
 - [Quantifiers](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
