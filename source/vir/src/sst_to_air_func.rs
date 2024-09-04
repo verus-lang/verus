@@ -11,12 +11,12 @@ use crate::def::{
     Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
 use crate::messages::{MessageLabel, Span};
+use crate::mono;
 use crate::sst::FuncCheckSst;
 use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParPurpose, ParX, Pars};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
 };
-use crate::mono;
 use crate::util::vec_map;
 use air::ast::{
     Axiom, BinaryOp, Bind, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant, Trigger,
@@ -28,7 +28,6 @@ use air::ast_util::{
 };
 use air::messages::ArcDynMessageLabel;
 use std::sync::Arc;
-
 
 // binder for forall (typ_params params)
 pub(crate) fn func_bind_trig(
@@ -180,12 +179,12 @@ fn func_body_to_air(
     func_body_sst: &crate::sst::FuncSpecBodySst,
     specialization: &mono::Specialization,
 ) -> Result<(), VirErr> {
-    
     let crate::sst::FuncSpecBodySst { decrease_when, termination_check, body_exp } = func_body_sst;
-    let new_body_exp = specialization.transform_exp(&function.x.typ_params, body_exp); 
+    let new_body_exp = specialization.transform_exp(&function.x.typ_params, body_exp);
     let pars = &function.x.pars;
 
-    let id_fuel = prefix_fuel_id(&specialization.transform_ident(fun_to_air_ident(&function.x.name)));
+    //let id_fuel = prefix_fuel_id(&specialization.transform_ident(fun_to_air_ident(&function.x.name)));
+    let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
     let mut def_reqs: Vec<Expr> = Vec::new();
     // Non-recursive function definitions are unconditional axioms that hold
     // for all type arguments and value arguments
@@ -260,8 +259,6 @@ fn func_body_to_air(
             let typ_args = vec_map(&function.x.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
             (function.x.name.clone(), function.x.name.clone(), Arc::new(typ_args))
         };
-    
-    
 
     // non-recursive:
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) body))))
@@ -281,8 +278,9 @@ fn func_body_to_air(
         let cycle_len = ctx.global.func_call_graph.shortest_cycle_back_to_self(&fun_node).len();
         assert!(cycle_len >= 1);
 
-        let rec_f = specialization.transform_ident(suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&rec_name))));
-        let fuel_nat_f = specialization.transform_ident(prefix_fuel_nat(&fun_to_air_ident(&rec_name)));
+        let rec_f = specialization
+            .transform_ident(suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&rec_name))));
+        let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&rec_name));
         let args = func_def_args(&function.x.typ_params, pars);
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
@@ -302,8 +300,8 @@ fn func_body_to_air(
         let rec_f_def = ident_apply(&rec_f, &args_def);
         let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
-        let name_zero = format!("{}_fuel_to_zero", &specialization.transform_ident(fun_to_air_ident(&name)));
-        let name_body = format!("{}_fuel_to_body", &specialization.transform_ident(fun_to_air_ident(&name)));
+        let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
+        let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
         let bind_zero = func_bind(ctx, name_zero, &function.x.typ_params, pars, &rec_f_fuel, true);
         let bind_body = func_bind(ctx, name_body, &function.x.typ_params, pars, &rec_f_succ, true);
         let implies_body = mk_implies(&mk_and(&def_reqs), &eq_body);
@@ -467,8 +465,8 @@ pub fn func_name_to_air(
         // Declare static%foo, which represents the result of 'foo()' when executed
         // at the beginning of a program (here, `foo` is a 'static' item which we
         // represent as 0-argument function)
-        commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Const(specialization.transform_ident(
-            static_name(&function.x.name)),
+        commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Const(
+            specialization.transform_ident(static_name(&function.x.name)),
             typ_to_air(ctx, &function.x.ret.x.typ),
         )))));
     }
@@ -581,7 +579,11 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
         .iter()
         .flat_map(|param| {
             let air_typ = typ_to_air(ctx, &param.x.typ);
-            if !param.x.is_mut { vec![air_typ] } else { vec![air_typ.clone(), air_typ] }
+            if !param.x.is_mut {
+                vec![air_typ]
+            } else {
+                vec![air_typ.clone(), air_typ]
+            }
         })
         .collect();
     let mut ens_typing_invs: Vec<Expr> = Vec::new();
@@ -670,7 +672,7 @@ pub fn func_axioms_to_air(
                         &mut check_commands,
                         function,
                         func_body_sst,
-                        specialization
+                        specialization,
                     )?;
                 }
 
@@ -688,7 +690,8 @@ pub fn func_axioms_to_air(
                         args.push(ident_var(&p.x.name.lower()));
                     }
                     let default_name = crate::def::trait_default_name(f_trait);
-                    let default_name = specialization.transform_ident(suffix_global_id(&fun_to_air_ident(&default_name)));
+                    let default_name = specialization
+                        .transform_ident(suffix_global_id(&fun_to_air_ident(&default_name)));
                     let body = ident_apply(&default_name, &args);
                     let e_forall = func_def_quant(
                         ctx,
@@ -710,7 +713,8 @@ pub fn func_axioms_to_air(
                 return Ok((Arc::new(decl_commands), check_commands));
             }
 
-            let name = specialization.transform_ident(suffix_global_id(&fun_to_air_ident(&function.x.name)));
+            let name = specialization
+                .transform_ident(suffix_global_id(&fun_to_air_ident(&function.x.name)));
 
             // Return typing invariant
             let mut f_args: Vec<Expr> = Vec::new();
@@ -747,7 +751,7 @@ pub fn func_axioms_to_air(
                 return Ok((Arc::new(decl_commands), check_commands));
             }
             if let Some((params, exp)) = &func_axioms_sst.proof_exec_axioms {
-                let new_body_exp = specialization.transform_exp(&function.x.typ_params, exp); 
+                let new_body_exp = specialization.transform_exp(&function.x.typ_params, exp);
                 let span = &function.span;
                 use crate::triggers::{typ_boxing, TriggerBoxing};
                 let mut vars: Vec<(VarIdent, TriggerBoxing)> = Vec::new();
@@ -762,7 +766,8 @@ pub fn func_axioms_to_air(
                     vars.push((param.x.name.clone(), typ_boxing(ctx, &param.x.typ)));
                     binders.push(crate::ast_util::par_to_binder(&param));
                 }
-                let triggers = crate::triggers::build_triggers(ctx, span, &vars, &new_body_exp, false)?;
+                let triggers =
+                    crate::triggers::build_triggers(ctx, span, &vars, &new_body_exp, false)?;
                 let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp.clone());
                 let forall: Arc<SpannedTyped<ExpX>> =
@@ -778,7 +783,7 @@ pub fn func_axioms_to_air(
                     // special broadcast lemma for size_of global
                     expr
                 } else {
-                    let id_fuel = prefix_fuel_id(&specialization.transform_ident(fun_to_air_ident(&function.x.name)));
+                    let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
                     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
                     mk_implies(&fuel_bool, &expr)
                 };
@@ -803,7 +808,7 @@ pub fn func_sst_to_air(
     function: &FunctionSst,
     func_check_sst: &FuncCheckSst,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
-    for eq in func_check_sst.reqs.iter(){
+    for eq in func_check_sst.reqs.iter() {
         println!("{:?}", eq);
     }
     let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(

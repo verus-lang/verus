@@ -20,19 +20,19 @@ specialized, hinders this.
 3. We want to ensure the generated AIR code can be type-checked by AIR.
  */
 use crate::ast::Fun;
+use crate::ast::Idents;
+use crate::ast::IntRange;
+use crate::ast::Primitive;
 use crate::ast_util::n_types_equal;
 use crate::sst::{CallFun, Exp, ExpX, KrateSstX, Stm};
+use crate::sst_util::subst_exp;
 use crate::sst_visitor::{self, Visitor};
 use crate::{
-    ast::{Ident, TypX, Typs, Typ},
+    ast::{Ident, Typ, TypX, Typs},
     sst::{FunctionSst, KrateSst},
 };
 use std::collections::{HashMap, HashSet};
-use crate::ast::Idents;
 use std::sync::Arc;
-use crate::sst_util::{subst_exp};
-use crate::ast::Primitive;
-use crate::ast::IntRange;
 
 /**
 This stores one instance of specialization of a particular function. This
@@ -54,98 +54,99 @@ impl Specialization {
         Some((fun, result))
     }
 
-    pub fn get_type_name(typ: Typ) -> Ident {
+    fn mangle_type_name_inner(typ: &TypX) -> String {
         let mut suffix = String::new();
-        match &*typ {
+        match typ {
             TypX::Bool => {
                 suffix += "_bool";
             }
-            TypX::Int(range) => {
-                match range {
-                    IntRange::Int => suffix +="_int",
-                    IntRange::Nat => suffix += "_nat",
-                    IntRange::U(bits) => suffix += &format!("_unsigned_{}", bits),
-                    IntRange::I(bits) => suffix += &format!("_signed_{}", bits),
-                    IntRange::USize => suffix += "_rustusize",
-                    IntRange::ISize => suffix += "_rustisze",
-                    IntRange::Char => suffix += "char",
-                }
-            }
+            TypX::Int(range) => match range {
+                IntRange::Int => suffix += "_int",
+                IntRange::Nat => suffix += "_nat",
+                IntRange::U(bits) => suffix += &format!("_u{bits}"),
+                IntRange::I(bits) => suffix += &format!("_i{bits}"),
+                IntRange::USize => suffix += "_usize",
+                IntRange::ISize => suffix += "_isize",
+                IntRange::Char => suffix += "char",
+            },
             TypX::Tuple(typs) => {
-                suffix += "tuple"; 
+                suffix += "_tuple";
                 for typ in typs.iter() {
-                    suffix += &Self::get_type_name(typ.clone())
+                    suffix += &Self::mangle_type_name_inner(&*typ)
                 }
             }
             TypX::SpecFn(_, _) => {
-                suffix += "_specfn"; // Example for SpecFn
+                suffix += "_spec"; // Example for SpecFn
             }
             TypX::AnonymousClosure(_, _, _) => {
-                suffix += "_anon_closure"; // Example for AnonymousClosure
+                suffix += "_ac"; // Example for AnonymousClosure
             }
             TypX::FnDef(_, _, _) => {
-                suffix += "_fn_def"; // Example for FnDef
+                suffix += "_fn"; // Example for FnDef
             }
             TypX::Datatype(path, typs, _) => {
-                suffix += "_datatype"; // Example for Datatype
+                suffix += "_data"; // Example for Datatype
                 for id in path.segments.iter() {
                     suffix += id;
                 }
                 for typ in typs.iter() {
-                    suffix += &Self::get_type_name(typ.clone())
+                    suffix += &Self::mangle_type_name_inner(&*typ)
                 }
             }
             TypX::Primitive(p, typs) => {
-                suffix += "_primitive_"; // Example for Primitive
+                suffix += "_prim"; // Example for Primitive
                 match p {
                     Primitive::Array => {
-                        suffix += "_array";
+                        suffix += "A";
                     }
                     Primitive::Slice => {
-                        suffix += "_slice";
+                        suffix += "S";
                     }
                     Primitive::StrSlice => {
-                        suffix += "_strslice";
+                        suffix += "Ss";
                     }
                     Primitive::Ptr => {
-                        suffix += "_ptr";
+                        suffix += "P";
                     }
                     Primitive::Global => {
-                        suffix += "_global";
+                        suffix += "G";
                     }
                 }
                 for typ in typs.iter() {
-                    suffix += &Self::get_type_name(typ.clone())
+                    suffix += &Self::mangle_type_name_inner(&*typ)
                 }
             }
             TypX::Decorate(_, _, typ) => {
-                suffix += "_decorate";
-                suffix += &Self::get_type_name(typ.clone())
+                suffix += "_de";
+                suffix += &Self::mangle_type_name_inner(&*typ)
             }
             TypX::Boxed(_) => {
-                suffix += "_boxed"; // Example for Boxed
+                suffix += "_box"; // Example for Boxed
             }
             TypX::TypParam(ref ident) => {
-                suffix += "_";
+                suffix += "_x";
                 suffix += ident.as_ref();
             }
             TypX::Projection { .. } => {
-                suffix += "_projection"; // Example for Projection
+                suffix += "_proj"; // Example for Projection
             }
             TypX::TypeId => {
-                suffix += "_type_id"; 
+                suffix += "_tid";
             }
             TypX::ConstInt(ref big_int) => {
-                suffix += "_const_int";
+                suffix += "_ci";
                 suffix += &big_int.to_string();
             }
             TypX::Air(_) => {
-                suffix += "_air"; 
+                suffix += "_a";
             }
-
         }
-        Arc::new(suffix)
-
+        suffix
+    }
+    fn mangle_type_name(typ: &TypX) -> Ident {
+        let name = Self::mangle_type_name_inner(typ);
+        let l = name.len();
+        Arc::new(format!("_M{l}{name}"))
     }
 
     pub fn transform_ident(&self, ident: Ident) -> Ident {
@@ -154,13 +155,13 @@ impl Specialization {
         }
         let mut suffix = String::new();
         for typ in self.typs.iter() {
-            suffix += &Self::get_type_name(typ.clone());
+            suffix += &Self::mangle_type_name(&*typ);
         }
-    
+
         Arc::new(ident.as_ref().clone() + &suffix)
     }
 
-    pub fn transform_exp(&self, typ_params: &Idents,  ex: &Exp) -> Exp {
+    pub fn transform_exp(&self, typ_params: &Idents, ex: &Exp) -> Exp {
         if self.typs.is_empty() {
             return ex.clone();
         }
@@ -196,8 +197,7 @@ struct SpecializationVisitor {
 }
 impl SpecializationVisitor {
     fn new() -> Self {
-        Self { invocations: vec![],
-                params: vec![] }
+        Self { invocations: vec![], params: vec![] }
     }
 }
 impl Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for SpecializationVisitor {
