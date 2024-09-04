@@ -414,14 +414,14 @@ pub fn func_name_to_air(
                 let rec_f =
                     suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
                 let mut rec_typs =
-                    vec_map(&*function.x.pars, |param| typ_to_air(ctx, &param.x.typ));
+                    vec_map(&*function.x.pars, |param| typ_to_air(ctx,  &specialization.transform_typ(&function.x.typ_params, &param.x.typ)));
                 for _ in function.x.typ_params.iter() {
                     for x in crate::def::types().iter().rev() {
                         rec_typs.insert(0, str_typ(x));
                     }
                 }
                 rec_typs.push(str_typ(FUEL_TYPE));
-                let typ = typ_to_air(ctx, &function.x.ret.x.typ);
+                let typ = typ_to_air(ctx, &specialization.transform_typ(&function.x.typ_params, &function.x.ret.x.typ));
                 let ident = specialization.transform_ident(rec_f);
                 let rec_decl = Arc::new(DeclX::Fun(ident, Arc::new(rec_typs), typ));
                 commands.push(Arc::new(CommandX::Global(rec_decl)));
@@ -437,16 +437,18 @@ pub fn func_name_to_air(
             return Ok(Arc::new(commands));
         }
 
-        let mut all_typs = vec_map(&function.x.pars, |param| typ_to_air(ctx, &param.x.typ));
+        let mut all_typs = vec_map(&function.x.pars, |param| typ_to_air(ctx, &specialization.transform_typ(&function.x.typ_params, &param.x.typ)));
         for _ in function.x.typ_params.iter() {
             for x in crate::def::types().iter().rev() {
                 all_typs.insert(0, str_typ(x));
             }
         }
-        let all_typs = Arc::new(all_typs);
 
-        // Declare the function symbol itself
-        let typ = typ_to_air(ctx, &function.x.ret.x.typ);
+
+        let all_typs = Arc::new(all_typs);
+        
+        
+        let typ = typ_to_air(ctx, &specialization.transform_typ(&function.x.typ_params, &function.x.ret.x.typ));
         let mut names = vec![function.x.name.clone()];
         if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             names.push(crate::def::trait_default_name(&function.x.name));
@@ -467,7 +469,7 @@ pub fn func_name_to_air(
         // represent as 0-argument function)
         commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Const(
             specialization.transform_ident(static_name(&function.x.name)),
-            typ_to_air(ctx, &function.x.ret.x.typ),
+            typ_to_air(ctx, &specialization.transform_typ(&function.x.typ_params, &function.x.ret.x.typ)),
         )))));
     }
 
@@ -808,9 +810,6 @@ pub fn func_sst_to_air(
     function: &FunctionSst,
     func_check_sst: &FuncCheckSst,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
-    for eq in func_check_sst.reqs.iter() {
-        println!("{:?}", eq);
-    }
     let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,

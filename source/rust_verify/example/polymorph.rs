@@ -1,4 +1,6 @@
-use vstd::prelude::*;
+use builtin::*;
+use builtin_macros::*;
+
 
 verus! {
 	spec fn spec0(n: int) -> int {

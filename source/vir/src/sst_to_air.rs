@@ -2583,6 +2583,19 @@ pub(crate) fn body_stm_to_air(
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
     let FuncCheckSst { reqs, post_condition, mask_set, body: stm, local_decls, statics, unwind } =
         func_check_sst;
+    for i in local_decls.iter() {
+        println!("{:?}", i);
+    }
+
+    for i in params.iter() {
+        println!("{:?}", i);
+    }
+
+    for i in typ_bounds.iter() {
+        println!("{:?}", i);
+    }
+
+    println!("{:?}", stm);
 
     if is_bit_vector_mode {
         if is_integer_ring {
@@ -2624,6 +2637,9 @@ pub(crate) fn body_stm_to_air(
         } else {
             Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         });
+    }
+    for i in local_shared.iter(){
+        println!("{:?}", i);
     }
 
     set_fuel(ctx, &mut local_shared, hidden);

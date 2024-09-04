@@ -25,7 +25,7 @@ use crate::ast::IntRange;
 use crate::ast::Primitive;
 use crate::ast_util::n_types_equal;
 use crate::sst::{CallFun, Exp, ExpX, KrateSstX, Stm};
-use crate::sst_util::subst_exp;
+use crate::sst_util::{subst_exp, subst_typ};
 use crate::sst_visitor::{self, Visitor};
 use crate::{
     ast::{Ident, Typ, TypX, Typs},
@@ -159,6 +159,19 @@ impl Specialization {
         }
 
         Arc::new(ident.as_ref().clone() + &suffix)
+    }
+
+    pub fn transform_typ(&self, typ_params: &Idents,typ: &Typ) -> Typ {
+        if self.typs.is_empty() {
+            return typ.clone();
+        }
+        let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
+        assert!(typ_params.len() == self.typs.len());
+        for (x, t) in typ_params.iter().zip(self.typs.iter()) {
+            trait_typ_substs.insert(x.clone(), t.clone());
+        }
+        let new_typ  = subst_typ(&trait_typ_substs, typ);
+        new_typ
     }
 
     pub fn transform_exp(&self, typ_params: &Idents, ex: &Exp) -> Exp {
