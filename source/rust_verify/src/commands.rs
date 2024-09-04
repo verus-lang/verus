@@ -197,10 +197,20 @@ impl<'a> OpGenerator<'a> {
 
         for function in scc_functions.iter() {
             self.ctx.fun = mk_fun_ctx(function, false);
-            let decl_commands = vir::sst_to_air_func::func_decl_to_air(self.ctx, function)?;
-            self.ctx.fun = None;
 
-            pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
+            if let Some(specs) = self.specializations.get(&function.x.name) {
+                for spec in specs.iter() {
+                let decl_commands = vir::sst_to_air_func::func_decl_to_air(self.ctx, function, spec)?;
+                self.ctx.fun = None;
+                pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
+                }
+            }
+            else {
+                let decl_commands = vir::sst_to_air_func::func_decl_to_air(self.ctx, function,  &Specialization::empty())?;
+                self.ctx.fun = None;
+                pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
+
+            }
         }
 
         for function in scc_functions.iter() {

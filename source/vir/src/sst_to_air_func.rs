@@ -211,7 +211,7 @@ fn func_body_to_air(
     if function.x.has.has_decrease {
         for param in pars.iter() {
             let arg = ident_var(&param.x.name.lower());
-            if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
+            if let Some(pre) = typ_invariant(ctx, &specialization.transform_typ(&function.x.typ_params, &param.x.typ), &arg) {
                 def_reqs.push(pre.clone());
             }
         }
@@ -476,7 +476,7 @@ pub fn func_name_to_air(
     Ok(Arc::new(commands))
 }
 
-pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Commands, VirErr> {
+pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst, specialization: &mono::Specialization) -> Result<Commands, VirErr> {
     let func_decl_sst = &function.x.decl;
     let (is_trait_method_impl, inherit_fn_ens) = match &function.x.kind {
         FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {
@@ -503,7 +503,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     };
 
     let req_typs: Arc<Vec<_>> =
-        Arc::new(function.x.pars.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect());
+        Arc::new(function.x.pars.iter().map(|param| typ_to_air(ctx, &specialization.transform_typ(&function.x.typ_params, &param.x.typ))).collect());
     let mut decl_commands: Vec<Command> = Vec::new();
 
     // Requires
@@ -580,7 +580,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
         .pars
         .iter()
         .flat_map(|param| {
-            let air_typ = typ_to_air(ctx, &param.x.typ);
+            let air_typ = typ_to_air(ctx, &specialization.transform_typ(&function.x.typ_params, &param.x.typ));
             if !param.x.is_mut {
                 vec![air_typ]
             } else {
@@ -592,7 +592,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     if matches!(function.x.mode, Mode::Exec | Mode::Proof) {
         if function.x.has.has_return_name {
             let ParX { name, typ, .. } = &function.x.ret.x;
-            ens_typs.push(typ_to_air(ctx, &typ));
+            ens_typs.push(typ_to_air(ctx, &specialization.transform_typ(&function.x.typ_params, &typ)));
             if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&name.lower())) {
                 ens_typing_invs.push(expr);
             }
@@ -601,7 +601,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
         for param in
             func_decl_sst.post_pars.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost))
         {
-            if let Some(expr) = typ_invariant(ctx, &param.x.typ, &ident_var(&param.x.name.lower()))
+            if let Some(expr) = typ_invariant(ctx, &specialization.transform_typ(&function.x.typ_params, &param.x.typ), &ident_var(&param.x.name.lower()))
             {
                 ens_typing_invs.push(expr);
             }
@@ -728,7 +728,7 @@ pub fn func_axioms_to_air(
             for param in function.x.pars.iter() {
                 let arg = ident_var(&param.x.name.lower());
                 f_args.push(arg.clone());
-                if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
+                if let Some(pre) = typ_invariant(ctx,  &specialization.transform_typ(&function.x.typ_params, &param.x.typ), &arg) {
                     f_pre.push(pre.clone());
                 }
             }
@@ -765,7 +765,7 @@ pub fn func_axioms_to_air(
                     binders.push(Arc::new(bind));
                 }
                 for param in params.iter() {
-                    vars.push((param.x.name.clone(), typ_boxing(ctx, &param.x.typ)));
+                    vars.push((param.x.name.clone(), typ_boxing(ctx, &specialization.transform_typ(&function.x.typ_params, &param.x.typ))));
                     binders.push(crate::ast_util::par_to_binder(&param));
                 }
                 let triggers =

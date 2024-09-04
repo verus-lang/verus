@@ -173,6 +173,7 @@ impl Specialization {
         let new_typ  = subst_typ(&trait_typ_substs, typ);
         new_typ
     }
+  
 
     pub fn transform_exp(&self, typ_params: &Idents, ex: &Exp) -> Exp {
         if self.typs.is_empty() {
