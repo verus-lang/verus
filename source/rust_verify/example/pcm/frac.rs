@@ -85,9 +85,14 @@ verus! {
             self.r.loc()
         }
 
-        pub closed spec fn view(self) -> (T, int)
+        pub closed spec fn val(self) -> T
         {
-            (self.r.value()->v, self.r.value()->n)
+            self.r.value()->v
+        }
+
+        pub closed spec fn frac(self) -> int
+        {
+            self.r.value()->n
         }
 
         pub proof fn alloc(v: T) -> (tracked result: FractionalResource<T, Total>)
@@ -95,7 +100,8 @@ verus! {
                 Total > 0,
             ensures
                 result.inv(),
-                result@ == (v, Total as int),
+                result.val() == v,
+                result.frac() == Total as int,
         {
             let f = Fractional::<T, Total>::new(v);
             let tracked r = Resource::alloc(f);
@@ -108,10 +114,8 @@ verus! {
                 other.inv(),
                 old(self).id() == other.id(),
             ensures
-                self.id() == old(self).id(),
-                self.inv(),
-                self@ == old(self)@,
-                self@.0 == other@.0,
+                *self == *old(self),
+                self.val() == other.val(),
         {
             self.r.validate_2(&other.r)
         }
@@ -120,15 +124,15 @@ verus! {
             (tracked result: (FractionalResource<T, Total>, FractionalResource<T, Total>))
             requires
                 self.inv(),
-                0 < n < self@.1
+                0 < n < self.frac()
             ensures
                 result.0.id() == result.1.id() == self.id(),
                 result.0.inv(),
                 result.1.inv(),
-                result.0@.0 == self@.0,
-                result.1@.0 == self@.0,
-                result.0@.1 + result.1@.1 == self@.1,
-                result.1@.1 == n,
+                result.0.val() == self.val(),
+                result.1.val() == self.val(),
+                result.0.frac() + result.1.frac() == self.frac(),
+                result.1.frac() == n,
         {
             let tracked (r1, r2) = self.r.split(Fractional::Value { v: self.r.value()->v,
                                                                     n: self.r.value()->n - n },
@@ -145,9 +149,9 @@ verus! {
             ensures
                 result.id() == self.id(),
                 result.inv(),
-                result@.0 == self@.0,
-                result@.0 == other@.0,
-                result@.1 == self@.1 + other@.1,
+                result.val() == self.val(),
+                result.val() == other.val(),
+                result.frac() == self.frac() + other.frac(),
         {
             let tracked mut mself = self;
             mself.r.validate_2(&other.r);
@@ -158,12 +162,12 @@ verus! {
         pub proof fn update(tracked self, v: T) -> (tracked result: FractionalResource<T, Total>)
             requires
                 self.inv(),
-                self@.1 == Total,
+                self.frac() == Total,
             ensures
                 result.id() == self.id(),
                 result.inv(),
-                result@.0 == v,
-                result@.1 == self@.1,
+                result.val() == v,
+                result.frac() == self.frac(),
         {
             let f = Fractional::<T, Total>::Value { v: v, n: Total as int };
             let tracked r = self.r.update(f);
@@ -174,17 +178,17 @@ verus! {
     fn main()
     {
         let tracked r = FractionalResource::<u64, 3>::alloc(123);
-        assert(r@.0 == 123);
-        assert(r@.1 == 3);
+        assert(r.val() == 123);
+        assert(r.frac() == 3);
         let tracked (r1, r2) = r.split(2);
-        assert(r1@.0 == 123);
-        assert(r2@.0 == 123);
-        assert(r1@.1 == 1);
-        assert(r2@.1 == 2);
+        assert(r1.val() == 123);
+        assert(r2.val() == 123);
+        assert(r1.frac() == 1);
+        assert(r2.frac() == 2);
         let tracked r3 = r1.combine(r2);
         let tracked r4 = r3.update(456);
-        assert(r4@.0 == 456);
-        assert(r4@.1 == 3);
+        assert(r4.val() == 456);
+        assert(r4.frac() == 3);
         ()
     }
 }
