@@ -420,6 +420,7 @@ fn adt_args<'a, 'tcx>(
         || rust_item == Some(RustItem::Arc)
         || rust_item == Some(RustItem::AllocGlobal)
         || rust_item == Some(RustItem::ManuallyDrop)
+        || rust_item == Some(RustItem::PhantomData)
     {
         (false, args)
     } else {
@@ -535,6 +536,10 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                     Some(RustItem::ManuallyDrop) => {
                         assert!(typ_args.len() == 1);
                         Id::new(IdKind::Builtin, 0, "ManuallyDrop".to_owned())
+                    }
+                    Some(RustItem::PhantomData) => {
+                        assert!(typ_args.len() == 1);
+                        Id::new(IdKind::Builtin, 0, "PhantomData".to_owned())
                     }
                     _ => state.datatype_name(&path),
                 },
@@ -1019,6 +1024,9 @@ fn erase_call<'tcx>(
                                     };
                                     exp = Box::new((exp.0, ExpX::AddrOf(m, exp)));
                                 }
+                                Adjust::Deref(None) => {
+                                    exp = Box::new((exp.0, ExpX::Deref(exp)));
+                                }
                                 _ => {}
                             }
                         }
@@ -1060,6 +1068,7 @@ fn erase_call<'tcx>(
                 }
                 // make sure datatype is generated
                 let _ = erase_ty(ctxt, state, &ctxt.types().node_type(expr.hir_id));
+
                 let variant_opt =
                     if is_variant { Some(state.variant(variant_name.to_string())) } else { None };
                 mk_exp(ExpX::DatatypeTuple(state.datatype_name(path), variant_opt, typ_args, args))
@@ -1207,6 +1216,15 @@ fn erase_expr<'tcx>(
                             get_adt_res_struct_enum(ctxt.tcx, res, expr.span).unwrap();
                         let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
                         let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
+
+                        let rust_item = verus_items::get_rust_item(ctxt.tcx, adt_def_id);
+                        if rust_item == Some(RustItem::PhantomData) {
+                            return mk_exp(ExpX::Var(Id::new(
+                                IdKind::Builtin,
+                                0,
+                                "PhantomData".to_owned(),
+                            )));
+                        }
 
                         let variant = if is_enum {
                             Some(state.variant(variant_name.to_string()))
@@ -2586,8 +2604,13 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
         return;
     }
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
-    if let Some(RustItem::Rc | RustItem::Arc | RustItem::AllocGlobal | RustItem::ManuallyDrop) =
-        rust_item
+    if let Some(
+        RustItem::Rc
+        | RustItem::Arc
+        | RustItem::AllocGlobal
+        | RustItem::ManuallyDrop
+        | RustItem::PhantomData,
+    ) = rust_item
     {
         return;
     }

@@ -999,9 +999,16 @@ fn verus_item_to_vir<'tcx, 'a>(
         }
         VerusItem::UnaryOp(UnaryOpItem::SpecCastInteger) => {
             record_spec_fn_allow_proof_args(bctx, expr);
+            let to_ty = undecorate_typ(&expr_typ()?);
             let source_vir = mk_one_vir_arg(bctx, expr.span, &args)?;
             let source_ty = undecorate_typ(&source_vir.typ);
-            let to_ty = undecorate_typ(&expr_typ()?);
+
+            if let Some(expr) =
+                crate::rust_to_vir_expr::maybe_do_ptr_cast(bctx, expr, &args[0], &source_vir)?
+            {
+                return Ok(expr);
+            }
+
             let source_is_integer = {
                 let integer_trait_def_id = bctx.ctxt.verus_items.name_to_id
                     [&VerusItem::BuiltinTrait(verus_items::BuiltinTraitItem::Integer)];
@@ -1009,7 +1016,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let infcx = rustc_infer::infer::TyCtxtInferExt::infer_ctxt(tcx).build();
                 matches!(&*source_vir.typ, TypX::TypParam(_))
                     && infcx
-                        .type_implements_trait(integer_trait_def_id, vec![ty], tcx.param_env(f))
+                        .type_implements_trait(
+                            integer_trait_def_id,
+                            vec![ty],
+                            tcx.param_env(bctx.fun_id),
+                        )
                         .must_apply_modulo_regions()
             };
             match ((&*source_ty, source_is_integer), &*to_ty) {
@@ -1036,7 +1047,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 _ => err_span(
                     expr.span,
-                    "Verus currently only supports casts from integer types and `char` to integer types",
+                    "Verus currently only supports casts from integer types, `char`, and pointer types to integer types",
                 ),
             }
         }

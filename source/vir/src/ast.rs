@@ -73,6 +73,7 @@ pub enum VarIdentDisambiguate {
     VirTemp(u64),
     ExpandErrorsDecl(u64),
     BitVectorToAirDecl(u64),
+    UserDefinedTypeInvariantPass(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation

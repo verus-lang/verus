@@ -3,8 +3,8 @@
 Rust supports various
 [fixed-bit-width integer types](https://doc.rust-lang.org/book/ch03-02-data-types.html#integer-types):
 
-- `u8`, `u16`, `u32`, `u64`, `u128`, `usize`
 - `i8`, `i16`, `i32`, `i64`, `i128`, `isize`
+- `u8`, `u16`, `u32`, `u64`, `u128`, `usize`
 
 To these, Verus adds two more integer types to represent arbitrarily large integers in specifications:
 
@@ -27,17 +27,19 @@ a `u8` value is an integer constrained to be greater than or equal to `0` and le
 {{#include ../../../rust_verify/example/guide/integers.rs:test_u8}}
 ```
 
-(The bounds of `usize` and `isize` are platform dependent.
+The bounds of `usize` and `isize` are platform dependent.
 By default, Verus assumes that these types may be either 32 bits or 64 bits wide,
-but this can be configured with the directive:
+but [this assumption may be configured](./reference-global.md#with-usize-and-isize).
+Verus recognizes the constants
+[`usize::BITS`](https://doc.rust-lang.org/std/primitive.usize.html#associatedconstant.BITS),
+[`usize::MAX`](https://doc.rust-lang.org/std/primitive.usize.html#associatedconstant.MAX),
+[`isize::MAX`](https://doc.rust-lang.org/std/primitive.isize.html#associatedconstant.MAX),
+and
+[`isize::MIN`](https://doc.rust-lang.org/std/primitive.isize.html#associatedconstant.MIN),
+which are useful for reasoning symbolically
+about the `usize` integer range.
 
-```rust
-global size_of usize == 8;
-```
-
-(This would set the size of `usize` to 8 bytes, and add a static assertion to check it matches the target.)
-
-# Using integer types in specifications
+## Using integer types in specifications
 
 Since there are 14 different integer types (counting `int`, `nat`, `u8`...`usize`, and `i8`...`isize`),
 it's not always obvious which type to use when writing a specification.
@@ -67,7 +69,7 @@ fn main() {
 }
 ```
 
-# Integer constants
+## Integer constants
 
 As in ordinary Rust, integer constants in Verus can include their type as a suffix
 (e.g. `7u8` or `7u32` or `7int`) to precisely specify the type of the constant:
@@ -94,7 +96,7 @@ Constants with the suffix `int` and `nat` can be arbitrarily large:
 {{#include ../../../rust_verify/example/guide/integers.rs:test_consts_large}}
 ```
 
-# Integer coercions using "as"
+## Integer coercions using "as"
 
 As in ordinary rust, the `as` operator coerces one integer type to another.
 In ghost code, you can use `as int` or `as nat` to coerce to `int` or `nat`:
@@ -125,19 +127,21 @@ note: recommendation not met: value may be out of range of the target type (use 
    |                 ^
 ```
 
-# Integer arithmetic
+See [the reference](./reference-as.md) for more on how Verus defines as-truncation and how
+to reason about it.
 
-Integer arithmetic behaves differently in ghost code than in executable code.
-In particular, in ghost code, the `+`, `-`, and `*` operations generate results of type `int`,
-so that the arithmetic operations cannot underflow or overflow.
-For example, in the following code, the executable operation `let sum1: u8 = x + y`
-might overflow, producing a value greater than `255` that does not fit inside the result value of type `u8`:
+## Integer arithmetic
+
+Integer arithmetic behaves a bit differently in ghost code than in executable code.
+
+In **executable** code, we frequently have to reason about integer overflow,
+and in fact, Verus requires us to prove the absence of overflow.
+The following operation fails because the arithmetic might produce an operation greater
+than 255:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/integers.rs:test_sum}}
 ```
-
-For overflows in executable code, Verus reports an error:
 
 ```
 error: possible arithmetic underflow/overflow
@@ -146,8 +150,11 @@ error: possible arithmetic underflow/overflow
    |                    ^^^^^
 ```
 
-By contrast, the ghost operation `let sum2: int = x + y` will produce a value of type `int` in the range `0`...`510`,
-even though the inputs `x` and `y` have type `u8`:
+In **ghost** code, however,
+common arithmetic operations
+(`+`, `-`, `*`, `/`, `%`) never overflow or wrap.
+To make this possible, Verus widens the results of many operations;
+for example, adding two `u8` values is widened to type `int`.
 
 ```rust
 {{#include ../../../rust_verify/example/guide/integers.rs:test_sum2}}
@@ -169,42 +176,20 @@ you can add, subtract, or multiply one integer type with another:
 {{#include ../../../rust_verify/example/guide/integers.rs:test_sum_mixed}}
 ```
 
-If you don't want to widen the results of addition, subtraction, or multiplication to type `int`,
-Verus also includes functions `add(a, b)`, `sub(a, b)`, and `mul(a, b)` that return the input type
-(both `a` and `b` must have the same type), returning an arbitrary value of that type in case of overflow or underflow:
+In general in ghost code,
+Verus widens native Rust integer types to `int` for operators like `+`, `-`, and `*` that might overflow;
+the [reference page](./spec-arithmetic.md) describes the widening rules in more detail.
 
-```rust
-{{#include ../../../rust_verify/example/guide/integers.rs:test_sum_add_sub}}
-```
+Here are some more tips to keep in mind:
 
-The following table summarizes the types of integer operations in ghost code:
-
-| operation | left-hand side type | right-hand side type | result type | notes                |
-|-----------|---------------------|----------------------|-------------|----------------------|
-| <=        | t1                  | t2                   | bool        |                      |
-| <         | t1                  | t2                   | bool        |                      |
-| >=        | t1                  | t2                   | bool        |                      |
-| >         | t1                  | t2                   | bool        |                      |
-| ==        | t1                  | t2                   | bool        |                      |
-| !=        | t1                  | t2                   | bool        |                      |
-| +         | t1                  | t2                   | int         | except for nat + nat |
-| -         | t1                  | t2                   | int         |                      |
-| *         | t1                  | t2                   | int         | except for nat * nat |
-| +         | nat                 | nat                  | nat         |                      |
-| *         | nat                 | nat                  | nat         |                      |
-| /         | t                   | t                    | int         | for i8...isize, int  |
-| /         | t                   | t                    | t           | for u8...usize, nat  |
-| %         | t                   | t                    | t           |                      |
-| add(_, _) | t                   | t                    | t           |                      |
-| sub(_, _) | t                   | t                    | t           |                      |
-| mul(_, _) | t                   | t                    | t           |                      |
-| bitwise op| t                   | t                    | t           |                      |
-
-Note that for convenience, addition and multiplication on two `nat` values return `nat`, not `int`,
-so that for `n` of type `nat`, you can write `n + 1` to get a `nat` without having to write
-`add(n, 1)` or `(n + 1) as nat`.
-
-Finally, note that in ghost code, `/` and `%` compute
-[Euclidean division and remainder](https://en.wikipedia.org/wiki/Euclidean_division),
-rather than Rust's truncating division and remainder,
-when operating on negative left-hand sides or negative right-hand sides.
+ * In ghost code, `/` and `%` compute
+    [Euclidean division and remainder](https://en.wikipedia.org/wiki/Euclidean_division),
+    rather than Rust's truncating division and remainder,
+    when operating on negative left-hand sides or negative right-hand sides.
+ * Division-by-0 and mod-by-0 are errors in executable code and are unspecified in ghost code
+   (see [Ghost code vs. exec code](./ghost_vs_exec.md) for more detail).
+ * The named arithmetic functions, `add(x, y)`, `sub(x, y)`, and `mul(x, y)`, do not perform widening, and thus
+    have truncating behavior, even in ghost code. Verus also recognizes some Rust functions like
+    [`wrapped_add`](https://doc.rust-lang.org/std/primitive.u32.html#method.wrapping_add)
+    and [`checked_add`](https://doc.rust-lang.org/std/primitive.u32.html#method.checked_add),
+    which may be used in either executable or ghost code.

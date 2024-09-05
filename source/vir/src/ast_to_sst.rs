@@ -1063,7 +1063,7 @@ pub(crate) fn expr_to_stm_opt(
                 check_stms.extend(stms);
                 arg_exps.push(e);
             }
-            let call = ExpX::CallLambda(expr.typ.clone(), e0, Arc::new(arg_exps));
+            let call = ExpX::CallLambda(e0, Arc::new(arg_exps));
             Ok((check_stms, ReturnValue::Some(mk_exp(call))))
         }
         ExprX::Call(CallTarget::BuiltinSpecFun(bsf, ts, _impl_paths), args) => {
@@ -2009,13 +2009,8 @@ pub(crate) fn expr_to_stm_opt(
             // Declare the inner_tmp variable
             let mut stms1 = vec![];
             let inner_typ = &binder.a;
-            let (_uid, arb_exp) = state.declare_temp_var_stm(&big_inv_exp.span, &inner_typ);
-            let has_typ = crate::sst_util::sst_has_type(
-                &expr.span,
-                &crate::poly::coerce_exp_to_poly(ctx, &arb_exp),
-                &inner_typ,
-            );
-            stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(has_typ)));
+            let (arb_id, arb_exp) = state.declare_temp_var_stm(&big_inv_exp.span, &inner_typ);
+            stms1.push(assume_has_typ(&arb_id, &inner_typ, &expr.span));
 
             // Assign to the bound variable
             let ident = state.get_var_unique_id(&binder.name);

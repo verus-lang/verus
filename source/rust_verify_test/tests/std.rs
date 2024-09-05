@@ -405,3 +405,21 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] phantom_data_is_unit verus_code! {
+        use core::marker::PhantomData;
+        use vstd::prelude::*;
+
+        proof fn stuff(a: PhantomData<u64>, b: PhantomData<u64>) {
+            assert(a == b);
+            assert(a == PhantomData::<u64>);
+        }
+
+        fn stuff2(a: PhantomData<u64>, b: PhantomData<u64>) {
+            assert(a == b);
+            let z = PhantomData::<u64>;
+            assert(a == z);
+        }
+    } => Ok(())
+}

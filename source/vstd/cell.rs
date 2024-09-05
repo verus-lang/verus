@@ -33,13 +33,13 @@ broadcast use super::map::group_map_axioms, super::set::group_set_axioms;
 /// a `PCell<V>` may be `Sync` (depending on `V`).
 /// Thanks to verification, Verus ensures that access to the cell is data-race-free.
 ///
-/// `PCell` uses a _ghost permission token_ similar to [`ptr::PPtr`] -- see the [`ptr::PPtr`]
+/// `PCell` uses a _ghost permission token_ similar to [`simple_pptr::PPtr`] -- see the [`simple_pptr::PPtr`]
 /// documentation for the basics.
 /// For `PCell`, the associated type of the permission token is [`cell::PointsTo`].
 ///
 /// ### Differences from `PPtr`.
 ///
-/// The key difference is that, whereas [`ptr::PPtr`] represents a fixed address in memory,
+/// The key difference is that, whereas [`simple_pptr::PPtr`] represents a fixed address in memory,
 /// a `PCell` has _no_ fixed address because a `PCell` might be moved.
 /// As such, the [`pcell.id()`](PCell::id) does not correspond to a memory address; rather,
 /// it is a unique identifier that is fixed for a given cell, even when it is moved.

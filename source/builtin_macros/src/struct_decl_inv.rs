@@ -921,16 +921,28 @@ fn get_concrete_args(type_path: &TypePath) -> parse::Result<Option<PartialType>>
             let mut infer_count = 0;
             let mut concrete_args: Vec<Type> = Vec::new();
 
-            let last_ident = &type_path.path.segments.last().unwrap().ident;
-            let is_atomic_ghost = match get_builtin_concrete_arg(&last_ident.to_string()) {
+            let mut args_iter = abga.args.iter();
+
+            let last_ident = type_path.path.segments.last().unwrap().ident.to_string();
+            let is_atomic_ghost = match get_builtin_concrete_arg(&last_ident) {
                 Some(a) => {
                     concrete_args.push(a);
+                    true
+                }
+                None if &last_ident == "AtomicPtr" => {
+                    let ty_opt = args_iter.next();
+                    let Some(ty) = ty_opt else {
+                        return Err(Error::new(type_path.span(), "AtomicPtr expects arguments"));
+                    };
+                    concrete_args.push(Type::Verbatim(quote! { *mut #ty }));
                     true
                 }
                 None => false,
             };
 
-            for arg in abga.args.iter() {
+            // For AtomicPtr, we skip the first argument
+            // (which was pulled out of the iterator earlier)
+            for arg in args_iter {
                 if let GenericArgument::Type(arg_type) = arg {
                     if let Type::Infer(_) = arg_type {
                         infer_count += 1;

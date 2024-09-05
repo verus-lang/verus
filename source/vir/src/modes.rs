@@ -998,6 +998,12 @@ fn check_expr_handle_mut_arg(
             }
             let (e1_mode_read, e1_mode_write) =
                 check_expr_handle_mut_arg(ctxt, record, typing, outer_mode, e1)?;
+
+            record
+                .type_inv_info
+                .field_loc_needs_check
+                .insert(expr.span.id, e1_mode_write != None && e1_mode_write != Some(Mode::Spec));
+
             let datatype = &ctxt.datatypes[datatype];
             let field = get_field(&datatype.x.get_variant(variant).fields, field);
             let field_mode = field.a.1;

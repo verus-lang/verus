@@ -1,14 +1,14 @@
 use crate::ast::{
     Fun, FunctionKind, Ident, Idents, ItemKind, Mode, SpannedTyped, Typ, TypX, Typs, VarBinder,
-    VarBinderX, VarIdent, VirErr,
+    VarBinderX, VirErr,
 };
 use crate::ast_util::{LowerUniqueVar, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_no_unwind_when,
     prefix_open_inv, prefix_pre_var, prefix_recursive_fun, prefix_requires, static_name,
-    suffix_global_id, suffix_typ_param_id, suffix_typ_param_ids, CommandsWithContext, SnapPos,
-    Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
+    suffix_global_id, suffix_typ_param_ids, CommandsWithContext, SnapPos, Spanned, FUEL_BOOL,
+    FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
 use crate::messages::{MessageLabel, Span};
 use crate::sst::FuncCheckSst;
@@ -766,23 +766,18 @@ pub fn func_axioms_to_air(
                 // so we can just return here.
                 return Ok((Arc::new(decl_commands), check_commands));
             }
-            if let Some((params, exp)) = &func_axioms_sst.proof_exec_axioms {
+            if let Some((params, exp, triggers)) = &func_axioms_sst.proof_exec_axioms {
                 let span = &function.span;
-                use crate::triggers::{typ_boxing, TriggerBoxing};
-                let mut vars: Vec<(VarIdent, TriggerBoxing)> = Vec::new();
                 let mut binders: Vec<VarBinder<Typ>> = Vec::new();
                 for name in function.x.typ_params.iter() {
-                    vars.push((suffix_typ_param_id(&name), TriggerBoxing::TypeId));
                     let typ = Arc::new(TypX::TypeId);
                     let bind = VarBinderX { name: crate::ast_util::typ_unique_var(name), a: typ };
                     binders.push(Arc::new(bind));
                 }
                 for param in params.iter() {
-                    vars.push((param.x.name.clone(), typ_boxing(ctx, &param.x.typ)));
                     binders.push(crate::ast_util::par_to_binder(&param));
                 }
-                let triggers = crate::triggers::build_triggers(ctx, span, &vars, &exp, false)?;
-                let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers);
+                let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers.clone());
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp.clone());
                 let forall: Arc<SpannedTyped<ExpX>> =
                     SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);

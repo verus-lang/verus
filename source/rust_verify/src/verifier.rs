@@ -1235,7 +1235,6 @@ impl Verifier {
         &mut self,
         reporter: &impl Diagnostics,
         krate: &vir::sst::KrateSst,
-        sst_map: vir::ast_to_sst_func::SstMap,
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
@@ -1358,7 +1357,7 @@ impl Verifier {
         let function_decl_commands = Arc::new(function_decl_commands);
 
         let bucket = self.get_bucket(bucket_id);
-        let mut opgen = OpGenerator::new(ctx, krate, sst_map, bucket.clone());
+        let mut opgen = OpGenerator::new(ctx, krate, bucket.clone());
         let mut all_context_ops = vec![];
         while let Some(mut function_opgen) = opgen.next()? {
             let diagnostics_to_report: std::cell::RefCell<
@@ -1903,7 +1902,7 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &poly_krate, &self.args.log_args.vir_log_option);
         }
 
-        let (krate_sst, sst_map) = vir::ast_to_sst_crate::ast_to_sst_krate(
+        let krate_sst = vir::ast_to_sst_crate::ast_to_sst_krate(
             &mut ctx,
             reporter,
             &self.get_bucket(bucket_id).funs,
@@ -1911,7 +1910,7 @@ impl Verifier {
         )?;
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
-            self.verify_bucket(reporter, &krate_sst, sst_map, source_map, bucket_id, &mut ctx)?;
+            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx)?;
 
         global_ctx = ctx.free();
 

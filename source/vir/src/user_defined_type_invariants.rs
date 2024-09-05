@@ -1,12 +1,14 @@
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionX, Path, SpannedTyped,
-    Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
+    CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionX, Path,
+    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent,
+    VarIdentDisambiguate, VirErr,
 };
 use crate::ast_util::undecorate_typ;
 use crate::def::Spanned;
 use crate::messages::Span;
 use crate::messages::{error, internal_error};
 use crate::modes::TypeInvInfo;
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -17,8 +19,8 @@ use std::sync::Arc;
 //  2. For any field update, add an assert that the type inv holds.
 //     Make sure to handle all the nested fields.
 //
-//  3. For any other Loc node we error.
-//     Right now these can only appear in a &mut argument to a call.
+//  3. For any call that takes &mut args to fields, add an assertion that
+//     after the call the struct meets the type invariant again.
 //
 // NOTE: we may need to revisit after more general &mut support lands.
 
@@ -29,6 +31,7 @@ pub(crate) fn annotate_user_defined_invariants(
     datatypes: &HashMap<Path, Datatype>,
 ) -> Result<(), VirErr> {
     let module = functionx.owning_module.as_ref().unwrap();
+    let id_cell = Cell::<u64>::new(0);
     functionx.body = Some(crate::ast_visitor::map_expr_visitor(
         functionx.body.as_ref().unwrap(),
         &|expr: &Expr| {
@@ -46,29 +49,32 @@ pub(crate) fn annotate_user_defined_invariants(
                     }
                 }
                 ExprX::Assign { lhs, .. } => {
-                    let mut new_asserts = asserts_for_lhs(info, functions, datatypes, module, lhs)?;
+                    let new_asserts = asserts_for_lhs(info, functions, datatypes, module, lhs)?;
                     if new_asserts.len() > 0 {
-                        new_asserts
-                            .insert(0, Spanned::new(expr.span.clone(), StmtX::Expr(expr.clone())));
-                        // typ should be unit
-                        let block = SpannedTyped::new(
-                            &expr.span,
-                            &expr.typ,
-                            ExprX::Block(Arc::new(new_asserts), None),
-                        );
-                        Ok(block)
+                        Ok(expr_followed_by_stmts(expr, new_asserts, &id_cell))
                     } else {
                         Ok(expr.clone())
                     }
                 }
                 ExprX::Call(CallTarget::Fun(_, fun, _, _, _), args) => {
                     let function = &functions.get(fun).unwrap();
+                    let mut all_asserts = vec![];
                     for (arg, param) in args.iter().zip(function.x.params.iter()) {
                         if param.x.is_mut {
-                            error_if_mut_ref_modifies_field_affecting_type_inv(datatypes, arg)?;
+                            let mut new_asserts =
+                                asserts_for_lhs(info, functions, datatypes, module, arg)?;
+                            all_asserts.append(&mut new_asserts);
                         }
                     }
-                    Ok(expr.clone())
+                    if all_asserts.len() > 0 {
+                        // TODO: this should go the solver
+                        check_func_is_no_unwind(&expr.span, functions, function)?;
+
+                        let stmts = all_asserts; //dedupe_asserts(all_asserts);
+                        Ok(expr_followed_by_stmts(expr, stmts, &id_cell))
+                    } else {
+                        Ok(expr.clone())
+                    }
                 }
                 ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: true, expr, fun: _ } => {
                     // Check that this is fine, and fill in the correct 'fun'
@@ -107,6 +113,64 @@ pub(crate) fn annotate_user_defined_invariants(
         },
     )?);
     Ok(())
+}
+
+fn is_unit(t: &Typ) -> bool {
+    if let TypX::Tuple(t) = &**t { t.len() == 0 } else { false }
+}
+
+fn check_func_is_no_unwind(
+    span: &Span,
+    functions: &HashMap<Fun, Function>,
+    function: &Function,
+) -> Result<(), VirErr> {
+    let function = match &function.x.kind {
+        FunctionKind::TraitMethodImpl { method, .. } => functions.get(method).unwrap(),
+        _ => function,
+    };
+    let unwind_spec = function.x.unwind_spec_or_default();
+    if !matches!(unwind_spec, UnwindSpec::NoUnwind) {
+        return Err(error(
+            span,
+            "this function call takes a &mut ref of a field of a datatype with a user-defined type invariant; thus, this function should be marked no_unwind (note: this check is currently implemented overly-conservatively and requires the function to be marked no_unwind in its signature)"
+        ).secondary_span(&function.span));
+    }
+    Ok(())
+}
+
+fn expr_followed_by_stmts(expr: &Expr, stmts: Vec<Stmt>, id_cell: &Cell<u64>) -> Expr {
+    let mut stmts = stmts;
+
+    if is_unit(&expr.typ) {
+        stmts.insert(0, Spanned::new(expr.span.clone(), StmtX::Expr(expr.clone())));
+        SpannedTyped::new(&expr.span, &expr.typ, ExprX::Block(Arc::new(stmts), None))
+    } else {
+        let id = id_cell.get();
+        id_cell.set(id + 1);
+        let ident = VarIdent(
+            Arc::new("tmp".to_string()),
+            VarIdentDisambiguate::UserDefinedTypeInvariantPass(id),
+        );
+
+        let decl = StmtX::Decl {
+            pattern: SpannedTyped::new(
+                &expr.span,
+                &expr.typ,
+                PatternX::Var { name: ident.clone(), mutable: false },
+            ),
+            mode: None,
+            init: Some(expr.clone()),
+        };
+        stmts.insert(0, Spanned::new(expr.span.clone(), decl));
+        SpannedTyped::new(
+            &expr.span,
+            &expr.typ,
+            ExprX::Block(
+                Arc::new(stmts),
+                Some(SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(ident))),
+            ),
+        )
+    }
 }
 
 fn assert_and_return(e: &Expr, function: &Function, module: &Path) -> Result<Expr, VirErr> {
@@ -153,26 +217,6 @@ fn typ_has_user_defined_type_invariant(datatypes: &HashMap<Path, Datatype>, typ:
     typ_get_user_defined_type_invariant(datatypes, typ).is_some()
 }
 
-fn error_if_mut_ref_modifies_field_affecting_type_inv(
-    datatypes: &HashMap<Path, Datatype>,
-    lhs: &Expr,
-) -> Result<(), VirErr> {
-    crate::ast_visitor::expr_visitor_check(lhs, &mut |_scope_map, expr| {
-        match &expr.x {
-            ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { .. }), inner) => {
-                if typ_has_user_defined_type_invariant(datatypes, &inner.typ) {
-                    return Err(error(
-                        &expr.span,
-                        "currently unsupported: taking a &mut ref to a field from a datatype with a type invariant",
-                    ));
-                }
-            }
-            _ => {}
-        }
-        Ok(())
-    })
-}
-
 /// Emits the necessary proof obligations for user-defined type invariants
 /// after an assignment like `x.a.b.c = e;`
 /// In such a case, proof obligations may be necessary for `x.a.b`, `x.a`, and `x`.
@@ -185,6 +229,7 @@ fn asserts_for_lhs(
 ) -> Result<Vec<Stmt>, VirErr> {
     let mut cur = lhs;
     let mut stmts: Vec<Stmt> = vec![];
+    // TODO: tuple fields
     loop {
         match &cur.x {
             ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { .. }), inner) => {
@@ -206,14 +251,20 @@ fn asserts_for_lhs(
             ExprX::Unary(UnaryOp::CoerceMode { .. }, inner) => {
                 cur = inner;
             }
+            ExprX::Ghost { alloc_wrapper: _, tracked: _, expr } => {
+                cur = expr;
+            }
             ExprX::VarLoc(_) => {
                 break;
+            }
+            ExprX::Loc(expr) => {
+                cur = expr;
             }
             _ => {
                 dbg!(&cur.x);
                 return Err(internal_error(
                     &cur.span,
-                    "assert_user_defined_type_invariants_for_assign missing case",
+                    "user_defined_type_invariants::asserts_for_lhs missing case",
                 ));
             }
         }
@@ -226,6 +277,7 @@ fn loc_to_normal_expr(e: &Expr) -> Expr {
         ExprX::VarLoc(ident) => {
             Ok(SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(ident.clone())))
         }
+        ExprX::Loc(e) => Ok(e.clone()),
         _ => Ok(expr.clone()),
     })
     .unwrap()
