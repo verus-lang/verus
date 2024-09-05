@@ -66,24 +66,20 @@
 - [Mutation, references, and borrowing]() <!--- Andrea --->
     - [Requires and ensures with mutable references]() <!--- Andrea --->
     - [Assertions containing mutable references]() <!--- Andrea --->
-- [Higher-order executable functions]()
+- [Traits]()
+- [Higher-order executable functions](./higher-order-fns.md)
     - [Passing functions as values](./exec_funs_as_values.md)
     - [Closures](./exec_closures.md)
-- [Traits]()
 - [Ghost and tracked variables]()
-- [Concurrency and Unsafe Code](concurrency_and_unsafe.md)
 - [Strings]() <!--- Andrea --->
     - [String library]() <!--- Andrea --->
     - [String literals]() <!--- Andrea --->
 - [Macros]()
 
-- [Verification and Rust]()
-  - [Why Rust?]()
-  - [Supported Rust features]()
-  - [Borrowing and lifetimes]()
-  - [Mutable borrows]()
-  - [Interior mutability](./interior_mutability.md)
-  - [Alternatives to unsafe](./alt-unsafe.md)
+- [Unsafe code & complex ownership](./complex_ownership.md)
+  - [Cells / interior mutability](./interior_mutability.md)
+  - [Pointers](./pointers.md)
+  - [Concurrency](concurrency.md)
 
 - [Understanding the guarantees of a verified program](./guarantees.md)
   - [Assumptions and trusted components](./tcb.md)
