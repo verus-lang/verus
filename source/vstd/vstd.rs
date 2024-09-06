@@ -48,6 +48,7 @@ pub mod seq;
 pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
+pub mod shared;
 #[cfg(feature = "alloc")]
 pub mod simple_pptr;
 pub mod slice;

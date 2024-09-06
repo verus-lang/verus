@@ -313,8 +313,12 @@ fn simpl_conjunct_stmt(
             let x2 = simpl_conjunct_vec(&es[1].1, None);
             let t = match (x1, x2) {
                 (None, None) => None,
-                (Some(e1), None) => Some(quote! { ::builtin::imply(#cond, {#e1}) }),
-                (None, Some(e2)) => Some(quote! { ::builtin::imply(!(#cond), {#e2}) }),
+                (Some(e1), None) => {
+                    Some(quote_vstd! { vstd => #vstd::prelude::imply(#cond, {#e1}) })
+                }
+                (None, Some(e2)) => {
+                    Some(quote_vstd! { vstd => #vstd::prelude::imply(!(#cond), {#e2}) })
+                }
                 (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
             };
 
