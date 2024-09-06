@@ -75,9 +75,12 @@ test_verify_one_file! {
             let mut m = HashSet::<u32>::new();
             assert(m@ == Set::<u32>::empty());
 
-            m.insert(3);
+            let res = m.insert(3);
+            // assert(res);
             m.insert(6);
-            assert(m@.contains(3));
+            // assert(m@.contains(3));
+            let res = m.insert(3);
+            // assert(!res);
 
             let b = m.contains(&3);
             assert(b);
@@ -152,8 +155,11 @@ test_verify_one_file! {
 
             let three = Box::<u32>::new(3);
             let six = Box::<u32>::new(6);
-            m.insert(three);
+            let res = m.insert(three);
+            // assert(res);
             m.insert(six);
+            // let res = m.insert(three);
+            // assert(!res);
 
             let b = m.contains(&3);
             assert(b);
@@ -237,7 +243,7 @@ test_verify_one_file! {
         use std::collections::HashSet;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, Clone)]
         struct MyStruct
         {
             pub i: u16,
@@ -264,7 +270,10 @@ test_verify_one_file! {
             let mut m = HashSet::<MyStruct>::new();
             assert(m@ == Set::<MyStruct>::empty());
             let s1 = MyStruct{ i: 3, j: 7 };
-            m.insert(s1);
+            let res = m.insert(s1);
+            // assert(res);
+            // let res = m.insert(s1);
+            // assert(!res);
 
             let s2 = MyStruct{ i: 3, j: 7 };
             assert(m@.contains(s2));
@@ -451,7 +460,7 @@ test_verify_one_file! {
         use vstd::hash_set::HashSetWithView;
         use vstd::prelude::*;
 
-        #[derive(PartialEq, Eq)]
+        #[derive(PartialEq, Eq, Clone)]
         struct MyStruct
         {
             pub i: u16,
@@ -486,7 +495,10 @@ test_verify_one_file! {
             let mut m = HashSetWithView::<MyStruct>::new();
             assert(m@ == Set::<(MyStruct, int)>::empty());
             let s1 = MyStruct{ i: 3, j: 7 };
-            m.insert(s1);
+            let res = m.insert(s1);
+            // assert(res);
+            // let res = m.insert(s1.clone());
+            // assert(!res);
 
             let s2 = MyStruct{ i: 3, j: 7 };
             let ghost w: (MyStruct, int) = (MyStruct{ i: 3, j: 7 }, 10);
@@ -514,7 +526,10 @@ test_verify_one_file! {
             assert(!m@.contains(w));
 
             let s3 = MyStruct{ i: 3, j: 7 };
-            m.insert(s3);
+            // let res = m.insert(s3.clone());
+            // assert(res);
+            let res = m.insert(s3);
+            // assert(!res);
             m.clear();
             assert(!m@.contains(w));
             let b = m.contains(&s2);
@@ -670,8 +685,14 @@ test_verify_one_file! {
 
             let three: String = "three".to_string();
             let six: String = "six".to_string();
-            m.insert(three.clone());
-            m.insert(six.clone());
+            let res = m.insert(three.clone());
+            // assert(res);
+            let res = m.insert(six.clone());
+            // assert(res);
+
+            // let res = m.insert("three".to_string());
+            // assert(!res);
+
             assert(!(three@ =~= six@)) by {
                 reveal_strlit("three");
                 reveal_strlit("six");

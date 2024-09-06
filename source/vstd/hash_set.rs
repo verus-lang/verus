@@ -70,19 +70,19 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     }
 
     #[verifier::external_body]
-    pub fn insert(&mut self, k: Key)
+    pub fn insert(&mut self, k: Key) -> (result: bool)
         ensures
-            self@ == old(self)@.insert(k@),
+            self@ == old(self)@.insert(k@) && result == !old(self)@.contains(k@)
     {
-        self.m.insert(k);
+        self.m.insert(k)
     }
 
     #[verifier::external_body]
-    pub fn remove(&mut self, k: &Key)
+    pub fn remove(&mut self, k: &Key) -> (result: bool)
         ensures
-            self@ == old(self)@.remove(k@),
+            self@ == old(self)@.remove(k@) && result == old(self)@.contains(k@)
     {
-        self.m.remove(k);
+        self.m.remove(k)
     }
 
     #[verifier::external_body]
@@ -170,19 +170,19 @@ impl StringHashSet {
     }
 
     #[verifier::external_body]
-    pub fn insert(&mut self, k: String)
+    pub fn insert(&mut self, k: String) -> (result: bool)
         ensures
-            self@ == old(self)@.insert(k@),
+            self@ == old(self)@.insert(k@) && result == !old(self)@.contains(k@)
     {
-        self.m.insert(k);
+        self.m.insert(k)
     }
 
     #[verifier::external_body]
-    pub fn remove(&mut self, k: &str)
+    pub fn remove(&mut self, k: &str) -> (result: bool)
         ensures
-            self@ == old(self)@.remove(k@),
+            self@ == old(self)@.remove(k@) && result == old(self)@.contains(k@)
     {
-        self.m.remove(k);
+        self.m.remove(k)
     }
 
     #[verifier::external_body]
