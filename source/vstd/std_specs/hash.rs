@@ -364,7 +364,10 @@ pub broadcast proof fn axiom_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q
 pub fn ex_hash_contains_key<Key, Value, S, Q>(m: &HashMap<Key, Value, S>, k: &Q) -> (result:
     bool) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
     ensures
-        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result == contains_borrowed_key(m@, k),
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result == contains_borrowed_key(
+            m@,
+            k,
+        ),
 {
     m.contains_key(k)
 }
@@ -449,7 +452,9 @@ pub broadcast proof fn axiom_deref_key_removed<Q, Value>(
     k: &Q,
 )
     ensures
-        #[trigger] borrowed_key_removed::<Q, Value, Q>(old_m, new_m, k) <==> new_m == old_m.remove(*k),
+        #[trigger] borrowed_key_removed::<Q, Value, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
+            *k,
+        ),
 {
     admit();
 }
@@ -613,7 +618,7 @@ pub fn ex_hash_set_contains<Key, S, Q>(m: &HashSet<Key, S>, k: &Q) -> (result: b
 // as `&str`, so in those cases `Q` would be `u32` and `str`
 // respectively.
 // To deal with this, we have a specification function that opaquely
-// specifies what it means for a returned reference to point to an 
+// specifies what it means for a returned reference to point to an
 // element of a HashSet. And the postcondition of `get` says that
 // its result matches the output of that specification function. (It
 // also says that its result corresponds to the output of
@@ -633,7 +638,9 @@ pub broadcast proof fn axiom_set_deref_key_to_value<Q>(m: Set<Q>, k: &Q, v: &Q)
 
 pub broadcast proof fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &Box<Q>)
     ensures
-        #[trigger] sets_borrowed_key_to_key::<Box<Q>, Q>(m, q, v) <==> (m.contains(*v) && Box::new(*q) == v),
+        #[trigger] sets_borrowed_key_to_key::<Box<Q>, Q>(m, q, v) <==> (m.contains(*v) && Box::new(
+            *q,
+        ) == v),
 {
     admit();
 }
@@ -662,7 +669,7 @@ pub fn ex_hash_set_get<'a, Key, S, Q>(m: &'a HashSet<Key, S>, k: &Q) -> (result:
 // that `old(self)@` and `self@` satisfy that relationship. (It also
 // says that its result corresponds to the output of
 // `set_contains_borrowed_key`, discussed above.) But this isn't very
-// helpful by itself, since there's no body to that specification 
+// helpful by itself, since there's no body to that specification
 // function. So we have special-case axioms that say what this means
 // in two important circumstances: (1) `Key = Q` and (2) `Key = Box<Q>`.
 pub spec fn sets_differ_by_borrowed_key<Key, Q: ?Sized>(
@@ -673,7 +680,9 @@ pub spec fn sets_differ_by_borrowed_key<Key, Q: ?Sized>(
 
 pub broadcast proof fn axiom_set_deref_key_removed<Q>(old_m: Set<Q>, new_m: Set<Q>, k: &Q)
     ensures
-        #[trigger] sets_differ_by_borrowed_key::<Q, Q>(old_m, new_m, k) <==> new_m == old_m.remove(*k),
+        #[trigger] sets_differ_by_borrowed_key::<Q, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
+            *k,
+        ),
 {
     admit();
 }
