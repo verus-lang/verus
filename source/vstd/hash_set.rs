@@ -220,7 +220,6 @@ pub broadcast proof fn axiom_string_hash_set_spec_len(m: &StringHashSet)
     admit();
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_hash_set_axioms {
     axiom_hash_set_with_view_spec_len,
     axiom_string_hash_set_spec_len,

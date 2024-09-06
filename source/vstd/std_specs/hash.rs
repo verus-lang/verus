@@ -709,7 +709,6 @@ pub fn ex_hash_set_clear<Key, S>(m: &mut HashSet<Key, S>)
     m.clear()
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_hash_axioms {
     axiom_box_key_removed,
     axiom_contains_deref_key,
