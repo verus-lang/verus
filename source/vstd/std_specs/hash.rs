@@ -579,14 +579,14 @@ pub fn ex_hash_set_insert<Key, S>(m: &mut HashSet<Key, S>, k: Key) -> (result: b
 // (2) `Key = Box<Q>`.
 pub spec fn set_contains_borrowed_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q) -> bool;
 
-pub broadcast proof fn axiom_sets_contains_deref_key<Q>(m: Set<Q>, k: &Q)
+pub broadcast proof fn axiom_set_contains_deref_key<Q>(m: Set<Q>, k: &Q)
     ensures
         #[trigger] set_contains_borrowed_key::<Q, Q>(m, k) <==> m.contains(*k),
 {
     admit();
 }
 
-pub broadcast proof fn axiom_sets_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
+pub broadcast proof fn axiom_set_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
     ensures
         #[trigger] set_contains_borrowed_key::<Box<Q>, Q>(m, k) <==> m.contains(Box::new(*k)),
 {
@@ -624,14 +624,14 @@ pub fn ex_hash_set_contains<Key, S, Q>(m: &HashSet<Key, S>, k: &Q) -> (result: b
 // Box<Q>`.
 pub spec fn sets_borrowed_key_to_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q, v: &Key) -> bool;
 
-pub broadcast proof fn axiom_sets_deref_key_to_value<Q>(m: Set<Q>, k: &Q, v: &Q)
+pub broadcast proof fn axiom_set_deref_key_to_value<Q>(m: Set<Q>, k: &Q, v: &Q)
     ensures
         #[trigger] sets_borrowed_key_to_key::<Q, Q>(m, k, v) <==> m.contains(*k) && k == v,
 {
     admit();
 }
 
-pub broadcast proof fn axiom_sets_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &Box<Q>)
+pub broadcast proof fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &Box<Q>)
     ensures
         #[trigger] sets_borrowed_key_to_key::<Box<Q>, Q>(m, q, v) <==> (m.contains(*v) && Box::new(*q) == v),
 {
@@ -671,14 +671,14 @@ pub spec fn sets_differ_by_borrowed_key<Key, Q: ?Sized>(
     k: &Q,
 ) -> bool;
 
-pub broadcast proof fn axiom_sets_deref_key_removed<Q>(old_m: Set<Q>, new_m: Set<Q>, k: &Q)
+pub broadcast proof fn axiom_set_deref_key_removed<Q>(old_m: Set<Q>, new_m: Set<Q>, k: &Q)
     ensures
         #[trigger] sets_differ_by_borrowed_key::<Q, Q>(old_m, new_m, k) <==> new_m == old_m.remove(*k),
 {
     admit();
 }
 
-pub broadcast proof fn axiom_sets_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: Set<Box<Q>>, q: &Q)
+pub broadcast proof fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: Set<Box<Q>>, q: &Q)
     ensures
         #[trigger] sets_differ_by_borrowed_key::<Box<Q>, Q>(old_m, new_m, q) <==> new_m
             == old_m.remove(Box::new(*q)),
@@ -732,12 +732,12 @@ pub broadcast group group_hash_axioms {
     axiom_box_integer_type_obeys_hash_table_key_model,
     axiom_random_state_builds_valid_hashers,
     axiom_spec_hash_map_len,
-    axiom_sets_box_key_removed,
-    axiom_sets_contains_deref_key,
-    axiom_sets_contains_box,
-    axiom_sets_deref_key_removed,
-    axiom_sets_deref_key_to_value,
-    axiom_sets_box_key_to_value,
+    axiom_set_box_key_removed,
+    axiom_set_contains_deref_key,
+    axiom_set_contains_box,
+    axiom_set_deref_key_removed,
+    axiom_set_deref_key_to_value,
+    axiom_set_box_key_to_value,
     axiom_spec_hash_set_len,
 }
 
