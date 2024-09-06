@@ -1,6 +1,6 @@
 # Using assert and assume to develop proofs
 
-The previous section started with an outline of proof:
+In [an earlier chapter](./spec_lib.md), we started with an outline of a proof:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect_fail}}

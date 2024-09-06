@@ -30,7 +30,7 @@ fn get(&self, i: usize) -> (res: T)
 This effectively says:
 
  * If `i < self.len()`, then the function will not unwind.
- * If the function returns normally, then `i < self.len()` (conversely, if `i >= self.len()`, then the function must unwind).
+ * If the function returns normally, then `i < self.len()` (equivalently, if `i >= self.len()`, then the function must unwind).
 
 ## Restrictions with invariants
 
