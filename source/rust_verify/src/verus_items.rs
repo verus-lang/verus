@@ -287,6 +287,7 @@ pub(crate) enum VstdItem {
     SliceIndexGet,
     CastPtrToThinPtr,
     CastArrayPtrToSlicePtr,
+    CastPtrToUsize,
     VecIndex,
 }
 
@@ -331,6 +332,7 @@ pub(crate) enum VerusItem {
     UnaryOp(UnaryOpItem),
     Chained(ChainedItem),
     Assert(AssertItem),
+    UseTypeInvariant,
     WithTriggers,
     OpenInvariantBlock(OpenInvariantBlockItem),
     Vstd(VstdItem, Option<Ident>),
@@ -446,6 +448,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::assert_bitvector_by",     VerusItem::Assert(AssertItem::AssertBitvectorBy)),
         ("verus::builtin::assert_forall_by",        VerusItem::Assert(AssertItem::AssertForallBy)),
         ("verus::builtin::assert_bit_vector",       VerusItem::Assert(AssertItem::AssertBitVector)),
+        ("verus::builtin::use_type_invariant",      VerusItem::UseTypeInvariant),
 
         ("verus::builtin::with_triggers",           VerusItem::WithTriggers),
 
@@ -489,6 +492,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::slice::slice_index_get", VerusItem::Vstd(VstdItem::SliceIndexGet, Some(Arc::new("slice::slice_index_get".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_thin_ptr", VerusItem::Vstd(VstdItem::CastPtrToThinPtr, Some(Arc::new("raw_ptr::cast_ptr_to_thin_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_array_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastArrayPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_array_ptr_to_slice_ptr".to_owned())))),
+        ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
         ("verus::builtin::Structural",              VerusItem::Marker(MarkerItem::Structural)),
@@ -591,6 +595,7 @@ pub(crate) enum RustItem {
     ResidualTraitFromResidual,
     IntoIterFn,
     ManuallyDrop,
+    PhantomData,
     Destruct,
 }
 
@@ -634,6 +639,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().manually_drop() == Some(def_id) {
         return Some(RustItem::ManuallyDrop);
+    }
+    if tcx.lang_items().phantom_data() == Some(def_id) {
+        return Some(RustItem::PhantomData);
     }
     if tcx.lang_items().destruct_trait() == Some(def_id) {
         return Some(RustItem::Destruct);

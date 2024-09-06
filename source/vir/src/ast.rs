@@ -73,6 +73,7 @@ pub enum VarIdentDisambiguate {
     VirTemp(u64),
     ExpandErrorsDecl(u64),
     BitVectorToAirDecl(u64),
+    UserDefinedTypeInvariantPass(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -938,6 +939,8 @@ pub struct FunctionAttrsX {
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
     pub broadcast_forall: bool,
+    /// Only create global axioms; don't declare req/ens functions (set by prune.rs)
+    pub broadcast_forall_only: bool,
     /// In triggers_auto, don't use this function as a trigger
     pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails
@@ -1123,10 +1126,6 @@ pub struct RevealGroupX {
     pub visibility: Visibility,
     /// Owning module
     pub owning_module: Option<Path>,
-    /// If true, then prune away group unless either the module that contains the group is used.
-    /// (Without this, importing vstd would recursively reach and encode all the
-    /// broadcast_forall declarations in all of vstd, defeating much of the purpose of prune.rs.)
-    pub prune_unless_this_module_is_used: bool,
     /// If Some(crate_name), this group is revealed by default for crates that import crate_name.
     /// No more than one such group is allowed in each crate.
     pub broadcast_use_by_default_when_this_crate_is_imported: Option<Ident>,

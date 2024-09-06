@@ -68,6 +68,100 @@ macro_rules! num_specs {
             {
                 x.wrapping_sub(y)
             }
+
+            pub open spec fn checked_add(x: $uN, y: $uN) -> Option<$uN> {
+                if x + y > <$uN>::MAX {
+                    None
+                } else {
+                    Some((x + y) as $uN)
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(checked_add)]
+            pub fn ex_checked_add(x: $uN, y: $uN) -> (res: Option<$uN>)
+                ensures res == checked_add(x, y)
+            {
+                x.checked_add(y)
+            }
+
+            pub open spec fn checked_add_signed(x: $uN, y: $iN) -> Option<$uN> {
+                if x + y > <$uN>::MAX || x + y < 0 {
+                    None
+                } else {
+                    Some((x + y) as $uN)
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(checked_add_signed)]
+            pub fn ex_checked_add_signed(x: $uN, y: $iN) -> (res: Option<$uN>)
+                ensures res == checked_add_signed(x, y)
+            {
+                x.checked_add_signed(y)
+            }
+
+            pub open spec fn checked_sub(x: $uN, y: $uN) -> Option<$uN> {
+                if x - y < 0 {
+                    None
+                } else {
+                    Some((x - y) as $uN)
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(checked_sub)]
+            pub fn ex_checked_sub(x: $uN, y: $uN) -> (res: Option<$uN>)
+                ensures res == checked_sub(x, y)
+            {
+                x.checked_sub(y)
+            }
+
+            pub open spec fn checked_mul(x: $uN, y: $uN) -> Option<$uN> {
+                if x * y > <$uN>::MAX {
+                    None
+                } else {
+                    Some((x * y) as $uN)
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(checked_mul)]
+            pub fn ex_checked_mul(lhs: $uN, rhs: $uN) -> (result: Option<$uN>)
+                ensures
+                    result == checked_mul(lhs, rhs)
+            {
+                lhs.checked_mul(rhs)
+            }
+
+            pub open spec fn checked_div(x: $uN, y: $uN) -> Option<$uN> {
+                if y == 0 {
+                    None
+                } else {
+                    Some(x / y)
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(checked_div)]
+            pub fn ex_checked_div(lhs: $uN, rhs: $uN) -> (result: Option<$uN>)
+                ensures
+                    result == checked_div(lhs, rhs)
+            {
+                lhs.checked_div(rhs)
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(checked_div)]
+            pub fn ex_checked_div_euclid(lhs: $uN, rhs: $uN) -> (result: Option<$uN>)
+                ensures
+                    // checked_div is the same as checked_div_euclid for unsigned ints
+                    result == checked_div(lhs, rhs)
+            {
+                lhs.checked_div_euclid(rhs)
+            }
+
+
         }
 
         // Signed ints (i8, i16, etc.)
@@ -153,6 +247,86 @@ macro_rules! num_specs {
             {
                 x.wrapping_mul(y)
             }
+
+            pub open spec fn checked_add(x: $iN, y: $iN) -> Option<$iN> {
+                if x + y > <$iN>::MAX || x + y < <$iN>::MIN {
+                    None
+                } else {
+                    Some((x + y) as $iN)
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(checked_add)]
+            pub fn ex_checked_add(x: $iN, y: $iN) -> (res: Option<$iN>)
+                ensures res == checked_add(x, y)
+            {
+                x.checked_add(y)
+            }
+
+            pub open spec fn checked_add_unsigned(x: $iN, y: $uN) -> Option<$iN> {
+                if x + y > <$iN>::MAX {
+                    None
+                } else {
+                    Some((x + y) as $iN)
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(checked_add_unsigned)]
+            pub fn ex_checked_add_unsigned(x: $iN, y: $uN) -> (res: Option<$iN>)
+                ensures res == checked_add_unsigned(x, y)
+            {
+                x.checked_add_unsigned(y)
+            }
+
+            pub open spec fn checked_sub(x: $iN, y: $iN) -> Option<$iN> {
+                if x - y > <$iN>::MAX || x - y < <$iN>::MIN {
+                    None
+                } else {
+                    Some((x - y) as $iN)
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(checked_sub)]
+            pub fn ex_checked_sub(x: $iN, y: $iN) -> (res: Option<$iN>)
+                ensures res == checked_sub(x, y)
+            {
+                x.checked_sub(y)
+            }
+
+            pub open spec fn checked_sub_unsigned(x: $iN, y: $uN) -> Option<$iN> {
+                if x - y < <$iN>::MIN {
+                    None
+                } else {
+                    Some((x - y) as $iN)
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(checked_sub_unsigned)]
+            pub fn ex_checked_sub_unsigned(x: $iN, y: $uN) -> (res: Option<$iN>)
+                ensures res == checked_sub_unsigned(x, y)
+            {
+                x.checked_sub_unsigned(y)
+            }
+
+            pub open spec fn checked_mul(x: $iN, y: $iN) -> Option<$iN> {
+                if x * y > <$iN>::MAX || x * y < <$iN>::MIN {
+                    None
+                } else {
+                    Some((x * y) as $iN)
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(checked_mul)]
+            pub fn ex_checked_mul(x: $iN, y: $iN) -> (res: Option<$iN>)
+                ensures res == checked_mul(x, y)
+            {
+                x.checked_mul(y)
+            }
         }
 
         }
@@ -168,61 +342,8 @@ num_specs!(usize, isize, usize_specs, isize_specs, (usize::MAX - usize::MIN + 1)
 
 verus! {
 
+// TODO move all these into the num_specs! macro to handle them for other integer widths
 // == u32 methods ==
-#[verifier::external_fn_specification]
-pub fn ex_u32_checked_add(lhs: u32, rhs: u32) -> (result: Option<u32>)
-    ensures
-        lhs + rhs > u32::MAX ==> result.is_None(),
-        lhs + rhs <= u32::MAX ==> result == Some((lhs + rhs) as u32),
-{
-    lhs.checked_add(rhs)
-}
-
-#[verifier::external_fn_specification]
-pub fn ex_u32_checked_add_signed(lhs: u32, rhs: i32) -> (result: Option<u32>)
-    ensures
-        lhs + rhs > u32::MAX || lhs + rhs < 0 ==> result.is_None(),
-        lhs + rhs <= u32::MAX ==> result == Some((lhs + rhs) as u32),
-{
-    lhs.checked_add_signed(rhs)
-}
-
-#[verifier::external_fn_specification]
-pub fn ex_u32_checked_sub(lhs: u32, rhs: u32) -> (result: Option<u32>)
-    ensures
-        lhs - rhs < 0 ==> result.is_None(),
-        lhs - rhs >= 0 ==> result == Some((lhs - rhs) as u32),
-{
-    lhs.checked_sub(rhs)
-}
-
-#[verifier::external_fn_specification]
-pub fn ex_u32_checked_mul(lhs: u32, rhs: u32) -> (result: Option<u32>)
-    ensures
-        lhs * rhs > u32::MAX ==> result.is_None(),
-        lhs * rhs <= u32::MAX ==> result == Some((lhs * rhs) as u32),
-{
-    lhs.checked_mul(rhs)
-}
-
-#[verifier::external_fn_specification]
-pub fn ex_u32_checked_div(lhs: u32, rhs: u32) -> (result: Option<u32>)
-    ensures
-        rhs == 0 ==> result.is_None(),
-        rhs != 0 ==> result == Some((lhs / rhs) as u32),
-{
-    lhs.checked_div(rhs)
-}
-
-#[verifier::external_fn_specification]
-pub fn ex_u32_checked_div_euclid(lhs: u32, rhs: u32) -> (result: Option<u32>)
-    ensures
-        rhs == 0 ==> result.is_None(),
-        rhs != 0 ==> result == Some((lhs / rhs) as u32),
-{
-    lhs.checked_div_euclid(rhs)
-}
-
 #[verifier::external_fn_specification]
 pub fn ex_u32_checked_rem(lhs: u32, rhs: u32) -> (result: Option<u32>)
     ensures
@@ -242,51 +363,6 @@ pub fn ex_u32_checked_rem_euclid(lhs: u32, rhs: u32) -> (result: Option<u32>)
 }
 
 // == i32 methods ==
-#[verifier::external_fn_specification]
-pub fn ex_i32_checked_add(lhs: i32, rhs: i32) -> (result: Option<i32>)
-    ensures
-        lhs + rhs > i32::MAX || lhs + rhs < i32::MIN ==> result.is_None(),
-        i32::MIN <= lhs + rhs <= i32::MAX ==> result == Some((lhs + rhs) as i32),
-{
-    lhs.checked_add(rhs)
-}
-
-#[verifier::external_fn_specification]
-pub fn ex_i32_checked_add_unsigned(lhs: i32, rhs: u32) -> (result: Option<i32>)
-    ensures
-        lhs + rhs > i32::MAX ==> result.is_None(),
-        lhs + rhs <= i32::MAX ==> result == Some((lhs + rhs) as i32),
-{
-    lhs.checked_add_unsigned(rhs)
-}
-
-#[verifier::external_fn_specification]
-pub fn ex_i32_checked_sub(lhs: i32, rhs: i32) -> (result: Option<i32>)
-    ensures
-        lhs - rhs > i32::MAX || lhs - rhs < i32::MIN ==> result.is_None(),
-        i32::MIN <= lhs - rhs <= i32::MAX ==> result == Some((lhs - rhs) as i32),
-{
-    lhs.checked_sub(rhs)
-}
-
-#[verifier::external_fn_specification]
-pub fn ex_i32_checked_sub_unsigned(lhs: i32, rhs: u32) -> (result: Option<i32>)
-    ensures
-        lhs - rhs < i32::MIN ==> result.is_None(),
-        i32::MIN <= lhs - rhs ==> result == Some((lhs - rhs) as i32),
-{
-    lhs.checked_sub_unsigned(rhs)
-}
-
-#[verifier::external_fn_specification]
-pub fn ex_i32_checked_mul(lhs: i32, rhs: i32) -> (result: Option<i32>)
-    ensures
-        lhs * rhs < i32::MIN || lhs * rhs > i32::MAX ==> result.is_None(),
-        i32::MIN <= lhs * rhs <= i32::MAX ==> result == Some((lhs * rhs) as i32),
-{
-    lhs.checked_mul(rhs)
-}
-
 #[verifier::external_fn_specification]
 pub fn ex_i32_checked_div(lhs: i32, rhs: i32) -> (result: Option<i32>)
     ensures

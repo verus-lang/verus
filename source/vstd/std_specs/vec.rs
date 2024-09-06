@@ -125,6 +125,7 @@ pub fn ex_vec_pop<T, A: Allocator>(vec: &mut Vec<T, A>) -> (value: Option<T>)
 pub fn ex_vec_append<T, A: Allocator>(vec: &mut Vec<T, A>, other: &mut Vec<T, A>)
     ensures
         vec@ == old(vec)@ + old(other)@,
+        other@ == Seq::<T>::empty(),
 {
     vec.append(other)
 }
@@ -212,11 +213,10 @@ pub fn ex_vec_clone<T: Clone, A: Allocator + Clone>(vec: &Vec<T, A>) -> (res: Ve
     vec.clone()
 }
 
-/*
-//TODO: improve pruning so that this is pruned away unless vec_clone_trigger is used
-#[verifier::external_body]
-#[verifier::broadcast_forall]
-pub proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(v1: Vec<T, A>, v2: Vec<T, A>)
+pub broadcast proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(
+    v1: Vec<T, A>,
+    v2: Vec<T, A>,
+)
     requires
         #[trigger] vec_clone_trigger(v1, v2),
         v1.deep_view() =~= v2.deep_view(),
@@ -224,7 +224,6 @@ pub proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(v1: Vec<T, A>,
         v1.deep_view() == v2.deep_view(),
 {
 }
-*/
 
 #[verifier::external_fn_specification]
 pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
@@ -235,9 +234,19 @@ pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
     vec.truncate(len)
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
+    requires
+        0 <= i < v.len(),
+    ensures
+        #[trigger] (decreases_to!(v => v[i])),
+{
+    admit();
+}
+
 pub broadcast group group_vec_axioms {
     axiom_spec_len,
+    axiom_vec_index_decreases,
+    vec_clone_deep_view_proof,
 }
 
 } // verus!

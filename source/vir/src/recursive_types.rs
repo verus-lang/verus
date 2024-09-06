@@ -528,7 +528,9 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
             err = err.secondary_label(&span, msg);
         };
         match node {
-            Node::Fun(fun) | Node::TraitImpl(ImplPath::FnDefImplPath(fun)) => {
+            Node::Fun(fun)
+            | Node::TraitImpl(ImplPath::FnDefImplPath(fun))
+            | Node::TraitReqEns(ImplPath::FnDefImplPath(fun), _) => {
                 if let Some(f) = krate.functions.iter().find(|f| f.x.name == *fun) {
                     let span = f.span.clone();
                     push(span, ": function definition, whose body may have dependencies");
@@ -546,7 +548,8 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
                     push(span, ": declaration of trait");
                 }
             }
-            Node::TraitImpl(ImplPath::TraitImplPath(impl_path)) => {
+            Node::TraitImpl(ImplPath::TraitImplPath(impl_path))
+            | Node::TraitReqEns(ImplPath::TraitImplPath(impl_path), _) => {
                 if let Some(t) =
                     krate.trait_impls.iter().find(|t| t.x.impl_path.clone() == *impl_path)
                 {
@@ -637,6 +640,7 @@ pub(crate) fn add_trait_impl_to_graph(
     // Add necessary impl_T_for_* --> impl_Ui_for_* edges
     // This corresponds to instantiating the a: Dictionary_U<A> field in the comments below
     let trait_impl_src_node = Node::TraitImpl(ImplPath::TraitImplPath(t.x.impl_path.clone()));
+    let req_ens_src_node = Node::TraitReqEns(ImplPath::TraitImplPath(t.x.impl_path.clone()), false);
     let src_node = new_span_info_node(
         span_infos,
         t.x.trait_typ_arg_impls.span.clone(),
@@ -653,6 +657,7 @@ pub(crate) fn add_trait_impl_to_graph(
     for imp in t.x.trait_typ_arg_impls.x.iter() {
         if ImplPath::TraitImplPath(t.x.impl_path.clone()) != *imp {
             call_graph.add_edge(src_node.clone(), Node::TraitImpl(imp.clone()));
+            call_graph.add_edge(req_ens_src_node.clone(), Node::TraitReqEns(imp.clone(), true));
         }
     }
     // Add impl_T_for_* --> T
@@ -833,7 +838,8 @@ pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
         for node in ctx.func_call_graph.get_scc_nodes(scc).iter() {
             match node {
                 // handled by decreases checking:
-                Node::Fun(_) => {}
+                Node::Fun(_) | Node::TraitReqEns(..) => {}
+                // disallowed cycles:
                 _ if ctx.func_call_graph.node_is_in_cycle(node) => {
                     return Err(scc_error(
                         krate,

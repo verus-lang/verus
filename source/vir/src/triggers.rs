@@ -192,7 +192,8 @@ fn check_trigger_expr(
         | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
         | ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, _)
         | ExpX::Unary(UnaryOp::Trigger(_) | UnaryOp::HeightTrigger, _) => {}
-        ExpX::Binary(BinaryOp::Bitwise(_, _), _, _) | ExpX::Unary(UnaryOp::BitNot(_), _) => {}
+        ExpX::Binary(BinaryOp::Bitwise(_, _) | BinaryOp::ArrayIndex, _, _) => {}
+        ExpX::Unary(UnaryOp::BitNot(_), _) => {}
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(..), _, _) => {}
         ExpX::Unary(UnaryOp::Clip { .. }, _) | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
         _ => {
@@ -217,7 +218,7 @@ fn check_trigger_expr(
         &mut |exp, _scope_map| match &exp.x {
             ExpX::Const(_) => Ok(()),
             ExpX::StaticVar(_) => Ok(()),
-            ExpX::CallLambda(_, _, args) => check_trigger_expr_args(state, true, args),
+            ExpX::CallLambda(_, args) => check_trigger_expr_args(state, true, args),
             ExpX::Ctor(_, _, bs) => {
                 for b in bs.iter() {
                     check_trigger_expr_arg(state, true, &b.a)?;
@@ -295,7 +296,12 @@ fn check_trigger_expr(
                         "triggers cannot contain interior is_smaller_than expressions",
                     )),
                     Inequality(_) => Err(error(&exp.span, "triggers cannot contain inequalities")),
-                    StrGetChar | ArrayIndex | Bitwise(..) => {
+                    StrGetChar | Bitwise(..) => {
+                        check_trigger_expr_arg(state, true, arg1)?;
+                        check_trigger_expr_arg(state, true, arg2)
+                    }
+                    ArrayIndex => {
+                        crate::ast_visitor::map_typ_visitor_env(&arg1.typ, free_vars, &ft).unwrap();
                         check_trigger_expr_arg(state, true, arg1)?;
                         check_trigger_expr_arg(state, true, arg2)
                     }

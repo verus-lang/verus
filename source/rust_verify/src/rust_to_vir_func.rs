@@ -501,7 +501,6 @@ fn create_reveal_group<'tcx>(
                 name: name.clone(),
                 visibility,
                 owning_module: Some(module_path.clone()),
-                prune_unless_this_module_is_used: vattrs.prune_unless_this_module_is_used,
                 broadcast_use_by_default_when_this_crate_is_imported,
                 members: Arc::new(members),
             };
@@ -539,6 +538,7 @@ fn make_attributes(
         custom_req_err,
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
+        broadcast_forall_only: false,
         bit_vector: vattrs.bit_vector,
         autospec,
         atomic: vattrs.atomic,
@@ -658,7 +658,12 @@ pub(crate) fn check_item_fn<'tcx>(
             decl,
             span: _,
         } => {
-            unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
+            if mode != Mode::Exec && *unsafety != Unsafety::Normal {
+                return err_span(
+                    sig.span,
+                    format!("'unsafe' only makes sense on exec-mode functions"),
+                );
+            }
             check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?
         }
     };

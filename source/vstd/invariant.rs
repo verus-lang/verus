@@ -379,7 +379,7 @@ pub fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) {
 /// `#[verifier::atomic)]`; however, this is not useful for very much other than defining
 /// wrappers around the existing atomic operations from [`PAtomic`](crate::atomic).
 /// Note that reading and writing through a [`PCell`](crate::cell::PCell)
-/// or a [`PPtr`](crate::ptr::PPtr) are _not_ atomic operations.
+/// or a [`PPtr`](crate::simple_pptr::PPtr) are _not_ atomic operations.
 ///
 /// **Note:** Rather than using `open_atomic_invariant!` directly, we generally recommend
 /// using the [`atomic_ghost` APIs](crate::atomic_ghost).

@@ -214,11 +214,10 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                 let es = self.visit_exps(es)?;
                 R::ret(|| exp_new(ExpX::Call(R::get(fun), R::get_vec_a(ts), R::get_vec_a(es))))
             }
-            ExpX::CallLambda(typ, e0, es) => {
-                let typ = self.visit_typ(typ)?;
+            ExpX::CallLambda(e0, es) => {
                 let e0 = self.visit_exp(e0)?;
                 let es = self.visit_exps(es)?;
-                R::ret(|| exp_new(ExpX::CallLambda(R::get(typ), R::get(e0), R::get_vec_a(es))))
+                R::ret(|| exp_new(ExpX::CallLambda(R::get(e0), R::get_vec_a(es))))
             }
             ExpX::Ctor(path, ident, binders) => {
                 let binders = R::map_vec(binders, &mut |b| self.visit_binder_exp(b))?;
@@ -655,11 +654,13 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
 
     fn visit_func_axioms(&mut self, axioms: &FuncAxiomsSst) -> Result<R::Ret<FuncAxiomsSst>, Err> {
         let spec_axioms = R::map_opt(&axioms.spec_axioms, &mut |f| self.visit_func_body(f))?;
-        let proof_exec_axioms = R::map_opt(&axioms.proof_exec_axioms, &mut |(pars, exp)| {
-            let pars = self.visit_pars(&pars)?;
-            let exp = self.visit_exp(&exp)?;
-            R::ret(|| (R::get_vec_a(pars), R::get(exp)))
-        })?;
+        let proof_exec_axioms =
+            R::map_opt(&axioms.proof_exec_axioms, &mut |(pars, exp, trigs)| {
+                let pars = self.visit_pars(&pars)?;
+                let exp = self.visit_exp(&exp)?;
+                let trigs = self.visit_triggers(&trigs)?;
+                R::ret(|| (R::get_vec_a(pars), R::get(exp), R::get(trigs)))
+            })?;
         R::ret(|| FuncAxiomsSst {
             spec_axioms: R::get_opt(spec_axioms),
             proof_exec_axioms: R::get_opt(proof_exec_axioms),

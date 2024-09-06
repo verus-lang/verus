@@ -53,6 +53,7 @@ const SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
 pub const PREFIX_EXPAND_ERRORS_TEMP_VAR: &str = "expand%";
 const BITVEC_TMP_DECL_SEPARATOR: &str = "bitvectmp%";
+const USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR: &str = "userdeftypeinvpass%";
 const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
@@ -65,6 +66,7 @@ const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
+const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
@@ -432,6 +434,10 @@ pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
         PROJECT_SEPARATOR,
         name.to_string()
     ))
+}
+
+pub fn proj_param(i: usize) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_PROJECT_PARAM, i))
 }
 
 pub fn trait_bound(trait_path: &Path) -> Ident {
@@ -854,6 +860,10 @@ pub fn unique_var_name(
         }
         VarIdentDisambiguate::BitVectorToAirDecl(id) => {
             out.push_str(BITVEC_TMP_DECL_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
+        VarIdentDisambiguate::UserDefinedTypeInvariantPass(id) => {
+            out.push_str(USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
     }

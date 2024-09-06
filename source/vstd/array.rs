@@ -6,11 +6,15 @@ use super::view::*;
 
 verus! {
 
+pub open spec fn array_view<T, const N: usize>(a: [T; N]) -> Seq<T> {
+    Seq::new(N as nat, |i: int| array_index(a, i))
+}
+
 impl<T, const N: usize> View for [T; N] {
     type V = Seq<T>;
 
     open spec fn view(&self) -> Seq<T> {
-        Seq::new(N as nat, |i: int| array_index(*self, i))
+        array_view(*self)
     }
 }
 
@@ -40,6 +44,16 @@ impl<T, const N: usize> ArrayAdditionalSpecFns<T> for [T; N] {
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
     }
+}
+
+// Automatically introduce a[0], ..., a[N - 1] into SMT context
+pub broadcast proof fn lemma_array_index<T, const N: usize>(a: [T; N], i: int)
+    requires
+        0 <= i < N,
+    ensures
+        #![trigger array_index(a, i)]
+        a[i] == array_view(a)[i],
+{
 }
 
 impl<T, const N: usize> ArrayAdditionalExecFns<T> for [T; N] {
@@ -125,9 +139,9 @@ pub fn array_fill_for_copy_types<T: Copy, const N: usize>(t: T) -> (res: [T; N])
     [t;N]
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_array_axioms {
     array_len_matches_n,
+    lemma_array_index,
     axiom_spec_array_as_slice,
     axiom_spec_array_fill_for_copy_type,
 }

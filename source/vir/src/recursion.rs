@@ -30,6 +30,7 @@ pub enum Node {
     Datatype(Path),
     Trait(Path),
     TraitImpl(ImplPath),
+    TraitReqEns(ImplPath, bool),
     ModuleReveal(Path),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
@@ -244,14 +245,10 @@ pub(crate) fn mk_decreases_at_entry(
     Ok((decls, stm_assigns))
 }
 
-/// fuel param:
-/// `None` for normal case (the usual 'fuel' param)
-/// `Some(fuel)` means use a constant fuel
 pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
     function: &crate::sst::FunctionSst,
     body: &Exp,
-    fuel: Option<usize>,
 ) -> Result<(Exp, crate::recursion::Node), VirErr> {
     let caller_node = Node::Fun(function.x.name.clone());
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&caller_node);
@@ -282,10 +279,7 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
                 && ctx.func_map[&resolve(x, typs, resolved_method).0].x.body.is_some() =>
         {
             let mut args = (**args).clone();
-            let varx = match fuel {
-                None => ExpX::Var(unique_local(&&air_unique_var(FUEL_PARAM))),
-                Some(f) => ExpX::FuelConst(f),
-            };
+            let varx = ExpX::Var(unique_local(&&air_unique_var(FUEL_PARAM)));
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
             let (name, ts) = resolve(x, typs, resolved_method);
@@ -296,6 +290,18 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     });
 
     Ok((body, scc_rep))
+}
+
+pub(crate) fn rewrite_rec_call_with_fuel_const(body: &Exp, fuel: usize) -> Exp {
+    map_exp_visitor(&body, &mut |exp| match &exp.x {
+        ExpX::Call(CallFun::Recursive(r), typs, args) => {
+            let mut args = (**args).clone();
+            let arg_fuel = args.last_mut().expect("args.last");
+            *arg_fuel = arg_fuel.new_x(ExpX::FuelConst(fuel));
+            exp.new_x(ExpX::Call(CallFun::Recursive(r.clone()), typs.clone(), Arc::new(args)))
+        }
+        _ => exp.clone(),
+    })
 }
 
 fn check_termination<'a>(
@@ -414,11 +420,27 @@ pub(crate) fn expand_call_graph(
     }
 
     // Add D: T --> f and f --> T where f is one of D's methods that implements T
+    // Also add ReqEns(D: T, true) --> f --> ReqEns(D: T, false) to make T's requires/ensures
+    // as concrete as possible
     if let FunctionKind::TraitMethodImpl { trait_path, impl_path, .. } = function.x.kind.clone() {
         let t_node = Node::Trait(trait_path.clone());
         let impl_node = Node::TraitImpl(ImplPath::TraitImplPath(impl_path.clone()));
+        let req_ens_node_t = Node::TraitReqEns(ImplPath::TraitImplPath(impl_path.clone()), true);
+        let req_ens_node_f = Node::TraitReqEns(ImplPath::TraitImplPath(impl_path.clone()), false);
         call_graph.add_edge(impl_node, f_node.clone());
         call_graph.add_edge(f_node.clone(), t_node);
+        // There's a special case for requires/ensures of f, because these requires/ensures
+        // appear in the trait T, not in the implementation D: T.
+        // If we didn't extra edges for this case, the calls in requires/ensures
+        // might end up uninterpreted in the SMT encoding (which would be sound, but incomplete):
+        call_graph.add_edge(f_node.clone(), req_ens_node_f);
+        if function.x.mode == crate::ast::Mode::Spec {
+            // req_ens_node_t represents the spec functions defined by D: T;
+            // these spec functions may be useful for proving requires and ensures
+            // of other functions f' who depend on D: T:
+            // f' --> TraitReqEns(D': T' for f', false) --> TraitReqEns(D: T for f, true) --> f
+            call_graph.add_edge(req_ens_node_t, f_node.clone());
+        }
     }
 
     // Add f --> T for any function f with "where ...: T(...)"

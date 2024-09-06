@@ -336,7 +336,6 @@ test_verify_one_file! {
             v2.push(v1.clone());
             let c2 = v2.clone();
             let ghost g2 = c2.deep_view() == v2.deep_view();
-            assert(c2.deep_view() =~= v2.deep_view()); // TODO: get rid of this
             assert(g2);
             assert(c2@ == v2@); // FAILS
         }
@@ -405,4 +404,22 @@ test_verify_one_file! {
             assert(some_int(b) == some_int(c)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] phantom_data_is_unit verus_code! {
+        use core::marker::PhantomData;
+        use vstd::prelude::*;
+
+        proof fn stuff(a: PhantomData<u64>, b: PhantomData<u64>) {
+            assert(a == b);
+            assert(a == PhantomData::<u64>);
+        }
+
+        fn stuff2(a: PhantomData<u64>, b: PhantomData<u64>) {
+            assert(a == b);
+            let z = PhantomData::<u64>;
+            assert(a == z);
+        }
+    } => Ok(())
 }

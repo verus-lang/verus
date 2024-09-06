@@ -739,10 +739,12 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
     let box_array = str_to_node(box_array);
     let array_new = str_to_node(ARRAY_NEW);
+    let array_index = str_to_node(ARRAY_INDEX);
     let typ = str_to_node(TYPE);
     let decoration = str_to_node(DECORATION);
     let has_type = str_to_node(HAS_TYPE);
     let type_id_array = str_to_node(TYPE_ID_ARRAY);
+    let type_id_int = str_to_node(TYPE_ID_INT);
     let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
@@ -750,6 +752,7 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
     nodes_vec!(
         // array literals
         (declare-fun [array_new] ([decoration] [typ] Int Fun) [Poly])
+        (declare-fun [array_index] ([decoration] [typ] [decoration] [typ] Fun Poly) [Poly])
         (axiom (forall ((Tdcr [decoration]) (T [typ]) (N Int) (Fn Fun)) (!
             (= ([array_new] Tdcr T N Fn) ([box_array] Fn))
             :pattern (([array_new] Tdcr T N Fn))
@@ -774,14 +777,28 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
                 :skolemid skolem_prelude_has_type_array_new
             ))
         )
-        (axiom (forall ((Tdcr [decoration]) (T [typ]) (Ndcr [decoration]) (N [typ]) (Fn Fun) (i Int)) (!
+        (axiom (forall ((Tdcr [decoration]) (T [typ]) (Ndcr [decoration]) (N [typ]) (Fn Fun) (i Poly)) (!
             (=>
-                ([has_type] ([box_array] Fn) ([type_id_array] Tdcr T Ndcr N))
-                ([has_type] (apply [Poly] Fn i) T)
+                (and
+                    ([has_type] ([box_array] Fn) ([type_id_array] Tdcr T Ndcr N))
+                    ([has_type] i [type_id_int])
+                )
+                ([has_type] ([array_index] Tdcr T $ N Fn i) T)
             )
-            :pattern ((apply [Poly] Fn i) ([has_type] ([box_array] Fn) ([type_id_array] Tdcr T Ndcr N)))
+            :pattern (([array_index] Tdcr T $ N Fn i) ([has_type] ([box_array] Fn) ([type_id_array] Tdcr T Ndcr N)))
             :qid prelude_has_type_array_index
             :skolemid skolem_prelude_has_type_array_index
+        )))
+        // AIR declares axioms about the array in terms of (apply [Poly] Fn i),
+        // which is hard for vstd axioms to trigger on.
+        // Rewrite as ([array_index] ...), which vstd can more easily trigger on.
+        // (Note that there's no axiom in the reverse direction converting array_index to apply,
+        // because that would create a matching loop on i via I and %I.)
+        (axiom (forall ((Tdcr [decoration]) (T [typ]) (N Int) (Fn Fun) (i Int)) (!
+            (= ([array_index] Tdcr T $ ([type_id_const_int] N) Fn (I i)) (apply [Poly] Fn i))
+            :pattern (([array_new] Tdcr T N Fn) (apply [Poly] Fn i))
+            :qid prelude_array_index_trigger
+            :skolemid skolem_prelude_array_index_trigger
         )))
     )
 }

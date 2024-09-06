@@ -339,6 +339,13 @@ pub fn assert_bit_vector(_: bool) {
     unimplemented!();
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::use_type_invariant"]
+#[verifier::proof]
+pub fn use_type_invariant<A>(_a: A) {
+    unimplemented!();
+}
+
 //
 // Ghost, Tracked
 //
@@ -892,7 +899,7 @@ pub const fn mul<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::spec_cast_integer"]
 #[verifier::spec]
-pub const fn spec_cast_integer<From: Integer, To: Integer>(_from: From) -> To {
+pub const fn spec_cast_integer<From: Copy, To: Integer>(_from: From) -> To {
     To::CONST_DEFAULT
 }
 

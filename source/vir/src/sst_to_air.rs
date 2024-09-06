@@ -749,11 +749,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             ident_apply(&name, &exprs)
         }
-        ExpX::Call(CallFun::InternalFun(InternalFun::HasType), typs, args) => {
-            assert!(typs.len() == 1);
-            assert!(args.len() == 1);
-            expr_has_type(&exp_to_expr(ctx, &args[0], expr_ctxt)?, &typ_to_ids(&typs[0])[1])
-        }
         ExpX::Call(CallFun::InternalFun(func), typs, args) => {
             // These functions are special-cased to not take a decoration argument for
             // the first type parameter.
@@ -777,15 +772,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     InternalFun::CheckDecreaseHeight => {
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)
                     }
-                    InternalFun::HasType => unreachable!(),
                 },
                 Arc::new(exprs),
             ))
         }
-        ExpX::CallLambda(typ, e0, args) => {
+        ExpX::CallLambda(e0, args) => {
             let e0 = exp_to_expr(ctx, e0, expr_ctxt)?;
             let args = vec_map_result(args, |e| exp_to_expr(ctx, e, expr_ctxt))?;
-            Arc::new(ExprX::ApplyFun(typ_to_air(ctx, typ), e0, Arc::new(args)))
+            Arc::new(ExprX::ApplyFun(typ_to_air(ctx, &exp.typ), e0, Arc::new(args)))
         }
         ExpX::Ctor(path, variant, binders) => {
             let (variant, args) = ctor_to_apply(ctx, path, variant, binders);
@@ -1046,11 +1040,16 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         exp_to_expr(ctx, rhs, expr_ctxt)?,
                     ]),
                 ),
-                BinaryOp::ArrayIndex => ExprX::ApplyFun(
-                    str_typ(POLY),
-                    exp_to_expr(ctx, lhs, expr_ctxt)?,
-                    Arc::new(vec![exp_to_expr(ctx, rhs, expr_ctxt)?]),
-                ),
+                BinaryOp::ArrayIndex => {
+                    let ts = match &*lhs.typ {
+                        TypX::Primitive(Primitive::Array, ts) if ts.len() == 2 => ts,
+                        _ => panic!("internal error: unexpected ArrayIndex type"),
+                    };
+                    let mut args: Vec<Expr> = ts.iter().map(typ_to_ids).flatten().collect();
+                    args.push(exp_to_expr(ctx, lhs, expr_ctxt)?);
+                    args.push(exp_to_expr(ctx, rhs, expr_ctxt)?);
+                    ExprX::Apply(str_ident(crate::def::ARRAY_INDEX), Arc::new(args))
+                }
                 // here the binary bitvector Ops are translated into the integer versions
                 // Similar to typ_invariant(), make obvious range according to bit-width
                 BinaryOp::Bitwise(bo, _) => {

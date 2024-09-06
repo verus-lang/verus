@@ -1,14 +1,14 @@
 use crate::ast::{
     Fun, FunctionKind, Ident, Idents, ItemKind, Mode, SpannedTyped, Typ, TypX, Typs, VarBinder,
-    VarBinderX, VarIdent, VirErr,
+    VarBinderX, VirErr,
 };
 use crate::ast_util::{LowerUniqueVar, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_no_unwind_when,
     prefix_open_inv, prefix_pre_var, prefix_recursive_fun, prefix_requires, static_name,
-    suffix_global_id, suffix_typ_param_id, suffix_typ_param_ids, CommandsWithContext, SnapPos,
-    Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
+    suffix_global_id, suffix_typ_param_ids, CommandsWithContext, SnapPos, Spanned, FUEL_BOOL,
+    FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
 };
 use crate::messages::{MessageLabel, Span};
 use crate::sst::FuncCheckSst;
@@ -107,6 +107,24 @@ fn func_def_quant(
     let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
     let f_imply = mk_implies(&mk_and(pre), &f_eq);
     Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false), &f_imply))
+}
+
+pub(crate) fn hide_projections_air(
+    typ_params: &Idents,
+    holes: Vec<(Ident, Typ)>,
+) -> (Idents, Vec<Expr>) {
+    let mut typ_params: Vec<Ident> = (**typ_params).clone();
+    let mut eqs: Vec<Expr> = Vec::new();
+    for (x, t) in holes {
+        let xids = crate::def::suffix_typ_param_ids_types(&x);
+        let tids = typ_to_ids(&t);
+        assert!(xids.len() == tids.len());
+        for ((xa, _ta), tid) in xids.into_iter().zip(tids.into_iter()) {
+            eqs.push(mk_eq(&ident_var(&xa.lower()), &tid));
+        }
+        typ_params.push(x);
+    }
+    (Arc::new(typ_params), eqs)
 }
 
 pub(crate) fn module_reveal_axioms(
@@ -244,8 +262,14 @@ fn func_body_to_air(
     }
 
     // For trait method implementations, use trait method function name and add Self type argument
+    let mut impl_typ_params = function.x.typ_params.clone();
+    let mut impl_def_reqs: Vec<Expr> = Vec::new();
     let (name, rec_name, typ_args) =
         if let FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } = &function.x.kind {
+            let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
+            let (typ_params, eqs) = hide_projections_air(&function.x.typ_params, holes);
+            impl_typ_params = typ_params;
+            impl_def_reqs.extend(eqs);
             (method.clone(), function.x.name.clone(), trait_typ_args.clone())
         } else if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             let typ_args = vec_map(&function.x.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
@@ -311,10 +335,11 @@ fn func_body_to_air(
         rec_f_def
     };
 
+    def_reqs.extend(impl_def_reqs);
     let e_forall = func_def_quant(
         ctx,
         &suffix_global_id(&fun_to_air_ident(&name)),
-        &function.x.typ_params,
+        &impl_typ_params,
         &typ_args,
         pars,
         &def_reqs,
@@ -497,7 +522,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     let mut decl_commands: Vec<Command> = Vec::new();
 
     // Requires
-    if function.x.has.has_requires {
+    if function.x.has.has_requires && !function.x.attrs.broadcast_forall_only {
         assert!(!is_trait_method_impl);
 
         let msg = match (function.x.mode, &function.x.attrs.custom_req_err) {
@@ -602,21 +627,25 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
         ens_typing_invs = vec![];
     }
 
-    let has_ens_pred = req_ens_to_air(
-        ctx,
-        &mut decl_commands,
-        &func_decl_sst.ens_pars,
-        &ens_typing_invs,
-        &func_decl_sst.enss,
-        &function.x.typ_params,
-        &Arc::new(ens_typs),
-        &prefix_ensures(&fun_to_air_ident(&function.x.name)),
-        &None,
-        function.x.attrs.integer_ring,
-        bool_typ(),
-        inherit_fn_ens,
-        None,
-    )?;
+    let has_ens_pred = if function.x.attrs.broadcast_forall_only {
+        false
+    } else {
+        req_ens_to_air(
+            ctx,
+            &mut decl_commands,
+            &func_decl_sst.ens_pars,
+            &ens_typing_invs,
+            &func_decl_sst.enss,
+            &function.x.typ_params,
+            &Arc::new(ens_typs),
+            &prefix_ensures(&fun_to_air_ident(&function.x.name)),
+            &None,
+            function.x.attrs.integer_ring,
+            bool_typ(),
+            inherit_fn_ens,
+            None,
+        )?
+    };
     ctx.funcs_with_ensure_predicate.insert(function.x.name.clone(), has_ens_pred);
 
     for exp in func_decl_sst.fndef_axioms.iter() {
@@ -669,6 +698,8 @@ pub fn func_axioms_to_air(
                 {
                     // Emit axiom that says our method equals the default method we inherit from
                     // (if trait bounds are satisfied)
+                    let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
+                    let (typ_params, eqs) = hide_projections_air(&function.x.typ_params, holes);
                     let mut args: Vec<Expr> =
                         trait_typ_args.iter().map(typ_to_ids).flatten().collect();
                     for p in function.x.pars.iter() {
@@ -677,13 +708,15 @@ pub fn func_axioms_to_air(
                     let default_name = crate::def::trait_default_name(f_trait);
                     let default_name = &suffix_global_id(&fun_to_air_ident(&default_name));
                     let body = ident_apply(&default_name, &args);
+                    let mut pre = crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds);
+                    pre.extend(eqs);
                     let e_forall = func_def_quant(
                         ctx,
                         &suffix_global_id(&fun_to_air_ident(&f_trait)),
-                        &function.x.typ_params,
+                        &typ_params,
                         &trait_typ_args,
                         &function.x.pars,
-                        &crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds),
+                        &pre,
                         body,
                     )?;
                     let def_axiom = mk_unnamed_axiom(e_forall);
@@ -733,23 +766,18 @@ pub fn func_axioms_to_air(
                 // so we can just return here.
                 return Ok((Arc::new(decl_commands), check_commands));
             }
-            if let Some((params, exp)) = &func_axioms_sst.proof_exec_axioms {
+            if let Some((params, exp, triggers)) = &func_axioms_sst.proof_exec_axioms {
                 let span = &function.span;
-                use crate::triggers::{typ_boxing, TriggerBoxing};
-                let mut vars: Vec<(VarIdent, TriggerBoxing)> = Vec::new();
                 let mut binders: Vec<VarBinder<Typ>> = Vec::new();
                 for name in function.x.typ_params.iter() {
-                    vars.push((suffix_typ_param_id(&name), TriggerBoxing::TypeId));
                     let typ = Arc::new(TypX::TypeId);
                     let bind = VarBinderX { name: crate::ast_util::typ_unique_var(name), a: typ };
                     binders.push(Arc::new(bind));
                 }
                 for param in params.iter() {
-                    vars.push((param.x.name.clone(), typ_boxing(ctx, &param.x.typ)));
                     binders.push(crate::ast_util::par_to_binder(&param));
                 }
-                let triggers = crate::triggers::build_triggers(ctx, span, &vars, &exp, false)?;
-                let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers);
+                let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers.clone());
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp.clone());
                 let forall: Arc<SpannedTyped<ExpX>> =
                     SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);

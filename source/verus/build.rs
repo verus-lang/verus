@@ -4,6 +4,7 @@ fn main() {
     let output = match std::process::Command::new("rustup")
         .arg("show")
         .arg("active-toolchain")
+        .env_remove("RUSTUP_TOOLCHAIN")
         .stderr(std::process::Stdio::inherit())
         .output()
         .map_err(|x| format!("could not execute rustup ({})", x))
