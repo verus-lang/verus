@@ -1,5 +1,8 @@
 extern crate proc_macro;
 
+#[macro_use]
+mod vstd_path;
+
 mod ast;
 mod case_macro;
 mod check_bind_stmts;
@@ -58,11 +61,19 @@ fn construct_state_machine(input: TokenStream, concurrent: bool) -> TokenStream 
 
 #[proc_macro]
 pub fn state_machine(input: TokenStream) -> TokenStream {
+    crate::vstd_path::set_is_vstd(false);
     construct_state_machine(input, false)
 }
 
 #[proc_macro]
 pub fn tokenized_state_machine(input: TokenStream) -> TokenStream {
+    crate::vstd_path::set_is_vstd(false);
+    construct_state_machine(input, true)
+}
+
+#[proc_macro]
+pub fn tokenized_state_machine_vstd(input: TokenStream) -> TokenStream {
+    crate::vstd_path::set_is_vstd(true);
     construct_state_machine(input, true)
 }
 

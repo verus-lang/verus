@@ -215,7 +215,7 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
 
     let storage_types = get_storage_type_tuple(sm);
 
-    return quote! {
+    return quote_vstd! { vstd =>
         #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
         #(#attrs)*
@@ -227,7 +227,7 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
             // However, since it's not marked external_body,
             // Verus will still look at the fields when doing its type hierarchy analysis.
 
-            #[cfg_attr(verus_keep_ghost, verifier::spec)] send_sync: ::vstd::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
+            #[cfg_attr(verus_keep_ghost, verifier::spec)] send_sync: #vstd::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
             #[cfg_attr(verus_keep_ghost, verifier::spec)] state: #self_ty,
             #[cfg_attr(verus_keep_ghost, verifier::spec)] location: ::builtin::int,
         }
@@ -330,7 +330,7 @@ fn token_struct_stream(
         TokenStream::new()
     };
 
-    return quote! {
+    return quote_vstd! { vstd =>
         #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
         #(#attrs)*
@@ -341,7 +341,7 @@ fn token_struct_stream(
             // the type well-foundedness checks.
 
             #[cfg_attr(verus_keep_ghost, verifier::proof)] dummy_instance: #insttype,
-            no_copy: ::vstd::state_machine_internal::NoCopy,
+            no_copy: #vstd::state_machine_internal::NoCopy,
         }
 
         #[cfg_attr(verus_keep_ghost, verifier::spec)]
@@ -1142,8 +1142,8 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::StorageOption(ty) => Some(Type::Verbatim(quote! {
             ::core::option::Option<#ty>
         })),
-        ShardableType::StorageMap(key, val) => Some(Type::Verbatim(quote! {
-            ::vstd::map::Map<#key, #val>
+        ShardableType::StorageMap(key, val) => Some(Type::Verbatim(quote_vstd! { vstd =>
+            #vstd::map::Map<#key, #val>
         })),
     }
 }
@@ -1338,11 +1338,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let constructor_name = field_token_data_type_turbofish(sm, field);
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
-            let set_token_ty = Type::Verbatim(quote! {
-                ::vstd::map::Map<#ty, #token_ty>
+            let set_token_ty = Type::Verbatim(quote_vstd! { vstd =>
+                #vstd::map::Map<#ty, #token_ty>
             });
-            let set_normal_ty = Type::Verbatim(quote! {
-                ::vstd::set::Set<#ty>
+            let set_normal_ty = Type::Verbatim(quote_vstd! { vstd =>
+                #vstd::set::Set<#ty>
             });
 
             // Predicate to check the set values agree:
@@ -1430,11 +1430,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let fn_name_strict = map_relation_post_condition_name(field, true);
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
-            let map_token_ty = Type::Verbatim(quote! {
-                ::vstd::map::Map<#key, #token_ty>
+            let map_token_ty = Type::Verbatim(quote_vstd! { vstd =>
+                #vstd::map::Map<#key, #token_ty>
             });
-            let map_normal_ty = Type::Verbatim(quote! {
-                ::vstd::map::Map<#key, #val>
+            let map_normal_ty = Type::Verbatim(quote_vstd! { vstd =>
+                #vstd::map::Map<#key, #val>
             });
 
             // Predicate to check the map values agree:
@@ -1484,11 +1484,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let fn_name_strict = multiset_relation_post_condition_name(field, true);
             let inst_ty = inst_type(sm);
             let token_ty = field_token_type(sm, field);
-            let multiset_token_ty = Type::Verbatim(quote! {
-                ::vstd::map::Map<#ty, #token_ty>
+            let multiset_token_ty = Type::Verbatim(quote_vstd! { vstd =>
+                #vstd::map::Map<#ty, #token_ty>
             });
-            let multiset_normal_ty = Type::Verbatim(quote! {
-                ::vstd::multiset::Multiset<#ty>
+            let multiset_normal_ty = Type::Verbatim(quote_vstd! { vstd =>
+                #vstd::multiset::Multiset<#ty>
             });
 
             // Predicate to check the multiset values agree:
@@ -1994,14 +1994,16 @@ fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
         | ShardableType::PersistentBool => Type::Verbatim(quote! { ::core::option::Option<#ty> }),
 
         ShardableType::Map(key, _) | ShardableType::PersistentMap(key, _) => {
-            Type::Verbatim(quote! { ::vstd::map::Map<#key, #ty> })
+            Type::Verbatim(quote_vstd! { vstd => #vstd::map::Map<#key, #ty> })
         }
 
         ShardableType::Set(t) | ShardableType::PersistentSet(t) => {
-            Type::Verbatim(quote! { ::vstd::map::Map<#t, #ty> })
+            Type::Verbatim(quote_vstd! { vstd => #vstd::map::Map<#t, #ty> })
         }
 
-        ShardableType::Multiset(t) => Type::Verbatim(quote! { ::vstd::map::Map<#t, #ty> }),
+        ShardableType::Multiset(t) => {
+            Type::Verbatim(quote_vstd! { vstd => #vstd::map::Map<#t, #ty> })
+        }
 
         _ => {
             panic!("field_token_collection_type expected option/map/multiset/bool");
@@ -2035,8 +2037,8 @@ pub fn assign_pat_or_arbitrary(pat: &Pat, init_e: &Expr) -> Option<(Pat, Expr)> 
             });
         }
 
-        let new_e = Expr::Verbatim(quote_spanned! { init_e.span() =>
-            match (#init_e) { #pat => #tup_expr , #[allow(unreachable_patterns)] _ => ::vstd::pervasive::arbitrary() }
+        let new_e = Expr::Verbatim(quote_spanned_vstd! { vstd, init_e.span() =>
+            match (#init_e) { #pat => #tup_expr , #[allow(unreachable_patterns)] _ => #vstd::pervasive::arbitrary() }
         });
         Some((tup_pat, new_e))
     }
