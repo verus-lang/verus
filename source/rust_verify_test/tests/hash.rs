@@ -76,11 +76,10 @@ test_verify_one_file! {
             assert(m@ == Set::<u32>::empty());
 
             let res = m.insert(3);
-            // assert(res);
+            assert(res);
             m.insert(6);
-            // assert(m@.contains(3));
             let res = m.insert(3);
-            // assert(!res);
+            assert(!res);
 
             let b = m.contains(&3);
             assert(b);
@@ -513,9 +512,9 @@ test_verify_one_file! {
             assert(m@ == Set::<(MyStruct, int)>::empty());
             let s1 = MyStruct{ i: 3, j: 7 };
             let res = m.insert(s1);
-            // assert(res);
-            // let res = m.insert(s1.clone());
-            // assert(!res);
+            assert(res);
+            let res = m.insert(MyStruct{ i: 3, j: 7 });
+            assert(!res);
 
             let s2 = MyStruct{ i: 3, j: 7 };
             let ghost w: (MyStruct, int) = (MyStruct{ i: 3, j: 7 }, 10);
