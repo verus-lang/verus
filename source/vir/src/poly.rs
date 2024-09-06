@@ -474,7 +474,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e1 = poly_expr(ctx, state, e1);
             match op {
                 UnaryOpr::Box(_) | UnaryOpr::HasType(_) | UnaryOpr::Unbox(_) => {
-                    panic!("internal error: already has Box/Unbox/HasType")
+                    panic!("internal error: {:?} already has Box/Unbox/HasType", e1)
                 }
                 UnaryOpr::TupleField { .. } => {
                     panic!("internal error: ast_simplify should remove TupleField")
