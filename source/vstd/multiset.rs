@@ -717,7 +717,7 @@ impl<A> Multiset<A> {
     }
 
     /// A singleton multiset that contains an alement is equivalent to the singleton multiset with that element.
-    pub proof fn lemma_contain_elem_equal_singleton(self, x: A)
+    pub proof fn lemma_is_singleton_contains_elem_equal_singleton(self, x: A)
         requires
             self.is_singleton(),
             self.contains(x),
@@ -742,13 +742,13 @@ impl<A> Multiset<A> {
     {
         broadcast use group_multiset_axioms;
 
-        self.lemma_contain_elem_equal_singleton(self.choose());
+        self.lemma_is_singleton_contains_elem_equal_singleton(self.choose());
     }
 
     /// A multiset has exactly one element, if and only if, it has at least one element with multiplicity 1 and any two elements are equal.
     pub proof fn lemma_is_singleton(s: Multiset<A>)
         ensures
-            s.is_singleton() == (s.len() == 1),
+            s.is_singleton() <==> (s.len() == 1),
     {
         broadcast use group_multiset_axioms;
 
