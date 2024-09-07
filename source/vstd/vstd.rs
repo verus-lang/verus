@@ -29,6 +29,8 @@ pub mod cell;
 pub mod function;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_map;
+#[cfg(all(feature = "alloc", feature = "std"))]
+pub mod hash_set;
 pub mod invariant;
 pub mod layout;
 pub mod map;
