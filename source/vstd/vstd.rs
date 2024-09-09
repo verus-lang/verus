@@ -44,6 +44,7 @@ pub mod pervasive;
 #[cfg(feature = "alloc")]
 pub mod ptr;
 pub mod raw_ptr;
+pub mod refined;
 pub mod seq;
 pub mod seq_lib;
 pub mod set;
