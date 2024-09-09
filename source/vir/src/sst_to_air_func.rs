@@ -598,7 +598,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst, specialization: &
     let mut ens_typing_invs: Vec<Expr> = Vec::new();
     if matches!(function.x.mode, Mode::Exec | Mode::Proof) {
         if function.x.has.has_return_name {
-            let ParX { name, typ, .. } = &function.x.ret.x;
+            let ParX { name, typ, .. } = &specialization.transform_par(&function.x.typ_params, &function.x.ret).x;
             ens_typs.push(typ_to_air(ctx, &specialization.transform_typ(&function.x.typ_params, &typ)));
             if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&name.lower())) {
                 ens_typing_invs.push(expr);
@@ -746,7 +746,7 @@ pub fn func_axioms_to_air(
                 }
             }
             let f_app = ident_apply(&name, &Arc::new(f_args));
-            if let Some(post) = typ_invariant(ctx, &function.x.ret.x.typ, &f_app) {
+            if let Some(post) = typ_invariant(ctx, &specialization.transform_typ(&function.x.typ_params, &function.x.ret.x.typ), &f_app) {
                 // (axiom (forall (...) (=> pre post)))
                 let name = format!("{}_pre_post", name);
                 let e_forall = mk_bind_expr(
@@ -785,7 +785,7 @@ pub fn func_axioms_to_air(
                 let triggers =
                     crate::triggers::build_triggers(ctx, span, &vars, &new_body_exp, false)?;
                 let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers);
-                let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp.clone());
+                let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), new_body_exp.clone());
                 let forall: Arc<SpannedTyped<ExpX>> =
                     SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);
                 let expr_ctxt = if is_singular {
