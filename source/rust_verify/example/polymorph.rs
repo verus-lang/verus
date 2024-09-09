@@ -10,7 +10,7 @@ verus! {
 		a
 	}
 
-	proof fn proof1<B>(b: B) {
+	proof fn proof1<A>(b: A) {
 		let flag = spec1(true);
 		let _obj = spec1(b);
 	}

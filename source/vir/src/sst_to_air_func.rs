@@ -182,6 +182,12 @@ fn func_body_to_air(
     let crate::sst::FuncSpecBodySst { decrease_when, termination_check, body_exp } = func_body_sst;
     let new_body_exp = specialization.transform_exp(&function.x.typ_params, body_exp);
     let pars = &function.x.pars;
+    let mut new_pars: Pars = Arc::new(Vec::new());
+    let new_pars_mut = Arc::make_mut(&mut new_pars);
+
+    for i in pars.iter(){
+        new_pars_mut.push(specialization.transform_par(&function.x.typ_params, i));
+    }
 
     //let id_fuel = prefix_fuel_id(&specialization.transform_ident(fun_to_air_ident(&function.x.name)));
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
@@ -223,13 +229,14 @@ fn func_body_to_air(
         def_reqs.push(expr);
     }
 
+
     if let Some(termination_check) = termination_check {
         let (termination_commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
             ctx,
             &function.span,
             &function.x.typ_params,
             &function.x.typ_bounds,
-            pars,
+            &new_pars,
             &termination_check,
             &vec![],
             false,
@@ -281,7 +288,7 @@ fn func_body_to_air(
         let rec_f = specialization
             .transform_ident(suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&rec_name))));
         let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&rec_name));
-        let args = func_def_args(&function.x.typ_params, pars);
+        let args = func_def_args(&function.x.typ_params, &new_pars);
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
         let mut args_succ = args.clone();
@@ -302,8 +309,8 @@ fn func_body_to_air(
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
         let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
         let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
-        let bind_zero = func_bind(ctx, name_zero, &function.x.typ_params, pars, &rec_f_fuel, true);
-        let bind_body = func_bind(ctx, name_body, &function.x.typ_params, pars, &rec_f_succ, true);
+        let bind_zero = func_bind(ctx, name_zero, &function.x.typ_params, &new_pars, &rec_f_fuel, true);
+        let bind_body = func_bind(ctx, name_body, &function.x.typ_params, &new_pars, &rec_f_succ, true);
         let implies_body = mk_implies(&mk_and(&def_reqs), &eq_body);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &implies_body);
@@ -321,7 +328,7 @@ fn func_body_to_air(
         &specialization.transform_ident(suffix_global_id(&fun_to_air_ident(&name))),
         &function.x.typ_params,
         &typ_args,
-        pars,
+        &new_pars,
         &def_reqs,
         def_body,
     )?;
@@ -615,7 +622,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst, specialization: &
         // be inheriting them from the trait function.
         ens_typing_invs = vec![];
     }
-
+    //TODO MAYBE CHANGE TYPE PARAMS THERE 
     let has_ens_pred = req_ens_to_air(
         ctx,
         &mut decl_commands,
@@ -663,6 +670,12 @@ pub fn func_axioms_to_air(
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<CommandsWithContext> = Vec::new();
     let is_singular = function.x.attrs.integer_ring;
+    let mut new_pars: Pars = Arc::new(Vec::new());
+    let new_pars_mut = Arc::make_mut(&mut new_pars);
+
+    for i in function.x.pars.iter(){
+        new_pars_mut.push(specialization.transform_par(&function.x.typ_params, i));
+    }
     match function.x.mode {
         Mode::Spec => {
             // Body
@@ -700,7 +713,7 @@ pub fn func_axioms_to_air(
                         &suffix_global_id(&fun_to_air_ident(&f_trait)),
                         &function.x.typ_params,
                         &trait_typ_args,
-                        &function.x.pars,
+                        &new_pars,
                         &crate::traits::trait_bounds_to_air(ctx, &function.x.typ_bounds),
                         body,
                     )?;
@@ -737,7 +750,8 @@ pub fn func_axioms_to_air(
                 // (axiom (forall (...) (=> pre post)))
                 let name = format!("{}_pre_post", name);
                 let e_forall = mk_bind_expr(
-                    &func_bind(ctx, name, &function.x.typ_params, &function.x.pars, &f_app, false),
+                    // TODO: CHANGE TYP PARAMS HERE 
+                    &func_bind(ctx, name, &function.x.typ_params, &new_pars, &f_app, false),
                     &mk_implies(&mk_and(&f_pre), &post),
                 );
                 let inv_axiom = mk_unnamed_axiom(e_forall);

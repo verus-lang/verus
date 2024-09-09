@@ -33,6 +33,8 @@ use crate::{
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use crate::sst::{Par, ParX};
+use crate::def::Spanned;
 
 /**
 This stores one instance of specialization of a particular function. This
@@ -159,6 +161,29 @@ impl Specialization {
         }
 
         Arc::new(ident.as_ref().clone() + &suffix)
+    }
+
+    pub fn transform_par(&self, typ_params: &Idents, par: &Par) -> Par {
+        if self.typs.is_empty() {
+            return par.clone();
+        }
+        let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
+        assert!(typ_params.len() == self.typs.len());
+        for (x, t) in typ_params.iter().zip(self.typs.iter()) {
+            trait_typ_substs.insert(x.clone(), t.clone());
+        }
+        Arc::new(Spanned {
+            span: par.span.clone(), // Assuming `par` has a `span` field that needs to be copied
+            x: ParX {
+            name: par.x.name.clone(),
+            typ: self.transform_typ(typ_params, &par.x.typ),
+            mode: par.x.mode,
+            is_mut: par.x.is_mut,
+            purpose: par.x.purpose
+            },
+
+        })
+
     }
 
     pub fn transform_typ(&self, typ_params: &Idents,typ: &Typ) -> Typ {
