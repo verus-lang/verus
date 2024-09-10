@@ -105,8 +105,8 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
         SimplStmt::Split(..) => {
             panic!("should SplitKind should have been translated out");
         }
-        SimplStmt::Require(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
-            builtin::assume_(#e);
+        SimplStmt::Require(span, e) => Some(Expr::Verbatim(quote_spanned_vstd! {vstd, *span =>
+            #vstd::prelude::assume_(#e);
         })),
         SimplStmt::PostCondition(_span, _e, _reason) => None,
         SimplStmt::Assert(span, e, AssertProof { proof: None, error_msg }) => {

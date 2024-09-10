@@ -375,12 +375,12 @@ pub fn output_primary_stuff(
                 Some(b) => quote! { #b },
                 None => TokenStream::new(),
             };
-            impl_stream.extend(quote! {
+            impl_stream.extend(quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::proof]
                 pub fn #name(#params) {
-                    builtin::assume_(pre.invariant());
+                    #vstd::prelude::assume_(pre.invariant());
                     ::builtin_macros::verus_proof_expr!({
                         #b
                     })
@@ -460,16 +460,16 @@ fn output_take_step_fns(
                 crate::concurrency_tokens::get_extra_deps(bundle, trans, safety_condition_lemmas);
 
             //let step_args = just_args(&trans.params);
-            stream.extend(quote! {
+            stream.extend(quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::external_body] /* vattr */
                 #[verifier::proof]
                 pub fn #tr_name#gen1(#params) -> #super_self_ty #gen2 {
-                    ::builtin::requires(
+                    #vstd::prelude::requires(
                         super::State::#tr_name_enabled(#args) && pre.invariant()
                     );
-                    ::builtin::ensures(|post: #super_self_ty|
+                    #vstd::prelude::ensures(|post: #super_self_ty|
                         super::State::#tr_name_strong(#args2) && post.invariant()
                     );
                     #extra_deps
@@ -500,16 +500,16 @@ fn output_take_step_fns(
             let extra_deps =
                 crate::concurrency_tokens::get_extra_deps(bundle, trans, safety_condition_lemmas);
 
-            stream.extend(quote! {
+            stream.extend(quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::external_body] /* vattr */
                 #[verifier::proof]
                 pub fn #tr_name#gen1(#params) -> #super_self_ty #gen2 {
-                    ::builtin::requires(
+                    #vstd::prelude::requires(
                         #super_self_ty_turbo::#tr_name_enabled(#args)
                     );
-                    ::builtin::ensures(|post: #super_self_ty|
+                    #vstd::prelude::ensures(|post: #super_self_ty|
                         super::State::#tr_name(#args2) && post.invariant()
                     );
                     #extra_deps
@@ -609,7 +609,7 @@ fn output_step_datatype(
         .collect();
 
     if is_init {
-        impl_stream.extend(quote! {
+        impl_stream.extend(quote_vstd! { vstd =>
             #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
             #[verus::internal(open)] /* vattr */
@@ -629,7 +629,7 @@ fn output_step_datatype(
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn init(post: #self_ty, #label_param) -> ::core::primitive::bool {
-                ::builtin::exists(|step: #step_ty| Self::init_by(post, #label_arg step))
+                #vstd::prelude::exists(|step: #step_ty| Self::init_by(post, #label_arg step))
             }
         });
     } else {
@@ -653,7 +653,7 @@ fn output_step_datatype(
             })
             .collect();
 
-        impl_stream.extend(quote!{
+        impl_stream.extend(quote_vstd!{ vstd =>
             #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
             #[verus::internal(open)] /* vattr */
@@ -672,7 +672,7 @@ fn output_step_datatype(
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
-                ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
+                #vstd::prelude::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
 
             #[cfg(verus_keep_ghost_body)]
@@ -693,7 +693,7 @@ fn output_step_datatype(
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
-                ::builtin::exists(|step: #step_ty| Self::next_strong_by(pre, post, #label_arg step))
+                #vstd::prelude::exists(|step: #step_ty| Self::next_strong_by(pre, post, #label_arg step))
             }
         });
     }
@@ -717,19 +717,14 @@ fn output_step_datatype(
                 let args = post_args(&trans.params);
 
                 //let step_args = just_args(&trans.params);
-                show_stream.extend(quote! {
+                show_stream.extend(quote_vstd! { vstd =>
                     #[cfg(verus_keep_ghost_body)]
                     #[verus::internal(verus_macro)]
                     #[verifier::external_body] /* vattr */
                     #[verifier::proof]
                     pub fn #tr_name#gen1(#params) #gen2 {
-                        ::builtin::requires(super::State::#tr_name(#args));
-                        ::builtin::ensures(super::State::init(post #label_arg));
-
-                        //::builtin::reveal(super::State::init);
-                        //::builtin::reveal(super::State::init_by);
-                        //builtin::assert_(super::State::init_by(post,
-                        //    super::Init::#tr_name(#step_args)));
+                        #vstd::prelude::requires(super::State::#tr_name(#args));
+                        #vstd::prelude::ensures(super::State::init(post #label_arg));
                     }
 
                     // #[cfg(verus_macro_erase_ghost)]
@@ -739,19 +734,14 @@ fn output_step_datatype(
                 let params = pre_post_assoc_params(&super_self_ty, &trans.params);
                 let args = pre_post_args(&trans.params);
                 //let step_args = just_args(&trans.params);
-                show_stream.extend(quote! {
+                show_stream.extend(quote_vstd! { vstd =>
                     #[cfg(verus_keep_ghost_body)]
                     #[verus::internal(verus_macro)]
                     #[verifier::external_body] /* vattr */
                     #[verifier::proof]
                     pub fn #tr_name#gen1(#params) #gen2 {
-                        ::builtin::requires(super::State::#tr_name(#args));
-                        ::builtin::ensures(super::State::next(pre, post #label_arg));
-
-                        //::builtin::reveal(super::State::next);
-                        //::builtin::reveal(super::State::next_by);
-                        //builtin::assert_(super::State::next_by(pre, post,
-                        //    super::Step::#tr_name(#step_args)));
+                        #vstd::prelude::requires(super::State::#tr_name(#args));
+                        #vstd::prelude::ensures(super::State::next(pre, post #label_arg));
                     }
 
                     // #[cfg(verus_macro_erase_ghost)]
@@ -1019,7 +1009,7 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
             Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::multiset::Multiset<#ty> })
         }
         ShardableType::Count | ShardableType::PersistentCount => {
-            Type::Verbatim(quote_spanned! { span => ::builtin::nat })
+            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::prelude::nat })
         }
         ShardableType::Bool | ShardableType::PersistentBool => {
             Type::Verbatim(quote_spanned! { span => ::core::primitive::bool })
@@ -1065,15 +1055,15 @@ fn output_other_fns(
         let error_msg = format!("could not show invariant `{:}` on the `post` state", inv_name);
         let lemma_msg_ident = Ident::new(&format!("lemma_msg_{:}", inv_name), inv_ident.span());
         let self_ty = get_self_ty(&bundle.sm);
-        impl_stream.extend(quote! {
+        impl_stream.extend(quote_vstd! { vstd =>
             #[cfg(verus_keep_ghost_body)]
             #[verifier::custom_req_err(#error_msg)] /* vattr */
             #[verifier::external_body] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::proof]
             fn #lemma_msg_ident(s: #self_ty) {
-                ::builtin::requires(s.#inv_ident());
-                ::builtin::ensures(s.#inv_ident());
+                #vstd::prelude::requires(s.#inv_ident());
+                #vstd::prelude::ensures(s.#inv_ident());
             }
         });
     }
@@ -1143,16 +1133,16 @@ fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
 
     let mut stmts = vec![
         Stmt::Semi(
-            Expr::Verbatim(quote! {
-                ::builtin::requires(
+            Expr::Verbatim(quote_vstd! { vstd =>
+                #vstd::prelude::requires(
                     #precondition
                 )
             }),
             token::Semi { spans: [l.func.span()] },
         ),
         Stmt::Semi(
-            Expr::Verbatim(quote! {
-                ::builtin::ensures(
+            Expr::Verbatim(quote_vstd! { vstd =>
+                #vstd::prelude::ensures(
                     post.invariant()
                 )
             }),

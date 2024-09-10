@@ -1,7 +1,4 @@
-#![cfg_attr(
-    verus_keep_ghost,
-    feature(proc_macro_expand),
-)]
+#![cfg_attr(verus_keep_ghost, feature(proc_macro_expand))]
 
 extern crate proc_macro;
 
@@ -67,6 +64,7 @@ fn construct_state_machine(input: TokenStream, concurrent: bool) -> TokenStream 
 #[proc_macro]
 pub fn state_machine(input: TokenStream) -> TokenStream {
     crate::vstd_path::set_is_vstd(false);
+    crate::vstd_path::set_is_core(cfg_verify_core());
     construct_state_machine(input, false)
 }
 
