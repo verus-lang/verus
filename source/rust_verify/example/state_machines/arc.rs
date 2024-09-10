@@ -11,7 +11,7 @@ use vstd::multiset::*;
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
 use vstd::{atomic::*, pervasive::*, *};
-use vstd::duplicable::*;
+use vstd::shared::*;
 
 verus! {
 
@@ -154,7 +154,7 @@ impl<S> InnerArc<S> {
 struct_with_invariants!{
     struct MyArc<S> {
         pub inst: Tracked< RefCounter::Instance<MemPerms<S>> >,
-        pub inv: Tracked< Duplicable<AtomicInvariant<_, GhostStuff<S>, _>> >,
+        pub inv: Tracked< Shared<AtomicInvariant<_, GhostStuff<S>, _>> >,
         pub reader: Tracked< RefCounter::reader<MemPerms<S>> >,
 
         pub ptr: PPtr<InnerArc<S>>,
@@ -206,7 +206,7 @@ impl<S> MyArc<S> {
         let tr_inst = Tracked(inst);
         let gh_cell = Ghost(rc_cell);
         let tracked inv = AtomicInvariant::new((tr_inst, gh_cell), g, 0);
-        let tracked inv = Duplicable::new(inv);
+        let tracked inv = Shared::new(inv);
         MyArc { inst: tr_inst, inv: Tracked(inv), reader: Tracked(reader), ptr, rc_cell: gh_cell }
     }
 

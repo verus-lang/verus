@@ -42,12 +42,12 @@ tokenized_state_machine_vstd!(Dupe<T> {
 verus! {
 
 /// A `tracked ghost` container that you can put a ghost object in.
-/// A `Duplicable<T>` is duplicable and lets you get a `&T` out.
-pub tracked struct Duplicable<T> {
-    pub tracked inst: Dupe::Instance<T>,
+/// A `Shared<T>` is duplicable and lets you get a `&T` out.
+pub tracked struct Shared<T> {
+    tracked inst: Dupe::Instance<T>,
 }
 
-impl<T> Duplicable<T> {
+impl<T> Shared<T> {
     pub closed spec fn view(self) -> T {
         self.inst.val()
     }
@@ -57,14 +57,14 @@ impl<T> Duplicable<T> {
             s@ == t,
     {
         let tracked inst = Dupe::Instance::initialize_one(t, Option::Some(t));
-        Duplicable { inst }
+        Shared { inst }
     }
 
     pub proof fn clone(tracked &self) -> (tracked other: Self)
         ensures
             self@ == other@,
     {
-        Duplicable { inst: self.inst.clone() }
+        Shared { inst: self.inst.clone() }
     }
 
     pub proof fn borrow(tracked &self) -> (tracked t: &T)

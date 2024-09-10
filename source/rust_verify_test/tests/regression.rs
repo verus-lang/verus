@@ -884,6 +884,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] use_import_is_not_supported_in_traits_or_impls verus_code! {
         use state_machines_macros::state_machine;
+        use vstd::*;
 
         state_machine!{ MachineWithProof {
         fields {
