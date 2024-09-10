@@ -1,8 +1,11 @@
 #![allow(non_snake_case)]
 
 use super::prelude::*;
+
+#[cfg(verus_keep_ghost)]
 use state_machines_macros::*;
 
+#[cfg(verus_keep_ghost)]
 tokenized_state_machine_vstd!(Dupe<T> {
     fields {
         #[sharding(storage_option)]
@@ -35,6 +38,7 @@ tokenized_state_machine_vstd!(Dupe<T> {
      fn initialize_one_inductive(post: Self, t: T) { }
 });
 
+#[cfg(verus_keep_ghost)]
 verus! {
 
 /// A `tracked ghost` container that you can put a ghost object in.
