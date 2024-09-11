@@ -16,7 +16,7 @@ use crate::util::{
     err_span, err_span_bare, slice_vec_map_result, unsupported_err_span, vec_map_result,
 };
 use crate::verus_items::{
-    self, CompilableOprItem, InvariantItem, OpenInvariantBlockItem, SpecGhostTrackedItem,
+    self, CompilableOprItem, InvariantItem, OpenInvariantBlockItem, RustItem, SpecGhostTrackedItem,
     UnaryOpItem, VerusItem, VstdItem,
 };
 use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unless};
@@ -1706,7 +1706,32 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 ))
             }
             UnOp::Deref => {
-                let modifier = is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(arg), modifier)?;
+                let inner_ty = bctx.types.expr_ty_adjusted(arg);
+                match inner_ty.kind() {
+                    TyKind::RawPtr(..) => {
+                        unsupported_err!(
+                            expr.span,
+                            format!(
+                                "dereferencing a raw pointer. Currently, Verus only supports raw pointers through the permissioned raw_ptr interface: https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html"
+                            )
+                        );
+                    }
+                    TyKind::Ref(..) => { /* ok */ }
+                    TyKind::Adt(AdtDef(adt_def_data), _args)
+                        if matches!(
+                            verus_items::get_rust_item(tcx, adt_def_data.did),
+                            Some(RustItem::Box) | Some(RustItem::Rc) | Some(RustItem::Arc)
+                        ) =>
+                    { /* ok */ }
+                    _ => {
+                        unsupported_err!(
+                            expr.span,
+                            format!("dereferencing this type: {:?}", inner_ty)
+                        );
+                    }
+                }
+
+                let modifier = is_expr_typ_mut_ref(inner_ty, modifier)?;
                 let mut new_expr = expr_to_vir_inner(bctx, arg, modifier)?;
                 let typ = &mut Arc::make_mut(&mut new_expr).typ;
                 if let TypX::Decorate(
