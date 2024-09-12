@@ -522,14 +522,18 @@ impl crate::ast::CallTargetKind {
     }
 }
 
+// unit return values are treated as no return value
+pub(crate) fn is_return_typ(typ: &Typ) -> bool {
+    match &**typ {
+        TypX::Tuple(ts) if ts.len() == 0 => false,
+        TypX::Datatype(path, _, _) if path == &crate::def::prefix_tuple_type(0) => false,
+        _ => true,
+    }
+}
+
 impl FunctionX {
-    // unit return values are treated as no return value
     pub fn has_return(&self) -> bool {
-        match &*self.ret.x.typ {
-            TypX::Tuple(ts) if ts.len() == 0 => false,
-            TypX::Datatype(path, _, _) if path == &crate::def::prefix_tuple_type(0) => false,
-            _ => true,
-        }
+        is_return_typ(&self.ret.x.typ)
     }
 
     // even if the return type is unit, it can still be named; if so, our AIR code must declare it

@@ -1895,19 +1895,19 @@ impl Verifier {
             fndef_types,
             self.args.debugger,
         )?;
-        let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
-            vir::printer::write_krate(&mut file, &poly_krate, &self.args.log_args.vir_log_option);
+            vir::printer::write_krate(&mut file, &pruned_krate, &self.args.log_args.vir_log_option);
         }
 
         let krate_sst = vir::ast_to_sst_crate::ast_to_sst_krate(
             &mut ctx,
             reporter,
             &self.get_bucket(bucket_id).funs,
-            &poly_krate,
+            &pruned_krate,
         )?;
+        let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
             self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx)?;

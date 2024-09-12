@@ -415,7 +415,6 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     decrease: Arc::new(vec![]),
                     decrease_when: None,
                     decrease_by: None,
-                    broadcast_forall: None,
                     fndef_axioms: None,
                     mask_spec: None,
                     unwind_spec: None,

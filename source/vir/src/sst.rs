@@ -29,11 +29,15 @@ pub struct BndInfo {
     pub user: Option<BndInfoUser>,
 }
 
+// For AssertBy, this records the LocalDecl vars that correspond to the VarBinders
+// (used by sst_elaborate.rs and poly.rs)
+pub type AssertByLocals = Option<Arc<Vec<VarIdent>>>;
+
 pub type Bnd = Arc<Spanned<BndX>>;
 #[derive(Clone, Debug)]
 pub enum BndX {
     Let(VarBinders<Exp>),
-    Quant(Quant, VarBinders<Typ>, Trigs),
+    Quant(Quant, VarBinders<Typ>, Trigs, AssertByLocals),
     Lambda(VarBinders<Typ>, Trigs),
     Choose(VarBinders<Typ>, Trigs, Exp),
 }
@@ -200,12 +204,32 @@ pub enum StmX {
     Block(Stms),
 }
 
+// poly.rs uses the specific kind of each local to decide on a poly/native type for the local
+#[derive(Debug, Clone, Copy)]
+pub enum LocalDeclKind {
+    Param { mutable: bool },
+    Return,
+    StmtLet { mutable: bool },
+    // temp var inherits kind of the initializer used to assign to it:
+    TempViaAssign,
+    Decreases,
+    AssertByVar { native: bool },
+    LetBinder,
+    QuantBinder,
+    ChooseBinder,
+    ClosureBinder,
+    OpenInvariantBinder,
+    ExecClosureId,
+    ExecClosureParam,
+    ExecClosureRet,
+}
+
 pub type LocalDecl = Arc<LocalDeclX>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LocalDeclX {
     pub ident: UniqueIdent,
     pub typ: Typ,
-    pub mutable: bool,
+    pub kind: LocalDeclKind,
 }
 
 #[derive(Debug, Clone)]

@@ -288,7 +288,7 @@ impl SyntacticEquality for Bnd {
                     None
                 }
             }
-            (Quant(q_l, bnds_l, _trigs_l), Quant(q_r, bnds_r, _trigs_r)) => {
+            (Quant(q_l, bnds_l, _trigs_l, _), Quant(q_r, bnds_r, _trigs_r, _)) => {
                 Some(q_l == q_r && bnds_l.conservative_eq(bnds_r)?)
             }
             (Lambda(bnds_l, _trigs_l), Lambda(bnds_r, _trigs_r)) => bnds_l.conservative_eq(bnds_r),
@@ -474,7 +474,7 @@ fn hash_bnd<H: Hasher>(state: &mut H, bnd: &Bnd) {
     }
     match &bnd.x {
         Let(bnds) => dohash!(0; hash_var_binders_exp(bnds)),
-        Quant(quant, bnds, trigs) => {
+        Quant(quant, bnds, trigs, _) => {
             dohash!(1, quant; hash_var_binders_typ(bnds), hash_trigs(trigs))
         }
         Lambda(bnds, trigs) => dohash!(2; hash_var_binders_typ(bnds), hash_trigs(trigs)),

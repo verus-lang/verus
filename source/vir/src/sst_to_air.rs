@@ -692,7 +692,7 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
     ctx.quantifier_count.set(qcount + 1);
     let trigs = match &exp.x {
         ExpX::Bind(bnd, _) => match &bnd.x {
-            BndX::Quant(_, _, trigs) => trigs,
+            BndX::Quant(_, _, trigs, _) => trigs,
             BndX::Choose(_, trigs, _) => trigs,
             BndX::Lambda(_, trigs) => trigs,
             _ => panic!(
@@ -1137,7 +1137,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
                 air::ast_util::mk_let(&bs, &expr)
             }
-            BndX::Quant(quant, binders, trigs) => {
+            BndX::Quant(quant, binders, trigs, _) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let mut invs: Vec<Expr> = Vec::new();
                 for binder in binders.iter() {
@@ -2437,10 +2437,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 state.push_scope();
                 state.map_span(&stm, SpanKind::Start);
             }
-            let stmts: Vec<Stmt> = vec_map_result(stms, |s| stm_to_stmts(ctx, state, s))?
-                .into_iter()
-                .flatten()
-                .collect();
+            let mut stmts: Vec<Stmt> = Vec::new();
+            for s in stms.iter() {
+                stmts.extend(stm_to_stmts(ctx, state, s)?);
+            }
             if ctx.debug {
                 state.pop_scope();
             }
@@ -2598,7 +2598,7 @@ pub(crate) fn body_stm_to_air(
         }
     }
     for decl in local_decls.iter() {
-        local_shared.push(if decl.mutable {
+        local_shared.push(if decl.kind.is_mutable() {
             Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         } else {
             Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))

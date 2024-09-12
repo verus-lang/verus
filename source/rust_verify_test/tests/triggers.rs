@@ -145,7 +145,7 @@ test_verify_one_file! {
         {
             assume(false)
         }
-    } => Err(err) => assert_vir_error_msg(err, "variable `a` in trigger cannot appear in both arithmetic and non-arithmetic positions")
+    } => Ok(())
 }
 
 test_verify_one_file! {

@@ -1088,9 +1088,6 @@ pub struct FunctionX {
     pub decrease_when: Option<Expr>,
     /// Prove termination with a separate proof function
     pub decrease_by: Option<Fun>,
-    /// For broadcast_forall functions, poly sets this to Some((params, reqs ==> enss))
-    /// where params and reqs ==> enss use coerce_typ_to_poly rather than coerce_typ_to_native
-    pub broadcast_forall: Option<(Params, Expr)>,
     /// Axioms (similar to broadcast axioms) for the FnDef type corresponding to
     /// this function, if one is generated for this particular function.
     /// Similar to 'external_spec' in the ExecClosure node, this is filled

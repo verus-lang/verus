@@ -13,7 +13,7 @@ use crate::context::{Ctx, FunctionCtx};
 use crate::def::{unique_local, Spanned};
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message};
-use crate::sst::{BndX, Exp, ExpX, Exps, Par, ParPurpose, ParX, Pars, Stm, StmX};
+use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
@@ -357,10 +357,10 @@ pub fn func_decl_to_sst(
             let exp = match &exp.x {
                 ExpX::Unary(UnaryOp::MustBeElaborated, ebind) => match &ebind.x {
                     ExpX::Bind(bnd, e) => match &bnd.x {
-                        BndX::Quant(quant, qbinders, trigs) => {
+                        BndX::Quant(quant, qbinders, trigs, None) => {
                             let mut qbinders = (&**qbinders).clone();
                             qbinders.append(&mut binders);
-                            let bndx = BndX::Quant(*quant, Arc::new(qbinders), trigs.clone());
+                            let bndx = BndX::Quant(*quant, Arc::new(qbinders), trigs.clone(), None);
                             let bnd = Spanned::new(bnd.span.clone(), bndx);
                             let ebind = ebind.new_x(ExpX::Bind(bnd, e.clone()));
                             exp.new_x(ExpX::Unary(UnaryOp::MustBeElaborated, ebind))
@@ -428,11 +428,18 @@ pub fn func_axioms_to_sst(
                 // so we can just return here.
                 return Ok(FuncAxiomsSst { spec_axioms: None, proof_exec_axioms: None });
             }
-            if let Some((params, req_ens)) = &function.x.broadcast_forall {
-                let params = params_to_pre_post_pars(params, false);
+            if function.x.attrs.broadcast_forall {
+                let span = &function.span;
+                let mut reqs: Vec<Expr> = Vec::new();
+                reqs.extend(crate::traits::trait_bounds_to_ast(ctx, span, &function.x.typ_bounds));
+                reqs.extend((*function.x.require).clone());
+                let req = crate::ast_util::conjoin(span, &reqs);
+                let ens = crate::ast_util::conjoin(span, &*function.x.ensure);
+                let req_ens = crate::ast_util::mk_implies(span, &req, &ens);
+                let params = params_to_pre_post_pars(&function.x.params, false);
                 // Use expr_to_bind_decls_exp_skip_checks, skipping checks on req_ens,
                 // because the requires/ensures are checked when the function itself is checked
-                let exp = expr_to_bind_decls_exp_skip_checks(ctx, diagnostics, &params, req_ens)?;
+                let exp = expr_to_bind_decls_exp_skip_checks(ctx, diagnostics, &params, &req_ens)?;
                 let axioms = FuncAxiomsSst {
                     spec_axioms: None,
                     proof_exec_axioms: Some((params, exp, Arc::new(vec![]))),
@@ -503,7 +510,7 @@ pub fn func_def_to_sst(
     let dest = if function.x.has_return_name() {
         let ParamX { name, typ, .. } = &function.x.ret.x;
         ens_params.push(function.x.ret.clone());
-        state.declare_var_stm(name, typ, false, false);
+        state.declare_var_stm(name, typ, LocalDeclKind::Return, false);
         Some(unique_local(name))
     } else {
         None
@@ -514,7 +521,12 @@ pub fn func_def_to_sst(
     let ens_pars = params_to_pars(&ens_params, true);
 
     for param in function.x.params.iter() {
-        state.declare_var_stm(&param.x.name, &param.x.typ, param.x.is_mut, false);
+        state.declare_var_stm(
+            &param.x.name,
+            &param.x.typ,
+            LocalDeclKind::Param { mutable: param.x.is_mut },
+            false,
+        );
     }
 
     let mut req_ens_e_rename: HashMap<_, _> = req_ens_function

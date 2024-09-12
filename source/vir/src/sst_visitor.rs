@@ -318,14 +318,16 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         }
                         R::ret(|| BndX::Let(R::get_vec_a(binders)))?
                     }
-                    BndX::Quant(quant, bs, ts) => {
+                    BndX::Quant(quant, bs, ts, ab) => {
                         let binders = R::map_vec(bs, &mut |b| self.visit_var_binder_typ(b))?;
                         self.push_scope();
                         for b in R::get_vec_or(&binders, &bs).iter() {
                             self.insert_binding_typ(b, bnd);
                         }
                         let ts = self.visit_triggers(ts)?;
-                        R::ret(|| BndX::Quant(*quant, R::get_vec_a(binders), R::get(ts)))?
+                        R::ret(|| {
+                            BndX::Quant(*quant, R::get_vec_a(binders), R::get(ts), ab.clone())
+                        })?
                     }
                     BndX::Lambda(bs, ts) => {
                         let binders = R::map_vec(bs, &mut |b| self.visit_var_binder_typ(b))?;
@@ -534,7 +536,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             Arc::new(LocalDeclX {
                 ident: local_decl.ident.clone(),
                 typ: R::get(typ),
-                mutable: local_decl.mutable,
+                kind: local_decl.kind,
             })
         })
     }

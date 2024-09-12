@@ -8,7 +8,7 @@ use crate::context::GlobalCtx;
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
-use crate::sst::{BndX, CallFun, Exp, ExpX, Stm, Trig, Trigs, UniqueIdent};
+use crate::sst::{BndX, CallFun, Exp, ExpX, LocalDeclKind, Stm, Trig, Trigs, UniqueIdent};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -183,10 +183,10 @@ fn subst_exp_rec(
                     );
                     BndX::Let(binders)
                 }
-                BndX::Quant(quant, binders, ts) => {
+                BndX::Quant(quant, binders, ts, ab) => {
                     let binders =
                         subst_rename_binders(&bnd.span, substs, free_vars, binders, ft, ft);
-                    BndX::Quant(*quant, binders, ftrigs(substs, free_vars, ts))
+                    BndX::Quant(*quant, binders, ftrigs(substs, free_vars, ts), ab.clone())
                 }
                 BndX::Lambda(binders, ts) => {
                     let binders =
@@ -506,7 +506,7 @@ impl ExpX {
                             .join(", ");
                         format!("let {} in {}", assigns, exp.x.to_user_string(global))
                     }
-                    BndX::Quant(Quant { quant: q, .. }, bnds, _trigs) => {
+                    BndX::Quant(Quant { quant: q, .. }, bnds, _trigs, _) => {
                         let q_str = match q {
                             air::ast::Quant::Forall => "forall",
                             air::ast::Quant::Exists => "exists",
@@ -711,4 +711,31 @@ pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
         &Arc::new(TypX::Int(IntRange::Int)),
         ExpX::Const(crate::ast_util::const_int_from_i128(i)),
     )
+}
+
+impl crate::sst::FunctionSstX {
+    pub fn has_return(&self) -> bool {
+        crate::ast_util::is_return_typ(&self.ret.x.typ)
+    }
+}
+
+impl LocalDeclKind {
+    pub fn is_mutable(&self) -> bool {
+        match self {
+            LocalDeclKind::Param { mutable } => *mutable,
+            LocalDeclKind::StmtLet { mutable } => *mutable,
+            LocalDeclKind::Return => false,
+            LocalDeclKind::TempViaAssign => false,
+            LocalDeclKind::Decreases => false,
+            LocalDeclKind::AssertByVar { native: _ } => false,
+            LocalDeclKind::LetBinder => false,
+            LocalDeclKind::QuantBinder => false,
+            LocalDeclKind::ChooseBinder => false,
+            LocalDeclKind::ClosureBinder => false,
+            LocalDeclKind::OpenInvariantBinder => true,
+            LocalDeclKind::ExecClosureId => false,
+            LocalDeclKind::ExecClosureParam => false,
+            LocalDeclKind::ExecClosureRet => false,
+        }
+    }
 }
