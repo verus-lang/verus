@@ -749,11 +749,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             ident_apply(&name, &exprs)
         }
-        ExpX::Call(CallFun::InternalFun(InternalFun::HasType), typs, args) => {
-            assert!(typs.len() == 1);
-            assert!(args.len() == 1);
-            expr_has_type(&exp_to_expr(ctx, &args[0], expr_ctxt)?, &typ_to_ids(&typs[0])[1])
-        }
         ExpX::Call(CallFun::InternalFun(func), typs, args) => {
             // These functions are special-cased to not take a decoration argument for
             // the first type parameter.
@@ -777,15 +772,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     InternalFun::CheckDecreaseHeight => {
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)
                     }
-                    InternalFun::HasType => unreachable!(),
                 },
                 Arc::new(exprs),
             ))
         }
-        ExpX::CallLambda(typ, e0, args) => {
+        ExpX::CallLambda(e0, args) => {
             let e0 = exp_to_expr(ctx, e0, expr_ctxt)?;
             let args = vec_map_result(args, |e| exp_to_expr(ctx, e, expr_ctxt))?;
-            Arc::new(ExprX::ApplyFun(typ_to_air(ctx, typ), e0, Arc::new(args)))
+            Arc::new(ExprX::ApplyFun(typ_to_air(ctx, &exp.typ), e0, Arc::new(args)))
         }
         ExpX::Ctor(path, variant, binders) => {
             let (variant, args) = ctor_to_apply(ctx, path, variant, binders);

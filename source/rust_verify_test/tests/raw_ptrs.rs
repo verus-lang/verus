@@ -278,3 +278,11 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "Verus does not support this cast")
 }
+
+test_verify_one_file! {
+    #[test] not_supported_deref_ptr verus_code! {
+        pub fn run(x: *mut u8) {
+            unsafe { let y = *x; }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dereferencing a raw pointer")
+}

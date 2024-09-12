@@ -1,7 +1,6 @@
 use rustc_session::config::ErrorOutputType;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast_to_sst_func::SstMap;
 use vir::context::Ctx;
 use vir::expand_errors::{
     cons_id, CanExpandFurther, ExpansionContext, ExpansionTree, Introduction,
@@ -155,13 +154,7 @@ impl ExpandErrorsDriver {
     /// for the other queries.
     /// This will advance the current assert_id to the next assert_id that
     /// should be queries.
-    pub fn report(
-        &mut self,
-        ctx: &Ctx,
-        fun_ssts: &SstMap,
-        assert_id: &AssertId,
-        result: ExpandErrorsResult,
-    ) {
+    pub fn report(&mut self, ctx: &Ctx, assert_id: &AssertId, result: ExpandErrorsResult) {
         assert!(&self.current == &**assert_id);
         if assert_id.len() == 1 {
             assert!(result != ExpandErrorsResult::Pass);
@@ -177,7 +170,7 @@ impl ExpandErrorsDriver {
                 self.spans.push((self.get_span_for(assert_id), assert_id.clone()));
             }
 
-            let n = self.expand(ctx, fun_ssts, assert_id);
+            let n = self.expand(ctx, assert_id);
             if n == 1 {
                 self.leaf_fails += 1;
                 if self.leaf_fails >= MAX_FAILURES {
@@ -236,7 +229,7 @@ impl ExpandErrorsDriver {
         }
     }
 
-    fn expand(&mut self, ctx: &Ctx, fun_ssts: &SstMap, assert_id: &AssertId) -> u64 {
+    fn expand(&mut self, ctx: &Ctx, assert_id: &AssertId) -> u64 {
         assert!(ctx.fun.as_ref().unwrap().current_fun == self.function.x.name);
         let func_check_sst = if &self.base_id == assert_id {
             &self.base_func_check_sst
@@ -246,7 +239,7 @@ impl ExpandErrorsDriver {
         };
 
         let (new_function_sst, expansion_tree) =
-            vir::expand_errors::do_expansion(ctx, &self.ectx, fun_ssts, func_check_sst, assert_id);
+            vir::expand_errors::do_expansion(ctx, &self.ectx, func_check_sst, assert_id);
         let num_leaves = expansion_tree.count_leaves();
         self.add_lines_to_output(&assert_id, &expansion_tree, num_leaves == 1);
         self.expansions.insert(assert_id.clone(), (expansion_tree, new_function_sst));

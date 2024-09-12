@@ -47,7 +47,6 @@ pub enum InternalFun {
     ClosureEns,
     CheckDecreaseInt,
     CheckDecreaseHeight,
-    HasType,
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -72,7 +71,7 @@ pub enum ExpX {
     Old(Ident, UniqueIdent),
     // call to spec function
     Call(CallFun, Typs, Exps),
-    CallLambda(Typ, Exp, Exps),
+    CallLambda(Exp, Exps),
     Ctor(Path, Ident, Binders<Exp>),
     NullaryOpr(NullaryOpr),
     Unary(UnaryOp, Exp),
@@ -269,7 +268,7 @@ pub struct FuncSpecBodySst {
 #[derive(Debug, Clone)]
 pub struct FuncAxiomsSst {
     pub spec_axioms: Option<FuncSpecBodySst>,
-    pub proof_exec_axioms: Option<(Pars, Exp)>,
+    pub proof_exec_axioms: Option<(Pars, Exp, Trigs)>,
 }
 
 #[derive(Debug, Clone)]

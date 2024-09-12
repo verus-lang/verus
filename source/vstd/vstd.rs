@@ -30,6 +30,8 @@ pub mod compute;
 pub mod function;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_map;
+#[cfg(all(feature = "alloc", feature = "std"))]
+pub mod hash_set;
 pub mod invariant;
 pub mod layout;
 pub mod map;
@@ -47,6 +49,7 @@ pub mod seq;
 pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
+pub mod shared;
 #[cfg(feature = "alloc")]
 pub mod simple_pptr;
 pub mod slice;

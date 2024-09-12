@@ -8,20 +8,27 @@ verus! {
 // ANCHOR: bound_checking
 proof fn bound_check(x: u32, y: u32, z: u32)
     requires
-        x <= 0xffff,
-        y <= 0xffff,
+        x <= 8,
+        y <= 8,
 {
-    assert(x * y <= 0x100000000) by (nonlinear_arith)
+    assert(x * y <= 100) by (nonlinear_arith)
         requires
-            x <= 0xffff,
-            y <= 0xffff,
-    {
-        // nonlinear_arith proof block does not have any surrounding facts by default
-        // assert(z <= 0xffff);    <- Trivial, but fails since this property is not included in the `requires` clause
-        assert(x * y <= 0x100000000);
-    }
+            x <= 10,
+            y <= 10;
+
+    assert(x * y <= 1000);
 }
 // ANCHOR_END: bound_checking
+
+// ANCHOR: bound_checking_func
+proof fn bound_check2(x: u32, y: u32, z: u32) by (nonlinear_arith)
+    requires
+        x <= 8,
+        y <= 8,
+    ensures
+        x * y <= 64
+{ }
+// ANCHOR_END: bound_checking_func
 
 // ANCHOR: de_morgan
 proof fn de_morgan_auto()

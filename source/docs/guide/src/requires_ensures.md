@@ -167,10 +167,12 @@ Let's put everything from this section together into a final version of our exam
 ```
 
 Here, we've made a few final adjustments.
+
 First, we've combined the two preconditions `-16 <= x1` and `x1 < 16`
 into a single preconditon `-16 <= x1 < 16`,
 since Verus lets us chain multiple inequalities together in a single expression
 (equivalently, we could have also written `-16 <= x1 && x1 < 16`).
+
 Second, we've added a function `print_two_digit_number` to print the result of `octuple`.
 Unlike `main` and `octuple`, we ask Verus not to verify `print_two_digit_number`.
 We do this by marking it `#[verifier::external_body]`,
