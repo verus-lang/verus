@@ -44,19 +44,6 @@ pub broadcast group range_all {
     all_implies,
 }
 
-proof fn test() {
-    broadcast use range_all;
-        
-    assert({
-        let r = 2..4int;
-        let prop = |v: int| (v as u64) & 0xf000 == 0;
-        r.all(prop)
-    }) by (compute);
-    let r = 2..4int;
-    let prop = |v: int| (v as u64) & 0xf000 == 0;
-    //r.all_implies(prop);
-    assert(prop(3));
-    assert(3u64 & 0xf000 == 0);
-}
+
 
 } // verus!
