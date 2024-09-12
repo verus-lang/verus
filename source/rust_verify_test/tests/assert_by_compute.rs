@@ -583,3 +583,25 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }
+
+test_verify_one_file! {
+    #[test] range_all_simple verus_code! {
+        use vstd::prelude::*;
+        use core::ops::Range;
+        use vstd::compute::*;
+
+        proof fn test() {
+            broadcast use range_all;
+
+            assert({
+                let r = 2..4int;
+                let prop = |v: int| (v as u64) & 0xf000 == 0;
+                r.all(prop)
+            }) by (compute_only);
+            let r = 2..4int;
+            let prop = |v: int| (v as u64) & 0xf000 == 0;
+            assert(prop(3));
+            assert(3u64 & 0xf000 == 0);
+        }
+    } => Ok(())
+}
