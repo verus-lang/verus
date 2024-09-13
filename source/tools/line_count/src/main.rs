@@ -6,7 +6,7 @@ use std::{
 };
 
 use serde::Serialize;
-use syn_verus::{spanned::Spanned, visit::Visit, Attribute, File, Meta, Signature};
+use syn_verus::{spanned::Spanned, visit::Visit, Attribute, File, Meta, MetaList, Signature};
 use tabled::settings::{
     object::{Columns, Rows},
     Alignment, Modify, Style,
@@ -1494,16 +1494,52 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
         config: config.clone(),
     };
     for attr in file.attrs.iter() {
-        if let Ok(Meta::Path(path)) = attr.parse_meta() {
-            let mut path_iter = path.segments.iter();
-            match (path_iter.next(), path_iter.next()) {
-                (Some(first), Some(second))
-                    if first.ident == "verus" && second.ident == "trusted" =>
-                {
-                    visitor.trusted += 1;
+        match attr.parse_meta() {
+            Ok(Meta::Path(path)) => {
+                let mut path_iter = path.segments.iter();
+                match (path_iter.next(), path_iter.next()) {
+                    (Some(first), Some(second))
+                        if first.ident == "verus" && second.ident == "trusted" =>
+                    {
+                        visitor.trusted += 1;
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
+            Ok(Meta::List(MetaList { path, paren_token: _, nested })) => {
+                let mut path_iter = path.segments.iter();
+                match (path_iter.next(), path_iter.next()) {
+                    (Some(first), None) if first.ident == "cfg_attr" => {
+                        let mut nested_iter = nested.iter();
+                        match (nested_iter.next(), nested_iter.next()) {
+                            (
+                                Some(syn_verus::NestedMeta::Meta(Meta::Path(first))),
+                                Some(syn_verus::NestedMeta::Meta(Meta::Path(second))),
+                            ) if first
+                                .segments
+                                .iter()
+                                .next()
+                                .as_ref()
+                                .map(|x| x.ident == "verus_keep_ghost")
+                                .unwrap_or(false) =>
+                            {
+                                let mut path_iter = second.segments.iter();
+                                match (path_iter.next(), path_iter.next()) {
+                                    (Some(first), Some(second))
+                                        if first.ident == "verus" && second.ident == "trusted" =>
+                                    {
+                                        visitor.trusted += 1;
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => (),
+                }
+            }
+            _ => (),
         }
     }
     for item in file.items.into_iter() {

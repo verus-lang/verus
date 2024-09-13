@@ -20,8 +20,7 @@ fn expensive_computation() -> (res: u64)
 }
 
 spec fn cell_is_valid(cell: &InvCell<Option<u64>>) -> bool {
-    &&& cell.wf()
-    &&& forall|v|
+    forall|v|
         (cell.inv(v) <==> match v {
             Option::Some(i) => i == result_of_computation(),
             Option::None => true,
@@ -45,7 +44,7 @@ fn memoized_computation(cell: &InvCell<Option<u64>>) -> (res: u64)
     let c = cell.get();
     match c {
         Option::Some(i) => {
-            // The value has already been computed; return the cache value
+            // The value has already been computed; return the cached value
             i
         },
         Option::None => {

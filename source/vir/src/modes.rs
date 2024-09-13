@@ -827,7 +827,8 @@ fn check_expr_handle_mut_arg(
                 if ctxt.special_paths.is_exec_nonstatic_call_path(&x.path) {
                     format!("to call a non-static function in ghost code, it must be a spec_fn")
                 } else {
-                    format!("cannot call function with mode {}", function.x.mode)
+                    let name = crate::ast_util::path_as_friendly_rust_name(&x.path);
+                    format!("cannot call function `{}` with mode {}", name, function.x.mode)
                 }
             };
             if ctxt.check_ghost_blocks {

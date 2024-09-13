@@ -1,6 +1,6 @@
 # Unwinding signature
 
-For any `exec`-mdoe function, it is possible to specify whether that function may [unwind](https://doc.rust-lang.org/nomicon/unwinding.html). The allowed forms of the signature are:
+For any `exec`-mode function, it is possible to specify whether that function may [unwind](https://doc.rust-lang.org/nomicon/unwinding.html). The allowed forms of the signature are:
 
  * No signature (default) - This means the function may unwind.
  * `no_unwind` - This means the function may not unwind.

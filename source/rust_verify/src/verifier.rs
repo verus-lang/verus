@@ -1878,7 +1878,9 @@ impl Verifier {
                 None,
                 Some(bucket_id.module().clone()),
                 bucket_id.function(),
+                true,
             );
+        let mono_abstract_datatypes = mono_abstract_datatypes.unwrap();
         let module = pruned_krate
             .modules
             .iter()
@@ -2629,6 +2631,7 @@ impl Verifier {
             Some(&current_vir_crate),
             None,
             None,
+            false,
         );
         let vir_crate =
             vir::traits::merge_external_traits(vir_crate).map_err(map_err_diagnostics)?;

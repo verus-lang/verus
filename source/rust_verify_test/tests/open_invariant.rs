@@ -168,7 +168,7 @@ test_both! {
           open_atomic_invariant_in_proof!(credit => &i => inner => {
           });
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode proof")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `vstd::invariant::spend_open_invariant_credit_in_proof` with mode proof")
 }
 
 test_both! {
@@ -552,7 +552,7 @@ test_verify_one_file! {
             opens_invariants [ exec_int_fn() ]
         {
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::exec_int_fn` with mode exec")
 }
 
 test_verify_one_file! {
