@@ -90,17 +90,10 @@ fn height_typ(ctx: &Ctx, exp: &Exp) -> Typ {
     }
 }
 
-fn exp_for_decrease(ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
+fn exp_for_decrease(_ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
     match &*undecorate_typ(&exp.typ) {
         TypX::Int(_) => Ok(exp.clone()),
-        TypX::Datatype(..) => Ok(if crate::poly::typ_is_poly(ctx, &exp.typ) {
-            exp.clone()
-        } else {
-            let op = UnaryOpr::Box(exp.typ.clone());
-            let argx = ExpX::UnaryOpr(op, exp.clone());
-            let typ = Arc::new(TypX::Boxed(exp.typ.clone()));
-            SpannedTyped::new(&exp.span, &typ, argx)
-        }),
+        TypX::Datatype(..) => Ok(exp.clone()),
         _ => Err(error(
             &exp.span,
             format!(

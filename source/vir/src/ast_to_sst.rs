@@ -2464,8 +2464,6 @@ fn get_inv_typ_args(typ: &Typ) -> Typs {
 fn call_inv(ctx: &Ctx, outer: &Exp, inner: &Exp, typ_args: &Typs, atomicity: InvAtomicity) -> Exp {
     let call_fun =
         CallFun::Fun(crate::def::fn_inv_name(&ctx.global.vstd_crate_name, atomicity), None);
-    let inner = crate::poly::coerce_exp_to_poly(ctx, inner);
-    let outer = crate::poly::coerce_exp_to_poly(ctx, outer);
     let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![outer.clone(), inner.clone()]));
     SpannedTyped::new(&outer.span, &Arc::new(TypX::Bool), expx)
 }
@@ -2473,7 +2471,6 @@ fn call_inv(ctx: &Ctx, outer: &Exp, inner: &Exp, typ_args: &Typs, atomicity: Inv
 fn call_namespace(ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicity) -> Exp {
     let call_fun =
         CallFun::Fun(crate::def::fn_namespace_name(&ctx.global.vstd_crate_name, atomicity), None);
-    let arg = crate::poly::coerce_exp_to_poly(ctx, arg);
     let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![arg.clone()]));
     SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
 }
@@ -2491,9 +2488,8 @@ pub fn assert_assume_satisfies_user_defined_type_invariant(
         _ => panic!("assert_assume_satisfies_user_defined_type_invariant: expected datatype"),
     };
     let call_fun = CallFun::Fun(fun.clone(), None);
-    let arg = crate::poly::coerce_exp_to_poly(ctx, exp);
-    let expx = ExpX::Call(call_fun, typs, Arc::new(vec![arg.clone()]));
-    let exp = SpannedTyped::new(&arg.span, &Arc::new(TypX::Bool), expx);
+    let expx = ExpX::Call(call_fun, typs, Arc::new(vec![exp.clone()]));
+    let exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
 
     if state.checking_recommends(ctx) {
         stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));

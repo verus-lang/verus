@@ -516,8 +516,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
             let e1 = visit_exp(ctx, state, e1);
             match op {
                 UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => {
-                    // TODO: panic!("internal error: already has Box/Unbox")
-                    e1
+                    panic!("internal error: already has Box/Unbox")
                 }
                 UnaryOpr::TupleField { .. } => {
                     panic!("internal error: ast_simplify should remove TupleField")
