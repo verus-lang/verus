@@ -95,7 +95,7 @@ struct State {
     worklist_trait_impls: Vec<ImplName>,
     worklist_assoc_type_decls: Vec<(Path, Ident)>,
     worklist_assoc_type_impls: Vec<AssocTypeGroup>,
-    mono_abstract_datatypes: HashSet<MonoTyp>,
+    mono_abstract_datatypes: Option<HashSet<MonoTyp>>,
     spec_fn_types: HashSet<usize>,
     uses_array: bool,
     fndef_types: HashSet<Fun>,
@@ -135,12 +135,14 @@ fn record_datatype(ctxt: &Ctxt, state: &mut State, typ: &Typ, path: &Path) {
     } else {
         return;
     };
-    if let Some(d) = ctxt.datatype_map.get(path) {
-        let is_vis = is_visible_to(&d.x.visibility, module);
-        let is_transparent = is_datatype_transparent(module, &d);
-        if is_vis && !is_transparent {
-            if let Some(monotyp) = crate::poly::typ_as_mono(typ) {
-                state.mono_abstract_datatypes.insert(monotyp);
+    if let Some(mono_abstract_datatypes) = &mut state.mono_abstract_datatypes {
+        if let Some(d) = ctxt.datatype_map.get(path) {
+            let is_vis = is_visible_to(&d.x.visibility, module);
+            let is_transparent = is_datatype_transparent(module, &d);
+            if is_vis && !is_transparent {
+                if let Some(monotyp) = crate::poly::typ_as_mono(typ) {
+                    mono_abstract_datatypes.insert(monotyp);
+                }
             }
         }
     }
@@ -315,8 +317,10 @@ fn traverse_typ(ctxt: &Ctxt, state: &mut State, t: &Typ) {
     match &**t {
         TypX::Datatype(path, _, _) => record_datatype(ctxt, state, t, path),
         TypX::Primitive(_, _) => {
-            if let Some(monotyp) = crate::poly::typ_as_mono(t) {
-                state.mono_abstract_datatypes.insert(monotyp);
+            if let Some(mono_abstract_datatypes) = &mut state.mono_abstract_datatypes {
+                if let Some(monotyp) = crate::poly::typ_as_mono(t) {
+                    mono_abstract_datatypes.insert(monotyp);
+                }
             }
         }
         _ => {}
@@ -659,16 +663,20 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
     trigs
 }
 
-// module is none: prune to keep what's reachable from current_crate
-// module is some and fun is none: prune to keep what's reachable from module
-// module is some and fun is some: prune to keep what's reachable from fun
+//  - module is none: prune to keep what's reachable from current_crate
+//    module is some and fun is none: prune to keep what's reachable from module
+//    module is some and fun is some: prune to keep what's reachable from fun
+//  - collect_monotyps: if true, return a Vec<MonoTyp>; otherwise, return None
+//    this should only be done post-simplification
+
 pub fn prune_krate_for_module_or_krate(
     krate: &Krate,
     crate_name: &Ident,
     current_crate: Option<&Krate>,
     module: Option<Path>,
     fun: Option<&Fun>,
-) -> (Krate, Vec<MonoTyp>, Vec<usize>, bool, Vec<Fun>) {
+    collect_monotyps: bool,
+) -> (Krate, Option<Vec<MonoTyp>>, Vec<usize>, bool, Vec<Fun>) {
     assert!(module.is_some() != current_crate.is_some());
 
     let mut root_modules: HashSet<Path> = HashSet::new();
@@ -701,6 +709,9 @@ pub fn prune_krate_for_module_or_krate(
     let is_root_function = |function: &Function| root_functions.contains(&function.x.name);
 
     let mut state: State = Default::default();
+    if collect_monotyps {
+        state.mono_abstract_datatypes = Some(HashSet::new());
+    }
     if let Some(current_crate) = current_crate {
         // Make sure we keep all of current_crate,
         // so that all of current_crate is sent to the well-formedness checks.
@@ -1089,8 +1100,13 @@ pub fn prune_krate_for_module_or_krate(
     spec_fn_types.sort();
     let mut fndef_types: Vec<Fun> = state.fndef_types.into_iter().collect();
     fndef_types.sort();
-    let mut mono_abstract_datatypes: Vec<MonoTyp> =
-        state.mono_abstract_datatypes.into_iter().collect();
-    mono_abstract_datatypes.sort();
+    let mono_abstract_datatypes = match state.mono_abstract_datatypes {
+        Some(mono) => {
+            let mut mono: Vec<MonoTyp> = mono.into_iter().collect();
+            mono.sort();
+            Some(mono)
+        }
+        _ => None,
+    };
     (Arc::new(kratex), mono_abstract_datatypes, spec_fn_types, state.uses_array, fndef_types)
 }

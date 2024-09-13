@@ -1271,3 +1271,15 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] slice_of_tuple_issue1259 verus_code! {
+        use vstd::*;
+        pub fn run(val: &[(u32, u32)]) -> u64
+            requires
+                val.len() > 0,
+        {
+            val[0].0 as u64 + val[0].1 as u64
+        }
+    } => Ok(())
+}
