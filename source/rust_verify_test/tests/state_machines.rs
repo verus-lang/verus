@@ -7042,7 +7042,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] step_is_variant verus_code! {
+    #[test] step_is_variant IMPORTS.to_string() + verus_code_str! {
         use state_machines_macros::state_machine;
 
         state_machine! { X {

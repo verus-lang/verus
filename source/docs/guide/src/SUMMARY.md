@@ -60,6 +60,7 @@
     - [Proof by computation](assert_by_compute.md)
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces](breaking_proofs_into_pieces.md)
+- [Checklist: what to do when proofs go wrong](checklist.md)
 
 # Tutorial: Verification and Rust
 
