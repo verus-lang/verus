@@ -701,9 +701,8 @@ pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
 /// Convert an interpreter-internal sequence representation back into a
 /// representation we can pass to AIR
 // TODO: More robust way of pointing to vstd's sequence functions
-fn seq_to_sst(span: &Span, typ: Typ, s: &Vector<Exp>) -> Exp {
-    let exp_new = |e: ExpX| SpannedTyped::new(span, &typ, e);
-    let typs = Arc::new(vec![typ.clone()]);
+fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
+    let typs = Arc::new(vec![inner_typ.clone()]);
     let path_empty = Arc::new(PathX {
         krate: Some(Arc::new("vstd".to_string())),
         segments: strs_to_idents(vec!["seq", "Seq", "empty"]),
@@ -714,10 +713,21 @@ fn seq_to_sst(span: &Span, typ: Typ, s: &Vector<Exp>) -> Exp {
     });
     let fun_empty = Arc::new(FunX { path: path_empty });
     let fun_push = Arc::new(FunX { path: path_push });
-    let empty = exp_new(ExpX::Call(CallFun::Fun(fun_empty, None), typs.clone(), Arc::new(vec![])));
+    let seq_type_path = Arc::new(PathX {
+        krate: Some(Arc::new("vstd".to_string())),
+        segments: strs_to_idents(vec!["seq", "Seq"]),
+    });
+    let seq_typ = Arc::new(TypX::Datatype(
+        seq_type_path,
+        Arc::new(vec![inner_typ.clone()]),
+        Arc::new(vec![]),
+    ));
+    let new_seq_exp = |e: ExpX| SpannedTyped::new(span, &seq_typ, e);
+    let empty =
+        new_seq_exp(ExpX::Call(CallFun::Fun(fun_empty, None), typs.clone(), Arc::new(vec![])));
     let seq = s.iter().fold(empty, |acc, e| {
         let args = Arc::new(vec![acc, e.clone()]);
-        exp_new(ExpX::Call(CallFun::Fun(fun_push.clone(), None), typs.clone(), args))
+        new_seq_exp(ExpX::Call(CallFun::Fun(fun_push.clone(), None), typs.clone(), args))
     });
     seq
 }
@@ -760,10 +770,7 @@ fn eval_seq(
                 Ok(exp_new(Call(fun.clone(), typs.clone(), new_args)))
             };
             let get_int = |e: &Exp| match &e.x {
-                UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
-                    Const(Constant::Int(index)) => Some(BigInt::to_usize(index).unwrap()),
-                    _ => None,
-                },
+                Const(Constant::Int(index)) => Some(BigInt::to_usize(index).unwrap()),
                 _ => None,
             };
             use SeqFn::*;
@@ -772,24 +779,13 @@ fn eval_seq(
                 New => {
                     match get_int(&args[0]) {
                         Some(len) => {
-                            // Extract the boxed lambda argument passed to Seq::new
-                            let lambda = match &args[1].x {
-                                UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => e,
-                                _ => panic!(
-                                    "Expected Seq::new's second argument to be boxed.  Got {:?} instead",
-                                    args[1]
-                                ),
-                            };
+                            // Extract the lambda argument passed to Seq::new
+                            let lambda = &args[1];
                             // Apply the lambda to each index of the new sequence
                             let vec: Result<Vec<Exp>, VirErr> = (0..len)
                                 .map(|i| {
-                                    let int_typ = Arc::new(TypX::Int(IntRange::Int));
                                     let int_i = exp_new(Const(Constant::Int(BigInt::from(i))));
-                                    let boxed_i = exp_new(UnaryOpr(
-                                        crate::ast::UnaryOpr::Box(int_typ),
-                                        int_i,
-                                    ));
-                                    let args = Arc::new(vec![boxed_i]);
+                                    let args = Arc::new(vec![int_i]);
                                     let call = exp_new(CallLambda(lambda.clone(), args));
                                     eval_expr_internal(ctx, state, &call)
                                 })
@@ -847,24 +843,22 @@ fn eval_seq(
                 },
                 Index => match &args[0].x {
                     Interp(Seq(s)) => match &args[1].x {
-                        UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
-                            Const(Constant::Int(index)) => match BigInt::to_usize(index) {
-                                None => {
-                                    let msg = "Computation tried to index into a sequence using a value that does not fit into usize";
+                        Const(Constant::Int(index)) => match BigInt::to_usize(index) {
+                            None => {
+                                let msg = "Computation tried to index into a sequence using a value that does not fit into usize";
+                                state.msgs.push(warning(&exp.span, msg));
+                                ok_seq(&args[0], &s, &args[1..])
+                            }
+                            Some(index) => {
+                                if index < s.len() {
+                                    Ok(s[index].clone())
+                                } else {
+                                    let msg =
+                                        "Computation tried to index past the length of a sequence";
                                     state.msgs.push(warning(&exp.span, msg));
                                     ok_seq(&args[0], &s, &args[1..])
                                 }
-                                Some(index) => {
-                                    if index < s.len() {
-                                        Ok(s[index].clone())
-                                    } else {
-                                        let msg = "Computation tried to index past the length of a sequence";
-                                        state.msgs.push(warning(&exp.span, msg));
-                                        ok_seq(&args[0], &s, &args[1..])
-                                    }
-                                }
-                            },
-                            _ => ok_seq(&args[0], &s, &args[1..]),
+                            }
                         },
                         _ => ok_seq(&args[0], &s, &args[1..]),
                     },
@@ -905,10 +899,6 @@ fn eval_seq(
     }
 }
 
-fn unbox(e: &Exp) -> Exp {
-    if let ExpX::UnaryOpr(crate::ast::UnaryOpr::Box(_), e) = &e.x { e.clone() } else { e.clone() }
-}
-
 /// Custom interpretation for array_index
 fn eval_array_index(
     state: &mut State,
@@ -923,7 +913,7 @@ fn eval_array_index(
     let ok = Ok(exp_new(Binary(crate::ast::BinaryOp::ArrayIndex, arr.clone(), index_exp.clone())));
     // For now, the only possible function is array_index
     match &arr.x {
-        Interp(Array(s)) => match &unbox(index_exp).x {
+        Interp(Array(s)) => match &index_exp.x {
             Const(Constant::Int(i)) => match BigInt::to_usize(i) {
                 None => {
                     let msg = "Computation tried to index into an array using a value that does not fit into usize";
@@ -1155,21 +1145,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let ok = exp_new(UnaryOpr(op.clone(), e.clone()));
             use crate::ast::UnaryOpr::*;
             match op {
-                Box(_) => match &e.x {
-                    // Sequences move through box
-                    Interp(InterpExp::Seq(s)) => exp_new(Interp(InterpExp::Seq(s.clone()))),
-                    // Arrays move through box
-                    Interp(InterpExp::Array(s)) => exp_new(Interp(InterpExp::Array(s.clone()))),
-                    _ => ok,
-                },
-                Unbox(_) => match &e.x {
-                    UnaryOpr(Box(_), inner_e) => Ok(inner_e.clone()),
-                    // Sequences move through unbox
-                    Interp(InterpExp::Seq(s)) => exp_new(Interp(InterpExp::Seq(s.clone()))),
-                    // Arrays move through unbox
-                    Interp(InterpExp::Array(s)) => exp_new(Interp(InterpExp::Array(s.clone()))),
-                    _ => ok,
-                },
+                Box(_) | Unbox(_) => {
+                    panic!("Box/Unbox are added later; we shouldn't see them here")
+                }
                 HasType(_) => ok,
                 IsVariant { datatype, variant } => match &e.x {
                     Ctor(dt, var, _) => bool_new(dt == datatype && var == variant),
@@ -1655,30 +1633,7 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
             // Grab the type the sequence holds
             let inner_type = typs[0].clone();
             // Convert back to a standard SST representation
-            let s = seq_to_sst(span, inner_type.clone(), v);
-            // Wrap the seq construction in unbox to account for the Poly type of the sequence functions
-            let unbox_opr = crate::ast::UnaryOpr::Unbox(typ.clone());
-            let unboxed_expx = crate::sst::ExpX::UnaryOpr(unbox_opr, s);
-            let unboxed_e = SpannedTyped::new(span, &typ.clone(), unboxed_expx);
-            Ok(unboxed_e)
-        }
-        TypX::Boxed(t) => {
-            match &**t {
-                TypX::Datatype(_, typs, _) => {
-                    // Grab the type the sequence holds
-                    let inner_type = typs[0].clone();
-                    // Convert back to a standard SST sequence representation
-                    let s = seq_to_sst(span, inner_type.clone(), v);
-                    Ok(s)
-                }
-                _ => Err(error(
-                    &span,
-                    format!(
-                        "Internal error: Inside box, expected to find a sequence type but found: {:?}",
-                        typ,
-                    ),
-                )),
-            }
+            Ok(seq_to_sst(span, inner_type.clone(), v))
         }
         _ => Err(error(
             &span,
@@ -1688,12 +1643,7 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
 }
 
 fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
-    let arr = array_to_sst(span, typ.clone(), v);
-    // Wrap the construction in box to account for the Poly type of the sequence/array functions
-    let box_opr = crate::ast::UnaryOpr::Box(typ.clone());
-    let boxed_expx = crate::sst::ExpX::UnaryOpr(box_opr, arr);
-    let boxed_e = SpannedTyped::new(span, &typ.clone(), boxed_expx);
-    Ok(boxed_e)
+    Ok(array_to_sst(span, typ.clone(), v))
 }
 
 /// Restore the free variables we hid during interpretation
