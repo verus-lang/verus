@@ -496,8 +496,7 @@ pub fn func_def_to_sst(
             let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
             assert!(typ_params.len() == trait_typ_args.len());
             for (x, t) in typ_params.iter().zip(trait_typ_args.iter()) {
-                let t = crate::poly::coerce_typ_to_poly(ctx, t);
-                trait_typ_substs.insert(x.clone(), t);
+                trait_typ_substs.insert(x.clone(), t.clone());
             }
             (trait_typ_substs, &ctx.func_map[method], true)
         } else {

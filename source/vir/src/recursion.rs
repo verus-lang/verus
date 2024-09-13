@@ -79,15 +79,7 @@ pub fn height_is_int(typ: &Typ) -> bool {
 }
 
 fn height_typ(ctx: &Ctx, exp: &Exp) -> Typ {
-    if height_is_int(&exp.typ) {
-        Arc::new(TypX::Int(IntRange::Int))
-    } else {
-        if crate::poly::typ_is_poly(ctx, &exp.typ) {
-            exp.typ.clone()
-        } else {
-            Arc::new(TypX::Boxed(exp.typ.clone()))
-        }
-    }
+    if height_is_int(&exp.typ) { Arc::new(TypX::Int(IntRange::Int)) } else { exp.typ.clone() }
 }
 
 fn exp_for_decrease(_ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
