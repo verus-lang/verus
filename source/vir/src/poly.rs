@@ -382,6 +382,12 @@ pub(crate) fn ret_is_poly(ctx: &Ctx, kind: &FunctionKind, ret_typ: &Typ) -> bool
     is_trait || typ_is_poly(ctx, ret_typ)
 }
 
+pub(crate) fn arg_is_poly(ctx: &Ctx, kind: &FunctionKind, mode: Mode, arg_typ: &Typ) -> bool {
+    let is_spec = mode == Mode::Spec;
+    let is_trait = !matches!(kind, FunctionKind::Static);
+    is_spec || is_trait || typ_is_poly(ctx, arg_typ)
+}
+
 fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
     let mk_exp = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
     let mk_exp_typ = |t: &Typ, e: ExpX| SpannedTyped::new(&exp.span, t, e);
@@ -974,6 +980,7 @@ fn visit_func_check_sst(
             (_, _, InsertPars::NativeFor(..)) => panic!("unexpected NativeFor"),
             (LocalDeclKind::Param { .. }, InsertPars::Poly, _)
             | (LocalDeclKind::Return, _, InsertPars::Poly)
+            | (LocalDeclKind::StmCallArg { native: false }, _, _)
             | (LocalDeclKind::AssertByVar { native: false }, _, _)
             | (LocalDeclKind::QuantBinder, _, _)
             | (LocalDeclKind::ChooseBinder, _, _)
@@ -981,6 +988,8 @@ fn visit_func_check_sst(
             (LocalDeclKind::Param { .. }, InsertPars::Native, _)
             | (LocalDeclKind::Return, _, InsertPars::Native)
             | (LocalDeclKind::StmtLet { .. }, _, _)
+            | (LocalDeclKind::StmCallArg { native: true }, _, _)
+            | (LocalDeclKind::Assert, _, _)
             | (LocalDeclKind::AssertByVar { native: true }, _, _)
             | (LocalDeclKind::LetBinder, _, _)
             | (LocalDeclKind::OpenInvariantBinder, _, _)

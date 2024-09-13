@@ -213,6 +213,8 @@ pub enum LocalDeclKind {
     // temp var inherits kind of the initializer used to assign to it:
     TempViaAssign,
     Decreases,
+    StmCallArg { native: bool },
+    Assert,
     AssertByVar { native: bool },
     LetBinder,
     QuantBinder,

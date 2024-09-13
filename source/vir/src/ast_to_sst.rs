@@ -864,7 +864,9 @@ fn stm_call(
         } else {
             // To avoid copying arg in preconditions and postconditions,
             // put arg into a temporary variable
-            let (temp_id, temp_var) = state.declare_temp_assign(&arg.span, &arg.typ);
+            let poly = crate::poly::arg_is_poly(ctx, &fun.x.kind, fun.x.mode, &arg.typ);
+            let kind = LocalDeclKind::StmCallArg { native: !poly };
+            let (temp_id, temp_var) = state.declare_temp_var_stm(&arg.span, &arg.typ, kind);
             small_args.push(temp_var);
             stms.push(init_var(&arg.span, &temp_id, arg));
         }
@@ -1590,7 +1592,8 @@ pub(crate) fn expr_to_stm_opt(
                 } else {
                     // To avoid copying exp in Assert and Assume,
                     // put exp into a temporary variable
-                    let (temp_id, temp_var) = state.declare_temp_assign(&exp.span, &exp.typ);
+                    let (temp_id, temp_var) =
+                        state.declare_temp_var_stm(&exp.span, &exp.typ, LocalDeclKind::Assert);
                     stms.push(init_var(&exp.span, &temp_id, &exp));
                     temp_var
                 };
