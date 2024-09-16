@@ -262,7 +262,6 @@ impl SyntacticEquality for Typ {
             (Datatype(path_l, typs_l, _), Datatype(path_r, typs_r, _)) => {
                 Some(path_l == path_r && typs_l.syntactic_eq(typs_r)?)
             }
-            (Boxed(l), Boxed(r)) => l.syntactic_eq(r),
             (TypParam(l), TypParam(r)) => {
                 if l == r {
                     Some(true)
@@ -387,9 +386,6 @@ impl SyntacticEquality for Exp {
             (UnaryOpr(op_l, e_l), UnaryOpr(op_r, e_r)) => {
                 use crate::ast::UnaryOpr::*;
                 let op_eq = match (op_l, op_r) {
-                    // Short circuit, since in this case x != y ==> box(x) != box(y)
-                    (Box(l), Box(r)) => return Some(l.syntactic_eq(r)? && e_l.syntactic_eq(e_r)?),
-                    (Unbox(l), Unbox(r)) => def_eq(l.syntactic_eq(r)?),
                     (HasType(l), HasType(r)) => def_eq(l.syntactic_eq(r)?),
                     (
                         IsVariant { datatype: dt_l, variant: var_l },
