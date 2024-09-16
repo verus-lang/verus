@@ -8,7 +8,6 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
     let _ = map_typ_visitor(typ, &|typ| match &**typ {
         crate::ast::TypX::Bool
         | crate::ast::TypX::Int(_)
-        | crate::ast::TypX::Tuple(_)
         | crate::ast::TypX::Datatype(_, _, _)
         | crate::ast::TypX::Decorate(
             TypDecoration::Ref

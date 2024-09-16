@@ -1,6 +1,5 @@
 use crate::ast::{
     Expr, ExprX, Function, FunctionX, GenericBoundX, Idents, Krate, KrateX, MaskSpec, Typ, TypX,
-    UnaryOpr,
 };
 use crate::ast_visitor::{
     expr_visitor_check, expr_visitor_dfs, typ_visitor_check, VisitorControlFlow, VisitorScopeMap,
@@ -11,17 +10,13 @@ use std::sync::Arc;
 fn check_expr_simplified(expr: &Expr, function: &Function) -> Result<(), ()> {
     check_typ_simplified(&expr.typ, &function.x.typ_params)?;
     match expr.x {
-        ExprX::ConstVar(..)
-        | ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, _)
-        | ExprX::Tuple(_)
-        | ExprX::Match(..) => Err(()),
+        ExprX::ConstVar(..) | ExprX::Match(..) => Err(()),
         _ => Ok(()),
     }
 }
 
 fn check_typ_simplified(typ: &Typ, typ_params: &Idents) -> Result<(), ()> {
     match &**typ {
-        TypX::Tuple(..) => Err(()),
         TypX::TypParam(id) if !typ_params.contains(id) => Err(()),
         _ => Ok(()),
     }

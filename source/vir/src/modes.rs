@@ -1,9 +1,9 @@
 use crate::ast::{
-    AutospecUsage, BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function,
+    AutospecUsage, BinaryOp, CallTarget, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function,
     FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern,
     PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
 };
-use crate::ast_util::{get_field, path_as_vstd_name};
+use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
 use crate::messages::{error, Span};
 use crate::messages::{error_bare, error_with_label};
@@ -466,19 +466,27 @@ fn add_pattern_rec(
             decls.push(PatternBoundDecl { span: pattern.span.clone(), name: x.clone(), mode });
             Ok(())
         }
-        PatternX::Tuple(patterns) => {
-            for p in patterns.iter() {
-                add_pattern_rec(ctxt, record, typing, decls, mode, p, false)?;
-            }
-            Ok(())
-        }
-        PatternX::Constructor(datatype, variant, patterns) => {
-            let datatype = ctxt.datatypes[datatype].clone();
-            let variant =
-                datatype.x.variants.iter().find(|v| v.name == *variant).expect("missing variant");
+        PatternX::Constructor(dt, variant, patterns) => {
+            let variant = match dt {
+                Dt::Path(path) => {
+                    let datatype = &ctxt.datatypes[path];
+                    Some(
+                        datatype
+                            .x
+                            .variants
+                            .iter()
+                            .find(|v| v.name == *variant)
+                            .expect("missing variant"),
+                    )
+                }
+                Dt::Tuple(_arity) => None,
+            };
+
             for binder in patterns.iter() {
-                let field = get_field(&variant.fields, &binder.name);
-                let (_, field_mode, _) = field.a;
+                let field_mode = match variant {
+                    Some(variant) => get_field(&variant.fields, &binder.name).a.1,
+                    None => Mode::Exec, // mode of a tuple field is Exec
+                };
                 add_pattern_rec(
                     ctxt,
                     record,
@@ -629,16 +637,22 @@ fn get_var_loc_mode(
                 .type_inv_info
                 .field_loc_needs_check
                 .insert(expr.span.id, rcvr_mode != Mode::Spec);
-            let datatype = &ctxt.datatypes[datatype].x;
-            assert!(datatype.variants.len() == 1);
-            let (_, field_mode, _) = &datatype.variants[0]
-                .fields
-                .iter()
-                .find(|x| x.name == *field)
-                .expect("datatype field valid")
-                .a;
+            let field_mode = match datatype {
+                Dt::Path(path) => {
+                    let datatype = &ctxt.datatypes[path].x;
+                    assert!(datatype.variants.len() == 1);
+                    let (_, field_mode, _) = &datatype.variants[0]
+                        .fields
+                        .iter()
+                        .find(|x| x.name == *field)
+                        .expect("datatype field valid")
+                        .a;
+                    *field_mode
+                }
+                Dt::Tuple(_arity) => Mode::Exec,
+            };
             let call_mode = if *get_variant { Mode::Spec } else { rcvr_mode };
-            mode_join(call_mode, *field_mode)
+            mode_join(call_mode, field_mode)
         }
         ExprX::Block(stmts, Some(e1)) if stmts.len() == 0 => {
             // For now, only support the special case for Tracked::borrow_mut.
@@ -680,9 +694,8 @@ fn check_expr_has_mode(
     expected: Mode,
 ) -> Result<(), VirErr> {
     let mode = check_expr(ctxt, record, typing, outer_mode, expr)?;
-    match &*expr.typ {
-        crate::ast::TypX::Tuple(ts) if ts.len() == 0 => return Ok(()),
-        _ => {}
+    if is_unit(&expr.typ) {
+        return Ok(());
     }
     if !mode_le(mode, expected) {
         Err(error(&expr.span, format!("expression has mode {}, expected mode {}", mode, expected)))
@@ -901,19 +914,28 @@ fn check_expr_handle_mut_arg(
             }
             Ok(Mode::Spec)
         }
-        ExprX::Tuple(es) | ExprX::ArrayLiteral(es) => {
+        ExprX::ArrayLiteral(es) => {
             let modes = vec_map_result(es, |e| check_expr(ctxt, record, typing, outer_mode, e))?;
             Ok(modes.into_iter().fold(Mode::Exec, mode_join))
         }
-        ExprX::Ctor(path, variant, binders, update) => {
-            let datatype = &ctxt.datatypes[path].clone();
-            let variant = datatype.x.get_variant(variant);
-            let mut mode = datatype.x.mode;
+        ExprX::Ctor(dt, variant, binders, update) => {
+            let (variant_opt, mut mode) = match dt {
+                Dt::Path(path) => {
+                    let datatype = &ctxt.datatypes[path];
+                    let variant = datatype.x.get_variant(variant);
+                    let mode = datatype.x.mode;
+                    (Some(variant), mode)
+                }
+                Dt::Tuple(_) => (None, Mode::Exec),
+            };
             if let Some(update) = update {
                 mode = mode_join(mode, check_expr(ctxt, record, typing, outer_mode, update)?);
             }
             for arg in binders.iter() {
-                let (_, field_mode, _) = get_field(&variant.fields, &arg.name).a;
+                let field_mode = match variant_opt {
+                    Some(variant) => get_field(&variant.fields, &arg.name).a.1,
+                    None => Mode::Exec, // tuple field is Mode exec
+                };
                 let mode_arg =
                     check_expr(ctxt, record, typing, mode_join(outer_mode, field_mode), &arg.a)?;
                 if !mode_le(mode_arg, field_mode) {
@@ -987,9 +1009,6 @@ fn check_expr_handle_mut_arg(
             }
             check_expr(ctxt, record, typing, outer_mode, e1)
         }
-        ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => {
-            return check_expr_handle_mut_arg(ctxt, record, typing, outer_mode, e1);
-        }
         ExprX::UnaryOpr(
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant, check: _ }),
             e1,
@@ -1005,9 +1024,14 @@ fn check_expr_handle_mut_arg(
                 .field_loc_needs_check
                 .insert(expr.span.id, e1_mode_write != None && e1_mode_write != Some(Mode::Spec));
 
-            let datatype = &ctxt.datatypes[datatype];
-            let field = get_field(&datatype.x.get_variant(variant).fields, field);
-            let field_mode = field.a.1;
+            let field_mode = match datatype {
+                Dt::Path(path) => {
+                    let datatype = &ctxt.datatypes[path];
+                    let field = get_field(&datatype.x.get_variant(variant).fields, field);
+                    field.a.1
+                }
+                Dt::Tuple(_) => Mode::Exec,
+            };
             let mode_read =
                 if *get_variant { Mode::Spec } else { mode_join(e1_mode_read, field_mode) };
             if let Some(e1_mode_write) = e1_mode_write {
@@ -1373,12 +1397,7 @@ fn check_expr_handle_mut_arg(
             }
             match (e1, typing.ret_mode) {
                 (None, _) => {}
-                (Some(v), None)
-                    if if let crate::ast::TypX::Tuple(tp) = &*v.typ {
-                        tp.len() == 0
-                    } else {
-                        false
-                    } => {}
+                (Some(v), None) if is_unit(&v.typ) => {}
                 (_, None) => panic!("internal error: missing return type"),
                 (Some(e1), Some(ret_mode)) => {
                     check_expr_has_mode(ctxt, record, typing, outer_mode, e1, ret_mode)?;
@@ -1389,12 +1408,12 @@ fn check_expr_handle_mut_arg(
         ExprX::BreakOrContinue { label: _, is_break: _ } => Ok(Mode::Exec),
         ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let block_ghostness = match (typing.block_ghostness, alloc_wrapper, tracked) {
-                (Ghost::Exec, false, false) => match &*e1.typ {
-                    crate::ast::TypX::Tuple(ts) if ts.len() == 0 => Ghost::Ghost,
-                    _ => {
+                (Ghost::Exec, false, false) => {
+                    if !is_unit(&e1.typ) {
                         return Err(error(&expr.span, "proof block must have type ()"));
                     }
-                },
+                    Ghost::Ghost
+                }
                 (_, false, false) => {
                     return Err(error(&expr.span, "already in proof mode"));
                 }
@@ -1755,7 +1774,14 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
         funs.insert(function.x.name.clone(), function.clone());
     }
     for datatype in krate.datatypes.iter() {
-        datatypes.insert(datatype.x.path.clone(), datatype.clone());
+        match &datatype.x.name {
+            Dt::Path(path) => {
+                datatypes.insert(path.clone(), datatype.clone());
+            }
+            Dt::Tuple(_) => {
+                panic!("Verus internal error: modes.rs does not expect Tuples in Krate");
+            }
+        }
     }
     let erasure_modes = ErasureModes { condition_modes: vec![], var_modes: vec![] };
     let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());

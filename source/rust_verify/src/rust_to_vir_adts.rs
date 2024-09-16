@@ -15,8 +15,8 @@ use rustc_span::Span;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Fun, Function, Ident, KrateX, Mode,
-    Path, TypX, Variant, VirErr,
+    CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Fun, Function, Ident, KrateX,
+    Mode, Path, TypX, Variant, VirErr,
 };
 use vir::ast_util::ident_binder;
 use vir::def::field_ident_from_rust;
@@ -190,7 +190,7 @@ pub(crate) fn check_item_struct<'tcx>(
     let variants = Arc::new(vec![variant]);
     let mode = get_mode(Mode::Exec, attrs);
     let datatype = DatatypeX {
-        path,
+        name: Dt::Path(path),
         proxy: None,
         visibility,
         owning_module: Some(module_path.clone()),
@@ -278,7 +278,7 @@ pub(crate) fn check_item_enum<'tcx>(
     vir.datatypes.push(ctxt.spanned_new(
         span,
         DatatypeX {
-            path,
+            name: Dt::Path(path),
             proxy: None,
             visibility,
             owning_module: Some(module_path.clone()),
@@ -377,7 +377,7 @@ pub(crate) fn check_item_union<'tcx>(
     vir.datatypes.push(ctxt.spanned_new(
         span,
         DatatypeX {
-            path,
+            name: Dt::Path(path),
             proxy: None,
             visibility,
             owning_module: Some(module_path.clone()),
@@ -538,7 +538,7 @@ pub(crate) fn check_item_external<'tcx>(
         let variants = Arc::new(vec![variant]);
         let visibility = external_item_visibility;
         let datatype = DatatypeX {
-            path,
+            name: Dt::Path(path),
             proxy,
             visibility,
             owning_module,
@@ -574,7 +574,7 @@ pub(crate) fn check_item_external<'tcx>(
         let variants = Arc::new(vec![variant]);
         let visibility = external_item_visibility;
         let datatype = DatatypeX {
-            path,
+            name: Dt::Path(path),
             proxy,
             visibility,
             owning_module,
@@ -623,7 +623,7 @@ pub(crate) fn check_item_external<'tcx>(
         let visibility = external_item_visibility;
 
         let datatype = DatatypeX {
-            path,
+            name: Dt::Path(path),
             proxy,
             visibility,
             owning_module,
@@ -642,16 +642,16 @@ pub(crate) fn check_item_external<'tcx>(
 }
 
 pub(crate) fn setup_type_invariants(krate: &mut KrateX) -> Result<(), VirErr> {
-    let mut path_to_idx_opt = None;
-    let mut get_datatype_idx = |dts: &Vec<Datatype>, path: &Path| {
-        if path_to_idx_opt.is_none() {
-            let mut path_to_idx = HashMap::<Path, usize>::new();
+    let mut dt_to_idx_opt = None;
+    let mut get_datatype_idx = |dts: &Vec<Datatype>, dt: &Dt| {
+        if dt_to_idx_opt.is_none() {
+            let mut dt_to_idx = HashMap::<Dt, usize>::new();
             for (i, dt) in dts.iter().enumerate() {
-                path_to_idx.insert(dt.x.path.clone(), i);
+                dt_to_idx.insert(dt.x.name.clone(), i);
             }
-            path_to_idx_opt = Some(path_to_idx);
+            dt_to_idx_opt = Some(dt_to_idx);
         }
-        path_to_idx_opt.as_ref().unwrap().get(path).cloned()
+        dt_to_idx_opt.as_ref().unwrap().get(dt).cloned()
     };
     let get_fun_span = |fs: &Vec<Function>, fun: &Fun| {
         for f in fs.iter() {
@@ -672,8 +672,8 @@ pub(crate) fn setup_type_invariants(krate: &mut KrateX) -> Result<(), VirErr> {
             }
             let param_typ = &f.x.params[0].x.typ;
             let param_typ = vir::ast_util::undecorate_typ(param_typ);
-            if let TypX::Datatype(path, ..) = &*param_typ {
-                if let Some(idx) = get_datatype_idx(&krate.datatypes, path) {
+            if let TypX::Datatype(dt, ..) = &*param_typ {
+                if let Some(idx) = get_datatype_idx(&krate.datatypes, dt) {
                     let mut dt = (*krate.datatypes[idx]).clone();
                     if let Some(f2) = &dt.x.user_defined_invariant_fn {
                         return Err(vir::messages::error(

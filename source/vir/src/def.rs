@@ -1,4 +1,4 @@
-use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
+use crate::ast::{Dt, Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
 use crate::ast_util::air_unique_var;
 use crate::messages::Span;
 use crate::util::vec_map;
@@ -390,8 +390,8 @@ pub fn global_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
-pub fn prefix_type_id(path: &Path) -> Ident {
-    Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(path))
+pub fn prefix_type_id(ident: &Path) -> Ident {
+    Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(ident))
 }
 
 pub fn prefix_fndef_type_id(fun: &Fun) -> Ident {
@@ -511,23 +511,31 @@ pub fn prefix_pre_var(name: &Ident) -> Ident {
     Arc::new(PREFIX_PRE_VAR.to_string() + name)
 }
 
-pub fn variant_ident(datatype: &Path, variant: &str) -> Ident {
-    Arc::new(format!("{}{}{}", path_to_string(datatype), VARIANT_SEPARATOR, variant))
+pub fn encode_dt_as_path(dt: &Dt) -> Path {
+    match dt {
+        Dt::Path(path) => path.clone(),
+        Dt::Tuple(arity) => prefix_tuple_type(*arity),
+    }
 }
 
-pub fn is_variant_ident(datatype: &Path, variant: &str) -> Ident {
+pub fn variant_ident(dt: &Dt, variant: &str) -> Ident {
+    let path = encode_dt_as_path(dt);
+    Arc::new(format!("{}{}{}", path_to_string(&path), VARIANT_SEPARATOR, variant))
+}
+
+pub fn is_variant_ident(datatype: &Dt, variant: &str) -> Ident {
     Arc::new(format!("is-{}", variant_ident(datatype, variant)))
 }
 
 pub fn variant_field_ident_internal(
-    datatype: &Path,
+    path: &Path,
     variant: &Ident,
     field: &Ident,
     internal: bool,
 ) -> Ident {
     Arc::new(format!(
         "{}{}{}{}{}",
-        path_to_string(datatype),
+        path_to_string(path),
         VARIANT_SEPARATOR,
         variant.as_str(),
         if internal { VARIANT_FIELD_INTERNAL_SEPARATOR } else { VARIANT_FIELD_SEPARATOR },

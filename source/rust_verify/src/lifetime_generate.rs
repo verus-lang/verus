@@ -22,7 +22,7 @@ use rustc_span::symbol::kw;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use vir::ast::{AutospecUsage, DatatypeTransparency, Fun, FunX, Function, Mode, Path};
+use vir::ast::{AutospecUsage, DatatypeTransparency, Dt, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
 use vir::def::{field_ident_from_rust, VERUS_SPEC};
 use vir::messages::AstId;
@@ -2695,7 +2695,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         ctxt.functions.insert(f.x.name.clone(), Some(f.clone())).map(|_| panic!("{:?}", &f.x.name));
     }
     for d in &erasure_hints.vir_crate.datatypes {
-        ctxt.datatypes.insert(d.x.path.clone(), d.clone()).map(|_| panic!("{:?}", &d.x.path));
+        if let Dt::Path(path) = &d.x.name {
+            ctxt.datatypes.insert(path.clone(), d.clone()).map(|_| panic!("{:?}", &path));
+        }
     }
     for (id, _span) in &erasure_hints.ignored_functions {
         ctxt.ignored_functions.insert(*id);

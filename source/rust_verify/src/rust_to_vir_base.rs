@@ -24,8 +24,8 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Path, PathX, Primitive, Typ,
-    TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
+    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Path, PathX, Primitive,
+    Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -173,7 +173,7 @@ pub(crate) fn def_id_to_datatype<'tcx, 'hir>(
     typ_args: Typs,
     impl_paths: vir::ast::ImplPaths,
 ) -> TypX {
-    TypX::Datatype(def_id_to_vir_path(tcx, verus_items, def_id), typ_args, impl_paths)
+    TypX::Datatype(Dt::Path(def_id_to_vir_path(tcx, verus_items, def_id)), typ_args, impl_paths)
 }
 
 pub(crate) fn no_body_param_to_var<'tcx>(ident: &Ident) -> VarIdent {
@@ -851,7 +851,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Never => {
             // All types are inhabited in SMT; we pick an arbitrary inhabited type for Never
-            let tuple0 = Arc::new(TypX::Tuple(Arc::new(vec![])));
+            let tuple0 = vir::ast_util::unit_typ();
             (Arc::new(TypX::Decorate(TypDecoration::Never, None, tuple0)), false)
         }
         TyKind::Tuple(_) => {
@@ -859,7 +859,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             for t in ty.tuple_fields().iter() {
                 typs.push(t_rec(&t)?.0);
             }
-            (Arc::new(TypX::Tuple(Arc::new(typs))), false)
+            (vir::ast_util::mk_tuple_typ(&Arc::new(typs)), false)
         }
         TyKind::Slice(ty) => {
             let typ = t_rec(ty)?.0;
@@ -959,7 +959,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let typ_arg_tuple = typ_args[0].0.clone();
                     let ret_typ = typ_args[1].0.clone();
                     let param_typs = match &*typ_arg_tuple {
-                        TypX::Tuple(typs) => typs.clone(),
+                        TypX::Datatype(Dt::Tuple(_), typs, _) => typs.clone(),
                         _ => {
                             // TODO proper user-facing error msg here
                             panic!("expected first type argument of spec_fn to be a tuple");
@@ -982,7 +982,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             }
             assert!(args.len() == 1);
             let args = match &*args[0] {
-                TypX::Tuple(typs) => typs.clone(),
+                TypX::Datatype(Dt::Tuple(_), typs, _) => typs.clone(),
                 _ => panic!("expected tuple type"),
             };
 

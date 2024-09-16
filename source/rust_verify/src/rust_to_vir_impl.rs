@@ -13,7 +13,7 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    AssocTypeImpl, AssocTypeImplX, Fun, FunX, Function, FunctionKind, Ident, ImplPath, Krate,
+    AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, Function, FunctionKind, Ident, ImplPath, Krate,
     KrateX, Path, Trait, TraitImpl, Typ, Typs, VirErr,
 };
 
@@ -428,7 +428,9 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     // All known datatypes:
     for k in imported.iter().map(|k| &**k).chain(vec![&*krate].into_iter()) {
         for d in k.datatypes.iter() {
-            external_info.type_paths.insert(d.x.path.clone());
+            if let Dt::Path(path) = &d.x.name {
+                external_info.type_paths.insert(path.clone());
+            }
         }
     }
 

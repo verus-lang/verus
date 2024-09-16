@@ -8,6 +8,7 @@ use crate::ast_to_sst::{
     expr_to_one_stm_with_post, expr_to_pure_exp_check, expr_to_pure_exp_skip_checks,
     expr_to_stm_opt, expr_to_stm_or_error, stms_to_one_stm, State,
 };
+use crate::ast_util::unit_typ;
 use crate::ast_visitor;
 use crate::context::{Ctx, FunctionCtx};
 use crate::def::{unique_local, Spanned};
@@ -194,11 +195,7 @@ fn func_body_to_sst(
         reqs.push(req.clone());
         for expr in reqs {
             let assumex = ExprX::AssertAssume { is_assume: true, expr: expr.clone() };
-            proof_body.push(SpannedTyped::new(
-                &req.span,
-                &Arc::new(TypX::Tuple(Arc::new(vec![]))),
-                assumex,
-            ));
+            proof_body.push(SpannedTyped::new(&req.span, &unit_typ(), assumex));
         }
         proof_body.push(req.clone()); // check spec preconditions
 

@@ -1713,3 +1713,65 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file! {
+    #[test] test_tuple_fields verus_code! {
+        fn test_field_assign() {
+            let mut a: (u64, u64) = (5, 20);
+            a.0 = 19;
+            assert(a == (19u64, 20u64));
+        }
+
+        fn test_field_assign_fail() {
+            let mut a: (u64, u64) = (5, 20);
+            a.0 = 19;
+            assert(a == (19u64, 20u64));
+            assert(false); // FAILS
+        }
+
+        fn update_u64(a: &mut u64)
+            requires *old(a) == 5,
+            ensures *a == 19,
+        {
+            *a = 19;
+        }
+
+        fn test_mut_ref(p: &mut (u64, u64)) {
+            p.0 = 5;
+            p.1 = 20;
+            update_u64(&mut p.0);
+            assert(p == (19u64, 20u64));
+        }
+
+        fn test_mut_ref_fails(p: &mut (u64, u64)) {
+            p.0 = 5;
+            p.1 = 20;
+            update_u64(&mut p.0);
+            assert(p == (19u64, 20u64));
+            assert(false); // FAILS
+        }
+
+        fn test_mut_ref_requires_fail(p: &mut (u64, u64)) {
+            update_u64(&mut p.0); // FAILS
+        }
+
+        fn test_local() {
+            let mut p = (5u64, 20u64);
+            update_u64(&mut p.0);
+            assert(p == (19u64, 20u64));
+        }
+
+        fn test_local_fail() {
+            let mut p = (5u64, 20u64);
+            update_u64(&mut p.0);
+            assert(p == (19u64, 20u64));
+            assert(false); // FAILS
+        }
+
+        fn test_local_requires_fail(p: &mut (u64, u64)) {
+            let mut p = (6u64, 20u64);
+            update_u64(&mut p.0); // FAILS
+            assert(p == (19u64, 20u64));
+        }
+    } => Err(err) => assert_fails(err, 5)
+}
