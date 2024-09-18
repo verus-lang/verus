@@ -62,6 +62,7 @@ pub fn ast_to_sst_krate(
         traits: krate.traits.clone(),
         trait_impls: krate.trait_impls.clone(),
         assoc_type_impls: krate.assoc_type_impls.clone(),
+        reveal_groups: krate.reveal_groups.clone(),
     });
     Ok(krate_sst)
 }
