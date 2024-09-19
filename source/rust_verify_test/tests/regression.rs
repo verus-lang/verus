@@ -278,7 +278,7 @@ test_verify_one_file! {
             let lock = opt_lock.get_SomeX_0();   // This line triggers panic
             true
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::OptionX::get_SomeX_0` with mode spec")
 }
 
 test_verify_one_file! {
@@ -1268,6 +1268,18 @@ test_verify_one_file! {
     #[test] arithmetic_trigger_choose_issue923 verus_code! {
         proof fn foo(a: nat, b: nat) {
             let i = choose|i: nat| a == #[trigger] (b * i);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] slice_of_tuple_issue1259 verus_code! {
+        use vstd::*;
+        pub fn run(val: &[(u32, u32)]) -> u64
+            requires
+                val.len() > 0,
+        {
+            val[0].0 as u64 + val[0].1 as u64
         }
     } => Ok(())
 }

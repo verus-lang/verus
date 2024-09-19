@@ -313,4 +313,5 @@ pub struct KrateSstX {
     pub traits: Vec<crate::ast::Trait>,
     pub trait_impls: Vec<crate::ast::TraitImpl>,
     pub assoc_type_impls: Vec<crate::ast::AssocTypeImpl>,
+    pub reveal_groups: Vec<crate::ast::RevealGroup>,
 }
