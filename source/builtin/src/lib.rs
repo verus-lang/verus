@@ -45,6 +45,14 @@ pub fn ensures<A>(_a: A) {
     unimplemented!();
 }
 
+// Can only appear at beginning of function body
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::returns"]
+#[verifier::proof]
+pub fn returns<A>(_a: A) {
+    unimplemented!();
+}
+
 // Can only appear at beginning of spec function body
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::recommends"]

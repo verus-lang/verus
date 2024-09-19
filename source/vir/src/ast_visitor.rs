@@ -651,6 +651,7 @@ where
         require,
         ensure,
         ens_has_return: _,
+        returns,
         decrease,
         decrease_when,
         decrease_by: _,
@@ -683,6 +684,10 @@ where
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     map.pop_scope();
+
+    if let Some(e) = returns {
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+    }
 
     for e in decrease.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
@@ -1256,6 +1261,7 @@ where
         ens_has_return,
         require,
         ensure,
+        returns,
         decrease,
         decrease_when,
         decrease_by,
@@ -1318,6 +1324,11 @@ where
     let ensure =
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     map.pop_scope();
+
+    let returns = match returns {
+        Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
+        None => None,
+    };
 
     let decrease =
         Arc::new(vec_map_result(decrease, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
@@ -1394,6 +1405,7 @@ where
         ens_has_return: *ens_has_return,
         require,
         ensure,
+        returns,
         decrease,
         decrease_when,
         decrease_by,

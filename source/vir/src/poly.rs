@@ -865,6 +865,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         ens_has_return,
         require,
         ensure,
+        returns,
         decrease,
         decrease_when,
         decrease_by,
@@ -936,6 +937,11 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     }
     let ensure = native_exprs(&mut state, ensure);
     state.types.pop_scope();
+
+    let returns = match returns {
+        Some(r) => Some(native_expr(&mut state, r)),
+        None => None,
+    };
 
     let decrease = native_exprs(&mut state, decrease);
     let decrease_when =
@@ -1047,6 +1053,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         ret,
         require,
         ensure,
+        returns,
         ens_has_return: *ens_has_return,
         decrease,
         decrease_when,

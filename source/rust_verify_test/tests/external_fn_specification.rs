@@ -1311,3 +1311,34 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "an item in a trait impl cannot be marked 'external'")
 }
+
+test_verify_one_file! {
+    #[test] test_returns_clause verus_code! {
+        #[verifier(external)]
+        fn negate_bool(b: bool, x: u8) -> bool {
+            !b
+        }
+
+        #[verifier(external_fn_specification)]
+        fn negate_bool_requires_ensures(b: bool, x: u8) -> bool
+            requires x != 0,
+            returns !b
+        {
+            negate_bool(b, x)
+        }
+
+        fn test1() {
+            let ret_b = negate_bool(true, 1);
+            assert(ret_b == false);
+        }
+
+        fn test2() {
+            let ret_b = negate_bool(true, 0); // FAILS
+        }
+
+        fn test3() {
+            let ret_b = negate_bool(true, 1);
+            assert(ret_b == true); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

@@ -735,6 +735,9 @@ pub trait VisitMut {
     fn visit_return_type_mut(&mut self, i: &mut ReturnType) {
         visit_return_type_mut(self, i);
     }
+    fn visit_returns_mut(&mut self, i: &mut Returns) {
+        visit_returns_mut(self, i);
+    }
     fn visit_reveal_hide_mut(&mut self, i: &mut RevealHide) {
         visit_reveal_hide_mut(self, i);
     }
@@ -3952,6 +3955,13 @@ where
         }
     }
 }
+pub fn visit_returns_mut<V>(v: &mut V, node: &mut Returns)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
+}
 pub fn visit_reveal_hide_mut<V>(v: &mut V, node: &mut RevealHide)
 where
     V: VisitMut + ?Sized,
@@ -4025,6 +4035,9 @@ where
     }
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.returns {
+        v.visit_returns_mut(it);
     }
     if let Some(it) = &mut node.decreases {
         v.visit_signature_decreases_mut(it);

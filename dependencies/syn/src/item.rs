@@ -947,6 +947,7 @@ ast_struct! {
         pub requires: Option<Requires>,
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
+        pub returns: Option<Returns>,
         pub decreases: Option<SignatureDecreases>,
         pub invariants: Option<SignatureInvariants>,
         pub unwind: Option<SignatureUnwind>,
@@ -976,6 +977,7 @@ impl Signature {
         self.requires = None;
         self.recommends = None;
         self.ensures = None;
+        self.returns = None;
         self.decreases = None;
         self.invariants = None;
         self.unwind = None;
@@ -1725,6 +1727,7 @@ pub mod parsing {
             let requires: Option<Requires> = input.parse()?;
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
+            let returns: Option<Returns> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
             let unwind: Option<SignatureUnwind> = input.parse()?;
@@ -1748,6 +1751,7 @@ pub mod parsing {
                 requires,
                 recommends,
                 ensures,
+                returns,
                 decreases,
                 invariants,
                 unwind,
@@ -3591,6 +3595,7 @@ mod printing {
             self.requires.to_tokens(tokens);
             self.recommends.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
+            self.returns.to_tokens(tokens);
             self.decreases.to_tokens(tokens);
         }
     }
