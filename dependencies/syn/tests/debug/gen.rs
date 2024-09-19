@@ -6118,6 +6118,14 @@ impl Debug for Lite<syn::ReturnType> {
         }
     }
 }
+impl Debug for Lite<syn::Returns> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("Returns");
+        formatter.field("exprs", Lite(&_val.exprs));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::RevealHide> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -6336,6 +6344,22 @@ impl Debug for Lite<syn::Signature> {
                 }
             }
             formatter.field("ensures", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.returns {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Returns);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("returns", Print::ref_cast(val));
         }
         if let Some(val) = &_val.decreases {
             #[derive(RefCast)]

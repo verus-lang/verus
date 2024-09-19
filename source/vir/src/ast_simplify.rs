@@ -935,6 +935,24 @@ fn simplify_function(
 ) -> Result<Function, VirErr> {
     state.reset_for_function();
     let mut functionx = function.x.clone();
+
+    if let Some(r) = functionx.returns.clone() {
+        functionx.returns = None;
+
+        if functionx.ens_has_return {
+            let var = SpannedTyped::new(
+                &r.span,
+                &functionx.ret.x.typ,
+                ExprX::Var(functionx.ret.x.name.clone()),
+            );
+            let eq = mk_eq(&r.span, &var, &r);
+            Arc::make_mut(&mut functionx.ensure).push(eq);
+        } else {
+            // For a unit return type, any returns clause is tautological so we
+            // can just skip appending to the postconditions.
+        }
+    }
+
     let local =
         LocalCtxt { span: function.span.clone(), typ_params: (*functionx.typ_params).clone() };
 
@@ -1013,6 +1031,7 @@ fn simplify_function(
     );
     functionx.ret =
         functionx.ret.new_x(crate::ast::ParamX { name: ret_name, ..functionx.ret.x.clone() });
+
     Ok(Spanned::new(function.span.clone(), functionx))
 }
 

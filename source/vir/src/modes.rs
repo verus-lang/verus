@@ -1662,6 +1662,12 @@ fn check_function(
     }
     drop(ens_typing);
 
+    if let Some(expr) = &function.x.returns {
+        let mut ret_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+        let mut ret_typing = ret_typing.push_allow_prophecy_dependence(true);
+        check_expr_has_mode(ctxt, record, &mut ret_typing, Mode::Spec, expr, Mode::Spec)?;
+    }
+
     for expr in function.x.decrease.iter() {
         let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
         let mut dec_typing = dec_typing.push_allow_prophecy_dependence(true);

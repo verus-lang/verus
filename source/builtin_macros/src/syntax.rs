@@ -29,8 +29,8 @@ use syn_verus::{
     InvariantNameSetList, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
     ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
     ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends,
-    Requires, ReturnType, Signature, SignatureDecreases, SignatureInvariants, SignatureUnwind,
-    Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
+    Requires, ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants,
+    SignatureUnwind, Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -415,6 +415,7 @@ impl Visitor {
         let requires = self.take_ghost(&mut sig.requires);
         let recommends = self.take_ghost(&mut sig.recommends);
         let ensures = self.take_ghost(&mut sig.ensures);
+        let returns = self.take_ghost(&mut sig.returns);
         let decreases = self.take_ghost(&mut sig.decreases);
         let opens_invariants = self.take_ghost(&mut sig.invariants);
         let unwind = self.take_ghost(&mut sig.unwind);
@@ -515,6 +516,19 @@ impl Visitor {
                         ));
                     }
                 }
+            }
+        }
+        if let Some(Returns { token, mut exprs }) = returns {
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(builtin, token.span => #builtin::returns([#exprs])),
+                    ),
+                    Semi { spans: [token.span] },
+                ));
             }
         }
         if let Some(SignatureDecreases { decreases: Decreases { token, mut exprs }, when, via }) =

@@ -1411,3 +1411,272 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "using a datatype constructor as a function value")
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_returns_clause ["vstd"] => verus_code! {
+        fn llama(x: u8) -> bool
+            requires x == 4 || x == 7,
+            returns (x == 4)
+        {
+            x == 4
+        }
+
+        fn test() {
+            let t = llama;
+
+            let b = t(4);
+            assert(b);
+
+            let b = t(7);
+            assert(!b);
+
+            assert(forall |x| (x == 4 || x == 7) ==> call_requires(llama, (x,)));
+            assert(forall |x, y| call_ensures(llama, (x,), y) ==> x == 4 ==> y);
+            assert(forall |x, y| call_ensures(llama, (x,), y) ==> x == 7 ==> !y);
+        }
+
+        fn test2() {
+            let t = llama;
+
+            let b = t(4);
+            assert(!b);     // FAILS
+        }
+
+        fn test3() {
+            let t = llama;
+
+            t(12); // FAILS
+        }
+
+        fn test4() {
+            assert(forall |x| (x == 5) ==> call_requires(llama, (x,))); // FAILS
+        }
+
+        fn test5() {
+            assert(forall |x, y| call_ensures(llama, (x,), y) ==> x == 4 ==> !y); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_returns_clause2 ["vstd"] => verus_code! {
+        fn llama(x: u8) -> (b: bool)
+            requires x == 4 || x == 7 || x == 9,
+            ensures x == 4 || x == 7
+            returns (x == 4)
+        {
+            if x == 9 {
+                loop { }
+            }
+            x == 4
+        }
+
+        fn test() {
+            let t = llama;
+
+            let b = t(4);
+            assert(b);
+
+            let b = t(7);
+            assert(!b);
+
+            assert(forall |x| (x == 4 || x == 7) ==> call_requires(llama, (x,)));
+            assert(forall |x, y| call_ensures(llama, (x,), y) ==>
+                (x == 4 || x == 7) && (y == (x == 4)));
+        }
+
+        fn test2() {
+            let t = llama;
+
+            let b = t(4);
+            assert(!b);     // FAILS
+        }
+
+        fn test3() {
+            let t = llama;
+
+            t(12); // FAILS
+        }
+
+        fn test4() {
+            assert(forall |x| (x == 5) ==> call_requires(llama, (x,))); // FAILS
+        }
+
+        fn test5() {
+            let t = llama;
+
+            let b = t(9);
+            assert(false);
+        }
+
+        fn test6() {
+            let t = llama;
+
+            let b = t(7);
+            assert(b); // FAILS
+        }
+
+        fn test7() {
+            let t = llama;
+
+            let b = t(7);
+            assert(!b);
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] call_ensures_return_clause_on_trait_method_decl ["vstd"] => verus_code! {
+        trait Tr : Sized {
+            spec fn ens(&self, i: u8, s: &Self) -> bool;
+            spec fn ret(&self, i: u8) -> Self;
+
+            fn test(&self, i: u8) -> (s: Self)
+                ensures self.ens(i, &s),
+                returns self.ret(i);
+        }
+
+        // ok
+
+        struct X { j: u8 }
+
+        impl Tr for X {
+            spec fn ens(&self, i: u8, s: &Self) -> bool { self.j + i < 250 }
+            spec fn ret(&self, i: u8) -> Self {
+                X {
+                    j: (self.j + i) as u8
+                }
+            }
+
+            fn test(&self, i: u8) -> (s: Self)
+                ensures !(20 <= i < 30),
+            {
+                if self.j as u64 + i as u64 >= 250 || (20 <= i && i < 30) {
+                    loop { }
+                }
+                X { j: self.j + i }
+            }
+        }
+
+        // generic
+
+        fn test1<T: Tr>(t: T, i: u8, r: T) {
+            assert(call_ensures(T::test, (&t, i), r) ==>
+                t.ens(i, &r) && r == t.ret(i));
+        }
+
+        fn test1_fail<T: Tr>(t: T, i: u8, r: T) {
+            assert(t.ens(i, &r) && r == t.ret(i) ==>
+                call_ensures(T::test, (&t, i), r)); // FAILS
+        }
+
+        // specific
+
+        fn test2(x: X, i: u8, r: X) {
+            assert(call_ensures(X::test, (&x, i), r) ==>
+                x.j + i < 250 && r == (X { j: (x.j + i) as u8 }) && !(20 <= i < 30));
+        }
+
+        fn test2_fail(x: X, i: u8, r: X) {
+            assert(x.j + i < 250 && r == (X { j: (x.j + i) as u8 }) && !(20 <= i < 30)
+                ==> call_ensures(X::test, (&x, i), r)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] call_ensures_return_clause_on_trait_method_impl ["vstd"] => verus_code! {
+        trait Tr : Sized {
+            spec fn ens(&self, i: u8, s: &Self) -> bool;
+
+            fn test(&self, i: u8) -> (s: Self)
+                ensures self.ens(i, &s);
+        }
+
+        // ok
+
+        struct X { j: u8 }
+
+        impl Tr for X {
+            spec fn ens(&self, i: u8, s: &Self) -> bool { self.j + i < 250 }
+
+            fn test(&self, i: u8) -> (s: Self)
+                ensures !(20 <= i < 30),
+                returns (X { j: (self.j + i) as u8 }),
+            {
+                if self.j as u64 + i as u64 >= 250 || (20 <= i && i < 30) {
+                    loop { }
+                }
+                X { j: self.j + i }
+            }
+        }
+
+        // specific
+
+        fn test2(x: X, i: u8, r: X) {
+            assert(call_ensures(X::test, (&x, i), r) ==>
+                x.j + i < 250 && r == (X { j: (x.j + i) as u8 }) && !(20 <= i < 30));
+        }
+
+        fn test2_fail(x: X, i: u8, r: X) {
+            assert(x.j + i < 250 && r == (X { j: (x.j + i) as u8 }) && !(20 <= i < 30)
+                ==> call_ensures(X::test, (&x, i), r)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] call_ensures_returns_on_default_method_impl verus_code! {
+        trait Tr : Sized {
+            fn test(&self, i: u8) -> (s: &Self)
+                ensures 20 <= i < 30,
+                returns
+                    self
+            {
+                if !(20 <= i && i < 30) { loop { } }
+                self
+            }
+        }
+
+        struct X { }
+        impl Tr for X { }
+
+        struct Y { }
+        impl Tr for Y {
+            fn test(&self, i: u8) -> (s: &Self)
+                ensures 15 <= i < 25,
+            {
+                if !(20 <= i && i < 25) { loop { } }
+                self
+            }
+        }
+
+        // Generic
+
+        fn test_generic<T: Tr>(t: T, i: u8, r: T) {
+            assert(call_ensures(T::test, (&t, i), &r) ==> 20 <= i < 30 && r == t);
+        }
+
+        fn test_generic_fails<T: Tr>(t: T, i: u8, r: T) {
+            assert(call_ensures(T::test, (&t, i), &r) <== 20 <= i < 30 && r == t); // FAILS
+        }
+
+        // Specific
+
+        fn test_x(t: X, i: u8, r: X) {
+            assert(call_ensures(X::test, (&t, i), &r) ==> 20 <= i < 30 && r == t);
+        }
+
+        fn test_x_fails(t: X, i: u8, r: X) {
+            assert(call_ensures(X::test, (&t, i), &r) <== 20 <= i < 30 && r == t); // FAILS
+        }
+
+        fn test_y(t: Y, i: u8, r: Y) {
+            assert(call_ensures(Y::test, (&t, i), &r) ==> 20 <= i < 35 && r == t);
+        }
+
+        fn test_y_fails(t: Y, i: u8, r: Y) {
+            assert(call_ensures(Y::test, (&t, i), &r) <== 20 <= i < 35 && r == t); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
