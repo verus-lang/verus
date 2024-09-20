@@ -430,19 +430,19 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
     // REVIEW: do we need this?
     // let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
 
-    // Note: a worklist of impl ids might be easier to implement.
-    // It would be nice simply because the number of impls is easily boundable.
-    //
-    // I'm not sure if it's sound, though. It might be possible for the same impl
-    // to show up multiple times, but with different predicates that result in different
-    // impls once you start nesting?
-    // So I'm implementing this with a predicate worklist to be safe.
+    // We traverse all trait bounds that need to be instantiated, and the trait bounds
+    // needed to satisfy those trait bounds, and so on. We traverse breadth-first.
+    // Our goal is to just to collect all the impl paths, but a generic trait impl
+    // might get reached multiple times for different instantiations. We need to process
+    // each of these instantiations independently, since each one might lead to different
+    // impl instantiatons. Thus, the worklist is over predicates (i.e., specific trait bounds)
+    // not impls.
 
     let mut predicate_worklist: Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)> = clauses;
 
     let mut idx = 0;
     while idx < predicate_worklist.len() {
-        if idx == 1000 {
+        if idx == 100000 {
             panic!("get_impl_paths nesting depth exceeds 1000");
         }
 
