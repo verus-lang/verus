@@ -1707,6 +1707,23 @@ pub proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
 {
 }
 
+pub proof fn subrange_of_matching_take<T>(a: Seq<T>, b: Seq<T>, s: int, e: int, l: int)
+requires
+    a.take(l) == b.take(l),
+    l <= a.len(),
+    l <= b.len(),
+    0 <= s <= e <= l,
+ensures
+    a.subrange(s, e) == b.subrange(s, e),
+{
+    assert forall |i| 0 <= i < e - s implies a.subrange(s, e)[i] == b.subrange(s, e)[i] by {
+        assert( a.subrange(s, e)[i] == a.take(l)[i + s] );
+//             assert( b.subrange(s, e)[i] == b.take(l)[i + s] );   // either trigger will do
+    }
+    // trigger extn equality (verus issue #1257)
+    assert( a.subrange(s, e) == b.subrange(s, e) );
+}
+
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Skipping the first `n` elements of a sequence gives a sequence of length `n` less than
 /// the original sequence's length.
