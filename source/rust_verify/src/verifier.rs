@@ -2654,6 +2654,8 @@ impl Verifier {
                 .map_err(map_err_diagnostics)?;
         let vir_crate =
             vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        let vir_crate = vir::traits::fixup_ens_has_return_for_trait_method_impls(vir_crate)
+            .map_err(|e| (e, Vec::new()))?;
 
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(

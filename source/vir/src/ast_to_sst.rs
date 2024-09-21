@@ -543,7 +543,7 @@ fn expr_get_call(
                     return Err(internal_error(&expr.span, "autospec not discharged"));
                 }
                 let function = get_function(ctx, &expr.span, x)?;
-                let has_ret = function.x.has_return();
+                let has_ret = function.x.ens_has_return;
                 if disallow_poly_ret.is_some()
                     && has_ret
                     && crate::poly::ret_needs_native(

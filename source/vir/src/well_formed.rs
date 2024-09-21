@@ -523,7 +523,7 @@ fn check_function(
                 "decreases_by/recommends_by function cannot have ensures clauses",
             ));
         }
-        if function.x.has_return() {
+        if function.x.ens_has_return {
             return Err(error(
                 &function.span,
                 "decreases_by/recommends_by function cannot have a return value",
@@ -602,7 +602,7 @@ fn check_function(
                 "broadcast_forall function must be declared as proof",
             ));
         }
-        if function.x.has_return() {
+        if function.x.ens_has_return {
             return Err(error(&function.span, "broadcast_forall function cannot have return type"));
         }
         for param in function.x.params.iter() {
