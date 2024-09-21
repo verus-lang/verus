@@ -640,6 +640,7 @@ where
         ret,
         require,
         ensure,
+        ens_has_return: _,
         decrease,
         decrease_when,
         decrease_by: _,
@@ -663,7 +664,7 @@ where
     }
 
     map.push_scope(true);
-    if function.x.has_return_name() {
+    if function.x.ens_has_return {
         let _ = map
             .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
@@ -1232,6 +1233,7 @@ where
         typ_bounds,
         params,
         ret,
+        ens_has_return,
         require,
         ensure,
         decrease,
@@ -1288,7 +1290,7 @@ where
         Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
 
     map.push_scope(true);
-    if function.x.has_return_name() {
+    if function.x.ens_has_return {
         let _ = map
             .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
@@ -1355,6 +1357,7 @@ where
         typ_bounds,
         params,
         ret,
+        ens_has_return: *ens_has_return,
         require,
         ensure,
         decrease,

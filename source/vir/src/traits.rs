@@ -410,6 +410,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     typ_bounds: trait_impl.x.typ_bounds.clone(),
                     params,
                     ret,
+                    ens_has_return: default_function.x.ens_has_return,
                     require: Arc::new(vec![]),
                     ensure: Arc::new(vec![]),
                     decrease: Arc::new(vec![]),
@@ -916,4 +917,31 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
     kratex.traits = traits;
     kratex.trait_impls = trait_impls;
     Ok(Arc::new(kratex))
+}
+
+/// For trait method impls, the 'ens_has_return' should be inherited from the method decl
+pub fn fixup_ens_has_return_for_trait_method_impls(krate: Krate) -> Result<Krate, VirErr> {
+    let mut krate = krate;
+    let kratex = &mut Arc::make_mut(&mut krate);
+    let mut fun_map = HashMap::<Fun, bool>::new();
+    for function in kratex.functions.iter() {
+        if matches!(function.x.kind, FunctionKind::TraitMethodDecl { .. }) {
+            fun_map.insert(function.x.name.clone(), function.x.ens_has_return);
+        }
+    }
+    for function in kratex.functions.iter_mut() {
+        if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
+            if !function.x.ens_has_return {
+                match fun_map.get(method) {
+                    None => {}
+                    Some(true) => {
+                        let functionx = &mut Arc::make_mut(&mut *function).x;
+                        functionx.ens_has_return = true;
+                    }
+                    Some(false) => {}
+                }
+            }
+        }
+    }
+    Ok(krate)
 }

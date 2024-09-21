@@ -283,7 +283,7 @@ fn req_ens_to_sst(
     pre: bool,
 ) -> Result<(Pars, Vec<Exp>), VirErr> {
     let mut pars = params_to_pre_post_pars(&function.x.params, pre);
-    if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.has_return_name() {
+    if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.ens_has_return {
         let mut ps = (*pars).clone();
         ps.push(param_to_par(&function.x.ret, false));
         pars = Arc::new(ps);
@@ -505,7 +505,7 @@ pub fn func_def_to_sst(
     let mut state = State::new(diagnostics);
 
     let mut ens_params = (*function.x.params).clone();
-    let dest = if function.x.has_return_name() {
+    let dest = if function.x.ens_has_return {
         let ParamX { name, typ, .. } = &function.x.ret.x;
         ens_params.push(function.x.ret.clone());
         state.declare_var_stm(name, typ, LocalDeclKind::Return, false);
@@ -747,7 +747,7 @@ pub fn function_to_sst(
         has_ensures: function.x.ensure.len() > 0,
         has_decrease: function.x.decrease.len() > 0,
         has_mask_spec: function.x.mask_spec.is_some(),
-        has_return_name: function.x.has_return_name(),
+        has_return_name: function.x.ens_has_return,
         is_recursive: crate::recursion::fun_is_recursive(ctx, function),
     };
 

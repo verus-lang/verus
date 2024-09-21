@@ -1633,7 +1633,7 @@ fn check_function(
     }
 
     let mut ens_typing = fun_typing.push_var_scope();
-    if function.x.has_return_name() {
+    if function.x.ens_has_return {
         ens_typing.insert(&function.x.ret.x.name, function.x.ret.x.mode);
     }
     for expr in function.x.ensure.iter() {
@@ -1662,7 +1662,7 @@ fn check_function(
         }
     }
 
-    let ret_mode = if function.x.has_return() {
+    let ret_mode = if function.x.ens_has_return {
         let ret_mode = function.x.ret.x.mode;
         if !matches!(function.x.item_kind, ItemKind::Const) && !mode_le(function.x.mode, ret_mode) {
             return Err(error(

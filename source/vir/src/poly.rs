@@ -1110,7 +1110,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
     let is_trait = !matches!(kind, FunctionKind::Static);
     let poly_pars =
         if function_mode == Mode::Spec || is_trait { InsertPars::Poly } else { InsertPars::Native };
-    let poly_ret = if is_trait && (function.x.has_return() || function_mode == Mode::Spec) {
+    let poly_ret = if is_trait && (function.x.ens_has_return || function_mode == Mode::Spec) {
         InsertPars::Poly
     } else {
         InsertPars::Native
