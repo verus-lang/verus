@@ -379,7 +379,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     args.push(arg);
                 }
                 let typ = if (is_trait || typ_is_poly(ctx, &function.ret.x.typ))
-                    && function.has_return()
+                    && function.ens_has_return
                 {
                     coerce_typ_to_poly(ctx, &expr.typ)
                 } else {
@@ -862,6 +862,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         typ_bounds,
         params,
         ret,
+        ens_has_return,
         require,
         ensure,
         decrease,
@@ -889,7 +890,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     let is_trait = !matches!(kind, FunctionKind::Static);
 
     // Return type is left native (except for trait methods)
-    let ret_typ = if is_trait && (function.x.has_return() || function_mode == Mode::Spec) {
+    let ret_typ = if is_trait && (function.x.ens_has_return || function_mode == Mode::Spec) {
         coerce_typ_to_poly(ctx, &ret.x.typ)
     } else {
         coerce_typ_to_native(ctx, &ret.x.typ)
@@ -930,7 +931,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     let require = native_exprs(&mut state, require);
 
     state.types.push_scope(true);
-    if function.x.has_return_name() {
+    if function.x.ens_has_return {
         let _ = state.types.insert(ret.x.name.clone(), ret.x.typ.clone());
     }
     let ensure = native_exprs(&mut state, ensure);
@@ -959,7 +960,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     };
 
     let body = if let Some(body) = body {
-        if is_trait && (function.x.has_return() || function_mode == Mode::Spec) {
+        if is_trait && (function.x.ens_has_return || function_mode == Mode::Spec) {
             Some(coerce_expr_to_poly(ctx, &poly_expr(ctx, &mut state, body)))
         } else {
             Some(coerce_expr_to_native(ctx, &poly_expr(ctx, &mut state, body)))
@@ -1046,6 +1047,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         ret,
         require,
         ensure,
+        ens_has_return: *ens_has_return,
         decrease,
         decrease_when,
         decrease_by: decrease_by.clone(),

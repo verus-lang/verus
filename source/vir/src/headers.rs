@@ -302,6 +302,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         typ_bounds,
         params,
         ret,
+        ens_has_return: _,
         require,
         ensure,
         decrease,

@@ -1072,8 +1072,10 @@ pub struct FunctionX {
     pub typ_bounds: GenericBounds,
     /// Function parameters
     pub params: Params,
-    /// Return value (unit return type is treated specially; see FunctionX::has_return in ast_util)
+    /// Return value
     pub ret: Param,
+    /// Can the ensures clause reference the 'ret' param (must be true for non-unit types)
+    pub ens_has_return: bool,
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
     pub require: Exprs,
     /// Postconditions (proof/exec functions only)
