@@ -289,6 +289,30 @@ fn loop_triangle_break(n: u32) -> (sum: u32)
 }
 // ANCHOR_END: loop_break
 
+// ANCHOR: for_loop
+fn for_loop_triangle(n: u32) -> (sum: u32)
+    requires
+        triangle(n as nat) < 0x1_0000_0000,
+    ensures
+        sum == triangle(n as nat),
+{
+    let mut sum: u32 = 0;
+
+    for idx in iter: 0..n
+        invariant
+            sum == triangle(idx as nat),
+            triangle(n as nat) < 0x1_0000_0000,
+    {
+        assert(sum + idx + 1 < 0x1_0000_0000) by {
+            triangle_is_monotonic((idx + 1) as nat, n as nat);
+        }
+        sum = sum + idx + 1;
+    }
+    sum
+}
+// ANCHOR_END: for_loop
+    
+
 // ANCHOR: ackermann
 spec fn ackermann(m: nat, n: nat) -> nat
     decreases m, n,
