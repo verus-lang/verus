@@ -1283,3 +1283,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] external_body_trait_item_issue1134 verus_code! {
+        trait Serializable : Sized {
+            fn serialized_len() -> (out: u64);
+
+            #[verifier::external_body]
+            fn as_bytes(&self)
+            {
+                let ptr = self as *const Self as *const u8;
+                let slice = unsafe {
+                    std::slice::from_raw_parts(ptr, Self::serialized_len() as usize)
+                };
+            }
+        }
+    } => Ok(())
+}
