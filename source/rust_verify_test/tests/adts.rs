@@ -1662,3 +1662,54 @@ test_verify_one_file! {
         assert!(err.warnings.iter().find(|w| w.message == "`#[is_variant]` is deprecated - use `->` or `matches` instead").is_some());
     }
 }
+
+test_verify_one_file! {
+    #[test] test_mut_ref_fields_generic_adt_nested verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            i: u8,
+            j: u8,
+        }
+
+        struct Pair<A, B> {
+            a: A,
+            b: B,
+        }
+
+        fn mutate_int(i: &mut u8) { }
+
+        fn test1() {
+            let mut t = Pair { a: X { i: 10, j: 8 }, b: Y { i: 100, j: 100 } };
+            mutate_int(&mut t.a.j);
+        }
+
+        fn mutate_int_2(i: &mut u8)
+            requires *old(i) == 19,
+            ensures *i == 30,
+        {
+            *i = 30;
+        }
+
+        fn test2() {
+            let mut t = Pair { a: X { i: 10, j: 19 }, b: Y { i: 100, j: 100 } };
+            mutate_int_2(&mut t.a.j);
+            assert(t == Pair { a: X { i: 10, j: 30 }, b: Y { i: 100, j: 100 } });
+        }
+
+        fn test3() {
+            let mut t = Pair { a: X { i: 10, j: 19 }, b: Y { i: 100, j: 100 } };
+            mutate_int_2(&mut t.a.j);
+            assert(t == Pair { a: X { i: 10, j: 30 }, b: Y { i: 100, j: 100 } });
+            assert(false); // FAILS
+        }
+
+        fn test4() {
+            let mut t = Pair { a: X { i: 10, j: 19 }, b: Y { i: 100, j: 100 } };
+            mutate_int_2(&mut t.a.i); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

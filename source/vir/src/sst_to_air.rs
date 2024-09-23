@@ -5,7 +5,8 @@ use crate::ast::{
     VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ, LowerUniqueVar,
+    fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ, undecorate_typ,
+    LowerUniqueVar,
 };
 use crate::bitvector_to_air::bv_to_queries;
 use crate::context::Ctx;
@@ -28,6 +29,7 @@ use crate::sst::{
     UnwindSst,
 };
 use crate::sst::{FuncCheckSst, Pars, PostConditionKind, Stms};
+use crate::sst_util::subst_typ_for_datatype;
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -1419,14 +1421,16 @@ fn assume_other_fields_unchanged_inner(
         [f] if f.len() == 0 => Ok(vec![]),
         _ => {
             let mut updated_fields: BTreeMap<_, Vec<_>> = BTreeMap::new();
-            let FieldOpr { datatype, variant, field: _, get_variant: _, check: _ } = &updates[0][0];
+            let FieldOpr { datatype: dt, variant, field: _, get_variant: _, check: _ } =
+                &updates[0][0];
             for u in updates {
-                assert!(u[0].datatype == *datatype && u[0].variant == *variant);
+                assert!(u[0].datatype == *dt && u[0].variant == *variant);
                 updated_fields.entry(&u[0].field).or_insert(Vec::new()).push(u[1..].to_vec());
             }
-            let datatype_fields = &get_variant(&ctx.global.datatypes[datatype].1, variant).fields;
+            let datatype = &ctx.datatype_map[dt];
+            let datatype_fields = &get_variant(&datatype.x.variants, variant).fields;
             let mut box_unbox_eq: Vec<Expr> = Vec::new();
-            let dt =
+            let exps_for_fields =
                 vec_map_result(&**datatype_fields, |field: &Binder<(Typ, Mode, Visibility)>| {
                     let base_exp = if let TypX::Boxed(base_typ) = &*undecorate_typ(&base.typ) {
                         // TODO this replicates logic from poly, but factoring it out is currently tricky
@@ -1454,12 +1458,21 @@ fn assume_other_fields_unchanged_inner(
                     } else {
                         base.clone()
                     };
+
+                    let typ_args = typ_args_for_datatype_typ(&base_exp.typ);
+                    let typ = subst_typ_for_datatype(&datatype.x.typ_params, typ_args, &field.a.0);
+                    let typ = if crate::poly::typ_is_poly(ctx, &field.a.0) {
+                        crate::poly::coerce_typ_to_poly(ctx, &typ)
+                    } else {
+                        crate::poly::coerce_typ_to_native(ctx, &typ)
+                    };
+
                     let field_exp = SpannedTyped::new(
                         stm_span,
-                        &field.a.0,
+                        &typ,
                         ExpX::UnaryOpr(
                             UnaryOpr::Field(FieldOpr {
-                                datatype: datatype.clone(),
+                                datatype: dt.clone(),
                                 variant: variant.clone(),
                                 field: field.name.clone(),
                                 get_variant: false,
@@ -1487,7 +1500,7 @@ fn assume_other_fields_unchanged_inner(
                         Ok(vec![Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, old, new))])
                     }
                 })?;
-            Ok(dt.into_iter().flatten().chain(box_unbox_eq.into_iter()).collect())
+            Ok(exps_for_fields.into_iter().flatten().chain(box_unbox_eq.into_iter()).collect())
         }
     }
 }
