@@ -78,7 +78,7 @@ pub fn height_is_int(typ: &Typ) -> bool {
     }
 }
 
-fn height_typ(ctx: &Ctx, exp: &Exp) -> Typ {
+fn height_typ(_ctx: &Ctx, exp: &Exp) -> Typ {
     if height_is_int(&exp.typ) { Arc::new(TypX::Int(IntRange::Int)) } else { exp.typ.clone() }
 }
 

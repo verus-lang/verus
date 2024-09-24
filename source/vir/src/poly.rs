@@ -1193,13 +1193,15 @@ fn visit_assoc_type_impl(ctx: &Ctx, assoc: &AssocTypeImpl) -> AssocTypeImpl {
 }
 
 pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &KrateSst) -> KrateSst {
-    let KrateSstX { functions, datatypes, traits, trait_impls, assoc_type_impls } = &**krate;
+    let KrateSstX { functions, datatypes, traits, trait_impls, assoc_type_impls, reveal_groups } =
+        &**krate;
     let kratex = KrateSstX {
         functions: functions.iter().map(|f| visit_function(ctx, f)).collect(),
         datatypes: datatypes.iter().map(|d| visit_datatype(ctx, d)).collect(),
         traits: traits.clone(),
         trait_impls: trait_impls.clone(),
         assoc_type_impls: assoc_type_impls.iter().map(|a| visit_assoc_type_impl(ctx, a)).collect(),
+        reveal_groups: reveal_groups.clone(),
     };
     ctx.func_sst_map = HashMap::new();
     for function in kratex.functions.iter() {
