@@ -2420,6 +2420,11 @@ fn erase_trait_item<'tcx>(
                     (_, Some(_)) => None,
                 };
                 let id = owner_id.to_def_id();
+
+                let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
+                let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
+                    .expect("get_verifier_attrs");
+
                 erase_fn(
                     krate,
                     ctxt,
@@ -2429,7 +2434,7 @@ fn erase_trait_item<'tcx>(
                     sig,
                     Some(trait_id),
                     body_id.is_none(),
-                    false,
+                    vattrs.external_body,
                     body_id,
                 );
             }

@@ -528,11 +528,7 @@ pub use open_atomic_invariant_internal;
 /// boundaries, every `proof` and `exec` function has, as part of its specification,
 /// the set of invariant namespaces that it might open.
 ///
-/// UNDER CONSTRUCTION: right now the forms of these specifications are somewhat limited
-/// and we expect to expand them.
-///
-/// The invariant set of a function can be specified by putting either
-/// `opens_invariants none` or `opens_invariants any` in the function signature.
+/// The invariant set of a function can be specified via the [`opens_invariants` clause](https://verus-lang.github.io/verus/guide/reference-opens-invariants.html).
 /// The default for an `exec`-mode function is to open any, while the default
 /// for a `proof`-mode function is to open none.
 ///
