@@ -1813,7 +1813,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
-        StmX::AssertQuery { typ_inv_vars, body, mode } => {
+        StmX::AssertQuery { typ_inv_exps: _, typ_inv_vars, body, mode } => {
             if ctx.debug {
                 unimplemented!("assert query is unsupported in debugger mode");
             }

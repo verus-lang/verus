@@ -13,33 +13,39 @@ use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub(crate) fn free_vars_exp(exp: &Exp) -> HashMap<UniqueIdent, Typ> {
-    free_vars_exp_scope(exp, &mut crate::sst_visitor::VisitorScopeMap::new())
-}
-
 fn free_vars_exp_scope(
     exp: &Exp,
     scope_map: &mut crate::sst_visitor::VisitorScopeMap,
-) -> HashMap<UniqueIdent, Typ> {
-    let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
+    vars: &mut HashMap<UniqueIdent, Typ>,
+    allow_unfinalized: bool,
+) {
     crate::sst_visitor::exp_visitor_dfs::<(), _>(exp, scope_map, &mut |e, scope_map| {
         match &e.x {
             ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(x) => {
                 vars.insert(x.clone(), e.typ.clone());
             }
+            ExpX::Unary(UnaryOp::MustBeFinalized, _) if !allow_unfinalized => {
+                // Var won't match binders if we're not finalized
+                // (special case allow_unfinalized = true for type-only substitution)
+                panic!("MustBeFinalized")
+            }
             _ => (),
         }
         crate::sst_visitor::VisitorControlFlow::Recurse
     });
+}
+
+pub(crate) fn free_vars_exp(exp: &Exp) -> HashMap<UniqueIdent, Typ> {
+    let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
+    free_vars_exp_scope(exp, &mut crate::sst_visitor::VisitorScopeMap::new(), &mut vars, false);
     vars
 }
 
-pub(crate) fn free_vars_stm(stm: &Stm) -> HashMap<UniqueIdent, Typ> {
+pub(crate) fn free_vars_exps(exps: &[Exp]) -> HashMap<UniqueIdent, Typ> {
     let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
-    crate::sst_visitor::stm_exp_visitor_dfs::<(), _>(stm, &mut |exp, scope_map| {
-        vars.extend(free_vars_exp_scope(exp, scope_map).into_iter());
-        crate::sst_visitor::VisitorControlFlow::Recurse
-    });
+    for exp in exps {
+        free_vars_exp_scope(exp, &mut crate::sst_visitor::VisitorScopeMap::new(), &mut vars, false);
+    }
     vars
 }
 
@@ -110,11 +116,17 @@ fn subst_exp_rec(
     substs: &mut ScopeMap<UniqueIdent, Exp>,
     free_vars: &mut ScopeMap<UniqueIdent, ()>,
     exp: &Exp,
+    allow_unfinalized: bool,
 ) -> Exp {
     let typ = subst_typ(typ_substs, &exp.typ);
     let mk_exp = |e: ExpX| SpannedTyped::new(&exp.span, &typ, e);
     let ft = |t: &Typ| subst_typ(typ_substs, t);
     match &exp.x {
+        ExpX::Unary(UnaryOp::MustBeFinalized, _) if !allow_unfinalized => {
+            // Var won't match binders if we're not finalized
+            // (special case allow_unfinalized = true for type-only substitution)
+            panic!("MustBeFinalized")
+        }
         ExpX::Const(..)
         | ExpX::Loc(..)
         | ExpX::StaticVar(..)
@@ -134,7 +146,9 @@ fn subst_exp_rec(
             exp,
             &mut (substs, free_vars),
             &|_, t| Ok(subst_typ(typ_substs, t)),
-            &|(substs, free_vars), e| Ok(subst_exp_rec(typ_substs, substs, free_vars, e)),
+            &|(substs, free_vars), e| {
+                Ok(subst_exp_rec(typ_substs, substs, free_vars, e, allow_unfinalized))
+            },
         )
         .expect("map_shallow_exp for subst_exp_rec"),
         ExpX::Var(x) => {
@@ -161,7 +175,13 @@ fn subst_exp_rec(
                 for trigger in triggers.iter() {
                     let mut trig: Vec<Exp> = Vec::new();
                     for t in trigger.iter() {
-                        trig.push(subst_exp_rec(typ_substs, substs, free_vars, t));
+                        trig.push(subst_exp_rec(
+                            typ_substs,
+                            substs,
+                            free_vars,
+                            t,
+                            allow_unfinalized,
+                        ));
                     }
                     trigs.push(Arc::new(trig));
                 }
@@ -171,7 +191,13 @@ fn subst_exp_rec(
                 BndX::Let(bs) => {
                     let mut binders: Vec<VarBinder<Exp>> = Vec::new();
                     for b in bs.iter() {
-                        binders.push(b.new_a(subst_exp_rec(typ_substs, substs, free_vars, &b.a)));
+                        binders.push(b.new_a(subst_exp_rec(
+                            typ_substs,
+                            substs,
+                            free_vars,
+                            &b.a,
+                            allow_unfinalized,
+                        )));
                     }
                     let binders = subst_rename_binders(
                         &bnd.span,
@@ -196,12 +222,13 @@ fn subst_exp_rec(
                 BndX::Choose(binders, ts, cond) => {
                     let binders =
                         subst_rename_binders(&bnd.span, substs, free_vars, binders, ft, ft);
-                    let cond = subst_exp_rec(typ_substs, substs, free_vars, cond);
+                    let cond =
+                        subst_exp_rec(typ_substs, substs, free_vars, cond, allow_unfinalized);
                     BndX::Choose(binders, ftrigs(substs, free_vars, ts), cond)
                 }
             };
             let bnd = Spanned::new(bnd.span.clone(), bndx);
-            let e1 = subst_exp_rec(typ_substs, substs, free_vars, e1);
+            let e1 = subst_exp_rec(typ_substs, substs, free_vars, e1, allow_unfinalized);
             substs.pop_scope();
             free_vars.pop_scope();
             SpannedTyped::new(&exp.span, &typ, ExpX::Bind(bnd, e1))
@@ -209,7 +236,7 @@ fn subst_exp_rec(
         ExpX::ArrayLiteral(exprs) => {
             let mut new_exprs: Vec<Exp> = Vec::new();
             for e in exprs.iter() {
-                new_exprs.push(subst_exp_rec(typ_substs, substs, free_vars, e));
+                new_exprs.push(subst_exp_rec(typ_substs, substs, free_vars, e, allow_unfinalized));
             }
             mk_exp(ExpX::ArrayLiteral(Arc::new(new_exprs)))
         }
@@ -232,7 +259,14 @@ pub(crate) fn subst_exp(
     let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
     scope_substs.push_scope(false);
     free_vars.push_scope(true);
-    for (y, _) in free_vars_exp(exp) {
+    let mut free_vars_map: HashMap<UniqueIdent, Typ> = HashMap::new();
+    free_vars_exp_scope(
+        exp,
+        &mut crate::sst_visitor::VisitorScopeMap::new(),
+        &mut free_vars_map,
+        substs.len() == 0,
+    );
+    for (y, _) in free_vars_map {
         let _ = free_vars.insert(y.clone(), ());
     }
     for (x, v) in substs {
@@ -241,7 +275,7 @@ pub(crate) fn subst_exp(
             let _ = free_vars.insert(y.clone(), ());
         }
     }
-    let e = subst_exp_rec(&typ_substs, &mut scope_substs, &mut free_vars, exp);
+    let e = subst_exp_rec(&typ_substs, &mut scope_substs, &mut free_vars, exp, substs.len() == 0);
     scope_substs.pop_scope();
     free_vars.pop_scope();
     assert_eq!(scope_substs.num_scopes(), 0);

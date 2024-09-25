@@ -154,6 +154,7 @@ pub enum StmX {
     },
     AssertQuery {
         mode: AssertQueryMode,
+        typ_inv_exps: Exps,
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         body: Stm,
     },

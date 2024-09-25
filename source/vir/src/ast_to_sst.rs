@@ -14,9 +14,7 @@ use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
-use crate::sst_util::{
-    free_vars_exp, free_vars_stm, sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt,
-};
+use crate::sst_util::{sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::vec_map_result;
 use crate::visitor::VisitorControlFlow;
@@ -26,7 +24,7 @@ use air::scope_map::ScopeMap;
 use indexmap::IndexSet;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -1699,7 +1697,7 @@ pub(crate) fn expr_to_stm_opt(
             match mode {
                 AssertQueryMode::NonLinear => {
                     let mut inner_body: Vec<Stm> = Vec::new();
-                    let mut vars = BTreeMap::new(); // order vars by UniqueIdent
+                    let mut exps: Vec<Exp> = Vec::new();
 
                     // Translate body as separate query
                     state.push_scope();
@@ -1707,7 +1705,6 @@ pub(crate) fn expr_to_stm_opt(
                         let (require_check_recommends, require_exp) =
                             expr_to_pure_exp_check(ctx, state, &r)?;
                         inner_body.extend(require_check_recommends);
-                        vars.extend(free_vars_exp(&require_exp).into_iter());
                         let assume = Spanned::new(r.span.clone(), StmX::Assume(require_exp));
                         inner_body.push(assume);
                     }
@@ -1722,17 +1719,14 @@ pub(crate) fn expr_to_stm_opt(
                     inner_body.extend(proof_stms);
 
                     for e in ensures.iter() {
+                        // Use expr_to_pure_exp_skip_checks,
+                        // because we check spec preconditions below with check_pure_expr
+                        let ensure_exp = expr_to_pure_exp_skip_checks(ctx, state, &e)?;
+                        exps.push(ensure_exp.clone());
                         if state.checking_spec_preconditions(ctx) {
                             let check_stms = check_pure_expr(ctx, state, &e)?;
-                            for s in check_stms.iter() {
-                                vars.extend(free_vars_stm(&s).into_iter());
-                            }
                             inner_body.extend(check_stms);
                         } else {
-                            // Use expr_to_pure_exp_skip_checks,
-                            // because we checked spec preconditions above with check_pure_expr
-                            let ensure_exp = expr_to_pure_exp_skip_checks(ctx, state, &e)?;
-                            vars.extend(free_vars_exp(&ensure_exp).into_iter());
                             let assert = Spanned::new(
                                 e.span.clone(),
                                 StmX::Assert(state.next_assert_id(), None, ensure_exp),
@@ -1749,12 +1743,13 @@ pub(crate) fn expr_to_stm_opt(
 
                     // Translate as assert, assume in outer query
                     for r in requires.iter() {
+                        // Use expr_to_pure_exp_skip_checks,
+                        // because we check spec preconditions below with check_pure_expr
+                        let require_exp = expr_to_pure_exp_skip_checks(ctx, state, &r)?;
+                        exps.push(require_exp.clone());
                         if state.checking_spec_preconditions(ctx) {
                             outer.extend(check_pure_expr(ctx, state, &r)?);
                         } else {
-                            // Use expr_to_pure_exp_skip_checks,
-                            // because we checked spec preconditions above with check_pure_expr
-                            let require_exp = expr_to_pure_exp_skip_checks(ctx, state, &r)?;
                             let assert = Spanned::new(
                                 r.span.clone(),
                                 StmX::Assert(
@@ -1783,7 +1778,8 @@ pub(crate) fn expr_to_stm_opt(
                         expr.span.clone(),
                         StmX::AssertQuery {
                             body: inner_body,
-                            typ_inv_vars: Arc::new(vars.into_iter().collect()),
+                            typ_inv_exps: Arc::new(exps),
+                            typ_inv_vars: Arc::new(vec![]),
                             mode: *mode,
                         },
                     );
