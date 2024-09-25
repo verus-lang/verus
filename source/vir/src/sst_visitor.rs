@@ -493,12 +493,14 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
-            StmX::AssertQuery { mode, typ_inv_vars, body } => {
+            StmX::AssertQuery { mode, typ_inv_exps, typ_inv_vars, body } => {
+                let typ_inv_exps = self.visit_exps(typ_inv_exps)?;
                 let typ_inv_vars = self.visit_typ_inv_vars(typ_inv_vars)?;
                 let body = self.visit_stm(body)?;
                 R::ret(|| {
                     stm_new(StmX::AssertQuery {
                         mode: *mode,
+                        typ_inv_exps: R::get_vec_a(typ_inv_exps),
                         typ_inv_vars: R::get_vec_a(typ_inv_vars),
                         body: R::get(body),
                     })
@@ -783,44 +785,6 @@ where
     F: FnMut(&Stm) -> VisitorControlFlow<T>,
 {
     let mut visitor = StmVisitorDfs { f };
-    match visitor.visit_stm(stm) {
-        Ok(()) => VisitorControlFlow::Recurse,
-        Err(val) => VisitorControlFlow::Stop(val),
-    }
-}
-
-struct StmExpVisitorDfs<'a, F> {
-    map: &'a mut VisitorScopeMap,
-    f: &'a mut F,
-}
-
-impl<'a, T, F> Visitor<Walk, T, VisitorScopeMap> for StmExpVisitorDfs<'a, F>
-where
-    F: FnMut(&Exp, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
-{
-    fn visit_exp(&mut self, exp: &Exp) -> Result<(), T> {
-        match (self.f)(exp, &mut self.map) {
-            VisitorControlFlow::Stop(val) => Err(val),
-            VisitorControlFlow::Return => Ok(()),
-            VisitorControlFlow::Recurse => self.visit_exp_rec(exp),
-        }
-    }
-
-    fn visit_stm(&mut self, stm: &Stm) -> Result<(), T> {
-        self.visit_stm_rec(stm)
-    }
-
-    fn scoper(&mut self) -> Option<&mut VisitorScopeMap> {
-        Some(&mut self.map)
-    }
-}
-
-pub(crate) fn stm_exp_visitor_dfs<T, F>(stm: &Stm, f: &mut F) -> VisitorControlFlow<T>
-where
-    F: FnMut(&Exp, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
-{
-    let mut map = ScopeMap::new();
-    let mut visitor = StmExpVisitorDfs { map: &mut map, f };
     match visitor.visit_stm(stm) {
         Ok(()) => VisitorControlFlow::Recurse,
         Err(val) => VisitorControlFlow::Stop(val),
