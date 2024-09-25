@@ -82,6 +82,29 @@ impl Clone for Assume {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for AssumeSpecification {
+    fn clone(&self) -> Self {
+        AssumeSpecification {
+            attrs: self.attrs.clone(),
+            vis: self.vis.clone(),
+            assume_specification: self.assume_specification.clone(),
+            generics: self.generics.clone(),
+            bracket_token: self.bracket_token.clone(),
+            qself: self.qself.clone(),
+            path: self.path.clone(),
+            paren_token: self.paren_token.clone(),
+            inputs: self.inputs.clone(),
+            output: self.output.clone(),
+            requires: self.requires.clone(),
+            ensures: self.ensures.clone(),
+            returns: self.returns.clone(),
+            invariants: self.invariants.clone(),
+            unwind: self.unwind.clone(),
+            semi: self.semi.clone(),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Copy for AttrStyle {}
@@ -1380,6 +1403,7 @@ impl Clone for Item {
             Item::Global(v0) => Item::Global(v0.clone()),
             Item::BroadcastUse(v0) => Item::BroadcastUse(v0.clone()),
             Item::BroadcastGroup(v0) => Item::BroadcastGroup(v0.clone()),
+            Item::AssumeSpecification(v0) => Item::AssumeSpecification(v0.clone()),
             #[cfg(syn_no_non_exhaustive)]
             _ => unreachable!(),
         }

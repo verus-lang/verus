@@ -90,16 +90,12 @@ pub trait ExStructural {
     type ExternalTraitSpecificationFor: Structural;
 }
 
-#[verifier::external_fn_specification]
-pub fn ex_swap<T>(a: &mut T, b: &mut T)
+pub assume_specification<T> [core::mem::swap::<T>] (a: &mut T, b: &mut T)
     ensures
         *a == *old(b),
         *b == *old(a),
     opens_invariants none
-    no_unwind
-{
-    core::mem::swap(a, b)
-}
+    no_unwind;
 
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(V)]
@@ -136,21 +132,13 @@ pub struct ExDuration(core::time::Duration);
 #[verifier::accept_recursive_types(V)]
 pub struct ExPhantomData<V: ?Sized>(core::marker::PhantomData<V>);
 
-#[verifier::external_fn_specification]
-pub fn ex_intrinsics_likely(b: bool) -> (c: bool)
+pub assume_specification [core::intrinsics::likely] (b: bool) -> (c: bool)
     ensures
-        c == b,
-{
-    core::intrinsics::likely(b)
-}
+        c == b;
 
-#[verifier::external_fn_specification]
-pub fn ex_intrinsics_unlikely(b: bool) -> (c: bool)
+pub assume_specification [core::intrinsics::unlikely] (b: bool) -> (c: bool)
     ensures
-        c == b,
-{
-    core::intrinsics::unlikely(b)
-}
+        c == b;
 
 #[verifier::external_type_specification]
 #[verifier::external_body]

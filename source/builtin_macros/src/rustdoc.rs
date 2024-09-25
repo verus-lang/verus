@@ -35,8 +35,9 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
-    AttrStyle, Attribute, Block, Expr, ExprBlock, FnMode, Ident, ImplItemMethod, ItemFn, Pat,
-    PatIdent, Path, PathArguments, PathSegment, Publish, ReturnType, Signature, TraitItemMethod,
+    AssumeSpecification, AttrStyle, Attribute, Block, Expr, ExprBlock, ExprPath, FnMode, Ident,
+    ImplItemMethod, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, ReturnType,
+    Signature, TraitItemMethod,
 };
 
 /// Check if VERUSDOC=1.
@@ -57,28 +58,35 @@ pub fn env_rustdoc() -> bool {
 // Main hooks for the verus! macro to manipulate ItemFn, etc.
 
 pub fn process_item_fn(item: &mut ItemFn) {
-    match attr_for_sig(&item.sig, Some(&item.block)) {
+    match attr_for_sig(&item.sig, Some(&item.block), None) {
+        Some(attr) => item.attrs.insert(0, attr),
+        None => {}
+    }
+}
+
+pub fn process_item_fn_assume_specification(item: &mut ItemFn, as_spec: &AssumeSpecification) {
+    match attr_for_sig(&item.sig, Some(&item.block), Some(as_spec)) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
 }
 
 pub fn process_item_fn_broadcast_group(item: &mut ItemFn) {
-    match attr_for_broadcast_group(&mut item.attrs, &item.sig) {
+    match attr_for_broadcast_group(&item.sig) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
 }
 
 pub fn process_impl_item_method(item: &mut ImplItemMethod) {
-    match attr_for_sig(&item.sig, Some(&item.block)) {
+    match attr_for_sig(&item.sig, Some(&item.block), None) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
 }
 
 pub fn process_trait_item_method(item: &mut TraitItemMethod) {
-    match attr_for_sig(&item.sig, item.default.as_ref()) {
+    match attr_for_sig(&item.sig, item.default.as_ref(), None) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
@@ -88,7 +96,11 @@ pub fn process_trait_item_method(item: &mut TraitItemMethod) {
 /// formatting tricks, and then package it all up into a #[doc = "..."] attribute
 /// (as a syn_verus::Attribute object) that we can apply to the item.
 
-fn attr_for_sig(sig: &Signature, block: Option<&Block>) -> Option<Attribute> {
+fn attr_for_sig(
+    sig: &Signature,
+    block: Option<&Block>,
+    as_spec: Option<&AssumeSpecification>,
+) -> Option<Attribute> {
     let mut v = vec![];
 
     v.push(encoded_sig_info(sig));
@@ -131,10 +143,15 @@ fn attr_for_sig(sig: &Signature, block: Option<&Block>) -> Option<Attribute> {
         None => {}
     }
 
+    if let Some(as_spec) = as_spec {
+        let e = Expr::Path(ExprPath { attrs: vec![], qself: None, path: as_spec.path.clone() });
+        v.push(encoded_expr("assume_specification", &e));
+    }
+
     if v.len() == 0 { None } else { Some(doc_attr_from_string(&v.join("\n\n"), sig.span())) }
 }
 
-fn attr_for_broadcast_group(_attrs: &mut Vec<Attribute>, sig: &Signature) -> Option<Attribute> {
+fn attr_for_broadcast_group(sig: &Signature) -> Option<Attribute> {
     let mut v = vec![];
 
     v.push(encoded_str("broadcast_group", ""));
