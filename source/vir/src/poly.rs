@@ -760,11 +760,17 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             let ensures = visit_exps_native(ctx, state, ensures);
             mk_stm(StmX::AssertBitVector { requires, ensures })
         }
-        StmX::AssertQuery { mode, typ_inv_vars, body } => {
+        StmX::AssertQuery { mode, typ_inv_exps, typ_inv_vars, body } => {
             let body = visit_stm(ctx, state, body);
+            let typ_inv_exps = visit_exps(ctx, state, typ_inv_exps);
             let typ_inv_vars =
                 typ_inv_vars.iter().map(|(x, _)| (x.clone(), state.types[x].clone())).collect();
-            mk_stm(StmX::AssertQuery { mode: *mode, typ_inv_vars: Arc::new(typ_inv_vars), body })
+            mk_stm(StmX::AssertQuery {
+                mode: *mode,
+                typ_inv_exps,
+                typ_inv_vars: Arc::new(typ_inv_vars),
+                body,
+            })
         }
         StmX::AssertCompute(..) => panic!("AssertCompute should be removed by sst_elaborate"),
         StmX::Assume(e1) => {
