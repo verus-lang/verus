@@ -77,6 +77,26 @@ impl Hash for Assume {
         self.expr.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for AssumeSpecification {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.vis.hash(state);
+        self.generics.hash(state);
+        self.qself.hash(state);
+        self.path.hash(state);
+        self.inputs.hash(state);
+        self.output.hash(state);
+        self.requires.hash(state);
+        self.ensures.hash(state);
+        self.returns.hash(state);
+        self.invariants.hash(state);
+        self.unwind.hash(state);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for AttrStyle {
@@ -1858,6 +1878,10 @@ impl Hash for Item {
             }
             Item::BroadcastGroup(v0) => {
                 state.write_u8(19u8);
+                v0.hash(state);
+            }
+            Item::AssumeSpecification(v0) => {
+                state.write_u8(20u8);
                 v0.hash(state);
             }
             #[cfg(syn_no_non_exhaustive)]

@@ -63,6 +63,19 @@ impl PartialEq for Assume {
         self.attrs == other.attrs && self.expr == other.expr
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for AssumeSpecification {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for AssumeSpecification {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.vis == other.vis
+            && self.generics == other.generics && self.qself == other.qself
+            && self.path == other.path && self.inputs == other.inputs
+            && self.output == other.output && self.requires == other.requires
+            && self.ensures == other.ensures && self.returns == other.returns
+            && self.invariants == other.invariants && self.unwind == other.unwind
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for AttrStyle {}
@@ -1336,6 +1349,9 @@ impl PartialEq for Item {
             (Item::Global(self0), Item::Global(other0)) => self0 == other0,
             (Item::BroadcastUse(self0), Item::BroadcastUse(other0)) => self0 == other0,
             (Item::BroadcastGroup(self0), Item::BroadcastGroup(other0)) => {
+                self0 == other0
+            }
+            (Item::AssumeSpecification(self0), Item::AssumeSpecification(other0)) => {
                 self0 == other0
             }
             _ => false,
