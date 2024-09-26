@@ -1037,8 +1037,8 @@ fn visit_func_check_sst(
 
     let body = visit_stm(ctx, state, &body);
 
-    assert!(state.remaining_temps.len() == 0);
     update_temp_locals(state, &mut locals, &mut updated_temps);
+    state.remaining_temps.clear();
     state.types.pop_scope();
 
     FuncCheckSst {
