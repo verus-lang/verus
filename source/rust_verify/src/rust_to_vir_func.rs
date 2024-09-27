@@ -29,7 +29,7 @@ use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, Mode,
     ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
 };
-use vir::ast_util::air_unique_var;
+use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 use vir::sst_util::subst_typ;
 
@@ -843,6 +843,9 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         return err_span(sig.span, "spec functions cannot have requires/ensures");
     }
+    if mode == Mode::Spec && header.returns.is_some() {
+        return err_span(sig.span, "spec functions cannot have `returns` clause");
+    }
     if mode != Mode::Spec && header.recommend.len() > 0 {
         return err_span(sig.span, "non-spec functions cannot have recommends");
     }
@@ -1053,6 +1056,12 @@ pub(crate) fn check_item_fn<'tcx>(
             )
         })
     };
+
+    // Note: ens_has_return isn't final; it may need to be changed later to make
+    // sure it's in sync for trait method impls and trait method decls.
+    // See `fixup_ens_has_return_for_trait_method_impls`.
+    let (ensure, ens_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure);
+
     let mut func = FunctionX {
         name: name.clone(),
         proxy,
@@ -1065,8 +1074,10 @@ pub(crate) fn check_item_fn<'tcx>(
         typ_bounds,
         params,
         ret,
+        ens_has_return,
         require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
-        ensure: header.ensure,
+        returns: header.returns,
+        ensure: ensure,
         decrease: header.decrease,
         decrease_when: header.decrease_when,
         decrease_by: header.decrease_by,
@@ -1123,8 +1134,10 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             mut typ_bounds,
             mut params,
             mut ret,
+            ens_has_return,
             require,
             ensure,
+            returns,
             decrease,
             decrease_when,
             decrease_by,
@@ -1198,6 +1211,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
 
         unsupported_err_unless!(require.len() == 0, span, "requires clauses");
         unsupported_err_unless!(ensure.len() == 0, span, "ensures clauses");
+        unsupported_err_unless!(returns.is_some(), span, "returns clauses");
         unsupported_err_unless!(decrease.len() == 0, span, "decreases clauses");
         unsupported_err_unless!(decrease_when.is_none(), span, "decreases_when clauses");
         unsupported_err_unless!(decrease_by.is_none(), span, "decreases_by clauses");
@@ -1218,8 +1232,10 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             typ_bounds,
             params,
             ret,
+            ens_has_return,
             require,
             ensure,
+            returns,
             decrease,
             decrease_when,
             decrease_by,
@@ -1628,7 +1644,10 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         return err_span(span, "consts cannot have requires/recommends");
     }
     if ret_mode == Mode::Spec && header.ensure.len() > 0 {
-        return err_span(span, "spec functions cannot have ensures");
+        return err_span(span, "spec consts cannot have ensures");
+    }
+    if header.returns.is_some() {
+        return err_span(span, "consts cannot have `returns` clause");
     }
 
     let ret_name = air_unique_var(RETURN_VALUE);
@@ -1657,6 +1676,9 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         span,
     )?;
 
+    let (ensure, ens_has_return) =
+        clean_ensures_for_unit_return(&ret, &header.const_static_ensures(&name, is_static));
+
     let func = FunctionX {
         name: name.clone(),
         proxy: None,
@@ -1669,8 +1691,10 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         typ_bounds: Arc::new(vec![]),
         params: Arc::new(vec![]),
         ret,
+        ens_has_return,
         require: Arc::new(vec![]),
-        ensure: header.const_static_ensures(&name, is_static),
+        ensure,
+        returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
@@ -1754,9 +1778,9 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         vir_params.push(vir_param);
     }
     let params = Arc::new(vir_params);
-    let (ret_typ, ret_mode) = match ret_typ_mode {
-        None => (Arc::new(TypX::Tuple(Arc::new(vec![]))), mode),
-        Some((typ, mode)) => (typ, mode),
+    let (ret_typ, ret_mode, ens_has_return) = match ret_typ_mode {
+        None => (Arc::new(TypX::Tuple(Arc::new(vec![]))), mode, false),
+        Some((typ, mode)) => (typ, mode, true),
     };
     let ret_param = ParamX {
         name: air_unique_var(RETURN_VALUE),
@@ -1778,8 +1802,10 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         typ_bounds,
         params,
         ret,
+        ens_has_return,
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
+        returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,

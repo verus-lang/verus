@@ -62,6 +62,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     SpecItem::Requires
                         | SpecItem::Recommends
                         | SpecItem::Ensures
+                        | SpecItem::Returns
                         | SpecItem::OpensInvariantsNone
                         | SpecItem::OpensInvariantsAny
                         | SpecItem::OpensInvariants
@@ -299,7 +300,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_spec_fn_no_proof_args(bctx, expr);
                 mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
             }
-            SpecItem::Requires | SpecItem::Recommends | SpecItem::OpensInvariants => {
+            SpecItem::Requires
+            | SpecItem::Recommends
+            | SpecItem::OpensInvariants
+            | SpecItem::Returns => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(
                     args_len == 1,
@@ -312,6 +316,13 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 let vir_args =
                     vec_map_result(&subargs, |arg| expr_to_vir(&bctx, arg, ExprModifier::REGULAR))?;
+
+                if matches!(spec_item, SpecItem::Returns) && subargs.len() != 1 {
+                    return err_span(
+                        expr.span,
+                        "`returns` clause should have exactly 1 expression",
+                    );
+                }
 
                 for (arg, vir_arg) in subargs.iter().zip(vir_args.iter()) {
                     let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
@@ -334,6 +345,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                                 );
                             }
                         },
+                        SpecItem::Returns => {
+                            // type is checked in well_formed.rs
+                        }
                         _ => unreachable!(),
                     }
                 }
@@ -344,6 +358,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     SpecItem::OpensInvariants => {
                         Arc::new(HeaderExprX::InvariantOpens(Arc::new(vir_args)))
                     }
+                    SpecItem::Returns => Arc::new(HeaderExprX::Returns(vir_args[0].clone())),
                     _ => unreachable!(),
                 };
                 mk_expr(ExprX::Header(header))

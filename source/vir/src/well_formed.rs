@@ -5,6 +5,7 @@ use crate::ast::{
 };
 use crate::ast_util::{
     fun_as_friendly_rust_name, is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr,
+    typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::user_local_name;
@@ -523,7 +524,13 @@ fn check_function(
                 "decreases_by/recommends_by function cannot have ensures clauses",
             ));
         }
-        if function.x.has_return() {
+        if function.x.returns.is_some() {
+            return Err(error(
+                &function.span,
+                "decreases_by/recommends_by function cannot have ensures clauses",
+            ));
+        }
+        if function.x.ens_has_return {
             return Err(error(
                 &function.span,
                 "decreases_by/recommends_by function cannot have a return value",
@@ -602,7 +609,7 @@ fn check_function(
                 "broadcast_forall function must be declared as proof",
             ));
         }
-        if function.x.has_return() {
+        if function.x.ens_has_return {
             return Err(error(&function.span, "broadcast_forall function cannot have return type"));
         }
         for param in function.x.params.iter() {
@@ -766,6 +773,9 @@ fn check_function(
                 Ok(())
             })?;
         }
+        if function.x.returns.is_some() {
+            return Err(error(&ens.span, "integer_ring should not have a `returns` clause"));
+        }
     }
 
     if function.x.publish.is_some() && function.x.mode != Mode::Spec {
@@ -797,6 +807,26 @@ fn check_function(
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
         check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState)?;
+    }
+    if let Some(r) = &function.x.returns {
+        if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
+            return Err(error(
+                &r.span,
+                "type of `returns` clause does not match function return type",
+            )
+            .secondary_label(
+                &function.span,
+                format!("this function returns `{}`", typ_to_diagnostic_str(&function.x.ret.x.typ)),
+            )
+            .secondary_label(
+                &r.span,
+                format!("the `returns` clause has type `{}`", typ_to_diagnostic_str(&r.typ)),
+            ));
+        }
+
+        let msg = "'requires' clause of public function";
+        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        check_expr(ctxt, function, r, disallow_private_access, Place::PreState("returns"))?;
     }
     match &function.x.mask_spec {
         None => {}
@@ -1239,7 +1269,13 @@ pub fn check_crate(
                 _ => VisitorControlFlow::Recurse,
             };
             let mut found_trigger = false;
-            for expr in function.x.require.iter().chain(function.x.ensure.iter()) {
+            for expr in function
+                .x
+                .require
+                .iter()
+                .chain(function.x.ensure.iter())
+                .chain(function.x.returns.iter())
+            {
                 let control = crate::ast_visitor::expr_visitor_dfs(
                     expr,
                     &mut air::scope_map::ScopeMap::new(),

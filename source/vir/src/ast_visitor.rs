@@ -650,6 +650,8 @@ where
         ret,
         require,
         ensure,
+        ens_has_return: _,
+        returns,
         decrease,
         decrease_when,
         decrease_by: _,
@@ -674,7 +676,7 @@ where
     }
 
     map.push_scope(true);
-    if function.x.has_return_name() {
+    if function.x.ens_has_return {
         let _ = map
             .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
@@ -682,6 +684,10 @@ where
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     map.pop_scope();
+
+    if let Some(e) = returns {
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+    }
 
     for e in decrease.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
@@ -1252,8 +1258,10 @@ where
         typ_bounds,
         params,
         ret,
+        ens_has_return,
         require,
         ensure,
+        returns,
         decrease,
         decrease_when,
         decrease_by,
@@ -1309,13 +1317,18 @@ where
         Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
 
     map.push_scope(true);
-    if function.x.has_return_name() {
+    if function.x.ens_has_return {
         let _ = map
             .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
     let ensure =
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     map.pop_scope();
+
+    let returns = match returns {
+        Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
+        None => None,
+    };
 
     let decrease =
         Arc::new(vec_map_result(decrease, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
@@ -1389,8 +1402,10 @@ where
         typ_bounds,
         params,
         ret,
+        ens_has_return: *ens_has_return,
         require,
         ensure,
+        returns,
         decrease,
         decrease_when,
         decrease_by,

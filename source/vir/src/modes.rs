@@ -1633,7 +1633,7 @@ fn check_function(
     }
 
     let mut ens_typing = fun_typing.push_var_scope();
-    if function.x.has_return_name() {
+    if function.x.ens_has_return {
         ens_typing.insert(&function.x.ret.x.name, function.x.ret.x.mode);
     }
     for expr in function.x.ensure.iter() {
@@ -1642,6 +1642,12 @@ fn check_function(
         check_expr_has_mode(ctxt, record, &mut ens_typing, Mode::Spec, expr, Mode::Spec)?;
     }
     drop(ens_typing);
+
+    if let Some(expr) = &function.x.returns {
+        let mut ret_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
+        let mut ret_typing = ret_typing.push_allow_prophecy_dependence(true);
+        check_expr_has_mode(ctxt, record, &mut ret_typing, Mode::Spec, expr, Mode::Spec)?;
+    }
 
     for expr in function.x.decrease.iter() {
         let mut dec_typing = fun_typing.push_block_ghostness(Ghost::Ghost);
@@ -1662,7 +1668,7 @@ fn check_function(
         }
     }
 
-    let ret_mode = if function.x.has_return() {
+    let ret_mode = if function.x.ens_has_return {
         let ret_mode = function.x.ret.x.mode;
         if !matches!(function.x.item_kind, ItemKind::Const) && !mode_le(function.x.mode, ret_mode) {
             return Err(error(

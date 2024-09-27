@@ -536,6 +536,8 @@ pub enum HeaderExprX {
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
     Ensures(Option<(VarIdent, Typ)>, Exprs),
+    /// Returns clause
+    Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
     /// Checking of recommends is disabled by default.
     Recommends(Exprs),
@@ -1072,12 +1074,16 @@ pub struct FunctionX {
     pub typ_bounds: GenericBounds,
     /// Function parameters
     pub params: Params,
-    /// Return value (unit return type is treated specially; see FunctionX::has_return in ast_util)
+    /// Return value
     pub ret: Param,
+    /// Can the ensures clause reference the 'ret' param (must be true for non-unit types)
+    pub ens_has_return: bool,
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
     pub require: Exprs,
     /// Postconditions (proof/exec functions only)
     pub ensure: Exprs,
+    /// Expression in the 'returns' clause
+    pub returns: Option<Expr>,
     /// Decreases clause to ensure recursive function termination
     /// decrease.len() == 0 means no decreases clause
     /// decrease.len() >= 1 means list of expressions, interpreted in lexicographic order

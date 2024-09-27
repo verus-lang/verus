@@ -523,20 +523,6 @@ impl crate::ast::CallTargetKind {
 }
 
 impl FunctionX {
-    // unit return values are treated as no return value
-    pub fn has_return(&self) -> bool {
-        match &*self.ret.x.typ {
-            TypX::Tuple(ts) if ts.len() == 0 => false,
-            TypX::Datatype(path, _, _) if path == &crate::def::prefix_tuple_type(0) => false,
-            _ => true,
-        }
-    }
-
-    // even if the return type is unit, it can still be named; if so, our AIR code must declare it
-    pub fn has_return_name(&self) -> bool {
-        self.has_return() || *self.ret.x.name.0 != crate::def::RETURN_VALUE
-    }
-
     pub fn is_main(&self) -> bool {
         **self.name.path.segments.last().expect("last segment") == "main"
     }
@@ -866,4 +852,44 @@ macro_rules! fun {
     [ $krate:literal => $( $segment:literal ),* ] => {
         Arc::new($crate::ast::FunX { path: $crate::path!($krate => $($segment),*) })
     };
+}
+
+/// If the function has a unit return type, then we will elide the return value
+/// in the AIR encoding later (e.g., in the %ens functions). However, it is still
+/// possible that the user refers to the unit return value by name, e.g.,
+/// ```
+/// fn example() -> (ret: ())
+///     ensures ret == (),
+/// ```
+/// Therefore, we substitute out the name here so it be safely elided.
+pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, bool) {
+    match &*undecorate_typ(&ret.x.typ) {
+        TypX::Tuple(ts) if ts.len() == 0 => {
+            if ret.x.name == air_unique_var(crate::def::RETURN_VALUE) {
+                (ensure.clone(), false)
+            } else {
+                let mut es = vec![];
+                for e in ensure.iter() {
+                    let e1 = crate::ast_visitor::map_expr_visitor(e, &|expr| match &expr.x {
+                        ExprX::Var(ident) if ident == &ret.x.name => {
+                            assert!(match &*undecorate_typ(&expr.typ) {
+                                TypX::Tuple(ts) if ts.len() == 0 => true,
+                                _ => false,
+                            });
+                            Ok(SpannedTyped::new(
+                                &expr.span,
+                                &expr.typ,
+                                ExprX::Tuple(Arc::new(vec![])),
+                            ))
+                        }
+                        _ => Ok(expr.clone()),
+                    })
+                    .unwrap();
+                    es.push(e1);
+                }
+                (Arc::new(es), false)
+            }
+        }
+        _ => (ensure.clone(), true),
+    }
 }

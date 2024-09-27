@@ -539,7 +539,7 @@ fn expr_get_call(
                     };
                     exps.push(e0);
                 }
-                let has_ret = get_function(ctx, &expr.span, x)?.x.has_return();
+                let has_ret = get_function(ctx, &expr.span, x)?.x.ens_has_return;
                 Ok(Some((
                     stms,
                     ReturnedCall::Call {

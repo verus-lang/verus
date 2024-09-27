@@ -110,18 +110,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] returning_named_unit verus_code! {
-        // TODO All of these panic right now
-
-        // This should probably pass:
-
+    #[test] returning_named_unit_issue1108 verus_code! {
         proof fn f() -> (n: ())
             ensures n === ()
         {
             return ();
         }
-
-        // This should either pass or fail with a sensible error message:
 
         proof fn g() -> (n: ())
             ensures n === ()
@@ -129,16 +123,75 @@ test_verify_one_file! {
             return;
         }
 
-        proof fn f_fail() -> (n: ())
+        proof fn f2() -> (n: ())
             ensures n === ()
         {
-            return (); // FAILS
+            return ();
         }
 
-        proof fn g_fail() -> (n: ())
+        proof fn g2() -> (n: ())
             ensures n === ()
         {
-            return; // FAILS
+            return;
         }
-    } => Err(err) => assert_fails(err, 2)
+
+        proof fn tests() {
+            f();
+            g();
+            f2();
+            g2();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] return_unit_trait_issue1278 verus_code! {
+        pub trait Trait<T> {
+            spec fn ok(r: T) -> bool;
+            proof fn apply() -> (result: T) ensures Self::ok(result);
+        }
+
+        pub struct S {
+        }
+
+        impl Trait<()> for S {
+            open spec fn ok(r: ()) -> bool { true }
+            proof fn apply() -> (result: ()) {}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_clone_unit_issue1108 verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+
+        pub trait PolyfillClone: View + Sized {
+            fn clone(&self) -> (res: Self)
+                ensures
+                    res@ == self@;
+        }
+
+        impl PolyfillClone for () {
+            fn clone(&self) -> Self {
+                ()
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] trait_impl_return_unit_issue1108 verus_code! {
+        trait Tr : Sized {
+            fn get() -> (r: Self)
+                ensures r == r;}
+
+        impl Tr for () {
+            fn get() -> (r: Self)
+            {
+            }
+        }
+
+        fn main() { }
+    } => Ok(())
 }

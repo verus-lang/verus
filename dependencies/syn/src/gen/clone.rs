@@ -2244,6 +2244,15 @@ impl Clone for ReturnType {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Returns {
+    fn clone(&self) -> Self {
+        Returns {
+            token: self.token.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for RevealHide {
     fn clone(&self) -> Self {
         RevealHide {
@@ -2280,6 +2289,7 @@ impl Clone for Signature {
             requires: self.requires.clone(),
             recommends: self.recommends.clone(),
             ensures: self.ensures.clone(),
+            returns: self.returns.clone(),
             decreases: self.decreases.clone(),
             invariants: self.invariants.clone(),
             unwind: self.unwind.clone(),
