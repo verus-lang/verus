@@ -11,14 +11,13 @@ use crate::ast_to_sst::{
 use crate::ast_visitor;
 use crate::context::{Ctx, FunctionCtx};
 use crate::def::{unique_local, Spanned};
-use crate::inv_masks::MaskSet;
+use crate::inv_masks::MaskSetE;
 use crate::messages::{error, Message};
 use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
 };
-use crate::sst_to_air::{exp_to_expr, ExprCtxt, ExprMode};
 use crate::sst_util::{subst_exp, subst_stm};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
@@ -265,7 +264,7 @@ fn func_body_to_sst(
                 local_decls: Arc::new(termination_decls),
                 statics: Arc::new(vec![]),
                 reqs: Arc::new(vec![]),
-                mask_set: Arc::new(crate::inv_masks::MaskSet::empty()),
+                mask_set: Arc::new(MaskSetE::empty()),
                 unwind: UnwindSst::NoUnwind,
             };
             Some(termination_check)
@@ -559,7 +558,7 @@ pub fn func_def_to_sst(
     let inv_spec_exprs = match &mask_spec {
         MaskSpec::InvariantOpens(exprs) | MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
     };
-    let mut inv_spec_air_exprs = vec![];
+    let mut inv_spec_exps = vec![];
     for e in inv_spec_exprs.iter() {
         let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
         let exp = if ctx.checking_spec_preconditions() {
@@ -570,16 +569,12 @@ pub fn func_def_to_sst(
             expr_to_exp_skip_checks(ctx, diagnostics, &req_pars, &e_with_req_ens_params)?
         };
 
-        let is_singular = function.x.attrs.integer_ring;
-        let expr_ctxt = ExprCtxt::new_mode_singular(ExprMode::Body, is_singular);
         let exp = state.finalize_exp(ctx, &exp)?;
-        let air_expr = exp_to_expr(ctx, &exp, &expr_ctxt)?;
-        inv_spec_air_exprs
-            .push(crate::inv_masks::MaskSingleton { expr: air_expr, span: e.span.clone() });
+        inv_spec_exps.push(crate::inv_masks::MaskSingleton { expr: exp, span: e.span.clone() });
     }
     let mask_set = match mask_spec {
-        MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(inv_spec_air_exprs),
-        MaskSpec::InvariantOpensExcept(_exprs) => MaskSet::from_list_complement(inv_spec_air_exprs),
+        MaskSpec::InvariantOpens(_exprs) => MaskSetE::from_list(inv_spec_exps),
+        MaskSpec::InvariantOpensExcept(_exprs) => MaskSetE::from_list_complement(inv_spec_exps),
     };
 
     let unwind = match req_ens_function.x.unwind_spec_or_default() {

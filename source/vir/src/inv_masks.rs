@@ -41,17 +41,18 @@ pub enum SetBase {
 }
 
 #[derive(Clone, Debug)]
-pub struct MaskSingleton {
-    pub expr: Expr,
+pub struct MaskSingleton<E> {
+    pub expr: E,
     pub span: Span,
 }
 
 #[derive(Clone, Debug)]
-pub struct MaskSet {
+pub struct MaskSetE<E> {
     pub base: SetBase,
-    pub plus: Vec<MaskSingleton>,
-    pub minus: Vec<MaskSingleton>,
+    pub plus: Vec<MaskSingleton<E>>,
+    pub minus: Vec<MaskSingleton<E>>,
 }
+pub type MaskSet = MaskSetE<Expr>;
 
 impl MaskSet {
     // assert that e in self
@@ -152,27 +153,29 @@ impl MaskSet {
             },
         }
     }
+}
 
+impl<E: Clone> MaskSetE<E> {
     // return another set representing self \ {r}
-    pub fn remove_element(&self, span: Span, r: Expr) -> MaskSet {
+    pub fn remove_element(&self, span: Span, r: E) -> MaskSetE<E> {
         let mut n = self.clone();
         n.minus.push(MaskSingleton { expr: r, span: span });
         n
     }
 
-    pub fn full() -> MaskSet {
-        MaskSet { base: SetBase::Full, plus: vec![], minus: vec![] }
+    pub fn full() -> MaskSetE<E> {
+        MaskSetE { base: SetBase::Full, plus: vec![], minus: vec![] }
     }
 
-    pub fn empty() -> MaskSet {
-        MaskSet { base: SetBase::Empty, plus: vec![], minus: vec![] }
+    pub fn empty() -> MaskSetE<E> {
+        MaskSetE { base: SetBase::Empty, plus: vec![], minus: vec![] }
     }
 
-    pub fn from_list_complement(l: Vec<MaskSingleton>) -> MaskSet {
-        MaskSet { base: SetBase::Full, plus: vec![], minus: l }
+    pub fn from_list_complement(l: Vec<MaskSingleton<E>>) -> MaskSetE<E> {
+        MaskSetE { base: SetBase::Full, plus: vec![], minus: l }
     }
 
-    pub fn from_list(l: Vec<MaskSingleton>) -> MaskSet {
-        MaskSet { base: SetBase::Empty, plus: l, minus: vec![] }
+    pub fn from_list(l: Vec<MaskSingleton<E>>) -> MaskSetE<E> {
+        MaskSetE { base: SetBase::Empty, plus: l, minus: vec![] }
     }
 }

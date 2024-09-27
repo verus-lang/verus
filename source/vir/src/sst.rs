@@ -278,7 +278,7 @@ pub struct FuncDeclSst {
 pub struct FuncCheckSst {
     pub reqs: Exps,
     pub post_condition: Arc<PostConditionSst>,
-    pub mask_set: Arc<crate::inv_masks::MaskSet>, // Actually AIR
+    pub mask_set: Arc<crate::inv_masks::MaskSetE<Exp>>,
     pub unwind: UnwindSst,
     pub body: Stm,
     pub local_decls: Arc<Vec<LocalDecl>>,

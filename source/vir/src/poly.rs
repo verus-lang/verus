@@ -82,6 +82,7 @@ use crate::ast::{
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
+use crate::inv_masks::{MaskSetE, MaskSingleton};
 use crate::sst::{
     BndX, CallFun, Dest, Exp, ExpX, Exps, FuncCheckSst, FuncDeclSst, FunctionSst, FunctionSstX,
     InternalFun, KrateSst, KrateSstX, LocalDecl, LocalDeclKind, Par, ParX, Pars, PostConditionSst,
@@ -969,6 +970,22 @@ fn visit_func_check_sst(
     state.temp_types.clear();
 
     let reqs = visit_exps_native(ctx, state, reqs);
+
+    let f_mask_singletons =
+        |state: &mut State, v: &Vec<MaskSingleton<Exp>>| -> Vec<MaskSingleton<Exp>> {
+            let mut v2: Vec<MaskSingleton<Exp>> = Vec::new();
+            for m in v.iter() {
+                let exp = visit_exp_native(ctx, state, &m.expr);
+                v2.push(MaskSingleton { expr: exp, span: m.span.clone() });
+            }
+            v2
+        };
+    let mask_set = MaskSetE {
+        base: mask_set.base.clone(),
+        plus: f_mask_singletons(state, &mask_set.plus),
+        minus: f_mask_singletons(state, &mask_set.minus),
+    };
+
     let unwind = match &unwind {
         UnwindSst::MayUnwind | UnwindSst::NoUnwind => unwind.clone(),
         UnwindSst::NoUnwindWhen(e) => {
@@ -1044,7 +1061,7 @@ fn visit_func_check_sst(
     FuncCheckSst {
         reqs,
         post_condition,
-        mask_set: mask_set.clone(),
+        mask_set: Arc::new(mask_set),
         unwind,
         body,
         local_decls: Arc::new(locals),
