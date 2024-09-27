@@ -747,4 +747,53 @@ pub fn deallocate(
     }
 }
 
+/// This is meant to be a replacement for `&'a T` that allows Verus to keep track of
+/// not just the `T` value but the pointer as well.
+/// It would be better to get rid of this and use normal reference types `&'a T`,
+/// but there are a lot of unsolved implementation questions.
+/// The existence of `SharedReference<'a, T>` is a stop-gap.
+#[verifier::external_body]
+pub struct SharedReference<'a, T>(&'a T);
+
+impl<'a, T> SharedReference<'a, T> {
+    pub spec fn value() -> T;
+    pub spec fn ptr() -> *const T;
+
+    fn new(t: &'a T) -> (s: Self)
+        ensures s.value() == t,
+
+    fn as_ref(self) -> (t: &'a T)
+        ensures t == self.value(),
+
+    fn as_ptr(self) -> (ptr: *const T)
+        ensures ptr == self.ptr(),
+
+    proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
+        ensures
+            pt.ptr() == self.ptr(),
+            pt.is_init(),
+            pt.value() == self.value(),
+}
+
+/// Like [`ptr_ref2`] but returns a SharedReference so it keeps track of the relationship
+/// between the pointers.
+/// Note the resulting reference's pointers does NOT have the same provenance. 
+/// This is because in Rust models like Stacked Borrows / Tree Borrows, 
+#[inline(always)]
+#[verifier::external_body]
+pub fn ptr_ref2<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>)
+    -> (v: SharedReference<'a, T>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v.value() == perm.value(),
+        v.ptr().addr() == ptr.addr(),
+        v.ptr()@.metadata == ptr@.metadata,
+    opens_invariants none
+    no_unwind
+{
+    SharedReference(unsafe { &*ptr })
+}
+
 } // verus!
