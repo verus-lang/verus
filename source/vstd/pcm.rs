@@ -208,6 +208,16 @@ impl<P: PCM> Resource<P> {
     }
 
     #[verifier::external_body]
+    pub proof fn validate_2_ref(tracked &self, tracked other: &Self)
+        requires
+            self.loc() == other.loc(),
+        ensures
+            P::op(self.value(), other.value()).valid() || self == other,
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
     pub proof fn update_with_shared(
         tracked self,
         tracked other: &Self,
