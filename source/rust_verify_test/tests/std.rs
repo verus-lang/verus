@@ -304,6 +304,16 @@ test_verify_one_file! {
             assert(w@ =~= v@);
         }
 
+        fn test_char(v: char) {
+            let w = v.clone();
+            assert(w == v);
+        }
+
+        fn test_char_vec(v: Vec<char>) {
+            let w = v.clone();
+            assert(w@ =~= v@);
+        }
+
         struct Y { }
 
         fn test_vec_ref(v: Vec<&Y>) {
@@ -340,6 +350,22 @@ test_verify_one_file! {
             assert(c2@ == v2@); // FAILS
         }
 
+        fn test_vec_deep_view_char() {
+            let mut v1: Vec<char> = Vec::new();
+            v1.push('a');
+            v1.push('b');
+            let c1 = v1.clone();
+            let ghost g1 = c1@ == v1@;
+            assert(g1);
+            let mut v2: Vec<Vec<char>> = Vec::new();
+            v2.push(v1.clone());
+            v2.push(v1.clone());
+            let c2 = v2.clone();
+            let ghost g2 = c2.deep_view() == v2.deep_view();
+            assert(g2);
+            assert(c2@ == v2@); // FAILS
+        }
+
         fn test_slice_deep_view(a1: &[Vec<u8>], a2: &[Vec<u8>])
             requires
                 a1.len() == 1,
@@ -365,7 +391,7 @@ test_verify_one_file! {
         {
             assert(a1.deep_view() =~~= a2.deep_view()); // TODO: get rid of this?
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file! {
