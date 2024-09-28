@@ -778,7 +778,8 @@ impl<'a, T> SharedReference<'a, T> {
 /// Like [`ptr_ref2`] but returns a SharedReference so it keeps track of the relationship
 /// between the pointers.
 /// Note the resulting reference's pointers does NOT have the same provenance. 
-/// This is because in Rust models like Stacked Borrows / Tree Borrows, 
+/// This is because in Rust models like Stacked Borrows / Tree Borrows, the pointer
+/// gets a new tag.
 #[inline(always)]
 #[verifier::external_body]
 pub fn ptr_ref2<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>)
