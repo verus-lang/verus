@@ -530,7 +530,7 @@ enum ReturnedCall {
 fn expr_get_call(
     ctx: &Ctx,
     state: &mut State,
-    disallow_poly_ret: bool,
+    disallow_poly_ret: Option<&Typ>,
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
@@ -544,9 +544,14 @@ fn expr_get_call(
                 }
                 let function = get_function(ctx, &expr.span, x)?;
                 let has_ret = function.x.has_return();
-                if disallow_poly_ret
+                if disallow_poly_ret.is_some()
                     && has_ret
-                    && crate::poly::ret_is_poly(ctx, &function.x.kind, &function.x.ret.x.typ)
+                    && crate::poly::ret_needs_native(
+                        ctx,
+                        &function.x.kind,
+                        &function.x.ret.x.typ,
+                        disallow_poly_ret.unwrap(),
+                    )
                 {
                     // Anticipate that poly.rs will need to coerce the result from poly to native,
                     // so we return None to force the creation of a temp variable for the coercion.
@@ -591,7 +596,7 @@ fn expr_get_call(
 fn expr_must_be_call_stm(
     ctx: &Ctx,
     state: &mut State,
-    disallow_poly_ret: bool,
+    disallow_poly_ret: Option<&Typ>,
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
@@ -1013,7 +1018,8 @@ pub(crate) fn expr_to_stm_opt(
             }
             let (mut stms, lhs_exp) = expr_to_stm_opt(ctx, state, lhs_expr)?;
             let lhs_exp = lhs_exp.expect_value();
-            let direct_assign = matches!(lhs_exp.x, ExpX::VarLoc(_));
+            let direct_assign =
+                if matches!(lhs_exp.x, ExpX::VarLoc(_)) { Some(&lhs_exp.typ) } else { None };
             match expr_must_be_call_stm(ctx, state, direct_assign, expr2)? {
                 Some((stms2, ReturnedCall::Never)) => {
                     stms.extend(stms2.into_iter());
@@ -1025,7 +1031,7 @@ pub(crate) fn expr_to_stm_opt(
                 )) => {
                     // make a Call
                     stms.extend(stms2.into_iter());
-                    let (dest, assign) = if direct_assign {
+                    let (dest, assign) = if direct_assign.is_some() {
                         (Dest { dest: lhs_exp, is_init: *init_not_mut }, None)
                     } else {
                         assert!(!*init_not_mut, "init_not_mut unexpected for complex call dest");
@@ -1117,7 +1123,7 @@ pub(crate) fn expr_to_stm_opt(
             ))
         }
         ExprX::Call(CallTarget::Fun(..), _) => {
-            match expr_get_call(ctx, state, false, expr)?.expect("Call") {
+            match expr_get_call(ctx, state, None, expr)?.expect("Call") {
                 (stms, ReturnedCall::Never) => Ok((stms, ReturnValue::Never)),
                 (
                     mut stms,
@@ -2274,7 +2280,7 @@ fn stmt_to_stm(
             // First check if the initializer needs to be translate to a Call instead
             // of an Exp. If so, translate it that way.
             if let Some(init) = init {
-                match expr_must_be_call_stm(ctx, state, true, init)? {
+                match expr_must_be_call_stm(ctx, state, Some(&typ), init)? {
                     Some((stms, ReturnedCall::Never)) => {
                         return Ok((stms, ReturnValue::Never, None));
                     }

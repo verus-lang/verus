@@ -378,9 +378,20 @@ fn return_typ(ctx: &Ctx, function: &FunctionSstX, is_trait: bool, typ: &Typ) -> 
     }
 }
 
-pub(crate) fn ret_is_poly(ctx: &Ctx, kind: &FunctionKind, ret_typ: &Typ) -> bool {
+pub(crate) fn ret_needs_native(
+    ctx: &Ctx,
+    kind: &FunctionKind,
+    ret_typ: &Typ,
+    dest_typ: &Typ,
+) -> bool {
     let is_trait = !matches!(kind, FunctionKind::Static);
-    is_trait || typ_is_poly(ctx, ret_typ)
+    let ret_typ = if is_trait {
+        coerce_typ_to_poly(ctx, ret_typ)
+    } else {
+        coerce_typ_to_native(ctx, ret_typ)
+    };
+    let dest_typ = coerce_typ_to_native(ctx, dest_typ);
+    typ_is_poly(ctx, &ret_typ) && !typ_is_poly(ctx, &dest_typ)
 }
 
 pub(crate) fn arg_is_poly(ctx: &Ctx, kind: &FunctionKind, mode: Mode, arg_typ: &Typ) -> bool {
@@ -629,8 +640,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let bx = VarBinderX { name: b.name.clone(), a };
                     new_bs.push(Arc::new(bx));
                 }
-                // TODO: this might be better as just visit_exp:
-                let e1 = visit_exp_native(ctx, state, e1);
+                let e1 = visit_exp(ctx, state, e1);
                 state.types.pop_scope();
                 mk_exp_typ(&e1.typ, ExpX::Bind(bnd.new_x(BndX::Let(Arc::new(new_bs))), e1.clone()))
             }
