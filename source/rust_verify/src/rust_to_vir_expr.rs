@@ -23,7 +23,7 @@ use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unl
 use air::ast::Binder;
 use air::ast_util::str_ident;
 use rustc_ast::{Attribute, BorrowKind, ByRef, LitKind, Mutability};
-use rustc_hir::def::{DefKind, Res};
+use rustc_hir::def::{CtorKind, CtorOf, DefKind, Res};
 use rustc_hir::{
     BinOpKind, BindingAnnotation, Block, Closure, Destination, Expr, ExprKind, Guard, HirId, Let,
     Local, LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
@@ -270,7 +270,7 @@ pub(crate) fn get_adt_res_struct_enum_union<'tcx>(
     span: Span,
     fields: &'tcx [rustc_hir::ExprField<'tcx>],
 ) -> Result<(DefId, vir::ast::Ident, bool), VirErr> {
-    let (adt_def_id, variant_def, is_enum, is_union) = get_adt_res(tcx, res, span)?;
+    let (adt_def_id, variant_def, is_enum, is_union) = get_adt_res(tcx, res, span, false)?;
     if is_union {
         // For a union, rustc has one "variant" with all the fields, while our
         // VIR representation has one variant per field.
@@ -292,8 +292,10 @@ pub(crate) fn get_adt_res_struct_enum<'tcx>(
     tcx: TyCtxt<'tcx>,
     res: Res,
     span: Span,
+    expect_ctor_const: bool,
 ) -> Result<(DefId, &'tcx VariantDef, bool), VirErr> {
-    let (adt_def_id, variant_def, is_enum, is_union) = get_adt_res(tcx, res, span)?;
+    let (adt_def_id, variant_def, is_enum, is_union) =
+        get_adt_res(tcx, res, span, expect_ctor_const)?;
     if is_union {
         unsupported_err!(span, "using a union here")
     } else {
@@ -310,25 +312,25 @@ fn get_adt_res<'tcx>(
     tcx: TyCtxt<'tcx>,
     res: Res,
     span: Span,
+    expect_ctor_const: bool,
 ) -> Result<(DefId, &'tcx VariantDef, bool, bool), VirErr> {
     // Based off of implementation of rustc_middle's TyCtxt::expect_variant_res
     // But with a few more cases it didn't handle
     // Also, returns the adt DefId instead of just the VariantDef
 
-    use rustc_hir::def::CtorOf;
-    match res {
+    let (def_id, variant_def, is_enum, is_union) = match res {
         Res::Def(DefKind::Variant, did) => {
             let enum_did = tcx.parent(did);
             let variant_def = tcx.adt_def(enum_did).variant_with_id(did);
-            Ok((enum_did, variant_def, true, false))
+            (enum_did, variant_def, true, false)
         }
         Res::Def(DefKind::Struct, did) => {
             let variant_def = tcx.adt_def(did).non_enum_variant();
-            Ok((did, variant_def, false, false))
+            (did, variant_def, false, false)
         }
         Res::Def(DefKind::Union, did) => {
             let variant_def = tcx.adt_def(did).non_enum_variant();
-            Ok((did, variant_def, false, true))
+            (did, variant_def, false, true)
         }
         Res::Def(DefKind::Ctor(CtorOf::Variant, ..), variant_ctor_did) => {
             let variant_did = tcx.parent(variant_ctor_did);
@@ -336,14 +338,14 @@ fn get_adt_res<'tcx>(
             let adt_def = tcx.adt_def(enum_did);
             assert!(adt_def.is_enum());
             let variant_def = adt_def.variant_with_ctor_id(variant_ctor_did);
-            Ok((enum_did, variant_def, true, false))
+            (enum_did, variant_def, true, false)
         }
         Res::Def(DefKind::Ctor(CtorOf::Struct, ..), ctor_did) => {
             let struct_did = tcx.parent(ctor_did);
             let adt_def = tcx.adt_def(struct_did);
             assert!(adt_def.is_struct());
             let variant_def = adt_def.non_enum_variant();
-            Ok((struct_did, variant_def, false, false))
+            (struct_did, variant_def, false, false)
         }
         Res::Def(DefKind::TyAlias, alias_did) => {
             let alias_ty = tcx.type_of(alias_did).skip_binder();
@@ -362,7 +364,7 @@ fn get_adt_res<'tcx>(
             assert!(adt_def.is_struct() || adt_def.is_union());
 
             let variant_def = adt_def.non_enum_variant();
-            Ok((struct_did, variant_def, false, adt_def.is_union()))
+            (struct_did, variant_def, false, adt_def.is_union())
         }
         Res::SelfCtor(impl_id) | Res::SelfTyAlias { alias_to: impl_id, .. } => {
             let self_ty = tcx.type_of(impl_id).skip_binder();
@@ -380,13 +382,30 @@ fn get_adt_res<'tcx>(
             assert!(adt_def.is_struct() || adt_def.is_union());
 
             let variant_def = adt_def.non_enum_variant();
-            Ok((struct_did, variant_def, false, adt_def.is_union()))
+            (struct_did, variant_def, false, adt_def.is_union())
         }
         _ => {
             println!("res: {:#?}", res);
-            err_span(span, "Verus internal error: got unexpected Res trying to resolve constructor")
+            return err_span(
+                span,
+                "Verus internal error: got unexpected Res trying to resolve constructor",
+            );
+        }
+    };
+
+    if expect_ctor_const {
+        match variant_def.ctor_kind() {
+            Some(CtorKind::Fn) => {
+                unsupported_err!(span, "using a datatype constructor as a function value");
+            }
+            Some(CtorKind::Const) => { /* ok */ }
+            None => {
+                unsupported_err!(span, "expected CtorKind::Const");
+            }
         }
     }
+
+    Ok((def_id, variant_def, is_enum, is_union))
 }
 
 pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
@@ -396,11 +415,13 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     args_slice: &[Expr<'tcx>],
     fun_span: Span,
     modifier: ExprModifier,
+    expect_ctor_const: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let expr_typ = typ_of_node(bctx, expr.span, &expr.hir_id, false)?;
 
-    let (adt_def_id, variant_def, _is_enum) = get_adt_res_struct_enum(tcx, *res, fun_span)?;
+    let (adt_def_id, variant_def, _is_enum) =
+        get_adt_res_struct_enum(tcx, *res, fun_span, expect_ctor_const)?;
     let variant_name = str_ident(&variant_def.ident(tcx).as_str());
     let vir_path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, adt_def_id);
 
@@ -481,7 +502,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                 }
                 _ => {
                     let (adt_def_id, variant_def, _is_enum) =
-                        get_adt_res_struct_enum(tcx, res, pat.span)?;
+                        get_adt_res_struct_enum(tcx, res, pat.span, true)?;
                     let variant_name = str_ident(&variant_def.ident(tcx).as_str());
                     let vir_path =
                         def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, adt_def_id);
@@ -515,7 +536,8 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
         }
         PatKind::TupleStruct(qpath, pats, dot_dot_pos) => {
             let res = bctx.types.qpath_res(qpath, pat.hir_id);
-            let (adt_def_id, variant_def, _is_enum) = get_adt_res_struct_enum(tcx, res, pat.span)?;
+            let (adt_def_id, variant_def, _is_enum) =
+                get_adt_res_struct_enum(tcx, res, pat.span, false)?;
             let variant_name = str_ident(&variant_def.ident(tcx).as_str());
             let vir_path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, adt_def_id);
 
@@ -535,7 +557,8 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
         }
         PatKind::Struct(qpath, pats, _) => {
             let res = bctx.types.qpath_res(qpath, pat.hir_id);
-            let (adt_def_id, variant_def, _is_enum) = get_adt_res_struct_enum(tcx, res, pat.span)?;
+            let (adt_def_id, variant_def, _is_enum) =
+                get_adt_res_struct_enum(tcx, res, pat.span, false)?;
             let variant_name = str_ident(&variant_def.ident(tcx).as_str());
             let vir_path = def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, adt_def_id);
 
@@ -1350,7 +1373,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 // a tuple-style datatype constructor
                 ExprKind::Path(QPath::Resolved(
                     None,
-                    rustc_hir::Path { res: res @ Res::Def(DefKind::Ctor(_, _), _), .. },
+                    rustc_hir::Path {
+                        res:
+                            res @ Res::Def(
+                                DefKind::Ctor(CtorOf::Struct | CtorOf::Variant, CtorKind::Fn),
+                                _,
+                            ),
+                        ..
+                    },
                 )) => Some(expr_tuple_datatype_ctor_to_vir(
                     bctx,
                     expr,
@@ -1358,12 +1388,16 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     *args_slice,
                     fun.span,
                     modifier,
+                    false,
                 )),
                 ExprKind::Path(qpath) => {
                     let res = bctx.types.qpath_res(&qpath, fun.hir_id);
                     match res {
                         // A datatype constructor
-                        rustc_hir::def::Res::Def(DefKind::Ctor(_, _), _)
+                        rustc_hir::def::Res::Def(
+                            DefKind::Ctor(CtorOf::Struct | CtorOf::Variant, CtorKind::Fn),
+                            _,
+                        )
                         | rustc_hir::def::Res::SelfCtor(_) => {
                             Some(expr_tuple_datatype_ctor_to_vir(
                                 bctx,
@@ -1372,6 +1406,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 *args_slice,
                                 fun.span,
                                 modifier,
+                                false,
                             ))
                         }
                         // a statically resolved function
@@ -1808,8 +1843,20 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     }),
                     node => unsupported_err!(expr.span, format!("Path {:?}", node)),
                 },
-                Res::SelfCtor(_) | Res::Def(DefKind::Ctor(_, _), _) => {
-                    expr_tuple_datatype_ctor_to_vir(bctx, expr, &res, &[], expr.span, modifier)
+                Res::SelfCtor(_)
+                | Res::Def(DefKind::Ctor(CtorOf::Struct | CtorOf::Variant, CtorKind::Const), _) => {
+                    expr_tuple_datatype_ctor_to_vir(
+                        bctx,
+                        expr,
+                        &res,
+                        &[],
+                        expr.span,
+                        modifier,
+                        true,
+                    )
+                }
+                Res::Def(DefKind::Ctor(CtorOf::Struct | CtorOf::Variant, CtorKind::Fn), _) => {
+                    unsupported_err!(expr.span, "using a datatype constructor as a function value");
                 }
                 Res::Def(DefKind::AssocConst, id) => {
                     if let Some(vir_expr) =

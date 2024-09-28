@@ -1387,3 +1387,27 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] unit_struct_as_fn_not_supported verus_code! {
+        struct A();
+
+        fn test()
+        {
+            let a = A;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "using a datatype constructor as a function value")
+}
+
+test_verify_one_file! {
+    #[test] unit_struct_as_fn_not_supported_self_ctor verus_code! {
+        struct A();
+
+        impl A {
+            fn test()
+            {
+                let a = Self;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "using a datatype constructor as a function value")
+}
