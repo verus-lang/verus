@@ -117,7 +117,6 @@ pub tracked struct PointsTo<T> {
 //    phantom: core::marker::PhantomData<T>,
 //    no_copy: NoCopy,
 //}
-
 /// Represents (typed) contents of memory.
 // Don't use std Option here in order to avoid circular dependency issues
 // with verifying the standard library.
@@ -189,8 +188,8 @@ impl<T> PointsTo<T> {
         self.opt_value().value()
     }
 
-    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address. 
-    /// 
+    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
+    ///
     // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
     // See https://doc.rust-lang.org/std/ptr/#safety
     #[verifier::external_body]

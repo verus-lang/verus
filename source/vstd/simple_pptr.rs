@@ -45,7 +45,7 @@ verus! {
 /// with the pointer:
 ///  * You can _read_ from the pointer as long as you have read access to the `PointsTo` object,
 ///     e.g., `&PointsTo<V>`.
-///  * You can _write_ to the pointer as long as you have mutable access to the `PointsTo` object, 
+///  * You can _write_ to the pointer as long as you have mutable access to the `PointsTo` object,
 ///     e.g., `&mut PointsTo<V>`
 ///  * You can call `free` to deallocate the memory as long as you have full onwership
 ///     of the `PointsTo` object (i.e., the ability to move it).
@@ -61,50 +61,50 @@ verus! {
 ///         // ALLOCATE
 ///         // p: PPtr<u64>, points_to: PointsTo<u64>
 ///         let (p, Tracked(mut points_to)) = PPtr::<u64>::empty();
-/// 
+///
 ///         assert(points_to.mem_contents() === MemContents::Uninit);
 ///         assert(points_to.pptr() == p);
-/// 
+///
 ///         // unsafe { *p = 5; }
-///         p.write(Tracked(&mut points_to), 5); 
-/// 
+///         p.write(Tracked(&mut points_to), 5);
+///
 ///         assert(points_to.mem_contents() === MemContents::Init(5));
 ///         assert(points_to.pptr() == p);
-/// 
+///
 ///         // let x = unsafe { *p };
-///         let x = p.read(Tracked(&points_to)); 
-/// 
+///         let x = p.read(Tracked(&points_to));
+///
 ///         assert(x == 5);
-/// 
+///
 ///         // DEALLOCATE
 ///         let y = p.into_inner(Tracked(points_to));
-/// 
+///
 ///         assert(y == 5);
 ///     }
 /// }
 /// ```
-/// 
+///
 /// ### Examples of incorrect usage
 ///
 /// The following code has a use-after-free bug, and it is rejected by Verus because
 /// it fails to satisfy Rust's ownership-checker.
-/// 
+///
 /// ```rust,ignored
 /// fn main() {
 ///     unsafe {
 ///         // ALLOCATE
 ///         // p: PPtr<u64>, points_to: PointsTo<u64>
 ///         let (p, Tracked(mut points_to)) = PPtr::<u64>::empty();
-/// 
+///
 ///         // unsafe { *p = 5; }
-///         p.write(Tracked(&mut points_to), 5); 
-/// 
+///         p.write(Tracked(&mut points_to), 5);
+///
 ///         // let x = unsafe { *p };
-///         let x = p.read(Tracked(&points_to)); 
-/// 
+///         let x = p.read(Tracked(&points_to));
+///
 ///         // DEALLOCATE
 ///         p.free(Tracked(points_to));                 // `points_to` is moved here
-/// 
+///
 ///         // READ-AFTER-FREE
 ///         let x2 = p.read(Tracked(&mut points_to));   // so it can't be used here
 ///     }
@@ -114,21 +114,21 @@ verus! {
 /// The following doesn't violate Rust's ownership-checking, but it "mixes up" the `PointsTo`
 /// objects, attempting to use the wrong `PointsTo` for the given pointer.
 /// This violates the precondition on [`p.read()`](PPtr::read).
-/// 
+///
 /// ```rust,ignored
 /// fn main() {
 ///     unsafe {
 ///         // ALLOCATE p
 ///         let (p, Tracked(mut perm_p)) = PPtr::<u64>::empty();
-/// 
+///
 ///         // ALLOCATE q
 ///         let (q, Tracked(mut perm_q)) = PPtr::<u64>::empty();
-/// 
+///
 ///         // DEALLOCATE p
 ///         p.free(Tracked(perm_p));
-/// 
+///
 ///         // READ-AFTER-FREE (read from p, try to use q's permission object)
-///         let x = p.read(Tracked(&mut perm_q)); 
+///         let x = p.read(Tracked(&mut perm_q));
 ///     }
 /// }
 /// ```
@@ -148,8 +148,6 @@ verus! {
 ///  * Pointers are untyped (only `PointsTo` is typed).
 ///  * The `PointsTo` also encapsulates the permission to free a pointer.
 ///  * `PointsTo` tokens are non-fungible. They can't be broken up or made variable-sized.
-
-
 // We want PPtr's fields to be public so the solver knows that equality of addresses
 // implies equality of PPtrs
 pub struct PPtr<V>(pub usize, pub PhantomData<V>);
@@ -278,7 +276,7 @@ impl<V> PointsTo<V> {
         self.mem_contents().value()
     }
 
-    /// Guarantee that the `PointsTo` points to a non-null address. 
+    /// Guarantee that the `PointsTo` points to a non-null address.
     pub proof fn is_nonnull(tracked &self)
         ensures
             self.addr() != 0,
