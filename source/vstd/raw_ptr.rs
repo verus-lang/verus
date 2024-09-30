@@ -124,7 +124,9 @@ pub tracked struct PointsTo<T> {
 // variant names like Uninit/Init.)
 #[verifier::accept_recursive_types(T)]
 pub ghost enum MemContents<T> {
+    /// Represents uninitialized memory
     Uninit,
+    /// Represents initialized memory with the given value
     Init(T),
 }
 
@@ -169,20 +171,25 @@ impl<T> PointsTo<T> {
     }
 
     #[verifier::inline]
+    #[doc(verus_show_body)]
     pub open spec fn is_init(&self) -> bool {
         self.opt_value().is_init()
     }
 
     #[verifier::inline]
+    #[doc(verus_show_body)]
     pub open spec fn is_uninit(&self) -> bool {
         self.opt_value().is_uninit()
     }
 
     #[verifier::inline]
+    #[doc(verus_show_body)]
     pub open spec fn value(&self) -> T {
         self.opt_value().value()
     }
 
+    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
+    ///
     // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
     // See https://doc.rust-lang.org/std/ptr/#safety
     #[verifier::external_body]
@@ -195,8 +202,11 @@ impl<T> PointsTo<T> {
         unimplemented!();
     }
 
-    /// "De-initialize" the memory by setting it to MemContents::Uninit
-    /// This is actually a pure no-op; we're just forgetting that the contents are there.
+    /// "Forgets" about the value stored behind the pointer.
+    /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
+    /// Note that this is a `proof` function, i.e.,
+    /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
+    /// Only the proof-code representation changes.
     #[verifier::external_body]
     pub proof fn leak_contents(tracked &mut self)
         ensures
