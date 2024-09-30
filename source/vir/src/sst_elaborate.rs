@@ -7,7 +7,7 @@ use crate::def::{unique_local, Spanned};
 use crate::messages::{error_with_label, warning, ToAny};
 use crate::sst::{BndX, CallFun, Exp, ExpX, FunctionSst, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{NoScoper, Rewrite, Visitor};
-use crate::triggers::{build_triggers, typ_boxing, TriggerBoxing};
+use crate::triggers::build_triggers;
 use air::messages::Diagnostics;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,6 +16,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
     ctx: &Ctx,
     diagnostics: &D,
     fun_ssts: &HashMap<Fun, FunctionSst>,
+    is_native: &mut HashMap<VarIdent, bool>,
     exp: &Exp,
 ) -> Result<Exp, VirErr> {
     match &exp.x {
@@ -32,7 +33,6 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                     assert!(typ_params.len() == typs.len());
                     for (name, typ) in typ_params.iter().zip(typs.iter()) {
                         assert!(!typ_substs.contains_key(name));
-                        let typ = crate::poly::coerce_typ_to_poly(ctx, typ);
                         typ_substs.insert(name.clone(), typ.clone());
                     }
                     assert!(pars.len() == args.len());
@@ -50,25 +50,33 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
             Ok(exp.clone())
         }
         ExpX::Bind(bnd, body) => match &bnd.x {
-            BndX::Quant(quant, bs, trigs) => {
+            BndX::Quant(quant, bs, trigs, assert_by_vars) => {
                 assert!(trigs.len() == 0);
-                let mut vars: Vec<(VarIdent, TriggerBoxing)> = Vec::new();
+                let mut vars: Vec<VarIdent> = Vec::new();
                 for b in bs.iter() {
                     match &*b.a {
-                        TypX::TypeId => vars.push((
-                            crate::def::suffix_typ_param_var(&b.name),
-                            TriggerBoxing::TypeId,
-                        )),
-                        _ => vars.push((b.name.clone(), typ_boxing(ctx, &b.a))),
+                        TypX::TypeId => vars.push(crate::def::suffix_typ_param_var(&b.name)),
+                        _ => vars.push(b.name.clone()),
                     }
                 }
                 let trigs = build_triggers(ctx, &exp.span, &vars, &body, false)?;
-                let bnd = Spanned::new(bnd.span.clone(), BndX::Quant(*quant, bs.clone(), trigs));
+                if let Some(assert_by_vars) = assert_by_vars {
+                    let natives = crate::triggers::native_quant_vars(bs, &trigs);
+                    assert!(assert_by_vars.len() == bs.len());
+                    for (x, b) in assert_by_vars.iter().zip(bs.iter()) {
+                        let native = natives.contains(&b.name);
+                        if let Some(n) = is_native.insert(x.clone(), native) {
+                            assert!(n == native);
+                        }
+                    }
+                }
+                let bnd =
+                    Spanned::new(bnd.span.clone(), BndX::Quant(*quant, bs.clone(), trigs, None));
                 Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
             }
             BndX::Choose(bs, trigs, cond) => {
                 assert!(trigs.len() == 0);
-                let vars = bs.iter().map(|b| (b.name.clone(), typ_boxing(ctx, &b.a))).collect();
+                let vars = bs.iter().map(|b| b.name.clone()).collect();
                 let trigs = build_triggers(ctx, &exp.span, &vars, &cond, false)?;
                 let bnd =
                     Spanned::new(bnd.span.clone(), BndX::Choose(bs.clone(), trigs, cond.clone()));
@@ -76,7 +84,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
             }
             BndX::Lambda(bs, trigs) => {
                 assert!(trigs.len() == 0);
-                let vars = bs.iter().map(|b| (b.name.clone(), typ_boxing(ctx, &b.a))).collect();
+                let vars = bs.iter().map(|b| b.name.clone()).collect();
                 let trigs = build_triggers(ctx, &exp.span, &vars, &body, true)?;
                 if trigs.len() > 0 {
                     let msg = "#[trigger] on a spec_fn closure is deprecated - \
@@ -134,6 +142,7 @@ struct ElaborateVisitor1<'a, 'b, 'c, D: Diagnostics> {
     ctx: &'a Ctx,
     diagnostics: &'b D,
     fun_ssts: &'c HashMap<Fun, FunctionSst>,
+    is_native: HashMap<VarIdent, bool>,
 }
 
 impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
@@ -141,11 +150,23 @@ impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
 {
     fn visit_exp(&mut self, exp: &Exp) -> Result<Exp, VirErr> {
         let exp = self.visit_exp_rec(exp)?;
-        elaborate_one_exp(self.ctx, self.diagnostics, &self.fun_ssts, &exp)
+        elaborate_one_exp(self.ctx, self.diagnostics, &self.fun_ssts, &mut self.is_native, &exp)
     }
 
     fn visit_stm(&mut self, stm: &Stm) -> Result<Stm, VirErr> {
         self.visit_stm_rec(stm)
+    }
+}
+
+impl<'a, 'b, 'c, D: Diagnostics> ElaborateVisitor1<'a, 'b, 'c, D> {
+    fn rewrite_locals(&self, function: &mut crate::sst::FuncCheckSst) {
+        for local in Arc::make_mut(&mut function.local_decls) {
+            use crate::sst::LocalDeclKind;
+            if matches!(local.kind, LocalDeclKind::AssertByVar { .. }) {
+                let native = self.is_native[&local.ident];
+                Arc::make_mut(local).kind = LocalDeclKind::AssertByVar { native };
+            }
+        }
     }
 }
 
@@ -169,8 +190,20 @@ pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
     fun_ssts: &'c HashMap<Fun, FunctionSst>,
     function: &mut FunctionSst,
 ) -> Result<(), VirErr> {
-    let mut visitor = ElaborateVisitor1 { ctx, diagnostics, fun_ssts };
+    let mut visitor = ElaborateVisitor1 { ctx, diagnostics, fun_ssts, is_native: HashMap::new() };
     *function = visitor.visit_function(function)?;
+    let function_mut = Arc::make_mut(function);
+    if let Some(check) = &mut function_mut.x.exec_proof_check {
+        visitor.rewrite_locals(Arc::make_mut(check));
+    }
+    if let Some(check) = &mut function_mut.x.recommends_check {
+        visitor.rewrite_locals(Arc::make_mut(check));
+    }
+    if let Some(axioms) = &mut Arc::make_mut(&mut function_mut.x.axioms).spec_axioms {
+        if let Some(check) = &mut axioms.termination_check {
+            visitor.rewrite_locals(check);
+        }
+    }
 
     if function.x.axioms.proof_exec_axioms.is_some() {
         let typ_params = function.x.typ_params.clone();
@@ -178,12 +211,12 @@ pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
         let axioms = Arc::make_mut(&mut Arc::make_mut(function).x.axioms);
         let (params, exp, triggers) = axioms.proof_exec_axioms.as_ref().unwrap();
         assert!(triggers.len() == 0);
-        let mut vars: Vec<(VarIdent, TriggerBoxing)> = Vec::new();
+        let mut vars: Vec<VarIdent> = Vec::new();
         for name in typ_params.iter() {
-            vars.push((crate::def::suffix_typ_param_id(&name), TriggerBoxing::TypeId));
+            vars.push(crate::def::suffix_typ_param_id(&name));
         }
         for param in params.iter() {
-            vars.push((param.x.name.clone(), typ_boxing(ctx, &param.x.typ)));
+            vars.push(param.x.name.clone());
         }
         let triggers = build_triggers(ctx, &span, &vars, exp, false)?;
         axioms.proof_exec_axioms = Some((params.clone(), exp.clone(), triggers));

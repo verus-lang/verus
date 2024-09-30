@@ -21,7 +21,7 @@ use crate::def::{
     STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
     SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
-use crate::inv_masks::MaskSet;
+use crate::inv_masks::{MaskSet, MaskSingleton};
 use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
@@ -548,7 +548,7 @@ pub fn mask_set_from_spec(spec: &MaskSpec, function_name: &Fun, args: &Vec<Expr>
             for (i, e) in exprs.iter().enumerate() {
                 let expr =
                     ident_apply(&prefix_open_inv(&fun_to_air_ident(function_name), i), &args);
-                l.push(crate::inv_masks::MaskSingleton { expr, span: e.span.clone() });
+                l.push(MaskSingleton { expr, span: e.span.clone() });
             }
             MaskSet::from_list(l)
         }
@@ -694,7 +694,7 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
     ctx.quantifier_count.set(qcount + 1);
     let trigs = match &exp.x {
         ExpX::Bind(bnd, _) => match &bnd.x {
-            BndX::Quant(_, _, trigs) => trigs,
+            BndX::Quant(_, _, trigs, _) => trigs,
             BndX::Choose(_, trigs, _) => trigs,
             BndX::Lambda(_, trigs) => trigs,
             _ => panic!(
@@ -1139,7 +1139,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
                 air::ast_util::mk_let(&bs, &expr)
             }
-            BndX::Quant(quant, binders, trigs) => {
+            BndX::Quant(quant, binders, trigs, _) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let mut invs: Vec<Expr> = Vec::new();
                 for binder in binders.iter() {
@@ -2450,10 +2450,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 state.push_scope();
                 state.map_span(&stm, SpanKind::Start);
             }
-            let stmts: Vec<Stmt> = vec_map_result(stms, |s| stm_to_stmts(ctx, state, s))?
-                .into_iter()
-                .flatten()
-                .collect();
+            let mut stmts: Vec<Stmt> = Vec::new();
+            for s in stms.iter() {
+                stmts.extend(stm_to_stmts(ctx, state, s)?);
+            }
             if ctx.debug {
                 state.pop_scope();
             }
@@ -2611,7 +2611,7 @@ pub(crate) fn body_stm_to_air(
         }
     }
     for decl in local_decls.iter() {
-        local_shared.push(if decl.mutable {
+        local_shared.push(if decl.kind.is_mutable() {
             Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         } else {
             Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
@@ -2644,6 +2644,22 @@ pub(crate) fn body_stm_to_air(
         ens_exprs.push((ens.span.clone(), e));
     }
 
+    let f_mask_singletons =
+        |v: &Vec<MaskSingleton<Exp>>| -> Result<Vec<MaskSingleton<Expr>>, VirErr> {
+            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+            let mut v2: Vec<MaskSingleton<Expr>> = Vec::new();
+            for m in v.iter() {
+                let expr = exp_to_expr(ctx, &m.expr, expr_ctxt)?;
+                v2.push(MaskSingleton { expr, span: m.span.clone() });
+            }
+            Ok(v2)
+        };
+    let mask_air = MaskSet {
+        base: mask_set.base.clone(),
+        plus: f_mask_singletons(&mask_set.plus)?,
+        minus: f_mask_singletons(&mask_set.minus)?,
+    };
+
     let unwind_air = match unwind {
         UnwindSst::MayUnwind => UnwindAir::MayUnwind,
         UnwindSst::NoUnwind => UnwindAir::NoUnwind(ReasonForNoUnwind::Function),
@@ -2675,7 +2691,7 @@ pub(crate) fn body_stm_to_air(
         sids: vec![initial_sid.clone()],
         snap_map: Vec::new(),
         assign_map: indexmap::IndexMap::new(),
-        mask: (**mask_set).clone(),
+        mask: mask_air,
         unwind: unwind_air,
         post_condition_info: PostConditionInfo {
             dest: post_condition.dest.clone(),

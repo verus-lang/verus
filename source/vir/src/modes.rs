@@ -978,8 +978,8 @@ fn check_expr_handle_mut_arg(
             Ok(Mode::Spec)
         }
         ExprX::Unary(_, e1) => check_expr(ctxt, record, typing, outer_mode, e1),
-        ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(ctxt, record, typing, outer_mode, e1),
-        ExprX::UnaryOpr(UnaryOpr::Unbox(_), e1) => check_expr(ctxt, record, typing, outer_mode, e1),
+        ExprX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
+        ExprX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
         ExprX::UnaryOpr(UnaryOpr::HasType(_), _) => panic!("internal error: HasType in modes.rs"),
         ExprX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => {
             if ctxt.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {

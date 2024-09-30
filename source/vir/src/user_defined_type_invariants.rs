@@ -242,12 +242,8 @@ fn asserts_for_lhs(
                 }
                 cur = inner;
             }
-            ExprX::UnaryOpr(UnaryOpr::Unbox(_), inner) => {
-                cur = inner;
-            }
-            ExprX::UnaryOpr(UnaryOpr::Box(_), inner) => {
-                cur = inner;
-            }
+            ExprX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
+            ExprX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
             ExprX::Unary(UnaryOp::CoerceMode { .. }, inner) => {
                 cur = inner;
             }

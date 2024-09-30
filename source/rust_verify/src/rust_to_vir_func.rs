@@ -1070,7 +1070,6 @@ pub(crate) fn check_item_fn<'tcx>(
         decrease: header.decrease,
         decrease_when: header.decrease_when,
         decrease_by: header.decrease_by,
-        broadcast_forall: None,
         fndef_axioms: None,
         mask_spec: header.invariant_mask,
         unwind_spec: header.unwind_spec,
@@ -1128,7 +1127,6 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             decrease,
             decrease_when,
             decrease_by,
-            broadcast_forall,
             fndef_axioms,
             mask_spec,
             unwind_spec,
@@ -1201,7 +1199,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
         unsupported_err_unless!(decrease.len() == 0, span, "decreases clauses");
         unsupported_err_unless!(decrease_when.is_none(), span, "decreases_when clauses");
         unsupported_err_unless!(decrease_by.is_none(), span, "decreases_by clauses");
-        unsupported_err_unless!(broadcast_forall.is_none(), span, "broadcast_forall");
+        unsupported_err_unless!(!attrs.broadcast_forall, span, "broadcast_forall");
         unsupported_err_unless!(matches!(mask_spec, None), span, "opens_invariants");
         unsupported_err_unless!(matches!(unwind_spec, None), span, "unwind");
         unsupported_err_unless!(body.is_none(), span, "opens_invariants");
@@ -1223,7 +1221,6 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             decrease,
             decrease_when,
             decrease_by,
-            broadcast_forall,
             fndef_axioms,
             mask_spec,
             unwind_spec,
@@ -1674,7 +1671,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
-        broadcast_forall: None,
         fndef_axioms: None,
         mask_spec: None,
         unwind_spec: None,
@@ -1783,7 +1779,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
-        broadcast_forall: None,
         fndef_axioms: None,
         mask_spec: None,
         unwind_spec: None,

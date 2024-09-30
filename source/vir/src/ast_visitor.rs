@@ -278,16 +278,6 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
     }
 }
 
-pub(crate) fn expr_visitor_traverse<MF>(expr: &Expr, map: &mut VisitorScopeMap, mf: &mut MF)
-where
-    MF: FnMut(&mut VisitorScopeMap, &Expr) -> (),
-{
-    let _ = expr_visitor_dfs::<(), _>(expr, map, &mut |scope_map, expr| {
-        mf(scope_map, expr);
-        VisitorControlFlow::Recurse
-    });
-}
-
 pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
 where
     MF: FnMut(&VisitorScopeMap, &Expr) -> Result<(), E>,
@@ -653,7 +643,6 @@ where
         decrease,
         decrease_when,
         decrease_by: _,
-        broadcast_forall,
         fndef_axioms,
         mask_spec,
         unwind_spec,
@@ -710,15 +699,6 @@ where
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     map.pop_scope();
-
-    if let Some((params, req_ens)) = broadcast_forall {
-        map.push_scope(true);
-        for p in params.iter() {
-            let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
-        }
-        expr_visitor_control_flow!(expr_visitor_dfs(req_ens, map, mf));
-        map.pop_scope();
-    }
 
     if let Some(es) = fndef_axioms {
         for e in es.iter() {
@@ -1257,7 +1237,6 @@ where
         decrease,
         decrease_when,
         decrease_by,
-        broadcast_forall,
         fndef_axioms,
         mask_spec,
         unwind_spec,
@@ -1353,19 +1332,6 @@ where
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
 
-    let broadcast_forall = if let Some((params, req_ens)) = broadcast_forall {
-        map.push_scope(true);
-        let params = map_params_visitor(params, env, ft)?;
-        for p in params.iter() {
-            let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
-        }
-        let req_ens = map_expr_visitor_env(req_ens, map, env, fe, fs, ft)?;
-        map.pop_scope();
-        Some((params, req_ens))
-    } else {
-        None
-    };
-
     let fndef_axioms = if let Some(es) = fndef_axioms {
         let mut es2 = vec![];
         for e in es.iter() {
@@ -1394,7 +1360,6 @@ where
         decrease,
         decrease_when,
         decrease_by,
-        broadcast_forall,
         fndef_axioms,
         mask_spec,
         unwind_spec,
