@@ -27,8 +27,8 @@ struct State {
 
 fn preprocess_exp(exp: &Exp) -> Exp {
     match &exp.x {
-        ExpX::UnaryOpr(UnaryOpr::Box(_), e) | ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => {
-            preprocess_exp(e)
+        ExpX::UnaryOpr(UnaryOpr::Box(_), _) | ExpX::UnaryOpr(UnaryOpr::Unbox(_), _) => {
+            panic!("unexpected box")
         }
         ExpX::Binary(BinaryOp::HeightCompare { .. }, e1, _) => {
             // We don't let users use the "height" function or Height type directly.
@@ -115,7 +115,8 @@ fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
             | UnaryOp::InferSpecForLoopIter { .. } => {}
         },
         ExpX::UnaryOpr(op, arg) => match op {
-            UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::CustomErr(_) => {
+            UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
+            UnaryOpr::CustomErr(_) => {
                 // recurse inside coercions
                 check_trigger_expr_arg(state, expect_boxed, arg)
             }
@@ -241,7 +242,8 @@ fn check_trigger_expr(
                 UnaryOp::Not => Err(error(&exp.span, "triggers cannot contain boolean operators")),
             },
             ExpX::UnaryOpr(op, arg) => match op {
-                UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::CustomErr(_) => Ok(()),
+                UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
+                UnaryOpr::CustomErr(_) => Ok(()),
                 UnaryOpr::IsVariant { .. }
                 | UnaryOpr::TupleField { .. }
                 | UnaryOpr::Field { .. } => {

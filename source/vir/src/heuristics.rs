@@ -62,7 +62,8 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOpr::HasType(_) | UnaryOpr::IsVariant { .. } => exp.clone(),
             UnaryOpr::TupleField { .. } | UnaryOpr::Field(_) => exp.clone(),
             UnaryOpr::IntegerTypeBound(..) => exp.clone(),
-            UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::CustomErr(_) => {
+            UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
+            UnaryOpr::CustomErr(_) => {
                 exp.new_x(ExpX::UnaryOpr(op.clone(), insert_ext_eq_in_assert(ctx, e)))
             }
         },
