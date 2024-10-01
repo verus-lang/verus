@@ -22,42 +22,42 @@ use super::prelude::*;
 // call corresponds to a particular resolve() value.
 
 verus! {
-    pub struct Prophecy<T> {
-        v: Ghost<T>,
+
+pub struct Prophecy<T> {
+    v: Ghost<T>,
+}
+
+impl<T> Prophecy<T> where T: Structural {
+    pub closed spec fn view(self) -> T {
+        self.v@
     }
 
-    impl<T> Prophecy<T>
-        where T: Structural
-    {
-        pub closed spec fn view(self) -> T { self.v@ }
-
-        pub exec fn alloc() -> (result: Self)
-        {
-            Prophecy::<T>{
-                v: Ghost(arbitrary()),
-            }
-        }
-
-        #[verifier::external_body]
-        pub exec fn resolve(self, v: T)
-            ensures
-                self@ == v
-        {}
+    pub exec fn alloc() -> (result: Self) {
+        Prophecy::<T> { v: Ghost(arbitrary()) }
     }
 
-    fn main()
+    #[verifier::external_body]
+    pub exec fn resolve(self, v: T)
+        ensures
+            self@ == v,
     {
-        let ghost x: int = 1;
-        let p = Prophecy::<bool>::alloc();
-        proof {
-            if p@ {
-                x = 2;
-            } else {
-                x = 3;
-            }
-        };
-
-        p.resolve(true);
-        assert(x == 2);
     }
 }
+
+fn main() {
+    let ghost x: int = 1;
+    let p = Prophecy::<bool>::alloc();
+    proof {
+        if p@ {
+            x = 2;
+        } else {
+            x = 3;
+        }
+    }
+    ;
+
+    p.resolve(true);
+    assert(x == 2);
+}
+
+} // verus!
