@@ -44,20 +44,4 @@ impl<T> Prophecy<T> where T: Structural {
     }
 }
 
-fn main() {
-    let ghost x: int = 1;
-    let p = Prophecy::<bool>::alloc();
-    proof {
-        if p@ {
-            x = 2;
-        } else {
-            x = 3;
-        }
-    }
-    ;
-
-    p.resolve(true);
-    assert(x == 2);
-}
-
 } // verus!

@@ -41,6 +41,7 @@ pub mod multiset;
 pub mod pcm;
 pub mod pcm_lib;
 pub mod pervasive;
+pub mod proph;
 #[cfg(feature = "alloc")]
 pub mod ptr;
 pub mod raw_ptr;
