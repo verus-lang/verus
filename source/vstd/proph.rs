@@ -26,7 +26,9 @@ verus! {
         v: Ghost<T>,
     }
 
-    impl<T> Prophecy<T> {
+    impl<T> Prophecy<T>
+        where T: Structural
+    {
         pub closed spec fn view(self) -> T { self.v@ }
 
         pub exec fn alloc() -> (result: Self)
