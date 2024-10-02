@@ -90,22 +90,30 @@ pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_items(input, cfg_erase(), true)
 }
 
-// This macro_attribute allows developers to use verus in real rust codes,
-// without wrapping code inside verus!{}.
-// It does not support all verus syntax, especially for syntax that is not
-// accepted by rustc. Thus, it only works for exec codes. Developers still need
-// to use verus!{} for defining complicated verus spec/proof functions.
-//
-// To use requires/ensures/invariant/proof in exec functions annotated by
-// #[verus_verify], developers need to use corresponding macros at the begining of
-// function or loop. 
-//
-// Why: The major reason to use this is to avoid adding new syntax into existed
-// rust exec code. Thus, developers who do not need verification can use
-// generic rustfmt, rust-analyzer for executable codes, and can ignore verus
-// code.
-//
-// Example: see test_my_funs_with_verus_verify in example/syntax.rs.
+/// This macro attribute enables developers to annotate rust code in standard
+/// Rust code, eliminating the need to wrap exec code inside `verus! {}`.
+///
+/// Limitations:
+/// - This macro does not support all `verus` syntax, particularly those
+///   constructs not accepted by `rustc`.
+/// - For defining complex `verus` specifications or proof functions, developers
+///   should still use `verus! {}`.
+///
+/// Usage:
+/// - To apply `requires`, `ensures`, `invariant`, or `proof` in `exec`
+///   functions annotated with `#[verus_verify]`, developers should call the
+///   corresponding macros at the beginning of the function or loop.
+///
+/// Rationale:
+/// - This approach avoids introducing new syntax into existing Rust executable
+///   code, allowing verification and non-verification developers collaborate
+///   without affecting others.
+///   For developers who do not understand verification, they can easily ignore
+///   verus code via feature selection and use standard rust tools like
+///   `rustfmt` and `rust-analyzer`.
+///
+/// Example:
+/// - Refer to the `test_my_funs_with_verus_verify` in `example/syntax.rs`.
 #[proc_macro_attribute]
 pub fn verus_verify(
     attr: proc_macro::TokenStream,

@@ -601,10 +601,15 @@ fn test_my_funs_with_verus_verify(x: u32, y: u32) -> u32 {
         my_proof_fun(u / 2, y as int);  // allowed in proof code
     }
     assert(x < 100);
+
     let mut x = x;
     while x < MAX_X {
         invariant![x <= MAX_X, true];
         x = x + 1;
     }
+
+    let v = vec![1, 2, 3];
+    assert(v[1] == 2);
+
     x + y
 }
