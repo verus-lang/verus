@@ -11,8 +11,8 @@
 ///
 /// Rationale:
 /// - This approach avoids introducing new syntax into existing Rust executable
-///   code, allowing verification and non-verification developers collaborate
-///   without affecting others.
+///   code, allowing verification and non-verification developers to collaborate
+///   without affecting each other.
 ///   For developers who do not understand verification, they can easily ignore
 ///   verus code via feature selection and use standard rust tools like
 ///   `rustfmt` and `rust-analyzer`.
