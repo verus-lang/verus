@@ -322,6 +322,7 @@ pub struct FunctionSstX {
     pub typ_bounds: crate::ast::GenericBounds,
     pub pars: Pars,
     pub ret: Par,
+    pub ens_has_return: bool,
     pub item_kind: crate::ast::ItemKind,
     pub publish: Option<bool>,
     pub attrs: crate::ast::FunctionAttrs,

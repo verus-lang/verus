@@ -371,7 +371,7 @@ fn visit_and_insert_pars(
 }
 
 fn return_typ(ctx: &Ctx, function: &FunctionSstX, is_trait: bool, typ: &Typ) -> Typ {
-    if (is_trait || typ_is_poly(ctx, &function.ret.x.typ)) && function.has_return() {
+    if (is_trait || typ_is_poly(ctx, &function.ret.x.typ)) && function.ens_has_return {
         coerce_typ_to_poly(ctx, typ)
     } else {
         coerce_typ_to_native(ctx, typ)
@@ -1091,6 +1091,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         typ_bounds,
         pars,
         ret,
+        ens_has_return,
         item_kind,
         publish,
         attrs,
@@ -1110,7 +1111,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
     let is_trait = !matches!(kind, FunctionKind::Static);
     let poly_pars =
         if function_mode == Mode::Spec || is_trait { InsertPars::Poly } else { InsertPars::Native };
-    let poly_ret = if is_trait && (function.x.ens_has_return || function_mode == Mode::Spec) {
+    let poly_ret = if is_trait && (*ens_has_return || function_mode == Mode::Spec) {
         InsertPars::Poly
     } else {
         InsertPars::Native
@@ -1161,7 +1162,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
             .termination_check
             .as_ref()
             .map(|f| visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret.x.typ));
-        let body_exp = if is_trait && (function.x.has_return() || function_mode == Mode::Spec) {
+        let body_exp = if is_trait && (function.x.ens_has_return || function_mode == Mode::Spec) {
             visit_exp_poly(ctx, &mut state, &spec_body.body_exp)
         } else {
             visit_exp_native(ctx, &mut state, &spec_body.body_exp)
@@ -1194,6 +1195,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         typ_bounds: typ_bounds.clone(),
         pars,
         ret,
+        ens_has_return: *ens_has_return,
         item_kind: *item_kind,
         publish: *publish,
         attrs: attrs.clone(),

@@ -747,12 +747,6 @@ pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
     )
 }
 
-impl crate::sst::FunctionSstX {
-    pub fn has_return(&self) -> bool {
-        crate::ast_util::is_return_typ(&self.ret.x.typ)
-    }
-}
-
 impl LocalDeclKind {
     pub fn is_mutable(&self) -> bool {
         match self {
