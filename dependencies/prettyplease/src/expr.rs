@@ -71,6 +71,7 @@ impl Printer {
             }
             Expr::Is(expr) => self.expr_is(expr),
             Expr::Has(expr) => self.expr_has(expr),
+            Expr::GetField(expr) => self.expr_get_field(expr),
 
             #[cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
             _ => unimplemented!("unknown Expr {:?}", expr),
@@ -106,6 +107,13 @@ impl Printer {
         self.expr(&expr.lhs);
         self.word(" has ");
         self.expr(&expr.rhs);
+    }
+
+    pub fn expr_get_field(&mut self, expr: &syn_verus::ExprGetField) {
+        self.outer_attrs(&expr.attrs);
+        self.expr(&expr.base);
+        self.word("->");
+        self.member(&expr.member);
     }
 
     pub fn expr_beginning_of_line(&mut self, expr: &Expr, beginning_of_line: bool) {
