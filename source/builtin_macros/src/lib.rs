@@ -90,38 +90,6 @@ pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_items(input, cfg_erase(), true)
 }
 
-/// This macro attribute enables developers to annotate rust code in standard
-/// Rust code, eliminating the need to wrap exec code inside `verus! {}`.
-///
-/// Limitations:
-/// - This macro does not support all `verus` syntax, particularly those
-///   constructs not accepted by `rustc`.
-/// - For defining complex `verus` specifications or proof functions, developers
-///   should still use `verus! {}`.
-///
-/// Usage:
-/// - To apply `requires`, `ensures`, `invariant`, or `proof` in `exec`
-///   functions annotated with `#[verus_verify]`, developers should call the
-///   corresponding macros at the beginning of the function or loop.
-///
-/// Rationale:
-/// - This approach avoids introducing new syntax into existing Rust executable
-///   code, allowing verification and non-verification developers collaborate
-///   without affecting others.
-///   For developers who do not understand verification, they can easily ignore
-///   verus code via feature selection and use standard rust tools like
-///   `rustfmt` and `rust-analyzer`.
-///
-/// Example:
-/// - Refer to the `test_my_funs_with_verus_verify` in `example/syntax.rs`.
-#[proc_macro_attribute]
-pub fn verus_verify(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, cfg_erase(), true)
-}
-
 #[proc_macro]
 pub fn verus_proof_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_expr(EraseGhost::Keep, true, input)

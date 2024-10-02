@@ -589,19 +589,43 @@ proof fn uses_spec_has(c: Collection)
 
 } // verus!
 
-#[verus_verify]
+#[verifier::verify]
 const MAX_X: u32 = 100;
 
-#[builtin_macros::verus_verify]
-fn test_my_funs_with_verus_verify(x: u32, y: u32) -> u32 {
-    requires![x < MAX_X, y < 100];
+#[verifier::verify]
+struct Y {
+    val: u32,
+    t: Tracked<u32>,
+}
+
+verus!{
+    proof fn p1(tracked y: &mut u32)
+        ensures *y == 200
+    {
+        *y = 200u32;
+    }
+    fn f4(Tracked(y): Tracked<&mut u32>){}
+    fn f5(y: &mut Tracked<u32>){
+        f4(Tracked(y.borrow_mut()));
+    }
+}
+
+#[verifier::verify]
+fn test_my_funs_with_verus_verify(x: u32, y: &mut Y) -> u32 {
+    requires![x < MAX_X,  old(y).val < 100];
     ensures!(|ret: u32| [ret < 200]);
+    proof!{
+        p1(y.t.borrow_mut());
+        assert(y.t@ == 200);
+    }
+    f5(&mut y.t);
+    let y = y.val;
     proof! {
         let u = my_spec_fun(x as int, y as int);  // allowed in proof code
         my_proof_fun(u / 2, y as int);  // allowed in proof code
+        assert(x < 100);
+        
     }
-    assert(x < 100);
-
     let mut x = x;
     while x < MAX_X {
         invariant![x <= MAX_X, true];
@@ -609,7 +633,7 @@ fn test_my_funs_with_verus_verify(x: u32, y: u32) -> u32 {
     }
 
     let v = vec![1, 2, 3];
-    assert(v[1] == 2);
+    proof! {assert(v[1] == 2);}
 
     x + y
 }
