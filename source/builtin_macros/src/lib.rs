@@ -91,7 +91,7 @@ pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 // This macro_attribute allows developers to use verus in real rust codes,
-// without wrapping code inside verus!{}. 
+// without wrapping code inside verus!{}.
 // It does not support all verus syntax, especially for syntax that is not
 // accepted by rustc. Thus, it only works for exec codes. Developers still need
 // to use verus!{} for defining complicated verus spec/proof functions.
