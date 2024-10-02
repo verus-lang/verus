@@ -715,6 +715,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     typ_bounds: R::get_vec_a(typ_bounds),
                     pars: R::get_vec_a(pars),
                     ret: R::get(ret),
+                    ens_has_return: f.x.ens_has_return,
                     item_kind: f.x.item_kind,
                     publish: f.x.publish,
                     attrs: f.x.attrs.clone(),

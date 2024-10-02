@@ -762,6 +762,7 @@ pub fn function_to_sst(
         typ_bounds: function.x.typ_bounds.clone(),
         pars: params_to_pars(&function.x.params, true),
         ret: param_to_par(&function.x.ret, true),
+        ens_has_return: function.x.ens_has_return,
         item_kind: function.x.item_kind,
         publish: function.x.publish,
         attrs: function.x.attrs.clone(),

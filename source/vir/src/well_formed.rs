@@ -708,7 +708,7 @@ fn check_function(
                 }
             }
         }
-        if function.x.has_return() {
+        if function.x.ens_has_return {
             return Err(error(
                 &function.span,
                 "integer_ring mode function cannot have a return value",
