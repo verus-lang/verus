@@ -80,11 +80,11 @@ macro_rules! ensures {
 macro_rules! proof {
     ($($x:tt)*) => {
         #[cfg(verus_keep_ghost_body)]
-        #[verifier::proof_block] 
-        {
-            ::builtin_macros::verus_proof_macro_exprs!(
-                ::builtin::verus_proof_macro_exprs_args!($($x)*)
-            )
+        ::builtin_macros::verus_proof_macro_exprs!{
+            ::builtin::verus_proof_macro_exprs_args!{
+            #[verifier::proof_block]
+            {$($x)*}
+            }
         }
     };
 }
@@ -119,7 +119,7 @@ macro_rules! invariant {
     ($($x:tt)*) => {
         #[cfg(verus_keep_ghost_body)]
         ::builtin::invariant(::builtin_macros::verus_proof_macro_exprs!(
-            ::builtin::verus_proof_macro_exprs_args!($($x)*)
+            ::builtin::verus_proof_macro_exprs_args!([$($x)*])
         ));
     };
 }

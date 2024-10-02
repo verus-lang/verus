@@ -595,17 +595,17 @@ const MAX_X: u32 = 100;
 #[builtin_macros::verus_verify]
 fn test_my_funs_with_verus_verify(x: u32, y: u32) -> u32
 {
-    requires!{x < MAX_X, y < 100}
+    requires![x < MAX_X, y < 100];
     ensures!(|ret: u32| [ret < 200]);
     proof!{
         let u = my_spec_fun(x as int, y as int);  // allowed in proof code
-        my_proof_fun(x / 2, y as int);  // allowed in proof code
+        my_proof_fun(u / 2, y as int);  // allowed in proof code
     }
     assert(x < 100);
     let mut x = x;
     while x < MAX_X 
     {
-        invariant!{ x <= MAX_X }
+        invariant![ x <= MAX_X, true ];
         x = x + 1;
     }
     x + y

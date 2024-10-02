@@ -90,6 +90,22 @@ pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_items(input, cfg_erase(), true)
 }
 
+// This macro_attribute allows developers to use verus in real rust codes,
+// without wrapping code inside verus!{}. 
+// It does not support all verus syntax, especially for syntax that is not
+// accepted by rustc. Thus, it only works for exec codes. Developers still need
+// to use verus!{} for defining complicated verus spec/proof functions.
+//
+// To use requires/ensures/invariant/proof in exec functions annotated by
+// #[verus_verify], developers need to use corresponding macros at the begining of
+// function or loop. 
+//
+// Why: The major reason to use this is to avoid adding new syntax into existed
+// rust exec code. Thus, developers who do not need verification can use
+// generic rustfmt, rust-analyzer for executable codes, and can ignore verus
+// code.
+//
+// Example: see test_my_funs_with_verus_verify in example/syntax.rs.
 #[proc_macro_attribute]
 pub fn verus_verify(
     attr: proc_macro::TokenStream,
