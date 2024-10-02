@@ -494,6 +494,15 @@ pub fn ex_hash_map_clear<Key, Value, S>(m: &mut HashMap<Key, Value, S>)
     m.clear()
 }
 
+#[verifier::external_fn_specification]
+pub fn ex_hash_map_extend<Key, Value>(m: &mut HashMap<Key, Value>, other: HashMap<Key, Value>)
+    where Key: Eq + Hash
+    ensures
+        m@ == old(m)@.union_prefer_right(other@),
+{
+    m.extend(other)
+}
+
 // We now specify the behavior of `HashSet`.
 #[verifier::external_type_specification]
 #[verifier::external_body]
