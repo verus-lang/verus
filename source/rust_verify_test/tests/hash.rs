@@ -57,6 +57,20 @@ test_verify_one_file! {
             assert(!m@.contains_key(6));
             assert(m@.contains_key(3));
 
+            m.extend({
+                let mut other = HashMap::<u32, i8>::new();
+                assert(other@ == Map::<u32, i8>::empty());
+
+                other.insert(3, 5);
+                other.insert(6, 7);
+                assert(other@[3] == 5);
+                other
+            });
+            assert(m@.contains_key(6));
+            assert(m@[6] == 7);
+            assert(m@.contains_key(3));
+            assert(m@[3] == 5);
+
             m.clear();
             assert(!m@.contains_key(3));
             let b = m.contains_key(&3);
@@ -684,6 +698,20 @@ test_verify_one_file! {
             m.remove(six.as_str());
             assert(!m@.contains_key(six@));
             assert(m@.contains_key(three@));
+
+            m.extend({
+                let mut other = StringHashMap::<i8>::new();
+                assert(other@ == Map::<Seq<char>, i8>::empty());
+
+                other.insert(three.clone(), 5);
+                other.insert(six.clone(), 7);
+                assert(other@[three@] == 5);
+                other
+            });
+            assert(m@.contains_key(six@));
+            assert(m@[six@] == 7);
+            assert(m@.contains_key(three@));
+            assert(m@[three@] == 5);
 
             m.clear();
             assert(!m@.contains_key(three@));
