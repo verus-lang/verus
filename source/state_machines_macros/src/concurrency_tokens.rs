@@ -698,7 +698,7 @@ pub fn exchange_stream(
         let itn = inst_type(sm);
         out_params.push((quote! { instance }, quote! { #itn }, Mode::Tracked));
     } else {
-        in_params.push(quote! { #[verifier::proof] &self });
+        in_params.push(quote! { tracked &self });
     }
 
     // Take the transition parameters (the normal parameters defined in the transition)
@@ -707,7 +707,7 @@ pub fn exchange_stream(
     for param in &tr.params {
         let id = &param.name;
         let ty = &param.ty;
-        in_params.push(quote! { #[verifier::spec] #id: #ty });
+        in_params.push(quote! { #id: #ty });
     }
 
     // We need some pre/post conditions that the input/output
@@ -994,10 +994,9 @@ pub fn exchange_stream(
     let exch_name = exchange_name(&tr);
 
     let req_stream = if reqs.len() > 0 {
-        quote_vstd! { vstd =>
-            #vstd::prelude::requires(::builtin_macros::verus_proof_expr!([
-                #(#reqs),*
-            ]));
+        quote! {
+            requires
+                #((#reqs)),*
         }
     } else {
         TokenStream::new()
@@ -1006,41 +1005,37 @@ pub fn exchange_stream(
     // Output types are a bit tricky
     // because of the lack of named output params.
 
-    let (out_params_ret, ens_stream, ret_value_mode) = if out_params.len() == 0 {
+    let (out_params_ret, ens_stream) = if out_params.len() == 0 {
         let ens_stream = if enss.len() > 0 {
-            quote_vstd! { vstd =>
-                #vstd::prelude::ensures(::builtin_macros::verus_proof_expr!([
-                    #(#enss),*
-                ]));
+            quote! {
+                ensures
+                    #((#enss)),*
             }
         } else {
             TokenStream::new()
         };
 
-        (TokenStream::new(), ens_stream, TokenStream::new())
+        (TokenStream::new(), ens_stream)
     } else if out_params.len() == 1 {
         let param_name = &out_params[0].0;
         let param_ty = &out_params[0].1;
         let param_mode = &out_params[0].2;
 
         let ens_stream = if enss.len() > 0 {
-            quote_vstd! { vstd =>
-                #vstd::prelude::ensures(
-                    |#param_name: #param_ty| ::builtin_macros::verus_proof_expr!([
-                        #(#enss),*
-                    ])
-                );
+            quote! {
+                ensures
+                    #((#enss)),*,
             }
         } else {
             TokenStream::new()
         };
 
         let ret_value_mode = match param_mode {
-            Mode::Tracked => quote! { #[verifier::returns(proof)] /* vattr */ },
+            Mode::Tracked => quote! { tracked },
             Mode::Ghost => TokenStream::new(),
         };
 
-        (quote! { -> #param_ty }, ens_stream, ret_value_mode)
+        (quote! { -> (#ret_value_mode #param_name: #param_ty) }, ens_stream)
     } else {
         // If we have more than one output param (we aren't counting the &mut inputs here,
         // only stuff in the 'return type' position) then we have to package it all into
@@ -1079,22 +1074,18 @@ pub fn exchange_stream(
         let tup_names = quote! { (#(#param_names),*) };
 
         let ens_stream = if enss.len() > 0 {
-            quote_vstd! { vstd =>
-                #vstd::prelude::ensures(
-                    |tmp_tuple: #tup_typ| ::builtin_macros::verus_proof_expr!([{
-                        let #tup_names = tmp_tuple;
-                        #(#let_stmts)*
-                        #((#enss))&&*
-                    }])
-                );
+            quote! {
+                ensures ({
+                    let #tup_names = tmp_tuple;
+                    #(#let_stmts)*
+                    #((#enss))&&*
+                })
             }
         } else {
             TokenStream::new()
         };
 
-        let ret_value_mode = quote! { #[verifier::returns(proof)] /* vattr */ };
-
-        (quote! { -> #tup_typ }, ens_stream, ret_value_mode)
+        (quote! { -> (tracked tmp_tuple: #tup_typ) }, ens_stream)
     };
 
     // Tie it all together
@@ -1108,16 +1099,16 @@ pub fn exchange_stream(
     };
 
     return Ok(quote! {
-        #[cfg(verus_keep_ghost_body)]
-        #[verus::internal(verus_macro)]
-        #ret_value_mode
-        #[verifier::external_body] /* vattr */
-        #[verifier::proof]
-        pub fn #exch_name#gen(#(#in_params),*) #out_params_ret {
-            #req_stream
-            #ens_stream
-            #extra_deps
-            ::core::unimplemented!();
+        ::builtin_macros::verus!{
+            #[cfg(verus_keep_ghost_body)]
+            #[verifier::external_body] /* vattr */
+            pub proof fn #exch_name#gen(#(#in_params),*) #out_params_ret
+                #req_stream
+                #ens_stream
+            {
+                #extra_deps
+                ::core::unimplemented!();
+            }
         }
     });
 }
@@ -1661,7 +1652,7 @@ fn add_token_param_in_out(
     let (is_input, is_output) = match inout_type {
         InoutType::In => {
             assert!(!use_explicit_lifetime);
-            in_params.push(quote! { #[verifier::proof] #param_name: #param_type });
+            in_params.push(quote! { tracked #param_name: #param_type });
             (true, false)
         }
         InoutType::Out => {
@@ -1671,14 +1662,14 @@ fn add_token_param_in_out(
         }
         InoutType::InOut => {
             assert!(!use_explicit_lifetime);
-            in_params.push(quote! { #[verifier::proof] #param_name: &mut #param_type });
+            in_params.push(quote! { tracked #param_name: &mut #param_type });
             (true, true)
         }
         InoutType::BorrowIn => {
             if use_explicit_lifetime {
-                in_params.push(quote! { #[verifier::proof] #param_name: &'a #param_type });
+                in_params.push(quote! { tracked #param_name: &'a #param_type });
             } else {
-                in_params.push(quote! { #[verifier::proof] #param_name: &#param_type });
+                in_params.push(quote! { tracked #param_name: &#param_type });
             }
             (true, false)
         }
