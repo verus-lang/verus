@@ -90,6 +90,14 @@ pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_items(input, cfg_erase(), true)
 }
 
+#[proc_macro_attribute]
+pub fn verus_verify(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    syntax::rewrite_items(input, cfg_erase(), true)
+}
+
 #[proc_macro]
 pub fn verus_proof_expr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     syntax::rewrite_expr(EraseGhost::Keep, true, input)

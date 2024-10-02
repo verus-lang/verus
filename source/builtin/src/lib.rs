@@ -37,12 +37,56 @@ pub fn requires<A>(_a: A) {
     unimplemented!();
 }
 
+#[macro_export]
+#[cfg(not(verus_verify_core))]
+macro_rules! verus_proof_macro_exprs_args {
+    ($($x:tt)*) => {
+        ($($x)*)
+    };
+}
+
+#[macro_export]
+#[cfg(not(verus_verify_core))]
+macro_rules! requires {
+    ($($x:tt)*) => {
+        #[cfg(verus_keep_ghost_body)]
+        ::builtin::requires(::builtin_macros::verus_proof_macro_exprs!(
+            ::builtin::verus_proof_macro_exprs_args!([$($x)*])
+        ));
+    };
+}
+
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::ensures"]
 #[verifier::proof]
 pub fn ensures<A>(_a: A) {
     unimplemented!();
+}
+
+#[macro_export]
+#[cfg(not(verus_verify_core))]
+macro_rules! ensures {
+    ($($x:tt)*) => {
+        #[cfg(verus_keep_ghost_body)]
+        ::builtin::ensures(::builtin_macros::verus_proof_macro_exprs!(
+            ::builtin::verus_proof_macro_exprs_args!($($x)*)
+        ));
+    };
+}
+
+#[macro_export]
+#[cfg(not(verus_verify_core))]
+macro_rules! proof {
+    ($($x:tt)*) => {
+        #[cfg(verus_keep_ghost_body)]
+        #[verifier::proof_block] 
+        {
+            ::builtin_macros::verus_proof_macro_exprs!(
+                ::builtin::verus_proof_macro_exprs_args!($($x)*)
+            )
+        }
+    };
 }
 
 // Can only appear at beginning of spec function body
@@ -67,6 +111,17 @@ pub fn invariant_except_break<A>(_a: A) {
 #[verifier::proof]
 pub fn invariant<A>(_a: A) {
     unimplemented!();
+}
+
+#[macro_export]
+#[cfg(not(verus_verify_core))]
+macro_rules! invariant {
+    ($($x:tt)*) => {
+        #[cfg(verus_keep_ghost_body)]
+        ::builtin::invariant(::builtin_macros::verus_proof_macro_exprs!(
+            ::builtin::verus_proof_macro_exprs_args!($($x)*)
+        ));
+    };
 }
 
 // Can only appear at beginning of function body
