@@ -9,7 +9,7 @@ test_verify_one_file! {
 
         fn test_bool() {
             let ghost x: int = 1;
-            let p = Prophecy::<bool>::alloc();
+            let p = Prophecy::<bool>::new();
             proof {
                 if p@ {
                     x = 2;
@@ -18,7 +18,7 @@ test_verify_one_file! {
                 }
             }
 
-            p.resolve(true);
+            p.resolve(&true);
             assert(x == 2);
         }
     } => Ok(())
@@ -36,8 +36,8 @@ test_verify_one_file! {
         }
 
         fn test() {
-            let p = Prophecy::<S>::alloc();
-            p.resolve(S{a: 1u64, b: 2u8, c: false});
+            let p = Prophecy::<S>::new();
+            p.resolve(&S{a: 1u64, b: 2u8, c: false});
             assert(p@ == S{a: 1u64, b: 2u8, c: false});
         }
     } => Ok(())
@@ -48,8 +48,8 @@ test_verify_one_file! {
         use vstd::proph::*;
 
         fn test() {
-            let p = Prophecy::<bool>::alloc();
-            p.resolve(true);
+            let p = Prophecy::<bool>::new();
+            p.resolve(&true);
             assert(p@ == true);
         }
     } => Ok(())
@@ -60,8 +60,8 @@ test_verify_one_file! {
         use vstd::proph::*;
 
         fn test() {
-            let p = Prophecy::<Ghost<bool>>::alloc();
-            p.resolve(Ghost(!p.view().view()));
+            let p = Prophecy::<Ghost<bool>>::new();
+            p.resolve(&Ghost(!p.view().view()));
             assert(false);
         }
     } => Err(err) => assert_rust_error_msg(err, "trait bounds were not satisfied")

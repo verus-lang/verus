@@ -32,12 +32,14 @@ impl<T> Prophecy<T> where T: Structural {
         self.v@
     }
 
-    pub exec fn alloc() -> (result: Self) {
+    #[inline(always)]
+    pub exec fn new() -> (result: Self) {
         Prophecy::<T> { v: Ghost(arbitrary()) }
     }
 
+    #[inline(always)]
     #[verifier::external_body]
-    pub exec fn resolve(self, v: T)
+    pub exec fn resolve(self, v: &T)
         ensures
             self@ == v,
     {
