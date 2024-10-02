@@ -171,19 +171,16 @@ impl<T> PointsTo<T> {
     }
 
     #[verifier::inline]
-    #[doc(verus_show_body)]
     pub open spec fn is_init(&self) -> bool {
         self.opt_value().is_init()
     }
 
     #[verifier::inline]
-    #[doc(verus_show_body)]
     pub open spec fn is_uninit(&self) -> bool {
         self.opt_value().is_uninit()
     }
 
     #[verifier::inline]
-    #[doc(verus_show_body)]
     pub open spec fn value(&self) -> T {
         self.opt_value().value()
     }
