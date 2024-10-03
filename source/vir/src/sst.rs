@@ -29,11 +29,15 @@ pub struct BndInfo {
     pub user: Option<BndInfoUser>,
 }
 
+// For AssertBy, this records the LocalDecl vars that correspond to the VarBinders
+// (used by sst_elaborate.rs and poly.rs)
+pub type AssertByLocals = Option<Arc<Vec<VarIdent>>>;
+
 pub type Bnd = Arc<Spanned<BndX>>;
 #[derive(Clone, Debug)]
 pub enum BndX {
     Let(VarBinders<Exp>),
-    Quant(Quant, VarBinders<Typ>, Trigs),
+    Quant(Quant, VarBinders<Typ>, Trigs, AssertByLocals),
     Lambda(VarBinders<Typ>, Trigs),
     Choose(VarBinders<Typ>, Trigs, Exp),
 }
@@ -201,12 +205,34 @@ pub enum StmX {
     Block(Stms),
 }
 
+// poly.rs uses the specific kind of each local to decide on a poly/native type for the local
+#[derive(Debug, Clone, Copy)]
+pub enum LocalDeclKind {
+    Param { mutable: bool },
+    Return,
+    StmtLet { mutable: bool },
+    // temp var inherits kind of the initializer used to assign to it:
+    TempViaAssign,
+    Decreases,
+    StmCallArg { native: bool },
+    Assert,
+    AssertByVar { native: bool },
+    LetBinder,
+    QuantBinder,
+    ChooseBinder,
+    ClosureBinder,
+    OpenInvariantBinder,
+    ExecClosureId,
+    ExecClosureParam,
+    ExecClosureRet,
+}
+
 pub type LocalDecl = Arc<LocalDeclX>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LocalDeclX {
     pub ident: UniqueIdent,
     pub typ: Typ,
-    pub mutable: bool,
+    pub kind: LocalDeclKind,
 }
 
 #[derive(Debug, Clone)]
@@ -252,7 +278,7 @@ pub struct FuncDeclSst {
 pub struct FuncCheckSst {
     pub reqs: Exps,
     pub post_condition: Arc<PostConditionSst>,
-    pub mask_set: Arc<crate::inv_masks::MaskSet>, // Actually AIR
+    pub mask_set: Arc<crate::inv_masks::MaskSetE<Exp>>,
     pub unwind: UnwindSst,
     pub body: Stm,
     pub local_decls: Arc<Vec<LocalDecl>>,
@@ -296,6 +322,7 @@ pub struct FunctionSstX {
     pub typ_bounds: crate::ast::GenericBounds,
     pub pars: Pars,
     pub ret: Par,
+    pub ens_has_return: bool,
     pub item_kind: crate::ast::ItemKind,
     pub publish: Option<bool>,
     pub attrs: crate::ast::FunctionAttrs,

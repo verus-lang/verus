@@ -11,14 +11,13 @@ use crate::ast_to_sst::{
 use crate::ast_visitor;
 use crate::context::{Ctx, FunctionCtx};
 use crate::def::{unique_local, Spanned};
-use crate::inv_masks::MaskSet;
+use crate::inv_masks::MaskSetE;
 use crate::messages::{error, Message};
-use crate::sst::{BndX, Exp, ExpX, Exps, Par, ParPurpose, ParX, Pars, Stm, StmX};
+use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
 };
-use crate::sst_to_air::{exp_to_expr, ExprCtxt, ExprMode};
 use crate::sst_util::{subst_exp, subst_stm};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
@@ -265,7 +264,7 @@ fn func_body_to_sst(
                 local_decls: Arc::new(termination_decls),
                 statics: Arc::new(vec![]),
                 reqs: Arc::new(vec![]),
-                mask_set: Arc::new(crate::inv_masks::MaskSet::empty()),
+                mask_set: Arc::new(MaskSetE::empty()),
                 unwind: UnwindSst::NoUnwind,
             };
             Some(termination_check)
@@ -284,7 +283,7 @@ fn req_ens_to_sst(
     pre: bool,
 ) -> Result<(Pars, Vec<Exp>), VirErr> {
     let mut pars = params_to_pre_post_pars(&function.x.params, pre);
-    if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.has_return_name() {
+    if !pre && matches!(function.x.mode, Mode::Exec | Mode::Proof) && function.x.ens_has_return {
         let mut ps = (*pars).clone();
         ps.push(param_to_par(&function.x.ret, false));
         pars = Arc::new(ps);
@@ -357,10 +356,10 @@ pub fn func_decl_to_sst(
             let exp = match &exp.x {
                 ExpX::Unary(UnaryOp::MustBeElaborated, ebind) => match &ebind.x {
                     ExpX::Bind(bnd, e) => match &bnd.x {
-                        BndX::Quant(quant, qbinders, trigs) => {
+                        BndX::Quant(quant, qbinders, trigs, None) => {
                             let mut qbinders = (&**qbinders).clone();
                             qbinders.append(&mut binders);
-                            let bndx = BndX::Quant(*quant, Arc::new(qbinders), trigs.clone());
+                            let bndx = BndX::Quant(*quant, Arc::new(qbinders), trigs.clone(), None);
                             let bnd = Spanned::new(bnd.span.clone(), bndx);
                             let ebind = ebind.new_x(ExpX::Bind(bnd, e.clone()));
                             exp.new_x(ExpX::Unary(UnaryOp::MustBeElaborated, ebind))
@@ -428,11 +427,18 @@ pub fn func_axioms_to_sst(
                 // so we can just return here.
                 return Ok(FuncAxiomsSst { spec_axioms: None, proof_exec_axioms: None });
             }
-            if let Some((params, req_ens)) = &function.x.broadcast_forall {
-                let params = params_to_pre_post_pars(params, false);
+            if function.x.attrs.broadcast_forall {
+                let span = &function.span;
+                let mut reqs: Vec<Expr> = Vec::new();
+                reqs.extend(crate::traits::trait_bounds_to_ast(ctx, span, &function.x.typ_bounds));
+                reqs.extend((*function.x.require).clone());
+                let req = crate::ast_util::conjoin(span, &reqs);
+                let ens = crate::ast_util::conjoin(span, &*function.x.ensure);
+                let req_ens = crate::ast_util::mk_implies(span, &req, &ens);
+                let params = params_to_pre_post_pars(&function.x.params, false);
                 // Use expr_to_bind_decls_exp_skip_checks, skipping checks on req_ens,
                 // because the requires/ensures are checked when the function itself is checked
-                let exp = expr_to_bind_decls_exp_skip_checks(ctx, diagnostics, &params, req_ens)?;
+                let exp = expr_to_bind_decls_exp_skip_checks(ctx, diagnostics, &params, &req_ens)?;
                 let axioms = FuncAxiomsSst {
                     spec_axioms: None,
                     proof_exec_axioms: Some((params, exp, Arc::new(vec![]))),
@@ -489,8 +495,7 @@ pub fn func_def_to_sst(
             let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
             assert!(typ_params.len() == trait_typ_args.len());
             for (x, t) in typ_params.iter().zip(trait_typ_args.iter()) {
-                let t = crate::poly::coerce_typ_to_poly(ctx, t);
-                trait_typ_substs.insert(x.clone(), t);
+                trait_typ_substs.insert(x.clone(), t.clone());
             }
             (trait_typ_substs, &ctx.func_map[method], true)
         } else {
@@ -500,10 +505,10 @@ pub fn func_def_to_sst(
     let mut state = State::new(diagnostics);
 
     let mut ens_params = (*function.x.params).clone();
-    let dest = if function.x.has_return_name() {
+    let dest = if function.x.ens_has_return {
         let ParamX { name, typ, .. } = &function.x.ret.x;
         ens_params.push(function.x.ret.clone());
-        state.declare_var_stm(name, typ, false, false);
+        state.declare_var_stm(name, typ, LocalDeclKind::Return, false);
         Some(unique_local(name))
     } else {
         None
@@ -514,7 +519,12 @@ pub fn func_def_to_sst(
     let ens_pars = params_to_pars(&ens_params, true);
 
     for param in function.x.params.iter() {
-        state.declare_var_stm(&param.x.name, &param.x.typ, param.x.is_mut, false);
+        state.declare_var_stm(
+            &param.x.name,
+            &param.x.typ,
+            LocalDeclKind::Param { mutable: param.x.is_mut },
+            false,
+        );
     }
 
     let mut req_ens_e_rename: HashMap<_, _> = req_ens_function
@@ -548,7 +558,7 @@ pub fn func_def_to_sst(
     let inv_spec_exprs = match &mask_spec {
         MaskSpec::InvariantOpens(exprs) | MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
     };
-    let mut inv_spec_air_exprs = vec![];
+    let mut inv_spec_exps = vec![];
     for e in inv_spec_exprs.iter() {
         let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
         let exp = if ctx.checking_spec_preconditions() {
@@ -559,16 +569,12 @@ pub fn func_def_to_sst(
             expr_to_exp_skip_checks(ctx, diagnostics, &req_pars, &e_with_req_ens_params)?
         };
 
-        let is_singular = function.x.attrs.integer_ring;
-        let expr_ctxt = ExprCtxt::new_mode_singular(ExprMode::Body, is_singular);
         let exp = state.finalize_exp(ctx, &exp)?;
-        let air_expr = exp_to_expr(ctx, &exp, &expr_ctxt)?;
-        inv_spec_air_exprs
-            .push(crate::inv_masks::MaskSingleton { expr: air_expr, span: e.span.clone() });
+        inv_spec_exps.push(crate::inv_masks::MaskSingleton { expr: exp, span: e.span.clone() });
     }
     let mask_set = match mask_spec {
-        MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(inv_spec_air_exprs),
-        MaskSpec::InvariantOpensExcept(_exprs) => MaskSet::from_list_complement(inv_spec_air_exprs),
+        MaskSpec::InvariantOpens(_exprs) => MaskSetE::from_list(inv_spec_exps),
+        MaskSpec::InvariantOpensExcept(_exprs) => MaskSetE::from_list_complement(inv_spec_exps),
     };
 
     let unwind = match req_ens_function.x.unwind_spec_or_default() {
@@ -741,7 +747,7 @@ pub fn function_to_sst(
         has_ensures: function.x.ensure.len() > 0,
         has_decrease: function.x.decrease.len() > 0,
         has_mask_spec: function.x.mask_spec.is_some(),
-        has_return_name: function.x.has_return_name(),
+        has_return_name: function.x.ens_has_return,
         is_recursive: crate::recursion::fun_is_recursive(ctx, function),
     };
 
@@ -756,6 +762,7 @@ pub fn function_to_sst(
         typ_bounds: function.x.typ_bounds.clone(),
         pars: params_to_pars(&function.x.params, true),
         ret: param_to_par(&function.x.ret, true),
+        ens_has_return: function.x.ens_has_return,
         item_kind: function.x.item_kind,
         publish: function.x.publish,
         attrs: function.x.attrs.clone(),

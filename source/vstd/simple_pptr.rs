@@ -255,19 +255,16 @@ impl<V> PointsTo<V> {
         self.mem_contents()
     }
 
-    #[doc(verus_show_body)]
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
         self.mem_contents().is_init()
     }
 
-    #[doc(verus_show_body)]
     #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
         self.mem_contents().is_uninit()
     }
 
-    #[doc(verus_show_body)]
     #[verifier::inline]
     pub open spec fn value(&self) -> V
         recommends

@@ -777,7 +777,7 @@ pub fn func_axioms_to_air(
                 for param in params.iter() {
                     binders.push(crate::ast_util::par_to_binder(&param));
                 }
-                let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers.clone());
+                let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers.clone(), None);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp.clone());
                 let forall: Arc<SpannedTyped<ExpX>> =
                     SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);

@@ -62,7 +62,8 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOpr::HasType(_) | UnaryOpr::IsVariant { .. } => exp.clone(),
             UnaryOpr::TupleField { .. } | UnaryOpr::Field(_) => exp.clone(),
             UnaryOpr::IntegerTypeBound(..) => exp.clone(),
-            UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::CustomErr(_) => {
+            UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
+            UnaryOpr::CustomErr(_) => {
                 exp.new_x(ExpX::UnaryOpr(op.clone(), insert_ext_eq_in_assert(ctx, e)))
             }
         },
@@ -72,9 +73,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
                     && crate::ast_util::types_equal(&e1.typ, &e2.typ) =>
             {
                 let op = BinaryOpr::ExtEq(false, e1.typ.clone());
-                let e1 = crate::poly::coerce_exp_to_poly(ctx, e1);
-                let e2 = crate::poly::coerce_exp_to_poly(ctx, e2);
-                exp.new_x(ExpX::BinaryOpr(op, e1, e2))
+                exp.new_x(ExpX::BinaryOpr(op, e1.clone(), e2.clone()))
             }
             BinaryOp::And | BinaryOp::Or => {
                 let e1 = insert_ext_eq_in_assert(ctx, e1);
