@@ -611,9 +611,11 @@ verus! {
 }
 
 #[verifier::verify]
+#[requires(x < MAX_X, old(y).val < 100)]
+#[ensures(|ret: u32| [ret < 200])]
 fn test_small_macros_verus_verify(x: u32, y: &mut Y) -> u32 {
-    requires![x < MAX_X, old(y).val < 100];
-    ensures!(|ret: u32| [ret < 200]);
+    //requires![x < MAX_X, old(y).val < 100];
+    //ensures!(|ret: u32| [ret < 200]);
     proof! {
         p1(y.t.borrow_mut());
         assert(y.t@ == 200);

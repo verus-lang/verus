@@ -14,9 +14,11 @@ use synstructure::{decl_attribute, decl_derive};
 #[macro_use]
 mod syntax;
 mod atomic_ghost;
+mod attr_rewrite;
 mod calc_macro;
 mod enum_synthesize;
 mod fndecl;
+mod group_types;
 mod is_variant;
 mod rustdoc;
 mod struct_decl_inv;
@@ -34,6 +36,43 @@ pub fn verus_enum_synthesize(
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     enum_synthesize::attribute_verus_enum_synthesize(&cfg_erase(), attr, input)
+}
+
+#[proc_macro_attribute]
+pub fn requires(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::rewrite_verus_fn_attribute(
+        &cfg_erase(),
+        attr_rewrite::SpecAttributeKind::Requires,
+        attr.into(),
+        input.into(),
+    )
+    .into()
+}
+
+#[proc_macro_attribute]
+pub fn ensures(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::rewrite_verus_fn_attribute(
+        &cfg_erase(),
+        attr_rewrite::SpecAttributeKind::Ensures,
+        attr.into(),
+        input.into(),
+    )
+    .into()
+}
+
+// invariant should rely on top-level attribute to expand it.
+#[proc_macro_attribute]
+pub fn invariant(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    input
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -87,7 +126,8 @@ pub fn verus_erase_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 
 #[proc_macro]
 pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, cfg_erase(), true)
+    let ret = syntax::rewrite_items(input, cfg_erase(), true);
+    ret
 }
 
 #[proc_macro]

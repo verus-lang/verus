@@ -35,6 +35,7 @@ macro_rules! verus_proof_macro_exprs_args {
     };
 }
 
+/*
 #[macro_export]
 #[cfg(not(verus_verify_core))]
 macro_rules! requires {
@@ -59,6 +60,18 @@ macro_rules! ensures {
 
 #[macro_export]
 #[cfg(not(verus_verify_core))]
+macro_rules! invariant {
+    ($($x:tt)*) => {
+        #[cfg(verus_keep_ghost_body)]
+        ::builtin::invariant(::builtin_macros::verus_proof_macro_exprs!(
+            ::builtin::verus_proof_macro_exprs_args!([$($x)*])
+        ));
+    };
+}
+*/
+
+#[macro_export]
+#[cfg(not(verus_verify_core))]
 macro_rules! proof {
     ($($x:tt)*) => {
         #[cfg(verus_keep_ghost_body)]
@@ -71,13 +84,3 @@ macro_rules! proof {
     };
 }
 
-#[macro_export]
-#[cfg(not(verus_verify_core))]
-macro_rules! invariant {
-    ($($x:tt)*) => {
-        #[cfg(verus_keep_ghost_body)]
-        ::builtin::invariant(::builtin_macros::verus_proof_macro_exprs!(
-            ::builtin::verus_proof_macro_exprs_args!([$($x)*])
-        ));
-    };
-}
