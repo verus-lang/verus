@@ -17,7 +17,8 @@ mod doubly_linked_list {
 
     // Doubly-linked list
     // Contains head pointer, tail pointer
-    // and in ghost code, tracks all the pointers and all the permissions to access the nodes
+    // and in ghost code, tracks all the pointers and all the PointsTo permissions
+    // to access the nodes
     pub struct DoublyLinkedList<V> {
         // physical data:
         head: Option<PPtr<Node<V>>>,
@@ -104,7 +105,7 @@ mod doubly_linked_list {
                 self@ =~= old(self)@.push(v),
         {
             // Allocate a node to contain the payload
-            let (ptr, Tracked(perm)) = PPtr::<Node<V>>::new(
+            let (ptr, Tracked(points_to)) = PPtr::<Node<V>>::new(
                 Node::<V> { prev: None, next: None, payload: v },
             );
 
@@ -117,7 +118,7 @@ mod doubly_linked_list {
                 self.ptrs@ = self.ptrs@.push(ptr);
                 self.points_to_map.borrow_mut().tracked_insert(
                     (self.ptrs@.len() - 1) as nat,
-                    perm,
+                    points_to,
                 );
             }
         }
@@ -209,10 +210,10 @@ mod doubly_linked_list {
             // Deallocate the last node in the list and get the payload.
             // Note self.tail.unwrap() will always succeed because of the precondition `len > 0`
             let last_ptr = self.tail.unwrap();
-            let tracked last_perm = self.points_to_map.borrow_mut().tracked_remove(
+            let tracked last_pointsto = self.points_to_map.borrow_mut().tracked_remove(
                 (self.ptrs@.len() - 1) as nat,
             );
-            let last_node = last_ptr.into_inner(Tracked(last_perm));
+            let last_node = last_ptr.into_inner(Tracked(last_pointsto));
             let v = last_node.payload;
 
             match last_node.prev {
@@ -371,8 +372,8 @@ mod doubly_linked_list {
             // Deallocate the first node in the list and get the payload.
             // Note self.head.unwrap() will always succeed because of the precondition `len > 0`
             let first_ptr = self.head.unwrap();
-            let tracked first_perm = self.points_to_map.borrow_mut().tracked_remove(0);
-            let first_node = first_ptr.into_inner(Tracked(first_perm));
+            let tracked first_pointsto = self.points_to_map.borrow_mut().tracked_remove(0);
+            let first_node = first_ptr.into_inner(Tracked(first_pointsto));
             let v = first_node.payload;
 
             match first_node.next {
@@ -397,12 +398,12 @@ mod doubly_linked_list {
                     self.head = Some(second_ptr);
 
                     // And we need to set the 'tail' pointer of the new head node to None
-                    let tracked mut second_perm = self.points_to_map.borrow_mut().tracked_remove(1);
-                    let mut second_node = second_ptr.take(Tracked(&mut second_perm));
+                    let tracked mut second_pointsto = self.points_to_map.borrow_mut().tracked_remove(1);
+                    let mut second_node = second_ptr.take(Tracked(&mut second_pointsto));
                     second_node.prev = None;
-                    second_ptr.put(Tracked(&mut second_perm), second_node);
+                    second_ptr.put(Tracked(&mut second_pointsto), second_node);
                     proof {
-                        self.points_to_map.borrow_mut().tracked_insert(1, second_perm);
+                        self.points_to_map.borrow_mut().tracked_insert(1, second_pointsto);
 
                         // Since we removed index 0, we need to shift all the keys down,
                         // 1 -> 0, 2 -> 1, etc.
@@ -444,8 +445,8 @@ mod doubly_linked_list {
             return v;
         }
 
-        /// Get a referene to the i^th value in the list
-        fn get(&self, i: usize) -> (v: &V)
+        /// Get a reference to the i^th value in the list
+        fn get<'a>(&'a self, i: usize) -> (v: &'a V)
             requires
                 self.well_formed(),
                 0 <= i < self@.len(),
@@ -528,8 +529,8 @@ mod doubly_linked_list {
         {
             let cur = self.cur.unwrap();
             assert(self.l.well_formed_node(self.index()));
-            let tracked perm = self.l.points_to_map.borrow().tracked_borrow(self.index());
-            let node = cur.borrow(Tracked(perm));
+            let tracked pointsto = self.l.points_to_map.borrow().tracked_borrow(self.index());
+            let node = cur.borrow(Tracked(pointsto));
             &node.payload
         }
 
@@ -543,8 +544,8 @@ mod doubly_linked_list {
         {
             assert(self.l.well_formed_node(self.index()));
             let cur = self.cur.unwrap();
-            let tracked perm = self.l.points_to_map.borrow().tracked_borrow(self.index());
-            let node = cur.borrow(Tracked(perm));
+            let tracked pointsto = self.l.points_to_map.borrow().tracked_borrow(self.index());
+            let node = cur.borrow(Tracked(pointsto));
             proof {
                 self.index@ = self.index@ + 1;
             }
