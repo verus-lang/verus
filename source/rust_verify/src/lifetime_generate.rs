@@ -902,7 +902,11 @@ fn erase_call<'tcx>(
                 assert!(receiver.is_some());
                 assert!(args_slice.len() == 0);
                 let Some(receiver) = receiver else { panic!() };
-                let exp = erase_expr(ctxt, state, expect_spec, &receiver).expect("builtin method");
+                let exp = erase_expr(ctxt, state, expect_spec, &receiver);
+                if exp.is_none() && expect_spec && matches!(op, TrackedBorrowMut) {
+                    return None;
+                }
+                let exp = exp.expect("builtin method");
                 mk_exp(ExpX::BuiltinMethod(exp, method.to_string()))
             } else if let Some((false, func)) = builtin_method {
                 assert!(receiver.is_none());

@@ -2420,6 +2420,22 @@ fn expr_assign_to_vir_innermost<'tcx>(
                 unsupported_err_unless!(!deref_ghost, lhs.span, "assignment through Ghost/Tracked");
                 init_not_mut(bctx, lhs)?
             }
+            ExprKind::MethodCall(_, receiver, _, span) => {
+                let fn_def_id = bctx
+                    .types
+                    .type_dependent_def_id(lhs.hir_id)
+                    .expect("def id of the method definition");
+                let verus_item = bctx.ctxt.get_verus_item(fn_def_id);
+                if matches!(verus_item, 
+                    Some(VerusItem::CompilableOpr(CompilableOprItem::TrackedBorrowMut)))
+                {
+                    let nm = init_not_mut(bctx, &receiver)?;
+                    unsupported_err_unless!(!nm, span, "this call for delayed initialization");
+                    nm
+                } else {
+                    unsupported_err!(span, "this call in assignment");
+                }
+            }
             ExprKind::Unary(UnOp::Deref, _) => false,
             _ => {
                 unsupported_err!(lhs.span, format!("assign lhs {:?}", lhs))

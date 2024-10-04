@@ -102,7 +102,7 @@ mod doubly_linked_list {
         }
 
         /// Insert one node, assuming the linked list is empty.
-        fn push_empty_case(&mut self, v: V)
+        fn insert_node_into_empty_list(&mut self, v: V)
             requires
                 old(self).well_formed(),
                 old(self).ghost_state@.ptrs.len() == 0,
@@ -110,22 +110,35 @@ mod doubly_linked_list {
                 self.well_formed(),
                 self@ =~= old(self)@.push(v),
         {
-            // Allocate a node to contain the payload
-            let (ptr, Tracked(points_to)) = PPtr::<Node<V>>::new(
-                Node::<V> { prev: None, next: None, payload: v },
-            );
+            // EXERCISE 1. Implement `insert_node_into_empty_list`.
 
-            // Update head and tail pointers
-            self.tail = Some(ptr);
-            self.head = Some(ptr);
+            // Step 1. Allocate a fresh node.
+            // You may want to see the docs for PPtr:
+            // https://verus-lang.github.io/verus/verusdoc/vstd/simple_pptr/struct.PPtr.html
 
-            // Update proof state
+            // ...
+
+            // Step 2. Update all the fields.
+
+            // self.tail = ...;
+            // self.head = ...;
+
             proof {
-                self.ghost_state.borrow_mut().ptrs = self.ghost_state@.ptrs.push(ptr);
-                self.ghost_state.borrow_mut().points_to_map.tracked_insert(
-                    (self.ghost_state@.ptrs.len() - 1) as nat,
-                    points_to,
-                );
+                // Step 3. Update all the ghost fields to make sure the invariants.
+                // are maintained. This is a purely ghost step,
+                // so it happens inside the `proof { ... }` block.
+                //
+                // Hints:
+                //
+                // 1. To modify the GhostState, you can get a mutable reference
+                //    via `self.ghost_state.borrow_mut()`
+                //
+                //    e.g., `self.ghost_state.borrow_mut().field = xyz;`
+                //      or, `self.ghost_state.borrow_mut().field.mutating_method(...);`
+                //
+                // 2. To manipulate a Map<...>, check the docs at:
+                //    https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html
+                //    Look for the methods that start with the `tracked_` prefix.
             }
         }
 
@@ -147,7 +160,7 @@ mod doubly_linked_list {
                             assert(self.well_formed_node((self.ghost_state@.ptrs.len() - 1) as nat)); // trigger
                         });
                     }
-                    self.push_empty_case(v);
+                    self.insert_node_into_empty_list(v);
                 }
                 Some(old_tail_ptr) => {
                     proof {
@@ -296,7 +309,7 @@ mod doubly_linked_list {
                             assert(self.well_formed_node((self.ghost_state@.ptrs.len() - 1) as nat));
                         });
                     }
-                    self.push_empty_case(v);
+                    self.insert_node_into_empty_list(v);
                     assert(self@ =~= seq![v].add(old(self)@));
                 }
                 Some(old_head_ptr) => {
@@ -459,38 +472,23 @@ mod doubly_linked_list {
             ensures
                 *v == self@[i as int]
         {
-            // Iterate the nodes from 0 to j, starting at the head node
-            let mut j = 0;
-            let mut ptr = self.head.unwrap();
-            while j < i
-                invariant
-                    self.well_formed(),
-                    0 <= j <= i < self@.len(),
-                    ptr == self.ghost_state@.ptrs[j as int],
-            {
-                proof {
-                    assert(self.well_formed_node(j as nat)); // trigger
-                }
-
-                // Get the next node from the 'next' field
-                let tracked pointsto_ref: &PointsTo<Node<V>> =
-                    self.ghost_state.borrow().points_to_map.tracked_borrow(j as nat);
-                let node_ref: &Node<V> = ptr.borrow(Tracked(pointsto_ref));
-                let next_ptr = node_ref.next.unwrap();
-
-                j += 1;
-                ptr = next_ptr;
-            }
-
-            proof {
-                assert(self.well_formed_node(j as nat)); // trigger
-            }
-
-            // Get a reference to this node's payload and return it
-            let tracked pointsto_ref: &PointsTo<Node<V>> =
-                self.ghost_state.borrow().points_to_map.tracked_borrow(j as nat);
-            let node_ref: &Node<V> = ptr.borrow(Tracked(pointsto_ref));
-            return &node_ref.payload;
+            // EXERCISE 2. Implement `get`.
+            // 
+            // Hints:
+            //
+            // 1. You shouldn't need to mutate anything.
+            //    This function operates on shared references!
+            //
+            // 2. To get a shared reference &GhostState, you can do `self.ghost_state.borrow()`
+            //
+            // 3. The precondition of `get` requires `i` to be in-range, so shouldn't need
+            //    to do any error-handling! Also note that you can call `.unwrap()` on any
+            //    `Option` value. Verus will allow this as long as it can prove the supplied
+            //    optional value is not None.
+            //
+            // 4. Useful docs:
+            //    - https://verus-lang.github.io/verus/verusdoc/vstd/simple_pptr/struct.PPtr.html
+            //    - https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html
         }
     }
 
