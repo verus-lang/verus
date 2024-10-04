@@ -4,11 +4,13 @@
     feature(proc_macro_tracked_env),
     feature(proc_macro_quote),
     feature(proc_macro_expand),
-    feature(proc_macro_diagnostic)
+    feature(proc_macro_diagnostic),
 )]
+#![feature(proc_macro_hygiene)]
 
 #[cfg(verus_keep_ghost)]
 use std::sync::OnceLock;
+use syn::ItemFn;
 use synstructure::{decl_attribute, decl_derive};
 
 #[macro_use]
@@ -39,17 +41,29 @@ pub fn verus_enum_synthesize(
 }
 
 #[proc_macro_attribute]
+pub fn verus_verify (
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let ret = attr_rewrite::rewrite_verus_attribute(
+        &cfg_erase(),
+        input.into(),
+    ).into();
+    println!("{}", ret);
+    ret
+}
+
+
+#[proc_macro_attribute]
 pub fn requires(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    attr_rewrite::rewrite_verus_fn_attribute(
+    attr_rewrite::rewrite_verus_itemfn_attribute(
         &cfg_erase(),
-        attr_rewrite::SpecAttributeKind::Requires,
-        attr.into(),
+        vec![(attr_rewrite::FnSpecAttributeKind::Requires, attr.into())],
         input.into(),
-    )
-    .into()
+    ).into()
 }
 
 #[proc_macro_attribute]
@@ -57,22 +71,11 @@ pub fn ensures(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    attr_rewrite::rewrite_verus_fn_attribute(
+    attr_rewrite::rewrite_verus_itemfn_attribute(
         &cfg_erase(),
-        attr_rewrite::SpecAttributeKind::Ensures,
-        attr.into(),
+        vec![(attr_rewrite::FnSpecAttributeKind::Ensures, attr.into())],
         input.into(),
-    )
-    .into()
-}
-
-// invariant should rely on top-level attribute to expand it.
-#[proc_macro_attribute]
-pub fn invariant(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    input
+    ).into()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -126,8 +129,7 @@ pub fn verus_erase_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 
 #[proc_macro]
 pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let ret = syntax::rewrite_items(input, cfg_erase(), true);
-    ret
+    syntax::rewrite_items(input, cfg_erase(), true)
 }
 
 #[proc_macro]

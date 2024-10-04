@@ -3,6 +3,36 @@ use builtin::*;
 use builtin_macros::*;
 use vstd::{modes::*, pervasive::*, prelude::*, seq::*};
 
+verus!{
+trait SpecT2<A> {
+    spec fn req2(&self, a: A) -> bool;
+
+    spec fn ens2(&self, a: A, r: A) -> bool;
+}
+
+impl SpecT2<bool> for B {
+    spec fn req2(&self, a: bool) -> bool {
+        a
+    }
+
+    spec fn ens2(&self, a: bool, r: bool) -> bool {
+        r == (a && self.x)
+    }
+}
+}
+
+trait T2<A>: SpecT2<A> {
+    #[requires(self.req(*a))]
+    #[requires(|ra: A|self.ens(*a, ra))]
+    fn f2(&self, a: &A) -> A;
+}
+
+impl T2<bool> for B {   
+    fn f2(&self, a: &bool) -> bool {
+        *a && self.x
+    }
+}
+
 verus! {
 
 trait T<A> {

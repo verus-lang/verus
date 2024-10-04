@@ -1,7 +1,10 @@
 #![allow(unused_imports)]
+#![feature(proc_macro_hygiene)]
+
 use builtin::*;
 use builtin_macros::*;
 use vstd::{modes::*, prelude::*, seq::*, *};
+
 
 #[verifier::external]
 fn main() {}
@@ -610,27 +613,24 @@ verus! {
     }
 }
 
-#[verifier::verify]
 #[requires(x < MAX_X, old(y).val < 100)]
 #[ensures(|ret: u32| [ret < 200])]
 fn test_small_macros_verus_verify(x: u32, y: &mut Y) -> u32 {
-    //requires![x < MAX_X, old(y).val < 100];
-    //ensures!(|ret: u32| [ret < 200]);
     proof! {
         p1(y.t.borrow_mut());
         assert(y.t@ == 200);
     }
     f5(&mut y.t);
     let y = y.val;
-    proof! {
+    
+    proof!{
         let u = my_spec_fun(x as int, y as int);  // allowed in proof code
         my_proof_fun(u / 2, y as int);  // allowed in proof code
         assert(x < 100);
-
     }
     let mut x = x;
+    #[invariant(x <= MAX_X, true)]
     while x < MAX_X {
-        invariant![x <= MAX_X, true];
         x = x + 1;
     }
 
@@ -639,3 +639,14 @@ fn test_small_macros_verus_verify(x: u32, y: &mut Y) -> u32 {
 
     x + y
 }
+
+#[verifier::verify]
+impl Y {
+    #[requires(true)]
+    #[ensures(|ret: u32| [ret == self.val, false])]
+    fn value(&self) -> u32 {
+        self.val
+    }
+}
+
+
