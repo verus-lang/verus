@@ -75,6 +75,8 @@ pub mod std_specs;
 // Re-exports all vstd types, traits, and functions that are commonly used or replace
 // regular `core` or `std` definitions.
 pub mod prelude;
+#[cfg(verus_keep_ghost)]
+pub mod tokens;
 
 use prelude::*;
 

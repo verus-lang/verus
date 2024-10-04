@@ -54,10 +54,23 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
 
     let sm_name = &bundle.sm.name;
 
+    let mut use_traits = TokenStream::new();
+    if concurrent {
+        use_traits = quote_vstd! { vstd =>
+            use #vstd::tokens::ValueToken;
+            use #vstd::tokens::KeyValueToken;
+            use #vstd::tokens::CountToken;
+            use #vstd::tokens::MonotonicCountToken;
+            use #vstd::tokens::ElementToken;
+            use #vstd::tokens::SimpleToken;
+        };
+    }
+
     let final_code = quote! {
         #[allow(unused_parens)]
         pub mod #sm_name {
             use super::*;
+            #use_traits
 
             #root_stream
 
@@ -152,6 +165,22 @@ pub fn get_generic_args(
 }
 
 fn generic_components_for_fn(generics: &Option<Generics>) -> (TokenStream, TokenStream) {
+    match generics {
+        None => (TokenStream::new(), TokenStream::new()),
+        Some(gen) => {
+            if gen.params.len() > 0 {
+                let params = &gen.params;
+                let where_clause = &gen.where_clause;
+                (quote! { <#params> }, quote! { #where_clause })
+            } else {
+                let where_clause = &gen.where_clause;
+                (TokenStream::new(), quote! { #where_clause })
+            }
+        }
+    }
+}
+
+pub fn generics_for_decl(generics: &Option<Generics>) -> (TokenStream, TokenStream) {
     match generics {
         None => (TokenStream::new(), TokenStream::new()),
         Some(gen) => {
