@@ -16,13 +16,12 @@ use crate::context::GlobalCtx;
 use crate::messages::{error, warning, Message, Span, ToAny};
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent};
 use crate::unicode::valid_unicode_scalar_bigint;
-use air::ast::{Binder, BinderX, Binders, Datatype};
+use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use im::Vector;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
 use num_traits::{Euclid, FromPrimitive, One, ToPrimitive};
-use sha2::digest::typenum::array;
 use core::panic;
 use std::collections::HashMap;
 use std::fs::File;
@@ -674,16 +673,13 @@ pub(crate) fn is_array_fn(fun: &Fun) -> Option<ArrayFn> {
 /// so that we can return it as a default if we encounter symbolic values
 fn eval_array(
     ctx: &Ctx,
-    state: &mut State,
+    _state: &mut State,
     array_fn: ArrayFn,
     exp: &Exp,
     args: &Exps,
 ) -> Result<Exp, VirErr> {
     use ExpX::*;
     use InterpExp::*;
-    dbg!(array_fn);
-    dbg!(exp);
-    dbg!(args);
     match &exp.x {
         Call(_fun, _typs, _old_args) => {
             use ArrayFn::*;
@@ -694,10 +690,10 @@ fn eval_array(
                         Interp(Array(es)) => {
                             let im_vec: Vector<Exp> = Vector::from_iter(es.iter().map(|e| e.clone())); //*es.into();
                             let inner_typ = match &*array_exp.typ {
-                                TypX::Primitive(crate::ast::Primitive::Array, typs) => typs[0].clone(),
+                                TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
                                 TypX::Decorate(_, _, t) => {
                                     match &**t {
-                                        TypX::Primitive(crate::ast::Primitive::Array, typs) => typs[0].clone(),
+                                        TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
                                         _ => panic!("Expected array_view to be called on an array type.  Got: {:?}", array_exp.typ),
                                     }
                                 }
@@ -826,9 +822,6 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
 /// Convert an interpreter-internal array representation back into a
 /// representation we can pass to AIR
 fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
-    // let exp_new = |e: ExpX| SpannedTyped::new(span, &typ, e);
-    // let exps = Arc::new(arr.iter().cloned().collect());
-    // exp_new(ExpX::ArrayLiteral(exps))
     let arr_typ = if !matches!(*typ, TypX::Primitive(Primitive::Array, _)) {
         // We only have the inner type for the array, so we need to construct the rest
         let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(arr.len())));
@@ -857,8 +850,6 @@ fn eval_seq(
 ) -> Result<Exp, VirErr> {
     use ExpX::*;
     use InterpExp::*;
-    dbg!(seq_fn);
-    dbg!(exp);
     match &exp.x {
         Call(fun, typs, _old_args) => {
             let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
@@ -870,8 +861,6 @@ fn eval_seq(
             // We made partial progress, so convert the internal sequence back to SST
             // and reassemble a call from the rest of the args
             let ok_seq = |seq_exp: &Exp, seq: &Vector<Exp>, args: &[Exp]| {
-                dbg!("Calling seq_to_sst");
-                dbg!(seq_exp);
                 let mut new_args = vec![seq_to_sst(&seq_exp.span, typs[0].clone(), &seq)];
                 new_args.extend(args.iter().map(|arg| arg.clone()));
                 let new_args = Arc::new(new_args);
@@ -883,7 +872,7 @@ fn eval_seq(
             };
             use SeqFn::*;
             match seq_fn {
-                Empty => dbg!(seq_new(Vector::new())),
+                Empty => seq_new(Vector::new()),
                 New => {
                     match get_int(&args[0]) {
                         Some(len) => {
@@ -908,7 +897,7 @@ fn eval_seq(
                     Interp(Seq(s)) => {
                         let mut s = s.clone();
                         s.push_back(args[1].clone());
-                        dbg!(seq_new(s))
+                        seq_new(s)
                     }
                     _ => ok,
                 },
@@ -1753,10 +1742,7 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
 }
 
 fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Exp {
-    dbg!(&typ);
-    let s = array_to_sst(span, typ.clone(), v);
-    dbg!(&s);
-    s
+    array_to_sst(span, typ.clone(), v)
 }
 
 /// Restore the free variables we hid during interpretation
@@ -1766,8 +1752,8 @@ fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
         ExpX::Interp(InterpExp::FreeVar(v)) => {
             Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
         }
-        ExpX::Interp(InterpExp::Array(v)) => Ok(cleanup_array(&dbg!(&e).span, e.typ.clone(), v)),
-        ExpX::Interp(InterpExp::Seq(v)) => cleanup_seq(&dbg!(&e).span, e.typ.clone(), v),
+        ExpX::Interp(InterpExp::Array(v)) => Ok(cleanup_array(&e.span, e.typ.clone(), v)),
+        ExpX::Interp(InterpExp::Seq(v)) => cleanup_seq(&e.span, e.typ.clone(), v),
         ExpX::Interp(InterpExp::Closure(..)) => Err(error(
             &e.span,
             "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
