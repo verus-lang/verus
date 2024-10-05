@@ -7,8 +7,8 @@
 
 use crate::ast::{
     ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents,
-    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive, SpannedTyped, Typ,
-    TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
+    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
+    SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
@@ -18,11 +18,11 @@ use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, Unique
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
+use core::panic;
 use im::Vector;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
 use num_traits::{Euclid, FromPrimitive, One, ToPrimitive};
-use core::panic;
 use std::collections::HashMap;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
@@ -688,16 +688,21 @@ fn eval_array(
                     let array_exp = &args[0];
                     match &array_exp.x {
                         Interp(Array(es)) => {
-                            let im_vec: Vector<Exp> = Vector::from_iter(es.iter().map(|e| e.clone())); //*es.into();
+                            let im_vec: Vector<Exp> =
+                                Vector::from_iter(es.iter().map(|e| e.clone())); //*es.into();
                             let inner_typ = match &*array_exp.typ {
                                 TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
-                                TypX::Decorate(_, _, t) => {
-                                    match &**t {
-                                        TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
-                                        _ => panic!("Expected array_view to be called on an array type.  Got: {:?}", array_exp.typ),
-                                    }
-                                }
-                                _ => panic!("Expected array_view to be called with a decorated type.  Got: {:?}", array_exp.typ),
+                                TypX::Decorate(_, _, t) => match &**t {
+                                    TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                                    _ => panic!(
+                                        "Expected array_view to be called on an array type.  Got: {:?}",
+                                        array_exp.typ
+                                    ),
+                                },
+                                _ => panic!(
+                                    "Expected array_view to be called with a decorated type.  Got: {:?}",
+                                    array_exp.typ
+                                ),
                             };
                             let seq_type_path = Arc::new(PathX {
                                 krate: Some(Arc::new("vstd".to_string())),
@@ -711,7 +716,10 @@ fn eval_array(
                             let e = SpannedTyped::new(&exp.span, &seq_typ, Interp(Seq(im_vec)));
                             Ok(e)
                         }
-                        _ => panic!("Expected the argument to array_view to be an ArrayLiteral.  Got: {:?}", array_exp),
+                        _ => panic!(
+                            "Expected the argument to array_view to be an ArrayLiteral.  Got: {:?}",
+                            array_exp
+                        ),
                     }
                 }
             }
@@ -814,7 +822,11 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
         let fun_view = Arc::new(FunX { path: path_view });
         let array = cleanup_array(span, inner_typ.clone(), s);
         let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(s.len())));
-        let array_view = new_seq_exp(ExpX::Call(CallFun::Fun(fun_view, None), Arc::new(vec![inner_typ.clone(), array_len_typ]), Arc::new(vec![array])));
+        let array_view = new_seq_exp(ExpX::Call(
+            CallFun::Fun(fun_view, None),
+            Arc::new(vec![inner_typ.clone(), array_len_typ]),
+            Arc::new(vec![array]),
+        ));
         array_view
     }
 }
@@ -834,7 +846,7 @@ fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
     let exp_new = |e: ExpX| SpannedTyped::new(span, &arr_typ, e);
     let exps = Arc::new(arr.iter().map(|e| cleanup_exp(e)).flatten().collect());
     let exp = exp_new(ExpX::ArrayLiteral(exps));
-    exp    
+    exp
 }
 
 /// Custom interpretation for sequence functions.
@@ -1610,7 +1622,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                         }
                                         let result = eval_expr_internal(ctx, state, &body);
                                         state.env.pop_scope();
-                                        state.insert_call(fun, &new_args, &result.clone()?, memoize);
+                                        state.insert_call(
+                                            fun,
+                                            &new_args,
+                                            &result.clone()?,
+                                            memoize,
+                                        );
                                         result
                                     }
                                 }
@@ -1625,7 +1642,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             }
                         }
                     }
-                }
+                },
             }
         }
         Call(CallFun::Recursive(_), _, _) => ok,

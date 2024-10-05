@@ -799,7 +799,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
             }
             let typ = match &*exp.typ {
-                TypX::Primitive(Primitive::Array, typs) => { dbg!("directly matched Primitive::Array"); typs[0].clone() },
+                TypX::Primitive(Primitive::Array, typs) => {
+                    dbg!("directly matched Primitive::Array");
+                    typs[0].clone()
+                }
                 TypX::Decorate(_dec, _, t) => match &**t {
                     TypX::Boxed(t) => match &**t {
                         TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
