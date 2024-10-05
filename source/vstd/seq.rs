@@ -395,7 +395,7 @@ macro_rules! seq_internal {
             .push($elem)
     };
     [$($elem:expr),* $(,)?] => {
-        <_ as $crate::view::View>::view(&[$($elem),*])
+        <_ as $crate::vstd::view::View>::view(&[$($elem),*])
     };
     [$elem:expr; $n:expr] => {
         $crate::vstd::seq::Seq::new(
