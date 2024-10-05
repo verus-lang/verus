@@ -111,6 +111,57 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_use_macro_attributes code!{
+        struct Abc<T> {
+            t: T,
+        }
+
+        #[verus_verify]
+        trait SomeTrait {
+            #[requires(true, false==>false)]
+            #[ensures(|ret: bool| true)]
+            fn f(&self) -> bool;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_bad_macro_attributes_in_trait code!{
+        struct Abc<T> {
+            t: T,
+        }
+
+        trait SomeTrait {
+            #[requires(true, forall |i: int| i == i)]
+            #[ensures(|ret| ret == ret)]
+            fn f(&self) -> bool;
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "custom attribute panicked")
+}
+
+test_verify_one_file! {
+    #[test] test_failed_ensures_macro_attributes code!{
+        struct Abc<T> {
+            t: T,
+        }
+
+        #[verus_verify]
+        trait SomeTrait {
+            #[requires(true)]
+            #[ensures(|ret: bool| [true, ret])]
+            fn f(&self) -> bool;
+        }
+
+        impl SomeTrait for bool {
+            fn f(&self) -> bool {
+                *self
+            }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "postcondition not satisfied")
+}
+
+
+test_verify_one_file! {
     #[test] test_ill_formed_3 code! {
         trait T1 {
             fn f(&self) {

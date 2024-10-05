@@ -43,7 +43,7 @@ pub fn verus_verify(
     _attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    attr_rewrite::rewrite_verus_attribute(&cfg_erase(), input.into()).into();
+    attr_rewrite::rewrite_verus_attribute(&cfg_erase(), input.into()).into()
 }
 
 #[proc_macro_attribute]
@@ -147,7 +147,7 @@ pub fn verus_erase_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 
 #[proc_macro]
 pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, cfg_erase(), true);
+    syntax::rewrite_items(input, cfg_erase(), true)
 }
 
 #[proc_macro]
