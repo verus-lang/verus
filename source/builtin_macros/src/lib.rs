@@ -4,23 +4,21 @@
     feature(proc_macro_tracked_env),
     feature(proc_macro_quote),
     feature(proc_macro_expand),
-    feature(proc_macro_diagnostic),
+    feature(proc_macro_diagnostic)
 )]
-#![feature(proc_macro_hygiene)]
 
 #[cfg(verus_keep_ghost)]
 use std::sync::OnceLock;
-use syn::ItemFn;
 use synstructure::{decl_attribute, decl_derive};
 
 #[macro_use]
 mod syntax;
 mod atomic_ghost;
+mod attr_block_trait;
 mod attr_rewrite;
 mod calc_macro;
 mod enum_synthesize;
 mod fndecl;
-mod group_types;
 mod is_variant;
 mod rustdoc;
 mod struct_decl_inv;
@@ -41,29 +39,24 @@ pub fn verus_enum_synthesize(
 }
 
 #[proc_macro_attribute]
-pub fn verus_verify (
-    attr: proc_macro::TokenStream,
+pub fn verus_verify(
+    _attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let ret = attr_rewrite::rewrite_verus_attribute(
-        &cfg_erase(),
-        input.into(),
-    ).into();
-    println!("{}", ret);
-    ret
+    attr_rewrite::rewrite_verus_attribute(&cfg_erase(), input.into()).into();
 }
-
 
 #[proc_macro_attribute]
 pub fn requires(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    attr_rewrite::rewrite_verus_itemfn_attribute(
+    attr_rewrite::rewrite_item_fn(
         &cfg_erase(),
-        vec![(attr_rewrite::FnSpecAttributeKind::Requires, attr.into())],
+        attr_rewrite::FnSpecAttributeKind::Requires, attr.into(),
         input.into(),
-    ).into()
+    )
+    .into()
 }
 
 #[proc_macro_attribute]
@@ -71,11 +64,36 @@ pub fn ensures(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    attr_rewrite::rewrite_verus_itemfn_attribute(
+    attr_rewrite::rewrite_item_fn(
         &cfg_erase(),
-        vec![(attr_rewrite::FnSpecAttributeKind::Ensures, attr.into())],
+        attr_rewrite::FnSpecAttributeKind::Ensures, attr.into(),
         input.into(),
-    ).into()
+    )
+    .into()
+}
+
+#[proc_macro_attribute]
+pub fn decreases(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::rewrite_item_fn(
+        &cfg_erase(),
+        attr_rewrite::FnSpecAttributeKind::Decreases,
+        attr.into(),
+        input.into(),
+    )
+    .into()
+}
+
+
+#[proc_macro_attribute]
+pub fn invariant(
+    _attr: proc_macro::TokenStream,
+    _input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream
+{
+    panic!("#[invariant] must used on a loop inside a verified item.")
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -129,7 +147,7 @@ pub fn verus_erase_ghost(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 
 #[proc_macro]
 pub fn verus(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    syntax::rewrite_items(input, cfg_erase(), true)
+    syntax::rewrite_items(input, cfg_erase(), true);
 }
 
 #[proc_macro]

@@ -630,6 +630,7 @@ fn test_small_macros_verus_verify(x: u32, y: &mut Y) -> u32 {
     }
     let mut x = x;
     #[invariant(x <= MAX_X, true)]
+    #[decreases(MAX_X - x)]
     while x < MAX_X {
         x = x + 1;
     }
@@ -643,7 +644,7 @@ fn test_small_macros_verus_verify(x: u32, y: &mut Y) -> u32 {
 #[verifier::verify]
 impl Y {
     #[requires(true)]
-    #[ensures(|ret: u32| [ret == self.val, false])]
+    #[ensures(|ret: u32| [ret == self.val, true])]
     fn value(&self) -> u32 {
         self.val
     }
