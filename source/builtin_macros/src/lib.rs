@@ -53,9 +53,11 @@ pub fn requires(
 ) -> proc_macro::TokenStream {
     attr_rewrite::rewrite_item_fn(
         &cfg_erase(),
-        attr_rewrite::FnSpecAttributeKind::Requires, attr.into(),
+        attr_rewrite::SpecAttributeKind::Requires,
+        attr.into(),
         input.into(),
     )
+    .expect("Misuse of #[requires()].")
     .into()
 }
 
@@ -66,9 +68,11 @@ pub fn ensures(
 ) -> proc_macro::TokenStream {
     attr_rewrite::rewrite_item_fn(
         &cfg_erase(),
-        attr_rewrite::FnSpecAttributeKind::Ensures, attr.into(),
+        attr_rewrite::SpecAttributeKind::Ensures,
+        attr.into(),
         input.into(),
     )
+    .expect("Misuse of #[ensures()].")
     .into()
 }
 
@@ -79,21 +83,22 @@ pub fn decreases(
 ) -> proc_macro::TokenStream {
     attr_rewrite::rewrite_item_fn(
         &cfg_erase(),
-        attr_rewrite::FnSpecAttributeKind::Decreases,
+        attr_rewrite::SpecAttributeKind::Decreases,
         attr.into(),
         input.into(),
     )
+    .expect("Misuse of #[decreases()].")
     .into()
 }
-
 
 #[proc_macro_attribute]
 pub fn invariant(
     _attr: proc_macro::TokenStream,
     _input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream
-{
-    panic!("#[invariant] must used on a loop inside a verified item.")
+) -> proc_macro::TokenStream {
+    panic!(
+        "Misuse of #[invariant]. Need to add #[verus_verify] or other verus attributes on the function?"
+    )
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

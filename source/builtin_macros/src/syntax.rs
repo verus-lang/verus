@@ -33,7 +33,7 @@ use syn_verus::{
     Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
 };
 
-const VERUS_SPEC: &str = "VERUS_SPEC__";
+pub const VERUS_SPEC: &str = "VERUS_SPEC__";
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());

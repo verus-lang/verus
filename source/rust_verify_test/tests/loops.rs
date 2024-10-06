@@ -46,6 +46,47 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] verus_verify_basic_while code! {
+        #[verus_verify]
+        fn test1() {
+            let mut i = 0;
+            #[invariant(i <= 10)]
+            while i < 10
+            {
+                i = i + 1;
+            }
+            proof!{assert(i == 10);}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] verus_verify_basic_while_fail1 code! {
+        #[verus_verify]
+        fn test1() {
+            let mut i = 0;
+            while i < 10 {
+                i = i + 1;
+            }
+            proof!{assert(i == 10);} // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] verus_verify_bad_loop_spec code! {
+        fn test1() {
+            let mut i = 0;
+            #[invariant(i <= 10)]
+            while i < 10 {
+                i = i + 1;
+            }
+            proof!{assert(i == 10);} // FAILS
+        }
+    } => Err(err) => assert_custom_attr_error_msg(err, "Misuse of #[invariant].")
+}
+
+test_verify_one_file! {
     #[test] complex_while verus_code! {
         fn test1() {
             let mut i = 0;

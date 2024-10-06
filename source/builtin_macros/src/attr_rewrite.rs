@@ -1,8 +1,3 @@
-use core::convert::TryFrom;
-use core::convert::TryInto;
-use proc_macro2::TokenStream;
-use quote::ToTokens;
-use quote::{quote, quote_spanned};
 /// Macros defined in this module enables developers to annotate Rust code in
 /// standard Rust code, eliminating the need to wrap exec code inside `verus!
 /// {}`.
@@ -31,47 +26,59 @@ use quote::{quote, quote_spanned};
 ///
 /// Example:
 /// - Refer to the `test_small_macros_verus_verify` in `example/syntax.rs`.
+use core::convert::{TryFrom, TryInto};
+use proc_macro2::TokenStream;
+use quote::{quote, quote_spanned, ToTokens};
 use syn::parse_quote;
 use syn::{
-    parse2, spanned::Spanned, token::Brace, visit_mut, visit_mut::VisitMut, Attribute, Block, Expr,
-    Ident, ItemFn, Stmt, TraitItem,
+    parse2, parse_quote, spanned::Spanned, token::Brace, visit_mut, visit_mut::VisitMut, Attribute,
+    Block, Expr, Ident, ItemFn, Stmt, TraitItem, TraitItemMethod,
 };
 
-use crate::{attr_block_trait::AnyAttrBlock, syntax, EraseGhost};
+use crate::{attr_block_trait::AnyAttrBlock, syntax, syntax::VERUS_SPEC, EraseGhost};
 
 #[derive(Debug)]
-pub enum FnSpecAttributeKind {
+pub enum SpecAttributeKind {
     Requires,
     Ensures,
     Decreases,
-}
-
-#[derive(Debug)]
-enum LoopSpecAttributeKind {
     Invariant,
-    Decreases,
 }
 
-impl TryFrom<String> for FnSpecAttributeKind {
-    type Error = String;
+struct SpecAttributeApply {
+    pub on_function: bool,
+    pub on_loop: bool,
+}
 
-    fn try_from(name: String) -> Result<Self, Self::Error> {
-        match name.as_str() {
-            "requires" => Ok(FnSpecAttributeKind::Requires),
-            "ensures" => Ok(FnSpecAttributeKind::Ensures),
-            "decreases" => Ok(FnSpecAttributeKind::Decreases),
-            _ => Err(name),
-        }
+impl SpecAttributeKind {
+    fn applies_to(&self) -> SpecAttributeApply {
+        let (on_function, on_loop) = match self {
+            SpecAttributeKind::Requires => (true, false),
+            SpecAttributeKind::Ensures => (true, true),
+            SpecAttributeKind::Decreases => (true, true),
+            SpecAttributeKind::Invariant => (false, true),
+        };
+        SpecAttributeApply { on_function, on_loop }
+    }
+
+    fn applies_to_function(&self) -> bool {
+        self.applies_to().on_function
+    }
+
+    fn applies_to_loop(&self) -> bool {
+        self.applies_to().on_loop
     }
 }
 
-impl TryFrom<String> for LoopSpecAttributeKind {
+impl TryFrom<String> for SpecAttributeKind {
     type Error = String;
 
     fn try_from(name: String) -> Result<Self, Self::Error> {
         match name.as_str() {
-            "invariant" => Ok(LoopSpecAttributeKind::Invariant),
-            "decreases" => Ok(LoopSpecAttributeKind::Decreases),
+            "requires" => Ok(SpecAttributeKind::Requires),
+            "ensures" => Ok(SpecAttributeKind::Ensures),
+            "decreases" => Ok(SpecAttributeKind::Decreases),
+            "invariant" => Ok(SpecAttributeKind::Invariant),
             _ => Err(name),
         }
     }
@@ -82,9 +89,7 @@ fn add_verifier_attr(attrs: &mut Vec<Attribute>) {
     attrs.push(verifier_attr.clone());
 }
 
-fn remove_verus_attributes<T: TryFrom<String> + std::fmt::Debug>(
-    attrs: &mut Vec<Attribute>,
-) -> Vec<(T, TokenStream)> {
+fn remove_verus_attributes(attrs: &mut Vec<Attribute>) -> Vec<(SpecAttributeKind, TokenStream)> {
     let mut verus_attributes = Vec::new();
     let mut regular_attributes = Vec::new();
     for attr in attrs.drain(0..) {
@@ -115,39 +120,36 @@ fn remove_bracket(tokens: TokenStream) -> Result<TokenStream, syn_verus::Expr> {
     Ok(t)
 }
 
-fn rewrite_verus_loop_attribute(
+fn expand_verus_attribute(
     erase: &EraseGhost,
-    outer_attr_tokens: Vec<(LoopSpecAttributeKind, TokenStream)>,
-    any_loop: &mut dyn AnyAttrBlock,
+    verus_attrs: Vec<(SpecAttributeKind, TokenStream)>,
+    any_with_attr_block: &mut dyn AnyAttrBlock,
+    function_or_loop: bool,
 ) {
-    let mut verus_attrs = outer_attr_tokens;
-    verus_attrs.extend(remove_verus_attributes(any_loop.attrs_mut()));
-    if erase.keep() {
-        // rewrite based on different spec attributes
-        for (attr_kind, attr_tokens) in verus_attrs {
-            match attr_kind {
-                LoopSpecAttributeKind::Invariant => {
-                    insert_spec_call(any_loop, "invariant", quote! {[#attr_tokens]})
-                }
-                LoopSpecAttributeKind::Decreases => {
-                    insert_spec_call(any_loop, "decreases", attr_tokens)
-                }
-            }
-        }
+    if !erase.keep() {
+        return;
     }
-}
-
-fn expand_verus_attr_in_fn(
-    verus_attrs: Vec<(FnSpecAttributeKind, TokenStream)>,
-    any_fn: &mut dyn AnyAttrBlock,
-) {
+    // rewrite based on different spec attributes
     for (attr_kind, attr_tokens) in verus_attrs {
+        if function_or_loop {
+            assert!(attr_kind.applies_to_function());
+        }
+        if !function_or_loop {
+            assert!(attr_kind.applies_to_loop());
+        }
         match attr_kind {
-            FnSpecAttributeKind::Ensures => insert_spec_call(any_fn, "ensures", attr_tokens),
-            FnSpecAttributeKind::Requires => {
-                insert_spec_call(any_fn, "requires", quote! {[#attr_tokens]})
+            SpecAttributeKind::Invariant => {
+                insert_spec_call(any_with_attr_block, "invariant", quote! {[#attr_tokens]})
             }
-            FnSpecAttributeKind::Decreases => insert_spec_call(any_fn, "decreases", attr_tokens),
+            SpecAttributeKind::Decreases => {
+                insert_spec_call(any_with_attr_block, "decreases", attr_tokens)
+            }
+            SpecAttributeKind::Ensures => {
+                insert_spec_call(any_with_attr_block, "ensures", attr_tokens)
+            }
+            SpecAttributeKind::Requires => {
+                insert_spec_call(any_with_attr_block, "requires", quote! {[#attr_tokens]})
+            }
         }
     }
 }
@@ -175,16 +177,19 @@ pub fn rewrite_verus_attribute(erase: &EraseGhost, any_fn: TokenStream) -> Token
 
 pub fn rewrite_item_fn(
     erase: &EraseGhost,
-    outer_attr: FnSpecAttributeKind,
+    outer_attr: SpecAttributeKind,
     outer_attr_tokens: TokenStream,
     input: TokenStream,
-) -> TokenStream {
-    let f = syn::parse2::<ItemFn>(input);
-    if f.is_err() {
-        panic!("Must on a function item. NOTE: #[verus_verify] on impl/trait is needed");
-    }
+) -> Result<TokenStream, syn::Error> {
+    let mut f = syn::parse2::<ItemFn>(input).map_err(|e| {
+        let mut new_err = syn::Error::new(
+            e.span(),
+            "Not on function. NOTE: impl/trait must be annotated with #[verus_verify]",
+        );
+        new_err.combine(e);
+        new_err
+    })?;
 
-    let mut f = f.unwrap();
     let mut visitor = AttributesVisitor::new(erase.clone());
     let outer_attr_tokens =
         remove_bracket(outer_attr_tokens).expect(&format!("use #[{:#?}(..)]", outer_attr));
@@ -192,14 +197,11 @@ pub fn rewrite_item_fn(
     let mut verus_attrs = vec![(outer_attr, outer_attr_tokens)];
     verus_attrs.extend(remove_verus_attributes(&mut f.attrs));
     visitor.visit_block_mut(&mut f.block);
+    expand_verus_attribute(erase, verus_attrs, &mut f, true);
     if erase.keep() {
-        expand_verus_attr_in_fn(verus_attrs, &mut f);
         add_verifier_attr(&mut f.attrs);
     }
-    quote_spanned! {f.span()=>
-        #f
-    }
-    .into()
+    Ok(quote_spanned! {f.span()=>#f}.into())
 }
 
 struct AttributesVisitor {
@@ -212,48 +214,82 @@ impl AttributesVisitor {
         AttributesVisitor { erase, spec_trait_items: None }
     }
 
-    fn remove_verus_attributes<T: TryFrom<String> + std::fmt::Debug>(
+    fn remove_verus_attributes(
         &mut self,
         attrs: &mut Vec<Attribute>,
-    ) -> Vec<(T, TokenStream)> {
-        let verus_attrs = remove_verus_attributes::<T>(attrs);
-        if self.erase.erase_all() {
-            vec![]
-        } else {
-            verus_attrs
-        }
+    ) -> Vec<(SpecAttributeKind, TokenStream)> {
+        let verus_attrs = remove_verus_attributes(attrs);
+        if self.erase.erase_all() { vec![] } else { verus_attrs }
     }
 
     // add verifier::verify for items, impl items, and trait items
     fn add_verifier_attr(&mut self, attrs: &mut Vec<Attribute>) {
         add_verifier_attr(attrs);
     }
+
+    /// Add a default exec function with spec calls.
+    ///   fn #[requires(x)]f(); //a trait method;
+    /// becomes
+    ///   #[requires(true)]
+    ///   fn VERUS_SPEC__f() {}
+    ///   fn f();
+    /// and then rewrite_verus_fn_attribute:
+    ///   fn VERUS_SPEC__f() { requires(x); ... }
+    ///   fn f();
+    fn expand_verus_attribute_on_trait_method(
+        &self,
+        verus_attrs: Vec<(SpecAttributeKind, TokenStream)>,
+        fun: &mut TraitItemMethod,
+    ) -> Vec<TraitItem> {
+        if verus_attrs.is_empty() {
+            return vec![];
+        }
+        let mut spec_fun = fun.clone();
+        let x = fun.sig.ident.clone();
+        spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), spec_fun.sig.span());
+        let hidden_attr: Attribute = parse_quote!(#[doc(hidden)]);
+        spec_fun.attrs.push(hidden_attr);
+        let stmts = vec![Stmt::Expr(Expr::Verbatim(
+            quote_spanned_builtin!(builtin, spec_fun.default.span() => #builtin::no_method_body()),
+        ))];
+        spec_fun.default = Some(Block { brace_token: Brace(spec_fun.default.span()), stmts });
+        expand_verus_attribute(&self.erase, verus_attrs, fun, true);
+        vec![TraitItem::Method(spec_fun)]
+        //self.spec_trait_items.as_mut().unwrap().push(
+    }
 }
 
 impl VisitMut for AttributesVisitor {
-    fn visit_item_fn_mut(&mut self, i: &mut syn::ItemFn) {
-        let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
-        visit_mut::visit_item_fn_mut(self, i);
-        expand_verus_attr_in_fn(verus_attrs, i);
+    fn visit_item_const_mut(&mut self, i: &mut syn::ItemConst) {
+        visit_mut::visit_item_const_mut(self, i);
         self.add_verifier_attr(&mut i.attrs);
     }
 
-    fn visit_expr_loop_mut(&mut self, i: &mut syn::ExprLoop) {
-        let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
-        visit_mut::visit_expr_loop_mut(self, i);
-        rewrite_verus_loop_attribute(&self.erase, verus_attrs, i);
+    fn visit_item_mod_mut(&mut self, i: &mut syn::ItemMod) {
+        visit_mut::visit_item_mod_mut(self, i);
+        self.add_verifier_attr(&mut i.attrs);
     }
 
-    fn visit_expr_for_loop_mut(&mut self, i: &mut syn::ExprForLoop) {
-        let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
-        visit_mut::visit_expr_for_loop_mut(self, i);
-        rewrite_verus_loop_attribute(&self.erase, verus_attrs, i);
+    fn visit_item_struct_mut(&mut self, i: &mut syn::ItemStruct) {
+        visit_mut::visit_item_struct_mut(self, i);
+        self.add_verifier_attr(&mut i.attrs);
     }
 
-    fn visit_expr_while_mut(&mut self, i: &mut syn::ExprWhile) {
+    fn visit_item_union_mut(&mut self, i: &mut syn::ItemUnion) {
+        visit_mut::visit_item_union_mut(self, i);
+        self.add_verifier_attr(&mut i.attrs);
+    }
+
+    fn visit_item_enum_mut(&mut self, i: &mut syn::ItemEnum) {
+        visit_mut::visit_item_enum_mut(self, i);
+        self.add_verifier_attr(&mut i.attrs);
+    }
+
+    fn visit_item_fn_mut(&mut self, i: &mut syn::ItemFn) {
         let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
-        visit_mut::visit_expr_while_mut(self, i);
-        rewrite_verus_loop_attribute(&self.erase, verus_attrs, i);
+        visit_mut::visit_item_fn_mut(self, i);
+        expand_verus_attribute(&self.erase, verus_attrs, i, true);
+        self.add_verifier_attr(&mut i.attrs);
     }
 
     fn visit_item_impl_mut(&mut self, i: &mut syn::ItemImpl) {
@@ -264,7 +300,7 @@ impl VisitMut for AttributesVisitor {
     fn visit_impl_item_method_mut(&mut self, i: &mut syn::ImplItemMethod) {
         let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
         visit_mut::visit_impl_item_method_mut(self, i);
-        expand_verus_attr_in_fn(verus_attrs, i);
+        expand_verus_attribute(&self.erase, verus_attrs, i, true);
         self.add_verifier_attr(&mut i.attrs);
     }
 
@@ -278,32 +314,28 @@ impl VisitMut for AttributesVisitor {
     }
 
     fn visit_trait_item_method_mut(&mut self, fun: &mut syn::TraitItemMethod) {
-        //   fn #[requires(x)]f(); //a trait method;
-        // becomes
-        //   #[requires(true)]
-        //   fn VERUS_SPEC__f() {}
-        //   fn f();
-        // and then rewrite_verus_fn_attribute:
-        //   fn VERUS_SPEC__f() { requires(x); ... }
-        //   fn f();
         self.add_verifier_attr(&mut fun.attrs);
         let verus_attrs = self.remove_verus_attributes(&mut fun.attrs);
         visit_mut::visit_trait_item_method_mut(self, fun);
-        if !verus_attrs.is_empty() {
-            let mut spec_fun = fun.clone();
+        let spec_item = self.expand_verus_attribute_on_trait_method(verus_attrs, fun);
+        self.spec_trait_items.as_mut().unwrap().extend(spec_item);
+    }
 
-            // Add a default exec function with spec calls.
-            let x = fun.sig.ident.clone();
-            // need to use __VERUS_SPEC__ instead of VERUS_SPEC__ to avoid conflict if used inside verus!{}
-            spec_fun.sig.ident = Ident::new(&format!("VERUS_SPEC__{x}"), spec_fun.sig.span());
-            let hidden_attr: Attribute = parse_quote!(#[doc(hidden)]);
-            spec_fun.attrs.push(hidden_attr);
-            let stmts = vec![Stmt::Expr(Expr::Verbatim(
-                quote_spanned_builtin!(builtin, spec_fun.default.span() => #builtin::no_method_body()),
-            ))];
-            spec_fun.default = Some(Block { brace_token: Brace(spec_fun.default.span()), stmts });
-            expand_verus_attr_in_fn(verus_attrs, &mut spec_fun);
-            self.spec_trait_items.as_mut().unwrap().push(TraitItem::Method(spec_fun));
-        }
+    fn visit_expr_loop_mut(&mut self, i: &mut syn::ExprLoop) {
+        let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
+        visit_mut::visit_expr_loop_mut(self, i);
+        expand_verus_attribute(&self.erase, verus_attrs, i, false);
+    }
+
+    fn visit_expr_for_loop_mut(&mut self, i: &mut syn::ExprForLoop) {
+        let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
+        visit_mut::visit_expr_for_loop_mut(self, i);
+        expand_verus_attribute(&self.erase, verus_attrs, i, false);
+    }
+
+    fn visit_expr_while_mut(&mut self, i: &mut syn::ExprWhile) {
+        let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
+        visit_mut::visit_expr_while_mut(self, i);
+        expand_verus_attribute(&self.erase, verus_attrs, i, false);
     }
 }

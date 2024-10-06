@@ -1,5 +1,5 @@
 #![allow(unused_imports)]
-#![feature(proc_macro_hygiene)]
+#![feature(proc_macro_hygiene)] 
 
 use builtin::*;
 use builtin_macros::*;
@@ -592,15 +592,6 @@ proof fn uses_spec_has(c: Collection)
 
 } // verus!
 
-#[verifier::verify]
-const MAX_X: u32 = 100;
-
-#[verifier::verify]
-struct Y {
-    val: u32,
-    t: Tracked<u32>,
-}
-
 verus! {
     proof fn p1(tracked y: &mut u32)
         ensures *y == 200
@@ -611,6 +602,15 @@ verus! {
     fn f5(y: &mut Tracked<u32>){
         f4(Tracked(y.borrow_mut()));
     }
+}
+
+#[verus_verify]
+const MAX_X: u32 = 100;
+
+#[verus_verify]
+struct Y {
+    val: u32,
+    t: Tracked<u32>,
 }
 
 #[requires(x < MAX_X, old(y).val < 100)]
@@ -641,7 +641,7 @@ fn test_small_macros_verus_verify(x: u32, y: &mut Y) -> u32 {
     x + y
 }
 
-#[verifier::verify]
+#[verus_verify]
 impl Y {
     #[requires(true)]
     #[ensures(|ret: u32| [ret == self.val, true])]
@@ -649,5 +649,3 @@ impl Y {
         self.val
     }
 }
-
-

@@ -1,8 +1,7 @@
 //#[warn(unused_imports)]
 /*use syn::parse_quote;*/
 use syn::{
-    Attribute, Block, ExprForLoop, ExprLoop, ExprWhile, ImplItemMethod, ItemFn,
-    TraitItemMethod
+    Attribute, Block, ExprForLoop, ExprLoop, ExprWhile, ImplItemMethod, ItemFn, TraitItemMethod,
 };
 
 pub trait AnyAttrBlock {

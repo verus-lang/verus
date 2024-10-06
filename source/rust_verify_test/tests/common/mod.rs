@@ -520,6 +520,14 @@ pub fn assert_any_vir_error_msg(err: TestErr, expected_msg: &str) {
 }
 
 #[allow(dead_code)]
+pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
+    assert!(
+        err.errors.iter().any(|x| x.message.contains("custom attribute panicked")
+            && x.rendered.contains(expected_msg))
+    );
+}
+
+#[allow(dead_code)]
 pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
     assert_eq!(err.errors.len(), 1);
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();

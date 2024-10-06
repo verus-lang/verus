@@ -160,7 +160,6 @@ test_verify_one_file! {
     } => Err(err) => assert_any_vir_error_msg(err, "postcondition not satisfied")
 }
 
-
 test_verify_one_file! {
     #[test] test_ill_formed_3 code! {
         trait T1 {
