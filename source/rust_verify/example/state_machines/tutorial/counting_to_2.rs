@@ -44,7 +44,6 @@ tokenized_state_machine!(
         transition!{
             tr_inc_a() {
                 require(!pre.inc_a);
-                assert(pre.counter <= 2);
                 update counter = pre.counter + 1;
                 update inc_a = true;
             }
@@ -53,9 +52,14 @@ tokenized_state_machine!(
         transition!{
             tr_inc_b() {
                 require(!pre.inc_b);
-                assert(pre.counter <= 2);
                 update counter = pre.counter + 1;
                 update inc_b = true;
+            }
+        }
+
+        property!{
+            increment_will_not_overflow_u32() {
+                assert 0 <= pre.counter < 0xffff_ffff;
             }
         }
 
@@ -136,6 +140,7 @@ fn main() {
                 let _ =
                     atomic_with_ghost!(&globals.atomic => fetch_add(1);
                         ghost c => {
+                            globals.instance.borrow().increment_will_not_overflow_u32(&c);
                             globals.instance.borrow().tr_inc_a(&mut c, &mut token); // atomic increment
                         }
                     );
@@ -156,6 +161,7 @@ fn main() {
                 let _ =
                     atomic_with_ghost!(&globals.atomic => fetch_add(1);
                         ghost c => {
+                            globals.instance.borrow().increment_will_not_overflow_u32(&mut c);
                             globals.instance.borrow().tr_inc_b(&mut c, &mut token); // atomic increment
                         }
                     );
