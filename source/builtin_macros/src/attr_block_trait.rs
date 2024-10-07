@@ -1,5 +1,3 @@
-//#[warn(unused_imports)]
-/*use syn::parse_quote;*/
 use syn::{
     Attribute, Block, ExprForLoop, ExprLoop, ExprWhile, ImplItemMethod, ItemFn, TraitItemMethod,
 };

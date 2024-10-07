@@ -119,8 +119,45 @@ test_verify_one_file! {
         #[verus_verify]
         trait SomeTrait {
             #[requires(true, false==>false)]
-            #[ensures(|ret: bool| true)]
+            #[ensures(|ret: bool| ret)]
             fn f(&self) -> bool;
+        }
+
+        #[verus_verify]
+        impl<S> Abc<S> {
+            fn foo(&self)
+                where S: SomeTrait
+            {
+                let ret = self.t.f();
+                proof!{assert(ret);}
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_default_fn_use_macro_attributes code!{
+        struct Abc<T> {
+            t: T,
+        }
+
+        #[verus_verify]
+        trait SomeTrait {
+            #[requires(true, false==>false)]
+            #[ensures(|ret: bool| ret)]
+            fn f(&self) -> bool {
+                true
+            }
+        }
+
+        #[verus_verify]
+        impl<S> Abc<S> {
+            fn foo(&self)
+                where S: SomeTrait
+            {
+                let ret = self.t.f();
+                proof!{assert(ret);}
+            }
         }
     } => Ok(())
 }
@@ -136,7 +173,7 @@ test_verify_one_file! {
             #[ensures(|ret| ret == ret)]
             fn f(&self) -> bool;
         }
-    } => Err(err) => assert_any_vir_error_msg(err, "custom attribute panicked")
+    } => Err(err) => assert_custom_attr_error_msg(err, "Misuse of #[requires()]")
 }
 
 test_verify_one_file! {
@@ -158,6 +195,23 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_any_vir_error_msg(err, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] test_default_failed_fn_use_macro_attributes code!{
+        struct Abc<T> {
+            t: T,
+        }
+
+        #[verus_verify]
+        trait SomeTrait {
+            #[requires(true, false==>false)]
+            #[ensures(|ret: bool| [ret, !ret])]
+            fn f(&self) -> bool {
+                true
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "postcondition not satisfied")
 }
 
 test_verify_one_file! {

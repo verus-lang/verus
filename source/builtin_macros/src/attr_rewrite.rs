@@ -29,10 +29,11 @@
 use core::convert::{TryFrom, TryInto};
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use syn::parse_quote;
 use syn::{
     parse2, parse_quote, spanned::Spanned, token::Brace, visit_mut, visit_mut::VisitMut, Attribute,
-    Block, Expr, Ident, ItemFn, Stmt, TraitItem, TraitItemMethod,
+    Block, Error, Expr, ExprForLoop, ExprLoop, ExprWhile, Ident, ImplItemMethod, ItemConst,
+    ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStruct, ItemTrait, ItemUnion, Stmt, TraitItem,
+    TraitItemMethod,
 };
 
 use crate::{attr_block_trait::AnyAttrBlock, syntax, syntax::VERUS_SPEC, EraseGhost};
@@ -84,9 +85,16 @@ impl TryFrom<String> for SpecAttributeKind {
     }
 }
 
+fn has_external_code(attrs: &Vec<Attribute>) -> bool {
+    let syn_verus_attrs: Vec<syn_verus::Attribute> =
+        attrs.iter().map(|attr| syn_verus::parse_quote::parse(attr.to_token_stream())).collect();
+    syntax::has_external_code(&syn_verus_attrs)
+}
 fn add_verifier_attr(attrs: &mut Vec<Attribute>) {
-    let verifier_attr: Attribute = parse_quote!(#[verifier::verify]);
-    attrs.push(verifier_attr.clone());
+    if !has_external_code(attrs) {
+        let verifier_attr: Attribute = parse_quote!(#[verifier::verify]);
+        attrs.push(verifier_attr.clone());
+    }
 }
 
 fn remove_verus_attributes(attrs: &mut Vec<Attribute>) -> Vec<(SpecAttributeKind, TokenStream)> {
@@ -162,7 +170,7 @@ fn insert_spec_call(any_fn: &mut dyn AnyAttrBlock, call: &str, verus_expr: Token
         .block_mut()
         .unwrap()
         .stmts
-        .insert(0, syn::parse2(quote! { ::builtin::#fname(#tokens); }).unwrap());
+        .insert(0, parse2(quote! { ::builtin::#fname(#tokens); }).unwrap());
 }
 
 pub fn rewrite_verus_attribute(erase: &EraseGhost, any_fn: TokenStream) -> TokenStream {
@@ -180,9 +188,9 @@ pub fn rewrite_item_fn(
     outer_attr: SpecAttributeKind,
     outer_attr_tokens: TokenStream,
     input: TokenStream,
-) -> Result<TokenStream, syn::Error> {
-    let mut f = syn::parse2::<ItemFn>(input).map_err(|e| {
-        let mut new_err = syn::Error::new(
+) -> Result<TokenStream, Error> {
+    let mut f = parse2::<ItemFn>(input).map_err(|e| {
+        let mut new_err = Error::new(
             e.span(),
             "Not on function. NOTE: impl/trait must be annotated with #[verus_verify]",
         );
@@ -224,7 +232,9 @@ impl AttributesVisitor {
 
     // add verifier::verify for items, impl items, and trait items
     fn add_verifier_attr(&mut self, attrs: &mut Vec<Attribute>) {
-        add_verifier_attr(attrs);
+        if self.erase.keep() {
+            add_verifier_attr(attrs);
+        }
     }
 
     /// Add a default exec function with spec calls.
@@ -246,65 +256,69 @@ impl AttributesVisitor {
         }
         let mut spec_fun = fun.clone();
         let x = fun.sig.ident.clone();
-        spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), spec_fun.sig.span());
-        let hidden_attr: Attribute = parse_quote!(#[doc(hidden)]);
-        spec_fun.attrs.push(hidden_attr);
-        let stmts = vec![Stmt::Expr(Expr::Verbatim(
-            quote_spanned_builtin!(builtin, spec_fun.default.span() => #builtin::no_method_body()),
-        ))];
-        spec_fun.default = Some(Block { brace_token: Brace(spec_fun.default.span()), stmts });
-        expand_verus_attribute(&self.erase, verus_attrs, fun, true);
-        vec![TraitItem::Method(spec_fun)]
-        //self.spec_trait_items.as_mut().unwrap().push(
+        if fun.default.is_none() {
+            spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), spec_fun.sig.span());
+            spec_fun.attrs.push(parse_quote!(#[doc(hidden)]));
+            spec_fun.attrs.push(parse_quote!(#[allow(non_snake_case)]));
+            let stmts = vec![Stmt::Expr(Expr::Verbatim(
+                quote_spanned_builtin!(builtin, spec_fun.default.span() => #builtin::no_method_body()),
+            ))];
+            spec_fun.default = Some(Block { brace_token: Brace(spec_fun.default.span()), stmts });
+            expand_verus_attribute(&self.erase, verus_attrs, &mut spec_fun, true);
+            vec![TraitItem::Method(spec_fun)]
+        } else {
+            expand_verus_attribute(&self.erase, verus_attrs, fun, true);
+            vec![]
+        }
     }
 }
 
 impl VisitMut for AttributesVisitor {
-    fn visit_item_const_mut(&mut self, i: &mut syn::ItemConst) {
+    fn visit_item_const_mut(&mut self, i: &mut ItemConst) {
         visit_mut::visit_item_const_mut(self, i);
         self.add_verifier_attr(&mut i.attrs);
     }
 
-    fn visit_item_mod_mut(&mut self, i: &mut syn::ItemMod) {
+    fn visit_item_mod_mut(&mut self, i: &mut ItemMod) {
         visit_mut::visit_item_mod_mut(self, i);
         self.add_verifier_attr(&mut i.attrs);
     }
 
-    fn visit_item_struct_mut(&mut self, i: &mut syn::ItemStruct) {
+    fn visit_item_struct_mut(&mut self, i: &mut ItemStruct) {
         visit_mut::visit_item_struct_mut(self, i);
         self.add_verifier_attr(&mut i.attrs);
     }
 
-    fn visit_item_union_mut(&mut self, i: &mut syn::ItemUnion) {
+    fn visit_item_union_mut(&mut self, i: &mut ItemUnion) {
         visit_mut::visit_item_union_mut(self, i);
         self.add_verifier_attr(&mut i.attrs);
     }
 
-    fn visit_item_enum_mut(&mut self, i: &mut syn::ItemEnum) {
+    fn visit_item_enum_mut(&mut self, i: &mut ItemEnum) {
         visit_mut::visit_item_enum_mut(self, i);
         self.add_verifier_attr(&mut i.attrs);
     }
 
-    fn visit_item_fn_mut(&mut self, i: &mut syn::ItemFn) {
+    fn visit_item_fn_mut(&mut self, i: &mut ItemFn) {
         let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
         visit_mut::visit_item_fn_mut(self, i);
         expand_verus_attribute(&self.erase, verus_attrs, i, true);
         self.add_verifier_attr(&mut i.attrs);
     }
 
-    fn visit_item_impl_mut(&mut self, i: &mut syn::ItemImpl) {
+    fn visit_item_impl_mut(&mut self, i: &mut ItemImpl) {
         visit_mut::visit_item_impl_mut(self, i);
         self.add_verifier_attr(&mut i.attrs);
     }
 
-    fn visit_impl_item_method_mut(&mut self, i: &mut syn::ImplItemMethod) {
+    fn visit_impl_item_method_mut(&mut self, i: &mut ImplItemMethod) {
         let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
         visit_mut::visit_impl_item_method_mut(self, i);
         expand_verus_attribute(&self.erase, verus_attrs, i, true);
         self.add_verifier_attr(&mut i.attrs);
     }
 
-    fn visit_item_trait_mut(&mut self, i: &mut syn::ItemTrait) {
+    fn visit_item_trait_mut(&mut self, i: &mut ItemTrait) {
         assert!(self.spec_trait_items.is_none());
         self.spec_trait_items = Some(vec![]);
         visit_mut::visit_item_trait_mut(self, i);
@@ -313,7 +327,7 @@ impl VisitMut for AttributesVisitor {
         self.add_verifier_attr(&mut i.attrs);
     }
 
-    fn visit_trait_item_method_mut(&mut self, fun: &mut syn::TraitItemMethod) {
+    fn visit_trait_item_method_mut(&mut self, fun: &mut TraitItemMethod) {
         self.add_verifier_attr(&mut fun.attrs);
         let verus_attrs = self.remove_verus_attributes(&mut fun.attrs);
         visit_mut::visit_trait_item_method_mut(self, fun);
@@ -321,19 +335,19 @@ impl VisitMut for AttributesVisitor {
         self.spec_trait_items.as_mut().unwrap().extend(spec_item);
     }
 
-    fn visit_expr_loop_mut(&mut self, i: &mut syn::ExprLoop) {
+    fn visit_expr_loop_mut(&mut self, i: &mut ExprLoop) {
         let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
         visit_mut::visit_expr_loop_mut(self, i);
         expand_verus_attribute(&self.erase, verus_attrs, i, false);
     }
 
-    fn visit_expr_for_loop_mut(&mut self, i: &mut syn::ExprForLoop) {
+    fn visit_expr_for_loop_mut(&mut self, i: &mut ExprForLoop) {
         let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
         visit_mut::visit_expr_for_loop_mut(self, i);
         expand_verus_attribute(&self.erase, verus_attrs, i, false);
     }
 
-    fn visit_expr_while_mut(&mut self, i: &mut syn::ExprWhile) {
+    fn visit_expr_while_mut(&mut self, i: &mut ExprWhile) {
         let verus_attrs = self.remove_verus_attributes(&mut i.attrs);
         visit_mut::visit_expr_while_mut(self, i);
         expand_verus_attribute(&self.erase, verus_attrs, i, false);
