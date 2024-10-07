@@ -460,6 +460,10 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
             };
 
             let candidate = tcx.codegen_select_candidate((param_env, trait_refs));
+            let candidate = candidate.or_else(|_| {
+                let trait_refs = tcx.normalize_erasing_regions(param_env, trait_refs);
+                tcx.codegen_select_candidate((param_env, trait_refs))
+            });
             if let Ok(impl_source) = candidate {
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
                     let impl_path = def_id_to_vir_path(tcx, verus_items, u.impl_def_id);
