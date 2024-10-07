@@ -272,8 +272,7 @@ pub struct OpenInvariantCredit {}
 
 // It's intentional that `create_open_invariant_credit` uses `exec` mode. This prevents
 // creation of an infinite number of credits to open invariants infinitely often.
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::invariant::create_open_invariant_credit"]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::invariant::create_open_invariant_credit")]
 #[verifier::external_body]
 #[inline(always)]
 pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
@@ -290,11 +289,13 @@ pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
 pub proof fn spend_open_invariant_credit_in_proof(tracked credit: OpenInvariantCredit) {
 }
 
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit"]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit")]
 #[doc(hidden)]
 #[inline(always)]
-pub fn spend_open_invariant_credit(credit: Tracked<OpenInvariantCredit>)
+pub fn spend_open_invariant_credit(
+    #[allow(unused_variables)]
+    credit: Tracked<OpenInvariantCredit>,
+)
     opens_invariants none
     no_unwind
 {
