@@ -1,10 +1,8 @@
 #![allow(unused_imports)]
-#![feature(proc_macro_hygiene)] 
 
 use builtin::*;
 use builtin_macros::*;
 use vstd::{modes::*, prelude::*, seq::*, *};
-
 
 #[verifier::external]
 fn main() {}
@@ -622,8 +620,8 @@ fn test_small_macros_verus_verify(x: u32, y: &mut Y) -> u32 {
     }
     f5(&mut y.t);
     let y = y.val;
-    
-    proof!{
+
+    proof! {
         let u = my_spec_fun(x as int, y as int);  // allowed in proof code
         my_proof_fun(u / 2, y as int);  // allowed in proof code
         assert(x < 100);

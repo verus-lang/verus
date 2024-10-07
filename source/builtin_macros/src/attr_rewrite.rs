@@ -90,6 +90,7 @@ fn has_external_code(attrs: &Vec<Attribute>) -> bool {
         attrs.iter().map(|attr| syn_verus::parse_quote::parse(attr.to_token_stream())).collect();
     syntax::has_external_code(&syn_verus_attrs)
 }
+
 fn add_verifier_attr(attrs: &mut Vec<Attribute>) {
     if !has_external_code(attrs) {
         let verifier_attr: Attribute = parse_quote!(#[verifier::verify]);
