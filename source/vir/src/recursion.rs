@@ -1,5 +1,5 @@
 use crate::ast::{
-    AutospecUsage, CallTarget, CallTargetKind, Constant, ExprX, Fun, Function, FunctionKind,
+    AutospecUsage, CallTarget, CallTargetKind, Constant, Dt, ExprX, Fun, Function, FunctionKind,
     GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VarBinder,
     VirErr,
 };
@@ -27,7 +27,7 @@ use std::sync::Arc;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Node {
     Fun(Fun),
-    Datatype(Path),
+    Datatype(Dt),
     Trait(Path),
     TraitImpl(ImplPath),
     TraitReqEns(ImplPath, bool),

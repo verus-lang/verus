@@ -40,13 +40,14 @@ use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr, FunX,
-    HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, Primitive,
+    ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, Dt, ExprX, FieldOpr,
+    FunX, HeaderExprX, ImplPath, InequalityOp, IntRange, InvAtomicity, Mode, PatternX, Primitive,
     SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarIdent,
     VariantCheck, VirErr,
 };
 use vir::ast_util::{
-    ident_binder, str_unique_var, typ_to_diagnostic_str, types_equal, undecorate_typ,
+    ident_binder, mk_tuple_field_x, mk_tuple_typ, mk_tuple_x, str_unique_var,
+    typ_to_diagnostic_str, types_equal, undecorate_typ,
 };
 use vir::def::{field_ident_from_rust, positional_field_ident};
 
@@ -109,7 +110,7 @@ pub(crate) fn closure_param_typs<'tcx>(
             }
             assert!(args.len() == 1);
             match &*args[0] {
-                TypX::Tuple(typs) => Ok((**typs).clone()),
+                TypX::Datatype(Dt::Tuple(_), typs, ..) => Ok((**typs).clone()),
                 _ => panic!("expected tuple type"),
             }
         }
@@ -438,7 +439,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
     erasure_info.resolved_calls.push((expr.hir_id, fun_span.data(), resolved_call));
-    let exprx = ExprX::Ctor(vir_path, variant_name, vir_fields, None);
+    let exprx = ExprX::Ctor(Dt::Path(vir_path), variant_name, vir_fields, None);
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ, exprx))
 }
 
@@ -506,33 +507,35 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                     let variant_name = str_ident(&variant_def.ident(tcx).as_str());
                     let vir_path =
                         def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, adt_def_id);
-                    PatternX::Constructor(vir_path, variant_name, Arc::new(vec![]))
+                    PatternX::Constructor(Dt::Path(vir_path), variant_name, Arc::new(vec![]))
                 }
             }
         }
         PatKind::Tuple(pats, dot_dot_pos) => {
-            let mut patterns: Vec<vir::ast::Pattern> = Vec::new();
-
-            let typs = match &*pat_typ {
-                TypX::Tuple(typs) => typs,
+            let n = match &*pat_typ {
+                TypX::Datatype(Dt::Tuple(n), typs, ..) => {
+                    assert!(typs.len() == *n);
+                    *n
+                }
                 _ => {
                     return err_span(pat.span, "Verus internal error: expected tuple type");
                 }
             };
+
             let (n_wildcards, pos_to_insert_wildcards) =
-                handle_dot_dot(pats.len(), typs.len(), &dot_dot_pos);
+                handle_dot_dot(pats.len(), n, &dot_dot_pos);
 
-            for pat in pats.iter() {
-                patterns.push(pattern_to_vir(bctx, pat)?);
+            let mut binders: Vec<Binder<vir::ast::Pattern>> = Vec::new();
+            for (i, pat) in pats.iter().enumerate() {
+                let actual_idx = if i < pos_to_insert_wildcards { i } else { i + n_wildcards };
+
+                let pattern = pattern_to_vir(bctx, pat)?;
+                let binder = ident_binder(&positional_field_ident(actual_idx), &pattern);
+                binders.push(binder);
             }
-            patterns.splice(
-                pos_to_insert_wildcards..pos_to_insert_wildcards,
-                typs[pos_to_insert_wildcards..pos_to_insert_wildcards + n_wildcards]
-                    .iter()
-                    .map(|typ| bctx.spanned_typed_new(pat.span, &typ, PatternX::Wildcard(true))),
-            );
 
-            PatternX::Tuple(Arc::new(patterns))
+            let variant_name = vir::def::prefix_tuple_variant(n);
+            PatternX::Constructor(Dt::Tuple(n), variant_name, Arc::new(binders))
         }
         PatKind::TupleStruct(qpath, pats, dot_dot_pos) => {
             let res = bctx.types.qpath_res(qpath, pat.hir_id);
@@ -553,7 +556,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                 binders.push(binder);
             }
 
-            PatternX::Constructor(vir_path, variant_name, Arc::new(binders))
+            PatternX::Constructor(Dt::Path(vir_path), variant_name, Arc::new(binders))
         }
         PatKind::Struct(qpath, pats, _) => {
             let res = bctx.types.qpath_res(qpath, pat.hir_id);
@@ -569,7 +572,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                 let binder = ident_binder(&ident, &pattern);
                 binders.push(binder);
             }
-            PatternX::Constructor(vir_path, variant_name, Arc::new(binders))
+            PatternX::Constructor(Dt::Path(vir_path), variant_name, Arc::new(binders))
         }
         PatKind::Box(pat) => {
             return pattern_to_vir(bctx, pat);
@@ -1500,7 +1503,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 false,
                             )?);
                         }
-                        let tup_typ = Arc::new(TypX::Tuple(Arc::new(arg_typs)));
+                        let tup_typ = mk_tuple_typ(&Arc::new(arg_typs));
 
                         // Compute fun_typ with the correct decoration
                         // (technically not needed since the fun_typ decoration gets
@@ -1581,7 +1584,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Tup(exprs) => {
             let args: Result<Vec<vir::ast::Expr>, VirErr> =
                 exprs.iter().map(|e| expr_to_vir(bctx, e, modifier)).collect();
-            mk_expr(ExprX::Tuple(Arc::new(args?)))
+            mk_expr(mk_tuple_x(&Arc::new(args?)))
         }
         ExprKind::Array(exprs) => {
             if bctx.ctxt.no_vstd {
@@ -1961,13 +1964,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let check = if adt_def.is_union() { VariantCheck::Yes } else { VariantCheck::None };
                 (datatype_path, variant_name, field_name, check)
             } else {
-                let lhs_typ = typ_of_node(bctx, lhs.span, &lhs.hir_id, false)?;
+                let lhs_typ = typ_of_node(bctx, lhs.span, &lhs.hir_id, true)?;
                 let lhs_typ = undecorate_typ(&lhs_typ);
-                if let TypX::Tuple(ts) = &*lhs_typ {
+                if let TypX::Datatype(Dt::Tuple(_), ts, _) = &*lhs_typ {
                     let field: usize =
                         str::parse(&name.as_str()).expect("integer index into tuple");
-                    let field_opr = UnaryOpr::TupleField { tuple_arity: ts.len(), field };
-                    let vir = mk_expr(ExprX::UnaryOpr(field_opr, vir_lhs))?;
+                    let vir = mk_expr(mk_tuple_field_x(&vir_lhs, ts.len(), field))?;
                     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                     erasure_info.resolved_exprs.push((expr.span.data(), vir.clone()));
                     return Ok(vir);
@@ -1980,7 +1982,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 &field_type,
                 ExprX::UnaryOpr(
                     UnaryOpr::Field(FieldOpr {
-                        datatype,
+                        datatype: Dt::Path(datatype),
                         variant: variant_name,
                         field: field_name,
                         get_variant: false,
@@ -2172,7 +2174,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
             let resolved_call = ResolvedCall::Ctor(path.clone(), variant_name.clone());
             erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
-            mk_expr(ExprX::Ctor(path, variant_name, vir_fields, update))
+            mk_expr(ExprX::Ctor(Dt::Path(path), variant_name, vir_fields, update))
         }
         ExprKind::MethodCall(_name_and_generics, receiver, other_args, fn_span) => {
             let fn_def_id = bctx
@@ -2224,7 +2226,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 _ => t1,
             };
             let (fun, typ_args) = match &**t1 {
-                TypX::Datatype(p, typ_args, _impl_paths)
+                TypX::Datatype(Dt::Path(p), typ_args, _impl_paths)
                     if p == &vir::path!("alloc" => "vec", "Vec") =>
                 {
                     let fun = vir::fun!("vstd" => "std_specs", "vec", "vec_index");

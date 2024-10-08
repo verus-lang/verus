@@ -121,7 +121,6 @@ fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
                 check_trigger_expr_arg(state, expect_boxed, arg)
             }
             UnaryOpr::IsVariant { .. }
-            | UnaryOpr::TupleField { .. }
             | UnaryOpr::Field { .. }
             | UnaryOpr::IntegerTypeBound(..)
             | UnaryOpr::HasType(_) => {}
@@ -244,9 +243,7 @@ fn check_trigger_expr(
             ExpX::UnaryOpr(op, arg) => match op {
                 UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
                 UnaryOpr::CustomErr(_) => Ok(()),
-                UnaryOpr::IsVariant { .. }
-                | UnaryOpr::TupleField { .. }
-                | UnaryOpr::Field { .. } => {
+                UnaryOpr::IsVariant { .. } | UnaryOpr::Field { .. } => {
                     check_trigger_expr_arg(state, true, arg);
                     Ok(())
                 }

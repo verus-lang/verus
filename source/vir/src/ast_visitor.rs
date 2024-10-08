@@ -45,10 +45,6 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
             TypX::TypeId => R::ret(|| typ.clone()),
             TypX::ConstInt(_) => R::ret(|| typ.clone()),
             TypX::Air(_) => R::ret(|| typ.clone()),
-            TypX::Tuple(ts) => {
-                let ts = self.visit_typs(ts)?;
-                R::ret(|| Arc::new(TypX::Tuple(R::get_vec_a(ts))))
-            }
             TypX::SpecFn(ts, tr) => {
                 let ts = self.visit_typs(ts)?;
                 let tr = self.visit_typ(tr)?;
@@ -212,10 +208,6 @@ where
             let p = map_pattern_visitor_env(sub_pat, map, env, fe, fs, ft)?;
             PatternX::Binding { name: name.clone(), mutable: *mutable, sub_pat: p }
         }
-        PatternX::Tuple(ps) => {
-            let ps = vec_map_result(&**ps, |p| map_pattern_visitor_env(p, map, env, fe, fs, ft))?;
-            PatternX::Tuple(Arc::new(ps))
-        }
         PatternX::Constructor(path, variant, binders) => {
             let binders = vec_map_result(&**binders, |b| {
                 b.map_result(|p| map_pattern_visitor_env(p, map, env, fe, fs, ft))
@@ -258,11 +250,6 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
         PatternX::Binding { name, mutable, sub_pat } => {
             insert_pattern_vars(map, sub_pat, init);
             let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
-        }
-        PatternX::Tuple(ps) => {
-            for p in ps.iter() {
-                insert_pattern_vars(map, p, init);
-            }
         }
         PatternX::Constructor(_, _, binders) => {
             for binder in binders.iter() {
@@ -324,11 +311,6 @@ where
                             expr_visitor_control_flow!(expr_visitor_dfs(fun, map, mf));
                         }
                     }
-                    for e in es.iter() {
-                        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-                    }
-                }
-                ExprX::Tuple(es) => {
                     for e in es.iter() {
                         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                     }
@@ -589,11 +571,6 @@ where
         PatternX::Binding { name: _, mutable: _, sub_pat } => {
             expr_visitor_control_flow!(pat_visitor_dfs(sub_pat, map, mf));
         }
-        PatternX::Tuple(ps) => {
-            for p in ps.iter() {
-                expr_visitor_control_flow!(pat_visitor_dfs(p, map, mf));
-            }
-        }
         PatternX::Constructor(_path, _variant, binders) => {
             for binder in binders.iter() {
                 expr_visitor_control_flow!(pat_visitor_dfs(&binder.a, map, mf));
@@ -791,13 +768,6 @@ where
             }
             ExprX::Call(target, Arc::new(exprs))
         }
-        ExprX::Tuple(es) => {
-            let mut exprs: Vec<Expr> = Vec::new();
-            for e in es.iter() {
-                exprs.push(map_expr_visitor_env(e, map, env, fe, fs, ft)?);
-            }
-            ExprX::Tuple(Arc::new(exprs))
-        }
         ExprX::ArrayLiteral(es) => {
             let mut exprs: Vec<Expr> = Vec::new();
             for e in es.iter() {
@@ -847,7 +817,6 @@ where
                 UnaryOpr::Unbox(t) => UnaryOpr::Unbox(map_typ_visitor_env(t, env, ft)?),
                 UnaryOpr::HasType(t) => UnaryOpr::HasType(map_typ_visitor_env(t, env, ft)?),
                 UnaryOpr::IsVariant { .. } => op.clone(),
-                UnaryOpr::TupleField { .. } => op.clone(),
                 UnaryOpr::Field { .. } => op.clone(),
                 UnaryOpr::IntegerTypeBound(_kind, _) => op.clone(),
                 UnaryOpr::CustomErr(_) => op.clone(),

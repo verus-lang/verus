@@ -274,7 +274,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                         R::ret(|| UnaryOpr::HasType(R::get(t)))
                     }
                     UnaryOpr::IsVariant { .. }
-                    | UnaryOpr::TupleField { .. }
                     | UnaryOpr::Field { .. }
                     | UnaryOpr::IntegerTypeBound(..)
                     | UnaryOpr::CustomErr(..) => R::ret(|| op.clone()),

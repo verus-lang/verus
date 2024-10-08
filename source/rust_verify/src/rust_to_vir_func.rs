@@ -29,7 +29,7 @@ use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, Mode,
     ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
 };
-use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return};
+use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 use vir::sst_util::subst_typ;
 
@@ -920,9 +920,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let params: vir::ast::Params = Arc::new(vir_params.into_iter().map(|(p, _)| p).collect());
 
     let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode) {
-        (None, None) => {
-            (air_unique_var(RETURN_VALUE), Arc::new(TypX::Tuple(Arc::new(vec![]))), mode)
-        }
+        (None, None) => (air_unique_var(RETURN_VALUE), unit_typ(), mode),
         (None, Some((typ, mode))) => (air_unique_var(RETURN_VALUE), typ, mode),
         (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
@@ -1764,7 +1762,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     }
     let params = Arc::new(vir_params);
     let (ret_typ, ret_mode, ens_has_return) = match ret_typ_mode {
-        None => (Arc::new(TypX::Tuple(Arc::new(vec![]))), mode, false),
+        None => (unit_typ(), mode, false),
         Some((typ, mode)) => (typ, mode, true),
     };
     let ret_param = ParamX {

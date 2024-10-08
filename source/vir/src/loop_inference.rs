@@ -1,10 +1,10 @@
-use crate::ast::{NullaryOpr, SpannedTyped, Typ, TypX, UnaryOp};
+use crate::ast::{Dt, NullaryOpr, SpannedTyped, Typ, TypX, UnaryOp};
 use crate::messages::{Message, Span};
 use crate::sst::{Exp, ExpX, UniqueIdent};
 use std::sync::Arc;
 
 pub(crate) fn make_option_exp(opt: Option<Exp>, span: &Span, typ: &Typ) -> Exp {
-    let option_path = crate::def::option_type_path();
+    let option_path = Dt::Path(crate::def::option_type_path());
     let option_typx =
         TypX::Datatype(option_path.clone(), Arc::new(vec![typ.clone()]), Arc::new(vec![]));
     let expx = match opt {

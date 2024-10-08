@@ -7,7 +7,6 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
         TypX::Int(_) => false,
         TypX::Bool => false,
-        TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::SpecFn(_, _) => true,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
@@ -60,7 +59,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
         },
         ExpX::UnaryOpr(op, e) => match op {
             UnaryOpr::HasType(_) | UnaryOpr::IsVariant { .. } => exp.clone(),
-            UnaryOpr::TupleField { .. } | UnaryOpr::Field(_) => exp.clone(),
+            UnaryOpr::Field(_) => exp.clone(),
             UnaryOpr::IntegerTypeBound(..) => exp.clone(),
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
             UnaryOpr::CustomErr(_) => {
