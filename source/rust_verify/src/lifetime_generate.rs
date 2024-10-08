@@ -885,30 +885,32 @@ fn erase_call<'tcx>(
         ResolvedCall::CompilableOperator(op) => {
             use crate::erase::CompilableOperator::*;
             let builtin_method = match op {
-                SmartPtrClone { is_method } => Some((*is_method, "clone")),
-                TrackedGet => Some((true, "get")),
-                TrackedBorrow => Some((true, "borrow")),
-                TrackedBorrowMut => Some((true, "borrow_mut")),
-                TrackedNew | TrackedExec => Some((false, "tracked_new")),
-                TrackedExecBorrow => Some((false, "tracked_exec_borrow")),
-                RcNew => Some((false, "rc_new")),
-                ArcNew => Some((false, "arc_new")),
-                BoxNew => Some((false, "box_new")),
+                SmartPtrClone { is_method } => Some((*is_method, "clone", false)),
+                TrackedGet => Some((true, "get", false)),
+                TrackedBorrow => Some((true, "borrow", false)),
+                TrackedBorrowMut => Some((true, "borrow_mut", false)),
+                TrackedNew | TrackedExec => Some((false, "tracked_new", false)),
+                TrackedExecBorrow => Some((false, "tracked_exec_borrow", false)),
+                RcNew => Some((false, "rc_new", expect_spec)),
+                ArcNew => Some((false, "arc_new", expect_spec)),
+                BoxNew => Some((false, "box_new", expect_spec)),
                 GhostExec => None,
                 IntIntrinsic | Implies => None,
-                UseTypeInvariant => Some((false, "use_type_invariant")),
+                UseTypeInvariant => Some((false, "use_type_invariant", false)),
             };
-            if let Some((true, method)) = builtin_method {
+            if let Some((true, method, expect_spec_inside)) = builtin_method {
                 assert!(receiver.is_some());
                 assert!(args_slice.len() == 0);
                 let Some(receiver) = receiver else { panic!() };
-                let exp = erase_expr(ctxt, state, expect_spec, &receiver).expect("builtin method");
+                let exp =
+                    erase_expr(ctxt, state, expect_spec_inside, &receiver).expect("builtin method");
                 mk_exp(ExpX::BuiltinMethod(exp, method.to_string()))
-            } else if let Some((false, func)) = builtin_method {
+            } else if let Some((false, func, expect_spec_inside)) = builtin_method {
                 assert!(receiver.is_none());
                 assert!(args_slice.len() == 1);
                 let requires_arg = matches!(op, UseTypeInvariant);
-                let exp_opt = erase_expr(ctxt, state, expect_spec && !requires_arg, &args_slice[0]);
+                let exp_opt =
+                    erase_expr(ctxt, state, expect_spec_inside && !requires_arg, &args_slice[0]);
                 let exp = match exp_opt {
                     Some(exp) => exp,
                     None => {
