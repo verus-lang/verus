@@ -38,6 +38,17 @@ pub fn verus_enum_synthesize(
     enum_synthesize::attribute_verus_enum_synthesize(&cfg_erase(), attr, input)
 }
 
+// Apply verus_verify to all items in side the annotated item
+// and visit syntax tree to rewrite all.
+#[proc_macro_attribute]
+pub fn verus_verify_all(
+    _attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::rewrite_verus_verify_all(&cfg_erase(), input.into()).into()
+}
+
+// Add #[verifier::verify] only to the top item if in verification mode.
 #[proc_macro_attribute]
 pub fn verus_verify(
     _attr: proc_macro::TokenStream,
@@ -51,7 +62,7 @@ pub fn requires(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    attr_rewrite::rewrite_item_fn(
+    attr_rewrite::rewrite(
         &cfg_erase(),
         attr_rewrite::SpecAttributeKind::Requires,
         attr.into(),
@@ -66,7 +77,7 @@ pub fn ensures(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    attr_rewrite::rewrite_item_fn(
+    attr_rewrite::rewrite(
         &cfg_erase(),
         attr_rewrite::SpecAttributeKind::Ensures,
         attr.into(),
@@ -81,7 +92,7 @@ pub fn decreases(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    attr_rewrite::rewrite_item_fn(
+    attr_rewrite::rewrite(
         &cfg_erase(),
         attr_rewrite::SpecAttributeKind::Decreases,
         attr.into(),
@@ -93,12 +104,32 @@ pub fn decreases(
 
 #[proc_macro_attribute]
 pub fn invariant(
-    _attr: proc_macro::TokenStream,
-    _input: proc_macro::TokenStream,
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    panic!(
-        "Misuse of #[invariant]. Need to add #[verus_verify] or other verus attributes on the function?"
+    attr_rewrite::rewrite(
+        &cfg_erase(),
+        attr_rewrite::SpecAttributeKind::Invariant,
+        attr.into(),
+        input.into(),
     )
+    .expect("Misuse of #[invariant()]")
+    .into()
+}
+
+#[proc_macro_attribute]
+pub fn invariant_except_break(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::rewrite(
+        &cfg_erase(),
+        attr_rewrite::SpecAttributeKind::InvariantExceptBreak,
+        attr.into(),
+        input.into(),
+    )
+    .expect("Misuse of #[invariant()]")
+    .into()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

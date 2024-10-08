@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+#![feature(proc_macro_hygiene)]
 
 use builtin::*;
 use builtin_macros::*;
@@ -611,6 +612,7 @@ struct Y {
     t: Tracked<u32>,
 }
 
+#[verus_verify]
 #[requires(x < MAX_X, old(y).val < 100)]
 #[ensures(|ret: u32| [ret < 200])]
 fn test_small_macros_verus_verify(x: u32, y: &mut Y) -> u32 {
@@ -641,6 +643,7 @@ fn test_small_macros_verus_verify(x: u32, y: &mut Y) -> u32 {
 
 #[verus_verify]
 impl Y {
+    #[verus_verify]
     #[requires(true)]
     #[ensures(|ret: u32| [ret == self.val, true])]
     fn value(&self) -> u32 {

@@ -116,14 +116,12 @@ test_verify_one_file! {
             t: T,
         }
 
-        #[verus_verify]
         trait SomeTrait {
             #[requires(true)]
             #[ensures(|ret: bool| ret)]
             fn f(&self) -> bool;
         }
 
-        #[verus_verify]
         impl<S> Abc<S> {
             fn foo(&self)
                 where S: SomeTrait
@@ -139,7 +137,7 @@ test_verify_one_file! {
     #[test] test_bad_macro_attributes_in_trait code!{
         trait SomeTrait {
             #[requires(true)]
-            fn f(&self) -> bool;
+            type T;
         }
     } => Err(err) => assert_custom_attr_error_msg(err, "Misuse of #[requires()]")
 }
@@ -152,6 +150,7 @@ test_verify_one_file! {
 
         #[verus_verify]
         trait SomeTrait {
+            #[verus_verify]
             #[requires(true)]
             fn f(&self) -> bool;
         }
@@ -169,14 +168,12 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_failed_ensures_macro_attributes code!{
-        #[verus_verify]
         trait SomeTrait {
             #[requires(true)]
             #[ensures(|ret: bool| [true, ret])]
             fn f(&self) -> bool;
         }
 
-        #[verus_verify]
         impl SomeTrait for bool {
             fn f(&self) -> bool {
                 *self
@@ -193,6 +190,7 @@ test_verify_one_file! {
 
         #[verus_verify]
         trait SomeTrait {
+            #[verus_verify]
             #[requires(true)]
             #[ensures(|ret: bool| ret)]
             fn f(&self) -> bool {

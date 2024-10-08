@@ -46,6 +46,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] verus_verify_all_basic_while code! {
+        #[verus_verify_all]
+        fn test1() {
+            let mut i = 0;
+            #[invariant(i <= 10)]
+            while i < 10
+            {
+                i = i + 1;
+            }
+            proof!{assert(i == 10);}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] verus_verify_basic_while code! {
         #[verus_verify]
         fn test1() {
@@ -54,6 +69,26 @@ test_verify_one_file! {
             while i < 10
             {
                 i = i + 1;
+            }
+            proof!{assert(i == 10);}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] verus_verify_basic_loop code! {
+        #[verus_verify]
+        fn test1() {
+            let mut i = 0;
+            #[invariant(i <= 10)]
+            #[invariant_except_break(i <= 9)]
+            #[ensures(i == 10)]
+            loop
+            {
+                i = i + 1;
+                if (i == 10) {
+                    break;
+                }
             }
             proof!{assert(i == 10);}
         }
@@ -74,16 +109,24 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] verus_verify_bad_loop_spec code! {
+    #[test] basic_while_false_invariant code! {
+        #[verus_verify]
         fn test1() {
             let mut i = 0;
-            #[invariant(i <= 10)]
+            #[invariant(i <= 10, false)]
             while i < 10 {
                 i = i + 1;
             }
-            proof!{assert(i == 10);} // FAILS
         }
-    } => Err(err) => assert_custom_attr_error_msg(err, "Misuse of #[invariant].")
+    } => Err(err) => assert_any_vir_error_msg(err, "invariant not satisfied before loop")
+}
+
+test_verify_one_file! {
+    #[test] verus_verify_bad_loop_spec code! {
+        #[verus_verify]
+        #[invariant(true)]
+        fn test1() {}
+    } => Err(err) => assert_custom_attr_error_msg(err, "#[invariant(true)]")
 }
 
 test_verify_one_file! {
