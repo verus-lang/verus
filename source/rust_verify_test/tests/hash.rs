@@ -19,7 +19,17 @@ test_verify_one_file! {
             v2.push(3u8); v2.push(4u8);
             h1.write(v1.as_slice()); h1.write(v2.as_slice());
             h2.write(v1.as_slice()); h2.write(v2.as_slice());
-            assert(h1@ == seq![seq![1u8, 2u8], seq![3u8, 4u8]]);
+            proof {
+                // We need these intermediate assertions to connect
+                // the push-based construction with the sequence literal version
+                let s1 = seq![1u8].push(2u8);
+                let s2 = seq![3u8].push(4u8);
+                assert(s1 =~= seq![1u8, 2u8]);
+                assert(s2 =~= seq![3u8, 4u8]);
+                let hash = seq![h1, h2];
+                assert(hash =~= seq![h1].push(h2));
+                assert(h1@ =~= seq![seq![1u8, 2u8], seq![3u8, 4u8]]);
+            }
             let digest1 = h1.finish();
             let digest2 = h2.finish();
             assert(digest1 == digest2);
