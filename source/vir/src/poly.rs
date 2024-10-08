@@ -366,7 +366,9 @@ fn visit_and_insert_pars(
 }
 
 fn return_typ(ctx: &Ctx, function: &FunctionSstX, is_trait: bool, typ: &Typ) -> Typ {
-    if (is_trait || typ_is_poly(ctx, &function.ret.x.typ)) && function.ens_has_return {
+    if (is_trait || typ_is_poly(ctx, &function.ret.x.typ))
+        && (function.ens_has_return || function.mode == Mode::Spec)
+    {
         coerce_typ_to_poly(ctx, typ)
     } else {
         coerce_typ_to_native(ctx, typ)
