@@ -217,6 +217,7 @@ pub struct Arm {
     pub pat: Pat,
     pub guard: Option<(token::If, Box<Expr>)>,
     pub fat_arrow_token: token::FatArrow,
+    #[allow(dead_code)]
     pub comma: Option<token::Comma>,
 }
 

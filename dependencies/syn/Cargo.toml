@@ -188,3 +188,12 @@ test = false
 [[test]]
 name = "zzz_stable"
 test = false
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(doc_cfg)',
+  'cfg(syn_omit_await_from_token_macro)',
+  'cfg(syn_no_non_exhaustive)',
+  'cfg(syn_no_const_vec_new)',
+  'cfg(syn_no_negative_literal_parse)',
+] }
