@@ -30,7 +30,7 @@ use crate::lifetime_generate::*;
 use crate::verus_items::RustItem;
 use std::collections::{HashMap, HashSet};
 use vir::ast::{
-    AssocTypeImpl, GenericBoundX, GenericBounds, Ident, Path, Primitive, TypDecoration,
+    AssocTypeImpl, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, TypDecoration,
     TypDecorationArg,
 };
 
@@ -75,7 +75,7 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
         vir::ast::TypX::Bool | vir::ast::TypX::Int(..) => {
             Box::new(TypX::Primitive(vir::ast_util::typ_to_diagnostic_str(typ)))
         }
-        vir::ast::TypX::Tuple(ts) => {
+        vir::ast::TypX::Datatype(Dt::Tuple(_), ts, _) => {
             let ts = gen_typs(state, ts);
             // types are unsized, so tuple elements must be boxed:
             let box_name = Id::new(IdKind::Builtin, 0, "Box".to_owned());
@@ -95,7 +95,7 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
         vir::ast::TypX::FnDef(..) => {
             panic!("unexpected function definition in trait type argument")
         }
-        vir::ast::TypX::Datatype(path, typs, _) => {
+        vir::ast::TypX::Datatype(Dt::Path(path), typs, _) => {
             Box::new(TypX::Datatype(state.datatype_name(path), vec![], gen_typs(state, typs)))
         }
         vir::ast::TypX::Primitive(Primitive::Array, ts) => {
@@ -229,6 +229,10 @@ pub(crate) fn gen_check_trait_impl_conflicts(
     state.restart_names();
 
     for d in &vir_crate.datatypes {
+        let Dt::Path(path) = &d.x.name else {
+            panic!("Verus internal error: gen_check_trait_impl_conflicts expects Dt::Path");
+        };
+
         let (generic_params, generic_bounds) = gen_generics(
             state,
             &d.x.typ_params.iter().map(|(x, _)| x.clone()).collect(),
@@ -244,7 +248,7 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             }
         }
         let decl = DatatypeDecl {
-            name: state.datatype_name(&d.x.path),
+            name: state.datatype_name(path),
             span: spans.from_air_span(&d.span, None),
             implements_copy: None,
             generic_params,

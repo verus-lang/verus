@@ -22,7 +22,7 @@ use rustc_span::symbol::kw;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use vir::ast::{AutospecUsage, DatatypeTransparency, Fun, FunX, Function, Mode, Path};
+use vir::ast::{AutospecUsage, DatatypeTransparency, Dt, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
 use vir::def::{field_ident_from_rust, VERUS_SPEC};
 use vir::messages::AstId;
@@ -885,30 +885,32 @@ fn erase_call<'tcx>(
         ResolvedCall::CompilableOperator(op) => {
             use crate::erase::CompilableOperator::*;
             let builtin_method = match op {
-                SmartPtrClone { is_method } => Some((*is_method, "clone")),
-                TrackedGet => Some((true, "get")),
-                TrackedBorrow => Some((true, "borrow")),
-                TrackedBorrowMut => Some((true, "borrow_mut")),
-                TrackedNew | TrackedExec => Some((false, "tracked_new")),
-                TrackedExecBorrow => Some((false, "tracked_exec_borrow")),
-                RcNew => Some((false, "rc_new")),
-                ArcNew => Some((false, "arc_new")),
-                BoxNew => Some((false, "box_new")),
+                SmartPtrClone { is_method } => Some((*is_method, "clone", false)),
+                TrackedGet => Some((true, "get", false)),
+                TrackedBorrow => Some((true, "borrow", false)),
+                TrackedBorrowMut => Some((true, "borrow_mut", false)),
+                TrackedNew | TrackedExec => Some((false, "tracked_new", false)),
+                TrackedExecBorrow => Some((false, "tracked_exec_borrow", false)),
+                RcNew => Some((false, "rc_new", expect_spec)),
+                ArcNew => Some((false, "arc_new", expect_spec)),
+                BoxNew => Some((false, "box_new", expect_spec)),
                 GhostExec => None,
                 IntIntrinsic | Implies => None,
-                UseTypeInvariant => Some((false, "use_type_invariant")),
+                UseTypeInvariant => Some((false, "use_type_invariant", false)),
             };
-            if let Some((true, method)) = builtin_method {
+            if let Some((true, method, expect_spec_inside)) = builtin_method {
                 assert!(receiver.is_some());
                 assert!(args_slice.len() == 0);
                 let Some(receiver) = receiver else { panic!() };
-                let exp = erase_expr(ctxt, state, expect_spec, &receiver).expect("builtin method");
+                let exp =
+                    erase_expr(ctxt, state, expect_spec_inside, &receiver).expect("builtin method");
                 mk_exp(ExpX::BuiltinMethod(exp, method.to_string()))
-            } else if let Some((false, func)) = builtin_method {
+            } else if let Some((false, func, expect_spec_inside)) = builtin_method {
                 assert!(receiver.is_none());
                 assert!(args_slice.len() == 1);
                 let requires_arg = matches!(op, UseTypeInvariant);
-                let exp_opt = erase_expr(ctxt, state, expect_spec && !requires_arg, &args_slice[0]);
+                let exp_opt =
+                    erase_expr(ctxt, state, expect_spec_inside && !requires_arg, &args_slice[0]);
                 let exp = match exp_opt {
                     Some(exp) => exp,
                     None => {
@@ -2695,7 +2697,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         ctxt.functions.insert(f.x.name.clone(), Some(f.clone())).map(|_| panic!("{:?}", &f.x.name));
     }
     for d in &erasure_hints.vir_crate.datatypes {
-        ctxt.datatypes.insert(d.x.path.clone(), d.clone()).map(|_| panic!("{:?}", &d.x.path));
+        if let Dt::Path(path) = &d.x.name {
+            ctxt.datatypes.insert(path.clone(), d.clone()).map(|_| panic!("{:?}", &path));
+        }
     }
     for (id, _span) in &erasure_hints.ignored_functions {
         ctxt.ignored_functions.insert(*id);

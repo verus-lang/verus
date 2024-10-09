@@ -225,8 +225,6 @@ pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
     Int(IntRange),
-    /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
-    Tuple(Typs),
     /// `spec_fn` type (t1, ..., tn) -> t0.
     SpecFn(Typs, Typ),
     /// Executable function types (with a requires and ensures)
@@ -240,7 +238,7 @@ pub enum TypX {
     /// FnDef axioms to introduce.
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
-    Datatype(Path, Typs, ImplPaths),
+    Datatype(Dt, Typs, ImplPaths),
     /// Other primitive type (applied to type arguments)
     Primitive(Primitive, Typs),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
@@ -365,9 +363,11 @@ pub enum VariantCheck {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
 pub struct FieldOpr {
-    pub datatype: Path,
+    pub datatype: Dt,
     pub variant: Ident,
     pub field: Ident,
+    /// Does this come from a get_variant_field / get_union_field builtin?
+    /// (This is relevant for mode-checking.)
     pub get_variant: bool,
     pub check: VariantCheck,
 }
@@ -392,9 +392,7 @@ pub enum UnaryOpr {
     /// (should only be used when sst_to_air::typ_invariant returns Some(_))
     HasType(Typ),
     /// Test whether expression is a particular variant of a datatype
-    IsVariant { datatype: Path, variant: Ident },
-    /// Read .0, .1, etc. from tuple (Note: ast_simplify replaces this with Field)
-    TupleField { tuple_arity: usize, field: usize },
+    IsVariant { datatype: Dt, variant: Ident },
     /// Read field from variant of datatype
     Field(FieldOpr),
     /// Bounded integer bounds. The argument is the arch word bits (16, 32, etc.)
@@ -609,12 +607,10 @@ pub enum PatternX {
         mutable: bool,
         sub_pat: Pattern,
     },
-    /// Note: ast_simplify replaces this with Constructor
-    Tuple(Patterns),
     /// Match constructor of datatype Path, variant Ident
     /// For tuple-style variants, the fields are named "_0", "_1", etc.
     /// Fields can appear **in any order** even for tuple variants.
-    Constructor(Path, Ident, Binders<Pattern>),
+    Constructor(Dt, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
     /// Matches something equal to the value of this expr
     /// This only supports literals and consts, so we don't need to worry
@@ -764,13 +760,11 @@ pub enum ExprX {
     Loc(Expr),
     /// Call to a function passing some expression arguments
     Call(CallTarget, Exprs),
-    /// Note: ast_simplify replaces this with Ctor
-    Tuple(Exprs),
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
     /// For tuple-style variants, the fields are named "_0", "_1", etc.
     /// Fields can appear **in any order** even for tuple variants.
-    Ctor(Path, Ident, Binders<Expr>, Option<Expr>),
+    Ctor(Dt, Ident, Binders<Expr>, Option<Expr>),
     /// Primitive 0-argument operation
     NullaryOpr(NullaryOpr),
     /// Primitive unary operation
@@ -1162,10 +1156,19 @@ pub enum DatatypeTransparency {
     WhenVisible(Visibility),
 }
 
+/// After ast_simplify, all the tuples are added to the Krate, so we can uniformly
+/// use Dt as a key. Prior to ast_simplify you need to use Paths as keys and handle
+/// tuples separately.
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Dt {
+    Path(Path),
+    Tuple(usize),
+}
+
 /// struct or enum
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct DatatypeX {
-    pub path: Path,
+    pub name: Dt,
     /// Similar to FunctionX proxy field.
     /// If this datatype is declared via a proxy (a type labeled external_type_specification)
     /// then this points to the proxy.

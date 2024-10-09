@@ -6,7 +6,7 @@ use crate::ast::{
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{types_equal, undecorate_typ, QUANT_FORALL};
+use crate::ast_util::{types_equal, undecorate_typ, unit_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
 use crate::messages::{error, error_with_label, internal_error, warning, Span, ToAny};
@@ -14,7 +14,7 @@ use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
-use crate::sst_util::{sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt};
+use crate::sst_util::{sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::vec_map_result;
 use crate::visitor::VisitorControlFlow;
@@ -89,7 +89,7 @@ impl ReturnValue {
     fn to_value(self) -> Option<Exp> {
         match self {
             ReturnValue::Some(e) => Some(e),
-            ReturnValue::ImplicitUnit(span) => Some(lowered_unit_value(&span)),
+            ReturnValue::ImplicitUnit(span) => Some(sst_unit_value(&span)),
             ReturnValue::Never => None,
         }
     }
@@ -97,7 +97,7 @@ impl ReturnValue {
     fn expect_value(self) -> Exp {
         match self {
             ReturnValue::Some(e) => e,
-            ReturnValue::ImplicitUnit(span) => lowered_unit_value(&span),
+            ReturnValue::ImplicitUnit(span) => sst_unit_value(&span),
             ReturnValue::Never => panic!("ReturnValue::Never unexpected here"),
         }
     }
@@ -748,19 +748,6 @@ pub(crate) fn expr_to_stm_or_error(
     }
 }
 
-/// Unit type, in the lowered form that ast_simplify produces
-fn lowered_unit_typ() -> Typ {
-    let path = crate::def::prefix_tuple_type(0);
-    Arc::new(TypX::Datatype(path, Arc::new(vec![]), Arc::new(vec![])))
-}
-
-/// Unit value, in the lowered form that ast_simplify produces
-fn lowered_unit_value(span: &Span) -> Exp {
-    let datatype = crate::def::prefix_tuple_type(0);
-    let variant = crate::def::prefix_tuple_variant(0);
-    SpannedTyped::new(span, &lowered_unit_typ(), ExpX::Ctor(datatype, variant, Arc::new(vec![])))
-}
-
 pub(crate) fn stms_to_one_stm(span: &Span, stms: Vec<Stm>) -> Stm {
     if stms.len() == 1 {
         stms[0].clone()
@@ -911,7 +898,7 @@ fn if_to_stm(
             // must also return a unit (either implicit or explicit).
             // If this sanity check fails, then it's likely we screwed up and
             // the alleged implicit unit branch was actually a never-return.
-            assert!(types_equal(&expr.typ, &lowered_unit_typ()));
+            assert!(types_equal(&expr.typ, &unit_typ()));
 
             let stm1 = stms_to_one_stm(&expr.span, stms1);
             let stm2 = stms_to_one_stm_opt(&expr.span, stms2);
@@ -1195,9 +1182,6 @@ pub(crate) fn expr_to_stm_opt(
                     }
                 }
             }
-        }
-        ExprX::Tuple(_) => {
-            panic!("internal error: Tuple should have been simplified by ast_simplify")
         }
         ExprX::Ctor(p, i, binders, update) => {
             assert!(update.is_none()); // should be simplified by ast_simplify
@@ -2110,7 +2094,7 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::Return(e1) => {
             let (mut stms, ret_exp) = match e1 {
-                None => (vec![], lowered_unit_value(&expr.span)),
+                None => (vec![], sst_unit_value(&expr.span)),
                 Some(e) => {
                     let (ret_stms, exp) = expr_to_stm_opt(ctx, state, e)?;
                     let exp = unwrap_or_return_never!(exp, ret_stms);

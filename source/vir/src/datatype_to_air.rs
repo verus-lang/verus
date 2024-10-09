@@ -1,20 +1,21 @@
 use crate::ast::{
-    DatatypeTransparency, Field, Ident, Idents, Mode, Path, Typ, TypX, VarIdent, Variants,
+    DatatypeTransparency, Dt, Field, Ident, Idents, Mode, Path, Typ, TypX, VarIdent, Variants,
 };
 use crate::ast_util::{
     air_unique_var, is_visible_to_of_owner, path_as_friendly_rust_name, LowerUniqueVar,
 };
 use crate::context::Ctx;
 use crate::def::{
-    is_variant_ident, prefix_box, prefix_spec_fn_type, prefix_tuple_param, prefix_type_id,
-    prefix_unbox, variant_field_ident, variant_field_ident_internal, variant_ident, Spanned,
-    QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
+    encode_dt_as_path, is_variant_ident, prefix_box, prefix_spec_fn_type, prefix_tuple_param,
+    prefix_type_id, prefix_unbox, variant_field_ident, variant_field_ident_internal, variant_ident,
+    Spanned, QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
     QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
 };
 use crate::messages::Span;
 use crate::sst::{Par, ParPurpose, ParX};
 use crate::sst_to_air::{
-    datatype_id, expr_has_type, monotyp_to_path, path_to_air_ident, typ_invariant, typ_to_air,
+    datatype_id, dt_to_air_ident, expr_has_type, monotyp_to_path, path_to_air_ident, typ_invariant,
+    typ_to_air,
 };
 use crate::sst_to_air_func::{func_bind, func_bind_trig, func_def_args};
 use crate::util::vec_map;
@@ -30,14 +31,14 @@ fn datatype_to_air(ctx: &Ctx, datatype: &crate::ast::Datatype) -> air::ast::Data
     for variant in datatype.x.variants.iter() {
         let mut fields: Vec<air::ast::Field> = Vec::new();
         for field in variant.fields.iter() {
-            let id =
-                variant_field_ident_internal(&datatype.x.path, &variant.name, &field.name, true);
+            let path = encode_dt_as_path(&datatype.x.name);
+            let id = variant_field_ident_internal(&path, &variant.name, &field.name, true);
             fields.push(ident_binder(&id, &typ_to_air(ctx, &field.a.0)));
         }
-        let id = variant_ident(&datatype.x.path, &variant.name);
+        let id = variant_ident(&datatype.x.name, &variant.name);
         variants.push(ident_binder(&id, &Arc::new(fields)));
     }
-    Arc::new(air::ast::BinderX { name: path_to_air_ident(&datatype.x.path), a: Arc::new(variants) })
+    Arc::new(air::ast::BinderX { name: dt_to_air_ident(&datatype.x.name), a: Arc::new(variants) })
 }
 
 pub fn is_datatype_transparent(source_module: &Path, datatype: &crate::ast::Datatype) -> bool {
@@ -67,7 +68,6 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
         TypX::Int(_) => false,
         TypX::Bool => false,
-        TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::SpecFn(_, _) => true,
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
@@ -94,6 +94,13 @@ enum DTypId {
     Primitive(crate::ast::Primitive),
 }
 
+enum EncodedDtKind {
+    Dt(Dt),
+    Monotyp,
+    FnSpec,
+    Array,
+}
+
 fn datatype_or_fun_to_air_commands(
     ctx: &Ctx,
     field_commands: &mut Vec<Command>,
@@ -101,14 +108,13 @@ fn datatype_or_fun_to_air_commands(
     box_commands: &mut Vec<Command>,
     axiom_commands: &mut Vec<Command>,
     span: &Span,
-    dpath: &Path,
+    kind: EncodedDtKind,
+    dpath: &Path, // encoded path
     dtyp: &air::ast::Typ,
     dtyp_id: Option<DTypId>,
-    datatyp: Option<Typ>,
+    datatyp: Typ,
     tparams: &Idents,
     variants: &Variants,
-    is_fun: bool,
-    is_array: bool,
     declare_box: bool,
     add_height: bool,
     add_ext_equal: bool,
@@ -134,16 +140,13 @@ fn datatype_or_fun_to_air_commands(
 
     if declare_box {
         // box
-        let decl_box = Arc::new(DeclX::Fun(
-            prefix_box(&dpath),
-            Arc::new(vec![dtyp.clone()]),
-            apolytyp.clone(),
-        ));
+        let decl_box =
+            Arc::new(DeclX::Fun(prefix_box(dpath), Arc::new(vec![dtyp.clone()]), apolytyp.clone()));
         box_commands.push(Arc::new(CommandX::Global(decl_box)));
 
         // unbox
         let decl_unbox = Arc::new(DeclX::Fun(
-            prefix_unbox(&dpath),
+            prefix_unbox(dpath),
             Arc::new(vec![apolytyp.clone()]),
             dtyp.clone(),
         ));
@@ -166,15 +169,10 @@ fn datatype_or_fun_to_air_commands(
     let x_param = |typ: &Typ| var_param(x.clone(), typ);
     let x_params = |typ: &Typ| Arc::new(vec![x_param(typ)]);
     let typ_args = Arc::new(vec_map(&tparams, |t| Arc::new(TypX::TypParam(t.clone()))));
-    let datatyp = if let Some(datatyp) = &datatyp {
-        datatyp.clone()
-    } else {
-        Arc::new(TypX::Datatype(dpath.clone(), typ_args.clone(), Arc::new(vec![])))
-    };
-    let box_x = ident_apply(&prefix_box(&dpath), &vec![x_var.clone()]);
-    let unbox_x = ident_apply(&prefix_unbox(&dpath), &vec![x_var.clone()]);
-    let box_unbox_x = ident_apply(&prefix_box(&dpath), &vec![unbox_x.clone()]);
-    let unbox_box_x = ident_apply(&prefix_unbox(&dpath), &vec![box_x.clone()]);
+    let box_x = ident_apply(&prefix_box(dpath), &vec![x_var.clone()]);
+    let unbox_x = ident_apply(&prefix_unbox(dpath), &vec![x_var.clone()]);
+    let box_unbox_x = ident_apply(&prefix_box(dpath), &vec![unbox_x.clone()]);
+    let unbox_box_x = ident_apply(&prefix_unbox(dpath), &vec![box_x.clone()]);
     let id = match dtyp_id {
         Some(DTypId::Expr(e)) => e,
         Some(DTypId::Primitive(p)) => crate::sst_to_air::primitive_id(&p, &typ_args),
@@ -206,7 +204,7 @@ fn datatype_or_fun_to_air_commands(
     let mut fun_args: Option<Arc<Vec<Expr>>> = None;
     let mut fun_params: Option<Vec<Par>> = None;
     let mut fun_has: Option<Expr> = None;
-    if is_fun {
+    if matches!(kind, EncodedDtKind::FnSpec) {
         let mut params: Vec<Par> = Vec::new();
         let mut args: Vec<Expr> = Vec::new();
         let mut pre: Vec<Expr> = Vec::new();
@@ -254,7 +252,7 @@ fn datatype_or_fun_to_air_commands(
         let inner_imply = mk_implies(&inner_pre, &has_app);
         let inner_forall = mk_bind_expr(&inner_bind, &inner_imply);
         let mk_fun = str_apply(crate::def::MK_FUN, &vec![x_var.clone()]);
-        let box_mk_fun = ident_apply(&prefix_box(&dpath), &vec![mk_fun]);
+        let box_mk_fun = ident_apply(&prefix_box(dpath), &vec![mk_fun]);
         let has_box_mk_fun = expr_has_type(&box_mk_fun, &id);
         let trigs = vec![has_box_mk_fun.clone()];
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_CONSTRUCTOR);
@@ -301,37 +299,39 @@ fn datatype_or_fun_to_air_commands(
 
     // constructor and field axioms
     for variant in variants.iter() {
-        if ctx.datatypes_with_invariant.contains(dpath) {
-            // constructor invariant axiom:
-            //   forall typs, arg1 ... argn.
-            //     inv1 && ... && invn => has_type(box(ctor(arg1 ... argn)), T(typs))
-            // trigger on has_type(box(ctor(arg1 ... argn)), T(typs))
-            let params = vec_map(&*variant.fields, |f| field_to_par(span, f));
-            let params = Arc::new(params);
-            let ctor_args = func_def_args(&Arc::new(vec![]), &params);
-            let ctor = ident_apply(&variant_ident(&dpath, &variant.name), &ctor_args);
-            let box_ctor = ident_apply(&prefix_box(&dpath), &vec![ctor]);
-            let has_ctor = expr_has_type(&box_ctor, &datatype_id(&dpath, &typ_args));
-            let mut pre: Vec<Expr> = Vec::new();
-            for field in variant.fields.iter() {
-                let (typ, _, _) = &field.a;
-                let dis = crate::ast::VarIdentDisambiguate::Field;
-                let name = crate::ast_util::str_unique_var(&("_".to_string() + &field.name), dis);
-                if let Some(inv) = typ_invariant(ctx, typ, &ident_var(&name.lower())) {
-                    pre.push(inv);
+        if let EncodedDtKind::Dt(dt) = &kind {
+            if ctx.datatypes_with_invariant.contains(dt) {
+                // constructor invariant axiom:
+                //   forall typs, arg1 ... argn.
+                //     inv1 && ... && invn => has_type(box(ctor(arg1 ... argn)), T(typs))
+                // trigger on has_type(box(ctor(arg1 ... argn)), T(typs))
+                let params = vec_map(&*variant.fields, |f| field_to_par(span, f));
+                let params = Arc::new(params);
+                let ctor_args = func_def_args(&Arc::new(vec![]), &params);
+                let ctor = ident_apply(&variant_ident(&dt, &variant.name), &ctor_args);
+                let box_ctor = ident_apply(&prefix_box(dpath), &vec![ctor]);
+                let has_ctor = expr_has_type(&box_ctor, &datatype_id(dpath, &typ_args));
+                let mut pre: Vec<Expr> = Vec::new();
+                for field in variant.fields.iter() {
+                    let (typ, _, _) = &field.a;
+                    let dis = crate::ast::VarIdentDisambiguate::Field;
+                    let name =
+                        crate::ast_util::str_unique_var(&("_".to_string() + &field.name), dis);
+                    if let Some(inv) = typ_invariant(ctx, typ, &ident_var(&name.lower())) {
+                        pre.push(inv);
+                    }
                 }
+                let name = format!("{}_{}", &variant_ident(&dt, &variant.name), QID_CONSTRUCTOR);
+                let bind = func_bind(ctx, name, tparams, &params, &has_ctor, false);
+                let imply = mk_implies(&mk_and(&pre), &has_ctor);
+                let forall = mk_bind_expr(&bind, &imply);
+                let axiom = mk_unnamed_axiom(forall);
+                axiom_commands.push(Arc::new(CommandX::Global(axiom)));
             }
-            let name = format!("{}_{}", &variant_ident(&dpath, &variant.name), QID_CONSTRUCTOR);
-            let bind = func_bind(ctx, name, tparams, &params, &has_ctor, false);
-            let imply = mk_implies(&mk_and(&pre), &has_ctor);
-            let forall = mk_bind_expr(&bind, &imply);
-            let axiom = mk_unnamed_axiom(forall);
-            axiom_commands.push(Arc::new(CommandX::Global(axiom)));
         }
         for field in variant.fields.iter() {
-            let id = variant_field_ident(&dpath, &variant.name, &field.name);
-            let internal_id =
-                variant_field_ident_internal(&dpath, &variant.name, &field.name, true);
+            let id = variant_field_ident(dpath, &variant.name, &field.name);
+            let internal_id = variant_field_ident_internal(dpath, &variant.name, &field.name, true);
             let (typ, _, _) = &field.a;
             let xfield = ident_apply(&id, &vec![x_var.clone()]);
             let xfield_internal = ident_apply(&internal_id, &vec![x_var.clone()]);
@@ -358,29 +358,37 @@ fn datatype_or_fun_to_air_commands(
             let axiom = mk_unnamed_axiom(forall);
             axiom_commands.push(Arc::new(CommandX::Global(axiom)));
 
-            if ctx.datatypes_with_invariant.contains(dpath) {
-                if let Some(inv_f) = typ_invariant(ctx, typ, &xfield_unbox) {
-                    // field invariant axiom:
-                    //   forall typs, x. has_type(x, T(typs)) => inv_f(unbox(x).f)
-                    // trigger on unbox(x).f, has_type(x, T(typs))
-                    let trigs = vec![xfield_unbox.clone(), has.clone()];
-                    let name = format!("{}_{}", id, QID_INVARIANT);
-                    let bind =
-                        func_bind_trig(ctx, name, tparams, &x_params(&vpolytyp), &trigs, false);
-                    let imply = mk_implies(&has, &inv_f);
-                    let forall = mk_bind_expr(&bind, &imply);
-                    let axiom = mk_unnamed_axiom(forall);
-                    axiom_commands.push(Arc::new(CommandX::Global(axiom)));
+            if let EncodedDtKind::Dt(dt) = &kind {
+                if ctx.datatypes_with_invariant.contains(dt) {
+                    if let Some(inv_f) = typ_invariant(ctx, typ, &xfield_unbox) {
+                        // field invariant axiom:
+                        //   forall typs, x. has_type(x, T(typs)) => inv_f(unbox(x).f)
+                        // trigger on unbox(x).f, has_type(x, T(typs))
+                        let trigs = vec![xfield_unbox.clone(), has.clone()];
+                        let name = format!("{}_{}", id, QID_INVARIANT);
+                        let bind =
+                            func_bind_trig(ctx, name, tparams, &x_params(&vpolytyp), &trigs, false);
+                        let imply = mk_implies(&has, &inv_f);
+                        let forall = mk_bind_expr(&bind, &imply);
+                        let axiom = mk_unnamed_axiom(forall);
+                        axiom_commands.push(Arc::new(CommandX::Global(axiom)));
+                    }
                 }
             }
         }
     }
 
-    if !ctx.datatypes_with_invariant.contains(dpath) && declare_box && !is_fun && !is_array {
-        // If there are no visible refinement types (e.g. no refinement type fields,
-        // or type is completely abstract to us), then has_type always holds:
-        //   forall typs, x. has_type(box(x), T(typs))
-        // trigger on has_type(box(x), T(typs))
+    // If there are no visible refinement types (e.g. no refinement type fields,
+    // or type is completely abstract to us), then has_type always holds:
+    //   forall typs, x. has_type(box(x), T(typs))
+    // trigger on has_type(box(x), T(typs))
+    let has_type_always_holds = match &kind {
+        EncodedDtKind::Dt(dt) => !ctx.datatypes_with_invariant.contains(dt),
+        EncodedDtKind::Array => false,
+        EncodedDtKind::FnSpec => false,
+        EncodedDtKind::Monotyp => true,
+    };
+    if declare_box && has_type_always_holds {
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_HAS_TYPE_ALWAYS);
         let bind = func_bind(ctx, name, tparams, &x_params(&datatyp), &has_box, false);
         let forall = mk_bind_expr(&bind, &has_box);
@@ -390,15 +398,19 @@ fn datatype_or_fun_to_air_commands(
     // height axiom
     // (make sure that this stays in sync with recursive_types::check_well_founded)
     if add_height {
+        let my_dt = match &kind {
+            EncodedDtKind::Dt(dt) => dt,
+            _ => panic!("Verus internal error: add_height should only be for DtKind::Dt"),
+        };
         for variant in variants.iter() {
             for field in variant.fields.iter() {
                 use crate::recursive_types::TypNode;
                 let typ = &field.a.0;
                 let mut recursion_or_tparam = |t: &Typ| match &**t {
-                    TypX::Datatype(path, _, _)
+                    TypX::Datatype(dt, _, _)
                         if ctx.global.datatype_graph.in_same_scc(
-                            &TypNode::Datatype(path.clone()),
-                            &TypNode::Datatype(dpath.clone()),
+                            &TypNode::Datatype(dt.clone()),
+                            &TypNode::Datatype(my_dt.clone()),
                         ) =>
                     {
                         Err(())
@@ -423,7 +435,7 @@ fn datatype_or_fun_to_air_commands(
                 let fun_or_map_ret = {
                     match unboxed {
                         TypX::SpecFn(_, ret) => Some(ret),
-                        TypX::Datatype(d, targs, _)
+                        TypX::Datatype(Dt::Path(d), targs, _)
                             if crate::ast_util::path_as_vstd_name(d)
                                 == Some("map::Map".to_string())
                                 && targs.len() == 2 =>
@@ -456,7 +468,7 @@ fn datatype_or_fun_to_air_commands(
                     // TODO: allow recursive_function_field across mutually recursive datatypes
                     // that have type parameters (e.g. by inlining the recursive types).
                     let our_typ =
-                        Arc::new(TypX::Datatype(dpath.clone(), typ_args.clone(), Arc::new(vec![])));
+                        Arc::new(TypX::Datatype(my_dt.clone(), typ_args.clone(), Arc::new(vec![])));
                     use crate::visitor::VisitorControlFlow;
                     let mut visitor = |t: &Typ| -> VisitorControlFlow<()> {
                         if crate::ast_util::types_equal(t, &our_typ) {
@@ -473,10 +485,10 @@ fn datatype_or_fun_to_air_commands(
                     false
                 };
                 let nodes = crate::prelude::datatype_height_axioms(
-                    &dpath,
+                    dpath,
                     &field_box_path,
-                    &is_variant_ident(dpath, &*variant.name),
-                    &variant_field_ident(&dpath, &variant.name, &field.name),
+                    &is_variant_ident(my_dt, &*variant.name),
+                    &variant_field_ident(dpath, &variant.name, &field.name),
                     recursive_function_field,
                 );
                 let axioms =
@@ -497,7 +509,7 @@ fn datatype_or_fun_to_air_commands(
         let y = str_ident("y");
         let y_var = ident_var(&y);
         let y_param = |typ: &Typ| var_param(air_unique_var(&y), typ);
-        let unbox_y = ident_apply(&prefix_unbox(&dpath), &vec![y_var.clone()]);
+        let unbox_y = ident_apply(&prefix_unbox(dpath), &vec![y_var.clone()]);
         let has_y = expr_has_type(&y_var, &id);
         let eq_command = |s_name: &str, pre: &Vec<Expr>| {
             let params = Arc::new(vec![deep_param.clone(), x_param(&vpolytyp), y_param(&vpolytyp)]);
@@ -514,6 +526,11 @@ fn datatype_or_fun_to_air_commands(
             Arc::new(CommandX::Global(axiom))
         };
         for variant in variants.iter() {
+            let my_dt = match &kind {
+                EncodedDtKind::Dt(dt) => dt,
+                _ => panic!("Verus internal error: variants should only be for DtKind::Dt"),
+            };
+
             // per-variant ext_equal axiom:
             //   forall typs, deep: bool, x: Poly, y: Poly.
             //     has_x && has_y && veq && feq1 && ... && feqn ==> ext_eq(deep, typ, x, y)
@@ -526,7 +543,7 @@ fn datatype_or_fun_to_air_commands(
             //   - ext_eq(deep, typk, x.fk, y.fk)
             let mut pre: Vec<Expr> = vec![has_x.clone(), has_y.clone()];
             if variants.len() > 1 {
-                let vid = is_variant_ident(dpath, &*variant.name);
+                let vid = is_variant_ident(my_dt, &*variant.name);
                 pre.push(ident_apply(&vid, &vec![unbox_x.clone()]));
                 pre.push(ident_apply(&vid, &vec![unbox_y.clone()]));
             }
@@ -534,10 +551,10 @@ fn datatype_or_fun_to_air_commands(
                 use crate::recursive_types::TypNode;
                 let (typ, _, _) = &field.a;
                 let mut is_recursive = |t: &Typ| match &**t {
-                    TypX::Datatype(path, _, _)
+                    TypX::Datatype(dt, _, _)
                         if ctx.global.datatype_graph.in_same_scc(
-                            &TypNode::Datatype(path.clone()),
-                            &TypNode::Datatype(dpath.clone()),
+                            &TypNode::Datatype(dt.clone()),
+                            &TypNode::Datatype(my_dt.clone()),
                         ) =>
                     {
                         Err(())
@@ -547,7 +564,7 @@ fn datatype_or_fun_to_air_commands(
                 let uses_ext = uses_ext_equal(ctx, typ)
                     // to avoid trigger matching loops, use ==, not ext_equal, for recursive fields:
                     && !crate::ast_visitor::typ_visitor_check(typ, &mut is_recursive).is_err();
-                let fid = variant_field_ident(&dpath, &variant.name, &field.name);
+                let fid = variant_field_ident(dpath, &variant.name, &field.name);
                 let xfield = ident_apply(&fid, &vec![unbox_x.clone()]);
                 let yfield = ident_apply(&fid, &vec![unbox_y.clone()]);
                 let eq = if uses_ext {
@@ -564,9 +581,9 @@ fn datatype_or_fun_to_air_commands(
                 };
                 pre.push(eq);
             }
-            axiom_commands.push(eq_command(&variant_ident(&dpath, &variant.name), &pre));
+            axiom_commands.push(eq_command(&variant_ident(&my_dt, &variant.name), &pre));
         }
-        if is_fun {
+        if matches!(kind, EncodedDtKind::FnSpec) {
             // SpecFn ext_equal axiom:
             //   forall typ1 ... typn, tret, deep: bool, x: Poly, y: Poly.
             //     has_typex && has_typey &&
@@ -622,14 +639,13 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &mut box_commands,
             &mut axiom_commands,
             &ctx.global.no_span,
+            EncodedDtKind::FnSpec,
             &prefix_spec_fn_type(*spec_fn_n_params),
             &Arc::new(air::ast::TypX::Fun),
             None,
-            Some(Arc::new(TypX::SpecFn(Arc::new(vec![]), Arc::new(TypX::Bool)))),
+            Arc::new(TypX::SpecFn(Arc::new(vec![]), Arc::new(TypX::Bool))),
             &Arc::new(tparams),
             &Arc::new(vec![]),
-            true,
-            false,
             true,
             false,
             true,
@@ -644,14 +660,13 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &mut box_commands,
             &mut axiom_commands,
             &ctx.global.no_span,
+            EncodedDtKind::Array,
             &crate::def::array_type(),
             &Arc::new(air::ast::TypX::Fun),
             Some(DTypId::Primitive(crate::ast::Primitive::Array)),
-            Some(Arc::new(TypX::Primitive(crate::ast::Primitive::Array, Arc::new(vec![])))),
+            Arc::new(TypX::Primitive(crate::ast::Primitive::Array, Arc::new(vec![]))),
             &Arc::new(vec![Arc::new("T".to_string()), Arc::new("N".to_string())]),
             &Arc::new(vec![]),
-            false,
-            true,
             true,
             false,
             true,
@@ -671,14 +686,13 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &mut box_commands,
             &mut axiom_commands,
             &ctx.global.no_span,
+            EncodedDtKind::Monotyp,
             &dpath,
             &str_typ(&path_to_air_ident(&dpath)),
             Some(DTypId::Expr(crate::sst_to_air::monotyp_to_id(monotyp).last().unwrap().clone())),
-            Some(crate::poly::monotyp_to_typ(monotyp)),
+            crate::poly::monotyp_to_typ(monotyp),
             &Arc::new(vec![]),
             &Arc::new(vec![]),
-            false,
-            false,
             true,
             false,
             false,
@@ -686,7 +700,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     }
 
     for datatype in datatypes.iter() {
-        let dpath = &datatype.x.path;
+        let dt = &datatype.x.name;
         let is_transparent = is_datatype_transparent(&source_module.x.path, datatype);
 
         if is_transparent {
@@ -699,6 +713,9 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             tparams.push(name.clone());
         }
 
+        let typ_args = Arc::new(vec_map(&tparams, |t| Arc::new(TypX::TypParam(t.clone()))));
+        let datatyp = Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
+
         datatype_or_fun_to_air_commands(
             ctx,
             &mut field_commands,
@@ -706,14 +723,13 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             &mut box_commands,
             &mut axiom_commands,
             &datatype.span,
-            dpath,
-            &str_typ(&path_to_air_ident(dpath)),
+            EncodedDtKind::Dt(dt.clone()),
+            &encode_dt_as_path(dt),
+            &str_typ(&dt_to_air_ident(dt)),
             None,
-            None,
+            datatyp,
             &Arc::new(tparams),
             &datatype.x.variants,
-            false,
-            false,
             is_transparent,
             is_transparent,
             is_transparent && datatype.x.ext_equal,

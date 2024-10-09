@@ -76,9 +76,9 @@ because x is used both for f and for +.
 */
 
 use crate::ast::{
-    AssocTypeImpl, BinaryOp, Datatype, DatatypeX, FieldOpr, FunctionKind, IntRange, Mode,
-    NullaryOpr, Path, Primitive, SpannedTyped, Typ, TypDecorationArg, TypX, Typs, UnaryOp,
-    UnaryOpr, VarBinder, VarBinderX, VarBinders, VarIdent, Variant,
+    AssocTypeImpl, BinaryOp, Datatype, DatatypeX, Dt, FieldOpr, FunctionKind, IntRange, Mode,
+    NullaryOpr, Primitive, SpannedTyped, Typ, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
+    VarBinder, VarBinderX, VarBinders, VarIdent, Variant,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -101,7 +101,7 @@ pub type MonoTyps = Arc<Vec<MonoTyp>>;
 pub enum MonoTypX {
     Bool,
     Int(IntRange),
-    Datatype(Path, MonoTyps),
+    Datatype(Dt, MonoTyps),
     Decorate(crate::ast::TypDecoration, MonoTyp),
     Decorate2(crate::ast::TypDecoration, MonoTyps),
     Primitive(Primitive, MonoTyps),
@@ -149,7 +149,6 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
-        TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
         TypX::Boxed(..) | TypX::TypParam(..) | TypX::SpecFn(..) | TypX::FnDef(..) => None,
@@ -187,7 +186,6 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
-        TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(path, _, _) => {
             if ctx.datatype_is_transparent[path] {
                 false
@@ -214,7 +212,6 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
-        TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(path, _, _) => {
             if ctx.datatype_is_transparent[path] {
                 typ.clone()
@@ -251,7 +248,6 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
-        TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Datatype(..) | TypX::Primitive(_, _) => Arc::new(TypX::Boxed(typ.clone())),
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t)))
@@ -274,7 +270,6 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
-        TypX::Tuple(_) => panic!("internal error: Tuple should be removed by ast_simplify"),
         TypX::Decorate(..) => {
             panic!("internal error: Decorate should be removed by undecorate_typ")
         }
@@ -371,7 +366,9 @@ fn visit_and_insert_pars(
 }
 
 fn return_typ(ctx: &Ctx, function: &FunctionSstX, is_trait: bool, typ: &Typ) -> Typ {
-    if (is_trait || typ_is_poly(ctx, &function.ret.x.typ)) && function.ens_has_return {
+    if (is_trait || typ_is_poly(ctx, &function.ret.x.typ))
+        && (function.ens_has_return || function.mode == Mode::Spec)
+    {
         coerce_typ_to_poly(ctx, typ)
     } else {
         coerce_typ_to_native(ctx, typ)
@@ -529,9 +526,6 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
             match op {
                 UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => {
                     panic!("internal error: already has Box/Unbox")
-                }
-                UnaryOpr::TupleField { .. } => {
-                    panic!("internal error: ast_simplify should remove TupleField")
                 }
                 UnaryOpr::HasType(t) => {
                     // REVIEW: not clear that typ_to_poly is appropriate here for abstract datatypes
@@ -1244,7 +1238,7 @@ pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &KrateSst) -> KrateSst {
     }
     ctx.datatype_map = HashMap::new();
     for datatype in kratex.datatypes.iter() {
-        ctx.datatype_map.insert(datatype.x.path.clone(), datatype.clone());
+        ctx.datatype_map.insert(datatype.x.name.clone(), datatype.clone());
     }
     Arc::new(kratex)
 }
