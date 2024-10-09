@@ -211,6 +211,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] type_inv_lifetime_bounds verus_code! {
+        struct X<'a, A, B> {
+            re: &'a (A, B, A),
+        }
+
+        impl<'a, A, B> X<'a, A, B> {
+            #[verifier::type_invariant]
+            spec fn wf(self) -> bool {
+                self.re.0 == self.re.2
+            }
+        }
+
+        trait Tr<A1> {
+            spec fn foo(&self) -> bool;
+        }
+
+        struct Y<'a, A, B: Tr<A>> {
+            re: &'a (A, B, A),
+        }
+
+        impl<'a, A, B: Tr<A>> Y<'a, A, B> {
+            #[verifier::type_invariant]
+            spec fn wf(self) -> bool {
+                self.re.0 == self.re.2
+                    && self.re.1.foo()
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] type_inv_type_cycle1 verus_code! {
         struct X {
             i: int,
