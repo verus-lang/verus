@@ -247,6 +247,7 @@ struct_with_invariants!{
         k: Ghost<K>,
     }
 
+    #[verifier::type_invariant]
     spec fn wf(&self) -> bool {
         invariant on exc with (inst) is (v: bool, g: RwLockToks::flag_exc<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>) {
             g@.instance == inst@
@@ -303,7 +304,7 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
 
     fn new(t: V, Ghost(k): Ghost<K>) -> (s: Self)
         requires Pred::inv(k, t)
-        ensures s.wf() && s.constant() == k,
+        ensures s.constant() == k,
     {
         let (cell, Tracked(perm)) = PCell::<V>::new(t);
 
@@ -320,13 +321,13 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
     }
 
     fn acquire_write(&self) -> (ret: (V, Tracked<WriteHandle<K, V, Pred>>))
-        requires self.wf(),
         ensures ({
             let t = ret.0; let write_handle = ret.1@;
             self.wf_write_handle(&write_handle)
                 && self.inv(t)
         }),
     {
+        proof { use_type_invariant(self); }
         let mut done = false;
         let tracked mut token: Option<RwLockToks::pending_writer<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>> = Option::None;
         while !done
@@ -335,7 +336,6 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
                     token.is_Some() && equal(token.get_Some_0().view().instance, self.inst@),
                 self.wf(),
         {
-
             let result = atomic_with_ghost!(
                 &self.exc => compare_exchange(false, true);
                 returning res;
@@ -386,12 +386,12 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
     }
 
     fn acquire_read(&self) -> (x: Tracked<ReadHandle<K, V, Pred>>)
-        requires self.wf(),
         ensures ({ let read_handle = x@;
             self.wf_read_handle(&read_handle)
                 && self.inv(read_handle.view())
         })
     {
+        proof { use_type_invariant(self); }
         loop
             invariant self.wf(),
         {
@@ -450,10 +450,10 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
 
     fn borrow<'a>(&'a self, Tracked(read_handle): Tracked<&'a ReadHandle<K, V, Pred>>) -> (t: &'a V)
         requires
-            self.wf(),
             self.wf_read_handle(&read_handle),
         ensures t == read_handle.view()
     {
+        proof { use_type_invariant(self); }
         let tracked perm = self.inst.borrow().read_guard(read_handle.handle.view().key, &read_handle.handle);
         self.cell.borrow(Tracked(&perm))
     }
@@ -464,7 +464,6 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
         tracked read_handle2: &ReadHandle<K, V, Pred>
     )
         requires
-            self.wf(),
             self.wf_read_handle(read_handle1),
             self.wf_read_handle(read_handle2),
         ensures(equal(
@@ -472,6 +471,7 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
             read_handle2.view(),
         )),
     {
+        use_type_invariant(self);
         self.inst.borrow().read_match(
             read_handle1.handle.view().key,
             read_handle2.handle.view().key,
@@ -481,10 +481,10 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
 
     fn release_write(&self, t: V, Tracked(write_handle): Tracked<WriteHandle<K, V, Pred>>)
         requires
-            self.wf(),
             self.wf_write_handle(&write_handle),
             self.inv(t),
     {
+        proof { use_type_invariant(self); }
         let tracked WriteHandle { handle, mut perm } = write_handle;
         self.cell.put(Tracked(&mut perm), t);
 
@@ -498,9 +498,9 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
 
     fn release_read(&self, Tracked(read_handle): Tracked<ReadHandle<K, V, Pred>>)
         requires
-            self.wf(),
             self.wf_read_handle(&read_handle),
     {
+        proof { use_type_invariant(self); }
         let tracked ReadHandle { handle } = read_handle;
 
         let _ = atomic_with_ghost!(

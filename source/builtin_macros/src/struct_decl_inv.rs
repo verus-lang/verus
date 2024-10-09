@@ -23,6 +23,7 @@ use syn_verus::{
     braced, parenthesized, Block, Error, Expr, Field, Fields, FnArg, FnArgKind, FnMode,
     GenericArgument, GenericParam, Ident, Index, ItemStruct, Lifetime, Member, Pat, PatIdent,
     PatType, PathArguments, Receiver, Signature, Type, TypePath, Visibility,
+    Attribute,
 };
 
 pub fn struct_decl_inv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -85,6 +86,7 @@ fn struct_decl_inv_main(sdi: SDI) -> parse::Result<TokenStream> {
 
 struct SDI {
     item_struct: ItemStruct,
+    wf_attrs: Vec<Attribute>,
     wf_vis: Visibility,
     wf_sig: Signature,
     invariant_decls: Vec<InvariantDecl>,
@@ -118,6 +120,7 @@ impl Parse for SDI {
     fn parse(input: ParseStream) -> parse::Result<SDI> {
         let item_struct: ItemStruct = input.parse()?;
 
+        let wf_attrs = input.call(Attribute::parse_outer)?;
         let wf_vis: Visibility = input.parse()?;
         let wf_sig: Signature = input.parse()?;
         check_wf_sig(&wf_sig)?;
@@ -131,7 +134,7 @@ impl Parse for SDI {
             invariant_decls.push(invariant_decl);
         }
 
-        Ok(SDI { item_struct, wf_vis, wf_sig, invariant_decls })
+        Ok(SDI { item_struct, wf_attrs, wf_vis, wf_sig, invariant_decls })
     }
 }
 
@@ -792,6 +795,7 @@ fn output_invariant(
 }
 
 fn output_wf(sdi: &SDI, stream: &mut TokenStream, wf_body_stream: TokenStream) {
+    let wf_attrs = &sdi.wf_attrs;
     let wf_sig = &sdi.wf_sig;
     let wf_vis = &sdi.wf_vis;
     let type_params = &sdi.item_struct.generics.params;
@@ -800,6 +804,7 @@ fn output_wf(sdi: &SDI, stream: &mut TokenStream, wf_body_stream: TokenStream) {
     stream.extend(quote! {
         impl <#type_params> #self_type #where_clause {
             // Something like `pub open spec fn well_formed(&self) -> bool`
+            #(#wf_attrs)*
             #wf_vis #wf_sig {
                 #wf_body_stream
             }
