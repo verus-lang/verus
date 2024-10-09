@@ -889,7 +889,7 @@ fn erase_call<'tcx>(
                 TrackedGet => Some((true, "get", false)),
                 TrackedBorrow => Some((true, "borrow", false)),
                 TrackedBorrowMut => Some((true, "borrow_mut", false)),
-                TrackedNew | TrackedExec => Some((false, "tracked_new", false)),
+                TrackedNew | TrackedExec => Some((false, "tracked_new", expect_spec)),
                 TrackedExecBorrow => Some((false, "tracked_exec_borrow", false)),
                 RcNew => Some((false, "rc_new", expect_spec)),
                 ArcNew => Some((false, "arc_new", expect_spec)),
@@ -902,25 +902,24 @@ fn erase_call<'tcx>(
                 assert!(receiver.is_some());
                 assert!(args_slice.len() == 0);
                 let Some(receiver) = receiver else { panic!() };
-                let exp =
-                    erase_expr(ctxt, state, expect_spec_inside, &receiver).expect("builtin method");
-                mk_exp(ExpX::BuiltinMethod(exp, method.to_string()))
+                let exp = erase_expr(ctxt, state, expect_spec_inside, &receiver);
+                if expect_spec_inside {
+                    erase_spec_exps(ctxt, state, expr, vec![exp])
+                } else {
+                    mk_exp(ExpX::BuiltinMethod(exp.expect("builtin method"), method.to_string()))
+                }
             } else if let Some((false, func, expect_spec_inside)) = builtin_method {
                 assert!(receiver.is_none());
                 assert!(args_slice.len() == 1);
-                let requires_arg = matches!(op, UseTypeInvariant);
-                let exp_opt =
-                    erase_expr(ctxt, state, expect_spec_inside && !requires_arg, &args_slice[0]);
-                let exp = match exp_opt {
-                    Some(exp) => exp,
-                    None => {
-                        return None;
-                    }
-                };
-                let target =
-                    mk_exp(ExpX::Var(Id::new(IdKind::Builtin, 0, func.to_string()))).unwrap();
-                let typ_args = mk_typ_args(ctxt, state, node_substs);
-                mk_exp(ExpX::Call(target, typ_args, vec![exp]))
+                let exp = erase_expr(ctxt, state, expect_spec_inside, &args_slice[0]);
+                if expect_spec_inside {
+                    erase_spec_exps(ctxt, state, expr, vec![exp])
+                } else {
+                    let target =
+                        mk_exp(ExpX::Var(Id::new(IdKind::Builtin, 0, func.to_string()))).unwrap();
+                    let typ_args = mk_typ_args(ctxt, state, node_substs);
+                    mk_exp(ExpX::Call(target, typ_args, vec![exp.expect("builtin method")]))
+                }
             } else if let GhostExec = op {
                 Some(erase_spec_exps_force(ctxt, state, expr, vec![]))
             } else {
