@@ -182,8 +182,6 @@ fn gen_generics(
                 let rust_item = crate::verus_items::get_rust_item_path(path);
                 let typ = gen_typ(state, &typs[0]);
                 let bound = match rust_item {
-                    Some(RustItem::Copy) => Bound::Copy,
-                    Some(RustItem::Clone) => Bound::Clone,
                     Some(RustItem::Sized) => Bound::Sized,
                     _ => {
                         let args = gen_typ_slice(state, &typs[1..]);
