@@ -829,20 +829,15 @@ pub proof fn lemma_set_properties<A>()
         + #[trigger] a.intersect(b).len() == a.len() + b.len() by {
         lemma_set_intersect_union_lens(a, b);
     }
-    assert forall|a: Set<A>, b: Set<A>|
-        (a.finite() && b.finite()) ==> #[trigger] a.difference(b).len() + b.difference(a).len()
-            + a.intersect(b).len() == (a + b).len() by {
-        if a.finite() && b.finite() {
-            lemma_set_difference_len(a, b);
-        }
+    assert forall|a: Set<A>, b: Set<A>| (a.finite() && b.finite()) implies #[trigger] a.difference(
+        b,
+    ).len() + b.difference(a).len() + a.intersect(b).len() == (a + b).len() by {
+        lemma_set_difference_len(a, b);
     }
-    assert forall|a: Set<A>, b: Set<A>|
-        (a.finite() && b.finite()) ==> #[trigger] a.difference(b).len() == a.len() - a.intersect(
-            b,
-        ).len() by {
-        if a.finite() && b.finite() {
-            lemma_set_difference_len(a, b);
-        }
+    assert forall|a: Set<A>, b: Set<A>| (a.finite() && b.finite()) implies #[trigger] a.difference(
+        b,
+    ).len() == a.len() - a.intersect(b).len() by {
+        lemma_set_difference_len(a, b);
     }
 }
 
