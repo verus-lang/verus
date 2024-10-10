@@ -61,7 +61,9 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
     }
 
     #[inductive(initialize_full)]
-    fn initialize_full_inductive(post: Self, k: K, t: V) { }
+    fn initialize_full_inductive(post: Self, k: K, t: V) {
+        broadcast use group_multiset_axioms;
+    }
 
     /// Increment the 'rc' counter, obtain a pending_reader
     transition!{
@@ -183,7 +185,7 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
 
     #[invariant]
     pub fn reader_agrees_storage(&self) -> bool {
-        forall |t: V| imply(self.reader.count(t) > 0,
+        forall |t: V| imply(#[trigger] self.reader.count(t) > 0,
             equal(self.storage, Option::Some(t)))
     }
 
@@ -199,17 +201,23 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
 
     #[invariant]
     pub fn sto_user_inv(&self) -> bool {
-        self.storage matches Some(x) ==> Pred::inv(self.k, x)
+        self.storage.is_some() ==> Pred::inv(self.k, self.storage.unwrap())
     }
 
     #[inductive(acquire_read_start)]
-    fn acquire_read_start_inductive(pre: Self, post: Self) { }
+    fn acquire_read_start_inductive(pre: Self, post: Self) {
+        broadcast use group_multiset_axioms;
+    }
 
     #[inductive(acquire_read_end)]
-    fn acquire_read_end_inductive(pre: Self, post: Self) { }
+    fn acquire_read_end_inductive(pre: Self, post: Self) {
+        broadcast use group_multiset_axioms;
+    }
 
     #[inductive(acquire_read_abandon)]
-    fn acquire_read_abandon_inductive(pre: Self, post: Self) { }
+    fn acquire_read_abandon_inductive(pre: Self, post: Self) {
+        broadcast use group_multiset_axioms;
+    }
 
     #[inductive(acquire_exc_start)]
     fn acquire_exc_start_inductive(pre: Self, post: Self) { }
@@ -222,6 +230,7 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
 
     #[inductive(release_shared)]
     fn release_shared_inductive(pre: Self, post: Self, x: V) {
+        broadcast use group_multiset_axioms;
         assert(equal(pre.storage, Option::Some(x)));
     }
 });
@@ -251,6 +260,77 @@ impl<V, Pred: RwLockPredicate<V>> InvariantPredicate<(Pred, CellId), PointsTo<V>
 }
 
 struct_with_invariants!{
+    /** A verified implementation of a reader-writer lock,
+    implemented using atomics and a reference count.
+    
+    When constructed, you can provide an invariant via the `Pred` parameter,
+    specifying the allowed values that can go in the lock.
+    
+    Note that this specification does *not* verify the absence of dead-locks.
+    
+    ### Examples
+
+    On construction of a lock, we can specify an invariant for the object that goes inside.
+    One way to do this is by providing a `spec_fn`, which implements the [`RwLockPredicate`]
+    trait.
+        
+    ```rust,ignore
+    fn example1() {
+        // We can create a lock with an invariant: `v == 5 || v == 13`.
+        // Thus only 5 or 13 can be stored in the lock.
+        let lock = RwLock::<u64, spec_fn(u64) -> bool>::new(5, Ghost(|v| v == 5 || v == 13));
+
+        let (val, write_handle) = lock.acquire_write();
+        assert(val == 5 || val == 13);
+        write_handle.release_write(13);
+
+        let read_handle1 = lock.acquire_read();
+        let read_handle2 = lock.acquire_read();
+
+        // We can take multiple read handles at the same time:
+
+        let val1 = read_handle1.borrow();
+        let val2 = read_handle2.borrow();
+
+        // RwLock has a lemma that both read handles have the same value:
+
+        proof { ReadHandle::lemma_readers_match(&read_handle1, &read_handle2); }
+        assert(*val1 == *val2);
+
+        read_handle1.release_read();
+        read_handle2.release_read();
+    }
+    ```
+
+    It's often easier to implement the [`RwLockPredicate`] trait yourself. This way you can
+    have a configurable predicate without needing to work with higher-order functions.
+
+    ```rust,ignore
+    struct FixedParity {
+        pub parity: int,
+    }
+
+    impl RwLockPredicate<u64> for FixedParity {
+        open spec fn inv(self, v: u64) -> bool {
+            v % 2 == self.parity
+        }
+    }
+
+    fn example2() {
+        let lock_even = RwLock::<u64, FixedParity>::new(20, Ghost(FixedParity { parity: 0 }));
+        let lock_odd = RwLock::<u64, FixedParity>::new(23, Ghost(FixedParity { parity: 1 }));
+
+        let read_handle_even = lock_even.acquire_read();
+        let val_even = *read_handle_even.borrow();
+        assert(val_even % 2 == 0);
+
+        let read_handle_odd = lock_odd.acquire_read();
+        let val_odd = *read_handle_odd.borrow();
+        assert(val_odd % 2 == 1);
+    }
+    ```
+    */
+
     pub struct RwLock<V, Pred: RwLockPredicate<V>> {
         cell: PCell<V>,
         exc: AtomicBool<_, RwLockToks::flag_exc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>, _>,
@@ -278,12 +358,18 @@ struct_with_invariants!{
     }
 }
 
+/// Handle obtained for an exclusive write-lock from an [`RwLock`].
+///
+/// Note that this handle does not contain a reference to the lock-protected object;
+/// ownership of the object is obtained separately from [`RwLock::acquire_write`].
+/// This may be changed in the future.
 pub struct WriteHandle<'a, V, Pred: RwLockPredicate<V>> {
     handle: Tracked<RwLockToks::writer<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>>,
     perm: Tracked<PointsTo<V>>,
     rwlock: &'a RwLock<V, Pred>,
 }
 
+/// Handle obtained for a shared read-lock from an [`RwLock`].
 pub struct ReadHandle<'a, V, Pred: RwLockPredicate<V>> {
     handle: Tracked<RwLockToks::reader<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>>,
     rwlock: &'a RwLock<V, Pred>,
@@ -337,6 +423,7 @@ impl<'a, V, Pred: RwLockPredicate<V>> ReadHandle<'a, V, Pred> {
         *self.rwlock
     }
 
+    /// Obtain a shared reference to the object contained in the lock.
     pub fn borrow<'b>(&'b self) -> (t: &'b V)
         ensures t == self.view()
     {
@@ -379,10 +466,13 @@ impl<'a, V, Pred: RwLockPredicate<V>> ReadHandle<'a, V, Pred> {
 }
 
 impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
+    /// Predicate configured for this lock instance.
     pub closed spec fn pred(&self) -> Pred {
         self.pred@
     }
 
+    /// Indicates if the value `v` can be stored in the lock. Per the definition,
+    /// it depends on `[self.pred()]`, which is configured upon lock construction ([`RwLock::new`]).
     pub open spec fn inv(&self, t: V) -> bool {
         self.pred().inv(t)
     }
@@ -405,6 +495,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         RwLock { cell, exc, rc, inst, pred: Ghost(pred) }
     }
 
+    /// Acquires an exclusive write-lock. To release it, use [`WriteHandle::release_write`].
     pub fn acquire_write(&self) -> (ret: (V, WriteHandle<V, Pred>))
         ensures ({
             let t = ret.0; let write_handle = ret.1;
@@ -470,6 +561,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         }
     }
 
+    /// Acquires a shared read-lock. To release it, use [`ReadHandle::release_read`].
     pub fn acquire_read(&self) -> (read_handle: ReadHandle<V, Pred>)
         ensures ({
             read_handle.rwlock() == *self
@@ -533,6 +625,8 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         }
     }
 
+    /// Destroys the lock and returns the inner object.
+    /// Note that this may deadlock if not all locks have been released.
     pub fn into_inner(self) -> (v: V)
         ensures self.inv(v)
     {
