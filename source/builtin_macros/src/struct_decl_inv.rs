@@ -20,10 +20,9 @@ use syn_verus::visit_mut::VisitMut;
 use syn_verus::Token;
 use syn_verus::TypeInfer;
 use syn_verus::{
-    braced, parenthesized, Block, Error, Expr, Field, Fields, FnArg, FnArgKind, FnMode,
+    braced, parenthesized, Attribute, Block, Error, Expr, Field, Fields, FnArg, FnArgKind, FnMode,
     GenericArgument, GenericParam, Ident, Index, ItemStruct, Lifetime, Member, Pat, PatIdent,
     PatType, PathArguments, Receiver, Signature, Type, TypePath, Visibility,
-    Attribute,
 };
 
 pub fn struct_decl_inv(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

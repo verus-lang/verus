@@ -17,8 +17,8 @@ use rustc_hir::{
     Unsafety,
 };
 use rustc_middle::ty::{
-    AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, GenericArgKind, GenericArgsRef, Region,
-    TyCtxt, TyKind, ClauseKind
+    AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
+    GenericArgsRef, Region, TyCtxt, TyKind,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
@@ -1287,8 +1287,24 @@ fn check_generics_for_invariant_fn<'tcx>(
             let preds2 = func_predicates.instantiate(tcx, substs).predicates;
             // The 'outlives' predicates don't always line up; I don't know why.
             // But they don't matter for the purpose of this check, so filter them out here.
-            let preds1 = preds1.into_iter().filter(|p| !matches!(p.kind().skip_binder(), ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..))).collect();
-            let preds2 = preds2.into_iter().filter(|p| !matches!(p.kind().skip_binder(), ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..))).collect();
+            let preds1 = preds1
+                .into_iter()
+                .filter(|p| {
+                    !matches!(
+                        p.kind().skip_binder(),
+                        ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..)
+                    )
+                })
+                .collect();
+            let preds2 = preds2
+                .into_iter()
+                .filter(|p| {
+                    !matches!(
+                        p.kind().skip_binder(),
+                        ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..)
+                    )
+                })
+                .collect();
             let preds_match = crate::rust_to_vir_func::predicates_match(tcx, &preds1, &preds2);
             if !preds_match {
                 println!("datatype_predicates: {:#?}", preds1);

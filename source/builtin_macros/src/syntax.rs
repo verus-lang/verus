@@ -1088,26 +1088,28 @@ impl Visitor {
                                 quote! {}
                             };
 
-                            *item = Item::Verbatim(quote_spanned_builtin_vstd! { builtin, vstd, span =>
-                            #[verus::internal(size_of)] const _: () = {
-                                #builtin::global_size_of::<#type_>(#size_lit);
+                            *item = Item::Verbatim(
+                                quote_spanned_builtin_vstd! { builtin, vstd, span =>
+                                #[verus::internal(size_of)] const _: () = {
+                                    #builtin::global_size_of::<#type_>(#size_lit);
 
-                                #static_assert_size
-                                #static_assert_align
-                            };
+                                    #static_assert_size
+                                    #static_assert_align
+                                };
 
-                            ::builtin_macros::verus! {
-                                #[verus::internal(size_of_broadcast_proof)]
-                                #[verifier::external_body]
-                                #[allow(non_snake_case)]
-                                broadcast proof fn #lemma_ident()
-                                    ensures
-                                        #[trigger] #vstd::layout::size_of::<#type_>() == #size_lit,
-                                        #ensures_align
-                                {
+                                ::builtin_macros::verus! {
+                                    #[verus::internal(size_of_broadcast_proof)]
+                                    #[verifier::external_body]
+                                    #[allow(non_snake_case)]
+                                    broadcast proof fn #lemma_ident()
+                                        ensures
+                                            #[trigger] #vstd::layout::size_of::<#type_>() == #size_lit,
+                                            #ensures_align
+                                    {
+                                    }
                                 }
-                            }
-                            });
+                                },
+                            );
                         }
                     }
                 }
