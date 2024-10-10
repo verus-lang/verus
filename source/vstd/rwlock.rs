@@ -282,7 +282,8 @@ impl<K, V, Pred: InvariantPredicate<K, V>> ReadHandle<K, V, Pred> {
 }
 
 impl<'a, K, V, Pred: InvariantPredicate<K, V>> WriteHandle<'a, K, V, Pred> {
-    pub closed spec fn wf(self) -> bool {
+    #[verifier::type_invariant]
+    spec fn wf(self) -> bool {
         equal(self.perm@.view().pcell, self.rwlock.cell.id())
           && self.perm@.view().value.is_None()
           && equal(self.handle@.view().instance, self.rwlock.inst@)
@@ -295,9 +296,9 @@ impl<'a, K, V, Pred: InvariantPredicate<K, V>> WriteHandle<'a, K, V, Pred> {
 
     fn release_write(self, t: V)
         requires
-            self.wf(),
             self.rwlock().inv(t),
     {
+        proof { use_type_invariant(&self); }
         let WriteHandle { handle: Tracked(handle), perm: Tracked(mut perm), rwlock: _ } = self;
         self.rwlock.cell.put(Tracked(&mut perm), t);
 
@@ -347,7 +348,6 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
     fn acquire_write(&self) -> (ret: (V, WriteHandle<K, V, Pred>))
         ensures ({
             let t = ret.0; let write_handle = ret.1;
-            write_handle.wf()
                 && write_handle.rwlock() == *self
                 && self.inv(t)
         }),
