@@ -225,7 +225,7 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
 
 verus!{
 
-struct InternalPred<K, V, Pred> {
+ghost struct InternalPred<K, V, Pred> {
     k: K, v: V, pred: Pred,
 }
 
@@ -265,9 +265,10 @@ struct_with_invariants!{
     }
 }
 
-tracked struct WriteHandle<K, V, Pred: InvariantPredicate<K, V>> {
-    tracked handle: RwLockToks::writer<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>,
-    tracked perm: PointsTo<V>,
+struct WriteHandle<'a, K, V, Pred: InvariantPredicate<K, V>> {
+    handle: Tracked<RwLockToks::writer<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>>,
+    perm: Tracked<PointsTo<V>>,
+    rwlock: &'a RwLock<K, V, Pred>,
 }
 
 tracked struct ReadHandle<K, V, Pred: InvariantPredicate<K, V>> {
@@ -280,6 +281,35 @@ impl<K, V, Pred: InvariantPredicate<K, V>> ReadHandle<K, V, Pred> {
     }
 }
 
+impl<'a, K, V, Pred: InvariantPredicate<K, V>> WriteHandle<'a, K, V, Pred> {
+    pub closed spec fn wf(self) -> bool {
+        equal(self.perm@.view().pcell, self.rwlock.cell.id())
+          && self.perm@.view().value.is_None()
+          && equal(self.handle@.view().instance, self.rwlock.inst@)
+          && self.rwlock.wf()
+    }
+
+    pub closed spec fn rwlock(self) -> RwLock<K, V, Pred> {
+        *self.rwlock
+    }
+
+    fn release_write(self, t: V)
+        requires
+            self.wf(),
+            self.rwlock().inv(t),
+    {
+        let WriteHandle { handle: Tracked(handle), perm: Tracked(mut perm), rwlock: _ } = self;
+        self.rwlock.cell.put(Tracked(&mut perm), t);
+
+        atomic_with_ghost!(
+            &self.rwlock.exc => store(false);
+            ghost g =>
+        {
+            self.rwlock.inst.borrow().release_exc(perm, &mut g, perm, handle);
+        });
+    }
+}
+
 impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
     pub closed spec fn constant(&self) -> K {
         self.k@
@@ -287,12 +317,6 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
 
     pub open spec fn inv(&self, t: V) -> bool {
         Pred::inv(self.constant(), t)
-    }
-
-    spec fn wf_write_handle(&self, write_handle: &WriteHandle<K, V, Pred>) -> bool {
-        equal(write_handle.perm.view().pcell, self.cell.id())
-          && write_handle.perm.view().value.is_None()
-          && equal(write_handle.handle.view().instance, self.inst@)
     }
 
     spec fn wf_read_handle(&self, read_handle: &ReadHandle<K, V, Pred>) -> bool {
@@ -320,10 +344,11 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
         RwLock { cell, exc, rc, inst, k: Ghost(k) }
     }
 
-    fn acquire_write(&self) -> (ret: (V, Tracked<WriteHandle<K, V, Pred>>))
+    fn acquire_write(&self) -> (ret: (V, WriteHandle<K, V, Pred>))
         ensures ({
-            let t = ret.0; let write_handle = ret.1@;
-            self.wf_write_handle(&write_handle)
+            let t = ret.0; let write_handle = ret.1;
+            write_handle.wf()
+                && write_handle.rwlock() == *self
                 && self.inv(t)
         }),
     {
@@ -379,8 +404,8 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
                 let tracked mut perm = match perm_opt { Option::Some(t) => t, Option::None => proof_from_false() };
                 let tracked handle = match handle_opt { Option::Some(t) => t, Option::None => proof_from_false() };
                 let t = self.cell.take(Tracked(&mut perm));
-                let tracked write_handle = WriteHandle { perm, handle };
-                return (t, Tracked(write_handle));
+                let write_handle = WriteHandle { perm: Tracked(perm), handle: Tracked(handle), rwlock: self };
+                return (t, write_handle);
             }
         }
     }
@@ -479,22 +504,6 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
             &read_handle2.handle);
     }
 
-    fn release_write(&self, t: V, Tracked(write_handle): Tracked<WriteHandle<K, V, Pred>>)
-        requires
-            self.wf_write_handle(&write_handle),
-            self.inv(t),
-    {
-        proof { use_type_invariant(self); }
-        let tracked WriteHandle { handle, mut perm } = write_handle;
-        self.cell.put(Tracked(&mut perm), t);
-
-        atomic_with_ghost!(
-            &self.exc => store(false);
-            ghost g =>
-        {
-            self.inst.borrow().release_exc(perm, &mut g, perm, handle);
-        });
-    }
 
     fn release_read(&self, Tracked(read_handle): Tracked<ReadHandle<K, V, Pred>>)
         requires
@@ -522,9 +531,9 @@ impl InvariantPredicate<(), u64> for ExamplePredicate {
 fn main() {
     let lock = RwLock::<(), u64, ExamplePredicate>::new(5, Ghost(()));
 
-    let (val, Tracked(write_handle)) = lock.acquire_write();
+    let (val, write_handle) = lock.acquire_write();
     assert(val == 5 || val == 13);
-    lock.release_write(13, Tracked(write_handle));
+    write_handle.release_write(13);
 
     let Tracked(read_handle1) = lock.acquire_read();
     let Tracked(read_handle2) = lock.acquire_read();
