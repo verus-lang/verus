@@ -271,19 +271,14 @@ struct WriteHandle<'a, K, V, Pred: InvariantPredicate<K, V>> {
     rwlock: &'a RwLock<K, V, Pred>,
 }
 
-tracked struct ReadHandle<K, V, Pred: InvariantPredicate<K, V>> {
-    tracked handle: RwLockToks::reader<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>,
-}
-
-impl<K, V, Pred: InvariantPredicate<K, V>> ReadHandle<K, V, Pred> {
-    spec fn view(&self) -> V {
-        self.handle.view().key.view().value.unwrap()
-    }
+struct ReadHandle<'a, K, V, Pred: InvariantPredicate<K, V>> {
+    handle: Tracked<RwLockToks::reader<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>>,
+    rwlock: &'a RwLock<K, V, Pred>,
 }
 
 impl<'a, K, V, Pred: InvariantPredicate<K, V>> WriteHandle<'a, K, V, Pred> {
     #[verifier::type_invariant]
-    spec fn wf(self) -> bool {
+    spec fn wf_write_handle(self) -> bool {
         equal(self.perm@.view().pcell, self.rwlock.cell.id())
           && self.perm@.view().value.is_None()
           && equal(self.handle@.view().instance, self.rwlock.inst@)
@@ -294,19 +289,79 @@ impl<'a, K, V, Pred: InvariantPredicate<K, V>> WriteHandle<'a, K, V, Pred> {
         *self.rwlock
     }
 
-    fn release_write(self, t: V)
+    pub fn release_write(self, t: V)
         requires
             self.rwlock().inv(t),
     {
         proof { use_type_invariant(&self); }
-        let WriteHandle { handle: Tracked(handle), perm: Tracked(mut perm), rwlock: _ } = self;
+        let WriteHandle { handle: Tracked(handle), perm: Tracked(mut perm), rwlock } = self;
         self.rwlock.cell.put(Tracked(&mut perm), t);
 
         atomic_with_ghost!(
-            &self.rwlock.exc => store(false);
+            &rwlock.exc => store(false);
             ghost g =>
         {
             self.rwlock.inst.borrow().release_exc(perm, &mut g, perm, handle);
+        });
+    }
+}
+
+impl<'a, K, V, Pred: InvariantPredicate<K, V>> ReadHandle<'a, K, V, Pred> {
+    #[verifier::type_invariant]
+    spec fn wf_read_handle(self) -> bool {
+        equal(self.handle@.view().instance, self.rwlock.inst@)
+          && self.handle@.view().key.view().value.is_Some()
+          && equal(self.handle@.view().key.view().pcell, self.rwlock.cell.id())
+          && self.handle@.view().count == 1
+          && self.rwlock.wf()
+    }
+
+    pub closed spec fn view(self) -> V {
+        self.handle@.view().key.view().value.unwrap()
+    }
+
+    pub closed spec fn rwlock(self) -> RwLock<K, V, Pred> {
+        *self.rwlock
+    }
+
+    pub fn borrow<'b>(&'b self) -> (t: &'b V)
+        ensures t == self.view()
+    {
+        proof { use_type_invariant(self); }
+        let tracked perm = self.rwlock.inst.borrow().read_guard(self.handle@.view().key, self.handle.borrow());
+        self.rwlock.cell.borrow(Tracked(&perm))
+    }
+
+    pub proof fn lemma_readers_match(
+        tracked read_handle1: &ReadHandle<K, V, Pred>,
+        tracked read_handle2: &ReadHandle<K, V, Pred>
+    )
+        requires
+            read_handle1.rwlock() == read_handle2.rwlock(),
+        ensures(equal(
+            read_handle1.view(),
+            read_handle2.view(),
+        )),
+    {
+        use_type_invariant(read_handle1);
+        use_type_invariant(read_handle2);
+        read_handle1.rwlock.inst.borrow().read_match(
+            read_handle1.handle@.view().key,
+            read_handle2.handle@.view().key,
+            &read_handle1.handle.borrow(),
+            &read_handle2.handle.borrow());
+    }
+
+
+    pub fn release_read(self) {
+        proof { use_type_invariant(&self); }
+        let ReadHandle { handle: Tracked(handle), rwlock } = self;
+
+        let _ = atomic_with_ghost!(
+            &rwlock.rc => fetch_sub(1);
+            ghost g =>
+        {
+            rwlock.inst.borrow().release_shared(handle.view().key, &mut g, handle);
         });
     }
 }
@@ -320,14 +375,7 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
         Pred::inv(self.constant(), t)
     }
 
-    spec fn wf_read_handle(&self, read_handle: &ReadHandle<K, V, Pred>) -> bool {
-        equal(read_handle.handle.view().instance, self.inst@)
-          && read_handle.handle.view().key.view().value.is_Some()
-          && equal(read_handle.handle.view().key.view().pcell, self.cell.id())
-          && read_handle.handle.view().count == 1
-    }
-
-    fn new(t: V, Ghost(k): Ghost<K>) -> (s: Self)
+    pub fn new(t: V, Ghost(k): Ghost<K>) -> (s: Self)
         requires Pred::inv(k, t)
         ensures s.constant() == k,
     {
@@ -345,7 +393,7 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
         RwLock { cell, exc, rc, inst, k: Ghost(k) }
     }
 
-    fn acquire_write(&self) -> (ret: (V, WriteHandle<K, V, Pred>))
+    pub fn acquire_write(&self) -> (ret: (V, WriteHandle<K, V, Pred>))
         ensures ({
             let t = ret.0; let write_handle = ret.1;
                 && write_handle.rwlock() == *self
@@ -410,10 +458,10 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
         }
     }
 
-    fn acquire_read(&self) -> (x: Tracked<ReadHandle<K, V, Pred>>)
-        ensures ({ let read_handle = x@;
-            self.wf_read_handle(&read_handle)
-                && self.inv(read_handle.view())
+    pub fn acquire_read(&self) -> (read_handle: ReadHandle<K, V, Pred>)
+        ensures ({
+            read_handle.rwlock() == *self
+              && self.inv(read_handle.view())
         })
     {
         proof { use_type_invariant(self); }
@@ -455,8 +503,8 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
 
                         if result == false {
                             let tracked handle = match handle_opt { Option::Some(t) => t, Option::None => proof_from_false() };
-                            let tracked read_handle = ReadHandle { handle };
-                            return Tracked(read_handle);
+                            let read_handle = ReadHandle { handle: Tracked(handle), rwlock: self };
+                            return read_handle;
                         } else {
                             let _ = atomic_with_ghost!(
                                 &self.rc => fetch_sub(1);
@@ -471,53 +519,6 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
                 }
             }
         }
-    }
-
-    fn borrow<'a>(&'a self, Tracked(read_handle): Tracked<&'a ReadHandle<K, V, Pred>>) -> (t: &'a V)
-        requires
-            self.wf_read_handle(&read_handle),
-        ensures t == read_handle.view()
-    {
-        proof { use_type_invariant(self); }
-        let tracked perm = self.inst.borrow().read_guard(read_handle.handle.view().key, &read_handle.handle);
-        self.cell.borrow(Tracked(&perm))
-    }
-
-    proof fn lemma_readers_match(
-        tracked &self, 
-        tracked read_handle1: &ReadHandle<K, V, Pred>,
-        tracked read_handle2: &ReadHandle<K, V, Pred>
-    )
-        requires
-            self.wf_read_handle(read_handle1),
-            self.wf_read_handle(read_handle2),
-        ensures(equal(
-            read_handle1.view(),
-            read_handle2.view(),
-        )),
-    {
-        use_type_invariant(self);
-        self.inst.borrow().read_match(
-            read_handle1.handle.view().key,
-            read_handle2.handle.view().key,
-            &read_handle1.handle,
-            &read_handle2.handle);
-    }
-
-
-    fn release_read(&self, Tracked(read_handle): Tracked<ReadHandle<K, V, Pred>>)
-        requires
-            self.wf_read_handle(&read_handle),
-    {
-        proof { use_type_invariant(self); }
-        let tracked ReadHandle { handle } = read_handle;
-
-        let _ = atomic_with_ghost!(
-            &self.rc => fetch_sub(1);
-            ghost g =>
-        {
-            self.inst.borrow().release_shared(handle.view().key, &mut g, handle);
-        });
     }
 }
 
@@ -535,17 +536,17 @@ fn main() {
     assert(val == 5 || val == 13);
     write_handle.release_write(13);
 
-    let Tracked(read_handle1) = lock.acquire_read();
-    let Tracked(read_handle2) = lock.acquire_read();
+    let read_handle1 = lock.acquire_read();
+    let read_handle2 = lock.acquire_read();
 
-    let val1 = lock.borrow(Tracked(&read_handle1));
-    let val2 = lock.borrow(Tracked(&read_handle2));
+    let val1 = read_handle1.borrow();
+    let val2 = read_handle2.borrow();
 
-    proof { lock.lemma_readers_match(&read_handle1, &read_handle2); }
+    proof { ReadHandle::lemma_readers_match(&read_handle1, &read_handle2); }
     assert(*val1 == *val2);
 
-    lock.release_read(Tracked(read_handle1));
-    lock.release_read(Tracked(read_handle2));
+    read_handle1.release_read();
+    read_handle2.release_read();
 }
 
 }
