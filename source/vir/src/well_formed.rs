@@ -168,6 +168,7 @@ fn check_one_expr(
     expr: &Expr,
     disallow_private_access: Option<(&Option<Path>, &str)>,
     place: Place,
+    diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::Var(x) => {
@@ -372,6 +373,17 @@ fn check_one_expr(
                 VisitorControlFlow::Stop(e) => Err(e),
             }?;
         }
+        ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
+            ExprX::Binary(crate::ast::BinaryOp::Implies, _, _) => {
+                if !vars.is_empty() {
+                    diags.push(VirErrAs::Warning(
+                        error(&expr.span, "using ==> in `assert forall` will not assume the antecedent in the body, and is deprecated, consier using `implies` instead of `==>`
+if you did not mean to assume the antecedent, please open an issue on the Verus issue tracker: `assert forall` will always assume the antecedent of the outermost implication in the future"),
+                    ));
+                }
+            }
+            _ => {}
+        },
         ExprX::ExecClosure { params, ret, .. } => {
             for p in params.iter() {
                 check_typ(ctxt, &p.a, &expr.span)?;
@@ -455,9 +467,10 @@ fn check_expr(
     expr: &Expr,
     disallow_private_access: Option<(&Option<Path>, &str)>,
     place: Place,
+    diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
     crate::ast_visitor::expr_visitor_check(expr, &mut |_scope_map, expr| {
-        check_one_expr(ctxt, function, expr, disallow_private_access, place)
+        check_one_expr(ctxt, function, expr, disallow_private_access, place, diags)
     })
 }
 
@@ -792,12 +805,19 @@ fn check_function(
     for req in function.x.require.iter() {
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, req, disallow_private_access, Place::PreState("requires"))?;
+        check_expr(
+            ctxt,
+            function,
+            req,
+            disallow_private_access,
+            Place::PreState("requires"),
+            diags,
+        )?;
     }
     for ens in function.x.ensure.iter() {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState)?;
+        check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState, diags)?;
     }
     match &function.x.mask_spec {
         None => {}
@@ -811,6 +831,7 @@ fn check_function(
                     expr,
                     disallow_private_access,
                     Place::PreState("opens_invariants clause"),
+                    diags,
                 )?;
             }
         }
@@ -826,6 +847,7 @@ fn check_function(
                 expr,
                 disallow_private_access,
                 Place::PreState("opens_invariants clause"),
+                diags,
             )?;
         }
     }
@@ -838,6 +860,7 @@ fn check_function(
             expr,
             disallow_private_access,
             Place::PreState("decreases clause"),
+            diags,
         )?;
     }
     if let Some(expr) = &function.x.decrease_when {
@@ -855,7 +878,14 @@ fn check_function(
                 "decreases_when can only be used when there is a decreases clause (use recommends(...) for nonrecursive functions)",
             ));
         }
-        check_expr(ctxt, function, expr, disallow_private_access, Place::PreState("when clause"))?;
+        check_expr(
+            ctxt,
+            function,
+            expr,
+            disallow_private_access,
+            Place::PreState("when clause"),
+            diags,
+        )?;
     }
 
     if function.x.mode == Mode::Exec
@@ -875,7 +905,7 @@ fn check_function(
             }
             _ => None,
         };
-        check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState)?;
+        check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState, diags)?;
     }
 
     if function.x.attrs.is_type_invariant_fn {
