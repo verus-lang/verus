@@ -225,58 +225,62 @@ RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
 
 verus!{
 
-ghost struct InternalPred<K, V, Pred> {
-    k: K, v: V, pred: Pred,
+pub trait RwLockPredicate<V> : Sized {
+    spec fn inv(self, v: V) -> bool;
 }
 
-impl<K, V, Pred: InvariantPredicate<K, V>> InvariantPredicate<(K, CellId), PointsTo<V>> for InternalPred<K, V, Pred> {
-    closed spec fn inv(k: (K, CellId), v: PointsTo<V>) -> bool {
+ghost struct InternalPred<V, Pred> {
+    v: V, pred: Pred,
+}
+
+impl<V, Pred: RwLockPredicate<V>> InvariantPredicate<(Pred, CellId), PointsTo<V>> for InternalPred<V, Pred> {
+    closed spec fn inv(k: (Pred, CellId), v: PointsTo<V>) -> bool {
         v.view().pcell == k.1
           && v.view().value.is_Some()
-          && Pred::inv(k.0, v.view().value.get_Some_0())
+          && k.0.inv(v.view().value.get_Some_0())
     }
 }
 
 struct_with_invariants!{
-    struct RwLock<K, V, Pred: InvariantPredicate<K, V>> {
+    struct RwLock<V, Pred: RwLockPredicate<V>> {
         cell: PCell<V>,
-        exc: AtomicBool<_, RwLockToks::flag_exc<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>, _>,
-        rc: AtomicU64<_, RwLockToks::flag_rc<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>, _>,
+        exc: AtomicBool<_, RwLockToks::flag_exc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>, _>,
+        rc: AtomicU64<_, RwLockToks::flag_rc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>, _>,
 
-        inst: Tracked<RwLockToks::Instance<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>>,
-        k: Ghost<K>,
+        inst: Tracked<RwLockToks::Instance<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>>,
+        pred: Ghost<Pred>,
     }
 
     #[verifier::type_invariant]
     spec fn wf(&self) -> bool {
-        invariant on exc with (inst) is (v: bool, g: RwLockToks::flag_exc<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>) {
+        invariant on exc with (inst) is (v: bool, g: RwLockToks::flag_exc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>) {
             g@.instance == inst@
                 && g@.value == v
         }
 
-        invariant on rc with (inst) is (v: u64, g: RwLockToks::flag_rc<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>) {
+        invariant on rc with (inst) is (v: u64, g: RwLockToks::flag_rc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>) {
             g@.instance == inst@
                 && g@.value == v
         }
 
         predicate {
-            self.inst@.k() == (self.k@, self.cell.id())
+            self.inst@.k() == (self.pred@, self.cell.id())
         }
     }
 }
 
-struct WriteHandle<'a, K, V, Pred: InvariantPredicate<K, V>> {
-    handle: Tracked<RwLockToks::writer<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>>,
+struct WriteHandle<'a, V, Pred: RwLockPredicate<V>> {
+    handle: Tracked<RwLockToks::writer<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>>,
     perm: Tracked<PointsTo<V>>,
-    rwlock: &'a RwLock<K, V, Pred>,
+    rwlock: &'a RwLock<V, Pred>,
 }
 
-struct ReadHandle<'a, K, V, Pred: InvariantPredicate<K, V>> {
-    handle: Tracked<RwLockToks::reader<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>>,
-    rwlock: &'a RwLock<K, V, Pred>,
+struct ReadHandle<'a, V, Pred: RwLockPredicate<V>> {
+    handle: Tracked<RwLockToks::reader<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>>,
+    rwlock: &'a RwLock<V, Pred>,
 }
 
-impl<'a, K, V, Pred: InvariantPredicate<K, V>> WriteHandle<'a, K, V, Pred> {
+impl<'a, V, Pred: RwLockPredicate<V>> WriteHandle<'a, V, Pred> {
     #[verifier::type_invariant]
     spec fn wf_write_handle(self) -> bool {
         equal(self.perm@.view().pcell, self.rwlock.cell.id())
@@ -285,7 +289,7 @@ impl<'a, K, V, Pred: InvariantPredicate<K, V>> WriteHandle<'a, K, V, Pred> {
           && self.rwlock.wf()
     }
 
-    pub closed spec fn rwlock(self) -> RwLock<K, V, Pred> {
+    pub closed spec fn rwlock(self) -> RwLock<V, Pred> {
         *self.rwlock
     }
 
@@ -306,7 +310,7 @@ impl<'a, K, V, Pred: InvariantPredicate<K, V>> WriteHandle<'a, K, V, Pred> {
     }
 }
 
-impl<'a, K, V, Pred: InvariantPredicate<K, V>> ReadHandle<'a, K, V, Pred> {
+impl<'a, V, Pred: RwLockPredicate<V>> ReadHandle<'a, V, Pred> {
     #[verifier::type_invariant]
     spec fn wf_read_handle(self) -> bool {
         equal(self.handle@.view().instance, self.rwlock.inst@)
@@ -320,7 +324,7 @@ impl<'a, K, V, Pred: InvariantPredicate<K, V>> ReadHandle<'a, K, V, Pred> {
         self.handle@.view().key.view().value.unwrap()
     }
 
-    pub closed spec fn rwlock(self) -> RwLock<K, V, Pred> {
+    pub closed spec fn rwlock(self) -> RwLock<V, Pred> {
         *self.rwlock
     }
 
@@ -333,8 +337,8 @@ impl<'a, K, V, Pred: InvariantPredicate<K, V>> ReadHandle<'a, K, V, Pred> {
     }
 
     pub proof fn lemma_readers_match(
-        tracked read_handle1: &ReadHandle<K, V, Pred>,
-        tracked read_handle2: &ReadHandle<K, V, Pred>
+        tracked read_handle1: &ReadHandle<V, Pred>,
+        tracked read_handle2: &ReadHandle<V, Pred>
     )
         requires
             read_handle1.rwlock() == read_handle2.rwlock(),
@@ -366,23 +370,23 @@ impl<'a, K, V, Pred: InvariantPredicate<K, V>> ReadHandle<'a, K, V, Pred> {
     }
 }
 
-impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
-    pub closed spec fn constant(&self) -> K {
-        self.k@
+impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
+    pub closed spec fn pred(&self) -> Pred {
+        self.pred@
     }
 
     pub open spec fn inv(&self, t: V) -> bool {
-        Pred::inv(self.constant(), t)
+        self.pred().inv(t)
     }
 
-    pub fn new(t: V, Ghost(k): Ghost<K>) -> (s: Self)
-        requires Pred::inv(k, t)
-        ensures s.constant() == k,
+    pub fn new(t: V, Ghost(pred): Ghost<Pred>) -> (s: Self)
+        requires pred.inv(t)
+        ensures s.pred() == pred
     {
         let (cell, Tracked(perm)) = PCell::<V>::new(t);
 
         let tracked (Tracked(inst), Tracked(flag_exc), Tracked(flag_rc), _, _, _, _) =
-            RwLockToks::Instance::<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>::initialize_full((k, cell.id()), perm, Option::Some(perm));
+            RwLockToks::Instance::<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>::initialize_full((pred, cell.id()), perm, Option::Some(perm));
         let inst = Tracked(inst);
 
         let exc = AtomicBool::new(
@@ -390,10 +394,10 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
         let rc = AtomicU64::new(
             Ghost(inst), 0, Tracked(flag_rc));
 
-        RwLock { cell, exc, rc, inst, k: Ghost(k) }
+        RwLock { cell, exc, rc, inst, pred: Ghost(pred) }
     }
 
-    pub fn acquire_write(&self) -> (ret: (V, WriteHandle<K, V, Pred>))
+    pub fn acquire_write(&self) -> (ret: (V, WriteHandle<V, Pred>))
         ensures ({
             let t = ret.0; let write_handle = ret.1;
                 && write_handle.rwlock() == *self
@@ -402,7 +406,7 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
     {
         proof { use_type_invariant(self); }
         let mut done = false;
-        let tracked mut token: Option<RwLockToks::pending_writer<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>> = Option::None;
+        let tracked mut token: Option<RwLockToks::pending_writer<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>> = Option::None;
         while !done
             invariant
                 done ==>
@@ -431,7 +435,7 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
                 self.wf(),
         {
             let tracked mut perm_opt: Option<PointsTo<V>> = None;
-            let tracked mut handle_opt: Option<RwLockToks::writer<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>> = None;
+            let tracked mut handle_opt: Option<RwLockToks::writer<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>> = None;
 
             let result = atomic_with_ghost!(
                 &self.rc => load();
@@ -458,7 +462,7 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
         }
     }
 
-    pub fn acquire_read(&self) -> (read_handle: ReadHandle<K, V, Pred>)
+    pub fn acquire_read(&self) -> (read_handle: ReadHandle<V, Pred>)
         ensures ({
             read_handle.rwlock() == *self
               && self.inv(read_handle.view())
@@ -470,7 +474,7 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
         {
             let val = atomic_with_ghost!(&self.rc => load(); ghost g => { });
 
-            let tracked mut token: Option<RwLockToks::pending_reader<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>> = Option::None;
+            let tracked mut token: Option<RwLockToks::pending_reader<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>> = Option::None;
 
             if val < 0xffff_ffff_ffff_ffff {
                 let result = atomic_with_ghost!(
@@ -485,7 +489,7 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
 
                 match result {
                     Result::Ok(_) => {
-                        let tracked mut handle_opt: Option<RwLockToks::reader<(K, CellId), PointsTo<V>, InternalPred<K, V, Pred>>> = None;
+                        let tracked mut handle_opt: Option<RwLockToks::reader<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>> = None;
 
                         let result = atomic_with_ghost!(
                             &self.exc => load();
@@ -530,14 +534,14 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
 }
 
 struct ExamplePredicate { }
-impl InvariantPredicate<(), u64> for ExamplePredicate {
-    open spec fn inv(k: (), v: u64) -> bool {
+impl RwLockPredicate<u64> for ExamplePredicate {
+    open spec fn inv(self, v: u64) -> bool {
         v == 5 || v == 13
     }
 }
 
 fn main() {
-    let lock = RwLock::<(), u64, ExamplePredicate>::new(5, Ghost(()));
+    let lock = RwLock::<u64, ExamplePredicate>::new(5, Ghost(ExamplePredicate{}));
 
     let (val, write_handle) = lock.acquire_write();
     assert(val == 5 || val == 13);
