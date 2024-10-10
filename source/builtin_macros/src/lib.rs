@@ -177,9 +177,15 @@ pub(crate) fn cfg_verify_vstd() -> bool {
     })
 }
 
+// For not(verus_keep_ghost), we can't use the ideal implementation (above). The following works
+// as long as IS_VSTD is set whenever it's necessary. If we fail to set it, then
+// the CI should fail to build Verus.
+
+static IS_VSTD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 #[cfg(not(verus_keep_ghost))]
 pub(crate) fn cfg_verify_vstd() -> bool {
-    false
+    IS_VSTD.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// verus_proof_macro_exprs!(f!(exprs)) applies verus syntax to transform exprs into exprs',
@@ -222,6 +228,12 @@ pub fn verus_proof_macro_explicit_exprs(input: proc_macro::TokenStream) -> proc_
 
 #[proc_macro]
 pub fn struct_with_invariants(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    struct_decl_inv::struct_decl_inv(input)
+}
+
+#[proc_macro]
+pub fn struct_with_invariants_vstd(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    IS_VSTD.store(true, std::sync::atomic::Ordering::Relaxed);
     struct_decl_inv::struct_decl_inv(input)
 }
 

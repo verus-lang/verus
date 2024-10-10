@@ -261,7 +261,7 @@ impl<V, Pred: RwLockPredicate<V>> InvariantPredicate<(Pred, CellId), PointsTo<V>
     }
 }
 
-struct_with_invariants!{
+struct_with_invariants_vstd!{
     /** A verified implementation of a reader-writer lock,
     implemented using atomics and a reference count.
 
