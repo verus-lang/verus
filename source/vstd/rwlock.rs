@@ -1,17 +1,20 @@
+#![allow(non_snake_case)]
 #![allow(unused_imports)]
+#![allow(non_shorthand_field_patterns)]
 
-use builtin::*;
-use vstd::prelude::*;
-use vstd::multiset::*;
-use vstd::modes::*;
-use vstd::set::*;
-use vstd::invariant::InvariantPredicate;
-use vstd::cell::{PCell, PointsTo, CellId};
-use vstd::atomic_ghost::*;
-use state_machines_macros::tokenized_state_machine;
+use super::prelude::*;
+use super::multiset::*;
+use super::modes::*;
+use super::set::*;
+use super::invariant::InvariantPredicate;
+use super::cell::{PCell, PointsTo, CellId};
+use super::atomic_ghost::*;
+#[cfg(verus_keep_ghost)]
+use state_machines_macros::tokenized_state_machine_vstd;
 use core::marker::PhantomData;
 
-tokenized_state_machine!(
+#[cfg(verus_keep_ghost)]
+tokenized_state_machine_vstd!(
 RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
     fields {
         #[sharding(constant)]
@@ -356,7 +359,6 @@ impl<'a, V, Pred: RwLockPredicate<V>> ReadHandle<'a, V, Pred> {
             &read_handle2.handle.borrow());
     }
 
-
     pub fn release_read(self) {
         proof { use_type_invariant(&self); }
         let ReadHandle { handle: Tracked(handle), rwlock } = self;
@@ -540,7 +542,7 @@ impl RwLockPredicate<u64> for ExamplePredicate {
     }
 }
 
-fn main() {
+fn example() {
     let lock = RwLock::<u64, ExamplePredicate>::new(5, Ghost(ExamplePredicate{}));
 
     let (val, write_handle) = lock.acquire_write();
