@@ -232,6 +232,12 @@ pub trait RwLockPredicate<V> : Sized {
     spec fn inv(self, v: V) -> bool;
 }
 
+impl<V> RwLockPredicate<V> for spec_fn(V) -> bool {
+    open spec fn inv(self, v: V) -> bool {
+        self(v)
+    }
+}
+
 ghost struct InternalPred<V, Pred> {
     v: V, pred: Pred,
 }
@@ -245,7 +251,7 @@ impl<V, Pred: RwLockPredicate<V>> InvariantPredicate<(Pred, CellId), PointsTo<V>
 }
 
 struct_with_invariants!{
-    struct RwLock<V, Pred: RwLockPredicate<V>> {
+    pub struct RwLock<V, Pred: RwLockPredicate<V>> {
         cell: PCell<V>,
         exc: AtomicBool<_, RwLockToks::flag_exc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>, _>,
         rc: AtomicU64<_, RwLockToks::flag_rc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>, _>,
@@ -272,13 +278,13 @@ struct_with_invariants!{
     }
 }
 
-struct WriteHandle<'a, V, Pred: RwLockPredicate<V>> {
+pub struct WriteHandle<'a, V, Pred: RwLockPredicate<V>> {
     handle: Tracked<RwLockToks::writer<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>>,
     perm: Tracked<PointsTo<V>>,
     rwlock: &'a RwLock<V, Pred>,
 }
 
-struct ReadHandle<'a, V, Pred: RwLockPredicate<V>> {
+pub struct ReadHandle<'a, V, Pred: RwLockPredicate<V>> {
     handle: Tracked<RwLockToks::reader<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>>,
     rwlock: &'a RwLock<V, Pred>,
 }
@@ -535,31 +541,6 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
     }
 }
 
-struct ExamplePredicate { }
-impl RwLockPredicate<u64> for ExamplePredicate {
-    open spec fn inv(self, v: u64) -> bool {
-        v == 5 || v == 13
-    }
-}
 
-fn example() {
-    let lock = RwLock::<u64, ExamplePredicate>::new(5, Ghost(ExamplePredicate{}));
-
-    let (val, write_handle) = lock.acquire_write();
-    assert(val == 5 || val == 13);
-    write_handle.release_write(13);
-
-    let read_handle1 = lock.acquire_read();
-    let read_handle2 = lock.acquire_read();
-
-    let val1 = read_handle1.borrow();
-    let val2 = read_handle2.borrow();
-
-    proof { ReadHandle::lemma_readers_match(&read_handle1, &read_handle2); }
-    assert(*val1 == *val2);
-
-    read_handle1.release_read();
-    read_handle2.release_read();
-}
 
 }
