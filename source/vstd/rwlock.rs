@@ -520,6 +520,13 @@ impl<K, V, Pred: InvariantPredicate<K, V>> RwLock<K, V, Pred> {
             }
         }
     }
+
+    pub fn into_inner(self) -> (v: V)
+        ensures self.inv(v)
+    {
+        let (v, _write_handle) = self.acquire_write();
+        v
+    }
 }
 
 struct ExamplePredicate { }
