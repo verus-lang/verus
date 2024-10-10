@@ -297,6 +297,15 @@ impl State {
     }
 
     fn reach_impl_assoc(&mut self, id: DefId) {
+        if !self.remaining_typs_needed_for_each_impl.contains_key(&id) {
+            // Haven't reached trait, or already finished
+            return;
+        }
+        if self.remaining_typs_needed_for_each_impl[&id].1.len() > 0 {
+            // We haven't reached all the types we would need to justify this impl
+            return;
+        }
+
         if !self.reached.contains(&(None, id)) {
             self.reached.insert((None, id));
             self.impl_assocs_worklist.push(id);
@@ -2182,14 +2191,6 @@ fn erase_fn<'tcx>(
 }
 
 fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: DefId) {
-    if !state.remaining_typs_needed_for_each_impl.contains_key(&impl_id) {
-        // Already finished
-        return;
-    }
-    if state.remaining_typs_needed_for_each_impl[&impl_id].1.len() > 0 {
-        // We haven't reached all the types we would need to justify this impl
-        return;
-    }
     let (name, _) = state.remaining_typs_needed_for_each_impl.remove(&impl_id).unwrap();
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
     let mut trait_typ_args: Vec<Typ> = Vec::new();
