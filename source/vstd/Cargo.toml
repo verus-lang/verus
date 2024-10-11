@@ -21,3 +21,12 @@ state_machines_macros = { path = "../state_machines_macros" }
 default = ["std"]
 std = ["alloc"]
 alloc = []
+allocator = []
+strict_provenance_atomic_ptr = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(verus_keep_ghost)',
+  'cfg(verus_verify_core)',
+  'cfg(verus_keep_ghost_body)',
+] }

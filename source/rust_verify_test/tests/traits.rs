@@ -2683,6 +2683,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_specialize_dispatch_copy_clone_ok verus_code! {
+        // https://github.com/verus-lang/verus/issues/1267
+        use vstd::prelude::*;
+        pub trait Ticks: Clone { fn width() -> u32; }
+        pub struct Ticks32(u32);
+        impl Clone for Ticks32 {
+            fn clone(&self) -> Self {
+                Self(self.0)
+            }
+        }
+        impl Ticks for Ticks32 {
+            fn width() -> u32 {
+                32
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_defaults verus_code! {
         trait T {
             spec fn f() -> int { 3 }

@@ -188,3 +188,30 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] inline_poly_assoc_type verus_code! {
+        // https://github.com/verus-lang/verus/issues/1303
+        use vstd::prelude::*;
+        pub type SpecBytes = Seq<u8>;
+        pub type Bytes<'a> = &'a [u8];
+
+        pub enum SpecMsg {
+           M0(SpecBytes),
+        }
+
+        pub enum Msg<'a> {
+           M0(Bytes<'a>),
+        }
+
+        impl View for Msg<'_> {
+           type V = SpecMsg;
+
+           open spec fn view(&self) -> Self::V {
+               match self {
+                   Msg::M0(m) => SpecMsg::M0(m@),
+               }
+           }
+        }
+    } => Ok(())
+}

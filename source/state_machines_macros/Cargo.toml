@@ -13,3 +13,6 @@ indexmap = { version = "1" }
 
 [lib]
 proc-macro = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_keep_ghost)'] }

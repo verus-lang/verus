@@ -789,6 +789,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] tracked_in_ghost1 verus_code! {
+        struct S;
+        fn test(Tracked(x): Tracked<S>) -> Tracked<S> {
+            let ghost g = { let z = Tracked(x); Tracked(x) };
+            Tracked(x)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] tracked_in_ghost2 verus_code! {
+        struct S;
+        fn test(Tracked(x): Tracked<S>) -> Tracked<S> {
+            let ghost g = { let tracked z = Tracked(x); Tracked(x) };
+            Tracked(x)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+}
+
+test_verify_one_file! {
+    #[test] tracked_in_ghost3 verus_code! {
+        struct S;
+        fn test(Tracked(x): Tracked<S>) -> Tracked<S> {
+            let ghost g = { let y = x; let tracked z = Tracked(y); Tracked(x) };
+            Tracked(x)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "has mode spec, expected mode proof")
+}
+
+test_verify_one_file! {
     #[test] tracked_borrow_unit_issue1279 verus_code! {
         proof fn f() {
             Tracked(()).borrow();

@@ -297,6 +297,15 @@ impl State {
     }
 
     fn reach_impl_assoc(&mut self, id: DefId) {
+        if !self.remaining_typs_needed_for_each_impl.contains_key(&id) {
+            // Haven't reached trait, or already finished
+            return;
+        }
+        if self.remaining_typs_needed_for_each_impl[&id].1.len() > 0 {
+            // We haven't reached all the types we would need to justify this impl
+            return;
+        }
+
         if !self.reached.contains(&(None, id)) {
             self.reached.insert((None, id));
             self.impl_assocs_worklist.push(id);
@@ -889,7 +898,7 @@ fn erase_call<'tcx>(
                 TrackedGet => Some((true, "get", false)),
                 TrackedBorrow => Some((true, "borrow", false)),
                 TrackedBorrowMut => Some((true, "borrow_mut", false)),
-                TrackedNew | TrackedExec => Some((false, "tracked_new", false)),
+                TrackedNew | TrackedExec => Some((false, "tracked_new", expect_spec)),
                 TrackedExecBorrow => Some((false, "tracked_exec_borrow", false)),
                 RcNew => Some((false, "rc_new", expect_spec)),
                 ArcNew => Some((false, "arc_new", expect_spec)),
@@ -902,25 +911,24 @@ fn erase_call<'tcx>(
                 assert!(receiver.is_some());
                 assert!(args_slice.len() == 0);
                 let Some(receiver) = receiver else { panic!() };
-                let exp =
-                    erase_expr(ctxt, state, expect_spec_inside, &receiver).expect("builtin method");
-                mk_exp(ExpX::BuiltinMethod(exp, method.to_string()))
+                let exp = erase_expr(ctxt, state, expect_spec_inside, &receiver);
+                if expect_spec_inside {
+                    erase_spec_exps(ctxt, state, expr, vec![exp])
+                } else {
+                    mk_exp(ExpX::BuiltinMethod(exp.expect("builtin method"), method.to_string()))
+                }
             } else if let Some((false, func, expect_spec_inside)) = builtin_method {
                 assert!(receiver.is_none());
                 assert!(args_slice.len() == 1);
-                let requires_arg = matches!(op, UseTypeInvariant);
-                let exp_opt =
-                    erase_expr(ctxt, state, expect_spec_inside && !requires_arg, &args_slice[0]);
-                let exp = match exp_opt {
-                    Some(exp) => exp,
-                    None => {
-                        return None;
-                    }
-                };
-                let target =
-                    mk_exp(ExpX::Var(Id::new(IdKind::Builtin, 0, func.to_string()))).unwrap();
-                let typ_args = mk_typ_args(ctxt, state, node_substs);
-                mk_exp(ExpX::Call(target, typ_args, vec![exp]))
+                let exp = erase_expr(ctxt, state, expect_spec_inside, &args_slice[0]);
+                if expect_spec_inside {
+                    erase_spec_exps(ctxt, state, expr, vec![exp])
+                } else {
+                    let target =
+                        mk_exp(ExpX::Var(Id::new(IdKind::Builtin, 0, func.to_string()))).unwrap();
+                    let typ_args = mk_typ_args(ctxt, state, node_substs);
+                    mk_exp(ExpX::Call(target, typ_args, vec![exp.expect("builtin method")]))
+                }
             } else if let GhostExec = op {
                 Some(erase_spec_exps_force(ctxt, state, expr, vec![]))
             } else {
@@ -2183,14 +2191,6 @@ fn erase_fn<'tcx>(
 }
 
 fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: DefId) {
-    if !state.remaining_typs_needed_for_each_impl.contains_key(&impl_id) {
-        // Already finished
-        return;
-    }
-    if state.remaining_typs_needed_for_each_impl[&impl_id].1.len() > 0 {
-        // We haven't reached all the types we would need to justify this impl
-        return;
-    }
     let (name, _) = state.remaining_typs_needed_for_each_impl.remove(&impl_id).unwrap();
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
     let mut trait_typ_args: Vec<Typ> = Vec::new();
