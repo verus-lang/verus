@@ -413,6 +413,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     ens_has_return: default_function.x.ens_has_return,
                     require: Arc::new(vec![]),
                     ensure: Arc::new(vec![]),
+                    returns: None,
                     decrease: Arc::new(vec![]),
                     decrease_when: None,
                     decrease_by: None,
@@ -923,22 +924,35 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
 pub fn fixup_ens_has_return_for_trait_method_impls(krate: Krate) -> Result<Krate, VirErr> {
     let mut krate = krate;
     let kratex = &mut Arc::make_mut(&mut krate);
-    let mut fun_map = HashMap::<Fun, bool>::new();
+    let mut fun_map = HashMap::<Fun, Function>::new();
     for function in kratex.functions.iter() {
         if matches!(function.x.kind, FunctionKind::TraitMethodDecl { .. }) {
-            fun_map.insert(function.x.name.clone(), function.x.ens_has_return);
+            fun_map.insert(function.x.name.clone(), function.clone());
         }
     }
     for function in kratex.functions.iter_mut() {
         if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
+            let method = method.clone();
             if !function.x.ens_has_return {
-                match fun_map.get(method) {
+                match fun_map.get(&method) {
                     None => {}
-                    Some(true) => {
+                    Some(f) if f.x.ens_has_return => {
                         let functionx = &mut Arc::make_mut(&mut *function).x;
                         functionx.ens_has_return = true;
                     }
-                    Some(false) => {}
+                    Some(_) => {}
+                }
+            }
+            if function.x.returns.is_some() {
+                match fun_map.get(&method) {
+                    None => {}
+                    Some(f) if f.x.returns.is_some() => {
+                        return Err(error(
+                            &function.span,
+                            "a `returns` clause cannot be declared on both a trait method impl and its declaration",
+                        ).secondary_span(&f.span));
+                    }
+                    Some(_) => {}
                 }
             }
         }
