@@ -100,6 +100,12 @@ fn main() {
         "--is-vstd".to_string(),
         "--compile".to_string(),
     ];
+
+    if let Ok(sysroot) = std::env::var("RUST_SYSROOT") {
+        child_args.push("--sysroot".to_string());
+        child_args.push(sysroot);
+    }
+
     if no_verify {
         child_args.push("--no-verify".to_string());
         child_args.push("--no-lifetime".to_string());
