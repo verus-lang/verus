@@ -31,9 +31,9 @@ use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use syn::{
     parse2, parse_quote, spanned::Spanned, token::Brace, visit_mut, visit_mut::VisitMut, Attribute,
-    Block, Expr, ExprForLoop, ExprLoop, ExprWhile, Ident, ImplItemMethod, Item, ItemConst,
-    ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStruct, ItemTrait, ItemUnion, Stmt, TraitItem,
-    TraitItemMethod,
+    AttributeArgs, Block, Expr, ExprForLoop, ExprLoop, ExprWhile, Ident, ImplItemMethod, Item,
+    ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStruct, ItemTrait, ItemUnion, Stmt,
+    TraitItem, TraitItemMethod,
 };
 
 use crate::{
@@ -208,11 +208,33 @@ fn insert_spec_call(any_fn: &mut dyn AnyAttrBlock, call: &str, verus_expr: Token
         .insert(0, parse2(quote! { ::builtin::#fname(#tokens); }).unwrap());
 }
 
-pub fn rewrite_verus_attribute(erase: &EraseGhost, input: TokenStream) -> TokenStream {
+pub fn rewrite_verus_attribute(
+    erase: &EraseGhost,
+    attr_args: AttributeArgs,
+    input: TokenStream,
+) -> TokenStream {
     if erase.keep() {
         let item: Item = parse2(input).expect("#[verus_verify] must on item");
+        let mut attributes: Vec<TokenStream> = vec![];
+        const VERIFIER_ATTRS: [&str; 2] = ["external", "external_body"];
+        for arg in attr_args {
+            if let syn::NestedMeta::Meta(m) = arg {
+                if VERIFIER_ATTRS.contains(&m.to_token_stream().to_string().as_str()) {
+                    attributes.push(quote_spanned!(m.span() => #[verifier::#m]));
+                } else {
+                    panic!(
+                        "unsupported parameters {:?} in #[verus_verify(...)]",
+                        m.to_token_stream().to_string()
+                    );
+                }
+            }
+        }
+        if attributes.len() == 0 {
+            attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
+        }
+
         quote_spanned! {item.span()=>
-            #[verifier::verify]
+            #(#attributes)*
             #item
         }
     } else {

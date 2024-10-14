@@ -650,3 +650,10 @@ impl Y {
         self.val
     }
 }
+
+#[verus_verify(external_body)]
+#[ensures(|ret: bool| ret)]
+fn test_external_body() -> bool
+{
+    false
+}

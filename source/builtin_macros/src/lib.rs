@@ -48,15 +48,21 @@ pub fn verus_verify_all(
     attr_rewrite::rewrite_verus_verify_all(&cfg_erase(), input.into()).into()
 }
 
-// Add #[verifier::verify] only to the top item if in verification mode.
+// If no #[verys_verify] on the item, it is verifier::external by default.
+// When compiling code with verus:
+// #[verus_verify] annotates the item with verifier::verify
+// #[verus_verify(external_body)] annotates the item with verifier::external_body
+// When compiling code with standard rust tool, the item has no verifier annotation.
 #[proc_macro_attribute]
 pub fn verus_verify(
-    _attr: proc_macro::TokenStream,
+    args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    attr_rewrite::rewrite_verus_attribute(&cfg_erase(), input.into()).into()
+    let args: syn::AttributeArgs = syn::parse_macro_input!(args as syn::AttributeArgs);
+    attr_rewrite::rewrite_verus_attribute(&cfg_erase(), args, input.into()).into()
 }
 
+// The attribute should work together with verus_verify attribute.
 #[proc_macro_attribute]
 pub fn requires(
     attr: proc_macro::TokenStream,
@@ -72,6 +78,7 @@ pub fn requires(
     .into()
 }
 
+// The attribute should work together with verus_verify attribute.
 #[proc_macro_attribute]
 pub fn ensures(
     attr: proc_macro::TokenStream,
@@ -87,6 +94,7 @@ pub fn ensures(
     .into()
 }
 
+// The attribute should work together with verus_verify attribute.
 #[proc_macro_attribute]
 pub fn decreases(
     attr: proc_macro::TokenStream,
@@ -102,6 +110,7 @@ pub fn decreases(
     .into()
 }
 
+// The attribute should work together with verus_verify attribute.
 #[proc_macro_attribute]
 pub fn invariant(
     attr: proc_macro::TokenStream,
@@ -117,6 +126,7 @@ pub fn invariant(
     .into()
 }
 
+// The attribute should work together with verus_verify attribute.
 #[proc_macro_attribute]
 pub fn invariant_except_break(
     attr: proc_macro::TokenStream,
