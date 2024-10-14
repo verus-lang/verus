@@ -223,6 +223,9 @@ impl Printer {
                     BinaryOp::AShr => "bvashr",
                     BinaryOp::Shl => "bvshl",
                     BinaryOp::BitConcat => "concat",
+                    BinaryOp::FieldUpdate(field_ident) => {
+                        todo!("TODO: emit (_ update-field <field_ident>)")
+                    }
                 };
                 Node::List(vec![str_to_node(sop), self.expr_to_node(lhs), self.expr_to_node(rhs)])
             }

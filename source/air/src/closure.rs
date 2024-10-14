@@ -584,9 +584,10 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                     (TypX::BitVec(n1), TypX::BitVec(n2)) => Arc::new(TypX::BitVec(n1 + n2)),
                     _ => panic!("internal error during processing concat"),
                 },
+                BinaryOp::FieldUpdate(_) => ts[0].0.clone(),
             };
-            let (es, t) = enclose(state, App::Binary(*op), es, ts);
-            (typ, Arc::new(ExprX::Binary(*op, es[0].clone(), es[1].clone())), t)
+            let (es, t) = enclose(state, App::Binary(op.clone()), es, ts);
+            (typ, Arc::new(ExprX::Binary(op.clone(), es[0].clone(), es[1].clone())), t)
         }
         ExprX::Multi(op, es) => {
             let typ = match op {

@@ -56,7 +56,7 @@ pub enum Relation {
     PiecewiseLinearOrder,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     Implies,
     Eq,
@@ -92,6 +92,7 @@ pub enum BinaryOp {
     LShr,
     Shl,
     BitConcat,
+    FieldUpdate(Ident),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
