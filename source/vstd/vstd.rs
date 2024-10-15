@@ -38,6 +38,7 @@ pub mod map_lib;
 pub mod math;
 pub mod modes;
 pub mod multiset;
+pub mod multiset_lib;
 pub mod pcm;
 pub mod pcm_lib;
 pub mod pervasive;
