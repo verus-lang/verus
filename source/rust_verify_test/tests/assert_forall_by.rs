@@ -271,3 +271,23 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_forallstmt_implies verus_code! {
+        spec fn f(x: int) -> bool;
+        spec fn g(x: int) -> bool;
+
+        proof fn x()
+            requires forall |x: int| f(x) ==> g(x)
+        {
+            assert forall |x: int| f(x) ==> g(x) by {
+            }
+        }
+    } => Ok(err) => {
+        assert!(err.errors.is_empty());
+        let mut warns = err.warnings.iter();
+        assert!(warns.next().expect("one warning").message.contains("using ==> in `assert forall` does not currently assume the antecedent in the body"));
+        assert!(warns.next().is_some());
+        assert!(warns.next().is_none());
+    }
+}

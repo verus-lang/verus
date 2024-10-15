@@ -5,7 +5,8 @@ use crate::ast::{
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to_opt,
-    path_as_friendly_rust_name, referenced_vars_expr,
+    path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
+    undecorate_typ,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::user_local_name;
@@ -168,6 +169,7 @@ fn check_one_expr(
     expr: &Expr,
     disallow_private_access: Option<(&Option<Path>, &str)>,
     place: Place,
+    diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::Var(x) => {
@@ -372,6 +374,17 @@ fn check_one_expr(
                 VisitorControlFlow::Stop(e) => Err(e),
             }?;
         }
+        ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
+            ExprX::Binary(crate::ast::BinaryOp::Implies, _, _) => {
+                if !vars.is_empty() {
+                    diags.push(VirErrAs::Warning(
+                        error(&expr.span, "using ==> in `assert forall` does not currently assume the antecedent in the body; consider using `implies` instead of `==>`")
+                            .help("If you didn't mean to assume the antecedent, we're very curious to hear why! To tell us, please open an issue on the Verus issue tracker on github with the title `Don't always make assert forall assume the antecedent`. If no one opens such an issue, we'll soon change the behavior of Verus to always assume the antecedent of the outermost implication")
+                    ));
+                }
+            }
+            _ => {}
+        },
         ExprX::ExecClosure { params, ret, .. } => {
             for p in params.iter() {
                 check_typ(ctxt, &p.a, &expr.span)?;
@@ -455,9 +468,10 @@ fn check_expr(
     expr: &Expr,
     disallow_private_access: Option<(&Option<Path>, &str)>,
     place: Place,
+    diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
     crate::ast_visitor::expr_visitor_check(expr, &mut |_scope_map, expr| {
-        check_one_expr(ctxt, function, expr, disallow_private_access, place)
+        check_one_expr(ctxt, function, expr, disallow_private_access, place, diags)
     })
 }
 
@@ -519,6 +533,12 @@ fn check_function(
             ));
         }
         if function.x.ensure.len() != 0 {
+            return Err(error(
+                &function.span,
+                "decreases_by/recommends_by function cannot have ensures clauses",
+            ));
+        }
+        if function.x.returns.is_some() {
             return Err(error(
                 &function.span,
                 "decreases_by/recommends_by function cannot have ensures clauses",
@@ -672,7 +692,6 @@ fn check_function(
 
     #[cfg(feature = "singular")]
     if function.x.attrs.integer_ring {
-        use crate::ast_util::undecorate_typ;
         let _ = match std::env::var("VERUS_SINGULAR_PATH") {
             Ok(_) => {}
             Err(_) => {
@@ -767,6 +786,9 @@ fn check_function(
                 Ok(())
             })?;
         }
+        if let Some(r) = &function.x.returns {
+            return Err(error(&r.span, "integer_ring should not have a `returns` clause"));
+        }
     }
 
     if function.x.publish.is_some() && function.x.mode != Mode::Spec {
@@ -792,12 +814,39 @@ fn check_function(
     for req in function.x.require.iter() {
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, req, disallow_private_access, Place::PreState("requires"))?;
+        check_expr(
+            ctxt,
+            function,
+            req,
+            disallow_private_access,
+            Place::PreState("requires"),
+            diags,
+        )?;
     }
     for ens in function.x.ensure.iter() {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState)?;
+        check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState, diags)?;
+    }
+    if let Some(r) = &function.x.returns {
+        if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
+            return Err(error(
+                &r.span,
+                "type of `returns` clause does not match function return type",
+            )
+            .secondary_label(
+                &function.span,
+                format!("this function returns `{}`", typ_to_diagnostic_str(&function.x.ret.x.typ)),
+            )
+            .secondary_label(
+                &r.span,
+                format!("the `returns` clause has type `{}`", typ_to_diagnostic_str(&r.typ)),
+            ));
+        }
+
+        let msg = "'requires' clause of public function";
+        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        check_expr(ctxt, function, r, disallow_private_access, Place::PreState("returns"), diags)?;
     }
     match &function.x.mask_spec {
         None => {}
@@ -811,6 +860,7 @@ fn check_function(
                     expr,
                     disallow_private_access,
                     Place::PreState("opens_invariants clause"),
+                    diags,
                 )?;
             }
         }
@@ -826,6 +876,7 @@ fn check_function(
                 expr,
                 disallow_private_access,
                 Place::PreState("opens_invariants clause"),
+                diags,
             )?;
         }
     }
@@ -838,6 +889,7 @@ fn check_function(
             expr,
             disallow_private_access,
             Place::PreState("decreases clause"),
+            diags,
         )?;
     }
     if let Some(expr) = &function.x.decrease_when {
@@ -855,7 +907,14 @@ fn check_function(
                 "decreases_when can only be used when there is a decreases clause (use recommends(...) for nonrecursive functions)",
             ));
         }
-        check_expr(ctxt, function, expr, disallow_private_access, Place::PreState("when clause"))?;
+        check_expr(
+            ctxt,
+            function,
+            expr,
+            disallow_private_access,
+            Place::PreState("when clause"),
+            diags,
+        )?;
     }
 
     if function.x.mode == Mode::Exec
@@ -875,7 +934,7 @@ fn check_function(
             }
             _ => None,
         };
-        check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState)?;
+        check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState, diags)?;
     }
 
     if function.x.attrs.is_type_invariant_fn {
@@ -1246,7 +1305,13 @@ pub fn check_crate(
                 _ => VisitorControlFlow::Recurse,
             };
             let mut found_trigger = false;
-            for expr in function.x.require.iter().chain(function.x.ensure.iter()) {
+            for expr in function
+                .x
+                .require
+                .iter()
+                .chain(function.x.ensure.iter())
+                .chain(function.x.returns.iter())
+            {
                 let control = crate::ast_visitor::expr_visitor_dfs(
                     expr,
                     &mut air::scope_map::ScopeMap::new(),

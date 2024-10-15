@@ -563,7 +563,9 @@ pub fn func_def_to_sst(
             req_stms.extend(stms);
             exp
         } else {
-            expr_to_exp_skip_checks(ctx, diagnostics, &req_pars, &e_with_req_ens_params)?
+            let exp = expr_to_exp_skip_checks(ctx, diagnostics, &req_pars, &e_with_req_ens_params)?;
+            let exp = subst_exp(&trait_typ_substs, &HashMap::new(), &exp);
+            exp
         };
 
         let exp = state.finalize_exp(ctx, &exp)?;
