@@ -285,12 +285,10 @@ pub fn rewrite(
         }
 
         AnyFnOrLoop::ForLoop(mut l) => {
-            verus_attrs.extend(remove_verus_attributes(&mut l.attrs));
             expand_verus_attribute(erase, verus_attrs, &mut l, false);
             Ok(quote_spanned! {l.span()=>#l})
         }
         AnyFnOrLoop::While(mut l) => {
-            verus_attrs.extend(remove_verus_attributes(&mut l.attrs));
             expand_verus_attribute(erase, verus_attrs, &mut l, false);
             Ok(quote_spanned! {l.span()=>#l})
         }
