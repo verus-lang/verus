@@ -3,7 +3,7 @@ name: ci
 on:
   push:
     branches:
-      - 'main'
+      - 'release'
 
   workflow_dispatch:
 
@@ -215,7 +215,7 @@ jobs:
 
   release:
     needs: [fmt, smoke-test-and-release-linux, smoke-test-and-release-windows, test-and-release-macos]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release'
     runs-on: ubuntu-latest
     steps:
       - name: download all artifacts
@@ -239,7 +239,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          id: 163437062
+          id: 180186212
           new_name: Rolling Release ${{ env.RELEASE_NAME }}
           new_body: |
             Rolling release from Continuous Integration
@@ -282,6 +282,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          id: 163437062
+          id: 180186212
           new_tag: ${{ env.TAG_NAME }}
           new_draft_status: false
