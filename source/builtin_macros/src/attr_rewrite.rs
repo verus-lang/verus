@@ -182,6 +182,13 @@ fn expand_verus_attribute_on_trait_method(
     if verus_attrs.is_empty() {
         return None;
     }
+
+    // For trait methods, we must parse requires/ensures together since
+    // we only insert a single new function. Thus, the first spec macro
+    // will use remove_verus_attributes and then invoke the rewrite for
+    // all followed verus attributes.
+    let mut verus_attrs = verus_attrs;
+    verus_attrs.extend(remove_verus_attributes(&mut fun.attrs));
     let mut spec_fun = fun.clone();
     let x = fun.sig.ident.clone();
     if fun.default.is_none() {
@@ -253,16 +260,14 @@ pub fn rewrite(
     input: TokenStream,
 ) -> Result<TokenStream, syn::Error> {
     let outer_attr_tokens = insert_brackets(&outer_attr, outer_attr_tokens);
-    let mut verus_attrs = vec![(outer_attr, outer_attr_tokens)];
+    let verus_attrs = vec![(outer_attr, outer_attr_tokens)];
     let f = parse2::<AnyFnOrLoop>(input)?;
     match f {
         AnyFnOrLoop::Fn(mut item_fn) => {
-            verus_attrs.extend(remove_verus_attributes(&mut item_fn.attrs));
             expand_verus_attribute(erase, verus_attrs, &mut item_fn, true);
             Ok(quote_spanned! {item_fn.span()=>#item_fn})
         }
         AnyFnOrLoop::TraitMethod(mut trait_item_method) => {
-            verus_attrs.extend(remove_verus_attributes(&mut trait_item_method.attrs));
             let spec_item =
                 expand_verus_attribute_on_trait_method(erase, verus_attrs, &mut trait_item_method);
             match spec_item {
@@ -275,7 +280,6 @@ pub fn rewrite(
             }
         }
         AnyFnOrLoop::Loop(mut l) => {
-            verus_attrs.extend(remove_verus_attributes(&mut l.attrs));
             expand_verus_attribute(erase, verus_attrs, &mut l, false);
             Ok(quote_spanned! {l.span()=>#l})
         }

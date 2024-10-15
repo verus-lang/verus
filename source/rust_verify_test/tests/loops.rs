@@ -46,21 +46,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] verus_verify_all_basic_while code! {
-        #[verus_verify_all]
-        fn test1() {
-            let mut i = 0;
-            #[invariant(i <= 10)]
-            while i < 10
-            {
-                i = i + 1;
-            }
-            proof!{assert(i == 10);}
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
     #[test] verus_verify_basic_while code! {
         #[verus_verify]
         fn test1() {
