@@ -38,16 +38,6 @@ pub fn verus_enum_synthesize(
     enum_synthesize::attribute_verus_enum_synthesize(&cfg_erase(), attr, input)
 }
 
-// Apply verus_verify to all items in side the annotated item
-// and visit syntax tree to rewrite all.
-#[proc_macro_attribute]
-pub fn verus_verify_all(
-    _attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    attr_rewrite::rewrite_verus_verify_all(&cfg_erase(), input.into()).into()
-}
-
 // If no #[verys_verify] on the item, it is verifier::external by default.
 // When compiling code with verus:
 // #[verus_verify] annotates the item with verifier::verify

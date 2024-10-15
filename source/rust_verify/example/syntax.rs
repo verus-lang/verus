@@ -641,6 +641,13 @@ fn test_small_macros_verus_verify(x: u32, y: &mut Y) -> u32 {
     x + y
 }
 
+#[verus_verify(external_body)]
+#[requires [true, 1==1, false ==> true]]
+#[ensures[true, 1==1, false ==> true]]
+fn test_brackets()
+{
+}
+
 #[verus_verify]
 impl Y {
     #[verus_verify]
@@ -652,8 +659,16 @@ impl Y {
 }
 
 #[verus_verify(external_body)]
-#[ensures(|ret: bool| ret)]
-fn test_external_body() -> bool
+#[ensures(true, 1==1, false ==> true)]
+fn test_external_body()
 {
-    false
+}
+
+#[verus_verify]
+trait X {
+    #[verus_verify(external_body)]
+    #[ensures(|ret: bool| ret)]
+    fn default(&self) -> bool {
+        false
+    }
 }
