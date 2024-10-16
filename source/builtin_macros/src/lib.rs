@@ -38,6 +38,8 @@ pub fn verus_enum_synthesize(
     enum_synthesize::attribute_verus_enum_synthesize(&cfg_erase(), attr, input)
 }
 
+/*** Verus small macro definition for executable items ***/
+
 // If no #[verys_verify] on the item, it is verifier::external by default.
 // When compiling code with verus:
 // #[verus_verify] annotates the item with verifier::verify
@@ -128,9 +130,16 @@ pub fn invariant_except_break(
         attr.into(),
         input.into(),
     )
-    .expect("Misuse of #[invariant()]")
+    .expect("Misuse of #[invariant_except_break()]")
     .into()
 }
+
+#[proc_macro]
+pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    attr_rewrite::proof_rewrite(cfg_erase(), input.into()).into()
+}
+
+/*** End of verus small macro definition for executable items ***/
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EraseGhost {

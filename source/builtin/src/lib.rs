@@ -14,10 +14,6 @@
 
 use core::marker::PhantomData;
 
-mod small_macros;
-#[allow(unused_imports)]
-pub use small_macros::*;
-
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::admit"]
 #[verifier::proof]

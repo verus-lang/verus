@@ -32,7 +32,7 @@ use core::convert::{TryFrom, TryInto};
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use syn::{
-    parse2, parse_quote, spanned::Spanned, token::{self, Token}, Attribute, AttributeArgs, Block, Expr, Ident,
+    parse2, parse_quote, spanned::Spanned, token, Attribute, AttributeArgs, Block, Expr, Ident,
     Item, Stmt, TraitItem, TraitItemMethod,
 };
 
@@ -294,5 +294,19 @@ pub fn rewrite(
             expand_verus_attribute(erase, verus_attrs, &mut l, false);
             Ok(quote_spanned! {l.span()=>#l})
         }
+    }
+}
+
+pub fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro::TokenStream {
+    if erase.keep() {
+        let block: TokenStream =
+            syntax::proof_block(erase, quote_spanned!(input.span() => {#input}).into()).into();
+        quote! {
+            #[verifier::proof_block]
+            #block
+        }
+        .into()
+    } else {
+        proc_macro::TokenStream::new()
     }
 }
