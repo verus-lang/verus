@@ -32,7 +32,7 @@ use core::convert::{TryFrom, TryInto};
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use syn::{
-    parse2, parse_quote, spanned::Spanned, token, Attribute, AttributeArgs, Block, Expr, Ident,
+    parse2, parse_quote, spanned::Spanned, token::{self, Token}, Attribute, AttributeArgs, Block, Expr, Ident,
     Item, Stmt, TraitItem, TraitItemMethod,
 };
 
@@ -56,6 +56,8 @@ struct SpecAttributeApply {
     pub on_function: bool,
     pub on_loop: bool,
 }
+
+type SpecAttrWithArgs = (SpecAttributeKind, TokenStream);
 
 impl SpecAttributeKind {
     fn applies_to(&self) -> SpecAttributeApply {
@@ -92,7 +94,7 @@ impl TryFrom<String> for SpecAttributeKind {
     }
 }
 
-fn remove_verus_attributes(attrs: &mut Vec<Attribute>) -> Vec<(SpecAttributeKind, TokenStream)> {
+fn remove_verus_attributes(attrs: &mut Vec<Attribute>) -> Vec<SpecAttrWithArgs> {
     let mut verus_attributes = Vec::new();
     let mut regular_attributes = Vec::new();
     for attr in attrs.drain(0..) {
@@ -111,8 +113,8 @@ fn remove_verus_attributes(attrs: &mut Vec<Attribute>) -> Vec<(SpecAttributeKind
     verus_attributes
 }
 
-// Remove brackets for requires, invariant, decreases.
-// Keep the brackets for ensures.
+// Add brackets for requires, invariant.
+// Add brackets for ensures if it could not be parsed as a syn_verus::Expr.
 fn insert_brackets(attr_type: &SpecAttributeKind, tokens: TokenStream) -> TokenStream {
     // Parse the TokenStream into a Syn Expression
     match attr_type {
@@ -130,7 +132,7 @@ fn insert_brackets(attr_type: &SpecAttributeKind, tokens: TokenStream) -> TokenS
 
 fn expand_verus_attribute(
     erase: &EraseGhost,
-    verus_attrs: Vec<(SpecAttributeKind, TokenStream)>,
+    verus_attrs: Vec<SpecAttrWithArgs>,
     any_with_attr_block: &mut dyn AnyAttrBlock,
     function_or_loop: bool,
 ) {
@@ -176,7 +178,7 @@ fn expand_verus_attribute(
 ///   fn f();
 fn expand_verus_attribute_on_trait_method(
     erase: &EraseGhost,
-    verus_attrs: Vec<(SpecAttributeKind, TokenStream)>,
+    verus_attrs: Vec<SpecAttrWithArgs>,
     fun: &mut TraitItemMethod,
 ) -> Option<TraitItem> {
     if verus_attrs.is_empty() {
