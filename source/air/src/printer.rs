@@ -193,41 +193,42 @@ impl Printer {
                 Node::List(vec![op, self.expr_to_node(lhs), self.expr_to_node(rhs)])
             }
             ExprX::Binary(op, lhs, rhs) => {
-                let sop = match op {
-                    BinaryOp::Implies => "=>",
-                    BinaryOp::Eq => "=",
-                    BinaryOp::Le => "<=",
-                    BinaryOp::Ge => ">=",
-                    BinaryOp::Lt => "<",
-                    BinaryOp::Gt => ">",
-                    BinaryOp::EuclideanDiv => "div",
-                    BinaryOp::EuclideanMod => "mod",
+                let sop: Node = match op {
+                    BinaryOp::Implies => str_to_node("=>"),
+                    BinaryOp::Eq => str_to_node("="),
+                    BinaryOp::Le => str_to_node("<="),
+                    BinaryOp::Ge => str_to_node(">="),
+                    BinaryOp::Lt => str_to_node("<"),
+                    BinaryOp::Gt => str_to_node(">"),
+                    BinaryOp::EuclideanDiv => str_to_node("div"),
+                    BinaryOp::EuclideanMod => str_to_node("mod"),
                     BinaryOp::Relation(..) => unreachable!(),
-                    BinaryOp::BitXor => "bvxor",
-                    BinaryOp::BitAnd => "bvand",
-                    BinaryOp::BitOr => "bvor",
-                    BinaryOp::BitAdd => "bvadd",
-                    BinaryOp::BitSub => "bvsub",
-                    BinaryOp::BitMul => "bvmul",
-                    BinaryOp::BitUDiv => "bvudiv",
-                    BinaryOp::BitUMod => "bvurem",
-                    BinaryOp::BitULt => "bvult",
-                    BinaryOp::BitUGt => "bvugt",
-                    BinaryOp::BitULe => "bvule",
-                    BinaryOp::BitUGe => "bvuge",
-                    BinaryOp::BitSLt => "bvslt",
-                    BinaryOp::BitSGt => "bvsgt",
-                    BinaryOp::BitSLe => "bvsle",
-                    BinaryOp::BitSGe => "bvsge",
-                    BinaryOp::LShr => "bvlshr",
-                    BinaryOp::AShr => "bvashr",
-                    BinaryOp::Shl => "bvshl",
-                    BinaryOp::BitConcat => "concat",
+                    BinaryOp::BitXor => str_to_node("bvxor"),
+                    BinaryOp::BitAnd => str_to_node("bvand"),
+                    BinaryOp::BitOr => str_to_node("bvor"),
+                    BinaryOp::BitAdd => str_to_node("bvadd"),
+                    BinaryOp::BitSub => str_to_node("bvsub"),
+                    BinaryOp::BitMul => str_to_node("bvmul"),
+                    BinaryOp::BitUDiv => str_to_node("bvudiv"),
+                    BinaryOp::BitUMod => str_to_node("bvurem"),
+                    BinaryOp::BitULt => str_to_node("bvult"),
+                    BinaryOp::BitUGt => str_to_node("bvugt"),
+                    BinaryOp::BitULe => str_to_node("bvule"),
+                    BinaryOp::BitUGe => str_to_node("bvuge"),
+                    BinaryOp::BitSLt => str_to_node("bvslt"),
+                    BinaryOp::BitSGt => str_to_node("bvsgt"),
+                    BinaryOp::BitSLe => str_to_node("bvsle"),
+                    BinaryOp::BitSGe => str_to_node("bvsge"),
+                    BinaryOp::LShr => str_to_node("bvlshr"),
+                    BinaryOp::AShr => str_to_node("bvashr"),
+                    BinaryOp::Shl => str_to_node("bvshl"),
+                    BinaryOp::BitConcat => str_to_node("concat"),
                     BinaryOp::FieldUpdate(field_ident) => {
-                        todo!("TODO: emit (_ update-field <field_ident>)")
+                        //todo!("TODO: emit (_ update-field <field_ident>)")
+                        Node::List(vec![str_to_node("_"), str_to_node("update-field"), str_to_node(&**field_ident)])
                     }
                 };
-                Node::List(vec![str_to_node(sop), self.expr_to_node(lhs), self.expr_to_node(rhs)])
+                Node::List(vec![sop, self.expr_to_node(lhs), self.expr_to_node(rhs)])
             }
             ExprX::Multi(op, exprs) => {
                 let sop = match op {
