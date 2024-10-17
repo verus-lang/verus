@@ -112,7 +112,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     }
 
     #[verifier::external_body]
-    pub fn extend(&mut self, other: Self)
+    pub fn union_prefer_right(&mut self, other: Self)
         ensures
             self@ == old(self)@.union_prefer_right(other@),
     {
@@ -221,7 +221,7 @@ impl<Value> StringHashMap<Value> {
     }
 
     #[verifier::external_body]
-    pub fn extend(&mut self, other: Self)
+    pub fn union_prefer_right(&mut self, other: Self)
         ensures
             self@ == old(self)@.union_prefer_right(other@),
     {
