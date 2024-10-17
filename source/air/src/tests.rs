@@ -2132,3 +2132,45 @@ fn datatype_field_update_ill_typed() {
         )
     )
 }
+
+#[test]
+fn datatype_field_update2() {
+    no!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field A_A_u) a 3))
+                (assert (= (A_A_u a) 4))
+            )
+        )
+    )
+}
+
+#[test]
+fn datatype_field_update3() {
+    yes!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int) (A_A_v Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field A_A_u) a 3))
+                (assert (= (A_A_u a) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn datatype_field_update4() {
+    no!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int) (A_A_v Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field A_A_u) a 3))
+                (assert (= (A_A_u a) 4))
+            )
+        )
+    )
+}
