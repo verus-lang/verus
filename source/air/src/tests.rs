@@ -2104,13 +2104,29 @@ fn no_partial_order() {
 }
 
 #[test]
-fn datatype_field_update() {
+fn datatype_field_update_pass() {
     yes!(
         (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
         (check-valid
             (declare-var a A)
             (block
                 (assign a ((_ update-field A_A_u) a 3))
+                (assert (= (A_A_u a) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn datatype_field_update_ill_typed() {
+    untyped!(
+        (declare-datatypes ((X 0)) (((X_X (X_X_u Int)))))
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (check-valid
+            (declare-var a A)
+            (declare-const x X)
+            (block
+                (assign a ((_ update-field A_A_u) a x))
                 (assert (= (A_A_u a) 3))
             )
         )
