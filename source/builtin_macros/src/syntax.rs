@@ -33,7 +33,7 @@ use syn_verus::{
     SignatureUnwind, Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
 };
 
-const VERUS_SPEC: &str = "VERUS_SPEC__";
+pub const VERUS_SPEC: &str = "VERUS_SPEC__";
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());
@@ -3601,6 +3601,30 @@ fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     stream
 }
 
+pub(crate) fn proof_block(
+    erase_ghost: EraseGhost,
+    stream: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let stream = rejoin_tokens(stream);
+    let mut invoke: Block = parse_macro_input!(stream as Block);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 1,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+        inside_bitvector: false,
+    };
+    visitor.visit_block_mut(&mut invoke);
+    invoke.to_tokens(&mut new_stream);
+    proc_macro::TokenStream::from(new_stream)
+}
+
 pub(crate) fn proof_macro_exprs(
     erase_ghost: EraseGhost,
     inside_ghost: bool,
@@ -3699,7 +3723,7 @@ pub(crate) fn proof_macro_explicit_exprs(
     proc_macro::TokenStream::from(new_stream)
 }
 
-fn has_external_code(attrs: &Vec<Attribute>) -> bool {
+pub(crate) fn has_external_code(attrs: &Vec<Attribute>) -> bool {
     attrs.iter().any(|attr| {
         // verifier::external
         attr.path.segments.len() == 2
