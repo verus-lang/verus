@@ -513,7 +513,8 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst, specialization: &
     let (is_trait_method_impl, inherit_fn_ens) = match &function.x.kind {
         FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {
             if ctx.funcs_with_ensure_predicate[method] {
-                let ens = prefix_ensures(&fun_to_air_ident(&method));
+                // NOTE: Maybe we should use a different specialization
+                let ens = prefix_ensures(&specialization.transform_ident(fun_to_air_ident(&method)));
                 let mut typ_args = (**trait_typ_args).clone();
                 let num_trait_and_method_typ_params = ctx.func_map[method].x.typ_params.len();
                 let num_method_typ_params = num_trait_and_method_typ_params - trait_typ_args.len();
@@ -538,6 +539,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst, specialization: &
         Arc::new(function.x.pars.iter().map(|param| typ_to_air(ctx, &specialization.transform_typ(&function.x.typ_params, &param.x.typ))).collect());
     let mut decl_commands: Vec<Command> = Vec::new();
 
+    let func_name = specialization.transform_ident(fun_to_air_ident(&function.x.name));
     // Requires
     if function.x.has.has_requires && !function.x.attrs.broadcast_forall_only {
         assert!(!is_trait_method_impl);
@@ -557,12 +559,12 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst, specialization: &
             &func_decl_sst.reqs,
             &function.x.typ_params,
             &req_typs,
-            &prefix_requires(&fun_to_air_ident(&function.x.name)),
+            &prefix_requires(&func_name),
             &msg,
             function.x.attrs.integer_ring,
             bool_typ(),
             None,
-            Some(fun_to_air_ident(&function.x.name)),
+            Some(func_name.clone()),
         )?;
     }
 
@@ -577,7 +579,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst, specialization: &
                 &e,
                 &function.x.typ_params,
                 &req_typs,
-                &prefix_open_inv(&fun_to_air_ident(&function.x.name), i),
+                &prefix_open_inv(&func_name, i),
                 &None,
                 function.x.attrs.integer_ring,
                 int_typ(),
@@ -597,7 +599,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst, specialization: &
             &Arc::new(vec![e.clone()]),
             &function.x.typ_params,
             &req_typs,
-            &prefix_no_unwind_when(&fun_to_air_ident(&function.x.name)),
+            &prefix_no_unwind_when(&func_name),
             &None,
             function.x.attrs.integer_ring,
             bool_typ(),
@@ -659,7 +661,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst, specialization: &
             &func_decl_sst.enss,
             &function.x.typ_params,
             &Arc::new(ens_typs),
-            &prefix_ensures(&fun_to_air_ident(&function.x.name)),
+            &prefix_ensures(&func_name),
             &None,
             function.x.attrs.integer_ring,
             bool_typ(),
