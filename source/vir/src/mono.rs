@@ -35,6 +35,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use crate::sst::{Par, ParX};
 use crate::def::Spanned;
+use crate::poly;
 
 /**
 This stores one instance of specialization of a particular function. This
@@ -197,6 +198,9 @@ impl Specialization {
             trait_typ_substs.insert(x.clone(), t.clone());
         }
         let new_typ  = subst_typ(&trait_typ_substs, typ);
+        if poly::typ_as_mono(&new_typ).is_none() {
+            return typ.clone();
+        }
         new_typ
     }
   
