@@ -17,7 +17,8 @@ use rustc_hir::{
     Unsafety,
 };
 use rustc_middle::ty::{
-    BoundRegion, BoundRegionKind, BoundVar, Clause, GenericArgKind, GenericArgsRef, Region, TyCtxt,
+    AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
+    GenericArgsRef, Region, TyCtxt, TyKind,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
@@ -28,7 +29,7 @@ use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, Mode,
     ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
 };
-use vir::ast_util::air_unique_var;
+use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 use vir::sst_util::subst_typ;
 
@@ -500,7 +501,6 @@ fn create_reveal_group<'tcx>(
                 name: name.clone(),
                 visibility,
                 owning_module: Some(module_path.clone()),
-                prune_unless_this_module_is_used: vattrs.prune_unless_this_module_is_used,
                 broadcast_use_by_default_when_this_crate_is_imported,
                 members: Arc::new(members),
             };
@@ -538,6 +538,7 @@ fn make_attributes(
         custom_req_err,
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
+        broadcast_forall_only: false,
         bit_vector: vattrs.bit_vector,
         autospec,
         atomic: vattrs.atomic,
@@ -552,6 +553,7 @@ fn make_attributes(
         print_as_method,
         prophecy_dependent: vattrs.prophecy_dependent,
         size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
+        is_type_invariant_fn: vattrs.type_invariant_fn,
     };
     Ok(Arc::new(fattrs))
 }
@@ -656,7 +658,12 @@ pub(crate) fn check_item_fn<'tcx>(
             decl,
             span: _,
         } => {
-            unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
+            if mode != Mode::Exec && *unsafety != Unsafety::Normal {
+                return err_span(
+                    sig.span,
+                    format!("'unsafe' only makes sense on exec-mode functions"),
+                );
+            }
             check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?
         }
     };
@@ -836,6 +843,9 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         return err_span(sig.span, "spec functions cannot have requires/ensures");
     }
+    if mode == Mode::Spec && header.returns.is_some() {
+        return err_span(sig.span, "spec functions cannot have `returns` clause");
+    }
     if mode != Mode::Spec && header.recommend.len() > 0 {
         return err_span(sig.span, "non-spec functions cannot have recommends");
     }
@@ -913,9 +923,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let params: vir::ast::Params = Arc::new(vir_params.into_iter().map(|(p, _)| p).collect());
 
     let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode) {
-        (None, None) => {
-            (air_unique_var(RETURN_VALUE), Arc::new(TypX::Tuple(Arc::new(vec![]))), mode)
-        }
+        (None, None) => (air_unique_var(RETURN_VALUE), unit_typ(), mode),
         (None, Some((typ, mode))) => (air_unique_var(RETURN_VALUE), typ, mode),
         (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
@@ -1002,6 +1010,11 @@ pub(crate) fn check_item_fn<'tcx>(
             "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith",
         );
     }
+
+    if vattrs.type_invariant_fn {
+        check_generics_for_invariant_fn(ctxt.tcx, id, self_generics, generics, sig.span)?;
+    }
+
     let fattrs = make_attributes(
         &vattrs,
         vattrs.verus_macro,
@@ -1041,6 +1054,12 @@ pub(crate) fn check_item_fn<'tcx>(
             )
         })
     };
+
+    // Note: ens_has_return isn't final; it may need to be changed later to make
+    // sure it's in sync for trait method impls and trait method decls.
+    // See `fixup_ens_has_return_for_trait_method_impls`.
+    let (ensure, ens_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure);
+
     let mut func = FunctionX {
         name: name.clone(),
         proxy,
@@ -1053,12 +1072,13 @@ pub(crate) fn check_item_fn<'tcx>(
         typ_bounds,
         params,
         ret,
+        ens_has_return,
         require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
-        ensure: header.ensure,
+        returns: header.returns,
+        ensure: ensure,
         decrease: header.decrease,
         decrease_when: header.decrease_when,
         decrease_by: header.decrease_by,
-        broadcast_forall: None,
         fndef_axioms: None,
         mask_spec: header.invariant_mask,
         unwind_spec: header.unwind_spec,
@@ -1111,12 +1131,13 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             mut typ_bounds,
             mut params,
             mut ret,
+            ens_has_return,
             require,
             ensure,
+            returns,
             decrease,
             decrease_when,
             decrease_by,
-            broadcast_forall,
             fndef_axioms,
             mask_spec,
             unwind_spec,
@@ -1186,10 +1207,11 @@ fn fix_external_fn_specification_trait_method_decl_typs(
 
         unsupported_err_unless!(require.len() == 0, span, "requires clauses");
         unsupported_err_unless!(ensure.len() == 0, span, "ensures clauses");
+        unsupported_err_unless!(returns.is_some(), span, "returns clauses");
         unsupported_err_unless!(decrease.len() == 0, span, "decreases clauses");
         unsupported_err_unless!(decrease_when.is_none(), span, "decreases_when clauses");
         unsupported_err_unless!(decrease_by.is_none(), span, "decreases_by clauses");
-        unsupported_err_unless!(broadcast_forall.is_none(), span, "broadcast_forall");
+        unsupported_err_unless!(!attrs.broadcast_forall, span, "broadcast_forall");
         unsupported_err_unless!(matches!(mask_spec, None), span, "opens_invariants");
         unsupported_err_unless!(matches!(unwind_spec, None), span, "unwind");
         unsupported_err_unless!(body.is_none(), span, "opens_invariants");
@@ -1206,12 +1228,13 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             typ_bounds,
             params,
             ret,
+            ens_has_return,
             require,
             ensure,
+            returns,
             decrease,
             decrease_when,
             decrease_by,
-            broadcast_forall,
             fndef_axioms,
             mask_spec,
             unwind_spec,
@@ -1223,6 +1246,87 @@ fn fix_external_fn_specification_trait_method_decl_typs(
         })
     } else {
         Ok(func)
+    }
+}
+
+fn check_generics_for_invariant_fn<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    id: DefId,
+    self_generics: Option<(&'tcx Generics, DefId)>,
+    generics: &'tcx Generics<'tcx>,
+    span: Span,
+) -> Result<(), VirErr> {
+    let fn_sig = tcx.fn_sig(id);
+    let fn_sig = fn_sig.skip_binder();
+    let inputs = fn_sig.inputs().skip_binder();
+
+    if inputs.len() != 1 {
+        return err_span(span, "#[verifier::type_invariant]: expected 1 parameter");
+    }
+    if tcx.trait_of_item(id).is_some() {
+        return err_span(span, "#[verifier::type_invariant] function cannot be a trait function");
+    }
+
+    let ty = crate::rust_to_vir_base::ty_remove_references(&inputs[0]);
+
+    match ty.kind() {
+        TyKind::Adt(AdtDef(adt_def_data), substs) => {
+            let adt_def = tcx.adt_def(adt_def_data.did);
+            if adt_def.is_union() {
+                return err_span(
+                    span,
+                    "not supported: #[verifier::type_invariant] for union types",
+                );
+            }
+            assert!(adt_def.is_struct() || adt_def.is_enum());
+            crate::rust_to_vir_base::check_item_external_generics(
+                self_generics,
+                generics,
+                true,
+                substs,
+                false,
+                span,
+            )?;
+
+            let datatype_predicates = adt_def.predicates(tcx);
+            let func_predicates = tcx.predicates_of(id);
+            let preds1 = datatype_predicates.instantiate(tcx, substs).predicates;
+            let preds2 = func_predicates.instantiate(tcx, substs).predicates;
+            // The 'outlives' predicates don't always line up; I don't know why.
+            // But they don't matter for the purpose of this check, so filter them out here.
+            let preds1 = preds1
+                .into_iter()
+                .filter(|p| {
+                    !matches!(
+                        p.kind().skip_binder(),
+                        ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..)
+                    )
+                })
+                .collect();
+            let preds2 = preds2
+                .into_iter()
+                .filter(|p| {
+                    !matches!(
+                        p.kind().skip_binder(),
+                        ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..)
+                    )
+                })
+                .collect();
+            let preds_match = crate::rust_to_vir_func::predicates_match(tcx, &preds1, &preds2);
+            if !preds_match {
+                println!("datatype_predicates: {:#?}", preds1);
+                println!("func_predicates: {:#?}", preds2);
+                return err_span(span, "#[verifier::type_invariant]: trait bounds should match");
+            }
+
+            Ok(())
+        }
+        _ => {
+            return err_span(
+                span,
+                "type_invariant: expected parameter to be a datatype declared in this crate",
+            );
+        }
     }
 }
 
@@ -1555,7 +1659,10 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         return err_span(span, "consts cannot have requires/recommends");
     }
     if ret_mode == Mode::Spec && header.ensure.len() > 0 {
-        return err_span(span, "spec functions cannot have ensures");
+        return err_span(span, "spec consts cannot have ensures");
+    }
+    if header.returns.is_some() {
+        return err_span(span, "consts cannot have `returns` clause");
     }
 
     let ret_name = air_unique_var(RETURN_VALUE);
@@ -1584,6 +1691,9 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         span,
     )?;
 
+    let (ensure, ens_has_return) =
+        clean_ensures_for_unit_return(&ret, &header.const_static_ensures(&name, is_static));
+
     let func = FunctionX {
         name: name.clone(),
         proxy: None,
@@ -1596,12 +1706,13 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         typ_bounds: Arc::new(vec![]),
         params: Arc::new(vec![]),
         ret,
+        ens_has_return,
         require: Arc::new(vec![]),
-        ensure: header.const_static_ensures(&name, is_static),
+        ensure,
+        returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
-        broadcast_forall: None,
         fndef_axioms: None,
         mask_spec: None,
         unwind_spec: None,
@@ -1681,9 +1792,9 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         vir_params.push(vir_param);
     }
     let params = Arc::new(vir_params);
-    let (ret_typ, ret_mode) = match ret_typ_mode {
-        None => (Arc::new(TypX::Tuple(Arc::new(vec![]))), mode),
-        Some((typ, mode)) => (typ, mode),
+    let (ret_typ, ret_mode, ens_has_return) = match ret_typ_mode {
+        None => (unit_typ(), mode, false),
+        Some((typ, mode)) => (typ, mode, true),
     };
     let ret_param = ParamX {
         name: air_unique_var(RETURN_VALUE),
@@ -1705,12 +1816,13 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         typ_bounds,
         params,
         ret,
+        ens_has_return,
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
+        returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
-        broadcast_forall: None,
         fndef_axioms: None,
         mask_spec: None,
         unwind_spec: None,

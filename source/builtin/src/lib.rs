@@ -45,6 +45,14 @@ pub fn ensures<A>(_a: A) {
     unimplemented!();
 }
 
+// Can only appear at beginning of function body
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::returns"]
+#[verifier::proof]
+pub fn returns<A>(_a: A) {
+    unimplemented!();
+}
+
 // Can only appear at beginning of spec function body
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::recommends"]
@@ -336,6 +344,13 @@ pub fn assert_forall_by<A>(_a: A) {
 #[rustc_diagnostic_item = "verus::builtin::assert_bit_vector"]
 #[verifier::proof]
 pub fn assert_bit_vector(_: bool) {
+    unimplemented!();
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::use_type_invariant"]
+#[verifier::proof]
+pub fn use_type_invariant<A>(_a: A) {
     unimplemented!();
 }
 
@@ -892,7 +907,7 @@ pub const fn mul<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::spec_cast_integer"]
 #[verifier::spec]
-pub const fn spec_cast_integer<From: Integer, To: Integer>(_from: From) -> To {
+pub const fn spec_cast_integer<From: Copy, To: Integer>(_from: From) -> To {
     To::CONST_DEFAULT
 }
 

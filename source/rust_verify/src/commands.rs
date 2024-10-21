@@ -5,7 +5,7 @@ use rustc_session::config::ErrorOutputType;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use vir::ast::{Fun, FunctionKind, ImplPath, ItemKind, Mode, Path, TraitImpl, VirErr};
-use vir::ast_to_sst_func::{mk_fun_ctx, mk_fun_ctx_dec, SstMap};
+use vir::ast_to_sst_func::{mk_fun_ctx, mk_fun_ctx_dec};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::def::{CommandsWithContext, SnapPos};
@@ -69,7 +69,6 @@ pub struct OpGenerator<'a> {
     pub ctx: &'a mut vir::context::Ctx,
     bucket: Bucket,
 
-    sst_map: SstMap,
     func_map: HashMap<Fun, FunctionSst>,
     trait_impl_map: HashMap<Path, TraitImpl>,
     specializations:  HashMap<Fun, HashSet<Specialization>>,
@@ -84,12 +83,7 @@ pub struct FunctionOpGenerator<'a: 'b, 'b> {
 }
 
 impl<'a> OpGenerator<'a> {
-    pub fn new(
-        ctx: &'a mut vir::context::Ctx,
-        krate: &vir::sst::KrateSst,
-        sst_map: SstMap,
-        bucket: Bucket,
-    ) -> Self {
+    pub fn new(ctx: &'a mut vir::context::Ctx, krate: &vir::sst::KrateSst, bucket: Bucket) -> Self {
         let mut func_map: HashMap<Fun, FunctionSst> = HashMap::new();
         for function in &krate.functions {
             assert!(!func_map.contains_key(&function.x.name));
@@ -103,7 +97,7 @@ impl<'a> OpGenerator<'a> {
             trait_impl_map.insert(imp.x.impl_path.clone(), imp.clone());
         }
 
-        OpGenerator { ctx, func_map, trait_impl_map, bucket, sst_map, specializations, scc_idx: 0 }
+        OpGenerator { ctx, func_map, trait_impl_map, bucket, specializations, scc_idx: 0 }
     }
 
     pub fn next<'b>(&'b mut self) -> Result<Option<FunctionOpGenerator<'a, 'b>>, VirErr>
@@ -368,12 +362,7 @@ impl<'a, 'b> FunctionOpGenerator<'a, 'b> {
             let mut driver = ExpandErrorsDriver::new(function, &assert_id, fsst.clone());
 
             self.op_generator.ctx.fun = mk_fun_ctx(function, false);
-            driver.report(
-                &self.op_generator.ctx,
-                &self.op_generator.sst_map,
-                &assert_id,
-                ExpandErrorsResult::Fail,
-            );
+            driver.report(&self.op_generator.ctx, &assert_id, ExpandErrorsResult::Fail);
             self.op_generator.ctx.fun = None;
 
             self.expand_errors_driver = Some(driver);
@@ -416,12 +405,7 @@ impl<'a, 'b> FunctionOpGenerator<'a, 'b> {
                 let assert_id = expand_errors_driver.get_current().unwrap().0;
                 let function = &expand_errors_driver.function;
                 self.op_generator.ctx.fun = mk_fun_ctx(function, false);
-                expand_errors_driver.report(
-                    &self.op_generator.ctx,
-                    &self.op_generator.sst_map,
-                    &assert_id,
-                    result,
-                );
+                expand_errors_driver.report(&self.op_generator.ctx, &assert_id, result);
                 self.op_generator.ctx.fun = None;
             }
         }

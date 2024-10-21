@@ -304,6 +304,16 @@ test_verify_one_file! {
             assert(w@ =~= v@);
         }
 
+        fn test_char(v: char) {
+            let w = v.clone();
+            assert(w == v);
+        }
+
+        fn test_char_vec(v: Vec<char>) {
+            let w = v.clone();
+            assert(w@ =~= v@);
+        }
+
         struct Y { }
 
         fn test_vec_ref(v: Vec<&Y>) {
@@ -336,7 +346,22 @@ test_verify_one_file! {
             v2.push(v1.clone());
             let c2 = v2.clone();
             let ghost g2 = c2.deep_view() == v2.deep_view();
-            assert(c2.deep_view() =~= v2.deep_view()); // TODO: get rid of this
+            assert(g2);
+            assert(c2@ == v2@); // FAILS
+        }
+
+        fn test_vec_deep_view_char() {
+            let mut v1: Vec<char> = Vec::new();
+            v1.push('a');
+            v1.push('b');
+            let c1 = v1.clone();
+            let ghost g1 = c1@ == v1@;
+            assert(g1);
+            let mut v2: Vec<Vec<char>> = Vec::new();
+            v2.push(v1.clone());
+            v2.push(v1.clone());
+            let c2 = v2.clone();
+            let ghost g2 = c2.deep_view() == v2.deep_view();
             assert(g2);
             assert(c2@ == v2@); // FAILS
         }
@@ -366,7 +391,7 @@ test_verify_one_file! {
         {
             assert(a1.deep_view() =~~= a2.deep_view()); // TODO: get rid of this?
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file! {
@@ -405,4 +430,22 @@ test_verify_one_file! {
             assert(some_int(b) == some_int(c)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] phantom_data_is_unit verus_code! {
+        use core::marker::PhantomData;
+        use vstd::prelude::*;
+
+        proof fn stuff(a: PhantomData<u64>, b: PhantomData<u64>) {
+            assert(a == b);
+            assert(a == PhantomData::<u64>);
+        }
+
+        fn stuff2(a: PhantomData<u64>, b: PhantomData<u64>) {
+            assert(a == b);
+            let z = PhantomData::<u64>;
+            assert(a == z);
+        }
+    } => Ok(())
 }

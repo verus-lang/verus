@@ -6,7 +6,6 @@ use vstd::map::*;
 use vstd::modes::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
-use vstd::ptr::*;
 use vstd::seq::*;
 use vstd::{pervasive::*, prelude::*, *};
 

@@ -6,7 +6,7 @@
 
 - [Getting started](./getting_started.md)
 
-# Tutorial
+# Tutorial: Fundamentals
 
 - [Basic specifications](specs.md)
     - [assert, requires, ensures, ghost code](./requires_ensures.md)
@@ -28,11 +28,14 @@
 - [Datatypes: struct and enum](datatypes.md)
     - [Struct](datatypes_struct.md)
     - [Enum](datatypes_enum.md)
-- [Basic libraries and spec closures](vstd.md)
+- [Libraries](vstd.md)
     - [Specification libraries: Seq, Set, Map](spec_lib.md)
-    - [INTERLUDE: using assert and assume to develop proofs](develop_proofs.md)
-    - [Spec closures](spec_closures.md)
     - [Executable libraries: Vec](exec_lib.md)
+- [Spec closures](spec_closures.md)
+
+# Tutorial: Understanding the prover
+
+- [Using assert and assume to develop proofs](develop_proofs.md)
 - [Quantifiers](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
@@ -40,9 +43,6 @@
     - [Proofs about forall and exists](quantproofs.md)
     - [Example: binary search](binary_search.md)
     - [Ambient (`broadcast`) lemmas](broadcast_proof.md)
-- [Higher-order executable functions]()
-    - [Passing functions as values](./exec_funs_as_values.md)
-    - [Closures](./exec_closures.md)
 - [SMT solving, automation, and where automation fails](smt_failures.md)
     - [What's decidable, what's undecidable, what's fast, what's slow]() <!--- Chris --->
     - [Integers and nonlinear arithmetic](nonlinear.md)
@@ -60,49 +60,57 @@
     - [Proof by computation](assert_by_compute.md)
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces](breaking_proofs_into_pieces.md)
+- [Checklist: what to do when proofs go wrong](checklist.md)
+
+# Tutorial: Verification and Rust
+
 - [Mutation, references, and borrowing]() <!--- Andrea --->
     - [Requires and ensures with mutable references]() <!--- Andrea --->
     - [Assertions containing mutable references]() <!--- Andrea --->
 - [Traits]()
+- [Higher-order executable functions](./higher-order-fns.md)
+    - [Passing functions as values](./exec_funs_as_values.md)
+    - [Closures](./exec_closures.md)
 - [Ghost and tracked variables]()
-- [Concurrency and Unsafe Code](concurrency_and_unsafe.md)
 - [Strings]() <!--- Andrea --->
     - [String library]() <!--- Andrea --->
     - [String literals]() <!--- Andrea --->
 - [Macros]()
-- [Tools and command-line options]()
-    - [IDE Support](ide_support.md)
 
-- [Verification and Rust]()
-  - [Why Rust?]()
-  - [Supported Rust features]()
-  - [Borrowing and lifetimes]()
-  - [Mutable borrows]()
-  - [Interior mutability](./interior_mutability.md)
-  - [Alternatives to unsafe](./alt-unsafe.md)
+- [Unsafe code & complex ownership](./complex_ownership.md)
+  - [Cells / interior mutability](./interior_mutability.md)
+  - [Pointers](./pointers.md)
+  - [Concurrency](concurrency.md)
 
-- [Understanding the guarantees of a verified program]()
+- [Understanding the guarantees of a verified program](./guarantees.md)
   - [Assumptions and trusted components](./tcb.md)
   - [Memory safety is conditional on verification](./memory-safety.md)
   - [Calling verified code from unverified code](./call-from-unverified-code.md)
+
+# Installation, configuration, and tooling
+
+- [Installation and setup]()
+  - [IDE Support](ide_support.md)
+  - [Installing and configuring Singular](./install-singular.md)
 
 - [Project setup and development]()
   - [Working with crates]()
   - [Invoking Verus code from Rust]()
   - [Documentation with Rustdoc](./verusdoc.md)
 
-
-
 # Reference
 
 - [Supported and unsupported Rust features](./features.md)
-- [Verus syntax overview](syntax.md)
+- [Verus syntax by example](syntax.md)
 - [Modes]()
   - [Function modes]()
   - [Variable modes](./reference-var-modes.md)
 - [Spec expressions](./spec-expressions.md)
   - [Rust subset](./spec-rust-subset.md)
+  - [Operator Precedence](./spec-operator-precedence.md)
   - [Arithmetic](./spec-arithmetic.md)
+  - [Bit operators](./spec-bit-ops.md)
+  - [Coercion with `as`](./reference-as.md)
   - [Spec equality (`==`)](./spec-equality.md)
   - [Extensional equality (`=~=`, `=~~=`)](./ref-extensional-equality.md)
   - [Prefix and/or (&&& and |||)](./prefix-and-or.md)
@@ -110,10 +118,10 @@
   - [Implication (`==>`, `<==`, and `<==>`)](./reference-implication.md)
   - [Quantifiers (`forall`, `exists`)](./spec-quantifiers.md)
   - [Such that (`choose`)](./spec-choose.md)
-  - [Function expressions]()
   - [Trigger annotations](./trigger-annotations.md)
   - [The view function `@`](./reference-at-sign.md)
   - [Spec index operator `[]`](./reference-spec-index.md)
+  - [`decreases_to!`](./reference-decreases-to.md)
 - [Proof features]()
   - [assert and assume]()
   - [assert ... by](./reference-assert-by.md)
@@ -133,16 +141,17 @@
   - [invariant]()
   - [invariant_except_break / ensures]()
 - [Recursion and termination]()
-  - [decreases ...]()
-  - [decreases ... when ...]()
-  - [decreases ... via ...]()
+  - [decreases ... when ... via ...](./reference-decreases.md)
   - [Datatype ordering]()
   - [Cyclic definitions]()
+- [Type invariants](./reference-type-invariants.md)
 - [Attribute list](./reference-attributes.md)
+- [The "global" directive](./reference-global.md)
 - [Misc. Rust features]()
   - [Statics](./static.md)
   - [char](./char.md)
   - [Unions](./reference-unions.md)
+  - [Pointers and cells](./reference-pointers-cells.md)
 - [Command line]()
   - [--record](./reference-flag-record.md)
 - [Planned future work]()

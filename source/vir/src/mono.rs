@@ -19,7 +19,7 @@ primitive type such as `bool` or `int` to poly, even though we know `f(bool)` is
 specialized, hinders this.
 3. We want to ensure the generated AIR code can be type-checked by AIR.
  */
-use crate::ast::Fun;
+use crate::ast::{Fun, Dt};
 use crate::ast::Idents;
 use crate::ast::IntRange;
 use crate::ast::Primitive;
@@ -56,6 +56,15 @@ impl Specialization {
         Some((fun, result))
     }
 
+    fn mangle_path(path: &Dt) -> String {
+        match path {
+            Dt::Path(path) => {
+                path.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("")
+            }
+            Dt::Tuple(i) => i.to_string(),
+        }
+    }
+
     fn mangle_type_name_inner(typ: &TypX) -> String {
         let mut suffix = String::new();
         match typ {
@@ -71,12 +80,6 @@ impl Specialization {
                 IntRange::ISize => suffix += "_isize",
                 IntRange::Char => suffix += "char",
             },
-            TypX::Tuple(typs) => {
-                suffix += "_tuple";
-                for typ in typs.iter() {
-                    suffix += &Self::mangle_type_name_inner(&*typ)
-                }
-            }
             TypX::SpecFn(_, _) => {
                 suffix += "_spec"; // Example for SpecFn
             }
@@ -86,11 +89,9 @@ impl Specialization {
             TypX::FnDef(_, _, _) => {
                 suffix += "_fn"; // Example for FnDef
             }
-            TypX::Datatype(path, typs, _) => {
+            TypX::Datatype(dt, typs, _) => {
                 suffix += "_data"; // Example for Datatype
-                for id in path.segments.iter() {
-                    suffix += id;
-                }
+                suffix += &Self::mangle_path(dt);
                 for typ in typs.iter() {
                     suffix += &Self::mangle_type_name_inner(&*typ)
                 }

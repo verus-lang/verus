@@ -6,7 +6,7 @@ use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::{ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
-use rustc_hir::{GenericParam, Generics, HirId, QPath, Ty};
+use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::fold::BoundVarReplacerDelegate;
 use rustc_middle::ty::Visibility;
@@ -24,8 +24,8 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Path, PathX, Primitive, Typ,
-    TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
+    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Path, PathX, Primitive,
+    Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -173,7 +173,7 @@ pub(crate) fn def_id_to_datatype<'tcx, 'hir>(
     typ_args: Typs,
     impl_paths: vir::ast::ImplPaths,
 ) -> TypX {
-    TypX::Datatype(def_id_to_vir_path(tcx, verus_items, def_id), typ_args, impl_paths)
+    TypX::Datatype(Dt::Path(def_id_to_vir_path(tcx, verus_items, def_id)), typ_args, impl_paths)
 }
 
 pub(crate) fn no_body_param_to_var<'tcx>(ident: &Ident) -> VarIdent {
@@ -430,19 +430,19 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
     // REVIEW: do we need this?
     // let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
 
-    // Note: a worklist of impl ids might be easier to implement.
-    // It would be nice simply because the number of impls is easily boundable.
-    //
-    // I'm not sure if it's sound, though. It might be possible for the same impl
-    // to show up multiple times, but with different predicates that result in different
-    // impls once you start nesting?
-    // So I'm implementing this with a predicate worklist to be safe.
+    // We traverse all trait bounds that need to be instantiated, and the trait bounds
+    // needed to satisfy those trait bounds, and so on. We traverse breadth-first.
+    // Our goal is to just to collect all the impl paths, but a generic trait impl
+    // might get reached multiple times for different instantiations. We need to process
+    // each of these instantiations independently, since each one might lead to different
+    // impl instantiatons. Thus, the worklist is over predicates (i.e., specific trait bounds)
+    // not impls.
 
     let mut predicate_worklist: Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)> = clauses;
 
     let mut idx = 0;
     while idx < predicate_worklist.len() {
-        if idx == 1000 {
+        if idx == 100000 {
             panic!("get_impl_paths nesting depth exceeds 1000");
         }
 
@@ -460,6 +460,10 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
             };
 
             let candidate = tcx.codegen_select_candidate((param_env, trait_refs));
+            let candidate = candidate.or_else(|_| {
+                let trait_refs = tcx.normalize_erasing_regions(param_env, trait_refs);
+                tcx.codegen_select_candidate((param_env, trait_refs))
+            });
             if let Ok(impl_source) = candidate {
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
                     let impl_path = def_id_to_vir_path(tcx, verus_items, u.impl_def_id);
@@ -604,6 +608,26 @@ pub(crate) fn mk_range<'tcx>(
         TyKind::Int(rustc_middle::ty::IntTy::I128) => IntRange::I(128),
         TyKind::Int(rustc_middle::ty::IntTy::Isize) => IntRange::ISize,
         _ => panic!("mk_range {:?}", ty),
+    }
+}
+
+pub(crate) fn is_integer_ty<'tcx>(
+    verus_items: &crate::verus_items::VerusItems,
+    ty: &rustc_middle::ty::Ty<'tcx>,
+) -> bool {
+    match ty.kind() {
+        TyKind::Adt(AdtDef(adt_def_data), _) => {
+            let did = adt_def_data.did;
+            let verus_item = verus_items.id_to_name.get(&did);
+            match verus_item {
+                Some(VerusItem::BuiltinType(BuiltinTypeItem::Int)) => true,
+                Some(VerusItem::BuiltinType(BuiltinTypeItem::Nat)) => true,
+                _ => false,
+            }
+        }
+        TyKind::Uint(_) => true,
+        TyKind::Int(_) => true,
+        _ => false,
     }
 }
 
@@ -827,7 +851,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Never => {
             // All types are inhabited in SMT; we pick an arbitrary inhabited type for Never
-            let tuple0 = Arc::new(TypX::Tuple(Arc::new(vec![])));
+            let tuple0 = vir::ast_util::unit_typ();
             (Arc::new(TypX::Decorate(TypDecoration::Never, None, tuple0)), false)
         }
         TyKind::Tuple(_) => {
@@ -835,7 +859,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             for t in ty.tuple_fields().iter() {
                 typs.push(t_rec(&t)?.0);
             }
-            (Arc::new(TypX::Tuple(Arc::new(typs))), false)
+            (vir::ast_util::mk_tuple_typ(&Arc::new(typs)), false)
         }
         TyKind::Slice(ty) => {
             let typ = t_rec(ty)?.0;
@@ -935,7 +959,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let typ_arg_tuple = typ_args[0].0.clone();
                     let ret_typ = typ_args[1].0.clone();
                     let param_typs = match &*typ_arg_tuple {
-                        TypX::Tuple(typs) => typs.clone(),
+                        TypX::Datatype(Dt::Tuple(_), typs, _) => typs.clone(),
                         _ => {
                             // TODO proper user-facing error msg here
                             panic!("expected first type argument of spec_fn to be a tuple");
@@ -958,7 +982,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             }
             assert!(args.len() == 1);
             let args = match &*args[0] {
-                TypX::Tuple(typs) => typs.clone(),
+                TypX::Datatype(Dt::Tuple(_), typs, _) => typs.clone(),
                 _ => panic!("expected tuple type"),
             };
 
@@ -1457,12 +1481,30 @@ where
     Ok(bounds)
 }
 
+// REVIEW: Consider using rustc_middle generics instead of hir generics
 pub(crate) fn check_item_external_generics<'tcx>(
+    self_generics: Option<(&'tcx Generics, DefId)>,
     generics: &'tcx Generics<'tcx>,
+    skip_implicit_lifetimes: bool,
     substs_ref: &rustc_middle::ty::GenericArgs<'tcx>,
     skip_self: bool,
     span: Span,
 ) -> Result<(), VirErr> {
+    let mut generics_params: Vec<GenericParam> = vec![];
+    if let Some((gen, _)) = self_generics {
+        generics_params.extend(gen.params.iter().cloned());
+    }
+    generics_params.extend(generics.params.iter().cloned());
+
+    if skip_implicit_lifetimes {
+        generics_params = generics_params
+            .into_iter()
+            .filter(|gp| {
+                !matches!(gp.kind, GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided })
+            })
+            .collect();
+    }
+
     use rustc_middle::ty::ScalarInt;
     // Check that the generics match (important because we do the substitution to get
     // the types from the external definition)
@@ -1480,8 +1522,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
             span,
             format!(
                 "expected generics to match: \n expected {}\n found {}",
-                generics
-                    .params
+                generics_params
                     .iter()
                     .map(|x| x.name.ident().to_string())
                     .collect::<Vec<_>>()
@@ -1491,10 +1532,10 @@ pub(crate) fn check_item_external_generics<'tcx>(
         )
     };
 
-    if substs_ref.len() != generics.params.len() {
+    if substs_ref.len() != generics_params.len() {
         return err();
     }
-    for (generic_arg, generic_param) in substs_ref.iter().zip(generics.params.iter()) {
+    for (generic_arg, generic_param) in substs_ref.iter().zip(generics_params.iter()) {
         // So if we have like
         //    struct ProxyName<X, 'a>(External<X, 'a>);
         // We need to check the <X, 'a> line up
@@ -1506,8 +1547,6 @@ pub(crate) fn check_item_external_generics<'tcx>(
                 return err();
             }
         };
-        use rustc_hir::GenericParamKind;
-        use rustc_hir::LifetimeParamKind;
 
         match (generic_arg.unpack(), &generic_param.kind) {
             (
@@ -1809,5 +1848,14 @@ pub(crate) fn remove_host_arg<'tcx>(
         Ok(tcx.mk_args(&s))
     } else {
         Ok(substs)
+    }
+}
+
+pub(crate) fn ty_remove_references<'tcx>(
+    ty: &'tcx rustc_middle::ty::Ty<'tcx>,
+) -> &'tcx rustc_middle::ty::Ty<'tcx> {
+    match ty.kind() {
+        TyKind::Ref(_, t, Mutability::Not) => ty_remove_references(&t),
+        _ => ty,
     }
 }

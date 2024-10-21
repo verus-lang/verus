@@ -1,5 +1,5 @@
 use crate::ast::{Fun, Krate, VirErr};
-use crate::ast_to_sst_func::{function_to_sst, SstInfo, SstInline, SstMap};
+use crate::ast_to_sst_func::function_to_sst;
 use crate::context::Ctx;
 use crate::sst::{FunctionSst, KrateSst, KrateSstX};
 use crate::sst_elaborate::{elaborate_function1, elaborate_function2};
@@ -11,7 +11,7 @@ pub fn ast_to_sst_krate(
     diagnostics: &impl air::messages::Diagnostics,
     bucket_funs: &HashSet<Fun>,
     krate: &Krate,
-) -> Result<(KrateSst, SstMap), VirErr> {
+) -> Result<KrateSst, VirErr> {
     let mut func_workmap: HashMap<Fun, FunctionSst> = HashMap::new();
     for function in krate.functions.iter() {
         let vis = function.x.visibility.clone();
@@ -26,7 +26,7 @@ pub fn ast_to_sst_krate(
         func_workmap.insert(function.x.name.clone(), function_sst);
     }
 
-    let mut sst_infos: HashMap<Fun, SstInfo> = HashMap::new();
+    let mut sst_infos: HashMap<Fun, FunctionSst> = HashMap::new();
     let mut functions: Vec<FunctionSst> = Vec::new();
     for scc_rep in ctx.global.func_call_sccs.iter() {
         let mut scc_functions: Vec<FunctionSst> = Vec::new();
@@ -39,20 +39,9 @@ pub fn ast_to_sst_krate(
             }
         }
         for func_sst in scc_functions.into_iter() {
-            if let Some(spec_body) = &func_sst.x.axioms.spec_axioms {
-                let inline = SstInline {
-                    typ_params: func_sst.x.typ_params.clone(),
-                    do_inline: func_sst.x.attrs.inline,
-                };
-                let info = SstInfo {
-                    inline,
-                    typ_params: func_sst.x.typ_params.clone(),
-                    pars: func_sst.x.pars.clone(),
-                    memoize: func_sst.x.attrs.memoize,
-                    body: spec_body.body_exp.clone(),
-                };
+            if func_sst.x.axioms.spec_axioms.is_some() {
                 assert!(!sst_infos.contains_key(&func_sst.x.name));
-                sst_infos.insert(func_sst.x.name.clone(), info);
+                sst_infos.insert(func_sst.x.name.clone(), func_sst.clone());
             }
             functions.push(func_sst.clone());
         }
@@ -73,6 +62,7 @@ pub fn ast_to_sst_krate(
         traits: krate.traits.clone(),
         trait_impls: krate.trait_impls.clone(),
         assoc_type_impls: krate.assoc_type_impls.clone(),
+        reveal_groups: krate.reveal_groups.clone(),
     });
-    Ok((krate_sst, sst_map))
+    Ok(krate_sst)
 }

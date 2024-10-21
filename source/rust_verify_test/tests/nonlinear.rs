@@ -265,6 +265,16 @@ test_verify_one_file! {
             }
             assert(x * 2 == 10);
         }
+
+        fn test7(n: u32) {
+            loop {
+                assert(true) by (nonlinear_arith)
+                    requires
+                        ({let q = n; q <= n})
+                { }
+                break;
+            }
+        }
     } => Ok(())
 }
 

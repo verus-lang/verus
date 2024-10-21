@@ -1236,7 +1236,6 @@ impl Verifier {
         &mut self,
         reporter: &impl Diagnostics,
         krate: &vir::sst::KrateSst,
-        sst_map: vir::ast_to_sst_func::SstMap,
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
@@ -1380,7 +1379,7 @@ impl Verifier {
         let function_decl_commands = Arc::new(function_decl_commands);
 
         let bucket = self.get_bucket(bucket_id);
-        let mut opgen = OpGenerator::new(ctx, krate, sst_map, bucket.clone());
+        let mut opgen = OpGenerator::new(ctx, krate, bucket.clone());
         let mut all_context_ops = vec![];
         while let Some(mut function_opgen) = opgen.next()? {
             let diagnostics_to_report: std::cell::RefCell<
@@ -1901,7 +1900,9 @@ impl Verifier {
                 None,
                 Some(bucket_id.module().clone()),
                 bucket_id.function(),
+                true,
             );
+        let mono_abstract_datatypes = mono_abstract_datatypes.unwrap();
         let module = pruned_krate
             .modules
             .iter()
@@ -1918,30 +1919,23 @@ impl Verifier {
             fndef_types,
             self.args.debugger,
         )?;
-        let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
-            vir::printer::write_krate(&mut file, &poly_krate, &self.args.log_args.vir_log_option);
+            vir::printer::write_krate(&mut file, &pruned_krate, &self.args.log_args.vir_log_option);
         }
 
-        let (krate_sst, sst_map) = vir::ast_to_sst_crate::ast_to_sst_krate(
+        let krate_sst = vir::ast_to_sst_crate::ast_to_sst_krate(
             &mut ctx,
             reporter,
             &self.get_bucket(bucket_id).funs,
-            &poly_krate,
+            &pruned_krate,
         )?;
         let specializations = vir::mono::mono_krate_for_module(&krate_sst);
+        let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
-        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } = self.verify_bucket(
-            reporter,
-            &krate_sst,
-            sst_map,
-            source_map,
-            bucket_id,
-            &mut ctx,
-            specializations,
-        )?;
+        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
+            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx, specializations)?;
 
         global_ctx = ctx.free();
 
@@ -2012,12 +2006,11 @@ impl Verifier {
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
         // The 'user_filter' handles the filter provided on the command line
-        // (--verify-module, --verify-funciton, etc.)
+        // (--verify-module, --verify-function, etc.)
         // Whereas the 'buckets' are the way we group obligations for parallelizing
         // and context pruning.
         // Buckets usually fall along module boundaries, but the user can create
-        // more buckets using #[spinoff_prover] can create
-        // more buckets.
+        // more buckets using #[spinoff_prover].
         //
         // For example, suppose module M has functions a, b, c, d.
         // with a and b both marked spinoff_prover.
@@ -2659,6 +2652,7 @@ impl Verifier {
             Some(&current_vir_crate),
             None,
             None,
+            false,
         );
         let vir_crate =
             vir::traits::merge_external_traits(vir_crate).map_err(map_err_diagnostics)?;
@@ -2681,6 +2675,8 @@ impl Verifier {
                 .map_err(map_err_diagnostics)?;
         let vir_crate =
             vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        let vir_crate = vir::traits::fixup_ens_has_return_for_trait_method_impls(vir_crate)
+            .map_err(|e| (e, Vec::new()))?;
 
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(

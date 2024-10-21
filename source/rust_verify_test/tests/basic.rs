@@ -655,6 +655,7 @@ test_verify_one_file_with_options! {
         #![cfg_attr(verus_keep_ghost, feature(allocator_api))]
         #![cfg_attr(verus_keep_ghost, feature(step_trait))]
         #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
+        #![cfg_attr(verus_keep_ghost, feature(strict_provenance_atomic_ptr))]
         #![cfg_attr(
             verus_keep_ghost,
             feature(fn_traits),

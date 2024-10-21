@@ -1,4 +1,4 @@
-use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
+use crate::ast::{Dt, Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
 use crate::ast_util::air_unique_var;
 use crate::messages::Span;
 use crate::util::vec_map;
@@ -52,7 +52,6 @@ const PREFIX_RECURSIVE: &str = "rec%";
 const SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
 pub const PREFIX_EXPAND_ERRORS_TEMP_VAR: &str = "expand%";
-const BITVEC_TMP_DECL_SEPARATOR: &str = "bitvectmp%";
 const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
@@ -65,6 +64,7 @@ const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
+const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
@@ -76,6 +76,8 @@ const GLOBAL_TYPE: &str = "allocator_global%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
+const BITVEC_TMP_DECL_SEPARATOR: &str = "$$$$bitvectmp";
+const USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR: &str = "$$$$userdeftypeinvpass";
 const KRATE_SEPARATOR: &str = "!";
 const PATH_SEPARATOR: &str = ".";
 const PATHS_SEPARATOR: &str = "/";
@@ -388,8 +390,8 @@ pub fn global_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
-pub fn prefix_type_id(path: &Path) -> Ident {
-    Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(path))
+pub fn prefix_type_id(ident: &Path) -> Ident {
+    Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(ident))
 }
 
 pub fn prefix_fndef_type_id(fun: &Fun) -> Ident {
@@ -432,6 +434,10 @@ pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
         PROJECT_SEPARATOR,
         name.to_string()
     ))
+}
+
+pub fn proj_param(i: usize) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_PROJECT_PARAM, i))
 }
 
 pub fn trait_bound(trait_path: &Path) -> Ident {
@@ -505,23 +511,31 @@ pub fn prefix_pre_var(name: &Ident) -> Ident {
     Arc::new(PREFIX_PRE_VAR.to_string() + name)
 }
 
-pub fn variant_ident(datatype: &Path, variant: &str) -> Ident {
-    Arc::new(format!("{}{}{}", path_to_string(datatype), VARIANT_SEPARATOR, variant))
+pub fn encode_dt_as_path(dt: &Dt) -> Path {
+    match dt {
+        Dt::Path(path) => path.clone(),
+        Dt::Tuple(arity) => prefix_tuple_type(*arity),
+    }
 }
 
-pub fn is_variant_ident(datatype: &Path, variant: &str) -> Ident {
+pub fn variant_ident(dt: &Dt, variant: &str) -> Ident {
+    let path = encode_dt_as_path(dt);
+    Arc::new(format!("{}{}{}", path_to_string(&path), VARIANT_SEPARATOR, variant))
+}
+
+pub fn is_variant_ident(datatype: &Dt, variant: &str) -> Ident {
     Arc::new(format!("is-{}", variant_ident(datatype, variant)))
 }
 
 pub fn variant_field_ident_internal(
-    datatype: &Path,
+    path: &Path,
     variant: &Ident,
     field: &Ident,
     internal: bool,
 ) -> Ident {
     Arc::new(format!(
         "{}{}{}{}{}",
-        path_to_string(datatype),
+        path_to_string(path),
         VARIANT_SEPARATOR,
         variant.as_str(),
         if internal { VARIANT_FIELD_INTERNAL_SEPARATOR } else { VARIANT_FIELD_SEPARATOR },
@@ -854,6 +868,10 @@ pub fn unique_var_name(
         }
         VarIdentDisambiguate::BitVectorToAirDecl(id) => {
             out.push_str(BITVEC_TMP_DECL_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
+        VarIdentDisambiguate::UserDefinedTypeInvariantPass(id) => {
+            out.push_str(USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
     }

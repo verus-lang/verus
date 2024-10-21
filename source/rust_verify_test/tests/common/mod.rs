@@ -377,6 +377,7 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
 
     #![allow(unused_imports)]
     #![allow(unused_macros)]
+    #![allow(deprecated)]
     #![feature(exclusive_range_pattern)]
     #![feature(strict_provenance)]
     #![feature(allocator_api)]
@@ -571,4 +572,26 @@ pub fn assert_fails_bv_64bit(err: TestErr) {
 #[allow(dead_code)]
 pub fn assert_fails_bv_32bit_64bit(err: TestErr) {
     assert_fails_bv(err, true, true);
+}
+
+pub fn typ_inv_relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
+    err.iter()
+        .filter(|e| e.label != Some("type invariant declared here".to_string()))
+        .next()
+        .expect("span")
+}
+
+#[allow(dead_code)]
+pub fn assert_fails_type_invariant_error(err: TestErr, count: usize) {
+    assert_eq!(err.errors.len(), count);
+    for c in 0..count {
+        assert!(err.errors[c].message.contains("may fail to meet its declared type invariant"));
+        assert!(
+            typ_inv_relevant_error_span(&err.errors[c].spans)
+                .text
+                .iter()
+                .find(|x| x.text.contains("FAILS"))
+                .is_some()
+        );
+    }
 }

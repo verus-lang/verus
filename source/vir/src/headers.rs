@@ -17,6 +17,7 @@ pub struct Header {
     pub recommend: Exprs,
     pub ensure_id_typ: Option<(VarIdent, Typ)>,
     pub ensure: Exprs,
+    pub returns: Option<Expr>,
     pub invariant_except_break: Exprs,
     pub invariant: Exprs,
     pub decrease: Exprs,
@@ -33,6 +34,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
+    let mut returns: Option<Expr> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant_except_break: Option<Exprs> = None;
     let mut invariant: Option<Exprs> = None;
@@ -87,6 +89,12 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             ));
                         }
                         ensure = Some((id_typ.clone(), es.clone()));
+                    }
+                    HeaderExprX::Returns(e) => {
+                        if returns.is_some() {
+                            return Err(error(&stmt.span, "only one call to returns allowed"));
+                        }
+                        returns = Some(e.clone());
                     }
                     HeaderExprX::InvariantExceptBreak(es) => {
                         if invariant_except_break.is_some() {
@@ -206,6 +214,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         recommend,
         ensure_id_typ,
         ensure,
+        returns,
         invariant_except_break,
         invariant,
         decrease,
@@ -302,12 +311,13 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         typ_bounds,
         params,
         ret,
+        ens_has_return: _,
         require,
         ensure,
+        returns,
         decrease,
         decrease_when,
         decrease_by,
-        broadcast_forall: _,
         fndef_axioms: _,
         mask_spec,
         unwind_spec,
@@ -371,6 +381,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
     methodx.ret = ret;
     methodx.require = require;
     methodx.ensure = ensure;
+    methodx.returns = returns;
     methodx.decrease = decrease;
     methodx.decrease_when = decrease_when;
     methodx.decrease_by = decrease_by;

@@ -1,10 +1,11 @@
 use crate::ast::{
-    AutospecUsage, CallTarget, CallTargetKind, Constant, ExprX, Fun, Function, FunctionKind,
+    AutospecUsage, CallTarget, CallTargetKind, Constant, Dt, ExprX, Fun, Function, FunctionKind,
     GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VarBinder,
     VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
+use crate::ast_util::undecorate_typ;
 use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
 use crate::context::Ctx;
 use crate::def::{
@@ -26,9 +27,10 @@ use std::sync::Arc;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Node {
     Fun(Fun),
-    Datatype(Path),
+    Datatype(Dt),
     Trait(Path),
     TraitImpl(ImplPath),
+    TraitReqEns(ImplPath, bool),
     ModuleReveal(Path),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
@@ -70,35 +72,20 @@ fn is_recursive_call(ctxt: &Ctxt, target: &Fun, resolved_method: &Option<(Fun, T
 }
 
 pub fn height_is_int(typ: &Typ) -> bool {
-    match &*crate::ast_util::undecorate_typ(typ) {
+    match &*undecorate_typ(typ) {
         TypX::Int(_) => true,
         _ => false,
     }
 }
 
-fn height_typ(ctx: &Ctx, exp: &Exp) -> Typ {
-    if height_is_int(&exp.typ) {
-        Arc::new(TypX::Int(IntRange::Int))
-    } else {
-        if crate::poly::typ_is_poly(ctx, &exp.typ) {
-            exp.typ.clone()
-        } else {
-            Arc::new(TypX::Boxed(exp.typ.clone()))
-        }
-    }
+fn height_typ(_ctx: &Ctx, exp: &Exp) -> Typ {
+    if height_is_int(&exp.typ) { Arc::new(TypX::Int(IntRange::Int)) } else { exp.typ.clone() }
 }
 
-fn exp_for_decrease(ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
-    match &*crate::ast_util::undecorate_typ(&exp.typ) {
+fn exp_for_decrease(_ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
+    match &*undecorate_typ(&exp.typ) {
         TypX::Int(_) => Ok(exp.clone()),
-        TypX::Datatype(..) => Ok(if crate::poly::typ_is_poly(ctx, &exp.typ) {
-            exp.clone()
-        } else {
-            let op = UnaryOpr::Box(exp.typ.clone());
-            let argx = ExpX::UnaryOpr(op, exp.clone());
-            let typ = Arc::new(TypX::Boxed(exp.typ.clone()));
-            SpannedTyped::new(&exp.span, &typ, argx)
-        }),
+        TypX::Datatype(..) => Ok(exp.clone()),
         _ => Err(error(
             &exp.span,
             format!(
@@ -224,7 +211,7 @@ pub(crate) fn mk_decreases_at_entry(
         let decl = Arc::new(LocalDeclX {
             ident: unique_local(&decrease_at_entry(loop_id, i)),
             typ: typ.clone(),
-            mutable: false,
+            kind: crate::sst::LocalDeclKind::Decreases,
         });
         let uniq_ident = unique_local(&decrease_at_entry(loop_id, i));
         let stm_assign = Spanned::new(
@@ -243,14 +230,10 @@ pub(crate) fn mk_decreases_at_entry(
     Ok((decls, stm_assigns))
 }
 
-/// fuel param:
-/// `None` for normal case (the usual 'fuel' param)
-/// `Some(fuel)` means use a constant fuel
 pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
     function: &crate::sst::FunctionSst,
     body: &Exp,
-    fuel: Option<usize>,
 ) -> Result<(Exp, crate::recursion::Node), VirErr> {
     let caller_node = Node::Fun(function.x.name.clone());
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&caller_node);
@@ -281,10 +264,7 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
                 && ctx.func_map[&resolve(x, typs, resolved_method).0].x.body.is_some() =>
         {
             let mut args = (**args).clone();
-            let varx = match fuel {
-                None => ExpX::Var(unique_local(&&air_unique_var(FUEL_PARAM))),
-                Some(f) => ExpX::FuelConst(f),
-            };
+            let varx = ExpX::Var(unique_local(&air_unique_var(FUEL_PARAM)));
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
             let (name, ts) = resolve(x, typs, resolved_method);
@@ -295,6 +275,18 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     });
 
     Ok((body, scc_rep))
+}
+
+pub(crate) fn rewrite_rec_call_with_fuel_const(body: &Exp, fuel: usize) -> Exp {
+    map_exp_visitor(&body, &mut |exp| match &exp.x {
+        ExpX::Call(CallFun::Recursive(r), typs, args) => {
+            let mut args = (**args).clone();
+            let arg_fuel = args.last_mut().expect("args.last");
+            *arg_fuel = arg_fuel.new_x(ExpX::FuelConst(fuel));
+            exp.new_x(ExpX::Call(CallFun::Recursive(r.clone()), typs.clone(), Arc::new(args)))
+        }
+        _ => exp.clone(),
+    })
 }
 
 fn check_termination<'a>(
@@ -328,7 +320,7 @@ fn check_termination<'a>(
             let error = error(&s.span, "could not prove termination");
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(None, Some(error), check));
 
-            let mut stms = vec![stm_assert];
+            let mut stms = vec![stm_assert, s.clone()];
             // REVIEW: when we support spec-ensures, we will need an assume here to get the ensures
             // of the recursive call just after it was proven to terminate
             // This is instead an interim fix for incompleteness in recommends checking, due to
@@ -352,7 +344,6 @@ fn check_termination<'a>(
                     stms.push(has_typ_assume);
                 }
             }
-            stms.push(s.clone());
             let stm_block = Spanned::new(s.span.clone(), StmX::Block(Arc::new(stms)));
             Ok(stm_block)
         }
@@ -413,11 +404,27 @@ pub(crate) fn expand_call_graph(
     }
 
     // Add D: T --> f and f --> T where f is one of D's methods that implements T
+    // Also add ReqEns(D: T, true) --> f --> ReqEns(D: T, false) to make T's requires/ensures
+    // as concrete as possible
     if let FunctionKind::TraitMethodImpl { trait_path, impl_path, .. } = function.x.kind.clone() {
         let t_node = Node::Trait(trait_path.clone());
         let impl_node = Node::TraitImpl(ImplPath::TraitImplPath(impl_path.clone()));
+        let req_ens_node_t = Node::TraitReqEns(ImplPath::TraitImplPath(impl_path.clone()), true);
+        let req_ens_node_f = Node::TraitReqEns(ImplPath::TraitImplPath(impl_path.clone()), false);
         call_graph.add_edge(impl_node, f_node.clone());
         call_graph.add_edge(f_node.clone(), t_node);
+        // There's a special case for requires/ensures of f, because these requires/ensures
+        // appear in the trait T, not in the implementation D: T.
+        // If we didn't extra edges for this case, the calls in requires/ensures
+        // might end up uninterpreted in the SMT encoding (which would be sound, but incomplete):
+        call_graph.add_edge(f_node.clone(), req_ens_node_f);
+        if function.x.mode == crate::ast::Mode::Spec {
+            // req_ens_node_t represents the spec functions defined by D: T;
+            // these spec functions may be useful for proving requires and ensures
+            // of other functions f' who depend on D: T:
+            // f' --> TraitReqEns(D': T' for f', false) --> TraitReqEns(D: T for f, true) --> f
+            call_graph.add_edge(req_ens_node_t, f_node.clone());
+        }
     }
 
     // Add f --> T for any function f with "where ...: T(...)"
@@ -526,6 +533,26 @@ pub(crate) fn expand_call_graph(
                 }
             }
             ExprX::StaticVar(fun) => call_graph.add_edge(f_node.clone(), Node::Fun(fun.clone())),
+            ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: _, expr: _, fun } => {
+                call_graph.add_edge(f_node.clone(), Node::Fun(fun.clone()));
+
+                let typ = undecorate_typ(&expr.typ);
+                let impl_paths = match &*typ {
+                    TypX::Datatype(_, _, impl_paths) => impl_paths,
+                    _ => panic!("expected datatype"),
+                };
+                for impl_path in impl_paths.iter() {
+                    let expr_node = crate::recursive_types::new_span_info_node(
+                        span_infos,
+                        expr.span.clone(),
+                        ": constructor of datatype with some type arguments, which may depend on \
+                            other trait implementations to satisfy trait bounds"
+                            .to_string(),
+                    );
+                    call_graph.add_edge(f_node.clone(), expr_node.clone());
+                    call_graph.add_edge(expr_node.clone(), Node::TraitImpl(impl_path.clone()));
+                }
+            }
             _ => {}
         }
         Ok(())

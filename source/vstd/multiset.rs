@@ -165,6 +165,12 @@ impl<V> Multiset<V> {
         self.count(v) > 0
     }
 
+    /// Predicate indicating if the set contains the given element: supports `self has a` syntax.
+    #[verifier::inline]
+    pub open spec fn spec_has(self, v: V) -> bool {
+        self.contains(v)
+    }
+
     /// Returns a multiset containing the lower count of a given element
     /// between the two sets. In other words, returns a multiset with only
     /// the elements that "overlap".
@@ -203,7 +209,7 @@ impl<V> Multiset<V> {
 /// The empty multiset maps every element to multiplicity 0
 pub broadcast proof fn axiom_multiset_empty<V>(v: V)
     ensures
-        Multiset::empty().count(v) == 0,
+        #[trigger] Multiset::empty().count(v) == 0,
 {
     admit();
 }
@@ -240,7 +246,7 @@ pub broadcast proof fn axiom_multiset_new_not_contained<V>(m: Map<V, nat>, v: V)
         m.dom().finite(),
         !m.dom().contains(v),
     ensures
-        Multiset::from_map(m).count(v) == 0,
+        #[trigger] Multiset::from_map(m).count(v) == 0,
 {
     admit();
 }
@@ -259,7 +265,7 @@ pub broadcast proof fn axiom_multiset_singleton<V>(v: V)
 /// any value other than `v` to 0
 pub broadcast proof fn axiom_multiset_singleton_different<V>(v: V, w: V)
     ensures
-        v != w ==> Multiset::singleton(v).count(w) == 0,
+        v != w ==> #[trigger] Multiset::singleton(v).count(w) == 0,
 {
     admit();
 }
@@ -269,7 +275,7 @@ pub broadcast proof fn axiom_multiset_singleton_different<V>(v: V, w: V)
 /// counts of `v` in `m1` and `m2` individually.
 pub broadcast proof fn axiom_multiset_add<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
     ensures
-        m1.add(m2).count(v) == m1.count(v) + m2.count(v),
+        #[trigger] m1.add(m2).count(v) == m1.count(v) + m2.count(v),
 {
     admit();
 }
@@ -280,7 +286,7 @@ pub broadcast proof fn axiom_multiset_add<V>(m1: Multiset<V>, m2: Multiset<V>, v
 /// cannot be negative.
 pub broadcast proof fn axiom_multiset_sub<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
     ensures
-        m1.sub(m2).count(v) == if m1.count(v) >= m2.count(v) {
+        #[trigger] m1.sub(m2).count(v) == if m1.count(v) >= m2.count(v) {
             m1.count(v) - m2.count(v)
         } else {
             0
@@ -386,7 +392,6 @@ pub broadcast proof fn axiom_multiset_always_finite<V>(m: Multiset<V>)
     admit();
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_multiset_axioms {
     axiom_multiset_empty,
     axiom_multiset_contained,

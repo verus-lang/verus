@@ -33,13 +33,13 @@ broadcast use super::map::group_map_axioms, super::set::group_set_axioms;
 /// a `PCell<V>` may be `Sync` (depending on `V`).
 /// Thanks to verification, Verus ensures that access to the cell is data-race-free.
 ///
-/// `PCell` uses a _ghost permission token_ similar to [`ptr::PPtr`] -- see the [`ptr::PPtr`]
+/// `PCell` uses a _ghost permission token_ similar to [`simple_pptr::PPtr`] -- see the [`simple_pptr::PPtr`]
 /// documentation for the basics.
 /// For `PCell`, the associated type of the permission token is [`cell::PointsTo`].
 ///
 /// ### Differences from `PPtr`.
 ///
-/// The key difference is that, whereas [`ptr::PPtr`] represents a fixed address in memory,
+/// The key difference is that, whereas [`simple_pptr::PPtr`] represents a fixed address in memory,
 /// a `PCell` has _no_ fixed address because a `PCell` might be moved.
 /// As such, the [`pcell.id()`](PCell::id) does not correspond to a memory address; rather,
 /// it is a unique identifier that is fixed for a given cell, even when it is moved.
@@ -309,7 +309,8 @@ pub struct InvCell<T> {
 }
 
 impl<T> InvCell<T> {
-    pub closed spec fn wf(&self) -> bool {
+    #[verifier::type_invariant]
+    closed spec fn wf(&self) -> bool {
         &&& self.perm_inv@.constant() === (self.possible_values@, self.pcell)
     }
 
@@ -321,7 +322,7 @@ impl<T> InvCell<T> {
         requires
             f(val),
         ensures
-            cell.wf() && forall|v| f(v) <==> cell.inv(v),
+            forall|v| f(v) <==> cell.inv(v),
     {
         let (pcell, Tracked(perm)) = PCell::new(val);
         let ghost possible_values = Set::new(f);
@@ -333,10 +334,13 @@ impl<T> InvCell<T> {
 impl<T> InvCell<T> {
     pub fn replace(&self, val: T) -> (old_val: T)
         requires
-            self.wf() && self.inv(val),
+            self.inv(val),
         ensures
             self.inv(old_val),
     {
+        proof {
+            use_type_invariant(self);
+        }
         let r;
         open_local_invariant!(self.perm_inv.borrow() => perm => {
             r = self.pcell.replace(Tracked(&mut perm), val);
@@ -347,11 +351,12 @@ impl<T> InvCell<T> {
 
 impl<T: Copy> InvCell<T> {
     pub fn get(&self) -> (val: T)
-        requires
-            self.wf(),
         ensures
             self.inv(val),
     {
+        proof {
+            use_type_invariant(self);
+        }
         let r;
         open_local_invariant!(self.perm_inv.borrow() => perm => {
             r = *self.pcell.borrow(Tracked(&perm));

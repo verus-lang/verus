@@ -44,3 +44,7 @@ This guide expects general familiarity with Verus, so readers unfamiliar with Ve
 should check out the general [Verus user guide](https://verus-lang.github.io/verus/guide/)
 first and become proficient at coding within its `spec`, `proof`, and `exec` modes,
 using `ghost` and `exec` variables.
+
+### Further Reading
+
+For a fully comprehensive account, please see [Verifying Concurrent Systems Code](https://www.andrew.cmu.edu/user/bparno/papers/hance_thesis.pdf).

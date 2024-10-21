@@ -60,7 +60,7 @@ test_verify_one_file! {
     #[test] test1_fails5 verus_code! {
         fn f() -> u64 { 1 }
         const S: u64 = 1 + f();
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::f` with mode exec")
 }
 
 test_verify_one_file! {

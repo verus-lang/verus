@@ -1,9 +1,10 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Fun,
-    FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp, IntRange,
-    IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PathX, Quant,
-    SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
-    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
+    ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
+    FieldOpr, Fun, FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp,
+    IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PathX,
+    Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs,
+    UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants,
+    Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -60,7 +61,6 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (&**typ1, &**typ2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(r1), TypX::Int(r2)) => r1 == r2,
-        (TypX::Tuple(t1), TypX::Tuple(t2)) => n_types_equal(t1, t2),
         (TypX::SpecFn(ts1, t1), TypX::SpecFn(ts2, t2)) => {
             n_types_equal(ts1, ts2) && types_equal(t1, t2)
         }
@@ -111,7 +111,6 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
-        (TypX::Tuple(_), _) => false,
         (TypX::SpecFn(_, _), _) => false,
         (TypX::AnonymousClosure(_, _, _), _) => false,
         (TypX::Datatype(_, _, _), _) => false,
@@ -271,6 +270,20 @@ impl IntRange {
     }
 }
 
+pub(crate) fn dt_as_friendly_rust_name(dt: &Dt) -> String {
+    match dt {
+        Dt::Path(p) => path_as_friendly_rust_name(p),
+        Dt::Tuple(arity) => format!("{}-tuple", arity),
+    }
+}
+
+pub(crate) fn dt_as_friendly_rust_name_raw(dt: &Dt) -> String {
+    match dt {
+        Dt::Path(p) => path_as_friendly_rust_name_raw(p),
+        Dt::Tuple(arity) => format!("{}-tuple", arity),
+    }
+}
+
 pub(crate) fn path_as_friendly_rust_name_raw(path: &Path) -> String {
     let krate = match &path.krate {
         None => "crate".to_string(),
@@ -392,6 +405,10 @@ impl Visibility {
         module.is_some() && module == &self.restricted_to
     }
 
+    pub fn is_public(&self) -> bool {
+        matches!(self, Visibility { restricted_to: None })
+    }
+
     pub fn public() -> Self {
         Visibility { restricted_to: None }
     }
@@ -420,6 +437,16 @@ impl<X> SpannedTyped<X> {
     pub fn new_x<X2>(&self, x: X2) -> Arc<SpannedTyped<X2>> {
         Arc::new(SpannedTyped { span: self.span.clone(), typ: self.typ.clone(), x })
     }
+}
+
+/// Unit type
+pub fn unit_typ() -> Typ {
+    let name = Dt::Tuple(0);
+    Arc::new(TypX::Datatype(name, Arc::new(vec![]), Arc::new(vec![])))
+}
+
+pub fn is_unit(t: &Typ) -> bool {
+    matches!(&**t, TypX::Datatype(Dt::Tuple(0), ..))
 }
 
 pub fn mk_bool(span: &Span, b: bool) -> Expr {
@@ -519,20 +546,6 @@ impl crate::ast::CallTargetKind {
 }
 
 impl FunctionX {
-    // unit return values are treated as no return value
-    pub fn has_return(&self) -> bool {
-        match &*self.ret.x.typ {
-            TypX::Tuple(ts) if ts.len() == 0 => false,
-            TypX::Datatype(path, _, _) if path == &crate::def::prefix_tuple_type(0) => false,
-            _ => true,
-        }
-    }
-
-    // even if the return type is unit, it can still be named; if so, our AIR code must declare it
-    pub fn has_return_name(&self) -> bool {
-        self.has_return() || *self.ret.x.name.0 != crate::def::RETURN_VALUE
-    }
-
     pub fn is_main(&self) -> bool {
         **self.name.path.segments.last().expect("last segment") == "main"
     }
@@ -616,10 +629,74 @@ pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<VarIdent> {
     vars
 }
 
-pub fn mk_tuple(span: &Span, exp: &Exprs) -> Expr {
-    let typs = vec_map(exp, |e| e.typ.clone());
-    let tup_type = Arc::new(TypX::Tuple(Arc::new(typs)));
-    SpannedTyped::new(span, &tup_type, ExprX::Tuple(exp.clone()))
+pub fn mk_tuple_typ(typs: &Typs) -> Typ {
+    Arc::new(TypX::Datatype(Dt::Tuple(typs.len()), typs.clone(), Arc::new(vec![])))
+}
+
+pub fn mk_tuple(span: &Span, exprs: &Exprs) -> Expr {
+    let typs = vec_map(exprs, |e| e.typ.clone());
+    let tup_typ = mk_tuple_typ(&Arc::new(typs));
+    SpannedTyped::new(span, &tup_typ, mk_tuple_x(exprs))
+}
+
+pub fn mk_tuple_x(exprs: &Exprs) -> ExprX {
+    let arity = exprs.len();
+
+    let mut binders: Vec<Binder<Expr>> = Vec::new();
+    for (i, arg) in exprs.iter().enumerate() {
+        let field = crate::def::positional_field_ident(i);
+        binders.push(ident_binder(&field, &arg));
+    }
+    let binders = Arc::new(binders);
+
+    ExprX::Ctor(Dt::Tuple(arity), crate::def::prefix_tuple_variant(arity), binders, None)
+}
+
+pub fn mk_tuple_field_x(expr: &Expr, arity: usize, idx: usize) -> ExprX {
+    assert!(arity > idx);
+    let field_opr = UnaryOpr::Field(FieldOpr {
+        datatype: Dt::Tuple(arity),
+        variant: crate::def::prefix_tuple_variant(arity),
+        field: crate::def::positional_field_ident(idx),
+        get_variant: false,
+        check: crate::ast::VariantCheck::None,
+    });
+    ExprX::UnaryOpr(field_opr, expr.clone())
+}
+
+/// Unpack the tuple-style ctor (i.e., a Ctor with binders "0" .. "n-1") or None
+pub fn unpack_tuple_style_ctor(expr: &Expr) -> Option<Vec<Expr>> {
+    match &expr.x {
+        ExprX::Ctor(_dt, _ident, binders, None) => {
+            let n = binders.len();
+            let mut results: Vec<Expr> = vec![];
+            'outer: for i in 0..n {
+                let field = crate::def::positional_field_ident(i);
+                // Look for field named "i"
+                for b in binders.iter() {
+                    if b.name == field {
+                        results.push(b.a.clone());
+                        continue 'outer;
+                    }
+                }
+                // If no field of name "i", then error
+                return None;
+            }
+            return Some(results);
+        }
+        _ => None,
+    }
+}
+
+/// Unpack the tuple, or return None if not a tuple
+pub fn unpack_tuple(expr: &Expr) -> Option<Vec<Expr>> {
+    match &*expr.typ {
+        TypX::Datatype(Dt::Tuple(_n), ..) => {}
+        _ => {
+            return None;
+        }
+    };
+    unpack_tuple_style_ctor(expr)
 }
 
 pub fn wrap_in_trigger(expr: &Expr) -> Expr {
@@ -643,7 +720,6 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Int(IntRange::Char) => "char".to_owned(),
         TypX::Int(IntRange::U(n)) => format!("u{n}"),
         TypX::Int(IntRange::I(n)) => format!("i{n}"),
-        TypX::Tuple(typs) => format!("({})", typs_to_comma_separated_str(typs)),
         TypX::SpecFn(atyps, rtyp) => format!(
             "spec_fn({}) -> {}",
             typs_to_comma_separated_str(atyps),
@@ -664,7 +740,13 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 crate::ast::Primitive::Global => format!("Global"),
             }
         }
-        TypX::Datatype(path, typs, _) => format!(
+        TypX::Datatype(Dt::Tuple(_arity), typs, _) => {
+            // 1-tuples should be formatted like `(T,)`
+            let tup_string = typs_to_comma_separated_str(typs);
+            let extra_comma = if typs.len() == 1 { "," } else { "" };
+            format!("({}{})", tup_string, extra_comma)
+        }
+        TypX::Datatype(Dt::Path(path), typs, _) => format!(
             "{}{}",
             path_as_friendly_rust_name(path),
             if typs.len() > 0 {
@@ -862,4 +944,50 @@ macro_rules! fun {
     [ $krate:literal => $( $segment:literal ),* ] => {
         Arc::new($crate::ast::FunX { path: $crate::path!($krate => $($segment),*) })
     };
+}
+
+/// If the function has a unit return type, then we will elide the return value
+/// in the AIR encoding later (e.g., in the %ens functions). However, it is still
+/// possible that the user refers to the unit return value by name, e.g.,
+/// ```
+/// fn example() -> (ret: ())
+///     ensures ret == (),
+/// ```
+/// Therefore, we substitute out the name here so it be safely elided.
+pub fn clean_ensures_for_unit_return(ret: &Param, ensure: &Exprs) -> (Exprs, bool) {
+    match &*undecorate_typ(&ret.x.typ) {
+        TypX::Datatype(Dt::Tuple(0), ..) => {
+            if ret.x.name == air_unique_var(crate::def::RETURN_VALUE) {
+                (ensure.clone(), false)
+            } else {
+                let mut es = vec![];
+                for e in ensure.iter() {
+                    let e1 = crate::ast_visitor::map_expr_visitor(e, &|expr| match &expr.x {
+                        ExprX::Var(ident) if ident == &ret.x.name => {
+                            assert!(is_unit(&undecorate_typ(&expr.typ)));
+                            Ok(mk_tuple(&expr.span, &Arc::new(vec![])))
+                        }
+                        _ => Ok(expr.clone()),
+                    })
+                    .unwrap();
+                    es.push(e1);
+                }
+                (Arc::new(es), false)
+            }
+        }
+        _ => (ensure.clone(), true),
+    }
+}
+
+impl Dt {
+    pub fn expect_path(&self) -> Path {
+        match self {
+            Dt::Path(p) => p.clone(),
+            _ => {
+                panic!(
+                    "expect_path expected a Path; this assumption is only reasonable pre-ast-simplify"
+                );
+            }
+        }
+    }
 }

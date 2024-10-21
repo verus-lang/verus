@@ -240,8 +240,6 @@ pub(crate) enum Attr {
     BroadcastForall,
     // group together other BroadcastForall or RevealGroup
     RevealGroup,
-    // prune away a reveal_group if the reveal_group's module itself is unused
-    HiddenUnlessThisModuleIsUsed,
     // this reveal_group is revealed by default when the group's crate is imported
     RevealedByDefaultWhenThisCrateIsImported,
     // accept the trigger chosen by triggers_auto without printing any diagnostics
@@ -314,6 +312,8 @@ pub(crate) enum Attr {
     UnsupportedRustcAttr(String, Span),
     // Broadcast proof for size_of global
     SizeOfBroadcastProof,
+    // Is this a type_invariant spec function
+    TypeInvariantFn,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -438,7 +438,7 @@ pub(crate) fn parse_attrs(
                     v.push(Attr::BroadcastForall)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "prune_unless_this_module_is_used" => {
-                    v.push(Attr::HiddenUnlessThisModuleIsUsed)
+                    report_deprecated("prune_unless_this_module_is_used", "this has no effect");
                 }
                 AttrTree::Fun(_, arg, None)
                     if arg == "broadcast_use_by_default_when_this_crate_is_imported" =>
@@ -535,6 +535,9 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "sealed" => v.push(Attr::Sealed),
                 AttrTree::Fun(_, arg, None) if arg == "prophetic" => {
                     v.push(Attr::ProphecyDependent)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "type_invariant" => {
+                    v.push(Attr::TypeInvariantFn)
                 }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
@@ -803,7 +806,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) accept_recursive_type_list: Vec<(String, AcceptRecursiveType)>,
     pub(crate) broadcast_forall: bool,
     pub(crate) reveal_group: bool,
-    pub(crate) prune_unless_this_module_is_used: bool,
     pub(crate) broadcast_use_by_default_when_this_crate_is_imported: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autospec: Option<String>,
@@ -834,6 +836,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) prophecy_dependent: bool,
     pub(crate) item_broadcast_use: bool,
     pub(crate) size_of_broadcast_proof: bool,
+    pub(crate) type_invariant_fn: bool,
 }
 
 impl VerifierAttrs {
@@ -907,7 +910,6 @@ pub(crate) fn get_verifier_attrs(
         accept_recursive_type_list: vec![],
         broadcast_forall: false,
         reveal_group: false,
-        prune_unless_this_module_is_used: false,
         broadcast_use_by_default_when_this_crate_is_imported: false,
         no_auto_trigger: false,
         autospec: None,
@@ -938,6 +940,7 @@ pub(crate) fn get_verifier_attrs(
         prophecy_dependent: false,
         item_broadcast_use: false,
         size_of_broadcast_proof: false,
+        type_invariant_fn: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -972,7 +975,6 @@ pub(crate) fn get_verifier_attrs(
             }
             Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::RevealGroup => vs.reveal_group = true,
-            Attr::HiddenUnlessThisModuleIsUsed => vs.prune_unless_this_module_is_used = true,
             Attr::RevealedByDefaultWhenThisCrateIsImported => {
                 vs.broadcast_use_by_default_when_this_crate_is_imported = true
             }
@@ -1005,6 +1007,7 @@ pub(crate) fn get_verifier_attrs(
                 unsupported_rustc_attr = Some((name.clone(), span))
             }
             Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
+            Attr::TypeInvariantFn => vs.type_invariant_fn = true,
             _ => {}
         }
     }

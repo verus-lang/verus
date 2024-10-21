@@ -192,6 +192,8 @@ declare_identity_view!(i128);
 
 declare_identity_view!(isize);
 
+declare_identity_view!(char);
+
 macro_rules! declare_tuple_view {
     ([$($n:tt)*], [$($a:ident)*]) => {
         #[cfg_attr(verus_keep_ghost, verifier::verify)]

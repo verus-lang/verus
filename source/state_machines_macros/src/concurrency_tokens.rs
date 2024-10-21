@@ -215,7 +215,7 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
 
     let storage_types = get_storage_type_tuple(sm);
 
-    return quote! {
+    return quote_vstd! { vstd =>
         #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
         #(#attrs)*
@@ -227,9 +227,9 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
             // However, since it's not marked external_body,
             // Verus will still look at the fields when doing its type hierarchy analysis.
 
-            #[cfg_attr(verus_keep_ghost, verifier::spec)] send_sync: ::vstd::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
+            #[cfg_attr(verus_keep_ghost, verifier::spec)] send_sync: #vstd::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
             #[cfg_attr(verus_keep_ghost, verifier::spec)] state: #self_ty,
-            #[cfg_attr(verus_keep_ghost, verifier::spec)] location: ::builtin::int,
+            #[cfg_attr(verus_keep_ghost, verifier::spec)] location: #vstd::prelude::int,
         }
     };
 }
@@ -257,14 +257,14 @@ fn get_storage_type_tuple(sm: &SM) -> Type {
 /// TODO it would be even better to add a Copy instance as well; however, this
 /// currently runs into Verus limitations with deriving instances.
 fn trusted_clone() -> TokenStream {
-    return quote! {
+    return quote_vstd! { vstd =>
         #[cfg(verus_keep_ghost_body)]
         #[verus::internal(verus_macro)]
         #[verifier::proof]
         #[verifier::external_body] /* vattr */
         #[verifier::returns(proof)] /* vattr */
         pub fn clone(#[verifier::proof] &self) -> Self {
-            ensures(|s: Self| ::builtin::equal(*self, s));
+            ensures(|s: Self| #vstd::prelude::equal(*self, s));
             ::core::unimplemented!();
         }
     };
@@ -325,12 +325,12 @@ fn token_struct_stream(
     };
 
     let count_field = if count {
-        quote! { #[cfg_attr(verus_keep_ghost, verifier::spec)] pub count: ::builtin::nat }
+        quote_vstd! { vstd => #[cfg_attr(verus_keep_ghost, verifier::spec)] pub count: #vstd::prelude::nat }
     } else {
         TokenStream::new()
     };
 
-    return quote! {
+    return quote_vstd! { vstd =>
         #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
         #(#attrs)*
@@ -341,7 +341,7 @@ fn token_struct_stream(
             // the type well-foundedness checks.
 
             #[cfg_attr(verus_keep_ghost, verifier::proof)] dummy_instance: #insttype,
-            no_copy: ::vstd::state_machine_internal::NoCopy,
+            no_copy: #vstd::state_machine_internal::NoCopy,
         }
 
         #[cfg_attr(verus_keep_ghost, verifier::spec)]
@@ -698,7 +698,7 @@ pub fn exchange_stream(
         let itn = inst_type(sm);
         out_params.push((quote! { instance }, quote! { #itn }, Mode::Tracked));
     } else {
-        in_params.push(quote! { #[verifier::proof] &self });
+        in_params.push(quote! { tracked &self });
     }
 
     // Take the transition parameters (the normal parameters defined in the transition)
@@ -707,7 +707,7 @@ pub fn exchange_stream(
     for param in &tr.params {
         let id = &param.name;
         let ty = &param.ty;
-        in_params.push(quote! { #[verifier::spec] #id: #ty });
+        in_params.push(quote! { #id: #ty });
     }
 
     // We need some pre/post conditions that the input/output
@@ -995,9 +995,8 @@ pub fn exchange_stream(
 
     let req_stream = if reqs.len() > 0 {
         quote! {
-            ::builtin::requires(::builtin_macros::verus_proof_expr!([
-                #(#reqs),*
-            ]));
+            requires
+                #((#reqs)),*
         }
     } else {
         TokenStream::new()
@@ -1006,18 +1005,17 @@ pub fn exchange_stream(
     // Output types are a bit tricky
     // because of the lack of named output params.
 
-    let (out_params_ret, ens_stream, ret_value_mode) = if out_params.len() == 0 {
+    let (out_params_ret, ens_stream) = if out_params.len() == 0 {
         let ens_stream = if enss.len() > 0 {
             quote! {
-                ::builtin::ensures(::builtin_macros::verus_proof_expr!([
-                    #(#enss),*
-                ]));
+                ensures
+                    #((#enss)),*
             }
         } else {
             TokenStream::new()
         };
 
-        (TokenStream::new(), ens_stream, TokenStream::new())
+        (TokenStream::new(), ens_stream)
     } else if out_params.len() == 1 {
         let param_name = &out_params[0].0;
         let param_ty = &out_params[0].1;
@@ -1025,22 +1023,19 @@ pub fn exchange_stream(
 
         let ens_stream = if enss.len() > 0 {
             quote! {
-                ::builtin::ensures(
-                    |#param_name: #param_ty| ::builtin_macros::verus_proof_expr!([
-                        #(#enss),*
-                    ])
-                );
+                ensures
+                    #((#enss)),*,
             }
         } else {
             TokenStream::new()
         };
 
         let ret_value_mode = match param_mode {
-            Mode::Tracked => quote! { #[verifier::returns(proof)] /* vattr */ },
+            Mode::Tracked => quote! { tracked },
             Mode::Ghost => TokenStream::new(),
         };
 
-        (quote! { -> #param_ty }, ens_stream, ret_value_mode)
+        (quote! { -> (#ret_value_mode #param_name: #param_ty) }, ens_stream)
     } else {
         // If we have more than one output param (we aren't counting the &mut inputs here,
         // only stuff in the 'return type' position) then we have to package it all into
@@ -1052,10 +1047,10 @@ pub fn exchange_stream(
                 let ty = &oa.1;
                 match oa.2 {
                     Mode::Ghost => {
-                        quote! { ::builtin::Ghost<#ty> }
+                        quote_vstd! { vstd => #vstd::prelude::Ghost<#ty> }
                     }
                     Mode::Tracked => {
-                        quote! { ::builtin::Tracked<#ty> }
+                        quote_vstd! { vstd => #vstd::prelude::Tracked<#ty> }
                     }
                 }
             })
@@ -1080,21 +1075,17 @@ pub fn exchange_stream(
 
         let ens_stream = if enss.len() > 0 {
             quote! {
-                ::builtin::ensures(
-                    |tmp_tuple: #tup_typ| ::builtin_macros::verus_proof_expr!([{
-                        let #tup_names = tmp_tuple;
-                        #(#let_stmts)*
-                        #((#enss))&&*
-                    }])
-                );
+                ensures ({
+                    let #tup_names = tmp_tuple;
+                    #(#let_stmts)*
+                    #((#enss))&&*
+                })
             }
         } else {
             TokenStream::new()
         };
 
-        let ret_value_mode = quote! { #[verifier::returns(proof)] /* vattr */ };
-
-        (quote! { -> #tup_typ }, ens_stream, ret_value_mode)
+        (quote! { -> (tracked tmp_tuple: #tup_typ) }, ens_stream)
     };
 
     // Tie it all together
@@ -1108,16 +1099,16 @@ pub fn exchange_stream(
     };
 
     return Ok(quote! {
-        #[cfg(verus_keep_ghost_body)]
-        #[verus::internal(verus_macro)]
-        #ret_value_mode
-        #[verifier::external_body] /* vattr */
-        #[verifier::proof]
-        pub fn #exch_name#gen(#(#in_params),*) #out_params_ret {
-            #req_stream
-            #ens_stream
-            #extra_deps
-            ::core::unimplemented!();
+        ::builtin_macros::verus!{
+            #[cfg(verus_keep_ghost_body)]
+            #[verifier::external_body] /* vattr */
+            pub proof fn #exch_name#gen(#(#in_params),*) #out_params_ret
+                #req_stream
+                #ens_stream
+            {
+                #extra_deps
+                ::core::unimplemented!();
+            }
         }
     });
 }
@@ -1142,8 +1133,8 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::StorageOption(ty) => Some(Type::Verbatim(quote! {
             ::core::option::Option<#ty>
         })),
-        ShardableType::StorageMap(key, val) => Some(Type::Verbatim(quote! {
-            ::vstd::map::Map<#key, #val>
+        ShardableType::StorageMap(key, val) => Some(Type::Verbatim(quote_vstd! { vstd =>
+            #vstd::map::Map<#key, #val>
         })),
     }
 }
@@ -1196,20 +1187,20 @@ fn add_initialization_output_conditions(
 ) {
     match &field.stype {
         ShardableType::Variable(_) => {
-            inst_eq_enss.push(Expr::Verbatim(quote! {
-                ::builtin::equal(#param_value.view().instance, #inst_value)
+            inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
+                #vstd::prelude::equal(#param_value.view().instance, #inst_value)
             }));
             let field_name = field_token_field_name(field);
-            ensures.push(Expr::Verbatim(quote! {
-                ::builtin::equal(#param_value.view().#field_name, #init_value)
+            ensures.push(Expr::Verbatim(quote_vstd! { vstd =>
+                #vstd::prelude::equal(#param_value.view().#field_name, #init_value)
             }));
         }
         ShardableType::Count | ShardableType::PersistentCount => {
-            inst_eq_enss.push(Expr::Verbatim(quote! {
-                ::builtin::equal(#param_value.view().instance, #inst_value)
+            inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
+                #vstd::prelude::equal(#param_value.view().instance, #inst_value)
             }));
-            ensures.push(Expr::Verbatim(quote! {
-                ::builtin::equal(#param_value.view().count, #init_value)
+            ensures.push(Expr::Verbatim(quote_vstd! { vstd =>
+                #vstd::prelude::equal(#param_value.view().count, #init_value)
             }));
         }
         ShardableType::Option(_)
@@ -1307,7 +1298,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // None           None
             // Some(x)        Some(Token { instance: instance, value: x })
 
-            quote! {
+            quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::inline] /* vattr */
@@ -1315,7 +1306,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verifier::spec]
                 pub fn #fn_name_strict(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, opt, instance)
-                    && ::builtin::imply(opt.is_None(), token_opt.is_None())
+                    && #vstd::prelude::imply(opt.is_None(), token_opt.is_None())
                 }
 
                 #[cfg(verus_keep_ghost_body)]
@@ -1323,11 +1314,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
-                    ::builtin::imply(
+                    #vstd::prelude::imply(
                         opt.is_Some(),
                         token_opt.is_Some()
-                            && ::builtin::equal(token_opt.get_Some_0().view().value, opt.get_Some_0())
-                            && ::builtin::equal(token_opt.get_Some_0().view().instance, instance)
+                            && #vstd::prelude::equal(token_opt.get_Some_0().view().value, opt.get_Some_0())
+                            && #vstd::prelude::equal(token_opt.get_Some_0().view().instance, instance)
                     )
                 }
             }
@@ -1338,11 +1329,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let constructor_name = field_token_data_type_turbofish(sm, field);
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
-            let set_token_ty = Type::Verbatim(quote! {
-                ::vstd::map::Map<#ty, #token_ty>
+            let set_token_ty = Type::Verbatim(quote_vstd! { vstd =>
+                #vstd::map::Map<#ty, #token_ty>
             });
-            let set_normal_ty = Type::Verbatim(quote! {
-                ::vstd::set::Set<#ty>
+            let set_normal_ty = Type::Verbatim(quote_vstd! { vstd =>
+                #vstd::set::Set<#ty>
             });
 
             // Predicate to check the set values agree:
@@ -1350,22 +1341,22 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // set            token_map
             // {x, y}         { x => { instance, x }, y => { instance, y } }
 
-            quote! {
+            quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
-                    ::builtin::forall(|elem: #ty| {
-                        ::builtin::with_triggers(
+                    #vstd::prelude::forall(|elem: #ty| {
+                        #vstd::prelude::with_triggers(
                             (
                                 ( token_map.dom().contains(elem), ),
                                 ( token_map.index(elem), ),
                             ),
-                            ::builtin::imply(
+                            #vstd::prelude::imply(
                                 set.contains(elem),
                                 (#[verifier::trigger] token_map.dom().contains(elem))
-                                && ::builtin::equal(token_map.index(elem).view(),
+                                && #vstd::prelude::equal(token_map.index(elem).view(),
                                     #constructor_name {
                                         instance: instance,
                                         key: elem,
@@ -1382,7 +1373,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name_strict(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
-                    ::builtin::equal(token_map.dom(), set)
+                    #vstd::prelude::equal(token_map.dom(), set)
                       && Self::#fn_name(token_map, set, instance)
                 }
             }
@@ -1402,15 +1393,15 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // false          None
             // true           Some(Token { instance: instance })
 
-            quote! {
+            quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(token_opt: #option_token_ty, b: ::core::primitive::bool, instance: #inst_ty) -> bool {
-                    ::builtin::imply(b,
+                    #vstd::prelude::imply(b,
                         token_opt.is_Some()
-                        && ::builtin::equal(token_opt.get_Some_0().view().instance, instance)
+                        && #vstd::prelude::equal(token_opt.get_Some_0().view().instance, instance)
                     )
                 }
 
@@ -1421,7 +1412,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verifier::spec]
                 pub fn #fn_name_strict(token_opt: #option_token_ty, b: ::core::primitive::bool, instance: #inst_ty) -> bool {
                     Self::#fn_name(token_opt, b, instance)
-                    && ::builtin::imply(!b, token_opt.is_None())
+                    && #vstd::prelude::imply(!b, token_opt.is_None())
                 }
             }
         }
@@ -1430,11 +1421,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let fn_name_strict = map_relation_post_condition_name(field, true);
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
-            let map_token_ty = Type::Verbatim(quote! {
-                ::vstd::map::Map<#key, #token_ty>
+            let map_token_ty = Type::Verbatim(quote_vstd! { vstd =>
+                #vstd::map::Map<#key, #token_ty>
             });
-            let map_normal_ty = Type::Verbatim(quote! {
-                ::vstd::map::Map<#key, #val>
+            let map_normal_ty = Type::Verbatim(quote_vstd! { vstd =>
+                #vstd::map::Map<#key, #val>
             });
 
             // Predicate to check the map values agree:
@@ -1447,23 +1438,23 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             // map[k1 := Token { instance: instance, value: v1 }]
             //    [k1 := Token { instance: instance, value: v2 }]...
 
-            quote! {
+            quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
-                    ::builtin::forall(|key: #key|
-                        ::builtin::with_triggers(
+                    #vstd::prelude::forall(|key: #key|
+                        #vstd::prelude::with_triggers(
                             (
                                 ( token_map.dom().contains(key), ),
                                 ( token_map.index(key), ),
                             ),
-                            ::builtin::imply(
+                            #vstd::prelude::imply(
                                 token_map.dom().contains(key),
-                                ::builtin::equal(token_map.index(key).view().instance, instance)
-                                    && ::builtin::equal(token_map.index(key).view().key, key)
-                                    && ::builtin::equal(token_map.index(key).view().value, m.index(key))
+                                #vstd::prelude::equal(token_map.index(key).view().instance, instance)
+                                    && #vstd::prelude::equal(token_map.index(key).view().key, key)
+                                    && #vstd::prelude::equal(token_map.index(key).view().value, m.index(key))
                             )
                         )
                     )
@@ -1474,7 +1465,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name_strict(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
-                    ::builtin::equal(token_map.dom(), m.dom())
+                    #vstd::prelude::equal(token_map.dom(), m.dom())
                     && Self::#fn_name(token_map, m, instance)
                 }
             }
@@ -1484,11 +1475,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let fn_name_strict = multiset_relation_post_condition_name(field, true);
             let inst_ty = inst_type(sm);
             let token_ty = field_token_type(sm, field);
-            let multiset_token_ty = Type::Verbatim(quote! {
-                ::vstd::map::Map<#ty, #token_ty>
+            let multiset_token_ty = Type::Verbatim(quote_vstd! { vstd =>
+                #vstd::map::Map<#ty, #token_ty>
             });
-            let multiset_normal_ty = Type::Verbatim(quote! {
-                ::vstd::multiset::Multiset<#ty>
+            let multiset_normal_ty = Type::Verbatim(quote_vstd! { vstd =>
+                #vstd::multiset::Multiset<#ty>
             });
 
             // Predicate to check the multiset values agree:
@@ -1502,19 +1493,19 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             //    v2 => Token { instance: instance, key: v2, count: n2 }]
             // }
 
-            quote! {
+            quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
-                    ::builtin::forall(|x: #ty|
-                        ::builtin::imply(
-                            m.count(x) > ::builtin::spec_literal_nat("0"),
+                    #vstd::prelude::forall(|x: #ty|
+                        #vstd::prelude::imply(
+                            m.count(x) > #vstd::prelude::spec_literal_nat("0"),
                             (#[verifier::trigger] tokens.dom().contains(x))
-                            && ::builtin::equal(tokens.index(x).view().instance, instance)
+                            && #vstd::prelude::equal(tokens.index(x).view().instance, instance)
                             && tokens.index(x).view().count >= m.count(x)
-                            && ::builtin::equal(tokens.index(x).view().key, x)
+                            && #vstd::prelude::equal(tokens.index(x).view().key, x)
                         )
                     )
                 }
@@ -1524,16 +1515,16 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verus::internal(open)] /* vattr */
                 #[verifier::spec]
                 pub fn #fn_name_strict(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
-                    ::builtin::forall(|x: #ty| {
-                        ::builtin::with_triggers(
+                    #vstd::prelude::forall(|x: #ty| {
+                        #vstd::prelude::with_triggers(
                           (
                               ( tokens.dom().contains(x), ),
                               ( tokens.index(x), ),
                           ),
                           tokens.dom().contains(x)
-                          && ::builtin::equal(tokens.index(x).view().instance, instance)
-                          && ::builtin::equal(tokens.index(x).view().count, m.count(x))
-                          && ::builtin::equal(tokens.index(x).view().key, x)
+                          && #vstd::prelude::equal(tokens.index(x).view().instance, instance)
+                          && #vstd::prelude::equal(tokens.index(x).view().count, m.count(x))
+                          && #vstd::prelude::equal(tokens.index(x).view().key, x)
                         )
                     })
                 }
@@ -1544,11 +1535,11 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verifier::returns(proof)] /* vattr */
                 #[verifier::external_body] /* vattr */
                 pub fn join(#[verifier::proof] self, #[verifier::proof] other: Self) -> Self {
-                    ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance) && ::builtin::equal(self.view().key, other.view().key));
-                    ::builtin::ensures(|s: Self|
-                        ::builtin::equal(s.view().instance, self.view().instance)
-                        && ::builtin::equal(s.view().key, self.view().key)
-                        && ::builtin::equal(s.view().count, self.view().count + other.view().count)
+                    #vstd::prelude::requires(#vstd::prelude::equal(self.view().instance, other.view().instance) && #vstd::prelude::equal(self.view().key, other.view().key));
+                    #vstd::prelude::ensures(|s: Self|
+                        #vstd::prelude::equal(s.view().instance, self.view().instance)
+                        && #vstd::prelude::equal(s.view().key, self.view().key)
+                        && #vstd::prelude::equal(s.view().count, self.view().count + other.view().count)
                     );
                     ::core::unimplemented!();
                 }
@@ -1558,18 +1549,18 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verifier::external_body] /* vattr */
                 #[verifier::returns(proof)] /* vattr */
                 #[verifier::proof]
-                pub fn split(#[verifier::proof] self, i: nat) -> (::builtin::Tracked<Self>, ::builtin::Tracked<Self>) {
-                    ::builtin::requires(i <= self.view().count);
-                    ::builtin::ensures(|s: (::builtin::Tracked<Self>, ::builtin::Tracked<Self>)| {
+                pub fn split(#[verifier::proof] self, i: nat) -> (#vstd::prelude::Tracked<Self>, #vstd::prelude::Tracked<Self>) {
+                    #vstd::prelude::requires(i <= self.view().count);
+                    #vstd::prelude::ensures(|s: (#vstd::prelude::Tracked<Self>, #vstd::prelude::Tracked<Self>)| {
                         let x = s.0.view();
                         let y = s.1.view();
-                        ::builtin::equal(x.view().instance, self.view().instance)
-                        && ::builtin::equal(y.view().instance, self.view().instance)
-                        && ::builtin::equal(x.view().key, self.view().key)
-                        && ::builtin::equal(y.view().key, self.view().key)
-                        && ::builtin::equal(x.view().count, i)
-                        && ::builtin::equal(
-                            ::builtin::spec_cast_integer::<nat, int>(y.view().count),
+                        #vstd::prelude::equal(x.view().instance, self.view().instance)
+                        && #vstd::prelude::equal(y.view().instance, self.view().instance)
+                        && #vstd::prelude::equal(x.view().key, self.view().key)
+                        && #vstd::prelude::equal(y.view().key, self.view().key)
+                        && #vstd::prelude::equal(x.view().count, i)
+                        && #vstd::prelude::equal(
+                            #vstd::prelude::spec_cast_integer::<nat, int>(y.view().count),
                             self.view().count.spec_sub(i)
                         )
                     });
@@ -1578,17 +1569,17 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             }
         }
         ShardableType::Count => {
-            quote! {
+            quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::proof]
                 #[verifier::returns(proof)] /* vattr */
                 #[verifier::external_body] /* vattr */
                 pub fn join(#[verifier::proof] self, #[verifier::proof] other: Self) -> Self {
-                    ::builtin::requires(::builtin::equal(self.view().instance, other.view().instance));
-                    ::builtin::ensures(|s: Self|
-                        ::builtin::equal(s.view().instance, self.view().instance)
-                        && ::builtin::equal(s.view().count, self.view().count + other.view().count)
+                    #vstd::prelude::requires(#vstd::prelude::equal(self.view().instance, other.view().instance));
+                    #vstd::prelude::ensures(|s: Self|
+                        #vstd::prelude::equal(s.view().instance, self.view().instance)
+                        && #vstd::prelude::equal(s.view().count, self.view().count + other.view().count)
                     );
                     ::core::unimplemented!();
                 }
@@ -1598,16 +1589,16 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verifier::external_body] /* vattr */
                 #[verifier::returns(proof)] /* vattr */
                 #[verifier::proof]
-                pub fn split(#[verifier::proof] self, i: nat) -> (::builtin::Tracked<Self>, ::builtin::Tracked<Self>) {
-                    ::builtin::requires(i <= self.view().count);
-                    ::builtin::ensures(|s: (::builtin::Tracked<Self>, ::builtin::Tracked<Self>)| {
+                pub fn split(#[verifier::proof] self, i: nat) -> (#vstd::prelude::Tracked<Self>, #vstd::prelude::Tracked<Self>) {
+                    #vstd::prelude::requires(i <= self.view().count);
+                    #vstd::prelude::ensures(|s: (#vstd::prelude::Tracked<Self>, #vstd::prelude::Tracked<Self>)| {
                         let x = s.0.view();
                         let y = s.1.view();
-                        ::builtin::equal(x.view().instance, self.view().instance)
-                        && ::builtin::equal(y.view().instance, self.view().instance)
-                        && ::builtin::equal(x.view().count, i)
-                        && ::builtin::equal(
-                            ::builtin::spec_cast_integer::<nat, int>(y.view().count),
+                        #vstd::prelude::equal(x.view().instance, self.view().instance)
+                        && #vstd::prelude::equal(y.view().instance, self.view().instance)
+                        && #vstd::prelude::equal(x.view().count, i)
+                        && #vstd::prelude::equal(
+                            #vstd::prelude::spec_cast_integer::<nat, int>(y.view().count),
                             self.view().count.spec_sub(i)
                         )
                     });
@@ -1616,17 +1607,17 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             }
         }
         ShardableType::PersistentCount => {
-            quote! {
+            quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::external_body] /* vattr */
                 #[verifier::returns(proof)] /* vattr */
                 #[verifier::proof]
                 pub fn weaken(#[verifier::proof] self, i: nat) -> Self {
-                    ::builtin::requires(i <= self.view().count);
-                    ::builtin::ensures(|s: Self|
-                        ::builtin::equal(s.view().instance, self.view().instance)
-                        && ::builtin::equal(s.view().count, i)
+                    #vstd::prelude::requires(i <= self.view().count);
+                    #vstd::prelude::ensures(|s: Self|
+                        #vstd::prelude::equal(s.view().instance, self.view().instance)
+                        && #vstd::prelude::equal(s.view().count, i)
                     );
                     ::core::unimplemented!();
                 }
@@ -1661,7 +1652,7 @@ fn add_token_param_in_out(
     let (is_input, is_output) = match inout_type {
         InoutType::In => {
             assert!(!use_explicit_lifetime);
-            in_params.push(quote! { #[verifier::proof] #param_name: #param_type });
+            in_params.push(quote! { tracked #param_name: #param_type });
             (true, false)
         }
         InoutType::Out => {
@@ -1671,14 +1662,14 @@ fn add_token_param_in_out(
         }
         InoutType::InOut => {
             assert!(!use_explicit_lifetime);
-            in_params.push(quote! { #[verifier::proof] #param_name: &mut #param_type });
+            in_params.push(quote! { tracked #param_name: &mut #param_type });
             (true, true)
         }
         InoutType::BorrowIn => {
             if use_explicit_lifetime {
-                in_params.push(quote! { #[verifier::proof] #param_name: &'a #param_type });
+                in_params.push(quote! { tracked #param_name: &'a #param_type });
             } else {
-                in_params.push(quote! { #[verifier::proof] #param_name: &#param_type });
+                in_params.push(quote! { tracked #param_name: &#param_type });
             }
             (true, false)
         }
@@ -1695,18 +1686,20 @@ fn add_token_param_in_out(
         let inst = get_inst_value(&ctxt);
         if is_output {
             let lhs = Expr::Verbatim(quote! { #param_name.view().instance });
-            inst_eq_enss.push(Expr::Verbatim(quote! {
-                ::builtin::equal(#lhs, #inst)
+            inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
+                #vstd::prelude::equal(#lhs, #inst)
             }));
         }
         if is_input {
             let lhs = if is_output {
-                Expr::Verbatim(quote! { ::builtin::old(#param_name).view().instance })
+                Expr::Verbatim(
+                    quote_vstd! { vstd => #vstd::prelude::old(#param_name).view().instance },
+                )
             } else {
                 Expr::Verbatim(quote! { #param_name.view().instance })
             };
-            inst_eq_reqs.push(Expr::Verbatim(quote! {
-                ::builtin::equal(#lhs, #inst)
+            inst_eq_reqs.push(Expr::Verbatim(quote_vstd! { vstd =>
+                #vstd::prelude::equal(#lhs, #inst)
             }));
         }
     }
@@ -1719,8 +1712,8 @@ fn mk_and(span: Span, lhs: Expr, rhs: Expr) -> Expr {
 }
 
 fn mk_eq(span: Span, lhs: &Expr, rhs: &Expr) -> Expr {
-    Expr::Verbatim(quote_spanned! { span =>
-        ::builtin::equal(#lhs, #rhs)
+    Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
+        #vstd::prelude::equal(#lhs, #rhs)
     })
 }
 
@@ -1734,8 +1727,8 @@ pub fn get_extra_deps(
         get_all_lemmas_for_transition(bundle, trans, safety_condition_lemmas)
             .iter()
             .map(|ident| {
-                quote! {
-                    ::builtin::extra_dependency(#ty::#ident);
+                quote_vstd! { vstd =>
+                    #vstd::prelude::extra_dependency(#ty::#ident);
                 }
             })
             .collect();
@@ -1994,14 +1987,16 @@ fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
         | ShardableType::PersistentBool => Type::Verbatim(quote! { ::core::option::Option<#ty> }),
 
         ShardableType::Map(key, _) | ShardableType::PersistentMap(key, _) => {
-            Type::Verbatim(quote! { ::vstd::map::Map<#key, #ty> })
+            Type::Verbatim(quote_vstd! { vstd => #vstd::map::Map<#key, #ty> })
         }
 
         ShardableType::Set(t) | ShardableType::PersistentSet(t) => {
-            Type::Verbatim(quote! { ::vstd::map::Map<#t, #ty> })
+            Type::Verbatim(quote_vstd! { vstd => #vstd::map::Map<#t, #ty> })
         }
 
-        ShardableType::Multiset(t) => Type::Verbatim(quote! { ::vstd::map::Map<#t, #ty> }),
+        ShardableType::Multiset(t) => {
+            Type::Verbatim(quote_vstd! { vstd => #vstd::map::Map<#t, #ty> })
+        }
 
         _ => {
             panic!("field_token_collection_type expected option/map/multiset/bool");
@@ -2035,8 +2030,8 @@ pub fn assign_pat_or_arbitrary(pat: &Pat, init_e: &Expr) -> Option<(Pat, Expr)> 
             });
         }
 
-        let new_e = Expr::Verbatim(quote_spanned! { init_e.span() =>
-            match (#init_e) { #pat => #tup_expr , #[allow(unreachable_patterns)] _ => ::vstd::pervasive::arbitrary() }
+        let new_e = Expr::Verbatim(quote_spanned_vstd! { vstd, init_e.span() =>
+            match (#init_e) { #pat => #tup_expr , #[allow(unreachable_patterns)] _ => #vstd::pervasive::arbitrary() }
         });
         Some((tup_pat, new_e))
     }
@@ -2474,7 +2469,9 @@ fn get_old_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let arg = transition_arg_name(&field);
     let field_name = field_token_field_name(&field);
     if ctxt.fields_written.contains(&field.name.to_string()) {
-        Expr::Verbatim(quote_spanned! { span => ::builtin::old(#arg).view().#field_name })
+        Expr::Verbatim(
+            quote_spanned_vstd! { vstd, span => #vstd::prelude::old(#arg).view().#field_name },
+        )
     } else {
         Expr::Verbatim(quote_spanned! { span => #arg.view().#field_name })
     }
@@ -2616,7 +2613,9 @@ fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: E
                 e = Expr::Verbatim(quote_spanned! { span => { let #pat: #ty = #init_e; #e } });
             }
             PrequelElement::Condition(cond_e) => {
-                e = Expr::Verbatim(quote_spanned! { span => ::builtin::imply(#cond_e, #e) });
+                e = Expr::Verbatim(
+                    quote_spanned_vstd! { vstd, span => #vstd::prelude::imply(#cond_e, #e) },
+                );
             }
             PrequelElement::Match(match_e, arms, idx) => {
                 // Create something that looks like
@@ -2635,7 +2634,9 @@ fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: E
             }
             PrequelElement::AssertCondition(cond_e) => {
                 if include_assert_conditions {
-                    e = Expr::Verbatim(quote_spanned! { span => ::builtin::imply(#cond_e, #e) });
+                    e = Expr::Verbatim(
+                        quote_spanned_vstd! { vstd, span => #vstd::prelude::imply(#cond_e, #e) },
+                    );
                 }
             }
         }
@@ -2828,8 +2829,10 @@ fn asserts_to_single_predicate(ts: &TransitionStmt) -> Option<TokenStream> {
             let x2 = asserts_to_single_predicate(&es[1]);
             match (x1, x2) {
                 (None, None) => None,
-                (Some(e1), None) => Some(quote! { ::builtin::imply(#cond, #e1) }),
-                (None, Some(e2)) => Some(quote! { ::builtin::imply(!(#cond), #e2) }),
+                (Some(e1), None) => Some(quote_vstd! { vstd => #vstd::prelude::imply(#cond, #e1) }),
+                (None, Some(e2)) => {
+                    Some(quote_vstd! { vstd => #vstd::prelude::imply(!(#cond), #e2) })
+                }
                 (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
             }
         }

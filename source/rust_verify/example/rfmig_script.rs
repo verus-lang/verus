@@ -207,7 +207,7 @@ proof fn p(tracked s1: State1) {
 
 // F1 -- F-linear-proof
 mod F1 {
-    use vstd::{prelude::*, ptr::*};
+    use vstd::{prelude::*, simple_pptr::*};
 
     #[verifier::external_body]
     fn send_pointer(ptr: PPtr<u64>) {
@@ -221,11 +221,11 @@ mod F1 {
 
     fn increment(counter: PPtr<u64>, Tracked(perm): Tracked<&mut PointsTo<u64>>)
         requires
-            counter.id() == old(perm)@.pptr,
-            old(perm)@.value.is_Some() && old(perm)@.value.get_Some_0() < 100,
+            counter == old(perm).pptr(),
+            old(perm).is_init() && old(perm).value() < 100,
         ensures
-            perm@.pptr == old(perm)@.pptr,
-            perm@.value == Some((old(perm)@.value.get_Some_0() + 1) as u64),
+            perm.pptr() == old(perm).pptr(),
+            perm.opt_value() == MemContents::Init((old(perm).value() + 1) as u64),
     {
         // pub fn borrow<'a>(&self, perm: &'a Tracked<PointsTo<V>>) -> (v: &'a V)
         let cur_i: u64 = *counter.borrow(Tracked(&*perm));
@@ -235,17 +235,17 @@ mod F1 {
 
     fn start_thread(counter: PPtr<u64>, Tracked(perm): Tracked<PointsTo<u64>>)
         requires
-            counter.id() == perm@.pptr,
-            perm@.value === None,
+            counter == perm.pptr(),
+            perm.opt_value() === MemContents::Uninit,
     {
         send_pointer(counter);
         let tracked mut perm: PointsTo<u64> = perm;
         // pub fn put(&self, perm: &mut Tracked<PointsTo<V>>, v: V)
         counter.put(Tracked(&mut perm), 5);
-        assert(perm@.value === Some(5));
+        assert(perm.opt_value() === MemContents::Init(5));
         //+ proof { transfer_permission(perm) };
         increment(counter, Tracked(&mut perm));
-        assert(perm@.value === Some(6));
+        assert(perm.opt_value() === MemContents::Init(6));
     }
 
 }

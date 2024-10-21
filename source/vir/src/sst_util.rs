@@ -1,45 +1,51 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Ident, InequalityOp,
+    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Ident, InequalityOp,
     IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX,
     Typs, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarBinders,
 };
-use crate::ast_util::get_variant;
+use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
-use crate::sst::{BndX, CallFun, Exp, ExpX, InternalFun, Stm, Trig, Trigs, UniqueIdent};
+use crate::sst::{BndX, CallFun, Exp, ExpX, LocalDeclKind, Stm, Trig, Trigs, UniqueIdent};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub(crate) fn free_vars_exp(exp: &Exp) -> HashMap<UniqueIdent, Typ> {
-    free_vars_exp_scope(exp, &mut crate::sst_visitor::VisitorScopeMap::new())
-}
-
 fn free_vars_exp_scope(
     exp: &Exp,
     scope_map: &mut crate::sst_visitor::VisitorScopeMap,
-) -> HashMap<UniqueIdent, Typ> {
-    let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
+    vars: &mut HashMap<UniqueIdent, Typ>,
+    allow_unfinalized: bool,
+) {
     crate::sst_visitor::exp_visitor_dfs::<(), _>(exp, scope_map, &mut |e, scope_map| {
         match &e.x {
             ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(x) => {
                 vars.insert(x.clone(), e.typ.clone());
             }
+            ExpX::Unary(UnaryOp::MustBeFinalized, _) if !allow_unfinalized => {
+                // Var won't match binders if we're not finalized
+                // (special case allow_unfinalized = true for type-only substitution)
+                panic!("MustBeFinalized")
+            }
             _ => (),
         }
         crate::sst_visitor::VisitorControlFlow::Recurse
     });
+}
+
+pub(crate) fn free_vars_exp(exp: &Exp) -> HashMap<UniqueIdent, Typ> {
+    let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
+    free_vars_exp_scope(exp, &mut crate::sst_visitor::VisitorScopeMap::new(), &mut vars, false);
     vars
 }
 
-pub(crate) fn free_vars_stm(stm: &Stm) -> HashMap<UniqueIdent, Typ> {
+pub(crate) fn free_vars_exps(exps: &[Exp]) -> HashMap<UniqueIdent, Typ> {
     let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
-    crate::sst_visitor::stm_exp_visitor_dfs::<(), _>(stm, &mut |exp, scope_map| {
-        vars.extend(free_vars_exp_scope(exp, scope_map).into_iter());
-        crate::sst_visitor::VisitorControlFlow::Recurse
-    });
+    for exp in exps {
+        free_vars_exp_scope(exp, &mut crate::sst_visitor::VisitorScopeMap::new(), &mut vars, false);
+    }
     vars
 }
 
@@ -110,11 +116,17 @@ fn subst_exp_rec(
     substs: &mut ScopeMap<UniqueIdent, Exp>,
     free_vars: &mut ScopeMap<UniqueIdent, ()>,
     exp: &Exp,
+    allow_unfinalized: bool,
 ) -> Exp {
     let typ = subst_typ(typ_substs, &exp.typ);
     let mk_exp = |e: ExpX| SpannedTyped::new(&exp.span, &typ, e);
     let ft = |t: &Typ| subst_typ(typ_substs, t);
     match &exp.x {
+        ExpX::Unary(UnaryOp::MustBeFinalized, _) if !allow_unfinalized => {
+            // Var won't match binders if we're not finalized
+            // (special case allow_unfinalized = true for type-only substitution)
+            panic!("MustBeFinalized")
+        }
         ExpX::Const(..)
         | ExpX::Loc(..)
         | ExpX::StaticVar(..)
@@ -134,7 +146,9 @@ fn subst_exp_rec(
             exp,
             &mut (substs, free_vars),
             &|_, t| Ok(subst_typ(typ_substs, t)),
-            &|(substs, free_vars), e| Ok(subst_exp_rec(typ_substs, substs, free_vars, e)),
+            &|(substs, free_vars), e| {
+                Ok(subst_exp_rec(typ_substs, substs, free_vars, e, allow_unfinalized))
+            },
         )
         .expect("map_shallow_exp for subst_exp_rec"),
         ExpX::Var(x) => {
@@ -161,7 +175,13 @@ fn subst_exp_rec(
                 for trigger in triggers.iter() {
                     let mut trig: Vec<Exp> = Vec::new();
                     for t in trigger.iter() {
-                        trig.push(subst_exp_rec(typ_substs, substs, free_vars, t));
+                        trig.push(subst_exp_rec(
+                            typ_substs,
+                            substs,
+                            free_vars,
+                            t,
+                            allow_unfinalized,
+                        ));
                     }
                     trigs.push(Arc::new(trig));
                 }
@@ -171,7 +191,13 @@ fn subst_exp_rec(
                 BndX::Let(bs) => {
                     let mut binders: Vec<VarBinder<Exp>> = Vec::new();
                     for b in bs.iter() {
-                        binders.push(b.new_a(subst_exp_rec(typ_substs, substs, free_vars, &b.a)));
+                        binders.push(b.new_a(subst_exp_rec(
+                            typ_substs,
+                            substs,
+                            free_vars,
+                            &b.a,
+                            allow_unfinalized,
+                        )));
                     }
                     let binders = subst_rename_binders(
                         &bnd.span,
@@ -183,10 +209,10 @@ fn subst_exp_rec(
                     );
                     BndX::Let(binders)
                 }
-                BndX::Quant(quant, binders, ts) => {
+                BndX::Quant(quant, binders, ts, ab) => {
                     let binders =
                         subst_rename_binders(&bnd.span, substs, free_vars, binders, ft, ft);
-                    BndX::Quant(*quant, binders, ftrigs(substs, free_vars, ts))
+                    BndX::Quant(*quant, binders, ftrigs(substs, free_vars, ts), ab.clone())
                 }
                 BndX::Lambda(binders, ts) => {
                     let binders =
@@ -196,12 +222,13 @@ fn subst_exp_rec(
                 BndX::Choose(binders, ts, cond) => {
                     let binders =
                         subst_rename_binders(&bnd.span, substs, free_vars, binders, ft, ft);
-                    let cond = subst_exp_rec(typ_substs, substs, free_vars, cond);
+                    let cond =
+                        subst_exp_rec(typ_substs, substs, free_vars, cond, allow_unfinalized);
                     BndX::Choose(binders, ftrigs(substs, free_vars, ts), cond)
                 }
             };
             let bnd = Spanned::new(bnd.span.clone(), bndx);
-            let e1 = subst_exp_rec(typ_substs, substs, free_vars, e1);
+            let e1 = subst_exp_rec(typ_substs, substs, free_vars, e1, allow_unfinalized);
             substs.pop_scope();
             free_vars.pop_scope();
             SpannedTyped::new(&exp.span, &typ, ExpX::Bind(bnd, e1))
@@ -209,7 +236,7 @@ fn subst_exp_rec(
         ExpX::ArrayLiteral(exprs) => {
             let mut new_exprs: Vec<Exp> = Vec::new();
             for e in exprs.iter() {
-                new_exprs.push(subst_exp_rec(typ_substs, substs, free_vars, e));
+                new_exprs.push(subst_exp_rec(typ_substs, substs, free_vars, e, allow_unfinalized));
             }
             mk_exp(ExpX::ArrayLiteral(Arc::new(new_exprs)))
         }
@@ -232,7 +259,14 @@ pub(crate) fn subst_exp(
     let mut free_vars: ScopeMap<UniqueIdent, ()> = ScopeMap::new();
     scope_substs.push_scope(false);
     free_vars.push_scope(true);
-    for (y, _) in free_vars_exp(exp) {
+    let mut free_vars_map: HashMap<UniqueIdent, Typ> = HashMap::new();
+    free_vars_exp_scope(
+        exp,
+        &mut crate::sst_visitor::VisitorScopeMap::new(),
+        &mut free_vars_map,
+        substs.len() == 0,
+    );
+    for (y, _) in free_vars_map {
         let _ = free_vars.insert(y.clone(), ());
     }
     for (x, v) in substs {
@@ -241,7 +275,7 @@ pub(crate) fn subst_exp(
             let _ = free_vars.insert(y.clone(), ());
         }
     }
-    let e = subst_exp_rec(&typ_substs, &mut scope_substs, &mut free_vars, exp);
+    let e = subst_exp_rec(&typ_substs, &mut scope_substs, &mut free_vars, exp, substs.len() == 0);
     scope_substs.pop_scope();
     free_vars.pop_scope();
     assert_eq!(scope_substs.num_scopes(), 0);
@@ -413,9 +447,6 @@ impl ExpX {
                             prec_exp,
                         )
                     }
-                    TupleField { tuple_arity: _, field } => {
-                        (format!("{}.{}", exp.x.to_user_string(global), field), 99)
-                    }
                     Field(field) => {
                         (format!("{}.{}", exp.x.to_user_string(global), field.field), 99)
                     }
@@ -467,7 +498,7 @@ impl ExpX {
                     (format!("{}.get_char({})", left, e2.x.to_user_string(global)), prec_exp)
                 } else if let HeightCompare { .. } = op {
                     (format!("height_compare({left}, {right})"), prec_exp)
-                } else if let ArrayIndex { .. } = op {
+                } else if let ArrayIndex = op {
                     (format!("array_index({left}, {right})"), prec_exp)
                 } else {
                     (format!("{} {} {}", left, op_str, right), prec_exp)
@@ -506,7 +537,7 @@ impl ExpX {
                             .join(", ");
                         format!("let {} in {}", assigns, exp.x.to_user_string(global))
                     }
-                    BndX::Quant(Quant { quant: q, .. }, bnds, _trigs) => {
+                    BndX::Quant(Quant { quant: q, .. }, bnds, _trigs, _) => {
                         let q_str = match q {
                             air::ast::Quant::Forall => "forall",
                             air::ast::Quant::Exists => "exists",
@@ -543,27 +574,43 @@ impl ExpX {
                 };
                 (s, 99)
             }
-            Ctor(path, variant_id, bnds) => {
-                let style = match global.datatypes.get(path) {
-                    Some((_, variants)) => get_variant(variants, variant_id).ctor_style,
-                    _ => CtorPrintStyle::Braces,
+            Ctor(dt, variant_id, bnds) => {
+                let style = match dt {
+                    Dt::Path(path) => match global.datatypes.get(path) {
+                        Some((_, variants)) => get_variant(variants, variant_id).ctor_style,
+                        _ => CtorPrintStyle::Braces,
+                    },
+                    Dt::Tuple(_) => CtorPrintStyle::Tuple,
                 };
                 match style {
-                    CtorPrintStyle::Parens => {
-                        let args = bnds
-                            .iter()
-                            .map(|b| b.a.x.to_user_string(global))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        (format!("{}({})", variant_id, args), 99)
-                    }
-                    CtorPrintStyle::Tuple => {
-                        let args = bnds
-                            .iter()
-                            .map(|b| b.a.x.to_user_string(global))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        (format!("({})", args), 99)
+                    CtorPrintStyle::Parens | CtorPrintStyle::Tuple => {
+                        match sst_unpack_tuple_style_ctor(self) {
+                            Some(es) => {
+                                let args = es
+                                    .iter()
+                                    .map(|e| e.x.to_user_string(global))
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                let variant = if matches!(style, CtorPrintStyle::Parens) {
+                                    &variant_id
+                                } else {
+                                    ""
+                                };
+                                (format!("{}({})", variant, args), 99)
+                            }
+                            None => {
+                                // This probably shouldn't happen; if it does, fall back
+                                // on the brace style
+                                let args = bnds
+                                    .iter()
+                                    .map(|b| {
+                                        format!("{}: {}", b.name, b.a.x.to_user_string(global))
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(", ");
+                                (format!("{} {} {} {}", variant_id, "{", args, "}"), 99)
+                            }
+                        }
                     }
                     CtorPrintStyle::Const => (format!("{}", variant_id), 99),
                     CtorPrintStyle::Braces => {
@@ -576,7 +623,7 @@ impl ExpX {
                     }
                 }
             }
-            CallLambda(_typ, e, args) => {
+            CallLambda(e, args) => {
                 let args =
                     args.iter().map(|e| e.x.to_user_string(global)).collect::<Vec<_>>().join(", ");
                 (format!("{}({})", e.x.to_user_string(global), args), 99)
@@ -713,14 +760,55 @@ pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
     )
 }
 
-pub fn sst_has_type(span: &Span, e: &Exp, typ: &Typ) -> Exp {
-    SpannedTyped::new(
-        span,
-        &Arc::new(TypX::Bool),
-        ExpX::Call(
-            CallFun::InternalFun(InternalFun::HasType),
-            Arc::new(vec![typ.clone()]),
-            Arc::new(vec![e.clone()]),
-        ),
-    )
+impl LocalDeclKind {
+    pub fn is_mutable(&self) -> bool {
+        match self {
+            LocalDeclKind::Param { mutable } => *mutable,
+            LocalDeclKind::StmtLet { mutable } => *mutable,
+            LocalDeclKind::Return => false,
+            LocalDeclKind::TempViaAssign => false,
+            LocalDeclKind::Decreases => false,
+            LocalDeclKind::StmCallArg { native: _ } => false,
+            LocalDeclKind::Assert => false,
+            LocalDeclKind::AssertByVar { native: _ } => false,
+            LocalDeclKind::LetBinder => false,
+            LocalDeclKind::QuantBinder => false,
+            LocalDeclKind::ChooseBinder => false,
+            LocalDeclKind::ClosureBinder => false,
+            LocalDeclKind::OpenInvariantBinder => true,
+            LocalDeclKind::ExecClosureId => false,
+            LocalDeclKind::ExecClosureParam => false,
+            LocalDeclKind::ExecClosureRet => false,
+        }
+    }
+}
+
+/// Unit value
+pub fn sst_unit_value(span: &Span) -> Exp {
+    let name = Dt::Tuple(0);
+    let variant = crate::def::prefix_tuple_variant(0);
+    SpannedTyped::new(span, &unit_typ(), ExpX::Ctor(name, variant, Arc::new(vec![])))
+}
+
+pub fn sst_unpack_tuple_style_ctor(expx: &ExpX) -> Option<Vec<Exp>> {
+    match &expx {
+        ExpX::Ctor(_dt, _ident, binders) => {
+            let n = binders.len();
+            let mut results: Vec<Exp> = vec![];
+            'outer: for i in 0..n {
+                let field = crate::def::positional_field_ident(i);
+                // Look for field named "i"
+                for b in binders.iter() {
+                    if b.name == field {
+                        results.push(b.a.clone());
+                        continue 'outer;
+                    }
+                }
+                // If no field of name "i", then error
+                return None;
+            }
+            return Some(results);
+        }
+        _ => None,
+    }
 }

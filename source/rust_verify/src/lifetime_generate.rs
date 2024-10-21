@@ -22,7 +22,7 @@ use rustc_span::symbol::kw;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use vir::ast::{AutospecUsage, DatatypeTransparency, Fun, FunX, Function, Mode, Path};
+use vir::ast::{AutospecUsage, DatatypeTransparency, Dt, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
 use vir::def::{field_ident_from_rust, VERUS_SPEC};
 use vir::messages::AstId;
@@ -297,6 +297,15 @@ impl State {
     }
 
     fn reach_impl_assoc(&mut self, id: DefId) {
+        if !self.remaining_typs_needed_for_each_impl.contains_key(&id) {
+            // Haven't reached trait, or already finished
+            return;
+        }
+        if self.remaining_typs_needed_for_each_impl[&id].1.len() > 0 {
+            // We haven't reached all the types we would need to justify this impl
+            return;
+        }
+
         if !self.reached.contains(&(None, id)) {
             self.reached.insert((None, id));
             self.impl_assocs_worklist.push(id);
@@ -420,6 +429,7 @@ fn adt_args<'a, 'tcx>(
         || rust_item == Some(RustItem::Arc)
         || rust_item == Some(RustItem::AllocGlobal)
         || rust_item == Some(RustItem::ManuallyDrop)
+        || rust_item == Some(RustItem::PhantomData)
     {
         (false, args)
     } else {
@@ -535,6 +545,10 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                     Some(RustItem::ManuallyDrop) => {
                         assert!(typ_args.len() == 1);
                         Id::new(IdKind::Builtin, 0, "ManuallyDrop".to_owned())
+                    }
+                    Some(RustItem::PhantomData) => {
+                        assert!(typ_args.len() == 1);
+                        Id::new(IdKind::Builtin, 0, "PhantomData".to_owned())
                     }
                     _ => state.datatype_name(&path),
                 },
@@ -681,7 +695,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
                 Res::Def(DefKind::Const, _id) => mk_pat(PatternX::Wildcard),
                 _ => {
                     let (adt_def_id, variant_def, is_enum) =
-                        get_adt_res_struct_enum(ctxt.tcx, res, pat.span).unwrap();
+                        get_adt_res_struct_enum(ctxt.tcx, res, pat.span, true).unwrap();
                     let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
                     let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
@@ -710,7 +724,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
         PatKind::TupleStruct(qpath, pats, dot_dot_pos) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
             let (adt_def_id, variant_def, is_enum) =
-                get_adt_res_struct_enum(ctxt.tcx, res, pat.span).unwrap();
+                get_adt_res_struct_enum(ctxt.tcx, res, pat.span, false).unwrap();
             let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
             let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
@@ -726,7 +740,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
         PatKind::Struct(qpath, pats, has_omitted) => {
             let res = ctxt.types().qpath_res(qpath, pat.hir_id);
             let (adt_def_id, variant_def, is_enum) =
-                get_adt_res_struct_enum(ctxt.tcx, res, pat.span).unwrap();
+                get_adt_res_struct_enum(ctxt.tcx, res, pat.span, false).unwrap();
             let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
             let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
 
@@ -880,38 +894,41 @@ fn erase_call<'tcx>(
         ResolvedCall::CompilableOperator(op) => {
             use crate::erase::CompilableOperator::*;
             let builtin_method = match op {
-                SmartPtrClone { is_method } => Some((*is_method, "clone")),
-                TrackedGet => Some((true, "get")),
-                TrackedBorrow => Some((true, "borrow")),
-                TrackedBorrowMut => Some((true, "borrow_mut")),
-                TrackedNew | TrackedExec => Some((false, "tracked_new")),
-                TrackedExecBorrow => Some((false, "tracked_exec_borrow")),
-                RcNew => Some((false, "rc_new")),
-                ArcNew => Some((false, "arc_new")),
-                BoxNew => Some((false, "box_new")),
+                SmartPtrClone { is_method } => Some((*is_method, "clone", false)),
+                TrackedGet => Some((true, "get", false)),
+                TrackedBorrow => Some((true, "borrow", false)),
+                TrackedBorrowMut => Some((true, "borrow_mut", false)),
+                TrackedNew | TrackedExec => Some((false, "tracked_new", expect_spec)),
+                TrackedExecBorrow => Some((false, "tracked_exec_borrow", false)),
+                RcNew => Some((false, "rc_new", expect_spec)),
+                ArcNew => Some((false, "arc_new", expect_spec)),
+                BoxNew => Some((false, "box_new", expect_spec)),
                 GhostExec => None,
                 IntIntrinsic | Implies => None,
+                UseTypeInvariant => Some((false, "use_type_invariant", false)),
             };
-            if let Some((true, method)) = builtin_method {
+            if let Some((true, method, expect_spec_inside)) = builtin_method {
                 assert!(receiver.is_some());
                 assert!(args_slice.len() == 0);
                 let Some(receiver) = receiver else { panic!() };
-                let exp = erase_expr(ctxt, state, expect_spec, &receiver).expect("builtin method");
-                mk_exp(ExpX::BuiltinMethod(exp, method.to_string()))
-            } else if let Some((false, func)) = builtin_method {
+                let exp = erase_expr(ctxt, state, expect_spec_inside, &receiver);
+                if expect_spec_inside {
+                    erase_spec_exps(ctxt, state, expr, vec![exp])
+                } else {
+                    mk_exp(ExpX::BuiltinMethod(exp.expect("builtin method"), method.to_string()))
+                }
+            } else if let Some((false, func, expect_spec_inside)) = builtin_method {
                 assert!(receiver.is_none());
                 assert!(args_slice.len() == 1);
-                let exp_opt = erase_expr(ctxt, state, expect_spec, &args_slice[0]);
-                let exp = match exp_opt {
-                    Some(exp) => exp,
-                    None => {
-                        return None;
-                    }
-                };
-                let target =
-                    mk_exp(ExpX::Var(Id::new(IdKind::Builtin, 0, func.to_string()))).unwrap();
-                let typ_args = mk_typ_args(ctxt, state, node_substs);
-                mk_exp(ExpX::Call(target, typ_args, vec![exp]))
+                let exp = erase_expr(ctxt, state, expect_spec_inside, &args_slice[0]);
+                if expect_spec_inside {
+                    erase_spec_exps(ctxt, state, expr, vec![exp])
+                } else {
+                    let target =
+                        mk_exp(ExpX::Var(Id::new(IdKind::Builtin, 0, func.to_string()))).unwrap();
+                    let typ_args = mk_typ_args(ctxt, state, node_substs);
+                    mk_exp(ExpX::Call(target, typ_args, vec![exp.expect("builtin method")]))
+                }
             } else if let GhostExec = op {
                 Some(erase_spec_exps_force(ctxt, state, expr, vec![]))
             } else {
@@ -1017,6 +1034,9 @@ fn erase_call<'tcx>(
                                     };
                                     exp = Box::new((exp.0, ExpX::AddrOf(m, exp)));
                                 }
+                                Adjust::Deref(None) => {
+                                    exp = Box::new((exp.0, ExpX::Deref(exp)));
+                                }
                                 _ => {}
                             }
                         }
@@ -1058,6 +1078,7 @@ fn erase_call<'tcx>(
                 }
                 // make sure datatype is generated
                 let _ = erase_ty(ctxt, state, &ctxt.types().node_type(expr.hir_id));
+
                 let variant_opt =
                     if is_variant { Some(state.variant(variant_name.to_string())) } else { None };
                 mk_exp(ExpX::DatatypeTuple(state.datatype_name(path), variant_opt, typ_args, args))
@@ -1202,9 +1223,18 @@ fn erase_expr<'tcx>(
                         None
                     } else {
                         let (adt_def_id, variant_def, is_enum) =
-                            get_adt_res_struct_enum(ctxt.tcx, res, expr.span).unwrap();
+                            get_adt_res_struct_enum(ctxt.tcx, res, expr.span, true).unwrap();
                         let variant_name = str_ident(&variant_def.ident(ctxt.tcx).as_str());
                         let vir_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, adt_def_id);
+
+                        let rust_item = verus_items::get_rust_item(ctxt.tcx, adt_def_id);
+                        if rust_item == Some(RustItem::PhantomData) {
+                            return mk_exp(ExpX::Var(Id::new(
+                                IdKind::Builtin,
+                                0,
+                                "PhantomData".to_owned(),
+                            )));
+                        }
 
                         let variant = if is_enum {
                             Some(state.variant(variant_name.to_string()))
@@ -2161,14 +2191,6 @@ fn erase_fn<'tcx>(
 }
 
 fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: DefId) {
-    if !state.remaining_typs_needed_for_each_impl.contains_key(&impl_id) {
-        // Already finished
-        return;
-    }
-    if state.remaining_typs_needed_for_each_impl[&impl_id].1.len() > 0 {
-        // We haven't reached all the types we would need to justify this impl
-        return;
-    }
     let (name, _) = state.remaining_typs_needed_for_each_impl.remove(&impl_id).unwrap();
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
     let mut trait_typ_args: Vec<Typ> = Vec::new();
@@ -2400,6 +2422,11 @@ fn erase_trait_item<'tcx>(
                     (_, Some(_)) => None,
                 };
                 let id = owner_id.to_def_id();
+
+                let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
+                let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
+                    .expect("get_verifier_attrs");
+
                 erase_fn(
                     krate,
                     ctxt,
@@ -2409,7 +2436,7 @@ fn erase_trait_item<'tcx>(
                     sig,
                     Some(trait_id),
                     body_id.is_none(),
-                    false,
+                    vattrs.external_body,
                     body_id,
                 );
             }
@@ -2584,8 +2611,13 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
         return;
     }
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
-    if let Some(RustItem::Rc | RustItem::Arc | RustItem::AllocGlobal | RustItem::ManuallyDrop) =
-        rust_item
+    if let Some(
+        RustItem::Rc
+        | RustItem::Arc
+        | RustItem::AllocGlobal
+        | RustItem::ManuallyDrop
+        | RustItem::PhantomData,
+    ) = rust_item
     {
         return;
     }
@@ -2665,7 +2697,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         ctxt.functions.insert(f.x.name.clone(), Some(f.clone())).map(|_| panic!("{:?}", &f.x.name));
     }
     for d in &erasure_hints.vir_crate.datatypes {
-        ctxt.datatypes.insert(d.x.path.clone(), d.clone()).map(|_| panic!("{:?}", &d.x.path));
+        if let Dt::Path(path) = &d.x.name {
+            ctxt.datatypes.insert(path.clone(), d.clone()).map(|_| panic!("{:?}", &path));
+        }
     }
     for (id, _span) in &erasure_hints.ignored_functions {
         ctxt.ignored_functions.insert(*id);

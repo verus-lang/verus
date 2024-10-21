@@ -31,7 +31,7 @@ use core::hash::{BuildHasher, Hash, Hasher};
 use core::option::Option;
 use core::option::Option::None;
 use std::collections::hash_map::{DefaultHasher, RandomState};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 verus! {
 
@@ -97,33 +97,99 @@ pub fn ex_default_hasher_finish(state: &DefaultHasher) -> (result: u64)
 #[verifier::external_body]
 pub spec fn obeys_key_model<Key: ?Sized>() -> bool;
 
-// This axiom states that any primitive type, or `Box` thereof,
+// These axioms state that any primitive type, or `Box` thereof,
 // obeys the requirements to be a key in a hash table that
 // conforms to our hash-table model.
-pub broadcast proof fn axiom_primitive_types_obey_hash_table_key_model()
+// (Declare each separately to enable pruning of unused primitive types.)
+pub broadcast proof fn axiom_bool_obeys_hash_table_key_model()
     ensures
-        obeys_key_model::<bool>(),
-        obeys_key_model::<u8>(),
-        obeys_key_model::<u16>(),
-        obeys_key_model::<u32>(),
-        obeys_key_model::<u64>(),
-        obeys_key_model::<u128>(),
-        obeys_key_model::<i8>(),
-        obeys_key_model::<i16>(),
-        obeys_key_model::<i32>(),
-        obeys_key_model::<i64>(),
-        obeys_key_model::<i128>(),
-        obeys_key_model::<Box<bool>>(),
-        obeys_key_model::<Box<u8>>(),
-        obeys_key_model::<Box<u16>>(),
-        obeys_key_model::<Box<u32>>(),
-        obeys_key_model::<Box<u64>>(),
-        obeys_key_model::<Box<u128>>(),
-        obeys_key_model::<Box<i8>>(),
-        obeys_key_model::<Box<i16>>(),
-        obeys_key_model::<Box<i32>>(),
-        obeys_key_model::<Box<i64>>(),
-        obeys_key_model::<Box<i128>>(),
+        #[trigger] obeys_key_model::<bool>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_u8_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<u8>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_u16_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<u16>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_u32_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<u32>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_u64_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<u64>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_u128_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<u128>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_i8_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<i8>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_i16_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<i16>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_i32_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<i32>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_i164_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<i64>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_i128_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<i128>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_box_bool_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<Box<bool>>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_box_integer_type_obeys_hash_table_key_model<Key: Integer + ?Sized>()
+    requires
+        obeys_key_model::<Key>(),
+    ensures
+        #[trigger] obeys_key_model::<Box<Key>>(),
 {
     admit();
 }
@@ -160,7 +226,7 @@ pub struct ExRandomState(RandomState);
 
 pub broadcast proof fn axiom_random_state_builds_valid_hashers()
     ensures
-        builds_valid_hashers::<RandomState>(),
+        #[trigger] builds_valid_hashers::<RandomState>(),
 {
     admit();
 }
@@ -428,7 +494,230 @@ pub fn ex_hash_map_clear<Key, Value, S>(m: &mut HashMap<Key, Value, S>)
     m.clear()
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+// We now specify the behavior of `HashSet`.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::reject_recursive_types(Key)]
+#[verifier::reject_recursive_types(S)]
+pub struct ExHashSet<Key, S>(HashSet<Key, S>);
+
+impl<Key, S> View for HashSet<Key, S> {
+    type V = Set<Key>;
+
+    #[verifier::external_body]
+    closed spec fn view(&self) -> Set<Key>;
+}
+
+pub open spec fn spec_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> usize;
+
+pub broadcast proof fn axiom_spec_hash_set_len<Key, S>(m: &HashSet<Key, S>)
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> #[trigger] spec_hash_set_len(m)
+            == m@.len(),
+{
+    admit();
+}
+
+#[verifier::external_fn_specification]
+#[verifier::when_used_as_spec(spec_hash_set_len)]
+pub fn ex_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> (len: usize)
+    ensures
+        len == spec_hash_set_len(m),
+{
+    m.len()
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_new<Key>() -> (m: HashSet<Key, RandomState>)
+    ensures
+        m@ == Set::<Key>::empty(),
+{
+    HashSet::<Key>::new()
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_with_capacity<Key>(capacity: usize) -> (m: HashSet<Key, RandomState>)
+    ensures
+        m@ == Set::<Key>::empty(),
+{
+    HashSet::<Key>::with_capacity(capacity)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_reserve<Key, S>(m: &mut HashSet<Key, S>, additional: usize) where
+    Key: Eq + Hash,
+    S: BuildHasher,
+
+    ensures
+        m@ == old(m)@,
+{
+    m.reserve(additional)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_insert<Key, S>(m: &mut HashSet<Key, S>, k: Key) -> (result: bool) where
+    Key: Eq + Hash,
+    S: BuildHasher,
+
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+            &&& m@ == old(m)@.insert(k)
+            &&& result == !old(m)@.contains(k)
+        },
+{
+    m.insert(k)
+}
+
+// The specification for `contains` has a parameter `key: &Q`
+// where you'd expect to find `key: &Key`. This allows for the case
+// that `Key` can be borrowed as something other than `&Key`. For
+// instance, `Box<u32>` can be borrowed as `&u32` and `String` can be
+// borrowed as `&str`, so in those cases `Q` would be `u32` and `str`
+// respectively.
+// To deal with this, we have a specification function that opaquely
+// specifies what it means for a set to contain a borrowed key of type
+// `&Q`. And the postcondition of `contains` just says that its
+// result matches the output of that specification function. But this
+// isn't very helpful by itself, since there's no body to that
+// specification function. So we have special-case axioms that say
+// what this means in two important circumstances: (1) `Key = Q` and
+// (2) `Key = Box<Q>`.
+pub spec fn set_contains_borrowed_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q) -> bool;
+
+pub broadcast proof fn axiom_set_contains_deref_key<Q>(m: Set<Q>, k: &Q)
+    ensures
+        #[trigger] set_contains_borrowed_key::<Q, Q>(m, k) <==> m.contains(*k),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_set_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
+    ensures
+        #[trigger] set_contains_borrowed_key::<Box<Q>, Q>(m, k) <==> m.contains(Box::new(*k)),
+{
+    admit();
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_contains<Key, S, Q>(m: &HashSet<Key, S>, k: &Q) -> (result: bool) where
+    Key: Borrow<Q> + Hash + Eq,
+    Q: Hash + Eq + ?Sized,
+    S: BuildHasher,
+
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result
+            == set_contains_borrowed_key(m@, k),
+{
+    m.contains(k)
+}
+
+// The specification for `get` has a parameter `key: &Q` where you'd
+// expect to find `key: &Key`. This allows for the case that `Key` can
+// be borrowed as something other than `&Key`. For instance,
+// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
+// as `&str`, so in those cases `Q` would be `u32` and `str`
+// respectively.
+// To deal with this, we have a specification function that opaquely
+// specifies what it means for a returned reference to point to an
+// element of a HashSet. And the postcondition of `get` says that
+// its result matches the output of that specification function. (It
+// also says that its result corresponds to the output of
+// `contains_borrowed_key`, discussed above.) But this isn't very
+// helpful by itself, since there's no body to that specification
+// function. So we have special-case axioms that say what this means
+// in two important circumstances: (1) `Key = Q` and (2) `Key =
+// Box<Q>`.
+pub spec fn sets_borrowed_key_to_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q, v: &Key) -> bool;
+
+pub broadcast proof fn axiom_set_deref_key_to_value<Q>(m: Set<Q>, k: &Q, v: &Q)
+    ensures
+        #[trigger] sets_borrowed_key_to_key::<Q, Q>(m, k, v) <==> m.contains(*k) && k == v,
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &Box<Q>)
+    ensures
+        #[trigger] sets_borrowed_key_to_key::<Box<Q>, Q>(m, q, v) <==> (m.contains(*v) && Box::new(
+            *q,
+        ) == v),
+{
+    admit();
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_get<'a, Key, S, Q>(m: &'a HashSet<Key, S>, k: &Q) -> (result: Option<
+    &'a Key,
+>) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
+            Some(v) => sets_borrowed_key_to_key(m@, k, v),
+            None => !set_contains_borrowed_key(m@, k),
+        },
+{
+    m.get(k)
+}
+
+// The specification for `remove` has a parameter `key: &Q` where
+// you'd expect to find `key: &Key`. This allows for the case that
+// `Key` can be borrowed as something other than `&Key`. For instance,
+// `Box<u32>` can be borrowed as `&u32` and `String` can be borrowed
+// as `&str`, so in those cases `Q` would be `u32` and `str`
+// respectively. To deal with this, we have a specification function
+// that opaquely specifies what it means for two sets to be related by
+// a remove of a certain `&Q`. And the postcondition of `remove` says
+// that `old(self)@` and `self@` satisfy that relationship. (It also
+// says that its result corresponds to the output of
+// `set_contains_borrowed_key`, discussed above.) But this isn't very
+// helpful by itself, since there's no body to that specification
+// function. So we have special-case axioms that say what this means
+// in two important circumstances: (1) `Key = Q` and (2) `Key = Box<Q>`.
+pub spec fn sets_differ_by_borrowed_key<Key, Q: ?Sized>(
+    old_m: Set<Key>,
+    new_m: Set<Key>,
+    k: &Q,
+) -> bool;
+
+pub broadcast proof fn axiom_set_deref_key_removed<Q>(old_m: Set<Q>, new_m: Set<Q>, k: &Q)
+    ensures
+        #[trigger] sets_differ_by_borrowed_key::<Q, Q>(old_m, new_m, k) <==> new_m == old_m.remove(
+            *k,
+        ),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: Set<Box<Q>>, q: &Q)
+    ensures
+        #[trigger] sets_differ_by_borrowed_key::<Box<Q>, Q>(old_m, new_m, q) <==> new_m
+            == old_m.remove(Box::new(*q)),
+{
+    admit();
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_remove<Key, S, Q>(m: &mut HashSet<Key, S>, k: &Q) -> (result: bool) where
+    Key: Borrow<Q> + Hash + Eq,
+    Q: Hash + Eq + ?Sized,
+    S: BuildHasher,
+
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+            &&& sets_differ_by_borrowed_key(old(m)@, m@, k)
+            &&& result == set_contains_borrowed_key(old(m)@, k)
+        },
+{
+    m.remove(k)
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_hash_set_clear<Key, S>(m: &mut HashSet<Key, S>)
+    ensures
+        m@ == Set::<Key>::empty(),
+{
+    m.clear()
+}
+
 pub broadcast group group_hash_axioms {
     axiom_box_key_removed,
     axiom_contains_deref_key,
@@ -436,9 +725,28 @@ pub broadcast group group_hash_axioms {
     axiom_deref_key_removed,
     axiom_maps_deref_key_to_value,
     axiom_maps_box_key_to_value,
-    axiom_primitive_types_obey_hash_table_key_model,
+    axiom_bool_obeys_hash_table_key_model,
+    axiom_u8_obeys_hash_table_key_model,
+    axiom_u16_obeys_hash_table_key_model,
+    axiom_u32_obeys_hash_table_key_model,
+    axiom_u64_obeys_hash_table_key_model,
+    axiom_u128_obeys_hash_table_key_model,
+    axiom_i8_obeys_hash_table_key_model,
+    axiom_i16_obeys_hash_table_key_model,
+    axiom_i32_obeys_hash_table_key_model,
+    axiom_i164_obeys_hash_table_key_model,
+    axiom_i128_obeys_hash_table_key_model,
+    axiom_box_bool_obeys_hash_table_key_model,
+    axiom_box_integer_type_obeys_hash_table_key_model,
     axiom_random_state_builds_valid_hashers,
     axiom_spec_hash_map_len,
+    axiom_set_box_key_removed,
+    axiom_set_contains_deref_key,
+    axiom_set_contains_box,
+    axiom_set_deref_key_removed,
+    axiom_set_deref_key_to_value,
+    axiom_set_box_key_to_value,
+    axiom_spec_hash_set_len,
 }
 
 } // verus!

@@ -29,7 +29,7 @@ with `by(compute)`.
 
 ### Memoization
 
-The [`#[verifier::memoize]` attribute](./reference-attr-memoize.md) can be used to mark
+The [`#[verifier::memoize]` attribute](./reference-attributes.md#verifiermemoize) can be used to mark
 certain functions for [memoizing](https://en.wikipedia.org/wiki/Memoization).
 This will direct Verus's internal interpreter to only evaluate the function once for any
 given combination of arguments. This is useful for functions that would be impractical

@@ -27,7 +27,7 @@ This is not the same thing as `==` in exec-mode; see [more on `==`](./spec-equal
 
 ### Arithmetic
 
-Arithmetic works a little diffrently in order to operate with Verus's `int`
+Arithmetic works a little differently in order to operate with Verus's `int`
 and `nat` types. See [more on arithmetic](./spec-arithmetic.md).
 
 ### References (&T)
