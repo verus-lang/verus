@@ -994,6 +994,7 @@ pub enum FunctionKind {
     /// Method declaration inside a trait
     TraitMethodDecl {
         trait_path: Path,
+        has_default: bool,
     },
     /// Method implementation inside an impl, implementing a trait method for a trait for a type
     TraitMethodImpl {

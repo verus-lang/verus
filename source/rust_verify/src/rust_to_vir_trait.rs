@@ -244,15 +244,17 @@ pub(crate) fn translate_trait<'tcx>(
 
         match kind {
             TraitItemKind::Fn(sig, fun) => {
-                let body_id = match fun {
+                let (body_id, has_default) = match fun {
                     TraitFn::Provided(_) if ex_trait_id_for.is_some() && !is_verus_spec => {
                         return err_span(
                             *span,
                             format!("`external_trait_specification` functions cannot have bodies"),
                         );
                     }
-                    TraitFn::Provided(body_id) => CheckItemFnEither::BodyId(body_id),
-                    TraitFn::Required(param_names) => CheckItemFnEither::ParamNames(*param_names),
+                    TraitFn::Provided(body_id) => (CheckItemFnEither::BodyId(body_id), true),
+                    TraitFn::Required(param_names) => {
+                        (CheckItemFnEither::ParamNames(*param_names), false)
+                    }
                 };
                 let attrs = tcx.hir().attrs(trait_item.hir_id());
                 let fun = check_item_fn(
@@ -260,7 +262,7 @@ pub(crate) fn translate_trait<'tcx>(
                     &mut methods,
                     None,
                     owner_id.to_def_id(),
-                    FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
+                    FunctionKind::TraitMethodDecl { trait_path: trait_path.clone(), has_default },
                     visibility.clone(),
                     module_path,
                     attrs,

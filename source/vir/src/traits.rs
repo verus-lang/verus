@@ -329,10 +329,8 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
         default_methods.insert(tr.x.name.clone(), Vec::new());
     }
     for f in &krate.functions {
-        if let FunctionKind::TraitMethodDecl { trait_path } = &f.x.kind {
-            if f.x.body.is_some() {
-                default_methods.get_mut(trait_path).expect("trait_path").push(f);
-            }
+        if let FunctionKind::TraitMethodDecl { trait_path, has_default: true } = &f.x.kind {
+            default_methods.get_mut(trait_path).expect("trait_path").push(f);
         }
         if let FunctionKind::TraitMethodImpl { impl_path, method, .. } = &f.x.kind {
             let p = (impl_path, method);
