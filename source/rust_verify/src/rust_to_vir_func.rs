@@ -17,8 +17,8 @@ use rustc_hir::{
     Unsafety,
 };
 use rustc_middle::ty::{
-    AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, GenericArgKind, GenericArgsRef, Region,
-    TyCtxt, TyKind,
+    AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
+    GenericArgsRef, Region, TyCtxt, TyKind,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
@@ -29,7 +29,7 @@ use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, Mode,
     ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
 };
-use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return};
+use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 use vir::sst_util::subst_typ;
 
@@ -843,6 +843,9 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         return err_span(sig.span, "spec functions cannot have requires/ensures");
     }
+    if mode == Mode::Spec && header.returns.is_some() {
+        return err_span(sig.span, "spec functions cannot have `returns` clause");
+    }
     if mode != Mode::Spec && header.recommend.len() > 0 {
         return err_span(sig.span, "non-spec functions cannot have recommends");
     }
@@ -920,9 +923,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let params: vir::ast::Params = Arc::new(vir_params.into_iter().map(|(p, _)| p).collect());
 
     let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode) {
-        (None, None) => {
-            (air_unique_var(RETURN_VALUE), Arc::new(TypX::Tuple(Arc::new(vec![]))), mode)
-        }
+        (None, None) => (air_unique_var(RETURN_VALUE), unit_typ(), mode),
         (None, Some((typ, mode))) => (air_unique_var(RETURN_VALUE), typ, mode),
         (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
@@ -1073,6 +1074,7 @@ pub(crate) fn check_item_fn<'tcx>(
         ret,
         ens_has_return,
         require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
+        returns: header.returns,
         ensure: ensure,
         decrease: header.decrease,
         decrease_when: header.decrease_when,
@@ -1132,6 +1134,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             ens_has_return,
             require,
             ensure,
+            returns,
             decrease,
             decrease_when,
             decrease_by,
@@ -1204,6 +1207,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
 
         unsupported_err_unless!(require.len() == 0, span, "requires clauses");
         unsupported_err_unless!(ensure.len() == 0, span, "ensures clauses");
+        unsupported_err_unless!(returns.is_some(), span, "returns clauses");
         unsupported_err_unless!(decrease.len() == 0, span, "decreases clauses");
         unsupported_err_unless!(decrease_when.is_none(), span, "decreases_when clauses");
         unsupported_err_unless!(decrease_by.is_none(), span, "decreases_by clauses");
@@ -1227,6 +1231,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             ens_has_return,
             require,
             ensure,
+            returns,
             decrease,
             decrease_when,
             decrease_by,
@@ -1287,10 +1292,30 @@ fn check_generics_for_invariant_fn<'tcx>(
             let func_predicates = tcx.predicates_of(id);
             let preds1 = datatype_predicates.instantiate(tcx, substs).predicates;
             let preds2 = func_predicates.instantiate(tcx, substs).predicates;
+            // The 'outlives' predicates don't always line up; I don't know why.
+            // But they don't matter for the purpose of this check, so filter them out here.
+            let preds1 = preds1
+                .into_iter()
+                .filter(|p| {
+                    !matches!(
+                        p.kind().skip_binder(),
+                        ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..)
+                    )
+                })
+                .collect();
+            let preds2 = preds2
+                .into_iter()
+                .filter(|p| {
+                    !matches!(
+                        p.kind().skip_binder(),
+                        ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..)
+                    )
+                })
+                .collect();
             let preds_match = crate::rust_to_vir_func::predicates_match(tcx, &preds1, &preds2);
             if !preds_match {
-                println!("datatype_predicates: {:#?}", datatype_predicates.predicates);
-                println!("func_predicates: {:#?}", func_predicates.predicates);
+                println!("datatype_predicates: {:#?}", preds1);
+                println!("func_predicates: {:#?}", preds2);
                 return err_span(span, "#[verifier::type_invariant]: trait bounds should match");
             }
 
@@ -1634,7 +1659,10 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         return err_span(span, "consts cannot have requires/recommends");
     }
     if ret_mode == Mode::Spec && header.ensure.len() > 0 {
-        return err_span(span, "spec functions cannot have ensures");
+        return err_span(span, "spec consts cannot have ensures");
+    }
+    if header.returns.is_some() {
+        return err_span(span, "consts cannot have `returns` clause");
     }
 
     let ret_name = air_unique_var(RETURN_VALUE);
@@ -1681,6 +1709,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         ens_has_return,
         require: Arc::new(vec![]),
         ensure,
+        returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
@@ -1764,7 +1793,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     }
     let params = Arc::new(vir_params);
     let (ret_typ, ret_mode, ens_has_return) = match ret_typ_mode {
-        None => (Arc::new(TypX::Tuple(Arc::new(vec![]))), mode, false),
+        None => (unit_typ(), mode, false),
         Some((typ, mode)) => (typ, mode, true),
     };
     let ret_param = ParamX {
@@ -1790,6 +1819,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         ens_has_return,
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
+        returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,

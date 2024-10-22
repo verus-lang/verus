@@ -6,7 +6,7 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, FunX, Idents,
+    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Dt, Fun, FunX, Idents,
     InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
     SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
@@ -256,7 +256,6 @@ impl SyntacticEquality for Typ {
         match (undecorate_typ(self).as_ref(), undecorate_typ(other).as_ref()) {
             (Bool, Bool) => Some(true),
             (Int(l), Int(r)) => Some(l == r),
-            (Tuple(typs_l), Tuple(typs_r)) => typs_l.syntactic_eq(typs_r),
             (SpecFn(formals_l, res_l), SpecFn(formals_r, res_r)) => {
                 Some(formals_l.syntactic_eq(formals_r)? && res_l.syntactic_eq(res_r)?)
             }
@@ -392,9 +391,6 @@ impl SyntacticEquality for Exp {
                         IsVariant { datatype: dt_l, variant: var_l },
                         IsVariant { datatype: dt_r, variant: var_r },
                     ) => def_eq(dt_l == dt_r && var_l == var_r),
-                    (TupleField { .. }, TupleField { .. }) => {
-                        panic!("TupleField should have been removed by ast_simplify!")
-                    }
                     (Field(l), Field(r)) => def_eq(l == r),
                     _ => None,
                 };
@@ -708,7 +704,7 @@ fn eval_array(
                                 segments: strs_to_idents(vec!["seq", "Seq"]),
                             });
                             let seq_typ = Arc::new(TypX::Datatype(
-                                seq_type_path,
+                                Dt::Path(seq_type_path),
                                 Arc::new(vec![inner_typ]),
                                 Arc::new(vec![]),
                             ));
@@ -788,7 +784,7 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
         segments: strs_to_idents(vec!["seq", "Seq"]),
     });
     let seq_typ = Arc::new(TypX::Datatype(
-        seq_type_path,
+        Dt::Path(seq_type_path),
         Arc::new(vec![inner_typ.clone()]),
         Arc::new(vec![]),
     ));
@@ -1261,7 +1257,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     Ctor(dt, var, _) => bool_new(dt == datatype && var == variant),
                     _ => ok,
                 },
-                TupleField { .. } => panic!("TupleField should have been removed by ast_simplify!"),
                 Field(f) => match &e.x {
                     Ctor(_dt, _var, binders) => {
                         match binders.iter().position(|b| b.name == f.field) {

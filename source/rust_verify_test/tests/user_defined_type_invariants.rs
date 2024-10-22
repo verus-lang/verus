@@ -211,6 +211,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] type_inv_lifetime_bounds verus_code! {
+        struct X<'a, A, B> {
+            re: &'a (A, B, A),
+        }
+
+        impl<'a, A, B> X<'a, A, B> {
+            #[verifier::type_invariant]
+            spec fn wf(self) -> bool {
+                self.re.0 == self.re.2
+            }
+        }
+
+        trait Tr<A1> {
+            spec fn foo(&self) -> bool;
+        }
+
+        struct Y<'a, A, B: Tr<A>> {
+            re: &'a (A, B, A),
+        }
+
+        impl<'a, A, B: Tr<A>> Y<'a, A, B> {
+            #[verifier::type_invariant]
+            spec fn wf(self) -> bool {
+                self.re.0 == self.re.2
+                    && self.re.1.foo()
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] type_inv_type_cycle1 verus_code! {
         struct X {
             i: int,
@@ -426,7 +457,6 @@ test_verify_one_file! {
             mutate_int(&mut x.i); // FAILS
         }
 
-
         fn mutate_int2(i: &mut u8, j: &mut u8)
             ensures *i == *j
             no_unwind
@@ -505,6 +535,100 @@ test_verify_one_file! {
             mutate_int4_fail_z(&mut z.x.i, &mut z.x.j, &mut z.y.i, &mut z.y.j); // FAILS
         }
     } => Err(err) => assert_fails_type_invariant_error(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_tests_with_tuples verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        struct Y {
+            i: u8,
+            j: u8,
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                self.i == self.j
+            }
+        }
+
+        fn mutate_int(i: &mut u8) no_unwind { }
+
+        fn test1() {
+            let mut t = (X { i: 10, j: 8 }, Y { i: 100, j: 100 });
+            mutate_int(&mut t.0.j);
+        }
+
+        fn test2() {
+            let mut t = (X { i: 10, j: 8 }, Y { i: 100, j: 100 });
+            mutate_int(&mut t.0.i); // FAILS
+        }
+
+        fn mutate_int2(i: &mut u8, j: &mut u8)
+            ensures *i == *j
+            no_unwind
+        {
+            *i = 100;
+            *j = 100;
+        }
+
+        fn test4() {
+            let mut t = (X { i: 10, j: 8 }, Y { i: 8, j: 8 });
+            mutate_int2(&mut t.0.i, &mut t.0.j); // FAILS
+        }
+
+        fn test5() {
+            let mut t = (X { i: 10, j: 8 }, Y { i: 8, j: 8 });
+            mutate_int2(&mut t.1.i, &mut t.1.j);
+        }
+
+        fn mutate_int4_meet_all(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
+            ensures *a == 10, *b == 30, *c == 10, *d == 10
+            no_unwind
+        { assume(false); }
+
+        fn mutate_int4_fail_x(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
+            ensures *a == 20, *b == 30, *c == 20, *d == 20
+            no_unwind
+        { assume(false); }
+
+        fn mutate_int4_fail_y(a: &mut u8, b: &mut u8, c: &mut u8, d: &mut u8)
+            ensures *a == 10, *b == 30, *c == 10, *d == 11
+            no_unwind
+        { assume(false); }
+
+        fn test8() {
+            let x = X { i: 8, j: 8 };
+            let y = Y { i: 8, j: 8 };
+            let mut z = (x, y);
+            mutate_int4_meet_all(&mut z.0.i, &mut z.0.j, &mut z.1.i, &mut z.1.j);
+        }
+
+        fn test9() {
+            let mut x = X { i: 8, j: 8 };
+            let mut y = Y { i: 8, j: 8 };
+            let mut z = (x, y);
+            mutate_int4_fail_x(&mut z.0.i, &mut z.0.j, &mut z.1.i, &mut z.1.j); // FAILS
+        }
+
+        fn test10() {
+            let mut x = X { i: 8, j: 8 };
+            let mut y = Y { i: 8, j: 8 };
+            let mut z = (x, y);
+            mutate_int4_fail_y(&mut z.0.i, &mut z.0.j, &mut z.1.i, &mut z.1.j); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 4)
 }
 
 test_verify_one_file! {
@@ -1015,7 +1139,23 @@ test_verify_one_file! {
             y.x.i = 10;
             y.x.j = 25;
         }
-    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+
+        fn tup_test() {
+            let mut y = (Y { x: X { i: 12, j: 25 } }, 19);
+            y.0.x.i = 19; // FAILS
+        }
+
+        fn tup_test2() {
+            let mut y = (Y { x: X { i: 12, j: 25 } }, 19);
+            y.0.x.j = 45; // FAILS
+        }
+
+        fn tup_test_ok() {
+            let mut y = (Y { x: X { i: 12, j: 25 } }, 19);
+            y.0.x.i = 10;
+            y.0.x.j = 25;
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 4)
 }
 
 test_verify_one_file! {
@@ -1062,6 +1202,27 @@ test_verify_one_file! {
             let mut x = X { i: 2, j: 123 };
             x.i += 4;
         }
+
+        fn tup_test_assign_op() {
+            let mut y = (Y { x: X { i: 12, j: 25 } }, 19);
+            y.0.x.i += 2; // FAILS
+        }
+
+        fn tup_test2_assign_op() {
+            let mut y = (Y { x: X { i: 12, j: 25 } }, 19);
+            y.0.x.j += 2; // FAILS
+        }
+
+        fn tup_test3_assign_op() {
+            let mut x = (X { i: 14, j: 123 }, 19);
+            x.0.i += 4; // FAILS
+        }
+
+        fn tup_test4_assign_op_ok() {
+            let mut x = (X { i: 2, j: 123 }, 19);
+            x.0.i += 4;
+        }
+
     } => Err(err) => assert_vir_error_msg(err, "not yet implemented: lhs of compound assignment")
     //assert_fails_type_invariant_error(err, 3)
 }
@@ -1116,7 +1277,27 @@ test_verify_one_file! {
             let mut y = Y { x: X { i: 12, j: 25 } };
             y.x.j = get_j_bad(); // FAILS
         }
-    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+
+        fn tup_test1() {
+            let mut y = (Y { x: X { i: 12, j: 25 } }, 13);
+            y.0.x.i = get_i();
+        }
+
+        fn tup_test1_bad() {
+            let mut y = (Y { x: X { i: 12, j: 25 } }, 13);
+            y.0.x.i = get_i_bad(); // FAILS
+        }
+
+        fn tup_test2() {
+            let mut y = (Y { x: X { i: 12, j: 25 } }, 13);
+            y.0.x.j = get_j();
+        }
+
+        fn tup_test2_bad() {
+            let mut y = (Y { x: X { i: 12, j: 25 } }, 13);
+            y.0.x.j = get_j_bad(); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 4)
 }
 
 test_verify_one_file! {
@@ -1684,4 +1865,169 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_fails_type_invariant_error(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_nested_tup verus_code! {
+        struct X {
+            i: (u8, u8),
+            j: (u8, u8),
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i.0
+                  <= self.i.1
+                  <= self.j.0
+                  <= self.j.1
+            }
+        }
+
+        fn test() {
+            let mut t = X { i: (0, 4), j: (5, 20) };
+            t.i.1 = 3;
+        }
+
+        fn test2() {
+            let mut t = X { i: (0, 4), j: (5, 20) };
+            t.i.1 = 17; // FAILS
+        }
+
+        proof fn proof_test2(tracked t: X, tracked k: u8)
+            requires t == (X { i: (0, 4), j: (5, 20) }),
+                k == 17,
+        {
+            let tracked mut t = t;
+            t.i.1 = k; // FAILS
+        }
+
+        fn test_ok() {
+            let mut t = X { i: (0, 4), j: (5, 20) };
+            t.j.0 = 15;
+            t.i.1 = 10;
+        }
+
+        fn mutate_int(i: &mut u8) no_unwind { }
+
+        fn mutate_int2(i: &mut u8, j: &mut u8)
+            ensures
+                *i == 14,
+                *j == 16
+            no_unwind
+        {
+            *i = 14;
+            *j = 16;
+        }
+
+        fn test3() {
+            let mut t = X { i: (0, 4), j: (5, 20) };
+            mutate_int(&mut t.i.1); // FAILS
+        }
+
+        fn test4() {
+            let mut t = X { i: (0, 4), j: (5, 20) };
+            mutate_int2(&mut t.i.0, &mut t.i.1); // FAILS
+        }
+
+        fn test5() {
+            let mut t = X { i: (0, 4), j: (5, 20) };
+            mutate_int2(&mut t.j.0, &mut t.j.1);
+        }
+
+        proof fn proof_mutate_int(tracked i: &mut u8) { }
+
+        proof fn proof_mutate_int2(tracked i: &mut u8, tracked j: &mut u8)
+            ensures
+                *i == 14,
+                *j == 16
+        {
+            assume(false);
+        }
+
+        proof fn proof_test3(tracked t: X)
+            requires t == (X { i: (0, 4), j: (5, 20) }),
+        {
+            let tracked mut t = t;
+            proof_mutate_int(&mut t.i.1); // FAILS
+        }
+
+        proof fn proof_test4(tracked t: X)
+            requires t == (X { i: (0, 4), j: (5, 20) }),
+        {
+            let tracked mut t = t;
+            proof_mutate_int2(&mut t.i.0, &mut t.i.1); // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 6)
+}
+
+test_verify_one_file! {
+    #[test] test_tracked_tuples verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        impl X {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                0 <= self.i < 15
+            }
+        }
+
+        struct Y {
+            i: u8,
+            j: u8,
+        }
+
+        impl Y {
+            #[verifier::type_invariant]
+            spec fn the_inv(&self) -> bool {
+                self.i == self.j
+            }
+        }
+
+        proof fn mutate_int(tracked i: &mut u8) { }
+
+        proof fn test1(tracked t: (X, Y))
+            requires t == (X { i: 10, j: 8 }, Y { i: 100, j: 100 }),
+        {
+            let tracked mut t = t;
+            mutate_int(&mut t.0.j);
+        }
+
+        proof fn test2(tracked t: (X, Y))
+            requires t == (X { i: 10, j: 8 }, Y { i: 100, j: 100 }),
+        {
+            let tracked mut t = t;
+            mutate_int(&mut t.0.i); // FAILS
+        }
+
+        proof fn mutate_int2(tracked i: &mut u8, tracked j: &mut u8)
+            ensures *i == *j
+        {
+            assume(false);
+        }
+
+        proof fn test4(tracked t: (X, Y))
+            requires t == (X { i: 10, j: 8 }, Y { i: 8, j: 8 }),
+        {
+            let tracked mut t = t;
+            mutate_int2(&mut t.0.i, &mut t.0.j); // FAILS
+        }
+
+        proof fn test5(tracked t: (X, Y))
+            requires t == (X { i: 10, j: 8 }, Y { i: 8, j: 8 }),
+        {
+            let tracked mut t = t;
+            mutate_int2(&mut t.1.i, &mut t.1.j);
+        }
+
+        proof fn test6(tracked t: (X, Y), tracked k: u8)
+            requires t == (X { i: 10, j: 8 }, Y { i: 8, j: 8 }),
+        {
+            let tracked mut t = t;
+            t.0.i = k; // FAILS
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 3)
 }

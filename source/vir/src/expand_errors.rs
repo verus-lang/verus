@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, BinaryOpr, FieldOpr, Fun, Ident, Path, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
+    BinaryOp, BinaryOpr, Dt, FieldOpr, Fun, Ident, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
     UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
 };
 use crate::ast_to_sst::get_function_sst;
@@ -791,13 +791,7 @@ pub fn try_split_datatype_eq(
     Ok(sst_conjoin(&e1.span, &w0))
 }
 
-pub fn field_exp(
-    exp: &Exp,
-    field_typ: &Typ,
-    datatype: &Path,
-    variant: &Ident,
-    field: &Ident,
-) -> Exp {
+pub fn field_exp(exp: &Exp, field_typ: &Typ, datatype: &Dt, variant: &Ident, field: &Ident) -> Exp {
     let e = remove_uninteresting_unary_ops(exp);
 
     match &e.x {

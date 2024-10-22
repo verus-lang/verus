@@ -1,5 +1,5 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
+    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
     IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, MaskSpec, Mode, Path, PathX, Primitive,
     SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec,
     VarAt, VarIdent, VariantCheck, VirErr, Visibility,
@@ -11,15 +11,16 @@ use crate::ast_util::{
 use crate::bitvector_to_air::bv_to_queries;
 use crate::context::Ctx;
 use crate::def::{
-    fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name, path_to_string,
-    prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when, prefix_open_inv,
-    prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident,
-    static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, unique_local,
-    variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX, ProverChoice,
-    SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
-    FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE,
-    STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC,
-    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name,
+    path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when,
+    prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
+    snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
+    unique_local, variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX,
+    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN,
+    SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
+    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
+    SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::inv_masks::{MaskSet, MaskSingleton};
 use crate::messages::{error, error_with_label, Span};
@@ -69,6 +70,15 @@ pub(crate) fn path_to_air_ident(path: &Path) -> Ident {
     Arc::new(path_to_string(path))
 }
 
+#[inline(always)]
+pub(crate) fn dt_to_air_ident(dt: &Dt) -> Ident {
+    let path = match dt {
+        Dt::Path(path) => path.clone(),
+        Dt::Tuple(arity) => crate::def::prefix_tuple_type(*arity),
+    };
+    path_to_air_ident(&path)
+}
+
 pub(crate) fn apply_range_fun(name: &str, range: &IntRange, exprs: Vec<Expr>) -> Expr {
     let mut args = exprs;
     match range {
@@ -116,8 +126,11 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
             IntRange::USize => str_ident("usize"),
             IntRange::ISize => str_ident("isize"),
         },
-        MonoTypX::Datatype(path, typs) => {
-            return crate::def::monotyp_apply(path, &typs.iter().map(monotyp_to_path).collect());
+        MonoTypX::Datatype(dt, typs) => {
+            return crate::def::monotyp_apply(
+                &encode_dt_as_path(dt),
+                &typs.iter().map(monotyp_to_path).collect(),
+            );
         }
         MonoTypX::Primitive(name, typs) => {
             return crate::def::monotyp_apply(
@@ -142,18 +155,17 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
     match &**typ {
         TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
-        TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::SpecFn(..) => Arc::new(air::ast::TypX::Fun),
         TypX::Primitive(Primitive::Array, _) => Arc::new(air::ast::TypX::Fun),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
-        TypX::Datatype(path, _, _) => {
-            if ctx.datatype_is_transparent[path] {
-                ident_typ(&path_to_air_ident(path))
+        TypX::Datatype(dt, _, _) => {
+            if ctx.datatype_is_transparent[dt] {
+                ident_typ(&path_to_air_ident(&encode_dt_as_path(dt)))
             } else {
                 match typ_as_mono(typ) {
-                    None => panic!("abstract datatype should be boxed"),
+                    None => panic!("abstract datatype should be boxed {:?}", typ),
                     Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
                 }
             }
@@ -213,8 +225,8 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
     match &**typ {
         MonoTypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
         MonoTypX::Int(range) => mk_id(range_to_id(range)),
-        MonoTypX::Datatype(path, typs) => {
-            let f_name = crate::def::prefix_type_id(path);
+        MonoTypX::Datatype(dt, typs) => {
+            let f_name = crate::def::prefix_type_id(&encode_dt_as_path(dt));
             let mut args: Vec<Expr> = Vec::new();
             for t in typs.iter() {
                 args.extend(monotyp_to_id(t));
@@ -286,13 +298,12 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
     match &**typ {
         TypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
         TypX::Int(range) => mk_id(range_to_id(range)),
-        TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::SpecFn(typs, typ) => mk_id(fun_id(typs, typ)),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
         TypX::FnDef(fun, typs, _resolved_fun) => mk_id(fndef_id(fun, typs)),
-        TypX::Datatype(path, typs, _) => mk_id(datatype_id(path, typs)),
+        TypX::Datatype(dt, typs, _) => mk_id(datatype_id(&encode_dt_as_path(dt), typs)),
         TypX::Primitive(name, typs) => mk_id(primitive_id(&name, typs)),
         TypX::Decorate(d, None, typ) if crate::context::DECORATE => {
             let ds_typ = typ_to_ids(typ);
@@ -414,10 +425,11 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::Primitive(Primitive::Array, _) => {
             Some(expr_has_typ(&try_box(ctx, expr.clone(), typ).expect("try_box array"), typ))
         }
-        TypX::Datatype(path, _, _) => {
-            if ctx.datatype_is_transparent[path] {
-                if ctx.datatypes_with_invariant.contains(path) {
-                    let box_expr = ident_apply(&prefix_box(&path), &vec![expr.clone()]);
+        TypX::Datatype(dt, _, _) => {
+            if ctx.datatype_is_transparent[dt] {
+                if ctx.datatypes_with_invariant.contains(dt) {
+                    let box_expr =
+                        ident_apply(&prefix_box(&encode_dt_as_path(dt)), &vec![expr.clone()]);
                     Some(expr_has_typ(&box_expr, typ))
                 } else {
                     None
@@ -435,7 +447,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::TypParam(_) => Some(expr_has_typ(expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(expr, typ)),
         TypX::Bool | TypX::AnonymousClosure(..) | TypX::TypeId => None,
-        TypX::Tuple(_) | TypX::Air(_) => panic!("typ_invariant"),
+        TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
         TypX::ConstInt(_) => None,
@@ -457,9 +469,9 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
 
 pub(crate) fn datatype_box_prefix(ctx: &Ctx, typ: &Typ) -> Option<Path> {
     match &**typ {
-        TypX::Datatype(path, _, _) => {
-            if ctx.datatype_is_transparent[path] {
-                Some(path.clone())
+        TypX::Datatype(dt, _, _) => {
+            if ctx.datatype_is_transparent[dt] {
+                Some(encode_dt_as_path(dt))
             } else {
                 if let Some(monotyp) = typ_as_mono(typ) {
                     Some(crate::sst_to_air::monotyp_to_path(&monotyp))
@@ -485,7 +497,6 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
-        TypX::Tuple(_) => None,
         TypX::SpecFn(typs, _) => Some(prefix_box(&prefix_spec_fn_type(typs.len()))),
         TypX::Primitive(Primitive::Array, _) => Some(prefix_box(&crate::def::array_type())),
         TypX::AnonymousClosure(..) => unimplemented!(),
@@ -517,9 +528,9 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::UNBOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::UNBOX_INT)),
-        TypX::Datatype(path, _, _) => {
-            if ctx.datatype_is_transparent[path] {
-                Some(prefix_unbox(&path))
+        TypX::Datatype(dt, _, _) => {
+            if ctx.datatype_is_transparent[dt] {
+                Some(prefix_unbox(&encode_dt_as_path(dt)))
             } else {
                 prefix_typ_as_mono(prefix_unbox, typ, "abstract datatype")
             }
@@ -527,7 +538,6 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Primitive(Primitive::Array, _) => Some(prefix_unbox(&crate::def::array_type())),
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_unbox, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::UNBOX_FNDEF)),
-        TypX::Tuple(_) => None,
         TypX::SpecFn(typs, _) => Some(prefix_unbox(&prefix_spec_fn_type(typs.len()))),
         TypX::AnonymousClosure(..) => unimplemented!(),
         TypX::Decorate(_, _, t) => return try_unbox(ctx, expr, t),
@@ -561,12 +571,14 @@ pub fn mask_set_from_spec(spec: &MaskSpec, function_name: &Fun, args: &Vec<Expr>
 
 pub(crate) fn ctor_to_apply<'a>(
     ctx: &'a Ctx,
-    path: &Path,
+    dt: &Dt,
     variant: &Ident,
     binders: &'a Binders<Exp>,
 ) -> (Ident, impl Iterator<Item = &'a Arc<BinderX<Exp>>>) {
-    let fields = &get_variant(&ctx.global.datatypes[path].1, variant).fields;
-    (variant_ident(path, &variant), fields.iter().map(move |f| get_field(binders, &f.name)))
+    let fields = &get_variant(&ctx.datatype_map[dt].x.variants, variant).fields;
+    let variant = variant_ident(dt, &variant);
+    let field_exps = fields.iter().map(move |f| get_field(binders, &f.name));
+    (variant, field_exps)
 }
 
 fn str_to_const_str(ctx: &Ctx, s: Arc<String>) -> Expr {
@@ -894,7 +906,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 apply_range_fun(&f_name, &range, vec![expr])
             }
             UnaryOp::CoerceMode { .. } => {
-                panic!("internal error: TupleField should have been removed before here")
+                panic!("internal error: CoerceMode should have been removed before here")
             }
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", exp)
@@ -930,9 +942,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let name = is_variant_ident(datatype, variant);
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
             }
-            UnaryOpr::TupleField { .. } => {
-                panic!("internal error: TupleField should have been removed before here")
-            }
             UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMin, _) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let name = Arc::new(I_LO.to_string());
@@ -957,7 +966,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 Arc::new(ExprX::Apply(
-                    variant_field_ident(datatype, variant, field),
+                    variant_field_ident(&encode_dt_as_path(datatype), variant, field),
                     Arc::new(vec![expr]),
                 ))
             }

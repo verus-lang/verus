@@ -50,6 +50,12 @@ impl<A> Set<A> {
     /// Predicate indicating if the set contains the given element.
     pub spec fn contains(self, a: A) -> bool;
 
+    /// Predicate indicating if the set contains the given element: supports `self has a` syntax.
+    #[verifier::inline]
+    pub open spec fn spec_has(self, a: A) -> bool {
+        self.contains(a)
+    }
+
     /// DEPRECATED: use =~= or =~~= instead.
     /// Returns `true` if for every value `a: A`, it is either in both input sets or neither.
     /// This is equivalent to the sets being actually equal

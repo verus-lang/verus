@@ -1664,7 +1664,10 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
             }
         }
         if let Some(kinds) = &kind_multiline_override {
-            if !entirely_comment {
+            if line.kinds != HashSet::from([CodeKind::Comment])
+                && line.kinds != HashSet::from([CodeKind::Layout])
+                && line.kinds != HashSet::from([])
+            {
                 line.kinds = kinds.clone();
             }
         }

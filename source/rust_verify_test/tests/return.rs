@@ -195,3 +195,41 @@ test_verify_one_file! {
         fn main() { }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] generic_spec_funs_returning_unit_issue1108 verus_code! {
+        trait T {
+            spec fn f();
+        }
+
+        spec fn g<A: T>() {
+            A::f()
+        }
+
+        struct X { }
+
+        impl T for X {
+            spec fn f() { () }
+        }
+
+        proof fn test_generic<S: T>() {
+            let x = S::f();
+            assert(x == ());
+        }
+
+        proof fn test_x() {
+            let x = <X as T>::f();
+            assert(x == ());
+        }
+
+        proof fn test_generic2<S: T>() {
+            let x = g::<S>();
+            assert(x == ());
+        }
+
+        proof fn test_x2() {
+            let x = g::<X>();
+            assert(x == ());
+        }
+    } => Ok(())
+}

@@ -5612,6 +5612,20 @@
       }
     },
     {
+      "ident": "Returns",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Returns"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
       "ident": "RevealHide",
       "features": {
         "any": []
@@ -5756,6 +5770,11 @@
         "ensures": {
           "option": {
             "syn": "Ensures"
+          }
+        },
+        "returns": {
+          "option": {
+            "syn": "Returns"
           }
         },
         "decreases": {
@@ -7116,6 +7135,7 @@
     "RemEq": "%=",
     "Requires": "requires",
     "Return": "return",
+    "Returns": "returns",
     "Reveal": "reveal",
     "RevealWithFuel": "reveal_with_fuel",
     "SelfType": "Self",

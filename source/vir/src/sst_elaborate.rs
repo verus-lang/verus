@@ -43,7 +43,8 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                     }
                     let e = crate::sst_util::subst_exp(&typ_substs, &substs, body);
                     // keep the original outer span for better trigger messages
-                    let e = SpannedTyped::new(&exp.span, &e.typ, e.x.clone());
+                    // keep the original type so that poly.rs can perform the proper box/unbox on e
+                    let e = SpannedTyped::new(&exp.span, &exp.typ, e.x.clone());
                     return Ok(e);
                 }
             }

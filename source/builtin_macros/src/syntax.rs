@@ -29,8 +29,8 @@ use syn_verus::{
     InvariantNameSetList, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
     ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
     ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends,
-    Requires, ReturnType, Signature, SignatureDecreases, SignatureInvariants, SignatureUnwind,
-    Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
+    Requires, ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants,
+    SignatureUnwind, Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -166,12 +166,53 @@ macro_rules! quote_spanned_builtin {
     }
 }
 
+macro_rules! quote_spanned_builtin_vstd {
+    ($b:ident, $v:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Builtin(sp);
+            let $v = crate::syntax::Vstd(sp);
+            ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
+macro_rules! quote_vstd {
+    ($b:ident => $($tt:tt)*) => {
+        {
+            let sp = ::proc_macro2::Span::call_site();
+            let $b = crate::syntax::Vstd(sp);
+            ::quote::quote!{ $($tt)* }
+        }
+    }
+}
+
 macro_rules! quote_builtin {
     ($b:ident => $($tt:tt)*) => {
         {
             let sp = ::proc_macro2::Span::call_site();
             let $b = crate::syntax::Builtin(sp);
             ::quote::quote!{ $($tt)* }
+        }
+    }
+}
+
+macro_rules! quote_spanned_vstd {
+    ($b:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Vstd(sp);
+            ::quote::quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
+macro_rules! parse_quote_spanned_vstd {
+    ($b:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Vstd(sp);
+            ::syn_verus::parse_quote_spanned!{ sp => $($tt)* }
         }
     }
 }
@@ -374,6 +415,7 @@ impl Visitor {
         let requires = self.take_ghost(&mut sig.requires);
         let recommends = self.take_ghost(&mut sig.recommends);
         let ensures = self.take_ghost(&mut sig.ensures);
+        let returns = self.take_ghost(&mut sig.returns);
         let decreases = self.take_ghost(&mut sig.decreases);
         let opens_invariants = self.take_ghost(&mut sig.invariants);
         let unwind = self.take_ghost(&mut sig.unwind);
@@ -474,6 +516,19 @@ impl Visitor {
                         ));
                     }
                 }
+            }
+        }
+        if let Some(Returns { token, mut exprs }) = returns {
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(builtin, token.span => #builtin::returns([#exprs])),
+                    ),
+                    Semi { spans: [token.span] },
+                ));
             }
         }
         if let Some(SignatureDecreases { decreases: Decreases { token, mut exprs }, when, via }) =
@@ -1042,31 +1097,33 @@ impl Visitor {
                                 format_ident!("VERUS_layout_of_{}", type_name_escaped);
 
                             let ensures_align = if let Some(align_lit) = align_lit {
-                                quote! { ::vstd::layout::align_of::<#type_>() == #align_lit, }
+                                quote_vstd! { vstd => #vstd::layout::align_of::<#type_>() == #align_lit, }
                             } else {
                                 quote! {}
                             };
 
-                            *item = Item::Verbatim(quote_spanned_builtin! { builtin, span =>
-                            #[verus::internal(size_of)] const _: () = {
-                                #builtin::global_size_of::<#type_>(#size_lit);
+                            *item = Item::Verbatim(
+                                quote_spanned_builtin_vstd! { builtin, vstd, span =>
+                                #[verus::internal(size_of)] const _: () = {
+                                    #builtin::global_size_of::<#type_>(#size_lit);
 
-                                #static_assert_size
-                                #static_assert_align
-                            };
+                                    #static_assert_size
+                                    #static_assert_align
+                                };
 
-                            ::builtin_macros::verus! {
-                                #[verus::internal(size_of_broadcast_proof)]
-                                #[verifier::external_body]
-                                #[allow(non_snake_case)]
-                                broadcast proof fn #lemma_ident()
-                                    ensures
-                                        #[trigger] ::vstd::layout::size_of::<#type_>() == #size_lit,
-                                        #ensures_align
-                                {
+                                ::builtin_macros::verus! {
+                                    #[verus::internal(size_of_broadcast_proof)]
+                                    #[verifier::external_body]
+                                    #[allow(non_snake_case)]
+                                    broadcast proof fn #lemma_ident()
+                                        ensures
+                                            #[trigger] #vstd::layout::size_of::<#type_>() == #size_lit,
+                                            #ensures_align
+                                    {
+                                    }
                                 }
-                            }
-                            });
+                                },
+                            );
                         }
                     }
                 }
@@ -1675,25 +1732,25 @@ impl Visitor {
         //                  builtin::infer_spec_for_loop_iter(
         //                      &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
         //                          &::core::iter::IntoIterator::into_iter(e)))),
-        let exec_inv: Expr = Expr::Verbatim(quote_spanned!(expr.span() =>
+        let exec_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#exec_inv_msg)]
-            ::vstd::pervasive::ForLoopGhostIterator::exec_invariant(&#x_ghost_iter, &#x_exec_iter)
+            #vstd::pervasive::ForLoopGhostIterator::exec_invariant(&#x_ghost_iter, &#x_exec_iter)
         ));
-        let ghost_inv: Expr = Expr::Verbatim(quote_spanned!(expr.span() =>
+        let ghost_inv: Expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() =>
             #[verifier::custom_err(#ghost_inv_msg)]
-            ::vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
+            #vstd::pervasive::ForLoopGhostIterator::ghost_invariant(&#x_ghost_iter,
                 builtin::infer_spec_for_loop_iter(
-                    &::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
+                    &#vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(
                         &::core::iter::IntoIterator::into_iter(#expr_inv)),
                     #print_hint,
                 ))
         ));
         let invariant_for = if let Some(mut invariant) = invariant {
             for inv in &mut invariant.exprs.exprs {
-                *inv = Expr::Verbatim(quote_spanned!(inv.span() => {
+                *inv = Expr::Verbatim(quote_spanned_vstd!(vstd, inv.span() => {
                     let #pat =
-                        ::vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter)
-                        .unwrap_or(::vstd::pervasive::arbitrary());
+                        #vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter)
+                        .unwrap_or(#vstd::pervasive::arbitrary());
                     #inv
                 }));
             }
@@ -1714,8 +1771,8 @@ impl Visitor {
         // REVIEW: we might also want no_auto_loop_invariant to suppress the ensures,
         // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.
         let ensure = if no_loop_invariant.is_none() {
-            Some(parse_quote_spanned!(span =>
-                ensures ::vstd::pervasive::ForLoopGhostIterator::ghost_ensures(&#x_ghost_iter),
+            Some(parse_quote_spanned_vstd!(vstd, span =>
+                ensures #vstd::pervasive::ForLoopGhostIterator::ghost_ensures(&#x_ghost_iter),
             ))
         } else {
             None
@@ -1734,9 +1791,9 @@ impl Visitor {
             let () = #body;
         }));
         let mut body: Block = if no_loop_invariant.is_none() {
-            let body_ghost = Expr::Verbatim(quote_spanned!(span =>
+            let body_ghost = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
                 #[verifier::proof_block] {
-                    #x_ghost_iter = ::vstd::pervasive::ForLoopGhostIterator::ghost_advance(
+                    #x_ghost_iter = #vstd::pervasive::ForLoopGhostIterator::ghost_advance(
                         &#x_ghost_iter, &#x_exec_iter);
                 }
             ));
@@ -1754,13 +1811,13 @@ impl Visitor {
         loop_expr.label = label;
         loop_expr.attrs = attrs;
         let full_loop: Expr = if no_loop_invariant.is_none() {
-            Expr::Verbatim(quote_spanned!(span => {
+            Expr::Verbatim(quote_spanned_vstd!(vstd, span => {
                 #[allow(non_snake_case)]
                 #[verus::internal(spec)]
                 let mut #x_ghost_iter;
                 #[verifier::proof_block] {
                     #x_ghost_iter =
-                        ::vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(&#x_exec_iter);
+                        #vstd::pervasive::ForLoopGhostIteratorNew::ghost_iter(&#x_exec_iter);
                 }
                 #loop_expr
             }))
@@ -3702,6 +3759,20 @@ impl ToTokens for Builtin {
             tokens.extend(quote_spanned! { self.0 => crate::builtin });
         } else {
             tokens.extend(quote_spanned! { self.0 => ::builtin });
+        }
+    }
+}
+
+pub(crate) struct Vstd(pub Span);
+
+impl ToTokens for Vstd {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        if crate::cfg_verify_core() {
+            tokens.extend(quote_spanned! { self.0 => crate::vstd });
+        } else if crate::cfg_verify_vstd() {
+            tokens.extend(quote_spanned! { self.0 => crate });
+        } else {
+            tokens.extend(quote_spanned! { self.0 => ::vstd });
         }
     }
 }

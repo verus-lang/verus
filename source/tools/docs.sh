@@ -45,6 +45,7 @@ RUSTC_BOOTSTRAP=1 eval ""VERUSDOC=1 VERUS_Z3_PATH="$(pwd)/z3" rustdoc \
   -Zcrate-attr=register_tool\\\(verusfmt\\\) \
   -Zcrate-attr=allow\\\(internal_features\\\) \
   -Zcrate-attr=allow\\\(unused_braces\\\) \
+  -Zproc-macro-backtrace \
   vstd/vstd.rs""
 
 echo "Running post-processor..."

@@ -87,7 +87,7 @@ pub proof fn lemma_div_basics(n: int)
     lemma_mod_basics(n);
     div_internals_nonlinear::lemma_small_div();
     div_internals_nonlinear::lemma_div_by_self(n);
-    assert forall|x: int| 0 <= x < n <== #[trigger] (x / n) == 0 by {
+    assert forall|x: int| #[trigger] (x / n) == 0 implies 0 <= x < n by {
         mod_internals_nonlinear::lemma_fundamental_div_mod(x, n);
     }
 }
@@ -172,7 +172,7 @@ proof fn lemma_div_auto_plus(n: int)
             assert(((i - n) + j) / n == ((i + j) - n) / n);
             assert((i + (j - n)) / n == ((i + j) - n) / n);
         }
-        assert forall|i: int, j: int| 0 <= i < n && 0 <= j < n ==> #[trigger] f(i, j) by {
+        assert forall|i: int, j: int| 0 <= i < n && 0 <= j < n implies #[trigger] f(i, j) by {
             assert(((i + n) + j) / n == ((i + j) + n) / n);
             assert((i + (j + n)) / n == ((i + j) + n) / n);
             assert(((i - n) + j) / n == ((i + j) - n) / n);

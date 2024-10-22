@@ -793,3 +793,30 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "Cannot show invariant holds at end of block")
 }
+
+test_verify_one_file! {
+    #[test] traits_in_sig_issue1304 verus_code!{
+        use vstd::invariant::*;
+
+        trait T {
+            spec fn namespace() -> int;
+            fn f(&self) opens_invariants [ Self::namespace() ];
+        }
+
+        struct P {}
+        impl InvariantPredicate<(), ()> for P {
+            closed spec fn inv(k: (), v: ()) -> bool { true }
+        }
+
+        struct S {
+            inv: AtomicInvariant<(), (), P>,
+        }
+
+        impl T for S {
+            spec fn namespace() -> int { 5 }
+            fn f(&self) {
+                open_atomic_invariant!(&self.inv => inner => {});
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+}

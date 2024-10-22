@@ -666,6 +666,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_termination_5_fail_10 verus_code! {
+        struct S<A>(A);
+
+        trait T1 { proof fn f1() ensures false; }
+        trait T2 { type X; }
+        trait T3 { proof fn f3() ensures false; }
+
+        impl T1 for bool {
+            proof fn f1() {
+                <S<int> as T3>::f3();
+            }
+        }
+
+        impl T2 for int {
+            type X = bool;
+        }
+
+        impl<A: T2> T3 for S<A> where <A as T2>::X: T1 {
+            proof fn f3() {
+                <<A as T2>::X as T1>::f1();
+            }
+        }
+
+        proof fn test() ensures false {
+            <S<int> as T3>::f3();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
     #[test] test_termination_6 verus_code! {
         pub trait T {
             spec fn f(n: int) -> int;
@@ -2650,6 +2680,25 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "conflicting implementations")
     // TODO: } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_specialize_dispatch_copy_clone_ok verus_code! {
+        // https://github.com/verus-lang/verus/issues/1267
+        use vstd::prelude::*;
+        pub trait Ticks: Clone { fn width() -> u32; }
+        pub struct Ticks32(u32);
+        impl Clone for Ticks32 {
+            fn clone(&self) -> Self {
+                Self(self.0)
+            }
+        }
+        impl Ticks for Ticks32 {
+            fn width() -> u32 {
+                32
+            }
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
