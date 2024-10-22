@@ -14,7 +14,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 pub(crate) type Declared = Arc<DeclaredX>;
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) enum DeclaredX {
     Type,
     Var { typ: Typ, mutable: bool },
@@ -268,7 +268,25 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             // The type of the result will be the type of `e1` (i.e. the datatype that we're updating)
             let t1 = check_expr(typing, e1)?;
             let t2 = check_expr(typing, e2)?;
-            Ok(t1)
+
+            match &*t1 {
+                TypX::Named(s) => match typing.get(s) {
+                    Some(DeclaredX::Type) => {}
+                    _ => return Err(format!("{} is not a struct", "e1")), //TODO below
+                },
+                _ => return Err(format!("{} is not a struct", "e1")), //TODO find out how to print e1
+            }
+
+            if let Some(DeclaredX::Fun(a, t)) = typing.get(field_ident) {
+                // t is the type of the field
+                if let [s] = &a[..] {
+                    if t1 == *s && t2 == *t {
+                        return Ok(t1);
+                    }
+                }
+            }
+
+            Err(format!("{} is not a struct accessor", field_ident)) // TODO more details here
         }
         ExprX::Binary(BinaryOp::Le, e1, e2) => {
             check_exprs(typing, "<=", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
