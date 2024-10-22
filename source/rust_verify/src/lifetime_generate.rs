@@ -2193,10 +2193,18 @@ fn erase_fn<'tcx>(
 fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: DefId) {
     let (name, _) = state.remaining_typs_needed_for_each_impl.remove(&impl_id).unwrap();
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
-    let mut trait_typ_args: Vec<Typ> = Vec::new();
-    for ty in trait_ref.skip_binder().args.types().skip(1) {
-        trait_typ_args.push(erase_ty(ctxt, state, &ty));
-    }
+
+    let span = ctxt.tcx.def_span(impl_id);
+
+    let args = remove_host_arg(
+        ctxt.tcx,
+        trait_ref.skip_binder().def_id,
+        trait_ref.skip_binder().args,
+        span,
+    )
+    .expect("remove_host_arg");
+    let (trait_typ_args, _) = erase_generic_args(ctxt, state, args, true);
+
     let mut lifetimes: Vec<GenericParam> = Vec::new();
     let mut typ_params: Vec<GenericParam> = Vec::new();
     let mut generic_bounds: Vec<GenericBound> = Vec::new();
@@ -2209,17 +2217,10 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
         &mut typ_params,
         &mut generic_bounds,
     );
-    let mut trait_lifetime_args: Vec<Id> = Vec::new();
-    for region in trait_ref.skip_binder().args.regions() {
-        if let Some(id) = erase_hir_region(ctxt, state, &region.0) {
-            trait_lifetime_args.push(id);
-        }
-    }
     let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
     let self_ty = ctxt.tcx.type_of(impl_id).skip_binder();
     let self_typ = erase_ty(ctxt, state, &self_ty);
-    let trait_as_datatype =
-        Box::new(TypX::Datatype(name.clone(), trait_lifetime_args, trait_typ_args));
+    let trait_as_datatype = Box::new(TypX::Datatype(name.clone(), vec![], trait_typ_args));
 
     let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)> = Vec::new();
     for assoc_item in ctxt.tcx.associated_items(impl_id).in_definition_order() {
@@ -2247,9 +2248,14 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
         }
     }
 
-    let span = Some(ctxt.tcx.def_span(impl_id));
-    let trait_impl =
-        TraitImpl { span, generic_params, generic_bounds, self_typ, trait_as_datatype, assoc_typs };
+    let trait_impl = TraitImpl {
+        span: Some(span),
+        generic_params,
+        generic_bounds,
+        self_typ,
+        trait_as_datatype,
+        assoc_typs,
+    };
     state.trait_impls.push(trait_impl);
 }
 

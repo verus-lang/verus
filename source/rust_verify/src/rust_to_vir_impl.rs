@@ -1,6 +1,7 @@
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, mid_ty_to_vir, mk_visibility, typ_path_and_ident_to_vir_path,
+    def_id_to_vir_path, mid_ty_const_to_vir, mid_ty_to_vir, mk_visibility, remove_host_arg,
+    typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
 use crate::util::{err_span, unsupported_err_span};
@@ -8,6 +9,7 @@ use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use crate::{err_unless, unsupported_err};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::{AssocItemKind, ImplItemKind, Item, QPath, TraitRef, Unsafety};
+use rustc_middle::ty::GenericArgKind;
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
@@ -82,12 +84,31 @@ fn trait_impl_to_vir<'tcx>(
         trait_ref.skip_binder().args,
         None,
     );
+
     // If we have `impl X for Z<A, B, C>` then the list of types is [X, A, B, C].
     // We keep this full list, with the first element being the Self type X
     let mut types: Vec<Typ> = Vec::new();
-    for ty in trait_ref.skip_binder().args.types() {
-        types.push(mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, impl_def_id, span, &ty, false)?);
+    let args = trait_ref.skip_binder().args;
+    let args = remove_host_arg(ctxt.tcx, trait_ref.skip_binder().def_id, args, span)?;
+    for arg in args.iter() {
+        match arg.unpack() {
+            GenericArgKind::Lifetime(_) => {}
+            GenericArgKind::Type(ty) => {
+                types.push(mid_ty_to_vir(
+                    ctxt.tcx,
+                    &ctxt.verus_items,
+                    impl_def_id,
+                    span,
+                    &ty,
+                    false,
+                )?);
+            }
+            GenericArgKind::Const(cnst) => {
+                types.push(mid_ty_const_to_vir(ctxt.tcx, Some(span), &cnst)?);
+            }
+        }
     }
+
     let types = Arc::new(types);
     let trait_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, trait_did);
     let (typ_params, typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_no_polarity(

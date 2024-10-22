@@ -13,7 +13,7 @@ use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
-    ConstKind, GenericArgKind, GenericArgsRef, ParamConst, TypeFoldable, TypeFolder,
+    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, ParamConst, TypeFoldable, TypeFolder,
     TypeSuperFoldable, TypeVisitableExt, ValTree,
 };
 use rustc_middle::ty::{ImplPolarity, TraitPredicate};
@@ -1292,7 +1292,7 @@ pub(crate) fn check_generic_bound<'tcx>(
     param_env_src: DefId,
     span: Span,
     trait_def_id: DefId,
-    args: &Vec<rustc_middle::ty::Ty<'tcx>>,
+    args: &[GenericArg<'tcx>],
 ) -> Result<Option<vir::ast::GenericBound>, VirErr> {
     if Some(trait_def_id) == tcx.lang_items().sized_trait()
         || Some(trait_def_id) == tcx.lang_items().copy_trait()
@@ -1305,10 +1305,25 @@ pub(crate) fn check_generic_bound<'tcx>(
         // TODO: these should not be ignored in VIR
         Ok(None)
     } else {
-        let vir_args = args
-            .iter()
-            .map(|arg| mid_ty_to_vir(tcx, verus_items, param_env_src, span, arg, false))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut vir_args = vec![];
+        for arg in args.iter() {
+            match arg.unpack() {
+                GenericArgKind::Lifetime(_) => {}
+                GenericArgKind::Type(ty) => {
+                    vir_args.push(mid_ty_to_vir(
+                        tcx,
+                        verus_items,
+                        param_env_src,
+                        span,
+                        &ty,
+                        false,
+                    )?);
+                }
+                GenericArgKind::Const(cnst) => {
+                    vir_args.push(mid_ty_const_to_vir(tcx, Some(span), &cnst)?);
+                }
+            }
+        }
         let trait_name = def_id_to_vir_path(tcx, verus_items, trait_def_id);
         Ok(Some(Arc::new(GenericBoundX::Trait(trait_name, Arc::new(vir_args)))))
     }
@@ -1376,15 +1391,11 @@ where
                 // X, Y, Z, should be the rest
                 // The SomeTrait is given by the def_id
 
-                // Note: I _think_ rustc organizes it this way because
+                // Note that
                 // T, X, Y, Z are actually all handled symmetrically
                 // in the formal theory of Rust's traits;
                 // i.e., the `Self` of a trait is actually the same as any of the other
                 // type parameters, it's just special in the notation for convenience.
-                //
-                // Right now Verus only allows `Self` (in the example, `T`) to be a type param,
-                // and it doesn't have full support for the other type params, so we special
-                // case it here.
 
                 let trait_def_id = trait_ref.def_id;
 
@@ -1396,14 +1407,15 @@ where
                     continue;
                 }
 
-                let trait_params: Vec<rustc_middle::ty::Ty> = substs.types().collect();
+                let substs = remove_host_arg(tcx, trait_def_id, substs, *span)?;
+
                 let generic_bound = check_generic_bound(
                     tcx,
                     verus_items,
                     param_env_src,
                     *span,
                     trait_def_id,
-                    &trait_params,
+                    substs,
                 )?;
                 if let Some(bound) = generic_bound {
                     bounds.push(bound);
@@ -1430,7 +1442,6 @@ where
                     return err_span(*span, "Verus does not yet support this type of bound");
                 };
                 let substs = pred.projection_ty.args;
-                let trait_params: Vec<rustc_middle::ty::Ty> = substs.types().collect();
                 let trait_def_id = pred.projection_ty.trait_def_id(tcx);
                 let assoc_item = tcx.associated_item(item_def_id);
                 let name = Arc::new(assoc_item.name.to_string());
@@ -1440,7 +1451,7 @@ where
                     param_env_src,
                     *span,
                     trait_def_id,
-                    &trait_params,
+                    substs,
                 )?;
                 if let Some(generic_bound) = generic_bound {
                     if let GenericBoundX::Trait(path, typs) = &*generic_bound {
