@@ -2501,6 +2501,9 @@ fn string_index_to_air(cnst: &Expr, index: usize, value: char) -> Expr {
 }
 
 fn string_indices_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
+    if lit.len() == 0 {
+        return Arc::new(ExprX::Const(Constant::Bool(true)));
+    }
     let cnst = str_to_const_str(ctx, lit.clone());
     let mut exprs = Vec::new();
     for (i, c) in lit.chars().enumerate() {
