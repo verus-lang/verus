@@ -1306,6 +1306,9 @@ set -x
                         if verbose {
                             vstd_build = vstd_build.arg("--verbose");
                         }
+                        if no_solver_version_check {
+                            vstd_build = vstd_build.arg("--no-solver-version-check");
+                        }
                         log_command(&vstd_build, verbose);
                         vstd_build
                             .status()
