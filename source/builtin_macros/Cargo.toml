@@ -10,7 +10,7 @@ proc-macro = true
 proc-macro2 = "1.0.39"
 quote = "1.0"
 synstructure = "0.12"
-syn = "1.0"
+syn = { version = "1.0", features = ["full", "visit", "visit-mut", "extra-traits"] }
 syn_verus = { path="../../dependencies/syn", features = ["full", "visit", "visit-mut", "extra-traits"] }
 prettyplease_verus = { path="../../dependencies/prettyplease" }
 

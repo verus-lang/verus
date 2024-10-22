@@ -381,6 +381,7 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
     #![feature(exclusive_range_pattern)]
     #![feature(strict_provenance)]
     #![feature(allocator_api)]
+    #![feature(proc_macro_hygiene)]
 
     use builtin::*;
     use builtin_macros::*;
@@ -517,6 +518,14 @@ pub fn assert_vir_error_msg(err: TestErr, expected_msg: &str) {
 pub fn assert_any_vir_error_msg(err: TestErr, expected_msg: &str) {
     assert!(err.errors.iter().all(|x| x.code.is_none())); // thus likely a VIR error
     assert!(err.errors.iter().any(|x| x.message.contains(expected_msg)));
+}
+
+#[allow(dead_code)]
+pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
+    assert!(
+        err.errors.iter().any(|x| x.message.contains("custom attribute panicked")
+            && x.rendered.contains(expected_msg))
+    );
 }
 
 #[allow(dead_code)]

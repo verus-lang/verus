@@ -1,4 +1,6 @@
 #![allow(unused_imports)]
+#![feature(proc_macro_hygiene)]
+
 use builtin::*;
 use builtin_macros::*;
 use vstd::{modes::*, prelude::*, seq::*, *};
@@ -584,3 +586,85 @@ proof fn uses_spec_has(s: Set<int>, ms: vstd::multiset::Multiset<int>)
 }
 
 } // verus!
+
+verus! {
+    proof fn p1(tracked y: &mut u32)
+        ensures *y == 200
+    {
+        *y = 200u32;
+    }
+    fn f4(Tracked(y): Tracked<&mut u32>){}
+    fn f5(y: &mut Tracked<u32>){
+        f4(Tracked(y.borrow_mut()));
+    }
+}
+
+#[verus_verify]
+const MAX_X: u32 = 100;
+
+#[verus_verify]
+struct Y {
+    val: u32,
+    t: Tracked<u32>,
+}
+
+#[verus_verify]
+#[requires(x < MAX_X, old(y).val < 100)]
+#[ensures(|ret: u32| [ret < 200])]
+fn test_small_macros_verus_verify(x: u32, y: &mut Y) -> u32 {
+    proof! {
+        p1(y.t.borrow_mut());
+        assert(y.t@ == 200);
+    }
+    f5(&mut y.t);
+    let y = y.val;
+
+    proof! {
+        let u = my_spec_fun(x as int, y as int);  // allowed in proof code
+        my_proof_fun(u / 2, y as int);  // allowed in proof code
+        assert(x < 100);
+    }
+    let mut x = x;
+    #[invariant(x <= MAX_X, true)]
+    #[decreases(MAX_X - x)]
+    while x < MAX_X {
+        x = x + 1;
+    }
+
+    let v = vec![1, 2, 3];
+    proof! {assert(v[1] == 2);}
+
+    x + y
+}
+
+#[verus_verify(external_body)]
+#[requires [true, 1==1, false ==> true]]
+#[ensures[true, 1==1, false ==> true]]
+fn test_brackets()
+{
+}
+
+#[verus_verify]
+impl Y {
+    #[verus_verify]
+    #[requires(true)]
+    #[ensures(|ret: u32| [ret == self.val, true])]
+    fn value(&self) -> u32 {
+        self.val
+    }
+}
+
+#[verus_verify(external_body)]
+#[ensures(true, 1==1, false ==> true)]
+fn test_external_body()
+{
+}
+
+#[verus_verify]
+trait X {
+    #[verus_verify(external_body)]
+    #[ensures(|ret: bool| ret)]
+    fn default(&self) -> bool {
+        false
+    }
+}
