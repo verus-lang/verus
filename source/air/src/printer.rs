@@ -223,14 +223,11 @@ impl Printer {
                     BinaryOp::AShr => str_to_node("bvashr"),
                     BinaryOp::Shl => str_to_node("bvshl"),
                     BinaryOp::BitConcat => str_to_node("concat"),
-                    BinaryOp::FieldUpdate(field_ident) => {
-                        //todo!("TODO: emit (_ update-field <field_ident>)")
-                        Node::List(vec![
-                            str_to_node("_"),
-                            str_to_node("update-field"),
-                            str_to_node(&**field_ident),
-                        ])
-                    }
+                    BinaryOp::FieldUpdate(field_ident) => Node::List(vec![
+                        str_to_node("_"),
+                        str_to_node("update-field"),
+                        str_to_node(&**field_ident),
+                    ]),
                 };
                 Node::List(vec![sop, self.expr_to_node(lhs), self.expr_to_node(rhs)])
             }

@@ -283,7 +283,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 }
             }
 
-            Err(format!("field update types do not match")) // TODO more details here
+            Err(format!("field update types do not match"))
         }
         ExprX::Binary(BinaryOp::Le, e1, e2) => {
             check_exprs(typing, "<=", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
@@ -635,8 +635,8 @@ pub(crate) fn add_decl<'ctx>(
                 for variant in datatype.a.iter() {
                     let typ = Arc::new(TypX::Named(datatype.name.clone()));
                     let typs = vec_map(&variant.a, |field| field.a.clone());
-                    let fun = DeclaredX::Fun(Arc::new(typs), typ.clone(), false);  // Type of constructor
-                    context.typing.insert(&variant.name, Arc::new(fun))?;         // Add Constructor under variant name to typing
+                    let fun = DeclaredX::Fun(Arc::new(typs), typ.clone(), false);
+                    context.typing.insert(&variant.name, Arc::new(fun))?;
                     let is_variant = Arc::new("is-".to_string() + &variant.name.to_string());
                     let fun = DeclaredX::Fun(Arc::new(vec![typ.clone()]), bt(), false);
                     context.typing.insert(&is_variant, Arc::new(fun))?;
