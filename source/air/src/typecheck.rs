@@ -263,9 +263,6 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             }
         }
         ExprX::Binary(BinaryOp::FieldUpdate(field_ident), e1, e2) => {
-            // TODO(andrea) we may need more information about the field we are accessing here
-            // I need to look into this a bit more. For now, let's assume that the typecheck is successful.
-            // The type of the result will be the type of `e1` (i.e. the datatype that we're updating)
             let t1 = check_expr(typing, e1)?;
             let t2 = check_expr(typing, e2)?;
 
