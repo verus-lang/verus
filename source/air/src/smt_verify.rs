@@ -183,7 +183,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
             if let Some(expected_version) = &context.expected_solver_version {
                 let value: &str = &line[GET_VERSION_RESPONSE_PREFIX.len()..line.len() - 1];
                 let version = value.trim_matches(&[' ', '"'][..]);
-                if version != expected_version.as_str() {
+                if !version.starts_with(expected_version.as_str()) {
                     diagnostics.report(
                         &context
                             .message_interface
