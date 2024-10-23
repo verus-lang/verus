@@ -2174,3 +2174,33 @@ fn datatype_field_update4() {
         )
     )
 }
+
+#[test]
+fn nested_datatype_field_update_pass() {
+    yes!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (declare-datatypes ((B 0)) (((B_B (B_B_a A)))))
+        (check-valid
+            (declare-var b B)
+            (block
+                (assign b ((_ update-field B_B_a) b ((_ update-field A_A_u) (B_B_a b) 3)))
+                (assert (= (A_A_u (B_B_a b)) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn nested_datatype_field_update_fail() {
+    no!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (declare-datatypes ((B 0)) (((B_B (B_B_a A)))))
+        (check-valid
+            (declare-var b B)
+            (block
+                (assign b ((_ update-field B_B_a) b ((_ update-field A_A_u) (B_B_a b) 3)))
+                (assert (= (A_A_u (B_B_a b)) 4))
+            )
+        )
+    )
+}
