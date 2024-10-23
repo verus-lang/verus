@@ -2204,3 +2204,18 @@ fn nested_datatype_field_update_fail() {
         )
     )
 }
+
+#[test]
+fn accessor_identifying() {
+    untyped!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (declare-fun f (A) Int )
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field f) a 3))
+                (assert (= (A_A_u a) 4))
+            )
+        )
+    )
+}

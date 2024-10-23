@@ -18,7 +18,7 @@ pub(crate) type Declared = Arc<DeclaredX>;
 pub(crate) enum DeclaredX {
     Type,
     Var { typ: Typ, mutable: bool },
-    Fun(Typs, Typ),
+    Fun(Typs, Typ, bool), //args, ret, accessor TODO explicitly name this
 }
 
 pub struct Typing {
@@ -214,7 +214,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             (true, _) => Err(format!("use of undeclared variable {}", x)),
         },
         ExprX::Apply(x, es) => match typing.get(x).cloned() {
-            Some(DeclaredX::Fun(f_typs, f_typ)) => check_exprs(typing, x, &f_typs, &f_typ, es),
+            Some(DeclaredX::Fun(f_typs, f_typ, _)) => check_exprs(typing, x, &f_typs, &f_typ, es),
             _ => Err(format!("use of undeclared function {}", x)),
         },
         ExprX::ApplyFun(t, e0, es) => {
@@ -272,12 +272,12 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             match &*t1 {
                 TypX::Named(s) => match typing.get(s) {
                     Some(DeclaredX::Type) => {}
-                    _ => return Err(format!("{} is not a struct", "e1")), //TODO below
+                    _ => return Err(format!("in field update, the destination is not a datatype")),
                 },
-                _ => return Err(format!("{} is not a struct", "e1")), //TODO find out how to print e1
+                _ => return Err(format!("in field update, the destination is not a datatype")),
             }
 
-            if let Some(DeclaredX::Fun(a, t)) = typing.get(field_ident) {
+            if let Some(DeclaredX::Fun(a, t, true)) = typing.get(field_ident) {
                 // t is the type of the field
                 if let [s] = &a[..] {
                     if t1 == *s && t2 == *t {
@@ -286,7 +286,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 }
             }
 
-            Err(format!("{} is not a struct accessor", field_ident)) // TODO more details here
+            Err(format!("field update types do not match")) // TODO more details here
         }
         ExprX::Binary(BinaryOp::Le, e1, e2) => {
             check_exprs(typing, "<=", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
@@ -638,15 +638,15 @@ pub(crate) fn add_decl<'ctx>(
                 for variant in datatype.a.iter() {
                     let typ = Arc::new(TypX::Named(datatype.name.clone()));
                     let typs = vec_map(&variant.a, |field| field.a.clone());
-                    let fun = DeclaredX::Fun(Arc::new(typs), typ.clone());
-                    context.typing.insert(&variant.name, Arc::new(fun))?;
+                    let fun = DeclaredX::Fun(Arc::new(typs), typ.clone(), false);  // Type of constructor
+                    context.typing.insert(&variant.name, Arc::new(fun))?;         // Add Constructor under variant name to typing
                     let is_variant = Arc::new("is-".to_string() + &variant.name.to_string());
-                    let fun = DeclaredX::Fun(Arc::new(vec![typ.clone()]), bt());
+                    let fun = DeclaredX::Fun(Arc::new(vec![typ.clone()]), bt(), false);
                     context.typing.insert(&is_variant, Arc::new(fun))?;
                     for field in variant.a.iter() {
                         check_typ(&context.typing, &field.a)?;
                         let typs: Typs = Arc::new(vec![typ.clone()]);
-                        let fun = DeclaredX::Fun(typs, field.a.clone());
+                        let fun = DeclaredX::Fun(typs, field.a.clone(), true);
                         context.typing.insert(&field.name, Arc::new(fun))?;
                     }
                 }
@@ -657,7 +657,7 @@ pub(crate) fn add_decl<'ctx>(
             context.typing.insert(x, var)?;
         }
         DeclX::Fun(x, typs, typ) => {
-            let fun = DeclaredX::Fun(typs.clone(), typ.clone());
+            let fun = DeclaredX::Fun(typs.clone(), typ.clone(), false);
             context.typing.insert(x, Arc::new(fun))?;
         }
         DeclX::Var(x, typ) => {

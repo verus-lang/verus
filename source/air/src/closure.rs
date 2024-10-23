@@ -76,7 +76,7 @@ pub(crate) struct ClosureTermX {
 // The function declarations live in scope outside the expression scope, so
 // we need to insert them into the typing's outer scope:
 fn insert_fun_typing(ctxt: &mut Context, x: &Ident, typs: &Typs, typ: &Typ) {
-    let fun = DeclaredX::Fun(typs.clone(), typ.clone());
+    let fun = DeclaredX::Fun(typs.clone(), typ.clone(), false);
 
     // the maps that aren't ctxt.typing.decls (e.g. apply_map) are still in the outer scope,
     // so use one of them as the outer scope index:
@@ -521,7 +521,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
         }
         ExprX::Apply(x, args) => {
             let typ = match ctxt.typing.get(x) {
-                Some(DeclaredX::Fun(_, typ)) => typ.clone(),
+                Some(DeclaredX::Fun(_, typ, _)) => typ.clone(),
                 _ => panic!("internal error: missing function {}", x),
             };
             let (es, ts) = simplify_exprs(ctxt, state, &**args);
