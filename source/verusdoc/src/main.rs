@@ -343,7 +343,7 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
 
     let full_text = summary.text_contents();
 
-    let mut splices: Vec<(usize, String, bool)> = vec![];
+    let mut splices: Vec<(usize, usize, String, bool)> = vec![];
 
     let fn_idx = if let Some(fn_idx) = full_text.find("fn") {
         fn_idx
@@ -356,7 +356,7 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
             // TODO: separate these if possible
             let broadcast = if info.broadcast { "broadcast ".to_owned() } else { "".to_owned() };
             let fn_mode = format!("{:} ", info.fn_mode);
-            splices.push((fn_idx, broadcast + &fn_mode, true));
+            splices.push((fn_idx, 0, broadcast + &fn_mode, true));
 
             let arg0_idx = get_arg0_idx(&full_text, fn_idx);
 
@@ -366,7 +366,22 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
                 match info.param_modes[i] {
                     ParamMode::Default => {}
                     ParamMode::Tracked => {
-                        splices.push((arg_idx, "tracked ".to_string(), true));
+                        splices.push((arg_idx, 0, "tracked ".to_string(), true));
+                    }
+                }
+
+                let name = get_arg_name(&full_text, arg_idx);
+                if name.starts_with("verus_tmp_") {
+                    let is_tracked = full_text[arg_idx + name.len() + 2..].starts_with("Tracked");
+                    let is_ghost = full_text[arg_idx + name.len() + 2..].starts_with("Ghost");
+                    if is_tracked {
+                        splices.push((arg_idx, 0, "Tracked".to_string(), true));
+                        splices.push((arg_idx, 10, "(".to_string(), false));
+                        splices.push((arg_idx + name.len(), 0, ")".to_string(), false));
+                    } else if is_ghost {
+                        splices.push((arg_idx, 0, "Ghost".to_string(), true));
+                        splices.push((arg_idx, 10, "(".to_string(), false));
+                        splices.push((arg_idx + name.len(), 0, ")".to_string(), false));
                     }
                 }
 
@@ -381,7 +396,7 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
                 ParamMode::Tracked => {
                     let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
                     let type_idx = arrow_idx + 3;
-                    splices.push((type_idx, "tracked ".to_string(), true));
+                    splices.push((type_idx, 0, "tracked ".to_string(), true));
                 }
             };
 
@@ -389,23 +404,86 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
                 let string_to_insert = format!("{:} : ", info.ret_name);
                 let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
                 let type_idx = arrow_idx + 3;
-                splices.push((type_idx, string_to_insert, false));
+                splices.push((type_idx, 0, string_to_insert, false));
             }
         }
         UpdateSigMode::BroadcastGroup => {
-            splices.push((fn_idx, "broadcast group ".to_owned(), true));
+            splices.push((fn_idx, 0, "broadcast group ".to_owned(), true));
         }
     }
 
     // Reverse order since inserting text should invalidate later indices
-    for (idx, s, is_kw) in splices.into_iter().rev() {
+    for (idx, cut_len, s, is_kw) in splices.into_iter().rev() {
+        if cut_len > 0 {
+            do_text_cut(&summary, idx, cut_len);
+        }
+
         let mut idx = idx;
         let new_node = if is_kw { mk_sig_keyword_node(&s) } else { mk_ret_name_node(&s) };
         do_text_splice(&summary, &new_node, &mut idx, true);
     }
 }
 
-// traverse a dom tree, counting characters, to insert the given node at the right spot
+fn get_arg_name(t: &str, idx: usize) -> &str {
+    let b = t.as_bytes();
+    let mut i = idx;
+    while i < b.len() && b[i] != b':' {
+        i += 1;
+    }
+    &t[idx..i]
+}
+
+/// traverse a dom tree, counting characters, to delete the specified text
+fn do_text_cut(elem: &NodeRef, idx: usize, cut_len: usize) -> (usize, usize) {
+    match elem.as_text() {
+        Some(text_ref) => {
+            let t: &mut String = &mut text_ref.borrow_mut();
+
+            if idx < t.len() {
+                let a = if idx + cut_len <= t.len() {
+                    *t = t[0..idx].to_string() + &t[idx + cut_len..];
+                    (0, 0)
+                } else {
+                    *t = t[0..idx].to_string();
+                    (0, idx + cut_len - t.len())
+                };
+
+                if t.len() == 0 {
+                    elem.detach();
+                }
+
+                a
+            } else {
+                (idx - t.len(), cut_len)
+            }
+        }
+        None => {
+            let mut child_opt = elem.first_child();
+            let mut idx = idx;
+            let mut cut_len = cut_len;
+            while let Some(c) = child_opt {
+                let next_child_opt = c.next_sibling();
+
+                let (idx0, cut_len0) = do_text_cut(&c, idx, cut_len);
+                idx = idx0;
+                cut_len = cut_len0;
+                if cut_len == 0 {
+                    break;
+                }
+
+                child_opt = next_child_opt;
+            }
+
+            if elem.first_child().is_none() {
+                elem.detach();
+            }
+
+            (idx, cut_len)
+        }
+    }
+}
+
+/// traverse a dom tree, counting characters, to insert the given node at the right spot
 fn do_text_splice(elem: &NodeRef, inserted: &NodeRef, idx: &mut usize, root: bool) -> bool {
     match elem.as_text() {
         Some(text_ref) => {
@@ -444,7 +522,7 @@ fn do_text_splice(elem: &NodeRef, inserted: &NodeRef, idx: &mut usize, root: boo
                 child_opt = c.next_sibling();
 
                 if *idx == 0 && (child_opt.is_some() || root) {
-                    c.append(inserted.clone());
+                    c.insert_after(inserted.clone());
                     return true;
                 }
             }
