@@ -362,7 +362,7 @@ struct_with_invariants_vstd!{
         }
     }
 }
-//
+
 /// Handle obtained for an exclusive write-lock from an [`RwLock`].
 ///
 /// Note that this handle does not contain a reference to the lock-protected object;
@@ -372,8 +372,6 @@ struct_with_invariants_vstd!{
 /// **Warning:** The lock is _NOT_ released automatically when the handle
 /// is dropped. You must call [`release_write`](WriteHandle::release_write).
 /// Verus does not check that lock is released.
-
-
 pub struct WriteHandle<'a, V, Pred: RwLockPredicate<V>> {
     handle: Tracked<RwLockToks::writer<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>>,
     perm: Tracked<PointsTo<V>>,
