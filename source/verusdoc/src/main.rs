@@ -474,10 +474,6 @@ fn do_text_cut(elem: &NodeRef, idx: usize, cut_len: usize) -> (usize, usize) {
                 child_opt = next_child_opt;
             }
 
-            if elem.first_child().is_none() {
-                elem.detach();
-            }
-
             (idx, cut_len)
         }
     }
