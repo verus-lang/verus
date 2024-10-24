@@ -60,6 +60,8 @@ fn process_file(path: &Path) {
 
     let document = kuchiki::parse_html().one(html);
 
+    let opt_trait_info = get_opt_trait_info(path, &document);
+
     // Rustdoc generates HTML for an ImplItem that looks like this:
     //
     //   <summary>signature here (fn foo(...) -> ...)</summary>
@@ -115,7 +117,7 @@ fn process_file(path: &Path) {
 
         // Now add content based on the data we just collected.
 
-        update_docblock(&docblock_elem, &attrs);
+        update_docblock(&docblock_elem, &attrs, &opt_trait_info);
     }
 
     document.serialize_to_file(path).expect("serialize_to_file");
@@ -239,7 +241,11 @@ fn set_class_attribute(nr: &NodeRef, value: &str) {
     attr_ref.insert(local_name!("class"), value.to_string());
 }
 
-fn update_docblock(docblock_elem: &NodeRef, attrs: &Vec<VerusDocAttr>) {
+fn update_docblock(
+    docblock_elem: &NodeRef,
+    attrs: &Vec<VerusDocAttr>,
+    opt_trait_info: &Option<TraitInfo>,
+) {
     let mut elems: Vec<NodeRef> = vec![];
 
     // Add code that looks like
@@ -292,11 +298,15 @@ fn update_docblock(docblock_elem: &NodeRef, attrs: &Vec<VerusDocAttr>) {
     for attr in attrs.iter() {
         match attr {
             VerusDocAttr::ModeInfo(doc_mode_info) => {
-                update_sig_info(docblock_elem, UpdateSigMode::DocSigInfo(doc_mode_info));
+                update_sig_info(
+                    docblock_elem,
+                    UpdateSigMode::DocSigInfo(doc_mode_info),
+                    opt_trait_info,
+                );
                 break;
             }
             VerusDocAttr::BroadcastGroup => {
-                update_sig_info(docblock_elem, UpdateSigMode::BroadcastGroup);
+                update_sig_info(docblock_elem, UpdateSigMode::BroadcastGroup, opt_trait_info);
                 break;
             }
             _ => {}
@@ -309,7 +319,34 @@ enum UpdateSigMode<'a> {
     BroadcastGroup,
 }
 
-fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
+struct TraitInfo {
+    node: NodeRef,
+}
+
+fn update_sig_info(
+    docblock_elem: &NodeRef,
+    info: UpdateSigMode<'_>,
+    opt_trait_info: &Option<TraitInfo>,
+) {
+    let Some((node, full_text, fn_idx)) = get_node_to_modify(docblock_elem) else {
+        return;
+    };
+
+    do_splices_for_info(&node, &full_text, fn_idx, &info);
+
+    if let Some(trait_info) = opt_trait_info {
+        if matches!(info, UpdateSigMode::DocSigInfo(..)) {
+            if let Some(fn_name) = get_fn_name(&full_text, fn_idx) {
+                let text = trait_info.node.text_contents();
+                if let Some(fn_idx) = get_fn_idx_in_trait(&trait_info.node, fn_name) {
+                    do_splices_for_info(&trait_info.node, &text, fn_idx, &info);
+                }
+            }
+        }
+    }
+}
+
+fn do_splices_for_info(node: &NodeRef, full_text: &str, fn_idx: usize, info: &UpdateSigMode<'_>) {
     // The signature is a dom tree with special formatting for syntax highlighting and such.
     // We first collect it as pure text, to get a string like
     //    pub fn foo<...>(...) -> ...
@@ -317,39 +354,7 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
     // collected all in the 'splices' vec.
     // Then we add the content.
 
-    let mut summary = docblock_elem.previous_sibling().unwrap();
-
-    if summary.text_contents() == "Expand description" {
-        // This is applicable to pages devoted to a single fn not inside an impl
-        let details = summary.parent().unwrap();
-        summary = details.previous_sibling().unwrap();
-    }
-
-    let code_header = summary.select_first(".code-header");
-    match code_header {
-        Ok(ch) => {
-            summary = ch.as_node().clone();
-        }
-        Err(_) => {
-            let code_block = summary.select_first("code");
-            match code_block {
-                Ok(cb) => {
-                    summary = cb.as_node().clone();
-                }
-                Err(_) => {}
-            }
-        }
-    }
-
-    let full_text = summary.text_contents();
-
     let mut splices: Vec<(usize, usize, String, bool)> = vec![];
-
-    let fn_idx = if let Some(fn_idx) = full_text.find("fn") {
-        fn_idx
-    } else {
-        return;
-    };
 
     match info {
         UpdateSigMode::DocSigInfo(info) => {
@@ -415,13 +420,48 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
     // Reverse order since inserting text should invalidate later indices
     for (idx, cut_len, s, is_kw) in splices.into_iter().rev() {
         if cut_len > 0 {
-            do_text_cut(&summary, idx, cut_len);
+            do_text_cut(&node, idx, cut_len);
         }
 
         let mut idx = idx;
         let new_node = if is_kw { mk_sig_keyword_node(&s) } else { mk_ret_name_node(&s) };
-        do_text_splice(&summary, &new_node, &mut idx, true);
+        do_text_splice(&node, &new_node, &mut idx, true);
     }
+}
+
+fn get_node_to_modify(docblock_elem: &NodeRef) -> Option<(NodeRef, String, usize)> {
+    let mut summary = docblock_elem.previous_sibling().unwrap();
+
+    if summary.text_contents() == "Expand description" {
+        // This is applicable to pages devoted to a single fn not inside an impl
+        let details = summary.parent().unwrap();
+        summary = details.previous_sibling().unwrap();
+    }
+
+    let code_header = summary.select_first(".code-header");
+    match code_header {
+        Ok(ch) => {
+            summary = ch.as_node().clone();
+        }
+        Err(_) => {
+            let code_block = summary.select_first("code");
+            match code_block {
+                Ok(cb) => {
+                    summary = cb.as_node().clone();
+                }
+                Err(_) => {}
+            }
+        }
+    }
+
+    let full_text = summary.text_contents();
+    let fn_idx = if let Some(fn_idx) = full_text.find("fn") {
+        fn_idx
+    } else {
+        return None;
+    };
+
+    Some((summary, full_text, fn_idx))
 }
 
 fn get_arg_name(t: &str, idx: usize) -> &str {
@@ -564,6 +604,54 @@ fn next_comma_or_rparen(s: &str, i: usize) -> usize {
 
         i += 1;
     }
+}
+
+fn get_opt_trait_info(path: &Path, document: &NodeRef) -> Option<TraitInfo> {
+    let filename = path.file_name().unwrap();
+    if filename.to_string_lossy().starts_with("trait.") {
+        let nodes: Vec<_> = document.select(".item-decl").expect("code selector").collect();
+        if nodes.len() == 1 { Some(TraitInfo { node: nodes[0].as_node().clone() }) } else { None }
+    } else {
+        None
+    }
+}
+
+/// Given string and index of 'fn some_name', returns 'some_name'
+fn get_fn_name(full_text: &str, fn_idx: usize) -> Option<&str> {
+    let idx = fn_idx + 3;
+    let suff = &full_text[idx..];
+    let m = match (suff.find("<"), suff.find("(")) {
+        (None, None) => {
+            return None;
+        }
+        (Some(x), None) => x,
+        (None, Some(x)) => x,
+        (Some(y), Some(x)) => std::cmp::min(y, x),
+    };
+    Some(&suff[..m])
+}
+
+fn get_fn_idx_in_trait(node: &NodeRef, fn_name: &str) -> Option<usize> {
+    let possible_prefixes = [
+        "// Required methods\n    ",
+        "// Required method\n    ",
+        "// Provided methods\n    ",
+        "// Provided method\n    ",
+        ";\n    ",
+    ];
+    let text = node.text_contents();
+    for pref in possible_prefixes.iter() {
+        let s = pref.to_string() + "fn " + fn_name;
+        if let Some(idx) = text.find(s.as_str()) {
+            let nextc = idx + pref.len() + 3 + fn_name.len();
+            if nextc < text.len()
+                && (text.as_bytes()[nextc] == b'<' || text.as_bytes()[nextc] == b'(')
+            {
+                return Some(idx + pref.len());
+            }
+        }
+    }
+    None
 }
 
 fn write_css(dir_path: &Path) {
