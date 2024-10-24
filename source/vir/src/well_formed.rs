@@ -1321,7 +1321,7 @@ pub fn check_crate(
                     found_trigger = true;
                 }
             }
-            if !found_trigger {
+            if !found_trigger && function.x.params.len() > 0 {
                 diags.push(VirErrAs::Warning(error(
                     &function.span,
                     "broadcast functions should have explicit #[trigger] or #![trigger ...]",
