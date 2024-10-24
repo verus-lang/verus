@@ -35,8 +35,8 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
-    AttrStyle, Attribute, Block, Expr, ExprBlock, FnMode, Ident, ImplItemMethod, ItemFn, Path,
-    PathArguments, PathSegment, Publish, ReturnType, Signature, TraitItemMethod,
+    AttrStyle, Attribute, Block, Expr, ExprBlock, FnMode, Ident, ImplItemMethod, ItemFn, Pat,
+    PatIdent, Path, PathArguments, PathSegment, Publish, ReturnType, Signature, TraitItemMethod,
 };
 
 /// Check if VERUSDOC=1.
@@ -187,14 +187,20 @@ fn module_path_to_string(p: &Path) -> String {
 
 fn encoded_sig_info(sig: &Signature) -> String {
     let fn_mode = fn_mode_to_string(&sig.mode, &sig.publish);
-    let ret_mode = match &sig.output {
-        ReturnType::Default => "Default",
-        ReturnType::Type(_, tracked_token, _, _) => {
-            if tracked_token.is_some() {
-                "Tracked"
-            } else {
-                "Default"
-            }
+    let (ret_mode, ret_name) = match &sig.output {
+        ReturnType::Default => ("Default", "".to_string()),
+        ReturnType::Type(_, tracked_token, opt_name, _) => {
+            let mode = if tracked_token.is_some() { "Tracked" } else { "Default" };
+
+            let name = match opt_name {
+                None => "".to_string(),
+                Some(b) => match &b.1 {
+                    Pat::Ident(PatIdent { ident, .. }) => ident.to_string(),
+                    _ => "".to_string(),
+                },
+            };
+
+            (mode, name)
         }
     };
 
@@ -215,7 +221,7 @@ fn encoded_sig_info(sig: &Signature) -> String {
     // complicate the post-processing.
 
     let info = format!(
-        r#"// {{ "fn_mode": "{fn_mode:}", "ret_mode": "{ret_mode:}", "param_modes": [{param_modes:}], "broadcast": {broadcast:} }}"#
+        r#"// {{ "fn_mode": "{fn_mode:}", "ret_mode": "{ret_mode:}", "param_modes": [{param_modes:}], "broadcast": {broadcast:}, "ret_name": "{ret_name:}" }}"#
     );
 
     encoded_str("modes", &info)

@@ -20,6 +20,7 @@ pub enum ParamMode {
 pub struct DocSigInfo {
     pub fn_mode: String,
     pub ret_mode: ParamMode,
+    pub ret_name: String,
     pub param_modes: Vec<ParamMode>,
     pub broadcast: bool,
 }
@@ -209,6 +210,19 @@ fn mk_sig_keyword_node(spec_name: &str) -> NodeRef {
     nr
 }
 
+/// <span class="verus-ret-name">{spec name}</span>
+
+fn mk_ret_name_node(spec_name: &str) -> NodeRef {
+    let t = NodeRef::new_text(spec_name);
+
+    let qual_name = QualName::new(None, ns!(html), local_name!("span"));
+    let nr = NodeRef::new_element(qual_name, vec![]);
+    set_class_attribute(&nr, "verus-ret-name");
+    nr.append(t);
+
+    nr
+}
+
 /// <div class="verus-spec"></div>
 
 fn mk_spec_node() -> NodeRef {
@@ -329,7 +343,7 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
 
     let full_text = summary.text_contents();
 
-    let mut splices: Vec<(usize, String)> = vec![];
+    let mut splices: Vec<(usize, String, bool)> = vec![];
 
     let fn_idx = if let Some(fn_idx) = full_text.find("fn") {
         fn_idx
@@ -342,7 +356,7 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
             // TODO: separate these if possible
             let broadcast = if info.broadcast { "broadcast ".to_owned() } else { "".to_owned() };
             let fn_mode = format!("{:} ", info.fn_mode);
-            splices.push((fn_idx, broadcast + &fn_mode));
+            splices.push((fn_idx, broadcast + &fn_mode, true));
 
             let arg0_idx = get_arg0_idx(&full_text, fn_idx);
 
@@ -352,7 +366,7 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
                 match info.param_modes[i] {
                     ParamMode::Default => {}
                     ParamMode::Tracked => {
-                        splices.push((arg_idx, "tracked ".to_string()));
+                        splices.push((arg_idx, "tracked ".to_string(), true));
                     }
                 }
 
@@ -367,19 +381,26 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
                 ParamMode::Tracked => {
                     let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
                     let type_idx = arrow_idx + 3;
-                    splices.push((type_idx, "tracked ".to_string()));
+                    splices.push((type_idx, "tracked ".to_string(), true));
                 }
+            };
+
+            if info.ret_name.len() > 0 {
+                let string_to_insert = format!("{:} : ", info.ret_name);
+                let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
+                let type_idx = arrow_idx + 3;
+                splices.push((type_idx, string_to_insert, false));
             }
         }
         UpdateSigMode::BroadcastGroup => {
-            splices.push((fn_idx, "broadcast group ".to_owned()));
+            splices.push((fn_idx, "broadcast group ".to_owned(), true));
         }
     }
 
     // Reverse order since inserting text should invalidate later indices
-    for (idx, s) in splices.into_iter().rev() {
+    for (idx, s, is_kw) in splices.into_iter().rev() {
         let mut idx = idx;
-        let new_node = mk_sig_keyword_node(&s);
+        let new_node = if is_kw { mk_sig_keyword_node(&s) } else { mk_ret_name_node(&s) };
         do_text_splice(&summary, &new_node, &mut idx, true);
     }
 }
