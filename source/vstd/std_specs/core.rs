@@ -18,6 +18,11 @@ pub trait ExAllocator {
 }
 
 #[verifier::external_trait_specification]
+pub trait ExFreeze {
+    type ExternalTraitSpecificationFor: core::marker::Freeze;
+}
+
+#[verifier::external_trait_specification]
 pub trait ExDebug {
     type ExternalTraitSpecificationFor: core::fmt::Debug;
 }
