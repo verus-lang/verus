@@ -35,6 +35,7 @@ pub struct SmtProcess {
         Option<(BufReader<ChildStdout>, Receiver<(BufReader<ChildStdout>, Vec<String>)>)>,
     recv_requests: Sender<BufReader<ChildStdout>>,
     child: Child,
+    transcript_log: Option<Box<dyn std::io::Write>>,
 }
 
 const DONE: &str = "<<DONE>>";
@@ -97,7 +98,7 @@ fn reader_thread(
 }
 
 impl SmtProcess {
-    pub fn launch(solver: &SmtSolver) -> Self {
+    pub fn launch(solver: &SmtSolver, transcript_log: Option<Box<dyn std::io::Write>>) -> Self {
         let solver_info = SolverInfo::new(solver);
         let mut child = match std::process::Command::new(solver_info.executable())
             .args(match solver {
@@ -148,7 +149,12 @@ impl SmtProcess {
             responses_buf_recv: Some((smt_pipe_stdout, responses_receiver)),
             recv_requests: recv_responses_sender,
             child: child,
+            transcript_log,
         }
+    }
+
+    pub(crate) fn set_transcript_log(&mut self, writer: Box<dyn std::io::Write>) {
+        self.transcript_log = Some(writer);
     }
 
     /// Send commands to Z3, wait for Z3 to acknowledge commands, and return responses
@@ -159,6 +165,12 @@ impl SmtProcess {
     /// Send commands to Z3
     pub(crate) fn send_commands_async<'a>(&'a mut self, commands: Vec<u8>) -> CommandsHandle<'a> {
         // Send request to writer thread
+        if let Some(writer) = &mut self.transcript_log {
+            writeln!(writer, ";;;>>> QUERY").unwrap();
+            writer.write(&commands).unwrap();
+            writeln!(writer, ";;;<<<").unwrap();
+            writer.flush().unwrap();
+        }
         self.requests
             .as_mut()
             .unwrap()
@@ -185,16 +197,29 @@ pub struct CommandsHandle<'a> {
 }
 
 impl<'a> CommandsHandle<'a> {
-    pub fn wait(self) -> Vec<String> {
+    fn log_result(&mut self, result: &Vec<String>) {
+        if let Some(writer) = &mut self.smt_process.transcript_log {
+            writeln!(writer, ";;;>>> RESPONSE").unwrap();
+            for line in result {
+                writeln!(writer, "{}", line).unwrap();
+            }
+            writeln!(writer, ";;;<<<").unwrap();
+            writer.flush().unwrap();
+        }
+    }
+
+    pub fn wait(mut self) -> Vec<String> {
         let (smt_pipe_stdout, result) =
             self.receiver.recv().expect("internal error: Z3 reader thread failure");
+        self.log_result(&result);
         self.smt_process.responses_buf_recv = Some((smt_pipe_stdout, self.receiver));
         result
     }
 
-    pub fn wait_timeout(self, timeout: std::time::Duration) -> Result<Vec<String>, Self> {
+    pub fn wait_timeout(mut self, timeout: std::time::Duration) -> Result<Vec<String>, Self> {
         match self.receiver.recv_timeout(timeout) {
             Ok((smt_pipe_stdout, result)) => {
+                self.log_result(&result);
                 self.smt_process.responses_buf_recv = Some((smt_pipe_stdout, self.receiver));
                 Ok(result)
             }
