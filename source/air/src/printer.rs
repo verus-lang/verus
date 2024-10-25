@@ -193,7 +193,7 @@ impl Printer {
                 Node::List(vec![op, self.expr_to_node(lhs), self.expr_to_node(rhs)])
             }
             ExprX::Binary(op, lhs, rhs) => {
-                let sop: Node = match op {
+                let sop = match op {
                     BinaryOp::Implies => str_to_node("=>"),
                     BinaryOp::Eq => str_to_node("="),
                     BinaryOp::Le => str_to_node("<="),

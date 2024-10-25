@@ -14,11 +14,11 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 pub(crate) type Declared = Arc<DeclaredX>;
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) enum DeclaredX {
     Type,
     Var { typ: Typ, mutable: bool },
-    Fun(Typs, Typ, bool), //args, ret, accessor TODO explicitly name this
+    Fun(Typs, Typ, bool), //args, ret, accessor
 }
 
 pub struct Typing {
