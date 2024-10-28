@@ -1296,7 +1296,7 @@ pub fn check_crate(
                 }
             }
         }
-        if function.x.attrs.broadcast_forall {
+        if function.x.attrs.broadcast_forall && function.x.params.len() > 0 {
             use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
             let mut f_find_trigger = |_: &mut VisitorScopeMap, expr: &Expr| match &expr.x {
                 ExprX::WithTriggers { .. } => VisitorControlFlow::Stop(()),
@@ -1321,7 +1321,7 @@ pub fn check_crate(
                     found_trigger = true;
                 }
             }
-            if !found_trigger && function.x.params.len() > 0 {
+            if !found_trigger {
                 diags.push(VirErrAs::Warning(error(
                     &function.span,
                     "broadcast functions should have explicit #[trigger] or #![trigger ...]",
