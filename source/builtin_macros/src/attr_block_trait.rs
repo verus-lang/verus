@@ -3,6 +3,7 @@ use syn::{
 };
 
 pub trait AnyAttrBlock {
+    #[allow(dead_code)]
     fn attrs_mut(&mut self) -> &mut Vec<Attribute>;
     fn block_mut(&mut self) -> Option<&mut Block>;
 }
