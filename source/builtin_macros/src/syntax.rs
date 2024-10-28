@@ -1138,7 +1138,9 @@ impl Visitor {
                         ))).collect();
                         let block = Block { brace_token: token::Brace { span }, stmts };
                         *item = Item::Verbatim(quote_spanned! { span =>
-                            #[verus::internal(item_broadcast_use)] const _: () = #block;
+                            #[verus::internal(verus_macro)]
+                            #[verus::internal(item_broadcast_use)]
+                            const _: () = #block;
                         });
                     }
                 }
@@ -1182,6 +1184,7 @@ impl Visitor {
             let block = Block { brace_token: token::Brace { span }, stmts };
             let mut item_fn: ItemFn = parse_quote_spanned! { span =>
                 #[verus::internal(reveal_group)]
+                #[verus::internal(verus_macro)]
                 #[verus::internal(proof)]
                 #vis fn #ident() #block
             };

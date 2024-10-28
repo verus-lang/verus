@@ -1627,7 +1627,6 @@ fn check_generics_bounds_main<'tcx>(
             let vattrs = get_verifier_attrs(
                 tcx.hir().attrs(hir_param.hir_id),
                 if let Some(diagnostics) = &mut diagnostics { Some(diagnostics) } else { None },
-                None,
             )?;
             if vattrs.reject_recursive_types
                 || vattrs.reject_recursive_types_in_ground_variants
