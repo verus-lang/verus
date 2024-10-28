@@ -65,6 +65,7 @@ pub trait ExPtrPointee {
         Copy + Send + Sync + Ord + core::hash::Hash + Unpin + core::fmt::Debug + Sized + core::marker::Freeze;
 }
 
+/*
 #[verifier::external_trait_specification]
 pub trait ExIterator {
     type ExternalTraitSpecificationFor: core::iter::Iterator;
@@ -74,6 +75,7 @@ pub trait ExIterator {
 pub trait ExIntoIterator {
     type ExternalTraitSpecificationFor: core::iter::IntoIterator;
 }
+*/
 
 #[verifier::external_trait_specification]
 pub trait ExIterStep: Clone + PartialOrd + Sized {
