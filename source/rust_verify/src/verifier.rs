@@ -2771,20 +2771,6 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         config.override_queries = Some(|_session, providers| {
             providers.hir_crate = hir_crate;
 
-            // providers.eval_static_initializer = |tcx, key| {
-            //     eprintln!("static init start {:?}", &key);
-            //     let r = (DEFAULT_QUERY_PROVIDERS.eval_static_initializer)(tcx, key);
-            //     eprintln!("static init end {:?}", &key);
-            //     r
-            // };
-            //
-            // providers.eval_to_const_value_raw = |tcx, key| {
-            //     eprintln!("eval start {:?}", &key);
-            //     let r = (DEFAULT_QUERY_PROVIDERS.eval_to_const_value_raw)(tcx, key);
-            //     eprintln!("eval end {:?}", &key);
-            //     r
-            // };
-
             // Prevent the borrow checker from running, as we will run our own lifetime analysis.
             // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
             // by const evaluation through the mir interpreter.
