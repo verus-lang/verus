@@ -288,11 +288,8 @@ pub(crate) fn translate_impl<'tcx>(
                 ty
             );
             true
-        } else if let Some(
-            RustItem::StructuralPartialEq
-            | RustItem::PartialEq
-            | RustItem::Eq,
-        ) = rust_item
+        } else if let Some(RustItem::StructuralPartialEq | RustItem::PartialEq | RustItem::Eq) =
+            rust_item
         {
             // TODO SOUNDNESS additional checks of the implementation
             true

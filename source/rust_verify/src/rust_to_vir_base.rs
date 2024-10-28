@@ -1527,7 +1527,10 @@ pub(crate) fn check_item_external_generics<'tcx>(
         generics_params = generics_params
             .into_iter()
             .filter(|gp| {
-                !matches!(gp.kind, GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided(_) })
+                !matches!(
+                    gp.kind,
+                    GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided(_) }
+                )
             })
             .collect();
     }
