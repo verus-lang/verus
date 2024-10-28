@@ -843,12 +843,27 @@ pub(crate) fn get_publish(
     }
 }
 
+// Only those relevant to classifying an item as external / not external
+// (external_body is relevant because it means anything on the inside of the item should
+// be external)
+#[derive(Debug)]
+pub(crate) struct ExternalAttrs {
+    pub(crate) external: bool,
+    pub(crate) external_body: bool,
+    pub(crate) external_fn_specification: bool,
+    pub(crate) external_type_specification: bool,
+    pub(crate) external_trait_specification: bool,
+    pub(crate) sets_mode: bool,
+    pub(crate) verify: bool,
+    pub(crate) verus_macro: bool,
+    pub(crate) any_other_verus_specific_attribute: bool,
+    pub(crate) internal_get_field_many_variants: bool,
+}
+
 #[derive(Debug)]
 pub(crate) struct VerifierAttrs {
     pub(crate) verus_macro: bool,
     pub(crate) external_body: bool,
-    pub(crate) external: bool,
-    pub(crate) verify: bool,
     pub(crate) opaque: bool,
     pub(crate) publish: Option<bool>,
     pub(crate) opaque_outside_module: bool,
@@ -896,20 +911,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) type_invariant_fn: bool,
 }
 
-impl VerifierAttrs {
-    pub(crate) fn is_external(&self, cmd_line_args: &crate::config::Args) -> bool {
-        self.external
-            || !(cmd_line_args.no_external_by_default
-                || self.verus_macro
-                || self.external_body
-                || self.external_fn_specification
-                || self.external_type_specification
-                || self.external_trait_specification.is_some()
-                || self.verify
-                || self.sets_mode)
-    }
-}
-
 // Check for the `get_field_many_variants` attribute
 // Skips additional checks that are meant to be applied only during the 'main' processing
 // of an item.
@@ -946,16 +947,52 @@ pub(crate) fn is_sealed(
     Ok(false)
 }
 
+/// Get the attributes needed to determine if the item is external.
+pub(crate) fn get_external_attrs(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<ExternalAttrs, VirErr> {
+    let mut es = ExternalAttrs {
+        external_body: false,
+        external_fn_specification: false,
+        external_type_specification: false,
+        external_trait_specification: false,
+        external: false,
+        verify: false,
+        sets_mode: false,
+        verus_macro: false,
+        any_other_verus_specific_attribute: false,
+        internal_get_field_many_variants: false,
+    };
+
+    for attr in parse_attrs(attrs, diagnostics)? {
+        match attr {
+            Attr::ExternalBody => es.external_body = true,
+            Attr::ExternalFnSpecification => es.external_fn_specification = true,
+            Attr::ExternalTypeSpecification => es.external_type_specification = true,
+            Attr::ExternalTraitSpecification(_) => es.external_trait_specification = true,
+            Attr::External => es.external = true,
+            Attr::Verify => es.verify = true,
+            Attr::Mode(_) => es.sets_mode = true,
+            Attr::VerusMacro => es.verus_macro = true,
+            Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
+            Attr::UnsupportedRustcAttr(..) => {}
+            _ => {
+                es.any_other_verus_specific_attribute = true;
+            }
+        }
+    }
+
+    return Ok(es);
+}
+
 pub(crate) fn get_verifier_attrs(
     attrs: &[Attribute],
     diagnostics: Option<&mut Vec<VirErrAs>>,
-    cmd_line_args: Option<&crate::config::Args>,
 ) -> Result<VerifierAttrs, VirErr> {
     let mut vs = VerifierAttrs {
         verus_macro: false,
         external_body: false,
-        external: false,
-        verify: false,
         opaque: false,
         publish: None,
         opaque_outside_module: false,
@@ -1006,8 +1043,6 @@ pub(crate) fn get_verifier_attrs(
         match attr {
             Attr::VerusMacro => vs.verus_macro = true,
             Attr::ExternalBody => vs.external_body = true,
-            Attr::External => vs.external = true,
-            Attr::Verify => vs.verify = true,
             Attr::ExternalFnSpecification => vs.external_fn_specification = true,
             Attr::ExternalTypeSpecification => vs.external_type_specification = true,
             Attr::ExternalTraitSpecification(assoc) => {
@@ -1072,24 +1107,8 @@ pub(crate) fn get_verifier_attrs(
             _ => {}
         }
     }
-    if attrs.len() > 0 {
-        let span = attrs[0].span;
-        let mismatches = vec![
-            ("inside verus macro", "`verify`", vs.verus_macro, vs.verify),
-            ("`external`", "`verify`", vs.external, vs.verify),
-            ("`external_body`", "`verify`", vs.external_body, vs.verify),
-            ("`external_body`", "`external`", vs.external_body, vs.external),
-        ];
-        for (msg1, msg2, flag1, flag2) in mismatches {
-            if flag1 && flag2 {
-                return err_span(span, format!("item cannot be both {msg1} and {msg2}",));
-            }
-        }
-    }
     if let Some((rustc_attr, span)) = unsupported_rustc_attr {
-        if cmd_line_args.is_none() || !vs.is_external(cmd_line_args.unwrap()) {
-            return err_span(span, format!("The attribute `{rustc_attr:}` is not supported"));
-        }
+        return err_span(span, format!("The attribute `{rustc_attr:}` is not supported"));
     }
     Ok(vs)
 }
