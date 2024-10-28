@@ -1,5 +1,6 @@
 use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, GhostBlockAttr};
 use crate::erase::{ErasureHints, ResolvedCall};
+use crate::external::CrateItems;
 use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir, remove_host_arg};
 use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
 use crate::verus_items::{BuiltinTypeItem, RustItem, VerusItem, VerusItems};
@@ -45,7 +46,7 @@ impl TypX {
 }
 
 struct Context<'tcx> {
-    cmd_line_args: crate::config::Args,
+    _cmd_line_args: crate::config::Args,
     tcx: TyCtxt<'tcx>,
     verus_items: Arc<VerusItems>,
     types_opt: Option<&'tcx TypeckResults<'tcx>>,
@@ -2438,8 +2439,7 @@ fn erase_trait_item<'tcx>(
                 let id = owner_id.to_def_id();
 
                 let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
-                let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
-                    .expect("get_verifier_attrs");
+                let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
 
                 erase_fn(
                     krate,
@@ -2466,6 +2466,7 @@ fn erase_impl<'tcx>(
     state: &mut State,
     impl_id: DefId,
     impll: &Impl<'tcx>,
+    crate_items: &CrateItems,
 ) {
     for impl_item_ref in impll.items {
         match impl_item_ref.kind {
@@ -2474,9 +2475,8 @@ fn erase_impl<'tcx>(
                 let ImplItem { ident, owner_id, kind, .. } = impl_item;
                 let id = owner_id.to_def_id();
                 let attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
-                let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
-                    .expect("get_verifier_attrs");
-                if vattrs.is_external(&ctxt.cmd_line_args) {
+                let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                if crate_items.is_impl_item_external(impl_item_ref.id) {
                     continue;
                 }
                 if vattrs.reveal_group {
@@ -2613,8 +2613,7 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
     } else {
         ctxt.tcx.item_attrs(id)
     };
-    let vattrs =
-        get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args)).expect("get_verifier_attrs");
+    let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
     if vattrs.external_type_specification {
         return;
     }
@@ -2683,10 +2682,10 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     verus_items: Arc<VerusItems>,
     krate: &'tcx Crate<'tcx>,
     erasure_hints: &ErasureHints,
-    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
+    crate_items: &CrateItems,
 ) -> State {
     let mut ctxt = Context {
-        cmd_line_args,
+        _cmd_line_args: cmd_line_args,
         tcx,
         verus_items,
         types_opt: None,
@@ -2777,7 +2776,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
                 OwnerNode::Item(item) => {
-                    if matches!(item_to_module_map.get(&item.item_id()), Some(None)) {
+                    if crate_items.is_item_external(item.item_id()) {
                         // item is external
                         continue;
                     }
@@ -2794,10 +2793,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             _bounds,
                             _trait_items,
                         ) => {
-                            let attrs = tcx.hir().attrs(item.hir_id());
-                            let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
-                                .expect("get_verifier_attrs");
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
+                            if crate_items.is_item_external(item.item_id()) {
                                 continue;
                             }
                             // We only need traits with associated type declarations.
@@ -2817,14 +2813,13 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
                 OwnerNode::Item(item) => {
-                    if matches!(item_to_module_map.get(&item.item_id()), Some(None)) {
+                    if crate_items.is_item_external(item.item_id()) {
                         // item is external
                         continue;
                     }
                     let attrs = tcx.hir().attrs(item.hir_id());
-                    let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
-                        .expect("get_verifier_attrs");
-                    if vattrs.external || vattrs.internal_reveal_fn || vattrs.internal_const_body {
+                    let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                    if vattrs.internal_reveal_fn || vattrs.internal_const_body {
                         continue;
                     }
                     let id = item.owner_id.to_def_id();
@@ -2837,28 +2832,16 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::TyAlias(..) => {}
                         ItemKind::GlobalAsm(..) => {}
                         ItemKind::Struct(_s, _generics) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
                             state.reach_datatype(&ctxt, id);
                         }
                         ItemKind::Enum(_e, _generics) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
                             state.reach_datatype(&ctxt, id);
                         }
                         ItemKind::Union(_e, _generics) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
                             state.reach_datatype(&ctxt, id);
                         }
                         ItemKind::Const(_ty, _, body_id) | ItemKind::Static(_ty, _, body_id) => {
-                            if vattrs.size_of_global
-                                || vattrs.item_broadcast_use
-                                || vattrs.is_external(&ctxt.cmd_line_args)
-                            {
+                            if vattrs.size_of_global || vattrs.item_broadcast_use {
                                 continue;
                             }
                             erase_const_or_static(
@@ -2873,9 +2856,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             );
                         }
                         ItemKind::Fn(sig, _generics, body_id) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
                             if vattrs.reveal_group {
                                 continue;
                             }
@@ -2918,9 +2898,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             _bounds,
                             trait_items,
                         ) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
                             let ex_trait_id_for =
                                 crate::rust_to_vir_trait::external_trait_specification_of(
                                     tcx,
@@ -2944,10 +2921,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             );
                         }
                         ItemKind::Impl(impll) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
-                            erase_impl(krate, &mut ctxt, &mut state, id, impll);
+                            erase_impl(krate, &mut ctxt, &mut state, id, impll, crate_items);
                         }
                         ItemKind::OpaqueTy(OpaqueTy {
                             generics: _,
@@ -2959,9 +2933,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             continue;
                         }
                         _ => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
                             dbg!(item);
                             panic!("unexpected item");
                         }
