@@ -714,9 +714,11 @@ define_keywords! {
     "requires"    pub struct Requires     /// `requires`
     "recommends"  pub struct Recommends   /// `recommends`
     "ensures"     pub struct Ensures      /// `ensures`
+    "returns"     pub struct Returns      /// `returns`
     "decreases"   pub struct Decreases    /// `decreases`
     "opens_invariants"   pub struct OpensInvariants    /// `opens_invariants`
     "invariant_except_break"   pub struct InvariantExceptBreak    /// `invariant_except_break`
+    "no_unwind"   pub struct NoUnwind    /// `no_unwind`
     "invariant"   pub struct Invariant    /// `invariant`
     "invariant_ensures"   pub struct InvariantEnsures    /// `invariant_ensures`
     "assert"      pub struct Assert       /// `assert`
@@ -937,9 +939,11 @@ macro_rules! export_token_macro {
             [requires]    => { $crate::token::Requires };
             [recommends]  => { $crate::token::Recommends };
             [ensures]     => { $crate::token::Ensures };
+            [returns]     => { $crate::token::Returns };
             [decreases]   => { $crate::token::Decreases };
             [opens_invariants]   => { $crate::token::OpensInvariants };
             [invariant_except_break]   => { $crate::token::InvariantExceptBreak };
+            [no_unwind]   => { $crate::token::NoUnwind };
             [invariant]   => { $crate::token::Invariant };
             [invariant_ensures]   => { $crate::token::InvariantEnsures };
             [assert]      => { $crate::token::Assert };

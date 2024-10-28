@@ -360,6 +360,42 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait_auto_import verus_code! {
+        #[verifier::external]
+        trait T {}
+
+        #[verifier::external]
+        impl T for bool {}
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+        }
+
+        trait U {
+            type X: T;
+        }
+
+        impl U for u8 {
+            type X = S;
+        }
+
+        impl U for u16 {
+            type X = [S; 3];
+        }
+
+        struct S;
+
+        #[verifier::external]
+        impl T for S where bool: T {}
+
+        #[verifier::external]
+        impl<A: T, const N: usize> T for [A; N] {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_defaults verus_code! {
         #[verifier::external]
         trait T {
@@ -386,4 +422,30 @@ test_verify_one_file! {
             <u8 as T>::d(99); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_default_external_body_issue1307 verus_code! {
+        #[verifier::external]
+        fn some_external_fn() { }
+
+        trait T {
+            #[verifier(external_body)]
+            fn f1() -> (ret: bool)
+                ensures
+                    !ret
+            {
+                some_external_fn();
+                false
+            }
+
+            fn f2() -> bool {
+                Self::f1()
+            }
+        }
+
+        struct S;
+
+        impl T for S { }
+    } => Ok(())
 }

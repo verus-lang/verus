@@ -39,7 +39,7 @@ jobs:
     runs-on: macos-14
     strategy:
       matrix:
-        features: ['', 'record-history', 'no-std', 'no-alloc', 'singular']
+        features: ['', 'record-history', 'no-std', 'no-alloc', 'singular', 'cvc5']
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -85,6 +85,12 @@ jobs:
               unset -f cargo
               cargo build --no-default-features
               ;;
+            "cvc5")
+              ./tools/get-cvc5.sh
+              echo cvc5 version `./cvc5 --version`
+              vargo build
+              vargo run -p rust_verify -- -V cvc5 rust_verify/example/assorted_demo.rs
+              ;;
             *)
               VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
               VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test
@@ -126,6 +132,46 @@ jobs:
         with:
           name: verusdoc
           path: source/doc
+
+  smoke-test-and-release-macos-x86:
+    runs-on: macos-13
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+      - name: get z3
+        working-directory: ./source
+        run: |
+          ./tools/get-z3.sh
+          echo z3 version `./z3 --version`
+      - name: setup rust
+        run: |
+          curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
+      - name: build and test
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          vargo clean
+          vargo build
+          VERUS_Z3_PATH="$(pwd)/z3" vargo test -p rust_verify_test --test basic
+      - name: build verus release
+        working-directory: ./source
+        run: |
+          . ../tools/activate
+          vargo clean
+          vargo build --release
+          # TODO ./target-verus/release/verus --version --output-json > ./target-verus/release/version.json
+          cp -R ./target-verus/release ../verus-x86-macos
+          cd ..; zip -r verus-x86-macos.zip ./verus-x86-macos
+      - name: run verus release
+        working-directory: ./source
+        run: |
+          ls -Al ./target-verus/release
+          ./target-verus/release/verus ./rust_verify/example/test.rs
+      - name: upload verus release artifact
+        uses: actions/upload-artifact@v4
+        with:
+            name: verus-x86-macos
+            path: verus-x86-macos.zip
 
   smoke-test-and-release-windows:
     runs-on: windows-latest
@@ -208,7 +254,7 @@ jobs:
             path: verus-x86-linux.zip
 
   release:
-    needs: [fmt, smoke-test-and-release-linux, smoke-test-and-release-windows, test-and-release-macos]
+    needs: [fmt, smoke-test-and-release-linux, smoke-test-and-release-windows, test-and-release-macos, smoke-test-and-release-macos-x86]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -259,6 +305,16 @@ jobs:
           upload_url: ${{ steps.update_release.outputs.upload_url }}
           asset_path: ./verus-arm64-macos/verus-arm64-macos.zip
           asset_name: verus-${{ env.RELEASE_NAME }}-arm64-macos.zip
+          asset_content_type: application/zip
+
+      - name: upload release for x86-macos
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.update_release.outputs.upload_url }}
+          asset_path: ./verus-x86-macos/verus-x86-macos.zip
+          asset_name: verus-${{ env.RELEASE_NAME }}-x86-macos.zip
           asset_content_type: application/zip
 
       - name: upload release for x86-win

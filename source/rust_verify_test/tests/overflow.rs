@@ -200,7 +200,7 @@ test_verify_one_file! {
 
             let z = x << y; // FAILS
         }
-    } => Err(e) => assert_vir_error_msg(e, "argument bit-width does not match")
+    } => Err(e) => assert_fails(e, 1)
 }
 
 test_verify_one_file! {
@@ -213,7 +213,7 @@ test_verify_one_file! {
 
             let z = x << y; // FAILS
         }
-    } => Err(e) => assert_vir_error_msg(e, "argument bit-width does not match")
+    } => Err(e) => assert_fails(e, 1)
 }
 
 test_verify_one_file! {
@@ -300,7 +300,7 @@ test_verify_one_file! {
         fn test() {
             assert(1i8 >> (-1i8) == 0i8) by(bit_vector); // FAILS
         }
-    } => Err(e) => assert_vir_error_msg(e, "signed integer is not supported for bit-vector reasoning")
+    } => Err(e) => assert_vir_error_msg(e, "bit-shift with possibly negative shift")
 }
 
 test_verify_one_file! {

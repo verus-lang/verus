@@ -173,6 +173,10 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
     queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
         let hir = tcx.hir();
         let krate = hir.krate();
+        rustc_hir_analysis::check_crate(tcx);
+        if tcx.dcx().err_count() != 0 {
+            return;
+        }
         for owner in &krate.owners {
             if let MaybeOwner::Owner(owner) = owner {
                 match owner.node() {
@@ -251,18 +255,24 @@ fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V
 fn open_local_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V) { panic!(); }
 fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) { panic!() }
 fn index<'a, V, Idx, Output>(v: &'a V, index: Idx) -> &'a Output { panic!() }
+struct C<const N: usize, A: ?Sized>(Box<A>);
+struct Arr<A: ?Sized, const N: usize>(Box<A>);
+fn use_type_invariant<A>(a: A) -> A { a }
+fn main() {}
 ";
 
 fn emit_check_tracked_lifetimes<'tcx>(
     cmd_line_args: crate::config::Args,
     tcx: TyCtxt<'tcx>,
     verus_items: std::sync::Arc<VerusItems>,
+    spans: &SpanContext,
     krate: &'tcx Crate<'tcx>,
     emit_state: &mut EmitState,
     erasure_hints: &ErasureHints,
     item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
+    vir_crate: &vir::ast::Krate,
 ) -> State {
-    let gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
+    let mut gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
         cmd_line_args,
         tcx,
         verus_items,
@@ -270,6 +280,8 @@ fn emit_check_tracked_lifetimes<'tcx>(
         erasure_hints,
         item_to_module_map,
     );
+    crate::trait_conflicts::gen_check_trait_impl_conflicts(spans, vir_crate, &mut gen_state);
+
     for line in PRELUDE.split('\n') {
         emit_state.writeln(line.replace("\r", ""));
     }
@@ -361,6 +373,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     spans: &SpanContext,
     erasure_hints: &ErasureHints,
     item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
+    vir_crate: &vir::ast::Krate,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
     let krate = tcx.hir().krate();
@@ -369,10 +382,12 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
         cmd_line_args,
         tcx,
         verus_items,
+        spans,
         krate,
         &mut emit_state,
         erasure_hints,
         item_to_module_map,
+        vir_crate,
     );
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {

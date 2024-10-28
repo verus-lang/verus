@@ -3066,6 +3066,15 @@ impl Debug for ReturnType {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Returns {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Returns");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for RevealHide {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("RevealHide");
@@ -3102,8 +3111,10 @@ impl Debug for Signature {
         formatter.field("requires", &self.requires);
         formatter.field("recommends", &self.recommends);
         formatter.field("ensures", &self.ensures);
+        formatter.field("returns", &self.returns);
         formatter.field("decreases", &self.decreases);
         formatter.field("invariants", &self.invariants);
+        formatter.field("unwind", &self.unwind);
         formatter.finish()
     }
 }
@@ -3123,6 +3134,15 @@ impl Debug for SignatureInvariants {
         let mut formatter = formatter.debug_struct("SignatureInvariants");
         formatter.field("token", &self.token);
         formatter.field("set", &self.set);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for SignatureUnwind {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("SignatureUnwind");
+        formatter.field("token", &self.token);
+        formatter.field("when", &self.when);
         formatter.finish()
     }
 }

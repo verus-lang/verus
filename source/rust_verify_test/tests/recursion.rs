@@ -1947,6 +1947,70 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] lemma_decreases_vec_seq_len verus_code! {
+        use vstd::prelude::*;
+        struct S {
+            s: Seq<Box<S>>,
+        }
+
+        struct V {
+            v: Vec<Box<V>>,
+        }
+
+        spec fn f(s: Seq<Box<S>>) -> int
+            decreases s
+        {
+            if s.len() == 0 {
+                0
+            } else if s.len() == 1 {
+                f(s[0].s)
+            } else {
+                f(s.drop_last())
+            }
+        }
+
+        spec fn vs(v: V) -> S
+            decreases v
+        {
+            let s = Seq::new(v.v.len() as nat, |i: int| {
+                if 0 <= i < v.v.len() {
+                    Box::new(vs(*v.v[i]))
+                } else {
+                    arbitrary()
+                }
+            });
+            S { s }
+        }
+
+        spec fn sbad(s: Seq<bool>) -> Seq<bool>
+            decreases s
+        {
+            sbad(s) // FAILS
+        }
+
+        spec fn vbad(v: Vec<bool>) -> Vec<bool>
+            decreases v
+        {
+            vbad(v) // FAILS
+        }
+
+        struct X {
+            y: Seq<X>,
+        }
+
+        proof fn bad() {
+            let x0 = X { y: seq![] };
+            let t = seq![X { y: seq![ x0, x0 ] }];
+            assert(decreases_to!(t => t[0]));
+            assert(decreases_to!(t[0] => t[0].y));
+
+            vstd::seq::axiom_seq_len_decreases(t[0].y, t); // FAILS
+            assert(decreases_to!(t[0].y => t));
+        }
+    } => Err(e) => assert_fails(e, 3)
+}
+
+test_verify_one_file! {
     #[test] commas_in_spec_sigs_github_issue947 verus_code! {
         spec fn add0(a: nat, b: nat) -> nat
             recommends

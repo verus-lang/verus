@@ -2873,6 +2873,15 @@ impl Hash for ReturnType {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Returns {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for RevealHide {
     fn hash<H>(&self, state: &mut H)
     where
@@ -2909,8 +2918,10 @@ impl Hash for Signature {
         self.requires.hash(state);
         self.recommends.hash(state);
         self.ensures.hash(state);
+        self.returns.hash(state);
         self.decreases.hash(state);
         self.invariants.hash(state);
+        self.unwind.hash(state);
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
@@ -2931,6 +2942,15 @@ impl Hash for SignatureInvariants {
         H: Hasher,
     {
         self.set.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for SignatureUnwind {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.when.hash(state);
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]

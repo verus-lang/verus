@@ -1,4 +1,5 @@
 use crate::ast::{Decl, Expr, Ident, Query};
+use crate::context::SmtSolver;
 use crate::printer::{macro_push_node, NodeWriter, Printer};
 use crate::{node, nodes};
 use sise::Node;
@@ -23,10 +24,11 @@ impl Emitter {
         use_pipe: bool,
         print_as_smt: bool,
         writer: Option<Box<dyn std::io::Write>>,
+        solver: SmtSolver,
     ) -> Self {
         let pipe_buffer = if use_pipe { Some(Vec::new()) } else { None };
         Emitter {
-            printer: Printer::new(message_interface, print_as_smt),
+            printer: Printer::new(message_interface, print_as_smt, solver),
             node_writer: NodeWriter::new(),
             pipe_buffer,
             log: writer,

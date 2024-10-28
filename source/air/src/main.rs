@@ -1,7 +1,7 @@
 use air::ast::CommandX;
 #[cfg(feature = "axiom-usage-info")]
 use air::context::UsageInfo;
-use air::context::{Context, ValidityResult};
+use air::context::{Context, SmtSolver, ValidityResult};
 use air::messages::{AirMessage, AirMessageLabel, Reporter};
 use air::profiler::{Profiler, PROVER_LOG_FILE};
 use getopts::Options;
@@ -105,7 +105,7 @@ pub fn main() {
         .expect("parse error");
 
     // Start AIR
-    let mut air_context = Context::new(message_interface.clone());
+    let mut air_context = Context::new(message_interface.clone(), SmtSolver::Z3);
     let debug = matches.opt_present("debug");
     air_context.set_debug(debug);
     let profile_all = matches.opt_present("profile_all");

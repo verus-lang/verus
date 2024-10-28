@@ -750,6 +750,9 @@ pub trait Fold {
     fn fold_return_type(&mut self, i: ReturnType) -> ReturnType {
         fold_return_type(self, i)
     }
+    fn fold_returns(&mut self, i: Returns) -> Returns {
+        fold_returns(self, i)
+    }
     fn fold_reveal_hide(&mut self, i: RevealHide) -> RevealHide {
         fold_reveal_hide(self, i)
     }
@@ -765,6 +768,9 @@ pub trait Fold {
         i: SignatureInvariants,
     ) -> SignatureInvariants {
         fold_signature_invariants(self, i)
+    }
+    fn fold_signature_unwind(&mut self, i: SignatureUnwind) -> SignatureUnwind {
+        fold_signature_unwind(self, i)
     }
     fn fold_span(&mut self, i: Span) -> Span {
         fold_span(self, i)
@@ -3563,6 +3569,15 @@ where
         }
     }
 }
+pub fn fold_returns<F>(f: &mut F, node: Returns) -> Returns
+where
+    F: Fold + ?Sized,
+{
+    Returns {
+        token: Token![returns](tokens_helper(f, &node.token.span)),
+        exprs: f.fold_specification(node.exprs),
+    }
+}
 pub fn fold_reveal_hide<F>(f: &mut F, node: RevealHide) -> RevealHide
 where
     F: Fold + ?Sized,
@@ -3613,8 +3628,10 @@ where
         requires: (node.requires).map(|it| f.fold_requires(it)),
         recommends: (node.recommends).map(|it| f.fold_recommends(it)),
         ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        returns: (node.returns).map(|it| f.fold_returns(it)),
         decreases: (node.decreases).map(|it| f.fold_signature_decreases(it)),
         invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
+        unwind: (node.unwind).map(|it| f.fold_signature_unwind(it)),
     }
 }
 pub fn fold_signature_decreases<F>(
@@ -3645,6 +3662,19 @@ where
     SignatureInvariants {
         token: Token![opens_invariants](tokens_helper(f, &node.token.span)),
         set: f.fold_invariant_name_set(node.set),
+    }
+}
+pub fn fold_signature_unwind<F>(f: &mut F, node: SignatureUnwind) -> SignatureUnwind
+where
+    F: Fold + ?Sized,
+{
+    SignatureUnwind {
+        token: Token![no_unwind](tokens_helper(f, &node.token.span)),
+        when: (node.when)
+            .map(|it| (
+                Token![when](tokens_helper(f, &(it).0.span)),
+                f.fold_expr((it).1),
+            )),
     }
 }
 pub fn fold_span<F>(f: &mut F, node: Span) -> Span

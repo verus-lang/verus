@@ -1,32 +1,36 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBoundKind, MaskSpec, Mode, Params, Path, PathX, Primitive, SpannedTyped,
-    Typ, TypDecoration, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VariantCheck, VirErr, Visibility,
+    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
+    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, MaskSpec, Mode, Path, PathX, Primitive,
+    SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec,
+    VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::{
-    bitwidth_from_type, fun_as_friendly_rust_name, get_field, get_variant, undecorate_typ,
-    IntegerTypeBitwidth, LowerUniqueVar,
+    fun_as_friendly_rust_name, get_field, get_variant, typ_args_for_datatype_typ, undecorate_typ,
+    LowerUniqueVar,
 };
-use crate::bitvector_to_air::{bv_exp_to_expr, BvExprCtxt};
+use crate::bitvector_to_air::bv_to_queries;
 use crate::context::Ctx;
 use crate::def::{
-    fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name, path_to_string,
-    prefix_box, prefix_ensures, prefix_fuel_id, prefix_open_inv, prefix_pre_var, prefix_requires,
-    prefix_spec_fn_type, prefix_unbox, snapshot_ident, static_name, suffix_global_id,
-    suffix_local_unique_id, suffix_typ_param_ids, unique_local, variant_field_ident, variant_ident,
-    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
-    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII,
-    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
-    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
+    encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name,
+    path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when,
+    prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
+    snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
+    unique_local, variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX,
+    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN,
+    SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
+    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
+    SUFFIX_SNAP_WHILE_END, U_HI,
 };
-use crate::inv_masks::MaskSet;
+use crate::inv_masks::{MaskSet, MaskSingleton};
 use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
+    UnwindSst,
 };
-use crate::sst::{FunctionSst, PostConditionInfo, PostConditionKind};
+use crate::sst::{FuncCheckSst, Pars, PostConditionKind, Stms};
+use crate::sst_util::subst_typ_for_datatype;
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -34,15 +38,27 @@ use air::ast::{
     Quant, QueryX, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
-    mk_bind_expr, mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_nat, mk_not,
-    mk_option_command, mk_or, mk_sub, mk_unnamed_axiom, mk_xor, str_apply, str_ident, str_typ,
-    str_var, string_var,
+    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and, mk_bind_expr,
+    mk_bitvector_option, mk_eq, mk_exists, mk_implies, mk_ite, mk_nat, mk_not, mk_option_command,
+    mk_or, mk_sub, mk_unnamed_axiom, mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
+use air::context::SmtSolver;
 use num_bigint::BigInt;
 use std::collections::{BTreeMap, HashSet};
 use std::mem::swap;
 use std::sync::Arc;
+
+pub struct PostConditionInfo {
+    /// Identifier that holds the return value.
+    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
+    pub dest: Option<VarIdent>,
+    /// Post-conditions (only used in non-recommends-checking mode)
+    pub ens_exprs: Vec<(Span, Expr)>,
+    /// Recommends checks (only used in recommends-checking mode)
+    pub ens_spec_precondition_stms: Stms,
+    /// Extra info about PostCondition for error reporting
+    pub kind: PostConditionKind,
+}
 
 #[inline(always)]
 pub(crate) fn fun_to_air_ident(fun: &Fun) -> Ident {
@@ -52,6 +68,15 @@ pub(crate) fn fun_to_air_ident(fun: &Fun) -> Ident {
 #[inline(always)]
 pub(crate) fn path_to_air_ident(path: &Path) -> Ident {
     Arc::new(path_to_string(path))
+}
+
+#[inline(always)]
+pub(crate) fn dt_to_air_ident(dt: &Dt) -> Ident {
+    let path = match dt {
+        Dt::Path(path) => path.clone(),
+        Dt::Tuple(arity) => crate::def::prefix_tuple_type(*arity),
+    };
+    path_to_air_ident(&path)
 }
 
 pub(crate) fn apply_range_fun(name: &str, range: &IntRange, exprs: Vec<Expr>) -> Expr {
@@ -75,6 +100,7 @@ pub(crate) fn primitive_path(name: &Primitive) -> Path {
         Primitive::Slice => crate::def::slice_type(),
         Primitive::StrSlice => crate::def::strslice_type(),
         Primitive::Ptr => crate::def::ptr_type(),
+        Primitive::Global => crate::def::global_type(),
     }
 }
 
@@ -84,6 +110,7 @@ pub(crate) fn primitive_type_id(name: &Primitive) -> Ident {
         Primitive::Slice => crate::def::TYPE_ID_SLICE,
         Primitive::StrSlice => crate::def::TYPE_ID_STRSLICE,
         Primitive::Ptr => crate::def::TYPE_ID_PTR,
+        Primitive::Global => crate::def::TYPE_ID_GLOBAL,
     })
 }
 
@@ -99,8 +126,11 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
             IntRange::USize => str_ident("usize"),
             IntRange::ISize => str_ident("isize"),
         },
-        MonoTypX::Datatype(path, typs) => {
-            return crate::def::monotyp_apply(path, &typs.iter().map(monotyp_to_path).collect());
+        MonoTypX::Datatype(dt, typs) => {
+            return crate::def::monotyp_apply(
+                &encode_dt_as_path(dt),
+                &typs.iter().map(monotyp_to_path).collect(),
+            );
         }
         MonoTypX::Primitive(name, typs) => {
             return crate::def::monotyp_apply(
@@ -111,6 +141,12 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
         MonoTypX::Decorate(dec, typ) => {
             return crate::def::monotyp_decorate(*dec, &monotyp_to_path(typ));
         }
+        MonoTypX::Decorate2(dec, typs) => {
+            return crate::def::monotyp_decorate2(
+                *dec,
+                &typs.iter().map(monotyp_to_path).collect(),
+            );
+        }
     };
     Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
 }
@@ -119,27 +155,27 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
     match &**typ {
         TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
-        TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::SpecFn(..) => Arc::new(air::ast::TypX::Fun),
+        TypX::Primitive(Primitive::Array, _) => Arc::new(air::ast::TypX::Fun),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
-        TypX::Datatype(path, _, _) => {
-            if ctx.datatype_is_transparent[path] {
-                ident_typ(&path_to_air_ident(path))
+        TypX::Datatype(dt, _, _) => {
+            if ctx.datatype_is_transparent[dt] {
+                ident_typ(&path_to_air_ident(&encode_dt_as_path(dt)))
             } else {
                 match typ_as_mono(typ) {
-                    None => panic!("abstract datatype should be boxed"),
+                    None => panic!("abstract datatype should be boxed {:?}", typ),
                     Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
                 }
             }
         }
-        TypX::Decorate(_, t) => typ_to_air(ctx, t),
+        TypX::Decorate(_, _, t) => typ_to_air(ctx, t),
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::Primitive(
-            Primitive::Array | Primitive::Slice | Primitive::StrSlice | Primitive::Ptr,
+            Primitive::Slice | Primitive::StrSlice | Primitive::Ptr | Primitive::Global,
             _,
         ) => match typ_as_mono(typ) {
             None => panic!("should be boxed"),
@@ -189,8 +225,8 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
     match &**typ {
         MonoTypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
         MonoTypX::Int(range) => mk_id(range_to_id(range)),
-        MonoTypX::Datatype(path, typs) => {
-            let f_name = crate::def::prefix_type_id(path);
+        MonoTypX::Datatype(dt, typs) => {
+            let f_name = crate::def::prefix_type_id(&encode_dt_as_path(dt));
             let mut args: Vec<Expr> = Vec::new();
             for t in typs.iter() {
                 args.extend(monotyp_to_id(t));
@@ -203,7 +239,23 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
             let ds = str_apply(decoration_str(*d), &vec![ds_typ[0].clone()]);
             vec![ds, ds_typ[1].clone()]
         }
+        MonoTypX::Decorate2(d, typs) if crate::context::DECORATE => {
+            assert!(typs.len() == 2);
+            let ds_typ1 = monotyp_to_id(&typs[0]);
+            assert!(ds_typ1.len() == 2);
+            let ds_typ2 = monotyp_to_id(&typs[1]);
+            assert!(ds_typ2.len() == 2);
+            let ds = str_apply(
+                decoration_str(*d),
+                &vec![ds_typ1[0].clone(), ds_typ1[1].clone(), ds_typ2[0].clone()],
+            );
+            vec![ds, ds_typ2[1].clone()]
+        }
         MonoTypX::Decorate(_, typ) => monotyp_to_id(typ),
+        MonoTypX::Decorate2(_, typs) => {
+            assert!(typs.len() == 2);
+            monotyp_to_id(&typs[1])
+        }
         MonoTypX::Primitive(name, typs) => {
             let f_name = primitive_type_id(name);
             let mut args: Vec<Expr> = Vec::new();
@@ -246,21 +298,33 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
     match &**typ {
         TypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
         TypX::Int(range) => mk_id(range_to_id(range)),
-        TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::SpecFn(typs, typ) => mk_id(fun_id(typs, typ)),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
         TypX::FnDef(fun, typs, _resolved_fun) => mk_id(fndef_id(fun, typs)),
-        TypX::Datatype(path, typs, _) => mk_id(datatype_id(path, typs)),
+        TypX::Datatype(dt, typs, _) => mk_id(datatype_id(&encode_dt_as_path(dt), typs)),
         TypX::Primitive(name, typs) => mk_id(primitive_id(&name, typs)),
-        TypX::Decorate(d, typ) if crate::context::DECORATE => {
+        TypX::Decorate(d, None, typ) if crate::context::DECORATE => {
             let ds_typ = typ_to_ids(typ);
             assert!(ds_typ.len() == 2);
             let ds = str_apply(decoration_str(*d), &vec![ds_typ[0].clone()]);
             vec![ds, ds_typ[1].clone()]
         }
-        TypX::Decorate(_, typ) => typ_to_ids(typ),
+        TypX::Decorate(d, Some(TypDecorationArg { allocator_typ }), typ)
+            if crate::context::DECORATE =>
+        {
+            let ds_typ1 = typ_to_ids(allocator_typ);
+            assert!(ds_typ1.len() == 2);
+            let ds_typ2 = typ_to_ids(typ);
+            assert!(ds_typ2.len() == 2);
+            let ds = str_apply(
+                decoration_str(*d),
+                &vec![ds_typ1[0].clone(), ds_typ1[1].clone(), ds_typ2[0].clone()],
+            );
+            vec![ds, ds_typ2[1].clone()]
+        }
+        TypX::Decorate(_, _, typ) => typ_to_ids(typ),
         TypX::Boxed(typ) => typ_to_ids(typ),
         TypX::TypParam(x) => {
             suffix_typ_param_ids(x).iter().map(|x| ident_var(&x.lower())).collect()
@@ -358,10 +422,14 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::SpecFn(..) => {
             Some(expr_has_typ(&try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ))
         }
-        TypX::Datatype(path, _, _) => {
-            if ctx.datatype_is_transparent[path] {
-                if ctx.datatypes_with_invariant.contains(path) {
-                    let box_expr = ident_apply(&prefix_box(&path), &vec![expr.clone()]);
+        TypX::Primitive(Primitive::Array, _) => {
+            Some(expr_has_typ(&try_box(ctx, expr.clone(), typ).expect("try_box array"), typ))
+        }
+        TypX::Datatype(dt, _, _) => {
+            if ctx.datatype_is_transparent[dt] {
+                if ctx.datatypes_with_invariant.contains(dt) {
+                    let box_expr =
+                        ident_apply(&prefix_box(&encode_dt_as_path(dt)), &vec![expr.clone()]);
                     Some(expr_has_typ(&box_expr, typ))
                 } else {
                     None
@@ -379,20 +447,31 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::TypParam(_) => Some(expr_has_typ(expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(expr, typ)),
         TypX::Bool | TypX::AnonymousClosure(..) | TypX::TypeId => None,
-        TypX::Tuple(_) | TypX::Air(_) => panic!("typ_invariant"),
+        TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
         TypX::ConstInt(_) => None,
-        TypX::Primitive(_, _) => None,
+        TypX::Primitive(p, _) => {
+            match p {
+                Primitive::Array | Primitive::Slice | Primitive::Ptr => {
+                    // Each of these is like an abstract Datatype
+                    if typ_as_mono(typ).is_none() {
+                        panic!("abstract datatype should be boxed")
+                    }
+                }
+                Primitive::StrSlice | Primitive::Global => {}
+            }
+            None
+        }
         TypX::FnDef(..) => None,
     }
 }
 
 pub(crate) fn datatype_box_prefix(ctx: &Ctx, typ: &Typ) -> Option<Path> {
     match &**typ {
-        TypX::Datatype(path, _, _) => {
-            if ctx.datatype_is_transparent[path] {
-                Some(path.clone())
+        TypX::Datatype(dt, _, _) => {
+            if ctx.datatype_is_transparent[dt] {
+                Some(encode_dt_as_path(dt))
             } else {
                 if let Some(monotyp) = typ_as_mono(typ) {
                     Some(crate::sst_to_air::monotyp_to_path(&monotyp))
@@ -418,8 +497,8 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
-        TypX::Tuple(_) => None,
         TypX::SpecFn(typs, _) => Some(prefix_box(&prefix_spec_fn_type(typs.len()))),
+        TypX::Primitive(Primitive::Array, _) => Some(prefix_box(&crate::def::array_type())),
         TypX::AnonymousClosure(..) => unimplemented!(),
         TypX::Datatype(..) => {
             if let Some(prefix) = datatype_box_prefix(ctx, typ) {
@@ -430,7 +509,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         }
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_box, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::BOX_FNDEF)),
-        TypX::Decorate(_, t) => return try_box(ctx, expr, t),
+        TypX::Decorate(_, _, t) => return try_box(ctx, expr, t),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
@@ -449,19 +528,19 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::UNBOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::UNBOX_INT)),
-        TypX::Datatype(path, _, _) => {
-            if ctx.datatype_is_transparent[path] {
-                Some(prefix_unbox(&path))
+        TypX::Datatype(dt, _, _) => {
+            if ctx.datatype_is_transparent[dt] {
+                Some(prefix_unbox(&encode_dt_as_path(dt)))
             } else {
                 prefix_typ_as_mono(prefix_unbox, typ, "abstract datatype")
             }
         }
+        TypX::Primitive(Primitive::Array, _) => Some(prefix_unbox(&crate::def::array_type())),
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_unbox, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::UNBOX_FNDEF)),
-        TypX::Tuple(_) => None,
         TypX::SpecFn(typs, _) => Some(prefix_unbox(&prefix_spec_fn_type(typs.len()))),
         TypX::AnonymousClosure(..) => unimplemented!(),
-        TypX::Decorate(_, t) => return try_unbox(ctx, expr, t),
+        TypX::Decorate(_, _, t) => return try_unbox(ctx, expr, t),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
@@ -479,7 +558,7 @@ pub fn mask_set_from_spec(spec: &MaskSpec, function_name: &Fun, args: &Vec<Expr>
             for (i, e) in exprs.iter().enumerate() {
                 let expr =
                     ident_apply(&prefix_open_inv(&fun_to_air_ident(function_name), i), &args);
-                l.push(crate::inv_masks::MaskSingleton { expr, span: e.span.clone() });
+                l.push(MaskSingleton { expr, span: e.span.clone() });
             }
             MaskSet::from_list(l)
         }
@@ -492,12 +571,14 @@ pub fn mask_set_from_spec(spec: &MaskSpec, function_name: &Fun, args: &Vec<Expr>
 
 pub(crate) fn ctor_to_apply<'a>(
     ctx: &'a Ctx,
-    path: &Path,
+    dt: &Dt,
     variant: &Ident,
     binders: &'a Binders<Exp>,
 ) -> (Ident, impl Iterator<Item = &'a Arc<BinderX<Exp>>>) {
-    let fields = &get_variant(&ctx.global.datatypes[path].1, variant).fields;
-    (variant_ident(path, &variant), fields.iter().map(move |f| get_field(binders, &f.name)))
+    let fields = &get_variant(&ctx.datatype_map[dt].x.variants, variant).fields;
+    let variant = variant_ident(dt, &variant);
+    let field_exps = fields.iter().map(move |f| get_field(binders, &f.name));
+    (variant, field_exps)
 }
 
 fn str_to_const_str(ctx: &Ctx, s: Arc<String>) -> Expr {
@@ -601,15 +682,17 @@ fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Result<Expr, VirErr> {
     }
 }
 
-fn bitwidth_to_exp(bitwidth: &IntegerTypeBitwidth) -> Expr {
-    match bitwidth {
-        IntegerTypeBitwidth::Width(w) => {
-            Arc::new(ExprX::Const(Constant::Nat(Arc::new(w.to_string()))))
+fn check_bitwidth_typ_matches(typ: &Typ, w: IntegerTypeBitwidth, signed: bool) -> bool {
+    if let TypX::Int(range) = &*undecorate_typ(typ) {
+        match (range, signed, w) {
+            (IntRange::U(w), false, IntegerTypeBitwidth::Width(w2)) if *w == w2 => true,
+            (IntRange::I(w), true, IntegerTypeBitwidth::Width(w2)) if *w == w2 => true,
+            (IntRange::USize, false, IntegerTypeBitwidth::ArchWordSize) => true,
+            (IntRange::ISize, true, IntegerTypeBitwidth::ArchWordSize) => true,
+            _ => false,
         }
-        IntegerTypeBitwidth::ArchWordSize => {
-            let name = Arc::new(ARCH_SIZE.to_string());
-            Arc::new(ExprX::Var(name))
-        }
+    } else {
+        false
     }
 }
 
@@ -623,7 +706,7 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
     ctx.quantifier_count.set(qcount + 1);
     let trigs = match &exp.x {
         ExpX::Bind(bnd, _) => match &bnd.x {
-            BndX::Quant(_, _, trigs) => trigs,
+            BndX::Quant(_, _, trigs, _) => trigs,
             BndX::Choose(_, trigs, _) => trigs,
             BndX::Lambda(_, trigs) => trigs,
             _ => panic!(
@@ -680,11 +763,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             ident_apply(&name, &exprs)
         }
-        ExpX::Call(CallFun::InternalFun(InternalFun::HasType), typs, args) => {
-            assert!(typs.len() == 1);
-            assert!(args.len() == 1);
-            expr_has_type(&exp_to_expr(ctx, &args[0], expr_ctxt)?, &typ_to_ids(&typs[0])[1])
-        }
         ExpX::Call(CallFun::InternalFun(func), typs, args) => {
             // These functions are special-cased to not take a decoration argument for
             // the first type parameter.
@@ -708,15 +786,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     InternalFun::CheckDecreaseHeight => {
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)
                     }
-                    InternalFun::HasType => unreachable!(),
                 },
                 Arc::new(exprs),
             ))
         }
-        ExpX::CallLambda(typ, e0, args) => {
+        ExpX::CallLambda(e0, args) => {
             let e0 = exp_to_expr(ctx, e0, expr_ctxt)?;
             let args = vec_map_result(args, |e| exp_to_expr(ctx, e, expr_ctxt))?;
-            Arc::new(ExprX::ApplyFun(typ_to_air(ctx, typ), e0, Arc::new(args)))
+            Arc::new(ExprX::ApplyFun(typ_to_air(ctx, &exp.typ), e0, Arc::new(args)))
         }
         ExpX::Ctor(path, variant, binders) => {
             let (variant, args) = ctor_to_apply(ctx, path, variant, binders);
@@ -727,6 +804,44 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
         ExpX::ExecFnByName(_fun) => {
             Arc::new(ExprX::Apply(str_ident(crate::def::FNDEF_SINGLETON), Arc::new(vec![])))
+        }
+        ExpX::ArrayLiteral(es) => {
+            let mut exprs: Vec<Expr> = vec![];
+            for e in es.iter() {
+                exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
+            }
+            let typ = match &*exp.typ {
+                TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                TypX::Decorate(_dec, _, t) => match &**t {
+                    TypX::Boxed(t) => match &**t {
+                        TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                        _ => {
+                            panic!("Failed to extract the array literal element type for {:?}", exp)
+                        }
+                    },
+                    _ => panic!(
+                        "Failed to extract the array literal element boxed type for {:?}",
+                        exp
+                    ),
+                },
+                TypX::Boxed(t) => match &**t {
+                    TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                    _ => panic!(
+                        "Failed to directly extract the array literal element type for {:?}",
+                        exp
+                    ),
+                },
+                _ => panic!(
+                    "Failed to extract the decorated array literal element type for {:?}",
+                    exp
+                ),
+            };
+            let mut args = typ_to_ids(&typ);
+            let len = mk_nat(es.len());
+            let array_lit = Arc::new(ExprX::Array(Arc::new(exprs)));
+            args.push(len);
+            args.push(array_lit);
+            str_apply(crate::def::ARRAY_NEW, &args)
         }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)) => {
             str_apply(crate::def::CONST_INT, &vec![typ_to_id(c)])
@@ -757,16 +872,22 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
             )),
             UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt)?),
-            UnaryOp::BitNot => {
-                let width = bitwidth_from_type(&exp.typ).expect("expected bounded integer type");
-                let width_exp = bitwidth_to_exp(&width);
+            UnaryOp::BitNot(width_opt) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let expr = try_box(ctx, expr, &exp.typ).expect("Box");
-                let bit_expr = ExprX::Apply(
-                    Arc::new(crate::def::UINT_NOT.to_string()),
-                    Arc::new(vec![width_exp, expr]),
-                );
-                clip_bitwise_result(bit_expr, exp)?
+                let bit_expr =
+                    ExprX::Apply(Arc::new(crate::def::BIT_NOT.to_string()), Arc::new(vec![expr]));
+                if let Some(width) = width_opt {
+                    if !check_bitwidth_typ_matches(&exp.typ, *width, false) {
+                        return Err(error(
+                            &exp.span,
+                            format!("Verus Internal Error: BitNot: type doesn't match"),
+                        ));
+                    }
+                    return clip_bitwise_result(bit_expr, exp);
+                } else {
+                    return Ok(Arc::new(bit_expr));
+                }
             }
             UnaryOp::HeightTrigger => {
                 str_apply(crate::def::HEIGHT, &vec![exp_to_expr(ctx, exp, expr_ctxt)?])
@@ -785,9 +906,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 apply_range_fun(&f_name, &range, vec![expr])
             }
             UnaryOp::CoerceMode { .. } => {
-                panic!("internal error: TupleField should have been removed before here")
+                panic!("internal error: CoerceMode should have been removed before here")
             }
-            UnaryOp::MustBeFinalized => {
+            UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", exp)
             }
             UnaryOp::InferSpecForLoopIter { .. } => {
@@ -821,9 +942,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let name = is_variant_ident(datatype, variant);
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
             }
-            UnaryOpr::TupleField { .. } => {
-                panic!("internal error: TupleField should have been removed before here")
-            }
             UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMin, _) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let name = Arc::new(I_LO.to_string());
@@ -848,7 +966,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 Arc::new(ExprX::Apply(
-                    variant_field_ident(datatype, variant, field),
+                    variant_field_ident(&encode_dt_as_path(datatype), variant, field),
                     Arc::new(vec![expr]),
                 ))
             }
@@ -934,40 +1052,48 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         exp_to_expr(ctx, rhs, expr_ctxt)?,
                     ]),
                 ),
+                BinaryOp::ArrayIndex => {
+                    let ts = match &*lhs.typ {
+                        TypX::Primitive(Primitive::Array, ts) if ts.len() == 2 => ts,
+                        _ => panic!("internal error: unexpected ArrayIndex type"),
+                    };
+                    let mut args: Vec<Expr> = ts.iter().map(typ_to_ids).flatten().collect();
+                    args.push(exp_to_expr(ctx, lhs, expr_ctxt)?);
+                    args.push(exp_to_expr(ctx, rhs, expr_ctxt)?);
+                    ExprX::Apply(str_ident(crate::def::ARRAY_INDEX), Arc::new(args))
+                }
                 // here the binary bitvector Ops are translated into the integer versions
                 // Similar to typ_invariant(), make obvious range according to bit-width
                 BinaryOp::Bitwise(bo, _) => {
                     let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
                     let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
 
-                    // These expects should succeed because we don't define any bitwise ops
-                    // for int or nat in the builtin lib.
-                    let width_left = bitwidth_from_type(&lhs.typ)
-                        .unwrap_or_else(|| panic!("expected bounded integer type {:?}", &lhs.typ));
-                    let width_right = bitwidth_from_type(&rhs.typ)
-                        .unwrap_or_else(|| panic!("expected bounded integer type {:?}", &rhs.typ));
+                    // For XOR, AND, OR, and SHR, the result of the operation should
+                    // always be in-bounds. We emit a clip which will trigger an axiom
+                    // in the prelude so our solver will know the clip is unnecessary.
+                    //
+                    // For SHL, the clip *is* meaningful.
 
-                    if width_left != width_right {
-                        return Err(error(
-                            &exp.span,
-                            format!(
-                                "error: argument bit-width does not match. Left: {}, Right: {}",
-                                width_left, width_right
-                            ),
-                        ));
-                    }
-                    let width_exp = bitwidth_to_exp(&width_left);
                     let fname = match bo {
-                        BitwiseOp::BitXor => crate::def::UINT_XOR,
-                        BitwiseOp::BitAnd => crate::def::UINT_AND,
-                        BitwiseOp::BitOr => crate::def::UINT_OR,
-                        BitwiseOp::Shl => crate::def::UINT_SHL,
-                        BitwiseOp::Shr => crate::def::UINT_SHR,
+                        BitwiseOp::BitXor => crate::def::BIT_XOR,
+                        BitwiseOp::BitAnd => crate::def::BIT_AND,
+                        BitwiseOp::BitOr => crate::def::BIT_OR,
+                        BitwiseOp::Shl(width, signed) => {
+                            // The clip (below) is based on the type so we need to make
+                            // sure that the clip is what we expected based on Shl's arguments
+                            if !check_bitwidth_typ_matches(&exp.typ, *width, *signed) {
+                                return Err(error(
+                                    &exp.span,
+                                    format!("Verus Internal Error: BitShl: type doesn't match"),
+                                ));
+                            }
+                            crate::def::BIT_SHL
+                        }
+                        BitwiseOp::Shr(_) => crate::def::BIT_SHR,
                     };
-                    let bit_expr = ExprX::Apply(
-                        Arc::new(fname.to_string()),
-                        Arc::new(vec![width_exp.clone(), box_lh, box_rh]),
-                    );
+                    let args = vec![box_lh, box_rh];
+                    let bit_expr = ExprX::Apply(Arc::new(fname.to_string()), Arc::new(args));
+
                     return clip_bitwise_result(bit_expr, exp);
                 }
                 _ => {
@@ -994,6 +1120,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                         }
                         BinaryOp::Bitwise(..) => unreachable!(),
                         BinaryOp::StrGetChar => unreachable!(),
+                        BinaryOp::ArrayIndex => unreachable!(),
                     };
                     ExprX::Binary(aop, lh, rh)
                 }
@@ -1022,7 +1149,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 }
                 air::ast_util::mk_let(&bs, &expr)
             }
-            BndX::Quant(quant, binders, trigs) => {
+            BndX::Quant(quant, binders, trigs, _) => {
                 let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let mut invs: Vec<Expr> = Vec::new();
                 for binder in binders.iter() {
@@ -1132,16 +1259,27 @@ struct LoopInfo {
     decrease: crate::sst::Exps,
 }
 
+enum ReasonForNoUnwind {
+    Function,
+    OpenInvariant(Span),
+}
+
+enum UnwindAir {
+    MayUnwind,
+    NoUnwind(ReasonForNoUnwind),
+    NoUnwindWhen(Expr),
+}
+
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
     may_be_used_in_old: HashSet<UniqueIdent>, // vars that might have a 'PRE' snapshot, needed for while loop generation
-    local_bv_shared: Vec<Decl>, // used in bv mode, fixed width uint variables have corresponding bv types
     commands: Vec<CommandsWithContext>,
     snapshot_count: u32, // Used to ensure unique Idents for each snapshot
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
     assign_map: AssignMap, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
     mask: MaskSet,         // set of invariants that are allowed to be opened
+    unwind: UnwindAir,
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
     static_prelude: Vec<Stmt>,
@@ -1207,7 +1345,7 @@ pub(crate) fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     Spanned::new(span.clone(), StmX::Assume(eq))
 }
 
-fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
+pub(crate) fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
     if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
 }
 
@@ -1293,14 +1431,16 @@ fn assume_other_fields_unchanged_inner(
         [f] if f.len() == 0 => Ok(vec![]),
         _ => {
             let mut updated_fields: BTreeMap<_, Vec<_>> = BTreeMap::new();
-            let FieldOpr { datatype, variant, field: _, get_variant: _, check: _ } = &updates[0][0];
+            let FieldOpr { datatype: dt, variant, field: _, get_variant: _, check: _ } =
+                &updates[0][0];
             for u in updates {
-                assert!(u[0].datatype == *datatype && u[0].variant == *variant);
+                assert!(u[0].datatype == *dt && u[0].variant == *variant);
                 updated_fields.entry(&u[0].field).or_insert(Vec::new()).push(u[1..].to_vec());
             }
-            let datatype_fields = &get_variant(&ctx.global.datatypes[datatype].1, variant).fields;
+            let datatype = &ctx.datatype_map[dt];
+            let datatype_fields = &get_variant(&datatype.x.variants, variant).fields;
             let mut box_unbox_eq: Vec<Expr> = Vec::new();
-            let dt =
+            let exps_for_fields =
                 vec_map_result(&**datatype_fields, |field: &Binder<(Typ, Mode, Visibility)>| {
                     let base_exp = if let TypX::Boxed(base_typ) = &*undecorate_typ(&base.typ) {
                         // TODO this replicates logic from poly, but factoring it out is currently tricky
@@ -1328,12 +1468,21 @@ fn assume_other_fields_unchanged_inner(
                     } else {
                         base.clone()
                     };
+
+                    let typ_args = typ_args_for_datatype_typ(&base_exp.typ);
+                    let typ = subst_typ_for_datatype(&datatype.x.typ_params, typ_args, &field.a.0);
+                    let typ = if crate::poly::typ_is_poly(ctx, &field.a.0) {
+                        crate::poly::coerce_typ_to_poly(ctx, &typ)
+                    } else {
+                        crate::poly::coerce_typ_to_native(ctx, &typ)
+                    };
+
                     let field_exp = SpannedTyped::new(
                         stm_span,
-                        &field.a.0,
+                        &typ,
                         ExpX::UnaryOpr(
                             UnaryOpr::Field(FieldOpr {
-                                datatype: datatype.clone(),
+                                datatype: dt.clone(),
                                 variant: variant.clone(),
                                 field: field.name.clone(),
                                 get_variant: false,
@@ -1361,7 +1510,7 @@ fn assume_other_fields_unchanged_inner(
                         Ok(vec![Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, old, new))])
                     }
                 })?;
-            Ok(dt.into_iter().flatten().chain(box_unbox_eq.into_iter()).collect())
+            Ok(exps_for_fields.into_iter().flatten().chain(box_unbox_eq.into_iter()).collect())
         }
     }
 }
@@ -1401,6 +1550,61 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 let error = error(&stm.span, description);
                 let filter = Some(fun_to_air_ident(&func.x.name));
                 stmts.push(Arc::new(StmtX::Assert(assert_id.clone(), error, filter, e_req)));
+            }
+
+            let callee_unwind_spec = func.x.unwind_spec_or_default();
+            let callee_never_unwinds = matches!(callee_unwind_spec, UnwindSpec::NoUnwind);
+            if !matches!(state.unwind, UnwindAir::MayUnwind)
+                && !callee_never_unwinds
+                && !ctx.checking_spec_preconditions()
+            {
+                let e1 = match &state.unwind {
+                    UnwindAir::MayUnwind => unreachable!(),
+                    UnwindAir::NoUnwind(_) => Arc::new(ExprX::Const(Constant::Bool(true))),
+                    UnwindAir::NoUnwindWhen(expr) => expr.clone(),
+                };
+                let e2 = match &callee_unwind_spec {
+                    UnwindSpec::MayUnwind => Arc::new(ExprX::Const(Constant::Bool(false))),
+                    UnwindSpec::NoUnwind => unreachable!(),
+                    UnwindSpec::NoUnwindWhen(_) => {
+                        let f_unwind = prefix_no_unwind_when(&fun_to_air_ident(&func.x.name));
+                        Arc::new(ExprX::Apply(f_unwind, req_args.clone()))
+                    }
+                };
+                let error = match &state.unwind {
+                    UnwindAir::MayUnwind => unreachable!(),
+                    UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
+                        &stm.span,
+                        "cannot show this call will not unwind, in function marked 'no_unwind'",
+                        "this call might unwind",
+                    ),
+                    UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
+                        error_with_label(
+                            &stm.span,
+                            "cannot show this call will not unwind",
+                            "this call might unwind",
+                        )
+                        .secondary_label(span, "unwinding is not allowed in this invariant block")
+                    }
+                    UnwindAir::NoUnwindWhen(_e) => error_with_label(
+                        &stm.span,
+                        "cannot show this call will not unwind, in function marked 'no_unwind'",
+                        "this call might unwind",
+                    ),
+                };
+                let error = if let UnwindSpec::NoUnwindWhen(e) = &callee_unwind_spec {
+                    error.secondary_label(
+                        &e.span,
+                        "this conditition needs to hold to show that the callee will not unwind",
+                    )
+                } else {
+                    error.secondary_label(
+                        &func.span,
+                        "perhaps you need to mark this function as 'no_unwind'?",
+                    )
+                };
+                let e = mk_implies(&e1, &e2);
+                stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
             }
 
             let callee_mask_set =
@@ -1513,7 +1717,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut ens_args: Vec<_> =
                 ens_typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
-            if func.x.has_return() {
+            if func.x.ens_has_return {
                 if let Some(Dest { dest, is_init }) = dest {
                     let var = suffix_local_unique_id(&get_loc_var(dest));
                     ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt)?);
@@ -1553,6 +1757,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 state.map_span(&stm, SpanKind::Full);
             }
             vec![Arc::new(StmtX::Assert(assert_id.clone(), error, None, air_expr))]
+        }
+        StmX::AssertCompute(..) => {
+            panic!("AssertCompute should be removed by sst_elaborate")
         }
         StmX::Return { base_error, ret_exp, inside_body, assert_id } => {
             let skip = if ctx.checking_spec_preconditions() {
@@ -1616,7 +1823,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
-        StmX::AssertQuery { typ_inv_vars, body, mode } => {
+        StmX::AssertQuery { typ_inv_exps: _, typ_inv_vars, body, mode } => {
             if ctx.debug {
                 unimplemented!("assert query is unsupported in debugger mode");
             }
@@ -1647,10 +1854,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                             .clone(),
                         stm.span.clone(),
                         "assert_nonlinear_by".to_string(),
-                        Arc::new(vec![
-                            mk_option_command("smt.arith.solver", "6"),
-                            Arc::new(CommandX::CheckValid(query)),
-                        ]),
+                        match ctx.global.solver {
+                            SmtSolver::Z3 => Arc::new(vec![
+                                mk_option_command("smt.arith.solver", "6"),
+                                Arc::new(CommandX::CheckValid(query)),
+                            ]),
+                            SmtSolver::Cvc5 =>
+                            // TODO: What cvc5 settings would help here?
+                            // TODO: Can we even adjust the settings at this point?
+                            {
+                                Arc::new(vec![Arc::new(CommandX::CheckValid(query))])
+                            }
+                        },
                         ProverChoice::Nonlinear,
                         true,
                     ));
@@ -1664,44 +1879,25 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             if ctx.debug {
                 unimplemented!("AssertBitVector is unsupported in debugger mode");
             }
-            let bv_expr_ctxt = &BvExprCtxt::new();
 
-            let requires_air: Vec<Expr> =
-                vec_map_result(requires, |e| bv_exp_to_expr(ctx, e, bv_expr_ctxt))?;
+            let queries = bv_to_queries(ctx, requires, ensures)?;
 
-            let ensures_air: Vec<(Span, Expr)> =
-                vec_map_result(ensures, |e| match bv_exp_to_expr(ctx, e, bv_expr_ctxt) {
-                    Ok(ens_air) => Ok((e.span.clone(), ens_air)),
-                    Err(vir_err) => Err(vir_err.clone()),
-                })?;
-
-            let mut local = state.local_bv_shared.clone();
-            for req in requires_air.iter() {
-                local.push(mk_unnamed_axiom(req.clone()));
+            for (query, error_desc) in queries.into_iter() {
+                let mut bv_commands = mk_bitvector_option(&ctx.global.solver);
+                bv_commands.push(Arc::new(CommandX::CheckValid(query)));
+                state.commands.push(CommandsWithContextX::new(
+                    ctx.fun
+                        .as_ref()
+                        .expect("asserts are expected to be in a function")
+                        .current_fun
+                        .clone(),
+                    stm.span.clone(),
+                    error_desc,
+                    Arc::new(bv_commands),
+                    ProverChoice::BitVector,
+                    true,
+                ));
             }
-
-            let mut air_body: Vec<Stmt> = Vec::new();
-            for (span, ens) in ensures_air.iter() {
-                let error = error(span, "bitvector ensures not satisfied");
-                let ens_stmt = StmtX::Assert(None, error, None, ens.clone());
-                air_body.push(Arc::new(ens_stmt));
-            }
-            let assertion = one_stmt(air_body);
-            let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-            let mut bv_commands = mk_bitvector_option();
-            bv_commands.push(Arc::new(CommandX::CheckValid(query)));
-            state.commands.push(CommandsWithContextX::new(
-                ctx.fun
-                    .as_ref()
-                    .expect("asserts are expected to be in a function")
-                    .current_fun
-                    .clone(),
-                stm.span.clone(),
-                "assert_bitvector_by".to_string(),
-                Arc::new(bv_commands),
-                ProverChoice::BitVector,
-                true,
-            ));
             vec![]
         }
         StmX::Assume(expr) => {
@@ -1845,8 +2041,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // All closure funcs are assumed to have mask set 'full'
             let mut mask = MaskSet::full();
             std::mem::swap(&mut state.mask, &mut mask);
+            // Right now all closures are assumed to unwind
+            let mut unwind = UnwindAir::MayUnwind;
+            std::mem::swap(&mut state.unwind, &mut unwind);
+
             let mut body_stmts = stm_to_stmts(ctx, state, body)?;
             std::mem::swap(&mut state.mask, &mut mask);
+            std::mem::swap(&mut state.unwind, &mut unwind);
 
             stmts.append(&mut body_stmts);
 
@@ -2204,9 +2405,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // the same invariant inside
             let mut inner_mask =
                 state.mask.remove_element(namespace_exp.span.clone(), namespace_expr);
+            // Disallow unwinding inside the invariant block
+            let mut inner_unwind =
+                UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(stm.span.clone()));
             swap(&mut state.mask, &mut inner_mask);
+            swap(&mut state.unwind, &mut inner_unwind);
             stmts.append(&mut stm_to_stmts(ctx, state, body_stm)?);
             swap(&mut state.mask, &mut inner_mask);
+            swap(&mut state.unwind, &mut inner_unwind);
 
             stmts
         }
@@ -2254,10 +2460,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 state.push_scope();
                 state.map_span(&stm, SpanKind::Start);
             }
-            let stmts: Vec<Stmt> = vec_map_result(stms, |s| stm_to_stmts(ctx, state, s))?
-                .into_iter()
-                .flatten()
-                .collect();
+            let mut stmts: Vec<Stmt> = Vec::new();
+            for s in stms.iter() {
+                stmts.extend(stm_to_stmts(ctx, state, s)?);
+            }
             if ctx.debug {
                 state.pop_scope();
             }
@@ -2296,6 +2502,9 @@ fn string_index_to_air(cnst: &Expr, index: usize, value: char) -> Expr {
 }
 
 fn string_indices_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
+    if lit.len() == 0 {
+        return Arc::new(ExprX::Const(Constant::Bool(true)));
+    }
     let cnst = str_to_const_str(ctx, lit.clone());
     let mut exprs = Vec::new();
     for (i, c) in lit.chars().enumerate() {
@@ -2370,45 +2579,56 @@ pub(crate) fn body_stm_to_air(
     func_span: &Span,
     typ_params: &Idents,
     typ_bounds: &crate::ast::GenericBounds,
-    params: &Params,
-    function_sst: &FunctionSst,
+    params: &Pars,
+    func_check_sst: &FuncCheckSst,
     hidden: &Vec<Fun>,
     is_integer_ring: bool,
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
-    let FunctionSst { reqs, post_condition, mask_set, body: stm, local_decls, statics } =
-        function_sst;
+    let FuncCheckSst { reqs, post_condition, mask_set, body: stm, local_decls, statics, unwind } =
+        func_check_sst;
+
+    if is_bit_vector_mode {
+        if is_integer_ring {
+            panic!("Error: integer_ring and bit_vector should not be used together");
+        }
+
+        let queries = bv_to_queries(ctx, reqs, &post_condition.ens_exps)?;
+        let mut commands = vec![];
+
+        for (query, error_desc) in queries.into_iter() {
+            let mut bv_commands = mk_bitvector_option(&ctx.global.solver);
+            bv_commands.push(Arc::new(CommandX::CheckValid(query)));
+            commands.push(CommandsWithContextX::new(
+                ctx.fun.as_ref().expect("function expected here").current_fun.clone(),
+                func_span.clone(),
+                error_desc,
+                Arc::new(bv_commands),
+                ProverChoice::BitVector,
+                true,
+            ));
+        }
+
+        return Ok((commands, vec![]));
+    }
 
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
     // Others are private to each query.
     let mut local_shared: Vec<Decl> = Vec::new();
-    let mut local_bv_shared: Vec<Decl> = Vec::new();
 
     for x in typ_params.iter() {
         for (x, t) in crate::def::suffix_typ_param_ids_types(x) {
             local_shared.push(Arc::new(DeclX::Const(x.lower(), str_typ(t))));
         }
     }
-    for decl in local_decls {
-        local_shared.push(if decl.mutable {
+    for decl in local_decls.iter() {
+        local_shared.push(if decl.kind.is_mutable() {
             Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         } else {
             Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         });
-        // for assert_bit_vector/bit_vector function, only allow integer and boolean types
-        if let Some(width) = bitwidth_from_type(&decl.typ) {
-            let width = width.to_exact(&ctx.global.arch);
-            if let Some(width) = width {
-                let typ = bv_typ(width);
-                local_bv_shared
-                    .push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
-            }
-        } else if let TypX::Bool = *decl.typ {
-            local_bv_shared
-                .push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), bool_typ())));
-        }
     }
 
     set_fuel(ctx, &mut local_shared, hidden);
@@ -2424,7 +2644,7 @@ pub(crate) fn body_stm_to_air(
             has_mut_params = true;
         }
     }
-    for decl in local_decls {
+    for decl in local_decls.iter() {
         declared.insert(decl.ident.clone(), decl.typ.clone());
     }
 
@@ -2432,15 +2652,36 @@ pub(crate) fn body_stm_to_air(
 
     let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
     for ens in post_condition.ens_exps.iter() {
-        let e = if is_bit_vector_mode {
-            let bv_expr_ctxt = &BvExprCtxt::new();
-            bv_exp_to_expr(ctx, &ens, bv_expr_ctxt)?
-        } else {
-            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
-            exp_to_expr(ctx, &ens, expr_ctxt)?
-        };
+        let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+        let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
         ens_exprs.push((ens.span.clone(), e));
     }
+
+    let f_mask_singletons =
+        |v: &Vec<MaskSingleton<Exp>>| -> Result<Vec<MaskSingleton<Expr>>, VirErr> {
+            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+            let mut v2: Vec<MaskSingleton<Expr>> = Vec::new();
+            for m in v.iter() {
+                let expr = exp_to_expr(ctx, &m.expr, expr_ctxt)?;
+                v2.push(MaskSingleton { expr, span: m.span.clone() });
+            }
+            Ok(v2)
+        };
+    let mask_air = MaskSet {
+        base: mask_set.base.clone(),
+        plus: f_mask_singletons(&mask_set.plus)?,
+        minus: f_mask_singletons(&mask_set.minus)?,
+    };
+
+    let unwind_air = match unwind {
+        UnwindSst::MayUnwind => UnwindAir::MayUnwind,
+        UnwindSst::NoUnwind => UnwindAir::NoUnwind(ReasonForNoUnwind::Function),
+        UnwindSst::NoUnwindWhen(exp) => {
+            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+            let e = exp_to_expr(ctx, &exp, expr_ctxt)?;
+            UnwindAir::NoUnwindWhen(e)
+        }
+    };
 
     let mut may_be_used_in_old = HashSet::<UniqueIdent>::new();
     for param in params.iter() {
@@ -2449,8 +2690,7 @@ pub(crate) fn body_stm_to_air(
         }
     }
 
-    let mut local =
-        if !is_bit_vector_mode { local_shared.clone() } else { local_bv_shared.clone() };
+    let mut local = local_shared.clone();
     for e in crate::traits::trait_bounds_to_air(ctx, typ_bounds) {
         // The outer query already has this in reqs, but inner queries need it separately:
         local_shared.push(Arc::new(DeclX::Axiom(air::ast::Axiom { named: None, expr: e })));
@@ -2459,13 +2699,13 @@ pub(crate) fn body_stm_to_air(
     let mut state = State {
         local_shared,
         may_be_used_in_old,
-        local_bv_shared,
         commands: Vec::new(),
         snapshot_count: 0,
         sids: vec![initial_sid.clone()],
         snap_map: Vec::new(),
         assign_map: indexmap::IndexMap::new(),
-        mask: mask_set.clone(),
+        mask: mask_air,
+        unwind: unwind_air,
         post_condition_info: PostConditionInfo {
             dest: post_condition.dest.clone(),
             ens_exprs,
@@ -2504,7 +2744,7 @@ pub(crate) fn body_stm_to_air(
 
     let assertion = one_stmt(stmts);
 
-    if !is_bit_vector_mode && !is_integer_ring {
+    if !is_integer_ring {
         for param in params.iter() {
             let typ_inv = typ_invariant(ctx, &param.x.typ, &ident_var(&param.x.name.lower()));
             if let Some(expr) = typ_inv {
@@ -2514,20 +2754,12 @@ pub(crate) fn body_stm_to_air(
     }
 
     for req in reqs.iter() {
-        let e = if is_bit_vector_mode {
-            let bv_expr_ctxt = &BvExprCtxt::new();
-            bv_exp_to_expr(ctx, &req, bv_expr_ctxt)?
-        } else {
-            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::BodyPre);
-            exp_to_expr(ctx, &req, expr_ctxt)?
-        };
+        let expr_ctxt = &ExprCtxt::new_mode(ExprMode::BodyPre);
+        let e = exp_to_expr(ctx, &req, expr_ctxt)?;
         local.push(mk_unnamed_axiom(e));
     }
 
     if is_integer_ring {
-        if is_bit_vector_mode {
-            panic! {"Error: integer_ring and bit_vector should not be used together"}
-        };
         #[cfg(feature = "singular")]
         {
             // parameters, requires, ensures to Singular Query
@@ -2588,9 +2820,20 @@ pub(crate) fn body_stm_to_air(
     } else {
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
         let commands = if is_nonlinear {
-            vec![mk_option_command("smt.arith.solver", "6"), Arc::new(CommandX::CheckValid(query))]
+            match ctx.global.solver {
+                SmtSolver::Z3 => vec![
+                    mk_option_command("smt.arith.solver", "6"),
+                    Arc::new(CommandX::CheckValid(query)),
+                ],
+                SmtSolver::Cvc5 =>
+                // TODO: What cvc5 settings would help here?
+                // TODO: Can we even adjust the settings at this point?
+                {
+                    vec![Arc::new(CommandX::CheckValid(query))]
+                }
+            }
         } else if is_bit_vector_mode {
-            let mut bv_commands = mk_bitvector_option();
+            let mut bv_commands = mk_bitvector_option(&ctx.global.solver);
             bv_commands.push(Arc::new(CommandX::CheckValid(query)));
             bv_commands
         } else {
@@ -2601,14 +2844,8 @@ pub(crate) fn body_stm_to_air(
             func_span.clone(),
             "function body check".to_string(),
             Arc::new(commands),
-            if is_nonlinear {
-                ProverChoice::Nonlinear
-            } else if is_bit_vector_mode {
-                ProverChoice::BitVector
-            } else {
-                ProverChoice::DefaultProver
-            },
-            is_integer_ring || is_bit_vector_mode || is_nonlinear,
+            if is_nonlinear { ProverChoice::Nonlinear } else { ProverChoice::DefaultProver },
+            is_integer_ring || is_nonlinear,
         ));
     }
     Ok((state.commands, state.snap_map))

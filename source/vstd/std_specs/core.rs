@@ -75,6 +75,16 @@ pub trait ExIterStep: Clone + PartialOrd + Sized {
     type ExternalTraitSpecificationFor: core::iter::Step;
 }
 
+#[verifier::external_trait_specification]
+pub trait ExBorrow<Borrowed> where Borrowed: ?Sized {
+    type ExternalTraitSpecificationFor: core::borrow::Borrow<Borrowed>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExStructural {
+    type ExternalTraitSpecificationFor: Structural;
+}
+
 #[verifier::external_fn_specification]
 pub fn ex_swap<T>(a: &mut T, b: &mut T)
     ensures
@@ -116,8 +126,7 @@ pub fn ex_iter_into_iter<I: Iterator>(i: I) -> (r: I)
 pub struct ExDuration(core::time::Duration);
 
 #[verifier::external_type_specification]
-#[verifier::external_body]
-#[verifier::reject_recursive_types_in_ground_variants(V)]
+#[verifier::accept_recursive_types(V)]
 pub struct ExPhantomData<V: ?Sized>(core::marker::PhantomData<V>);
 
 #[verifier::external_fn_specification]

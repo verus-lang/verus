@@ -1,5 +1,5 @@
 use crate::ast::CommandX;
-use crate::context::ValidityResult;
+use crate::context::{SmtSolver, ValidityResult};
 use crate::messages::Reporter;
 #[allow(unused_imports)]
 use crate::parser::Parser;
@@ -12,7 +12,8 @@ use sise::Node;
 fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {
     let message_interface = std::sync::Arc::new(crate::messages::AirMessageInterface {});
     let reporter = Reporter {};
-    let mut air_context = crate::context::Context::new(message_interface.clone());
+    // TODO: Support testing with cvc5 too
+    let mut air_context = crate::context::Context::new(message_interface.clone(), SmtSolver::Z3);
     air_context.set_z3_param("air_recommended_options", "true");
     match Parser::new(message_interface.clone()).nodes_to_commands(&nodes) {
         Ok(commands) => {
@@ -1418,6 +1419,130 @@ fn no_break3() {
                 ))
                 (assert (or (= x 10) (= x 20) (= x 32) (= x 36) (= x 45)))
             )
+        )
+    )
+}
+
+#[test]
+fn yes_array1() {
+    yes!(
+        (check-valid
+            (assert (=
+                20
+                (apply Int
+                    (array 10 20 30)
+                    1
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn untyped_array1() {
+    untyped!(
+        (check-valid
+            (assert (=
+                10
+                (apply Int
+                    (array 10 true 30)
+                    1
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn no_array1() {
+    no!(
+        (check-valid
+            (assert (=
+                10
+                (apply Int
+                    (array 10 20 30)
+                    2
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn yes_array2() {
+    yes!(
+        (check-valid
+            (assert (=
+                6
+                (apply Int
+                    (apply Fun
+                        (lambda ((x Int) (y Int))
+                            (array 10 20 (+ x y 1))
+                        )
+                        2
+                        3
+                    )
+                    2
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn no_array2() {
+    no!(
+        (check-valid
+            (assert (=
+                5
+                (apply Int
+                    (apply Fun
+                        (lambda ((x Int) (y Int))
+                            (array 10 20 (+ x y 1))
+                        )
+                        2
+                        3
+                    )
+                    2
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn yes_array3() {
+    yes!(
+        (check-valid
+            (assert
+                (=
+                    (array (+ (- 10 (+ 2 2)) 5))
+                    (array (+ (- 10 4) 5))
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn no_array3() {
+    no!(
+        (check-valid
+            (assert
+                (=
+                    (array (+ (- 10 (+ 2 3)) 5))
+                    (array (+ (- 10 4) 5))
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_empty_array() {
+    yes!(
+        (check-valid
+            (assert (= (array) (array)))
         )
     )
 }

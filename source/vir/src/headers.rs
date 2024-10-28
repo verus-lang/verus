@@ -1,6 +1,6 @@
 use crate::ast::{
     Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind,
-    LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwrapParameter, VarIdent, VirErr,
+    LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent, VirErr,
 };
 use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
@@ -17,12 +17,14 @@ pub struct Header {
     pub recommend: Exprs,
     pub ensure_id_typ: Option<(VarIdent, Typ)>,
     pub ensure: Exprs,
+    pub returns: Option<Expr>,
     pub invariant_except_break: Exprs,
     pub invariant: Exprs,
     pub decrease: Exprs,
     pub decrease_when: Option<Expr>,
     pub decrease_by: Option<Fun>,
     pub invariant_mask: Option<MaskSpec>,
+    pub unwind_spec: Option<UnwindSpec>,
     pub extra_dependencies: Vec<Fun>,
 }
 
@@ -32,6 +34,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
+    let mut returns: Option<Expr> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant_except_break: Option<Exprs> = None;
     let mut invariant: Option<Exprs> = None;
@@ -39,6 +42,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut decrease_when: Option<Expr> = None;
     let mut decrease_by: Option<Fun> = None;
     let mut invariant_mask: Option<MaskSpec> = None;
+    let mut unwind_spec: Option<UnwindSpec> = None;
     let mut n = 0;
     let mut unwrap_parameter_allowed = true;
     for stmt in block.iter() {
@@ -85,6 +89,12 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             ));
                         }
                         ensure = Some((id_typ.clone(), es.clone()));
+                    }
+                    HeaderExprX::Returns(e) => {
+                        if returns.is_some() {
+                            return Err(error(&stmt.span, "only one call to returns allowed"));
+                        }
+                        returns = Some(e.clone());
                     }
                     HeaderExprX::InvariantExceptBreak(es) => {
                         if invariant_except_break.is_some() {
@@ -161,6 +171,21 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         }
                         invariant_mask = Some(MaskSpec::InvariantOpensExcept(es.clone()));
                     }
+                    HeaderExprX::NoUnwind | HeaderExprX::NoUnwindWhen(_) => {
+                        match unwind_spec {
+                            None => {}
+                            _ => {
+                                return Err(error(&stmt.span, "only one unwind spec allowed"));
+                            }
+                        }
+                        unwind_spec = match &**header {
+                            HeaderExprX::NoUnwind => Some(UnwindSpec::NoUnwind),
+                            HeaderExprX::NoUnwindWhen(expr) => {
+                                Some(UnwindSpec::NoUnwindWhen(expr.clone()))
+                            }
+                            _ => unreachable!(),
+                        };
+                    }
                 },
                 _ => break,
             },
@@ -189,12 +214,14 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         recommend,
         ensure_id_typ,
         ensure,
+        returns,
         invariant_except_break,
         invariant,
         decrease,
         decrease_when,
         decrease_by,
         invariant_mask,
+        unwind_spec,
         extra_dependencies,
     })
 }
@@ -344,14 +371,16 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         typ_bounds,
         params,
         ret,
+        ens_has_return: _,
         require,
         ensure,
+        returns,
         decrease,
         decrease_when,
         decrease_by,
-        broadcast_forall: _,
         fndef_axioms: _,
         mask_spec,
+        unwind_spec,
         item_kind: _,
         publish: _,
         attrs: _,
@@ -412,10 +441,12 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
     methodx.ret = ret;
     methodx.require = require;
     methodx.ensure = ensure;
+    methodx.returns = returns;
     methodx.decrease = decrease;
     methodx.decrease_when = decrease_when;
     methodx.decrease_by = decrease_by;
     methodx.mask_spec = mask_spec;
+    methodx.unwind_spec = unwind_spec;
     methodx.extra_dependencies = extra_dependencies;
     assert!(methodx.body.is_none());
     Ok(crate::def::Spanned::new(method.span.clone(), methodx))

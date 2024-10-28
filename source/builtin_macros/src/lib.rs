@@ -14,6 +14,8 @@ use synstructure::{decl_attribute, decl_derive};
 #[macro_use]
 mod syntax;
 mod atomic_ghost;
+mod attr_block_trait;
+mod attr_rewrite;
 mod calc_macro;
 mod enum_synthesize;
 mod fndecl;
@@ -35,6 +37,109 @@ pub fn verus_enum_synthesize(
 ) -> proc_macro::TokenStream {
     enum_synthesize::attribute_verus_enum_synthesize(&cfg_erase(), attr, input)
 }
+
+/*** Verus small macro definition for executable items ***/
+
+// If no #[verys_verify] on the item, it is verifier::external by default.
+// When compiling code with verus:
+// #[verus_verify] annotates the item with verifier::verify
+// #[verus_verify(external_body)] annotates the item with verifier::external_body
+// When compiling code with standard rust tool, the item has no verifier annotation.
+#[proc_macro_attribute]
+pub fn verus_verify(
+    args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let args: syn::AttributeArgs = syn::parse_macro_input!(args as syn::AttributeArgs);
+    attr_rewrite::rewrite_verus_attribute(&cfg_erase(), args, input.into()).into()
+}
+
+// The attribute should work together with verus_verify attribute.
+#[proc_macro_attribute]
+pub fn requires(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::rewrite(
+        &cfg_erase(),
+        attr_rewrite::SpecAttributeKind::Requires,
+        attr.into(),
+        input.into(),
+    )
+    .expect("Misuse of #[requires()].")
+    .into()
+}
+
+// The attribute should work together with verus_verify attribute.
+#[proc_macro_attribute]
+pub fn ensures(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::rewrite(
+        &cfg_erase(),
+        attr_rewrite::SpecAttributeKind::Ensures,
+        attr.into(),
+        input.into(),
+    )
+    .expect("Misuse of #[ensures()].")
+    .into()
+}
+
+// The attribute should work together with verus_verify attribute.
+#[proc_macro_attribute]
+pub fn decreases(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::rewrite(
+        &cfg_erase(),
+        attr_rewrite::SpecAttributeKind::Decreases,
+        attr.into(),
+        input.into(),
+    )
+    .expect("Misuse of #[decreases()].")
+    .into()
+}
+
+// The attribute should work together with verus_verify attribute.
+#[proc_macro_attribute]
+pub fn invariant(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::rewrite(
+        &cfg_erase(),
+        attr_rewrite::SpecAttributeKind::Invariant,
+        attr.into(),
+        input.into(),
+    )
+    .expect("Misuse of #[invariant()]")
+    .into()
+}
+
+// The attribute should work together with verus_verify attribute.
+#[proc_macro_attribute]
+pub fn invariant_except_break(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::rewrite(
+        &cfg_erase(),
+        attr_rewrite::SpecAttributeKind::InvariantExceptBreak,
+        attr.into(),
+        input.into(),
+    )
+    .expect("Misuse of #[invariant_except_break()]")
+    .into()
+}
+
+#[proc_macro]
+pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    attr_rewrite::proof_rewrite(cfg_erase(), input.into()).into()
+}
+
+/*** End of verus small macro definition for executable items ***/
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum EraseGhost {
@@ -162,6 +267,32 @@ pub(crate) fn cfg_verify_core() -> bool {
     false
 }
 
+#[cfg(verus_keep_ghost)]
+pub(crate) fn cfg_verify_vstd() -> bool {
+    static CFG_VERIFY_VSTD: OnceLock<bool> = OnceLock::new();
+    *CFG_VERIFY_VSTD.get_or_init(|| {
+        let ts: proc_macro::TokenStream = quote::quote! { ::core::module_path!() }.into();
+        let str_ts = match ts.expand_expr() {
+            Ok(name) => name.to_string(),
+            _ => {
+                panic!("cfg_verify_core call failed")
+            }
+        };
+        str_ts.starts_with("\"vstd::")
+    })
+}
+
+// For not(verus_keep_ghost), we can't use the ideal implementation (above). The following works
+// as long as IS_VSTD is set whenever it's necessary. If we fail to set it, then
+// the CI should fail to build Verus.
+
+static IS_VSTD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(not(verus_keep_ghost))]
+pub(crate) fn cfg_verify_vstd() -> bool {
+    IS_VSTD.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// verus_proof_macro_exprs!(f!(exprs)) applies verus syntax to transform exprs into exprs',
 /// then returns f!(exprs'),
 /// where exprs is a sequence of expressions separated by ",", ";", and/or "=>".
@@ -202,6 +333,12 @@ pub fn verus_proof_macro_explicit_exprs(input: proc_macro::TokenStream) -> proc_
 
 #[proc_macro]
 pub fn struct_with_invariants(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    struct_decl_inv::struct_decl_inv(input)
+}
+
+#[proc_macro]
+pub fn struct_with_invariants_vstd(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    IS_VSTD.store(true, std::sync::atomic::Ordering::Relaxed);
     struct_decl_inv::struct_decl_inv(input)
 }
 

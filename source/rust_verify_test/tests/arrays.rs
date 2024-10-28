@@ -120,7 +120,29 @@ test_verify_one_file! {
             assert(x.view().len() == 6);
             assert(x.view()[0] == 12); // FAILS
         }
-    } => Err(err) => assert_fails(err, 1)
+
+        fn test4() {
+            let a1: [u8; 3] = [10, 20, 30];
+            let a2: [u8; 3] = [10, 20, 40];
+            assert(a1 != a2);
+            assert(a1@ != a2@);
+            assert(a1@.contains(30));
+            assert(a2@.contains(30)); // FAILS
+        }
+
+        proof fn test5() {
+            let s1: Seq<int> = [10, 20, 30]@;
+            let s2: Seq<int> = [10, 20, 40]@;
+            assert(s1 != s2);
+            assert(s1 == s2); // FAILS
+        }
+
+        proof fn test6() {
+            let s: Seq<int> = [10, 20, 30]@;
+            assert(s.contains(30));
+            assert(s.contains(40)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file! {
@@ -132,11 +154,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_array_literals_spec_fn_unsupported_1 verus_code! {
+    #[test] test_array_literals_spec_fn_supported_1 verus_code! {
         spec fn test() -> [u64; 3] {
             [3, 4, 5]
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected pure mathematical expression")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -193,6 +215,22 @@ test_verify_one_file! {
             assert(x.view().len() == 7); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    // https://github.com/verus-lang/verus/issues/1236
+    #[test] test_array_type_id verus_code! {
+        use vstd::prelude::*;
+        struct X;
+        fn test2<'a>(p: &'a Option<[X; 75]>) -> (res: &'a [X; 75])
+            requires
+                p.is_some()
+            ensures
+                Some(*res) == p
+        {
+            p.as_ref().unwrap()
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

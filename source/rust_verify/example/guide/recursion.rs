@@ -2,6 +2,7 @@
 use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
+use vstd::prelude::*;
 
 verus! {
 
@@ -430,6 +431,36 @@ fn test_odd() {
 }
 // ANCHOR_END: even2
 }
+
+// ANCHOR: example_decreases_to
+proof fn example_decreases_to(s: Seq<int>)
+    requires s.len() == 5
+{
+    assert(decreases_to!(8int => 4int));
+
+    // fails: can't decrease to negative number
+    // assert(decreases_to!(8 => -2));
+
+    // Comma-separated elements are treated lexicographically:
+    assert(decreases_to!(12int, 8int, 1int => 12int, 4int, 50000int));
+
+    // Datatypes decrease-to their fields:
+    let x = Some(8int);
+    assert(decreases_to!(x => x->0));
+
+    let y = (true, false);
+    assert(decreases_to!(y => y.0));
+
+    // fails: tuples are not treated lexicographically
+    // assert(decreases_to!((20, 9) => (11, 15)));
+
+    // sequence decreases-to an element of the sequence
+    assert(decreases_to!(s => s[2]));
+
+    // sequence decreases-to a subrange of the sequence
+    assert(decreases_to!(s => s.subrange(1, 3)));
+}
+// ANCHOR_END: example_decreases_to
 
 fn main() {
 }

@@ -1,12 +1,12 @@
 use crate::attributes::get_verifier_attrs;
 use crate::context::{BodyCtxt, Context};
-use crate::rust_to_vir::ExternalInfo;
+use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, unsupported_err_span};
 use crate::verus_items::{self, BuiltinTypeItem, RustItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::{BindingMode, ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
-use rustc_hir::{GenericParam, Generics, HirId, QPath, Ty};
+use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::fold::BoundVarReplacerDelegate;
 use rustc_middle::ty::TraitPredicate;
@@ -14,7 +14,7 @@ use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
-    ConstKind, GenericArgKind, GenericArgsRef, ParamConst, TypeFoldable, TypeFolder,
+    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, ParamConst, TypeFoldable, TypeFolder,
     TypeSuperFoldable, TypeVisitableExt, ValTree,
 };
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
@@ -24,8 +24,8 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    GenericBoundX, Idents, ImplPath, IntRange, Path, PathX, Primitive, Typ, TypX, Typs, VarIdent,
-    VirErr, VirErrAs,
+    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Path, PathX, Primitive,
+    Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -174,7 +174,7 @@ pub(crate) fn def_id_to_datatype<'tcx, 'hir>(
     typ_args: Typs,
     impl_paths: vir::ast::ImplPaths,
 ) -> TypX {
-    TypX::Datatype(def_id_to_vir_path(tcx, verus_items, def_id), typ_args, impl_paths)
+    TypX::Datatype(Dt::Path(def_id_to_vir_path(tcx, verus_items, def_id)), typ_args, impl_paths)
 }
 
 pub(crate) fn no_body_param_to_var<'tcx>(ident: &Ident) -> VarIdent {
@@ -431,19 +431,19 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
     // REVIEW: do we need this?
     // let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
 
-    // Note: a worklist of impl ids might be easier to implement.
-    // It would be nice simply because the number of impls is easily boundable.
-    //
-    // I'm not sure if it's sound, though. It might be possible for the same impl
-    // to show up multiple times, but with different predicates that result in different
-    // impls once you start nesting?
-    // So I'm implementing this with a predicate worklist to be safe.
+    // We traverse all trait bounds that need to be instantiated, and the trait bounds
+    // needed to satisfy those trait bounds, and so on. We traverse breadth-first.
+    // Our goal is to just to collect all the impl paths, but a generic trait impl
+    // might get reached multiple times for different instantiations. We need to process
+    // each of these instantiations independently, since each one might lead to different
+    // impl instantiatons. Thus, the worklist is over predicates (i.e., specific trait bounds)
+    // not impls.
 
     let mut predicate_worklist: Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)> = clauses;
 
     let mut idx = 0;
     while idx < predicate_worklist.len() {
-        if idx == 1000 {
+        if idx == 100000 {
             panic!("get_impl_paths nesting depth exceeds 1000");
         }
 
@@ -461,6 +461,10 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
             };
 
             let candidate = tcx.codegen_select_candidate((param_env, trait_refs));
+            let candidate = candidate.or_else(|_| {
+                let trait_refs = tcx.normalize_erasing_regions(param_env, trait_refs);
+                tcx.codegen_select_candidate((param_env, trait_refs))
+            });
             if let Ok(impl_source) = candidate {
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
                     let impl_path = def_id_to_vir_path(tcx, verus_items, u.impl_def_id);
@@ -563,6 +567,21 @@ pub(crate) fn get_range(typ: &Typ) -> IntRange {
     }
 }
 
+pub(crate) fn bitwidth_and_signedness_of_integer_type<'tcx>(
+    verus_items: &crate::verus_items::VerusItems,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> (Option<IntegerTypeBitwidth>, bool) {
+    match mk_range(verus_items, &ty) {
+        IntRange::U(w) => (Some(IntegerTypeBitwidth::Width(w)), false),
+        IntRange::I(w) => (Some(IntegerTypeBitwidth::Width(w)), true),
+        IntRange::USize => (Some(IntegerTypeBitwidth::ArchWordSize), false),
+        IntRange::ISize => (Some(IntegerTypeBitwidth::ArchWordSize), true),
+        IntRange::Nat => (None, false),
+        IntRange::Int => (None, true),
+        IntRange::Char => panic!("bitwidth_and_signedness_of_integer_type did not expect char"),
+    }
+}
+
 pub(crate) fn mk_range<'tcx>(
     verus_items: &crate::verus_items::VerusItems,
     ty: &rustc_middle::ty::Ty<'tcx>,
@@ -593,21 +612,22 @@ pub(crate) fn mk_range<'tcx>(
     }
 }
 
-pub(crate) fn ty_is_global_allocator<'tcx>(
-    tcx: TyCtxt<'tcx>,
+pub(crate) fn is_integer_ty<'tcx>(
+    verus_items: &crate::verus_items::VerusItems,
     ty: &rustc_middle::ty::Ty<'tcx>,
 ) -> bool {
     match ty.kind() {
-        TyKind::Adt(AdtDef(adt_def_data), args) => {
+        TyKind::Adt(AdtDef(adt_def_data), _) => {
             let did = adt_def_data.did;
-            let rust_item = verus_items::get_rust_item(tcx, did);
-            if let Some(RustItem::AllocGlobal) = rust_item {
-                assert!(args.len() == 0);
-                true
-            } else {
-                false
+            let verus_item = verus_items.id_to_name.get(&did);
+            match verus_item {
+                Some(VerusItem::BuiltinType(BuiltinTypeItem::Int)) => true,
+                Some(VerusItem::BuiltinType(BuiltinTypeItem::Nat)) => true,
+                _ => false,
             }
         }
+        TyKind::Uint(_) => true,
+        TyKind::Int(_) => true,
         _ => false,
     }
 }
@@ -652,60 +672,73 @@ pub(crate) fn mid_ty_simplify<'tcx>(
 // (This is meant to be a quick prefilter; if it incorrectly returns true, we may end up
 // dropping the results of trait_impl_to_vir, which is ok.)
 pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
-    tcx: TyCtxt<'tcx>,
+    ctxt: &Context<'tcx>,
+    ty: &rustc_middle::ty::Ty<'tcx>,
+    external_info: &mut ExternalInfo,
+) -> bool {
+    match ty.kind() {
+        TyKind::Bool => true,
+        TyKind::Uint(_) | TyKind::Int(_) => true,
+        TyKind::Char => true,
+        TyKind::Ref(_, _, rustc_ast::Mutability::Not) => true,
+        TyKind::Param(_) => true,
+        TyKind::Tuple(_) => true,
+        TyKind::Slice(_) => true,
+        TyKind::RawPtr(_, _) => true,
+        TyKind::Array(..) => true,
+        TyKind::Closure(..) => true,
+        TyKind::FnDef(..) => true,
+        TyKind::Str => true,
+
+        // HACK for now:
+        // See https://github.com/rust-lang/rust/issues/64715
+        // See https://github.com/rust-lang/rust/blob/master/library/core/src/convert/mod.rs
+        // The "impl<T> From<!> for T" causes a real conflict with "impl<T> From<T> for T",
+        // so don't auto-import ! for now.
+        TyKind::Never => false,
+
+        TyKind::Alias(rustc_middle::ty::AliasKind::Opaque, _) => false,
+        TyKind::Alias(rustc_middle::ty::AliasKind::Weak, _) => false,
+        TyKind::Float(..) => false,
+        TyKind::Foreign(..) => false,
+        TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => false,
+        TyKind::FnPtr(..) => false,
+        TyKind::Dynamic(..) => false,
+        TyKind::Coroutine(..) => false,
+        TyKind::CoroutineWitness(..) => false,
+        TyKind::Bound(..) => false,
+        TyKind::Placeholder(..) => false,
+        TyKind::Infer(..) => false,
+        TyKind::Error(..) => false,
+
+        TyKind::Adt(rustc_middle::ty::AdtDef(adt_def_data), _) => {
+            external_info.has_type_id(ctxt, adt_def_data.did)
+        }
+        TyKind::Alias(
+            rustc_middle::ty::AliasKind::Projection | rustc_middle::ty::AliasKind::Inherent,
+            t,
+        ) => {
+            let trait_def = ctxt.tcx.generics_of(t.def_id).parent;
+            let t_args: Vec<_> = t.args.iter().filter(|x| x.as_region().is_none()).collect();
+            t_args.iter().find(|x| x.as_type().is_none()).is_none()
+                && trait_def.is_some()
+                && t_args.len() >= 1
+        }
+
+        TyKind::CoroutineClosure(_, _) => false,
+        TyKind::Pat(_, _) => false,
+    }
+}
+
+pub(crate) fn mid_arg_filter_for_external_impls<'tcx>(
+    ctxt: &Context<'tcx>,
     type_walker: rustc_middle::ty::walk::TypeWalker<'tcx>,
-    external_info: &ExternalInfo,
+    external_info: &mut ExternalInfo,
 ) -> bool {
     let mut all_types_supported = true;
     for arg in type_walker {
         if let rustc_middle::ty::GenericArgKind::Type(t) = arg.unpack() {
-            let supported = match t.kind() {
-                TyKind::Bool => true,
-                TyKind::Uint(_) | TyKind::Int(_) => true,
-                TyKind::Char => true,
-                TyKind::Ref(_, _, rustc_ast::Mutability::Not) => true,
-                TyKind::Param(_) => true,
-                TyKind::Never => true,
-                TyKind::Tuple(_) => true,
-                TyKind::Slice(_) => true,
-                TyKind::RawPtr(_, _) => true,
-                TyKind::Array(..) => true,
-                TyKind::Closure(..) => true,
-                TyKind::FnDef(..) => true,
-                TyKind::Str => true,
-
-                TyKind::Alias(rustc_middle::ty::AliasKind::Opaque, _) => false,
-                TyKind::Alias(rustc_middle::ty::AliasKind::Weak, _) => false,
-                TyKind::Float(..) => false,
-                TyKind::Foreign(..) => false,
-                TyKind::Ref(_, _, rustc_ast::Mutability::Mut) => false,
-                TyKind::FnPtr(..) => false,
-                TyKind::Dynamic(..) => false,
-                TyKind::Coroutine(..) => false,
-                TyKind::CoroutineWitness(..) => false,
-                TyKind::Bound(..) => false,
-                TyKind::Placeholder(..) => false,
-                TyKind::Infer(..) => false,
-                TyKind::Error(..) => false,
-
-                TyKind::Adt(rustc_middle::ty::AdtDef(adt_def_data), _) => {
-                    external_info.type_ids.contains(&adt_def_data.did)
-                }
-                TyKind::Alias(
-                    rustc_middle::ty::AliasKind::Projection | rustc_middle::ty::AliasKind::Inherent,
-                    t,
-                ) => {
-                    let trait_def = tcx.generics_of(t.def_id).parent;
-                    let t_args: Vec<_> =
-                        t.args.iter().filter(|x| x.as_region().is_none()).collect();
-                    t_args.iter().find(|x| x.as_type().is_none()).is_none()
-                        && trait_def.is_some()
-                        && t_args.len() >= 1
-                }
-
-                TyKind::CoroutineClosure(_, _) => false,
-                TyKind::Pat(_, _) => false,
-            };
+            let supported = mid_ty_filter_for_external_impls(ctxt, &t, external_info);
             all_types_supported = all_types_supported && supported;
         }
     }
@@ -716,10 +749,11 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
 // (This is meant to be a quick prefilter; if it incorrectly returns true, we may end up
 // dropping the results of trait_impl_to_vir, which is ok.)
 pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
-    tcx: TyCtxt<'tcx>,
+    ctxt: &Context<'tcx>,
     def_id: DefId,
-    external_info: &ExternalInfo,
+    external_info: &mut ExternalInfo,
 ) -> bool {
+    let tcx = ctxt.tcx;
     let generics = tcx.generics_of(def_id);
     for (i, param) in generics.params.iter().enumerate() {
         if i == 0 && param.name == kw::SelfUpper {
@@ -734,7 +768,7 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
             GenericParamDefKind::Const { is_host_effect: true, .. } => continue,
             GenericParamDefKind::Const { .. } => {}
         }
-        if !param.pure_wrt_drop {
+        if param.pure_wrt_drop {
             return false;
         }
     }
@@ -757,7 +791,7 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
                     return false;
                 }
                 for arg in trait_ref.args.types() {
-                    if !mid_ty_filter_for_external_impls(tcx, arg.walk(), external_info) {
+                    if !mid_arg_filter_for_external_impls(ctxt, arg.walk(), external_info) {
                         return false;
                     }
                 }
@@ -774,7 +808,7 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
                     return false;
                 }
                 for arg in pred.projection_ty.args.types() {
-                    if !mid_ty_filter_for_external_impls(tcx, arg.walk(), external_info) {
+                    if !mid_arg_filter_for_external_impls(ctxt, arg.walk(), external_info) {
                         return false;
                     }
                 }
@@ -810,11 +844,11 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Char => (Arc::new(TypX::Int(IntRange::Char)), false),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
             let (t0, ghost) = t_rec(tys)?;
-            (Arc::new(TypX::Decorate(TypDecoration::Ref, t0.clone())), ghost)
+            (Arc::new(TypX::Decorate(TypDecoration::Ref, None, t0.clone())), ghost)
         }
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
             let (t0, ghost) = t_rec(tys)?;
-            (Arc::new(TypX::Decorate(TypDecoration::MutRef, t0.clone())), ghost)
+            (Arc::new(TypX::Decorate(TypDecoration::MutRef, None, t0.clone())), ghost)
         }
         TyKind::Param(param) if param.name == kw::SelfUpper => {
             (Arc::new(TypX::TypParam(vir::def::trait_self_type_param())), false)
@@ -824,15 +858,15 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Never => {
             // All types are inhabited in SMT; we pick an arbitrary inhabited type for Never
-            let tuple0 = Arc::new(TypX::Tuple(Arc::new(vec![])));
-            (Arc::new(TypX::Decorate(TypDecoration::Never, tuple0)), false)
+            let tuple0 = vir::ast_util::unit_typ();
+            (Arc::new(TypX::Decorate(TypDecoration::Never, None, tuple0)), false)
         }
         TyKind::Tuple(_) => {
             let mut typs: Vec<Typ> = Vec::new();
             for t in ty.tuple_fields().iter() {
                 typs.push(t_rec(&t)?.0);
             }
-            (Arc::new(TypX::Tuple(Arc::new(typs))), false)
+            (vir::ast_util::mk_tuple_typ(&Arc::new(typs)), false)
         }
         TyKind::Slice(ty) => {
             let typ = t_rec(ty)?.0;
@@ -846,7 +880,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
 
             let typ = Arc::new(TypX::Primitive(Primitive::Ptr, typs));
             let dec_typ = match mutbl {
-                Mutability::Not => Arc::new(TypX::Decorate(TypDecoration::ConstPtr, typ)),
+                Mutability::Not => Arc::new(TypX::Decorate(TypDecoration::ConstPtr, None, typ)),
                 Mutability::Mut => typ,
             };
             (dec_typ, false)
@@ -866,6 +900,15 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             } else if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Nat)) = verus_item {
                 (Arc::new(TypX::Int(IntRange::Nat)), false)
             } else {
+                let rust_item = verus_items::get_rust_item(tcx, did);
+
+                if let Some(RustItem::AllocGlobal) = rust_item {
+                    return Ok((
+                        Arc::new(TypX::Primitive(Primitive::Global, Arc::new(vec![]))),
+                        false,
+                    ));
+                }
+
                 let mut typ_args: Vec<(Typ, bool)> = Vec::new();
                 for arg in args.iter() {
                     match arg.unpack() {
@@ -880,41 +923,38 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 }
                 if Some(did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
                     let (t0, ghost) = &typ_args[0];
-
-                    let allocator_arg = match args[1].unpack() {
-                        rustc_middle::ty::GenericArgKind::Type(t) => t,
-                        _ => {
-                            panic!("Box expected type arg");
-                        }
-                    };
-                    if !ty_is_global_allocator(tcx, &allocator_arg) {
-                        unsupported_err!(span, "Box with allocator other than Global")
-                    }
-                    return Ok((Arc::new(TypX::Decorate(TypDecoration::Box, t0.clone())), *ghost));
+                    let alloc_dec = Some(TypDecorationArg { allocator_typ: typ_args[1].0.clone() });
+                    return Ok((
+                        Arc::new(TypX::Decorate(TypDecoration::Box, alloc_dec, t0.clone())),
+                        *ghost,
+                    ));
                 }
                 if typ_args.len() >= 1 {
                     let (t0, ghost) = &typ_args[0];
-                    let decorate = |d: TypDecoration, ghost: bool| {
-                        Ok((Arc::new(TypX::Decorate(d, t0.clone())), ghost))
+                    let decorate = |d: TypDecoration, darg, ghost: bool| {
+                        Ok((Arc::new(TypX::Decorate(d, darg, t0.clone())), ghost))
                     };
                     let verus_item = verus_items.id_to_name.get(&did);
-                    let rust_item = verus_items::get_rust_item(tcx, did);
                     match (verus_item, rust_item) {
                         (Some(VerusItem::BuiltinType(BuiltinTypeItem::Ghost)), _) => {
                             assert!(typ_args.len() == 1);
-                            return decorate(TypDecoration::Ghost, true);
+                            return decorate(TypDecoration::Ghost, None, true);
                         }
                         (Some(VerusItem::BuiltinType(BuiltinTypeItem::Tracked)), _) => {
                             assert!(typ_args.len() == 1);
-                            return decorate(TypDecoration::Tracked, true);
+                            return decorate(TypDecoration::Tracked, None, true);
                         }
                         (_, Some(RustItem::Rc)) => {
                             assert!(typ_args.len() == 2);
-                            return decorate(TypDecoration::Rc, *ghost);
+                            let alloc_dec =
+                                Some(TypDecorationArg { allocator_typ: typ_args[1].0.clone() });
+                            return decorate(TypDecoration::Rc, alloc_dec, *ghost);
                         }
                         (_, Some(RustItem::Arc)) => {
                             assert!(typ_args.len() == 2);
-                            return decorate(TypDecoration::Arc, *ghost);
+                            let alloc_dec =
+                                Some(TypDecorationArg { allocator_typ: typ_args[1].0.clone() });
+                            return decorate(TypDecoration::Arc, alloc_dec, *ghost);
                         }
                         _ => {}
                     }
@@ -926,7 +966,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     let typ_arg_tuple = typ_args[0].0.clone();
                     let ret_typ = typ_args[1].0.clone();
                     let param_typs = match &*typ_arg_tuple {
-                        TypX::Tuple(typs) => typs.clone(),
+                        TypX::Datatype(Dt::Tuple(_), typs, _) => typs.clone(),
                         _ => {
                             // TODO proper user-facing error msg here
                             panic!("expected first type argument of spec_fn to be a tuple");
@@ -949,7 +989,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             }
             assert!(args.len() == 1);
             let args = match &*args[0] {
-                TypX::Tuple(typs) => typs.clone(),
+                TypX::Datatype(Dt::Tuple(_), typs, _) => typs.clone(),
                 _ => panic!("expected tuple type"),
             };
 
@@ -1265,7 +1305,7 @@ pub(crate) fn check_generic_bound<'tcx>(
     param_env_src: DefId,
     span: Span,
     trait_def_id: DefId,
-    args: &Vec<rustc_middle::ty::Ty<'tcx>>,
+    args: &[GenericArg<'tcx>],
 ) -> Result<Option<vir::ast::GenericBound>, VirErr> {
     if Some(trait_def_id) == tcx.lang_items().sized_trait()
         || Some(trait_def_id) == tcx.lang_items().copy_trait()
@@ -1275,12 +1315,28 @@ pub(crate) fn check_generic_bound<'tcx>(
         || Some(trait_def_id) == tcx.get_diagnostic_item(rustc_span::sym::Send)
     {
         // Rust language marker traits are ignored in VIR
+        // TODO: these should not be ignored in VIR
         Ok(None)
     } else {
-        let vir_args = args
-            .iter()
-            .map(|arg| mid_ty_to_vir(tcx, verus_items, param_env_src, span, arg, false))
-            .collect::<Result<Vec<_>, _>>()?;
+        let mut vir_args = vec![];
+        for arg in args.iter() {
+            match arg.unpack() {
+                GenericArgKind::Lifetime(_) => {}
+                GenericArgKind::Type(ty) => {
+                    vir_args.push(mid_ty_to_vir(
+                        tcx,
+                        verus_items,
+                        param_env_src,
+                        span,
+                        &ty,
+                        false,
+                    )?);
+                }
+                GenericArgKind::Const(cnst) => {
+                    vir_args.push(mid_ty_const_to_vir(tcx, Some(span), &cnst)?);
+                }
+            }
+        }
         let trait_name = def_id_to_vir_path(tcx, verus_items, trait_def_id);
         Ok(Some(Arc::new(GenericBoundX::Trait(trait_name, Arc::new(vir_args)))))
     }
@@ -1351,15 +1407,11 @@ where
                 // X, Y, Z, should be the rest
                 // The SomeTrait is given by the def_id
 
-                // Note: I _think_ rustc organizes it this way because
+                // Note that
                 // T, X, Y, Z are actually all handled symmetrically
                 // in the formal theory of Rust's traits;
                 // i.e., the `Self` of a trait is actually the same as any of the other
                 // type parameters, it's just special in the notation for convenience.
-                //
-                // Right now Verus only allows `Self` (in the example, `T`) to be a type param,
-                // and it doesn't have full support for the other type params, so we special
-                // case it here.
 
                 let trait_def_id = trait_ref.def_id;
 
@@ -1371,14 +1423,15 @@ where
                     continue;
                 }
 
-                let trait_params: Vec<rustc_middle::ty::Ty> = substs.types().collect();
+                let substs = remove_host_arg(tcx, trait_def_id, substs, *span)?;
+
                 let generic_bound = check_generic_bound(
                     tcx,
                     verus_items,
                     param_env_src,
                     *span,
                     trait_def_id,
-                    &trait_params,
+                    substs,
                 )?;
                 if let Some(bound) = generic_bound {
                     bounds.push(bound);
@@ -1405,7 +1458,6 @@ where
                     return err_span(*span, "Verus does not yet support this type of bound");
                 };
                 let substs = pred.projection_ty.args;
-                let trait_params: Vec<rustc_middle::ty::Ty> = substs.types().collect();
                 let trait_def_id = pred.projection_ty.trait_def_id(tcx);
                 let assoc_item = tcx.associated_item(item_def_id);
                 let name = Arc::new(assoc_item.name.to_string());
@@ -1415,7 +1467,7 @@ where
                     param_env_src,
                     *span,
                     trait_def_id,
-                    &trait_params,
+                    substs,
                 )?;
                 if let Some(generic_bound) = generic_bound {
                     if let GenericBoundX::Trait(path, typs) = &*generic_bound {
@@ -1456,12 +1508,30 @@ where
     Ok(bounds)
 }
 
+// REVIEW: Consider using rustc_middle generics instead of hir generics
 pub(crate) fn check_item_external_generics<'tcx>(
+    self_generics: Option<(&'tcx Generics, DefId)>,
     generics: &'tcx Generics<'tcx>,
+    skip_implicit_lifetimes: bool,
     substs_ref: &rustc_middle::ty::GenericArgs<'tcx>,
     skip_self: bool,
     span: Span,
 ) -> Result<(), VirErr> {
+    let mut generics_params: Vec<GenericParam> = vec![];
+    if let Some((gen, _)) = self_generics {
+        generics_params.extend(gen.params.iter().cloned());
+    }
+    generics_params.extend(generics.params.iter().cloned());
+
+    if skip_implicit_lifetimes {
+        generics_params = generics_params
+            .into_iter()
+            .filter(|gp| {
+                !matches!(gp.kind, GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided(_) })
+            })
+            .collect();
+    }
+
     use rustc_middle::ty::ScalarInt;
     // Check that the generics match (important because we do the substitution to get
     // the types from the external definition)
@@ -1479,8 +1549,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
             span,
             format!(
                 "expected generics to match: \n expected {}\n found {}",
-                generics
-                    .params
+                generics_params
                     .iter()
                     .map(|x| x.name.ident().to_string())
                     .collect::<Vec<_>>()
@@ -1490,10 +1559,10 @@ pub(crate) fn check_item_external_generics<'tcx>(
         )
     };
 
-    if substs_ref.len() != generics.params.len() {
+    if substs_ref.len() != generics_params.len() {
         return err();
     }
-    for (generic_arg, generic_param) in substs_ref.iter().zip(generics.params.iter()) {
+    for (generic_arg, generic_param) in substs_ref.iter().zip(generics_params.iter()) {
         // So if we have like
         //    struct ProxyName<X, 'a>(External<X, 'a>);
         // We need to check the <X, 'a> line up
@@ -1505,8 +1574,6 @@ pub(crate) fn check_item_external_generics<'tcx>(
                 return err();
             }
         };
-        use rustc_hir::GenericParamKind;
-        use rustc_hir::LifetimeParamKind;
 
         match (generic_arg.unpack(), &generic_param.kind) {
             (
@@ -1808,5 +1875,14 @@ pub(crate) fn remove_host_arg<'tcx>(
         Ok(tcx.mk_args(&s))
     } else {
         Ok(substs)
+    }
+}
+
+pub(crate) fn ty_remove_references<'tcx>(
+    ty: &'tcx rustc_middle::ty::Ty<'tcx>,
+) -> &'tcx rustc_middle::ty::Ty<'tcx> {
+    match ty.kind() {
+        TyKind::Ref(_, t, Mutability::Not) => ty_remove_references(&t),
+        _ => ty,
     }
 }

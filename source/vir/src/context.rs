@@ -1,8 +1,8 @@
 use crate::ast::{
-    ArchWordBits, Datatype, Fun, Function, FunctionAttrs, GenericBounds, Ident, ImplPath, IntRange,
-    Krate, Mode, Module, Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
+    ArchWordBits, Datatype, Dt, Fun, Function, FunctionAttrs, GenericBounds, Ident, ImplPath,
+    IntRange, Krate, Mode, Module, Path, Primitive, Trait, TypPositives, TypX, Variants, VirErr,
 };
-use crate::ast_util::path_as_friendly_rust_name_raw;
+use crate::ast_util::{dt_as_friendly_rust_name_raw, path_as_friendly_rust_name_raw};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
 use crate::messages::{error, Span};
@@ -13,6 +13,7 @@ use crate::sst::BndInfo;
 use crate::sst_to_air::fun_to_air_ident;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp};
 use air::ast_util::{mk_unnamed_axiom, str_typ};
+use air::context::SmtSolver;
 use num_bigint::BigUint;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -52,6 +53,7 @@ pub struct GlobalCtx {
     pub arch: crate::ast::ArchWordBits,
     pub crate_name: Ident,
     pub vstd_crate_name: Ident,
+    pub solver: SmtSolver,
 }
 
 // Context for verifying one function
@@ -72,21 +74,23 @@ pub struct FunctionCtx {
 // Context for verifying one module
 pub struct Ctx {
     pub(crate) module: Module,
-    pub(crate) datatype_is_transparent: HashMap<Path, bool>,
-    pub(crate) datatypes_with_invariant: HashSet<Path>,
+    pub(crate) datatype_is_transparent: HashMap<Dt, bool>,
+    pub(crate) datatypes_with_invariant: HashSet<Dt>,
     pub(crate) mono_types: Vec<MonoTyp>,
     pub(crate) spec_fn_types: Vec<usize>,
+    pub(crate) uses_array: bool,
     pub(crate) fndef_types: Vec<Fun>,
     pub(crate) fndef_type_set: HashSet<Fun>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
+    pub func_sst_map: HashMap<Fun, crate::sst::FunctionSst>,
     pub fun_ident_map: HashMap<Ident, Fun>,
     pub(crate) reveal_groups: Vec<crate::ast::RevealGroup>,
     pub(crate) reveal_group_set: HashSet<Fun>,
     // Ensure a unique identifier for each quantifier in a given function
     pub quantifier_count: Cell<u64>,
     pub(crate) funcs_with_ensure_predicate: HashMap<Fun, bool>,
-    pub(crate) datatype_map: HashMap<Path, Datatype>,
+    pub(crate) datatype_map: HashMap<Dt, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
     pub fun: Option<FunctionCtx>,
     pub global: GlobalCtx,
@@ -124,52 +128,52 @@ impl Ctx {
 }
 
 fn datatypes_inv_visit(
-    back_pointers: &HashMap<Path, HashSet<Path>>,
-    has_inv: &mut HashSet<Path>,
-    root: &Path,
+    back_pointers: &HashMap<Dt, HashSet<Dt>>,
+    has_inv: &mut HashSet<Dt>,
+    root: &Dt,
 ) {
     if has_inv.contains(root) {
         return;
     }
     has_inv.insert(root.clone());
-    for container_path in &back_pointers[root] {
-        datatypes_inv_visit(back_pointers, has_inv, container_path);
+    for container_name in &back_pointers[root] {
+        datatypes_inv_visit(back_pointers, has_inv, container_name);
     }
 }
 
 // If a datatype's fields have invariants, the datatype needs an invariant
 fn datatypes_invs(
     module: &Path,
-    datatype_is_transparent: &HashMap<Path, bool>,
+    datatype_is_transparent: &HashMap<Dt, bool>,
     datatypes: &Vec<Datatype>,
-) -> HashSet<Path> {
-    let mut back_pointers: HashMap<Path, HashSet<Path>> =
-        datatypes.iter().map(|d| (d.x.path.clone(), HashSet::new())).collect();
-    let mut has_inv: HashSet<Path> = HashSet::new();
-    let mut roots: HashSet<Path> = HashSet::new();
+) -> HashSet<Dt> {
+    let mut back_pointers: HashMap<Dt, HashSet<Dt>> =
+        datatypes.iter().map(|d| (d.x.name.clone(), HashSet::new())).collect();
+    let mut has_inv: HashSet<Dt> = HashSet::new();
+    let mut roots: HashSet<Dt> = HashSet::new();
     for datatype in datatypes {
         if is_datatype_transparent(module, datatype) {
-            let container_path = &datatype.x.path;
+            let container_name = &datatype.x.name;
             for variant in datatype.x.variants.iter() {
                 for field in variant.fields.iter() {
                     match &*crate::ast_util::undecorate_typ(&field.a.0) {
                         // Should be kept in sync with vir::sst_to_air::typ_invariant
                         TypX::Int(IntRange::Int) => {}
                         TypX::Int(_) | TypX::TypParam(_) | TypX::Projection { .. } => {
-                            roots.insert(container_path.clone());
+                            roots.insert(container_name.clone());
                         }
                         TypX::SpecFn(..) => {
-                            roots.insert(container_path.clone());
+                            roots.insert(container_name.clone());
                         }
-                        TypX::Datatype(field_path, _, _) => {
-                            if datatype_is_transparent[field_path] {
+                        TypX::Datatype(field_dt, _, _) => {
+                            if datatype_is_transparent[field_dt] {
                                 back_pointers
-                                    .get_mut(field_path)
+                                    .get_mut(field_dt)
                                     .expect("datatypes_invs")
-                                    .insert(container_path.clone());
+                                    .insert(container_name.clone());
                             } else {
                                 if crate::poly::typ_as_mono(&field.a.0).is_none() {
-                                    roots.insert(container_path.clone());
+                                    roots.insert(container_name.clone());
                                 }
                             }
                         }
@@ -178,14 +182,19 @@ fn datatypes_invs(
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
                         TypX::Bool | TypX::AnonymousClosure(..) => {}
-                        TypX::Tuple(_) | TypX::Air(_) => panic!("datatypes_invs"),
+                        TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
-                        TypX::Primitive(Primitive::Array, _) => {
-                            roots.insert(container_path.clone());
+                        TypX::Primitive(
+                            Primitive::Array | Primitive::Slice | Primitive::Ptr,
+                            _,
+                        ) => {
+                            // Each of these is like an abstract Datatype
+                            if crate::poly::typ_as_mono(&field.a.0).is_none() {
+                                roots.insert(container_name.clone());
+                            }
                         }
-                        TypX::Primitive(Primitive::Slice, _) => {}
                         TypX::Primitive(Primitive::StrSlice, _) => {}
-                        TypX::Primitive(Primitive::Ptr, _) => {}
+                        TypX::Primitive(Primitive::Global, _) => {}
                     }
                 }
             }
@@ -212,6 +221,7 @@ impl GlobalCtx {
         rlimit: f32,
         interpreter_log: Arc<std::sync::Mutex<Option<File>>>,
         func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
+        solver: SmtSolver,
         after_simplify: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
@@ -220,7 +230,12 @@ impl GlobalCtx {
         let datatypes: HashMap<Path, (TypPositives, Variants)> = krate
             .datatypes
             .iter()
-            .map(|d| (d.x.path.clone(), (d.x.typ_params.clone(), d.x.variants.clone())))
+            .filter_map(|d| match &d.x.name {
+                Dt::Path(path) => {
+                    Some((path.clone(), (d.x.typ_params.clone(), d.x.variants.clone())))
+                }
+                Dt::Tuple(_) => None,
+            })
             .collect();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
         for function in krate.functions.iter() {
@@ -368,12 +383,24 @@ impl GlobalCtx {
                 #[rustfmt::skip] // v to work around attributes being experimental on expressions
                 let v = match n {
                     Node::Fun(fun) =>                         labelize("Fun", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"cds\"",
-                    Node::Datatype(path) =>                   labelize("Datatype", path_as_friendly_rust_name_raw(path)) + ", shape=\"folder\"",
+                    Node::Datatype(path) =>                   labelize("Datatype", dt_as_friendly_rust_name_raw(path)) + ", shape=\"folder\"",
                     Node::Trait(path) =>                      labelize("Trait", path_as_friendly_rust_name_raw(path)) + ", shape=\"tab\"",
                     Node::TraitImpl(impl_path) => {
                         match impl_path {
                             ImplPath::TraitImplPath(path) =>  labelize("TraitImplPath", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
                             ImplPath::FnDefImplPath(fun) =>   labelize("FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
+                        }
+                    }
+                    Node::TraitReqEns(impl_path, true) => {
+                        match impl_path {
+                            ImplPath::TraitImplPath(path) =>  labelize("ReqEns?TraitImplPath", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
+                            ImplPath::FnDefImplPath(fun) =>   labelize("ReqEns?FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
+                        }
+                    }
+                    Node::TraitReqEns(impl_path, false) => {
+                        match impl_path {
+                            ImplPath::TraitImplPath(path) =>  labelize("ReqEns!TraitImplPath", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
+                            ImplPath::FnDefImplPath(fun) =>   labelize("ReqEns!FnDefImplPath", path_as_friendly_rust_name_raw(&fun.path)) + ", shape=\"component\"",
                         }
                     }
                     Node::ModuleReveal(path) =>               labelize("ModuleReveal", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
@@ -393,10 +420,13 @@ impl GlobalCtx {
                 }
                 let render = match n {
                     Node::Fun(fun) => is_not_std(&fun.path),
-                    Node::Datatype(path) => is_not_std(path),
+                    Node::Datatype(Dt::Path(path)) => is_not_std(path),
+                    Node::Datatype(Dt::Tuple(_)) => true,
                     Node::Trait(path) => is_not_std(path),
                     Node::TraitImpl(ImplPath::TraitImplPath(path)) => is_not_std(path),
                     Node::TraitImpl(ImplPath::FnDefImplPath(fun)) => is_not_std(&fun.path),
+                    Node::TraitReqEns(ImplPath::TraitImplPath(path), _) => is_not_std(path),
+                    Node::TraitReqEns(ImplPath::FnDefImplPath(fun), _) => is_not_std(&fun.path),
                     Node::ModuleReveal(path) => is_not_std(path),
                     Node::SpanInfo { .. } => true,
                 };
@@ -417,13 +447,16 @@ impl GlobalCtx {
             if f.x.attrs.is_decrease_by {
                 for g_node in func_call_graph.get_scc_nodes(&f_node) {
                     if f_node != g_node {
-                        let g =
+                        let g_opt =
                             krate.functions.iter().find(|g| Node::Fun(g.x.name.clone()) == g_node);
-                        return Err(crate::messages::error(
+                        let mut error = crate::messages::error(
                             &f.span,
                             "found cyclic dependency in decreases_by function",
-                        )
-                        .secondary_span(&g.unwrap().span));
+                        );
+                        if let Some(g) = g_opt {
+                            error = error.secondary_span(&g.span);
+                        }
+                        return Err(error);
                     }
                 }
             }
@@ -456,6 +489,7 @@ impl GlobalCtx {
             crate_name,
             vstd_crate_name,
             func_call_graph_log,
+            solver,
         })
     }
 
@@ -481,6 +515,7 @@ impl GlobalCtx {
             crate_name: self.crate_name.clone(),
             vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
+            solver: self.solver.clone(),
         }
     }
 
@@ -509,13 +544,14 @@ impl Ctx {
         module: Module,
         mono_types: Vec<MonoTyp>,
         spec_fn_types: Vec<usize>,
+        uses_array: bool,
         fndef_types: Vec<Fun>,
         debug: bool,
     ) -> Result<Self, VirErr> {
-        let mut datatype_is_transparent: HashMap<Path, bool> = HashMap::new();
+        let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
             datatype_is_transparent
-                .insert(datatype.x.path.clone(), is_datatype_transparent(&module.x.path, datatype));
+                .insert(datatype.x.name.clone(), is_datatype_transparent(&module.x.path, datatype));
         }
         let datatypes_with_invariant =
             datatypes_invs(&module.x.path, &datatype_is_transparent, &krate.datatypes);
@@ -528,9 +564,9 @@ impl Ctx {
             fun_ident_map.insert(fun_to_air_ident(&function.x.name), function.x.name.clone());
             functions.push(function.clone());
         }
-        let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
+        let mut datatype_map: HashMap<Dt, Datatype> = HashMap::new();
         for datatype in krate.datatypes.iter() {
-            datatype_map.insert(datatype.x.path.clone(), datatype.clone());
+            datatype_map.insert(datatype.x.name.clone(), datatype.clone());
         }
         let mut trait_map: HashMap<Path, Trait> = HashMap::new();
         for tr in krate.traits.iter() {
@@ -553,10 +589,12 @@ impl Ctx {
             datatypes_with_invariant,
             mono_types,
             spec_fn_types,
+            uses_array,
             fndef_types,
             fndef_type_set,
             functions,
             func_map,
+            func_sst_map: HashMap::new(),
             fun_ident_map,
             reveal_groups: krate.reveal_groups.clone(),
             reveal_group_set,
@@ -612,14 +650,14 @@ impl Ctx {
         let decl = mk_unnamed_axiom(distinct);
         commands.push(Arc::new(CommandX::Global(decl)));
         for group in &self.reveal_groups {
-            crate::func_to_air::broadcast_forall_group_axioms(
+            crate::sst_to_air_func::broadcast_forall_group_axioms(
                 self,
                 &mut commands,
                 group,
                 &self.global.crate_name,
             );
         }
-        crate::func_to_air::module_reveal_axioms(self, &mut commands, &self.module.x.reveals);
+        crate::sst_to_air_func::module_reveal_axioms(self, &mut commands, &self.module.x.reveals);
         Arc::new(commands)
     }
 }

@@ -2365,7 +2365,11 @@ test_verify_one_file! {
                     guard t >= (Map::<int,int>::empty().insert(5, 7)) by { }; // FAILS
 
                     birds_eye let t = pre.t;
-                    assert(t.dom().contains(5) && t.index(5) == 7) by {
+                    assert(t.dom().contains(5)) by {
+                        assert(Map::<int,int>::empty().insert(5, 7).dom().contains(5));
+                        assert(Map::<int,int>::empty().insert(5, 7).index(5) == 7);
+                    };
+                    assert(t.index(5) == 7) by {
                         assert(Map::<int,int>::empty().insert(5, 7).dom().contains(5));
                         assert(Map::<int,int>::empty().insert(5, 7).index(5) == 7);
                     };
@@ -7038,7 +7042,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] step_is_variant verus_code! {
+    #[test] step_is_variant IMPORTS.to_string() + verus_code_str! {
         use state_machines_macros::state_machine;
 
         state_machine! { X {

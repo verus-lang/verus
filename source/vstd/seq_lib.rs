@@ -28,7 +28,6 @@ impl<A> Seq<A> {
 
     /// Applies the function `f` to each element of the sequence, and returns
     /// the resulting sequence.
-    /// The `int` parameter of `f` is the index of the element being mapped.
     // TODO(verus): rename to map, because this is what everybody wants.
     pub open spec fn map_values<B>(self, f: spec_fn(A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(self[i]))
@@ -220,7 +219,7 @@ impl<A> Seq<A> {
         requires
             a.len() == 0,
         ensures
-            a + b == b,
+            #[trigger] (a + b) == b,
     {
         assert(a + b =~= b);
     }
@@ -229,7 +228,7 @@ impl<A> Seq<A> {
         requires
             b.len() == 0,
         ensures
-            a + b == a,
+            #[trigger] (a + b) == a,
     {
         assert(a + b =~= a);
     }
@@ -1708,6 +1707,24 @@ pub proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
 {
 }
 
+pub proof fn subrange_of_matching_take<T>(a: Seq<T>, b: Seq<T>, s: int, e: int, l: int)
+    requires
+        a.take(l) == b.take(l),
+        l <= a.len(),
+        l <= b.len(),
+        0 <= s <= e <= l,
+    ensures
+        a.subrange(s, e) == b.subrange(s, e),
+{
+    assert forall|i| 0 <= i < e - s implies a.subrange(s, e)[i] == b.subrange(s, e)[i] by {
+        assert(a.subrange(s, e)[i] == a.take(l)[i + s]);
+        //             assert( b.subrange(s, e)[i] == b.take(l)[i + s] );   // either trigger will do
+    }
+    // trigger extn equality (verus issue #1257)
+
+    assert(a.subrange(s, e) == b.subrange(s, e));
+}
+
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Skipping the first `n` elements of a sequence gives a sequence of length `n` less than
 /// the original sequence's length.
@@ -2100,7 +2117,6 @@ macro_rules! assert_seqs_equal_internal {
     }
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_seq_lib_default {
     Seq::filter_lemma,
     Seq::add_empty_left,

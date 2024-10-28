@@ -735,6 +735,9 @@ pub trait VisitMut {
     fn visit_return_type_mut(&mut self, i: &mut ReturnType) {
         visit_return_type_mut(self, i);
     }
+    fn visit_returns_mut(&mut self, i: &mut Returns) {
+        visit_returns_mut(self, i);
+    }
     fn visit_reveal_hide_mut(&mut self, i: &mut RevealHide) {
         visit_reveal_hide_mut(self, i);
     }
@@ -747,6 +750,9 @@ pub trait VisitMut {
     }
     fn visit_signature_invariants_mut(&mut self, i: &mut SignatureInvariants) {
         visit_signature_invariants_mut(self, i);
+    }
+    fn visit_signature_unwind_mut(&mut self, i: &mut SignatureUnwind) {
+        visit_signature_unwind_mut(self, i);
     }
     fn visit_span_mut(&mut self, i: &mut Span) {
         visit_span_mut(self, i);
@@ -3949,6 +3955,13 @@ where
         }
     }
 }
+pub fn visit_returns_mut<V>(v: &mut V, node: &mut Returns)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
+}
 pub fn visit_reveal_hide_mut<V>(v: &mut V, node: &mut RevealHide)
 where
     V: VisitMut + ?Sized,
@@ -4023,11 +4036,17 @@ where
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
     }
+    if let Some(it) = &mut node.returns {
+        v.visit_returns_mut(it);
+    }
     if let Some(it) = &mut node.decreases {
         v.visit_signature_decreases_mut(it);
     }
     if let Some(it) = &mut node.invariants {
         v.visit_signature_invariants_mut(it);
+    }
+    if let Some(it) = &mut node.unwind {
+        v.visit_signature_unwind_mut(it);
     }
 }
 pub fn visit_signature_decreases_mut<V>(v: &mut V, node: &mut SignatureDecreases)
@@ -4050,6 +4069,16 @@ where
 {
     tokens_helper(v, &mut node.token.span);
     v.visit_invariant_name_set_mut(&mut node.set);
+}
+pub fn visit_signature_unwind_mut<V>(v: &mut V, node: &mut SignatureUnwind)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    if let Some(it) = &mut node.when {
+        tokens_helper(v, &mut (it).0.span);
+        v.visit_expr_mut(&mut (it).1);
+    }
 }
 pub fn visit_span_mut<V>(v: &mut V, node: &mut Span)
 where

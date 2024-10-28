@@ -5612,6 +5612,20 @@
       }
     },
     {
+      "ident": "Returns",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Returns"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
       "ident": "RevealHide",
       "features": {
         "any": []
@@ -5758,6 +5772,11 @@
             "syn": "Ensures"
           }
         },
+        "returns": {
+          "option": {
+            "syn": "Returns"
+          }
+        },
         "decreases": {
           "option": {
             "syn": "SignatureDecreases"
@@ -5766,6 +5785,11 @@
         "invariants": {
           "option": {
             "syn": "SignatureInvariants"
+          }
+        },
+        "unwind": {
+          "option": {
+            "syn": "SignatureUnwind"
           }
         }
       }
@@ -5816,6 +5840,29 @@
         },
         "set": {
           "syn": "InvariantNameSet"
+        }
+      }
+    },
+    {
+      "ident": "SignatureUnwind",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "NoUnwind"
+        },
+        "when": {
+          "option": {
+            "tuple": [
+              {
+                "token": "When"
+              },
+              {
+                "syn": "Expr"
+              }
+            ]
+          }
         }
       }
     },
@@ -7069,6 +7116,7 @@
     "Mut": "mut",
     "Ne": "!=",
     "NeEq": "!==",
+    "NoUnwind": "no_unwind",
     "Open": "open",
     "OpensInvariants": "opens_invariants",
     "Or": "|",
@@ -7087,6 +7135,7 @@
     "RemEq": "%=",
     "Requires": "requires",
     "Return": "return",
+    "Returns": "returns",
     "Reveal": "reveal",
     "RevealWithFuel": "reveal_with_fuel",
     "SelfType": "Self",

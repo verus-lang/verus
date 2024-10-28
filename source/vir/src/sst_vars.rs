@@ -64,9 +64,20 @@ pub(crate) fn stm_assign(
             }
             stm.clone()
         }
+        StmX::AssertQuery { mode, typ_inv_exps, typ_inv_vars, body } => {
+            assert!(typ_inv_vars.len() == 0);
+            let vars = crate::sst_util::free_vars_exps(typ_inv_exps);
+            let mode = *mode;
+            let typ_inv_exps = Arc::new(vec![]);
+            let typ_inv_vars = Arc::new(
+                declared.clone().into_iter().filter(|(x, _)| vars.contains_key(x)).collect(),
+            );
+            let body = body.clone();
+            stm.new_x(StmX::AssertQuery { mode, typ_inv_exps, typ_inv_vars, body })
+        }
         StmX::Assert(..)
         | StmX::AssertBitVector { .. }
-        | StmX::AssertQuery { .. }
+        | StmX::AssertCompute(..)
         | StmX::Assume(_)
         | StmX::Fuel(..)
         | StmX::RevealString(_)
@@ -192,7 +203,7 @@ pub(crate) fn stm_assign(
     result
 }
 
-pub(crate) fn stms_assign(
+fn stms_assign(
     assign_map: &mut AssignMap,
     declared: &IndexMap<UniqueIdent, Typ>,
     assigned: &mut IndexSet<UniqueIdent>,

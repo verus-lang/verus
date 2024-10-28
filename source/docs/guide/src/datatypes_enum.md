@@ -22,7 +22,7 @@ enum a variable contains.
 ## Accessing fields with the arrow operator
 
 If all the fields have distinct names, as in the `Beverage` example,
-you can refer to fileds with the arrow `->` operator:
+you can refer to fields with the arrow `->` operator:
 ```rust
 {{#include ../../../rust_verify/example/guide/datatypes.rs:count_creamers}}
 ```

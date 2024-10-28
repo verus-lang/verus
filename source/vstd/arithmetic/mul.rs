@@ -24,7 +24,7 @@ use super::super::arithmetic::internals::mul_internals::*;
 /// `x * y` is equivalent in that way.
 pub broadcast proof fn lemma_mul_is_mul_recursive(x: int, y: int)
     ensures
-        (x * y) == mul_recursive(x, y),
+        #[trigger] (x * y) == mul_recursive(x, y),
 {
     if (x >= 0) {
         lemma_mul_is_mul_pos(x, y);

@@ -133,7 +133,7 @@ test_verify_one_file! {
 
         #[verifier::external_body]
         broadcast proof fn f_is_true()
-            ensures f(),
+            ensures #[trigger] f(),
         {
         }
 
@@ -580,7 +580,7 @@ test_verify_one_file! {
             use super::*;
 
             pub broadcast proof fn lemma(i: int)
-                ensures f(i)
+                ensures #[trigger] f(i)
                 decreases i
             {
                 assume(false);

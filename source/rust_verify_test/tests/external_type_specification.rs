@@ -341,6 +341,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] trait_bounds_ok verus_code! {
+        use vstd::prelude::*;
 
         #[verifier(external)]
         struct Foo<X: Clone, Y> { x: X, y: Y }

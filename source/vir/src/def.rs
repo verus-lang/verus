@@ -1,4 +1,4 @@
-use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
+use crate::ast::{Dt, Fun, FunX, InvAtomicity, Path, PathX, VarIdent};
 use crate::ast_util::air_unique_var;
 use crate::messages::Span;
 use crate::util::vec_map;
@@ -47,6 +47,7 @@ const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_OPEN_INV: &str = "openinv%";
+const PREFIX_NO_UNWIND_WHEN: &str = "no_unwind_when%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
@@ -63,6 +64,7 @@ const PREFIX_SPEC_FN_TYPE: &str = "fun%";
 const PREFIX_IMPL_IDENT: &str = "impl&%";
 const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
+const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
@@ -70,9 +72,12 @@ const SLICE_TYPE: &str = "slice%";
 const STRSLICE_TYPE: &str = "strslice%";
 const ARRAY_TYPE: &str = "array%";
 const PTR_TYPE: &str = "ptr_mut%";
+const GLOBAL_TYPE: &str = "allocator_global%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const SUBST_RENAME_SEPARATOR: &str = "$$";
 const EXPAND_ERRORS_DECL_SEPARATOR: &str = "$$$";
+const BITVEC_TMP_DECL_SEPARATOR: &str = "$$$$bitvectmp";
+const USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR: &str = "$$$$userdeftypeinvpass";
 const KRATE_SEPARATOR: &str = "!";
 const PATH_SEPARATOR: &str = ".";
 const PATHS_SEPARATOR: &str = "/";
@@ -159,6 +164,7 @@ pub const TYPE_ID_ARRAY: &str = "ARRAY";
 pub const TYPE_ID_SLICE: &str = "SLICE";
 pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_PTR: &str = "PTR";
+pub const TYPE_ID_GLOBAL: &str = "ALLOCATOR_GLOBAL";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
@@ -172,13 +178,16 @@ pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
 pub const EXT_EQ: &str = "ext_eq";
 
-pub const UINT_XOR: &str = "uintxor";
-pub const UINT_AND: &str = "uintand";
-pub const UINT_OR: &str = "uintor";
-pub const UINT_SHR: &str = "uintshr";
-pub const UINT_SHL: &str = "uintshl";
-pub const UINT_NOT: &str = "uintnot";
+pub const BIT_XOR: &str = "bitxor";
+pub const BIT_AND: &str = "bitand";
+pub const BIT_OR: &str = "bitor";
+pub const BIT_SHR: &str = "bitshr";
+pub const BIT_SHL: &str = "bitshl";
+pub const BIT_NOT: &str = "bitnot";
 pub const SINGULAR_MOD: &str = "singular_mod";
+
+pub const ARRAY_NEW: &str = "array_new";
+pub const ARRAY_INDEX: &str = "array_index";
 
 // List of QID suffixes we add to internally generated quantifiers
 pub const QID_BOX_AXIOM: &str = "box_axiom";
@@ -376,8 +385,13 @@ pub fn ptr_type() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
-pub fn prefix_type_id(path: &Path) -> Ident {
-    Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(path))
+pub fn global_type() -> Path {
+    let ident = Arc::new(GLOBAL_TYPE.to_string());
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
+pub fn prefix_type_id(ident: &Path) -> Ident {
+    Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(ident))
 }
 
 pub fn prefix_fndef_type_id(fun: &Fun) -> Ident {
@@ -422,6 +436,10 @@ pub fn projection(decoration: bool, trait_path: &Path, name: &Ident) -> Ident {
     ))
 }
 
+pub fn proj_param(i: usize) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_PROJECT_PARAM, i))
+}
+
 pub fn trait_bound(trait_path: &Path) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
 }
@@ -458,6 +476,10 @@ pub fn prefix_open_inv(ident: &Ident, i: usize) -> Ident {
     Arc::new(format!("{}{}%{}", PREFIX_OPEN_INV, i, ident))
 }
 
+pub fn prefix_no_unwind_when(ident: &Ident) -> Ident {
+    Arc::new(PREFIX_NO_UNWIND_WHEN.to_string() + ident)
+}
+
 fn prefix_path(prefix: String, path: &Path) -> Path {
     let mut segments: Vec<Ident> = (*path.segments).clone();
     let last: &mut Ident = segments.last_mut().expect("path last segment");
@@ -489,23 +511,31 @@ pub fn prefix_pre_var(name: &Ident) -> Ident {
     Arc::new(PREFIX_PRE_VAR.to_string() + name)
 }
 
-pub fn variant_ident(datatype: &Path, variant: &str) -> Ident {
-    Arc::new(format!("{}{}{}", path_to_string(datatype), VARIANT_SEPARATOR, variant))
+pub fn encode_dt_as_path(dt: &Dt) -> Path {
+    match dt {
+        Dt::Path(path) => path.clone(),
+        Dt::Tuple(arity) => prefix_tuple_type(*arity),
+    }
 }
 
-pub fn is_variant_ident(datatype: &Path, variant: &str) -> Ident {
+pub fn variant_ident(dt: &Dt, variant: &str) -> Ident {
+    let path = encode_dt_as_path(dt);
+    Arc::new(format!("{}{}{}", path_to_string(&path), VARIANT_SEPARATOR, variant))
+}
+
+pub fn is_variant_ident(datatype: &Dt, variant: &str) -> Ident {
     Arc::new(format!("is-{}", variant_ident(datatype, variant)))
 }
 
 pub fn variant_field_ident_internal(
-    datatype: &Path,
+    path: &Path,
     variant: &Ident,
     field: &Ident,
     internal: bool,
 ) -> Ident {
     Arc::new(format!(
         "{}{}{}{}{}",
-        path_to_string(datatype),
+        path_to_string(path),
         VARIANT_SEPARATOR,
         variant.as_str(),
         if internal { VARIANT_FIELD_INTERNAL_SEPARATOR } else { VARIANT_FIELD_SEPARATOR },
@@ -550,6 +580,18 @@ pub fn monotyp_decorate(dec: crate::ast::TypDecoration, path: &Path) -> Path {
         dec as u32,
         MONOTYPE_APP_BEGIN,
         path_to_string(path),
+        MONOTYPE_APP_END
+    ));
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
+}
+
+pub fn monotyp_decorate2(dec: crate::ast::TypDecoration, args: &Vec<Path>) -> Path {
+    let id = Arc::new(format!(
+        "{}{}{}{}{}",
+        MONOTYPE_DECORATE,
+        dec as u32,
+        MONOTYPE_APP_BEGIN,
+        vec_map(args, |x| path_to_string(x)).join(PATHS_SEPARATOR),
         MONOTYPE_APP_END
     ));
     Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
@@ -824,6 +866,14 @@ pub fn unique_var_name(
             out.push_str(EXPAND_ERRORS_DECL_SEPARATOR);
             write!(&mut out, "{}", id).unwrap();
         }
+        VarIdentDisambiguate::BitVectorToAirDecl(id) => {
+            out.push_str(BITVEC_TMP_DECL_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
+        VarIdentDisambiguate::UserDefinedTypeInvariantPass(id) => {
+            out.push_str(USER_DEF_TYPE_INV_TMP_DECL_SEPARATOR);
+            write!(&mut out, "{}", id).unwrap();
+        }
     }
     out
 }
@@ -850,17 +900,10 @@ pub fn break_label(i: u64) -> Ident {
     Arc::new(format!("{}{}", PREFIX_BREAK_LABEL, i))
 }
 
-pub fn array_index_fun(vstd_crate_name: &Ident) -> Fun {
-    Arc::new(FunX { path: array_index_path(vstd_crate_name) })
-}
-
-pub fn array_index_path(vstd_crate_name: &Ident) -> Path {
+pub fn array_new_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
         krate: Some(vstd_crate_name.clone()),
-        segments: Arc::new(vec![
-            Arc::new("array".to_string()),
-            Arc::new("array_index".to_string()),
-        ]),
+        segments: Arc::new(vec![Arc::new("array".to_string()), Arc::new("array_new".to_string())]),
     })
 }
 
