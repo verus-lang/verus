@@ -63,7 +63,7 @@ impl<'tcx> Reporter<'tcx> {
     pub(crate) fn new(spans: &SpanContext, compiler: &'tcx Compiler) -> Self {
         Reporter {
             spans: spans.clone(),
-            compiler_diagnostics: compiler.sess.dcx(),
+            compiler_diagnostics: &compiler.sess.dcx(),
             source_map: compiler.sess.source_map(),
         }
     }
@@ -112,17 +112,17 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         match level {
             MessageLevel::Note => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_note(msg.note.clone()),
+                self.compiler_diagnostics.handle().struct_note(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Warning => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_warn(msg.note.clone()),
+                self.compiler_diagnostics.handle().struct_warn(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Error => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_err(msg.note.clone()),
+                self.compiler_diagnostics.handle().struct_err(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
@@ -2799,10 +2799,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
         // write_dep_info will internally check whether the `--emit=dep-info` flag is set
-        if let Err(_) = queries.write_dep_info() {
+        /*if let Err(_) = queries.write_dep_info() {
             // ErrorGuaranteed indicates than an error has already been reported to the user, so we can just exit
             std::process::exit(-1);
-        }
+        }*/
 
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();

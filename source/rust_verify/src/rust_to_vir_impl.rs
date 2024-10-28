@@ -9,7 +9,7 @@ use crate::util::{err_span, unsupported_err_span};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use crate::{err_unless, unsupported_err};
 use indexmap::{IndexMap, IndexSet};
-use rustc_hir::{AssocItemKind, ImplItemKind, Item, QPath, TraitRef, Unsafety};
+use rustc_hir::{AssocItemKind, ImplItemKind, Item, QPath, Safety, TraitRef};
 use rustc_middle::ty::GenericArgKind;
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
@@ -165,16 +165,16 @@ fn translate_assoc_type<'tcx>(
     let assoc_generics = ctxt.tcx.generics_of(assoc_def_id);
     let mut assoc_args: Vec<rustc_middle::ty::GenericArg> =
         trait_ref.instantiate_identity().args.into_iter().collect();
-    for p in &assoc_generics.params {
+    for p in &assoc_generics.own_params {
         let e = rustc_middle::ty::EarlyParamRegion {
-            def_id: p.def_id,
+            //def_id: p.def_id,
             index: assoc_generics.param_def_id_to_index(ctxt.tcx, p.def_id).expect("param_def"),
             name: p.name,
         };
         let r = rustc_middle::ty::Region::new_early_param(ctxt.tcx, e);
         assoc_args.push(rustc_middle::ty::GenericArg::from(r));
     }
-    let inst_bounds = bounds.instantiate(ctxt.tcx, &assoc_args);
+    let inst_bounds = bounds.instantiate(ctxt.tcx, &*assoc_args);
     let param_env = ctxt.tcx.param_env(impl_item_id);
     let inst_bounds = ctxt.tcx.normalize_erasing_regions(param_env, inst_bounds);
 
@@ -224,7 +224,7 @@ pub(crate) fn translate_impl<'tcx>(
     let impl_def_id = item.owner_id.to_def_id();
     let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
 
-    if impll.unsafety != Unsafety::Normal && impll.of_trait.is_none() {
+    if impll.safety != Safety::Safe && impll.of_trait.is_none() {
         return err_span(item.span, "the verifier does not support `unsafe` here");
     }
 
@@ -251,7 +251,7 @@ pub(crate) fn translate_impl<'tcx>(
 
             if sealed {
                 return err_span(item.span, "cannot implement `sealed` trait");
-            } else if impll.unsafety != Unsafety::Normal {
+            } else if impll.safety != Safety::Safe {
                 return err_span(item.span, "the verifier does not support `unsafe` here");
             }
         }

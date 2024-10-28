@@ -14,7 +14,7 @@ use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
     Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HirId, MaybeOwner, Param,
-    Unsafety,
+    Safety,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
@@ -150,8 +150,8 @@ fn compare_external_sig<'tcx>(
     use rustc_middle::ty::FnSig;
     // Ignore abi for the sake of comparison
     // Useful for rust-intrinsics
-    let FnSig { inputs_and_output: io1, c_variadic: c1, unsafety: u1, abi: _ } = sig1;
-    let FnSig { inputs_and_output: io2, c_variadic: c2, unsafety: u2, abi: _ } = sig2;
+    let FnSig { inputs_and_output: io1, c_variadic: c1, safety: s1, abi: _ } = sig1;
+    let FnSig { inputs_and_output: io2, c_variadic: c2, safety: s2, abi: _ } = sig2;
     if io1.len() != io2.len() {
         return Ok(false);
     }
@@ -168,7 +168,7 @@ fn compare_external_sig<'tcx>(
             return Ok(false);
         }
     }
-    Ok(c1 == c2 && u1 == u2)
+    Ok(c1 == c2 && s1 == s2)
 }
 
 pub(crate) fn handle_external_fn<'tcx>(
@@ -642,11 +642,11 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let ret_typ_mode = match sig {
         FnSig {
-            header: FnHeader { unsafety, constness: _, asyncness: _, abi: _ },
+            header: FnHeader { safety, constness: _, asyncness: _, abi: _ },
             decl,
             span: _,
         } => {
-            if mode != Mode::Exec && *unsafety != Unsafety::Normal {
+            if mode != Mode::Exec && safety == &Safety::Unsafe {
                 return err_span(
                     sig.span,
                     format!("'unsafe' only makes sense on exec-mode functions"),
@@ -1382,10 +1382,14 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
                 rust_item != Some(crate::verus_items::RustItem::Destruct)
             }
         }
-        rustc_middle::ty::ClauseKind::<'tcx>::ConstArgHasType(cnst, ty) => {
-            match (cnst.kind(), ty.kind()) {
-                (ConstKind::Value(ValTree::Leaf(ScalarInt::TRUE)), ty::TyKind::Bool) => false,
-                _ => true,
+        rustc_middle::ty::ClauseKind::<'tcx>::ConstArgHasType(cnst, _ty) => {
+            if let ConstKind::Value(ty, ValTree::Leaf(ScalarInt::TRUE)) = cnst.kind() {
+                match ty.kind() {
+                    TyKind::Bool => false,
+                    _ => true,
+                }
+            } else {
+                false
             }
         }
         _ => true,
@@ -1544,10 +1548,10 @@ pub(crate) fn get_external_def_id<'tcx>(
         let param_env = tcx.param_env(proxy_fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
         let inst =
-            rustc_middle::ty::Instance::resolve(tcx, param_env, external_id, normalized_substs);
+            rustc_middle::ty::Instance::try_resolve(tcx, param_env, external_id, normalized_substs);
         let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
         if let Ok(Some(inst)) = inst {
-            if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
+            if let rustc_middle::ty::InstanceKind::Item(did) = inst.def {
                 let impl_def_id = tcx.impl_of_method(did).expect("impl_of_method");
                 let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
 
@@ -1566,7 +1570,7 @@ pub(crate) fn get_external_def_id<'tcx>(
                 };
                 return Ok((did, kind));
             } else {
-                return err_span(sig.span, "Verus internal error: expected InstanceDef::Item");
+                return err_span(sig.span, "Verus internal error: expected InstanceKind::Item");
             }
         } else {
             // This is the actual, generic trait method.
@@ -1641,7 +1645,11 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             let attrs = ctxt.tcx.hir().attrs(item.hir_id());
             let vattrs = ctxt.get_verifier_attrs(attrs)?;
             if vattrs.internal_const_body {
-                let body_id = ctxt.tcx.hir().body_owned_by(item.owner_id.def_id);
+                let body_id = ctxt
+                    .tcx
+                    .hir_node_by_def_id(item.owner_id.def_id)
+                    .body_id()
+                    .expect("failed to get body_id");
                 let body = find_body(ctxt, &body_id);
                 Some((body_id, body))
             } else {
