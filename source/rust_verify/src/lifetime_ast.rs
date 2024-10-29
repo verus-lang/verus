@@ -181,6 +181,7 @@ pub(crate) struct TraitImpl {
     pub(crate) generic_bounds: Vec<GenericBound>,
     // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
     pub(crate) trait_as_datatype: Typ,
+    pub(crate) trait_polarity: rustc_middle::ty::ImplPolarity,
     pub(crate) assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)>,
 }
 
