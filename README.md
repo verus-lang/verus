@@ -34,7 +34,8 @@ Our (work-in-progress) documentation resources include:
  * [📖 Guide for verifying concurrent code](https://verus-lang.github.io/verus/state_machines/)
  * [Project Goals](source/docs/project-goals.md)
  * [Contributing to Verus](CONTRIBUTING.md)
- * [License](LICENSE)
+ * [Verus License](LICENSE)
+ * [Verus Logos](https://verus-lang.github.io/verus/verus/logo.html)
 
 ## Getting in touch, reporting issues, and starting discussions
 
@@ -51,3 +52,5 @@ We welcome contributions! If you'd like to contribute code, have a look at the t
 ---
 
 [<img src="source/docs/zulip-icon-circle.svg" alt="Zulip" style="height: 1em;"/> Zulip](https://zulip.com/) sponsors free hosting for Verus. Zulip is an open-source modern team chat app designed to keep both live and asynchronous conversations organized.
+
+Special thanks to Johanna Polzin for her contribution to the design of the Verus Logo. The Verus logos (bitmap and vector) are by the <b>Verus Contributors</b> and licensed under the terms of <a href="https://creativecommons.org/licenses/by/4.0/?ref=chooser-v1" target="_blank" rel="license noopener noreferrer">Creative Commons Attribution 4.0 International<img style="height:22px!important;width:22px!important;margin-left:3px;vertical-align:text-bottom;" src="https://mirrors.creativecommons.org/presskit/icons/cc.svg?ref=chooser-v1" alt=""><img style="height:22px!important;width:22px!important;margin-left:3px;vertical-align:text-bottom;" src="https://mirrors.creativecommons.org/presskit/icons/by.svg?ref=chooser-v1" alt=""></a> license.
