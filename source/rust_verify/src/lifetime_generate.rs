@@ -2254,10 +2254,17 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
         span: Some(span),
         generic_params,
         generic_bounds,
-        self_typ,
+        self_typ: self_typ.clone(),
         trait_as_datatype,
         assoc_typs,
     };
+
+    if matches!(name.raw_id.as_str(), "Iterator" | "IntoIterator") {
+        if !impl_id.is_local() {
+            return;
+        }
+    }
+
     state.trait_impls.push(trait_impl);
 }
 
