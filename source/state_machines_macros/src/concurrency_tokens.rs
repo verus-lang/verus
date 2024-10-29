@@ -13,8 +13,8 @@ use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;
 use crate::to_relation::{conjunct_opt, emit_match};
 use crate::to_token_stream::{
-    get_self_ty, get_self_ty_turbofish, impl_decl_stream, name_with_type_args,
-    name_with_type_args_turbofish, shardable_type_to_type,
+    get_self_ty, get_self_ty_turbofish, impl_decl_stream, impl_decl_stream_for,
+    name_with_type_args, name_with_type_args_turbofish, shardable_type_to_type,
 };
 use crate::token_transition_checks::{check_ordering_remove_have_add, check_unsupported_updates};
 use crate::util::{combine_errors_or_ok, is_definitely_irrefutable};
@@ -26,7 +26,7 @@ use std::collections::HashSet;
 use syn_verus::parse;
 use syn_verus::parse::Error;
 use syn_verus::spanned::Spanned;
-use syn_verus::{Expr, Ident, Pat, Type};
+use syn_verus::{Expr, Generics, Ident, Pat, Type};
 
 // Misc. definitions for various identifiers we use
 // Note that everything is going to be inside a module, so for example,
@@ -228,7 +228,7 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
             // Verus will still look at the fields when doing its type hierarchy analysis.
 
             #[cfg_attr(verus_keep_ghost, verifier::spec)] send_sync: #vstd::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
-            #[cfg_attr(verus_keep_ghost, verifier::spec)] state: #self_ty,
+            #[cfg_attr(verus_keep_ghost, verifier::spec)] state: ::core::option::Option<#vstd::prelude::Ghost<#self_ty>>,
             #[cfg_attr(verus_keep_ghost, verifier::spec)] location: #vstd::prelude::int,
         }
     };
@@ -270,6 +270,28 @@ fn trusted_clone() -> TokenStream {
     };
 }
 
+fn trusted_copy(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
+    let impl_decl_clone = impl_decl_stream_for(self_ty, generics, quote! { ::core::clone::Clone });
+    let impl_decl_copy = impl_decl_stream_for(self_ty, generics, quote! { ::core::marker::Copy });
+    return quote! {
+        // It shouldn't be possible to call this (you'd need an exec-mode object)
+        // but we need to implement it so we can implement Copy.
+        // Our other 'clone' function should override this, which makes it difficult
+        // to accidentally call this.
+
+        #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+        #impl_decl_clone {
+            #[cfg_attr(verus_keep_ghost, verifier::external_body)] /* vattr */
+            fn clone(&self) -> Self {
+                ::core::unimplemented!();
+            }
+        }
+
+        #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+        #impl_decl_copy { }
+    };
+}
+
 /// Create the struct for a Token.
 /// Can create any combination of three fields: key, value, count.
 /// The `count` field, when present, always has type `nat`;
@@ -308,8 +330,17 @@ fn token_struct_stream(
     let impldecl = impl_decl_stream(&field_token_type(sm, field), &sm.generics);
     let mut impl_token_stream = collection_relation_fns_stream(sm, field);
 
-    if field.stype.is_persistent() {
+    let is_copy = field.stype.is_persistent();
+
+    let mut copy_impl = None;
+    let mut no_copy_impl = None;
+    if is_copy {
         impl_token_stream.extend(trusted_clone());
+        copy_impl = Some(trusted_copy(&field_token_type(sm, field), &sm.generics));
+    } else {
+        no_copy_impl = Some(quote_vstd! { vstd =>
+            no_copy: #vstd::state_machine_internal::NoCopy,
+        });
     }
 
     let key_field = match key_ty {
@@ -330,7 +361,7 @@ fn token_struct_stream(
         TokenStream::new()
     };
 
-    return quote_vstd! { vstd =>
+    return quote! {
         #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
         #(#attrs)*
@@ -341,7 +372,7 @@ fn token_struct_stream(
             // the type well-foundedness checks.
 
             #[cfg_attr(verus_keep_ghost, verifier::proof)] dummy_instance: #insttype,
-            no_copy: #vstd::state_machine_internal::NoCopy,
+            #no_copy_impl
         }
 
         #[cfg_attr(verus_keep_ghost, verifier::spec)]
@@ -374,6 +405,8 @@ fn token_struct_stream(
 
             #impl_token_stream
         }
+
+        #copy_impl
     };
 }
 
@@ -473,10 +506,14 @@ pub fn output_token_types_and_fns(
 
     let insttype = inst_type(&bundle.sm);
     let impldecl = impl_decl_stream(&insttype, &bundle.sm.generics);
+    let copy_impl = trusted_copy(&insttype, &bundle.sm.generics);
+
     token_stream.extend(quote! {
         #impldecl {
             #inst_impl_token_stream
         }
+
+        #copy_impl
     });
 
     Ok(())
