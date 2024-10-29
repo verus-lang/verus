@@ -801,6 +801,7 @@ pub(crate) struct ExternalAttrs {
     pub(crate) sets_mode: bool,
     pub(crate) verify: bool,
     pub(crate) verus_macro: bool,
+    pub(crate) size_of_global: bool,
     pub(crate) any_other_verus_specific_attribute: bool,
     pub(crate) internal_get_field_many_variants: bool,
 }
@@ -904,6 +905,7 @@ pub(crate) fn get_external_attrs(
         verify: false,
         sets_mode: false,
         verus_macro: false,
+        size_of_global: false,
         any_other_verus_specific_attribute: false,
         internal_get_field_many_variants: false,
     };
@@ -918,6 +920,7 @@ pub(crate) fn get_external_attrs(
             Attr::Verify => es.verify = true,
             Attr::Mode(_) => es.sets_mode = true,
             Attr::VerusMacro => es.verus_macro = true,
+            Attr::SizeOfGlobal => es.size_of_global = true,
             Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
             Attr::UnsupportedRustcAttr(..) => {}
             _ => {
