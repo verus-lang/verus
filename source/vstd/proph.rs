@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 use super::prelude::*;
 
 // This file implements prophecy variables.
