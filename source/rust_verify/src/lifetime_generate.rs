@@ -2264,7 +2264,7 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
     // v1.80 stablized Iterator and IntoIterator for Box.
     // It needs to implement !Iterartor to avoid conflicts.
     // The lifetime checking does not reserve polarity.
-    if matches!(name.raw_id.as_str(), "Iterator" | "IntoIterator") {
+    /*if matches!(name.raw_id.as_str(), "Iterator" | "IntoIterator") {
         let skip = match self_typ.as_ref() {
             // found both positive and negative implementation of trait `T55_Iterator` for type `&mut std::boxed::Box<[_], _>
             TypX::Ref(r, ..) => {
@@ -2281,7 +2281,7 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
             println!("skip  = {:?} {:?} {:?}", self_typ, trait_polarity, name);
             return;
         }
-    }
+    }*/
 
     state.trait_impls.push(trait_impl);
 }
