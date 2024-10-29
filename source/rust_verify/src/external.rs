@@ -478,6 +478,7 @@ impl<'a> GeneralItem<'a> {
                 ItemKind::Struct(..) => true,
                 ItemKind::Enum(..) => true,
                 ItemKind::Union(..) => true,
+                ItemKind::Const(..) => true,
                 _ => false,
             },
             GeneralItem::ForeignItem(_) => false,

@@ -341,3 +341,18 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] allow_external_body_const_regression_1322_1 verus_code! {
+        #[verifier(external_body)]
+        const A: usize = unimplemented!();
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // TODO un-ignore once fixed
+    #[ignore] #[test] allow_external_body_const_regression_1322_2 verus_code! {
+        #[verifier(external_body)]
+        const A: usize ensures 32 <= A <= 52 { unimplemented!() }
+    } => Ok(())
+}
