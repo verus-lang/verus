@@ -662,7 +662,7 @@ impl Visitor {
                 self.inside_ghost += 1;
                 self.visit_expr_mut(&mut expr);
                 self.inside_ghost -= 1;
-                stmts.push(Stmt::Expr(Expr::Verbatim(quote_spanned!(con_span => #[verus::internal(verus_macro)] #[verus::internal(const_body)] fn __VERUS_CONST_BODY__() -> #con_ty { #expr } ))));
+                stmts.push(Stmt::Expr(Expr::Verbatim(quote_spanned!(con_span => #[allow(non_snake_case)]#[verus::internal(verus_macro)] #[verus::internal(const_body)] fn __VERUS_CONST_BODY__() -> #con_ty { #expr } ))));
                 stmts.push(Stmt::Expr(Expr::Verbatim(
                     quote_spanned!(con_span => unsafe { core::mem::zeroed() }),
                 )));
