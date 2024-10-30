@@ -713,6 +713,43 @@ impl<A> Seq<A> {
         }
     }
 
+    /// If, in a sequence's conversion to a multiset, each element occurs only once,
+    /// the sequence has no duplicates.
+    pub proof fn lemma_multiset_has_no_duplicates_conv(self)
+        requires
+            forall|x: A| self.to_multiset().contains(x) ==> self.to_multiset().count(x) == 1,
+        ensures
+            self.no_duplicates(),
+    {
+        broadcast use super::multiset::group_multiset_axioms;
+
+        assert forall|i, j| (0 <= i < self.len() && 0 <= j < self.len() && i != j) implies self[i]
+            != self[j] by {
+            let mut a = if (i < j) {
+                i
+            } else {
+                j
+            };
+            let mut b = if (i < j) {
+                j
+            } else {
+                i
+            };
+
+            if (self[a] == self[b]) {
+                let s0 = self.subrange(0, b);
+                let s1 = self.subrange(b, self.len() as int);
+                assert(self == s0 + s1);
+
+                s0.to_multiset_ensures();
+                s1.to_multiset_ensures();
+
+                lemma_multiset_commutative(s0, s1);
+                assert(self.to_multiset().count(self[a]) >= 2);
+            }
+        }
+    }
+
     /// The concatenation of two subsequences derived from a non-empty sequence,
     /// the first obtained from skipping the last element, the second consisting only
     /// of the last element, is the original sequence.
