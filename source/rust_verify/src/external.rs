@@ -215,7 +215,6 @@ fn opts_in_to_verus(eattrs: &ExternalAttrs) -> bool {
         || eattrs.external_type_specification
         || eattrs.external_trait_specification
         || eattrs.sets_mode
-        || eattrs.size_of_global
 }
 
 impl<'a, 'tcx> VisitMod<'a, 'tcx> {
