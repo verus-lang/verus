@@ -608,7 +608,6 @@ impl Visitor {
             }
         }
 
-        // TODO(1.79.0)
         if let Some(SignatureUnwind { token, when }) = unwind {
             if let Some((when_token, mut when_expr)) = when {
                 self.visit_expr_mut(&mut when_expr);

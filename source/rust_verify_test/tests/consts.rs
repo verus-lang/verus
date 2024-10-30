@@ -39,7 +39,7 @@ test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
         const C: u64 = S;
         const S: u64 = C;
-    } => Err(err) => assert_rust_error_msg(err, "cycle detected when simplifying constant for the type system")
+    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
 test_verify_one_file! {
@@ -186,7 +186,7 @@ test_verify_one_file! {
         exec static E: u64 = 0;
 
         const s: u64 = E;
-    } => Err(e) => assert_rust_error_msg(e, "referencing statics in constants is unstable")
+    } => Err(e) => assert_vir_error_msg(e, "cannot read static with mode exec")
 }
 
 test_verify_one_file! {
@@ -226,7 +226,7 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(e) => assert_rust_error_msg(e, "cycle detected when evaluating initializer of static")
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when evaluating initializer of static `E`")
 }
 
 test_verify_one_file! {
@@ -239,7 +239,7 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(e) => assert_rust_error_msg(e, "cycle detected when simplifying constant for the type system")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
 }
 
 test_verify_one_file! {
@@ -340,4 +340,15 @@ test_verify_one_file! {
             assert(MyArray[1] == 42);    // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] exec_const_body_with_proof verus_code! {
+        spec fn f() -> int { 1 }
+        const fn e() -> (u: u64) ensures u == 1 { 1 }
+        exec const E: u64 ensures E == 2 {
+            assert(f() == 1);
+            1 + e()
+        }
+    } => Ok(())
 }

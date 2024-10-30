@@ -94,7 +94,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_literal_out_of_range verus_code! {
         const C: u8 = 256 - 1;
-    } => Err(err) => assert_rust_error_msg(err, "evaluation of constant value failed")
+    } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
 }
 
 test_verify_one_file! {

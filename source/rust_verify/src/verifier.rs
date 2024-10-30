@@ -2771,6 +2771,12 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         config.override_queries = Some(|_session, providers| {
             providers.hir_crate = hir_crate;
 
+            // Do not actually evaluate consts if we are not compiling, as doing so triggers the
+            // constness checker, which is more restrictive than necessary for verification.
+            // Doing this will delay some const-ness errors to when verus is run with `--compile`.
+            providers.eval_to_const_value_raw =
+                |_tcx, _key| Ok(rustc_middle::mir::ConstValue::ZeroSized);
+
             // Prevent the borrow checker from running, as we will run our own lifetime analysis.
             // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
             // by const evaluation through the mir interpreter.
