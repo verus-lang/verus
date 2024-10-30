@@ -922,7 +922,6 @@ pub(crate) fn get_external_attrs(
             Attr::VerusMacro => es.verus_macro = true,
             Attr::SizeOfGlobal => es.size_of_global = true,
             Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
-            Attr::Trusted => {}
             Attr::UnsupportedRustcAttr(..) => {}
             _ => {
                 es.any_other_verus_specific_attribute = true;
