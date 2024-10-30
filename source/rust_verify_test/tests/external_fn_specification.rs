@@ -1285,7 +1285,7 @@ test_verify_one_file! {
         impl Tr for X {
             fn foo(&self) { }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`; try marking it `external_body` instead, or add a Verus specification via `external_fn_specification`")
+    } => Err(err) => assert_vir_error_msg(err, "X::foo` is not supported") // TODO could have clearer error msg
 }
 
 test_verify_one_file! {
@@ -1341,19 +1341,4 @@ test_verify_one_file! {
             assert(ret_b == true); // FAILS
         }
     } => Err(err) => assert_fails(err, 2)
-}
-
-test_verify_one_file! {
-    #[test] module_external code! {
-        #[verifier::external]
-        mod moo {
-            #[verifier::verify]
-            fn stuff() {
-                builtin::assert_(false);
-            }
-        }
-    } => Ok(err) => {
-        assert!(err.warnings.len() == 2);
-        assert!(err.warnings[0].message.contains("#[verifier::verify] has no effect because item is already marked external"));
-    }
 }

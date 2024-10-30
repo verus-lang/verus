@@ -709,6 +709,7 @@ pub struct NoCopy {}
 impl !Copy for NoCopy {}
 
 #[cfg(verus_keep_ghost)]
+#[derive(Clone, Copy)]
 struct NoSyncSend {}
 #[cfg(verus_keep_ghost)]
 impl !Sync for NoSyncSend {}
@@ -717,6 +718,7 @@ impl !Send for NoSyncSend {}
 
 // TODO: remove this when !Sync, !Send are supported by stable Rust
 #[cfg(not(verus_keep_ghost))]
+#[derive(Clone, Copy)]
 struct NoSyncSend {
     _no_send_sync: core::marker::PhantomData<*const ()>,
 }
@@ -731,6 +733,14 @@ pub struct SyncSendIfSyncSend<T> {
 
 unsafe impl<T: Sync + Send> Sync for SyncSendIfSyncSend<T> {}
 unsafe impl<T: Sync + Send> Send for SyncSendIfSyncSend<T> {}
+
+impl<T> Clone for SyncSendIfSyncSend<T> {
+    fn clone(&self) -> Self {
+        unimplemented!();
+    }
+}
+
+impl<T> Copy for SyncSendIfSyncSend<T> {}
 
 // Used by Invariant lib
 

@@ -185,6 +185,28 @@ pub fn impl_decl_stream(self_ty: &Type, generics: &Option<Generics>) -> TokenStr
     }
 }
 
+pub fn impl_decl_stream_for(
+    self_ty: &Type,
+    generics: &Option<Generics>,
+    for_trait: TokenStream,
+) -> TokenStream {
+    match generics {
+        None => {
+            quote! { #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))] impl #for_trait for #self_ty }
+        }
+        Some(gen) => {
+            if gen.params.len() > 0 {
+                let params = &gen.params;
+                let where_clause = &gen.where_clause;
+                quote! { #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))] impl<#params> #for_trait for #self_ty #where_clause }
+            } else {
+                let where_clause = &gen.where_clause;
+                quote! { #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))] impl #for_trait for #self_ty #where_clause }
+            }
+        }
+    }
+}
+
 // We delete the special state machine attributes, since Rust/Verus won't recognize them.
 
 pub fn should_delete_attr(attr: &Attribute) -> bool {
