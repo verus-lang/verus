@@ -334,6 +334,7 @@ impl<V> Copy for PPtr<V> {
 
 impl<V> PPtr<V> {
     /// Allocates heap memory for type `V`, leaving it uninitialized.
+    #[cfg(feature = "std")]
     pub fn empty() -> (pt: (PPtr<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@.pptr() == pt.0,
@@ -372,6 +373,7 @@ impl<V> PPtr<V> {
 
     /// Allocates heap memory for type `V`, leaving it initialized
     /// with the given value `v`.
+    #[cfg(feature = "std")]
     pub fn new(v: V) -> (pt: (PPtr<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@.pptr() == pt.0,

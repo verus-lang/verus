@@ -57,6 +57,12 @@ jobs:
           source: source/docs/publications-and-projects
           destination: ./_site/publications-and-projects
 
+      - name: add verus pages
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: source/docs/verus
+          destination: ./_site/verus
+
       - name: upload artifact
         uses: actions/upload-pages-artifact@v1
 

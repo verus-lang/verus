@@ -399,15 +399,15 @@ impl<'a, V, Pred: RwLockPredicate<V>> WriteHandle<'a, V, Pred> {
         *self.rwlock
     }
 
-    pub fn release_write(self, t: V)
+    pub fn release_write(self, new_val: V)
         requires
-            self.rwlock().inv(t),
+            self.rwlock().inv(new_val),
     {
         proof {
             use_type_invariant(&self);
         }
         let WriteHandle { handle: Tracked(handle), perm: Tracked(mut perm), rwlock } = self;
-        self.rwlock.cell.put(Tracked(&mut perm), t);
+        self.rwlock.cell.put(Tracked(&mut perm), new_val);
 
         atomic_with_ghost!(
             &rwlock.exc => store(false);
@@ -437,9 +437,9 @@ impl<'a, V, Pred: RwLockPredicate<V>> ReadHandle<'a, V, Pred> {
     }
 
     /// Obtain a shared reference to the object contained in the lock.
-    pub fn borrow<'b>(&'b self) -> (t: &'b V)
+    pub fn borrow<'b>(&'b self) -> (val: &'b V)
         ensures
-            t == self.view(),
+            val == self.view(),
     {
         proof {
             use_type_invariant(self);
@@ -494,17 +494,17 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
 
     /// Indicates if the value `v` can be stored in the lock. Per the definition,
     /// it depends on `[self.pred()]`, which is configured upon lock construction ([`RwLock::new`]).
-    pub open spec fn inv(&self, t: V) -> bool {
-        self.pred().inv(t)
+    pub open spec fn inv(&self, val: V) -> bool {
+        self.pred().inv(val)
     }
 
-    pub fn new(t: V, Ghost(pred): Ghost<Pred>) -> (s: Self)
+    pub fn new(val: V, Ghost(pred): Ghost<Pred>) -> (s: Self)
         requires
-            pred.inv(t),
+            pred.inv(val),
         ensures
             s.pred() == pred,
     {
-        let (cell, Tracked(perm)) = PCell::<V>::new(t);
+        let (cell, Tracked(perm)) = PCell::<V>::new(val);
 
         let tracked (Tracked(inst), Tracked(flag_exc), Tracked(flag_rc), _, _, _, _) =
             RwLockToks::Instance::<
@@ -528,9 +528,9 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
     pub fn acquire_write(&self) -> (ret: (V, WriteHandle<V, Pred>))
         ensures
             ({
-                let t = ret.0;
+                let val = ret.0;
                 let write_handle = ret.1;
-                &&write_handle.rwlock() == *self && self.inv(t)
+                &&write_handle.rwlock() == *self && self.inv(val)
             }),
     {
         proof {

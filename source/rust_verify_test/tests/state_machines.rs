@@ -2845,14 +2845,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] type_recursion_fail IMPORTS.to_string() + code_str! {
+    #[test] type_recursion_ok IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)]
                 pub t: X::Instance,
             }
         }}
-    } => Err(e) => assert_rust_error_msg(e, "recursive type")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -7243,4 +7243,73 @@ test_verify_one_file! {
             }
         }}
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] inst_copy IMPORTS.to_string() + verus_code_str! {
+        pub struct Y { }
+
+        tokenized_state_machine!{ A {
+            fields {
+                #[sharding(variable)]
+                pub x: Map<int, Y>,
+            }
+
+            init!{
+                initialize() {
+                    init x = Map::<int, Y>::empty();
+                }
+            }
+        }}
+
+        proof fn test(tracked t: A::Instance) -> (tracked r: (A::Instance, A::Instance)) {
+            (t, t)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] pers_token_copy IMPORTS.to_string() + verus_code_str! {
+        pub struct Y { }
+
+        tokenized_state_machine!{ A {
+            fields {
+                #[sharding(persistent_map)]
+                pub x: Map<int, Y>,
+            }
+
+            init!{
+                initialize() {
+                    init x = Map::<int, Y>::empty();
+                }
+            }
+        }}
+
+        proof fn test(tracked t: A::x) -> (tracked r: (A::x, A::x)) {
+            (t, t)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] other_token_not_copy IMPORTS.to_string() + verus_code_str! {
+        pub struct Y { }
+
+        tokenized_state_machine!{ A {
+            fields {
+                #[sharding(map)]
+                pub x: Map<int, Y>,
+            }
+
+            init!{
+                initialize() {
+                    init x = Map::<int, Y>::empty();
+                }
+            }
+        }}
+
+        proof fn test(tracked t: A::x) -> (tracked r: (A::x, A::x)) {
+            (t, t)
+        }
+    } => Err(e) => assert_vir_error_msg(e, "use of moved value")
 }

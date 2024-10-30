@@ -42,6 +42,29 @@ impl PathX {
     }
 }
 
+impl fmt::Debug for PathX {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self.krate {
+            None => write!(f, "Path(None, [")?,
+            Some(k) => write!(f, "Path(Some({:?}), [", k)?,
+        }
+        for (i, s) in self.segments.iter().enumerate() {
+            if i == 0 {
+                write!(f, "{:?}", s)?;
+            } else {
+                write!(f, " :: {:?}", s)?;
+            }
+        }
+        write!(f, "])")
+    }
+}
+
+impl fmt::Debug for FunX {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Fun({:?})", self.path)
+    }
+}
+
 impl fmt::Display for Mode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
