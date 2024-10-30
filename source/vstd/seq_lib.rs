@@ -446,12 +446,19 @@ impl<A> Seq<A> {
     pub proof fn to_multiset_ensures(self)
         ensures
             forall|a: A| #[trigger] (self.push(a).to_multiset()) =~= self.to_multiset().insert(a),
+            forall|i: int|
+                0 <= i < self.len() ==> #[trigger] (self.remove(i).to_multiset())
+                    =~= self.to_multiset().remove(self[i]),
             self.len() == self.to_multiset().len(),
             forall|a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0,
     {
         assert forall|a: A| #[trigger]
             (self.push(a).to_multiset()) =~= self.to_multiset().insert(a) by {
             to_multiset_build(self, a);
+        }
+        assert forall|i: int| 0 <= i < self.len() implies #[trigger] (self.remove(i).to_multiset())
+            =~= self.to_multiset().remove(self[i]) by {
+            to_multiset_remove(self, i);
         }
         to_multiset_len(self);
         assert forall|a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0 by {
@@ -649,14 +656,16 @@ impl<A> Seq<A> {
     /// A lemma that proves how [`Self::fold_right`] distributes over splitting a sequence.
     pub proof fn lemma_fold_right_split<B>(self, f: spec_fn(A, B) -> B, b: B, k: int)
         requires
-            0 <= k < self.len(),
+            0 <= k <= self.len(),
         ensures
             self.subrange(0, k).fold_right(f, self.subrange(k, self.len() as int).fold_right(f, b))
                 == self.fold_right(f, b),
         decreases self.len(),
     {
         reveal_with_fuel(Seq::fold_right, 2);
-        if k == self.len() - 1 {
+        if k == self.len() {
+            assert(self.subrange(0, k) == self);
+        } else if k == self.len() - 1 {
             // trivial base case
         } else {
             self.subrange(0, self.len() - 1).lemma_fold_right_split(f, f(self.last(), b), k);
@@ -672,6 +681,19 @@ impl<A> Seq<A> {
                 self.subrange(k, self.len() as int).drop_last() ==
                 self.subrange(k, self.len() - 1)
             );
+        }
+    }
+
+    // Lemma that proves it's possible to commute a commutative operator across fold_right.
+    pub proof fn lemma_fold_right_commute_one<B>(self, a: A, f: spec_fn(A, B) -> B, v: B)
+        requires
+            commutative_foldr(f),
+        ensures
+            self.fold_right(f, f(a, v)) == f(a, self.fold_right(f, v)),
+        decreases self.len(),
+    {
+        if self.len() > 0 {
+            self.drop_last().lemma_fold_right_commute_one(a, f, f(self.last(), v));
         }
     }
 
@@ -1357,6 +1379,23 @@ proof fn to_multiset_build<A>(s: Seq<A>, a: A)
     }
 }
 
+proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
+    requires
+        0 <= i < s.len(),
+    ensures
+        s.remove(i).to_multiset() =~= s.to_multiset().remove(s[i]),
+{
+    broadcast use super::multiset::group_multiset_axioms;
+
+    let s0 = s.subrange(0, i);
+    let s1 = s.subrange(i, s.len() as int);
+    let s2 = s.subrange(i + 1, s.len() as int);
+    lemma_seq_union_to_multiset_commutative(s0, s2);
+    lemma_seq_union_to_multiset_commutative(s0, s1);
+    assert(s == s0 + s1);
+    assert(s2 + s0 == (s1 + s0).drop_first());
+}
+
 /// to_multiset() preserves length
 proof fn to_multiset_len<A>(s: Seq<A>)
     ensures
@@ -1703,6 +1742,49 @@ pub proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x:
             let index = choose|i: int| 0 <= start <= i < stop <= s.len() && s[i] == x;
             assert(s.subrange(start, stop)[index - start] == s[index]);
         }
+    }
+}
+
+// Definition of a commutative fold_right operator.
+pub open spec fn commutative_foldr<A, B>(f: spec_fn(A, B) -> B) -> bool {
+    forall|x: A, y: A, v: B| #[trigger] f(x, f(y, v)) == f(y, f(x, v))
+}
+
+// For a commutative fold_right operator, any folding order
+// (i.e., any permutation) produces the same result.
+pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_fn(A, B) -> B, v: B)
+    requires
+        commutative_foldr(f),
+        l1.to_multiset() == l2.to_multiset(),
+    ensures
+        l1.fold_right(f, v) == l2.fold_right(f, v),
+    decreases l1.len(),
+{
+    l1.to_multiset_ensures();
+    l2.to_multiset_ensures();
+
+    if l1.len() > 0 {
+        let a = l1.last();
+        let i = l2.index_of(a);
+        let l2r = l2.subrange(i + 1, l2.len() as int).fold_right(f, v);
+
+        assert(l1.to_multiset().count(a) > 0);
+        l1.drop_last().lemma_fold_right_commute_one(a, f, v);
+        l2.subrange(0, i).lemma_fold_right_commute_one(a, f, l2r);
+
+        l2.lemma_fold_right_split(f, v, i + 1);
+        l2.remove(i).lemma_fold_right_split(f, v, i);
+
+        assert(l2.subrange(0, i + 1).drop_last() == l2.subrange(0, i));
+        assert(l1.drop_last() == l1.remove(l1.len() - 1));
+
+        assert(l2.remove(i).subrange(0, i) == l2.subrange(0, i));
+        assert(l2.remove(i).subrange(i, l2.remove(i).len() as int) == l2.subrange(
+            i + 1,
+            l2.len() as int,
+        ));
+
+        lemma_fold_right_permutation(l1.drop_last(), l2.remove(i), f, v);
     }
 }
 
