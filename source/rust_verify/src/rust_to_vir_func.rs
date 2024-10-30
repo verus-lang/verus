@@ -195,6 +195,12 @@ pub(crate) fn handle_external_fn<'tcx>(
         );
     }
 
+    if vattrs.external {
+        return err_span(
+            sig.span,
+            format!("a function cannot be marked both `external_fn_specification` and `external`",),
+        );
+    }
     if vattrs.external_body {
         return err_span(
             sig.span,
@@ -621,6 +627,12 @@ pub(crate) fn check_item_fn<'tcx>(
     };
 
     let name = Arc::new(FunX { path: path.clone() });
+
+    if vattrs.is_external(&ctxt.cmd_line_args) {
+        let mut erasure_info = ctxt.erasure_info.borrow_mut();
+        erasure_info.external_functions.push(name);
+        return Ok(None);
+    }
 
     let self_typ_params = if let Some((cg, impl_def_id)) = self_generics {
         Some(check_generics_bounds_no_polarity(
@@ -1733,6 +1745,11 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 
     if vattrs.external_fn_specification {
         return err_span(span, "`external_fn_specification` attribute not supported here");
+    }
+    if vattrs.is_external(&ctxt.cmd_line_args) {
+        let mut erasure_info = ctxt.erasure_info.borrow_mut();
+        erasure_info.external_functions.push(name);
+        return Ok(());
     }
 
     let mode = get_mode(Mode::Exec, attrs);

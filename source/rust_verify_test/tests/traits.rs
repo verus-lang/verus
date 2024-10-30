@@ -2962,7 +2962,7 @@ test_verify_one_file! {
                 let x = 1 / 0;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "An individual item of a trait impl cannot be marked external")
+    } => Err(err) => assert_vir_error_msg(err, "an item in a trait impl cannot be marked external")
 }
 
 test_verify_one_file! {
