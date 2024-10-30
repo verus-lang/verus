@@ -38,6 +38,7 @@ pub fn main() {
     opts.optopt("", "log-air-middle", "Log AIR queries in middle form", "FILENAME");
     opts.optopt("", "log-air-final", "Log AIR queries in final form", "FILENAME");
     opts.optopt("", "log-smt", "Log SMT queries", "FILENAME");
+    opts.optopt("", "log-smt-transcript", "Log complete SMT transcript", "FILENAME");
     opts.optflag("", "ignore-unexpected-smt", "Ignore unexpected SMT output");
     opts.optflag("d", "debug", "Debug verification failures");
     opts.optflag(
@@ -130,6 +131,11 @@ pub fn main() {
         let file =
             File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", &filename));
         air_context.set_smt_log(Box::new(file));
+    }
+    if let Some(filename) = matches.opt_str("log-smt-transcript") {
+        let file =
+            File::create(&filename).unwrap_or_else(|_| panic!("could not open file {}", &filename));
+        air_context.set_smt_transcript_log(Box::new(file));
     }
 
     // Send commands

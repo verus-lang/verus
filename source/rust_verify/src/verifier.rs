@@ -1105,6 +1105,19 @@ impl Verifier {
             )?;
             air_context.set_smt_log(Box::new(file));
         }
+        if self.args.log_all || self.args.log_args.log_smt_transcript {
+            let file = self.create_log_file(
+                Some(bucket_id),
+                Self::log_fine_name_suffix(
+                    is_rerun,
+                    query_function_path_counter,
+                    self.expand_flag,
+                    crate::config::SMT_TRANSCRIPT_FILE_SUFFIX,
+                )
+                .as_str(),
+            )?;
+            air_context.set_smt_transcript_log(Box::new(file));
+        }
 
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");

@@ -28,6 +28,7 @@ pub const INTERPRETER_FILE_SUFFIX: &str = ".interp";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
 pub const AIR_FINAL_FILE_SUFFIX: &str = "-final.air";
 pub const SMT_FILE_SUFFIX: &str = ".smt2";
+pub const SMT_TRANSCRIPT_FILE_SUFFIX: &str = ".smt_transcript";
 pub const PROFILE_FILE_SUFFIX: &str = ".profile";
 pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
@@ -47,6 +48,7 @@ pub struct LogArgs {
     pub log_air_initial: bool,
     pub log_air_final: bool,
     pub log_smt: bool,
+    pub log_smt_transcript: bool,
     pub log_triggers: bool,
     pub log_call_graph: bool,
 }
@@ -232,6 +234,7 @@ pub fn parse_args_with_imports(
     const LOG_AIR: &str = "air";
     const LOG_AIR_FINAL: &str = "air-final";
     const LOG_SMT: &str = "smt";
+    const LOG_SMT_TRANSCRIPT: &str = "smt-transcript";
     const LOG_TRIGGERS: &str = "triggers";
     const LOG_CALL_GRAPH: &str = "call-graph";
 
@@ -248,6 +251,7 @@ pub fn parse_args_with_imports(
         (LOG_AIR, "Log AIR queries in initial form"),
         (LOG_AIR_FINAL, "Log AIR queries in final form"),
         (LOG_SMT, "Log SMT queries"),
+        (LOG_SMT_TRANSCRIPT, "Log complete SMT transcript"),
         (LOG_TRIGGERS, "Log automatically chosen triggers"),
         (LOG_CALL_GRAPH, "Log the call graph"),
     ];
@@ -588,6 +592,7 @@ pub fn parse_args_with_imports(
             log_air_initial: log.get(LOG_AIR).is_some(),
             log_air_final: log.get(LOG_AIR_FINAL).is_some(),
             log_smt: log.get(LOG_SMT).is_some(),
+            log_smt_transcript: log.get(LOG_SMT_TRANSCRIPT).is_some(),
             log_triggers: log.get(LOG_TRIGGERS).is_some(),
             log_call_graph: log.get(LOG_CALL_GRAPH).is_some(),
         },
