@@ -5,13 +5,13 @@ use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_u
 use crate::verus_items::{BuiltinTypeItem, RustItem, VerusItem, VerusItems};
 use crate::{lifetime_ast::*, verus_items};
 use air::ast_util::str_ident;
-use rustc_ast::{BorrowKind, IsAuto, Mutability};
+use rustc_ast::{BindingMode, BorrowKind, IsAuto, Mutability};
 use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
-    AssocItemKind, BindingAnnotation, Block, BlockCheckMode, BodyId, Closure, Crate, Expr,
-    ExprKind, FnSig, HirId, Impl, ImplItem, ImplItemKind, ItemKind, Let, MaybeOwner, Node,
-    OpaqueTy, OpaqueTyOrigin, OwnerNode, Pat, PatKind, Stmt, StmtKind, TraitFn, TraitItem,
-    TraitItemKind, TraitItemRef, UnOp, Unsafety,
+    AssocItemKind, Block, BlockCheckMode, BodyId, Closure, Crate, Expr, ExprKind, FnSig, HirId,
+    Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OpaqueTy,
+    OpaqueTyOrigin, OwnerNode, Pat, PatKind, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind,
+    TraitItemRef, UnOp, Unsafety,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegionKind, BoundVariableKind, ClauseKind, Const, GenericArgKind,
@@ -503,7 +503,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
         TyKind::Tuple(_) => Box::new(TypX::Tuple(
             ty.tuple_fields().iter().map(|t| erase_ty(ctxt, state, &t)).collect(),
         )),
-        TyKind::RawPtr(rustc_middle::ty::TypeAndMut { ty: t, mutbl }) => {
+        TyKind::RawPtr(t, mutbl) => {
             let ty = erase_ty(ctxt, state, t);
             Box::new(TypX::RawPtr(ty, *mutbl))
         }
@@ -675,7 +675,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
                 mk_pat(PatternX::Wildcard)
             } else {
                 let id = state.local(&x.to_string(), hir_id.local_id.index());
-                let BindingAnnotation(_, mutability) = ann;
+                let BindingMode(_, mutability) = ann;
                 mk_pat(PatternX::Binding(id, mutability.to_owned(), None))
             }
         }
@@ -684,7 +684,7 @@ fn erase_pat<'tcx>(ctxt: &Context<'tcx>, state: &mut State, pat: &Pat<'tcx>) -> 
                 erase_pat(ctxt, state, subpat)
             } else {
                 let id = state.local(&x.to_string(), hir_id.local_id.index());
-                let BindingAnnotation(_, mutability) = ann;
+                let BindingMode(_, mutability) = ann;
                 let subpat = erase_pat(ctxt, state, subpat);
                 mk_pat(PatternX::Binding(id, mutability.to_owned(), Some(subpat)))
             }
@@ -1106,7 +1106,7 @@ fn erase_match<'tcx>(
     expect_spec: bool,
     expr: &Expr<'tcx>,
     cond: &Expr<'tcx>,
-    arms: Vec<(Option<&Pat<'tcx>>, &Option<rustc_hir::Guard<'tcx>>, Option<&Expr<'tcx>>)>,
+    arms: Vec<(Option<&Pat<'tcx>>, &Option<&Expr<'tcx>>, Option<&Expr<'tcx>>)>,
 ) -> Option<Exp> {
     let expr_typ = |state: &mut State| erase_ty(ctxt, state, &ctxt.types().node_type(expr.hir_id));
     let mk_exp1 = |e: ExpX| Box::new((expr.span, e));
@@ -1123,8 +1123,7 @@ fn erase_match<'tcx>(
         };
         let guard = match guard_opt {
             None => None,
-            Some(rustc_hir::Guard::If(guard)) => erase_expr(ctxt, state, cond_spec, guard),
-            _ => panic!("unexpected guard"),
+            Some(guard) => erase_expr(ctxt, state, cond_spec, guard),
         };
         let (body, body_span) = if let Some(b) = body_expr {
             (erase_expr(ctxt, state, expect_spec, b), b.span)
@@ -1175,7 +1174,7 @@ fn erase_inv_block<'tcx>(
     let inner_pat = match &inner_pat.kind {
         PatKind::Binding(ann, hir_id, x, None) => {
             let id = state.local(&x.to_string(), hir_id.local_id.index());
-            let BindingAnnotation(_, mutability) = ann;
+            let BindingMode(_, mutability) = ann;
             Box::new((inner_pat.span, PatternX::Binding(id, mutability.to_owned(), None)))
         }
         _ => {
@@ -1210,6 +1209,9 @@ fn erase_expr<'tcx>(
             match res {
                 Res::Local(id) => match ctxt.tcx.hir_node(id) {
                     Node::Pat(Pat { kind: PatKind::Binding(_ann, id, ident, _pat), .. }) => {
+                        if !ctxt.var_modes.contains_key(&expr.hir_id) {
+                            dbg!(expr);
+                        }
                         if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
                             None
                         } else {
@@ -1270,7 +1272,7 @@ fn erase_expr<'tcx>(
                         return mk_exp(ExpX::Call(fun_exp, vec![], vec![]));
                     }
                 }
-                Res::Def(DefKind::Static(_), id) => {
+                Res::Def(DefKind::Static { mutability: Mutability::Not, nested: false }, id) => {
                     if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
                         None
                     } else {
@@ -1539,7 +1541,7 @@ fn erase_expr<'tcx>(
             let cond_spec = ctxt.condition_modes[&expr.hir_id] == Mode::Spec;
             let cond = cond.peel_drop_temps();
             match cond.kind {
-                ExprKind::Let(Let { pat, init: src_expr, .. }) => {
+                ExprKind::Let(LetExpr { pat, init: src_expr, .. }) => {
                     let arm1 = (Some(pat.to_owned()), &None, Some(*lhs));
                     let arm2 = (None, &None, *rhs);
                     erase_match(ctxt, state, expect_spec, expr, src_expr, vec![arm1, arm2])
@@ -1603,12 +1605,7 @@ fn erase_expr<'tcx>(
             let exp = erase_expr(ctxt, state, ctxt.ret_spec.expect("ret_spec"), expr);
             mk_exp(ExpX::Ret(exp))
         }
-        ExprKind::Closure(Closure {
-            capture_clause: capture_by,
-            body: body_id,
-            movability,
-            ..
-        }) => {
+        ExprKind::Closure(Closure { capture_clause: capture_by, body: body_id, .. }) => {
             let mut params: Vec<(Span, Id, Typ)> = Vec::new();
             let body = ctxt.tcx.hir().body(*body_id);
             let ps = &body.params;
@@ -1626,7 +1623,7 @@ fn erase_expr<'tcx>(
             }
             let body_exp = erase_expr(ctxt, state, expect_spec, &body.value);
             let body_exp = force_block(body_exp, body.value.span);
-            mk_exp(ExpX::Closure(*capture_by, *movability, params, body_exp))
+            mk_exp(ExpX::Closure(*capture_by, None, params, body_exp))
         }
         ExprKind::Block(block, None) => {
             let attrs = ctxt.tcx.hir().attrs(expr.hir_id);
@@ -1677,10 +1674,10 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
                 vec![]
             }
         }
-        StmtKind::Local(local) => {
-            let mode = ctxt.var_modes[&local.pat.hir_id];
+        StmtKind::Let(LetStmt { pat, ty: _, init, els: _, hir_id, span: _, source: _ }) => {
+            let mode = ctxt.var_modes[&pat.hir_id];
             if mode == Mode::Spec {
-                if let Some(init) = local.init {
+                if let Some(init) = init {
                     if let Some(e) = erase_expr(ctxt, state, true, init) {
                         vec![Box::new((stmt.span, StmX::Expr(e)))]
                     } else {
@@ -1690,13 +1687,10 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
                     vec![]
                 }
             } else {
-                let pat = erase_pat(ctxt, state, &local.pat);
-                let typ = erase_ty(ctxt, state, &ctxt.types().node_type(local.pat.hir_id));
-                let init_exp = if let Some(init) = local.init {
-                    erase_expr(ctxt, state, false, init)
-                } else {
-                    None
-                };
+                let pat: Pattern = erase_pat(ctxt, state, pat);
+                let typ = erase_ty(ctxt, state, &ctxt.types().node_type(*hir_id));
+                let init_exp =
+                    if let Some(init) = init { erase_expr(ctxt, state, false, init) } else { None };
                 vec![Box::new((stmt.span, StmX::Let(pat, typ, init_exp)))]
             }
         }
@@ -2056,7 +2050,7 @@ fn erase_fn_common<'tcx>(
                 .iter()
                 .map(|p| {
                     let is_mut_var = match p.pat.kind {
-                        PatKind::Binding(rustc_hir::BindingAnnotation(_, mutability), _, _, _) => {
+                        PatKind::Binding(BindingMode(_, mutability), _, _, _) => {
                             mutability == rustc_hir::Mutability::Mut
                         }
                         _ => panic!("expected binding pattern"),
@@ -2816,7 +2810,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                     let attrs = tcx.hir().attrs(item.hir_id());
                     let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
                         .expect("get_verifier_attrs");
-                    if vattrs.external || vattrs.internal_reveal_fn {
+                    if vattrs.external || vattrs.internal_reveal_fn || vattrs.internal_const_body {
                         continue;
                     }
                     let id = item.owner_id.to_def_id();
@@ -2947,6 +2941,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             origin: OpaqueTyOrigin::AsyncFn(_),
                             in_trait: _,
                             lifetime_mapping: _,
+                            precise_capturing_args: None,
                         }) => {
                             continue;
                         }
@@ -2965,6 +2960,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                 OwnerNode::Crate(_mod_) => {}
                 OwnerNode::ImplItem(_) => {}
                 OwnerNode::ForeignItem(_foreign_item) => {}
+                OwnerNode::Synthetic => {}
             }
         }
     }

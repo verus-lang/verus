@@ -167,9 +167,7 @@ pub fn no_unwind_when(_b: bool) {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::reveal_hide"]
 #[verifier::proof]
-pub fn reveal_hide_(_f: fn(), _n: u32) {
-    unimplemented!();
-}
+pub const fn reveal_hide_(_f: fn(), _n: u32) {}
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::reveal_hide_internal_path"]
@@ -377,14 +375,15 @@ impl<A> Ghost<A> {
     #[rustc_diagnostic_item = "verus::builtin::Ghost::view"]
     #[verifier::spec]
     pub fn view(self) -> A {
-        unimplemented!()
+        unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::builtin::Ghost::new"]
     #[verifier::spec]
     #[verifier::external_body]
-    pub fn new(_a: A) -> Ghost<A> {
+    pub const fn new(_a: A) -> Ghost<A> {
+        core::mem::forget(_a);
         Ghost { phantom: PhantomData }
     }
 
@@ -411,7 +410,10 @@ impl<A> Ghost<A> {
     #[verifier::spec]
     #[verifier::external_body]
     pub fn borrow(&self) -> &A {
-        unimplemented!()
+        #[allow(deref_nullptr)]
+        unsafe {
+            &*(0 as *const A)
+        }
     }
 
     // note that because we return #[verifier::spec], not #[verifier::exec], we do not implement the BorrowMut trait
@@ -420,7 +422,10 @@ impl<A> Ghost<A> {
     #[verifier::proof]
     #[verifier::external]
     pub fn borrow_mut(#[verifier::proof] &mut self) -> &mut A {
-        unimplemented!()
+        #[allow(deref_nullptr)]
+        unsafe {
+            &mut *(0 as *mut A)
+        }
     }
 }
 
@@ -429,14 +434,15 @@ impl<A> Tracked<A> {
     #[rustc_diagnostic_item = "verus::builtin::Tracked::view"]
     #[verifier::spec]
     pub fn view(self) -> A {
-        unimplemented!()
+        unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::builtin::Tracked::new"]
     #[verifier::proof]
     #[verifier::external_body]
-    pub fn new(#[verifier::proof] _a: A) -> Tracked<A> {
+    pub const fn new(#[verifier::proof] _a: A) -> Tracked<A> {
+        core::mem::forget(_a);
         Tracked { phantom: PhantomData }
     }
 
@@ -459,8 +465,8 @@ impl<A> Tracked<A> {
     #[verifier::proof]
     #[verifier::external_body]
     #[verifier::returns(proof)]
-    pub fn get(#[verifier::proof] self) -> A {
-        unimplemented!()
+    pub const fn get(#[verifier::proof] self) -> A {
+        unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
     // note that because we return #[verifier::proof], not #[verifier::exec], we do not implement the Borrow trait
@@ -470,7 +476,10 @@ impl<A> Tracked<A> {
     #[verifier::external_body]
     #[verifier::returns(proof)]
     pub fn borrow(#[verifier::proof] &self) -> &A {
-        unimplemented!()
+        #[allow(deref_nullptr)]
+        unsafe {
+            &*(0 as *const A)
+        }
     }
 
     // note that because we return #[verifier::proof], not #[verifier::exec], we do not implement the BorrowMut trait
@@ -480,7 +489,10 @@ impl<A> Tracked<A> {
     #[verifier::external_body]
     #[verifier::returns(proof)]
     pub fn borrow_mut(#[verifier::proof] &mut self) -> &mut A {
-        unimplemented!()
+        #[allow(deref_nullptr)]
+        unsafe {
+            &mut *(0 as *mut A)
+        }
     }
 }
 
@@ -507,14 +519,16 @@ impl<A: Copy> Copy for Tracked<A> {}
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::ghost_exec"]
 #[verifier::external_body]
-pub fn ghost_exec<A>(#[verifier::spec] _a: A) -> Ghost<A> {
+pub const fn ghost_exec<A>(#[verifier::spec] _a: A) -> Ghost<A> {
+    core::mem::forget(_a);
     Ghost::assume_new()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::tracked_exec"]
 #[verifier::external_body]
-pub fn tracked_exec<A>(#[verifier::proof] _a: A) -> Tracked<A> {
+pub const fn tracked_exec<A>(#[verifier::proof] _a: A) -> Tracked<A> {
+    core::mem::forget(_a);
     Tracked::assume_new()
 }
 
@@ -1466,9 +1480,7 @@ pub fn infer_spec_for_loop_iter<A>(_: A, _print_hint: bool) -> Option<A> {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::global_size_of"]
 #[verifier::spec]
-pub const fn global_size_of<T>(_bytes: usize) {
-    unimplemented!()
-}
+pub const fn global_size_of<T>(_bytes: usize) {}
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::inline_air_stmt"]

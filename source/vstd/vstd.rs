@@ -14,6 +14,7 @@
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
 #![cfg_attr(verus_keep_ghost, feature(strict_provenance))]
 #![cfg_attr(verus_keep_ghost, feature(strict_provenance_atomic_ptr))]
+#![cfg_attr(verus_keep_ghost, feature(freeze))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;

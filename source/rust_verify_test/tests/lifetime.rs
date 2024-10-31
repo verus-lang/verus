@@ -758,7 +758,7 @@ test_verify_one_file! {
                 _ => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "use of moved value")
+    } => Err(err) => assert_vir_error_msg(err, "use of partially moved value")
 }
 
 test_verify_one_file! {

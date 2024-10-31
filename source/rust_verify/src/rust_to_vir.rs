@@ -55,6 +55,9 @@ fn check_item<'tcx>(
     if vattrs.internal_reveal_fn {
         return Ok(());
     }
+    if vattrs.internal_const_body {
+        return Ok(());
+    }
     if vattrs.external_fn_specification && !matches!(&item.kind, ItemKind::Fn(..)) {
         return err_span(item.span, "`external_fn_specification` attribute not supported here");
     }
@@ -405,6 +408,7 @@ fn check_item<'tcx>(
             origin: OpaqueTyOrigin::AsyncFn(_),
             in_trait: _,
             lifetime_mapping: _,
+            precise_capturing_args: None,
         }) => {
             return Ok(());
         }
@@ -630,6 +634,7 @@ pub fn crate_to_vir<'tcx>(
                     }
                 },
                 OwnerNode::Crate(_mod_) => (),
+                OwnerNode::Synthetic => (),
             }
         }
     }

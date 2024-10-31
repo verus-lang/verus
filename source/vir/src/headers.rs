@@ -227,10 +227,70 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
 }
 
 pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
+    #[derive(Clone, Copy)]
+    enum NestedHeaderBlock {
+        No,
+        Yes,
+        Unknown,
+        Conflict,
+    }
+
+    impl NestedHeaderBlock {
+        fn join(&mut self, other: NestedHeaderBlock) {
+            match (*self, other) {
+                (NestedHeaderBlock::No, NestedHeaderBlock::No) => {}
+                (NestedHeaderBlock::Yes, NestedHeaderBlock::Yes) => {}
+                (_, NestedHeaderBlock::Unknown) => panic!("unexpected join with unknown"),
+                (NestedHeaderBlock::Unknown, _) => *self = other,
+                _ => *self = NestedHeaderBlock::Conflict,
+            }
+        }
+    }
+
     match &body.x {
         ExprX::Block(stmts, expr) => {
             let mut expr = expr.clone();
-            let mut block: Vec<Stmt> = (**stmts).clone();
+            let mut block = Vec::new();
+            for stmt in (**stmts).iter() {
+                let mut nested_header_block = NestedHeaderBlock::Unknown;
+                if let StmtX::Expr(e) = &stmt.x {
+                    if let ExprX::Block(b, e) = &e.x {
+                        for s in b.iter() {
+                            if let StmtX::Expr(e) = &s.x {
+                                if let ExprX::Header(_h) = &e.x {
+                                    block.push(s.clone());
+                                    nested_header_block = NestedHeaderBlock::Yes;
+                                } else {
+                                    nested_header_block.join(NestedHeaderBlock::No);
+                                }
+                            } else {
+                                nested_header_block.join(NestedHeaderBlock::No);
+                            }
+                        }
+                        if let Some(e) = &e {
+                            if let ExprX::Header(_h) = &e.x {
+                                nested_header_block = NestedHeaderBlock::Conflict;
+                            }
+                        }
+                    } else {
+                        nested_header_block.join(NestedHeaderBlock::No);
+                    }
+                } else {
+                    nested_header_block.join(NestedHeaderBlock::No);
+                }
+                match nested_header_block {
+                    NestedHeaderBlock::No | NestedHeaderBlock::Unknown => {
+                        block.push(stmt.clone());
+                    }
+                    NestedHeaderBlock::Yes => {}
+                    NestedHeaderBlock::Conflict => {
+                        return Err(error(
+                            &stmt.span,
+                            "internal error: invalid nested header block",
+                        ));
+                    }
+                }
+            }
             let mut header = read_header_block(&mut block)?;
             if let Some(e) = &expr {
                 if let ExprX::Header(h) = &e.x {
