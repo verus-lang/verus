@@ -279,15 +279,26 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             if let Some(DeclaredX::Fun { params, ret, field_accessor: true }) =
                 typing.get(field_ident)
             {
-                // t is the type of the field
                 if let [s] = &params[..] {
-                    if t1 == *s && t2 == *ret {
-                        return Ok(t1);
+                    if t1 != *s {
+                        Err(format!(
+                            "in field-update, argument type {:?} does not match struct type {:?}",
+                            t1, *s
+                        ))
+                    } else if t2 != *ret {
+                        Err(format!(
+                            "in field-update, type of new value ({:?}) does not match field type {:?}",
+                            t2, *ret
+                        ))
+                    } else {
+                        Ok(t1)
                     }
+                } else {
+                    Err(format!("field accessor {:?} should only have one parameter", field_ident))
                 }
+            } else {
+                Err(format!("cannot find field accessor {:?}", field_ident))
             }
-
-            Err(format!("field update types do not match"))
         }
         ExprX::Binary(BinaryOp::Le, e1, e2) => {
             check_exprs(typing, "<=", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
