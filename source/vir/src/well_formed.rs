@@ -30,6 +30,12 @@ fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &crate::messages::Span) -> Resu
         if let TypX::Datatype(Dt::Path(path), _, _) = &**t {
             check_path_and_get_datatype(ctxt, path, span)?;
             Ok(())
+        } else if let TypX::FnDef(fun, _typs, opt_res_fun) = &**t {
+            check_path_and_get_function(ctxt, fun, None, span)?;
+            if let Some(res_fun) = opt_res_fun {
+                check_path_and_get_function(ctxt, res_fun, None, span)?;
+            }
+            Ok(())
         } else {
             Ok(())
         }
@@ -450,6 +456,8 @@ fn check_one_expr(
             for typ in typs.iter() {
                 check_typ(ctxt, typ, &expr.span)?;
             }
+
+            check_typ(ctxt, &expr.typ, &expr.span)?;
         }
         _ => {}
     }

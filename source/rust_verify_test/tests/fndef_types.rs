@@ -1680,3 +1680,27 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] unrecognized_trait_impl_issue1332 verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Foo {
+            val: u64,
+        }
+
+        #[verifier::external]
+        impl Clone for Foo {
+            fn clone(&self) -> Foo {
+                Foo { val: self.val }
+            }
+        }
+
+        impl Foo {
+            proof fn lemma_clone()
+                ensures
+                    forall |a: Self, b: Self| call_ensures(Clone::clone, (&a,), b) ==> a == b,
+            { assume(false); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Foo::clone` is not supported")
+}
