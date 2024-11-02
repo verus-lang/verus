@@ -283,7 +283,7 @@ jobs:
           new_name: Rolling Release ${{ env.RELEASE_NAME }}
           new_body: |
             Rolling release from Continuous Integration
-          delete_tags_prefix: release/rolling/
+          delete_tags_prefix: null
           delete_assets: true
           new_draft_status: true
 
