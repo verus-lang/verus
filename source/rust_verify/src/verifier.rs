@@ -33,6 +33,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
+use vir::mono::PolyStrategy;
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
@@ -1345,8 +1346,6 @@ impl Verifier {
 
         let mut function_decl_commands = vec![];
 
-        // Declare the function symbols
-        println!("{specializations:?}");
         for function in &krate.functions {
             ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
             let commands = vir::sst_to_air_func::func_name_to_air(
@@ -1360,10 +1359,13 @@ impl Verifier {
             self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
             function_decl_commands.push((commands.clone(), comment.clone()));
 
+            if ctx.global.poly_strategy != PolyStrategy::Mono {
+                continue;
+            }
+
             let Some(specs) = specializations.get(&function.x.name) else {
                 continue;
             };
-            println!("Function {:?} specialized to {:?}", function.x.name, specs);
             for spec in specs.iter() {
                 if spec.typs.len() > 0 { 
                 let commands =
@@ -1909,6 +1911,7 @@ impl Verifier {
             .find(|m| &m.x.path == bucket_id.module())
             .expect("module in krate")
             .clone();
+        let poly_strategy = global_ctx.poly_strategy;
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
@@ -1931,7 +1934,10 @@ impl Verifier {
             &self.get_bucket(bucket_id).funs,
             &pruned_krate,
         )?;
-        let specializations = vir::mono::mono_krate_for_module(&krate_sst);
+        let specializations = match poly_strategy {
+            PolyStrategy::Mono =>vir::mono::mono_krate_for_module(&krate_sst),
+            PolyStrategy::Poly => Default::default(),
+        };
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =

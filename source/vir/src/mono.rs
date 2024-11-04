@@ -37,6 +37,12 @@ use crate::sst::{Par, ParX};
 use crate::def::Spanned;
 use crate::poly;
 
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum PolyStrategy {
+    Mono,
+    Poly,
+}
+
 /**
 This stores one instance of specialization of a particular function. This
 structure handles deduplication of essentially isomorphic call sites.
@@ -161,6 +167,7 @@ impl Specialization {
         for typ in self.typs.iter() {
             suffix += &Self::mangle_type_name(&*typ);
         }
+
 
         Arc::new(ident.as_ref().clone() + &suffix)
     }

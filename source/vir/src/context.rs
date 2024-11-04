@@ -7,6 +7,7 @@ use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
 use crate::messages::{error, Span};
 use crate::poly::MonoTyp;
+use crate::mono::PolyStrategy;
 use crate::recursion::Node;
 use crate::scc::Graph;
 use crate::sst::BndInfo;
@@ -54,6 +55,7 @@ pub struct GlobalCtx {
     pub crate_name: Ident,
     pub vstd_crate_name: Ident,
     pub solver: SmtSolver,
+    pub poly_strategy: PolyStrategy,
 }
 
 // Context for verifying one function
@@ -490,6 +492,7 @@ impl GlobalCtx {
             vstd_crate_name,
             func_call_graph_log,
             solver,
+            poly_strategy: PolyStrategy::Poly,
         })
     }
 
@@ -516,6 +519,7 @@ impl GlobalCtx {
             vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
             solver: self.solver.clone(),
+            poly_strategy: PolyStrategy::Poly,
         }
     }
 

@@ -12,7 +12,7 @@ use vir::def::{CommandsWithContext, SnapPos};
 use vir::recursion::Node;
 use vir::sst::{FuncCheckSst, FunctionSst};
 use vir::mono::Specialization;
-use vir::mono::mono_krate_for_module;
+use vir::mono::{PolyStrategy, mono_krate_for_module};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, Debug)]
@@ -89,8 +89,10 @@ impl<'a> OpGenerator<'a> {
             assert!(!func_map.contains_key(&function.x.name));
             func_map.insert(function.x.name.clone(), function.clone());
         }
-        let specializations = mono_krate_for_module(krate);
-
+        let specializations = match ctx.global.poly_strategy {
+            PolyStrategy::Mono => mono_krate_for_module(krate),
+      PolyStrategy::Poly => Default::default(),
+    };
         let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
         for imp in &krate.trait_impls {
             assert!(!trait_impl_map.contains_key(&imp.x.impl_path));

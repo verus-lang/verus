@@ -764,8 +764,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt)?,
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x))),
         ExpX::Call(f @ (CallFun::Fun(..) | CallFun::Recursive(_)), typs, args) => {
-            let (_, specialization) = mono::Specialization::from_exp(&exp.x)
+            let specialization = match ctx.global.poly_strategy {
+                mono::PolyStrategy::Mono => {
+                  let (_, spec) = mono::Specialization::from_exp(&exp.x)
                 .expect("Could not create specialization rom call site");
+                spec
+                }
+                mono::PolyStrategy::Poly => mono::Specialization::empty(),
+            };
             let x_name = match f {
                 CallFun::Fun(x, _) => x.clone(),
                 CallFun::Recursive(x) => crate::def::prefix_recursive_fun(&x),
