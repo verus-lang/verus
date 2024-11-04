@@ -23,6 +23,7 @@ use crate::ast::{Fun, Dt};
 use crate::ast::Idents;
 use crate::ast::IntRange;
 use crate::ast::Primitive;
+use crate::ast::TypDecorationArg;
 use crate::ast_util::n_types_equal;
 use crate::sst::{CallFun, Exp, ExpX, KrateSstX, Stm};
 use crate::sst_util::{subst_exp, subst_typ};
@@ -40,10 +41,64 @@ use crate::poly;
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
 pub enum PolyStrategy {
     Mono,
-
     #[default]
     Poly,
 }
+
+pub type SpecTyp = Arc<SpecTypX>;
+pub type SpecTyps = Arc<Vec<SpecTyp>>;
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SpecTypX {
+    Bool,
+    Int(IntRange),
+    Datatype(Dt, SpecTyps),
+    Decorate(crate::ast::TypDecoration, SpecTyp),
+    Decorate2(crate::ast::TypDecoration, SpecTyps),
+    Primitive(Primitive, SpecTyps),
+    Poly,
+}
+fn typs_as_spec(typs: &Typs) -> Vec<SpecTyp> {
+    let mut spec_typs: Vec<SpecTyp> = Vec::new();
+    for typ in typs.iter() {
+        let spec_typ = typ_as_spec(typ);
+            spec_typs.push(spec_typ);
+    }
+    spec_typs
+}
+
+pub(crate) fn typ_as_spec(typ: &Typ) -> SpecTyp {
+    match &**typ {
+        TypX::Bool => Arc::new(SpecTypX::Bool),
+        TypX::Int(range) => Arc::new(SpecTypX::Int(*range)),
+        TypX::Datatype(path, typs, _impl_paths) => {
+            let monotyps = typs_as_spec(typs);
+            Arc::new(SpecTypX::Datatype(path.clone(), Arc::new(monotyps)))
+        }
+        TypX::Decorate(d, None, t) => {
+            let spec = typ_as_spec(t);
+Arc::new(SpecTypX::Decorate(*d, spec))
+        }
+        TypX::Decorate(d, Some(TypDecorationArg { allocator_typ }), t) => {
+            let m1 = typ_as_spec(allocator_typ);
+            let m2 = typ_as_spec(t);
+            Arc::new(SpecTypX::Decorate2(*d, Arc::new(vec![m1, m2])))
+        }
+        TypX::Primitive(Primitive::Array, _) => Arc::new(SpecTypX::Poly),
+        TypX::Primitive(name, typs) => {
+            let monotyps = typs_as_spec(typs);
+            Arc::new(SpecTypX::Primitive(*name, Arc::new(monotyps)))
+        }
+        TypX::AnonymousClosure(..) => {
+            panic!("internal error: AnonymousClosure should be removed by ast_simplify")
+        }
+        TypX::TypeId => panic!("internal error: TypeId created too soon"),
+        TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::Boxed(..) | TypX::TypParam(..) | TypX::SpecFn(..) | TypX::FnDef(..) => Arc::new(SpecTypX::Poly),
+        TypX::ConstInt(_) => Arc::new(SpecTypX::Poly),
+        TypX::Projection { .. } => Arc::new(SpecTypX::Poly),
+    }
+}
+
 
 /**
 This stores one instance of specialization of a particular function. This
