@@ -37,9 +37,11 @@ use crate::sst::{Par, ParX};
 use crate::def::Spanned;
 use crate::poly;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
 pub enum PolyStrategy {
     Mono,
+
+    #[default]
     Poly,
 }
 

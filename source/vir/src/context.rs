@@ -492,7 +492,7 @@ impl GlobalCtx {
             vstd_crate_name,
             func_call_graph_log,
             solver,
-            poly_strategy: PolyStrategy::Poly,
+            poly_strategy: Default::default(),
         })
     }
 
@@ -519,7 +519,7 @@ impl GlobalCtx {
             vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
             solver: self.solver.clone(),
-            poly_strategy: PolyStrategy::Poly,
+            poly_strategy: Default::default(),
         }
     }
 
