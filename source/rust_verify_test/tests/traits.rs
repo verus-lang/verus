@@ -4167,3 +4167,61 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_recursion_through_copy_impl_is_checked verus_code! {
+        use vstd::*;
+
+        trait Tr {
+            proof fn tr_g() {
+            }
+        }
+
+        struct X<T, S> {
+            t: T,
+            s: S,
+        }
+
+        impl<T: Clone, S: Clone> Clone for X<T, S> {
+            fn clone(&self) -> Self {
+                X { t: self.t.clone(), s: self.s.clone() }
+            }
+        }
+
+        impl<T: Copy + Tr, S: Copy> Copy for X<T, S> {
+        }
+
+
+        trait Sr {
+            proof fn f() { }
+        }
+
+        struct Y<R> {
+            r: R,
+        }
+
+        impl<W: Copy> Sr for Y<W> {
+            proof fn f() { }
+        }
+
+
+        #[derive(Clone, Copy)]
+        struct A1 { }
+
+        #[derive(Clone, Copy)]
+        struct B1 { }
+
+        impl Tr for A1 {
+            proof fn tr_g() {
+                test();
+            }
+        }
+
+        // Depends on `X<A1, B1> : Copy`
+        // Depends on A1: Tr
+        // which depends recursively on `test`
+        proof fn test() {
+            let r = Y::<X<A1, B1>>::f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
