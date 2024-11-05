@@ -610,7 +610,7 @@ test_verify_one_file! {
         use core::ops::Range;
         use vstd::compute::*;
         use vstd::std_specs::bits::u64_leading_zeros;
-        global size_of usize == 8;    
+        global size_of usize == 8;
 
         pub const BIN_HUGE: u64 = 73;
 
@@ -650,7 +650,7 @@ test_verify_one_file! {
 
         spec fn property_bounds_for_smallest_bitting_size(size:int) -> bool
         {
-            valid_bin_idx(smallest_bin_fitting_size(size)) 
+            valid_bin_idx(smallest_bin_fitting_size(size))
         }
 
         pub proof fn bounds_for_smallest_bin_fitting_size_alt(size: int)
