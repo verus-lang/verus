@@ -1,13 +1,9 @@
 use super::prelude::*;
-//use vstd::prelude::*;
-//use super::std_specs::range::*;
 use core::ops::Range;
 
 verus! {
 
-/// Interface for ghost state that is consistent with the common
-/// presentations of partially commutative monoids (PCMs) / resource algebras.
-///
+/// Simplify proofs-by-computation for ranges of values
 
 pub trait RangeAll where Self: Sized {
     spec fn all(self, p: spec_fn(int) -> bool) -> bool;
@@ -43,7 +39,5 @@ pub broadcast proof fn all_implies(r: Range<int>, p: spec_fn(int) -> bool)
 pub broadcast group range_all {
     all_implies,
 }
-
-
 
 } // verus!
