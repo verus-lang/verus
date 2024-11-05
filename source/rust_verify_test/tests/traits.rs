@@ -4225,3 +4225,99 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
+
+test_verify_one_file! {
+    #[test] test_recursion_through_sync_impl_is_checked verus_code! {
+        trait Tr {
+            proof fn tr_g() {
+            }
+        }
+
+        struct X<T, S> {
+            rc: std::rc::Rc<u64>,
+            t: T,
+            s: S,
+        }
+
+        #[verifier::external]
+        unsafe impl<T: Sync + Tr, S: Sync> Sync for X<T, S> {
+        }
+
+
+        trait Sr {
+            proof fn f() { }
+        }
+
+        struct Y<R> {
+            r: R,
+        }
+
+        impl<W: Sync> Sr for Y<W> {
+            proof fn f() { }
+        }
+
+
+        struct A1 { }
+
+        struct B1 { }
+
+        impl Tr for A1 {
+            proof fn tr_g() {
+                test();
+            }
+        }
+
+
+        proof fn test() {
+            let r = Y::<X<A1, B1>>::f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
+    #[test] test_recursion_through_send_impl_is_checked verus_code! {
+        trait Tr {
+            proof fn tr_g() {
+            }
+        }
+
+        struct X<T, S> {
+            rc: std::rc::Rc<u64>,
+            t: T,
+            s: S,
+        }
+
+        #[verifier::external]
+        unsafe impl<T: Send + Tr, S: Send> Send for X<T, S> {
+        }
+
+
+        trait Sr {
+            proof fn f() { }
+        }
+
+        struct Y<R> {
+            r: R,
+        }
+
+        impl<W: Send> Sr for Y<W> {
+            proof fn f() { }
+        }
+
+
+        struct A1 { }
+
+        struct B1 { }
+
+        impl Tr for A1 {
+            proof fn tr_g() {
+                test();
+            }
+        }
+
+
+        proof fn test() {
+            let r = Y::<X<A1, B1>>::f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
