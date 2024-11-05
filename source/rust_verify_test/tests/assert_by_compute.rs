@@ -591,8 +591,6 @@ test_verify_one_file! {
         use vstd::compute::*;
 
         proof fn test() {
-            broadcast use range_all;
-
             assert({
                 let r = 2..4int;
                 let prop = |v: int| (v as u64) & 0xf000 == 0;
@@ -602,6 +600,69 @@ test_verify_one_file! {
             let prop = |v: int| (v as u64) & 0xf000 == 0;
             assert(prop(3));
             assert(3u64 & 0xf000 == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] range_all_complex verus_code! {
+        use vstd::prelude::*;
+        use core::ops::Range;
+        use vstd::compute::*;
+        use vstd::std_specs::bits::u64_leading_zeros;
+        global size_of usize == 8;    
+
+        pub const BIN_HUGE: u64 = 73;
+
+        pub open spec fn valid_bin_idx(bin_idx: int) -> bool {
+            1 <= bin_idx <= BIN_HUGE
+        }
+
+        pub open spec fn pow2(i: int) -> nat
+            decreases i
+        {
+            if i <= 0 {
+                1
+            } else {
+                pow2(i - 1) * 2
+            }
+        }
+
+        pub open spec fn smallest_bin_fitting_size(size: int) -> int {
+            let bytes_per_word = (usize::BITS / 8) as int;
+            let wsize = (size + bytes_per_word - 1) / bytes_per_word;
+            if wsize <= 1 {
+                1
+            } else if wsize <= 8 {
+                wsize
+            } else if wsize > 524288 {
+                BIN_HUGE as int
+            } else {
+                let w = (wsize - 1) as u64;
+                //let lz = w.leading_zeros();
+                let lz = u64_leading_zeros(w);
+                let b = (usize::BITS - 1 - lz) as u8;
+                let shifted = (w >> (b - 2) as u64) as u8;
+                let bin_idx = ((b * 4) + (shifted & 0x03)) - 3;
+                bin_idx
+            }
+        }
+
+        spec fn property_bounds_for_smallest_bitting_size(size:int) -> bool
+        {
+            valid_bin_idx(smallest_bin_fitting_size(size)) 
+        }
+
+        pub proof fn bounds_for_smallest_bin_fitting_size_alt(size: int)
+            requires 0 <= size <= 10,
+            ensures
+                valid_bin_idx(smallest_bin_fitting_size(size)),
+        {
+            assert({let r = 0..11int;
+                    r.all(|v| property_bounds_for_smallest_bitting_size(v))
+                    }) by (compute);
+            let prop = |v| property_bounds_for_smallest_bitting_size(v);
+            assert(prop(size));
         }
     } => Ok(())
 }
