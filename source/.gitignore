@@ -1,5 +1,6 @@
 target/
-z3
+/z3
+/cvc5
 /.verus-log/
 doc/
 /target-verus/

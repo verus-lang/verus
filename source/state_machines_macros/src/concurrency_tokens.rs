@@ -13,8 +13,8 @@ use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;
 use crate::to_relation::{conjunct_opt, emit_match};
 use crate::to_token_stream::{
-    get_self_ty, get_self_ty_turbofish, impl_decl_stream, name_with_type_args,
-    name_with_type_args_turbofish, shardable_type_to_type,
+    get_self_ty, get_self_ty_turbofish, impl_decl_stream, impl_decl_stream_for,
+    name_with_type_args, name_with_type_args_turbofish, shardable_type_to_type,
 };
 use crate::token_transition_checks::{check_ordering_remove_have_add, check_unsupported_updates};
 use crate::util::{combine_errors_or_ok, is_definitely_irrefutable};
@@ -26,7 +26,7 @@ use std::collections::HashSet;
 use syn_verus::parse;
 use syn_verus::parse::Error;
 use syn_verus::spanned::Spanned;
-use syn_verus::{Expr, Ident, Pat, Type};
+use syn_verus::{Expr, Generics, Ident, Pat, Type};
 
 // Misc. definitions for various identifiers we use
 // Note that everything is going to be inside a module, so for example,
@@ -228,7 +228,7 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
             // Verus will still look at the fields when doing its type hierarchy analysis.
 
             #[cfg_attr(verus_keep_ghost, verifier::spec)] send_sync: #vstd::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
-            #[cfg_attr(verus_keep_ghost, verifier::spec)] state: #self_ty,
+            #[cfg_attr(verus_keep_ghost, verifier::spec)] state: ::core::option::Option<#vstd::prelude::Ghost<#self_ty>>,
             #[cfg_attr(verus_keep_ghost, verifier::spec)] location: #vstd::prelude::int,
         }
     };
@@ -270,6 +270,28 @@ fn trusted_clone() -> TokenStream {
     };
 }
 
+fn trusted_copy(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
+    let impl_decl_clone = impl_decl_stream_for(self_ty, generics, quote! { ::core::clone::Clone });
+    let impl_decl_copy = impl_decl_stream_for(self_ty, generics, quote! { ::core::marker::Copy });
+    return quote! {
+        // It shouldn't be possible to call this (you'd need an exec-mode object)
+        // but we need to implement it so we can implement Copy.
+        // Our other 'clone' function should override this, which makes it difficult
+        // to accidentally call this.
+
+        #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+        #impl_decl_clone {
+            #[cfg_attr(verus_keep_ghost, verifier::external_body)] /* vattr */
+            fn clone(&self) -> Self {
+                ::core::unimplemented!();
+            }
+        }
+
+        #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+        #impl_decl_copy { }
+    };
+}
+
 /// Create the struct for a Token.
 /// Can create any combination of three fields: key, value, count.
 /// The `count` field, when present, always has type `nat`;
@@ -308,8 +330,17 @@ fn token_struct_stream(
     let impldecl = impl_decl_stream(&field_token_type(sm, field), &sm.generics);
     let mut impl_token_stream = collection_relation_fns_stream(sm, field);
 
-    if field.stype.is_persistent() {
+    let is_copy = field.stype.is_persistent();
+
+    let mut copy_impl = None;
+    let mut no_copy_impl = None;
+    if is_copy {
         impl_token_stream.extend(trusted_clone());
+        copy_impl = Some(trusted_copy(&field_token_type(sm, field), &sm.generics));
+    } else {
+        no_copy_impl = Some(quote_vstd! { vstd =>
+            no_copy: #vstd::state_machine_internal::NoCopy,
+        });
     }
 
     let key_field = match key_ty {
@@ -330,7 +361,7 @@ fn token_struct_stream(
         TokenStream::new()
     };
 
-    return quote_vstd! { vstd =>
+    return quote! {
         #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
         #(#attrs)*
@@ -341,7 +372,7 @@ fn token_struct_stream(
             // the type well-foundedness checks.
 
             #[cfg_attr(verus_keep_ghost, verifier::proof)] dummy_instance: #insttype,
-            no_copy: #vstd::state_machine_internal::NoCopy,
+            #no_copy_impl
         }
 
         #[cfg_attr(verus_keep_ghost, verifier::spec)]
@@ -374,6 +405,8 @@ fn token_struct_stream(
 
             #impl_token_stream
         }
+
+        #copy_impl
     };
 }
 
@@ -473,10 +506,14 @@ pub fn output_token_types_and_fns(
 
     let insttype = inst_type(&bundle.sm);
     let impldecl = impl_decl_stream(&insttype, &bundle.sm.generics);
+    let copy_impl = trusted_copy(&insttype, &bundle.sm.generics);
+
     token_stream.extend(quote! {
         #impldecl {
             #inst_impl_token_stream
         }
+
+        #copy_impl
     });
 
     Ok(())
@@ -698,7 +735,7 @@ pub fn exchange_stream(
         let itn = inst_type(sm);
         out_params.push((quote! { instance }, quote! { #itn }, Mode::Tracked));
     } else {
-        in_params.push(quote! { #[verifier::proof] &self });
+        in_params.push(quote! { tracked &self });
     }
 
     // Take the transition parameters (the normal parameters defined in the transition)
@@ -707,7 +744,7 @@ pub fn exchange_stream(
     for param in &tr.params {
         let id = &param.name;
         let ty = &param.ty;
-        in_params.push(quote! { #[verifier::spec] #id: #ty });
+        in_params.push(quote! { #id: #ty });
     }
 
     // We need some pre/post conditions that the input/output
@@ -994,10 +1031,9 @@ pub fn exchange_stream(
     let exch_name = exchange_name(&tr);
 
     let req_stream = if reqs.len() > 0 {
-        quote_vstd! { vstd =>
-            #vstd::prelude::requires(::builtin_macros::verus_proof_expr!([
-                #(#reqs),*
-            ]));
+        quote! {
+            requires
+                #((#reqs)),*
         }
     } else {
         TokenStream::new()
@@ -1006,41 +1042,37 @@ pub fn exchange_stream(
     // Output types are a bit tricky
     // because of the lack of named output params.
 
-    let (out_params_ret, ens_stream, ret_value_mode) = if out_params.len() == 0 {
+    let (out_params_ret, ens_stream) = if out_params.len() == 0 {
         let ens_stream = if enss.len() > 0 {
-            quote_vstd! { vstd =>
-                #vstd::prelude::ensures(::builtin_macros::verus_proof_expr!([
-                    #(#enss),*
-                ]));
+            quote! {
+                ensures
+                    #((#enss)),*
             }
         } else {
             TokenStream::new()
         };
 
-        (TokenStream::new(), ens_stream, TokenStream::new())
+        (TokenStream::new(), ens_stream)
     } else if out_params.len() == 1 {
         let param_name = &out_params[0].0;
         let param_ty = &out_params[0].1;
         let param_mode = &out_params[0].2;
 
         let ens_stream = if enss.len() > 0 {
-            quote_vstd! { vstd =>
-                #vstd::prelude::ensures(
-                    |#param_name: #param_ty| ::builtin_macros::verus_proof_expr!([
-                        #(#enss),*
-                    ])
-                );
+            quote! {
+                ensures
+                    #((#enss)),*,
             }
         } else {
             TokenStream::new()
         };
 
         let ret_value_mode = match param_mode {
-            Mode::Tracked => quote! { #[verifier::returns(proof)] /* vattr */ },
+            Mode::Tracked => quote! { tracked },
             Mode::Ghost => TokenStream::new(),
         };
 
-        (quote! { -> #param_ty }, ens_stream, ret_value_mode)
+        (quote! { -> (#ret_value_mode #param_name: #param_ty) }, ens_stream)
     } else {
         // If we have more than one output param (we aren't counting the &mut inputs here,
         // only stuff in the 'return type' position) then we have to package it all into
@@ -1079,22 +1111,18 @@ pub fn exchange_stream(
         let tup_names = quote! { (#(#param_names),*) };
 
         let ens_stream = if enss.len() > 0 {
-            quote_vstd! { vstd =>
-                #vstd::prelude::ensures(
-                    |tmp_tuple: #tup_typ| ::builtin_macros::verus_proof_expr!([{
-                        let #tup_names = tmp_tuple;
-                        #(#let_stmts)*
-                        #((#enss))&&*
-                    }])
-                );
+            quote! {
+                ensures ({
+                    let #tup_names = tmp_tuple;
+                    #(#let_stmts)*
+                    #((#enss))&&*
+                })
             }
         } else {
             TokenStream::new()
         };
 
-        let ret_value_mode = quote! { #[verifier::returns(proof)] /* vattr */ };
-
-        (quote! { -> #tup_typ }, ens_stream, ret_value_mode)
+        (quote! { -> (tracked tmp_tuple: #tup_typ) }, ens_stream)
     };
 
     // Tie it all together
@@ -1108,16 +1136,16 @@ pub fn exchange_stream(
     };
 
     return Ok(quote! {
-        #[cfg(verus_keep_ghost_body)]
-        #[verus::internal(verus_macro)]
-        #ret_value_mode
-        #[verifier::external_body] /* vattr */
-        #[verifier::proof]
-        pub fn #exch_name#gen(#(#in_params),*) #out_params_ret {
-            #req_stream
-            #ens_stream
-            #extra_deps
-            ::core::unimplemented!();
+        ::builtin_macros::verus!{
+            #[cfg(verus_keep_ghost_body)]
+            #[verifier::external_body] /* vattr */
+            pub proof fn #exch_name#gen(#(#in_params),*) #out_params_ret
+                #req_stream
+                #ens_stream
+            {
+                #extra_deps
+                ::core::unimplemented!();
+            }
         }
     });
 }
@@ -1661,7 +1689,7 @@ fn add_token_param_in_out(
     let (is_input, is_output) = match inout_type {
         InoutType::In => {
             assert!(!use_explicit_lifetime);
-            in_params.push(quote! { #[verifier::proof] #param_name: #param_type });
+            in_params.push(quote! { tracked #param_name: #param_type });
             (true, false)
         }
         InoutType::Out => {
@@ -1671,14 +1699,14 @@ fn add_token_param_in_out(
         }
         InoutType::InOut => {
             assert!(!use_explicit_lifetime);
-            in_params.push(quote! { #[verifier::proof] #param_name: &mut #param_type });
+            in_params.push(quote! { tracked #param_name: &mut #param_type });
             (true, true)
         }
         InoutType::BorrowIn => {
             if use_explicit_lifetime {
-                in_params.push(quote! { #[verifier::proof] #param_name: &'a #param_type });
+                in_params.push(quote! { tracked #param_name: &'a #param_type });
             } else {
-                in_params.push(quote! { #[verifier::proof] #param_name: &#param_type });
+                in_params.push(quote! { tracked #param_name: &#param_type });
             }
             (true, false)
         }

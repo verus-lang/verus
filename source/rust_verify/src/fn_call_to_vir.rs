@@ -34,7 +34,10 @@ use vir::ast::{
     IntRange, IntegerTypeBoundKind, Mode, ModeCoercion, MultiOp, Quant, Typ, TypX, UnaryOp,
     UnaryOpr, VarAt, VarBinder, VarBinderX, VarIdent, VariantCheck, VirErr,
 };
-use vir::ast_util::{const_int_from_string, typ_to_diagnostic_str, types_equal, undecorate_typ};
+use vir::ast_util::{
+    const_int_from_string, mk_tuple_typ, mk_tuple_x, typ_to_diagnostic_str, types_equal,
+    undecorate_typ, unit_typ, unpack_tuple,
+};
 use vir::def::field_ident_from_rust;
 
 pub(crate) fn fn_call_to_vir<'tcx>(
@@ -62,6 +65,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     SpecItem::Requires
                         | SpecItem::Recommends
                         | SpecItem::Ensures
+                        | SpecItem::Returns
                         | SpecItem::OpensInvariantsNone
                         | SpecItem::OpensInvariantsAny
                         | SpecItem::OpensInvariants
@@ -299,7 +303,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_spec_fn_no_proof_args(bctx, expr);
                 mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
             }
-            SpecItem::Requires | SpecItem::Recommends | SpecItem::OpensInvariants => {
+            SpecItem::Requires
+            | SpecItem::Recommends
+            | SpecItem::OpensInvariants
+            | SpecItem::Returns => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(
                     args_len == 1,
@@ -312,6 +319,13 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 let vir_args =
                     vec_map_result(&subargs, |arg| expr_to_vir(&bctx, arg, ExprModifier::REGULAR))?;
+
+                if matches!(spec_item, SpecItem::Returns) && subargs.len() != 1 {
+                    return err_span(
+                        expr.span,
+                        "`returns` clause should have exactly 1 expression",
+                    );
+                }
 
                 for (arg, vir_arg) in subargs.iter().zip(vir_args.iter()) {
                     let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
@@ -334,6 +348,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                                 );
                             }
                         },
+                        SpecItem::Returns => {
+                            // type is checked in well_formed.rs
+                        }
                         _ => unreachable!(),
                     }
                 }
@@ -344,6 +361,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     SpecItem::OpensInvariants => {
                         Arc::new(HeaderExprX::InvariantOpens(Arc::new(vir_args)))
                     }
+                    SpecItem::Returns => Arc::new(HeaderExprX::Returns(vir_args[0].clone())),
                     _ => unreachable!(),
                 };
                 mk_expr(ExprX::Header(header))
@@ -937,7 +955,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let ensures = Arc::new(vec![vir_expr]);
                     let proof = bctx.spanned_typed_new(
                         expr.span,
-                        &Arc::new(TypX::Tuple(Arc::new(vec![]))),
+                        &unit_typ(),
                         ExprX::Block(Arc::new(vec![]), None),
                     );
                     mk_expr(ExprX::AssertQuery {
@@ -983,10 +1001,10 @@ fn verus_item_to_vir<'tcx, 'a>(
             let triggers_tuples = expr_to_vir(bctx, args[0], modifier)?;
             let body = expr_to_vir(bctx, args[1], modifier)?;
             let mut trigs: Vec<vir::ast::Exprs> = Vec::new();
-            if let ExprX::Tuple(triggers) = &triggers_tuples.x {
+            if let Some(triggers) = unpack_tuple(&triggers_tuples) {
                 for trigger_tuple in triggers.iter() {
-                    if let ExprX::Tuple(terms) = &trigger_tuple.x {
-                        trigs.push(terms.clone());
+                    if let Some(terms) = unpack_tuple(trigger_tuple) {
+                        trigs.push(Arc::new(terms));
                     } else {
                         return err_span(expr.span, "expected tuple arguments to with_triggers");
                     }
@@ -1547,7 +1565,7 @@ fn extract_assert_forall_by<'tcx>(
             if header.ensure_id_typ.is_some() {
                 return err_span(expr.span, "ensures clause must be a bool");
             }
-            let typ = Arc::new(TypX::Tuple(Arc::new(vec![])));
+            let typ = unit_typ();
             let vars = Arc::new(binders);
             let require = if header.require.len() == 1 {
                 header.require[0].clone()
@@ -1594,7 +1612,7 @@ fn extract_choose<'tcx>(
             let cond_expr = &closure_body.value;
             let cond = expr_to_vir(bctx, cond_expr, ExprModifier::REGULAR)?;
             let body = if tuple {
-                let typ = Arc::new(TypX::Tuple(Arc::new(typs)));
+                let typ = mk_tuple_typ(&Arc::new(typs));
                 if !vir::ast_util::types_equal(&typ, &expr_typ) {
                     return err_span(
                         expr.span,
@@ -1604,7 +1622,7 @@ fn extract_choose<'tcx>(
                         ),
                     );
                 }
-                bctx.spanned_typed_new(span, &typ, ExprX::Tuple(Arc::new(vars)))
+                bctx.spanned_typed_new(span, &typ, mk_tuple_x(&Arc::new(vars)))
             } else {
                 if params.len() != 1 {
                     return err_span(
@@ -1851,7 +1869,7 @@ fn check_variant_field<'tcx>(
     adt_arg: &'tcx Expr<'tcx>,
     variant_name: &String,
     field_name_typ: Option<(String, &rustc_middle::ty::Ty<'tcx>)>,
-) -> Result<(vir::ast::Path, Option<vir::ast::Ident>), VirErr> {
+) -> Result<(vir::ast::Dt, Option<vir::ast::Ident>), VirErr> {
     let tcx = bctx.ctxt.tcx;
 
     let ty = bctx.types.expr_ty_adjusted(adt_arg);
@@ -1935,7 +1953,7 @@ fn check_union_field<'tcx>(
     adt_arg: &'tcx Expr<'tcx>,
     field_name: &String,
     expected_field_typ: &rustc_middle::ty::Ty<'tcx>,
-) -> Result<vir::ast::Path, VirErr> {
+) -> Result<vir::ast::Dt, VirErr> {
     let tcx = bctx.ctxt.tcx;
 
     let ty = bctx.types.expr_ty_adjusted(adt_arg);

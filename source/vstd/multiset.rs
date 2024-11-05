@@ -165,6 +165,12 @@ impl<V> Multiset<V> {
         self.count(v) > 0
     }
 
+    /// Predicate indicating if the set contains the given element: supports `self has a` syntax.
+    #[verifier::inline]
+    pub open spec fn spec_has(self, v: V) -> bool {
+        self.contains(v)
+    }
+
     /// Returns a multiset containing the lower count of a given element
     /// between the two sets. In other words, returns a multiset with only
     /// the elements that "overlap".

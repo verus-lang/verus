@@ -127,6 +127,8 @@ Let's look at a specific example to understand the limitation.
 ```rust
 proof fn foo(a: int, b: int, c: int, d: int, x: int, y: int) by(integer_ring)
     requires
+        a == c,
+        b == d,
         a % b == x,
         c % d == y
     ensures

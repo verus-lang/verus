@@ -8,7 +8,7 @@ use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
 use rustc_hir::{Generics, TraitFn, TraitItem, TraitItemKind, TraitItemRef};
-use rustc_middle::ty::{ClauseKind, ImplPolarity, TraitPredicate, TraitRef, TyCtxt};
+use rustc_middle::ty::{ClauseKind, TraitPredicate, TraitRef, TyCtxt};
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
@@ -37,7 +37,7 @@ pub(crate) fn external_trait_specification_of<'tcx>(
                         match bound.kind().skip_binder() {
                             ClauseKind::Trait(TraitPredicate {
                                 trait_ref,
-                                polarity: ImplPolarity::Positive,
+                                polarity: rustc_middle::ty::PredicatePolarity::Positive,
                             }) => {
                                 let trait_def_id = trait_ref.def_id;
                                 if Some(trait_def_id) == tcx.lang_items().sized_trait() {
@@ -244,15 +244,17 @@ pub(crate) fn translate_trait<'tcx>(
 
         match kind {
             TraitItemKind::Fn(sig, fun) => {
-                let body_id = match fun {
+                let (body_id, has_default) = match fun {
                     TraitFn::Provided(_) if ex_trait_id_for.is_some() && !is_verus_spec => {
                         return err_span(
                             *span,
                             format!("`external_trait_specification` functions cannot have bodies"),
                         );
                     }
-                    TraitFn::Provided(body_id) => CheckItemFnEither::BodyId(body_id),
-                    TraitFn::Required(param_names) => CheckItemFnEither::ParamNames(*param_names),
+                    TraitFn::Provided(body_id) => (CheckItemFnEither::BodyId(body_id), true),
+                    TraitFn::Required(param_names) => {
+                        (CheckItemFnEither::ParamNames(*param_names), false)
+                    }
                 };
                 let attrs = tcx.hir().attrs(trait_item.hir_id());
                 let fun = check_item_fn(
@@ -260,7 +262,7 @@ pub(crate) fn translate_trait<'tcx>(
                     &mut methods,
                     None,
                     owner_id.to_def_id(),
-                    FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
+                    FunctionKind::TraitMethodDecl { trait_path: trait_path.clone(), has_default },
                     visibility.clone(),
                     module_path,
                     attrs,
@@ -308,14 +310,48 @@ pub(crate) fn translate_trait<'tcx>(
                     // crate::rust_to_vir_func::predicates_match(tcx, true, &preds1.iter().collect(), &preds2.iter().collect())?;
                     // (would need to fix up the TyKind::Alias projections inside the clauses)
 
+                    let mut preds1 = preds1.to_vec();
+                    let mut preds2 = preds2.to_vec();
+                    preds1.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+                    preds2.sort_by(|a, b| a.to_string().cmp(&b.to_string()));
+
                     if preds1.len() != preds2.len() {
-                        return err_span(
-                            trait_span,
-                            format!(
-                                "Mismatched bounds on associated type\n{:?}\n vs.\n{:?}",
-                                preds1, preds2
-                            ),
+                        let mut t = format!(
+                            "Mismatched bounds on associated type ({} != {})\n",
+                            preds1.len(),
+                            preds2.len(),
                         );
+                        t.push_str("Target:\n");
+                        for p1 in preds1.iter() {
+                            t.push_str(&format!("  - {}\n", p1));
+                        }
+                        t.push_str("External specification:\n");
+                        for p2 in preds2.iter() {
+                            t.push_str(&format!("  - {}\n", p2));
+                        }
+                        return err_span(trait_span, t);
+                    }
+
+                    for (p1, p2) in preds1.iter().zip(preds2.iter()) {
+                        match (p1.kind().skip_binder(), p2.kind().skip_binder()) {
+                            (ClauseKind::Trait(p1), ClauseKind::Trait(p2)) => {
+                                if p1.def_id() != p2.def_id() {
+                                    return err_span(
+                                        trait_span,
+                                        format!(
+                                            "Mismatched bounds on associated type ({} != {})",
+                                            p1, p2
+                                        ),
+                                    );
+                                }
+                            }
+                            _ => {
+                                return err_span(
+                                    trait_span,
+                                    "Verus does not yet support this bound on external specs",
+                                );
+                            }
+                        }
                     }
                 }
             }

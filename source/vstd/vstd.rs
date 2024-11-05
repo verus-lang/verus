@@ -14,6 +14,7 @@
 #![cfg_attr(verus_keep_ghost, feature(ptr_metadata))]
 #![cfg_attr(verus_keep_ghost, feature(strict_provenance))]
 #![cfg_attr(verus_keep_ghost, feature(strict_provenance_atomic_ptr))]
+#![cfg_attr(verus_keep_ghost, feature(freeze))]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -39,12 +40,19 @@ pub mod map_lib;
 pub mod math;
 pub mod modes;
 pub mod multiset;
+pub mod multiset_lib;
 pub mod pcm;
 pub mod pcm_lib;
 pub mod pervasive;
+pub mod proph;
 #[cfg(feature = "alloc")]
 pub mod ptr;
 pub mod raw_ptr;
+
+// TODO this should be permitted even in not(verus_keep_ghost)
+#[cfg(verus_keep_ghost)]
+pub mod rwlock;
+
 pub mod seq;
 pub mod seq_lib;
 pub mod set;

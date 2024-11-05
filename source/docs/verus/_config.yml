@@ -1,0 +1,8 @@
+title: "Verus"
+lsi: false
+safe: true
+source: .
+incremental: false
+gist:
+  noscript: false
+exclude: [jekyll-serve-docker.sh]

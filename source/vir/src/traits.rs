@@ -329,10 +329,8 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
         default_methods.insert(tr.x.name.clone(), Vec::new());
     }
     for f in &krate.functions {
-        if let FunctionKind::TraitMethodDecl { trait_path } = &f.x.kind {
-            if f.x.body.is_some() {
-                default_methods.get_mut(trait_path).expect("trait_path").push(f);
-            }
+        if let FunctionKind::TraitMethodDecl { trait_path, has_default: true } = &f.x.kind {
+            default_methods.get_mut(trait_path).expect("trait_path").push(f);
         }
         if let FunctionKind::TraitMethodImpl { impl_path, method, .. } = &f.x.kind {
             let p = (impl_path, method);
@@ -410,12 +408,13 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     typ_bounds: trait_impl.x.typ_bounds.clone(),
                     params,
                     ret,
+                    ens_has_return: default_function.x.ens_has_return,
                     require: Arc::new(vec![]),
                     ensure: Arc::new(vec![]),
+                    returns: None,
                     decrease: Arc::new(vec![]),
                     decrease_when: None,
                     decrease_by: None,
-                    broadcast_forall: None,
                     fndef_axioms: None,
                     mask_spec: None,
                     unwind_spec: None,
@@ -917,4 +916,44 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
     kratex.traits = traits;
     kratex.trait_impls = trait_impls;
     Ok(Arc::new(kratex))
+}
+
+/// For trait method impls, the 'ens_has_return' should be inherited from the method decl
+pub fn fixup_ens_has_return_for_trait_method_impls(krate: Krate) -> Result<Krate, VirErr> {
+    let mut krate = krate;
+    let kratex = &mut Arc::make_mut(&mut krate);
+    let mut fun_map = HashMap::<Fun, Function>::new();
+    for function in kratex.functions.iter() {
+        if matches!(function.x.kind, FunctionKind::TraitMethodDecl { .. }) {
+            fun_map.insert(function.x.name.clone(), function.clone());
+        }
+    }
+    for function in kratex.functions.iter_mut() {
+        if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
+            let method = method.clone();
+            if !function.x.ens_has_return {
+                match fun_map.get(&method) {
+                    None => {}
+                    Some(f) if f.x.ens_has_return => {
+                        let functionx = &mut Arc::make_mut(&mut *function).x;
+                        functionx.ens_has_return = true;
+                    }
+                    Some(_) => {}
+                }
+            }
+            if function.x.returns.is_some() {
+                match fun_map.get(&method) {
+                    None => {}
+                    Some(f) if f.x.returns.is_some() => {
+                        return Err(error(
+                            &function.span,
+                            "a `returns` clause cannot be declared on both a trait method impl and its declaration",
+                        ).secondary_span(&f.span));
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
+    }
+    Ok(krate)
 }

@@ -111,6 +111,123 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_use_macro_attributes code!{
+        struct Abc<T> {
+            t: T,
+        }
+
+        trait SomeTrait {
+            #[requires(true)]
+            #[ensures(|ret: bool| ret)]
+            fn f(&self) -> bool;
+        }
+
+        impl<S> Abc<S> {
+            fn foo(&self)
+                where S: SomeTrait
+            {
+                let ret = self.t.f();
+                proof!{assert(ret);}
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_bad_macro_attributes_in_trait code!{
+        trait SomeTrait {
+            #[requires(true)]
+            type T;
+        }
+    } => Err(err) => assert_custom_attr_error_msg(err, "Misuse of #[requires()]")
+}
+
+test_verify_one_file! {
+    #[test] test_no_verus_verify_attributes_in_trait_impl code!{
+        struct Abc<T> {
+            t: T,
+        }
+
+        #[verus_verify]
+        trait SomeTrait {
+            #[verus_verify]
+            #[requires(true)]
+            fn f(&self) -> bool;
+        }
+
+        impl<S> Abc<S> {
+            fn foo(&self)
+                where S: SomeTrait
+            {
+                let ret = self.t.f();
+                proof!{assert(ret);}
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assertion failed")
+}
+
+test_verify_one_file! {
+    #[test] test_failed_ensures_macro_attributes code!{
+        trait SomeTrait {
+            #[requires(true)]
+            #[ensures(|ret: bool| [true, ret])]
+            fn f(&self) -> bool;
+        }
+
+        impl SomeTrait for bool {
+            fn f(&self) -> bool {
+                *self
+            }
+        }
+    } => Err(err) => assert_any_vir_error_msg(err, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] test_default_fn_use_macro_attributes code!{
+        struct Abc<T> {
+            t: T,
+        }
+
+        #[verus_verify]
+        trait SomeTrait {
+            #[verus_verify]
+            #[requires(true)]
+            #[ensures(|ret: bool| ret)]
+            fn f(&self) -> bool {
+                true
+            }
+        }
+
+        #[verus_verify]
+        impl<S> Abc<S> {
+            fn foo(&self)
+                where S: SomeTrait
+            {
+                let ret = self.t.f();
+                proof!{assert(ret);}
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_default_failed_fn_use_macro_attributes code!{
+        struct Abc<T> {
+            t: T,
+        }
+
+        #[verus_verify]
+        trait SomeTrait {
+            #[requires(true)]
+            #[ensures(|ret: bool| [ret, !ret])]
+            fn f(&self) -> bool {
+                true
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "postcondition not satisfied")
+}
+
+test_verify_one_file! {
     #[test] test_ill_formed_3 code! {
         trait T1 {
             fn f(&self) {
@@ -662,6 +779,36 @@ test_verify_one_file! {
     #[test] test_termination_5_fail_9 verus_code! {
         trait T1 { type A: T2; }
         trait T2 { type A: T1; }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
+    #[test] test_termination_5_fail_10 verus_code! {
+        struct S<A>(A);
+
+        trait T1 { proof fn f1() ensures false; }
+        trait T2 { type X; }
+        trait T3 { proof fn f3() ensures false; }
+
+        impl T1 for bool {
+            proof fn f1() {
+                <S<int> as T3>::f3();
+            }
+        }
+
+        impl T2 for int {
+            type X = bool;
+        }
+
+        impl<A: T2> T3 for S<A> where <A as T2>::X: T1 {
+            proof fn f3() {
+                <<A as T2>::X as T1>::f1();
+            }
+        }
+
+        proof fn test() ensures false {
+            <S<int> as T3>::f3();
+        }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
 
@@ -2653,6 +2800,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_specialize_dispatch_copy_clone_ok verus_code! {
+        // https://github.com/verus-lang/verus/issues/1267
+        use vstd::prelude::*;
+        pub trait Ticks: Clone { fn width() -> u32; }
+        pub struct Ticks32(u32);
+        impl Clone for Ticks32 {
+            fn clone(&self) -> Self {
+                Self(self.0)
+            }
+        }
+        impl Ticks for Ticks32 {
+            fn width() -> u32 {
+                32
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_specialize_dispatch_by_bound_defaults verus_code! {
         trait T {
             spec fn f() -> int { 3 }
@@ -3786,4 +3952,372 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] const_in_trait_typ_args verus_code! {
+        pub trait Trait<const X: u64> {
+            spec fn spec_get_x() -> u64;
+
+            proof fn proof_get_x(t: u64, u: u64)
+                requires t == X,
+                ensures u == X;
+
+            fn exec_get_x(&self) -> (r: u64)
+                ensures r == X;
+        }
+
+        struct Foo<const X: u64> {
+        }
+
+        impl<const X: u64> Trait<X> for Foo<X> {
+            open spec fn spec_get_x() -> u64 {
+                X
+            }
+
+            proof fn proof_get_x(t: u64, u: u64) {
+                assert(t == X);
+                assert(u == X); // FAILS
+            }
+
+            fn exec_get_x(&self) -> (r: u64) {
+                X
+            }
+        }
+
+        // test generics
+
+        fn test_generic<const X: u64, T: Trait<X>>(r: T) {
+            let y = r.exec_get_x();
+            assert(y == X);
+
+            proof {
+                let j = T::spec_get_x();
+                T::proof_get_x(X, 8);
+            }
+            assert(X == 8);
+        }
+
+        fn test_generic_fail<const X: u64, T: Trait<X>>(r: T) {
+            proof {
+                T::proof_get_x(5, 8); // FAILS
+            }
+        }
+
+        // test specifics
+
+        fn test_specific<const X: u64>(r: Foo<X>) {
+            let y = r.exec_get_x();
+            assert(y == X);
+
+            proof {
+                let j = Foo::<X>::spec_get_x();
+                assert(j == X);
+                Foo::<X>::proof_get_x(X, 8);
+            }
+            assert(X == 8);
+        }
+
+        fn test_specific_fail<const X: u64>(r: Foo<X>) {
+            proof {
+                Foo::<X>::proof_get_x(5, 8); // FAILS
+            }
+        }
+
+        // test specific integer
+
+        fn test_integer(r: Foo<3>, y: u8) {
+            let y = r.exec_get_x();
+            assert(y == 3);
+
+            proof {
+                let j = Foo::<3>::spec_get_x();
+                assert(j == 3);
+                Foo::<3>::proof_get_x(3, y);
+                assert(y == 3);
+            }
+        }
+
+        fn test_integer_fail(r: Foo<3>, y: u64) {
+            proof {
+                Foo::<3>::proof_get_x(5, y); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] const_in_trait_typ_args2 verus_code! {
+        pub trait Trait<const X: u64> {
+            spec fn spec_get_x() -> u64;
+
+            proof fn proof_get_x(t: u64, u: u64)
+                requires t == X,
+                ensures u == X;
+
+            fn exec_get_x(&self) -> (r: u64)
+                ensures r == X;
+        }
+
+        struct Foo {
+        }
+
+        impl Trait<3> for Foo {
+            open spec fn spec_get_x() -> u64 {
+                20
+            }
+
+            proof fn proof_get_x(t: u64, u: u64) {
+                assert(t == 3);
+                assert(u == 3); // FAILS
+            }
+
+            fn exec_get_x(&self) -> (r: u64) {
+                3
+            }
+        }
+
+        fn test(r: Foo, y: u64) {
+            let y = r.exec_get_x();
+            assert(y == 3);
+
+            proof {
+                let j = Foo::spec_get_x();
+                assert(j == 20);
+                Foo::proof_get_x(3, y);
+                assert(y == 3);
+            }
+        }
+
+        fn test_fail<const X: u64>(r: Foo, y: u64) {
+            proof {
+                Foo::proof_get_x(5, y); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] const_in_trait_typ_args3 verus_code! {
+        pub trait Trait<const X: u64> {
+            fn exec_get_x(&self) -> (r: u64)
+                ensures r == X;
+        }
+
+        struct Foo { }
+        struct Bar<const X: u64> { }
+
+        impl Trait<20> for Foo {
+            fn exec_get_x(&self) -> (r: u64)
+            {
+                return 21; // FAILS
+            }
+        }
+
+        impl<const X: u64> Trait<X> for Bar<X> {
+            fn exec_get_x(&self) -> (r: u64)
+            {
+                return 21; // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] const_in_trait_typ_args_with_slice verus_code! {
+        use vstd::prelude::*;
+
+        pub trait Trait<const X: usize> {
+            fn exec_get_x(&self) -> (r: usize)
+                ensures r == X;
+        }
+
+        struct Bar<const X: usize> {
+            slice: [bool; X],
+        }
+
+        impl<const X: usize> Trait<X> for Bar<X> {
+            fn exec_get_x(&self) -> (r: usize)
+            {
+                return (&self.slice).len();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] const_in_trait_typ_args_with_assoc_type verus_code! {
+        pub trait Trait<const X: usize> {
+            type AssocType;
+
+            fn exec_get_x(&self) -> (r: usize)
+                ensures r == X;
+        }
+
+        struct Bar<const X: usize> {
+        }
+
+        impl<const X: usize> Trait<X> for Bar<X> {
+            type AssocType = [bool; X];
+
+            fn exec_get_x(&self) -> (r: usize)
+            {
+                return X;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_recursion_through_copy_impl_is_checked verus_code! {
+        use vstd::*;
+
+        trait Tr {
+            proof fn tr_g() {
+            }
+        }
+
+        struct X<T, S> {
+            t: T,
+            s: S,
+        }
+
+        impl<T: Clone, S: Clone> Clone for X<T, S> {
+            fn clone(&self) -> Self {
+                X { t: self.t.clone(), s: self.s.clone() }
+            }
+        }
+
+        impl<T: Copy + Tr, S: Copy> Copy for X<T, S> {
+        }
+
+
+        trait Sr {
+            proof fn f() { }
+        }
+
+        struct Y<R> {
+            r: R,
+        }
+
+        impl<W: Copy> Sr for Y<W> {
+            proof fn f() { }
+        }
+
+
+        #[derive(Clone, Copy)]
+        struct A1 { }
+
+        #[derive(Clone, Copy)]
+        struct B1 { }
+
+        impl Tr for A1 {
+            proof fn tr_g() {
+                test();
+            }
+        }
+
+        // Depends on `X<A1, B1> : Copy`
+        // Depends on A1: Tr
+        // which depends recursively on `test`
+        proof fn test() {
+            let r = Y::<X<A1, B1>>::f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
+    #[test] test_recursion_through_sync_impl_is_checked verus_code! {
+        trait Tr {
+            proof fn tr_g() {
+            }
+        }
+
+        struct X<T, S> {
+            rc: std::rc::Rc<u64>,
+            t: T,
+            s: S,
+        }
+
+        #[verifier::external]
+        unsafe impl<T: Sync + Tr, S: Sync> Sync for X<T, S> {
+        }
+
+
+        trait Sr {
+            proof fn f() { }
+        }
+
+        struct Y<R> {
+            r: R,
+        }
+
+        impl<W: Sync> Sr for Y<W> {
+            proof fn f() { }
+        }
+
+
+        struct A1 { }
+
+        struct B1 { }
+
+        impl Tr for A1 {
+            proof fn tr_g() {
+                test();
+            }
+        }
+
+
+        proof fn test() {
+            let r = Y::<X<A1, B1>>::f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
+    #[test] test_recursion_through_send_impl_is_checked verus_code! {
+        trait Tr {
+            proof fn tr_g() {
+            }
+        }
+
+        struct X<T, S> {
+            rc: std::rc::Rc<u64>,
+            t: T,
+            s: S,
+        }
+
+        #[verifier::external]
+        unsafe impl<T: Send + Tr, S: Send> Send for X<T, S> {
+        }
+
+
+        trait Sr {
+            proof fn f() { }
+        }
+
+        struct Y<R> {
+            r: R,
+        }
+
+        impl<W: Send> Sr for Y<W> {
+            proof fn f() { }
+        }
+
+
+        struct A1 { }
+
+        struct B1 { }
+
+        impl Tr for A1 {
+            proof fn tr_g() {
+                test();
+            }
+        }
+
+
+        proof fn test() {
+            let r = Y::<X<A1, B1>>::f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }

@@ -127,6 +127,13 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct Returns {
+        pub token: Token![returns],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
     pub struct InvariantExceptBreak {
         pub token: Token![invariant_except_break],
         pub exprs: Specification,
@@ -505,6 +512,7 @@ pub mod parsing {
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
+                || input.peek(Token![returns])
                 || input.peek(Token![decreases])
                 || input.peek(Token![via])
                 || input.peek(Token![when])
@@ -580,6 +588,17 @@ pub mod parsing {
             attr::parsing::parse_inner(input, &mut attrs)?;
             Ok(Ensures {
                 attrs,
+                token,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Returns {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let token = input.parse()?;
+            Ok(Returns {
                 token,
                 exprs: input.parse()?,
             })
@@ -765,6 +784,17 @@ pub mod parsing {
     impl Parse for Option<Ensures> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![ensures]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<Returns> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![returns]) {
                 input.parse().map(Some)
             } else {
                 Ok(None)
@@ -1256,6 +1286,14 @@ mod printing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Ensures {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for Returns {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
             self.exprs.to_tokens(tokens);

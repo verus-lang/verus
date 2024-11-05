@@ -13,6 +13,7 @@ use air::scope_map::ScopeMap;
 use std::sync::Arc;
 
 pub struct ScopeEntry {
+    #[allow(dead_code)]
     pub typ: Typ,
     pub is_mut: bool,
     pub init: bool,
@@ -45,10 +46,6 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
             TypX::TypeId => R::ret(|| typ.clone()),
             TypX::ConstInt(_) => R::ret(|| typ.clone()),
             TypX::Air(_) => R::ret(|| typ.clone()),
-            TypX::Tuple(ts) => {
-                let ts = self.visit_typs(ts)?;
-                R::ret(|| Arc::new(TypX::Tuple(R::get_vec_a(ts))))
-            }
             TypX::SpecFn(ts, tr) => {
                 let ts = self.visit_typs(ts)?;
                 let tr = self.visit_typ(tr)?;
@@ -212,10 +209,6 @@ where
             let p = map_pattern_visitor_env(sub_pat, map, env, fe, fs, ft)?;
             PatternX::Binding { name: name.clone(), mutable: *mutable, sub_pat: p }
         }
-        PatternX::Tuple(ps) => {
-            let ps = vec_map_result(&**ps, |p| map_pattern_visitor_env(p, map, env, fe, fs, ft))?;
-            PatternX::Tuple(Arc::new(ps))
-        }
         PatternX::Constructor(path, variant, binders) => {
             let binders = vec_map_result(&**binders, |b| {
                 b.map_result(|p| map_pattern_visitor_env(p, map, env, fe, fs, ft))
@@ -259,11 +252,6 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
             insert_pattern_vars(map, sub_pat, init);
             let _ = map.insert(name.clone(), ScopeEntry::new(&pattern.typ, *mutable, init));
         }
-        PatternX::Tuple(ps) => {
-            for p in ps.iter() {
-                insert_pattern_vars(map, p, init);
-            }
-        }
         PatternX::Constructor(_, _, binders) => {
             for binder in binders.iter() {
                 insert_pattern_vars(map, &binder.a, init);
@@ -276,16 +264,6 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern, init: bool)
         PatternX::Expr(_) => {}
         PatternX::Range(_, _) => {}
     }
-}
-
-pub(crate) fn expr_visitor_traverse<MF>(expr: &Expr, map: &mut VisitorScopeMap, mf: &mut MF)
-where
-    MF: FnMut(&mut VisitorScopeMap, &Expr) -> (),
-{
-    let _ = expr_visitor_dfs::<(), _>(expr, map, &mut |scope_map, expr| {
-        mf(scope_map, expr);
-        VisitorControlFlow::Recurse
-    });
 }
 
 pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
@@ -334,11 +312,6 @@ where
                             expr_visitor_control_flow!(expr_visitor_dfs(fun, map, mf));
                         }
                     }
-                    for e in es.iter() {
-                        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-                    }
-                }
-                ExprX::Tuple(es) => {
                     for e in es.iter() {
                         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                     }
@@ -599,11 +572,6 @@ where
         PatternX::Binding { name: _, mutable: _, sub_pat } => {
             expr_visitor_control_flow!(pat_visitor_dfs(sub_pat, map, mf));
         }
-        PatternX::Tuple(ps) => {
-            for p in ps.iter() {
-                expr_visitor_control_flow!(pat_visitor_dfs(p, map, mf));
-            }
-        }
         PatternX::Constructor(_path, _variant, binders) => {
             for binder in binders.iter() {
                 expr_visitor_control_flow!(pat_visitor_dfs(&binder.a, map, mf));
@@ -650,10 +618,11 @@ where
         ret,
         require,
         ensure,
+        ens_has_return: _,
+        returns,
         decrease,
         decrease_when,
         decrease_by: _,
-        broadcast_forall,
         fndef_axioms,
         mask_spec,
         unwind_spec,
@@ -674,7 +643,7 @@ where
     }
 
     map.push_scope(true);
-    if function.x.has_return_name() {
+    if function.x.ens_has_return {
         let _ = map
             .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
@@ -682,6 +651,10 @@ where
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     map.pop_scope();
+
+    if let Some(e) = returns {
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+    }
 
     for e in decrease.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
@@ -710,15 +683,6 @@ where
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     map.pop_scope();
-
-    if let Some((params, req_ens)) = broadcast_forall {
-        map.push_scope(true);
-        for p in params.iter() {
-            let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
-        }
-        expr_visitor_control_flow!(expr_visitor_dfs(req_ens, map, mf));
-        map.pop_scope();
-    }
 
     if let Some(es) = fndef_axioms {
         for e in es.iter() {
@@ -810,13 +774,6 @@ where
             }
             ExprX::Call(target, Arc::new(exprs))
         }
-        ExprX::Tuple(es) => {
-            let mut exprs: Vec<Expr> = Vec::new();
-            for e in es.iter() {
-                exprs.push(map_expr_visitor_env(e, map, env, fe, fs, ft)?);
-            }
-            ExprX::Tuple(Arc::new(exprs))
-        }
         ExprX::ArrayLiteral(es) => {
             let mut exprs: Vec<Expr> = Vec::new();
             for e in es.iter() {
@@ -866,7 +823,6 @@ where
                 UnaryOpr::Unbox(t) => UnaryOpr::Unbox(map_typ_visitor_env(t, env, ft)?),
                 UnaryOpr::HasType(t) => UnaryOpr::HasType(map_typ_visitor_env(t, env, ft)?),
                 UnaryOpr::IsVariant { .. } => op.clone(),
-                UnaryOpr::TupleField { .. } => op.clone(),
                 UnaryOpr::Field { .. } => op.clone(),
                 UnaryOpr::IntegerTypeBound(_kind, _) => op.clone(),
                 UnaryOpr::CustomErr(_) => op.clone(),
@@ -1252,12 +1208,13 @@ where
         typ_bounds,
         params,
         ret,
+        ens_has_return,
         require,
         ensure,
+        returns,
         decrease,
         decrease_when,
         decrease_by,
-        broadcast_forall,
         fndef_axioms,
         mask_spec,
         unwind_spec,
@@ -1270,7 +1227,9 @@ where
     let name = name.clone();
     let proxy = proxy.clone();
     let kind = match kind {
-        FunctionKind::Static | FunctionKind::TraitMethodDecl { trait_path: _ } => kind.clone(),
+        FunctionKind::Static | FunctionKind::TraitMethodDecl { trait_path: _, has_default: _ } => {
+            kind.clone()
+        }
         FunctionKind::TraitMethodImpl {
             method,
             impl_path,
@@ -1309,13 +1268,18 @@ where
         Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
 
     map.push_scope(true);
-    if function.x.has_return_name() {
+    if function.x.ens_has_return {
         let _ = map
             .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
     let ensure =
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     map.pop_scope();
+
+    let returns = match returns {
+        Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
+        None => None,
+    };
 
     let decrease =
         Arc::new(vec_map_result(decrease, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
@@ -1353,19 +1317,6 @@ where
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
 
-    let broadcast_forall = if let Some((params, req_ens)) = broadcast_forall {
-        map.push_scope(true);
-        let params = map_params_visitor(params, env, ft)?;
-        for p in params.iter() {
-            let _ = map.insert(p.x.name.clone(), ScopeEntry::new(&p.x.typ, p.x.is_mut, true));
-        }
-        let req_ens = map_expr_visitor_env(req_ens, map, env, fe, fs, ft)?;
-        map.pop_scope();
-        Some((params, req_ens))
-    } else {
-        None
-    };
-
     let fndef_axioms = if let Some(es) = fndef_axioms {
         let mut es2 = vec![];
         for e in es.iter() {
@@ -1389,12 +1340,13 @@ where
         typ_bounds,
         params,
         ret,
+        ens_has_return: *ens_has_return,
         require,
         ensure,
+        returns,
         decrease,
         decrease_when,
         decrease_by,
-        broadcast_forall,
         fndef_axioms,
         mask_spec,
         unwind_spec,

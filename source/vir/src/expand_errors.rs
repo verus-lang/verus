@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, BinaryOpr, FieldOpr, Fun, Ident, Path, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
+    BinaryOp, BinaryOpr, Dt, FieldOpr, Fun, Ident, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
     UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
 };
 use crate::ast_to_sst::get_function_sst;
@@ -8,7 +8,9 @@ use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::messages::Span;
 use crate::sst::PostConditionSst;
-use crate::sst::{AssertId, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX};
+use crate::sst::{
+    AssertId, BndX, CallFun, Exp, ExpX, Exps, LocalDecl, LocalDeclKind, LocalDeclX, Stm, StmX,
+};
 use crate::sst::{FuncCheckSst, FunctionSst};
 use crate::sst_util::{sst_conjoin, sst_equal_ext, sst_implies, sst_not, subst_typ_for_datatype};
 use crate::sst_visitor::map_stm_prev_visitor;
@@ -320,6 +322,7 @@ impl State {
         span: &Span,
         binders: &VarBinders<T>,
         e: &Exp,
+        kind: LocalDeclKind,
         to_typ: impl Fn(&T) -> Typ,
     ) -> (Vec<(T, VarIdent)>, Vec<Stm>, Exp) {
         let mut v = vec![];
@@ -333,8 +336,7 @@ impl State {
             self.tmp_var_count += 1;
 
             let typ = to_typ(&binder.a);
-            let decl =
-                Arc::new(LocalDeclX { ident: new_name.clone(), typ: typ.clone(), mutable: false });
+            let decl = Arc::new(LocalDeclX { ident: new_name.clone(), typ: typ.clone(), kind });
             self.local_decls.push(decl);
 
             let var_exp = SpannedTyped::new(span, &typ, ExpX::Var(new_name.clone()));
@@ -592,8 +594,13 @@ fn expand_exp_rec(
         }
         ExpX::Bind(bnd, e) => match &bnd.x {
             BndX::Let(binders) => {
-                let (new_ids, _, e) =
-                    state.mk_fresh_ids(&exp.span, binders, e, |e: &Exp| e.typ.clone());
+                let (new_ids, _, e) = state.mk_fresh_ids(
+                    &exp.span,
+                    binders,
+                    e,
+                    LocalDeclKind::LetBinder,
+                    |e: &Exp| e.typ.clone(),
+                );
                 let mut stms = vec![];
                 for (exp, uniq_id) in new_ids {
                     stms.push(crate::ast_to_sst::init_var(&exp.span, &uniq_id, &exp));
@@ -603,11 +610,16 @@ fn expand_exp_rec(
                 let intro = Introduction::Let(binders.clone());
                 (mk_stm(StmX::Block(Arc::new(stms))), ExpansionTree::Intro(intro, Box::new(tree)))
             }
-            BndX::Quant(Quant { quant: q @ (Forall | Exists) }, binders, _trigs)
+            BndX::Quant(Quant { quant: q @ (Forall | Exists) }, binders, _trigs, None)
                 if (*q == Exists) == negate =>
             {
-                let (_, typ_invs, e) =
-                    state.mk_fresh_ids(&exp.span, binders, e, |t: &Typ| t.clone());
+                let (_, typ_invs, e) = state.mk_fresh_ids(
+                    &exp.span,
+                    binders,
+                    e,
+                    LocalDeclKind::QuantBinder,
+                    |t: &Typ| t.clone(),
+                );
                 let (stm, tree) = expand_exp_rec(ctx, ectx, state, &e, did_split_yet, negate);
                 let intro = Introduction::Forall(binders.clone());
 
@@ -779,13 +791,7 @@ pub fn try_split_datatype_eq(
     Ok(sst_conjoin(&e1.span, &w0))
 }
 
-pub fn field_exp(
-    exp: &Exp,
-    field_typ: &Typ,
-    datatype: &Path,
-    variant: &Ident,
-    field: &Ident,
-) -> Exp {
+pub fn field_exp(exp: &Exp, field_typ: &Typ, datatype: &Dt, variant: &Ident, field: &Ident) -> Exp {
     let e = remove_uninteresting_unary_ops(exp);
 
     match &e.x {
@@ -1011,6 +1017,7 @@ fn split_precondition(ctx: &Ctx, span: &Span, name: &Fun, typs: &Typs, args: &Ex
     exps
 }
 
+#[allow(dead_code)]
 struct DiagnosticsVoid {}
 impl air::messages::Diagnostics for DiagnosticsVoid {
     fn report_as(&self, _msg: &air::messages::ArcDynMessage, _level: air::messages::MessageLevel) {}

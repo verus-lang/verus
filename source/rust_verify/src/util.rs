@@ -229,8 +229,10 @@ pub fn hir_prim_ty_to_mir_ty<'tcx>(
             rustc_ast::UintTy::U128 => tcx.types.u128,
         },
         rustc_hir::PrimTy::Float(float_ty) => match float_ty {
+            rustc_ast::FloatTy::F16 => tcx.types.f16,
             rustc_ast::FloatTy::F32 => tcx.types.f32,
             rustc_ast::FloatTy::F64 => tcx.types.f64,
+            rustc_ast::FloatTy::F128 => tcx.types.f128,
         },
         rustc_hir::PrimTy::Str => tcx.types.str_,
         rustc_hir::PrimTy::Bool => tcx.types.bool,

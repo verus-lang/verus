@@ -17,6 +17,7 @@ pub struct Header {
     pub recommend: Exprs,
     pub ensure_id_typ: Option<(VarIdent, Typ)>,
     pub ensure: Exprs,
+    pub returns: Option<Expr>,
     pub invariant_except_break: Exprs,
     pub invariant: Exprs,
     pub decrease: Exprs,
@@ -33,6 +34,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
+    let mut returns: Option<Expr> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant_except_break: Option<Exprs> = None;
     let mut invariant: Option<Exprs> = None;
@@ -87,6 +89,12 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             ));
                         }
                         ensure = Some((id_typ.clone(), es.clone()));
+                    }
+                    HeaderExprX::Returns(e) => {
+                        if returns.is_some() {
+                            return Err(error(&stmt.span, "only one call to returns allowed"));
+                        }
+                        returns = Some(e.clone());
                     }
                     HeaderExprX::InvariantExceptBreak(es) => {
                         if invariant_except_break.is_some() {
@@ -206,6 +214,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         recommend,
         ensure_id_typ,
         ensure,
+        returns,
         invariant_except_break,
         invariant,
         decrease,
@@ -218,10 +227,70 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
 }
 
 pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
+    #[derive(Clone, Copy)]
+    enum NestedHeaderBlock {
+        No,
+        Yes,
+        Unknown,
+        Conflict,
+    }
+
+    impl NestedHeaderBlock {
+        fn join(&mut self, other: NestedHeaderBlock) {
+            match (*self, other) {
+                (NestedHeaderBlock::No, NestedHeaderBlock::No) => {}
+                (NestedHeaderBlock::Yes, NestedHeaderBlock::Yes) => {}
+                (_, NestedHeaderBlock::Unknown) => panic!("unexpected join with unknown"),
+                (NestedHeaderBlock::Unknown, _) => *self = other,
+                _ => *self = NestedHeaderBlock::Conflict,
+            }
+        }
+    }
+
     match &body.x {
         ExprX::Block(stmts, expr) => {
             let mut expr = expr.clone();
-            let mut block: Vec<Stmt> = (**stmts).clone();
+            let mut block = Vec::new();
+            for stmt in (**stmts).iter() {
+                let mut nested_header_block = NestedHeaderBlock::Unknown;
+                if let StmtX::Expr(e) = &stmt.x {
+                    if let ExprX::Block(b, e) = &e.x {
+                        for s in b.iter() {
+                            if let StmtX::Expr(e) = &s.x {
+                                if let ExprX::Header(_h) = &e.x {
+                                    block.push(s.clone());
+                                    nested_header_block = NestedHeaderBlock::Yes;
+                                } else {
+                                    nested_header_block.join(NestedHeaderBlock::No);
+                                }
+                            } else {
+                                nested_header_block.join(NestedHeaderBlock::No);
+                            }
+                        }
+                        if let Some(e) = &e {
+                            if let ExprX::Header(_h) = &e.x {
+                                nested_header_block = NestedHeaderBlock::Conflict;
+                            }
+                        }
+                    } else {
+                        nested_header_block.join(NestedHeaderBlock::No);
+                    }
+                } else {
+                    nested_header_block.join(NestedHeaderBlock::No);
+                }
+                match nested_header_block {
+                    NestedHeaderBlock::No | NestedHeaderBlock::Unknown => {
+                        block.push(stmt.clone());
+                    }
+                    NestedHeaderBlock::Yes => {}
+                    NestedHeaderBlock::Conflict => {
+                        return Err(error(
+                            &stmt.span,
+                            "internal error: invalid nested header block",
+                        ));
+                    }
+                }
+            }
             let mut header = read_header_block(&mut block)?;
             if let Some(e) = &expr {
                 if let ExprX::Header(h) = &e.x {
@@ -302,12 +371,13 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         typ_bounds,
         params,
         ret,
+        ens_has_return: _,
         require,
         ensure,
+        returns,
         decrease,
         decrease_when,
         decrease_by,
-        broadcast_forall: _,
         fndef_axioms: _,
         mask_spec,
         unwind_spec,
@@ -371,6 +441,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
     methodx.ret = ret;
     methodx.require = require;
     methodx.ensure = ensure;
+    methodx.returns = returns;
     methodx.decrease = decrease;
     methodx.decrease_when = decrease_when;
     methodx.decrease_by = decrease_by;

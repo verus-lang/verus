@@ -990,27 +990,29 @@ test_verify_one_file! {
 
 // 32-bit
 
-test_verify_one_file! {
-    #[test] test_atomic_usize_32_pass test_body(
+// NOTE: we need --no-lifetime because running the compiler in erase mode, even
+// if we stop after checking lifetimes, will now perform const evaluation, which
+// fails for 32 bit pointers
+test_verify_one_file_with_options! {
+    #[test] test_atomic_usize_32_pass ["--no-lifetime"] => test_body(
       &ATOMIC_U32.replace("u32", "usize").replace("PAtomicU32", "PAtomicUsize"),
       false,
       Some(4)) => Ok(())
 }
-test_verify_one_file! {
-    #[test] test_atomic_usize_32_fail  test_body(
+test_verify_one_file_with_options! {
+    #[test] test_atomic_usize_32_fail ["--no-lifetime"] => test_body(
       &ATOMIC_U32.replace("u32", "usize").replace("PAtomicU32", "PAtomicUsize"),
       true,
       Some(4)) => Err(e) => assert_one_fails(e)
 }
-
-test_verify_one_file! {
-    #[test] test_atomic_isize_32_pass test_body(
+test_verify_one_file_with_options! {
+    #[test] test_atomic_isize_32_pass ["--no-lifetime"] => test_body(
       &ATOMIC_I32.replace("i32", "isize").replace("PAtomicI32", "PAtomicIsize"),
       false,
       Some(4)) => Ok(())
 }
-test_verify_one_file! {
-    #[test] test_atomic_isize_32_fail test_body(
+test_verify_one_file_with_options! {
+    #[test] test_atomic_isize_32_fail ["--no-lifetime"] => test_body(
       &ATOMIC_I32.replace("i32", "isize").replace("PAtomicI32", "PAtomicIsize"),
       true,
       Some(4)) => Err(e) => assert_one_fails(e)

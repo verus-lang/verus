@@ -11,7 +11,7 @@ use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, SmtSolver, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
-use rustc_errors::{DiagnosticBuilder, EmissionGuarantee};
+use rustc_errors::{Diag, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
@@ -99,7 +99,7 @@ impl air::messages::Diagnostics for Reporter<'_> {
         }
 
         fn emit_with_diagnostic_details<'a, G: EmissionGuarantee>(
-            mut diag: DiagnosticBuilder<'a, G>,
+            mut diag: Diag<'a, G>,
             multispan: MultiSpan,
             help: &Option<String>,
         ) {
@@ -1105,6 +1105,19 @@ impl Verifier {
             )?;
             air_context.set_smt_log(Box::new(file));
         }
+        if self.args.log_all || self.args.log_args.log_smt_transcript {
+            let file = self.create_log_file(
+                Some(bucket_id),
+                Self::log_fine_name_suffix(
+                    is_rerun,
+                    query_function_path_counter,
+                    self.expand_flag,
+                    crate::config::SMT_TRANSCRIPT_FILE_SUFFIX,
+                )
+                .as_str(),
+            )?;
+            air_context.set_smt_transcript_log(Box::new(file));
+        }
 
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");
@@ -1878,7 +1891,9 @@ impl Verifier {
                 None,
                 Some(bucket_id.module().clone()),
                 bucket_id.function(),
+                true,
             );
+        let mono_abstract_datatypes = mono_abstract_datatypes.unwrap();
         let module = pruned_krate
             .modules
             .iter()
@@ -1895,19 +1910,19 @@ impl Verifier {
             fndef_types,
             self.args.debugger,
         )?;
-        let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
-            vir::printer::write_krate(&mut file, &poly_krate, &self.args.log_args.vir_log_option);
+            vir::printer::write_krate(&mut file, &pruned_krate, &self.args.log_args.vir_log_option);
         }
 
         let krate_sst = vir::ast_to_sst_crate::ast_to_sst_krate(
             &mut ctx,
             reporter,
             &self.get_bucket(bucket_id).funs,
-            &poly_krate,
+            &pruned_krate,
         )?;
+        let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
             self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx)?;
@@ -2504,11 +2519,9 @@ impl Verifier {
     ) -> Result<bool, (VirErr, Vec<vir::ast::VirErrAs>)> {
         let time_hir0 = Instant::now();
 
-        match rustc_hir_analysis::check_crate(tcx) {
-            Ok(()) => {}
-            Err(_) => {
-                return Ok(false);
-            }
+        rustc_hir_analysis::check_crate(tcx);
+        if tcx.dcx().err_count() != 0 {
+            return Ok(false);
         }
 
         let hir = tcx.hir();
@@ -2629,6 +2642,7 @@ impl Verifier {
             Some(&current_vir_crate),
             None,
             None,
+            false,
         );
         let vir_crate =
             vir::traits::merge_external_traits(vir_crate).map_err(map_err_diagnostics)?;
@@ -2651,6 +2665,8 @@ impl Verifier {
                 .map_err(map_err_diagnostics)?;
         let vir_crate =
             vir::traits::inherit_default_bodies(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        let vir_crate = vir::traits::fixup_ens_has_return_for_trait_method_impls(vir_crate)
+            .map_err(|e| (e, Vec::new()))?;
 
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(
@@ -2767,6 +2783,24 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         config.override_queries = Some(|_session, providers| {
             providers.hir_crate = hir_crate;
+
+            // Do not actually evaluate consts if we are not compiling, as doing so triggers the
+            // constness checker, which is more restrictive than necessary for verification.
+            // Doing this will delay some const-ness errors to when verus is run with `--compile`.
+            providers.eval_to_const_value_raw =
+                |_tcx, _key| Ok(rustc_middle::mir::ConstValue::ZeroSized);
+
+            // Prevent the borrow checker from running, as we will run our own lifetime analysis.
+            // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
+            // by const evaluation through the mir interpreter.
+            providers.mir_borrowck = |tcx, _local_def_id| {
+                tcx.arena.alloc(rustc_middle::mir::BorrowCheckResult {
+                    concrete_opaque_types: rustc_data_structures::fx::FxIndexMap::default(),
+                    closure_requirements: None,
+                    used_mut_upvars: smallvec::SmallVec::new(),
+                    tainted_by_errors: None,
+                })
+            };
         });
     }
 
@@ -2777,7 +2811,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     ) -> rustc_driver::Compilation {
         self.rust_end_time = Some(Instant::now());
 
-        if !compiler.sess.compile_status().is_ok() {
+        if let Some(_guar) = compiler.sess.dcx().has_errors() {
             return rustc_driver::Compilation::Stop;
         }
 
@@ -2842,7 +2876,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     }
                     return;
                 }
-                if !compiler.sess.compile_status().is_ok() {
+                if let Some(_guar) = compiler.sess.dcx().has_errors() {
                     return;
                 }
                 self.lifetime_start_time = Some(Instant::now());
@@ -2912,7 +2946,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             }
 
-            if !compiler.sess.compile_status().is_ok() {
+            if let Some(_guar) = compiler.sess.dcx().has_errors() {
                 return;
             }
 

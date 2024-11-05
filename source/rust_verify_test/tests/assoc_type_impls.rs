@@ -374,6 +374,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] trait_typ_equality1 verus_code! {
+        use vstd::prelude::*;
         trait T {
             type X;
             type Y: Copy;

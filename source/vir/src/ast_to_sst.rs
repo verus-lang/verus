@@ -6,17 +6,15 @@ use crate::ast::{
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{types_equal, undecorate_typ, QUANT_FORALL};
+use crate::ast_util::{types_equal, undecorate_typ, unit_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
 use crate::messages::{error, error_with_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
-    Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, ParPurpose,
-    Pars, Stm, StmX, UniqueIdent,
+    Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
+    ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
-use crate::sst_util::{
-    free_vars_exp, free_vars_stm, sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt,
-};
+use crate::sst_util::{sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::vec_map_result;
 use crate::visitor::VisitorControlFlow;
@@ -26,7 +24,7 @@ use air::scope_map::ScopeMap;
 use indexmap::IndexSet;
 use num_bigint::BigInt;
 use num_traits::identities::Zero;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -91,7 +89,7 @@ impl ReturnValue {
     fn to_value(self) -> Option<Exp> {
         match self {
             ReturnValue::Some(e) => Some(e),
-            ReturnValue::ImplicitUnit(span) => Some(lowered_unit_value(&span)),
+            ReturnValue::ImplicitUnit(span) => Some(sst_unit_value(&span)),
             ReturnValue::Never => None,
         }
     }
@@ -99,7 +97,7 @@ impl ReturnValue {
     fn expect_value(self) -> Exp {
         match self {
             ReturnValue::Some(e) => e,
-            ReturnValue::ImplicitUnit(span) => lowered_unit_value(&span),
+            ReturnValue::ImplicitUnit(span) => sst_unit_value(&span),
             ReturnValue::Never => panic!("ReturnValue::Never unexpected here"),
         }
     }
@@ -271,19 +269,28 @@ impl<'a> State<'a> {
         &mut self,
         ident: &VarIdent,
         typ: &Typ,
-        mutable: bool,
+        kind: LocalDeclKind,
         may_need_rename: bool,
     ) -> VarIdent {
         let unique_ident = if may_need_rename { self.rename_var_stm(ident) } else { ident.clone() };
-        let decl = LocalDeclX { ident: unique_ident.clone(), typ: typ.clone(), mutable };
+        let decl = LocalDeclX { ident: unique_ident.clone(), typ: typ.clone(), kind };
         self.local_decls.push(Arc::new(decl));
         unique_ident
     }
 
-    pub(crate) fn declare_temp_var_stm(&mut self, span: &Span, typ: &Typ) -> (VarIdent, Exp) {
+    fn declare_temp_var_stm(
+        &mut self,
+        span: &Span,
+        typ: &Typ,
+        kind: LocalDeclKind,
+    ) -> (VarIdent, Exp) {
         let (temp, temp_var) = self.next_temp(span, typ);
-        let temp_id = self.declare_var_stm(&temp, typ, false, false);
+        let temp_id = self.declare_var_stm(&temp, typ, kind, false);
         (temp_id, temp_var)
+    }
+
+    fn declare_temp_assign(&mut self, span: &Span, typ: &Typ) -> (VarIdent, Exp) {
+        self.declare_temp_var_stm(span, typ, LocalDeclKind::TempViaAssign)
     }
 
     pub(crate) fn declare_params(&mut self, params: &Pars) {
@@ -292,7 +299,12 @@ impl<'a> State<'a> {
                 let name = &param.x.name;
                 self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
                 self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
-                self.declare_var_stm(name, &param.x.typ, false, false);
+                self.declare_var_stm(
+                    name,
+                    &param.x.typ,
+                    LocalDeclKind::Param { mutable: false },
+                    false,
+                );
             }
         }
     }
@@ -369,7 +381,7 @@ impl<'a> State<'a> {
     /// Creates a new tmp var and adds a Stm to the stms vec asserting the new
     /// temp var is equal to the given exp. Returns an exp for the temp var.
     pub fn make_tmp_var_for_exp(&mut self, stms: &mut Vec<Stm>, exp: Exp) -> Exp {
-        let (temp_id, temp_var) = self.declare_temp_var_stm(&exp.span, &exp.typ);
+        let (temp_id, temp_var) = self.declare_temp_assign(&exp.span, &exp.typ);
         stms.push(init_var(&exp.span, &temp_id, &exp));
         temp_var
     }
@@ -430,6 +442,7 @@ pub fn assume_false(span: &Span) -> Stm {
 
 pub(crate) fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
     let xvarx = ExpX::Var(x.clone());
+    // TODO: Bool is wrong here
     let xvar = SpannedTyped::new(span, &Arc::new(TypX::Bool), xvarx);
     let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(typ.clone()), xvar);
     let has_typ = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_typx);
@@ -517,6 +530,7 @@ enum ReturnedCall {
 fn expr_get_call(
     ctx: &Ctx,
     state: &mut State,
+    disallow_poly_ret: Option<&Typ>,
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
@@ -527,6 +541,24 @@ fn expr_get_call(
             CallTarget::Fun(kind, x, typs, _impl_paths, autospec_usage) => {
                 if *autospec_usage != AutospecUsage::Final {
                     return Err(internal_error(&expr.span, "autospec not discharged"));
+                }
+                let function = get_function(ctx, &expr.span, x)?;
+                let has_ret = function.x.ens_has_return;
+                if disallow_poly_ret.is_some()
+                    && has_ret
+                    && crate::poly::ret_needs_native(
+                        ctx,
+                        &function.x.kind,
+                        &function.x.ret.x.typ,
+                        disallow_poly_ret.unwrap(),
+                    )
+                {
+                    // Anticipate that poly.rs will need to coerce the result from poly to native,
+                    // so we return None to force the creation of a temp variable for the coercion.
+                    // TODO: in the long run, this would make more sense to handle entirely
+                    // in poly.rs, but for now, we continue to handle this here to avoid
+                    // disrupting the old behavior.
+                    return Ok(None);
                 }
                 let mut stms: Vec<Stm> = Vec::new();
                 let mut exps: Vec<Exp> = Vec::new();
@@ -541,7 +573,6 @@ fn expr_get_call(
                     };
                     exps.push(e0);
                 }
-                let has_ret = get_function(ctx, &expr.span, x)?.x.has_return();
                 Ok(Some((
                     stms,
                     ReturnedCall::Call {
@@ -565,13 +596,14 @@ fn expr_get_call(
 fn expr_must_be_call_stm(
     ctx: &Ctx,
     state: &mut State,
+    disallow_poly_ret: Option<&Typ>,
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
         ExprX::Call(CallTarget::Fun(kind, x, _, _, _), _)
             if !function_can_be_exp(ctx, state, expr, x, &kind.resolved())? =>
         {
-            expr_get_call(ctx, state, expr)
+            expr_get_call(ctx, state, disallow_poly_ret, expr)
         }
         _ => Ok(None),
     }
@@ -593,20 +625,19 @@ pub(crate) fn check_pure_expr(
 
 // Check spec preconditions in expr, but don't generate an Exp for Expr
 // Declare variables from binders as locals for checking
-pub(crate) fn check_pure_expr_bind(
+fn check_pure_expr_bind(
     ctx: &Ctx,
     state: &mut State,
     binders: &VarBinders<Typ>,
+    kind: LocalDeclKind,
     expr: &Expr,
 ) -> Result<Vec<Stm>, VirErr> {
     if state.checking_spec_preconditions(ctx) {
         state.push_scope();
         let mut stms: Vec<Stm> = Vec::new();
         for binder in binders.iter() {
-            let x = state.declare_var_stm(&binder.name, &binder.a, false, true);
-            if crate::poly::typ_is_poly(ctx, &binder.a) {
-                stms.push(assume_has_typ(&x, &binder.a, &expr.span));
-            }
+            let x = state.declare_var_stm(&binder.name, &binder.a, kind, true);
+            stms.push(assume_has_typ(&x, &binder.a, &expr.span));
         }
         let (stms1, _exp) = expr_to_stm_or_error(ctx, state, expr)?;
         stms.extend(stms1);
@@ -717,19 +748,6 @@ pub(crate) fn expr_to_stm_or_error(
     }
 }
 
-/// Unit type, in the lowered form that ast_simplify produces
-fn lowered_unit_typ() -> Typ {
-    let path = crate::def::prefix_tuple_type(0);
-    Arc::new(TypX::Datatype(path, Arc::new(vec![]), Arc::new(vec![])))
-}
-
-/// Unit value, in the lowered form that ast_simplify produces
-fn lowered_unit_value(span: &Span) -> Exp {
-    let datatype = crate::def::prefix_tuple_type(0);
-    let variant = crate::def::prefix_tuple_variant(0);
-    SpannedTyped::new(span, &lowered_unit_typ(), ExpX::Ctor(datatype, variant, Arc::new(vec![])))
-}
-
 pub(crate) fn stms_to_one_stm(span: &Span, stms: Vec<Stm>) -> Stm {
     if stms.len() == 1 {
         stms[0].clone()
@@ -804,7 +822,7 @@ fn is_small_exp(exp: &Exp) -> bool {
         ExpX::Unary(UnaryOp::Not | UnaryOp::Clip { .. } | UnaryOp::MustBeFinalized, e) => {
             is_small_exp_or_loc(e)
         }
-        ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_exp_or_loc(e),
+        ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
         _ => false,
     }
 }
@@ -836,7 +854,9 @@ fn stm_call(
         } else {
             // To avoid copying arg in preconditions and postconditions,
             // put arg into a temporary variable
-            let (temp_id, temp_var) = state.declare_temp_var_stm(&arg.span, &arg.typ);
+            let poly = crate::poly::arg_is_poly(ctx, &fun.x.kind, fun.x.mode, &arg.typ);
+            let kind = LocalDeclKind::StmCallArg { native: !poly };
+            let (temp_id, temp_var) = state.declare_temp_var_stm(&arg.span, &arg.typ, kind);
             small_args.push(temp_var);
             stms.push(init_var(&arg.span, &temp_id, arg));
         }
@@ -878,7 +898,7 @@ fn if_to_stm(
             // must also return a unit (either implicit or explicit).
             // If this sanity check fails, then it's likely we screwed up and
             // the alleged implicit unit branch was actually a never-return.
-            assert!(types_equal(&expr.typ, &lowered_unit_typ()));
+            assert!(types_equal(&expr.typ, &unit_typ()));
 
             let stm1 = stms_to_one_stm(&expr.span, stms1);
             let stm2 = stms_to_one_stm_opt(&expr.span, stms2);
@@ -917,7 +937,7 @@ fn if_to_stm(
                 //  if e0 { stms1; temp = e1; } else { stms2; temp = e2; };
                 //  temp
 
-                let (temp_id, temp_var) = state.declare_temp_var_stm(&expr.span, &expr.typ);
+                let (temp_id, temp_var) = state.declare_temp_assign(&expr.span, &expr.typ);
                 stms1.push(init_var(&expr.span, &temp_id, &e1));
                 stms2.push(init_var(&expr.span, &temp_id, &e2));
                 let stm1 = stms_to_one_stm(&expr.span, stms1);
@@ -985,7 +1005,9 @@ pub(crate) fn expr_to_stm_opt(
             }
             let (mut stms, lhs_exp) = expr_to_stm_opt(ctx, state, lhs_expr)?;
             let lhs_exp = lhs_exp.expect_value();
-            match expr_must_be_call_stm(ctx, state, expr2)? {
+            let direct_assign =
+                if matches!(lhs_exp.x, ExpX::VarLoc(_)) { Some(&lhs_exp.typ) } else { None };
+            match expr_must_be_call_stm(ctx, state, direct_assign, expr2)? {
                 Some((stms2, ReturnedCall::Never)) => {
                     stms.extend(stms2.into_iter());
                     Ok((stms, ReturnValue::Never))
@@ -996,12 +1018,12 @@ pub(crate) fn expr_to_stm_opt(
                 )) => {
                     // make a Call
                     stms.extend(stms2.into_iter());
-                    let (dest, assign) = if matches!(lhs_exp.x, ExpX::VarLoc(_)) {
+                    let (dest, assign) = if direct_assign.is_some() {
                         (Dest { dest: lhs_exp, is_init: *init_not_mut }, None)
                     } else {
                         assert!(!*init_not_mut, "init_not_mut unexpected for complex call dest");
                         let (temp_ident, temp_var) =
-                            state.declare_temp_var_stm(&lhs_exp.span, &expr2.typ);
+                            state.declare_temp_assign(&lhs_exp.span, &expr2.typ);
                         let assign = Spanned::new(
                             lhs_exp.span.clone(),
                             StmX::Assign {
@@ -1044,7 +1066,7 @@ pub(crate) fn expr_to_stm_opt(
                     let rhs = if matches!(lhs_exp.x, ExpX::VarLoc(_)) || is_small_exp(&e2) {
                         e2
                     } else {
-                        let (temp_ident, temp_var) = state.declare_temp_var_stm(&e2.span, &e2.typ);
+                        let (temp_ident, temp_var) = state.declare_temp_assign(&e2.span, &e2.typ);
                         stms.push(init_var(&expr.span, &temp_ident, &e2));
                         temp_var
                     };
@@ -1088,7 +1110,7 @@ pub(crate) fn expr_to_stm_opt(
             ))
         }
         ExprX::Call(CallTarget::Fun(..), _) => {
-            match expr_get_call(ctx, state, expr)?.expect("Call") {
+            match expr_get_call(ctx, state, None, expr)?.expect("Call") {
                 (stms, ReturnedCall::Never) => Ok((stms, ReturnValue::Never)),
                 (
                     mut stms,
@@ -1104,7 +1126,7 @@ pub(crate) fn expr_to_stm_opt(
                         Ok((stms, ReturnValue::Some(mk_exp(call))))
                     } else if ret {
                         let (temp_ident, temp_var) =
-                            state.declare_temp_var_stm(&expr.span, &expr.typ);
+                            state.declare_temp_assign(&expr.span, &expr.typ);
                         // tmp = StmX::Call;
                         let dest = Dest {
                             dest: var_loc_exp(&expr.span, &expr.typ, temp_ident.clone()),
@@ -1160,9 +1182,6 @@ pub(crate) fn expr_to_stm_opt(
                     }
                 }
             }
-        }
-        ExprX::Tuple(_) => {
-            panic!("internal error: Tuple should have been simplified by ast_simplify")
         }
         ExprX::Ctor(p, i, binders, update) => {
             assert!(update.is_none()); // should be simplified by ast_simplify
@@ -1377,7 +1396,8 @@ pub(crate) fn expr_to_stm_opt(
             panic!("internal error: Multi should have been simplified by ast_simplify")
         }
         ExprX::Quant(quant, binders, body) => {
-            let check_stms = check_pure_expr_bind(ctx, state, binders, body)?;
+            let check_stms =
+                check_pure_expr_bind(ctx, state, binders, LocalDeclKind::QuantBinder, body)?;
             state.push_scope();
             let binders = state.rename_binders_exp(binders);
             // Use expr_to_pure_exp_skip_checks,
@@ -1385,14 +1405,16 @@ pub(crate) fn expr_to_stm_opt(
             let exp = expr_to_pure_exp_skip_checks(ctx, state, body)?;
             state.pop_scope();
             let trigs = Arc::new(vec![]); // real triggers will be set by finalize_exp
-            let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
+            let bnd =
+                Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs, None));
             let e = mk_exp(ExpX::Bind(bnd, exp));
             let e = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, e));
             Ok((check_stms, ReturnValue::Some(e)))
         }
         ExprX::Closure(params, body) => {
             state.disable_recommends += 1;
-            let check_stms = check_pure_expr_bind(ctx, state, params, body)?;
+            let check_stms =
+                check_pure_expr_bind(ctx, state, params, LocalDeclKind::ClosureBinder, body)?;
             // Note: to avoid false alarms, we don't check recommends inside closures
             // (since there's no precondition on the closure parameters)
             state.push_scope();
@@ -1401,18 +1423,6 @@ pub(crate) fn expr_to_stm_opt(
             // because we checked spec preconditions with check_pure_expr_bind
             let exp = expr_to_pure_exp_skip_checks(ctx, state, body)?;
             state.pop_scope();
-
-            // Parameters and return types must have been boxed by poly.rs
-            assert!(matches!(
-                &*undecorate_typ(&body.typ),
-                TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. }
-            ));
-            for p in params.iter() {
-                assert!(matches!(
-                    &*undecorate_typ(&p.a),
-                    TypX::TypParam(_) | TypX::Boxed(_) | TypX::Projection { .. }
-                ));
-            }
 
             let trigs = Arc::new(vec![]); // real triggers will be set by finalize_exp
             let bnd = Spanned::new(body.span.clone(), BndX::Lambda(params.clone(), trigs));
@@ -1439,7 +1449,7 @@ pub(crate) fn expr_to_stm_opt(
                 .as_ref()
                 .expect("external_spec should have been added in ast_simplify");
             state.push_scope();
-            let uid = state.declare_var_stm(&cid, &expr.typ, false, false);
+            let uid = state.declare_var_stm(&cid, &expr.typ, LocalDeclKind::ExecClosureId, false);
             // Use expr_to_pure_exp_skip_checks,
             // because we checked spec preconditions in exec_closure_body_stms
             let cexp = expr_to_pure_exp_skip_checks(ctx, state, &cexpr)?;
@@ -1473,8 +1483,15 @@ pub(crate) fn expr_to_stm_opt(
             Ok((vec![], ReturnValue::Some(v)))
         }
         ExprX::Choose { params, cond, body } => {
-            let mut check_stms = check_pure_expr_bind(ctx, state, params, cond)?;
-            check_stms.extend(check_pure_expr_bind(ctx, state, params, body)?);
+            let mut check_stms =
+                check_pure_expr_bind(ctx, state, params, LocalDeclKind::ChooseBinder, cond)?;
+            check_stms.extend(check_pure_expr_bind(
+                ctx,
+                state,
+                params,
+                LocalDeclKind::ChooseBinder,
+                body,
+            )?);
             state.push_scope();
             let params = state.rename_binders_exp(&params);
             // Use expr_to_pure_exp_skip_checks,
@@ -1489,8 +1506,10 @@ pub(crate) fn expr_to_stm_opt(
             let e_choose = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, e_choose));
             if state.checking_recommends(ctx) {
                 let quant = crate::ast::Quant { quant: air::ast::Quant::Exists };
-                let bnd_exists =
-                    Spanned::new(body.span.clone(), BndX::Quant(quant, params.clone(), trigs));
+                let bnd_exists = Spanned::new(
+                    body.span.clone(),
+                    BndX::Quant(quant, params.clone(), trigs, None),
+                );
                 let e_exists = mk_exp(ExpX::Bind(bnd_exists, cond_exp.clone()));
                 let e_exists = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, e_exists));
                 let error = error(
@@ -1561,7 +1580,8 @@ pub(crate) fn expr_to_stm_opt(
                 } else {
                     // To avoid copying exp in Assert and Assume,
                     // put exp into a temporary variable
-                    let (temp_id, temp_var) = state.declare_temp_var_stm(&exp.span, &exp.typ);
+                    let (temp_id, temp_var) =
+                        state.declare_temp_var_stm(&exp.span, &exp.typ, LocalDeclKind::Assert);
                     stms.push(init_var(&exp.span, &temp_id, &exp));
                     temp_var
                 };
@@ -1607,9 +1627,12 @@ pub(crate) fn expr_to_stm_opt(
             // Translate proof into a dead-end ending with an assert
             state.push_scope();
             let mut body: Vec<Stm> = Vec::new();
+            let mut locals: Vec<VarIdent> = Vec::new();
             for var in vars.iter() {
-                let x = state.declare_var_stm(&var.name, &var.a, false, true);
+                let kind = LocalDeclKind::AssertByVar { native: false };
+                let x = state.declare_var_stm(&var.name, &var.a, kind, true);
                 body.push(assume_has_typ(&x, &var.a, &require.span));
+                locals.push(x);
             }
             let (mut proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
             if let ReturnValue::Some(_) = e {
@@ -1643,11 +1666,17 @@ pub(crate) fn expr_to_stm_opt(
             // Translate ensure into an assume
             let implyx = ExprX::Binary(BinaryOp::Implies, require.clone(), ensure.clone());
             let imply = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), implyx);
-            let forallx = ExprX::Quant(QUANT_FORALL, vars.clone(), imply);
-            let forall = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), forallx);
+            state.push_scope();
+            let vars = state.rename_binders_exp(vars);
             // Use expr_to_pure_exp_skip_checks,
             // because we already checked spec preconditions for require and ensure above
-            let forall_exp = expr_to_pure_exp_skip_checks(ctx, state, &forall)?;
+            let imply_exp = expr_to_pure_exp_skip_checks(ctx, state, &imply)?;
+            state.pop_scope();
+            let trigs = Arc::new(vec![]); // real triggers will be set by finalize_exp
+            let bndx = BndX::Quant(QUANT_FORALL, vars.clone(), trigs, Some(Arc::new(locals)));
+            let bnd = Spanned::new(ensure.span.clone(), bndx);
+            let forall_exp = mk_exp(ExpX::Bind(bnd, imply_exp));
+            let forall_exp = mk_exp(ExpX::Unary(UnaryOp::MustBeElaborated, forall_exp));
             let assume = Spanned::new(ensure.span.clone(), StmX::Assume(forall_exp));
             stms.push(assume);
             Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
@@ -1658,7 +1687,7 @@ pub(crate) fn expr_to_stm_opt(
             match mode {
                 AssertQueryMode::NonLinear => {
                     let mut inner_body: Vec<Stm> = Vec::new();
-                    let mut vars = BTreeMap::new(); // order vars by UniqueIdent
+                    let mut exps: Vec<Exp> = Vec::new();
 
                     // Translate body as separate query
                     state.push_scope();
@@ -1666,7 +1695,6 @@ pub(crate) fn expr_to_stm_opt(
                         let (require_check_recommends, require_exp) =
                             expr_to_pure_exp_check(ctx, state, &r)?;
                         inner_body.extend(require_check_recommends);
-                        vars.extend(free_vars_exp(&require_exp).into_iter());
                         let assume = Spanned::new(r.span.clone(), StmX::Assume(require_exp));
                         inner_body.push(assume);
                     }
@@ -1681,17 +1709,14 @@ pub(crate) fn expr_to_stm_opt(
                     inner_body.extend(proof_stms);
 
                     for e in ensures.iter() {
+                        // Use expr_to_pure_exp_skip_checks,
+                        // because we check spec preconditions below with check_pure_expr
+                        let ensure_exp = expr_to_pure_exp_skip_checks(ctx, state, &e)?;
+                        exps.push(ensure_exp.clone());
                         if state.checking_spec_preconditions(ctx) {
                             let check_stms = check_pure_expr(ctx, state, &e)?;
-                            for s in check_stms.iter() {
-                                vars.extend(free_vars_stm(&s).into_iter());
-                            }
                             inner_body.extend(check_stms);
                         } else {
-                            // Use expr_to_pure_exp_skip_checks,
-                            // because we checked spec preconditions above with check_pure_expr
-                            let ensure_exp = expr_to_pure_exp_skip_checks(ctx, state, &e)?;
-                            vars.extend(free_vars_exp(&ensure_exp).into_iter());
                             let assert = Spanned::new(
                                 e.span.clone(),
                                 StmX::Assert(state.next_assert_id(), None, ensure_exp),
@@ -1708,12 +1733,13 @@ pub(crate) fn expr_to_stm_opt(
 
                     // Translate as assert, assume in outer query
                     for r in requires.iter() {
+                        // Use expr_to_pure_exp_skip_checks,
+                        // because we check spec preconditions below with check_pure_expr
+                        let require_exp = expr_to_pure_exp_skip_checks(ctx, state, &r)?;
+                        exps.push(require_exp.clone());
                         if state.checking_spec_preconditions(ctx) {
                             outer.extend(check_pure_expr(ctx, state, &r)?);
                         } else {
-                            // Use expr_to_pure_exp_skip_checks,
-                            // because we checked spec preconditions above with check_pure_expr
-                            let require_exp = expr_to_pure_exp_skip_checks(ctx, state, &r)?;
                             let assert = Spanned::new(
                                 r.span.clone(),
                                 StmX::Assert(
@@ -1742,7 +1768,8 @@ pub(crate) fn expr_to_stm_opt(
                         expr.span.clone(),
                         StmX::AssertQuery {
                             body: inner_body,
-                            typ_inv_vars: Arc::new(vars.into_iter().collect()),
+                            typ_inv_exps: Arc::new(exps),
+                            typ_inv_vars: Arc::new(vec![]),
                             mode: *mode,
                         },
                     );
@@ -2003,13 +2030,17 @@ pub(crate) fn expr_to_stm_opt(
 
             // Assign it to a constant tmp variable to ensure it is constant
             // across the entire block. sst_to_air also relies on this.
-            let (inv_tmp_id, inv_tmp_var) = state.declare_temp_var_stm(&big_inv_exp.span, &inv.typ);
+            let (inv_tmp_id, inv_tmp_var) = state.declare_temp_assign(&big_inv_exp.span, &inv.typ);
             stms0.push(init_var(&big_inv_exp.span, &inv_tmp_id, &big_inv_exp));
 
             // Declare the inner_tmp variable
             let mut stms1 = vec![];
             let inner_typ = &binder.a;
-            let (arb_id, arb_exp) = state.declare_temp_var_stm(&big_inv_exp.span, &inner_typ);
+            let (arb_id, arb_exp) = state.declare_temp_var_stm(
+                &big_inv_exp.span,
+                &inner_typ,
+                LocalDeclKind::OpenInvariantBinder,
+            );
             stms1.push(assume_has_typ(&arb_id, &inner_typ, &expr.span));
 
             // Assign to the bound variable
@@ -2017,7 +2048,7 @@ pub(crate) fn expr_to_stm_opt(
             state.local_decls.push(Arc::new(LocalDeclX {
                 ident: ident.clone(),
                 typ: inner_typ.clone(),
-                mutable: true,
+                kind: LocalDeclKind::OpenInvariantBinder,
             }));
             stms1.push(init_var(&expr.span, &ident, &arb_exp));
             let inner_var = SpannedTyped::new(&expr.span, &inner_typ, ExpX::Var(ident));
@@ -2063,7 +2094,7 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::Return(e1) => {
             let (mut stms, ret_exp) = match e1 {
-                None => (vec![], lowered_unit_value(&expr.span)),
+                None => (vec![], sst_unit_value(&expr.span)),
                 Some(e) => {
                     let (ret_stms, exp) = expr_to_stm_opt(ctx, state, e)?;
                     let exp = unwrap_or_return_never!(exp, ret_stms);
@@ -2224,12 +2255,16 @@ fn stmt_to_stm(
             let rename = state.rename_var_maybe_exp(&name);
             let ident = rename.clone();
             let typ = pattern.typ.clone();
-            let decl = Arc::new(LocalDeclX { ident, typ: typ.clone(), mutable: *mutable });
+            let decl = Arc::new(LocalDeclX {
+                ident,
+                typ: typ.clone(),
+                kind: LocalDeclKind::StmtLet { mutable: *mutable },
+            });
 
             // First check if the initializer needs to be translate to a Call instead
             // of an Exp. If so, translate it that way.
             if let Some(init) = init {
-                match expr_must_be_call_stm(ctx, state, init)? {
+                match expr_must_be_call_stm(ctx, state, Some(&typ), init)? {
                     Some((stms, ReturnedCall::Never)) => {
                         return Ok((stms, ReturnValue::Never, None));
                     }
@@ -2267,7 +2302,6 @@ fn stmt_to_stm(
             }
 
             // Otherwise, translate the initializer to an Exp.
-
             let (mut stms, exp) = match init {
                 None => (vec![], None),
                 Some(init) => {
@@ -2321,7 +2355,8 @@ fn exec_closure_body_stms(
 
     state.push_scope();
     for param in params.iter() {
-        let uid = state.declare_var_stm(&param.name, &param.a, false, false);
+        let uid =
+            state.declare_var_stm(&param.name, &param.a, LocalDeclKind::ExecClosureParam, false);
         typ_inv_vars.push((uid, param.a.clone()));
     }
 
@@ -2335,7 +2370,7 @@ fn exec_closure_body_stms(
         stms.push(stm);
     }
 
-    state.declare_var_stm(&ret.name, &ret.a, false, false);
+    state.declare_var_stm(&ret.name, &ret.a, LocalDeclKind::ExecClosureRet, false);
     let dest = unique_local(&ret.name);
 
     let mut ens_exps = Vec::new();
@@ -2415,8 +2450,6 @@ fn get_inv_typ_args(typ: &Typ) -> Typs {
 fn call_inv(ctx: &Ctx, outer: &Exp, inner: &Exp, typ_args: &Typs, atomicity: InvAtomicity) -> Exp {
     let call_fun =
         CallFun::Fun(crate::def::fn_inv_name(&ctx.global.vstd_crate_name, atomicity), None);
-    let inner = crate::poly::coerce_exp_to_poly(ctx, inner);
-    let outer = crate::poly::coerce_exp_to_poly(ctx, outer);
     let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![outer.clone(), inner.clone()]));
     SpannedTyped::new(&outer.span, &Arc::new(TypX::Bool), expx)
 }
@@ -2424,7 +2457,6 @@ fn call_inv(ctx: &Ctx, outer: &Exp, inner: &Exp, typ_args: &Typs, atomicity: Inv
 fn call_namespace(ctx: &Ctx, arg: &Exp, typ_args: &Typs, atomicity: InvAtomicity) -> Exp {
     let call_fun =
         CallFun::Fun(crate::def::fn_namespace_name(&ctx.global.vstd_crate_name, atomicity), None);
-    let arg = crate::poly::coerce_exp_to_poly(ctx, arg);
     let expx = ExpX::Call(call_fun, typ_args.clone(), Arc::new(vec![arg.clone()]));
     SpannedTyped::new(&arg.span, &Arc::new(TypX::Int(IntRange::Int)), expx)
 }
@@ -2442,9 +2474,8 @@ pub fn assert_assume_satisfies_user_defined_type_invariant(
         _ => panic!("assert_assume_satisfies_user_defined_type_invariant: expected datatype"),
     };
     let call_fun = CallFun::Fun(fun.clone(), None);
-    let arg = crate::poly::coerce_exp_to_poly(ctx, exp);
-    let expx = ExpX::Call(call_fun, typs, Arc::new(vec![arg.clone()]));
-    let exp = SpannedTyped::new(&arg.span, &Arc::new(TypX::Bool), expx);
+    let expx = ExpX::Call(call_fun, typs, Arc::new(vec![exp.clone()]));
+    let exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
 
     if state.checking_recommends(ctx) {
         stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));

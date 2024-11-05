@@ -1,8 +1,8 @@
 use crate::ast::{
-    BinaryOp, BitwiseOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
+    BinaryOp, BitwiseOp, Constant, Dt, FieldOpr, Fun, Ident, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VarIdent, VirErr,
 };
-use crate::ast_util::path_as_friendly_rust_name;
+use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::messages::{error, Span};
 use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
@@ -39,10 +39,10 @@ pub enum AutoType {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum App {
     Const(Constant),
-    Field(Path, Ident, Ident),
+    Field(Dt, Ident, Ident),
     Call(Fun),
     // datatype constructor: (Path, Variant)
-    Ctor(Path, Ident),
+    Ctor(Dt, Ident),
     // u64 is an id, assigned via a simple counter
     Other(u64),
     VarAt(UniqueIdent, VarAt),
@@ -79,7 +79,7 @@ impl std::fmt::Debug for TermX {
                 match c {
                     App::Call(x) => write!(f, "{}(", path_as_friendly_rust_name(&x.path))?,
                     App::Ctor(path, variant) => {
-                        write!(f, "{}::{}(", path_as_friendly_rust_name(path), variant)?
+                        write!(f, "{}::{}(", dt_as_friendly_rust_name(path), variant)?
                     }
                     _ => unreachable!(),
                 }
@@ -355,8 +355,8 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 _ => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1])))),
             }
         }
-        ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, ctx, e1, depth),
-        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
+        ExpX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
         ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
@@ -367,9 +367,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             // Even if we did, it might be best not to trigger on IsVariants generated from Match
             let (_, term1) = gather_terms(ctxt, ctx, e1, 1);
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
-        }
-        ExpX::UnaryOpr(UnaryOpr::TupleField { .. }, _) => {
-            panic!("internal error: TupleField should have been removed before here")
         }
         ExpX::UnaryOpr(
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }),

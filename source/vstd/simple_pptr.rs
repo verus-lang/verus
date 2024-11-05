@@ -11,43 +11,127 @@ verus! {
 /// This is designed to be simpler to use that Verus's
 /// [more general pointer support](`crate::raw_ptr`),
 /// but also to serve as a better introductory point.
-/// Historically, `PPtr` was positioned as a "trusted primitives" of Verus,
+/// Historically, `PPtr` was positioned as a "trusted primitive" of Verus,
 /// but now, it is implemented and verified from the more general pointer support,
 /// which operates on similar principles, but which is much precise to Rust's
 /// pointer semantics.
 ///
-/// Technically, `PPtr` is a wrapper around `*mut mem::MaybeUninit<V>`, that is, the object
-/// it points to may be uninitialized.
+/// A `PPtr` is equvialent to its `usize`-based address. The type paramter `V` technically
+/// doesn't matter, and you can freely convert between `PPtr<V>` and `PPtr<W>` by casting
+/// to and from the `usize` address. What _really_ matters is the type paramter of the
+/// `PointsTo<V>`.
 ///
 /// In order to access (read or write) the value behind the pointer, the user needs
 /// a special _ghost permission token_, [`PointsTo<V>`](PointsTo). This object is `tracked`,
-/// which means that it is "only a proof construct" that does not appear in code,
+/// which means that it is "only a proof construct" that does not appear in compiled code,
 /// but its uses _are_ checked by the borrow-checker. This ensures memory safety,
 /// data-race-freedom, prohibits use-after-free, etc.
 ///
 /// ### PointsTo objects.
 ///
-/// The [`PointsTo`] object represents both the ability to access the data behind the
-/// pointer _and_ the ability to free it (return it to the memory allocator).
-///
-/// In particular:
-///  * When the user owns a `PointsTo<V>` object associated to a given pointer,
-///    they can either read or write its contents, or deallocate ("free") it.
-///  * When the user has a shared borrow, `&PointsTo<.>`, they can read
-///    the contents (i.e., obtained a shared borrow `&V`).
+/// The [`PointsTo`] object represents both the ability to access (read or write)
+/// the data behind the pointer _and_ the ability to free it
+/// (return it to the memory allocator).
 ///
 /// The `perm: PointsTo<V>` object tracks two pieces of data:
-///  * `perm.addr()` is the address that the permission is associated to, given
-///      as a `usize`
-///  * `perm.value()` tracks the data that is behind the pointer. Thereby:
-///      * When the user uses the permission to _read_ a value, they always
-///        read the value as given by the `perm.value`.
-///      * When the user uses the permission to _write_ a value, the `perm.value`
-///        data is updated.
-///  * `perm.is_init()` tracks whether the memory is initialized. (`perm.is_init()` and `perm.value()` can be replaced by `perm.opt_value()`).
+///  * [`perm.pptr()`](PointsTo::pptr) is the pointer that the permission is associated to.
+///  * [`perm.mem_contents()`](PointsTo::mem_contents) is the memory contents, which is one of either:
+///     * [`MemContents::Uninit`](raw_ptr::MemContents::Uninit) if the memory pointed-to by
+///       by the pointer is uninitialized.
+///     * [`MemContents::Init(v)`](raw_ptr::MemContents::Init) if the memory points-to the
+///       the value `v`.
+///
+/// Your access to the `PointsTo` object determines what operations you can safely perform
+/// with the pointer:
+///  * You can _read_ from the pointer as long as you have read access to the `PointsTo` object,
+///     e.g., `&PointsTo<V>`.
+///  * You can _write_ to the pointer as long as you have mutable access to the `PointsTo` object,
+///     e.g., `&mut PointsTo<V>`
+///  * You can call `free` to deallocate the memory as long as you have full onwership
+///     of the `PointsTo` object (i.e., the ability to move it).
 ///
 /// For those familiar with separation logic, the `PointsTo` object plays a role
 /// similar to that of the "points-to" operator, _ptr_ ↦ _value_.
+///
+/// ### Example
+///
+/// ```rust,ignored
+/// fn main() {
+///     unsafe {
+///         // ALLOCATE
+///         // p: PPtr<u64>, points_to: PointsTo<u64>
+///         let (p, Tracked(mut points_to)) = PPtr::<u64>::empty();
+///
+///         assert(points_to.mem_contents() === MemContents::Uninit);
+///         assert(points_to.pptr() == p);
+///
+///         // unsafe { *p = 5; }
+///         p.write(Tracked(&mut points_to), 5);
+///
+///         assert(points_to.mem_contents() === MemContents::Init(5));
+///         assert(points_to.pptr() == p);
+///
+///         // let x = unsafe { *p };
+///         let x = p.read(Tracked(&points_to));
+///
+///         assert(x == 5);
+///
+///         // DEALLOCATE
+///         let y = p.into_inner(Tracked(points_to));
+///
+///         assert(y == 5);
+///     }
+/// }
+/// ```
+///
+/// ### Examples of incorrect usage
+///
+/// The following code has a use-after-free bug, and it is rejected by Verus because
+/// it fails to satisfy Rust's ownership-checker.
+///
+/// ```rust,ignored
+/// fn main() {
+///     unsafe {
+///         // ALLOCATE
+///         // p: PPtr<u64>, points_to: PointsTo<u64>
+///         let (p, Tracked(mut points_to)) = PPtr::<u64>::empty();
+///
+///         // unsafe { *p = 5; }
+///         p.write(Tracked(&mut points_to), 5);
+///
+///         // let x = unsafe { *p };
+///         let x = p.read(Tracked(&points_to));
+///
+///         // DEALLOCATE
+///         p.free(Tracked(points_to));                 // `points_to` is moved here
+///
+///         // READ-AFTER-FREE
+///         let x2 = p.read(Tracked(&mut points_to));   // so it can't be used here
+///     }
+/// }
+/// ```
+///
+/// The following doesn't violate Rust's ownership-checking, but it "mixes up" the `PointsTo`
+/// objects, attempting to use the wrong `PointsTo` for the given pointer.
+/// This violates the precondition on [`p.read()`](PPtr::read).
+///
+/// ```rust,ignored
+/// fn main() {
+///     unsafe {
+///         // ALLOCATE p
+///         let (p, Tracked(mut perm_p)) = PPtr::<u64>::empty();
+///
+///         // ALLOCATE q
+///         let (q, Tracked(mut perm_q)) = PPtr::<u64>::empty();
+///
+///         // DEALLOCATE p
+///         p.free(Tracked(perm_p));
+///
+///         // READ-AFTER-FREE (read from p, try to use q's permission object)
+///         let x = p.read(Tracked(&mut perm_q));
+///     }
+/// }
+/// ```
 ///
 /// ### Differences from `PCell`.
 ///
@@ -64,8 +148,6 @@ verus! {
 ///  * Pointers are untyped (only `PointsTo` is typed).
 ///  * The `PointsTo` also encapsulates the permission to free a pointer.
 ///  * `PointsTo` tokens are non-fungible. They can't be broken up or made variable-sized.
-///
-/// ### Example (TODO)
 // We want PPtr's fields to be public so the solver knows that equality of addresses
 // implies equality of PPtrs
 pub struct PPtr<V>(pub usize, pub PhantomData<V>);
@@ -90,7 +172,7 @@ broadcast use
     super::set::group_set_axioms;
 
 impl<V> PPtr<V> {
-    /// Use `addr` instead
+    /// Use `addr()` instead
     #[verifier::inline]
     pub open spec fn spec_addr(p: PPtr<V>) -> usize {
         p.0
@@ -125,7 +207,7 @@ impl<V> PPtr<V> {
         PPtr(u, PhantomData)
     }
 
-    /// Same as from_addr
+    #[doc(hidden)]
     #[inline(always)]
     pub fn from_usize(u: usize) -> (s: Self)
         ensures
@@ -163,18 +245,24 @@ impl<V> PointsTo<V> {
         &&& self.points_to.ptr().addr() != 0
     }
 
-    pub closed spec fn opt_value(&self) -> MemContents<V> {
+    pub closed spec fn mem_contents(&self) -> MemContents<V> {
         self.points_to.opt_value()
+    }
+
+    #[doc(hidden)]
+    #[verifier::inline]
+    pub open spec fn opt_value(&self) -> MemContents<V> {
+        self.mem_contents()
     }
 
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
-        self.opt_value().is_init()
+        self.mem_contents().is_init()
     }
 
     #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
-        self.opt_value().is_uninit()
+        self.mem_contents().is_uninit()
     }
 
     #[verifier::inline]
@@ -182,9 +270,10 @@ impl<V> PointsTo<V> {
         recommends
             self.is_init(),
     {
-        self.opt_value().value()
+        self.mem_contents().value()
     }
 
+    /// Guarantee that the `PointsTo` points to a non-null address.
     pub proof fn is_nonnull(tracked &self)
         ensures
             self.addr() != 0,
@@ -192,6 +281,9 @@ impl<V> PointsTo<V> {
         use_type_invariant(self);
     }
 
+    /// "Forgets" about the value stored behind the pointer.
+    /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
+    /// Note that this is a `proof` function, i.e., it is operationally a no-op in executable code.
     pub proof fn leak_contents(tracked &mut self)
         ensures
             self.pptr() == old(self).pptr(),
@@ -201,7 +293,8 @@ impl<V> PointsTo<V> {
         self.points_to.leak_contents();
     }
 
-    /// Note: If both S and V are non-zero-sized, then this implies the pointers
+    /// Guarantees that two distinct `PointsTo<V>` objects point to disjoint ranges of memory.
+    /// If both S and V are non-zero-sized, then this also implies the pointers
     /// have distinct addresses.
     pub proof fn is_disjoint<S>(&mut self, other: &PointsTo<S>)
         ensures
@@ -212,6 +305,8 @@ impl<V> PointsTo<V> {
         self.points_to.is_disjoint(&other.points_to);
     }
 
+    /// Guarantees that two distinct, non-ZST `PointsTo<V>` objects point to different
+    /// addresses. This is a corollary of [`PointsTo::is_disjoint`].
     pub proof fn is_distinct<S>(&mut self, other: &PointsTo<S>)
         requires
             size_of::<V>() != 0,
@@ -239,6 +334,7 @@ impl<V> Copy for PPtr<V> {
 
 impl<V> PPtr<V> {
     /// Allocates heap memory for type `V`, leaving it uninitialized.
+    #[cfg(feature = "std")]
     pub fn empty() -> (pt: (PPtr<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@.pptr() == pt.0,
@@ -277,10 +373,11 @@ impl<V> PPtr<V> {
 
     /// Allocates heap memory for type `V`, leaving it initialized
     /// with the given value `v`.
+    #[cfg(feature = "std")]
     pub fn new(v: V) -> (pt: (PPtr<V>, Tracked<PointsTo<V>>))
         ensures
             pt.1@.pptr() == pt.0,
-            pt.1@.opt_value() == MemContents::Init(v),
+            pt.1@.mem_contents() == MemContents::Init(v),
         opens_invariants none
     {
         let (p, Tracked(mut pt)) = PPtr::<V>::empty();
@@ -337,16 +434,16 @@ impl<V> PPtr<V> {
     /// Moves `v` into the location pointed to by the pointer `self`.
     /// Requires the memory to be uninitialized, and leaves it initialized.
     ///
-    /// In the ghost perspective, this updates `perm.value`
-    /// from `None` to `Some(v)`.
+    /// In the ghost perspective, this updates `perm.mem_contents()`
+    /// from `MemContents::Uninit` to `MemContents::Init(v)`.
     #[inline(always)]
     pub fn put(self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
             old(perm).pptr() == self,
-            old(perm).opt_value() == MemContents::Uninit::<V>,
+            old(perm).mem_contents() == MemContents::Uninit::<V>,
         ensures
             perm.pptr() == old(perm).pptr(),
-            perm.opt_value() == MemContents::Init(v),
+            perm.mem_contents() == MemContents::Init(v),
         opens_invariants none
         no_unwind
     {
@@ -371,7 +468,7 @@ impl<V> PPtr<V> {
             old(perm).is_init(),
         ensures
             perm.pptr() == old(perm).pptr(),
-            perm.opt_value() == MemContents::Uninit::<V>,
+            perm.mem_contents() == MemContents::Uninit::<V>,
             v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -392,7 +489,7 @@ impl<V> PPtr<V> {
             old(perm).is_init(),
         ensures
             perm.pptr() == old(perm).pptr(),
-            perm.opt_value() == MemContents::Init(in_v),
+            perm.mem_contents() == MemContents::Init(in_v),
             out_v == old(perm).value(),
         opens_invariants none
         no_unwind
@@ -431,7 +528,7 @@ impl<V> PPtr<V> {
             old(perm).pptr() == self,
         ensures
             perm.pptr() === old(perm).pptr(),
-            perm.opt_value() === MemContents::Init(in_v),
+            perm.mem_contents() === MemContents::Init(in_v),
         opens_invariants none
         no_unwind
     {

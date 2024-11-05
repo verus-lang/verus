@@ -280,6 +280,22 @@ macro_rules! num_specs {
                 x.checked_add_unsigned(y)
             }
 
+            pub open spec fn saturating_add(x: $uN, y: $uN) -> $uN {
+                if x + y > <$uN>::MAX {
+                    <$uN>::MAX
+                } else {
+                    (x + y) as $uN
+                }
+            }
+
+            #[verifier::external_fn_specification]
+            #[verifier::when_used_as_spec(saturating_add)]
+            pub fn ex_saturating_add(x: $uN, y: $uN) -> (res: $uN)
+                ensures res == saturating_add(x, y)
+            {
+                x.saturating_add(y)
+            }
+
             pub open spec fn checked_sub(x: $iN, y: $iN) -> Option<$iN> {
                 if x - y > <$iN>::MAX || x - y < <$iN>::MIN {
                     None

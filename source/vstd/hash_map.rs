@@ -110,6 +110,14 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     {
         self.m.clear()
     }
+
+    #[verifier::external_body]
+    pub fn union_prefer_right(&mut self, other: Self)
+        ensures
+            self@ == old(self)@.union_prefer_right(other@),
+    {
+        self.m.extend(other.m)
+    }
 }
 
 pub broadcast proof fn axiom_hash_map_with_view_spec_len<Key, Value>(
@@ -210,6 +218,14 @@ impl<Value> StringHashMap<Value> {
             self@ == Map::<Seq<char>, Value>::empty(),
     {
         self.m.clear()
+    }
+
+    #[verifier::external_body]
+    pub fn union_prefer_right(&mut self, other: Self)
+        ensures
+            self@ == old(self)@.union_prefer_right(other@),
+    {
+        self.m.extend(other.m)
     }
 }
 

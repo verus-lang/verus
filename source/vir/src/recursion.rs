@@ -1,5 +1,5 @@
 use crate::ast::{
-    AutospecUsage, CallTarget, CallTargetKind, Constant, ExprX, Fun, Function, FunctionKind,
+    AutospecUsage, CallTarget, CallTargetKind, Constant, Dt, ExprX, Fun, Function, FunctionKind,
     GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VarBinder,
     VirErr,
 };
@@ -27,7 +27,7 @@ use std::sync::Arc;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Node {
     Fun(Fun),
-    Datatype(Path),
+    Datatype(Dt),
     Trait(Path),
     TraitImpl(ImplPath),
     TraitReqEns(ImplPath, bool),
@@ -78,29 +78,14 @@ pub fn height_is_int(typ: &Typ) -> bool {
     }
 }
 
-fn height_typ(ctx: &Ctx, exp: &Exp) -> Typ {
-    if height_is_int(&exp.typ) {
-        Arc::new(TypX::Int(IntRange::Int))
-    } else {
-        if crate::poly::typ_is_poly(ctx, &exp.typ) {
-            exp.typ.clone()
-        } else {
-            Arc::new(TypX::Boxed(exp.typ.clone()))
-        }
-    }
+fn height_typ(_ctx: &Ctx, exp: &Exp) -> Typ {
+    if height_is_int(&exp.typ) { Arc::new(TypX::Int(IntRange::Int)) } else { exp.typ.clone() }
 }
 
-fn exp_for_decrease(ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
+fn exp_for_decrease(_ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
     match &*undecorate_typ(&exp.typ) {
         TypX::Int(_) => Ok(exp.clone()),
-        TypX::Datatype(..) => Ok(if crate::poly::typ_is_poly(ctx, &exp.typ) {
-            exp.clone()
-        } else {
-            let op = UnaryOpr::Box(exp.typ.clone());
-            let argx = ExpX::UnaryOpr(op, exp.clone());
-            let typ = Arc::new(TypX::Boxed(exp.typ.clone()));
-            SpannedTyped::new(&exp.span, &typ, argx)
-        }),
+        TypX::Datatype(..) => Ok(exp.clone()),
         _ => Err(error(
             &exp.span,
             format!(
@@ -226,7 +211,7 @@ pub(crate) fn mk_decreases_at_entry(
         let decl = Arc::new(LocalDeclX {
             ident: unique_local(&decrease_at_entry(loop_id, i)),
             typ: typ.clone(),
-            mutable: false,
+            kind: crate::sst::LocalDeclKind::Decreases,
         });
         let uniq_ident = unique_local(&decrease_at_entry(loop_id, i));
         let stm_assign = Spanned::new(
@@ -279,7 +264,7 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
                 && ctx.func_map[&resolve(x, typs, resolved_method).0].x.body.is_some() =>
         {
             let mut args = (**args).clone();
-            let varx = ExpX::Var(unique_local(&&air_unique_var(FUEL_PARAM)));
+            let varx = ExpX::Var(unique_local(&air_unique_var(FUEL_PARAM)));
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
             let (name, ts) = resolve(x, typs, resolved_method);
@@ -335,7 +320,7 @@ fn check_termination<'a>(
             let error = error(&s.span, "could not prove termination");
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(None, Some(error), check));
 
-            let mut stms = vec![stm_assert];
+            let mut stms = vec![stm_assert, s.clone()];
             // REVIEW: when we support spec-ensures, we will need an assume here to get the ensures
             // of the recursive call just after it was proven to terminate
             // This is instead an interim fix for incompleteness in recommends checking, due to
@@ -359,7 +344,6 @@ fn check_termination<'a>(
                     stms.push(has_typ_assume);
                 }
             }
-            stms.push(s.clone());
             let stm_block = Spanned::new(s.span.clone(), StmX::Block(Arc::new(stms)));
             Ok(stm_block)
         }
@@ -414,7 +398,7 @@ pub(crate) fn expand_call_graph(
     let f_node = Node::Fun(function.x.name.clone());
 
     // Add T --> f if T declares method f
-    if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
+    if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
         // T --> f
         call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
     }
@@ -445,7 +429,7 @@ pub(crate) fn expand_call_graph(
 
     // Add f --> T for any function f with "where ...: T(...)"
     for bound in function.x.typ_bounds.iter() {
-        if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
+        if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
             if crate::recursive_types::suppress_bound_in_trait_decl(
                 &trait_path,
                 &function.x.typ_params,

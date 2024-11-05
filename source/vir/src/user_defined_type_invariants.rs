@@ -1,9 +1,9 @@
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionX, Path,
+    CallTarget, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionX, Path,
     PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent,
     VarIdentDisambiguate, VirErr,
 };
-use crate::ast_util::undecorate_typ;
+use crate::ast_util::{is_unit, undecorate_typ};
 use crate::def::Spanned;
 use crate::messages::Span;
 use crate::messages::{error, internal_error};
@@ -36,7 +36,7 @@ pub(crate) fn annotate_user_defined_invariants(
         functionx.body.as_ref().unwrap(),
         &|expr: &Expr| {
             match &expr.x {
-                ExprX::Ctor(..) => {
+                ExprX::Ctor(Dt::Path(_), ..) => {
                     if info.ctor_needs_check[&expr.span.id]
                         && typ_has_user_defined_type_invariant(datatypes, &expr.typ)
                     {
@@ -113,10 +113,6 @@ pub(crate) fn annotate_user_defined_invariants(
         },
     )?);
     Ok(())
-}
-
-fn is_unit(t: &Typ) -> bool {
-    if let TypX::Tuple(t) = &**t { t.len() == 0 } else { false }
 }
 
 fn check_func_is_no_unwind(
@@ -200,12 +196,13 @@ fn typ_get_user_defined_type_invariant(
     typ: &Typ,
 ) -> Option<Fun> {
     match &*undecorate_typ(typ) {
-        TypX::Datatype(path, ..) => {
-            match &datatypes.get(path).unwrap().x.user_defined_invariant_fn {
+        TypX::Datatype(dt, ..) => match dt {
+            Dt::Path(path) => match &datatypes.get(path).unwrap().x.user_defined_invariant_fn {
                 Some(fun) => Some(fun.clone()),
                 None => None,
-            }
-        }
+            },
+            Dt::Tuple(_) => None,
+        },
         _ => {
             dbg!(typ);
             panic!("typ_user_defined_type_invariant: expected datatype");
@@ -242,12 +239,8 @@ fn asserts_for_lhs(
                 }
                 cur = inner;
             }
-            ExprX::UnaryOpr(UnaryOpr::Unbox(_), inner) => {
-                cur = inner;
-            }
-            ExprX::UnaryOpr(UnaryOpr::Box(_), inner) => {
-                cur = inner;
-            }
+            ExprX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
+            ExprX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
             ExprX::Unary(UnaryOp::CoerceMode { .. }, inner) => {
                 cur = inner;
             }

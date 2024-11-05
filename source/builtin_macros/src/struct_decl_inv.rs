@@ -20,7 +20,7 @@ use syn_verus::visit_mut::VisitMut;
 use syn_verus::Token;
 use syn_verus::TypeInfer;
 use syn_verus::{
-    braced, parenthesized, Block, Error, Expr, Field, Fields, FnArg, FnArgKind, FnMode,
+    braced, parenthesized, Attribute, Block, Error, Expr, Field, Fields, FnArg, FnArgKind, FnMode,
     GenericArgument, GenericParam, Ident, Index, ItemStruct, Lifetime, Member, Pat, PatIdent,
     PatType, PathArguments, Receiver, Signature, Type, TypePath, Visibility,
 };
@@ -85,6 +85,7 @@ fn struct_decl_inv_main(sdi: SDI) -> parse::Result<TokenStream> {
 
 struct SDI {
     item_struct: ItemStruct,
+    wf_attrs: Vec<Attribute>,
     wf_vis: Visibility,
     wf_sig: Signature,
     invariant_decls: Vec<InvariantDecl>,
@@ -118,6 +119,7 @@ impl Parse for SDI {
     fn parse(input: ParseStream) -> parse::Result<SDI> {
         let item_struct: ItemStruct = input.parse()?;
 
+        let wf_attrs = input.call(Attribute::parse_outer)?;
         let wf_vis: Visibility = input.parse()?;
         let wf_sig: Signature = input.parse()?;
         check_wf_sig(&wf_sig)?;
@@ -131,7 +133,7 @@ impl Parse for SDI {
             invariant_decls.push(invariant_decl);
         }
 
-        Ok(SDI { item_struct, wf_vis, wf_sig, invariant_decls })
+        Ok(SDI { item_struct, wf_attrs, wf_vis, wf_sig, invariant_decls })
     }
 }
 
@@ -698,9 +700,9 @@ fn output_invariant(
 
                 // TODO make it possible to configure open-ness?
 
-                stream.extend(quote_spanned! { predicate.span() =>
+                stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
                     #vis struct #predname { }
-                    impl<#type_params> vstd::atomic_ghost::AtomicInvariantPredicate<#k_type, #v_type, #g_type> for #predname #where_clause {
+                    impl<#type_params> #vstd::atomic_ghost::AtomicInvariantPredicate<#k_type, #v_type, #g_type> for #predname #where_clause {
                         open spec fn atomic_inv(#tmp_k: #k_type, #tmp_v: #v_type, #tmp_g: #g_type) -> bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
@@ -716,9 +718,9 @@ fn output_invariant(
             } else {
                 let v_type = maybe_tuple(&partial_type.concrete_args);
                 let v_pat = maybe_tuple(&v_pats);
-                stream.extend(quote_spanned! { predicate.span() =>
+                stream.extend(quote_spanned_vstd! { vstd, predicate.span() =>
                     #vis struct #predname { }
-                    impl<#type_params> vstd::invariant::InvariantPredicate<#k_type, #v_type> for #predname #where_clause {
+                    impl<#type_params> #vstd::invariant::InvariantPredicate<#k_type, #v_type> for #predname #where_clause {
                         open spec fn inv(#tmp_k: #k_type, #tmp_v: #v_type) -> bool {
                             let #k_pat = #tmp_k;
                             let #v_pat = #tmp_v;
@@ -792,6 +794,7 @@ fn output_invariant(
 }
 
 fn output_wf(sdi: &SDI, stream: &mut TokenStream, wf_body_stream: TokenStream) {
+    let wf_attrs = &sdi.wf_attrs;
     let wf_sig = &sdi.wf_sig;
     let wf_vis = &sdi.wf_vis;
     let type_params = &sdi.item_struct.generics.params;
@@ -800,6 +803,7 @@ fn output_wf(sdi: &SDI, stream: &mut TokenStream, wf_body_stream: TokenStream) {
     stream.extend(quote! {
         impl <#type_params> #self_type #where_clause {
             // Something like `pub open spec fn well_formed(&self) -> bool`
+            #(#wf_attrs)*
             #wf_vis #wf_sig {
                 #wf_body_stream
             }

@@ -423,3 +423,29 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_trait_default_external_body_issue1307 verus_code! {
+        #[verifier::external]
+        fn some_external_fn() { }
+
+        trait T {
+            #[verifier(external_body)]
+            fn f1() -> (ret: bool)
+                ensures
+                    !ret
+            {
+                some_external_fn();
+                false
+            }
+
+            fn f2() -> bool {
+                Self::f1()
+            }
+        }
+
+        struct S;
+
+        impl T for S { }
+    } => Ok(())
+}

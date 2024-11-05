@@ -25,3 +25,10 @@ syn_verus = { path="../syn", default-features = false, features = ["parsing"] }
 
 [workspace]
 members = ["cargo-expand/update", "examples/update"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(exhaustive)',
+  'cfg(prettyplease_debug)',
+  'cfg(prettyplease_debug_indent)',
+] }
