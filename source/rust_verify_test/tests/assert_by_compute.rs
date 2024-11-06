@@ -594,7 +594,7 @@ test_verify_one_file! {
             assert({
                 let r = 2..4int;
                 let prop = |v: int| (v as u64) & 0xf000 == 0;
-                r.all(prop)
+                r.all_spec(prop)
             }) by (compute_only);
             let r = 2..4int;
             let prop = |v: int| (v as u64) & 0xf000 == 0;
@@ -659,7 +659,7 @@ test_verify_one_file! {
                 valid_bin_idx(smallest_bin_fitting_size(size)),
         {
             assert({let r = 0..11int;
-                    r.all(|v| property_bounds_for_smallest_bitting_size(v))
+                    r.all_spec(|v| property_bounds_for_smallest_bitting_size(v))
                     }) by (compute);
             let prop = |v| property_bounds_for_smallest_bitting_size(v);
             assert(prop(size));
