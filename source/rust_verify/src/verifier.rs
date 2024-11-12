@@ -1367,14 +1367,15 @@ impl Verifier {
                 continue;
             };
             for spec in specs.iter() {
-                if spec.typs.len() > 0 { 
+                if spec.typs.is_empty() {
+                    continue;
+                }
                 let commands =
                     vir::sst_to_air_func::func_name_to_air(ctx, reporter, function, spec)?;
                 let inner_comment = comment.clone() + &spec.comment();
                 self.run_commands(bucket_id, reporter, &mut air_context, &commands, &inner_comment);
                 function_decl_commands.push((commands.clone(), comment.clone()));
             }
-        }
         }
         ctx.fun = None;
 
@@ -1935,13 +1936,19 @@ impl Verifier {
             &pruned_krate,
         )?;
         let specializations = match poly_strategy {
-            PolyStrategy::Mono =>vir::mono::mono_krate_for_module(&krate_sst),
+            PolyStrategy::Mono => vir::mono::mono_krate_for_module(&krate_sst),
             PolyStrategy::Poly => Default::default(),
         };
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
-        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
-            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx, specializations)?;
+        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } = self.verify_bucket(
+            reporter,
+            &krate_sst,
+            source_map,
+            bucket_id,
+            &mut ctx,
+            specializations,
+        )?;
 
         global_ctx = ctx.free();
 

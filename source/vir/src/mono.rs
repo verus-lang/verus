@@ -19,24 +19,24 @@ primitive type such as `bool` or `int` to poly, even though we know `f(bool)` is
 specialized, hinders this.
 3. We want to ensure the generated AIR code can be type-checked by AIR.
  */
-use crate::ast::{Fun, Dt};
 use crate::ast::Idents;
 use crate::ast::IntRange;
 use crate::ast::Primitive;
-use crate::ast::TypDecorationArg;
-use crate::ast_util::n_types_equal;
+use crate::ast::{Dt, Fun, TypDecoration, TypDecorationArg};
+use crate::def::Spanned;
+use crate::def::POLY;
+use crate::poly;
 use crate::sst::{CallFun, Exp, ExpX, KrateSstX, Stm};
+use crate::sst::{Par, ParX};
 use crate::sst_util::{subst_exp, subst_typ};
 use crate::sst_visitor::{self, Visitor};
 use crate::{
     ast::{Ident, Typ, TypX, Typs},
     sst::{FunctionSst, KrateSst},
 };
+use air::ast_util::str_typ;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use crate::sst::{Par, ParX};
-use crate::def::Spanned;
-use crate::poly;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
 pub enum PolyStrategy {
@@ -52,16 +52,75 @@ pub enum SpecTypX {
     Bool,
     Int(IntRange),
     Datatype(Dt, SpecTyps),
-    Decorate(crate::ast::TypDecoration, SpecTyp),
-    Decorate2(crate::ast::TypDecoration, SpecTyps),
+    Decorate(TypDecoration, SpecTyp),
+    Decorate2(TypDecoration, SpecTyps),
     Primitive(Primitive, SpecTyps),
     Poly,
+}
+
+impl SpecTypX {
+    fn mangle_suffix(&self) -> String {
+        match &self {
+            Self::Bool => "bool".to_owned(),
+            Self::Int(IntRange::Int) => "ii".to_owned(),
+            Self::Int(IntRange::Nat) => "in".to_owned(),
+            Self::Int(IntRange::U(u)) => format!("iu{u}"),
+            Self::Int(IntRange::I(i)) => format!("ii{i}"),
+            Self::Int(IntRange::USize) => format!("iusize"),
+            Self::Int(IntRange::ISize) => format!("iisize"),
+            Self::Int(IntRange::Char) => format!("ic"),
+            Self::Datatype(Dt::Path(path), _) => format!("dt{path:?}"),
+            Self::Datatype(Dt::Tuple(u), spec_typs) => {
+                let tail = Self::mangle_typs(spec_typs);
+                format!("dt{u}_{tail}")
+            }
+            Self::Decorate(dec, inner) => {
+                let inner = inner.mangle_suffix();
+                format!("d1{dec:?}_{inner}")
+            }
+            Self::Decorate2(dec, inners) => {
+                let inners = Self::mangle_typs(inners);
+                format!("d2{dec:?}_{inners}")
+            }
+            Self::Primitive(p, inners) => {
+                let inners = Self::mangle_typs(inners);
+                format!("p{p:?}_{inners}")
+            }
+            Self::Poly => "poly".to_owned(),
+        }
+    }
+    fn mangle_typs(typs: &SpecTyps) -> String {
+        typs.iter().map(|t| t.mangle_suffix()).collect::<Vec<_>>().join("_")
+    }
+
+    fn to_typ(&self) -> Typ {
+        match &self {
+            Self::Bool => Arc::new(TypX::Bool),
+            Self::Int(range) => Arc::new(TypX::Int(*range)),
+            Self::Datatype(path, typs) => {
+                let typs = typs.iter().map(|t| t.to_typ()).collect();
+                Arc::new(TypX::Datatype(path.clone(), Arc::new(typs), Arc::new(vec![])))
+            }
+            Self::Primitive(name, typs) => {
+                let typs = typs.iter().map(|t| t.to_typ()).collect();
+                Arc::new(TypX::Primitive(*name, Arc::new(typs)))
+            }
+            Self::Decorate(d, typ) => Arc::new(TypX::Decorate(*d, None, typ.to_typ())),
+            Self::Decorate2(d, typs) => {
+                assert!(typs.len() == 2);
+                let allocator_typ = typs[0].to_typ();
+                let typ = typs[1].to_typ();
+                Arc::new(TypX::Decorate(*d, Some(TypDecorationArg { allocator_typ }), typ))
+            }
+            Self::Poly => Arc::new(TypX::Air(str_typ(POLY))),
+        }
+    }
 }
 fn typs_as_spec(typs: &Typs) -> Vec<SpecTyp> {
     let mut spec_typs: Vec<SpecTyp> = Vec::new();
     for typ in typs.iter() {
         let spec_typ = typ_as_spec(typ);
-            spec_typs.push(spec_typ);
+        spec_typs.push(spec_typ);
     }
     spec_typs
 }
@@ -76,7 +135,7 @@ pub(crate) fn typ_as_spec(typ: &Typ) -> SpecTyp {
         }
         TypX::Decorate(d, None, t) => {
             let spec = typ_as_spec(t);
-Arc::new(SpecTypX::Decorate(*d, spec))
+            Arc::new(SpecTypX::Decorate(*d, spec))
         }
         TypX::Decorate(d, Some(TypDecorationArg { allocator_typ }), t) => {
             let m1 = typ_as_spec(allocator_typ);
@@ -93,20 +152,21 @@ Arc::new(SpecTypX::Decorate(*d, spec))
         }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
-        TypX::Boxed(..) | TypX::TypParam(..) | TypX::SpecFn(..) | TypX::FnDef(..) => Arc::new(SpecTypX::Poly),
+        TypX::Boxed(..) | TypX::TypParam(..) | TypX::SpecFn(..) | TypX::FnDef(..) => {
+            Arc::new(SpecTypX::Poly)
+        }
         TypX::ConstInt(_) => Arc::new(SpecTypX::Poly),
         TypX::Projection { .. } => Arc::new(SpecTypX::Poly),
     }
 }
 
-
 /**
 This stores one instance of specialization of a particular function. This
 structure handles deduplication of essentially isomorphic call sites.
  */
-#[derive(Debug, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Specialization {
-    pub typs: Typs,
+    pub typs: SpecTyps,
 }
 impl Specialization {
     pub fn empty() -> Self {
@@ -116,7 +176,7 @@ impl Specialization {
         let ExpX::Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), typs, _) = exp else {
             return None;
         };
-        let result = Self { typs: typs.clone() };
+        let result = Self { typs: Arc::new(typs_as_spec(typs)) };
         Some((fun, result))
     }
 
@@ -129,103 +189,14 @@ impl Specialization {
         }
     }
 
-    fn mangle_type_name_inner(typ: &TypX) -> String {
-        let mut suffix = String::new();
-        match typ {
-            TypX::Bool => {
-                suffix += "_bool";
-            }
-            TypX::Int(range) => match range {
-                IntRange::Int => suffix += "_int",
-                IntRange::Nat => suffix += "_nat",
-                IntRange::U(bits) => suffix += &format!("_u{bits}"),
-                IntRange::I(bits) => suffix += &format!("_i{bits}"),
-                IntRange::USize => suffix += "_usize",
-                IntRange::ISize => suffix += "_isize",
-                IntRange::Char => suffix += "char",
-            },
-            TypX::SpecFn(_, _) => {
-                suffix += "_spec"; // Example for SpecFn
-            }
-            TypX::AnonymousClosure(_, _, _) => {
-                suffix += "_ac"; // Example for AnonymousClosure
-            }
-            TypX::FnDef(_, _, _) => {
-                suffix += "_fn"; // Example for FnDef
-            }
-            TypX::Datatype(dt, typs, _) => {
-                suffix += "_data"; // Example for Datatype
-                suffix += &Self::mangle_path(dt);
-                for typ in typs.iter() {
-                    suffix += &Self::mangle_type_name_inner(&*typ)
-                }
-            }
-            TypX::Primitive(p, typs) => {
-                suffix += "_prim"; // Example for Primitive
-                match p {
-                    Primitive::Array => {
-                        suffix += "A";
-                    }
-                    Primitive::Slice => {
-                        suffix += "S";
-                    }
-                    Primitive::StrSlice => {
-                        suffix += "Ss";
-                    }
-                    Primitive::Ptr => {
-                        suffix += "P";
-                    }
-                    Primitive::Global => {
-                        suffix += "G";
-                    }
-                }
-                for typ in typs.iter() {
-                    suffix += &Self::mangle_type_name_inner(&*typ)
-                }
-            }
-            TypX::Decorate(_, _, typ) => {
-                suffix += "_de";
-                suffix += &Self::mangle_type_name_inner(&*typ)
-            }
-            TypX::Boxed(_) => {
-                suffix += "_box"; // Example for Boxed
-            }
-            TypX::TypParam(ref ident) => {
-                suffix += "_x";
-                suffix += ident.as_ref();
-            }
-            TypX::Projection { .. } => {
-                suffix += "_proj"; // Example for Projection
-            }
-            TypX::TypeId => {
-                suffix += "_tid";
-            }
-            TypX::ConstInt(ref big_int) => {
-                suffix += "_ci";
-                suffix += &big_int.to_string();
-            }
-            TypX::Air(_) => {
-                suffix += "_a";
-            }
-        }
-        suffix
-    }
-    fn mangle_type_name(typ: &TypX) -> Ident {
-        let name = Self::mangle_type_name_inner(typ);
-        let l = name.len();
-        Arc::new(format!("_M{l}{name}"))
-    }
-
+    /**
+    Adds a mangled suffix to an identifier based on `SpecTypX`
+     */
     pub fn transform_ident(&self, ident: Ident) -> Ident {
         if self.typs.is_empty() {
             return ident;
         }
-        let mut suffix = String::new();
-        for typ in self.typs.iter() {
-            suffix += &Self::mangle_type_name(&*typ);
-        }
-
-
+        let suffix = SpecTypX::mangle_typs(&self.typs);
         Arc::new(ident.as_ref().clone() + &suffix)
     }
 
@@ -236,38 +207,35 @@ impl Specialization {
         let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
         assert!(typ_params.len() == self.typs.len());
         for (x, t) in typ_params.iter().zip(self.typs.iter()) {
-            trait_typ_substs.insert(x.clone(), t.clone());
+            trait_typ_substs.insert(x.clone(), t.to_typ());
         }
         Arc::new(Spanned {
             span: par.span.clone(), // Assuming `par` has a `span` field that needs to be copied
             x: ParX {
-            name: par.x.name.clone(),
-            typ: self.transform_typ(typ_params, &par.x.typ),
-            mode: par.x.mode,
-            is_mut: par.x.is_mut,
-            purpose: par.x.purpose
+                name: par.x.name.clone(),
+                typ: self.transform_typ(typ_params, &par.x.typ),
+                mode: par.x.mode,
+                is_mut: par.x.is_mut,
+                purpose: par.x.purpose,
             },
-
         })
-
     }
 
-    pub fn transform_typ(&self, typ_params: &Idents,typ: &Typ) -> Typ {
+    pub fn transform_typ(&self, typ_params: &Idents, typ: &Typ) -> Typ {
         if self.typs.is_empty() {
             return typ.clone();
         }
         let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
         assert!(typ_params.len() == self.typs.len());
         for (x, t) in typ_params.iter().zip(self.typs.iter()) {
-            trait_typ_substs.insert(x.clone(), t.clone());
+            trait_typ_substs.insert(x.clone(), t.to_typ());
         }
-        let new_typ  = subst_typ(&trait_typ_substs, typ);
+        let new_typ = subst_typ(&trait_typ_substs, typ);
         if poly::typ_as_mono(&new_typ).is_none() {
             return typ.clone();
         }
         new_typ
     }
-  
 
     pub fn transform_exp(&self, typ_params: &Idents, ex: &Exp) -> Exp {
         if self.typs.is_empty() {
@@ -276,7 +244,7 @@ impl Specialization {
         let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
         assert!(typ_params.len() == self.typs.len());
         for (x, t) in typ_params.iter().zip(self.typs.iter()) {
-            trait_typ_substs.insert(x.clone(), t.clone());
+            trait_typ_substs.insert(x.clone(), t.to_typ());
         }
         let new_body_exp = subst_exp(&trait_typ_substs, &HashMap::new(), ex);
         new_body_exp
@@ -286,12 +254,6 @@ impl Specialization {
         format!(" specialized to {:?}", &self.typs)
     }
 }
-impl PartialEq for Specialization {
-    fn eq(&self, other: &Self) -> bool {
-        n_types_equal(&self.typs, &other.typs)
-    }
-}
-impl Eq for Specialization {}
 
 /**
 Utility for walking through the expression tree.

@@ -3,17 +3,17 @@ use crate::expand_errors_driver::{ExpandErrorsDriver, ExpandErrorsResult};
 use air::ast::{AssertId, Command};
 use rustc_session::config::ErrorOutputType;
 use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{Fun, FunctionKind, ImplPath, ItemKind, Mode, Path, TraitImpl, VirErr};
 use vir::ast_to_sst_func::{mk_fun_ctx, mk_fun_ctx_dec};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::def::{CommandsWithContext, SnapPos};
+use vir::mono::Specialization;
+use vir::mono::{mono_krate_for_module, PolyStrategy};
 use vir::recursion::Node;
 use vir::sst::{FuncCheckSst, FunctionSst};
-use vir::mono::Specialization;
-use vir::mono::{PolyStrategy, mono_krate_for_module};
-use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, Debug)]
 pub enum ContextOp {
@@ -71,7 +71,7 @@ pub struct OpGenerator<'a> {
 
     func_map: HashMap<Fun, FunctionSst>,
     trait_impl_map: HashMap<Path, TraitImpl>,
-    specializations:  HashMap<Fun, HashSet<Specialization>>,
+    specializations: HashMap<Fun, HashSet<Specialization>>,
 
     scc_idx: usize,
 }
@@ -91,8 +91,8 @@ impl<'a> OpGenerator<'a> {
         }
         let specializations = match ctx.global.poly_strategy {
             PolyStrategy::Mono => mono_krate_for_module(krate),
-      PolyStrategy::Poly => Default::default(),
-    };
+            PolyStrategy::Poly => Default::default(),
+        };
         let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
         for imp in &krate.trait_impls {
             assert!(!trait_impl_map.contains_key(&imp.x.impl_path));
@@ -196,16 +196,23 @@ impl<'a> OpGenerator<'a> {
 
             if let Some(specs) = self.specializations.get(&function.x.name) {
                 for spec in specs.iter() {
-                let decl_commands = vir::sst_to_air_func::func_decl_to_air(self.ctx, function, spec)?;
-                self.ctx.fun = None;
-                pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
+                    let decl_commands =
+                        vir::sst_to_air_func::func_decl_to_air(self.ctx, function, spec)?;
+                    self.ctx.fun = None;
+                    pre_ops.push(Op::context(
+                        ContextOp::ReqEns,
+                        decl_commands,
+                        Some(function.clone()),
+                    ));
                 }
-            }
-            else {
-                let decl_commands = vir::sst_to_air_func::func_decl_to_air(self.ctx, function,  &Specialization::empty())?;
+            } else {
+                let decl_commands = vir::sst_to_air_func::func_decl_to_air(
+                    self.ctx,
+                    function,
+                    &Specialization::empty(),
+                )?;
                 self.ctx.fun = None;
                 pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
-
             }
         }
 
@@ -223,10 +230,10 @@ impl<'a> OpGenerator<'a> {
                         self.ctx,
                         function,
                         is_visible_to(&function.x.vis_abs, &module),
-                        spec
+                        spec,
                     )?;
                     self.ctx.fun = None;
-        
+
                     if verifying_owning_bucket {
                         let snap_map = vec![];
                         let commands = Arc::new(check_commands);
@@ -237,17 +244,18 @@ impl<'a> OpGenerator<'a> {
                             &function,
                             None,
                         ));
+                    }
+                    post_ops.push(Op::context(op_kind, decl_commands, Some(function.clone())));
                 }
-            post_ops.push(Op::context(op_kind, decl_commands, Some(function.clone())));
-            } } else {
+            } else {
                 let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
                     self.ctx,
                     function,
                     is_visible_to(&function.x.vis_abs, &module),
-                    &Specialization::empty()
+                    &Specialization::empty(),
                 )?;
                 self.ctx.fun = None;
-    
+
                 if verifying_owning_bucket {
                     let snap_map = vec![];
                     let commands = Arc::new(check_commands);
@@ -260,7 +268,6 @@ impl<'a> OpGenerator<'a> {
                     ));
                 }
                 post_ops.push(Op::context(op_kind, decl_commands, Some(function.clone())));
-
             };
         }
 
@@ -472,7 +479,11 @@ fn focus_commands_with_context_on_assert_id(
 impl Op {
     pub fn to_air_comment(&self) -> String {
         fn append_profile_rerun(s: &str, profile: bool) -> String {
-            if !profile { s.to_owned() } else { format!("{s}-Profile-Rerun") }
+            if !profile {
+                s.to_owned()
+            } else {
+                format!("{s}-Profile-Rerun")
+            }
         }
         let prefix = match &self.kind {
             OpKind::Context(ContextOp::SpecDefinition, _) => "Function-Axioms".into(),
@@ -501,7 +512,11 @@ impl Op {
     /// Intended for Query ops, so the driver can describe queries to the user
     pub fn to_friendly_desc(&self) -> Option<String> {
         fn append_profile_rerun(s: &str, profile: bool) -> String {
-            if !profile { s.to_owned() } else { format!("{s} (profile rerun)") }
+            if !profile {
+                s.to_owned()
+            } else {
+                format!("{s} (profile rerun)")
+            }
         }
         match &self.kind {
             OpKind::Context(_, _) => None,
