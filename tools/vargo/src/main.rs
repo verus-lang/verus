@@ -1162,10 +1162,11 @@ fn run() -> Result<(), String> {
             let mut dependency_missing = false;
 
             let mut macos_prepare_script = format!(
-                r#"
-#!/bin/bash
+                r#"#!/bin/bash
 set -e
 set -x
+
+cd "$( dirname "${{BASH_SOURCE[0]}}" )"
 
 "#
             );
