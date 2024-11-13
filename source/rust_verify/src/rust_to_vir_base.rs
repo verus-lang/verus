@@ -446,9 +446,17 @@ pub(crate) fn get_impl_paths<'tcx>(
     target_id: DefId,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     remove_self_trait_bound: Option<(DefId, &mut Option<vir::ast::ImplPath>)>,
-) -> vir::ast::ImplPaths {
+    span: Span,
+) -> Result<vir::ast::ImplPaths, VirErr> {
     let clauses = instantiate_pred_clauses(tcx, target_id, node_substs);
-    get_impl_paths_for_clauses(tcx, verus_items, param_env_src, clauses, remove_self_trait_bound)
+    get_impl_paths_for_clauses(
+        tcx,
+        verus_items,
+        param_env_src,
+        clauses,
+        remove_self_trait_bound,
+        span,
+    )
 }
 
 pub(crate) fn get_impl_paths_for_clauses<'tcx>(
@@ -457,7 +465,8 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
     param_env_src: DefId,
     clauses: Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)>,
     mut remove_self_trait_bound: Option<(DefId, &mut Option<vir::ast::ImplPath>)>,
-) -> vir::ast::ImplPaths {
+    span: Span,
+) -> Result<vir::ast::ImplPaths, VirErr> {
     let mut impl_paths = Vec::new();
     let typing_env = TypingEnv::non_body_analysis(tcx, param_env_src);
 
@@ -477,7 +486,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
     let mut idx = 0;
     while idx < predicate_worklist.len() {
         if idx == 100000 {
-            panic!("get_impl_paths nesting depth exceeds 1000");
+            panic!("get_impl_paths nesting depth exceeds 100000");
         }
 
         let (inst_bound, inst_pred) = &predicate_worklist[idx];
@@ -500,14 +509,9 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                 let candidate_query_input = typing_env.as_query_input(trait_refs);
                 tcx.codegen_select_candidate(candidate_query_input)
             });
-            if let Ok(impl_source) = candidate {
-                if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
-                    let impl_path = def_id_to_vir_path(
-                        tcx,
-                        verus_items,
-                        u.impl_def_id,
-                        None::<&mut HashMap<_, _>>,
-                    );
+            match candidate {
+                Ok(rustc_middle::traits::ImplSource::UserDefined(u)) => {
+                    let impl_path = def_id_to_vir_path(tcx, verus_items, u.impl_def_id, None::<&mut HashMap<_, _>>);
                     let impl_path = ImplPath::TraitImplPath(impl_path);
                     match (&mut remove_self_trait_bound, inst_bound) {
                         (Some((expected_id, self_trait_impl_path)), Some(b))
@@ -527,19 +531,9 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                             predicate_worklist.push(p);
                         }
                     }
-                } else if let rustc_middle::traits::ImplSource::Builtin(
-                    rustc_middle::traits::BuiltinImplSource::Misc,
-                    _,
-                ) = impl_source
-                {
-                    // When the needed trait bound is `FnDef(f) : FnOnce(...)`
-                    // The `impl_source` doesn't have the information we need,
-                    // so we have to special case this here.
-
-                    // REVIEW: need to see if there are other problematic cases here;
-                    // I think codegen_select_candidate lacks some information because
-                    // it's used for codegen
-
+                }
+                Ok(rustc_middle::traits::ImplSource::Param(_)) => {}
+                Ok(rustc_middle::traits::ImplSource::Builtin(_, _)) => {
                     match inst_pred_kind {
                         ClauseKind::Trait(TraitPredicate {
                             trait_ref:
@@ -554,6 +548,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                 || Some(trait_def_id) == tcx.lang_items().fn_mut_trait()
                                 || Some(trait_def_id) == tcx.lang_items().fn_once_trait()
                             {
+                                // Handle the trait bound is `FnDef(f) : FnOnce(...)`
                                 match trait_args.into_type_list(tcx)[0].kind() {
                                     TyKind::FnDef(fn_def_id, fn_node_substs) => {
                                         let fn_path = def_id_to_vir_path(
@@ -578,15 +573,36 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                                     }
                                     _ => {}
                                 }
+                            } else if Some(trait_def_id) == tcx.lang_items().sized_trait()
+                                || Some(trait_def_id) == tcx.lang_items().tuple_trait()
+                                || Some(trait_def_id) == tcx.lang_items().pointee_trait()
+                                || Some(trait_def_id) == tcx.lang_items().sync_trait()
+                                || matches!(
+                                    verus_items::get_rust_item(tcx, trait_def_id),
+                                    Some(RustItem::Send | RustItem::Thin)
+                                )
+                            {
+                                // Sized, Tuple, Pointee, Thin are all ok to do nothing.
+                                // There can't be user impls of these traits, they can only be built-in.
+
+                                // TODO: Send and Sync needs handling, or a rigorous argument why it's ok to skip;
+                                // See https://github.com/verus-lang/verus/issues/1335
+                            } else {
+                                unsupported_err!(span, "this trait bound: {:?}", trait_refs)
                             }
                         }
-                        _ => {}
+                        _ => {
+                            unsupported_err!(span, "this trait bound: {:?}", trait_refs)
+                        }
                     }
+                }
+                Err(_) => {
+                    // TODO this happens sometimes - why?
                 }
             }
         }
     }
-    Arc::new(impl_paths)
+    Ok(Arc::new(impl_paths))
 }
 
 pub(crate) fn mk_visibility<'tcx>(ctxt: &Context<'tcx>, def_id: DefId) -> vir::ast::Visibility {
@@ -1051,15 +1067,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                     return Ok((Arc::new(TypX::SpecFn(param_typs, ret_typ)), false));
                 }
                 let typ_args = typ_args.into_iter().map(|(t, _)| t).collect();
-                let impl_paths = get_impl_paths(tcx, verus_items, param_env_src, did, args, None);
-                let datatypex = def_id_to_datatype(
-                    tcx,
-                    verus_items,
-                    path_def_id_map,
-                    did,
-                    Arc::new(typ_args),
-                    impl_paths,
-                );
+                let impl_paths =
+                    get_impl_paths(tcx, verus_items, param_env_src, did, args, None, span)?;
+                let datatypex =
+                    def_id_to_datatype(tcx, verus_items, path_def_id_map, did, Arc::new(typ_args), impl_paths);
                 (Arc::new(datatypex), false)
             }
         }
