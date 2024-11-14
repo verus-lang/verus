@@ -180,7 +180,7 @@ pub fn ex_map<T, U, F: FnOnce(T) -> U>(a: Option<T>, f: F) -> (ret: Option<U>)
 }
 
 #[verifier::external_fn_specification]
-pub fn ex_vec_clone<T: Clone>(opt: &Option<T>) -> (res: Option<T>)
+pub fn ex_option_clone<T: Clone>(opt: &Option<T>) -> (res: Option<T>)
     ensures
         opt.is_none() ==> res.is_none(),
         opt.is_some() ==> res.is_some() && call_ensures(T::clone, (&opt.unwrap(),), res.unwrap()),

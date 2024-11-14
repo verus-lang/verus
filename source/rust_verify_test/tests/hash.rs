@@ -726,6 +726,7 @@ test_verify_one_file! {
             assert(!(three@ =~= six@)) by {
                 reveal_strlit("three");
                 reveal_strlit("six");
+                assert(three@.len() != six@.len());
             }
 
             let b = m.contains(three.as_str());
