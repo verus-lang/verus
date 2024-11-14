@@ -449,3 +449,44 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] box_clone verus_code! {
+        use vstd::*;
+
+        fn test(a: Box<u8>) {
+            let b = a.clone();
+            assert(a == b);
+        }
+
+        fn test2<T: Clone>(a: Box<T>) {
+            let b = a.clone();
+            assert(a == b); // FAILS
+        }
+
+        fn test3<T: Clone>(a: Box<T>) {
+            let b = a.clone();
+            assert(call_ensures(T::clone, (&*a,), *b));
+        }
+
+        pub struct X { pub i: u64 }
+
+        impl Clone for X {
+            fn clone(&self) -> (res: Self)
+                ensures res == (X { i: 5 }),
+            {
+                X { i: 5 }
+            }
+        }
+
+        fn test4(a: Box<X>) {
+            let b = a.clone();
+            assert(a == b); // FAILS
+        }
+
+        fn test5(a: Box<X>) {
+            let b = a.clone();
+            assert(b == X { i: 5 });
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
