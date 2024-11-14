@@ -82,6 +82,13 @@
   - [Pointers](./pointers.md)
   - [Concurrency](concurrency.md)
 
+- [Verifying a container library: Binary Search Tree](./container_bst.md)
+  - [First draft](./container_bst_first_draft.md)
+  - [Encapsulating well-formedness with type invariants](./container_bst_type_invariant.md)
+  - [Making it generic](./container_bst_generic.md)
+  - [Implementing `Clone`](./container_bst_clone.md)
+  - [Full source for examples](./container_bst_all_source.md)
+
 - [Understanding the guarantees of a verified program](./guarantees.md)
   - [Assumptions and trusted components](./tcb.md)
   - [Memory safety is conditional on verification](./memory-safety.md)
