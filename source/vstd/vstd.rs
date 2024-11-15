@@ -27,6 +27,7 @@ pub mod bits;
 pub mod bytes;
 pub mod calc_macro;
 pub mod cell;
+pub mod compute;
 pub mod function;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_map;
@@ -96,6 +97,7 @@ pub broadcast group group_vstd_default {
     string::group_string_axioms,
     std_specs::range::group_range_axioms,
     raw_ptr::group_raw_ptr_axioms,
+    compute::all_spec_implies,
 }
 
 #[cfg(not(feature = "alloc"))]
@@ -114,6 +116,7 @@ pub broadcast group group_vstd_default {
     string::group_string_axioms,
     std_specs::range::group_range_axioms,
     raw_ptr::group_raw_ptr_axioms,
+    compute::all_spec_implies,
 }
 
 } // verus!

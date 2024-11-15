@@ -525,7 +525,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
             let e1 = visit_exp(ctx, state, e1);
             match op {
                 UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => {
-                    panic!("internal error: already has Box/Unbox")
+                    panic!("internal error: {:?} already has Box/Unbox", e1)
                 }
                 UnaryOpr::HasType(t) => {
                     // REVIEW: not clear that typ_to_poly is appropriate here for abstract datatypes
