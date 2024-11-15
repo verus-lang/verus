@@ -35,8 +35,4 @@ pub broadcast proof fn all_spec_implies(r: Range<int>, p: spec_fn(int) -> bool)
     }
 }
 
-pub broadcast group range_all_spec {
-    all_spec_implies,
-}
-
 } // verus!
