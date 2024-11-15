@@ -1704,3 +1704,24 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "Foo::clone` is not supported")
 }
+
+test_verify_one_file! {
+    #[test] clone_assign_type_param_trait_function_to_variable verus_code! {
+        use vstd::*;
+
+        pub struct X<T> {
+            pub t: T,
+        }
+
+        impl<T: Clone> Clone for X<T> {
+            fn clone(&self) -> (s: Self)
+                ensures
+                    call_ensures(T::clone, (&self.t,), s.t)
+            {
+                let t_clone = T::clone;
+                let new_t = t_clone(&self.t);
+                X { t: new_t }
+            }
+        }
+    } => Ok(())
+}
