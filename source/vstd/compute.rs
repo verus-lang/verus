@@ -5,6 +5,8 @@ verus! {
 
 /// Simplify proofs-by-computation for ranges of values
 pub trait RangeAll where Self: Sized {
+    /// Checks whether `p` holds for all values in this range.
+    /// See the [Verus tutorial](https://verus-lang.github.io/verus/guide/assert_by_compute.html) for example usage.
     spec fn all_spec(self, p: spec_fn(int) -> bool) -> bool;
 }
 
