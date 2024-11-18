@@ -262,7 +262,7 @@ pub enum TypX {
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
 
-    Poly(Typ)
+    Poly
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]

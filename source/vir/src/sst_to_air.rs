@@ -185,7 +185,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Projection { .. } => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
-        TypX::Poly(_) => str_typ(POLY),
+        TypX::Poly => str_typ(POLY),
         TypX::Air(t) => t.clone(),
     }
 }
@@ -357,7 +357,7 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
             mk_id(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
         }
         TypX::Air(_) => panic!("internal error: typ_to_ids of Air"),
-        TypX::Poly(typ) => typ_to_ids(typ),
+        TypX::Poly => mk_id(str_var(crate::def::POLY)),
     }
 }
 
@@ -466,7 +466,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
         TypX::ConstInt(_) => None,
-        TypX::Poly(_) => None,
+        TypX::Poly => None,
         TypX::Primitive(p, _) => {
             match p {
                 Primitive::Array | Primitive::Slice | Primitive::Ptr => {
@@ -531,7 +531,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Projection { .. } => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
-        TypX::Poly(_) => None,
+        TypX::Poly => None,
         TypX::Air(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
@@ -564,7 +564,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
-        TypX::Poly(_) => None,
+        TypX::Poly => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }

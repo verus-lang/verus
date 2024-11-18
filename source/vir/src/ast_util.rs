@@ -64,9 +64,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::SpecFn(ts1, t1), TypX::SpecFn(ts2, t2)) => {
             n_types_equal(ts1, ts2) && types_equal(t1, t2)
         }
-        (TypX::Poly(t1), TypX::Poly(t2)) => {
-            types_equal(t1, t2)
-        }
+        (TypX::Poly, TypX::Poly) => true,
         (TypX::AnonymousClosure(ts1, t1, id1), TypX::AnonymousClosure(ts2, t2, id2)) => {
             n_types_equal(ts1, ts2) && types_equal(t1, t2) && id1 == id2
         }
@@ -126,7 +124,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::ConstInt(_), _) => false,
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
-        (TypX::Poly(_), _) => false,
+        (TypX::Poly, _) => false,
     }
 }
 
@@ -808,7 +806,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         }
         TypX::TypeId => format!("typeid"),
         TypX::ConstInt(_) => format!("constint"),
-        TypX::Poly(_) => format!("poly"),
+        TypX::Poly => format!("poly"),
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::FnDef(f, typs, _res) => format!(
             "FnDef({}){}",

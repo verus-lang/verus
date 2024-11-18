@@ -112,7 +112,7 @@ impl SpecTypX {
                 let typ = typs[1].to_typ();
                 Arc::new(TypX::Decorate(*d, Some(TypDecorationArg { allocator_typ }), typ))
             }
-            Self::Poly => Arc::new(TypX::Air(str_typ(POLY))),
+            Self::Poly => Arc::new(TypX::Poly),
         }
     }
 }
@@ -157,7 +157,7 @@ pub(crate) fn typ_as_spec(typ: &Typ) -> SpecTyp {
         }
         TypX::ConstInt(_) => Arc::new(SpecTypX::Poly),
         TypX::Projection { .. } => Arc::new(SpecTypX::Poly),
-        TypX::Poly(_) => Arc::new(SpecTypX::Poly)
+        TypX::Poly => Arc::new(SpecTypX::Poly)
     }
 }
 
