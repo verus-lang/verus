@@ -40,8 +40,8 @@ use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
 pub enum PolyStrategy {
-    Mono,
     #[default]
+    Mono,
     Poly,
 }
 
@@ -157,6 +157,7 @@ pub(crate) fn typ_as_spec(typ: &Typ) -> SpecTyp {
         }
         TypX::ConstInt(_) => Arc::new(SpecTypX::Poly),
         TypX::Projection { .. } => Arc::new(SpecTypX::Poly),
+        TypX::Poly(_) => Arc::new(SpecTypX::Poly)
     }
 }
 
