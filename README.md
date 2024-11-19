@@ -28,6 +28,8 @@ To try Verus in your browser, please visit the [Verus Playground](https://play.v
 For more involved development, please follow our [installation instructions](INSTALL.md).
 Then you can dive into the documentation below, starting
 with the [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/).
+We also support an auto-formatter ([verusfmt](https://github.com/verus-lang/verusfmt)) for your
+Verus code.
 
 ## Documentation
 Our (work-in-progress) documentation resources include:
