@@ -90,7 +90,7 @@ pub struct CompilerCallbacksEraseMacro {
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
-    fn after_crate_root_parsing<'tcx>(
+    fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
