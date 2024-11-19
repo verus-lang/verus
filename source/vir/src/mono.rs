@@ -69,7 +69,7 @@ impl SpecTypX {
             Self::Int(IntRange::USize) => format!("iusize"),
             Self::Int(IntRange::ISize) => format!("iisize"),
             Self::Int(IntRange::Char) => format!("ic"),
-            Self::Datatype(Dt::Path(path), _) => format!("dt{path:?}"),
+            Self::Datatype(Dt::Path(path), _) => format!("dt{path}"),
             Self::Datatype(Dt::Tuple(u), spec_typs) => {
                 let tail = Self::mangle_typs(spec_typs);
                 format!("dt{u}_{tail}")

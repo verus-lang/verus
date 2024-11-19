@@ -357,7 +357,7 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
             mk_id(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
         }
         TypX::Air(_) => panic!("internal error: typ_to_ids of Air"),
-        TypX::Poly =>  mk_id(crate::def::TYPE_ID_POLY),
+        TypX::Poly =>  mk_id(str_var(crate::def::TYPE_ID_POLY)),
     }
 }
 
