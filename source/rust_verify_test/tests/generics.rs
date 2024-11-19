@@ -124,9 +124,6 @@ test_verify_one_file! {
     #[test] const_generics_broadcast verus_code! {
         pub open spec fn stuff(t: int) -> bool { true }
 
-        // This incorrectly errors about missing triggers, but what we really want here is to
-        // make sure is that the assert fails.
-
         #[verifier::external_body]
         pub broadcast proof fn broadcaster<const X: u8>()
             ensures #[trigger] stuff(X as int) ==> 0 <= X < 255
@@ -135,7 +132,7 @@ test_verify_one_file! {
 
         fn moo(z: u16) {
             assert(stuff(z as int));
-            assert(z < 255);
+            assert(z < 255); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "trigger does not cover variable X")
+    } => Err(e) => assert_one_fails(e)
 }
