@@ -23,7 +23,7 @@ use crate::ast::Idents;
 use crate::ast::IntRange;
 use crate::ast::Primitive;
 use crate::ast::{Dt, Fun, TypDecoration, TypDecorationArg};
-use crate::def::Spanned;
+use crate::def::{path_to_string, Spanned};
 use crate::def::POLY;
 use crate::poly;
 use crate::sst::{CallFun, Exp, ExpX, KrateSstX, Stm};
@@ -69,7 +69,7 @@ impl SpecTypX {
             Self::Int(IntRange::USize) => format!("iusize"),
             Self::Int(IntRange::ISize) => format!("iisize"),
             Self::Int(IntRange::Char) => format!("ic"),
-            Self::Datatype(Dt::Path(path), _) => format!("dt{path}"),
+            Self::Datatype(Dt::Path(path), _) => format!("dt{}", path_to_string(&path)),
             Self::Datatype(Dt::Tuple(u), spec_typs) => {
                 let tail = Self::mangle_typs(spec_typs);
                 format!("dt{u}_{tail}")
