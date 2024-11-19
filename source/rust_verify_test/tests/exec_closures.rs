@@ -771,7 +771,7 @@ test_verify_one_file_with_options! {
                 y
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "a mutable reference is expected here")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file_with_options! {
