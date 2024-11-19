@@ -165,6 +165,7 @@ pub const TYPE_ID_SLICE: &str = "SLICE";
 pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
 pub const TYPE_ID_PTR: &str = "PTR";
 pub const TYPE_ID_GLOBAL: &str = "ALLOCATOR_GLOBAL";
+pub const TYPE_ID_POLY: &str = "POLY";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
