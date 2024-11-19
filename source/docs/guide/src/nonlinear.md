@@ -16,7 +16,7 @@ That means many common axioms are inaccessible in the default mode, including bu
 The reason for this limitation is that Verus _intentionally_ disables theories of nonlinear arithmetic in its default prover mode.
 
 However, it is possible to **opt-in** to nonlinear reasoning by invoking a specialized prover mode.
-There are two prover modes relative to nonlinear arithmetic.
+There are two prover modes related to nonlinear arithmetic.
 
  * `nonlinear_arith` - Enable Z3's nonlinear theory of arithmetic.
  * `integer_ring` - Enable a decidable, equational theory of rings.
@@ -24,6 +24,20 @@ There are two prover modes relative to nonlinear arithmetic.
 The first is general purpose, but unfortunately somewhat unpredicable. (This is why it is turned off by default.)
 The second implements a decidable procedure for a specific class of problems.
 Invoking either prover mode requires an understanding of how to _minimize prover context_.
+We describe each of these modes in more detail below.
+
+If neither mode works for your proof, you can also manually invoke a lemma from
+Verus's [arithmetic library](https://verus-lang.github.io/verus/verusdoc/vstd/arithmetic/index.html),
+which supplies a large collection of verified facts about how nonlinear operations behave.
+For example, the inaccessible properties listed above can be proven by invoking
+
+* `lemma_mul_is_commutative`
+* `lemma_mul_is_associative`
+* `lemma_mul_is_distributive_add`
+* `lemma_mul_upper_bound`
+
+respectively.  If your proof involves using multiple such lemmas, you may want to use a
+[structured proof](calc.md) to make the proof more readable and easier to maintain.
 
 ## 1. Invoking a specialized solver: `nonlinear_arith`
 
