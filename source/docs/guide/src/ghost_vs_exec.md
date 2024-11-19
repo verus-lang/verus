@@ -76,7 +76,7 @@ impl<A> Seq<A> {
 ---
 
 [^note_tracked]: Variables in `proof` code can opt out of these special abilities using
-the `tracked` annotation (see section TODO),
+the [`tracked` annotation](reference-var-modes.html#using-tracked-and-ghost-variables-from-a-proof-function),
 but this is an advanced feature that can be ignored for now.
 
 [^note_uninhabited]: This is true even if the type has no values in `exec` code,

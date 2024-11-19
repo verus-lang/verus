@@ -153,10 +153,10 @@ and may eventually remove the `assert`s.
 A complete proof may contain `assert`s, but should not contain any `assume`s.
 
 (In some situations, `assert` can help the SMT solver complete a proof,
-by giving the SMT hints about how to manipulate `forall` and `exists` expressions; see TODO.
+by giving the SMT hints about how to [manipulate `forall` and `exists` expressions](forall.md).
 There are also special forms of `assert`, such as `assert(...) by(bit_vector)`,
-to help prove properties about bit vectors, nonlinear integer arithmetic,
-`forall` expressions, etc.  These are covered in section TODO.)
+to help prove properties about [bit vectors](bitvec.md), [nonlinear integer arithmetic](nonlinear.md),
+[`forall` expressions](quantproofs.md), etc.)
 
 # Executable code and ghost code
 
