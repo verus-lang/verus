@@ -19,7 +19,7 @@ However, it is possible to **opt-in** to nonlinear reasoning by invoking a speci
 There are two prover modes relative to nonlinear arithmetic.
 
  * `nonlinear_arith` - Enable Z3's nonlinear theory of arithmetic.
- * `integer_ring` - Enable Z3's nonlinear theory of arithmetic.
+ * `integer_ring` - Enable a decidable, equational theory of rings.
 
 The first is general purpose, but unfortunately somewhat unpredicable. (This is why it is turned off by default.)
 The second implements a decidable procedure for a specific class of problems.
