@@ -3,6 +3,9 @@
   <style>
     .heavy {
       font: bold 2em sans-serif;
+      color: black;
+      stroke: white;
+      stroke-width: 1px;
     }
   </style>
 
