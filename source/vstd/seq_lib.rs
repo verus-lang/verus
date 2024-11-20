@@ -646,8 +646,8 @@ impl<A> Seq<A> {
         }
     }
 
-    /// An auxiliary lemma for proving [`Self::lemma_fold_right_alt`].
-    proof fn aux_lemma_fold_right_alt<B>(self, f: spec_fn(A, B) -> B, b: B, k: int)
+    /// A lemma that proves how [`Self::fold_right`] distributes over splitting a sequence.
+    pub proof fn lemma_fold_right_split<B>(self, f: spec_fn(A, B) -> B, b: B, k: int)
         requires
             0 <= k < self.len(),
         ensures
@@ -659,7 +659,7 @@ impl<A> Seq<A> {
         if k == self.len() - 1 {
             // trivial base case
         } else {
-            self.subrange(0, self.len() - 1).aux_lemma_fold_right_alt(f, f(self.last(), b), k);
+            self.subrange(0, self.len() - 1).lemma_fold_right_split(f, f(self.last(), b), k);
             assert_seqs_equal!(
                 self.subrange(0, self.len() - 1).subrange(0, k) ==
                 self.subrange(0, k)
@@ -687,7 +687,7 @@ impl<A> Seq<A> {
             // trivial base cases
         } else {
             self.subrange(1, self.len() as int).lemma_fold_right_alt(f, b);
-            self.aux_lemma_fold_right_alt(f, b, 1);
+            self.lemma_fold_right_split(f, b, 1);
         }
     }
 
