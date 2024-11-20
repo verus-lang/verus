@@ -35,7 +35,7 @@ use crate::{
     sst::{FunctionSst, KrateSst},
 };
 use air::ast_util::str_typ;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
@@ -116,35 +116,35 @@ impl SpecTypX {
         }
     }
 }
-fn typs_as_spec(typs: &Typs) -> Vec<SpecTyp> {
+fn typs_as_spec(typs: &Typs, spec_map: &SpecMap<'_>) -> Vec<SpecTyp> {
     let mut spec_typs: Vec<SpecTyp> = Vec::new();
     for typ in typs.iter() {
-        let spec_typ = typ_as_spec(typ);
+        let spec_typ = typ_as_spec(typ, spec_map);
         spec_typs.push(spec_typ);
     }
     spec_typs
 }
 
-pub(crate) fn typ_as_spec(typ: &Typ) -> SpecTyp {
+pub(crate) fn typ_as_spec(typ: &Typ, spec_map: &SpecMap<'_>) -> SpecTyp {
     match &**typ {
         TypX::Bool => Arc::new(SpecTypX::Bool),
         TypX::Int(range) => Arc::new(SpecTypX::Int(*range)),
         TypX::Datatype(path, typs, _impl_paths) => {
-            let monotyps = typs_as_spec(typs);
+            let monotyps = typs_as_spec(typs, spec_map);
             Arc::new(SpecTypX::Datatype(path.clone(), Arc::new(monotyps)))
         }
         TypX::Decorate(d, None, t) => {
-            let spec = typ_as_spec(t);
+            let spec = typ_as_spec(t, spec_map);
             Arc::new(SpecTypX::Decorate(*d, spec))
         }
         TypX::Decorate(d, Some(TypDecorationArg { allocator_typ }), t) => {
-            let m1 = typ_as_spec(allocator_typ);
-            let m2 = typ_as_spec(t);
+            let m1 = typ_as_spec(allocator_typ, spec_map);
+            let m2 = typ_as_spec(t, spec_map);
             Arc::new(SpecTypX::Decorate2(*d, Arc::new(vec![m1, m2])))
         }
         TypX::Primitive(Primitive::Array, _) => Arc::new(SpecTypX::Poly),
         TypX::Primitive(name, typs) => {
-            let monotyps = typs_as_spec(typs);
+            let monotyps = typs_as_spec(typs, spec_map);
             Arc::new(SpecTypX::Primitive(*name, Arc::new(monotyps)))
         }
         TypX::AnonymousClosure(..) => {
@@ -152,8 +152,14 @@ pub(crate) fn typ_as_spec(typ: &Typ) -> SpecTyp {
         }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
-        TypX::Boxed(..) | TypX::TypParam(..) | TypX::SpecFn(..) | TypX::FnDef(..) => {
-            Arc::new(SpecTypX::Poly)
+        TypX::TypParam(param) => {
+            let Some(spec_typ) = spec_map.get(param) else {
+                return Arc::new(SpecTypX::Poly);
+            };
+            (*spec_typ).clone()
+        }
+        TypX::Boxed(..) | TypX::SpecFn(..) | TypX::FnDef(..) => {
+Arc::new(SpecTypX::Poly)
         }
         TypX::ConstInt(_) => Arc::new(SpecTypX::Poly),
         TypX::Projection { .. } => Arc::new(SpecTypX::Poly),
@@ -161,11 +167,13 @@ pub(crate) fn typ_as_spec(typ: &Typ) -> SpecTyp {
     }
 }
 
+type SpecMap<'a> = HashMap<&'a Ident, &'a SpecTyp>;
+
 /**
 This stores one instance of specialization of a particular function. This
 structure handles deduplication of essentially isomorphic call sites.
  */
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct Specialization {
     pub typs: SpecTyps,
 }
@@ -173,11 +181,11 @@ impl Specialization {
     pub fn empty() -> Self {
         Self { typs: Arc::new(vec![]) }
     }
-    pub fn from_exp(exp: &ExpX) -> Option<(&Fun, Self)> {
+    pub fn from_exp<'a>(exp: &'a ExpX, spec_map: &SpecMap<'_>) -> Option<(&'a Fun, Self)> {
         let ExpX::Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), typs, _) = exp else {
             return None;
         };
-        let result = Self { typs: Arc::new(typs_as_spec(typs)) };
+        let result = Self { typs: Arc::new(typs_as_spec(typs, spec_map)) };
         Some((fun, result))
     }
 
@@ -254,6 +262,14 @@ impl Specialization {
     pub fn comment(&self) -> String {
         format!(" specialized to {:?}", &self.typs)
     }
+
+    pub fn is_empty(&self) -> bool { self.typs.is_empty() }
+}
+impl Default for Specialization
+{
+    fn default() -> Self {
+        return Self::empty();
+    }
 }
 
 /**
@@ -262,18 +278,18 @@ Utility for walking through the expression tree.
 This must be doubly recursive on both expressions and statements, hence its
 structure mirrors `StmExpVisitorDfs`.
  */
-struct SpecializationVisitor {
+struct SpecializationVisitor<'a> {
     invocations: Vec<(Fun, Specialization)>,
-    params: Vec<Ident>,
+    spec_map: HashMap<&'a Ident, &'a SpecTyp>,
 }
-impl SpecializationVisitor {
-    fn new() -> Self {
-        Self { invocations: vec![], params: vec![] }
+impl<'a> SpecializationVisitor<'a> {
+    fn new(spec_map: HashMap<&'a Ident, &'a SpecTyp>) -> Self {
+        Self { invocations: vec![], spec_map }
     }
 }
-impl Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for SpecializationVisitor {
+impl<'a> Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for SpecializationVisitor<'a> {
     fn visit_exp(&mut self, exp: &Exp) -> Result<(), ()> {
-        if let Some((fun, spec)) = Specialization::from_exp(&exp.x) {
+        if let Some((fun, spec)) = Specialization::from_exp(&exp.x, &self.spec_map) {
             self.invocations.push((fun.clone(), spec))
         }
         self.visit_exp_rec(exp)
@@ -284,24 +300,44 @@ impl Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for SpecializationVis
 }
 
 pub(crate) fn collect_specializations_from_function(
+    spec: &Specialization,
     function: &FunctionSst,
 ) -> Vec<(Fun, Specialization)> {
-    let mut visitor = SpecializationVisitor::new();
-    for h in function.x.typ_params.iter() {
-        visitor.params.push(h.clone());
-    }
+
+    // Build map from function type parametres to spec types.
+    assert!(spec.is_empty() || spec.typs.len() == function.x.typ_params.len());
+    let spec_map: HashMap<&Ident, &SpecTyp> = std::iter::zip(function.x.typ_params.iter(), spec.typs.iter()).collect();
+
+    let mut visitor = SpecializationVisitor::new(spec_map);
     visitor.visit_function(function).unwrap();
     visitor.invocations
 }
+
 /**
 Collect all polymorphic function invocations in a module
  */
 pub fn mono_krate_for_module(krate: &KrateSst) -> HashMap<Fun, HashSet<Specialization>> {
-    let mut invocations: HashMap<Fun, HashSet<Specialization>> = HashMap::new();
     let KrateSstX { functions, .. } = &**krate;
-    for f in functions.iter() {
-        for (fun, spec) in collect_specializations_from_function(f).into_iter() {
-            invocations.entry(fun).or_insert_with(HashSet::new).insert(spec);
+
+    let mut to_visit: VecDeque<(Specialization, &FunctionSst)> = functions.iter().map(|f| (Default::default(), f)).collect();
+    let mut invocations: HashMap<Fun, HashSet<Specialization>> = HashMap::new();
+
+    while let Some((caller_spec, caller_sst)) = to_visit.pop_front() {
+        let sites = collect_specializations_from_function(&caller_spec, &caller_sst);
+        for (callee, callee_spec) in sites.into_iter() {
+            if let Some(fun_specs) = invocations.get(&callee) {
+                if fun_specs.contains(&callee_spec) {
+                    continue;
+                }
+            }
+            invocations.entry(callee).or_insert_with(HashSet::new).insert(callee_spec.clone());
+
+            // Push this call site back into queue
+            let callee_sst = functions
+                .iter()
+                .find(|f| f.x.name == callee)
+                .unwrap_or_else(|| panic!("Function name not found: {callee}"));
+            to_visit.push_back((callee_spec, callee_sst))
         }
     }
     invocations
