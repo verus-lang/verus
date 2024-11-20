@@ -1,4 +1,4 @@
-use rustc_hir::{ExprKind, OwnerNode};
+use rustc_hir::{ExprKind, OwnerNode, TraitFn};
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashMap;
 use crate::spec_exprs::SpecHir;
@@ -11,10 +11,10 @@ pub(crate) enum ResOrSymbol {
 pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
     crate_: &mut rustc_hir::Crate<'tcx>,
     tcx: TyCtxt<'tcx>,
-) -> SpecHir {
+) -> SpecHir<'tcx> {
     // TODO move or rename the function
 
-    let spec_hir = SpecHir::new();
+    let mut spec_hir = SpecHir::new();
 
     for owner in crate_.owners.iter_mut() {
         if let rustc_hir::MaybeOwner::Owner(inner_owner) = owner {
@@ -30,7 +30,7 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                 }
                 OwnerNode::TraitItem(item) => {
                     match &item.kind {
-                        rustc_hir::TraitItemKind::Fn(_sig, _generics, body_id) => {
+                        rustc_hir::TraitItemKind::Fn(_sig, TraitFn::Provided(body_id)) => {
                             *owner = rustc_hir::MaybeOwner::Owner(
                                 spec_hir.update_owner(tcx, inner_owner, body_id));
                         }
@@ -39,7 +39,7 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                 }
                 OwnerNode::ImplItem(item) => {
                     match &item.kind {
-                        rustc_hir::ImplItemKind::Fn(_sig, _generics, body_id) => {
+                        rustc_hir::ImplItemKind::Fn(_sig, body_id) => {
                             *owner = rustc_hir::MaybeOwner::Owner(
                                 spec_hir.update_owner(tcx, inner_owner, body_id));
                         }
