@@ -442,7 +442,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ, exprx))
 }
 
-fn handle_dot_dot(
+pub(crate) fn handle_dot_dot(
     num_entries_in_pat: usize,
     total_entries: usize,
     dot_dot_pos: &rustc_hir::DotDotPos,
@@ -476,6 +476,9 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                 Mutability::Mut => true,
             };
             let name = local_to_var(x, canonical.local_id);
+
+            bctx.scope_map_insert(name.clone(), pat_typ.clone());
+
             match subpat {
                 None => PatternX::Var { name, mutable },
                 Some(subpat) => {
@@ -580,8 +583,14 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             assert!(pats.len() >= 2);
 
             let mut patterns: Vec<vir::ast::Pattern> = Vec::new();
-            for pat in pats.iter() {
+            for (i, pat) in pats.iter().enumerate() {
+                if i != 0 {
+                    bctx.push_scope(true);
+                }
                 patterns.push(pattern_to_vir(bctx, pat)?);
+                if i != 0 {
+                    bctx.pop_scope();
+                }
             }
 
             // Arrange it like Or(a, Or(b, Or(c, d)))
@@ -656,6 +665,8 @@ pub(crate) fn block_to_vir<'tcx>(
     ty: &Typ,
     mut modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
+    bctx.push_scope(true);
+
     let mut vir_stmts: Vec<vir::ast::Stmt> = Vec::new();
     let mut stmts_iter = block.stmts.iter();
     while let Some(mut some_stmts) = stmts_to_vir(bctx, &mut stmts_iter)? {
@@ -665,6 +676,8 @@ pub(crate) fn block_to_vir<'tcx>(
         modifier = ExprModifier { deref_mut: false, ..modifier };
     }
     let vir_expr = block.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
+
+    bctx.pop_scope();
 
     let x = ExprX::Block(Arc::new(vir_stmts), vir_expr);
     Ok(bctx.spanned_typed_new(span.clone(), ty, x))
@@ -2049,6 +2062,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let vir_expr = expr_to_vir(bctx, expr, modifier)?;
             let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
             for arm in arms.iter() {
+                bctx.push_scope(true);
                 let pattern = pattern_to_vir(bctx, &arm.pat)?;
                 let guard = match &arm.guard {
                     None => mk_expr(ExprX::Const(Constant::Bool(true)))?,
@@ -2057,6 +2071,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let body = expr_to_vir(bctx, &arm.body, modifier)?;
                 let vir_arm = ArmX { pattern, guard, body };
                 vir_arms.push(bctx.spanned_new(arm.span, vir_arm));
+                bctx.pop_scope();
             }
             mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms)))
         }
@@ -2424,6 +2439,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                     bctx.fun_id,
                     lhs.span,
                     &bctx.types.expr_ty_adjusted(lhs),
+                    None,
                     true,
                 )?
                 .1;

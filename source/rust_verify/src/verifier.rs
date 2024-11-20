@@ -2588,6 +2588,11 @@ impl Verifier {
             arch_word_bits: None,
             crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
+            spec_hir: Arc::new(crate::verifier::SPEC_HIR.with_borrow_mut(|rc: &mut Option<crate::spec_exprs::SpecHir<'static>>| {
+                let mut spec_hir = None;
+                std::mem::swap(&mut *rc, &mut spec_hir);
+                spec_hir.unwrap()
+            })),
         });
         let multi_crate = self.args.export.is_some() || import_len > 0 || self.args.use_crate_name;
         crate::rust_to_vir_base::MULTI_CRATE
@@ -2772,6 +2777,11 @@ pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
         >,
     >,
 > = std::sync::RwLock::new(None);
+
+thread_local!{
+  pub(crate) static SPEC_HIR: std::cell::RefCell<Option<crate::spec_exprs::SpecHir<'static>>> =
+      std::cell::RefCell::new(None);
+}
 
 fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
     let mut crate_ = (rustc_interface::DEFAULT_QUERY_PROVIDERS.hir_crate)(tcx, ());

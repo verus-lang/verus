@@ -21,7 +21,7 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
             _,
         )
         | crate::ast::TypX::Boxed(_)
-        | crate::ast::TypX::ConstInt(_)
+        | crate::ast::TypX::ConstInt(_, _)
         | crate::ast::TypX::Primitive(_, _) => Ok(typ.clone()),
 
         crate::ast::TypX::SpecFn(_, _)
@@ -36,6 +36,7 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
         crate::ast::TypX::Air(_) | crate::ast::TypX::TypeId => {
             unreachable!()
         }
+        crate::ast::TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     })?;
     Ok(())
 }

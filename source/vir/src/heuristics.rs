@@ -17,7 +17,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::TypParam(_) => false,
         TypX::Projection { .. } => false,
         TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
-        TypX::ConstInt(_) => false,
+        TypX::ConstInt(..) => false,
         TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),
         TypX::Primitive(crate::ast::Primitive::Array, _) => true,
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
@@ -25,6 +25,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
         TypX::Primitive(crate::ast::Primitive::Global, _) => false,
         TypX::FnDef(..) => false,
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 

@@ -1,6 +1,7 @@
-use rustc_hir::{ExprKind, OwnerNode};
+use rustc_hir::{ExprKind, OwnerNode, TraitFn};
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashMap;
+use crate::spec_exprs::SpecHir;
 
 pub(crate) enum ResOrSymbol {
     Res(rustc_hir::def::Res),
@@ -11,6 +12,57 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
     crate_: &mut rustc_hir::Crate<'tcx>,
     tcx: TyCtxt<'tcx>,
 ) {
+    // TODO move or rename the function
+
+    let mut spec_hir = SpecHir::new();
+
+    for owner in crate_.owners.iter_mut() {
+        if let rustc_hir::MaybeOwner::Owner(inner_owner) = owner {
+            match inner_owner.node() {
+                OwnerNode::Item(item) => {
+                    match &item.kind {
+                        rustc_hir::ItemKind::Fn(_sig, _generics, body_id) => {
+                            *owner = rustc_hir::MaybeOwner::Owner(
+                                spec_hir.update_owner(tcx, inner_owner, body_id));
+                        }
+                        _ => { }
+                    }
+                }
+                OwnerNode::TraitItem(item) => {
+                    match &item.kind {
+                        rustc_hir::TraitItemKind::Fn(_sig, TraitFn::Provided(body_id)) => {
+                            *owner = rustc_hir::MaybeOwner::Owner(
+                                spec_hir.update_owner(tcx, inner_owner, body_id));
+                        }
+                        _ => { }
+                    }
+                }
+                OwnerNode::ImplItem(item) => {
+                    match &item.kind {
+                        rustc_hir::ImplItemKind::Fn(_sig, body_id) => {
+                            *owner = rustc_hir::MaybeOwner::Owner(
+                                spec_hir.update_owner(tcx, inner_owner, body_id));
+                        }
+                        _ => { }
+                    }
+                }
+                _ => { }
+            }
+        }
+    }
+
+    {
+        crate::verifier::SPEC_HIR.with_borrow_mut(|rc: &mut Option<crate::spec_exprs::SpecHir<'static>>| {
+            // SAFETY: We coerce the 'tcx to a 'static
+            // but we immediately coerce it back to 'tcx when reading it later.
+            let spec_hir: crate::spec_exprs::SpecHir<'static> = unsafe {
+                core::mem::transmute(spec_hir)
+            };
+            assert!(rc.is_none());
+            *rc = Some(spec_hir);
+        });
+    }
+
     for owner in crate_.owners.iter_mut() {
         if let rustc_hir::MaybeOwner::Owner(inner_owner) = owner {
             match inner_owner.node() {

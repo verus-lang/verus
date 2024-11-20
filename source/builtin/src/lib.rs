@@ -1495,3 +1495,10 @@ pub fn inline_air_stmt(_s: &str) {
 pub fn array_index<T, const N: usize>(_a: [T; N], _i: int) -> T {
     unimplemented!()
 }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::ghost_code"]
+#[verifier::spec]
+pub fn ghost_code<A, B>(_a: A) -> B {
+    unimplemented!()
+}

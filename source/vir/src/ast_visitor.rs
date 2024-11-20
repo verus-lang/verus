@@ -43,7 +43,7 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
             TypX::Int(_) => R::ret(|| typ.clone()),
             TypX::TypParam(_) => R::ret(|| typ.clone()),
             TypX::TypeId => R::ret(|| typ.clone()),
-            TypX::ConstInt(_) => R::ret(|| typ.clone()),
+            TypX::ConstInt(_, _) => R::ret(|| typ.clone()),
             TypX::Air(_) => R::ret(|| typ.clone()),
             TypX::SpecFn(ts, tr) => {
                 let ts = self.visit_typs(ts)?;
@@ -93,11 +93,14 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
                     })
                 })
             }
+            TypX::UnificationVar(_i) => {
+                R::ret(|| typ.clone())
+            }
         }
     }
 }
 
-pub(crate) fn typ_visitor_check<E, MF>(typ: &Typ, mf: &mut MF) -> Result<(), E>
+pub fn typ_visitor_check<E, MF>(typ: &Typ, mf: &mut MF) -> Result<(), E>
 where
     MF: FnMut(&Typ) -> Result<(), E>,
 {
@@ -152,7 +155,7 @@ where
     }
 }
 
-pub(crate) fn map_typ_visitor_env<E, FT>(typ: &Typ, env: &mut E, ft: &FT) -> Result<Typ, VirErr>
+pub fn map_typ_visitor_env<E, FT>(typ: &Typ, env: &mut E, ft: &FT) -> Result<Typ, VirErr>
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
@@ -705,7 +708,7 @@ where
     }
 }
 
-pub(crate) fn map_expr_visitor_env<E, FE, FS, FT>(
+pub fn map_expr_visitor_env<E, FE, FS, FT>(
     expr: &Expr,
     map: &mut VisitorScopeMap,
     env: &mut E,

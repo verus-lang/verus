@@ -12,6 +12,7 @@ use crate::util::vec_map;
 use air::ast::{Binder, Binders};
 pub use air::ast_util::{ident_binder, str_ident};
 use num_bigint::BigInt;
+use num_traits::One;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::str::FromStr;
@@ -126,11 +127,12 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
                 && name1 == name2
         }
         (TypX::TypeId, TypX::TypeId) => true,
-        (TypX::ConstInt(i1), TypX::ConstInt(i2)) => i1 == i2,
+        (TypX::ConstInt(i1, ir1), TypX::ConstInt(i2, ir2)) => i1 == i2 && ir1 == ir2,
         (TypX::Air(a1), TypX::Air(a2)) => a1 == a2,
         (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
+        (TypX::UnificationVar(i), TypX::UnificationVar(j)) => i == j,
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
@@ -143,9 +145,10 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::TypParam(_), _) => false,
         (TypX::Projection { .. }, _) => false,
         (TypX::TypeId, _) => false,
-        (TypX::ConstInt(_), _) => false,
+        (TypX::ConstInt(..), _) => false,
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
+        (TypX::UnificationVar(..), _) => false,
     }
 }
 
@@ -280,6 +283,13 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<IntegerTypeBitwidth> {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum RangeContains {
+    Yes,
+    No,
+    Depends, // for usize and isize
+}
+
 impl IntRange {
     pub fn is_bounded(&self) -> bool {
         match self {
@@ -289,6 +299,65 @@ impl IntRange {
             | IntRange::USize
             | IntRange::ISize
             | IntRange::Char => true,
+        }
+    }
+
+    pub fn is_unsigned_or_nat(self) -> bool {
+        match self {
+            IntRange::Int
+              | IntRange::I(_) 
+              | IntRange::ISize => false,
+            IntRange::Nat
+              | IntRange::U(_) 
+              | IntRange::USize => true,
+            IntRange::Char => false,
+        }
+    }
+
+    pub fn contains(self, i: &BigInt, arch: ArchWordBits) -> RangeContains {
+        let from_bool = |b: bool| if b {
+            RangeContains::Yes
+        } else {
+            RangeContains::No
+        };
+        match self {
+            IntRange::Int => RangeContains::Yes,
+            IntRange::Nat => from_bool(*i >= BigInt::from(0)),
+            IntRange::U(n) =>
+                  from_bool(*i >= BigInt::from(0)
+                && *i < (BigInt::one() << n)),
+            IntRange::I(n) => 
+                  from_bool(*i >= -1 * (BigInt::one() << (n - 1))
+                && *i < (BigInt::one() << (n - 1))),
+            IntRange::USize => {
+                match arch {
+                    ArchWordBits::Exactly(n) => IntRange::U(n).contains(i, arch),
+                    ArchWordBits::Either32Or64 => {
+                        let a32 = IntRange::U(32).contains(i, arch);
+                        let a64 = IntRange::U(64).contains(i, arch);
+                        if a32 == a64 {
+                            a32
+                        } else {
+                            RangeContains::Depends
+                        }
+                    }
+                }
+            }
+            IntRange::ISize => {
+                match arch {
+                    ArchWordBits::Exactly(n) => IntRange::I(n).contains(i, arch),
+                    ArchWordBits::Either32Or64 => {
+                        let a32 = IntRange::I(32).contains(i, arch);
+                        let a64 = IntRange::I(64).contains(i, arch);
+                        if a32 == a64 {
+                            a32
+                        } else {
+                            RangeContains::Depends
+                        }
+                    }
+                }
+            }
+            IntRange::Char => from_bool(crate::unicode::valid_unicode_scalar_bigint(i))
         }
     }
 }
@@ -466,6 +535,26 @@ impl<X> SpannedTyped<X> {
 pub fn unit_typ() -> Typ {
     let name = Dt::Tuple(0);
     Arc::new(TypX::Datatype(name, Arc::new(vec![]), Arc::new(vec![])))
+}
+
+pub fn bool_typ() -> Typ {
+    Arc::new(TypX::Bool)
+}
+
+pub fn str_typ() -> Typ {
+    Arc::new(TypX::Primitive(crate::ast::Primitive::StrSlice, Arc::new(vec![])))
+}
+
+pub fn int_typ() -> Typ {
+    Arc::new(TypX::Int(IntRange::Int))
+}
+
+pub fn nat_typ() -> Typ {
+    Arc::new(TypX::Int(IntRange::Nat))
+}
+
+pub fn integer_typ(ir: IntRange) -> Typ {
+    Arc::new(TypX::Int(ir))
 }
 
 pub fn is_unit(t: &Typ) -> bool {
@@ -826,7 +915,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
             )
         }
         TypX::TypeId => format!("typeid"),
-        TypX::ConstInt(_) => format!("constint"),
+        TypX::ConstInt(..) => format!("constint"),
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::FnDef(f, typs, _res) => format!(
             "FnDef({}){}",
@@ -837,6 +926,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 format!("")
             }
         ),
+        TypX::UnificationVar(_) => format!("_"),
     }
 }
 

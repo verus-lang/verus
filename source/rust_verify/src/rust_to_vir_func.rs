@@ -33,6 +33,7 @@ use vir::ast::{
 use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 use vir::sst_util::subst_typ;
+use air::scope_map::ScopeMap;
 
 pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
     // turn a::b::c into a::b::method_name
@@ -57,6 +58,7 @@ pub(crate) fn body_to_vir<'tcx>(
     body: &Body<'tcx>,
     mode: Mode,
     external_body: bool,
+    scope_map: ScopeMap<VarIdent, Typ>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let types = body_id_to_types(ctxt.tcx, id);
     let bctx = BodyCtxt {
@@ -66,6 +68,7 @@ pub(crate) fn body_to_vir<'tcx>(
         mode,
         external_body,
         in_ghost: mode != Mode::Exec,
+        scope_map: std::rc::Rc::new(std::cell::RefCell::new(scope_map)),
     };
     expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)
 }
@@ -796,7 +799,19 @@ pub(crate) fn check_item_fn<'tcx>(
         CheckItemFnEither::BodyId(body_id) => {
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
-            let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
+
+            let mut scope_map = ScopeMap::new();
+            scope_map.push_scope(false);
+            for (p, _) in vir_params.iter() {
+                let typ = if p.x.is_mut {
+                    Arc::new(TypX::Decorate(TypDecoration::MutRef, None, p.x.typ.clone()))
+                } else {
+                    p.x.typ.clone()
+                };
+                scope_map.insert(p.x.name.clone(), typ).unwrap();
+            }
+
+            let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body, scope_map)?;
             let header = vir::headers::read_header(&mut vir_body)?;
             (Some(vir_body), header)
         }
@@ -1714,7 +1729,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     }
     .unwrap_or((*body_id, body));
     let mut vir_body =
-        body_to_vir(ctxt, id, &actual_body_id, actual_body, body_mode, vattrs.external_body)?;
+        body_to_vir(ctxt, id, &actual_body_id, actual_body, body_mode, vattrs.external_body, ScopeMap::new())?;
     let header = vir::headers::read_header(&mut vir_body)?;
     if header.require.len() + header.recommend.len() > 0 {
         return err_span(span, "consts cannot have requires/recommends");

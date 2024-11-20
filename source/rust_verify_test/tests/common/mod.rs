@@ -302,6 +302,8 @@ pub fn run_verus(
     if !external_by_default {
         verus_args.push("--no-external-by-default".to_string());
     }
+    verus_args.push("-V".to_string());
+    verus_args.push("new-ghost-code".to_string());
 
     verus_args.extend(
         vec![

@@ -107,6 +107,7 @@ pub struct ArgsX {
     pub solver: SmtSolver,
     #[cfg(feature = "axiom-usage-info")]
     pub broadcast_usage_info: bool,
+    pub new_ghost_code: bool,
 }
 
 impl ArgsX {
@@ -151,6 +152,7 @@ impl ArgsX {
             solver: Default::default(),
             #[cfg(feature = "axiom-usage-info")]
             broadcast_usage_info: Default::default(),
+            new_ghost_code: Default::default(),
         }
     }
 }
@@ -270,6 +272,7 @@ pub fn parse_args_with_imports(
     const OPT_NO_REPORT_LONG_RUNNING: &str = "no-report-long-running";
 
     const OPT_EXTENDED_MULTI: &str = "V";
+    const EXTENDED_NEW_GHOST_CODE: &str = "new-ghost-code";
     const EXTENDED_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
     const EXTENDED_DEBUG: &str = "debug";
     const EXTENDED_NO_SOLVER_VERSION_CHECK: &str = "no-solver-version-check";
@@ -307,6 +310,10 @@ pub fn parse_args_with_imports(
         (
             EXTENDED_BROADCAST_USAGE_INFO,
             "Print usage info for broadcasted axioms, lemmas, and groups",
+        ),
+        (
+            EXTENDED_NEW_GHOST_CODE,
+            "Experimental ghost code engine",
         ),
     ];
 
@@ -653,6 +660,7 @@ pub fn parse_args_with_imports(
         solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         #[cfg(feature = "axiom-usage-info")]
         broadcast_usage_info: extended.get(EXTENDED_BROADCAST_USAGE_INFO).is_some(),
+        new_ghost_code: extended.get(EXTENDED_NEW_GHOST_CODE).is_some(),
     };
 
     (Arc::new(args), unmatched)

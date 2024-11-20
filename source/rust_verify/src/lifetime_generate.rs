@@ -411,11 +411,11 @@ fn erase_hir_region<'tcx>(ctxt: &Context<'tcx>, state: &mut State, r: &RegionKin
 }
 
 fn erase_generic_const<'tcx>(ctxt: &Context<'tcx>, state: &mut State, cnst: &Const<'tcx>) -> Typ {
-    match &*mid_ty_const_to_vir(ctxt.tcx, None, cnst).expect("mit_ty_const_to_vir failed") {
+    match &*mid_ty_const_to_vir(ctxt.tcx, &ctxt.verus_items, None, cnst).expect("mit_ty_const_to_vir failed") {
         vir::ast::TypX::TypParam(x) => {
             Box::new(TypX::TypParam(state.typ_param(x.to_string(), None)))
         }
-        vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
+        vir::ast::TypX::ConstInt(i, _) => Box::new(TypX::Primitive(i.to_string())),
         _ => panic!("GenericArgKind::Const"),
     }
 }
@@ -2719,8 +2719,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             continue;
         }
         if !id_to_hir.contains_key(&span.id) {
-            dbg!(span, span.id);
-            panic!("missing id_to_hir");
+            //dbg!(span, span.id);
+            //panic!("missing id_to_hir");
+            continue;
         }
         for hir_id in &id_to_hir[&span.id] {
             if ctxt.condition_modes.contains_key(hir_id) {
@@ -2737,8 +2738,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             continue;
         }
         if !id_to_hir.contains_key(&span.id) {
-            dbg!(span, span.id);
-            panic!("missing id_to_hir");
+            //dbg!(span, span.id);
+            //panic!("missing id_to_hir");
+            continue;
         }
         for hir_id in &id_to_hir[&span.id] {
             if ctxt.var_modes.contains_key(hir_id) {

@@ -152,8 +152,9 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
         TypX::Boxed(..) | TypX::TypParam(..) | TypX::SpecFn(..) | TypX::FnDef(..) => None,
-        TypX::ConstInt(_) => None,
+        TypX::ConstInt(_, _) => None,
         TypX::Projection { .. } => None,
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 
@@ -200,8 +201,9 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => true,
         TypX::Primitive(_, _) => typ_as_mono(typ).is_none(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
-        TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
+        TypX::ConstInt(_, _) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 
@@ -237,8 +239,9 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
             }
         }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
-        TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
+        TypX::ConstInt(_, _) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 
@@ -256,8 +259,9 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         }
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
-        TypX::ConstInt(_) => typ.clone(),
+        TypX::ConstInt(_, _) => typ.clone(),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 
@@ -286,8 +290,9 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
         }
         TypX::TypParam(_) | TypX::Projection { .. } => exp.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
-        TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
+        TypX::ConstInt(_, _) => panic!("internal error: expression should not have ConstInt type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 

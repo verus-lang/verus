@@ -54,7 +54,7 @@ fn check_well_founded_typ(
     typ: &Typ,
 ) -> bool {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::ConstInt(_) | TypX::Primitive(_, _) => true,
+        TypX::Bool | TypX::Int(_) | TypX::ConstInt(_, _) | TypX::Primitive(_, _) => true,
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
             panic!("internal error: unexpected type in check_well_founded_typ")
         }
@@ -125,6 +125,7 @@ fn check_well_founded_typ(
         TypX::AnonymousClosure(..) => {
             unimplemented!();
         }
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 
@@ -272,8 +273,9 @@ fn check_positive_uses(
             Ok(())
         }
         TypX::TypeId => Ok(()),
-        TypX::ConstInt(_) => Ok(()),
+        TypX::ConstInt(_, _) => Ok(()),
         TypX::Air(_) => Ok(()),
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 

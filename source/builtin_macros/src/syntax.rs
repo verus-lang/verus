@@ -1,5 +1,6 @@
 use crate::rustdoc::env_rustdoc;
 use crate::EraseGhost;
+use crate::new_ghost_code;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
@@ -93,6 +94,8 @@ struct Visitor {
 
     // Add extra verus signature information to the docstring
     rustdoc: bool,
+
+    inside_new_ghost: u32,
 }
 
 // For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
@@ -254,7 +257,10 @@ impl Visitor {
         if let Some(Requires { token, mut exprs }) = requires {
             if exprs.exprs.len() > 0 {
                 for expr in exprs.exprs.iter_mut() {
+                    self.inside_new_ghost += 1;
                     self.visit_expr_mut(expr);
+                    self.inside_new_ghost -= 1;
+                    self.ghost_wrap_bool(expr);
                 }
                 spec_stmts.push(Stmt::Semi(
                     Expr::Verbatim(
@@ -267,7 +273,10 @@ impl Visitor {
         if let Some(Recommends { token, mut exprs, via }) = recommends {
             if exprs.exprs.len() > 0 {
                 for expr in exprs.exprs.iter_mut() {
+                    self.inside_new_ghost += 1;
                     self.visit_expr_mut(expr);
+                    self.inside_new_ghost -= 1;
+                    self.ghost_wrap_bool(expr);
                 }
                 spec_stmts.push(Stmt::Semi(
                     Expr::Verbatim(quote_spanned_builtin!(builtin, token.span => #builtin::recommends([#exprs]))),
@@ -286,7 +295,10 @@ impl Visitor {
         if let Some(Ensures { attrs, token, mut exprs }) = ensures {
             if exprs.exprs.len() > 0 {
                 for expr in exprs.exprs.iter_mut() {
+                    self.inside_new_ghost += 1;
                     self.visit_expr_mut(expr);
+                    self.inside_new_ghost -= 1;
+                    self.ghost_wrap_bool(expr);
                 }
                 let cont = match self.extract_quant_triggers(attrs, token.span) {
                     Ok(
@@ -634,6 +646,7 @@ impl Visitor {
         let sig_span = sig.span().clone();
         let spec_stmts =
             self.take_sig_specs(&mut sig.spec, ret_pat, sig.constness.is_some(), sig_span);
+
         if !self.erase_ghost.erase() {
             stmts.extend(spec_stmts);
         }
@@ -1944,7 +1957,7 @@ impl Visitor {
             } else {
                 *expr = Expr::Verbatim(quote_spanned!(span => ! #call));
             }
-        } else if self.use_spec_traits && self.inside_ghost > 0 {
+        } else if self.use_spec_traits && self.inside_ghost > 0 && !(new_ghost_code() && self.inside_new_ghost > 0) {
             let attrs = &binary.attrs;
             let left = &binary.left;
             let right = &binary.right;
@@ -2036,14 +2049,16 @@ impl Visitor {
         let do_replace = self.use_spec_traits && self.inside_ghost > 0 && !is_ptr_type(&cast.ty);
 
         if do_replace {
-            let Expr::Cast(cast) = take_expr(expr) else {
-                unreachable!();
-            };
-            let span = cast.span();
-            let src = cast.expr;
-            let attrs = cast.attrs;
-            let ty = cast.ty;
-            *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_cast_integer::<_, #ty>(#src));
+            if !(new_ghost_code() && self.inside_new_ghost > 0) {
+                let Expr::Cast(cast) = take_expr(expr) else {
+                    unreachable!();
+                };
+                let span = cast.span();
+                let src = cast.expr;
+                let attrs = cast.attrs;
+                let ty = cast.ty;
+                *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_cast_integer::<_, #ty>(#src));
+            }
         } else {
             if is_probably_nat_or_int_type(&cast.ty) {
                 *expr = Expr::Verbatim(
@@ -2064,7 +2079,7 @@ impl Visitor {
         if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 {
             let span = lit.span();
             let n = lit.base10_digits().to_string();
-            if lit.suffix() == "" {
+            if lit.suffix() == "" && !(new_ghost_code() && self.inside_new_ghost > 0) {
                 match self.inside_arith {
                     InsideArith::None => {
                         // We don't know which integer type to use,
@@ -2122,19 +2137,51 @@ impl Visitor {
 
     /// Handle `assert` statements. Automatically wrap them in a proof block.
     fn handle_assert(&mut self, expr: &mut Expr) -> bool {
-        let Expr::Assert(_) = expr else {
+        let Expr::Assert(assert) = expr else {
             return false;
         };
 
+        let syn_verus::Assert {
+            attrs,
+            assert_token: _,
+            paren_token: _,
+            expr: arg,
+            by_token: _,
+            prover: _,
+            requires: opt_requires,
+            body: opt_body,
+        } = assert;
+
+        let cur_arith = self.inside_arith;
+        self.inside_arith = InsideArith::None;
         self.inside_ghost += 1;
-        self.visit_expr_with_arith(expr, InsideArith::None);
+
+        for attr in attrs.iter_mut() {
+            self.visit_attribute_mut(attr);
+        }
+
+        self.inside_new_ghost += 1;
+        self.visit_expr_mut(arg);
+        self.inside_new_ghost -= 1;
+
+        if let Some(req) = opt_requires {
+            self.visit_requires_mut(req);
+        }
+        if let Some(body) = opt_body {
+            self.visit_block_mut(body);
+        }
+
         self.inside_ghost -= 1;
+        self.inside_arith = cur_arith;
 
         let Expr::Assert(assert) = take_expr(expr) else { unreachable!() };
-
         let span = assert.assert_token.span;
-        let arg = assert.expr;
+        let mut arg = assert.expr;
         let attrs = assert.attrs;
+
+        if new_ghost_code() {
+            arg = Box::new(Expr::Verbatim(quote_spanned_builtin!(builtin, span => #builtin::ghost_code::<_, bool>(|| #arg))));
+        }
 
         if let Some(prover) = &assert.prover {
             let prover_id = prover.1.to_string();
@@ -2868,6 +2915,12 @@ impl Visitor {
             self.inside_arith = arith_mode;
             visit_expr_mut(self, expr);
             self.inside_arith = is_inside_arith;
+        }
+    }
+
+    fn ghost_wrap_bool(&self, expr: &mut Expr) {
+        if new_ghost_code() {
+            *expr = Expr::Verbatim(quote_spanned_builtin!(builtin, expr.span() => #builtin::ghost_code::<_, bool>(|| #expr)));
         }
     }
 }
@@ -3687,6 +3740,7 @@ pub(crate) fn rewrite_items(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_new_ghost: 0,
     };
     visitor.visit_items_prefilter(&mut items.items);
     for mut item in &mut items.items {
@@ -3720,6 +3774,7 @@ pub(crate) fn rewrite_expr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_new_ghost: 0,
     };
     visitor.visit_expr_mut(&mut expr);
     expr.to_tokens(&mut new_stream);
@@ -3737,6 +3792,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_new_ghost: 0,
     };
     visitor.visit_expr_mut(expr);
 }
@@ -3874,6 +3930,7 @@ pub(crate) fn proof_block(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_new_ghost: 0,
     };
     visitor.visit_block_mut(&mut invoke);
     invoke.to_tokens(&mut new_stream);
@@ -3898,6 +3955,7 @@ pub(crate) fn proof_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_new_ghost: 0,
     };
     for element in &mut invoke.elements.elements {
         match element {
@@ -3927,6 +3985,7 @@ pub(crate) fn inv_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_new_ghost: 0,
     };
     for (idx, element) in invoke.elements.elements.iter_mut().enumerate() {
         match element {
@@ -3962,6 +4021,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_new_ghost: 0,
     };
     for element in &mut invoke.elements.elements {
         match element {

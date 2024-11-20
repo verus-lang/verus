@@ -183,8 +183,9 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         },
         TypX::Projection { .. } => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
-        TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
+        TypX::ConstInt(_, _) => panic!("const integer cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 
@@ -339,10 +340,11 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
             vec![pd, pt]
         }
         TypX::TypeId => panic!("internal error: typ_to_ids of TypeId"),
-        TypX::ConstInt(c) => {
+        TypX::ConstInt(c, _) => {
             mk_id(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
         }
         TypX::Air(_) => panic!("internal error: typ_to_ids of Air"),
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 
@@ -450,7 +452,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
-        TypX::ConstInt(_) => None,
+        TypX::ConstInt(_, _) => None,
         TypX::Primitive(p, _) => {
             match p {
                 Primitive::Array | Primitive::Slice | Primitive::Ptr => {
@@ -464,6 +466,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             None
         }
         TypX::FnDef(..) => None,
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 
@@ -514,8 +517,9 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
         TypX::TypeId => None,
-        TypX::ConstInt(_) => None,
+        TypX::ConstInt(_, _) => None,
         TypX::Air(_) => None,
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -545,8 +549,9 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
         TypX::TypeId => None,
-        TypX::ConstInt(_) => None,
+        TypX::ConstInt(_, _) => None,
         TypX::Air(_) => None,
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }

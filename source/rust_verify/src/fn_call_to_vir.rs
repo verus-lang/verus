@@ -307,6 +307,19 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
         }
         VerusItem::Spec(spec_item) => match spec_item {
+            SpecItem::GhostCode => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let ty = bctx.types.expr_ty(&expr);
+                let t = mid_ty_to_vir(
+                    tcx,
+                    &bctx.ctxt.verus_items,
+                    bctx.fun_id,
+                    expr.span,
+                    &ty,
+                    false,
+                )?;
+                do_ghost_code(bctx, args[0], &t)
+            }
             SpecItem::NoMethodBody => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
@@ -1489,7 +1502,16 @@ fn extract_ensures<'tcx>(
                 xs.push(pat_to_var(param.pat)?);
             }
             let expr = &body.value;
+
+            bctx.push_scope(false);
+            for (x, typ) in xs.iter().zip(typs.iter()) {
+                bctx.scope_map_insert(x.clone(), typ.clone());
+            }
+
             let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
+
+            bctx.pop_scope();
+
             if typs.len() == 1 && xs.len() == 1 {
                 let id_typ = Some((xs[0].clone(), typs[0].clone()));
                 Ok(Arc::new(HeaderExprX::Ensures(id_typ, Arc::new(args))))
@@ -1800,6 +1822,7 @@ fn mk_typ_args<'tcx>(
             GenericArgKind::Const(cnst) => {
                 typ_args.push(crate::rust_to_vir_base::mid_ty_const_to_vir(
                     tcx,
+                    &bctx.ctxt.verus_items,
                     Some(span),
                     &cnst,
                 )?);
@@ -1861,7 +1884,7 @@ fn mk_two_vir_args<'tcx>(
     Ok((e0, e1))
 }
 
-fn get_string_lit_arg<'tcx>(
+pub(crate) fn get_string_lit_arg<'tcx>(
     arg: &'tcx Expr<'tcx>,
     fn_name_for_error_msg: &str,
 ) -> Result<String, VirErr> {
@@ -2033,4 +2056,17 @@ fn record_spec_fn_no_proof_args<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
 fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+}
+
+fn do_ghost_code<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, expected_typ: &Typ) -> Result<vir::ast::Expr, VirErr> {
+    match &expr.kind {
+        ExprKind::Closure(closure) => {
+            let body = bctx.ctxt.spec_hir.bodies.get(&closure.body);
+            let Some(body) = body else {
+                return err_span(expr.span, "Verus internal error: ghost_code body not found")  
+            };
+            crate::spec_typeck::typecheck(bctx, body, expected_typ)
+        }
+        _ => err_span(expr.span, "argument to ghost_code must be a closure"),
+    }
 }

@@ -130,7 +130,7 @@ fn attribute_is_variant_internal(
                     #[verus::internal(spec)]
                     #[verifier::inline]
                     #publish
-                    #vis fn #fun_ident(&self) -> bool {
+                    #vis fn #fun_ident(self) -> bool {
                         #builtin::is_variant(self, #variant_ident_str)
                     }
 

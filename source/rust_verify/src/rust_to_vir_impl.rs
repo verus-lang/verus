@@ -104,7 +104,7 @@ fn trait_impl_to_vir<'tcx>(
                 )?);
             }
             GenericArgKind::Const(cnst) => {
-                types.push(mid_ty_const_to_vir(ctxt.tcx, Some(span), &cnst)?);
+                types.push(mid_ty_const_to_vir(ctxt.tcx, &ctxt.verus_items, Some(span), &cnst)?);
             }
         }
     }

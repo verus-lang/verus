@@ -78,7 +78,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::TypParam(_) => true,
         TypX::Projection { .. } => true,
         TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
-        TypX::ConstInt(_) => false,
+        TypX::ConstInt(..) => false,
         TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),
         TypX::Primitive(crate::ast::Primitive::Array, _) => true,
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
@@ -86,6 +86,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
         TypX::Primitive(crate::ast::Primitive::Global, _) => false,
         TypX::FnDef(..) => false,
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 

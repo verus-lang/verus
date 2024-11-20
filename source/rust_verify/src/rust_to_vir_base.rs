@@ -16,6 +16,7 @@ use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
     ConstKind, GenericArg, GenericArgKind, GenericArgsRef, ParamConst, TypeFoldable, TypeFolder,
     TypeSuperFoldable, TypeVisitableExt, ValTree,
+    TyVid, InferTy,
 };
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{kw, Ident};
@@ -120,11 +121,21 @@ fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, p
     }
 }
 
-fn def_to_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::ast::Ident {
+pub(crate) fn def_to_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::ast::Ident {
     let def_path = tcx.def_path(def_id);
     match def_path.data.last().expect("unexpected empty impl path").data {
         rustc_hir::definitions::DefPathData::ValueNs(name) => Arc::new(name.to_string()),
         _ => panic!("unexpected name of impl"),
+    }
+}
+
+pub(crate) fn def_id_to_friendly<'tcx>(tcx: TyCtxt<'tcx>,
+  verus_items: Option<&crate::verus_items::VerusItems>,
+  def_id: DefId
+) -> String {
+    match def_id_to_vir_path_option(tcx, verus_items, def_id) {
+        None => format!("{:?}", def_id),
+        Some(p) => vir::ast_util::path_as_friendly_rust_name(&p),
     }
 }
 
@@ -140,14 +151,42 @@ pub(crate) fn def_id_to_vir_path_option<'tcx>(
             // so make sure we use the fn_name names from `verus_items`
             let segments = fn_name.split("::").map(|x| Arc::new(x.to_string())).collect();
             let krate = Some(Arc::new("vstd".to_string()));
-            return Some(Arc::new(PathX { krate, segments: Arc::new(segments) }));
+            let path = Arc::new(PathX { krate, segments: Arc::new(segments) });
+
+            register_def_id(def_id, &path);
+            return Some(path);
         }
     }
     let path = def_path_to_vir_path(tcx, tcx.def_path(def_id));
     if let Some(path) = &path {
         register_friendly_path_as_rust_name(tcx, def_id, path);
+        register_def_id(def_id, path);
     }
     path
+}
+
+static PATH_AS_DEF_ID_MAP: std::sync::Mutex<Option<HashMap<Path, DefId>>> = std::sync::Mutex::new(None);
+
+fn register_def_id(def_id: DefId, path: &Path) {
+    if let Ok(mut guard) = PATH_AS_DEF_ID_MAP.lock() {
+        let map_opt = &mut *guard;
+        if map_opt.is_none() {
+            *map_opt = Some(HashMap::new());
+        }
+        if map_opt.as_mut().unwrap().contains_key(path) {
+            return;
+        }
+        map_opt.as_mut().unwrap().insert(path.clone(), def_id);
+    }
+}
+
+pub(crate) fn def_id_of_vir_path(path: &Path) -> DefId {
+    if let Ok(guard) = PATH_AS_DEF_ID_MAP.lock() {
+        let map_opt = &*guard;
+        *map_opt.as_ref().unwrap().get(path).unwrap()
+    } else {
+        panic!("def_id_of_vir_path lock");
+    }
 }
 
 pub(crate) fn def_id_to_vir_path_ignoring_diagnostic_rename<'tcx>(
@@ -210,7 +249,7 @@ pub(crate) fn qpath_to_ident<'tcx>(
     }
 }
 
-fn clean_all_escaping_bound_vars<'tcx, T: rustc_middle::ty::TypeFoldable<TyCtxt<'tcx>>>(
+pub(crate) fn clean_all_escaping_bound_vars<'tcx, T: rustc_middle::ty::TypeFoldable<TyCtxt<'tcx>>>(
     tcx: TyCtxt<'tcx>,
     value: T,
     param_env_src: DefId,
@@ -571,7 +610,14 @@ pub(crate) fn bitwidth_and_signedness_of_integer_type<'tcx>(
     verus_items: &crate::verus_items::VerusItems,
     ty: rustc_middle::ty::Ty<'tcx>,
 ) -> (Option<IntegerTypeBitwidth>, bool) {
-    match mk_range(verus_items, &ty) {
+    let range = mk_range(verus_items, &ty);
+    bitwidth_and_signedness_of_int_range(range)
+}
+
+pub(crate) fn bitwidth_and_signedness_of_int_range<'tcx>(
+    ir: IntRange,
+) -> (Option<IntegerTypeBitwidth>, bool) {
+    match ir {
         IntRange::U(w) => (Some(IntegerTypeBitwidth::Width(w)), false),
         IntRange::I(w) => (Some(IntegerTypeBitwidth::Width(w)), true),
         IntRange::USize => (Some(IntegerTypeBitwidth::ArchWordSize), false),
@@ -829,14 +875,15 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
     param_env_src: DefId,
     span: Span,
     ty: &rustc_middle::ty::Ty<'tcx>,
+    infers: Option<&HashMap<TyVid, usize>>,
     allow_mut_ref: bool,
 ) -> Result<(Typ, bool), VirErr> {
     use vir::ast::TypDecoration;
     let t_rec = |t: &rustc_middle::ty::Ty<'tcx>| {
-        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, allow_mut_ref)
+        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, infers, allow_mut_ref)
     };
     let t_rec_flags = |t: &rustc_middle::ty::Ty<'tcx>, allow_mut_ref: bool| {
-        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, allow_mut_ref)
+        mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, t, infers, allow_mut_ref)
     };
     let t = match ty.kind() {
         TyKind::Bool => (Arc::new(TypX::Bool), false),
@@ -887,8 +934,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         }
         TyKind::Array(ty, const_len) => {
             let typ =
-                mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, allow_mut_ref)?.0;
-            let len = mid_ty_const_to_vir(tcx, Some(span), const_len)?;
+                mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, infers, allow_mut_ref)?.0;
+            let len = mid_ty_const_to_vir(tcx, verus_items, Some(span), const_len)?;
             let typs = Arc::new(vec![typ, len]);
             (Arc::new(TypX::Primitive(Primitive::Array, typs)), false)
         }
@@ -901,6 +948,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 (Arc::new(TypX::Int(IntRange::Nat)), false)
             } else {
                 let rust_item = verus_items::get_rust_item(tcx, did);
+                let _path = def_id_to_vir_path(tcx, verus_items, did); // register the did/path in the reverse-map
 
                 if let Some(RustItem::AllocGlobal) = rust_item {
                     return Ok((
@@ -917,7 +965,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                         }
                         rustc_middle::ty::GenericArgKind::Lifetime(_) => {}
                         rustc_middle::ty::GenericArgKind::Const(cnst) => {
-                            typ_args.push((mid_ty_const_to_vir(tcx, Some(span), &cnst)?, false));
+                            typ_args.push((mid_ty_const_to_vir(tcx, verus_items, Some(span), &cnst)?, false));
                         }
                     }
                 }
@@ -1001,41 +1049,43 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             rustc_middle::ty::AliasKind::Projection | rustc_middle::ty::AliasKind::Inherent,
             t,
         ) => {
-            // First, try to normalize to a non-projection type.
-            // This can enable concrete operations on the type (e.g.
-            // arithmetic if the normalized type is int) that
-            // wouldn't be allowed if the type were left in an unnormalized form.
-            use crate::rustc_trait_selection::traits::NormalizeExt;
-            let param_env = tcx.param_env(param_env_src);
-            let infcx = tcx.infer_ctxt().ignoring_regions().build();
-            let cause = rustc_infer::traits::ObligationCause::dummy();
-            let at = infcx.at(&cause, param_env);
-            let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
-            let norm = at.normalize(*ty);
-            if norm.value != *ty {
-                let mut has_infer = false;
-                for arg in norm.value.walk().into_iter() {
-                    if let GenericArgKind::Type(t) = arg.unpack() {
-                        if let TyKind::Infer(..) = t.kind() {
-                            // If we find any Infer variables, abort the normalization.
-                            //
-                            // Why this comes up:
-                            // 'normalize' will create inference variables if it encounters
-                            // a projection type that it can't normalize.
-                            // Probably, we shouldn't be calling normalize with non-normalizable
-                            // types.
-                            //
-                            // Currently, the reason this comes up has to do with the way
-                            // we invoke mid_ty_to_vir on an external_trait_specification.
-                            // Specifically, the param_env has [ Self: ProxyTrait ]
-                            // but we attempt to normalize <Self as ExternalTrait>::AssocTyp.
-                            // There may be a better way to handle this.
-                            has_infer = true;
+            if infers.is_none() {
+                // First, try to normalize to a non-projection type.
+                // This can enable concrete operations on the type (e.g.
+                // arithmetic if the normalized type is int) that
+                // wouldn't be allowed if the type were left in an unnormalized form.
+                use crate::rustc_trait_selection::traits::NormalizeExt;
+                let param_env = tcx.param_env(param_env_src);
+                let infcx = tcx.infer_ctxt().ignoring_regions().build();
+                let cause = rustc_infer::traits::ObligationCause::dummy();
+                let at = infcx.at(&cause, param_env);
+                let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
+                let norm = at.normalize(*ty);
+                if norm.value != *ty {
+                    let mut has_infer = false;
+                    for arg in norm.value.walk().into_iter() {
+                        if let GenericArgKind::Type(t) = arg.unpack() {
+                            if let TyKind::Infer(..) = t.kind() {
+                                // If we find any Infer variables, abort the normalization.
+                                //
+                                // Why this comes up:
+                                // 'normalize' will create inference variables if it encounters
+                                // a projection type that it can't normalize.
+                                // Probably, we shouldn't be calling normalize with non-normalizable
+                                // types.
+                                //
+                                // Currently, the reason this comes up has to do with the way
+                                // we invoke mid_ty_to_vir on an external_trait_specification.
+                                // Specifically, the param_env has [ Self: ProxyTrait ]
+                                // but we attempt to normalize <Self as ExternalTrait>::AssocTyp.
+                                // There may be a better way to handle this.
+                                has_infer = true;
+                            }
+                        }
+                        if !has_infer {
+                            return t_rec(&norm.value);
                         }
                     }
-                }
-                if !has_infer {
-                    return t_rec(&norm.value);
                 }
             }
             // If normalization isn't possible, return a projection type:
@@ -1097,12 +1147,13 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                             param_env_src,
                             span,
                             &t,
+                            infers,
                             allow_mut_ref,
                         )?);
                     }
                     rustc_middle::ty::GenericArgKind::Lifetime(_) => {}
                     rustc_middle::ty::GenericArgKind::Const(cnst) => {
-                        typ_args.push((mid_ty_const_to_vir(tcx, Some(span), &cnst)?, false));
+                        typ_args.push((mid_ty_const_to_vir(tcx, verus_items, Some(span), &cnst)?, false));
                     }
                 }
             }
@@ -1124,10 +1175,19 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::CoroutineWitness(..) => unsupported_err!(span, "generator witness types"),
         TyKind::Bound(..) => unsupported_err!(span, "for<'a> types"),
         TyKind::Placeholder(..) => unsupported_err!(span, "type inference Placeholder types"),
-        TyKind::Infer(..) => unsupported_err!(span, "type inference Infer types"),
         TyKind::Error(..) => unsupported_err!(span, "type inference error types"),
         TyKind::CoroutineClosure(_, _) => unsupported_err!(span, "coroutine closure types"),
         TyKind::Pat(_, _) => unsupported_err!(span, "pattern types"),
+
+        TyKind::Infer(InferTy::TyVar(ty_vid)) => {
+            if let Some(inf) = infers {
+                let uid = *inf.get(ty_vid).unwrap();
+                (Arc::new(TypX::UnificationVar(uid)), false)
+            } else {
+                unsupported_err!(span, "type inference Infer types");
+            }
+        }
+        TyKind::Infer(_) => unsupported_err!(span, "type inference Infer types"),
     };
     Ok(t)
 }
@@ -1153,11 +1213,12 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
     ty: &rustc_middle::ty::Ty<'tcx>,
     allow_mut_ref: bool,
 ) -> Result<Typ, VirErr> {
-    Ok(mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, allow_mut_ref)?.0)
+    Ok(mid_ty_to_vir_ghost(tcx, verus_items, param_env_src, span, ty, None, allow_mut_ref)?.0)
 }
 
 pub(crate) fn mid_ty_const_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
+    verus_items: &crate::verus_items::VerusItems,
     span: Option<Span>,
     cnst: &rustc_middle::ty::Const<'tcx>,
 ) -> Result<Typ, VirErr> {
@@ -1179,7 +1240,8 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
         ConstKind::Value(ValTree::Leaf(i)) => {
             let c = num_bigint::BigInt::from(i.assert_bits(i.size()));
-            Ok(Arc::new(TypX::ConstInt(c)))
+            let ir = mk_range(verus_items, &cnst.ty());
+            Ok(Arc::new(TypX::ConstInt(c, ir)))
         }
         _ => {
             unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
@@ -1344,7 +1406,7 @@ pub(crate) fn check_generic_bound<'tcx>(
                     )?);
                 }
                 GenericArgKind::Const(cnst) => {
-                    vir_args.push(mid_ty_const_to_vir(tcx, Some(span), &cnst)?);
+                    vir_args.push(mid_ty_const_to_vir(tcx, verus_items, Some(span), &cnst)?);
                 }
             }
         }
@@ -1367,7 +1429,7 @@ pub(crate) fn check_generic_bound<'tcx>(
 //  - For synthetic params, use impl%{index} for the name.
 //  - For other type params, just use the user-given type param name.
 
-fn generic_param_def_to_vir_name(gen: &rustc_middle::ty::GenericParamDef) -> String {
+pub(crate) fn generic_param_def_to_vir_name(gen: &rustc_middle::ty::GenericParamDef) -> String {
     let is_synthetic = match gen.kind {
         GenericParamDefKind::Type { synthetic, .. } => synthetic,
         GenericParamDefKind::Const { .. } => false,
@@ -1505,7 +1567,7 @@ where
                 };
 
                 if !is_host {
-                    let t1 = mid_ty_const_to_vir(tcx, Some(*span), &cnst)?;
+                    let t1 = mid_ty_const_to_vir(tcx, verus_items, Some(*span), &cnst)?;
                     let t2 = mid_ty_to_vir(tcx, verus_items, param_env_src, *span, &ty, false)?;
                     let bound = GenericBoundX::ConstTyp(t1, t2);
                     bounds.push(Arc::new(bound));

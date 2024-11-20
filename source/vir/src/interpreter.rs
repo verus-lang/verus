@@ -817,7 +817,7 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
         });
         let fun_view = Arc::new(FunX { path: path_view });
         let array = cleanup_array(span, inner_typ.clone(), s);
-        let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(s.len())));
+        let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(s.len()), IntRange::USize));
         let array_view = new_seq_exp(ExpX::Call(
             CallFun::Fun(fun_view, None),
             Arc::new(vec![inner_typ.clone(), array_len_typ]),
@@ -832,7 +832,7 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
 fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
     let arr_typ = if !matches!(*typ, TypX::Primitive(Primitive::Array, _)) {
         // We only have the inner type for the array, so we need to construct the rest
-        let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(arr.len())));
+        let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(arr.len()), IntRange::USize));
         let array_typs = Arc::new(vec![typ, array_len_typ]);
         let array_typ = Arc::new(TypX::Primitive(Primitive::Array, array_typs));
         array_typ
@@ -1601,7 +1601,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 }
                                 // Account for const generics by adding, e.g., { N => 7 } to the environment
                                 for (formal, actual) in typ_params.iter().zip(typs.iter()) {
-                                    if let TypX::ConstInt(c) = &**actual {
+                                    if let TypX::ConstInt(c, _) = &**actual {
                                         let formal_id = VarIdent(
                                             formal.clone(),
                                             VarIdentDisambiguate::TypParamBare,

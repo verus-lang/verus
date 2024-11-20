@@ -258,9 +258,10 @@ pub enum TypX {
     /// Type of type identifiers
     TypeId,
     /// Const integer type argument (e.g. for array sizes)
-    ConstInt(BigInt),
+    ConstInt(BigInt, IntRange),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
+    UnificationVar(usize),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]

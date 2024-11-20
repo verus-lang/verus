@@ -153,8 +153,8 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
             let name = state.typ_param(name.to_string(), None);
             Box::new(TypX::Projection { self_typ, trait_as_datatype, name, assoc_typ_args: vec![] })
         }
-        vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
-        vir::ast::TypX::TypeId | vir::ast::TypX::Air(..) => {
+        vir::ast::TypX::ConstInt(i, _) => Box::new(TypX::Primitive(i.to_string())),
+        vir::ast::TypX::TypeId | vir::ast::TypX::Air(..) | vir::ast::TypX::UnificationVar(_) => {
             panic!("internal error: unexpected type")
         }
     }

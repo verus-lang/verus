@@ -299,6 +299,9 @@ where
     if verifier.args.vstd == Vstd::IsCore {
         rustc_args_verify.extend(["--cfg", "verus_verify_core"].map(|s| s.to_string()));
     }
+    if verifier.args.new_ghost_code {
+        rustc_args_verify.extend(["--cfg", "verus_new_ghost_code"].map(|s| s.to_string()));
+    }
     // Build VIR and run verification
     let mut verifier_callbacks = VerifierCallbacksEraseMacro {
         verifier,

@@ -5,8 +5,11 @@ use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::def_id::DefId;
 use rustc_span::SpanData;
 use std::sync::Arc;
+use std::rc::Rc;
+use std::cell::RefCell;
 use vir::ast::{Expr, Ident, Mode, Pattern};
 use vir::messages::AstId;
+use crate::spec_exprs::SpecHir;
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
@@ -34,6 +37,7 @@ pub struct ContextX<'tcx> {
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
     pub(crate) crate_name: Ident,
     pub(crate) vstd_crate_name: Ident,
+    pub(crate) spec_hir: Arc<SpecHir<'tcx>>,
 }
 
 #[derive(Clone)]
@@ -44,6 +48,7 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) mode: Mode,
     pub(crate) external_body: bool,
     pub(crate) in_ghost: bool,
+    pub(crate) scope_map: Rc<RefCell<air::scope_map::ScopeMap<vir::ast::VarIdent, vir::ast::Typ>>>,
 }
 
 impl<'tcx> ContextX<'tcx> {
@@ -60,5 +65,19 @@ impl<'tcx> ContextX<'tcx> {
             Some(&mut *self.diagnostics.borrow_mut()),
             Some(&self.cmd_line_args),
         )
+    }
+}
+
+impl<'tcx> BodyCtxt<'tcx> {
+    pub(crate) fn push_scope(&self, shadow: bool) {
+        self.scope_map.borrow_mut().push_scope(shadow);
+    }
+
+    pub(crate) fn pop_scope(&self) {
+        self.scope_map.borrow_mut().pop_scope();
+    }
+
+    pub(crate) fn scope_map_insert(&self, v: vir::ast::VarIdent, typ: vir::ast::Typ) {
+        self.scope_map.borrow_mut().insert(v, typ).unwrap()
     }
 }
