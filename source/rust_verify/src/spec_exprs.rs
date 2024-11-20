@@ -1,6 +1,7 @@
-use rustc_hir::{ExprKind, OwnerNode, OwnerInfo, BodyId, Expr};
+use rustc_hir::{ExprKind, OwnerInfo, BodyId, Expr, Closure};
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashMap;
+use crate::rustc_hir::intravisit::Visitor;
 
 pub(crate) struct SpecHir<'tcx> {
     pub bodies: HashMap<BodyId, &'tcx rustc_hir::Expr<'tcx>>,
@@ -24,19 +25,20 @@ impl<'tcx> SpecHir<'tcx> {
 
         let mut bodies = owner_info.nodes.bodies.clone();
 
-        for (item_local_id, old_body) in owner_info.nodes.bodies.iter() {
-            if body_ids_to_cut.contains(item_local_id) {
-                let expr = tcx.hir_arena.alloc(rustc_hir::Expr {
-                    hir_id: old_body.value.hir_id,
-                    kind: rustc_hir::ExprKind::Tup(&[]),
-                    span: old_body.value.span,
-                });
-                let new_body = tcx.hir_arena.alloc(rustc_hir::Body {
-                    params: old_body.params,
-                    value: expr,
-                });
-                bodies[item_local_id] = new_body;
-            }
+        let my_owner_id = owner_info.node().def_id();
+        for body_id in body_ids_to_cut.iter() {
+            assert!(body_id.hir_id.owner == my_owner_id);
+            let old_body = &owner_info.nodes.bodies[&body_id.hir_id.local_id];
+            let expr = tcx.hir_arena.alloc(rustc_hir::Expr {
+                hir_id: old_body.value.hir_id,
+                kind: rustc_hir::ExprKind::Tup(&[]),
+                span: old_body.value.span,
+            });
+            let new_body = tcx.hir_arena.alloc(rustc_hir::Body {
+                params: old_body.params,
+                value: expr,
+            });
+            bodies[&body_id.hir_id.local_id] = new_body;
         }
 
         let nodes: rustc_hir::OwnerNodes<'tcx> = rustc_hir::OwnerNodes {
@@ -82,8 +84,8 @@ fn get_relevant_closure_ids<'tcx>(
 ) -> Vec<BodyId>
 {
     let mut v = VisitMod { tcx, ids: vec![] };
-    v.visit_body(&owner_info.nodes.bodies[main_body_id]);
-    return v.ids;
+    v.visit_body(&owner_info.nodes.bodies[&main_body_id.hir_id.local_id]);
+    return dbg!(v.ids);
 }
 
 struct VisitMod<'tcx> {
@@ -92,12 +94,11 @@ struct VisitMod<'tcx> {
 }
 
 impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
-    // Configure the visitor for nested visits
     type Map = rustc_middle::hir::map::Map<'tcx>;
-    type NestedFilter = rustc_middle::hir::nested_filter::All;
+    type NestedFilter = rustc_middle::hir::nested_filter::OnlyBodies;
 
     fn nested_visit_map(&mut self) -> Self::Map {
-        tcx.hir()
+        self.tcx.hir()
     }
 
     fn visit_expr(&mut self, ex: &'tcx Expr<'tcx>) {
@@ -105,16 +106,21 @@ impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
             if is_spec_code_wrapper(callee) {
                 assert!(args.len() == 1);
 
-                if let ExprKind::Closure(Closure { body_id, .. }) = &args[0].kind {
-                    self.ids.push(*body_id);
+                if let ExprKind::Closure(Closure { body, .. }) = &args[0].kind {
+                    self.ids.push(*body);
                 } else {
                     panic!("get_relevant_closure_ids: expected Closure");
                 }
             }
         }
+        crate::rustc_hir::intravisit::walk_expr(self, ex);
     }
 }
 
 fn is_spec_code_wrapper<'tcx>(callee: &'tcx Expr<'tcx>) -> bool {
-    todo!();    
+    /*match &callee.kind {
+        ExprKind::Path(QPath::Resolved(None, path)) => 
+    }*/
+    dbg!(callee);
+    todo!();
 }

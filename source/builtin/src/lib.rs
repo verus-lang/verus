@@ -1495,3 +1495,7 @@ pub fn inline_air_stmt(_s: &str) {
 pub fn array_index<T, const N: usize>(_a: [T; N], _i: int) -> T {
     unimplemented!()
 }
+
+pub fn ghost_code<A>(a: A) {
+    unimplemented!()
+}
