@@ -1,6 +1,7 @@
 use rustc_hir::{ExprKind, OwnerNode};
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashMap;
+use crate::spec_exprs::SpecHir;
 
 pub(crate) enum ResOrSymbol {
     Res(rustc_hir::def::Res),
@@ -10,7 +11,46 @@ pub(crate) enum ResOrSymbol {
 pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
     crate_: &mut rustc_hir::Crate<'tcx>,
     tcx: TyCtxt<'tcx>,
-) {
+) -> SpecHir {
+    // TODO move or rename the function
+
+    let spec_hir = SpecHir::new();
+
+    for owner in crate_.owners.iter_mut() {
+        if let rustc_hir::MaybeOwner::Owner(inner_owner) = owner {
+            match inner_owner.node() {
+                OwnerNode::Item(item) => {
+                    match &item.kind {
+                        rustc_hir::ItemKind::Fn(_sig, _generics, body_id) => {
+                            *owner = rustc_hir::MaybeOwner::Owner(
+                                spec_hir.update_owner(tcx, inner_owner, body_id));
+                        }
+                        _ => { }
+                    }
+                }
+                OwnerNode::TraitItem(item) => {
+                    match &item.kind {
+                        rustc_hir::TraitItemKind::Fn(_sig, _generics, body_id) => {
+                            *owner = rustc_hir::MaybeOwner::Owner(
+                                spec_hir.update_owner(tcx, inner_owner, body_id));
+                        }
+                        _ => { }
+                    }
+                }
+                OwnerNode::ImplItem(item) => {
+                    match &item.kind {
+                        rustc_hir::ImplItemKind::Fn(_sig, _generics, body_id) => {
+                            *owner = rustc_hir::MaybeOwner::Owner(
+                                spec_hir.update_owner(tcx, inner_owner, body_id));
+                        }
+                        _ => { }
+                    }
+                }
+                _ => { }
+            }
+        }
+    }
+
     for owner in crate_.owners.iter_mut() {
         if let rustc_hir::MaybeOwner::Owner(inner_owner) = owner {
             match inner_owner.node() {
@@ -215,4 +255,6 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
             }
         }
     }
+
+    return spec_hir;    
 }
