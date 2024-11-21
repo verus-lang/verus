@@ -1,4 +1,6 @@
-use rustc_hir::{ExprKind, OwnerInfo, BodyId, Expr, Closure};
+use rustc_hir::{ExprKind, OwnerInfo, BodyId, Expr, Closure, QPath};
+use rustc_hir::def::{Res, DefKind};
+use crate::verus_items::def_id_to_stable_rust_path;
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashMap;
 use crate::rustc_hir::intravisit::Visitor;
@@ -83,27 +85,26 @@ fn get_relevant_closure_ids<'tcx>(
     main_body_id: &BodyId,
 ) -> Vec<BodyId>
 {
-    let mut v = VisitMod { tcx, ids: vec![] };
+    let mut v = VisitMod { tcx, ids: vec![], owner_info };
     v.visit_body(&owner_info.nodes.bodies[&main_body_id.hir_id.local_id]);
     return dbg!(v.ids);
 }
 
 struct VisitMod<'tcx> {
+    owner_info: &'tcx OwnerInfo<'tcx>,
     tcx: TyCtxt<'tcx>,
     ids: Vec<BodyId>,
 }
 
 impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
-    type Map = rustc_middle::hir::map::Map<'tcx>;
-    type NestedFilter = rustc_middle::hir::nested_filter::OnlyBodies;
-
-    fn nested_visit_map(&mut self) -> Self::Map {
-        self.tcx.hir()
+    fn visit_nested_body(&mut self, id: BodyId) {
+        self.visit_body(&self.owner_info.nodes.bodies[&id.hir_id.local_id]);
     }
 
     fn visit_expr(&mut self, ex: &'tcx Expr<'tcx>) {
         if let ExprKind::Call(callee, args) = &ex.kind {
-            if is_spec_code_wrapper(callee) {
+            let a = is_spec_code_wrapper(self.tcx, callee);
+            if a {
                 assert!(args.len() == 1);
 
                 if let ExprKind::Closure(Closure { body, .. }) = &args[0].kind {
@@ -117,10 +118,16 @@ impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
     }
 }
 
-fn is_spec_code_wrapper<'tcx>(callee: &'tcx Expr<'tcx>) -> bool {
-    /*match &callee.kind {
-        ExprKind::Path(QPath::Resolved(None, path)) => 
-    }*/
-    dbg!(callee);
-    todo!();
+fn is_spec_code_wrapper<'tcx>(tcx: TyCtxt<'tcx>, callee: &'tcx Expr<'tcx>) -> bool {
+    match &callee.kind {
+        ExprKind::Path(QPath::Resolved(None, path)) => {
+            if let Res::Def(DefKind::Fn, def_id) = &path.res {
+                path.segments[path.segments.len() - 1].ident.name.as_str() == "ghost_code"
+                    && def_id_to_stable_rust_path(tcx, *def_id) == Some("builtin::ghost_code".to_string())
+            } else {
+                false
+            }
+        }
+        _ => false,
+    }
 }
