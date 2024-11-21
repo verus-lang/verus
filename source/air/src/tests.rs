@@ -2102,3 +2102,150 @@ fn no_partial_order() {
         )
     )
 }
+
+#[test]
+fn datatype_field_update_pass() {
+    yes!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field A_A_u) a 3))
+                (assert (= (A_A_u a) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn datatype_field_update_ill_typed() {
+    untyped!(
+        (declare-datatypes ((X 0)) (((X_X (X_X_u Int)))))
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (check-valid
+            (declare-var a A)
+            (declare-const x X)
+            (block
+                (assign a ((_ update-field A_A_u) a x))
+                (assert (= (A_A_u a) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn datatype_field_update2() {
+    no!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field A_A_u) a 3))
+                (assert (= (A_A_u a) 4))
+            )
+        )
+    )
+}
+
+#[test]
+fn datatype_field_update3() {
+    yes!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int) (A_A_v Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field A_A_u) a 3))
+                (assert (= (A_A_u a) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn datatype_field_update4() {
+    no!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int) (A_A_v Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field A_A_u) a 3))
+                (assert (= (A_A_u a) 4))
+            )
+        )
+    )
+}
+
+#[test]
+fn nested_datatype_field_update_pass() {
+    yes!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (declare-datatypes ((B 0)) (((B_B (B_B_a A)))))
+        (check-valid
+            (declare-var b B)
+            (block
+                (assign b ((_ update-field B_B_a) b ((_ update-field A_A_u) (B_B_a b) 3)))
+                (assert (= (A_A_u (B_B_a b)) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn nested_datatype_field_update_pass2() {
+    yes!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int) (A_A_v Int)))))
+        (declare-datatypes ((B 0)) (((B_B (B_B_a1 A) (B_B_a2 A)))))
+        (check-valid
+            (declare-var b B)
+            (block
+                (assign b ((_ update-field B_B_a1) b ((_ update-field A_A_u) (B_B_a1 b) 3)))
+                (assert (= (A_A_u (B_B_a1 b)) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn nested_datatype_field_update_fail() {
+    no!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (declare-datatypes ((B 0)) (((B_B (B_B_a A)))))
+        (check-valid
+            (declare-var b B)
+            (block
+                (assign b ((_ update-field B_B_a) b ((_ update-field A_A_u) (B_B_a b) 3)))
+                (assert (= (A_A_u (B_B_a b)) 4))
+            )
+        )
+    )
+}
+
+#[test]
+fn accessor_identifying_1() {
+    untyped!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (declare-fun f (A) Int )
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field f) a 3))
+                (assert (= (A_A_u a) 4))
+            )
+        )
+    )
+}
+
+#[test]
+fn accessor_identifying_2() {
+    untyped!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (declare-datatypes ((B 0)) (((B_B (B_B_u Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field B_B_u) a 3))
+                (assert (= (A_A_u a) 4))
+            )
+        )
+    )
+}
