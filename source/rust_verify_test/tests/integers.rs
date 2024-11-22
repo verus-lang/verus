@@ -496,3 +496,11 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] nat_int_cast_in_exec_code verus_code! {
+        fn test(u: u64) {
+            let x = u as nat;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "types 'nat' and 'int' can only be used in ghost code")
+}

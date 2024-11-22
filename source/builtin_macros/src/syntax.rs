@@ -30,7 +30,8 @@ use syn_verus::{
     ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
     ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends,
     Requires, ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants,
-    SignatureUnwind, Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
+    SignatureUnwind, Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, TypePath, UnOp,
+    Visibility,
 };
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -2765,6 +2766,19 @@ impl VisitMut for Visitor {
             }
         }
 
+        if !do_replace {
+            if let Expr::Cast(cast) = &expr {
+                // In theory, the user might alias 'nat' or 'int' to some other type,
+                // thus causing a false positive for this error. However, this seems exceedingly
+                // niche compared to the value of this error.
+                if is_probably_nat_or_int_type(&cast.ty) {
+                    *expr = Expr::Verbatim(
+                        quote_spanned!(expr.span() => compile_error!("The Verus types 'nat' and 'int' can only be used in ghost code (e.g., in a 'spec' or 'proof' function, inside a 'proof' block, or when assigning to a 'ghost' or 'tracked' variable)")),
+                    );
+                }
+            }
+        }
+
         if let Some(span) = is_auto_proof_block {
             // automatically put assert/assume in a proof block
             self.inside_ghost -= 1;
@@ -3816,6 +3830,19 @@ fn is_ptr_type(typ: &Type) -> bool {
     match typ {
         Type::Ptr(_) => true,
         Type::Paren(t) => is_ptr_type(&t.elem),
+        _ => false,
+    }
+}
+
+fn is_probably_nat_or_int_type(typ: &Type) -> bool {
+    match typ {
+        Type::Path(TypePath { qself: None, path }) => match path.get_ident() {
+            None => false,
+            Some(ident) => {
+                let t = ident.to_string();
+                t == "int" || t == "nat"
+            }
+        },
         _ => false,
     }
 }
