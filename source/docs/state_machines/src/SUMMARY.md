@@ -25,7 +25,7 @@
       - [Reference-counted smart pointer](./examples/rc.md)
         - [Unverified Source](./examples/rust-rc.md)
         - [Verified Source](./examples/src-rc.md)
-        - [Exerises](./examples/rc-exercises.md)
+        - [Exercises](./examples/rc-exercises.md)
 
     - [Guide TODO](tutorial-by-example.md)
 
