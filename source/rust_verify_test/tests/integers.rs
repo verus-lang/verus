@@ -496,3 +496,13 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_bool_to_int verus_code! {
+        fn test1() {
+            assert(true as usize == 1);
+            assert(false as usize == 0);
+            assert(false as int == 0);
+        }
+    } => Ok(())
+}
