@@ -93,7 +93,7 @@ fn attr_for_sig(sig: &Signature, block: Option<&Block>) -> Option<Attribute> {
 
     v.push(encoded_sig_info(sig));
 
-    match &sig.requires {
+    match &sig.spec.requires {
         Some(es) => {
             for expr in es.exprs.exprs.iter() {
                 v.push(encoded_expr("requires", expr));
@@ -101,7 +101,7 @@ fn attr_for_sig(sig: &Signature, block: Option<&Block>) -> Option<Attribute> {
         }
         None => {}
     }
-    match &sig.recommends {
+    match &sig.spec.recommends {
         Some(es) => {
             for expr in es.exprs.exprs.iter() {
                 v.push(encoded_expr("recommends", expr));
@@ -109,7 +109,7 @@ fn attr_for_sig(sig: &Signature, block: Option<&Block>) -> Option<Attribute> {
         }
         None => {}
     }
-    match &sig.ensures {
+    match &sig.spec.ensures {
         Some(es) => {
             for expr in es.exprs.exprs.iter() {
                 v.push(encoded_expr("ensures", expr));

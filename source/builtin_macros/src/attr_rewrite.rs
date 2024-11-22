@@ -3,11 +3,13 @@
 /// {}`.
 ///
 /// Usage:
-/// - Items (function, struct, const) used for verification need to be annotated
+/// - Items (struct, const) used for verification need to be annotated
 ///   with `#[verus_verify].
-/// - To apply `requires`, `ensures`, `invariant`, `decreases` in `exec`,
-///   developers should call the corresponding macros at the beginning of the
-///   function or loop.
+/// - Functions used for verification need to be annotated with `#[verus_spec ...]`
+///   or `#[verus_spec pattern => ...]`
+///   where ... is a block of requires, ensures, decreases, etc. in the verus! syntax
+/// - To apply `ensures`, `invariant`, `decreases` in `exec`,
+///   developers should call the corresponding macros at the beginning of the loop
 /// - To use proof block, add proof!{...} inside function body.
 ///
 /// Rationale:
@@ -27,19 +29,16 @@
 /// - Use of tracked variable is possible but in a different style.
 ///
 /// Example:
-/// - Refer to the `test_small_macros_verus_verify` in `example/syntax.rs`.
-use core::convert::{TryFrom, TryInto};
+/// - Refer to `example/syntax_attr.rs`.
+use core::convert::TryFrom;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use syn::{
-    parse2, parse_quote, spanned::Spanned, token, Attribute, AttributeArgs, Block, Expr, Ident,
-    Item, Stmt, TraitItem, TraitItemMethod,
-};
+use syn::{parse2, spanned::Spanned, AttributeArgs, Ident, Item};
 
 use crate::{
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
     syntax,
-    syntax::VERUS_SPEC,
+    syntax::mk_verus_attr_syn,
     EraseGhost,
 };
 
@@ -94,25 +93,6 @@ impl TryFrom<String> for SpecAttributeKind {
     }
 }
 
-fn remove_verus_attributes(attrs: &mut Vec<Attribute>) -> Vec<SpecAttrWithArgs> {
-    let mut verus_attributes = Vec::new();
-    let mut regular_attributes = Vec::new();
-    for attr in attrs.drain(0..) {
-        if attr.path.segments.len() == 1 {
-            if let Ok(attr_kind) = attr.path.segments[0].ident.to_string().try_into() {
-                let args = insert_brackets(&attr_kind, attr.tokens);
-                verus_attributes.push((attr_kind, args));
-            } else {
-                regular_attributes.push(attr);
-            }
-        } else {
-            regular_attributes.push(attr);
-        }
-    }
-    *attrs = regular_attributes;
-    verus_attributes
-}
-
 // Add brackets for requires, invariant.
 // Add brackets for ensures if it could not be parsed as a syn_verus::Expr.
 fn insert_brackets(attr_type: &SpecAttributeKind, tokens: TokenStream) -> TokenStream {
@@ -131,7 +111,7 @@ fn insert_brackets(attr_type: &SpecAttributeKind, tokens: TokenStream) -> TokenS
 }
 
 fn expand_verus_attribute(
-    erase: &EraseGhost,
+    erase: EraseGhost,
     verus_attrs: Vec<SpecAttrWithArgs>,
     any_with_attr_block: &mut dyn AnyAttrBlock,
     function_or_loop: bool,
@@ -167,49 +147,6 @@ fn expand_verus_attribute(
     }
 }
 
-/// Add a default exec function with spec calls.
-///   fn #[requires(x)]f(); //a trait method;
-/// becomes
-///   #[requires(true)]
-///   fn VERUS_SPEC__f() {}
-///   fn f();
-/// and then rewrite_verus_fn_attribute:
-///   fn VERUS_SPEC__f() { requires(x); ... }
-///   fn f();
-fn expand_verus_attribute_on_trait_method(
-    erase: &EraseGhost,
-    verus_attrs: Vec<SpecAttrWithArgs>,
-    fun: &mut TraitItemMethod,
-) -> Option<TraitItem> {
-    if verus_attrs.is_empty() {
-        return None;
-    }
-
-    // For trait methods, we must parse requires/ensures together since
-    // we only insert a single new function. Thus, the first spec macro
-    // will use remove_verus_attributes and then invoke the rewrite for
-    // all followed verus attributes.
-    let mut verus_attrs = verus_attrs;
-    verus_attrs.extend(remove_verus_attributes(&mut fun.attrs));
-    let mut spec_fun = fun.clone();
-    let x = fun.sig.ident.clone();
-    if fun.default.is_none() {
-        spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), spec_fun.sig.span());
-        spec_fun.attrs.push(parse_quote!(#[doc(hidden)]));
-        spec_fun.attrs.push(parse_quote!(#[allow(non_snake_case)]));
-        let stmts = vec![Stmt::Expr(Expr::Verbatim(
-            quote_spanned_builtin!(builtin, spec_fun.default.span() => #builtin::no_method_body()),
-        ))];
-        spec_fun.default =
-            Some(Block { brace_token: token::Brace(spec_fun.default.span()), stmts });
-        expand_verus_attribute(erase, verus_attrs, &mut spec_fun, true);
-        Some(TraitItem::Method(spec_fun))
-    } else {
-        expand_verus_attribute(erase, verus_attrs, fun, true);
-        None
-    }
-}
-
 fn insert_spec_call(any_fn: &mut dyn AnyAttrBlock, call: &str, verus_expr: TokenStream) {
     let fname = Ident::new(call, verus_expr.span());
     let tokens: TokenStream =
@@ -227,7 +164,7 @@ pub fn rewrite_verus_attribute(
     input: TokenStream,
 ) -> TokenStream {
     if erase.keep() {
-        let item: Item = parse2(input).expect("#[verus_verify] must on item");
+        let item: Item = parse2(input).expect("#[verus_verify] must be applied to an item");
         let mut attributes: Vec<TokenStream> = vec![];
         const VERIFIER_ATTRS: [&str; 2] = ["external", "external_body"];
         for arg in attr_args {
@@ -255,37 +192,72 @@ pub fn rewrite_verus_attribute(
     }
 }
 
+pub fn rewrite_verus_spec(
+    erase: EraseGhost,
+    outer_attr_tokens: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let f = match syn::parse::<AnyFnOrLoop>(input) {
+        Ok(f) => f,
+        Err(err) => {
+            // Make sure at least one error is reported, just in case Rust parses the function
+            // successfully but syn fails to parse it.
+            // (In the normal case, this results in a redundant extra error message after
+            // the normal Rust syntax error, but it's a reasonable looking error message.)
+            return proc_macro::TokenStream::from(
+                quote_spanned!(err.span() => compile_error!("syntax error in function");),
+            );
+        }
+    };
+    let spec_attr =
+        syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
+    match f {
+        AnyFnOrLoop::Fn(mut fun) => {
+            // Note: trait default methods appear in this case,
+            // since they look syntactically like non-trait functions
+            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &fun.sig);
+            let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
+            let _ = fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
+            fun.attrs.push(mk_verus_attr_syn(fun.span(), quote! { verus_macro }));
+            proc_macro::TokenStream::from(fun.to_token_stream())
+        }
+        AnyFnOrLoop::TraitMethod(mut method) => {
+            // Note: default trait methods appear in the AnyFnOrLoop::Fn case, not here
+            let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &method.sig);
+            let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
+            let mut spec_fun_opt = syntax::split_trait_method_syn(&method, erase.erase());
+            let spec_fun = spec_fun_opt.as_mut().unwrap_or(&mut method);
+            let _ = spec_fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
+            method.attrs.push(mk_verus_attr_syn(method.span(), quote! { verus_macro }));
+            let mut new_stream = TokenStream::new();
+            spec_fun_opt.to_tokens(&mut new_stream);
+            method.to_tokens(&mut new_stream);
+            proc_macro::TokenStream::from(new_stream)
+        }
+        _ => {
+            let span = spec_attr.span();
+            proc_macro::TokenStream::from(
+                quote_spanned!(span => compile_error!("'verus_spec' is not allowed here");),
+            )
+        }
+    }
+}
+
 pub fn rewrite(
-    erase: &EraseGhost,
+    erase: EraseGhost,
     outer_attr: SpecAttributeKind,
     outer_attr_tokens: TokenStream,
     input: TokenStream,
 ) -> Result<TokenStream, syn::Error> {
+    let span = outer_attr_tokens.span();
     let outer_attr_tokens = insert_brackets(&outer_attr, outer_attr_tokens);
     let verus_attrs = vec![(outer_attr, outer_attr_tokens)];
     let f = parse2::<AnyFnOrLoop>(input)?;
     match f {
-        AnyFnOrLoop::Fn(mut item_fn) => {
-            expand_verus_attribute(erase, verus_attrs, &mut item_fn, true);
-            Ok(quote_spanned! {item_fn.span()=>#item_fn})
-        }
-        AnyFnOrLoop::TraitMethod(mut trait_item_method) => {
-            let spec_item =
-                expand_verus_attribute_on_trait_method(erase, verus_attrs, &mut trait_item_method);
-            match spec_item {
-                Some(spec_method) => {
-                    Ok(quote_spanned! {trait_item_method.span()=> #trait_item_method #spec_method})
-                }
-                _ => {
-                    unreachable!()
-                }
-            }
-        }
         AnyFnOrLoop::Loop(mut l) => {
             expand_verus_attribute(erase, verus_attrs, &mut l, false);
             Ok(quote_spanned! {l.span()=>#l})
         }
-
         AnyFnOrLoop::ForLoop(mut l) => {
             expand_verus_attribute(erase, verus_attrs, &mut l, false);
             Ok(quote_spanned! {l.span()=>#l})
@@ -294,6 +266,9 @@ pub fn rewrite(
             expand_verus_attribute(erase, verus_attrs, &mut l, false);
             Ok(quote_spanned! {l.span()=>#l})
         }
+        AnyFnOrLoop::Fn(_) | AnyFnOrLoop::TraitMethod(_) => Ok(
+            quote_spanned!(span => compile_error!("'verus_spec' attribute expected on function");),
+        ),
     }
 }
 

@@ -30,10 +30,11 @@ use syn_verus::{
     ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
     ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends,
     Requires, ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants,
-    SignatureUnwind, Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, UnOp, Visibility,
+    SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem, TraitItemMethod,
+    Type, TypeFnSpec, UnOp, Visibility,
 };
 
-pub const VERUS_SPEC: &str = "VERUS_SPEC__";
+const VERUS_SPEC: &str = "VERUS_SPEC__";
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());
@@ -237,6 +238,229 @@ impl Visitor {
         }
     }
 
+    fn take_sig_specs<TType: ToTokens>(
+        &mut self,
+        spec: &mut SignatureSpec,
+        ret_pat: Option<(Pat, TType)>,
+        is_const: bool,
+        span: Span,
+    ) -> Vec<Stmt> {
+        let requires = self.take_ghost(&mut spec.requires);
+        let recommends = self.take_ghost(&mut spec.recommends);
+        let ensures = self.take_ghost(&mut spec.ensures);
+        let returns = self.take_ghost(&mut spec.returns);
+        let decreases = self.take_ghost(&mut spec.decreases);
+        let opens_invariants = self.take_ghost(&mut spec.invariants);
+        let unwind = self.take_ghost(&mut spec.unwind);
+
+        let mut spec_stmts = Vec::new();
+        // TODO: wrap specs inside ghost blocks
+        if let Some(Requires { token, mut exprs }) = requires {
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                spec_stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(builtin, token.span => #builtin::requires([#exprs])),
+                    ),
+                    Semi { spans: [token.span] },
+                ));
+            }
+        }
+        if let Some(Recommends { token, mut exprs, via }) = recommends {
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                spec_stmts.push(Stmt::Semi(
+                    Expr::Verbatim(quote_spanned_builtin!(builtin, token.span => #builtin::recommends([#exprs]))),
+                    Semi { spans: [token.span] },
+                ));
+            }
+            if let Some((via_token, via_expr)) = via {
+                spec_stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(builtin, via_expr.span() => #builtin::recommends_by(#via_expr)),
+                    ),
+                    Semi { spans: [via_token.span] },
+                ));
+            }
+        }
+        if let Some(Ensures { attrs, token, mut exprs }) = ensures {
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                let cont = match self.extract_quant_triggers(attrs, token.span) {
+                    Ok(
+                        found @ (ExtractQuantTriggersFound::Auto
+                        | ExtractQuantTriggersFound::AllTriggers
+                        | ExtractQuantTriggersFound::Triggers(..)),
+                    ) => {
+                        if exprs.exprs.len() == 0 {
+                            let err =
+                                "when using #![trigger f(x)], at least one ensures is required";
+                            let expr =
+                                Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                            spec_stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                            false
+                        } else {
+                            let e = take_expr(&mut exprs.exprs[0]);
+                            match found {
+                                ExtractQuantTriggersFound::Auto => {
+                                    exprs.exprs[0] = Expr::Verbatim(
+                                        quote_spanned!(exprs.exprs[0].span() => #[verus::internal(auto_trigger)] (#e)),
+                                    );
+                                }
+                                ExtractQuantTriggersFound::AllTriggers => {
+                                    exprs.exprs[0] = Expr::Verbatim(
+                                        quote_spanned!(exprs.exprs[0].span() => #[verus::internal(all_triggers)] (#e)),
+                                    );
+                                }
+                                ExtractQuantTriggersFound::Triggers(tuple) => {
+                                    exprs.exprs[0] = Expr::Verbatim(
+                                        quote_spanned_builtin!(builtin, exprs.exprs[0].span() => #builtin::with_triggers(#tuple, #e)),
+                                    );
+                                }
+                                ExtractQuantTriggersFound::None => unreachable!(),
+                            }
+                            true
+                        }
+                    }
+                    Ok(ExtractQuantTriggersFound::None) => true,
+                    Err(err_expr) => {
+                        exprs.exprs[0] = err_expr;
+                        false
+                    }
+                };
+                if cont {
+                    if let Some((p, ty)) = ret_pat {
+                        spec_stmts.push(Stmt::Semi(
+                            Expr::Verbatim(
+                                quote_spanned_builtin!(builtin, token.span => #builtin::ensures(|#p: #ty| [#exprs])),
+                            ),
+                            Semi { spans: [token.span] },
+                        ));
+                    } else {
+                        spec_stmts.push(Stmt::Semi(
+                            Expr::Verbatim(
+                                quote_spanned_builtin!(builtin, token.span => #builtin::ensures([#exprs])),
+                            ),
+                            Semi { spans: [token.span] },
+                        ));
+                    }
+                }
+            }
+        }
+        if let Some(Returns { token, mut exprs }) = returns {
+            if exprs.exprs.len() > 0 {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                spec_stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(builtin, token.span => #builtin::returns([#exprs])),
+                    ),
+                    Semi { spans: [token.span] },
+                ));
+            }
+        }
+        if let Some(SignatureDecreases { decreases: Decreases { token, mut exprs }, when, via }) =
+            decreases
+        {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+                if matches!(expr, Expr::Tuple(..)) {
+                    let err = "decreases cannot be a tuple; use `decreases x, y` rather than `decreases (x, y)`";
+                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                    spec_stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                }
+            }
+            spec_stmts.push(Stmt::Semi(
+                Expr::Verbatim(
+                    quote_spanned_builtin!(builtin, token.span => #builtin::decreases((#exprs))),
+                ),
+                Semi { spans: [token.span] },
+            ));
+            if let Some((when_token, mut when_expr)) = when {
+                self.visit_expr_mut(&mut when_expr);
+                spec_stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(builtin, when_expr.span() => #builtin::decreases_when(#when_expr)),
+                    ),
+                    Semi { spans: [when_token.span] },
+                ));
+            }
+            if let Some((via_token, via_expr)) = via {
+                spec_stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(builtin, via_expr.span() => #builtin::decreases_by(#via_expr)),
+                    ),
+                    Semi { spans: [via_token.span] },
+                ));
+            }
+        }
+        if let Some(SignatureInvariants { token: _, set }) = opens_invariants {
+            match set {
+                InvariantNameSet::Any(any) => {
+                    spec_stmts.push(Stmt::Semi(
+                        Expr::Verbatim(
+                            quote_spanned_builtin!(builtin, any.span() => #builtin::opens_invariants_any()),
+                        ),
+                        Semi { spans: [any.span()] },
+                    ));
+                }
+                InvariantNameSet::None(none) => {
+                    spec_stmts.push(Stmt::Semi(
+                        Expr::Verbatim(
+                            quote_spanned_builtin!(builtin, none.span() => #builtin::opens_invariants_none()),
+                        ),
+                        Semi { spans: [none.span()] },
+                    ));
+                }
+                InvariantNameSet::List(InvariantNameSetList { bracket_token, mut exprs }) => {
+                    for expr in exprs.iter_mut() {
+                        self.visit_expr_mut(expr);
+                    }
+                    spec_stmts.push(Stmt::Semi(
+                        Expr::Verbatim(
+                            quote_spanned_builtin!(builtin, bracket_token.span => #builtin::opens_invariants([#exprs])),
+                        ),
+                        Semi { spans: [bracket_token.span] },
+                    ));
+                }
+            }
+        }
+
+        if let Some(SignatureUnwind { token, when }) = unwind {
+            if let Some((when_token, mut when_expr)) = when {
+                self.visit_expr_mut(&mut when_expr);
+                spec_stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(builtin, when_expr.span() => #builtin::no_unwind_when(#when_expr)),
+                    ),
+                    Semi { spans: [when_token.span] },
+                ));
+            } else {
+                spec_stmts.push(Stmt::Semi(
+                    Expr::Verbatim(
+                        quote_spanned_builtin!(builtin, token.span() => #builtin::no_unwind()),
+                    ),
+                    Semi { spans: [token.span] },
+                ));
+            }
+        }
+
+        if is_const {
+            vec![Stmt::Expr(Expr::Verbatim(
+                quote_spanned!(span => #[verus::internal(const_header_wrapper)] || { #(#spec_stmts)* };),
+            ))]
+        } else {
+            spec_stmts
+        }
+    }
+
     fn visit_fn(
         &mut self,
         attrs: &mut Vec<Attribute>,
@@ -404,227 +628,19 @@ impl Visitor {
         };
         self.inside_ghost = inside_ghost;
 
-        let prover_attr = sig.prover.as_ref().map(|(_, _, prover_ident)| {
+        let prover = self.take_ghost(&mut sig.spec.prover);
+        let prover_attr = prover.as_ref().map(|syn_verus::Prover { id: prover_ident, .. }| {
             mk_verus_attr(prover_ident.span(), quote! { prover(#prover_ident) })
         });
 
         self.inside_ghost += 1; // for requires, ensures, etc.
-        self.inside_bitvector =
-            sig.prover.as_ref().map_or(false, |(_, _, attr)| attr == "bit_vector");
+        self.inside_bitvector = prover.as_ref().map_or(false, |prover| prover.id == "bit_vector");
 
-        let requires = self.take_ghost(&mut sig.requires);
-        let recommends = self.take_ghost(&mut sig.recommends);
-        let ensures = self.take_ghost(&mut sig.ensures);
-        let returns = self.take_ghost(&mut sig.returns);
-        let decreases = self.take_ghost(&mut sig.decreases);
-        let opens_invariants = self.take_ghost(&mut sig.invariants);
-        let unwind = self.take_ghost(&mut sig.unwind);
-
-        let mut spec_stmts = Vec::new();
-        // TODO: wrap specs inside ghost blocks
-        if let Some(Requires { token, mut exprs }) = requires {
-            if exprs.exprs.len() > 0 {
-                for expr in exprs.exprs.iter_mut() {
-                    self.visit_expr_mut(expr);
-                }
-                spec_stmts.push(Stmt::Semi(
-                    Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, token.span => #builtin::requires([#exprs])),
-                    ),
-                    Semi { spans: [token.span] },
-                ));
-            }
-        }
-        if let Some(Recommends { token, mut exprs, via }) = recommends {
-            if exprs.exprs.len() > 0 {
-                for expr in exprs.exprs.iter_mut() {
-                    self.visit_expr_mut(expr);
-                }
-                spec_stmts.push(Stmt::Semi(
-                    Expr::Verbatim(quote_spanned_builtin!(builtin, token.span => #builtin::recommends([#exprs]))),
-                    Semi { spans: [token.span] },
-                ));
-            }
-            if let Some((via_token, via_expr)) = via {
-                spec_stmts.push(Stmt::Semi(
-                    Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, via_expr.span() => #builtin::recommends_by(#via_expr)),
-                    ),
-                    Semi { spans: [via_token.span] },
-                ));
-            }
-        }
-        if let Some(Ensures { attrs, token, mut exprs }) = ensures {
-            if exprs.exprs.len() > 0 {
-                for expr in exprs.exprs.iter_mut() {
-                    self.visit_expr_mut(expr);
-                }
-                let cont = match self.extract_quant_triggers(attrs, token.span) {
-                    Ok(
-                        found @ (ExtractQuantTriggersFound::Auto
-                        | ExtractQuantTriggersFound::AllTriggers
-                        | ExtractQuantTriggersFound::Triggers(..)),
-                    ) => {
-                        if exprs.exprs.len() == 0 {
-                            let err =
-                                "when using #![trigger f(x)], at least one ensures is required";
-                            let expr =
-                                Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                            spec_stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
-                            false
-                        } else {
-                            let e = take_expr(&mut exprs.exprs[0]);
-                            match found {
-                                ExtractQuantTriggersFound::Auto => {
-                                    exprs.exprs[0] = Expr::Verbatim(
-                                        quote_spanned!(exprs.exprs[0].span() => #[verus::internal(auto_trigger)] (#e)),
-                                    );
-                                }
-                                ExtractQuantTriggersFound::AllTriggers => {
-                                    exprs.exprs[0] = Expr::Verbatim(
-                                        quote_spanned!(exprs.exprs[0].span() => #[verus::internal(all_triggers)] (#e)),
-                                    );
-                                }
-                                ExtractQuantTriggersFound::Triggers(tuple) => {
-                                    exprs.exprs[0] = Expr::Verbatim(
-                                        quote_spanned_builtin!(builtin, exprs.exprs[0].span() => #builtin::with_triggers(#tuple, #e)),
-                                    );
-                                }
-                                ExtractQuantTriggersFound::None => unreachable!(),
-                            }
-                            true
-                        }
-                    }
-                    Ok(ExtractQuantTriggersFound::None) => true,
-                    Err(err_expr) => {
-                        exprs.exprs[0] = err_expr;
-                        false
-                    }
-                };
-                if cont {
-                    if let Some((p, ty)) = ret_pat {
-                        spec_stmts.push(Stmt::Semi(
-                            Expr::Verbatim(
-                                quote_spanned_builtin!(builtin, token.span => #builtin::ensures(|#p: #ty| [#exprs])),
-                            ),
-                            Semi { spans: [token.span] },
-                        ));
-                    } else {
-                        spec_stmts.push(Stmt::Semi(
-                            Expr::Verbatim(
-                                quote_spanned_builtin!(builtin, token.span => #builtin::ensures([#exprs])),
-                            ),
-                            Semi { spans: [token.span] },
-                        ));
-                    }
-                }
-            }
-        }
-        if let Some(Returns { token, mut exprs }) = returns {
-            if exprs.exprs.len() > 0 {
-                for expr in exprs.exprs.iter_mut() {
-                    self.visit_expr_mut(expr);
-                }
-                stmts.push(Stmt::Semi(
-                    Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, token.span => #builtin::returns([#exprs])),
-                    ),
-                    Semi { spans: [token.span] },
-                ));
-            }
-        }
-        if let Some(SignatureDecreases { decreases: Decreases { token, mut exprs }, when, via }) =
-            decreases
-        {
-            for expr in exprs.exprs.iter_mut() {
-                self.visit_expr_mut(expr);
-                if matches!(expr, Expr::Tuple(..)) {
-                    let err = "decreases cannot be a tuple; use `decreases x, y` rather than `decreases (x, y)`";
-                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                    spec_stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
-                }
-            }
-            stmts.push(Stmt::Semi(
-                Expr::Verbatim(
-                    quote_spanned_builtin!(builtin, token.span => #builtin::decreases((#exprs))),
-                ),
-                Semi { spans: [token.span] },
-            ));
-            if let Some((when_token, mut when_expr)) = when {
-                self.visit_expr_mut(&mut when_expr);
-                spec_stmts.push(Stmt::Semi(
-                    Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, when_expr.span() => #builtin::decreases_when(#when_expr)),
-                    ),
-                    Semi { spans: [when_token.span] },
-                ));
-            }
-            if let Some((via_token, via_expr)) = via {
-                spec_stmts.push(Stmt::Semi(
-                    Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, via_expr.span() => #builtin::decreases_by(#via_expr)),
-                    ),
-                    Semi { spans: [via_token.span] },
-                ));
-            }
-        }
-        if let Some(SignatureInvariants { token: _, set }) = opens_invariants {
-            match set {
-                InvariantNameSet::Any(any) => {
-                    spec_stmts.push(Stmt::Semi(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, any.span() => #builtin::opens_invariants_any()),
-                        ),
-                        Semi { spans: [any.span()] },
-                    ));
-                }
-                InvariantNameSet::None(none) => {
-                    spec_stmts.push(Stmt::Semi(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, none.span() => #builtin::opens_invariants_none()),
-                        ),
-                        Semi { spans: [none.span()] },
-                    ));
-                }
-                InvariantNameSet::List(InvariantNameSetList { bracket_token, mut exprs }) => {
-                    for expr in exprs.iter_mut() {
-                        self.visit_expr_mut(expr);
-                    }
-                    spec_stmts.push(Stmt::Semi(
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, bracket_token.span => #builtin::opens_invariants([#exprs])),
-                        ),
-                        Semi { spans: [bracket_token.span] },
-                    ));
-                }
-            }
-        }
-
+        let sig_span = sig.span().clone();
+        let spec_stmts =
+            self.take_sig_specs(&mut sig.spec, ret_pat, sig.constness.is_some(), sig_span);
         if !self.erase_ghost.erase() {
-            if sig.constness.is_some() {
-                stmts.push(Stmt::Expr(Expr::Verbatim(quote_spanned!(sig.span() => #[verus::internal(const_header_wrapper)] || { #(#spec_stmts)* };))));
-            } else {
-                stmts.extend(spec_stmts);
-            }
-        }
-
-        if let Some(SignatureUnwind { token, when }) = unwind {
-            if let Some((when_token, mut when_expr)) = when {
-                self.visit_expr_mut(&mut when_expr);
-                stmts.push(Stmt::Semi(
-                    Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, when_expr.span() => #builtin::no_unwind_when(#when_expr)),
-                    ),
-                    Semi { spans: [when_token.span] },
-                ));
-            } else {
-                stmts.push(Stmt::Semi(
-                    Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, token.span() => #builtin::no_unwind()),
-                    ),
-                    Semi { spans: [token.span] },
-                ));
-            }
+            stmts.extend(spec_stmts);
         }
 
         self.inside_ghost -= 1;
@@ -863,6 +879,79 @@ impl VisitMut for ExecGhostPatVisitor {
             _ => {}
         }
         syn_verus::visit_mut::visit_pat_mut(self, pat);
+    }
+}
+
+macro_rules! do_split_trait_method {
+    ($s:ident, $fun:ident, $spec_fun:ident, $mk_rust_attr:ident) => {
+        let mut $spec_fun = $fun.clone();
+        let x = &$fun.sig.ident;
+        let span = x.span();
+        $spec_fun.sig.ident = $s::Ident::new(&format!("{VERUS_SPEC}{x}"), span);
+        $spec_fun.attrs.push($mk_rust_attr(span, "doc", quote! { hidden }));
+    };
+}
+
+// In addition to prefiltering ghost code, we also split methods declarations
+// into separate spec and implementation declarations.  For example:
+//   fn f() requires x;
+// becomes
+//   fn VERUS_SPEC__f() requires x;
+//   fn f();
+// In a later pass, this becomes:
+//   fn VERUS_SPEC__f() { requires(x); ... }
+//   fn f();
+// Note: we don't do this if there's a default body,
+// because it turns out that the parameter names
+// don't exactly match between fun and fun.clone() (they have different macro contexts),
+// which would cause the body and specs to mismatch.
+// (See also split_trait_method_syn below.)
+fn split_trait_method(
+    spec_items: &mut Vec<TraitItem>,
+    fun: &mut TraitItemMethod,
+    erase_ghost: bool,
+) {
+    if !erase_ghost && fun.default.is_none() {
+        // Copy into separate spec method, then remove spec from original method
+        do_split_trait_method!(syn_verus, fun, spec_fun, mk_rust_attr);
+        spec_items.push(TraitItem::Method(spec_fun));
+        fun.sig.erase_spec_fields();
+    } else if erase_ghost {
+        match (&mut fun.default, &fun.sig.mode) {
+            (Some(default), FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_)) => {
+                // replace body with panic!()
+                let span = default.span();
+                let expr: Expr = Expr::Verbatim(quote_spanned! {
+                    span => { panic!() }
+                });
+                let stmt = Stmt::Expr(expr);
+                default.stmts = vec![stmt];
+            }
+            _ => {}
+        }
+    }
+}
+
+// syn version of split_trait_method (see above)
+// (Note: there are no spec fields to erase in syn; the spec attribute must be erased separately.)
+pub(crate) fn split_trait_method_syn(
+    fun: &syn::TraitItemMethod,
+    erase_ghost: bool,
+) -> Option<syn::TraitItemMethod> {
+    use syn::{token::Brace, Block, Expr, Stmt};
+    if !erase_ghost && fun.default.is_none() {
+        do_split_trait_method!(syn, fun, spec_fun, mk_rust_attr_syn);
+        // We won't run visit_trait_item_method_mut, so we need to add no_method_body here:
+        let span = fun.sig.fn_token.span;
+        let stmts = vec![Stmt::Expr(Expr::Verbatim(
+            quote_spanned_builtin!(builtin, span => #builtin::no_method_body()),
+        ))];
+        spec_fun.default = Some(Block { brace_token: Brace(span), stmts });
+        Some(spec_fun)
+    } else {
+        // Note: we only support exec functions via syn; there is no fun.sig.mode here
+        // So there's no case for spec, proof as in split_trait_method above
+        None
     }
 }
 
@@ -1320,48 +1409,13 @@ impl Visitor {
                 _ => true,
             });
         }
-        // In addition to prefiltering ghost code, we also split methods declarations
-        // into separate spec and implementation declarations.  For example:
-        //   fn f() requires x;
-        // becomes
-        //   fn VERUS_SPEC__f() requires x;
-        //   fn f();
-        // In a later pass, this becomes:
-        //   fn VERUS_SPEC__f() { requires(x); ... }
-        //   fn f();
-        // Note: we don't do this if there's a default body,
-        // because it turns out that the parameter names
-        // don't exactly match between fun and fun.clone() (they have different macro contexts),
-        // which would cause the body and specs to mismatch.
         let erase_ghost = self.erase_ghost.erase();
         let mut spec_items: Vec<TraitItem> = Vec::new();
         for item in items.iter_mut() {
             match item {
-                TraitItem::Method(ref mut fun) if !erase_ghost && fun.default.is_none() => {
-                    // Copy into separate spec method, then remove spec from original method
-                    let mut spec_fun = fun.clone();
-                    let x = &fun.sig.ident;
-                    let span = x.span();
-                    spec_fun.sig.ident = Ident::new(&format!("{VERUS_SPEC}{x}"), span);
-                    spec_fun.attrs.push(mk_rust_attr(span, "doc", quote! { hidden }));
-                    fun.sig.erase_spec_fields();
-                    spec_items.push(TraitItem::Method(spec_fun));
+                TraitItem::Method(ref mut fun) => {
+                    split_trait_method(&mut spec_items, fun, erase_ghost);
                 }
-                TraitItem::Method(fun) if erase_ghost => match (&mut fun.default, &fun.sig.mode) {
-                    (
-                        Some(default),
-                        FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_),
-                    ) => {
-                        // replace body with panic!()
-                        let span = default.span();
-                        let expr: Expr = Expr::Verbatim(quote_spanned! {
-                            span => { panic!() }
-                        });
-                        let stmt = Stmt::Expr(expr);
-                        default.stmts = vec![stmt];
-                    }
-                    _ => {}
-                },
                 _ => {}
             }
         }
@@ -3555,6 +3609,32 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
     visitor.visit_expr_mut(expr);
 }
 
+pub(crate) fn sig_specs_attr(
+    erase_ghost: EraseGhost,
+    spec_attr: SignatureSpecAttr,
+    sig: &syn::Signature,
+) -> Vec<Stmt> {
+    let SignatureSpecAttr { ret_pat, mut spec } = spec_attr;
+    let ret_pat = match (ret_pat, &sig.output) {
+        (Some((pat, _)), syn::ReturnType::Type(_, ty)) => Some((pat, ty.clone())),
+        _ => None,
+    };
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 1,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+        inside_bitvector: false,
+    };
+    let sig_span = sig.span().clone();
+    visitor.take_sig_specs(&mut spec, ret_pat, sig.constness.is_some(), sig_span)
+}
+
 // Unfortunately, the macro_rules tt tokenizer breaks tokens like &&& and ==> into smaller tokens.
 // Try to put the original tokens back together here.
 #[cfg(verus_keep_ghost)]
@@ -3783,34 +3863,52 @@ pub(crate) fn has_external_code(attrs: &Vec<Attribute>) -> bool {
 }
 
 /// Constructs #[name(tokens)]
-fn mk_rust_attr(span: Span, name: &str, tokens: TokenStream) -> Attribute {
-    let mut path_segments = Punctuated::new();
-    path_segments
-        .push(PathSegment { ident: Ident::new(name, span), arguments: PathArguments::None });
-    Attribute {
-        pound_token: token::Pound { spans: [span] },
-        style: AttrStyle::Outer,
-        bracket_token: token::Bracket { span },
-        path: Path { leading_colon: None, segments: path_segments },
-        tokens: quote! { (#tokens) },
-    }
+macro_rules! declare_mk_rust_attr {
+    ($name:ident, $s:ident) => {
+        fn $name(span: Span, name: &str, tokens: TokenStream) -> $s::Attribute {
+            let mut path_segments = $s::punctuated::Punctuated::new();
+            path_segments.push($s::PathSegment {
+                ident: $s::Ident::new(name, span),
+                arguments: $s::PathArguments::None,
+            });
+            $s::Attribute {
+                pound_token: $s::token::Pound { spans: [span] },
+                style: $s::AttrStyle::Outer,
+                bracket_token: $s::token::Bracket { span },
+                path: $s::Path { leading_colon: None, segments: path_segments },
+                tokens: quote! { (#tokens) },
+            }
+        }
+    };
 }
+declare_mk_rust_attr!(mk_rust_attr, syn_verus);
+declare_mk_rust_attr!(mk_rust_attr_syn, syn);
 
 /// Constructs #[verus::internal(tokens)]
-fn mk_verus_attr(span: Span, tokens: TokenStream) -> Attribute {
-    let mut path_segments = Punctuated::new();
-    path_segments
-        .push(PathSegment { ident: Ident::new("verus", span), arguments: PathArguments::None });
-    path_segments
-        .push(PathSegment { ident: Ident::new("internal", span), arguments: PathArguments::None });
-    Attribute {
-        pound_token: token::Pound { spans: [span] },
-        style: AttrStyle::Outer,
-        bracket_token: token::Bracket { span },
-        path: Path { leading_colon: None, segments: path_segments },
-        tokens: quote! { (#tokens) },
-    }
+macro_rules! declare_mk_verus_attr {
+    ($name:ident, $s:ident) => {
+        pub(crate) fn $name(span: Span, tokens: TokenStream) -> $s::Attribute {
+            let mut path_segments = $s::punctuated::Punctuated::new();
+            path_segments.push($s::PathSegment {
+                ident: $s::Ident::new("verus", span),
+                arguments: $s::PathArguments::None,
+            });
+            path_segments.push($s::PathSegment {
+                ident: $s::Ident::new("internal", span),
+                arguments: $s::PathArguments::None,
+            });
+            $s::Attribute {
+                pound_token: $s::token::Pound { spans: [span] },
+                style: $s::AttrStyle::Outer,
+                bracket_token: $s::token::Bracket { span },
+                path: $s::Path { leading_colon: None, segments: path_segments },
+                tokens: quote! { (#tokens) },
+            }
+        }
+    };
 }
+declare_mk_verus_attr!(mk_verus_attr, syn_verus);
+declare_mk_verus_attr!(mk_verus_attr_syn, syn);
 
 fn is_ptr_type(typ: &Type) -> bool {
     match typ {

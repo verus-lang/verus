@@ -104,6 +104,14 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct Prover {
+        pub by_token: Token![by],
+        pub paren_token: token::Paren,
+        pub id: Ident,
+    }
+}
+
+ast_struct! {
     pub struct Requires {
         pub token: Token![requires],
         pub exprs: Specification,
@@ -207,6 +215,40 @@ ast_struct! {
     pub struct InvariantNameSetList {
         pub bracket_token: token::Bracket,
         pub exprs: Punctuated<Expr, Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct SignatureSpec {
+        // When adding Verus fields here, update erase_spec_fields:
+        pub prover: Option<Prover>,
+        pub requires: Option<Requires>,
+        pub recommends: Option<Recommends>,
+        pub ensures: Option<Ensures>,
+        pub returns: Option<Returns>,
+        pub decreases: Option<SignatureDecreases>,
+        pub invariants: Option<SignatureInvariants>,
+        pub unwind: Option<SignatureUnwind>,
+    }
+}
+
+impl SignatureSpec {
+    pub fn erase_spec_fields(&mut self) {
+        self.prover = None;
+        self.requires = None;
+        self.recommends = None;
+        self.ensures = None;
+        self.returns = None;
+        self.decreases = None;
+        self.invariants = None;
+        self.unwind = None;
+    }
+}
+
+ast_struct! {
+    pub struct SignatureSpecAttr {
+        pub ret_pat: Option<(Pat, Token![=>])>,
+        pub spec: SignatureSpec,
     }
 }
 
@@ -554,6 +596,21 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Prover {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let by_token: Token![by] = input.parse()?;
+            let content;
+            let paren_token = parenthesized!(content in input);
+            let id = content.parse()?;
+            Ok(Prover {
+                by_token,
+                paren_token,
+                id,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Requires {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(Requires {
@@ -759,6 +816,17 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<Prover> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![by]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Requires> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![requires]) {
@@ -865,6 +933,47 @@ pub mod parsing {
             } else {
                 Ok(None)
             }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for SignatureSpec {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let prover: Option<Prover> = input.parse()?;
+            let requires: Option<Requires> = input.parse()?;
+            let recommends: Option<Recommends> = input.parse()?;
+            let ensures: Option<Ensures> = input.parse()?;
+            let returns: Option<Returns> = input.parse()?;
+            let decreases: Option<SignatureDecreases> = input.parse()?;
+            let invariants: Option<SignatureInvariants> = input.parse()?;
+            let unwind: Option<SignatureUnwind> = input.parse()?;
+
+            Ok(SignatureSpec {
+                prover,
+                requires,
+                recommends,
+                ensures,
+                returns,
+                decreases,
+                invariants,
+                unwind,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for SignatureSpecAttr {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let ret_pat = if input.peek2(Token![=>]) {
+                let pat = input.parse()?;
+                let token = input.parse()?;
+                Some((pat, token))
+            } else {
+                None
+            };
+            let spec = input.parse()?;
+
+            Ok(SignatureSpecAttr { ret_pat, spec })
         }
     }
 
@@ -1269,6 +1378,16 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for Prover {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.by_token.to_tokens(tokens);
+            self.paren_token.surround(tokens, |tokens| {
+                self.id.to_tokens(tokens);
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Requires {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
@@ -1386,6 +1505,31 @@ mod printing {
             self.bracket_token.surround(tokens, |tokens| {
                 self.exprs.to_tokens(tokens);
             });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for SignatureSpec {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.prover.to_tokens(tokens);
+            self.requires.to_tokens(tokens);
+            self.recommends.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
+            self.returns.to_tokens(tokens);
+            self.decreases.to_tokens(tokens);
+            self.invariants.to_tokens(tokens);
+            self.unwind.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for SignatureSpecAttr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            if let Some((ret_pat, token)) = &self.ret_pat {
+                ret_pat.to_tokens(tokens);
+                token.to_tokens(tokens);
+            }
+            self.spec.to_tokens(tokens);
         }
     }
 
