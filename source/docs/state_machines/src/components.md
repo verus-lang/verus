@@ -37,19 +37,19 @@ state_machine!{
         //// Invariants on the state
 
         #[invariant]
-        pub fn is_even() -> bool {
-            pre.number % 2 == 0
+        pub fn is_even(&self) -> bool {
+            self.number % 2 == 0
         }
         
         //// Proofs that the invariants hold
 
         #[inductive(initialize)]
-        fn initialize_inductive(post: AdderMachine) {
+        fn initialize_inductive(post: Self) {
             // Verus proves that 0 % 2 == 0
         }
 
         #[inductive(add)]
-        fn add_inductive(pre: AdderMachine, post: AdderMachine, n: int) {
+        fn add_inductive(pre: Self, post: Self, n: int) {
             // Verus proves that if `pre.number % 2 == 0` then
             // `post.number` is `pre.number + 2*n` is divisble by 2 as well.
         }
