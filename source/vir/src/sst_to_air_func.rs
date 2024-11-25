@@ -540,7 +540,9 @@ pub fn func_decl_to_air(
                 // NOTE: Maybe we should use a different specialization
                 let ens =
                     prefix_ensures(&specialization.transform_ident(fun_to_air_ident(&method)));
-                let mut typ_args = (**trait_typ_args).clone();
+                let mut typ_args: Vec<Typ> = trait_typ_args.iter()
+                                                  .map(|typ| specialization.transform_typ(&function.x.typ_params, typ)).collect::<Vec<_>>();
+                //let mut typ_args = (**trait_typ_args).clone();
                 let num_trait_and_method_typ_params = ctx.func_map[method].x.typ_params.len();
                 let num_method_typ_params = num_trait_and_method_typ_params - trait_typ_args.len();
                 let num_our_total_typ_params = function.x.typ_params.len();

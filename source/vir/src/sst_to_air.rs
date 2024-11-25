@@ -958,7 +958,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                try_unbox(ctx, expr.clone(), typ).unwrap_or_else(|| panic!("Unbox: {:?}", expr))
+                if expr_ctxt.spec_map.is_empty() {
+                    try_unbox(ctx, expr.clone(), typ).unwrap_or_else(|| panic!("Unbox: {:?}", expr))
+                } else {
+                    println!("Short-circuiting unbox of: {expr:?}");
+                    expr.clone()
+                }
             }
             UnaryOpr::HasType(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
