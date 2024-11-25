@@ -309,7 +309,14 @@ impl<'a> OpGenerator<'a> {
             return Ok(vec![]);
         };
 
-        let specs = self.specializations.get(fun).unwrap_or("Specialization does not exist");
+        
+
+        let specs = self.specializations.get(fun).cloned() // Clone the existing value if found
+        .unwrap_or_else(|| {
+            let mut set = HashSet::new();
+            set.insert(Specialization::empty());
+            set // Return the dynamically created set
+        });
 
         let results: Vec<_> = specs
             .iter()
