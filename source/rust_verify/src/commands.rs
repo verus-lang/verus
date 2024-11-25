@@ -309,18 +309,30 @@ impl<'a> OpGenerator<'a> {
             return Ok(vec![]);
         };
 
-        let (commands, snap_map) =
-            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function, func_check_sst)?;
+        let specs = self.specializations.get(fun).unwrap_or("Specialization does not exist");
 
+        let results: Vec<_> = specs
+            .iter()
+            .map(|spec| {
+                let spec_map = spec.create_spec_map(&function.x.typ_params);
+                let (commands, snap_map) = vir::sst_to_air_func::func_sst_to_air(
+                    self.ctx,
+                    &function,
+                    func_check_sst,
+                    &spec_map,
+                )?;
+                Ok(Op::query(
+                    QueryOp::Body(style),
+                    commands,
+                    snap_map,
+                    &function,
+                    Some(func_check_sst.clone()),
+                ))
+            })
+            .collect::<Result<_, VirErr>>()?;
         self.ctx.fun = None;
 
-        Ok(vec![Op::query(
-            QueryOp::Body(style),
-            commands,
-            snap_map,
-            &function,
-            Some(func_check_sst.clone()),
-        )])
+        Ok(results)
     }
 
     fn handle_proof_body_expand(
@@ -331,8 +343,13 @@ impl<'a> OpGenerator<'a> {
     ) -> Result<Op, VirErr> {
         self.ctx.fun = mk_fun_ctx(&function, false /*recommend*/);
 
-        let (commands, snap_map) =
-            vir::sst_to_air_func::func_sst_to_air(self.ctx, &function, &expanded_function_sst)?;
+        let fun = &function.x.name;
+        let (commands, snap_map) = vir::sst_to_air_func::func_sst_to_air(
+            self.ctx,
+            &function,
+            &expanded_function_sst,
+            &Default::default(),
+        )?;
         let commands = focus_commands_with_context_on_assert_id(commands, assert_id);
 
         self.ctx.fun = None;
