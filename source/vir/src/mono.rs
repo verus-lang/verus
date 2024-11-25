@@ -167,7 +167,7 @@ Arc::new(SpecTypX::Poly)
     }
 }
 
-type SpecMap<'a> = HashMap<&'a Ident, &'a SpecTyp>;
+pub type SpecMap = HashMap<Ident, SpecTyp>;
 
 /**
 This stores one instance of specialization of a particular function. This
@@ -280,16 +280,16 @@ structure mirrors `StmExpVisitorDfs`.
  */
 struct SpecializationVisitor<'a> {
     invocations: Vec<(Fun, Specialization)>,
-    spec_map: HashMap<&'a Ident, &'a SpecTyp>,
+    spec_map: &'a SpecMap,
 }
 impl<'a> SpecializationVisitor<'a> {
-    fn new(spec_map: HashMap<&'a Ident, &'a SpecTyp>) -> Self {
+    fn new(spec_map: &SpecMap) -> Self {
         Self { invocations: vec![], spec_map }
     }
 }
 impl<'a> Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for SpecializationVisitor<'a> {
     fn visit_exp(&mut self, exp: &Exp) -> Result<(), ()> {
-        if let Some((fun, spec)) = Specialization::from_exp(&exp.x, &self.spec_map) {
+        if let Some((fun, spec)) = Specialization::from_exp(&exp.x, self.spec_map) {
             self.invocations.push((fun.clone(), spec))
         }
         self.visit_exp_rec(exp)
@@ -306,9 +306,9 @@ pub(crate) fn collect_specializations_from_function(
 
     // Build map from function type parametres to spec types.
     assert!(spec.is_empty() || spec.typs.len() == function.x.typ_params.len());
-    let spec_map: HashMap<&Ident, &SpecTyp> = std::iter::zip(function.x.typ_params.iter(), spec.typs.iter()).collect();
+    let spec_map: SpecMap = std::iter::zip(function.x.typ_params.iter().cloned(), spec.typs.iter().cloned()).collect();
 
-    let mut visitor = SpecializationVisitor::new(spec_map);
+    let mut visitor = SpecializationVisitor::new(&spec_map);
     visitor.visit_function(function).unwrap();
     visitor.invocations
 }

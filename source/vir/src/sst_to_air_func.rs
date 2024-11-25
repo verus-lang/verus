@@ -290,7 +290,9 @@ fn func_body_to_air(
             let typ_args = vec_map(&function.x.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
             (function.x.name.clone(), function.x.name.clone(), Arc::new(typ_args))
         };
-
+    //CONSTRUCT MAP HERE 
+    assert!(specialization.is_empty() || specialization.typs.len() == function.x.typ_params.len());
+    let spec_map: HashMap<&Ident, &SpecTyp> = std::iter::zip(function.x.typ_params.iter(), specialization.typs.iter()).collect();
     // non-recursive:
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) body))))
     // recursive:
@@ -298,7 +300,7 @@ fn func_body_to_air(
     //   (axiom (forall (... fuel) (= (rec%f ... fuel) (rec%f ... zero) )))
     //   (axiom (forall (... fuel) (= (rec%f ... (succ fuel)) body[rec%f ... fuel] )))
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
-    let body_expr = exp_to_expr(&ctx, &new_body_exp, &ExprCtxt::new())?;
+    let body_expr = exp_to_expr(&ctx, &new_body_exp, &ExprCtxt::new(), &spec_map)?;
     let def_body = if !function.x.has.is_recursive {
         body_expr
     } else {
