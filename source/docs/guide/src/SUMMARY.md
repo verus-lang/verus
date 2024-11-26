@@ -87,7 +87,7 @@
   - [Encapsulating well-formedness with type invariants](./container_bst_type_invariant.md)
   - [Making it generic](./container_bst_generic.md)
   - [Implementing `Clone`](./container_bst_clone.md)
-  - [Full source for examples](./container_bst_all_source.md)
+  - [Full source for the examples](./container_bst_all_source.md)
 
 - [Understanding the guarantees of a verified program](./guarantees.md)
   - [Assumptions and trusted components](./tcb.md)

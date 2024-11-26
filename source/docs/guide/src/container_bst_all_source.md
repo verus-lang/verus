@@ -1,4 +1,4 @@
-# Full source for examples
+# Full source for the examples
 
  * [First draft](#first-draft)
  * [Version with type invariants](#version-with-type-invariants)

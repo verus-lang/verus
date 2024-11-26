@@ -1,12 +1,12 @@
 # Making it generic
 
-In the previous sections, we devised a `TreeMap<V>` which a fixed key type (`u64`).
+In the previous sections, we devised a `TreeMap<V>` which a used fixed key type (`u64`).
 In this section, we'll show to make a `TreeMap<K, V>` which is generic over the key type `K`.
 
 ## Defining a "total order"
 
 The main reason this is challenging is that the BST requires a way of _comparing_
-values of `K`, both for equality, for obtaining an ordering. This comparison is used both
+values of `K`, both for equality, and to obtain an ordering. This comparison is used both
 in the implementation (to find the node for a given key, or to figure out where such
 a node should be inserted) and in the well-formedness invariants that enforce
 the BST ordering property.
@@ -24,13 +24,13 @@ This trait simultaneously:
  * Requires it to satisfy the properties of a total order
  * Requires an `executable` three-way comparison function to exist
 
-There's one simplification we've made here: we're assuming that "equality" is the comparison
+There's one simplification we've made here: we're assuming that "equality" in the comparison
 function is the same as [spec equality](./equality.md).
-This isn't always suitable; some datatypes may have more that one way to represent the same
+This isn't always suitable; some datatypes may have more than one way to represent the same
 logical value. A more general specification would allow an ordering that respects
 some arbitrary equivalence relation.
 This is how [`vstd::hash_map::HashMapWithView`](https://verus-lang.github.io/verus/verusdoc/vstd/hash_map/struct.HashMapWithView.html) works, for example.
-To keep things simple for this demonstration, though, we'll use a total ordering that respects
+To keep things simple for this demonstration though, we'll use a total ordering that respects
 spec equality.
 
 ### Updating the struct and definitions
@@ -41,7 +41,7 @@ We'll start by updating the structs to take a generic parameter `K: TotalOrdered
 {{#include ../../../rust_verify/example/guide/bst_map_generic.rs:structs}}
 ```
 
-We'll also update the well-formedness condition use the generic `K::le` instead of integer `<=`.
+We'll also update the well-formedness condition to use the generic `K::le` instead of integer `<=`.
 Where the original definition used `a < b`, we now use `a.le(b) && a != b`.
 
 ```rust

@@ -29,7 +29,7 @@ Without the `requires` clause, the above snippet would fail to verify.
 Intuitively, however, one might wonder why we have to carry this predicate around at all.
 After all,
 due to encapsulation, it isn't ever possible for the client to create a `tree_map` where
-`well_formed()` _doesn't_ hold true.
+`well_formed()` _doesn't_ hold.
 
 In this section, we'll show how to use Verus's [type invariants](./reference-type-invariants.md)
 feature to remedy this burden from the client.
@@ -55,7 +55,7 @@ Note that in addition to adding the `type_invariant` attribute, we have **also r
 the `pub` specifier** from `well_formed`.
 Now not only is the body invisible to the client, even the name is as well.
 After all, our intent is to prevent the client from needing to reason about it, at which point
-there is no point is exposing it through the public interface at all.
+there is no reason to expose it through the public interface at all.
 
 Of course, for this to be possible, we'll need to update the specifications of `TreeMap`'s
 various `pub` methods.
@@ -64,14 +64,16 @@ various `pub` methods.
 
 Let's start with an easy one: `new`.
 
-{{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:get}}
+```rust
+{{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:new}}
+```
 
 All we've done here is remove the `s.well_formed()` postcondition, which as discussed,
-is no longer going to be necessary.
+is no longer necessary.
 
 Crucially, Verus still requires us to _prove_ that `s.well_formed()` holds.
 Specifically, since `well_formed` has been marked with `#[verifier::type_invariant]`,
-Verus checks that `well_formed()` holds when we invoke the `TreeMap` constructor.
+Verus checks that `well_formed()` holds when the `TreeMap` constructor returns.
 As before, Verus can check this condition fairly trivially.
 
 ### Updating the code: `get`
@@ -79,9 +81,11 @@ As before, Verus can check this condition fairly trivially.
 Now let's take a look at `get`. The first thing to notice is that we remove
 the `requires self.well_formed()` clause.
 
+```rust
 {{#include ../../../rust_verify/example/guide/bst_map_type_invariant.rs:get}}
+```
 
-Given that we no longer have the precondition, how _do_ we deduce `sell.well_formed()`
+Given that we no longer have the precondition, how _do_ we deduce `self.well_formed()`
 (which is needed to prove `self.root` is well-formed and call `Node::get_from_optional`)?
 
 This can be done with the built-in pseudo-lemma `use_type_invariant`. When called on any object,

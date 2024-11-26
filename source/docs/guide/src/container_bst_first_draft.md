@@ -9,12 +9,12 @@ In the study of data structures, there are
 [to](https://en.wikipedia.org/wiki/Splay_tree)
 [balance](https://en.wikipedia.org/wiki/B-tree)
 a binary search tree.
-To keep things simple, we won't be implementing of them—instead,
-we'll be implemented a straightforward,
+To keep things simple, we won't be implementing any of them—instead,
+we'll be implementing a straightforward,
 _unbalanced_ binary search tree. Improving the design to be more efficient will be left
 as an exercise.
 
-Furthermore, our first draft of an implementation is going to be mapping keys
+Furthermore, our first draft of an implementation is going to map keys
 of the fixed orderable type, `u64`, to values of type `V`. In a later chapter,
 we'll change the keys to also be generic, thus mapping `K` to `V` for arbitrary types
 `K` and `V`.
@@ -33,17 +33,17 @@ Furthermore, the tree might be entirely empty, in which case there is no root.
 ```
 
 Note that only `TreeMap` is marked `pub`. Its field, `root`, as well as the `Node` type
-as a whole, are implementation details, thus private to the module.
+as a whole, are implementation details, and thus are private to the module.
 
 ### The abstract view
 
-When creating a new data structure, there are usually two things to do first:
+When creating a new data structure, there are usually two important first steps:
 
  * Establish an interpretation of the data structure as some abstract datatype that will
    be used to write specifications.
  * Establish the well-formedness invariants of the data structure.
 
-We'll do the first one first (in part because it will actually help with the second).
+We'll do the first one first (in part because it will actually help with the second one).
 In this case, we want to interpret the data structure as a
 [`Map<u64, V>`](https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html).
 We can define such a function recursively.
@@ -52,12 +52,12 @@ We can define such a function recursively.
 {{#include ../../../rust_verify/example/guide/bst_map.rs:AsMapDef}}
 ```
 
-Again note that only `Tree::as_map` is marked `pub`, and furthermore, that it's marked
+Again note that only `TreeMap::as_map` is marked `pub`, and furthermore, that it's marked
 `closed`. The definition of `as_map` is, again, an implementation detail.
 
 It is customary to also implement the
 [`View` trait](https://verus-lang.github.io/verus/verusdoc/vstd/view/trait.View.html)
-as a convenience. This lets client refer to the map implementation using the `@` notation,
+as a convenience. This lets clients refer to the map implementation using the `@` notation,
 e.g., `tree_map@` as a shorthand for `tree_map.view()`.
 We'll be writing our specifications in terms of `tree_map.view()`.
 
@@ -86,8 +86,8 @@ The specification indicates that the returned object must represent the _empty_ 
 ```
 
 Recall that `tree_map@` is equivalent to `tree_map.as_map()`.
-An inspection the definition of `tree_map.as_map()` and `Node::optional_as_map()` should
-make it apparent this will be the empty set when `root` is `None`.
+An inspection of the definition of `tree_map.as_map()` and `Node::optional_as_map()` should
+make it apparent this will be the empty map when `root` is `None`.
 
 Observe again that this specification does not refer to the tree internals at all,
 only that it is well-formed and that its abstract view is the empty map.
@@ -101,14 +101,14 @@ the `value`, or we'll reach a leaf without ever finding the desired node, in whi
 create a new node.
 
 (Aside: One slight snag has to do with a limitation of Verus's handing of mutable references.
-Specifically, Verus doesn't yet support an easy to get a
+Specifically, Verus doesn't yet support an easy way to get a
 `&mut T` out of a `&mut Option<T>`. To get around this, we use [`std::mem::swap`](https://doc.rust-lang.org/std/mem/fn.swap.html) to get ownership of the node.)
 
 ```rust
 {{#include ../../../rust_verify/example/guide/bst_map.rs:insert}}
 ```
 
-Observe that the specification of `TreeMap::insert` can be given in terms of
+Observe that the specification of `TreeMap::insert` is given in terms of
 [`Map::insert`](https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html#method.remove).
 
 ### Implementing the `delete` operation
@@ -121,7 +121,7 @@ any particular balancing strategy, it's still not that bad:
 {{#include ../../../rust_verify/example/guide/bst_map.rs:delete}}
 ```
 
-Observe that the specification of `TreeMap::delete` can be given in terms of
+Observe that the specification of `TreeMap::delete` is given in terms of
 [`Map::remove`](https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html#method.remove).
 
 ### Implementing the `get` operation

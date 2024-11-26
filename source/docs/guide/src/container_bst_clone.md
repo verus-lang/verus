@@ -7,11 +7,12 @@ Naturally, such an implementation will require both `K: Clone` and `V: Clone`.
 However, to write a sensible clone implementation for the tree, we have to consider
 what the implementations of `K::clone` and `V::clone` actually do.
 
-Generally speaking, Verus imposes no constraints on the implementations of the `Clone`,
+Generally speaking, Verus imposes no constraints on the implementations of `Clone`,
 so it is not necessarily true that a `clone()` call will return a value that is spec-equal
-to its inputs.
+to its input.
 
-With this in mind, we're going to prove the following signature for `TreeMap<K, V>::clone`:
+With this in mind, to simplify this example,
+we're going to prove the following signature for `TreeMap<K, V>::clone`:
 
 ```rust
 {{#include ../../../rust_verify/example/guide/bst_map_generic.rs:clone_signature}}
@@ -20,12 +21,14 @@ With this in mind, we're going to prove the following signature for `TreeMap<K, 
     }
 }
 ```
+We explain the details of this signature below.
 
 ### Dealing with `K::clone`
 
-In order to clone all the keys, we need `K::clone` to respect the ordering of elements; otherwise,
-we'd need to resort all the keys on clone in order for the resulting tree to be valid.
-However, it's not likely that is desirable behavior. If `Clone` doesn't respect the
+In order to clone all the keys, we need `K::clone` to respect the ordering of elements; 
+otherwise during a clone operation,
+we'd need to re-sort all the keys so that the resulting tree would be valid.
+However, it's unlikely that is desirable behavior. If `K::clone` doesn't respect the
 `TotalOrdered` implementation, it's likely a user bug.
 
 A general way to handle this would be to require that `Clone` actually be compatible
@@ -42,12 +45,12 @@ ensure that `self@.dom() =~= res@.dom()`.
 ### Dealing with `V::clone`
 
 So what about `V`? Again, we don't know _a priori_ what `V::clone` does. It might return
-values unequal to the imput; it might even be nondeterminstic. Therefore,
+a value unequal to the imput; it might even be nondeterminstic. Therefore,
 a cloned `TreeMap` may have different values than the original.
 
 In order to specify `TreeMap::<K, V>::clone` as generically as possible, we choose
 to write its ensures clause _in terms of_ the ensures clause for `V::clone`.
-This can be done using `[`call_ensures`](./exec_funs_as_values.md)`.
+This can be done using [`call_ensures`](./exec_funs_as_values.md).
 The predicate `call_ensures(V::clone, (&self@[key],), res@[key])` effectively says
 "`self@[key]` and `res@[key]` are a possible input-output pair for `V::clone`".
 
