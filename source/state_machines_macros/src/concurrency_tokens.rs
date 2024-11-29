@@ -219,10 +219,7 @@ fn trusted_copy(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
 /// and if you have multiple elements of the same value, that's represented
 /// by having a higher counter.
 
-fn token_struct_stream(
-    sm: &SM,
-    field: &Field,
-) -> TokenStream {
+fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
     let tokenname = field_token_type_name(field);
     let insttype = inst_type(sm);
     let gen = &sm.generics;
@@ -250,7 +247,7 @@ fn token_struct_stream(
             let name = Ident::new(&format!("{:}_map", field.name.to_string()), field.name.span());
             let ty = name_with_type_args(&name, sm);
             let tok = field_token_type(sm, field);
-            quote_vstd!{ vstd =>
+            quote_vstd! { vstd =>
                 #[allow(non_camel_case_types)]
                 pub type #ty = #vstd::tokens::MapToken<#key, #val, #tok>;
             }
@@ -259,21 +256,22 @@ fn token_struct_stream(
             let name = Ident::new(&format!("{:}_set", field.name.to_string()), field.name.span());
             let ty = name_with_type_args(&name, sm);
             let tok = field_token_type(sm, field);
-            quote_vstd!{ vstd =>
+            quote_vstd! { vstd =>
                 #[allow(non_camel_case_types)]
                 pub type #ty = #vstd::tokens::SetToken<#elem, #tok>;
             }
         }
         ShardableType::Multiset(elem) => {
-            let name = Ident::new(&format!("{:}_multiset", field.name.to_string()), field.name.span());
+            let name =
+                Ident::new(&format!("{:}_multiset", field.name.to_string()), field.name.span());
             let ty = name_with_type_args(&name, sm);
             let tok = field_token_type(sm, field);
-            quote_vstd!{ vstd =>
+            quote_vstd! { vstd =>
                 #[allow(non_camel_case_types)]
                 pub type #ty = #vstd::tokens::MultisetToken<#elem, #tok>;
             }
         }
-        _ => TokenStream::new()
+        _ => TokenStream::new(),
     };
 
     return quote! {
@@ -335,7 +333,7 @@ pub fn output_token_types_and_fns(
 
     token_stream.extend(instance_struct_stream(&bundle.sm));
     inst_impl_token_stream.extend(trusted_clone());
-    inst_impl_token_stream.extend(quote_vstd!{ vstd =>
+    inst_impl_token_stream.extend(quote_vstd! { vstd =>
         #[cfg_attr(verus_keep_ghost, verifier::spec)]
         #[cfg_attr(verus_keep_ghost, verifier::external_body)]
         pub fn id(&self) -> #vstd::tokens::InstanceId { unimplemented!() }
@@ -353,13 +351,18 @@ pub fn output_token_types_and_fns(
                 // storage types don't have tokens; the 'token type' is just the
                 // the type of the field
             }
-            ShardableType::Variable(_) |
-            ShardableType::Option(_) | ShardableType::PersistentOption(_) |
-            ShardableType::Map(..) | ShardableType::PersistentMap(..) |
-            ShardableType::Multiset(_) |
-            ShardableType::Set(_) | ShardableType::PersistentSet(_) |
-            ShardableType::Count | ShardableType::PersistentCount |
-            ShardableType::Bool | ShardableType::PersistentBool => {
+            ShardableType::Variable(_)
+            | ShardableType::Option(_)
+            | ShardableType::PersistentOption(_)
+            | ShardableType::Map(..)
+            | ShardableType::PersistentMap(..)
+            | ShardableType::Multiset(_)
+            | ShardableType::Set(_)
+            | ShardableType::PersistentSet(_)
+            | ShardableType::Count
+            | ShardableType::PersistentCount
+            | ShardableType::Bool
+            | ShardableType::PersistentBool => {
                 token_stream.extend(token_struct_stream(&bundle.sm, field));
             }
         }
@@ -1219,7 +1222,9 @@ fn relation_for_collection_of_internal_tokens(
 /// generated conditions (e.g., see `add_initialization_output_conditions`)
 fn traits_stream(sm: &SM, field: &Field) -> TokenStream {
     match &field.stype {
-        ShardableType::Variable(ty) | ShardableType::Option(ty) | ShardableType::PersistentOption(ty) => {
+        ShardableType::Variable(ty)
+        | ShardableType::Option(ty)
+        | ShardableType::PersistentOption(ty) => {
             let token_ty = field_token_type(sm, field);
             token_trait_impls(
                 &token_ty,
@@ -1257,30 +1262,15 @@ fn traits_stream(sm: &SM, field: &Field) -> TokenStream {
         }
         ShardableType::Multiset(ty) => {
             let token_ty = field_token_type(sm, field);
-            token_trait_impls(
-                &token_ty,
-                &sm.generics,
-                MainTrait::Element(ty),
-                false,
-            )
+            token_trait_impls(&token_ty, &sm.generics, MainTrait::Element(ty), false)
         }
         ShardableType::Count => {
             let token_ty = field_token_type(sm, field);
-            token_trait_impls(
-                &token_ty,
-                &sm.generics,
-                MainTrait::Count,
-                false,
-            )
+            token_trait_impls(&token_ty, &sm.generics, MainTrait::Count, false)
         }
         ShardableType::PersistentCount => {
             let token_ty = field_token_type(sm, field);
-            token_trait_impls(
-                &token_ty,
-                &sm.generics,
-                MainTrait::MonotonicCount,
-                false,
-            )
+            token_trait_impls(&token_ty, &sm.generics, MainTrait::MonotonicCount, false)
         }
         _ => TokenStream::new(),
     }
@@ -1310,8 +1300,12 @@ fn token_trait_impls(
             match main_trait {
                 MainTrait::Simple => quote_vstd! { vstd => #vstd::tokens::UniqueSimpleToken },
                 MainTrait::Value(t) => quote_vstd! { vstd => #vstd::tokens::UniqueValueToken<#t> },
-                MainTrait::KeyValue(k, v) => quote_vstd! { vstd => #vstd::tokens::UniqueKeyValueToken<#k, #v> },
-                MainTrait::Element(e) => quote_vstd! { vstd => #vstd::tokens::UniqueElementToken<#e> },
+                MainTrait::KeyValue(k, v) => {
+                    quote_vstd! { vstd => #vstd::tokens::UniqueKeyValueToken<#k, #v> }
+                }
+                MainTrait::Element(e) => {
+                    quote_vstd! { vstd => #vstd::tokens::UniqueElementToken<#e> }
+                }
                 MainTrait::Count => unreachable!(),
                 MainTrait::MonotonicCount => unreachable!(),
             },
@@ -1336,15 +1330,16 @@ fn token_trait_impl_main(
     token_ty: &Type,
     generics: &Option<Generics>,
     main_trait: &MainTrait,
-) -> TokenStream
-{
+) -> TokenStream {
     let impl_decl = impl_decl_stream_for(
         token_ty,
         generics,
         match main_trait {
             MainTrait::Simple => quote_vstd! { vstd => #vstd::tokens::SimpleToken },
             MainTrait::Value(t) => quote_vstd! { vstd => #vstd::tokens::ValueToken<#t> },
-            MainTrait::KeyValue(k, v) => quote_vstd! { vstd => #vstd::tokens::KeyValueToken<#k, #v> },
+            MainTrait::KeyValue(k, v) => {
+                quote_vstd! { vstd => #vstd::tokens::KeyValueToken<#k, #v> }
+            }
             MainTrait::Element(e) => quote_vstd! { vstd => #vstd::tokens::ElementToken<#e> },
             MainTrait::Count => quote_vstd! { vstd => #vstd::tokens::CountToken },
             MainTrait::MonotonicCount => quote_vstd! { vstd => #vstd::tokens::MonotonicCountToken },
@@ -1353,14 +1348,14 @@ fn token_trait_impl_main(
 
     let add_spec_fn = |ts: &mut TokenStream, name: &str, ty: &Type| {
         let name = Ident::new(name, token_ty.span());
-        ts.extend(quote!{
+        ts.extend(quote! {
             #[cfg_attr(verus_keep_ghost, verifier::spec)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             fn #name(&self) -> #ty { ::core::unimplemented!() }
         });
     };
     let add_agree = |ts: &mut TokenStream| {
-        ts.extend(quote!{
+        ts.extend(quote! {
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             fn agree(#[verifier::proof] &self, #[verifier::proof] other: &Self)
@@ -1368,7 +1363,7 @@ fn token_trait_impl_main(
         });
     };
     let add_join_split = |ts: &mut TokenStream| {
-        ts.extend(quote!{
+        ts.extend(quote! {
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             fn join(#[verifier::proof] &mut self, #[verifier::proof] other: Self)
@@ -1388,7 +1383,7 @@ fn token_trait_impl_main(
         });
     };
     let add_weaken = |ts: &mut TokenStream| {
-        ts.extend(quote!{
+        ts.extend(quote! {
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
@@ -1397,7 +1392,7 @@ fn token_trait_impl_main(
         });
     };
     let add_arbitrary = |ts: &mut TokenStream| {
-        ts.extend(quote!{
+        ts.extend(quote! {
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
@@ -1408,9 +1403,13 @@ fn token_trait_impl_main(
 
     let mut ts = TokenStream::new();
 
-    add_spec_fn(&mut ts, "instance_id", &Type::Verbatim(quote_vstd!{ vstd => #vstd::tokens::InstanceId }));
+    add_spec_fn(
+        &mut ts,
+        "instance_id",
+        &Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::InstanceId }),
+    );
     match main_trait {
-        MainTrait::Simple => { }
+        MainTrait::Simple => {}
         MainTrait::Value(t) => {
             add_spec_fn(&mut ts, "value", t);
             add_agree(&mut ts);
@@ -1424,11 +1423,19 @@ fn token_trait_impl_main(
             add_spec_fn(&mut ts, "element", e);
         }
         MainTrait::Count => {
-            add_spec_fn(&mut ts, "count", &Type::Verbatim(quote_vstd!{ vstd => #vstd::prelude::nat }));
+            add_spec_fn(
+                &mut ts,
+                "count",
+                &Type::Verbatim(quote_vstd! { vstd => #vstd::prelude::nat }),
+            );
             add_join_split(&mut ts);
         }
         MainTrait::MonotonicCount => {
-            add_spec_fn(&mut ts, "count", &Type::Verbatim(quote_vstd!{ vstd => #vstd::prelude::nat }));
+            add_spec_fn(
+                &mut ts,
+                "count",
+                &Type::Verbatim(quote_vstd! { vstd => #vstd::prelude::nat }),
+            );
             add_weaken(&mut ts);
         }
     }
@@ -1881,14 +1888,12 @@ fn token_matches_elt(
         MonoidElt::OptionSome(Some(e)) => {
             mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.value()}), &e)
         }
-        MonoidElt::SingletonMultiset(e) => 
-            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.element()}), &e),
+        MonoidElt::SingletonMultiset(e) => {
+            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.element()}), &e)
+        }
         MonoidElt::SingletonKV(key, None) => {
-            let e1 = mk_eq(
-                span,
-                &Expr::Verbatim(quote_spanned! { span => #token_name.key()}),
-                &key,
-            );
+            let e1 =
+                mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.key()}), &key);
 
             let pat = pat_opt.as_ref().expect("pat should exist for a pattern-binding case");
             if is_definitely_irrefutable(pat) {
@@ -2289,9 +2294,7 @@ fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field, span: Span) -> Ex
 fn get_old_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let arg = transition_arg_name(&field);
     if ctxt.fields_written.contains(&field.name.to_string()) {
-        Expr::Verbatim(
-            quote_spanned_vstd! { vstd, span => #vstd::prelude::old(#arg).value() },
-        )
+        Expr::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::prelude::old(#arg).value() })
     } else {
         Expr::Verbatim(quote_spanned! { span => #arg.value() })
     }

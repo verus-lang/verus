@@ -56,7 +56,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
 
     let mut use_traits = TokenStream::new();
     if concurrent {
-        use_traits = quote_vstd!{ vstd =>
+        use_traits = quote_vstd! { vstd =>
             use #vstd::tokens::ValueToken;
             use #vstd::tokens::KeyValueToken;
             use #vstd::tokens::CountToken;
