@@ -62,16 +62,6 @@ fn field_token_type_turbofish(sm: &SM, field: &Field) -> Type {
     name_with_type_args_turbofish(&field_token_type_name(field), sm)
 }
 
-fn field_token_data_type_turbofish(sm: &SM, field: &Field) -> Type {
-    name_with_type_args_turbofish(&field_token_data_type_name(field), sm)
-}
-
-fn field_token_field_name(field: &Field) -> Ident {
-    // just call it value rather than repeat the field name
-    // else, the user will be writing foo.foo everywhere
-    Ident::new("value", field.name.span())
-}
-
 fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
     let name = "original_field_".to_string() + &field.name.to_string();
     Ident::new(&name, field.name.span())
@@ -107,76 +97,6 @@ fn exchange_name(tr: &Transition) -> Ident {
 fn transition_arg_name(field: &Field) -> Ident {
     let name = "param_token_".to_string() + &field.name.to_string();
     Ident::new(&name, field.name.span())
-}
-
-fn option_relation_post_condition_name(field: &Field, strict: bool) -> Ident {
-    if strict {
-        Ident::new("option_agree_strict", field.name.span())
-    } else {
-        Ident::new("option_agree", field.name.span())
-    }
-}
-
-fn set_relation_post_condition_name(field: &Field, strict: bool) -> Ident {
-    if strict {
-        Ident::new("set_agree_strict", field.name.span())
-    } else {
-        Ident::new("set_agree", field.name.span())
-    }
-}
-
-fn bool_relation_post_condition_name(field: &Field, strict: bool) -> Ident {
-    if strict {
-        Ident::new("bool_agree_strict", field.name.span())
-    } else {
-        Ident::new("bool_agree", field.name.span())
-    }
-}
-
-fn option_relation_post_condition_qualified_name(sm: &SM, field: &Field, strict: bool) -> Type {
-    let ty = field_token_type_turbofish(sm, field);
-    let name = option_relation_post_condition_name(field, strict);
-    Type::Verbatim(quote! { #ty::#name })
-}
-
-fn set_relation_post_condition_qualified_name(sm: &SM, field: &Field, strict: bool) -> Type {
-    let ty = field_token_type_turbofish(sm, field);
-    let name = set_relation_post_condition_name(field, strict);
-    Type::Verbatim(quote! { #ty::#name })
-}
-
-fn bool_relation_post_condition_qualified_name(sm: &SM, field: &Field, strict: bool) -> Type {
-    let ty = field_token_type_turbofish(sm, field);
-    let name = bool_relation_post_condition_name(field, strict);
-    Type::Verbatim(quote! { #ty::#name })
-}
-
-fn map_relation_post_condition_name(field: &Field, strict: bool) -> Ident {
-    if strict {
-        Ident::new("map_agree_strict", field.name.span())
-    } else {
-        Ident::new("map_agree", field.name.span())
-    }
-}
-
-fn map_relation_post_condition_qualified_name(sm: &SM, field: &Field, strict: bool) -> Type {
-    let ty = field_token_type_turbofish(sm, field);
-    let name = map_relation_post_condition_name(field, strict);
-    Type::Verbatim(quote! { #ty::#name })
-}
-
-fn multiset_relation_post_condition_name(field: &Field, strict: bool) -> Ident {
-    if strict {
-        Ident::new("multiset_agree_strict", field.name.span())
-    } else {
-        Ident::new("multiset_agree", field.name.span())
-    }
-}
-
-fn multiset_relation_post_condition_qualified_name(sm: &SM, field: &Field, strict: bool) -> Type {
-    let ty = field_token_type_turbofish(sm, field);
-    let name = multiset_relation_post_condition_name(field, strict);
-    Type::Verbatim(quote! { #ty::#name })
 }
 
 /// Print declaration for the Instance type.
@@ -328,12 +248,13 @@ fn token_struct_stream(
     let attrs = &sm.attrs;
 
     let impldecl = impl_decl_stream(&field_token_type(sm, field), &sm.generics);
-    let mut impl_token_stream = collection_relation_fns_stream(sm, field);
+    let traits_stream = traits_stream(sm, field);
 
     let is_copy = field.stype.is_persistent();
 
     let mut copy_impl = None;
     let mut no_copy_impl = None;
+    let mut impl_token_stream = TokenStream::new();
     if is_copy {
         impl_token_stream.extend(trusted_clone());
         copy_impl = Some(trusted_copy(&field_token_type(sm, field), &sm.generics));
@@ -407,6 +328,8 @@ fn token_struct_stream(
         }
 
         #copy_impl
+
+        #traits_stream
     };
 }
 
@@ -444,6 +367,11 @@ pub fn output_token_types_and_fns(
 
     token_stream.extend(instance_struct_stream(&bundle.sm));
     inst_impl_token_stream.extend(trusted_clone());
+    inst_impl_token_stream.extend(quote_vstd!{ vstd =>
+        #[cfg_attr(verus_keep_ghost, verifier::spec)]
+        #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+        pub fn id(&self) -> #vstd::tokens::InstanceId { unimplemented!() }
+    });
 
     for field in &bundle.sm.fields {
         match &field.stype {
@@ -1225,19 +1153,18 @@ fn add_initialization_output_conditions(
     match &field.stype {
         ShardableType::Variable(_) => {
             inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
-                #vstd::prelude::equal(#param_value.view().instance, #inst_value)
+                #vstd::prelude::equal(#param_value.instance(), #inst_value)
             }));
-            let field_name = field_token_field_name(field);
             ensures.push(Expr::Verbatim(quote_vstd! { vstd =>
-                #vstd::prelude::equal(#param_value.view().#field_name, #init_value)
+                #vstd::prelude::equal(#param_value.value(), #init_value)
             }));
         }
         ShardableType::Count | ShardableType::PersistentCount => {
             inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
-                #vstd::prelude::equal(#param_value.view().instance, #inst_value)
+                #vstd::prelude::equal(#param_value.instance(), #inst_value)
             }));
             ensures.push(Expr::Verbatim(quote_vstd! { vstd =>
-                #vstd::prelude::equal(#param_value.view().count, #init_value)
+                #vstd::prelude::equal(#param_value.count(), #init_value)
             }));
         }
         ShardableType::Option(_)
@@ -1256,6 +1183,7 @@ fn add_initialization_output_conditions(
                 init_value,
                 inst_value,
                 true,
+                field.name.span(),
             ));
         }
         _ => {
@@ -1271,6 +1199,7 @@ fn relation_for_collection_of_internal_tokens(
     given_value: Expr,
     inst_value: Expr,
     output: bool,
+    span: Span,
 ) -> Expr {
     // For output tokens, we allow the user to assume a slightly stronger condition about the data.
     // For input tokens, we require the user to prove a slightly weaker one.
@@ -1278,33 +1207,56 @@ fn relation_for_collection_of_internal_tokens(
 
     match &field.stype {
         ShardableType::Option(_) | ShardableType::PersistentOption(_) => {
-            let fn_name = option_relation_post_condition_qualified_name(sm, field, strict);
-            Expr::Verbatim(quote! {
-                #fn_name(#param_value, #given_value, #inst_value)
-            })
-        }
-        ShardableType::Set(_) | ShardableType::PersistentSet(_) => {
-            let fn_name = set_relation_post_condition_qualified_name(sm, field, strict);
-            Expr::Verbatim(quote! {
-                #fn_name(#param_value, #given_value, #inst_value)
+            let fncall = if strict {
+                quote_spanned_vstd! { vstd, span => #vstd::tokens::option_value_eq_option_token }
+            } else {
+                quote_spanned_vstd! { vstd, span => #vstd::tokens::option_value_le_option_token }
+            };
+            Expr::Verbatim(quote_spanned! { span =>
+                #fncall(#given_value, #param_value, #inst_value)
             })
         }
         ShardableType::Bool | ShardableType::PersistentBool => {
-            let fn_name = bool_relation_post_condition_qualified_name(sm, field, strict);
-            Expr::Verbatim(quote! {
-                #fn_name(#param_value, #given_value, #inst_value)
+            let fncall = if strict {
+                quote_spanned_vstd! { vstd, span => #vstd::tokens::bool_value_eq_option_token }
+            } else {
+                quote_spanned_vstd! { vstd, span => #vstd::tokens::bool_value_le_option_token }
+            };
+            Expr::Verbatim(quote_spanned! { span =>
+                #fncall(#given_value, #param_value, #inst_value)
+            })
+        }
+        ShardableType::Set(_) | ShardableType::PersistentSet(_) => {
+            let fncall = if strict {
+                quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
+            } else {
+                quote_spanned_vstd! { vstd, span => #vstd::set::Set::spec_le }
+            };
+            Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
+                #fncall(#given_value, #param_value.set())
+                  && #vstd::prelude::equal(#param_value.instance(), #inst_value)
             })
         }
         ShardableType::Map(_, _) | ShardableType::PersistentMap(_, _) => {
-            let fn_name = map_relation_post_condition_qualified_name(sm, field, strict);
-            Expr::Verbatim(quote! {
-                #fn_name(#param_value, #given_value, #inst_value)
+            let fncall = if strict {
+                quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
+            } else {
+                quote_spanned_vstd! { vstd, span => #vstd::map::Map::spec_le }
+            };
+            Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
+                #fncall(#given_value, #param_value.map())
+                  && #vstd::prelude::equal(#param_value.instance(), #inst_value)
             })
         }
         ShardableType::Multiset(_) => {
-            let fn_name = multiset_relation_post_condition_qualified_name(sm, field, strict);
-            Expr::Verbatim(quote! {
-                #fn_name(#param_value, #given_value, #inst_value)
+            let fncall = if strict {
+                quote_spanned_vstd! { vstd, span => #vstd::prelude::equal }
+            } else {
+                quote_spanned_vstd! { vstd, span => #vstd::multiset::Multiset::spec_le }
+            };
+            Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
+                #fncall(#given_value, #param_value.multiset())
+                  && #vstd::prelude::equal(#param_value.instance(), #inst_value)
             })
         }
         _ => {
@@ -1315,352 +1267,202 @@ fn relation_for_collection_of_internal_tokens(
 
 /// Add some helper functions that are useful to call from other
 /// generated conditions (e.g., see `add_initialization_output_conditions`)
-fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
+fn traits_stream(sm: &SM, field: &Field) -> TokenStream {
     match &field.stype {
         ShardableType::Option(ty) | ShardableType::PersistentOption(ty) => {
-            let fn_name = option_relation_post_condition_name(field, false);
-            let fn_name_strict = option_relation_post_condition_name(field, true);
             let token_ty = field_token_type(sm, field);
-            let inst_ty = inst_type(sm);
-            let option_token_ty = Type::Verbatim(quote! {
-                ::core::option::Option<#token_ty>
-            });
-            let option_normal_ty = Type::Verbatim(quote! {
-                ::core::option::Option<#ty>
-            });
-
-            // Predicate to check the option values agree:
-            //
-            // opt            token_opt
-            // None           None
-            // Some(x)        Some(Token { instance: instance, value: x })
-
-            quote_vstd! { vstd =>
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verifier::inline] /* vattr */
-                #[verus::internal(open)] /* vattr */
-                #[verifier::spec]
-                pub fn #fn_name_strict(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
-                    Self::#fn_name(token_opt, opt, instance)
-                    && #vstd::prelude::imply(opt.is_None(), token_opt.is_None())
-                }
-
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verus::internal(open)] /* vattr */
-                #[verifier::spec]
-                pub fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
-                    #vstd::prelude::imply(
-                        opt.is_Some(),
-                        token_opt.is_Some()
-                            && #vstd::prelude::equal(token_opt.get_Some_0().view().value, opt.get_Some_0())
-                            && #vstd::prelude::equal(token_opt.get_Some_0().view().instance, instance)
-                    )
-                }
-            }
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::Value(ty),
+                matches!(&field.stype, ShardableType::Option(_)),
+            )
         }
         ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
-            let fn_name_strict = set_relation_post_condition_name(field, true);
-            let fn_name = set_relation_post_condition_name(field, false);
-            let constructor_name = field_token_data_type_turbofish(sm, field);
             let token_ty = field_token_type(sm, field);
-            let inst_ty = inst_type(sm);
-            let set_token_ty = Type::Verbatim(quote_vstd! { vstd =>
-                #vstd::map::Map<#ty, #token_ty>
-            });
-            let set_normal_ty = Type::Verbatim(quote_vstd! { vstd =>
-                #vstd::set::Set<#ty>
-            });
-
-            // Predicate to check the set values agree:
-            //
-            // set            token_map
-            // {x, y}         { x => { instance, x }, y => { instance, y } }
-
-            quote_vstd! { vstd =>
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verus::internal(open)] /* vattr */
-                #[verifier::spec]
-                pub fn #fn_name(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
-                    #vstd::prelude::forall(|elem: #ty| {
-                        #vstd::prelude::with_triggers(
-                            (
-                                ( token_map.dom().contains(elem), ),
-                                ( token_map.index(elem), ),
-                            ),
-                            #vstd::prelude::imply(
-                                set.contains(elem),
-                                (#[verifier::trigger] token_map.dom().contains(elem))
-                                && #vstd::prelude::equal(token_map.index(elem).view(),
-                                    #constructor_name {
-                                        instance: instance,
-                                        key: elem,
-                                    }
-                                )
-                            )
-                        )
-                    })
-                }
-
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verifier::inline] /* vattr */
-                #[verus::internal(open)] /* vattr */
-                #[verifier::spec]
-                pub fn #fn_name_strict(token_map: #set_token_ty, set: #set_normal_ty, instance: #inst_ty) -> bool {
-                    #vstd::prelude::equal(token_map.dom(), set)
-                      && Self::#fn_name(token_map, set, instance)
-                }
-            }
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::Element(ty),
+                matches!(&field.stype, ShardableType::Set(_)),
+            )
         }
         ShardableType::Bool | ShardableType::PersistentBool => {
-            let fn_name = bool_relation_post_condition_name(field, false);
-            let fn_name_strict = bool_relation_post_condition_name(field, true);
             let token_ty = field_token_type(sm, field);
-            let inst_ty = inst_type(sm);
-            let option_token_ty = Type::Verbatim(quote! {
-                ::core::option::Option<#token_ty>
-            });
-
-            // Predicate to check the option values agree:
-            //
-            // b              token_opt
-            // false          None
-            // true           Some(Token { instance: instance })
-
-            quote_vstd! { vstd =>
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verus::internal(open)] /* vattr */
-                #[verifier::spec]
-                pub fn #fn_name(token_opt: #option_token_ty, b: ::core::primitive::bool, instance: #inst_ty) -> bool {
-                    #vstd::prelude::imply(b,
-                        token_opt.is_Some()
-                        && #vstd::prelude::equal(token_opt.get_Some_0().view().instance, instance)
-                    )
-                }
-
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verifier::inline] /* vattr */
-                #[verus::internal(open)] /* vattr */
-                #[verifier::spec]
-                pub fn #fn_name_strict(token_opt: #option_token_ty, b: ::core::primitive::bool, instance: #inst_ty) -> bool {
-                    Self::#fn_name(token_opt, b, instance)
-                    && #vstd::prelude::imply(!b, token_opt.is_None())
-                }
-            }
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::Simple,
+                matches!(&field.stype, ShardableType::Bool),
+            )
         }
         ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
-            let fn_name = map_relation_post_condition_name(field, false);
-            let fn_name_strict = map_relation_post_condition_name(field, true);
             let token_ty = field_token_type(sm, field);
-            let inst_ty = inst_type(sm);
-            let map_token_ty = Type::Verbatim(quote_vstd! { vstd =>
-                #vstd::map::Map<#key, #token_ty>
-            });
-            let map_normal_ty = Type::Verbatim(quote_vstd! { vstd =>
-                #vstd::map::Map<#key, #val>
-            });
-
-            // Predicate to check the map values agree:
-            //
-            // map:
-            // map[k1 := v1]
-            //    [k2 := v2]...
-            //
-            // token_map:
-            // map[k1 := Token { instance: instance, value: v1 }]
-            //    [k1 := Token { instance: instance, value: v2 }]...
-
-            quote_vstd! { vstd =>
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verus::internal(open)] /* vattr */
-                #[verifier::spec]
-                pub fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
-                    #vstd::prelude::forall(|key: #key|
-                        #vstd::prelude::with_triggers(
-                            (
-                                ( token_map.dom().contains(key), ),
-                                ( token_map.index(key), ),
-                            ),
-                            #vstd::prelude::imply(
-                                token_map.dom().contains(key),
-                                #vstd::prelude::equal(token_map.index(key).view().instance, instance)
-                                    && #vstd::prelude::equal(token_map.index(key).view().key, key)
-                                    && #vstd::prelude::equal(token_map.index(key).view().value, m.index(key))
-                            )
-                        )
-                    )
-                }
-
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verus::internal(open)] /* vattr */
-                #[verifier::spec]
-                pub fn #fn_name_strict(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
-                    #vstd::prelude::equal(token_map.dom(), m.dom())
-                    && Self::#fn_name(token_map, m, instance)
-                }
-            }
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::KeyValue(key, val),
+                matches!(&field.stype, ShardableType::Map(_, _)),
+            )
         }
         ShardableType::Multiset(ty) => {
-            let fn_name = multiset_relation_post_condition_name(field, false);
-            let fn_name_strict = multiset_relation_post_condition_name(field, true);
-            let inst_ty = inst_type(sm);
             let token_ty = field_token_type(sm, field);
-            let multiset_token_ty = Type::Verbatim(quote_vstd! { vstd =>
-                #vstd::map::Map<#ty, #token_ty>
-            });
-            let multiset_normal_ty = Type::Verbatim(quote_vstd! { vstd =>
-                #vstd::multiset::Multiset<#ty>
-            });
-
-            // Predicate to check the multiset values agree:
-            //
-            // m:
-            // multiset{v1: n1, v2: n2, ...}
-            //
-            // tokens:
-            // map{
-            //    v1 => Token { instance: instance, key: v1, count: n1 }]
-            //    v2 => Token { instance: instance, key: v2, count: n2 }]
-            // }
-
-            quote_vstd! { vstd =>
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verus::internal(open)] /* vattr */
-                #[verifier::spec]
-                pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
-                    #vstd::prelude::forall(|x: #ty|
-                        #vstd::prelude::imply(
-                            m.count(x) > #vstd::prelude::spec_literal_nat("0"),
-                            (#[verifier::trigger] tokens.dom().contains(x))
-                            && #vstd::prelude::equal(tokens.index(x).view().instance, instance)
-                            && tokens.index(x).view().count >= m.count(x)
-                            && #vstd::prelude::equal(tokens.index(x).view().key, x)
-                        )
-                    )
-                }
-
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verus::internal(open)] /* vattr */
-                #[verifier::spec]
-                pub fn #fn_name_strict(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
-                    #vstd::prelude::forall(|x: #ty| {
-                        #vstd::prelude::with_triggers(
-                          (
-                              ( tokens.dom().contains(x), ),
-                              ( tokens.index(x), ),
-                          ),
-                          tokens.dom().contains(x)
-                          && #vstd::prelude::equal(tokens.index(x).view().instance, instance)
-                          && #vstd::prelude::equal(tokens.index(x).view().count, m.count(x))
-                          && #vstd::prelude::equal(tokens.index(x).view().key, x)
-                        )
-                    })
-                }
-
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verifier::proof]
-                #[verifier::returns(proof)] /* vattr */
-                #[verifier::external_body] /* vattr */
-                pub fn join(#[verifier::proof] self, #[verifier::proof] other: Self) -> Self {
-                    #vstd::prelude::requires(#vstd::prelude::equal(self.view().instance, other.view().instance) && #vstd::prelude::equal(self.view().key, other.view().key));
-                    #vstd::prelude::ensures(|s: Self|
-                        #vstd::prelude::equal(s.view().instance, self.view().instance)
-                        && #vstd::prelude::equal(s.view().key, self.view().key)
-                        && #vstd::prelude::equal(s.view().count, self.view().count + other.view().count)
-                    );
-                    ::core::unimplemented!();
-                }
-
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verifier::external_body] /* vattr */
-                #[verifier::returns(proof)] /* vattr */
-                #[verifier::proof]
-                pub fn split(#[verifier::proof] self, i: nat) -> (#vstd::prelude::Tracked<Self>, #vstd::prelude::Tracked<Self>) {
-                    #vstd::prelude::requires(i <= self.view().count);
-                    #vstd::prelude::ensures(|s: (#vstd::prelude::Tracked<Self>, #vstd::prelude::Tracked<Self>)| {
-                        let x = s.0.view();
-                        let y = s.1.view();
-                        #vstd::prelude::equal(x.view().instance, self.view().instance)
-                        && #vstd::prelude::equal(y.view().instance, self.view().instance)
-                        && #vstd::prelude::equal(x.view().key, self.view().key)
-                        && #vstd::prelude::equal(y.view().key, self.view().key)
-                        && #vstd::prelude::equal(x.view().count, i)
-                        && #vstd::prelude::equal(
-                            #vstd::prelude::spec_cast_integer::<nat, int>(y.view().count),
-                            self.view().count.spec_sub(i)
-                        )
-                    });
-                    ::core::unimplemented!();
-                }
-            }
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::Element(ty),
+                false,
+            )
         }
         ShardableType::Count => {
-            quote_vstd! { vstd =>
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verifier::proof]
-                #[verifier::returns(proof)] /* vattr */
-                #[verifier::external_body] /* vattr */
-                pub fn join(#[verifier::proof] self, #[verifier::proof] other: Self) -> Self {
-                    #vstd::prelude::requires(#vstd::prelude::equal(self.view().instance, other.view().instance));
-                    #vstd::prelude::ensures(|s: Self|
-                        #vstd::prelude::equal(s.view().instance, self.view().instance)
-                        && #vstd::prelude::equal(s.view().count, self.view().count + other.view().count)
-                    );
-                    ::core::unimplemented!();
-                }
-
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verifier::external_body] /* vattr */
-                #[verifier::returns(proof)] /* vattr */
-                #[verifier::proof]
-                pub fn split(#[verifier::proof] self, i: nat) -> (#vstd::prelude::Tracked<Self>, #vstd::prelude::Tracked<Self>) {
-                    #vstd::prelude::requires(i <= self.view().count);
-                    #vstd::prelude::ensures(|s: (#vstd::prelude::Tracked<Self>, #vstd::prelude::Tracked<Self>)| {
-                        let x = s.0.view();
-                        let y = s.1.view();
-                        #vstd::prelude::equal(x.view().instance, self.view().instance)
-                        && #vstd::prelude::equal(y.view().instance, self.view().instance)
-                        && #vstd::prelude::equal(x.view().count, i)
-                        && #vstd::prelude::equal(
-                            #vstd::prelude::spec_cast_integer::<nat, int>(y.view().count),
-                            self.view().count.spec_sub(i)
-                        )
-                    });
-                    ::core::unimplemented!();
-                }
-            }
+            let token_ty = field_token_type(sm, field);
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::Count,
+                false,
+            )
         }
         ShardableType::PersistentCount => {
-            quote_vstd! { vstd =>
-                #[cfg(verus_keep_ghost_body)]
-                #[verus::internal(verus_macro)]
-                #[verifier::external_body] /* vattr */
-                #[verifier::returns(proof)] /* vattr */
-                #[verifier::proof]
-                pub fn weaken(#[verifier::proof] self, i: nat) -> Self {
-                    #vstd::prelude::requires(i <= self.view().count);
-                    #vstd::prelude::ensures(|s: Self|
-                        #vstd::prelude::equal(s.view().instance, self.view().instance)
-                        && #vstd::prelude::equal(s.view().count, i)
-                    );
+            let token_ty = field_token_type(sm, field);
+            token_trait_impls(
+                &token_ty,
+                &sm.generics,
+                MainTrait::MonotonicCount,
+                false,
+            )
+        }
+        _ => TokenStream::new(),
+    }
+}
+
+enum MainTrait<'a> {
+    Simple,
+    Value(&'a Type),
+    KeyValue(&'a Type, &'a Type),
+    Element(&'a Type),
+    Count,
+    MonotonicCount,
+}
+
+fn token_trait_impls(
+    token_ty: &Type,
+    generics: &Option<Generics>,
+    main_trait: MainTrait,
+    unique: bool,
+) -> TokenStream {
+    let mut ts = token_trait_impl_main(token_ty, generics, &main_trait);
+
+    if unique {
+        let impl_decl = impl_decl_stream_for(
+            token_ty,
+            generics,
+            match main_trait {
+                MainTrait::Simple => quote_vstd! { vstd => #vstd::tokens::UniqueSimpleToken },
+                MainTrait::Value(t) => quote_vstd! { vstd => #vstd::tokens::UniqueValueToken<#t> },
+                MainTrait::KeyValue(k, v) => quote_vstd! { vstd => #vstd::tokens::UniqueKeyValueToken<#k, #v> },
+                MainTrait::Element(e) => quote_vstd! { vstd => #vstd::tokens::UniqueElementToken<#e> },
+                MainTrait::Count => unreachable!(),
+                MainTrait::MonotonicCount => unreachable!(),
+            },
+        );
+
+        ts.extend(quote! {
+            #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+            #impl_decl {
+                #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+                #[cfg_attr(verus_keep_ghost, verifier::proof)]
+                fn unique(#[verifier::proof] &mut self, #[verifier::proof] other: &Self) {
                     ::core::unimplemented!();
                 }
             }
+        });
+    }
+
+    ts
+}
+
+fn token_trait_impl_main(
+    token_ty: &Type,
+    generics: &Option<Generics>,
+    main_trait: &MainTrait,
+) -> TokenStream
+{
+    let impl_decl = impl_decl_stream_for(
+        token_ty,
+        generics,
+        match main_trait {
+            MainTrait::Simple => quote_vstd! { vstd => #vstd::tokens::SimpleToken },
+            MainTrait::Value(t) => quote_vstd! { vstd => #vstd::tokens::ValueToken<#t> },
+            MainTrait::KeyValue(k, v) => quote_vstd! { vstd => #vstd::tokens::KeyValueToken<#k, #v> },
+            MainTrait::Element(e) => quote_vstd! { vstd => #vstd::tokens::ElementToken<#e> },
+            MainTrait::Count => quote_vstd! { vstd => #vstd::tokens::CountToken },
+            MainTrait::MonotonicCount => quote_vstd! { vstd => #vstd::tokens::MonotonicCountToken },
+        },
+    );
+
+    let add_spec_fn = |ts: &mut TokenStream, name: &str, ty: &Type| {
+        let name = Ident::new(name, token_ty.span());
+        ts.extend(quote!{
+            #[cfg_attr(verus_keep_ghost, verifier::spec)]
+            #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+            pub fn #name(&self) -> #ty { ::core::unimplemented!() }
+        });
+    };
+    let add_agree = |ts: &mut TokenStream| {
+        ts.extend(quote!{
+            #[cfg_attr(verus_keep_ghost, verifier::proof)]
+            #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+            fn agree(#[verifier::proof] &self, #[verifier::proof] other: &Self)
+            { ::core::unimplemented!(); }
+        });
+    };
+    let add_join_split = |ts: &mut TokenStream| {
+        ts.extend(quote!{
+            #[cfg_attr(verus_keep_ghost, verifier::proof)]
+            #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+            fn join(#[verifier::proof] &mut self, #[verifier::proof] other: Self)
+            { ::core::unimplemented!(); }
+
+            #[cfg_attr(verus_keep_ghost, verifier::proof)]
+            #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+            #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
+            fn split(#[verifier::proof] &mut self, count: nat) -> Self
+            { ::core::unimplemented!(); }
+        });
+    };
+
+    let mut ts = TokenStream::new();
+
+    add_spec_fn(&mut ts, "id", &Type::Verbatim(quote_vstd!{ vstd => #vstd::tokens::InstanceId }));
+    match main_trait {
+        MainTrait::Simple => { }
+        MainTrait::Value(t) => {
+            add_spec_fn(&mut ts, "value", t);
+            add_agree(&mut ts);
         }
-        _ => TokenStream::new(),
+        MainTrait::KeyValue(k, v) => {
+            add_spec_fn(&mut ts, "key", k);
+            add_spec_fn(&mut ts, "value", v);
+            add_agree(&mut ts);
+        }
+        MainTrait::Element(e) => {
+            add_spec_fn(&mut ts, "element", e);
+        }
+        MainTrait::Count => {
+            add_spec_fn(&mut ts, "count", &Type::Verbatim(quote_vstd!{ vstd => #vstd::prelude::nat }));
+            add_join_split(&mut ts);
+        }
+        MainTrait::MonotonicCount => {
+            add_spec_fn(&mut ts, "count", &Type::Verbatim(quote_vstd!{ vstd => #vstd::prelude::nat }));
+        }
+    }
+
+    quote! {
+        #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+        #impl_decl {
+            #ts
+        }
     }
 }
 
@@ -1717,12 +1519,12 @@ fn add_token_param_in_out(
         }
     };
 
-    // Add a condition like `token.view().instance == instance`
+    // Add a condition like `token.instance() == instance`
 
     if apply_instance_condition {
         let inst = get_inst_value(&ctxt);
         if is_output {
-            let lhs = Expr::Verbatim(quote! { #param_name.view().instance });
+            let lhs = Expr::Verbatim(quote! { #param_name.instance() });
             inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::equal(#lhs, #inst)
             }));
@@ -1730,10 +1532,10 @@ fn add_token_param_in_out(
         if is_input {
             let lhs = if is_output {
                 Expr::Verbatim(
-                    quote_vstd! { vstd => #vstd::prelude::old(#param_name).view().instance },
+                    quote_vstd! { vstd => #vstd::prelude::old(#param_name).instance() },
                 )
             } else {
-                Expr::Verbatim(quote! { #param_name.view().instance })
+                Expr::Verbatim(quote! { #param_name.instance() })
             };
             inst_eq_reqs.push(Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::equal(#lhs, #inst)
@@ -2092,7 +1894,7 @@ fn token_matches_elt(
                 Expr::Verbatim(quote_spanned! { span => true })
             } else {
                 Expr::Verbatim(quote_spanned! { span =>
-                    match #token_name.view().value {
+                    match #token_name.value() {
                         #pat => true,
                         #[allow(unreachable_patterns)]
                         _ => false,
@@ -2101,17 +1903,14 @@ fn token_matches_elt(
             }
         }
         MonoidElt::OptionSome(Some(e)) => {
-            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.view().value}), &e)
+            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.value()}), &e)
         }
-        MonoidElt::SingletonMultiset(e) => mk_and(
-            span,
-            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.view().key}), &e),
-            Expr::Verbatim(quote_spanned! { span => #token_name.view().count == 1 }),
-        ),
+        MonoidElt::SingletonMultiset(e) => 
+            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.element()}), &e),
         MonoidElt::SingletonKV(key, None) => {
             let e1 = mk_eq(
                 span,
-                &Expr::Verbatim(quote_spanned! { span => #token_name.view().key}),
+                &Expr::Verbatim(quote_spanned! { span => #token_name.key()}),
                 &key,
             );
 
@@ -2120,7 +1919,7 @@ fn token_matches_elt(
                 e1
             } else {
                 let e2 = Expr::Verbatim(quote_spanned! { span =>
-                    match #token_name.view().value {
+                    match #token_name.value() {
                         #pat => true,
                         #[allow(unreachable_patterns)]
                         _ => false,
@@ -2131,16 +1930,16 @@ fn token_matches_elt(
         }
         MonoidElt::SingletonKV(key, Some(val)) => mk_and(
             span,
-            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.view().key}), &key),
-            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.view().value}), &val),
+            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.key()}), &key),
+            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.value()}), &val),
         ),
         MonoidElt::SingletonSet(e) => {
-            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.view().key }), &e)
+            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.key() }), &e)
         }
         MonoidElt::True => Expr::Verbatim(quote_spanned! { span => true }),
         MonoidElt::General(e) => match &field.stype {
             ShardableType::Count | ShardableType::PersistentCount => {
-                mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.view().count}), &e)
+                mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.count()}), &e)
             }
             _ => {
                 let token_value = if token_is_ref {
@@ -2155,6 +1954,7 @@ fn token_matches_elt(
                     e.clone(),
                     get_inst_value(ctxt),
                     output,
+                    span,
                 )
             }
         },
@@ -2337,11 +2137,11 @@ fn translate_special_assignment(op: &SpecialOp, param: &TokenParam) -> Expr {
     match op.stmt {
         MonoidStmtType::Have => {
             assert!(param.inout_type == InoutType::BorrowIn);
-            Expr::Verbatim(quote! { #name.view().value })
+            Expr::Verbatim(quote! { #name.value() })
         }
         MonoidStmtType::Remove => {
             assert!(param.inout_type == InoutType::In);
-            Expr::Verbatim(quote! { #name.view().value })
+            Expr::Verbatim(quote! { #name.value() })
         }
         MonoidStmtType::Withdraw => {
             assert!(param.inout_type == InoutType::Out);
@@ -2425,7 +2225,7 @@ fn translate_value_expr(
 ///    from the instance object, e.g., `instance.foo()`.
 ///
 ///  * Reading a 'Variable' field. Replace it with the value from the input token
-///    e.g., `token_foo.view().value` or `old(token_foo).view().value`.
+///    e.g., `token_foo.value()` or `old(token_foo).value()`.
 ///
 ///  * A nondeterministic read. In this case, we replace it with the value of one of the
 ///    _out_ parameters. Previous well-formedness checks (`check_birds_eye`) should ensure
@@ -2485,9 +2285,9 @@ fn translate_expr(ctxt: &Ctxt, expr: &Expr, birds_eye: bool, errors: &mut Vec<Er
 
 fn get_inst_value(ctxt: &Ctxt) -> Expr {
     if ctxt.is_init {
-        Expr::Verbatim(quote! { instance })
+        Expr::Verbatim(quote! { instance.id() })
     } else {
-        Expr::Verbatim(quote! { (*self) })
+        Expr::Verbatim(quote! { (*self).id() })
     }
 }
 
@@ -2504,20 +2304,18 @@ fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field, span: Span) -> Ex
 
 fn get_old_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let arg = transition_arg_name(&field);
-    let field_name = field_token_field_name(&field);
     if ctxt.fields_written.contains(&field.name.to_string()) {
         Expr::Verbatim(
-            quote_spanned_vstd! { vstd, span => #vstd::prelude::old(#arg).view().#field_name },
+            quote_spanned_vstd! { vstd, span => #vstd::prelude::old(#arg).value() },
         )
     } else {
-        Expr::Verbatim(quote_spanned! { span => #arg.view().#field_name })
+        Expr::Verbatim(quote_spanned! { span => #arg.value() })
     }
 }
 
 fn get_new_field_value(field: &Field) -> Expr {
     let arg = transition_arg_name(&field);
-    let field = field_token_field_name(&field);
-    Expr::Verbatim(quote! { #arg.view().#field })
+    Expr::Verbatim(quote! { #arg.value() })
 }
 
 // Collect requires and ensures. Updates `ctxt.requires` and `ctxt.ensures`

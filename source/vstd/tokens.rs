@@ -1,10 +1,16 @@
 //// ValueToken - for variable, option, persistent_option
 
-use vstd::prelude::*;
+use super::prelude::*;
+use super::multiset::*;
 use core::marker::PhantomData;
-use vstd::multiset::*;
 
 verus!{
+
+#[verusfmt::skip]
+broadcast use
+    super::set_lib::group_set_lib_axioms,
+    super::set::group_set_axioms,
+    super::map::group_map_axioms;
 
 pub ghost struct InstanceId(pub int);
 
@@ -66,6 +72,11 @@ pub trait CountToken : Sized {
             token.count() == count;
 }
 
+pub trait MonotonicCountToken : Sized {
+    spec fn instance(&self) -> InstanceId;
+    spec fn count(&self) -> nat;
+}
+
 pub trait ElementToken<Element> {
     spec fn instance(&self) -> InstanceId;
     spec fn element(&self) -> Element;
@@ -75,6 +86,15 @@ pub trait UniqueElementToken<Element> : ElementToken<Element> {
     proof fn unique(tracked &mut self, tracked other: &Self)
         ensures self.instance() == other.instance()
             ==> self.element() != other.element();
+}
+
+pub trait SimpleToken {
+    spec fn instance(&self) -> InstanceId;
+}
+
+pub trait UniqueSimpleToken<Element> : ElementToken<Element> {
+    proof fn unique(tracked &mut self, tracked other: &Self)
+        ensures self.instance() != other.instance();
 }
 
 #[verifier::reject_recursive_types(Key)]
@@ -362,6 +382,53 @@ impl<Element, Token> MultisetToken<Element, Token>
         assert(self.multiset() =~= old(self).multiset().remove(element));
         t
     }
+}
+
+pub open spec fn option_value_eq_option_token<Value, Token: ValueToken<Value>>(
+    opt_value: Option<Value>,
+    opt_token: Option<Token>,
+    inst: InstanceId,
+) -> bool {
+    match opt_value {
+        Some(val) => opt_token.is_some()
+            && opt_token.unwrap().value() == val,
+            && opt_token.unwrap().instance() == inst,
+        None => opt_token.is_none(),
+    }
+}
+
+pub open spec fn option_value_le_option_token<Value, Token: ValueToken<Value>>(
+    opt_value: Option<Value>,
+    opt_token: Option<Token>,
+    inst: InstanceId,
+) -> bool {
+    match opt_value {
+        Some(val) => opt_token.is_some()
+            && opt_token.unwrap().value() == val,
+            && opt_token.unwrap().instance() == inst,
+        None => true,
+    }
+}
+
+pub open spec fn bool_value_eq_option_token<Token: SimpleToken>(
+    b: bool,
+    opt_token: Option<Token>,
+    inst: InstanceId,
+) -> bool {
+    if b {
+        opt_token.is_some() && opt_token.unwrap().instance() == inst,
+    } else {
+        opt_token.is_none()
+    }
+}
+
+pub open spec fn bool_value_le_option_token<Token: SimpleToken>(
+    b: bool,
+    opt_token: Option<Token>,
+    inst: InstanceId,
+) -> bool {
+    b ==>
+        opt_token.is_some() && opt_token.unwrap().instance() == inst,
 }
 
 }
