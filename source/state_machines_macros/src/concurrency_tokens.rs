@@ -282,6 +282,37 @@ fn token_struct_stream(
         TokenStream::new()
     };
 
+    let type_alias_stream = match &field.stype {
+        ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
+            let name = Ident::new(&format!("{:}_map", field.name.to_string()), field.name.span());
+            let ty = name_with_type_args(&name, sm);
+            let tok = field_token_type(sm, field);
+            quote_vstd!{ vstd =>
+                #[allow(non_camel_case_types)]
+                type #ty = #vstd::tokens::MapToken<#key, #val, #tok>;
+            }
+        }
+        ShardableType::Set(elem) | ShardableType::PersistentSet(elem) => {
+            let name = Ident::new(&format!("{:}_set", field.name.to_string()), field.name.span());
+            let ty = name_with_type_args(&name, sm);
+            let tok = field_token_type(sm, field);
+            quote_vstd!{ vstd =>
+                #[allow(non_camel_case_types)]
+                type #ty = #vstd::tokens::SetToken<#elem, #tok>;
+            }
+        }
+        ShardableType::Multiset(elem) => {
+            let name = Ident::new(&format!("{:}_multiset", field.name.to_string()), field.name.span());
+            let ty = name_with_type_args(&name, sm);
+            let tok = field_token_type(sm, field);
+            quote_vstd!{ vstd =>
+                #[allow(non_camel_case_types)]
+                type #ty = #vstd::tokens::MultisetToken<#elem, #tok>;
+            }
+        }
+        _ => TokenStream::new()
+    };
+
     return quote! {
         #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[allow(non_camel_case_types)]
@@ -316,22 +347,13 @@ fn token_struct_stream(
             pub fn view(self) -> #token_data_ty { ::core::unimplemented!() }
             */
 
-            // Return an arbitrary token. It's not possible to do anything interesting
-            // with this token because it doesn't have a specified instance.
-
-            #[cfg(verus_keep_ghost_body)]
-            #[verus::internal(verus_macro)]
-            #[verifier::external_body] /* vattr */
-            #[verifier::returns(proof)] /* vattr */
-            #[verifier::proof]
-            pub fn arbitrary() -> #token_ty { ::core::unimplemented!() }
-
             #impl_token_stream
         }
 
         #copy_impl
 
         #traits_stream
+        #type_alias_stream
     };
 }
 
@@ -1235,7 +1257,7 @@ fn relation_for_collection_of_internal_tokens(
                 quote_spanned_vstd! { vstd, span => #vstd::set::Set::spec_le }
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
-                #fncall(#given_value, #param_value.set())
+                #fncall(#given_value, (#param_value).set())
                   && #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
             })
         }
@@ -1246,7 +1268,7 @@ fn relation_for_collection_of_internal_tokens(
                 quote_spanned_vstd! { vstd, span => #vstd::map::Map::spec_le }
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
-                #fncall(#given_value, #param_value.map())
+                #fncall(#given_value, (#param_value).map())
                   && #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
             })
         }
@@ -1257,7 +1279,7 @@ fn relation_for_collection_of_internal_tokens(
                 quote_spanned_vstd! { vstd, span => #vstd::multiset::Multiset::spec_le }
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
-                #fncall(#given_value, #param_value.multiset())
+                #fncall(#given_value, (#param_value).multiset())
                   && #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
             })
         }
@@ -1433,6 +1455,15 @@ fn token_trait_impl_main(
             { ::core::unimplemented!(); }
         });
     };
+    let add_arbitrary = |ts: &mut TokenStream| {
+        ts.extend(quote!{
+            #[cfg_attr(verus_keep_ghost, verifier::proof)]
+            #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+            #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
+            fn arbitrary() -> Self
+            { ::core::unimplemented!(); }
+        });
+    };
 
     let mut ts = TokenStream::new();
 
@@ -1459,6 +1490,7 @@ fn token_trait_impl_main(
             add_spec_fn(&mut ts, "count", &Type::Verbatim(quote_vstd!{ vstd => #vstd::prelude::nat }));
         }
     }
+    add_arbitrary(&mut ts);
 
     quote! {
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]

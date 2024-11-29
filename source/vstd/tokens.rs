@@ -14,13 +14,17 @@ broadcast use
 
 pub ghost struct InstanceId(pub int);
 
-pub trait ValueToken<Value> {
+pub trait ValueToken<Value> : Sized {
     spec fn instance_id(&self) -> InstanceId;
     spec fn value(&self) -> Value;
 
     proof fn agree(tracked &self, tracked other: &Self)
         requires self.instance_id() == other.instance_id(),
         ensures self.value() == other.value();
+
+    /// Return an arbitrary token. It's not possible to do anything interesting
+    /// with this token because it doesn't have a specified instance.
+    proof fn arbitrary() -> (tracked s: Self);
 }
 
 pub trait UniqueValueToken<Value> : ValueToken<Value> {
@@ -31,7 +35,7 @@ pub trait UniqueValueToken<Value> : ValueToken<Value> {
 //pub trait PersistentValueToken<Value> : ValueToken<Value> + Copy {
 //}
 
-pub trait KeyValueToken<Key, Value> {
+pub trait KeyValueToken<Key, Value> : Sized {
     spec fn instance_id(&self) -> InstanceId;
     spec fn key(&self) -> Key;
     spec fn value(&self) -> Value;
@@ -40,6 +44,10 @@ pub trait KeyValueToken<Key, Value> {
         requires self.instance_id() == other.instance_id(),
                  self.key() == other.key(),
         ensures self.value() == other.value();
+
+    /// Return an arbitrary token. It's not possible to do anything interesting
+    /// with this token because it doesn't have a specified instance.
+    proof fn arbitrary() -> (tracked s: Self);
 }
 
 pub trait UniqueKeyValueToken<Key, Value> : KeyValueToken<Key, Value> {
@@ -70,16 +78,28 @@ pub trait CountToken : Sized {
             self.count() == old(self).count() - count,
             token.instance_id() == old(self).instance_id(),
             token.count() == count;
+
+    /// Return an arbitrary token. It's not possible to do anything interesting
+    /// with this token because it doesn't have a specified instance.
+    proof fn arbitrary() -> (tracked s: Self);
 }
 
 pub trait MonotonicCountToken : Sized {
     spec fn instance_id(&self) -> InstanceId;
     spec fn count(&self) -> nat;
+
+    /// Return an arbitrary token. It's not possible to do anything interesting
+    /// with this token because it doesn't have a specified instance.
+    proof fn arbitrary() -> (tracked s: Self);
 }
 
-pub trait ElementToken<Element> {
+pub trait ElementToken<Element> : Sized {
     spec fn instance_id(&self) -> InstanceId;
     spec fn element(&self) -> Element;
+
+    /// Return an arbitrary token. It's not possible to do anything interesting
+    /// with this token because it doesn't have a specified instance.
+    proof fn arbitrary() -> (tracked s: Self);
 }
 
 pub trait UniqueElementToken<Element> : ElementToken<Element> {
@@ -88,8 +108,12 @@ pub trait UniqueElementToken<Element> : ElementToken<Element> {
             ==> self.element() != other.element();
 }
 
-pub trait SimpleToken {
+pub trait SimpleToken : Sized {
     spec fn instance_id(&self) -> InstanceId;
+
+    /// Return an arbitrary token. It's not possible to do anything interesting
+    /// with this token because it doesn't have a specified instance.
+    proof fn arbitrary() -> (tracked s: Self);
 }
 
 pub trait UniqueSimpleToken<Element> : ElementToken<Element> {

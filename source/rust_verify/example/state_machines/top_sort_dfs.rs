@@ -492,9 +492,8 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> (tsr: TopSortResult)
             TopSortResult::Cycle(cycle) => graph@.is_cycle(cycle@),
         }),
 {
-    let tracked (Tracked(instance), Tracked(unv), _, Tracked(top_sort_token)) = TopSort::Instance::<
-        usize,
-    >::initialize(graph@);
+    let tracked (Tracked(instance), Tracked(unv), _, Tracked(top_sort_token)) =
+        TopSort::Instance::<usize>::initialize(graph@);
     let mut dfs_state = DfsState {
         top_sort: Vec::new(),
         cur_stack: Vec::new(),
@@ -510,9 +509,8 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> (tsr: TopSortResult)
     let tracked mut map_visited_deps: Map<usize, TopSort::visited<usize>> = Map::tracked_empty();
     assert(dfs_state.well_formed(graph)) by {
         assert(forall|i: usize|
-            0 <= i && i < dfs_state.node_states@.len() ==> (dfs_state.node_states@.index(
-                i as int,
-            ).in_stack == dfs_state.cur_stack@.contains(i)));
+            0 <= i && i < dfs_state.node_states@.len() ==>
+                (dfs_state.node_states@.index(i as int).in_stack == dfs_state.cur_stack@.contains(i)));
     }
     let mut v: usize = 0;
     while v < graph.edges.len() as usize
@@ -520,9 +518,10 @@ fn compute_top_sort(graph: &ConcreteDirectedGraph) -> (tsr: TopSortResult)
             graph.well_formed(),
             dfs_state.well_formed(graph),
             forall|w| 0 <= w && (w as int) < (v as int) ==> map_visited_deps.dom().contains(w),
+            map_visited_deps.instance_id() == dfs_state.instance@.id(),
             forall|w|
-                0 <= w && (w as int) < (v as int) ==> map_visited_deps.index(w)@.instance
-                    == dfs_state.instance@ && map_visited_deps.index(w)@.key == w,
+                0 <= w && (w as int) < (v as int) ==>
+                    && map_visited_deps.index(w)@.key == w,
             dfs_state.cur_stack@.len() == 0,
     {
         let (b, Tracked(opt_visited)) = visit(graph, &mut dfs_state, v);
