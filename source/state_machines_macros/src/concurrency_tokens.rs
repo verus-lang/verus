@@ -289,7 +289,7 @@ fn token_struct_stream(
             let tok = field_token_type(sm, field);
             quote_vstd!{ vstd =>
                 #[allow(non_camel_case_types)]
-                type #ty = #vstd::tokens::MapToken<#key, #val, #tok>;
+                pub type #ty = #vstd::tokens::MapToken<#key, #val, #tok>;
             }
         }
         ShardableType::Set(elem) | ShardableType::PersistentSet(elem) => {
@@ -298,7 +298,7 @@ fn token_struct_stream(
             let tok = field_token_type(sm, field);
             quote_vstd!{ vstd =>
                 #[allow(non_camel_case_types)]
-                type #ty = #vstd::tokens::SetToken<#elem, #tok>;
+                pub type #ty = #vstd::tokens::SetToken<#elem, #tok>;
             }
         }
         ShardableType::Multiset(elem) => {
@@ -307,7 +307,7 @@ fn token_struct_stream(
             let tok = field_token_type(sm, field);
             quote_vstd!{ vstd =>
                 #[allow(non_camel_case_types)]
-                type #ty = #vstd::tokens::MultisetToken<#elem, #tok>;
+                pub type #ty = #vstd::tokens::MultisetToken<#elem, #tok>;
             }
         }
         _ => TokenStream::new()
@@ -1177,7 +1177,7 @@ fn add_initialization_output_conditions(
     match &field.stype {
         ShardableType::Variable(_) => {
             inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
-                #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
+                #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
             }));
             ensures.push(Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::equal(#param_value.value(), #init_value)
@@ -1185,7 +1185,7 @@ fn add_initialization_output_conditions(
         }
         ShardableType::Count | ShardableType::PersistentCount => {
             inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
-                #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
+                #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
             }));
             ensures.push(Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::equal(#param_value.count(), #init_value)
@@ -1258,7 +1258,7 @@ fn relation_for_collection_of_internal_tokens(
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
                 #fncall(#given_value, (#param_value).set())
-                  && #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
+                  && #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
             })
         }
         ShardableType::Map(_, _) | ShardableType::PersistentMap(_, _) => {
@@ -1269,7 +1269,7 @@ fn relation_for_collection_of_internal_tokens(
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
                 #fncall(#given_value, (#param_value).map())
-                  && #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
+                  && #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
             })
         }
         ShardableType::Multiset(_) => {
@@ -1280,7 +1280,7 @@ fn relation_for_collection_of_internal_tokens(
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
                 #fncall(#given_value, (#param_value).multiset())
-                  && #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
+                  && #vstd::prelude::equal((#param_value).instance_id(), #inst_value)
             })
         }
         _ => {
@@ -1968,7 +1968,7 @@ fn token_matches_elt(
             mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.value()}), &val),
         ),
         MonoidElt::SingletonSet(e) => {
-            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.key() }), &e)
+            mk_eq(span, &Expr::Verbatim(quote_spanned! { span => #token_name.element() }), &e)
         }
         MonoidElt::True => Expr::Verbatim(quote_spanned! { span => true }),
         MonoidElt::General(e) => match &field.stype {
@@ -2336,7 +2336,7 @@ fn get_inst_value(ctxt: &Ctxt) -> Expr {
 fn get_const_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let inst = get_inst_object_value(ctxt);
     let field_name = &field.name;
-    Expr::Verbatim(quote_spanned! { span => #inst.#field_name() })
+    Expr::Verbatim(quote_spanned! { span => (#inst).#field_name() })
 }
 
 fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field, span: Span) -> Expr {

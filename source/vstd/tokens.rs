@@ -261,6 +261,11 @@ impl<Element, Token> SetToken<Element, Token>
         )
     }
 
+    #[verifier::inline]
+    pub open spec fn contains(self, element: Element) -> bool {
+        self.set().contains(element)
+    }
+
     pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
             s.instance_id() == instance_id,
