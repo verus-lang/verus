@@ -213,7 +213,10 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
     pub proof fn into_map(tracked self) -> (tracked map: Map<Key, Token>)
         ensures
             map.dom() == self.map().dom(),
-            forall |key| #[trigger] map.dom().contains(key)
+            forall |key|
+                #![trigger(map.dom().contains(key))]
+                #![trigger(map.index(key))]
+              map.dom().contains(key)
                 ==> map[key].instance_id() == self.instance_id()
                  && map[key].key() == key
                  && map[key].value() == self.map()[key]
@@ -224,16 +227,15 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
         return m;
     }
 
-    pub proof fn from_map(instance_id: InstanceId, tracked map: Map<Key, Token>) -> (s: Self)
+    pub proof fn from_map(instance_id: InstanceId, tracked map: Map<Key, Token>) -> (tracked s: Self)
         requires
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].key() == key,
         ensures
-            map.dom() == s.map().dom(),
+            s.instance_id() == instance_id,
+            s.map().dom() == map.dom(),
             forall |key| #[trigger] map.dom().contains(key)
-                ==> map[key].instance_id() == s.instance_id()
-                 && map[key].key() == key
-                 && map[key].value() == s.map()[key]
+                ==> s.map()[key] == map[key].value()
     {
         let tracked s = MapToken { inst: instance_id, m: map, _v: PhantomData };
         assert(map.dom() == s.map().dom());
@@ -308,6 +310,35 @@ impl<Element, Token> SetToken<Element, Token>
         let tracked t = self.m.tracked_remove(element);
         assert(self.set() =~= old(self).set().remove(element));
         t
+    }
+
+    pub proof fn into_map(tracked self) -> (tracked map: Map<Element, Token>)
+        ensures
+            map.dom() == self.set(),
+            forall |key|
+                #![trigger(map.dom().contains(key))]
+                #![trigger(map.index(key))]
+                map.dom().contains(key)
+                    ==> map[key].instance_id() == self.instance_id()
+                     && map[key].element() == key
+    {
+        use_type_invariant(&self);
+        let tracked SetToken { inst, m } = self;
+        assert(m.dom() =~= self.set());
+        return m;
+    }
+
+    pub proof fn from_map(instance_id: InstanceId, tracked map: Map<Element, Token>) -> (tracked s: Self)
+        requires
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].element() == key,
+        ensures
+            s.instance_id() == instance_id,
+            s.set() == map.dom(),
+    {
+        let tracked s = SetToken { inst: instance_id, m: map };
+        assert(s.set() =~= map.dom());
+        s
     }
 }
 
