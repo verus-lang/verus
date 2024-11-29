@@ -6,6 +6,11 @@ use core::marker::PhantomData;
 
 verus!{
 
+// Note that the tokenized_state_machine! macro creates trusted implementations
+// of all these traits. Therefore all the proof functions in here are trusted.
+// The 'collection types', (MapToken, SetToken, MultisetToken) are verified, but the properties
+// of these types is still assumed by the Verus macro, so they're still mostly trusted.
+
 #[verusfmt::skip]
 broadcast use
     super::set_lib::group_set_lib_axioms,
@@ -116,7 +121,7 @@ pub trait SimpleToken : Sized {
     proof fn arbitrary() -> (tracked s: Self);
 }
 
-pub trait UniqueSimpleToken<Element> : ElementToken<Element> {
+pub trait UniqueSimpleToken : SimpleToken {
     proof fn unique(tracked &mut self, tracked other: &Self)
         ensures self.instance_id() != other.instance_id();
 }
