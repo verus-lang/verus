@@ -14,7 +14,7 @@ use crate::parse_token_stream::SMBundle;
 use crate::to_relation::{conjunct_opt, emit_match};
 use crate::to_token_stream::{
     get_self_ty, get_self_ty_turbofish, impl_decl_stream, impl_decl_stream_for,
-    name_with_type_args, name_with_type_args_turbofish, shardable_type_to_type,
+    name_with_type_args, shardable_type_to_type,
 };
 use crate::token_transition_checks::{check_ordering_remove_have_add, check_unsupported_updates};
 use crate::util::{combine_errors_or_ok, is_definitely_irrefutable};
@@ -45,21 +45,8 @@ fn field_token_type_name(field: &Field) -> Ident {
     Ident::new(&name, field.name.span())
 }
 
-fn field_token_data_type_name(field: &Field) -> Ident {
-    let name = field.name.to_string() + "_token_data";
-    Ident::new(&name, field.name.span())
-}
-
 fn field_token_type(sm: &SM, field: &Field) -> Type {
     name_with_type_args(&field_token_type_name(field), sm)
-}
-
-fn field_token_data_type(sm: &SM, field: &Field) -> Type {
-    name_with_type_args(&field_token_data_type_name(field), sm)
-}
-
-fn field_token_type_turbofish(sm: &SM, field: &Field) -> Type {
-    name_with_type_args_turbofish(&field_token_type_name(field), sm)
 }
 
 fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
@@ -235,15 +222,9 @@ fn trusted_copy(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
 fn token_struct_stream(
     sm: &SM,
     field: &Field,
-    key_ty: Option<&Type>,
-    value_ty: Option<&Type>,
-    count: bool,
 ) -> TokenStream {
     let tokenname = field_token_type_name(field);
-    let tokenname_data = field_token_data_type_name(field);
     let insttype = inst_type(sm);
-    let token_data_ty = field_token_data_type(sm, field);
-    let token_ty = field_token_type(sm, field);
     let gen = &sm.generics;
     let attrs = &sm.attrs;
 
@@ -263,24 +244,6 @@ fn token_struct_stream(
             no_copy: #vstd::state_machine_internal::NoCopy,
         });
     }
-
-    let key_field = match key_ty {
-        Some(key_ty) => quote! { #[cfg_attr(verus_keep_ghost, verifier::spec)] pub key: #key_ty, },
-        None => TokenStream::new(),
-    };
-
-    let value_field = match value_ty {
-        Some(value_ty) => {
-            quote! { #[cfg_attr(verus_keep_ghost, verifier::spec)] pub value: #value_ty, }
-        }
-        None => TokenStream::new(),
-    };
-
-    let count_field = if count {
-        quote_vstd! { vstd => #[cfg_attr(verus_keep_ghost, verifier::spec)] pub count: #vstd::prelude::nat }
-    } else {
-        TokenStream::new()
-    };
 
     let type_alias_stream = match &field.stype {
         ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
@@ -327,26 +290,7 @@ fn token_struct_stream(
             #no_copy_impl
         }
 
-        #[cfg_attr(verus_keep_ghost, verifier::spec)]
-        #[allow(non_camel_case_types)]
-        #(#attrs)*
-        pub struct #tokenname_data#gen {
-            #[cfg_attr(verus_keep_ghost, verifier::spec)] pub instance: #insttype,
-            #key_field
-            #value_field
-            #count_field
-        }
-
         #impldecl {
-            /*
-            #[cfg(verus_keep_ghost_body)]
-            #[verus::internal(verus_macro)]
-            #[verus::internal(open)] /* vattr */
-            #[verifier::external_body] /* vattr */
-            #[verifier::spec]
-            pub fn view(self) -> #token_data_ty { ::core::unimplemented!() }
-            */
-
             #impl_token_stream
         }
 
@@ -402,39 +346,21 @@ pub fn output_token_types_and_fns(
             ShardableType::Constant(_) => {
                 inst_impl_token_stream.extend(const_fn_stream(field));
             }
-            ShardableType::Variable(ty) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, None, Some(ty), false));
-            }
             ShardableType::NotTokenized(_) => {
                 // don't need to add a struct in this case
-            }
-            ShardableType::Option(ty) | ShardableType::PersistentOption(ty) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, None, Some(ty), false));
-            }
-            ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
-                token_stream.extend(token_struct_stream(
-                    &bundle.sm,
-                    field,
-                    Some(key),
-                    Some(val),
-                    false,
-                ));
-            }
-            ShardableType::Multiset(ty) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, Some(ty), None, true));
-            }
-            ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, Some(ty), None, false));
             }
             ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
                 // storage types don't have tokens; the 'token type' is just the
                 // the type of the field
             }
-            ShardableType::Count | ShardableType::PersistentCount => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, None, None, true));
-            }
+            ShardableType::Variable(_) |
+            ShardableType::Option(_) | ShardableType::PersistentOption(_) |
+            ShardableType::Map(..) | ShardableType::PersistentMap(..) |
+            ShardableType::Multiset(_) |
+            ShardableType::Set(_) | ShardableType::PersistentSet(_) |
+            ShardableType::Count | ShardableType::PersistentCount |
             ShardableType::Bool | ShardableType::PersistentBool => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field, None, None, false));
+                token_stream.extend(token_struct_stream(&bundle.sm, field));
             }
         }
     }
@@ -1217,7 +1143,7 @@ fn add_initialization_output_conditions(
 }
 
 fn relation_for_collection_of_internal_tokens(
-    sm: &SM,
+    _sm: &SM,
     field: &Field,
     param_value: Expr,
     given_value: Expr,
