@@ -307,12 +307,14 @@ fn token_struct_stream(
         }
 
         #impldecl {
+            /*
             #[cfg(verus_keep_ghost_body)]
             #[verus::internal(verus_macro)]
             #[verus::internal(open)] /* vattr */
             #[verifier::external_body] /* vattr */
             #[verifier::spec]
             pub fn view(self) -> #token_data_ty { ::core::unimplemented!() }
+            */
 
             // Return an arbitrary token. It's not possible to do anything interesting
             // with this token because it doesn't have a specified instance.
@@ -1153,7 +1155,7 @@ fn add_initialization_output_conditions(
     match &field.stype {
         ShardableType::Variable(_) => {
             inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
-                #vstd::prelude::equal(#param_value.instance(), #inst_value)
+                #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
             }));
             ensures.push(Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::equal(#param_value.value(), #init_value)
@@ -1161,7 +1163,7 @@ fn add_initialization_output_conditions(
         }
         ShardableType::Count | ShardableType::PersistentCount => {
             inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
-                #vstd::prelude::equal(#param_value.instance(), #inst_value)
+                #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
             }));
             ensures.push(Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::equal(#param_value.count(), #init_value)
@@ -1234,7 +1236,7 @@ fn relation_for_collection_of_internal_tokens(
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
                 #fncall(#given_value, #param_value.set())
-                  && #vstd::prelude::equal(#param_value.instance(), #inst_value)
+                  && #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
             })
         }
         ShardableType::Map(_, _) | ShardableType::PersistentMap(_, _) => {
@@ -1245,7 +1247,7 @@ fn relation_for_collection_of_internal_tokens(
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
                 #fncall(#given_value, #param_value.map())
-                  && #vstd::prelude::equal(#param_value.instance(), #inst_value)
+                  && #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
             })
         }
         ShardableType::Multiset(_) => {
@@ -1256,7 +1258,7 @@ fn relation_for_collection_of_internal_tokens(
             };
             Expr::Verbatim(quote_spanned_vstd! { vstd, span =>
                 #fncall(#given_value, #param_value.multiset())
-                  && #vstd::prelude::equal(#param_value.instance(), #inst_value)
+                  && #vstd::prelude::equal(#param_value.instance_id(), #inst_value)
             })
         }
         _ => {
@@ -1269,13 +1271,13 @@ fn relation_for_collection_of_internal_tokens(
 /// generated conditions (e.g., see `add_initialization_output_conditions`)
 fn traits_stream(sm: &SM, field: &Field) -> TokenStream {
     match &field.stype {
-        ShardableType::Option(ty) | ShardableType::PersistentOption(ty) => {
+        ShardableType::Variable(ty) | ShardableType::Option(ty) | ShardableType::PersistentOption(ty) => {
             let token_ty = field_token_type(sm, field);
             token_trait_impls(
                 &token_ty,
                 &sm.generics,
                 MainTrait::Value(ty),
-                matches!(&field.stype, ShardableType::Option(_)),
+                matches!(&field.stype, ShardableType::Option(_) | ShardableType::Variable(_)),
             )
         }
         ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
@@ -1406,7 +1408,7 @@ fn token_trait_impl_main(
         ts.extend(quote!{
             #[cfg_attr(verus_keep_ghost, verifier::spec)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
-            pub fn #name(&self) -> #ty { ::core::unimplemented!() }
+            fn #name(&self) -> #ty { ::core::unimplemented!() }
         });
     };
     let add_agree = |ts: &mut TokenStream| {
@@ -1434,7 +1436,7 @@ fn token_trait_impl_main(
 
     let mut ts = TokenStream::new();
 
-    add_spec_fn(&mut ts, "id", &Type::Verbatim(quote_vstd!{ vstd => #vstd::tokens::InstanceId }));
+    add_spec_fn(&mut ts, "instance_id", &Type::Verbatim(quote_vstd!{ vstd => #vstd::tokens::InstanceId }));
     match main_trait {
         MainTrait::Simple => { }
         MainTrait::Value(t) => {
@@ -1519,12 +1521,12 @@ fn add_token_param_in_out(
         }
     };
 
-    // Add a condition like `token.instance() == instance`
+    // Add a condition like `token.instance_id() == instance`
 
     if apply_instance_condition {
         let inst = get_inst_value(&ctxt);
         if is_output {
-            let lhs = Expr::Verbatim(quote! { #param_name.instance() });
+            let lhs = Expr::Verbatim(quote! { #param_name.instance_id() });
             inst_eq_enss.push(Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::equal(#lhs, #inst)
             }));
@@ -1532,10 +1534,10 @@ fn add_token_param_in_out(
         if is_input {
             let lhs = if is_output {
                 Expr::Verbatim(
-                    quote_vstd! { vstd => #vstd::prelude::old(#param_name).instance() },
+                    quote_vstd! { vstd => #vstd::prelude::old(#param_name).instance_id() },
                 )
             } else {
-                Expr::Verbatim(quote! { #param_name.instance() })
+                Expr::Verbatim(quote! { #param_name.instance_id() })
             };
             inst_eq_reqs.push(Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::equal(#lhs, #inst)
@@ -1818,23 +1820,23 @@ fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Er
 }
 
 fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
-    let ty = field_token_type(sm, field);
+    let tok = field_token_type(sm, field);
     match &field.stype {
         ShardableType::Option(_)
         | ShardableType::PersistentOption(_)
         | ShardableType::Bool
-        | ShardableType::PersistentBool => Type::Verbatim(quote! { ::core::option::Option<#ty> }),
+        | ShardableType::PersistentBool => Type::Verbatim(quote! { ::core::option::Option<#tok> }),
 
-        ShardableType::Map(key, _) | ShardableType::PersistentMap(key, _) => {
-            Type::Verbatim(quote_vstd! { vstd => #vstd::map::Map<#key, #ty> })
+        ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
+            Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::MapToken<#key, #val, #tok> })
         }
 
         ShardableType::Set(t) | ShardableType::PersistentSet(t) => {
-            Type::Verbatim(quote_vstd! { vstd => #vstd::map::Map<#t, #ty> })
+            Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::SetToken<#t, #tok> })
         }
 
         ShardableType::Multiset(t) => {
-            Type::Verbatim(quote_vstd! { vstd => #vstd::map::Map<#t, #ty> })
+            Type::Verbatim(quote_vstd! { vstd => #vstd::tokens::MultisetToken<#t, #tok> })
         }
 
         _ => {
@@ -2283,6 +2285,14 @@ fn translate_expr(ctxt: &Ctxt, expr: &Expr, birds_eye: bool, errors: &mut Vec<Er
     expr
 }
 
+fn get_inst_object_value(ctxt: &Ctxt) -> Expr {
+    if ctxt.is_init {
+        Expr::Verbatim(quote! { instance })
+    } else {
+        Expr::Verbatim(quote! { (*self) })
+    }
+}
+
 fn get_inst_value(ctxt: &Ctxt) -> Expr {
     if ctxt.is_init {
         Expr::Verbatim(quote! { instance.id() })
@@ -2292,7 +2302,7 @@ fn get_inst_value(ctxt: &Ctxt) -> Expr {
 }
 
 fn get_const_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
-    let inst = get_inst_value(ctxt);
+    let inst = get_inst_object_value(ctxt);
     let field_name = &field.name;
     Expr::Verbatim(quote_spanned! { span => #inst.#field_name() })
 }

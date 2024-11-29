@@ -15,36 +15,36 @@ broadcast use
 pub ghost struct InstanceId(pub int);
 
 pub trait ValueToken<Value> {
-    spec fn instance(&self) -> InstanceId;
+    spec fn instance_id(&self) -> InstanceId;
     spec fn value(&self) -> Value;
 
     proof fn agree(tracked &self, tracked other: &Self)
-        requires self.instance() == other.instance(),
+        requires self.instance_id() == other.instance_id(),
         ensures self.value() == other.value();
 }
 
 pub trait UniqueValueToken<Value> : ValueToken<Value> {
     proof fn unique(tracked &mut self, tracked other: &Self)
-        ensures self.instance() != other.instance();
+        ensures self.instance_id() != other.instance_id();
 }
 
 //pub trait PersistentValueToken<Value> : ValueToken<Value> + Copy {
 //}
 
 pub trait KeyValueToken<Key, Value> {
-    spec fn instance(&self) -> InstanceId;
+    spec fn instance_id(&self) -> InstanceId;
     spec fn key(&self) -> Key;
     spec fn value(&self) -> Value;
 
     proof fn agree(tracked &self, tracked other: &Self)
-        requires self.instance() == other.instance(),
+        requires self.instance_id() == other.instance_id(),
                  self.key() == other.key(),
         ensures self.value() == other.value();
 }
 
 pub trait UniqueKeyValueToken<Key, Value> : KeyValueToken<Key, Value> {
     proof fn unique(tracked &mut self, tracked other: &Self)
-        ensures self.instance() != other.instance()
+        ensures self.instance_id() != other.instance_id()
             || self.key() != other.key();
 }
 
@@ -52,53 +52,53 @@ pub trait UniqueKeyValueToken<Key, Value> : KeyValueToken<Key, Value> {
 //}
 
 pub trait CountToken : Sized {
-    spec fn instance(&self) -> InstanceId;
+    spec fn instance_id(&self) -> InstanceId;
     spec fn count(&self) -> nat;
 
     proof fn join(tracked &mut self, tracked other: Self)
         requires
-            old(self).instance() == other.instance(),
+            old(self).instance_id() == other.instance_id(),
         ensures
-            self.instance() == old(self).instance(),
+            self.instance_id() == old(self).instance_id(),
             self.count() == old(self).count() + other.count();
 
     proof fn split(tracked &mut self, count: nat) -> (tracked token: Self)
         requires
             count <= old(self).count()
         ensures
-            self.instance() == old(self).instance(),
+            self.instance_id() == old(self).instance_id(),
             self.count() == old(self).count() - count,
-            token.instance() == old(self).instance(),
+            token.instance_id() == old(self).instance_id(),
             token.count() == count;
 }
 
 pub trait MonotonicCountToken : Sized {
-    spec fn instance(&self) -> InstanceId;
+    spec fn instance_id(&self) -> InstanceId;
     spec fn count(&self) -> nat;
 }
 
 pub trait ElementToken<Element> {
-    spec fn instance(&self) -> InstanceId;
+    spec fn instance_id(&self) -> InstanceId;
     spec fn element(&self) -> Element;
 }
 
 pub trait UniqueElementToken<Element> : ElementToken<Element> {
     proof fn unique(tracked &mut self, tracked other: &Self)
-        ensures self.instance() == other.instance()
+        ensures self.instance_id() == other.instance_id()
             ==> self.element() != other.element();
 }
 
 pub trait SimpleToken {
-    spec fn instance(&self) -> InstanceId;
+    spec fn instance_id(&self) -> InstanceId;
 }
 
 pub trait UniqueSimpleToken<Element> : ElementToken<Element> {
     proof fn unique(tracked &mut self, tracked other: &Self)
-        ensures self.instance() != other.instance();
+        ensures self.instance_id() != other.instance_id();
 }
 
 #[verifier::reject_recursive_types(Key)]
-tracked struct MapToken<Key, Value, Token>
+pub tracked struct MapToken<Key, Value, Token>
     where Token: KeyValueToken<Key, Value>
 {
     ghost _v: PhantomData<Value>,
@@ -112,10 +112,10 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
     #[verifier::type_invariant]
     spec fn wf(self) -> bool {
         forall |k| #[trigger] self.m.dom().contains(k) ==> self.m[k].key() == k
-            && self.m[k].instance() == self.inst
+            && self.m[k].instance_id() == self.inst
     }
 
-    pub closed spec fn instance(self) -> InstanceId {
+    pub closed spec fn instance_id(self) -> InstanceId {
         self.inst
     }
 
@@ -126,21 +126,36 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
         )
     }
 
-    proof fn empty(instance: InstanceId) -> (tracked s: Self)
+    #[verifier::inline]
+    pub open spec fn dom(self) -> Set<Key> {
+        self.map().dom()
+    }
+
+    #[verifier::inline]
+    pub open spec fn spec_index(self, k: Key) -> Value {
+        self.map()[k]
+    }
+
+    #[verifier::inline]
+    pub open spec fn index(self, k: Key) -> Value {
+        self.map()[k]
+    }
+
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
-            s.instance() == instance,
+            s.instance_id() == instance_id,
             s.map() === Map::empty(),
     {
-        let tracked s = Self { inst: instance, m: Map::tracked_empty(), _v: PhantomData };
+        let tracked s = Self { inst: instance_id, m: Map::tracked_empty(), _v: PhantomData };
         assert(s.map() =~= Map::empty());
         return s;
     }
 
-    proof fn insert(tracked &mut self, tracked token: Token)
+    pub proof fn insert(tracked &mut self, tracked token: Token)
         requires
-            old(self).instance() == token.instance(),
+            old(self).instance_id() == token.instance_id(),
         ensures
-            self.instance() == old(self).instance(),
+            self.instance_id() == old(self).instance_id(),
             self.map() == old(self).map().insert(token.key(), token.value()),
     {
         use_type_invariant(&*self);
@@ -148,13 +163,13 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
         assert(self.map() =~= old(self).map().insert(token.key(), token.value()));
     }
 
-    proof fn remove(tracked &mut self, key: Key) -> (tracked token: Token)
+    pub proof fn remove(tracked &mut self, key: Key) -> (tracked token: Token)
         requires
             old(self).map().dom().contains(key)
         ensures
-            self.instance() == old(self).instance(),
+            self.instance_id() == old(self).instance_id(),
             self.map() == old(self).map().remove(key),
-            token.instance() == self.instance(),
+            token.instance_id() == self.instance_id(),
             token.key() == key,
             token.value() == old(self).map()[key]
     {
@@ -164,11 +179,11 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
         t
     }
 
-    proof fn into_map(tracked self) -> (tracked map: Map<Key, Token>)
+    pub proof fn into_map(tracked self) -> (tracked map: Map<Key, Token>)
         ensures
             map.dom() == self.map().dom(),
             forall |key| #[trigger] map.dom().contains(key)
-                ==> map[key].instance() == self.instance()
+                ==> map[key].instance_id() == self.instance_id()
                  && map[key].key() == key
                  && map[key].value() == self.map()[key]
     {
@@ -178,25 +193,25 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
         return m;
     }
 
-    proof fn from_map(instance: InstanceId, tracked map: Map<Key, Token>) -> (s: Self)
+    pub proof fn from_map(instance_id: InstanceId, tracked map: Map<Key, Token>) -> (s: Self)
         requires
-            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance() == instance,
+            forall |key| #[trigger] map.dom().contains(key) ==> map[key].instance_id() == instance_id,
             forall |key| #[trigger] map.dom().contains(key) ==> map[key].key() == key,
         ensures
             map.dom() == s.map().dom(),
             forall |key| #[trigger] map.dom().contains(key)
-                ==> map[key].instance() == s.instance()
+                ==> map[key].instance_id() == s.instance_id()
                  && map[key].key() == key
                  && map[key].value() == s.map()[key]
     {
-        let tracked s = MapToken { inst: instance, m: map, _v: PhantomData };
+        let tracked s = MapToken { inst: instance_id, m: map, _v: PhantomData };
         assert(map.dom() == s.map().dom());
         s
     }
 }
 
 #[verifier::reject_recursive_types(Element)]
-tracked struct SetToken<Element, Token>
+pub tracked struct SetToken<Element, Token>
     where Token: ElementToken<Element>
 {
     ghost inst: InstanceId,
@@ -209,10 +224,10 @@ impl<Element, Token> SetToken<Element, Token>
     #[verifier::type_invariant]
     spec fn wf(self) -> bool {
         forall |k| #[trigger] self.m.dom().contains(k) ==> self.m[k].element() == k
-            && self.m[k].instance() == self.inst
+            && self.m[k].instance_id() == self.inst
     }
 
-    pub closed spec fn instance(self) -> InstanceId {
+    pub closed spec fn instance_id(self) -> InstanceId {
         self.inst
     }
 
@@ -222,21 +237,21 @@ impl<Element, Token> SetToken<Element, Token>
         )
     }
 
-    proof fn empty(instance: InstanceId) -> (tracked s: Self)
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
-            s.instance() == instance,
+            s.instance_id() == instance_id,
             s.set() === Set::empty(),
     {
-        let tracked s = Self { inst: instance, m: Map::tracked_empty() };
+        let tracked s = Self { inst: instance_id, m: Map::tracked_empty() };
         assert(s.set() =~= Set::empty());
         return s;
     }
 
-    proof fn insert(tracked &mut self, tracked token: Token)
+    pub proof fn insert(tracked &mut self, tracked token: Token)
         requires
-            old(self).instance() == token.instance(),
+            old(self).instance_id() == token.instance_id(),
         ensures
-            self.instance() == old(self).instance(),
+            self.instance_id() == old(self).instance_id(),
             self.set() == old(self).set().insert(token.element()),
     {
         use_type_invariant(&*self);
@@ -244,13 +259,13 @@ impl<Element, Token> SetToken<Element, Token>
         assert(self.set() =~= old(self).set().insert(token.element()));
     }
 
-    proof fn remove(tracked &mut self, element: Element) -> (tracked token: Token)
+    pub proof fn remove(tracked &mut self, element: Element) -> (tracked token: Token)
         requires
             old(self).set().contains(element)
         ensures
-            self.instance() == old(self).instance(),
+            self.instance_id() == old(self).instance_id(),
             self.set() == old(self).set().remove(element),
-            token.instance() == self.instance(),
+            token.instance_id() == self.instance_id(),
             token.element() == element,
     {
         use_type_invariant(&*self);
@@ -260,7 +275,7 @@ impl<Element, Token> SetToken<Element, Token>
     }
 }
 
-tracked struct MultisetToken<Element, Token>
+pub tracked struct MultisetToken<Element, Token>
     where Token: ElementToken<Element>
 {
     ghost _v: PhantomData<Element>,
@@ -319,10 +334,10 @@ impl<Element, Token> MultisetToken<Element, Token>
     spec fn wf(self) -> bool {
         self.m.dom().finite() &&
         forall |k| #[trigger] self.m.dom().contains(k)
-            ==> self.m[k].instance() == self.inst
+            ==> self.m[k].instance_id() == self.inst
     }
 
-    pub closed spec fn instance(self) -> InstanceId {
+    pub closed spec fn instance_id(self) -> InstanceId {
         self.inst
     }
 
@@ -334,21 +349,21 @@ impl<Element, Token> MultisetToken<Element, Token>
         map_values(Self::map_elems(self.m))
     }
 
-    proof fn empty(instance: InstanceId) -> (tracked s: Self)
+    pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
-            s.instance() == instance,
+            s.instance_id() == instance_id,
             s.multiset() === Multiset::empty(),
     {
-        let tracked s = Self { inst: instance, m: Map::tracked_empty(), _v: PhantomData, };
+        let tracked s = Self { inst: instance_id, m: Map::tracked_empty(), _v: PhantomData, };
         assert(Self::map_elems(Map::empty()) =~= Map::empty());
         return s;
     }
 
-    proof fn insert(tracked &mut self, tracked token: Token)
+    pub proof fn insert(tracked &mut self, tracked token: Token)
         requires
-            old(self).instance() == token.instance(),
+            old(self).instance_id() == token.instance_id(),
         ensures
-            self.instance() == old(self).instance(),
+            self.instance_id() == old(self).instance_id(),
             self.multiset() == old(self).multiset().insert(token.element()),
     {
         use_type_invariant(&*self);
@@ -364,13 +379,13 @@ impl<Element, Token> MultisetToken<Element, Token>
         assert(self.multiset() =~= old(self).multiset().insert(token.element()));
     }
 
-    proof fn remove(tracked &mut self, element: Element) -> (tracked token: Token)
+    pub proof fn remove(tracked &mut self, element: Element) -> (tracked token: Token)
         requires
             old(self).multiset().contains(element)
         ensures
-            self.instance() == old(self).instance(),
+            self.instance_id() == old(self).instance_id(),
             self.multiset() == old(self).multiset().remove(element),
-            token.instance() == self.instance(),
+            token.instance_id() == self.instance_id(),
             token.element() == element,
     {
         use_type_invariant(&*self);
@@ -387,12 +402,12 @@ impl<Element, Token> MultisetToken<Element, Token>
 pub open spec fn option_value_eq_option_token<Value, Token: ValueToken<Value>>(
     opt_value: Option<Value>,
     opt_token: Option<Token>,
-    inst: InstanceId,
+    instance_id: InstanceId,
 ) -> bool {
     match opt_value {
         Some(val) => opt_token.is_some()
-            && opt_token.unwrap().value() == val,
-            && opt_token.unwrap().instance() == inst,
+            && opt_token.unwrap().value() == val
+            && opt_token.unwrap().instance_id() == instance_id,
         None => opt_token.is_none(),
     }
 }
@@ -400,12 +415,12 @@ pub open spec fn option_value_eq_option_token<Value, Token: ValueToken<Value>>(
 pub open spec fn option_value_le_option_token<Value, Token: ValueToken<Value>>(
     opt_value: Option<Value>,
     opt_token: Option<Token>,
-    inst: InstanceId,
+    instance_id: InstanceId,
 ) -> bool {
     match opt_value {
         Some(val) => opt_token.is_some()
-            && opt_token.unwrap().value() == val,
-            && opt_token.unwrap().instance() == inst,
+            && opt_token.unwrap().value() == val
+            && opt_token.unwrap().instance_id() == instance_id,
         None => true,
     }
 }
@@ -413,10 +428,10 @@ pub open spec fn option_value_le_option_token<Value, Token: ValueToken<Value>>(
 pub open spec fn bool_value_eq_option_token<Token: SimpleToken>(
     b: bool,
     opt_token: Option<Token>,
-    inst: InstanceId,
+    instance_id: InstanceId,
 ) -> bool {
     if b {
-        opt_token.is_some() && opt_token.unwrap().instance() == inst,
+        opt_token.is_some() && opt_token.unwrap().instance_id() == instance_id
     } else {
         opt_token.is_none()
     }
@@ -425,10 +440,10 @@ pub open spec fn bool_value_eq_option_token<Token: SimpleToken>(
 pub open spec fn bool_value_le_option_token<Token: SimpleToken>(
     b: bool,
     opt_token: Option<Token>,
-    inst: InstanceId,
+    instance_id: InstanceId,
 ) -> bool {
     b ==>
-        opt_token.is_some() && opt_token.unwrap().instance() == inst,
+        opt_token.is_some() && opt_token.unwrap().instance_id() == instance_id
 }
 
 }

@@ -140,8 +140,8 @@ tracked struct GhostStuff<S> {
 impl<S> GhostStuff<S> {
     pub open spec fn wf(self, inst: RefCounter::Instance<MemPerms<S>>, cell: PAtomicU64) -> bool {
         &&& self.rc_perm@.patomic == cell.id()
-        &&& self.rc_token@.instance == inst
-        &&& self.rc_perm@.value as nat == self.rc_token@.value
+        &&& self.rc_token.instance_id() == inst.id()
+        &&& self.rc_perm@.value as nat == self.rc_token.value()
     }
 }
 
@@ -164,13 +164,12 @@ struct_with_invariants!{
 
     spec fn wf(self) -> bool {
         predicate {
-            &&& self.reader@@.key.pptr() == self.ptr
-            &&& self.reader@@.key.pptr() == self.ptr
+            &&& self.reader@.element().pptr() == self.ptr
+            &&& self.reader@.element().pptr() == self.ptr
 
-            &&& self.reader@@.instance == self.inst@
-            &&& self.reader@@.count == 1
-            &&& self.reader@@.key.is_init()
-            &&& self.reader@@.key.value().rc_cell == self.rc_cell
+            &&& self.reader@.instance_id() == self.inst@.id()
+            &&& self.reader@.element().is_init()
+            &&& self.reader@.element().value().rc_cell == self.rc_cell
         }
 
         invariant on inv with (inst, rc_cell)
@@ -184,7 +183,7 @@ struct_with_invariants!{
 
 impl<S> MyArc<S> {
     spec fn view(self) -> S {
-        self.reader@@.key.value().s
+        self.reader@.element().value().s
     }
 
     fn new(s: S) -> (rc: Self)
@@ -218,7 +217,7 @@ impl<S> MyArc<S> {
     {
         let tracked inst = self.inst.borrow();
         let tracked reader = self.reader.borrow();
-        let tracked perm = inst.reader_guard(reader@.key, &reader);
+        let tracked perm = inst.reader_guard(reader.element(), &reader);
         &self.ptr.borrow(Tracked(perm)).s
     }
 
@@ -234,7 +233,7 @@ impl<S> MyArc<S> {
         {
             let tracked inst = self.inst.borrow();
             let tracked reader = self.reader.borrow();
-            let tracked perm = inst.reader_guard(reader@.key, &reader);
+            let tracked perm = inst.reader_guard(reader.element(), &reader);
             let inner_rc_ref = self.ptr.borrow(Tracked(perm));
             let count: u64;
             open_atomic_invariant!(self.inv.borrow().borrow() => g => {
@@ -256,7 +255,7 @@ impl<S> MyArc<S> {
                 proof {
                     if res.is_ok() {
                         new_reader = Some(self.inst.borrow().do_clone(
-                            reader@.key,
+                            reader.element(),
                             &mut rc_token,
                             &reader));
                     }
@@ -287,7 +286,7 @@ impl<S> MyArc<S> {
             ptr,
             rc_cell: _,
         } = self;
-        let tracked perm = inst.reader_guard(reader@.key, &reader);
+        let tracked perm = inst.reader_guard(reader.element(), &reader);
         let inner_rc_ref = &ptr.borrow(Tracked(perm));
         let count;
         let tracked mut inner_rc_perm_opt = None;
@@ -297,12 +296,12 @@ impl<S> MyArc<S> {
             count = inner_rc_ref.rc_cell.fetch_sub_wrapping(Tracked(&mut rc_perm), 1);
 
             proof {
-                if rc_token@.value < 2 {
+                if rc_token.value() < 2 {
                     let tracked inner_rc_perm = inst.dec_to_zero(
-                        reader.view().key, &mut rc_token, reader);
+                        reader.element(), &mut rc_token, reader);
                     inner_rc_perm_opt = Some(inner_rc_perm);
                 } else {
-                    inst.dec_basic(reader.view().key, &mut rc_token, reader);
+                    inst.dec_basic(reader.element(), &mut rc_token, reader);
                 }
 
                 g = GhostStuff { rc_perm, rc_token };
