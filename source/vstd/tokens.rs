@@ -1,5 +1,3 @@
-//// ValueToken - for variable, option, persistent_option
-
 use super::prelude::*;
 use super::multiset::*;
 use core::marker::PhantomData;
@@ -37,9 +35,6 @@ pub trait UniqueValueToken<Value> : ValueToken<Value> {
         ensures self.instance_id() != other.instance_id();
 }
 
-//pub trait PersistentValueToken<Value> : ValueToken<Value> + Copy {
-//}
-
 pub trait KeyValueToken<Key, Value> : Sized {
     spec fn instance_id(&self) -> InstanceId;
     spec fn key(&self) -> Key;
@@ -61,9 +56,6 @@ pub trait UniqueKeyValueToken<Key, Value> : KeyValueToken<Key, Value> {
             || self.key() != other.key();
 }
 
-//pub trait PersistentKeyValueToken<Key, Value> : KeyValueToken<Key, Value> + Copy {
-//}
-
 pub trait CountToken : Sized {
     spec fn instance_id(&self) -> InstanceId;
     spec fn count(&self) -> nat;
@@ -84,6 +76,11 @@ pub trait CountToken : Sized {
             token.instance_id() == old(self).instance_id(),
             token.count() == count;
 
+    proof fn weaken_shared(tracked &self, count: nat) -> (tracked s: &Self)
+        requires count <= self.count(),
+        ensures s.instance_id() == self.instance_id(),
+            s.count() == count;
+
     /// Return an arbitrary token. It's not possible to do anything interesting
     /// with this token because it doesn't have a specified instance.
     proof fn arbitrary() -> (tracked s: Self);
@@ -92,6 +89,11 @@ pub trait CountToken : Sized {
 pub trait MonotonicCountToken : Sized {
     spec fn instance_id(&self) -> InstanceId;
     spec fn count(&self) -> nat;
+
+    proof fn weaken(tracked &self, count: nat) -> (tracked s: Self)
+        requires count <= self.count(),
+        ensures s.instance_id() == self.instance_id(),
+            s.count() == count;
 
     /// Return an arbitrary token. It's not possible to do anything interesting
     /// with this token because it doesn't have a specified instance.

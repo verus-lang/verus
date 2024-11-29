@@ -1379,6 +1379,21 @@ fn token_trait_impl_main(
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
             fn split(#[verifier::proof] &mut self, count: nat) -> Self
             { ::core::unimplemented!(); }
+
+            #[cfg_attr(verus_keep_ghost, verifier::proof)]
+            #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+            #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
+            fn weaken_shared(#[verifier::proof] &self, count: nat) -> &Self
+            { ::core::unimplemented!(); }
+        });
+    };
+    let add_weaken = |ts: &mut TokenStream| {
+        ts.extend(quote!{
+            #[cfg_attr(verus_keep_ghost, verifier::proof)]
+            #[cfg_attr(verus_keep_ghost, verifier::external_body)]
+            #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
+            fn weaken(#[verifier::proof] &self, count: nat) -> Self
+            { ::core::unimplemented!(); }
         });
     };
     let add_arbitrary = |ts: &mut TokenStream| {
@@ -1414,6 +1429,7 @@ fn token_trait_impl_main(
         }
         MainTrait::MonotonicCount => {
             add_spec_fn(&mut ts, "count", &Type::Verbatim(quote_vstd!{ vstd => #vstd::prelude::nat }));
+            add_weaken(&mut ts);
         }
     }
     add_arbitrary(&mut ts);
