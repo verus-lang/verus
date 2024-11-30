@@ -7299,3 +7299,46 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error_msg(e, "use of moved value")
 }
+
+test_verify_one_file! {
+    #[test] assoc_type_in_field IMPORTS.to_string() + verus_code_str! {
+        pub trait Tr {
+            type AssocType;
+        }
+
+        tokenized_state_machine!{ X<T: Tr> {
+            fields {
+                #[sharding(map)]
+                pub m: Map<int, T::AssocType>,
+            }
+
+            init!{
+                initialize(m: Map<int, T::AssocType>) {
+                    init m = m;
+                }
+            }
+        }}
+
+        pub struct A {
+        }
+        pub struct B {
+            i: int,
+        }
+        impl Tr for A {
+            type AssocType = B;
+        }
+
+        proof fn test() {
+            let tracked (Tracked(inst), Tracked(mut map_token)) = X::Instance::<A>::initialize(map![3 => B { i: 9 }]);
+            assert(map_token.instance_id() == inst.id());
+            assert(map_token.map() =~= map![3 => B { i: 9 }]);
+            let tracked r = map_token.remove(3);
+            assert(r.key() == 3);
+            assert(r.value() == B { i: 9 });
+            assert(r.instance_id() == inst.id());
+
+            let j = X::m_map::<A>::empty(inst.id());
+            assert(j.map() =~= map![]);
+        }
+    } => Ok(())
+}
