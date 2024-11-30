@@ -187,10 +187,10 @@ pub fn generics_for_decl(generics: &Option<Generics>) -> (TokenStream, TokenStre
             if gen.params.len() > 0 {
                 let params = &gen.params;
                 let where_clause = &gen.where_clause;
-                (quote!{ <#params> }, quote!{ #where_clause })
+                (quote! { <#params> }, quote! { #where_clause })
             } else {
                 let where_clause = &gen.where_clause;
-                (TokenStream::new(), quote!{ #where_clause })
+                (TokenStream::new(), quote! { #where_clause })
             }
         }
     }
