@@ -180,6 +180,22 @@ fn generic_components_for_fn(generics: &Option<Generics>) -> (TokenStream, Token
     }
 }
 
+pub fn generics_for_decl(generics: &Option<Generics>) -> (TokenStream, TokenStream) {
+    match generics {
+        None => (TokenStream::new(), TokenStream::new()),
+        Some(gen) => {
+            if gen.params.len() > 0 {
+                let params = &gen.params;
+                let where_clause = &gen.where_clause;
+                (quote!{ <#params> }, quote!{ #where_clause })
+            } else {
+                let where_clause = &gen.where_clause;
+                (TokenStream::new(), quote!{ #where_clause })
+            }
+        }
+    }
+}
+
 pub fn impl_decl_stream(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
     match generics {
         None => {

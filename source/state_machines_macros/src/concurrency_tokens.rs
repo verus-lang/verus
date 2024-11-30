@@ -14,7 +14,7 @@ use crate::parse_token_stream::SMBundle;
 use crate::to_relation::{conjunct_opt, emit_match};
 use crate::to_token_stream::{
     get_self_ty, get_self_ty_turbofish, impl_decl_stream, impl_decl_stream_for,
-    name_with_type_args, shardable_type_to_type,
+    name_with_type_args, shardable_type_to_type, generics_for_decl,
 };
 use crate::token_transition_checks::{check_ordering_remove_have_add, check_unsupported_updates};
 use crate::util::{combine_errors_or_ok, is_definitely_irrefutable};
@@ -245,30 +245,33 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
     let type_alias_stream = match &field.stype {
         ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
             let name = Ident::new(&format!("{:}_map", field.name.to_string()), field.name.span());
-            let ty = name_with_type_args(&name, sm);
+            let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
             quote_vstd! { vstd =>
+                #[allow(type_alias_bounds)]
                 #[allow(non_camel_case_types)]
-                pub type #ty = #vstd::tokens::MapToken<#key, #val, #tok>;
+                pub type #name#gen1 #genwhere = #vstd::tokens::MapToken<#key, #val, #tok>;
             }
         }
         ShardableType::Set(elem) | ShardableType::PersistentSet(elem) => {
             let name = Ident::new(&format!("{:}_set", field.name.to_string()), field.name.span());
-            let ty = name_with_type_args(&name, sm);
+            let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
             quote_vstd! { vstd =>
+                #[allow(type_alias_bounds)]
                 #[allow(non_camel_case_types)]
-                pub type #ty = #vstd::tokens::SetToken<#elem, #tok>;
+                pub type #name#gen1 #genwhere = #vstd::tokens::SetToken<#elem, #tok>;
             }
         }
         ShardableType::Multiset(elem) => {
             let name =
                 Ident::new(&format!("{:}_multiset", field.name.to_string()), field.name.span());
-            let ty = name_with_type_args(&name, sm);
+            let (gen1, genwhere) = generics_for_decl(&sm.generics);
             let tok = field_token_type(sm, field);
             quote_vstd! { vstd =>
+                #[allow(type_alias_bounds)]
                 #[allow(non_camel_case_types)]
-                pub type #ty = #vstd::tokens::MultisetToken<#elem, #tok>;
+                pub type #name#gen1 #genwhere = #vstd::tokens::MultisetToken<#elem, #tok>;
             }
         }
         _ => TokenStream::new(),
