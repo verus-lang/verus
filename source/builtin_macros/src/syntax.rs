@@ -1312,6 +1312,17 @@ impl Visitor {
     }
 
     fn visit_trait_items_prefilter(&mut self, items: &mut Vec<TraitItem>) {
+        if self.rustdoc {
+            for trait_item in items.iter_mut() {
+                match trait_item {
+                    TraitItem::Method(trait_item_method) => {
+                        crate::rustdoc::process_trait_item_method(trait_item_method);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
                 TraitItem::Method(fun) => match fun.sig.mode {
@@ -3018,10 +3029,6 @@ impl VisitMut for Visitor {
     }
 
     fn visit_trait_item_method_mut(&mut self, method: &mut TraitItemMethod) {
-        if self.rustdoc {
-            crate::rustdoc::process_trait_item_method(method);
-        }
-
         let is_spec_method = method.sig.ident.to_string().starts_with(VERUS_SPEC);
         let mut stmts =
             self.visit_fn(&mut method.attrs, None, &mut method.sig, method.semi_token, true);
