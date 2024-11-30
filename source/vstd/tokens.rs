@@ -1,8 +1,9 @@
-use super::prelude::*;
 use super::multiset::*;
+use super::prelude::*;
 use core::marker::PhantomData;
 
-verus!{
+use verus as verus_;
+verus_! {
 
 // Note that the tokenized_state_machine! macro creates trusted implementations
 // of all these traits. Therefore all the proof functions in here are trusted.

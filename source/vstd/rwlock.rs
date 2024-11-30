@@ -542,7 +542,10 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         > = Option::None;
         while !done
             invariant
-                done ==> token.is_Some() && equal(token.get_Some_0().instance_id(), self.inst@.id()),
+                done ==> token.is_Some() && equal(
+                    token.get_Some_0().instance_id(),
+                    self.inst@.id(),
+                ),
                 self.wf(),
         {
             let result =

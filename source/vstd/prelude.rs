@@ -41,16 +41,16 @@ pub use super::string::StringExecFns;
 pub use super::string::StringExecFnsIsAscii;
 
 #[cfg(verus_keep_ghost)]
-pub use super::tokens::ValueToken;
-#[cfg(verus_keep_ghost)]
-pub use super::tokens::KeyValueToken;
-#[cfg(verus_keep_ghost)]
 pub use super::tokens::CountToken;
-#[cfg(verus_keep_ghost)]
-pub use super::tokens::MonotonicCountToken;
 #[cfg(verus_keep_ghost)]
 pub use super::tokens::ElementToken;
 #[cfg(verus_keep_ghost)]
+pub use super::tokens::KeyValueToken;
+#[cfg(verus_keep_ghost)]
+pub use super::tokens::MonotonicCountToken;
+#[cfg(verus_keep_ghost)]
 pub use super::tokens::SimpleToken;
+#[cfg(verus_keep_ghost)]
+pub use super::tokens::ValueToken;
 
 pub use super::tokens::InstanceId;
