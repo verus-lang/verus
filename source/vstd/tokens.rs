@@ -16,12 +16,29 @@ broadcast use
     super::set::group_set_axioms,
     super::map::group_map_axioms;
 
+/// Unique identifier for every VerusSync instance.
+/// Every "Token" and "Instance" object has an `InstanceId`. These ID values must agree
+/// to perform any token operation.
 pub ghost struct InstanceId(pub int);
+
+/// Interface for VerusSync tokens created for a field marked with the
+/// `variable`, `option` or `persistent_option` strategies.
+///
+/// | VerusSync Strategy  | Field type  | Token trait            |
+/// |---------------------|-------------|------------------------|
+/// | `variable`          | `V`         | [`UniqueValueToken<V>`](`UniqueValueToken`)        |
+/// | `option`            | `Option<V>` | [`UniqueValueToken<V>`](`UniqueValueToken`)        |
+/// | `persistent_option` | `Option<V>` | `ValueToken<V> + Copy` |
+///
+/// For the cases where the tokens are not `Copy`, then token is necessarily _unique_
+/// per-instance; the sub-trait, [`UniqueValueToken<V>`](`UniqueValueToken`), provides
+/// an additional lemma to prove uniqueness.
 
 pub trait ValueToken<Value> : Sized {
     spec fn instance_id(&self) -> InstanceId;
     spec fn value(&self) -> Value;
 
+    /// All tokens (for the same instance) must agree on the value.
     proof fn agree(tracked &self, tracked other: &Self)
         requires self.instance_id() == other.instance_id(),
         ensures self.value() == other.value();
@@ -31,16 +48,41 @@ pub trait ValueToken<Value> : Sized {
     proof fn arbitrary() -> (tracked s: Self);
 }
 
+/// Interface for VerusSync tokens created for a field marked with the `variable` or `option` strategies.
+///
+/// See the super-trait [`ValueToken`](ValueToken) for more information.
 pub trait UniqueValueToken<Value> : ValueToken<Value> {
+    /// The token for a given instance must be unique; in other words, if we have two
+    /// tokens, they must be for distinct instances.
+    /// Though the first argument is mutable, the value is not really mutated;
+    /// this is only used to ensure unique ownership of the argument.
     proof fn unique(tracked &mut self, tracked other: &Self)
-        ensures self.instance_id() != other.instance_id();
+        ensures
+            self.instance_id() != other.instance_id(),
+            *self == *old(self);
 }
+
+/// Interface for VerusSync tokens created for a field marked with the
+/// `map` or `persistent_map` strategies.
+///
+/// | VerusSync Strategy  | Field type  | Token trait            |
+/// |---------------------|-------------|------------------------|
+/// | `map`               | `Map<K, V>` | [`UniqueKeyValueToken<K, V>`](`UniqueKeyValueToken`) |
+/// | `persistent_map`    | `Map<K, V>` | `KeyValueToken<V> + Copy` |
+///
+/// For the cases where the tokens are not `Copy`, then token is necessarily _unique_
+/// per-instance, per-key; the sub-trait, [`UniqueKeyValueToken<V>`](`UniqueKeyValueToken`), provides
+/// an additional lemma to prove uniqueness.
+///
+/// Each token represents a _single_ key-value pair.
+/// To work with a collection of `KeyValueToken`s, use [`MapToken`].
 
 pub trait KeyValueToken<Key, Value> : Sized {
     spec fn instance_id(&self) -> InstanceId;
     spec fn key(&self) -> Key;
     spec fn value(&self) -> Value;
 
+    /// All tokens, for the same instance and _key_, must agree on the value.
     proof fn agree(tracked &self, tracked other: &Self)
         requires self.instance_id() == other.instance_id(),
                  self.key() == other.key(),
@@ -51,12 +93,30 @@ pub trait KeyValueToken<Key, Value> : Sized {
     proof fn arbitrary() -> (tracked s: Self);
 }
 
+/// Interface for VerusSync tokens created for a field marked with the `map` strategy.
+///
+/// See the super-trait [`KeyValueToken`](KeyValueToken) for more information.
 pub trait UniqueKeyValueToken<Key, Value> : KeyValueToken<Key, Value> {
+    /// The token for a given instance and key must be unique; in other words, if we have two
+    /// tokens, they must be for distinct instances or keys.
+    /// Though the first argument is mutable, the value is not really mutated;
+    /// this is only used to ensure unique ownership of the argument.
     proof fn unique(tracked &mut self, tracked other: &Self)
-        ensures self.instance_id() != other.instance_id()
-            || self.key() != other.key();
+        ensures
+            self.instance_id() != other.instance_id() || self.key() != other.key(),
+            *self == *old(self);
 }
 
+/// Interface for VerusSync tokens created for a field marked with the `count` strategy.
+///
+/// | VerusSync Strategy  | Field type  | Token trait            |
+/// |---------------------|-------------|------------------------|
+/// | `count`             | `nat`       | `CountToken`           |
+///
+/// These tokens are "fungible" in the sense that they can be combined and split, numbers
+/// combining additively.
+///
+/// (For the `persistent_count` strategy, see [`MonotonicCountToken`].)
 pub trait CountToken : Sized {
     spec fn instance_id(&self) -> InstanceId;
     spec fn count(&self) -> nat;
@@ -87,6 +147,14 @@ pub trait CountToken : Sized {
     proof fn arbitrary() -> (tracked s: Self);
 }
 
+/// Interface for VerusSync tokens created for a field marked with the `persistent_count` strategy.
+///
+/// | VerusSync Strategy  | Field type  | Token trait                   |
+/// |---------------------|-------------|-------------------------------|
+/// | `persistent_count`  | `nat`       | `MonotonicCountToken + Copy`  |
+///
+/// A token represents a "lower bound" on the field value, which increases monotonically.
+
 pub trait MonotonicCountToken : Sized {
     spec fn instance_id(&self) -> InstanceId;
     spec fn count(&self) -> nat;
@@ -101,6 +169,24 @@ pub trait MonotonicCountToken : Sized {
     proof fn arbitrary() -> (tracked s: Self);
 }
 
+/// Interface for VerusSync tokens created for a field marked with the
+/// `set`, `persistent_set` or `multiset` strategies.
+///
+/// | VerusSync Strategy  | Field type  | Token trait            |
+/// |---------------------|-------------|------------------------|
+/// | `set`               | `Set<V>`    | [`UniqueElementToken<V>`](`UniqueElementToken`) |
+/// | `persistent_set`    | `Set<V>`    | `ElementToken<V> + Copy` |
+/// | `multiset`          | `Multiset<V>` | `ElementToken<V>`      |
+///
+/// Each token represents a single element of the set or multiset.
+///
+///  * For the `set` strategy, the token for any given element is unique.
+///  * For the `persistent_set` strategy, the token for any given element is not unique, but is `Copy`.
+///  * For the `multiset` strategy, the tokens are neither unique nor `Copy`, as the specific
+///    multiplicity of each element must be exact.
+///
+/// To work with a collection of `ElementToken`s, use [`SetToken`] or [`MultisetToken`].
+
 pub trait ElementToken<Element> : Sized {
     spec fn instance_id(&self) -> InstanceId;
     spec fn element(&self) -> Element;
@@ -110,12 +196,30 @@ pub trait ElementToken<Element> : Sized {
     proof fn arbitrary() -> (tracked s: Self);
 }
 
+/// Interface for VerusSync tokens created for a field marked with the `set` strategy.
+///
+/// See the super-trait [`ElementToken`](ElementToken) for more information.
 pub trait UniqueElementToken<Element> : ElementToken<Element> {
+    /// The token for a given instance and element must be unique; in other words, if we have two
+    /// tokens, they must be for distinct instances or elements.
+    /// Though the first argument is mutable, the value is not really mutated;
+    /// this is only used to ensure unique ownership of the argument.
     proof fn unique(tracked &mut self, tracked other: &Self)
-        ensures self.instance_id() == other.instance_id()
-            ==> self.element() != other.element();
+        ensures
+            self.instance_id() == other.instance_id() ==> self.element() != other.element(),
+            *self == *old(self);
 }
 
+/// Interface for VerusSync tokens created for a field marked with the `bool` or
+/// `persistent_bool` strategy.
+///
+/// | VerusSync Strategy  | Field type  | Token trait            |
+/// |---------------------|-------------|------------------------|
+/// | `bool`              | `bool`      | [`UniqueSimpleToken<V>`](`UniqueSimpleToken`) |
+/// | `persistent_bool`   | `bool`      | `SimpleToken<V> + Copy` |
+///
+/// The token contains no additional data; its presence indicates that the boolean field
+/// is `true`.
 pub trait SimpleToken : Sized {
     spec fn instance_id(&self) -> InstanceId;
 
@@ -124,9 +228,18 @@ pub trait SimpleToken : Sized {
     proof fn arbitrary() -> (tracked s: Self);
 }
 
+/// Interface for VerusSync tokens created for a field marked with the `bool` strategy.
+///
+/// See the super-trait [`SimpleToken`](SimpleToken) for more information.
 pub trait UniqueSimpleToken : SimpleToken {
+    /// The token for a given instance must be unique; in other words, if we have two
+    /// tokens, they must be for distinct instances.
+    /// Though the first argument is mutable, the value is not really mutated;
+    /// this is only used to ensure unique ownership of the argument.
     proof fn unique(tracked &mut self, tracked other: &Self)
-        ensures self.instance_id() != other.instance_id();
+        ensures
+            self.instance_id() != other.instance_id(),
+            *self == *old(self);
 }
 
 #[verifier::reject_recursive_types(Key)]
