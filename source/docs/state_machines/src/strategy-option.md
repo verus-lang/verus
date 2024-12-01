@@ -9,7 +9,11 @@ fields {
 }
 ```
 
-This creates a token type, `State::field`, which a field `value: V`.
+**Tokens.**
+This creates a token type, `State::field`, which implements
+[`UniqueValueToken<V>`](https://verus-lang.github.io/verus/verusdoc/vstd/tokens/trait.UniqueValueToken.html).
+
+**Relationship between global field value and the token.**
 When `field` is `None`, this corresponds to no token existing, while
 when `field` is `Some(v)`, this corresponds to a token of value `v` existing.
 Having multiple such tokens at the same time is an impossible state.
@@ -37,30 +41,30 @@ Having multiple such tokens at the same time is an impossible state.
       <td>Output <code>Option&lt;State::field&gt;</code></td>
     </tr> <tr>
       <td><code>remove field -= Some(v);</code></td>
-      <td><code>require field === Some(v);</code><br><code>update field = None;</code></td>
+      <td><code>require field == Some(v);</code><br><code>update field = None;</code></td>
       <td>Input <code>State::field</code></td>
     </tr> <tr>
       <td><code>have field &gt;= Some(v);</code></td>
-      <td><code>require field === Some(v);</code></td>
+      <td><code>require field == Some(v);</code></td>
       <td>Input <code>&amp;State::field</code></td>
     </tr> <tr>
       <td><code>add field += Some(v);</code></td>
-      <td><code>assert field === None;</code><br><code>update field = Some(v);</code></td>
+      <td><code>assert field == None;</code><br><code>update field = Some(v);</code></td>
       <td>Output <code>State::field</code></td>
     </tr> <tr>
       <td><code>remove field -= (v_opt);</code></td>
-      <td><code style="white-space: pre">require v_opt === None || field === v_opt;
-update field = if v_opt === None { field }
+      <td><code style="white-space: pre">require v_opt == None || field == v_opt;
+update field = if v_opt == None { field }
                else { None };</code></td>
       <td>Input <code>Option&lt;State::field&gt;</code></td>
     </tr> <tr>
       <td><code>have field &gt;= (v_opt);</code></td>
-      <td><code>require v_opt === None || field === v_opt;</code></td>
+      <td><code>require v_opt == None || field == v_opt;</code></td>
       <td>Input <code>&amp;Option&lt;State::field&gt;</code></td>
     </tr> <tr>
       <td><code>add field += (v_opt);</code></td>
-      <td><code style="white-space: pre">assert field === None || v_opt === None;
-update field = if v_opt === None { field }
+      <td><code style="white-space: pre">assert field == None || v_opt == None;
+update field = if v_opt == None { field }
                else { v_opt };</code></td>
       <td>Output <code>Option&lt;State::field&gt;</code></td>
     </tr>
@@ -89,7 +93,7 @@ related as follows:
   </tr>
   <tr>
     <td><code>Some(v)</code></td>
-    <td><code>Some(tok)</code> where <code>tok@.value === v</code></td>
+    <td><code>Some(tok)</code> where <code>tok.value() == v</code></td>
   </tr>
 </table>
 

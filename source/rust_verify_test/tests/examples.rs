@@ -18,6 +18,7 @@ examples_in_dir!("../rust_verify/example/guide");
 examples_in_dir!("../rust_verify/example/state_machines");
 examples_in_dir!("../rust_verify/example/summer_school");
 examples_in_dir!("../rust_verify/example/state_machines/tutorial");
+examples_in_dir!("../rust_verify/example/state_machines/reference-examples");
 examples_in_dir!("../rust_verify/example/std_test");
 
 #[cfg(feature = "singular")]
