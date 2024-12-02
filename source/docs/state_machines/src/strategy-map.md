@@ -188,7 +188,7 @@ To consume a <a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/st
 remove field -= (m);
 ```
 
-To check the value of a <a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.MapToken.html"><code>MapToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</code></a> where `tok.map() == m`:
+To check the value of a <code>&amp;<a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.MapToken.html">MapToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</a></code> where `tok.map() == m`:
 
 ```rust
 have field >= (m);

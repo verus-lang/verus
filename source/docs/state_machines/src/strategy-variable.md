@@ -49,7 +49,7 @@ If it's read _and_ modified, it will be input as a
 
 ### Updating the field
 
-Updating the field is done with the `update` statement:
+Updating the field is done with the `update` statement in any `transition!` operation:
 
 ```rust
 update field = v;

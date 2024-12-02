@@ -158,7 +158,7 @@ To consume a <a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/st
 remove field -= (s);
 ```
 
-To check the value of a <a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.SetToken.html"><code>SetToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</code></a> where `tok.set() == s`:
+To check the value of a <code>&amp;<a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.SetToken.html">SetToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</a></code> where `tok.set() == s`:
 
 ```rust
 have field >= (s);

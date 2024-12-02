@@ -91,7 +91,7 @@ related as follows:
 
 <table>
   <tr>
-    <th>value of <code>opt_v: V</code></th>
+    <th>value of <code>opt_v: Option&lt;V&gt;</code></th>
     <th>&nbsp;&nbsp;&nbsp;value of optional token <code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>></code></th>
   </tr>
   <tr>
@@ -203,7 +203,7 @@ To consume an <code>Option&lt;<span style="font-style: italic; color: #408040">t
 remove field -= (opt_v);
 ```
 
-To check the value of an <code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code>:
+To check the value of an <code>&amp;Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code>:
 
 ```rust
 have field >= (opt_v);
