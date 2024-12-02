@@ -45,5 +45,9 @@
 
   - [Tokenization](./tokenization-reference.md)
     - [Strategy Reference](strategy-reference.md)
+      - [`variable`](strategy-variable.md)
       - [`option`](strategy-option.md)
+      - [`map`](strategy-map.md)
+      - [`set`](strategy-set.md)
+      - [`multiset`](strategy-multiset.md)
     - [Formalism of Tokenization by monoids (TODO)](./monoid-formalism.md)
