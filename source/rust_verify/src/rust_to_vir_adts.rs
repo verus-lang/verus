@@ -46,6 +46,10 @@ where
         Some(VariantData::Struct { fields, recovered }) => {
             // 'recovered' means that it was recovered from a syntactic error.
             // So we shouldn't get to this point if 'recovered' is true.
+            let recovered = match recovered {
+                rustc_ast::Recovered::No => false,
+                _ => true,
+            };
             unsupported_err_unless!(!recovered, span, "recovered_struct", variant_data_opt);
             Some(*fields)
         }
