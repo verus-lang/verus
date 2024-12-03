@@ -24,6 +24,7 @@ use crate::def::{
 };
 use crate::inv_masks::{MaskSet, MaskSingleton};
 use crate::messages::{error, error_with_label, Span};
+use crate::mono;
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
@@ -184,6 +185,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Projection { .. } => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
+        TypX::Poly => str_typ(POLY),
         TypX::Air(t) => t.clone(),
     }
 }
@@ -220,7 +222,11 @@ fn decoration_str(d: TypDecoration) -> &'static str {
 pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
     let mk_id = |t: Expr| -> Vec<Expr> {
         let ds = str_var(crate::def::DECORATE_NIL);
-        if crate::context::DECORATE { vec![ds, t] } else { vec![t] }
+        if crate::context::DECORATE {
+            vec![ds, t]
+        } else {
+            vec![t]
+        }
     };
     match &**typ {
         MonoTypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
@@ -269,7 +275,11 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
 
 fn big_int_to_expr(i: &BigInt) -> Expr {
     use num_traits::Zero;
-    if i >= &BigInt::zero() { mk_nat(i) } else { air::ast_util::mk_neg(&mk_nat(-i)) }
+    if i >= &BigInt::zero() {
+        mk_nat(i)
+    } else {
+        air::ast_util::mk_neg(&mk_nat(-i))
+    }
 }
 
 // SMT-level type identifiers.
@@ -293,7 +303,11 @@ fn big_int_to_expr(i: &BigInt) -> Expr {
 pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
     let mk_id = |t: Expr| -> Vec<Expr> {
         let ds = str_var(crate::def::DECORATE_NIL);
-        if crate::context::DECORATE { vec![ds, t] } else { vec![t] }
+        if crate::context::DECORATE {
+            vec![ds, t]
+        } else {
+            vec![t]
+        }
     };
     match &**typ {
         TypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
@@ -343,6 +357,7 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
             mk_id(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
         }
         TypX::Air(_) => panic!("internal error: typ_to_ids of Air"),
+        TypX::Poly => mk_id(str_var(crate::def::TYPE_ID_POLY)),
     }
 }
 
@@ -451,6 +466,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
         TypX::ConstInt(_) => None,
+        TypX::Poly => None,
         TypX::Primitive(p, _) => {
             match p {
                 Primitive::Array | Primitive::Slice | Primitive::Ptr => {
@@ -515,6 +531,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Projection { .. } => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
+        TypX::Poly => None,
         TypX::Air(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
@@ -547,6 +564,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
         TypX::Air(_) => None,
+        TypX::Poly => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
@@ -646,20 +664,25 @@ pub(crate) enum ExprMode {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ExprCtxt {
+pub(crate) struct ExprCtxt<'a> {
     pub mode: ExprMode,
     pub is_singular: bool,
+    pub spec_map: &'a mono::SpecMap,
 }
 
-impl ExprCtxt {
-    pub(crate) fn new() -> Self {
-        ExprCtxt { mode: ExprMode::Body, is_singular: false }
+impl<'a> ExprCtxt<'a> {
+    pub(crate) fn new(spec_map: &'a mono::SpecMap) -> Self {
+        ExprCtxt { mode: ExprMode::Body, is_singular: false, spec_map }
     }
-    pub(crate) fn new_mode(mode: ExprMode) -> Self {
-        ExprCtxt { mode, is_singular: false }
+    pub(crate) fn new_mode(mode: ExprMode, spec_map: &'a mono::SpecMap) -> Self {
+        ExprCtxt { mode, is_singular: false, spec_map }
     }
-    pub(crate) fn new_mode_singular(mode: ExprMode, is_singular: bool) -> Self {
-        ExprCtxt { mode, is_singular }
+    pub(crate) fn new_mode_singular(
+        mode: ExprMode,
+        is_singular: bool,
+        spec_map: &'a mono::SpecMap,
+    ) -> Self {
+        ExprCtxt { mode, is_singular, spec_map }
     }
 }
 
@@ -751,12 +774,21 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt)?,
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x))),
         ExpX::Call(f @ (CallFun::Fun(..) | CallFun::Recursive(_)), typs, args) => {
+            let specialization = match ctx.global.poly_strategy {
+                mono::PolyStrategy::Mono => {
+                    let (_, spec) = mono::Specialization::from_exp(&exp.x, expr_ctxt.spec_map)
+                        .expect("Could not create specialization rom call site");
+                    spec
+                }
+                mono::PolyStrategy::Poly => mono::Specialization::empty(),
+            };
             let x_name = match f {
                 CallFun::Fun(x, _) => x.clone(),
                 CallFun::Recursive(x) => crate::def::prefix_recursive_fun(&x),
                 _ => panic!(),
             };
             let name = suffix_global_id(&fun_to_air_ident(&x_name));
+            let name = specialization.transform_ident(name);
             let mut exprs: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
             for arg in args.iter() {
                 exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
@@ -927,7 +959,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                try_unbox(ctx, expr.clone(), typ).unwrap_or_else(|| panic!("Unbox: {:?}", expr))
+                if expr_ctxt.spec_map.is_empty() {
+                    try_unbox(ctx, expr.clone(), typ).unwrap_or_else(|| panic!("Unbox: {:?}", expr))
+                } else {
+                    println!("Short-circuiting unbox of: {expr:?}");
+                    expr.clone()
+                }
             }
             UnaryOpr::HasType(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
@@ -1325,8 +1362,6 @@ impl State {
 
     fn map_span(&mut self, stm: &Stm, kind: SpanKind) {
         let spos = SnapPos { snapshot_id: self.get_current_sid(), kind };
-        // let aset = self.get_assigned_set(stm);
-        // println!("{:?} {:?}", stm.span, aset);
         self.snap_map.push((stm.span.clone(), spos));
     }
 }
@@ -1346,7 +1381,11 @@ pub(crate) fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
 }
 
 pub(crate) fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
-    if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
+    if stmts.len() == 1 {
+        stmts[0].clone()
+    } else {
+        Arc::new(StmtX::Block(Arc::new(stmts)))
+    }
 }
 
 #[derive(Debug)]
@@ -1515,12 +1554,17 @@ fn assume_other_fields_unchanged_inner(
     }
 }
 
-// fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
+// fn
 //     let expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: false };
 //     let result = match &stm.x {
 
-fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
-    let expr_ctxt = &ExprCtxt::new();
+fn stm_to_stmts(
+    ctx: &Ctx,
+    state: &mut State,
+    stm: &Stm,
+    spec_map: &mono::SpecMap,
+) -> Result<Vec<Stmt>, VirErr> {
+    let expr_ctxt = &ExprCtxt::new(spec_map);
     let result = match &stm.x {
         StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest, assert_id } => {
             assert!(split.is_none());
@@ -1776,7 +1820,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 let mut stmts = if let Some(dest_id) = state.post_condition_info.dest.clone() {
                     let ret_exp =
                         ret_exp.as_ref().expect("if dest is provided, expr must be provided");
-                    stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp))?
+                    stm_to_stmts(ctx, state, &assume_var(&stm.span, &dest_id, ret_exp), spec_map)?
                 } else {
                     // If there is no `dest_id`, then the returned expression
                     // gets ignored. This should happen for functions that
@@ -1788,7 +1832,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
                 if ctx.checking_spec_preconditions() {
                     for stm in state.post_condition_info.ens_spec_precondition_stms.clone().iter() {
-                        let mut new_stmts = stm_to_stmts(ctx, state, stm)?;
+                        let mut new_stmts = stm_to_stmts(ctx, state, stm, spec_map)?;
                         stmts.append(&mut new_stmts);
                     }
                 } else {
@@ -1837,7 +1881,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             state.push_scope();
-            let proof_stmts: Vec<Stmt> = stm_to_stmts(ctx, state, body)?;
+            let proof_stmts: Vec<Stmt> = stm_to_stmts(ctx, state, body, spec_map)?;
             state.pop_scope();
             let mut air_body: Vec<Stmt> = Vec::new();
             air_body.append(&mut proof_stmts.clone());
@@ -1908,7 +1952,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::Assign { lhs: Dest { dest, is_init: true }, rhs } => {
             let x = loc_is_var(dest).expect("is_init assign dest must be a variable");
-            stm_to_stmts(ctx, state, &assume_var(&stm.span, x, rhs))?
+            stm_to_stmts(ctx, state, &assume_var(&stm.span, x, rhs), spec_map)?
         }
         StmX::Assign { lhs: Dest { dest, is_init: false }, rhs } => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -1936,6 +1980,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     ctx,
                     state,
                     &Spanned::new(stm.span.clone(), StmX::Assume(eq)),
+                    spec_map,
                 )?);
                 stmts.extend(assume_other_fields_unchanged(
                     ctx,
@@ -1952,7 +1997,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stmts
         }
         StmX::DeadEnd(s) => {
-            vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s)?)))]
+            vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s, spec_map)?)))]
         }
         StmX::BreakOrContinue { label, is_break } => {
             let loop_info = if label.is_some() {
@@ -2045,7 +2090,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let mut unwind = UnwindAir::MayUnwind;
             std::mem::swap(&mut state.unwind, &mut unwind);
 
-            let mut body_stmts = stm_to_stmts(ctx, state, body)?;
+            let mut body_stmts = stm_to_stmts(ctx, state, body, spec_map)?;
             std::mem::swap(&mut state.mask, &mut mask);
             std::mem::swap(&mut state.unwind, &mut unwind);
 
@@ -2058,10 +2103,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
             let pos_assume = Arc::new(StmtX::Assume(pos_cond));
             let neg_assume = Arc::new(StmtX::Assume(neg_cond));
-            let mut lhss = stm_to_stmts(ctx, state, lhs)?;
+            let mut lhss = stm_to_stmts(ctx, state, lhs, spec_map)?;
             let mut rhss = match rhs {
                 None => vec![],
-                Some(rhs) => stm_to_stmts(ctx, state, rhs)?,
+                Some(rhs) => stm_to_stmts(ctx, state, rhs, spec_map)?,
             };
             lhss.insert(0, pos_assume);
             rhss.insert(0, neg_assume);
@@ -2248,10 +2293,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 air_body.push(Arc::new(StmtX::Assume(inv.clone())));
             }
             for dec in decrease_init.iter() {
-                air_body.append(&mut stm_to_stmts(ctx, state, dec)?);
+                air_body.append(&mut stm_to_stmts(ctx, state, dec, spec_map)?);
             }
 
-            let cond_stmts = cond_stm.map(|s| stm_to_stmts(ctx, state, s)).transpose()?;
+            let cond_stmts = cond_stm.map(|s| stm_to_stmts(ctx, state, s, spec_map)).transpose()?;
             if let Some(cond_stmts) = &cond_stmts {
                 assert!(loop_isolation);
                 air_body.append(&mut cond_stmts.clone());
@@ -2273,7 +2318,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 decrease: decrease.clone(),
             };
             state.loop_infos.push(loop_info);
-            air_body.append(&mut stm_to_stmts(ctx, state, body)?);
+            air_body.append(&mut stm_to_stmts(ctx, state, body, spec_map)?);
             state.loop_infos.pop();
 
             if !ctx.checking_spec_preconditions() {
@@ -2393,7 +2438,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             // Build the names_expr. Note: In the SST, this should have been assigned
             // to an expression whose value is constant for the entire block.
-            let namespace_expr = exp_to_expr(ctx, namespace_exp, &ExprCtxt::new())?;
+            let namespace_expr = exp_to_expr(ctx, namespace_exp, &ExprCtxt::new(spec_map))?;
 
             // Assert that the namespace of the inv we are opening is in the mask set
             if !ctx.checking_spec_preconditions() {
@@ -2410,7 +2455,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(stm.span.clone()));
             swap(&mut state.mask, &mut inner_mask);
             swap(&mut state.unwind, &mut inner_unwind);
-            stmts.append(&mut stm_to_stmts(ctx, state, body_stm)?);
+            stmts.append(&mut stm_to_stmts(ctx, state, body_stm, spec_map)?);
             swap(&mut state.mask, &mut inner_mask);
             swap(&mut state.unwind, &mut inner_unwind);
 
@@ -2462,7 +2507,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             let mut stmts: Vec<Stmt> = Vec::new();
             for s in stms.iter() {
-                stmts.extend(stm_to_stmts(ctx, state, s)?);
+                stmts.extend(stm_to_stmts(ctx, state, s, spec_map)?);
             }
             if ctx.debug {
                 state.pop_scope();
@@ -2585,6 +2630,7 @@ pub(crate) fn body_stm_to_air(
     is_integer_ring: bool,
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
+    spec_map: &mono::SpecMap,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
     let FuncCheckSst { reqs, post_condition, mask_set, body: stm, local_decls, statics, unwind } =
         func_check_sst;
@@ -2652,14 +2698,14 @@ pub(crate) fn body_stm_to_air(
 
     let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
     for ens in post_condition.ens_exps.iter() {
-        let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+        let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body, spec_map);
         let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
         ens_exprs.push((ens.span.clone(), e));
     }
 
     let f_mask_singletons =
         |v: &Vec<MaskSingleton<Exp>>| -> Result<Vec<MaskSingleton<Expr>>, VirErr> {
-            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body, spec_map);
             let mut v2: Vec<MaskSingleton<Expr>> = Vec::new();
             for m in v.iter() {
                 let expr = exp_to_expr(ctx, &m.expr, expr_ctxt)?;
@@ -2677,7 +2723,7 @@ pub(crate) fn body_stm_to_air(
         UnwindSst::MayUnwind => UnwindAir::MayUnwind,
         UnwindSst::NoUnwind => UnwindAir::NoUnwind(ReasonForNoUnwind::Function),
         UnwindSst::NoUnwindWhen(exp) => {
-            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
+            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body, spec_map);
             let e = exp_to_expr(ctx, &exp, expr_ctxt)?;
             UnwindAir::NoUnwindWhen(e)
         }
@@ -2726,7 +2772,7 @@ pub(crate) fn body_stm_to_air(
         stm,
     );
 
-    let mut stmts = stm_to_stmts(ctx, &mut state, &stm)?;
+    let mut stmts = stm_to_stmts(ctx, &mut state, &stm, spec_map)?;
 
     if has_mut_params {
         stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
@@ -2754,7 +2800,7 @@ pub(crate) fn body_stm_to_air(
     }
 
     for req in reqs.iter() {
-        let expr_ctxt = &ExprCtxt::new_mode(ExprMode::BodyPre);
+        let expr_ctxt = &ExprCtxt::new_mode(ExprMode::BodyPre, spec_map);
         let e = exp_to_expr(ctx, &req, expr_ctxt)?;
         local.push(mk_unnamed_axiom(e));
     }
@@ -2778,7 +2824,8 @@ pub(crate) fn body_stm_to_air(
                     "Unspported expression in integer_ring".to_string(),
                     "at the require clause".to_string(),
                 );
-                let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
+                let air_expr =
+                    exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre, spec_map))?;
                 let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
                 singular_req_stmts.push(assert_stm);
             }
@@ -2790,7 +2837,8 @@ pub(crate) fn body_stm_to_air(
                     "Unspported expression in integer_ring".to_string(),
                     "at the ensure clause".to_string(),
                 );
-                let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
+                let air_expr =
+                    exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre, spec_map))?;
                 let assert_stm = Arc::new(StmtX::Assert(None, error, None, air_expr));
                 singular_ens_stmts.push(assert_stm);
             }
