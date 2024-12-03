@@ -490,3 +490,14 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file! {
+    #[test] tuple_clone_not_supported verus_code! {
+        use vstd::*;
+
+        fn stuff(a: (u8, u8)) {
+            let b = a.clone();
+            assert(a == b); // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: instance")
+}
