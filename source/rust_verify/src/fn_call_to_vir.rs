@@ -214,7 +214,8 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     is_trait_default = true;
                     remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
                 }
-                let impl_paths = get_impl_paths(bctx, did, &inst.args, remove_self_trait_bound);
+                let impl_paths =
+                    get_impl_paths(bctx, did, &inst.args, remove_self_trait_bound, expr.span)?;
                 if tcx.trait_of_item(did).is_some() {
                     if let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
                     {
@@ -242,7 +243,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
 
     let typ_args = mk_typ_args(bctx, node_substs, f, expr.span)?;
-    let impl_paths = get_impl_paths(bctx, f, node_substs, None);
+    let impl_paths = get_impl_paths(bctx, f, node_substs, None, expr.span)?;
     let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage);
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Call(target, Arc::new(vir_args))))
 }
@@ -1426,7 +1427,7 @@ fn verus_item_to_vir<'tcx, 'a>(
             typ_args.swap(0, 1);
             let typ_args = Arc::new(typ_args);
 
-            let impl_paths = get_impl_paths(bctx, f, node_substs, None);
+            let impl_paths = get_impl_paths(bctx, f, node_substs, None, expr.span)?;
 
             return mk_expr(ExprX::Call(
                 CallTarget::BuiltinSpecFun(bsf, typ_args, impl_paths),
@@ -1446,7 +1447,8 @@ fn get_impl_paths<'tcx>(
     f: DefId,
     node_substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
     remove_self_trait_bound: Option<(DefId, &mut Option<vir::ast::ImplPath>)>,
-) -> vir::ast::ImplPaths {
+    span: Span,
+) -> Result<vir::ast::ImplPaths, VirErr> {
     if let rustc_middle::ty::FnDef(fid, _fsubsts) = bctx.ctxt.tcx.type_of(f).skip_binder().kind() {
         crate::rust_to_vir_base::get_impl_paths(
             bctx.ctxt.tcx,
@@ -1455,6 +1457,7 @@ fn get_impl_paths<'tcx>(
             *fid,
             node_substs,
             remove_self_trait_bound,
+            span,
         )
     } else {
         panic!("unexpected function {:?}", f)

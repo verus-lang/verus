@@ -598,6 +598,8 @@ pub(crate) enum RustItem {
     ManuallyDrop,
     PhantomData,
     Destruct,
+    Send,
+    Thin,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -697,6 +699,12 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("core::alloc::Allocator") {
         return Some(RustItem::Allocator);
+    }
+    if rust_path == Some("core::marker::Send") {
+        return Some(RustItem::Send);
+    }
+    if rust_path == Some("core::ptr::metadata::Thin") {
+        return Some(RustItem::Thin);
     }
 
     if let Some(rust_path) = rust_path {
