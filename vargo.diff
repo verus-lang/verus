@@ -1,0 +1,28 @@
+--- vargo/src/main.rs	2024-07-05 20:51:28.181535045 +0200
++++ vargo/src/main.rs	2024-07-05 20:52:04.385986052 +0200
+@@ -5,8 +5,11 @@
+ // `target/debug` or `target/release` when they are the main build target, and
+ // not when they're a dependency of another target.
+ 
+-#[path = "../../common/consts.rs"]
+-mod consts;
++
++mod consts {
++    pub const EXPECTED_Z3_VERSION: &str = "4.12.5";
++    pub const EXPECTED_CVC5_VERSION: &str = "1.1.2";
++}
+ 
+ const MINIMUM_VERUSFMT_VERSION: [u64; 3] = [0, 3, 0];
+ 
+@@ -289,11 +291,6 @@
+         let cur_hash = &crate::util::hash_file_contents(
+             files.iter().map(|(f, n)| (f.as_str(), &n[..])).collect(),
+         );
+-        if build_hash != cur_hash {
+-            return Err(format!(
+-                "vargo sources have changed since it was last built, please re-build vargo"
+-            ));
+-        }
+     }
+ 
+     let rust_toolchain_toml_channel = rust_toolchain_toml.get("toolchain").and_then(|t| t.get("channel"))
