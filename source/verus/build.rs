@@ -1,6 +1,13 @@
 use regex::Regex;
 
 fn main() {
+    let vargo_toolchain = std::env::var("VARGO_TOOLCHAIN").ok();
+
+    if let Some("host") = vargo_toolchain.as_deref() {
+        println!("cargo:rustc-env=VERUS_TOOLCHAIN=host");
+        return;
+    }
+
     let output = match std::process::Command::new("rustup")
         .arg("show")
         .arg("active-toolchain")
@@ -28,7 +35,7 @@ fn main() {
     let toolchain = if let Some(cap) = captures.next() {
         let _channel = &cap[2];
         let toolchain = cap[1].to_string();
-        if let Some(vargo_toolchain) = std::env::var("VARGO_TOOLCHAIN").ok() {
+        if let Some(vargo_toolchain) = vargo_toolchain {
             if vargo_toolchain != toolchain {
                 panic!(
                     "rustup is using the toolchain {toolchain}, we expect {vargo_toolchain}\ndo you have a rustup override set?"
