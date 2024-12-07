@@ -11,7 +11,7 @@ pub(crate) enum ResOrSymbol {
 pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
     crate_: &mut rustc_hir::Crate<'tcx>,
     tcx: TyCtxt<'tcx>,
-) -> SpecHir<'tcx> {
+) {
     // TODO move or rename the function
 
     let mut spec_hir = SpecHir::new();
@@ -49,6 +49,18 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
                 _ => { }
             }
         }
+    }
+
+    {
+        crate::verifier::SPEC_HIR.with_borrow_mut(|rc: &mut Option<crate::spec_exprs::SpecHir<'static>>| {
+            // SAFETY: We coerce the 'tcx to a 'static
+            // but we immediately coerce it back to 'tcx when reading it later.
+            let spec_hir: crate::spec_exprs::SpecHir<'static> = unsafe {
+                core::mem::transmute(spec_hir)
+            };
+            assert!(rc.is_none());
+            *rc = Some(spec_hir);
+        });
     }
 
     for owner in crate_.owners.iter_mut() {
@@ -255,6 +267,4 @@ pub(crate) fn hir_hide_reveal_rewrite<'tcx>(
             }
         }
     }
-
-    return spec_hir;    
 }

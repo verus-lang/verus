@@ -41,6 +41,8 @@ impl<'tcx> SpecHir<'tcx> {
                 value: expr,
             });
             bodies[&body_id.hir_id.local_id] = new_body;
+            assert!(!self.bodies.contains_key(body_id));
+            self.bodies.insert(*body_id, old_body.value);
         }
 
         let nodes: rustc_hir::OwnerNodes<'tcx> = rustc_hir::OwnerNodes {
@@ -87,7 +89,7 @@ fn get_relevant_closure_ids<'tcx>(
 {
     let mut v = VisitMod { tcx, ids: vec![], owner_info };
     v.visit_body(&owner_info.nodes.bodies[&main_body_id.hir_id.local_id]);
-    return dbg!(v.ids);
+    return v.ids;
 }
 
 struct VisitMod<'tcx> {

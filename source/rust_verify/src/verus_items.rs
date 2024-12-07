@@ -107,6 +107,7 @@ pub(crate) enum SpecItem {
     OpensInvariantsExcept,
     NoUnwind,
     NoUnwindWhen,
+    GhostCode,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -367,6 +368,8 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
 
         ("verus::builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),
         ("verus::builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),
+
+        ("verus::builtin::ghost_code",              VerusItem::Spec(SpecItem::GhostCode)),
 
         ("verus::builtin::forall",                  VerusItem::Quant(QuantItem::Forall)),
         ("verus::builtin::exists",                  VerusItem::Quant(QuantItem::Exists)),

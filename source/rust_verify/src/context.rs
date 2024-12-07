@@ -7,6 +7,7 @@ use rustc_span::SpanData;
 use std::sync::Arc;
 use vir::ast::{Expr, Ident, Mode, Pattern};
 use vir::messages::AstId;
+use crate::spec_exprs::SpecHir;
 
 pub struct ErasureInfo {
     pub(crate) hir_vir_ids: Vec<(HirId, AstId)>,
@@ -34,6 +35,7 @@ pub struct ContextX<'tcx> {
     pub(crate) arch_word_bits: Option<vir::ast::ArchWordBits>,
     pub(crate) crate_name: Ident,
     pub(crate) vstd_crate_name: Ident,
+    pub(crate) spec_hir: Arc<SpecHir<'tcx>>,
 }
 
 #[derive(Clone)]
