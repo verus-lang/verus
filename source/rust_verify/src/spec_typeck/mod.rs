@@ -5,6 +5,7 @@ mod check_ty;
 mod check_pat;
 mod check_path;
 mod unifier;
+mod substitutions;
 
 pub struct State<'a, 'tcx> {
     scope_map: air::scope_map::ScopeMap<vir::ast::VarIdent, vir::ast::Typ>,

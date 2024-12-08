@@ -2,7 +2,7 @@ use crate::util::{err_span};
 use crate::unsupported_err;
 use crate::spec_typeck::State;
 use crate::spec_typeck::check_path::PathResolution;
-use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant};
+use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant, FunX, CallTargetKind, AutospecUsage};
 use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt};
 use std::sync::Arc;
 use vir::ast_util::{unit_typ, int_typ, integer_typ};
@@ -39,7 +39,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                             }
                         }
                     }
-                    PathResolution::Fn(def_id, typ_args) => {
+                    PathResolution::Fn(def_id, _typ_args) => {
                         let mode = self.get_item_mode(def_id)?;
                         match mode {
                             Mode::Exec => todo!(),
@@ -49,6 +49,75 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     }
                     _ => todo!()
                 }
+            }
+            ExprKind::Call(Expr { kind: ExprKind::Path(qpath), .. }, args) => {
+                match self.check_qpath(qpath)? {
+                    PathResolution::Fn(def_id, typ_args) => {
+                        let (input_typs, output_typ) = self.fn_item_type_substitution(expr.span,def_id, &typ_args)?;
+
+                        if input_typs.len() != args.len() {
+                            return err_span(expr.span, format!("function takes {:} arguments, got {:}", input_typs.len(), args.len()));
+                        }
+
+                        let mut vir_args = vec![];
+                        for (arg, input_typ) in args.iter().zip(input_typs.iter()) {
+                            let vir_arg = self.check_expr(arg)?;
+                            self.expect(&vir_arg.typ, input_typ)?;
+                            vir_args.push(vir_arg);
+                        }
+
+                        let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
+                            &self.bctx.ctxt.verus_items, def_id);
+                        let fun = Arc::new(FunX { path: path.clone() });
+
+                        // correct CallTarget is filled in finalizer pass
+                        let ct = CallTarget::Fun(
+                            CallTargetKind::Static,
+                            fun,
+                            typ_args,
+                            Arc::new(vec![]),
+                            AutospecUsage::IfMarked,
+                        );
+
+                        mk_expr(&output_typ,
+                            ExprX::Call(ct, Arc::new(vir_args))
+                        )
+                    }
+                    _ => todo!(),
+                }
+            }
+            ExprKind::Call(callee, args) => {
+                let vir_callee = self.check_expr(callee)?;
+
+                let (callee_arg_typs, callee_ret_typ) = match &*vir_callee.typ {
+                    TypX::SpecFn(arg_typs, ret_typ) => {
+                        if args.len() != arg_typs.len() {
+                            return err_span(expr.span, format!("function takes {:} arguments, got {:}", arg_typs.len(), args.len()));
+                        }
+                        (arg_typs.clone(), ret_typ.clone())
+                    }
+                    _ => {
+                        let mut args = vec![];
+                        for _i in 0 .. args.len() {
+                            args.push(self.new_unknown_typ());
+                        }
+                        let ret = self.new_unknown_typ();
+                        let args = Arc::new(args);
+                        let t = Arc::new(TypX::SpecFn(args.clone(), ret.clone()));
+                        self.expect(&vir_callee.typ, &t)?;
+                        (args, ret)
+                    }
+                };
+
+                let mut vir_args = vec![];
+                for (i, arg) in args.iter().enumerate() {
+                    let vir_arg = self.check_expr(arg)?;
+                    self.expect(&vir_arg.typ, &callee_arg_typs[i])?;
+                    vir_args.push(vir_arg);
+                }
+
+                let ct = CallTarget::FnSpec(vir_callee);
+                mk_expr(&callee_ret_typ, ExprX::Call(ct, Arc::new(vir_args)))
             }
             ExprKind::Block(Block {
               stmts,
@@ -174,39 +243,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     _ => todo!()
                 }
             }
-            ExprKind::Call(callee, args) => {
-                let vir_callee = self.check_expr(callee)?;
-
-                let (callee_arg_typs, callee_ret_typ) = match &*vir_callee.typ {
-                    TypX::SpecFn(arg_typs, ret_typ) => {
-                        if args.len() != arg_typs.len() {
-                            return err_span(expr.span, format!("function takes {:} arguments, got {:}", arg_typs.len(), args.len()));
-                        }
-                        (arg_typs.clone(), ret_typ.clone())
-                    }
-                    _ => {
-                        let mut args = vec![];
-                        for _i in 0 .. args.len() {
-                            args.push(self.new_unknown_typ());
-                        }
-                        let ret = self.new_unknown_typ();
-                        let args = Arc::new(args);
-                        let t = Arc::new(TypX::SpecFn(args.clone(), ret.clone()));
-                        self.expect(&vir_callee.typ, &t)?;
-                        (args, ret)
-                    }
-                };
-
-                let mut vir_args = vec![];
-                for (i, arg) in args.iter().enumerate() {
-                    let vir_arg = self.check_expr(arg)?;
-                    self.expect(&vir_arg.typ, &callee_arg_typs[i])?;
-                    vir_args.push(vir_arg);
-                }
-
-                let ct = CallTarget::FnSpec(vir_callee);
-                mk_expr(&callee_ret_typ, ExprX::Call(ct, Arc::new(vir_args)))
-            }
+            
             ExprKind::Lit(lit) => match &lit.node {
                 LitKind::Int(i, lit_int_type) => {
                     self.lit_int(expr.span,
