@@ -55,5 +55,22 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             _ => todo!(),
         }
     }
+
+    pub fn get_item_mode(&self, def_id: DefId) -> Result<vir::ast::Mode, VirErr> {
+        match def_id.as_local() {
+            Some(local_def_id) => {
+                let hir_id = self.tcx.local_def_id_to_hir_id(local_def_id);
+                let attrs = self.tcx.hir().attrs(hir_id);
+                let mode = crate::attributes::get_mode_opt(attrs);
+                match mode {
+                    Some(mode) => Ok(mode),
+                    None => Ok(vir::ast::Mode::Exec),
+                }
+            }
+            None => {
+                todo!()
+            }
+        }
+    }
 }
 

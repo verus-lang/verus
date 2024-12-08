@@ -39,8 +39,13 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                             }
                         }
                     }
-                    PathResolution::Fn(_def_id, _typ_args) => {
-                        todo!()
+                    PathResolution::Fn(def_id, typ_args) => {
+                        let mode = self.get_item_mode(def_id)?;
+                        match mode {
+                            Mode::Exec => todo!(),
+                            Mode::Spec => todo!(),
+                            Mode::Proof => todo!(),
+                        }
                     }
                     _ => todo!()
                 }
