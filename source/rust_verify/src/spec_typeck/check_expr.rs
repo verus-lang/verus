@@ -3,8 +3,7 @@ use crate::unsupported_err;
 use crate::spec_typeck::State;
 use crate::spec_typeck::check_path::PathResolution;
 use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant};
-use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt, Path, QPath};
-use rustc_hir::def::{Res, DefKind};
+use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt};
 use std::sync::Arc;
 use vir::ast_util::{unit_typ, int_typ, integer_typ};
 use crate::spec_typeck::check_ty::{integer_typ_of_int_ty, integer_typ_of_uint_ty};
@@ -12,8 +11,8 @@ use rustc_ast::ast::{LitKind, LitIntType};
 use num_bigint::BigInt;
 use rustc_span::Span;
 
-impl State<'_, '_> {
-    pub fn check_expr<'tcx>(
+impl<'a, 'tcx> State<'a, 'tcx> {
+    pub fn check_expr(
         &mut self,
         expr: &Expr<'tcx>,
     ) -> Result<vir::ast::Expr, vir::ast::VirErr> {
@@ -23,32 +22,27 @@ impl State<'_, '_> {
         match &expr.kind {
             ExprKind::Path(qpath) => {
                 match self.check_qpath(qpath)? {
-                    PathResolution::
-                }
-            }
-            ExprKind::Path(QPath::Resolved(None, Path { res: Res::Local(hir_id), .. })) => {
-                match self.tcx.hir_node(*hir_id) {
-                    rustc_hir::Node::Pat(pat) => {
-                        let var = crate::rust_to_vir_expr::pat_to_var(pat)?;
-                        let typ = match self.scope_map.get(&var) {
-                            Some(t) => t,
-                            None => {
-                                return err_span(expr.span, format!("unrecognized local `{:}`", var));
+                    PathResolution::Local(hir_id) => {
+                        match self.tcx.hir_node(hir_id) {
+                            rustc_hir::Node::Pat(pat) => {
+                                let var = crate::rust_to_vir_expr::pat_to_var(pat)?;
+                                let typ = match self.scope_map.get(&var) {
+                                    Some(t) => t,
+                                    None => {
+                                        return err_span(expr.span, format!("unrecognized local `{:}`", var));
+                                    }
+                                };
+                                mk_expr(typ, ExprX::Var(var))
                             }
-                        };
-                        mk_expr(typ, ExprX::Var(var))
+                            node => {
+                                unsupported_err!(expr.span, format!("Path {:?}", node))
+                            }
+                        }
                     }
-                    node => {
-                        unsupported_err!(expr.span, format!("Path {:?}", node))
-                    }
-                }
-            }
-            ExprKind::Path(QPath::Resolved(None, Path { res: Res::Def(def_kind, _def_id), .. })) => {
-                match def_kind {
-                    DefKind::Fn => {
+                    PathResolution::Fn(_def_id, _typ_args) => {
                         todo!()
                     }
-                    _ => todo!(),
+                    _ => todo!()
                 }
             }
             ExprKind::Block(Block {

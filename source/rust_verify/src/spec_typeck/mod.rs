@@ -15,7 +15,7 @@ pub struct State<'a, 'tcx> {
 
 pub fn typecheck<'tcx>(
     bctx: &crate::context::BodyCtxt<'tcx>,
-    expr: &rustc_hir::Expr,
+    expr: &rustc_hir::Expr<'tcx>,
     expected_typ: &vir::ast::Typ,
 ) -> Result<vir::ast::Expr, vir::ast::VirErr>
 {

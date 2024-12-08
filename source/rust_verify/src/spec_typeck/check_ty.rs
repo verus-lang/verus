@@ -1,16 +1,16 @@
 use crate::{unsupported_err};
 use crate::spec_typeck::State;
+use crate::spec_typeck::check_path::PathResolution;
 use vir::ast::{Typ, VirErr, TypX, Primitive, IntRange};
 use vir::ast_util::{bool_typ, str_typ, integer_typ};
-use rustc_hir::{Ty, TyKind, QPath, PrimTy, Path};
+use rustc_hir::{Ty, TyKind, PrimTy};
 use std::sync::Arc;
-use rustc_hir::def::Res;
 use rustc_ast::{UintTy, IntTy};
 
-impl State<'_, '_> {
-    pub fn check_ty<'tcx>(
+impl<'a, 'tcx> State<'a, 'tcx> {
+    pub fn check_ty(
         &mut self,
-        ty: &Ty,
+        ty: &Ty<'tcx>,
     ) -> Result<Typ, VirErr> {
         match &ty.kind {
             TyKind::Slice(ty) => {
@@ -39,10 +39,10 @@ impl State<'_, '_> {
                 Ok(vir::ast_util::mk_tuple_typ(&Arc::new(typs)))
             }
             TyKind::Path(qpath) => {
-                match qpath {
-                    QPath::Resolved(None, Path { res: Res::PrimTy(prim_ty), .. }) => Ok(match prim_ty {
-                        PrimTy::Int(int_ty) => integer_typ_of_int_ty(*int_ty),
-                        PrimTy::Uint(uint_ty) => integer_typ_of_uint_ty(*uint_ty),
+                match self.check_qpath(qpath)? {
+                    PathResolution::PrimTy(prim_ty)  => Ok(match prim_ty {
+                        PrimTy::Int(int_ty) => integer_typ_of_int_ty(int_ty),
+                        PrimTy::Uint(uint_ty) => integer_typ_of_uint_ty(uint_ty),
                         PrimTy::Str => str_typ(),
                         PrimTy::Bool => bool_typ(),
                         PrimTy::Char => integer_typ(IntRange::Char),
