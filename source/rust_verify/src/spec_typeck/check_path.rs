@@ -14,6 +14,7 @@ use rustc_hir_analysis::hir_ty_lowering::{GenericPathSegment, IsMethodCall, Gene
 use rustc_hir_analysis::hir_ty_lowering::generics::check_generic_arg_count_for_call;
 use crate::util::err_span;
 use rustc_hir::GenericArgsParentheses;
+use std::collections::HashSet;
 
 pub enum PathResolution {
     Local(HirId),
@@ -51,28 +52,15 @@ impl<'a, 'tcx> State<'a, 'tcx> {
     ) -> Result<PathResolution, VirErr> {
         match res {
             Res::Def(def_kind, def_id) => {
-                assert!(qualified_self.is_none());
-                let generic_segments = self.lowerer().probe_generic_path_segments(
-                    segments, None, *def_kind, *def_id, span);
-                for GenericPathSegment(def_id, index) in &generic_segments {
-                    let seg = &segments[*index];
-                    let generics = self.tcx.generics_of(def_id);
-                    let arg_count = check_generic_arg_count_for_call(self.tcx, *def_id, generics, seg, IsMethodCall::No);
-                    if let Err(GenericArgCountMismatch { .. }) = arg_count.correct {
-                        return err_span(seg.args.unwrap().span_ext, "too many generic arguments here");
-                    }
-                }
-
-                let mut generic_params = vec![];
-                for GenericPathSegment(def_id, index) in &generic_segments {
-                    let seg = &segments[*index];
-                    let generics = self.tcx.generics_of(def_id);
-                    generic_params.append(&mut self.check_segment_generics(seg, generics)?);
-                }
-
                 match def_kind {
                     DefKind::Fn => {
+                        let generic_params = self.check_path_generics(span, qualified_self, *def_kind, *def_id, segments)?;
                         Ok(PathResolution::Fn(*def_id, Arc::new(generic_params)))
+                    }
+                    DefKind::Struct => {
+                        assert!(qualified_self.is_none());
+                        let generic_params = self.check_path_generics_last_only(*def_id, segments)?;
+                        Ok(PathResolution::Datatype(*def_id, Arc::new(generic_params)))
                     }
                     _ => todo!()
                 }
@@ -81,6 +69,59 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             Res::Local(id) => Ok(PathResolution::Local(*id)),
             _ => todo!(),
         }
+    }
+
+    pub fn check_path_generics_last_only(
+        &mut self,
+        def_id: DefId,
+        segments: &'tcx [PathSegment],
+    ) -> Result<Vec<Typ>, VirErr> {
+        for seg in segments.split_last().unwrap().1.iter() {
+            if seg.args.is_some() {
+                return err_span(seg.args.unwrap().span_ext, "unexpected generic arguments here");
+            }
+        }
+        let generics = self.tcx.generics_of(def_id);
+        self.check_segment_generics(&segments[segments.len() - 1], generics)
+    }
+
+    pub fn check_path_generics(
+        &mut self,
+        span: Span,
+        qualified_self: &Option<&'tcx rustc_hir::Ty<'tcx>>,
+        def_kind: DefKind,
+        def_id: DefId,
+        segments: &'tcx [PathSegment],
+    ) -> Result<Vec<Typ>, VirErr> {
+        assert!(qualified_self.is_none());
+        let generic_segments = self.lowerer().probe_generic_path_segments(
+            segments, None, def_kind, def_id, span);
+        let mut idx_set = HashSet::new();
+        for GenericPathSegment(def_id, index) in &generic_segments {
+            let seg = &segments[*index];
+            let generics = self.tcx.generics_of(def_id);
+            let arg_count = check_generic_arg_count_for_call(self.tcx, *def_id, generics, seg, IsMethodCall::No);
+            if let Err(GenericArgCountMismatch { .. }) = arg_count.correct {
+                return err_span(seg.args.unwrap().span_ext, "too many generic arguments here");
+            }
+            idx_set.insert(*index);
+        }
+
+        for i in 0 .. segments.len() {
+            if !idx_set.contains(&i) {
+                if segments[i].args.is_some() {
+                    return err_span(segments[i].args.unwrap().span_ext, "unexpected generic arguments here");
+                }
+            }
+        }
+
+        let mut generic_params = vec![];
+        for GenericPathSegment(def_id, index) in &generic_segments {
+            let seg = &segments[*index];
+            let generics = self.tcx.generics_of(def_id);
+            generic_params.append(&mut self.check_segment_generics(seg, generics)?);
+        }
+        Ok(generic_params)
     }
 
     pub fn check_segment_generics(&mut self, segment: &'tcx PathSegment, generics: &'tcx Generics) -> Result<Vec<Typ>, VirErr> {
