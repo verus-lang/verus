@@ -10,6 +10,7 @@ use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, C
 pub struct State {
     scope_map: ScopeMap<VarIdent, Typ>,
     unifier: Unifier,
+    bctx: crate::context::BodyCtxt,
 }
 
 pub fn check_expr<'tcx>(
