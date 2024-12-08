@@ -9,8 +9,66 @@ fn check_expr<'tcx>(
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr<'tcx>, VirErr> {
     match &expr.kind {
-        ExprKind::
-        ExprKind::Block(Block { stmts, expr: e, hir_id: _, rules: BlockCheckMode::DefaultBlock, span: _, targeted_by_break: _ }) => {
+        ExprKind::Block(Block {
+            stmts, expr: e, hir_id: _, rules: BlockCheckMode::DefaultBlock, span: _, targeted_by_break: _ }
+        ) => {
+            todo!();
+        }
+        ExprKind::Closure(closure) => {
+            let Closure {
+                def_id: _,
+                binder: ClosureBinder::None,
+                constness: Constness::NotConst,
+                capture_clause: CaptureBy::Ref,
+                bound_generic_params: [],
+                fn_decl: FnDecl {
+                    inputs, output, c_variadic: false, implicit_self: ImplicitSelfKind::None,
+                        lifetime_elision_allowed: _,
+                },
+                body,
+                fn_decl_span: _,
+                fn_arg_span: _,
+                kind: ClosureKind::Closure
+            } = closure else {
+                unsupported_err!(&expr.span, "complex closure");
+            };
+
+            let mut arg_typs = vec![];
+            for input in inputs.iter() {
+                arg_typs.push(check_type(tcx, state, input)?);
+            }
+
+            let body = bctx.ctxt.spec_hir.bodies.get(&body);
+            let Body { params, value, coroutine_kind } = body;
+            unsupported_err_unless!(coroutine_kind.is_none());
+
+            state.scope_map.push_scope(false);
+            for (i, param) in params.iter().enumerate() {
+                check_pat(tcx, state, param.pat, arg_typs[i]);
+            }
+            let body = check_expr(tcx, state, value);
+            state.scope_map.pop_scope();
+
+            let fntype = Arc::new(TypX::SpecFn(Arc::new(arg_typs), body.typ.clone()));
+            let var_binders = vec![];
+            for (i, param) in params.iter.enumerate() {
+                let var = match &param.pat.kind {
+                    PatKind::Binding(
+                        BindingMode(ByRef::No, Mutability::Not),
+                        hir_id,
+                        ident,
+                        None
+                    ) => {
+                        local_to_var(ident, hir_id.local_id)
+                    }
+                    _ => {
+                        unsupported_err!(&expr.span, "complex closure pattern argument");
+                    }
+                }
+                var_binders.push(Arc::new(VarBinderX { name, a: arg_types[i].clone() }));
+            }
+
+            mk_expr(fntype, ExprX::Closure(Arc::new(var_binders), body))
         }
         ExprKind::Binary(bin_op, lhs, rhs) => {
             match &bin_op.node {
