@@ -5,6 +5,7 @@ use rustc_hir::def::Res;
 use vir::ast::{Typs, Ident, VirErr};
 use crate::spec_typeck::State;
 use rustc_hir::def::DefKind;
+use std::sync::Arc;
 
 pub enum PathResolution {
     Local(HirId),
@@ -41,10 +42,10 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         res: &Res,
     ) -> Result<PathResolution, VirErr> {
         match res {
-            Res::Def(def_kind, _def_id) => {
+            Res::Def(def_kind, def_id) => {
                 match def_kind {
                     DefKind::Fn => {
-                        todo!()
+                        Ok(PathResolution::Fn(*def_id, Arc::new(vec![])))
                     }
                     _ => todo!()
                 }
