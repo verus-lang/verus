@@ -472,8 +472,16 @@ pub fn bool_typ() -> Typ {
     Arc::new(TypX::Bool)
 }
 
+pub fn str_typ() -> Typ {
+    Arc::new(TypX::Primitive(crate::ast::Primitive::StrSlice, Arc::new(vec![])))
+}
+
 pub fn int_typ() -> Typ {
     Arc::new(TypX::Int(IntRange::Int))
+}
+
+pub fn integer_typ(ir: IntRange) -> Typ {
+    Arc::new(TypX::Int(ir))
 }
 
 pub fn is_unit(t: &Typ) -> bool {

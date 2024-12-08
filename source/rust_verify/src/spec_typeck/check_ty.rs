@@ -1,30 +1,36 @@
-use crate::{unsupported_err, unsupported_err_unless};
+use crate::{unsupported_err};
 use crate::spec_typeck::State;
-use vir::ast::{Typ, VirErr, TypX, Primitive};
-use rustc_hir::{Ty, TyKind};
+use vir::ast::{Typ, VirErr, TypX, Primitive, IntRange};
+use vir::ast_util::{bool_typ, str_typ, integer_typ};
+use rustc_hir::{Ty, TyKind, QPath, PrimTy, Path};
 use std::sync::Arc;
+use rustc_hir::def::Res;
+use rustc_ast::{UintTy, IntTy};
 
-impl State<'_> {
+impl State<'_, '_> {
     pub fn check_ty<'tcx>(
         &mut self,
-        ty: Ty,
+        ty: &Ty,
     ) -> Result<Typ, VirErr> {
         match &ty.kind {
             TyKind::Slice(ty) => {
                 let typ = self.check_ty(ty)?;
                 let typs = Arc::new(vec![typ]);
-                (Arc::new(TypX::Primitive(Primitive::Slice, typs)), false)
+                Ok(Arc::new(TypX::Primitive(Primitive::Slice, typs)))
             }
-            TyKind::Array(ty, array_len) => {
+            TyKind::Array(_ty, _array_len) => {
+                /*
                 let typ = self.check_ty(ty)?;
                 let len = self.check_const(array_len)?;
                 let typs = Arc::new(vec![typ, len]);
-                (Arc::new(TypX::Primitive(Primitive::Slice, typs)), false)
+                Ok(Arc::new(TypX::Primitive(Primitive::Slice, typs)))
+                */
+                todo!()
             }
             TyKind::Ptr(..) => todo!(),
             TyKind::Ref(..) => todo!(),
             TyKind::BareFn(..) => todo!(),
-            TyKind::Never => todo(),
+            TyKind::Never => todo!(),
             TyKind::Tup(types) => {
                 let mut typs = vec![];
                 for t in types.iter() {
@@ -32,14 +38,21 @@ impl State<'_> {
                 }
                 Ok(vir::ast_util::mk_tuple_typ(&Arc::new(typs)))
             }
-            TyKind::Path(_qpath) => {
-                /*match qpath {
-                    QPath::Resolved(
-                }*/
-                todo!()
+            TyKind::Path(qpath) => {
+                match qpath {
+                    QPath::Resolved(None, Path { res: Res::PrimTy(prim_ty), .. }) => Ok(match prim_ty {
+                        PrimTy::Int(int_ty) => integer_typ_of_int_ty(*int_ty),
+                        PrimTy::Uint(uint_ty) => integer_typ_of_uint_ty(*uint_ty),
+                        PrimTy::Str => str_typ(),
+                        PrimTy::Bool => bool_typ(),
+                        PrimTy::Char => integer_typ(IntRange::Char),
+                        PrimTy::Float(_) => unsupported_err!(ty.span, "floating point types"),
+                    }),
+                    _ => todo!(),
+                }
             }
             TyKind::Infer => {
-                Ok(self.unifier.new_unif_variable_type())
+                Ok(self.new_unknown_typ())
             }
             TyKind::InferDelegation(_, _)
             | TyKind::AnonAdt(..)
@@ -49,8 +62,30 @@ impl State<'_> {
             | TyKind::Err(..)
             | TyKind::Pat(..)
             => {
-                unsupported_err!("type: {:?}", ty);
+                unsupported_err!(ty.span, format!("type: {:?}", ty));
             }
         }
+    }
+}
+
+pub fn integer_typ_of_int_ty(int_ty: IntTy) -> Typ {
+    match int_ty {
+        IntTy::Isize => integer_typ(IntRange::ISize),
+        IntTy::I8 => integer_typ(IntRange::I(8)),
+        IntTy::I16 => integer_typ(IntRange::I(16)),
+        IntTy::I32 => integer_typ(IntRange::I(32)),
+        IntTy::I64 => integer_typ(IntRange::I(64)),
+        IntTy::I128 => integer_typ(IntRange::I(128)),
+    }
+}
+
+pub fn integer_typ_of_uint_ty(uint_ty: UintTy) -> Typ {
+    match uint_ty {
+        UintTy::Usize => integer_typ(IntRange::USize),
+        UintTy::U8 => integer_typ(IntRange::U(8)),
+        UintTy::U16 => integer_typ(IntRange::U(16)),
+        UintTy::U32 => integer_typ(IntRange::U(32)),
+        UintTy::U64 => integer_typ(IntRange::U(64)),
+        UintTy::U128 => integer_typ(IntRange::U(128)),
     }
 }
