@@ -1,11 +1,19 @@
 use rustc_hir::def_id::DefId;
 use rustc_hir::hir_id::HirId;
-use rustc_hir::{PrimTy, QPath};
-use rustc_hir::def::Res;
-use vir::ast::{Typs, Ident, VirErr};
+use rustc_hir::{PrimTy, QPath, GenericArg, PathSegment};
+use rustc_hir::def::{Res, DefKind};
+use rustc_hir::def_id::LocalDefId;
+use vir::ast::{Typ, Typs, Ident, VirErr};
 use crate::spec_typeck::State;
-use rustc_hir::def::DefKind;
 use std::sync::Arc;
+use rustc_span::Span;
+use rustc_middle::ty::{Ty, TyCtxt, GenericParamDef, Region, Const, GenericPredicates, AdtDef, Generics, PolyTraitRef, GenericParamDefKind};
+use rustc_infer::infer::InferCtxt;
+use rustc_errors::ErrorGuaranteed;
+use rustc_hir_analysis::hir_ty_lowering::{GenericPathSegment, IsMethodCall, GenericArgCountMismatch, HirTyLowerer};
+use rustc_hir_analysis::hir_ty_lowering::generics::check_generic_arg_count_for_call;
+use crate::util::err_span;
+use rustc_hir::GenericArgsParentheses;
 
 pub enum PathResolution {
     Local(HirId),
@@ -22,11 +30,8 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         qpath: &QPath<'tcx>,
     ) -> Result<PathResolution, VirErr> {
         match qpath {
-            QPath::Resolved(None, path) => {
-                self.check_res(&path.res)
-            }
-            QPath::Resolved(Some(_), _path) => {
-                todo!()
+            QPath::Resolved(qualified_self, path) => {
+                self.check_res(path.span, qualified_self, &path.res, path.segments)
             }
             QPath::TypeRelative(_ty, _path_segment) => {
                 todo!()
@@ -39,13 +44,35 @@ impl<'a, 'tcx> State<'a, 'tcx> {
 
     fn check_res(
         &mut self,
+        span: Span,
+        qualified_self: &Option<&'tcx rustc_hir::Ty<'tcx>>,
         res: &Res,
+        segments: &'tcx [PathSegment],
     ) -> Result<PathResolution, VirErr> {
         match res {
             Res::Def(def_kind, def_id) => {
+                assert!(qualified_self.is_none());
+                let generic_segments = self.lowerer().probe_generic_path_segments(
+                    segments, None, *def_kind, *def_id, span);
+                for GenericPathSegment(def_id, index) in &generic_segments {
+                    let seg = &segments[*index];
+                    let generics = self.tcx.generics_of(def_id);
+                    let arg_count = check_generic_arg_count_for_call(self.tcx, *def_id, generics, seg, IsMethodCall::No);
+                    if let Err(GenericArgCountMismatch { .. }) = arg_count.correct {
+                        return err_span(seg.args.unwrap().span_ext, "too many generic arguments here");
+                    }
+                }
+
+                let mut generic_params = vec![];
+                for GenericPathSegment(def_id, index) in &generic_segments {
+                    let seg = &segments[*index];
+                    let generics = self.tcx.generics_of(def_id);
+                    generic_params.append(&mut self.check_segment_generics(seg, generics)?);
+                }
+
                 match def_kind {
                     DefKind::Fn => {
-                        Ok(PathResolution::Fn(*def_id, Arc::new(vec![])))
+                        Ok(PathResolution::Fn(*def_id, Arc::new(generic_params)))
                     }
                     _ => todo!()
                 }
@@ -54,6 +81,69 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             Res::Local(id) => Ok(PathResolution::Local(*id)),
             _ => todo!(),
         }
+    }
+
+    pub fn check_segment_generics(&mut self, segment: &'tcx PathSegment, generics: &'tcx Generics) -> Result<Vec<Typ>, VirErr> {
+        if let Some(args) = &segment.args {
+            if args.bindings.len() > 0 {
+                todo!();
+            }
+            if !matches!(args.parenthesized, GenericArgsParentheses::No) {
+                todo!();
+            }
+        }
+
+        let mut idx = 0;
+        let get_next_segment_arg = &mut || {
+            match &segment.args {
+                None => None,
+                Some(args) => {
+                    while idx < args.args.len() && matches!(args.args[idx], GenericArg::Lifetime(_)) {
+                        idx += 1
+                    }
+                    if idx < args.args.len() {
+                        idx += 1;
+                        Some(&args.args[idx - 1])
+                    } else {
+                        None
+                    }
+                }
+            }
+        };
+
+        let mut v: Vec<Typ> = vec![];
+        for generic_param_def in generics.params.iter() {
+            match &generic_param_def.kind {
+                GenericParamDefKind::Lifetime => { }
+                GenericParamDefKind::Type { has_default, synthetic } => {
+                    if *has_default { todo!() }
+                    if *synthetic { todo!() }
+
+                    let arg = get_next_segment_arg();
+                    let typ = match arg {
+                        None => self.new_unknown_typ(),
+                        Some(GenericArg::Lifetime(_)) => unreachable!(),
+                        Some(arg @ GenericArg::Const(_)) => {
+                            return err_span(arg.span(), "unexpected const param (normal type param expected)");
+                        }
+                        Some(GenericArg::Infer(_)) => self.new_unknown_typ(),
+                        Some(GenericArg::Type(ty)) => self.check_ty(ty)?,
+                    };
+                    v.push(typ);
+                }
+                GenericParamDefKind::Const { has_default, is_host_effect: false } => {
+                    if *has_default { todo!() }
+                    todo!()
+                }
+                GenericParamDefKind::Const { has_default: _, is_host_effect: true } => { }
+            }
+        }
+
+        if let Some(next) = get_next_segment_arg() {
+            return err_span(next.span(), "unexpected type param");
+        }
+
+        Ok(v)
     }
 
     pub fn get_item_mode(&self, def_id: DefId) -> Result<vir::ast::Mode, VirErr> {
@@ -74,3 +164,59 @@ impl<'a, 'tcx> State<'a, 'tcx> {
     }
 }
 
+// Implement this trait so we can call probe_generic_path_segments
+impl<'a, 'tcx> HirTyLowerer<'tcx> for State<'a, 'tcx> {
+    fn tcx(&self) -> TyCtxt<'tcx> { self.tcx }
+
+    fn item_def_id(&self) -> DefId { unreachable!() }
+
+    fn allow_infer(&self) -> bool { unreachable!() }
+
+    fn re_infer(
+        &self,
+        _param: Option<&GenericParamDef>,
+        _span: Span
+    ) -> Option<Region<'tcx>> { unreachable!() }
+
+    fn ty_infer(&self, _param: Option<&GenericParamDef>, _span: Span) -> Ty<'tcx> {
+        unreachable!()
+    }
+
+    fn ct_infer(
+        &self,
+        _ty: Ty<'tcx>,
+        _param: Option<&GenericParamDef>,
+        _span: Span
+    ) -> Const<'tcx> { unreachable!() }
+
+    fn probe_ty_param_bounds(
+        &self,
+        _span: Span,
+        _def_id: LocalDefId,
+        _assoc_name: rustc_span::symbol::Ident
+    ) -> GenericPredicates<'tcx> { unreachable!() }
+
+    fn lower_assoc_ty(
+        &self,
+        _span: Span,
+        _item_def_id: DefId,
+        _item_segment: &rustc_hir::PathSegment,
+        _poly_trait_ref: PolyTraitRef<'tcx>
+    ) -> Ty<'tcx> { unreachable!() }
+
+    fn probe_adt(&self, _span: Span, _ty: Ty<'tcx>) -> Option<AdtDef<'tcx>> {
+        todo!()
+    }
+
+    fn record_ty(&self, _hir_id: HirId, _ty: Ty<'tcx>, _span: Span) {
+        unreachable!()
+    }
+
+    fn infcx(&self) -> Option<&InferCtxt<'tcx>> {
+        unreachable!()
+    }
+
+    fn set_tainted_by_errors(&self, _e: ErrorGuaranteed) {
+        unreachable!()
+    }
+}

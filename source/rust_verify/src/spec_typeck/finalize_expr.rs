@@ -1,5 +1,5 @@
 use super::State;
-use vir::ast::{Expr, VirErr, Stmt, Typ, SpannedTyped, TypX};
+use vir::ast::{Expr, VirErr, Stmt, Typ, TypX};
 use air::scope_map::ScopeMap;
 
 impl State<'_, '_> {
