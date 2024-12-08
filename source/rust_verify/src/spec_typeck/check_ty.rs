@@ -1,3 +1,4 @@
+use crate::{unsupported_err, unsupported_err_unless};
 
 pub fn check_ty<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,

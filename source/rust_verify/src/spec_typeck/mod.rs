@@ -1,7 +1,6 @@
-#![feature(rustc_private)]
-
-extern crate rustc_hir;
-extern crate rustc_middle;
+mod check_expr;
+mod check_ty;
+mod unifier;
 
 pub fn typecheck<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
@@ -9,6 +8,6 @@ pub fn typecheck<'tcx>(
     _expected_typ: &vir::ast::Typ,
 ) -> Result<vir::ast::Expr, vir::ast::VirErr>
 {
-    crate::main_pass::check(tcx, expr);
+    check_expr::check(tcx, expr);
     todo!();
 }

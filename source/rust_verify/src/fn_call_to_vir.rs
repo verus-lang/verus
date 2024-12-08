@@ -2050,7 +2050,7 @@ fn do_ghost_code<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, expected_typ: &Typ) -
             let Some(body) = body else {
                 return err_span(expr.span, "Verus internal error: ghost_code body not found")  
             };
-            spec_typeck::typecheck(bctx.ctxt.tcx, body, expected_typ)
+            crate::spec_typeck::typecheck(bctx.ctxt.tcx, body, expected_typ)
         }
         _ => err_span(expr.span, "argument to ghost_code must be a closure"),
     }

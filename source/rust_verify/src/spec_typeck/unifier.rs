@@ -2,7 +2,7 @@ struct UnifierVar {
     i: u64
 }
 
-struct State {
+enum State {
     Unknown,
     AnyIntegerType,
     Type(vir::ast::Typ),
@@ -31,7 +31,6 @@ impl Unifier {
 
     pub fn expect_integer(u1: &UnifierVar, u2: &vir::ast::Typ) -> Result<(), VirErr> {
     }
-}
 
     pub fn expect_type(u1: &UnifierVar, u2: &vir::ast::Typ) -> Result<(), VirErr> {
     }

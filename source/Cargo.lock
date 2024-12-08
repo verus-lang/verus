@@ -1451,7 +1451,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sise",
- "spec_typeck",
  "vir",
  "win32job",
 ]
@@ -1663,13 +1662,6 @@ dependencies = [
  "structopt",
  "strum",
  "thiserror",
-]
-
-[[package]]
-name = "spec_typeck"
-version = "0.1.0"
-dependencies = [
- "vir",
 ]
 
 [[package]]

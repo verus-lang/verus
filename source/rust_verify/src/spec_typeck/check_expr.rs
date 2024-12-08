@@ -1,13 +1,22 @@
-struct State {
+use crate::util::{
+    err_span, err_span_bare, slice_vec_map_result, unsupported_err_span, vec_map_result,
+};
+use crate::spec_typeck::unifier::Unifier;
+use crate::{unsupported_err, unsupported_err_unless};
+use air::scope_map::ScopeMap;
+use vir::ast::{Typ, VarIdent, VirErr};
+use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind};
+
+pub struct State {
     scope_map: ScopeMap<VarIdent, Typ>,
     unifier: Unifier,
 }
 
-fn check_expr<'tcx>(
+pub fn check_expr<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     state: &mut State,
     expr: &Expr<'tcx>,
-) -> Result<vir::ast::Expr<'tcx>, VirErr> {
+) -> Result<vir::ast::Expr<'tcx>, vir::ast::VirErr> {
     match &expr.kind {
         ExprKind::Block(Block {
             stmts, expr: e, hir_id: _, rules: BlockCheckMode::DefaultBlock, span: _, targeted_by_break: _ }
@@ -40,7 +49,7 @@ fn check_expr<'tcx>(
 
             let body = bctx.ctxt.spec_hir.bodies.get(&body);
             let Body { params, value, coroutine_kind } = body;
-            unsupported_err_unless!(coroutine_kind.is_none());
+            unsupported_err_unless!(coroutine_kind.is_none(), expr.span, "complex closure");
 
             state.scope_map.push_scope(false);
             for (i, param) in params.iter().enumerate() {
@@ -64,7 +73,7 @@ fn check_expr<'tcx>(
                     _ => {
                         unsupported_err!(&expr.span, "complex closure pattern argument");
                     }
-                }
+                };
                 var_binders.push(Arc::new(VarBinderX { name, a: arg_types[i].clone() }));
             }
 
@@ -104,7 +113,7 @@ fn check_expr<'tcx>(
                     self.unifier.expect(callee, t)?;
                     (args, ret)
                 }
-            }
+            };
 
             for (i, arg) in args.iter().enumerate() {
                 let a = check_expr(tcx, state, arg);
@@ -114,6 +123,4 @@ fn check_expr<'tcx>(
             ret
         }
     }
-}
-
 }

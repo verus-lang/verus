@@ -70,3 +70,4 @@ pub mod util;
 pub mod verifier;
 pub mod verus_items;
 mod spec_exprs;
+mod spec_typeck;
