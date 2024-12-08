@@ -4,7 +4,7 @@ use crate::rust_to_vir_base::{
     typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
-use crate::util::{err_span};
+use crate::util::err_span;
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use crate::{err_unless, unsupported_err};
 use indexmap::{IndexMap, IndexSet};
