@@ -8,7 +8,7 @@ use crate::rust_to_vir_base::{
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
 use crate::rust_to_vir_impl::ExternalInfo;
-use crate::util::{err_span, err_span_bare, unsupported_err_span};
+use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;

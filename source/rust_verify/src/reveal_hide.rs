@@ -4,7 +4,6 @@ use std::sync::Arc;
 use rustc_hir::{def::Res, Expr, ExprKind, QPath};
 use vir::ast::{ExprX, FunX, HeaderExprX};
 
-use crate::util::unsupported_err_span;
 use crate::{
     rust_to_vir_base::def_id_to_vir_path, unsupported_err, unsupported_err_unless, util::err_span,
 };

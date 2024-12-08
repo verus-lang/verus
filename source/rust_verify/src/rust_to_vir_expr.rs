@@ -14,7 +14,7 @@ use crate::rust_to_vir_base::{
 use crate::rust_to_vir_func::find_body;
 use crate::spans::err_air_span;
 use crate::util::{
-    err_span, err_span_bare, slice_vec_map_result, unsupported_err_span, vec_map_result,
+    err_span, err_span_bare, slice_vec_map_result, vec_map_result,
 };
 use crate::verus_items::{
     self, CompilableOprItem, InvariantItem, OpenInvariantBlockItem, RustItem, SpecGhostTrackedItem,

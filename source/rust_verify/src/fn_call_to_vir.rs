@@ -11,7 +11,7 @@ use crate::rust_to_vir_expr::{
     check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array, extract_tuple,
     get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var, ExprModifier,
 };
-use crate::util::{err_span, unsupported_err_span, vec_map, vec_map_result, vir_err_span_str};
+use crate::util::{err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
     self, ArithItem, AssertItem, BinaryOpItem, BuiltinFunctionItem, ChainedItem, CompilableOprItem,
     DirectiveItem, EqualityItem, ExprItem, QuantItem, RustItem, SpecArithItem,
