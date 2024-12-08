@@ -25,6 +25,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
         TypX::Primitive(crate::ast::Primitive::Global, _) => false,
         TypX::FnDef(..) => false,
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 

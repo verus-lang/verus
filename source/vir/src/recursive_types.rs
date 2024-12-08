@@ -125,6 +125,7 @@ fn check_well_founded_typ(
         TypX::AnonymousClosure(..) => {
             unimplemented!();
         }
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 
@@ -274,6 +275,7 @@ fn check_positive_uses(
         TypX::TypeId => Ok(()),
         TypX::ConstInt(_) => Ok(()),
         TypX::Air(_) => Ok(()),
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 

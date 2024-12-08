@@ -93,6 +93,9 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
                     })
                 })
             }
+            TypX::UnificationVar(_i) => {
+                R::ret(|| typ.clone())
+            }
         }
     }
 }

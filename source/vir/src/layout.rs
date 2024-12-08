@@ -36,6 +36,7 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
         crate::ast::TypX::Air(_) | crate::ast::TypX::TypeId => {
             unreachable!()
         }
+        crate::ast::TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     })?;
     Ok(())
 }

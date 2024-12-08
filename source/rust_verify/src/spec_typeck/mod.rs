@@ -3,6 +3,7 @@
 mod check_expr;
 mod check_ty;
 mod check_pat;
+mod check_path;
 mod unifier;
 
 pub struct State<'a, 'tcx> {
@@ -27,6 +28,11 @@ pub fn typecheck<'tcx>(
 
     let e = state.check_expr(expr)?;
     state.expect(&e.typ, expected_typ)?;
+
+    // do substitutions
+    // match exhaustiveness
+    // int literal bounds checking
+    // trait checks, impl paths, static resolutions
 
     todo!();
 }

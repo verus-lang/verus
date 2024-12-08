@@ -261,6 +261,7 @@ pub enum TypX {
     ConstInt(BigInt),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
+    UnificationVar(usize),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]

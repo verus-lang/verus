@@ -179,6 +179,7 @@ fn datatypes_invs(
                         }
                         TypX::FnDef(..) => {}
                         TypX::Decorate(..) => unreachable!("TypX::Decorate"),
+                        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
                         TypX::Boxed(_) => {}
                         TypX::TypeId => {}
                         TypX::Bool | TypX::AnonymousClosure(..) => {}

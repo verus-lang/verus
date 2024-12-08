@@ -1,8 +1,10 @@
 use crate::util::{err_span};
 use crate::unsupported_err;
 use crate::spec_typeck::State;
+use crate::spec_typeck::check_path::PathResolution;
 use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant};
-use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt};
+use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt, Path, QPath};
+use rustc_hir::def::{Res, DefKind};
 use std::sync::Arc;
 use vir::ast_util::{unit_typ, int_typ, integer_typ};
 use crate::spec_typeck::check_ty::{integer_typ_of_int_ty, integer_typ_of_uint_ty};
@@ -19,6 +21,36 @@ impl State<'_, '_> {
         let mk_expr = |typ: &Typ, x: ExprX| Ok(bctx.spanned_typed_new(expr.span, typ, x));
 
         match &expr.kind {
+            ExprKind::Path(qpath) => {
+                match self.check_qpath(qpath)? {
+                    PathResolution::
+                }
+            }
+            ExprKind::Path(QPath::Resolved(None, Path { res: Res::Local(hir_id), .. })) => {
+                match self.tcx.hir_node(*hir_id) {
+                    rustc_hir::Node::Pat(pat) => {
+                        let var = crate::rust_to_vir_expr::pat_to_var(pat)?;
+                        let typ = match self.scope_map.get(&var) {
+                            Some(t) => t,
+                            None => {
+                                return err_span(expr.span, format!("unrecognized local `{:}`", var));
+                            }
+                        };
+                        mk_expr(typ, ExprX::Var(var))
+                    }
+                    node => {
+                        unsupported_err!(expr.span, format!("Path {:?}", node))
+                    }
+                }
+            }
+            ExprKind::Path(QPath::Resolved(None, Path { res: Res::Def(def_kind, _def_id), .. })) => {
+                match def_kind {
+                    DefKind::Fn => {
+                        todo!()
+                    }
+                    _ => todo!(),
+                }
+            }
             ExprKind::Block(Block {
               stmts,
               expr,

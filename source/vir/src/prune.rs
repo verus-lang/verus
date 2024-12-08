@@ -125,6 +125,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Primitive(Primitive::Slice | Primitive::Ptr | Primitive::Global, _) => {
             ReachedType::Primitive
         }
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 
@@ -276,6 +277,7 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
                 reach_function(ctxt, state, res_fun);
             }
         }
+        TypX::UnificationVar(..) => unreachable!("TypX::UnificationVar"),
     }
 }
 
