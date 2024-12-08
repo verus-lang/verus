@@ -1,4 +1,5 @@
 use crate::{unsupported_err};
+use crate::verus_items::{VerusItem, BuiltinTypeItem};
 use crate::spec_typeck::State;
 use crate::spec_typeck::check_path::PathResolution;
 use vir::ast::{Typ, VirErr, TypX, Primitive, IntRange};
@@ -48,6 +49,16 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         PrimTy::Char => integer_typ(IntRange::Char),
                         PrimTy::Float(_) => unsupported_err!(ty.span, "floating point types"),
                     }),
+                    PathResolution::Datatype(def_id, _typs) => {
+                        let verus_item = self.bctx.ctxt.verus_items.id_to_name.get(&def_id);
+                        if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Int)) = verus_item {
+                            Ok(Arc::new(TypX::Int(IntRange::Int)))
+                        } else if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Nat)) = verus_item {
+                            Ok(Arc::new(TypX::Int(IntRange::Nat)))
+                        } else {
+                            todo!();
+                        }
+                    }
                     _ => todo!(),
                 }
             }
