@@ -1,3 +1,5 @@
+use vir::ast::VirErr;
+
 struct UnifierVar {
     i: u64
 }
@@ -8,7 +10,7 @@ enum State {
     Type(vir::ast::Typ),
 }
 
-struct Unifier {
+pub struct Unifier {
 }
 
 impl Unifier {
@@ -20,7 +22,7 @@ impl Unifier {
         todo!();
     }
 
-    pub fn expect_equivalent(u1: &UnifierVar, u2: &UnifierVar) -> Result<(), VirErr> {
+    pub fn expect_equivalent(&mut self, u1: &UnifierVar, u2: &UnifierVar) -> Result<(), VirErr> {
         let a = self.uf_get_rep(u1);
         let b = self.uf_get_rep(u2);
         if a != b {
@@ -29,9 +31,9 @@ impl Unifier {
         }
     }
 
-    pub fn expect_integer(u1: &UnifierVar, u2: &vir::ast::Typ) -> Result<(), VirErr> {
+    pub fn expect_integer(&mut self, u1: &UnifierVar, u2: &vir::ast::Typ) -> Result<(), VirErr> {
     }
 
-    pub fn expect_type(u1: &UnifierVar, u2: &vir::ast::Typ) -> Result<(), VirErr> {
+    pub fn expect_type(&mut self, u1: &UnifierVar, u2: &vir::ast::Typ) -> Result<(), VirErr> {
     }
 }

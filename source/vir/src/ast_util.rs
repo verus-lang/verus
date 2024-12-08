@@ -468,6 +468,14 @@ pub fn unit_typ() -> Typ {
     Arc::new(TypX::Datatype(name, Arc::new(vec![]), Arc::new(vec![])))
 }
 
+pub fn bool_typ() -> Typ {
+    Arc::new(TypX::Bool)
+}
+
+pub fn int_typ() -> Typ {
+    Arc::new(TypX::Int(IntRange::Int))
+}
+
 pub fn is_unit(t: &Typ) -> bool {
     matches!(&**t, TypX::Datatype(Dt::Tuple(0), ..))
 }
