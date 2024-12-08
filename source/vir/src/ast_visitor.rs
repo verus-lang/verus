@@ -155,7 +155,7 @@ where
     }
 }
 
-pub(crate) fn map_typ_visitor_env<E, FT>(typ: &Typ, env: &mut E, ft: &FT) -> Result<Typ, VirErr>
+pub fn map_typ_visitor_env<E, FT>(typ: &Typ, env: &mut E, ft: &FT) -> Result<Typ, VirErr>
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
@@ -708,7 +708,7 @@ where
     }
 }
 
-pub(crate) fn map_expr_visitor_env<E, FE, FS, FT>(
+pub fn map_expr_visitor_env<E, FE, FS, FT>(
     expr: &Expr,
     map: &mut VisitorScopeMap,
     env: &mut E,

@@ -6,6 +6,7 @@ mod check_pat;
 mod check_path;
 mod unifier;
 mod substitutions;
+mod finalize_expr;
 
 pub struct State<'a, 'tcx> {
     scope_map: air::scope_map::ScopeMap<vir::ast::VarIdent, vir::ast::Typ>,
@@ -29,6 +30,12 @@ pub fn typecheck<'tcx>(
 
     let e = state.check_expr(expr)?;
     state.expect(&e.typ, expected_typ)?;
+
+    state.finish_unification()?;
+
+    let e = state.finalize_expr(&e)?;
+
+    dbg!(e);
 
     // do substitutions
     // match exhaustiveness

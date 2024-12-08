@@ -18,6 +18,7 @@ struct UFNode {
 pub struct Unifier {
     uf_nodes: Vec<UFNode>,
     info: Vec<Info>,
+    final_typs: Option<Vec<Option<Typ>>>,
 }
 
 enum UnifyError {
@@ -29,14 +30,16 @@ impl Unifier {
         Unifier {
             uf_nodes: vec![],
             info: vec![],
+            final_typs: None,
         }
     }
 
     fn new_node(&mut self, info: Info) -> usize {
-       self.info.push(info);
-       let me = self.uf_nodes.len();
-       self.uf_nodes.push(UFNode { parent: me, rank: 0 });
-       me
+        assert!(self.final_typs.is_none());
+        self.info.push(info);
+        let me = self.uf_nodes.len();
+        self.uf_nodes.push(UFNode { parent: me, rank: 0 });
+        me
     }
 
     fn get_node(&mut self, i: usize) -> usize {
@@ -49,6 +52,7 @@ impl Unifier {
     }
 
     fn merge_nodes(&mut self, i: usize, j: usize, info: Info) {
+        assert!(self.final_typs.is_none());
         assert!(i != j);
         assert!(self.uf_nodes[i].parent == i);
         assert!(self.uf_nodes[j].parent == j);
@@ -71,6 +75,59 @@ impl Unifier {
 }
 
 impl State<'_, '_> {
+    // TODO overflow checking
+    pub fn finish_unification(&mut self) -> Result<(), VirErr> {
+        self.unifier.final_typs = Some(vec![None; self.unifier.uf_nodes.len()]);
+
+        for i in 0 .. self.unifier.uf_nodes.len() {
+            if self.unifier.uf_nodes[i].parent == i {
+               self.finish_rec(i);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn finish_rec(&mut self, i: usize) {
+        if self.unifier.final_typs.as_ref().unwrap()[i].is_some() {
+            return;
+        }
+
+        let typ = match &self.unifier.info[i] {
+            Info::Unknown => todo!(),
+            Info::UnknownIntegerType => vir::ast_util::int_typ(),
+            Info::Known(typ) => typ.clone(),
+            Info::Contradiction => todo!(),
+        };
+
+        let t = vir::ast_visitor::map_typ_visitor_env(&typ, self, &|state: &mut Self, t: &Typ| {
+            match &**t {
+                TypX::UnificationVar(uid) => {
+                    let node = state.unifier.get_node(*uid);
+                    state.finish_rec(node);
+                    Ok(state.unifier.final_typs.as_ref().unwrap()[node].clone().unwrap())
+                }
+                _ => Ok(t.clone())
+            }
+        }).unwrap();
+
+        self.unifier.final_typs.as_mut().unwrap()[i] = Some(t);
+    }
+
+    /// Get the final type with no unification variables.
+    /// This must be called after `finish`
+    pub fn get_finished_typ(&mut self, typ: &Typ) -> Typ {
+        vir::ast_visitor::map_typ_visitor_env(typ, self, &|state: &mut Self, t: &Typ| {
+            match &**t {
+                TypX::UnificationVar(uid) => {
+                    let node = state.unifier.get_node(*uid);
+                    Ok(state.unifier.final_typs.as_ref().unwrap()[node].clone().unwrap())
+                }
+                _ => Ok(t.clone())
+            }
+        }).unwrap()
+    }
+
     pub fn new_unknown_typ(&mut self) -> Typ {
         let uid = self.unifier.new_node(Info::Unknown);
         Arc::new(TypX::UnificationVar(uid))
@@ -276,6 +333,7 @@ impl State<'_, '_> {
             | (TypX::Air(..), _) => unreachable!(),
         }
     }
+
 }
 
 fn int_range_equal_or_implicit_coercion_ok(ir1: IntRange, ir2: IntRange) -> bool {
