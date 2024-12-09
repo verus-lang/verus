@@ -42,5 +42,7 @@ pub fn typecheck<'tcx>(
     // int literal bounds checking
     // trait checks, impl paths, static resolutions
 
+    // deprecated, visibility checks...?
+
     todo!();
 }

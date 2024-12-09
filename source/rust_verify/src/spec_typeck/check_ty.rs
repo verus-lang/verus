@@ -2,7 +2,7 @@ use crate::{unsupported_err};
 use crate::verus_items::{VerusItem, BuiltinTypeItem};
 use crate::spec_typeck::State;
 use crate::spec_typeck::check_path::PathResolution;
-use vir::ast::{Typ, VirErr, TypX, Primitive, IntRange};
+use vir::ast::{Typ, VirErr, TypX, Primitive, IntRange, Dt};
 use vir::ast_util::{bool_typ, str_typ, integer_typ};
 use rustc_hir::{Ty, TyKind, PrimTy};
 use std::sync::Arc;
@@ -49,14 +49,21 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         PrimTy::Char => integer_typ(IntRange::Char),
                         PrimTy::Float(_) => unsupported_err!(ty.span, "floating point types"),
                     }),
-                    PathResolution::Datatype(def_id, _typs) => {
+                    PathResolution::Datatype(def_id, typs) => {
                         let verus_item = self.bctx.ctxt.verus_items.id_to_name.get(&def_id);
                         if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Int)) = verus_item {
                             Ok(Arc::new(TypX::Int(IntRange::Int)))
                         } else if let Some(VerusItem::BuiltinType(BuiltinTypeItem::Nat)) = verus_item {
                             Ok(Arc::new(TypX::Int(IntRange::Nat)))
                         } else {
-                            todo!();
+                            if verus_item.is_some() { todo!() }
+                            let rust_item = crate::verus_items::get_rust_item(self.tcx, def_id);
+                            if rust_item.is_some() { todo!() }
+
+                            let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
+                                &self.bctx.ctxt.verus_items, def_id);
+                            let dt = Dt::Path(path);
+                            Ok(Arc::new(TypX::Datatype(dt, typs.clone(), Arc::new(vec![]))))
                         }
                     }
                     _ => todo!(),

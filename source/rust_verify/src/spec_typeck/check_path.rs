@@ -34,7 +34,9 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             QPath::Resolved(qualified_self, path) => {
                 self.check_res(path.span, qualified_self, &path.res, path.segments)
             }
-            QPath::TypeRelative(_ty, _path_segment) => {
+            QPath::TypeRelative(ty, _path_segment) => {
+                let t = self.check_ty(ty)?;
+                dbg!(t);
                 todo!()
             }
             QPath::LangItem(..) => {
@@ -62,7 +64,10 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         let generic_params = self.check_path_generics_last_only(*def_id, segments)?;
                         Ok(PathResolution::Datatype(*def_id, Arc::new(generic_params)))
                     }
-                    _ => todo!()
+                    _ => {
+                        dbg!(def_kind);
+                        todo!()
+                    }
                 }
             }
             Res::PrimTy(prim_ty) => Ok(PathResolution::PrimTy(*prim_ty)),
