@@ -8,6 +8,8 @@ mod unifier;
 mod substitutions;
 mod finalize_expr;
 
+mod method_probe;
+
 pub struct State<'a, 'tcx> {
     scope_map: air::scope_map::ScopeMap<vir::ast::VarIdent, vir::ast::Typ>,
     unifier: unifier::Unifier,
