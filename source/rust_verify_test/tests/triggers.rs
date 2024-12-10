@@ -390,3 +390,58 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_self_in_trigger_in_clone_issue1347 verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+
+        struct Node {
+            child: Option<Box<Node>>,
+        }
+
+        impl Node {
+            pub spec fn map(self) -> Map<int, int>;
+        }
+
+        impl Clone for Node {
+            fn clone(&self) -> (res: Self)
+                ensures forall |key: int| #[trigger] self.map().dom().contains(key) ==> key == 3
+            {
+                return Node { child: None }; // FAILS
+            }
+        }
+
+        fn test(n: Node) {
+            let t = n.clone();
+            assert(forall |key: int| n.map().dom().contains(key) ==> key == 3);
+        }
+
+        fn test2(n: Node) {
+            let c = Node::clone;
+            let t = c(&n);
+            assert(forall |key: int| n.map().dom().contains(key) ==> key == 3);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_lets_and_nested_quantifiers_issue1347 verus_code! {
+        spec fn llama(x: int) -> int;
+        spec fn foo(x: int, y: int) -> bool;
+        spec fn bar(x: int) -> bool;
+
+        proof fn test() {
+            let b =
+              forall |x: int| #[trigger] bar(x) ==> ({
+                let y = llama(x);
+                forall |z: int| #[trigger] foo(y, z)
+              });
+
+            assume(b);
+            assume(bar(7));
+            assert(foo(llama(7), 20));
+            assert(foo(llama(7), 21));
+        }
+    } => Ok(())
+}
