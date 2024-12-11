@@ -20,6 +20,11 @@ Verus is under *active development*. Features may be broken and/or missing, and
 the documentation is still incomplete. If you want to try Verus, please be
 prepared to ask for help in the [💬 Zulip](https://verus-lang.zulipchat.com/).
 
+The Verus community has published a number of research papers, and there are a
+variety of industry and academic projects using Verus. You can find a list on our
+<a href="https://verus-lang.github.io/verus/publications-and-projects/">publications and projects</a> page. 
+If you're using Verus please consider adding your project to that page (see the instructions there).
+
 ## Try Verus
 
 To try Verus in your browser, please visit the [Verus Playground](https://play.verus-lang.org/).
@@ -39,7 +44,7 @@ Our (work-in-progress) documentation resources include:
 
 ## Examples of Using Verus
 In addition to the documentation above, it can be helpful to see Verus used in action.  Here are some starting points.
- * <a href="https://verus-lang.github.io/verus/publications-and-projects/">Publications and projects</a> using Verus -- If you're using Verus please consider adding your project to that page (see the instructions there).
+ * <a href="https://verus-lang.github.io/verus/publications-and-projects/">Publications and projects</a> using Verus.
  * [Standalone examples](https://github.com/secure-foundations/human-eval-verus/) showing Verus in use for small, concrete tasks.
  * [Miscellaneous small examples](source/rust_verify/example) illustrating various Verus features
  * [Unit tests](source/rust_verify_test/tests) for Verus, containing examples of Verus syntax and features.
