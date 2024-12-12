@@ -432,9 +432,9 @@ pub fn crate_to_vir<'a, 'tcx>(
     // Insert those modules into vir.modules
     let root_module_path = get_root_module_path(ctxt);
     if used_modules.contains(&root_module_path) {
-        let owner = ctxt.tcx.hir().owner(rustc_hir::CRATE_OWNER_ID);
+        let owner = ctxt.tcx.hir_owner_node(rustc_hir::CRATE_OWNER_ID);
         vir.modules.push(ctxt.spanned_new(
-            owner.span(),
+            *owner.span(),
             vir::ast::ModuleX { path: root_module_path.clone(), reveals: None },
         ));
     }
