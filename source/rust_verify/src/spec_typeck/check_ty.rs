@@ -40,7 +40,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 Ok(vir::ast_util::mk_tuple_typ(&Arc::new(typs)))
             }
             TyKind::Path(qpath) => {
-                match self.check_qpath(qpath)? {
+                match self.check_qpath_for_type(qpath)? {
                     PathResolution::PrimTy(prim_ty)  => Ok(match prim_ty {
                         PrimTy::Int(int_ty) => integer_typ_of_int_ty(int_ty),
                         PrimTy::Uint(uint_ty) => integer_typ_of_uint_ty(uint_ty),

@@ -21,7 +21,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
 
         match &expr.kind {
             ExprKind::Path(qpath) => {
-                match self.check_qpath(qpath)? {
+                match self.check_qpath_for_expr(qpath, expr.hir_id)? {
                     PathResolution::Local(hir_id) => {
                         match self.tcx.hir_node(hir_id) {
                             rustc_hir::Node::Pat(pat) => {
@@ -51,7 +51,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 }
             }
             ExprKind::Call(Expr { kind: ExprKind::Path(qpath), .. }, args) => {
-                match self.check_qpath(qpath)? {
+                match self.check_qpath_for_expr(qpath, expr.hir_id)? {
                     PathResolution::Fn(def_id, typ_args) => {
                         let (input_typs, output_typ) = self.fn_item_type_substitution(expr.span,def_id, &typ_args)?;
 

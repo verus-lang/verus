@@ -146,8 +146,33 @@ pub(crate) fn def_id_to_vir_path_option<'tcx>(
     let path = def_path_to_vir_path(tcx, tcx.def_path(def_id));
     if let Some(path) = &path {
         register_friendly_path_as_rust_name(tcx, def_id, path);
+        register_def_id(def_id, path);
     }
     path
+}
+
+static PATH_AS_DEF_ID_MAP: std::sync::Mutex<Option<HashMap<Path, DefId>>> = std::sync::Mutex::new(None);
+
+fn register_def_id(def_id: DefId, path: &Path) {
+    if let Ok(mut guard) = PATH_AS_DEF_ID_MAP.lock() {
+        let map_opt = &mut *guard;
+        if map_opt.is_none() {
+            *map_opt = Some(HashMap::new());
+        }
+        if map_opt.as_mut().unwrap().contains_key(path) {
+            return;
+        }
+        map_opt.as_mut().unwrap().insert(path.clone(), def_id);
+    }
+}
+
+pub(crate) fn def_id_of_vir_path(path: &Path) -> DefId {
+    if let Ok(guard) = PATH_AS_DEF_ID_MAP.lock() {
+        let map_opt = &*guard;
+        *map_opt.as_ref().unwrap().get(path).unwrap()
+    } else {
+        panic!("def_id_of_vir_path lock");
+    }
 }
 
 pub(crate) fn def_id_to_vir_path_ignoring_diagnostic_rename<'tcx>(

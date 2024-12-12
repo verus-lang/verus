@@ -3,7 +3,7 @@ use rustc_hir::hir_id::HirId;
 use rustc_hir::{PrimTy, QPath, GenericArg, PathSegment};
 use rustc_hir::def::{Res, DefKind};
 use rustc_hir::def_id::LocalDefId;
-use vir::ast::{Typ, Typs, Ident, VirErr};
+use vir::ast::{Typ, TypX, Typs, Ident, VirErr, Dt};
 use crate::spec_typeck::State;
 use std::sync::Arc;
 use rustc_span::Span;
@@ -26,9 +26,23 @@ pub enum PathResolution {
 }
 
 impl<'a, 'tcx> State<'a, 'tcx> {
-    pub fn check_qpath(
+    pub fn vir_ty_to_middle(&self, t: &Typ) -> rustc_middle::ty::Ty<'tcx> {
+        let tcx = &self.tcx;
+        match &**t {
+            TypX::Datatype(Dt::Path(path), args, _) => {
+                assert!(args.len() == 0);
+                let def_id = crate::rust_to_vir_base::def_id_of_vir_path(path);
+                let adt_def = tcx.adt_def(def_id);
+                tcx.mk_ty_from_kind(rustc_middle::ty::TyKind::Adt(adt_def, tcx.mk_args(&[])))
+            }
+            _ => todo!(),
+        }
+    }
+
+    pub fn check_qpath_for_expr(
         &mut self,
         qpath: &QPath<'tcx>,
+        expr_hir_id: HirId,
     ) -> Result<PathResolution, VirErr> {
         match qpath {
             QPath::Resolved(qualified_self, path) => {
@@ -36,14 +50,37 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             }
             QPath::TypeRelative(ty, path_segment) => {
                 let t = self.check_ty(ty)?;
-                /*crate::method_probe::lookup_method(
+                let r = crate::spec_typeck::method_probe::resolve_fully_qualified_call(
                     self.tcx,
-                    ty,
-                    path_segment,
-                    path.span,*/
+                    qpath.span(),
+                    path_segment.ident,
+                    self.vir_ty_to_middle(&t),
+                    ty.span,
+                    expr_hir_id,
+                    self.tcx.param_env(self.bctx.fun_id),
+                    self.bctx.fun_id.expect_local(),
+                )?;
+                
+                dbg!(r);
 
+                //dbg!(t);
+                todo!()
+            }
+            QPath::LangItem(..) => {
+                todo!()
+            }
+        }
+    }
 
-                dbg!(t);
+    pub fn check_qpath_for_type(
+        &mut self,
+        qpath: &QPath<'tcx>,
+    ) -> Result<PathResolution, VirErr> {
+        match qpath {
+            QPath::Resolved(qualified_self, path) => {
+                self.check_res(path.span, qualified_self, &path.res, path.segments)
+            }
+            QPath::TypeRelative(_ty, _path_segment) => {
                 todo!()
             }
             QPath::LangItem(..) => {
