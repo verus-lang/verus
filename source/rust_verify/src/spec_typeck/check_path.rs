@@ -39,6 +39,11 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 let args = self.tcx.mk_args(&mid_args);
                 tcx.mk_ty_from_kind(rustc_middle::ty::TyKind::Adt(adt_def, args))
             }
+            TypX::UnificationVar(i) => {
+                tcx.mk_ty_from_kind(rustc_middle::ty::TyKind::Infer(
+                    rustc_middle::ty::InferTy::TyVar(
+                      rustc_middle::ty::TyVid::from_usize(*i))))
+            }
             _ => todo!(),
         }
     }

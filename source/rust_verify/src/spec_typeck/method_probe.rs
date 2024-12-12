@@ -89,7 +89,9 @@ pub(crate) fn resolve_fully_qualified_call<'tcx>(
     let e = oc.resolve_fully_qualified_call(span, method_name, self_ty, self_ty_span, expr_id);
     match e {
         Ok(o) => Ok(o),
-        Err(_e) => todo!(),
+        Err(e) => {
+            panic!("{:#?}", e)
+        }
     }
 }
 
@@ -970,15 +972,12 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
     }
 
     fn assemble_extension_candidates_for_all_traits(&mut self) {
-        todo!()
-        /*
         let mut duplicates = FxHashSet::default();
-        for trait_info in rustc_hir_typeck::method::suggest::all_traits(self.tcx) {
+        for trait_info in all_traits(self.tcx) {
             if duplicates.insert(trait_info.def_id) {
                 self.assemble_extension_candidates_for_trait(&smallvec![], trait_info.def_id);
             }
         }
-        */
     }
 
     fn matches_return_type(&self, method: ty::AssocItem, expected: Ty<'tcx>) -> bool {
@@ -2076,4 +2075,15 @@ impl<'tcx> Candidate<'tcx> {
             unstable_candidates,
         }
     }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+pub struct TraitInfo {
+    pub def_id: DefId,
+}
+
+/// Retrieves all traits in this crate and any dependent crates,
+/// and wraps them into `TraitInfo` for custom sorting.
+pub fn all_traits(tcx: TyCtxt<'_>) -> Vec<TraitInfo> {
+    tcx.all_traits().map(|def_id| TraitInfo { def_id }).collect()
 }
