@@ -30,10 +30,14 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         let tcx = &self.tcx;
         match &**t {
             TypX::Datatype(Dt::Path(path), args, _) => {
-                assert!(args.len() == 0);
                 let def_id = crate::rust_to_vir_base::def_id_of_vir_path(path);
                 let adt_def = tcx.adt_def(def_id);
-                tcx.mk_ty_from_kind(rustc_middle::ty::TyKind::Adt(adt_def, tcx.mk_args(&[])))
+                let mut mid_args: Vec<rustc_middle::ty::GenericArg<'_>> = vec![];
+                for a in args.iter() {
+                    mid_args.push(rustc_middle::ty::GenericArg::from(self.vir_ty_to_middle(a)));
+                }
+                let args = self.tcx.mk_args(&mid_args);
+                tcx.mk_ty_from_kind(rustc_middle::ty::TyKind::Adt(adt_def, args))
             }
             _ => todo!(),
         }
