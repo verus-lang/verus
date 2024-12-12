@@ -34,6 +34,7 @@ use std::iter;
 use rustc_infer::infer::InferResult;
 use rustc_infer::traits::ObligationCauseCode;
 use rustc_hir::def::Namespace;
+use rustc_hir::def::CtorOf;
 
 use smallvec::{smallvec, SmallVec};
 
@@ -43,7 +44,7 @@ use rustc_middle::ty::ParamEnv;
 use self::CandidateKind::*;
 pub use self::PickKind::*;
 
-fn lookup_method<'tcx>(
+pub(crate) fn lookup_method<'tcx>(
     tcx: TyCtxt<'tcx>,
     self_ty: Ty<'tcx>,
     segment: &'tcx hir::PathSegment<'tcx>,
@@ -63,10 +64,34 @@ fn lookup_method<'tcx>(
     let e = oc.lookup_method(self_ty, segment, span, call_expr);
     match e {
         Ok(o) => Ok(o),
-        Err(e) => todo!(),
+        Err(_e) => todo!(),
     }
 }
 
+pub(crate) fn resolve_fully_qualified_call<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    span: Span,
+    method_name: Ident,
+    self_ty: Ty<'tcx>,
+    self_ty_span: Span,
+    expr_id: hir::HirId,
+    param_env: ParamEnv<'tcx>,
+    body_local_def_id: LocalDefId,
+) -> Result<(DefKind, DefId), vir::ast::VirErr> {
+    use crate::rustc_infer::infer::TyCtxtInferExt;
+
+    let oc = OuterContext {
+        tcx: tcx,
+        infcx: tcx.infer_ctxt().ignoring_regions().build(),
+        param_env: param_env,
+        body_id: body_local_def_id,
+    };
+    let e = oc.resolve_fully_qualified_call(span, method_name, self_ty, self_ty_span, expr_id);
+    match e {
+        Ok(o) => Ok(o),
+        Err(_e) => todo!(),
+    }
+}
 
 /// Boolean flag used to indicate if this search is for a suggestion
 /// or not. If true, we can allow ambiguity and so forth.
@@ -285,6 +310,80 @@ impl<'tcx> OuterContext<'tcx> {
         //Ok(result.callee)
 
         Ok(pick.item.def_id)
+    }
+
+    pub fn resolve_fully_qualified_call(
+        &self,
+        span: Span,
+        method_name: Ident,
+        self_ty: Ty<'tcx>,
+        _self_ty_span: Span,
+        expr_id: hir::HirId,
+    ) -> Result<(DefKind, DefId), MethodError<'tcx>> {
+        let tcx = self.tcx;
+
+        // Check if we have an enum variant.
+        let mut struct_variant = None;
+        if let ty::Adt(adt_def, _) = self_ty.kind() {
+            if adt_def.is_enum() {
+                let variant_def = adt_def
+                    .variants()
+                    .iter()
+                    .find(|vd| tcx.hygienic_eq(method_name, vd.ident(tcx), adt_def.did()));
+                if let Some(variant_def) = variant_def {
+                    if let Some((ctor_kind, ctor_def_id)) = variant_def.ctor {
+                        tcx.check_stability(
+                            ctor_def_id,
+                            Some(expr_id),
+                            span,
+                            Some(method_name.span),
+                        );
+                        return Ok((DefKind::Ctor(CtorOf::Variant, ctor_kind), ctor_def_id));
+                    } else {
+                        struct_variant = Some((DefKind::Variant, variant_def.def_id));
+                    }
+                }
+            }
+        }
+
+        let pick = self.probe_for_name(
+            Mode::Path,
+            method_name,
+            None,
+            IsSuggestion(false),
+            self_ty,
+            expr_id,
+            ProbeScope::TraitsInScope,
+        );
+        let pick = match (pick, struct_variant) {
+            // Fall back to a resolution that will produce an error later.
+            (Err(_), Some(res)) => return Ok(res),
+            (pick, _) => pick?,
+        };
+
+        pick.maybe_emit_unstable_name_collision_hint(self.tcx, span, expr_id);
+
+        /*self.lint_fully_qualified_call_from_2018(
+            span,
+            method_name,
+            self_ty,
+            self_ty_span,
+            expr_id,
+            &pick,
+        );*/
+
+        //debug!(?pick);
+        /*{
+            let mut typeck_results = self.typeck_results.borrow_mut();
+            for import_id in pick.import_ids {
+                //debug!(used_trait_import=?import_id);
+                typeck_results.used_trait_imports.insert(import_id);
+            }
+        }*/
+
+        let def_kind = pick.item.kind.as_def_kind();
+        tcx.check_stability(pick.item.def_id, Some(expr_id), span, Some(method_name.span));
+        Ok((def_kind, pick.item.def_id))
     }
 
     pub fn lookup_probe(

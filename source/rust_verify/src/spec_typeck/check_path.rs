@@ -34,8 +34,15 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             QPath::Resolved(qualified_self, path) => {
                 self.check_res(path.span, qualified_self, &path.res, path.segments)
             }
-            QPath::TypeRelative(ty, _path_segment) => {
+            QPath::TypeRelative(ty, path_segment) => {
                 let t = self.check_ty(ty)?;
+                /*crate::method_probe::lookup_method(
+                    self.tcx,
+                    ty,
+                    path_segment,
+                    path.span,*/
+
+
                 dbg!(t);
                 todo!()
             }
