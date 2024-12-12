@@ -2,6 +2,8 @@
 #![feature(internal_output_capture)]
 #![feature(box_patterns)]
 #![feature(exit_status_error)]
+#![feature(if_let_guard)]
+#![feature(let_chains)]
 
 // not using this as a dependency, only necessary to make the rlib for the compiler crates
 // available to cargo
