@@ -52,16 +52,8 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             }
             ExprKind::MethodCall(path_segment, receiver, args, span) => {
                 let e = self.check_expr(receiver)?;
-                use crate::rustc_infer::infer::TyCtxtInferExt;
-                let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
-                let self_ty = self.vir_ty_to_middle(*span, &infcx, &e.typ);
-                let l = crate::spec_typeck::method_probe::lookup_method(
-                    self.tcx, self_ty, path_segment, *span,
-                    expr, 
-                    self.tcx.param_env(self.bctx.fun_id),
-                    self.bctx.fun_id.expect_local(),
-                    infcx)?;
-                dbg!(l);
+                let def_id = self.lookup_method_call(path_segment, &e.typ, *span, expr)?;
+                dbg!(def_id);
                 todo!();
             }
             ExprKind::Call(Expr { kind: ExprKind::Path(qpath), .. }, args) => {

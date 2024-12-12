@@ -51,6 +51,24 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         }
     }
 
+    pub fn lookup_method_call(
+        &mut self,
+        path_segment: &'tcx PathSegment,
+        self_typ: &Typ,
+        span: Span,
+        expr: &'tcx rustc_hir::Expr<'tcx>,
+    ) -> Result<DefId, VirErr> {
+        use crate::rustc_infer::infer::TyCtxtInferExt;
+        let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
+        let self_ty = self.vir_ty_to_middle(span, &infcx, self_typ);
+        crate::spec_typeck::method_probe::lookup_method(
+            self.tcx, self_ty, path_segment, span,
+            expr, 
+            self.tcx.param_env(self.bctx.fun_id),
+            self.bctx.fun_id.expect_local(),
+            infcx)
+    }
+
     pub fn check_qpath_for_expr(
         &mut self,
         qpath: &QPath<'tcx>,

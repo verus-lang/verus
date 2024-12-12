@@ -54,8 +54,6 @@ pub(crate) fn lookup_method<'tcx>(
     body_local_def_id: LocalDefId,
     infcx: InferCtxt<'tcx>,
 ) -> Result<DefId, vir::ast::VirErr> {
-    use crate::rustc_infer::infer::TyCtxtInferExt;
-
     let oc = OuterContext {
         tcx: tcx,
         infcx,
@@ -82,8 +80,6 @@ pub(crate) fn resolve_fully_qualified_call<'tcx>(
     body_local_def_id: LocalDefId,
     infcx: InferCtxt<'tcx>,
 ) -> Result<(DefKind, DefId), vir::ast::VirErr> {
-    use crate::rustc_infer::infer::TyCtxtInferExt;
-
     let oc = OuterContext {
         tcx: tcx,
         infcx: infcx, 
