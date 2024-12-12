@@ -1,11 +1,14 @@
 // Based off of rust's rustc_hir_typeck/src/method/probe.rs
 // Some code (such as the high level approach, and some individual functions)
 // are taken directly from it
+//
+// Also see: https://rustc-dev-guide.rust-lang.org/method-lookup.html
+//
 // Ours is a bit simpler, we don't handle Deref traits for example
 // but we still need to do complex trait lookups
 
 use rustc_middle::ty;
-use rustc_middle::ty::{Ty, TyCtxt};
+use rustc_middle::ty::{Ty, TyCtxt, AssocItem};
 use rustc_span::{sym, Span};
 use rustc_hir::def::{DefKind, Namespace};
 use rustc_hir::def_id::{LocalDefId, DefId};
@@ -16,8 +19,9 @@ use std::collections::HashSet;
 use smallvec::SmallVec;
 use std::cmp::max;
 use rustc_span::edit_distance::edit_distance_with_substrings;
-
-
+use rustc_span::Symbol;
+use rustc_infer::traits::ObligationCause;
+use rustc_middle::middle::stability;
 
 pub(crate) struct ProbeContext<'tcx> {
     tcx: TyCtxt<'tcx>,
@@ -27,6 +31,8 @@ pub(crate) struct ProbeContext<'tcx> {
 
     local_def_id: LocalDefId,
 
+    self_ty: Ty<'tcx>,
+
     inherent_candidates: Vec<Candidate<'tcx>>,
     extension_candidates: Vec<Candidate<'tcx>>,
     impl_dups: HashSet<DefId>,
@@ -35,6 +41,10 @@ pub(crate) struct ProbeContext<'tcx> {
 
     private_candidate: Option<(DefKind, DefId)>,
     static_candidates: RefCell<Vec<CandidateSource>>,
+
+    unsatisfied_predicates: RefCell<
+        Vec<(ty::Predicate<'tcx>, Option<ty::Predicate<'tcx>>, Option<ObligationCause<'tcx>>)>,
+    >,
 }
 
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
@@ -49,6 +59,55 @@ pub enum Mode {
     Path,
 }
 
+#[derive(Debug, Clone)]
+pub struct Pick<'tcx> {
+    pub item: ty::AssocItem,
+    pub kind: PickKind<'tcx>,
+    pub import_ids: SmallVec<[LocalDefId; 1]>,
+
+    // Indicates that the source expression should be autoderef'd N times
+    // ```ignore (not-rust)
+    // A = expr | *expr | **expr | ...
+    // ```
+    //pub autoderefs: usize,
+
+    // Indicates that we want to add an autoref (and maybe also unsize it), or if the receiver is
+    // `*mut T`, convert it to `*const T`.
+    //pub autoref_or_ptr_adjustment: Option<AutorefOrPtrAdjustment>,
+    pub self_ty: Ty<'tcx>,
+
+    /// Unstable candidates alongside the stable ones.
+    unstable_candidates: Vec<(Candidate<'tcx>, Symbol)>,
+}
+
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PickKind<'tcx> {
+    InherentImplPick,
+    ObjectPick,
+    TraitPick,
+    WhereClausePick(
+        // Trait
+        ty::PolyTraitRef<'tcx>,
+    ),
+}
+
+pub type PickResult<'tcx> = Result<Pick<'tcx>, MethodError<'tcx>>;
+
+pub enum MethodError<'tcx> {
+    NoMatch(NoMatchData<'tcx>),
+    Ambiguity(Vec<CandidateSource>),
+    PrivateMatch(DefKind, DefId, Vec<DefId>),
+    BadReturnType,
+}
+
+pub struct NoMatchData<'tcx> {
+    pub static_candidates: Vec<CandidateSource>,
+    pub unsatisfied_predicates: Vec<(ty::Predicate<'tcx>, Option<ty::Predicate<'tcx>>, Option<ObligationCause<'tcx>>)>,
+    pub out_of_scope_traits: Vec<DefId>,
+    pub similar_candidate: Option<AssocItem>,
+    pub mode: Mode,
+}
 
 pub enum CandidateSource {
     Impl(DefId),
@@ -338,5 +397,227 @@ impl<'tcx> ProbeContext<'tcx> {
             .associated_items(def_id)
             .find_by_name_and_namespace(self.tcx, item_name, Namespace::ValueNS, def_id)
             .copied()
+    }
+
+    ///////////////////////////////////////////////////////////////////////////
+    // THE ACTUAL SEARCH
+
+    fn pick(self) -> PickResult<'tcx> {
+        assert!(self.method_name.is_some());
+
+        if let Some(r) = self.pick_core() {
+            return r;
+        }
+
+        return Err(MethodError::NoMatch(NoMatchData {
+            static_candidates: vec![],
+            unsatisfied_predicates: vec![],
+            out_of_scope_traits: vec![],
+            similar_candidate: None,
+            mode: self.mode,
+        }));
+
+        /*
+
+        let static_candidates = std::mem::take(self.static_candidates.get_mut());
+        let private_candidate = self.private_candidate.take();
+        let unsatisfied_predicates = std::mem::take(self.unsatisfied_predicates.get_mut());
+
+        // things failed, so lets look at all traits, for diagnostic purposes now:
+        self.reset();
+
+        let span = self.span;
+        let tcx = self.tcx;
+
+        self.assemble_extension_candidates_for_all_traits();
+
+        let out_of_scope_traits = match self.pick_core() {
+            Some(Ok(p)) => vec![p.item.container_id(self.tcx)],
+            Some(Err(MethodError::Ambiguity(v))) => v
+                .into_iter()
+                .map(|source| match source {
+                    CandidateSource::Trait(id) => id,
+                    CandidateSource::Impl(impl_id) => match tcx.trait_id_of_impl(impl_id) {
+                        Some(id) => id,
+                        None => panic!("found inherent method when looking at traits"),
+                    },
+                })
+                .collect(),
+            Some(Err(MethodError::NoMatch(NoMatchData {
+                out_of_scope_traits: others, ..
+            }))) => {
+                assert!(others.is_empty());
+                vec![]
+            }
+            _ => vec![],
+        };
+
+        if let Some((kind, def_id)) = private_candidate {
+            return Err(MethodError::PrivateMatch(kind, def_id, out_of_scope_traits));
+        }
+        let similar_candidate = self.probe_for_similar_candidate()?;
+
+        Err(MethodError::NoMatch(NoMatchData {
+            static_candidates,
+            unsatisfied_predicates,
+            out_of_scope_traits,
+            similar_candidate,
+            mode: self.mode,
+        }))
+        */
+    }
+
+    fn pick_core(&self) -> Option<PickResult<'tcx>> {
+        // Pick stable methods only first, and consider unstable candidates if not found.
+        self.pick_all_method(Some(&mut vec![])).or_else(|| self.pick_all_method(None))
+    }
+
+    fn pick_all_method(
+        &self,
+        mut unstable_candidates: Option<&mut Vec<(Candidate<'tcx>, Symbol)>>,
+    ) -> Option<PickResult<'tcx>> {
+          /*let InferOk { value: self_ty, obligations: _ } = self
+              .fcx
+              .probe_instantiate_query_response(
+                  self.span,
+                  self.orig_steps_var_values,
+                  &step.self_ty,
+              )
+              .unwrap_or_else(|_| {
+                  panic!("{:?} was applicable but now isn't?", self_ty)
+              });*/
+          let self_ty = self.self_ty;
+          self.pick_by_value_method(self_ty, unstable_candidates.as_deref_mut())
+              /*.or_else(|| {
+                  self.pick_autorefd_method(
+                      step,
+                      self_ty,
+                      hir::Mutability::Not,
+                      unstable_candidates.as_deref_mut(),
+                  )
+                  .or_else(|| {
+                      self.pick_autorefd_method(
+                          step,
+                          self_ty,
+                          hir::Mutability::Mut,
+                          unstable_candidates.as_deref_mut(),
+                      )
+                  })
+                  .or_else(|| {
+                      self.pick_const_ptr_method(
+                          step,
+                          self_ty,
+                          unstable_candidates.as_deref_mut(),
+                      )
+                  })
+              })*/
+    }
+
+    fn pick_by_value_method(
+        &self,
+        self_ty: Ty<'tcx>,
+        unstable_candidates: Option<&mut Vec<(Candidate<'tcx>, Symbol)>>,
+    ) -> Option<PickResult<'tcx>> {
+        /*if step.unsize {
+            return None;
+        }*/
+
+        self.pick_method(self_ty, unstable_candidates).map(|r: PickResult| {
+            r.map(|mut pick| {
+                // Insert a `&*` or `&mut *` if this is a reference type:
+                /*if let ty::Ref(_, _, mutbl) = *step.self_ty.value.value.kind() {
+                    pick.autoderefs += 1;
+                    pick.autoref_or_ptr_adjustment = Some(AutorefOrPtrAdjustment::Autoref {
+                        mutbl,
+                        unsize: pick.autoref_or_ptr_adjustment.is_some_and(|a| a.get_unsize()),
+                    })
+                }*/
+
+                pick
+            })
+        })
+    }
+
+    fn pick_method(
+        &self,
+        self_ty: Ty<'tcx>,
+        mut unstable_candidates: Option<&mut Vec<(Candidate<'tcx>, Symbol)>>,
+    ) -> Option<PickResult<'tcx>> {
+
+        let mut possibly_unsatisfied_predicates = Vec::new();
+
+        for (kind, candidates) in
+            &[("inherent", &self.inherent_candidates), ("extension", &self.extension_candidates)]
+        {
+            let res = self.consider_candidates(
+                self_ty,
+                candidates,
+                &mut possibly_unsatisfied_predicates,
+                unstable_candidates.as_deref_mut(),
+            );
+            if let Some(pick) = res {
+                return Some(pick);
+            }
+        }
+
+        // `pick_method` may be called twice for the same self_ty if no stable methods
+        // match. Only extend once.
+        if unstable_candidates.is_some() {
+            self.unsatisfied_predicates.borrow_mut().extend(possibly_unsatisfied_predicates);
+        }
+        None
+    }
+
+    fn consider_candidates(
+        &self,
+        self_ty: Ty<'tcx>,
+        candidates: &[Candidate<'tcx>],
+        possibly_unsatisfied_predicates: &mut Vec<(
+            ty::Predicate<'tcx>,
+            Option<ty::Predicate<'tcx>>,
+            Option<ObligationCause<'tcx>>,
+        )>,
+        mut unstable_candidates: Option<&mut Vec<(Candidate<'tcx>, Symbol)>>,
+    ) -> Option<PickResult<'tcx>> {
+        let mut applicable_candidates: Vec<_> = candidates
+            .iter()
+            .map(|probe| {
+                (probe, self.consider_probe(self_ty, probe, possibly_unsatisfied_predicates))
+            })
+            .filter(|&(_, status)| status != ProbeResult::NoMatch)
+            .collect();
+
+        if applicable_candidates.len() > 1 {
+            if let Some(pick) =
+                self.collapse_candidates_to_trait_pick(self_ty, &applicable_candidates)
+            {
+                return Some(Ok(pick));
+            }
+        }
+
+        if let Some(uc) = &mut unstable_candidates {
+            applicable_candidates.retain(|&(candidate, _)| {
+                if let stability::EvalResult::Deny { feature, .. } =
+                    self.tcx.eval_stability(candidate.item.def_id, None, self.span, None)
+                {
+                    uc.push((candidate.clone(), feature));
+                    return false;
+                }
+                true
+            });
+        }
+
+        if applicable_candidates.len() > 1 {
+            let sources = candidates.iter().map(|p| self.candidate_source(p, self_ty)).collect();
+            return Some(Err(MethodError::Ambiguity(sources)));
+        }
+
+        applicable_candidates.pop().map(|(probe, status)| match status {
+            ProbeResult::Match => {
+                Ok(probe
+                    .to_unadjusted_pick(self_ty, unstable_candidates.cloned().unwrap_or_default()))
+            }
+            ProbeResult::NoMatch | ProbeResult::BadReturnType => Err(MethodError::BadReturnType),
+        })
     }
 }
