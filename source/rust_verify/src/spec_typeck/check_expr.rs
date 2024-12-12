@@ -14,7 +14,7 @@ use rustc_span::Span;
 impl<'a, 'tcx> State<'a, 'tcx> {
     pub fn check_expr(
         &mut self,
-        expr: &Expr<'tcx>,
+        expr: &'tcx Expr<'tcx>,
     ) -> Result<vir::ast::Expr, vir::ast::VirErr> {
         let bctx = self.bctx;
         let mk_expr = |typ: &Typ, x: ExprX| Ok(bctx.spanned_typed_new(expr.span, typ, x));
@@ -49,6 +49,20 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     }
                     _ => todo!()
                 }
+            }
+            ExprKind::MethodCall(path_segment, receiver, args, span) => {
+                let e = self.check_expr(receiver)?;
+                use crate::rustc_infer::infer::TyCtxtInferExt;
+                let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
+                let self_ty = self.vir_ty_to_middle(*span, &infcx, &e.typ);
+                let l = crate::spec_typeck::method_probe::lookup_method(
+                    self.tcx, self_ty, path_segment, *span,
+                    expr, 
+                    self.tcx.param_env(self.bctx.fun_id),
+                    self.bctx.fun_id.expect_local(),
+                    infcx)?;
+                dbg!(l);
+                todo!();
             }
             ExprKind::Call(Expr { kind: ExprKind::Path(qpath), .. }, args) => {
                 match self.check_qpath_for_expr(qpath, expr.hir_id)? {

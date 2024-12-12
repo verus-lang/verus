@@ -52,19 +52,22 @@ pub(crate) fn lookup_method<'tcx>(
     call_expr: &'tcx hir::Expr<'tcx>,
     param_env: ParamEnv<'tcx>,
     body_local_def_id: LocalDefId,
+    infcx: InferCtxt<'tcx>,
 ) -> Result<DefId, vir::ast::VirErr> {
     use crate::rustc_infer::infer::TyCtxtInferExt;
 
     let oc = OuterContext {
         tcx: tcx,
-        infcx: tcx.infer_ctxt().ignoring_regions().build(),
+        infcx,
         param_env: param_env,
         body_id: body_local_def_id,
     };
     let e = oc.lookup_method(self_ty, segment, span, call_expr);
     match e {
         Ok(o) => Ok(o),
-        Err(_e) => todo!(),
+        Err(e) => {
+            panic!("{:#?}", e)
+        }
     }
 }
 
@@ -77,12 +80,13 @@ pub(crate) fn resolve_fully_qualified_call<'tcx>(
     expr_id: hir::HirId,
     param_env: ParamEnv<'tcx>,
     body_local_def_id: LocalDefId,
+    infcx: InferCtxt<'tcx>,
 ) -> Result<(DefKind, DefId), vir::ast::VirErr> {
     use crate::rustc_infer::infer::TyCtxtInferExt;
 
     let oc = OuterContext {
         tcx: tcx,
-        infcx: tcx.infer_ctxt().ignoring_regions().build(),
+        infcx: infcx, 
         param_env: param_env,
         body_id: body_local_def_id,
     };

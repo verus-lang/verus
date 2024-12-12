@@ -26,7 +26,7 @@ pub enum PathResolution {
 }
 
 impl<'a, 'tcx> State<'a, 'tcx> {
-    pub fn vir_ty_to_middle(&self, t: &Typ) -> rustc_middle::ty::Ty<'tcx> {
+    pub fn vir_ty_to_middle(&self, span: Span, infcx: &InferCtxt<'tcx>, t: &Typ) -> rustc_middle::ty::Ty<'tcx> {
         let tcx = &self.tcx;
         match &**t {
             TypX::Datatype(Dt::Path(path), args, _) => {
@@ -34,15 +34,18 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 let adt_def = tcx.adt_def(def_id);
                 let mut mid_args: Vec<rustc_middle::ty::GenericArg<'_>> = vec![];
                 for a in args.iter() {
-                    mid_args.push(rustc_middle::ty::GenericArg::from(self.vir_ty_to_middle(a)));
+                    mid_args.push(rustc_middle::ty::GenericArg::from(self.vir_ty_to_middle(span, infcx, a)));
                 }
                 let args = self.tcx.mk_args(&mid_args);
                 tcx.mk_ty_from_kind(rustc_middle::ty::TyKind::Adt(adt_def, args))
             }
             TypX::UnificationVar(i) => {
+                infcx.next_ty_var(rustc_infer::infer::type_variable::TypeVariableOrigin { span, param_def_id: None })
+                /*
                 tcx.mk_ty_from_kind(rustc_middle::ty::TyKind::Infer(
                     rustc_middle::ty::InferTy::TyVar(
                       rustc_middle::ty::TyVid::from_usize(*i))))
+                      */
             }
             _ => todo!(),
         }
@@ -58,16 +61,20 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 self.check_res(path.span, qualified_self, &path.res, path.segments)
             }
             QPath::TypeRelative(ty, path_segment) => {
+                use crate::rustc_infer::infer::TyCtxtInferExt;
                 let t = self.check_ty(ty)?;
+                let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
+                let mty = self.vir_ty_to_middle(ty.span, &infcx, &t);
                 let r = crate::spec_typeck::method_probe::resolve_fully_qualified_call(
                     self.tcx,
                     qpath.span(),
                     path_segment.ident,
-                    self.vir_ty_to_middle(&t),
+                    mty,
                     ty.span,
                     expr_hir_id,
                     self.tcx.param_env(self.bctx.fun_id),
                     self.bctx.fun_id.expect_local(),
+                    infcx,
                 )?;
                 
                 dbg!(r);
