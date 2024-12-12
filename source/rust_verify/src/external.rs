@@ -137,8 +137,8 @@ pub(crate) fn get_crate_items<'tcx>(ctxt: &Context<'tcx>) -> Result<CrateItems, 
         errors: vec![],
         is_impl_trait: false,
     };
-    let owner = ctxt.tcx.hir().owner(rustc_hir::CRATE_OWNER_ID);
-    visitor.visit_mod(root_module, owner.span(), rustc_hir::CRATE_HIR_ID);
+    let owner = ctxt.tcx.hir_owner_node(rustc_hir::CRATE_OWNER_ID);
+    visitor.visit_mod(root_module, *owner.span(), rustc_hir::CRATE_HIR_ID);
 
     if visitor.errors.len() > 0 {
         return Err(visitor.errors[0].clone());
