@@ -1392,7 +1392,7 @@ pub(crate) fn check_generic_bound<'tcx>(
 //  - For synthetic params, use impl%{index} for the name.
 //  - For other type params, just use the user-given type param name.
 
-fn generic_param_def_to_vir_name(gen: &rustc_middle::ty::GenericParamDef) -> String {
+pub(crate) fn generic_param_def_to_vir_name(gen: &rustc_middle::ty::GenericParamDef) -> String {
     let is_synthetic = match gen.kind {
         GenericParamDefKind::Type { synthetic, .. } => synthetic,
         GenericParamDefKind::Const { .. } => false,

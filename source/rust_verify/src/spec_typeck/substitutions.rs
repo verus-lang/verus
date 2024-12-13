@@ -6,22 +6,29 @@ use rustc_span::Span;
 use std::collections::HashMap;
 use crate::rust_to_vir_base::mid_ty_to_vir;
 use std::sync::Arc;
+use rustc_middle::ty::{Generics, GenericParamDefKind, GenericParamDef};
 
 impl<'a, 'tcx> State<'a, 'tcx> {
     pub fn fn_item_type_substitution(&mut self, span: Span, def_id: DefId, typ_args: &Typs)
         -> Result<(Typs, Typ), VirErr>
     {
-        // TODO duplicate work
-        let (sig_typ_params, _sig_typ_bounds) = crate::rust_to_vir_base::check_generics_bounds_no_polarity(
-            self.tcx,
-            &self.bctx.ctxt.verus_items,
-            span,
-            None,
-            def_id,
-            Some(&mut *self.bctx.ctxt.diagnostics.borrow_mut()),
-        )?;
+        let mut sig_typ_params: Vec<vir::ast::Ident> = vec![];
+
+        let generic_defs = self.get_generic_defs(self.tcx.generics_of(def_id));
+        for generic_def in generic_defs.iter() {
+            match &generic_def.kind {
+                GenericParamDefKind::Type { synthetic: _, has_default: _ } | GenericParamDefKind::Const { is_host_effect: false, has_default: _ } => {
+                    let ident = crate::rust_to_vir_base::generic_param_def_to_vir_name(generic_def);
+                    sig_typ_params.push(Arc::new(ident));
+                }
+                GenericParamDefKind::Const { is_host_effect: true, .. } => { }
+                GenericParamDefKind::Lifetime => { }
+            }
+        }
 
         let mut typ_substs = HashMap::new();
+        println!("{:?}", sig_typ_params);
+        println!("{:?}", typ_args);
         assert!(sig_typ_params.len() == typ_args.len());
         for (param_ident, typ_arg) in sig_typ_params.iter().zip(typ_args.iter()) {
             typ_substs.insert(param_ident.clone(), typ_arg.clone());
@@ -61,4 +68,15 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         -> Result<(Typs, Typ), VirErr>
     {
     }*/
+
+    fn get_generic_defs(&self, generics: &Generics) -> Vec<GenericParamDef> {
+        match &generics.parent {
+            None => generics.params.clone(),
+            Some(parent_id) => {
+                let mut v = self.get_generic_defs(self.tcx.generics_of(parent_id));
+                v.append(&mut generics.params.clone());
+                v
+            }
+        }
+    }
 }

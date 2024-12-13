@@ -52,10 +52,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             }
             ExprKind::MethodCall(path_segment, receiver, args, span) => {
                 let e = self.check_expr(receiver)?;
-                let def_id = self.lookup_method_call(path_segment, &e.typ, *span, expr)?;
-
-                let typ_args = self.check_method_call_generics(def_id, path_segment)?;
-                let typ_args = Arc::new(typ_args);
+                let (def_id, typ_args) = self.lookup_method_call(path_segment, &e.typ, *span, expr)?;
 
                 let (input_typs, output_typ) = self.fn_item_type_substitution(expr.span, def_id, &typ_args)?;
 

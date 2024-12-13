@@ -32,14 +32,17 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         self_typ: &Typ,
         span: Span,
         expr: &'tcx rustc_hir::Expr<'tcx>,
-    ) -> Result<DefId, VirErr> {
+    ) -> Result<(DefId, Typs), VirErr> {
         let (self_ty, infcx) = self.vir_ty_to_middle(span, self_typ);
-        crate::spec_typeck::method_probe::lookup_method(
+        let def_id = crate::spec_typeck::method_probe::lookup_method(
             self.tcx, self_ty, path_segment, span,
             expr, 
             self.tcx.param_env(self.bctx.fun_id),
             self.bctx.fun_id.expect_local(),
-            infcx)
+            infcx)?;
+
+        let typ_args = self.check_method_call_generics(def_id, path_segment)?;
+        Ok((def_id, Arc::new(typ_args)))
     }
 
     pub fn check_qpath_for_expr(
@@ -54,7 +57,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             QPath::TypeRelative(ty, path_segment) => {
                 let t = self.check_ty(ty)?;
                 let (mty, infcx) = self.vir_ty_to_middle(ty.span, &t);
-                let r = crate::spec_typeck::method_probe::resolve_fully_qualified_call(
+                let (def_kind, def_id) = crate::spec_typeck::method_probe::resolve_fully_qualified_call(
                     self.tcx,
                     qpath.span(),
                     path_segment.ident,
@@ -65,11 +68,17 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     self.bctx.fun_id.expect_local(),
                     infcx,
                 )?;
-                
-                dbg!(r);
 
-                //dbg!(t);
-                todo!()
+                match def_kind {
+                    DefKind::AssocFn => {
+                        let typ_args = self.check_method_call_generics(def_id, path_segment)?;
+                        Ok(PathResolution::Fn(def_id, Arc::new(typ_args)))
+                    }
+                    _ => {
+                        dbg!(def_kind);
+                        todo!()
+                    }
+                }
             }
             QPath::LangItem(..) => {
                 todo!()
