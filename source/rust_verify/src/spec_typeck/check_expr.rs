@@ -5,7 +5,7 @@ use crate::spec_typeck::check_path::PathResolution;
 use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant, FunX, CallTargetKind, AutospecUsage};
 use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt};
 use std::sync::Arc;
-use vir::ast_util::{unit_typ, int_typ, integer_typ};
+use vir::ast_util::{unit_typ, int_typ, integer_typ, bool_typ};
 use crate::spec_typeck::check_ty::{integer_typ_of_int_ty, integer_typ_of_uint_ty};
 use rustc_ast::ast::{LitKind, LitIntType};
 use num_bigint::BigInt;
@@ -284,6 +284,21 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                             ExprX::Binary(BinaryOp::Arith(ArithOp::Sub, Mode::Spec), l, r),
                         )
                     }
+                    BinOpKind::And | BinOpKind::Or => {
+                        let l = self.check_expr(lhs)?;
+                        let r = self.check_expr(rhs)?;
+                        self.expect_bool(&l.typ)?;
+                        self.expect_bool(&r.typ)?;
+                        let bin_op = match &bin_op.node {
+                            BinOpKind::And => BinaryOp::And,
+                            BinOpKind::Or => BinaryOp::Or,
+                            _ => unreachable!(),
+                        };
+                        mk_expr(
+                            &bool_typ(),
+                            ExprX::Binary(bin_op, l, r),
+                        )
+                    }
                     _ => todo!()
                 }
             }
@@ -305,6 +320,9 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     self.lit_int(expr.span,
                         BigInt::from(i.get()),
                         LitIntSuffix::Normal(*lit_int_type))
+                }
+                LitKind::Bool(b) => {
+                    mk_expr(&bool_typ(), ExprX::Const(Constant::Bool(*b)))
                 }
                 _ => todo!()
             }

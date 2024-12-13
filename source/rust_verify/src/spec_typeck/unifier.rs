@@ -183,6 +183,10 @@ impl State<'_, '_> {
         }
     }
 
+    pub fn expect_bool(&mut self, t1: &Typ) -> Result<(), VirErr> {
+        self.expect_exact(t1, &vir::ast_util::bool_typ())
+    }
+
     /// t1 can be used where t2 is expected
     /// for the most part this means types are exactly equal, except for
     /// some integer type coercions
