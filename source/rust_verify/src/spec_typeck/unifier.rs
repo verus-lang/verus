@@ -158,7 +158,7 @@ impl State<'_, '_> {
     /// t1 can be used where t2 is expected
     /// for the most part this means types are exactly equal, except for
     /// some integer type coercions
-    pub fn expect(&mut self, t1: &Typ, t2: &Typ) -> Result<(), VirErr> {
+    pub fn expect_allowing_int_coercion(&mut self, t1: &Typ, t2: &Typ) -> Result<(), VirErr> {
         let t1c = self.get_typ_if_known(t1);
         let t2c = self.get_typ_if_known(t2);
 

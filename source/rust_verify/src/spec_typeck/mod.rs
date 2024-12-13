@@ -32,7 +32,7 @@ pub fn typecheck<'tcx>(
     };
 
     let e = state.check_expr(expr)?;
-    state.expect(&e.typ, expected_typ)?;
+    state.expect_allowing_int_coercion(&e.typ, expected_typ)?;
 
     state.finish_unification()?;
 

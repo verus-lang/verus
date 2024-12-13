@@ -67,12 +67,12 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 
                 let mut vir_args = vec![];
 
-                self.expect(&e.typ, &input_typs[0])?;
+                self.expect_exact(&e.typ, &input_typs[0])?;
                 vir_args.push(e);
 
                 for (arg, input_typ) in args.iter().zip(input_typs.iter().skip(1)) {
                     let vir_arg = self.check_expr(arg)?;
-                    self.expect(&vir_arg.typ, input_typ)?;
+                    self.expect_allowing_int_coercion(&vir_arg.typ, input_typ)?;
                     vir_args.push(vir_arg);
                 }
 
@@ -105,7 +105,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         let mut vir_args = vec![];
                         for (arg, input_typ) in args.iter().zip(input_typs.iter()) {
                             let vir_arg = self.check_expr(arg)?;
-                            self.expect(&vir_arg.typ, input_typ)?;
+                            self.expect_allowing_int_coercion(&vir_arg.typ, input_typ)?;
                             vir_args.push(vir_arg);
                         }
 
@@ -147,7 +147,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         let ret = self.new_unknown_typ();
                         let args = Arc::new(args);
                         let t = Arc::new(TypX::SpecFn(args.clone(), ret.clone()));
-                        self.expect(&vir_callee.typ, &t)?;
+                        self.expect_exact(&vir_callee.typ, &t)?;
                         (args, ret)
                     }
                 };
@@ -155,7 +155,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 let mut vir_args = vec![];
                 for (i, arg) in args.iter().enumerate() {
                     let vir_arg = self.check_expr(arg)?;
-                    self.expect(&vir_arg.typ, &callee_arg_typs[i])?;
+                    self.expect_allowing_int_coercion(&vir_arg.typ, &callee_arg_typs[i])?;
                     vir_args.push(vir_arg);
                 }
 
@@ -226,7 +226,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                             };
 
                             let vir_init = self.check_expr(init)?;
-                            self.expect(&vir_init.typ, &typ)?;
+                            self.expect_allowing_int_coercion(&vir_init.typ, &typ)?;
                             let pat = self.check_pat(pat, &typ)?;
 
                             vir_stmts.push(bctx.spanned_new(stmt.span,
@@ -294,7 +294,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 let body = self.check_expr(body_expr)?;
                 self.scope_map.pop_scope();
 
-                self.expect(&body.typ, &output_typ)?;
+                self.expect_allowing_int_coercion(&body.typ, &output_typ)?;
 
                 let arg_typs = Arc::new(arg_typs);
                 let fntype = Arc::new(TypX::SpecFn(arg_typs.clone(), output_typ));
