@@ -179,6 +179,17 @@ impl State<'_, '_> {
         }
     }
 
+    /// t1 can be used where t2 is expected
+    /// for the most part this means types are exactly equal, except for
+    /// some integer type coercions
+    pub fn expect_exact(&mut self, t1: &Typ, t2: &Typ) -> Result<(), VirErr> {
+        let e = self.unify(t1, t2);
+        match e {
+            Ok(()) => Ok(()),
+            Err(_ue) => todo!(),
+        }
+    }
+
     // TODO overflow checking
     fn unify(&mut self, typ1: &Typ, typ2: &Typ) -> Result<(), UnifyError> {
         match (&**typ1, &**typ2) {

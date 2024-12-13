@@ -71,7 +71,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
 
                 match def_kind {
                     DefKind::AssocFn => {
-                        let typ_args = self.check_method_call_generics(def_id, path_segment)?;
+                        let typ_args = self.check_method_call_generics_with_self_type(def_id, path_segment, &t, ty.span)?;
                         Ok(PathResolution::Fn(def_id, Arc::new(typ_args)))
                     }
                     _ => {
@@ -149,6 +149,32 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         w.append(&mut v);
         Ok(w)
     }
+
+    pub fn check_method_call_generics_with_self_type(
+        &mut self,
+        def_id: DefId,
+        path_segment: &'tcx PathSegment,
+        self_typ: &Typ,
+        span: Span,
+    ) -> Result<Vec<Typ>, VirErr> {
+        let generics = self.tcx.generics_of(def_id);
+        let mut v = self.check_segment_generics(path_segment, generics)?;
+
+        let mut w = vec![];
+        for _i in 0 .. generics.parent_count {
+            w.push(self.new_unknown_typ());
+        }
+
+        let self_typ2 = self.item_type_substitution(
+            span,
+            self.tcx.impl_of_method(def_id).unwrap(),
+            &Arc::new(w.clone()))?;
+        self.expect_exact(self_typ, &self_typ2)?;
+
+        w.append(&mut v);
+        Ok(w)
+    }
+
 
     pub fn check_path_generics_last_only(
         &mut self,
