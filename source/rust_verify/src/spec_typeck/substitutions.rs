@@ -6,7 +6,7 @@ use rustc_span::Span;
 use std::collections::HashMap;
 use crate::rust_to_vir_base::mid_ty_to_vir;
 use std::sync::Arc;
-use rustc_middle::ty::{Generics, GenericParamDefKind, GenericParamDef};
+use rustc_middle::ty::{Generics, GenericParamDefKind, GenericParamDef, VariantDef};
 
 impl<'a, 'tcx> State<'a, 'tcx> {
     pub fn fn_item_type_substitution(&mut self, span: Span, def_id: DefId, typ_args: &Typs)
@@ -117,5 +117,49 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         )?;
 
         Ok(vir_item_typ)
+    }
+
+    pub fn get_field_typ(&mut self, span: Span, variant_def: &VariantDef, typ_args: &Typs, field: &str) -> Result<Typ, VirErr> {
+        let mut sig_typ_params: Vec<vir::ast::Ident> = vec![];
+
+        let generic_defs = self.get_generic_defs(self.tcx.generics_of(variant_def.def_id));
+        for generic_def in generic_defs.iter() {
+            match &generic_def.kind {
+                GenericParamDefKind::Type { synthetic: _, has_default: _ } | GenericParamDefKind::Const { is_host_effect: false, has_default: _ } => {
+                    let ident = crate::rust_to_vir_base::generic_param_def_to_vir_name(generic_def);
+                    sig_typ_params.push(Arc::new(ident));
+                }
+                GenericParamDefKind::Const { is_host_effect: true, .. } => { }
+                GenericParamDefKind::Lifetime => { }
+            }
+        }
+
+        let mut typ_substs = HashMap::new();
+        assert!(sig_typ_params.len() == typ_args.len());
+        for (param_ident, typ_arg) in sig_typ_params.iter().zip(typ_args.iter()) {
+            typ_substs.insert(param_ident.clone(), typ_arg.clone());
+        }
+
+        let mut field_def = None;
+        for fd in variant_def.fields.iter() {
+            if fd.ident(self.tcx).as_str() == field {
+                field_def = Some(fd);
+                break;
+            }
+        }
+        let field_def = field_def.unwrap();
+        let field_ty = self.tcx.type_of(field_def.did).skip_binder();
+
+        let vir_field_typ = mid_ty_to_vir(
+            self.tcx,
+            &self.bctx.ctxt.verus_items,
+            variant_def.def_id,
+            span,
+            &field_ty,
+            false,
+        )?;
+
+        Ok(vir_field_typ)
+       
     }
 }

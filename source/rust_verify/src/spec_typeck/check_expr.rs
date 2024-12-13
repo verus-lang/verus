@@ -2,20 +2,24 @@ use crate::util::{err_span};
 use crate::unsupported_err;
 use crate::spec_typeck::State;
 use crate::spec_typeck::check_path::PathResolution;
-use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant, FunX, CallTargetKind, AutospecUsage};
-use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt};
+use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant, FunX, CallTargetKind, AutospecUsage, Dt, Ident, VirErr};
+use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt, ExprField};
 use std::sync::Arc;
 use vir::ast_util::{unit_typ, int_typ, integer_typ, bool_typ};
 use crate::spec_typeck::check_ty::{integer_typ_of_int_ty, integer_typ_of_uint_ty};
 use rustc_ast::ast::{LitKind, LitIntType};
 use num_bigint::BigInt;
 use rustc_span::Span;
+use vir::def::field_ident_from_rust;
+use air::ast_util::{ident_binder, str_ident};
+use rustc_hir::def_id::DefId;
+use rustc_middle::ty::VariantDef;
 
 impl<'a, 'tcx> State<'a, 'tcx> {
     pub fn check_expr(
         &mut self,
         expr: &'tcx Expr<'tcx>,
-    ) -> Result<vir::ast::Expr, vir::ast::VirErr> {
+    ) -> Result<vir::ast::Expr, VirErr> {
         let bctx = self.bctx;
         let mk_expr = |typ: &Typ, x: ExprX| Ok(bctx.spanned_typed_new(expr.span, typ, x));
 
@@ -156,6 +160,47 @@ impl<'a, 'tcx> State<'a, 'tcx> {
 
                 let ct = CallTarget::FnSpec(vir_callee);
                 mk_expr(&callee_ret_typ, ExprX::Call(ct, Arc::new(vir_args)))
+            }
+            ExprKind::Struct(qpath, fields, spread_opt) => {
+                match self.check_qpath_for_expr(qpath, expr.hir_id)? {
+                    PathResolution::Datatype(def_id, typs) => {
+                        // TODO visibility of fields...
+                        let (variant, variant_def) = self.check_braces_ctor_valid(
+                            def_id, fields, *spread_opt, qpath.span())?;
+
+                        let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
+                            &self.bctx.ctxt.verus_items, def_id);
+                        let dt = Dt::Path(path);
+                        let typ = Arc::new(TypX::Datatype(dt.clone(), typs.clone(), Arc::new(vec![])));
+
+                        let vir_spread_opt = match spread_opt {
+                            Some(spread) => {
+                                let vir_spread = self.check_expr(spread)?;
+                                self.expect_exact(&vir_spread.typ, &typ)?;
+                                Some(vir_spread)
+                            }
+                            None => None,
+                        };
+                        let mut ident_binders = vec![];
+                        for field in fields.iter() {
+                            let ExprField { hir_id: _, ident, expr: field_expr, span: _, is_shorthand: _ } = field;
+                            let vir_field_expr = self.check_expr(field_expr)?;
+                            let field_typ = self.get_field_typ(field.span, variant_def, &typs, &ident.as_str())?;
+                            self.expect_exact(&vir_field_expr.typ, &field_typ)?;
+
+                            let ident = field_ident_from_rust(ident.as_str());
+                            ident_binders.push(ident_binder(&ident, &vir_field_expr));
+                        }
+                        mk_expr(&typ, ExprX::Ctor(dt, variant, Arc::new(ident_binders), vir_spread_opt))
+                    }
+                    PathResolution::DatatypeVariant(_def_id, _ident, _typs) => {
+                        if spread_opt.is_some() {
+                            todo!();
+                        }
+                        todo!();
+                    }
+                    _ => todo!(),
+                }
             }
             ExprKind::Block(Block {
               stmts,
@@ -314,7 +359,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 let typ = vir::ast_util::mk_tuple_typ(&Arc::new(vir_typs));
                 mk_expr(&typ, vir::ast_util::mk_tuple_x(&Arc::new(vir_es)))
             }
-            
+
             ExprKind::Lit(lit) => match &lit.node {
                 LitKind::Int(i, lit_int_type) => {
                     self.lit_int(expr.span,
@@ -344,6 +389,38 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         };
         Ok(self.bctx.spanned_typed_new(span,
             &typ, ExprX::Const(Constant::Int(i))))
+    }
+
+    fn check_braces_ctor_valid(
+        &mut self,
+        def_id: DefId,
+        fields: &'tcx [ExprField<'tcx>],
+        spread_opt: Option<&'tcx Expr<'tcx>>,
+        span: Span,
+    ) -> Result<(Ident, &'tcx VariantDef), VirErr> {
+        let adt_def = self.tcx.adt_def(def_id);
+        if adt_def.is_struct() {
+            let variant_def = adt_def.non_enum_variant();
+            self.check_braces_variant_valid(variant_def, fields, spread_opt, span)?;
+            let variant_name = str_ident(&variant_def.ident(self.tcx).as_str());
+            Ok((variant_name, variant_def))
+        } else if adt_def.is_union() {
+            todo!()
+        } else if adt_def.is_enum() {
+            return err_span(span, "this is an enum, so a variant must be provided");
+        } else {
+            unreachable!();
+        }
+    }
+
+    fn check_braces_variant_valid(
+        &mut self,
+        _variant_def: &'tcx VariantDef,
+        _fields: &'tcx [ExprField<'tcx>],
+        _spread_opt: Option<&'tcx Expr<'tcx>>,
+        _span: Span,
+    ) -> Result<(), VirErr> {
+        todo!()
     }
 }
 
