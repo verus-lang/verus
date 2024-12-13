@@ -3,10 +3,12 @@ use crate::rustc_infer::infer::TyCtxtInferExt;
 use rustc_span::Span;
 use super::State;
 use vir::ast::{Typ, TypX, Dt};
+use std::collections::HashMap;
 
 struct ReverseTypeState<'tcx> {
     infcx: InferCtxt<'tcx>,
     span: Span,
+    id_map: HashMap<usize, rustc_middle::ty::Ty<'tcx>>,
 }
 
 impl<'a, 'tcx> State<'a, 'tcx> {
@@ -14,7 +16,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         -> (rustc_middle::ty::Ty<'tcx>, InferCtxt<'tcx>)
     {
         let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
-        let mut r = ReverseTypeState { infcx, span };
+        let mut r = ReverseTypeState { infcx, span, id_map: HashMap::new() };
         let ty = self.vir_ty_to_middle_rec(&mut r, t);
         (ty, r.infcx)
     }
@@ -33,7 +35,14 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 tcx.mk_ty_from_kind(rustc_middle::ty::TyKind::Adt(adt_def, args))
             }
             TypX::UnificationVar(i) => {
-                r.infcx.next_ty_var(rustc_infer::infer::type_variable::TypeVariableOrigin { span: r.span, param_def_id: None })
+                let node = self.unifier.get_node(*i);
+                if r.id_map.contains_key(&node) {
+                    r.id_map[&node]
+                } else {
+                    let ty = r.infcx.next_ty_var(rustc_infer::infer::type_variable::TypeVariableOrigin { span: r.span, param_def_id: None });
+                    r.id_map.insert(node, ty);
+                    ty
+                }
                 /*
                 tcx.mk_ty_from_kind(rustc_middle::ty::TyKind::Infer(
                     rustc_middle::ty::InferTy::TyVar(

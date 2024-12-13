@@ -42,7 +42,7 @@ impl Unifier {
         me
     }
 
-    fn get_node(&mut self, i: usize) -> usize {
+    pub fn get_node(&mut self, i: usize) -> usize {
         if self.uf_nodes[i].parent == i {
             return i;
         }
