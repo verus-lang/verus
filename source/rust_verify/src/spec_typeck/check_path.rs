@@ -125,6 +125,22 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         }
     }
 
+    pub fn check_method_call_generics(
+        &mut self,
+        def_id: DefId,
+        path_segment: &'tcx PathSegment,
+    ) -> Result<Vec<Typ>, VirErr> {
+        let generics = self.tcx.generics_of(def_id);
+        let mut v = self.check_segment_generics(path_segment, generics)?;
+
+        let mut w = vec![];
+        for _i in 0 .. generics.parent_count {
+            w.push(self.new_unknown_typ());
+        }
+        w.append(&mut v);
+        Ok(w)
+    }
+
     pub fn check_path_generics_last_only(
         &mut self,
         def_id: DefId,

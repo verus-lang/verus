@@ -50,11 +50,46 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     _ => todo!()
                 }
             }
-            ExprKind::MethodCall(path_segment, receiver, _args, span) => {
+            ExprKind::MethodCall(path_segment, receiver, args, span) => {
                 let e = self.check_expr(receiver)?;
                 let def_id = self.lookup_method_call(path_segment, &e.typ, *span, expr)?;
-                dbg!(def_id);
-                todo!();
+
+                let typ_args = self.check_method_call_generics(def_id, path_segment)?;
+                let typ_args = Arc::new(typ_args);
+
+                let (input_typs, output_typ) = self.fn_item_type_substitution(expr.span, def_id, &typ_args)?;
+
+                if input_typs.len() != args.len() + 1 {
+                    return err_span(expr.span, format!("function takes {:} arguments, got {:}", input_typs.len(), args.len()));
+                }
+                
+                let mut vir_args = vec![];
+
+                self.expect(&e.typ, &input_typs[0])?;
+                vir_args.push(e);
+
+                for (arg, input_typ) in args.iter().zip(input_typs.iter().skip(1)) {
+                    let vir_arg = self.check_expr(arg)?;
+                    self.expect(&vir_arg.typ, input_typ)?;
+                    vir_args.push(vir_arg);
+                }
+
+                let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
+                    &self.bctx.ctxt.verus_items, def_id);
+                let fun = Arc::new(FunX { path: path.clone() });
+
+                // correct CallTarget is filled in finalizer pass
+                let ct = CallTarget::Fun(
+                    CallTargetKind::Static,
+                    fun,
+                    typ_args,
+                    Arc::new(vec![]),
+                    AutospecUsage::IfMarked,
+                );
+
+                mk_expr(&output_typ,
+                    ExprX::Call(ct, Arc::new(vir_args))
+                )
             }
             ExprKind::Call(Expr { kind: ExprKind::Path(qpath), .. }, args) => {
                 match self.check_qpath_for_expr(qpath, expr.hir_id)? {

@@ -531,8 +531,8 @@ impl<'tcx> OuterContext<'tcx> {
         );
 
         let steps = match mode {
-            Mode::MethodCall => todo!(),
-              //self.tcx.method_autoderef_steps(param_env_and_self_ty),
+            Mode::MethodCall => //todo!(),
+             self.tcx.method_autoderef_steps(param_env_and_self_ty),
             Mode::Path => self.infcx.probe(|_| {
                 // Mode::Path - the deref steps is "trivial". This turns
                 // our CanonicalQuery into a "trivial" QueryResponse. This
