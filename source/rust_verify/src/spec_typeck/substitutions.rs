@@ -119,6 +119,10 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         Ok(vir_item_typ)
     }
 
+    pub fn get_field_typ_positional(&mut self, span: Span, variant_def: &VariantDef, typ_args: &Typs, i: usize) -> Result<Typ, VirErr> {
+        self.get_field_typ(span, variant_def, typ_args, &format!("{:}", i))
+    }
+
     pub fn get_field_typ(&mut self, span: Span, variant_def: &VariantDef, typ_args: &Typs, field: &str) -> Result<Typ, VirErr> {
         let mut sig_typ_params: Vec<vir::ast::Ident> = vec![];
 

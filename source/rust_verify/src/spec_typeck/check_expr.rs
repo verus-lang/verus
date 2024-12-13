@@ -10,11 +10,12 @@ use crate::spec_typeck::check_ty::{integer_typ_of_int_ty, integer_typ_of_uint_ty
 use rustc_ast::ast::{LitKind, LitIntType};
 use num_bigint::BigInt;
 use rustc_span::Span;
-use vir::def::field_ident_from_rust;
+use vir::def::{field_ident_from_rust, positional_field_ident};
 use air::ast_util::{ident_binder, str_ident};
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{AdtDef, VariantDef};
 use std::collections::HashSet;
+use rustc_hir::def::CtorKind;
 
 impl<'a, 'tcx> State<'a, 'tcx> {
     pub fn check_expr(
@@ -126,6 +127,42 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                             ExprX::Call(ct, Arc::new(vir_args))
                         )
                     }
+                    PathResolution::DatatypeVariant(variant_def_id, typ_args) => {
+                        dbg!(variant_def_id);
+                        let enum_did = self.tcx.parent(variant_def_id);
+                        dbg!(&enum_did);
+                        let adt_def = self.tcx.adt_def(enum_did);
+                        assert!(adt_def.is_enum());
+                        let variant_def = self.tcx.adt_def(enum_did).variant_with_id(variant_def_id);
+                        if variant_def.ctor_kind() != Some(CtorKind::Fn) {
+                            return err_span(expr.span, format!("this constructor is not a function-call constructor"));
+                        }
+                        if args.len() != variant_def.fields.len() {
+                            return err_span(expr.span, format!("this struct takes {:} argument{:} but {:} argument{:} were supplied",
+                                variant_def.fields.len(),
+                                if variant_def.fields.len() > 1 { "s" } else { "" },
+                                args.len(),
+                                if args.len() > 1 { "s" } else { "" }));
+                        }
+
+                        let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
+                            &self.bctx.ctxt.verus_items, adt_def.did());
+                        let dt = Dt::Path(path);
+                        let typ = Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
+
+                        let mut ident_binders = vec![];
+                        for (i, arg) in args.iter().enumerate() {
+                            let vir_arg = self.check_expr(arg)?;
+                            let field_typ = self.get_field_typ_positional(arg.span, variant_def, &typ_args, i)?;
+                            self.expect_allowing_int_coercion(&vir_arg.typ, &field_typ)?;
+                            let ident = positional_field_ident(i);
+                            ident_binders.push(ident_binder(&ident, &vir_arg));
+                        }
+
+                        let variant = str_ident(&variant_def.ident(self.tcx).as_str());
+
+                        mk_expr(&typ, ExprX::Ctor(dt, variant, Arc::new(ident_binders), None))
+                    }
                     _ => todo!(),
                 }
             }
@@ -164,7 +201,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             }
             ExprKind::Struct(qpath, fields, spread_opt) => {
                 match self.check_qpath_for_expr(qpath, expr.hir_id)? {
-                    PathResolution::Datatype(def_id, typs) => {
+                    PathResolution::Datatype(def_id, typ_args) => {
                         // TODO visibility of fields...
                         let (variant, variant_def) = self.check_braces_ctor_valid(
                             def_id, fields, *spread_opt, qpath.span())?;
@@ -172,7 +209,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
                             &self.bctx.ctxt.verus_items, def_id);
                         let dt = Dt::Path(path);
-                        let typ = Arc::new(TypX::Datatype(dt.clone(), typs.clone(), Arc::new(vec![])));
+                        let typ = Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
 
                         let vir_spread_opt = match spread_opt {
                             Some(spread) => {
@@ -186,15 +223,15 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         for field in fields.iter() {
                             let ExprField { hir_id: _, ident, expr: field_expr, span: _, is_shorthand: _ } = field;
                             let vir_field_expr = self.check_expr(field_expr)?;
-                            let field_typ = self.get_field_typ(field.span, variant_def, &typs, &ident.as_str())?;
-                            self.expect_exact(&vir_field_expr.typ, &field_typ)?;
+                            let field_typ = self.get_field_typ(field.span, variant_def, &typ_args, &ident.as_str())?;
+                            self.expect_allowing_int_coercion(&vir_field_expr.typ, &field_typ)?;
 
                             let ident = field_ident_from_rust(ident.as_str());
                             ident_binders.push(ident_binder(&ident, &vir_field_expr));
                         }
                         mk_expr(&typ, ExprX::Ctor(dt, variant, Arc::new(ident_binders), vir_spread_opt))
                     }
-                    PathResolution::DatatypeVariant(_def_id, _ident, _typs) => {
+                    PathResolution::DatatypeVariant(_def_id, _typs) => {
                         if spread_opt.is_some() {
                             todo!();
                         }

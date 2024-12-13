@@ -1,9 +1,9 @@
 use rustc_hir::def_id::DefId;
 use rustc_hir::hir_id::HirId;
 use rustc_hir::{PrimTy, QPath, GenericArg, PathSegment};
-use rustc_hir::def::{Res, DefKind};
+use rustc_hir::def::{Res, DefKind, CtorOf, CtorKind};
 use rustc_hir::def_id::LocalDefId;
-use vir::ast::{Typ, Typs, Ident, VirErr};
+use vir::ast::{Typ, Typs, VirErr};
 use crate::spec_typeck::State;
 use std::sync::Arc;
 use rustc_span::Span;
@@ -21,7 +21,7 @@ pub enum PathResolution {
     Fn(DefId, Typs),
     Const(DefId),
     Datatype(DefId, Typs),
-    DatatypeVariant(DefId, Ident, Typs),
+    DatatypeVariant(DefId, Typs),
     PrimTy(PrimTy),
 }
 
@@ -121,6 +121,16 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         assert!(qualified_self.is_none());
                         let generic_params = self.check_path_generics_last_only(*def_id, segments)?;
                         Ok(PathResolution::Datatype(*def_id, Arc::new(generic_params)))
+                    }
+                    DefKind::Ctor(CtorOf::Struct, CtorKind::Fn | CtorKind::Const) => {
+                        let generic_params = self.check_path_generics(span, qualified_self, *def_kind, *def_id, segments)?;
+                        let def_id = self.tcx.parent(*def_id);
+                        Ok(PathResolution::Datatype(def_id, Arc::new(generic_params)))
+                    }
+                    DefKind::Ctor(CtorOf::Variant, CtorKind::Fn | CtorKind::Const) => {
+                        let generic_params = self.check_path_generics(span, qualified_self, *def_kind, *def_id, segments)?;
+                        let def_id = self.tcx.parent(*def_id);
+                        Ok(PathResolution::DatatypeVariant(def_id, Arc::new(generic_params)))
                     }
                     _ => {
                         dbg!(def_kind);
