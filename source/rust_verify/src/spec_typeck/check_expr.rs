@@ -140,9 +140,9 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         if args.len() != variant_def.fields.len() {
                             return err_span(expr.span, format!("this struct takes {:} argument{:} but {:} argument{:} were supplied",
                                 variant_def.fields.len(),
-                                if variant_def.fields.len() > 1 { "s" } else { "" },
+                                if variant_def.fields.len() != 1 { "s" } else { "" },
                                 args.len(),
-                                if args.len() > 1 { "s" } else { "" }));
+                                if args.len() != 1 { "s" } else { "" }));
                         }
 
                         let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
@@ -493,7 +493,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             }
             return err_span(span,
               format!("missing {:} {:} in initializer of `{:}`",
-                  if unspecified_fields.len() > 1 { "fields" } else { "field" },
+                  if unspecified_fields.len() != 1 { "fields" } else { "field" },
                   unspecified_fields.join(", "),
                   if adt_def.is_struct() {
                     self.def_id_to_friendly(adt_def.did())
