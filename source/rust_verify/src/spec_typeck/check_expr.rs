@@ -50,7 +50,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     _ => todo!()
                 }
             }
-            ExprKind::MethodCall(path_segment, receiver, args, span) => {
+            ExprKind::MethodCall(path_segment, receiver, _args, span) => {
                 let e = self.check_expr(receiver)?;
                 let def_id = self.lookup_method_call(path_segment, &e.typ, *span, expr)?;
                 dbg!(def_id);

@@ -8,6 +8,7 @@ mod unifier;
 mod substitutions;
 mod finalize_expr;
 
+mod reverse_type_map;
 mod method_probe;
 
 pub struct State<'a, 'tcx> {
