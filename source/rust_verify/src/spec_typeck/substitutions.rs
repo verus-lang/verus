@@ -158,6 +158,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             &field_ty,
             false,
         )?;
+        let vir_field_typ = subst_typ(&typ_substs, &vir_field_typ);
 
         Ok(vir_field_typ)
        

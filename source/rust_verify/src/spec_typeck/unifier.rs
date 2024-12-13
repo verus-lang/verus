@@ -194,7 +194,11 @@ impl State<'_, '_> {
         let e = self.unify(t1, t2);
         match e {
             Ok(()) => Ok(()),
-            Err(_ue) => todo!(),
+            Err(_ue) => {
+                dbg!(t1);
+                dbg!(t2);
+                panic!("asdf");
+            }
         }
     }
 
