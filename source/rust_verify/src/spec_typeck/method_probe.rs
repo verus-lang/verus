@@ -64,7 +64,11 @@ pub(crate) fn lookup_method<'tcx>(
     match e {
         Ok(o) => Ok(o),
         Err(e) => {
-            panic!("{:#?}", e)
+            println!("{:#?}", e);
+            return crate::util::err_span(
+                span,
+                "[Verus] lookup_method",
+            );
         }
     }
 }
@@ -90,7 +94,11 @@ pub(crate) fn resolve_fully_qualified_call<'tcx>(
     match e {
         Ok(o) => Ok(o),
         Err(e) => {
-            panic!("{:#?}", e)
+            println!("{:#?}", e);
+            return crate::util::err_span(
+                span,
+                "[Verus] lookup_method",
+            );
         }
     }
 }

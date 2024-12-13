@@ -15,7 +15,11 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         let mut sig_typ_params: Vec<vir::ast::Ident> = vec![];
 
         let generic_defs = self.get_generic_defs(self.tcx.generics_of(def_id));
-        for generic_def in generic_defs.iter() {
+        let has_self = self.tcx.trait_of_item(def_id).is_some();
+        if has_self {
+            sig_typ_params.push(vir::def::trait_self_type_param());
+        }
+        for generic_def in generic_defs.iter().skip(has_self as usize) {
             match &generic_def.kind {
                 GenericParamDefKind::Type { synthetic: _, has_default: _ } | GenericParamDefKind::Const { is_host_effect: false, has_default: _ } => {
                     let ident = crate::rust_to_vir_base::generic_param_def_to_vir_name(generic_def);
