@@ -13,7 +13,8 @@ use rustc_span::Span;
 use vir::def::field_ident_from_rust;
 use air::ast_util::{ident_binder, str_ident};
 use rustc_hir::def_id::DefId;
-use rustc_middle::ty::VariantDef;
+use rustc_middle::ty::{AdtDef, VariantDef};
+use std::collections::HashSet;
 
 impl<'a, 'tcx> State<'a, 'tcx> {
     pub fn check_expr(
@@ -401,7 +402,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         let adt_def = self.tcx.adt_def(def_id);
         if adt_def.is_struct() {
             let variant_def = adt_def.non_enum_variant();
-            self.check_braces_variant_valid(variant_def, fields, spread_opt, span)?;
+            self.check_braces_variant_valid(&adt_def, variant_def, fields, spread_opt, span)?;
             let variant_name = str_ident(&variant_def.ident(self.tcx).as_str());
             Ok((variant_name, variant_def))
         } else if adt_def.is_union() {
@@ -415,12 +416,63 @@ impl<'a, 'tcx> State<'a, 'tcx> {
 
     fn check_braces_variant_valid(
         &mut self,
-        _variant_def: &'tcx VariantDef,
-        _fields: &'tcx [ExprField<'tcx>],
-        _spread_opt: Option<&'tcx Expr<'tcx>>,
-        _span: Span,
+        adt_def: &AdtDef,
+        variant_def: &'tcx VariantDef,
+        fields: &'tcx [ExprField<'tcx>],
+        spread_opt: Option<&'tcx Expr<'tcx>>,
+        span: Span,
     ) -> Result<(), VirErr> {
-        todo!()
+        let is_valid_field = |name: &str| variant_def.fields.iter().any(|f| f.ident(self.tcx).as_str() == name);
+
+        let mut seen_fields = HashSet::<String>::new();
+        for f in fields {
+            if !is_valid_field(f.ident.as_str()) {
+                if adt_def.is_struct() {
+                    return err_span(f.span,
+                      format!("struct `{:}` has no field named `{:}`",
+                        self.def_id_to_friendly(adt_def.did()), f.ident.as_str()));
+                } else if adt_def.is_enum() {
+                    return err_span(f.span,
+                      format!("variant `{:}::{:}` has no field named `{:}`",
+                        self.def_id_to_friendly(adt_def.did()), variant_def.ident(self.tcx).as_str(), f.ident.as_str()));
+                } else {
+                    unreachable!()
+                }
+            }
+            
+            let not_dupe = seen_fields.insert(f.ident.as_str().to_string());
+            if !not_dupe {
+                return err_span(f.span,
+                  format!("field `{:}` specified more than once", f.ident.as_str()));
+            }
+        }
+
+        if spread_opt.is_none() && seen_fields.len() != variant_def.fields.len() {
+            let mut unspecified_fields = vec![];
+            for f in variant_def.fields.iter() {
+                if !seen_fields.contains(f.ident(self.tcx).as_str()) {
+                    unspecified_fields.push(format!("`{:}`", f.ident(self.tcx).as_str()));
+                }
+            }
+            return err_span(span,
+              format!("missing {:} {:} in initializer of `{:}`",
+                  if unspecified_fields.len() > 1 { "fields" } else { "field" },
+                  unspecified_fields.join(", "),
+                  if adt_def.is_struct() {
+                    self.def_id_to_friendly(adt_def.did())
+                  } else if adt_def.is_enum() {
+                    format!("{:}::{:}", self.def_id_to_friendly(adt_def.did()), variant_def.ident(self.tcx).as_str())
+                  } else {
+                    unreachable!()
+                  }));
+        }
+
+        Ok(())
+    }
+
+    fn def_id_to_friendly(&self, def_id: DefId) -> String {
+        crate::rust_to_vir_base::def_id_to_friendly(self.tcx, Some(&self.bctx.ctxt.verus_items),
+            def_id)
     }
 }
 

@@ -120,11 +120,21 @@ fn register_friendly_path_as_rust_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, p
     }
 }
 
-fn def_to_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::ast::Ident {
+pub(crate) fn def_to_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::ast::Ident {
     let def_path = tcx.def_path(def_id);
     match def_path.data.last().expect("unexpected empty impl path").data {
         rustc_hir::definitions::DefPathData::ValueNs(name) => Arc::new(name.to_string()),
         _ => panic!("unexpected name of impl"),
+    }
+}
+
+pub(crate) fn def_id_to_friendly<'tcx>(tcx: TyCtxt<'tcx>,
+  verus_items: Option<&crate::verus_items::VerusItems>,
+  def_id: DefId
+) -> String {
+    match def_id_to_vir_path_option(tcx, verus_items, def_id) {
+        None => format!("{:?}", def_id),
+        Some(p) => vir::ast_util::path_as_friendly_rust_name(&p),
     }
 }
 
