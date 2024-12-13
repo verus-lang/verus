@@ -187,7 +187,13 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                                 StmtX::Decl { pattern: pat, mode: Some(Mode::Spec),
                                     init: Some(vir_init) }));
                         }
-                        _ => todo!(),
+                        //StmtKind::Semi(e) => {
+                        //    self.check_expr(e)?;
+                        //}
+                        _ => {
+                            dbg!(&stmt.kind);
+                            todo!()
+                        }
                     }
                 }
 
@@ -280,6 +286,18 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     }
                     _ => todo!()
                 }
+            }
+
+            ExprKind::Tup(es) => {
+                let mut vir_es = vec![];
+                let mut vir_typs = vec![];
+                for e in es.iter() {
+                    let vir_e = self.check_expr(e)?;
+                    vir_typs.push(vir_e.typ.clone());
+                    vir_es.push(vir_e);
+                }
+                let typ = vir::ast_util::mk_tuple_typ(&Arc::new(vir_typs));
+                mk_expr(&typ, vir::ast_util::mk_tuple_x(&Arc::new(vir_es)))
             }
             
             ExprKind::Lit(lit) => match &lit.node {
