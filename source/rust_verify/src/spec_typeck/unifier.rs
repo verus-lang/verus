@@ -107,6 +107,9 @@ impl State<'_, '_> {
                     state.finish_rec(node);
                     Ok(state.unifier.final_typs.as_ref().unwrap()[node].clone().unwrap())
                 }
+                TypX::Projection { .. } => {
+                    todo!();
+                }
                 _ => Ok(t.clone())
             }
         }).unwrap();
@@ -122,6 +125,9 @@ impl State<'_, '_> {
                 TypX::UnificationVar(uid) => {
                     let node = state.unifier.get_node(*uid);
                     Ok(state.unifier.final_typs.as_ref().unwrap()[node].clone().unwrap())
+                }
+                TypX::Projection { .. } => {
+                    todo!();
                 }
                 _ => Ok(t.clone())
             }

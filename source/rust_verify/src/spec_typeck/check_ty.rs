@@ -1,4 +1,4 @@
-use crate::{unsupported_err};
+use crate::{unsupported_err, unsupported_err_unless};
 use crate::verus_items::{VerusItem, BuiltinTypeItem};
 use crate::spec_typeck::State;
 use crate::spec_typeck::check_path::PathResolution;
@@ -72,6 +72,15 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     PathResolution::AssocTy(def_id, trait_typ_args, extra_args) => {
                         unsupported_err_unless!(extra_args.len() == 0,
                             ty.span, "type arguments on associated type");
+                        let trait_id = self.tcx.trait_of_item(def_id).unwrap();
+                        let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
+                                  &self.bctx.ctxt.verus_items, trait_id);
+                        let ident = self.tcx.associated_item(def_id).ident(self.tcx);
+                        Ok(Arc::new(TypX::Projection {
+                            trait_typ_args,
+                            trait_path: path,
+                            name: Arc::new(ident.to_string()),
+                        }))
                     }
                     _ => todo!(),
                 }
