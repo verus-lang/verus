@@ -23,6 +23,8 @@ pub enum PathResolution {
     Datatype(DefId, Typs),
     DatatypeVariant(DefId, Typs),
     PrimTy(PrimTy),
+    TyParam(vir::ast::Ident),
+    AssocTy(DefId, Typs, Typs),
 }
 
 impl<'a, 'tcx> State<'a, 'tcx> {
@@ -123,14 +125,26 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         Ok(PathResolution::Datatype(*def_id, Arc::new(generic_params)))
                     }
                     DefKind::Ctor(CtorOf::Struct, CtorKind::Fn | CtorKind::Const) => {
+                        assert!(qualified_self.is_none());
                         let generic_params = self.check_path_generics(span, qualified_self, *def_kind, *def_id, segments)?;
                         let def_id = self.tcx.parent(*def_id);
                         Ok(PathResolution::Datatype(def_id, Arc::new(generic_params)))
                     }
                     DefKind::Ctor(CtorOf::Variant, CtorKind::Fn | CtorKind::Const) => {
+                        assert!(qualified_self.is_none());
                         let generic_params = self.check_path_generics(span, qualified_self, *def_kind, *def_id, segments)?;
                         let def_id = self.tcx.parent(*def_id);
                         Ok(PathResolution::DatatypeVariant(def_id, Arc::new(generic_params)))
+                    }
+                    DefKind::TyParam => {
+                        assert!(qualified_self.is_none());
+                        assert!(segments.len() == 1);
+                        Ok(PathResolution::TyParam(Arc::new(segments[0].ident.to_string())))
+                    }
+                    DefKind::AssocTy => {
+                        let (trait_typ_args, extra_typ_args) =
+                            self.check_assoc_ty_generics(qualified_self.unwrap(), *def_id, &segments)?;
+                        Ok(PathResolution::AssocTy(*def_id, Arc::new(trait_typ_args), Arc::new(extra_typ_args)))
                     }
                     _ => {
                         dbg!(def_kind);
@@ -150,7 +164,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         path_segment: &'tcx PathSegment,
     ) -> Result<Vec<Typ>, VirErr> {
         let generics = self.tcx.generics_of(def_id);
-        let mut v = self.check_segment_generics(path_segment, generics)?;
+        let mut v = self.check_segment_generics(None, path_segment, generics)?;
 
         let mut w = vec![];
         for _i in 0 .. generics.parent_count {
@@ -168,7 +182,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         span: Span,
     ) -> Result<Vec<Typ>, VirErr> {
         let generics = self.tcx.generics_of(def_id);
-        let mut v = self.check_segment_generics(path_segment, generics)?;
+        let mut v = self.check_segment_generics(None, path_segment, generics)?;
 
         let mut w = vec![];
         for _i in 0 .. generics.parent_count {
@@ -185,6 +199,26 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         Ok(w)
     }
 
+    pub fn check_assoc_ty_generics(
+      &mut self,
+      qualified_self: &'tcx rustc_hir::Ty<'tcx>,
+      def_id: DefId,
+      segments: &'tcx [PathSegment]
+    ) -> Result<(Vec<Typ>, Vec<Typ>), VirErr> {
+        let trait_id = self.tcx.trait_of_item(def_id).unwrap();
+        let generics = self.tcx.generics_of(def_id);
+        let generics_parent = self.tcx.generics_of(trait_id);
+        assert!(segments.len() == 2);
+        let typs1 = self.check_segment_generics(
+            Some(qualified_self),
+            &segments[0],
+            &generics_parent)?;
+        let typs2 = self.check_segment_generics(
+            None,
+            &segments[1],
+            &generics)?;
+        Ok((typs1, typs2))
+    }
 
     pub fn check_path_generics_last_only(
         &mut self,
@@ -197,7 +231,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             }
         }
         let generics = self.tcx.generics_of(def_id);
-        self.check_segment_generics(&segments[segments.len() - 1], generics)
+        self.check_segment_generics(None, &segments[segments.len() - 1], generics)
     }
 
     pub fn check_path_generics(
@@ -234,12 +268,12 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         for GenericPathSegment(def_id, index) in &generic_segments {
             let seg = &segments[*index];
             let generics = self.tcx.generics_of(def_id);
-            generic_params.append(&mut self.check_segment_generics(seg, generics)?);
+            generic_params.append(&mut self.check_segment_generics(None, seg, generics)?);
         }
         Ok(generic_params)
     }
 
-    pub fn check_segment_generics(&mut self, segment: &'tcx PathSegment, generics: &'tcx Generics) -> Result<Vec<Typ>, VirErr> {
+    pub fn check_segment_generics(&mut self, qualified_self: Option<&'tcx rustc_hir::Ty<'tcx>>, segment: &'tcx PathSegment, generics: &'tcx Generics) -> Result<Vec<Typ>, VirErr> {
         if let Some(args) = &segment.args {
             if args.bindings.len() > 0 {
                 todo!();
@@ -250,7 +284,13 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         }
 
         let mut idx = 0;
+        let mut self_ty = qualified_self;
         let get_next_segment_arg = &mut || {
+            if self_ty.is_some() {
+                let s = self_ty.unwrap();
+                self_ty = None;
+                return Some(GenericArg::Type(s));
+            }
             match &segment.args {
                 None => None,
                 Some(args) => {
@@ -259,7 +299,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     }
                     if idx < args.args.len() {
                         idx += 1;
-                        Some(&args.args[idx - 1])
+                        Some(args.args[idx - 1])
                     } else {
                         None
                     }

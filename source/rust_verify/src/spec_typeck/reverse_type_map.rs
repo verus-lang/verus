@@ -6,6 +6,7 @@ use vir::ast::{Typ, TypX, Dt, Typs};
 use std::collections::HashMap;
 use rustc_middle::ty::{Ty, GenericArg, TyKind};
 use rustc_middle::ty::GenericArgs;
+use std::sync::Arc;
 
 struct ReverseTypeState<'tcx> {
     span: Span,
@@ -46,6 +47,9 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 let args = self.tcx.mk_args(&mid_args);
                 tcx.mk_ty_from_kind(TyKind::Adt(adt_def, args))
             }
+            TypX::TypParam(t) => {
+                *self.param_name_to_param_ty.get(t).unwrap()
+            }
             TypX::UnificationVar(i) => {
                 let r: &mut ReverseTypeState<'tcx> = r.as_mut().unwrap();
                 let node = self.unifier.get_node(*i);
@@ -60,4 +64,23 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             _ => todo!(),
         }
     }
+}
+
+pub(crate) fn make_param_map<'tcx>(bctx: &crate::context::BodyCtxt<'tcx>) -> HashMap<vir::ast::Ident, Ty<'tcx>> {
+    let tcx = bctx.ctxt.tcx;
+    let mut generics = tcx.generics_of(bctx.fun_id);
+    let mut map: HashMap<vir::ast::Ident, Ty<'tcx>> = HashMap::new();
+    loop {
+        for param in generics.params.iter() {
+            let ident = crate::rust_to_vir_base::generic_param_def_to_vir_name(param);
+            let param_ty = rustc_middle::ty::ParamTy::for_def(param);
+            let ty = tcx.mk_ty_from_kind(TyKind::Param(param_ty));
+            map.insert(Arc::new(ident), ty);
+        }
+        match &generics.parent {
+            Some(def_id) => { generics = tcx.generics_of(*def_id); }
+            None => { break; }
+        }
+    }
+    map
 }

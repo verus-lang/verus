@@ -66,6 +66,13 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                             Ok(Arc::new(TypX::Datatype(dt, typs.clone(), Arc::new(vec![]))))
                         }
                     }
+                    PathResolution::TyParam(ident) => {
+                        Ok(Arc::new(TypX::TypParam(ident)))
+                    }
+                    PathResolution::AssocTy(def_id, trait_typ_args, extra_args) => {
+                        unsupported_err_unless!(extra_args.len() == 0,
+                            ty.span, "type arguments on associated type");
+                    }
                     _ => todo!(),
                 }
             }
