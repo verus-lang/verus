@@ -32,7 +32,7 @@ pub fn typecheck<'tcx>(
     };
 
     let e = state.check_expr(expr)?;
-    state.expect_allowing_int_coercion(&e.typ, expected_typ)?;
+    state.expect_allowing_coercion(&e.typ, expected_typ)?;
 
     state.finish_unification()?;
 
@@ -47,5 +47,5 @@ pub fn typecheck<'tcx>(
 
     // deprecated, visibility checks...?
 
-    todo!();
+    crate::util::err_span(expr.span, "done")
 }

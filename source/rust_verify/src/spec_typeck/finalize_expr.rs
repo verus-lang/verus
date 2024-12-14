@@ -39,9 +39,10 @@ impl State<'_, '_> {
     fn check_trait_obligations(&mut self, span: &vir::messages::Span, def_id: DefId, typs: &Typs) {
         let span = self.bctx.ctxt.spans.from_air_span(span, None).unwrap();
 
-        use crate::rustc_trait_selection::solve::InferCtxtEvalExt;
+        //use crate::rustc_trait_selection::solve::InferCtxtEvalExt;
         use crate::rustc_infer::infer::TyCtxtInferExt;
         use crate::rustc_trait_selection::traits::TraitEngineExt;
+        use crate::rustc_trait_selection::traits::error_reporting::TypeErrCtxtExt;
 
         let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
         let mut fulfillment_cx = <dyn rustc_trait_selection::traits::TraitEngine<'_>>::new(&infcx);
@@ -62,25 +63,12 @@ impl State<'_, '_> {
             fulfillment_cx.register_predicate_obligation(&infcx, obligation);
         }
 
-        let errors = fulfillment_cx. 
+        let mut errors = fulfillment_cx.select_where_possible(&infcx);
+        errors.append(&mut fulfillment_cx.collect_remaining_errors(&infcx));
 
-        /*
-        let args = self.finalized_vir_typs_to_generic_args(typs);
-        let clauses = self.tcx.predicates_of(def_id).instantiate(self.tcx, args).predicates;
-        for clause in clauses.into_iter() {
-            let goal = rustc_trait_selection::traits::solve::Goal::new(
-                self.tcx,
-                self.tcx.param_env(self.bctx.fun_id),
-                clause,
-            );
-            let r = infcx.evaluate_root_goal(goal,
-                rustc_trait_selection::solve::GenerateProofTree::Never);
-            match r.0 {
-                Ok((false, rustc_trait_selection::traits::solve::Certainty::Yes)) => { }
-                Ok(_) => todo!(),
-                Err(_e) => todo!(),
-            }
+        if errors.len() > 0 {
+            let err_ctxt = infcx.err_ctxt();
+            err_ctxt.report_fulfillment_errors(errors);
         }
-        */
     }
 }

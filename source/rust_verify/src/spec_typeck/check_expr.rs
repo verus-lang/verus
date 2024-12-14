@@ -73,7 +73,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
 
                 for (arg, input_typ) in args.iter().zip(input_typs.iter().skip(1)) {
                     let vir_arg = self.check_expr(arg)?;
-                    self.expect_allowing_int_coercion(&vir_arg.typ, input_typ)?;
+                    self.expect_allowing_coercion(&vir_arg.typ, input_typ)?;
                     vir_args.push(vir_arg);
                 }
 
@@ -106,7 +106,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         let mut vir_args = vec![];
                         for (arg, input_typ) in args.iter().zip(input_typs.iter()) {
                             let vir_arg = self.check_expr(arg)?;
-                            self.expect_allowing_int_coercion(&vir_arg.typ, input_typ)?;
+                            self.expect_allowing_coercion(&vir_arg.typ, input_typ)?;
                             vir_args.push(vir_arg);
                         }
 
@@ -154,7 +154,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         for (i, arg) in args.iter().enumerate() {
                             let vir_arg = self.check_expr(arg)?;
                             let field_typ = self.get_field_typ_positional(arg.span, variant_def, &typ_args, i)?;
-                            self.expect_allowing_int_coercion(&vir_arg.typ, &field_typ)?;
+                            self.expect_allowing_coercion(&vir_arg.typ, &field_typ)?;
                             let ident = positional_field_ident(i);
                             ident_binders.push(ident_binder(&ident, &vir_arg));
                         }
@@ -192,7 +192,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 let mut vir_args = vec![];
                 for (i, arg) in args.iter().enumerate() {
                     let vir_arg = self.check_expr(arg)?;
-                    self.expect_allowing_int_coercion(&vir_arg.typ, &callee_arg_typs[i])?;
+                    self.expect_allowing_coercion(&vir_arg.typ, &callee_arg_typs[i])?;
                     vir_args.push(vir_arg);
                 }
 
@@ -224,7 +224,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                             let ExprField { hir_id: _, ident, expr: field_expr, span: _, is_shorthand: _ } = field;
                             let vir_field_expr = self.check_expr(field_expr)?;
                             let field_typ = self.get_field_typ(field.span, variant_def, &typ_args, &ident.as_str())?;
-                            self.expect_allowing_int_coercion(&vir_field_expr.typ, &field_typ)?;
+                            self.expect_allowing_coercion(&vir_field_expr.typ, &field_typ)?;
 
                             let ident = field_ident_from_rust(ident.as_str());
                             ident_binders.push(ident_binder(&ident, &vir_field_expr));
@@ -263,7 +263,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                             };
 
                             let vir_init = self.check_expr(init)?;
-                            self.expect_allowing_int_coercion(&vir_init.typ, &typ)?;
+                            self.expect_allowing_coercion(&vir_init.typ, &typ)?;
                             let pat = self.check_pat(pat, &typ)?;
 
                             vir_stmts.push(bctx.spanned_new(stmt.span,
@@ -331,7 +331,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 let body = self.check_expr(body_expr)?;
                 self.scope_map.pop_scope();
 
-                self.expect_allowing_int_coercion(&body.typ, &output_typ)?;
+                self.expect_allowing_coercion(&body.typ, &output_typ)?;
 
                 let arg_typs = Arc::new(arg_typs);
                 let fntype = Arc::new(TypX::SpecFn(arg_typs.clone(), output_typ));
