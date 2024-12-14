@@ -484,6 +484,8 @@ impl State<'_, '_> {
     }
 
     fn normalize(&mut self, typ: &Typ) -> Typ {
+        let r = rustc_trait_selection::traits::project::normalize_projection_type;
+
         assert!(matches!(&**typ, TypX::Projection { .. }));
 
         use crate::rustc_trait_selection::traits::NormalizeExt;
