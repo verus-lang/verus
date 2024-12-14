@@ -4,9 +4,10 @@ use rustc_span::Span;
 use super::State;
 use vir::ast::{Typ, TypX, Dt, Typs};
 use std::collections::HashMap;
-use rustc_middle::ty::{Ty, GenericArg, TyKind};
+use rustc_middle::ty::{Ty, GenericArg, TyKind, AssocKind, AliasKind, AliasTy, UintTy};
 use rustc_middle::ty::GenericArgs;
 use std::sync::Arc;
+use vir::ast::IntRange;
 
 struct ReverseTypeState<'tcx> {
     span: Span,
@@ -23,6 +24,11 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             mid_args.push(GenericArg::from(self.vir_ty_to_middle_rec(&mut None, t)));
         }
         self.tcx.mk_args(&mid_args)
+    }
+
+    pub fn finalized_vir_typ_to_typ(&mut self, typ: &Typ) -> Ty<'tcx>
+    {
+        self.vir_ty_to_middle_rec(&mut None, typ)
     }
 
     pub fn vir_ty_to_middle(&mut self, span: Span, t: &Typ)
@@ -61,7 +67,24 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     ty
                 }
             }
-            _ => todo!(),
+            TypX::Projection { trait_typ_args, trait_path, name } => {
+                let trait_def_id = crate::rust_to_vir_base::def_id_of_vir_path(trait_path);
+                let mut mid_args: Vec<GenericArg<'_>> = vec![];
+                for a in trait_typ_args.iter() {
+                    mid_args.push(GenericArg::from(self.vir_ty_to_middle_rec(r, a)));
+                }
+                let assoc_item = self.tcx.associated_items(trait_def_id)
+                      .find_by_name_and_kinds(self.tcx, rustc_span::symbol::Ident::from_str(&name),
+                        &[AssocKind::Type], trait_def_id).unwrap();
+                tcx.mk_ty_from_kind(TyKind::Alias(
+                    AliasKind::Projection,
+                    AliasTy::new(self.tcx, assoc_item.def_id, mid_args)))
+            }
+            TypX::Int(IntRange::U(8)) => tcx.mk_ty_from_kind(TyKind::Uint(UintTy::U8)),
+            _ => {
+                dbg!(t);
+                todo!();
+            }
         }
     }
 }

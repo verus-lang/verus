@@ -127,7 +127,7 @@ impl State<'_, '_> {
                     Ok(state.unifier.final_typs.as_ref().unwrap()[node].clone().unwrap())
                 }
                 TypX::Projection { .. } => {
-                    todo!();
+                    Ok(state.finalized_normalize(t))
                 }
                 _ => Ok(t.clone())
             }
@@ -156,6 +156,9 @@ impl State<'_, '_> {
                     Info::Known(known_typ) => known_typ.clone(),
                     _ => t.clone(),
                 }
+            }
+            TypX::Projection { .. } => {
+                self.normalize(t)
             }
             _ => t.clone(),
         }
@@ -363,6 +366,46 @@ impl State<'_, '_> {
         }
     }
 
+    pub fn finalized_normalize(&mut self, typ: &Typ) -> Typ {
+        //use crate::rustc_infer::infer::TyCtxtInferExt;
+        let ty = self.finalized_vir_typ_to_typ(typ);
+
+        //let param_env = self.tcx.param_env(self.bctx.fun_id);
+        //let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
+        //let cause = rustc_infer::traits::ObligationCause::dummy();
+        //let at = infcx.at(&cause, param_env);
+        //let ty = &crate::rust_to_vir_base::clean_all_escaping_bound_vars(self.tcx, ty, param_env);
+        //let norm = at.normalize(*ty);
+        crate::rust_to_vir_base::mid_ty_to_vir(
+            self.tcx,
+            &self.bctx.ctxt.verus_items,
+            self.bctx.fun_id,
+            self.whole_span,
+            &ty,
+            false,
+        ).unwrap()
+    }
+
+    fn normalize(&mut self, typ: &Typ) -> Typ {
+        use crate::rustc_trait_selection::traits::NormalizeExt;
+        let (ty, infcx) = self.vir_ty_to_middle(self.whole_span, typ);
+
+        let param_env = self.tcx.param_env(self.bctx.fun_id);
+        let cause = rustc_infer::traits::ObligationCause::dummy();
+        let at = infcx.at(&cause, param_env);
+        let ty = &crate::rust_to_vir_base::clean_all_escaping_bound_vars(self.tcx, ty, self.bctx.fun_id);
+        let norm = at.normalize(*ty);
+        assert!(norm.obligations.len() == 0);
+
+        crate::rust_to_vir_base::mid_ty_to_vir(
+            self.tcx,
+            &self.bctx.ctxt.verus_items,
+            self.bctx.fun_id,
+            self.whole_span,
+            &norm.value,
+            false,
+        ).unwrap()
+    }
 }
 
 fn int_range_equal_or_implicit_coercion_ok(ir1: IntRange, ir2: IntRange) -> bool {

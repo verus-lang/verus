@@ -17,6 +17,7 @@ pub struct State<'a, 'tcx> {
     unifier: unifier::Unifier,
     bctx: &'a crate::context::BodyCtxt<'tcx>,
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    whole_span: rustc_span::Span,
 }
 
 pub fn typecheck<'tcx>(
@@ -31,6 +32,7 @@ pub fn typecheck<'tcx>(
         param_name_to_param_ty: reverse_type_map::make_param_map(bctx),
         bctx: bctx,
         tcx: bctx.ctxt.tcx,
+        whole_span: expr.span,
     };
 
     let e = state.check_expr(expr)?;

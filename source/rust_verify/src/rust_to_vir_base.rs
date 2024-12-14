@@ -245,7 +245,7 @@ pub(crate) fn qpath_to_ident<'tcx>(
     }
 }
 
-fn clean_all_escaping_bound_vars<'tcx, T: rustc_middle::ty::TypeFoldable<TyCtxt<'tcx>>>(
+pub(crate) fn clean_all_escaping_bound_vars<'tcx, T: rustc_middle::ty::TypeFoldable<TyCtxt<'tcx>>>(
     tcx: TyCtxt<'tcx>,
     value: T,
     param_env_src: DefId,
