@@ -18,6 +18,8 @@ pub struct State<'a, 'tcx> {
     bctx: &'a crate::context::BodyCtxt<'tcx>,
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     whole_span: rustc_span::Span,
+
+    deferred_projection_obligations: Vec<(vir::ast::Typ, vir::ast::Typ)>,
 }
 
 pub fn typecheck<'tcx>(
@@ -33,6 +35,7 @@ pub fn typecheck<'tcx>(
         bctx: bctx,
         tcx: bctx.ctxt.tcx,
         whole_span: expr.span,
+        deferred_projection_obligations: vec![],
     };
 
     let e = state.check_expr(expr)?;

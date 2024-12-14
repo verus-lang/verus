@@ -59,6 +59,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             TypX::UnificationVar(i) => {
                 let r: &mut ReverseTypeState<'tcx> = r.as_mut().unwrap();
                 let node = self.unifier.get_node(*i);
+                // TODO check if Known
                 if r.id_map.contains_key(&node) {
                     r.id_map[&node]
                 } else {
@@ -81,6 +82,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     AliasTy::new(self.tcx, assoc_item.def_id, mid_args)))
             }
             TypX::Int(IntRange::U(8)) => tcx.mk_ty_from_kind(TyKind::Uint(UintTy::U8)),
+            TypX::Bool => tcx.mk_ty_from_kind(TyKind::Bool),
             _ => {
                 dbg!(t);
                 todo!();

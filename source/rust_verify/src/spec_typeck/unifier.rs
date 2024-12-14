@@ -7,7 +7,6 @@ enum Info {
     Unknown,
     UnknownIntegerType,
     Known(Typ),
-    Contradiction,
 }
 
 struct UFNode {
@@ -85,6 +84,8 @@ impl State<'_, '_> {
             }
         }
 
+        self.check_deferred_obligations();
+
         Ok(())
     }
 
@@ -97,7 +98,6 @@ impl State<'_, '_> {
             Info::Unknown => todo!(),
             Info::UnknownIntegerType => vir::ast_util::int_typ(),
             Info::Known(typ) => typ.clone(),
-            Info::Contradiction => todo!(),
         };
 
         let t = vir::ast_visitor::map_typ_visitor_env(&typ, self, &|state: &mut Self, t: &Typ| {
@@ -115,6 +115,77 @@ impl State<'_, '_> {
         }).unwrap();
 
         self.unifier.final_typs.as_mut().unwrap()[i] = Some(t);
+    }
+
+    pub(crate) fn check_deferred_obligations(&mut self) {
+        let span = self.whole_span;
+
+        use crate::rustc_infer::infer::TyCtxtInferExt;
+        use crate::rustc_trait_selection::traits::TraitEngineExt;
+        use crate::rustc_trait_selection::traits::error_reporting::TypeErrCtxtExt;
+        use crate::rustc_middle::ty::ToPredicate;
+
+        let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
+        let mut fulfillment_cx = <dyn rustc_trait_selection::traits::TraitEngine<'_>>::new(&infcx);
+
+        let deferred_projection_obligations = std::mem::take(&mut self.deferred_projection_obligations);
+
+        for (t1, t2) in deferred_projection_obligations.iter() {
+            let (t1, t2) = if matches!(&**t1, TypX::Projection { .. }) { (t1, t2) } else { (t2, t1) };
+
+            let t1 = self.get_finished_typ_without_normalizing(&t1);
+            let t2 = self.get_finished_typ_without_normalizing(&t2);
+            let ty1 = self.finalized_vir_typ_to_typ(&t1);
+            let ty2 = self.finalized_vir_typ_to_typ(&t2);
+
+            let alias_ty = match ty1.kind() {
+                rustc_middle::ty::TyKind::Alias(_alias_kind, ty_alias) => ty_alias,
+                _ => unreachable!(),
+            };
+
+            let pp = rustc_middle::ty::ProjectionPredicate {
+                projection_ty: *alias_ty,
+                term: rustc_middle::ty::Term::from(ty2),
+            };
+            let ck = rustc_middle::ty::ClauseKind::Projection(pp);
+            let pk = rustc_middle::ty::PredicateKind::Clause(ck);
+            let p: rustc_middle::ty::Predicate = pk.to_predicate(self.tcx);
+
+            let cause = rustc_trait_selection::traits::ObligationCause::new(
+                span,
+                self.bctx.fun_id.expect_local(),
+                rustc_trait_selection::traits::ObligationCauseCode::MiscObligation,
+            );
+            let obligation = rustc_trait_selection::traits::Obligation::new(
+                self.tcx,
+                cause,
+                self.tcx.param_env(self.bctx.fun_id),
+                p,
+            );
+            fulfillment_cx.register_predicate_obligation(&infcx, obligation);
+        }
+
+        let mut errors = fulfillment_cx.select_where_possible(&infcx);
+        errors.append(&mut fulfillment_cx.collect_remaining_errors(&infcx));
+
+        if errors.len() > 0 {
+            let err_ctxt = infcx.err_ctxt();
+            err_ctxt.report_fulfillment_errors(errors);
+        }
+
+        assert!(self.deferred_projection_obligations.len() == 0);
+    }
+
+    fn get_finished_typ_without_normalizing(&mut self, typ: &Typ) -> Typ {
+        vir::ast_visitor::map_typ_visitor_env(typ, self, &|state: &mut Self, t: &Typ| {
+            match &**t {
+                TypX::UnificationVar(uid) => {
+                    let node = state.unifier.get_node(*uid);
+                    Ok(state.unifier.final_typs.as_ref().unwrap()[node].clone().unwrap())
+                }
+                _ => Ok(t.clone())
+            }
+        }).unwrap()
     }
 
     /// Get the final type with no unification variables.
@@ -153,7 +224,15 @@ impl State<'_, '_> {
             TypX::UnificationVar(id) => {
                 let node = self.unifier.get_node(*id);
                 match &self.unifier.info[node] {
-                    Info::Known(known_typ) => known_typ.clone(),
+                    Info::Known(known_typ) => {
+                        if matches!(&**known_typ, TypX::Projection { .. }) {
+                            let normalized_known_typ = self.normalize(&known_typ.clone());
+                            self.unifier.info[node] = Info::Known(normalized_known_typ.clone());
+                            normalized_known_typ
+                        } else {
+                            known_typ.clone()
+                        }
+                    }
                     _ => t.clone(),
                 }
             }
@@ -252,6 +331,24 @@ impl State<'_, '_> {
                 }
                 Ok(())
             }
+            (TypX::Projection { .. }, _) | (_, TypX::Projection { .. }) => {
+                let norm_t1 = match &**typ1 {
+                    TypX::Projection { .. } => self.normalize(typ1),
+                    _ => typ1.clone(),
+                };
+                let norm_t2 = match &**typ2 {
+                    TypX::Projection { .. } => self.normalize(typ2),
+                    _ => typ2.clone(),
+                };
+                if matches!(&*norm_t1, TypX::Projection { .. })
+                    || matches!(&*norm_t2, TypX::Projection { .. })
+                {
+                    self.deferred_projection_obligations.push((norm_t1, norm_t2));
+                    Ok(())
+                } else {
+                    self.unify(&norm_t1, &norm_t2)
+                }
+            }
             (_ty1, _ty2) => {
                 self.unify_heads(typ1, typ2)
             }
@@ -259,7 +356,7 @@ impl State<'_, '_> {
     }
 
     // This is the part of `unify` that just checks the head type matches and recurses.
-    // Fancy logic dealing with unification vars should go in `unify`
+    // Fancy logic dealing with unification vars & projections should go in `unify`
     fn unify_heads(&mut self, t1: &Typ, t2: &Typ) -> Result<(), UnifyError> {
         match (&**t1, &**t2) {
             (TypX::Bool, TypX::Bool) => Ok(()),
@@ -334,8 +431,6 @@ impl State<'_, '_> {
                     Ok(())
                 }
             }
-            (TypX::Projection { .. }, _) => todo!(),
-            (_, TypX::Projection { .. }) => todo!(),
             (TypX::ConstInt(a1), TypX::ConstInt(a2)) => {
                 if a1 == a2 {
                     Err(UnifyError::Error)
@@ -346,6 +441,8 @@ impl State<'_, '_> {
 
             (TypX::UnificationVar(..), _) => unreachable!(),
             (_, TypX::UnificationVar(..)) => unreachable!(),
+            (TypX::Projection{..}, _) => unreachable!(),
+            (_, TypX::Projection{..}) => unreachable!(),
 
             // for exhaustiveness checks
             (TypX::Bool, _)
@@ -387,6 +484,8 @@ impl State<'_, '_> {
     }
 
     fn normalize(&mut self, typ: &Typ) -> Typ {
+        assert!(matches!(&**typ, TypX::Projection { .. }));
+
         use crate::rustc_trait_selection::traits::NormalizeExt;
         let (ty, infcx) = self.vir_ty_to_middle(self.whole_span, typ);
 
@@ -394,17 +493,25 @@ impl State<'_, '_> {
         let cause = rustc_infer::traits::ObligationCause::dummy();
         let at = infcx.at(&cause, param_env);
         let ty = &crate::rust_to_vir_base::clean_all_escaping_bound_vars(self.tcx, ty, self.bctx.fun_id);
-        let norm = at.normalize(*ty);
-        assert!(norm.obligations.len() == 0);
+        let norm = at.normalize(*ty); // TODO is normalize recursive?
 
-        crate::rust_to_vir_base::mid_ty_to_vir(
+        dbg!(&ty);
+        dbg!(&norm.value);
+        dbg!(&norm);
+        let norm_typ = crate::rust_to_vir_base::mid_ty_to_vir(
             self.tcx,
             &self.bctx.ctxt.verus_items,
             self.bctx.fun_id,
             self.whole_span,
             &norm.value,
             false,
-        ).unwrap()
+        ).unwrap();
+
+        if !vir::ast_util::types_equal(typ, &norm_typ) {
+            self.deferred_projection_obligations.push((typ.clone(), norm_typ.clone()));
+        }
+
+        norm_typ
     }
 }
 
@@ -423,11 +530,16 @@ fn merge_info(info1: &Info, info2: &Info) -> (Info, Option<(Typ, Typ)>) {
     match (info1, info2) {
         (Info::Unknown, info) => (info.clone(), None),
         (info, Info::Unknown) => (info.clone(), None),
-        (_, Info::Contradiction) => (Info::Contradiction, None),
-        (Info::Contradiction, _) => (Info::Contradiction, None),
         (Info::UnknownIntegerType, Info::UnknownIntegerType) => (Info::UnknownIntegerType, None),
         (Info::Known(t1), Info::Known(t2)) => {
-            (Info::Known(t2.clone()), Some((t1.clone(), t2.clone())))
+            let t = if matches!(&**t2, TypX::Projection { .. })
+                && !matches!(&**t1, TypX::Projection { .. })
+            {
+                t1.clone()
+            } else {
+                t2.clone()
+            };
+            (Info::Known(t), Some((t1.clone(), t2.clone())))
         }
         (Info::UnknownIntegerType, Info::Known(t))
         | (Info::Known(t), Info::UnknownIntegerType)
@@ -435,7 +547,8 @@ fn merge_info(info1: &Info, info2: &Info) -> (Info, Option<(Typ, Typ)>) {
             if is_definitely_integer_type(t) {
                 (Info::Known(t.clone()), None)
             } else {
-                (Info::Contradiction, None)
+                todo!();
+                //(Info::Contradiction, None)
             }
         }
     }
@@ -444,13 +557,13 @@ fn merge_info(info1: &Info, info2: &Info) -> (Info, Option<(Typ, Typ)>) {
 fn merge_info_concrete(info1: &Info, t2: &Typ) -> (Info, Option<Typ>) {
     match info1 {
         Info::Unknown => (Info::Known(t2.clone()), None),
-        Info::Contradiction => (Info::Contradiction, None),
         Info::Known(t1) => (Info::Known(t1.clone()), Some(t1.clone())),
         Info::UnknownIntegerType => {
             if is_definitely_integer_type(t2) {
                 (Info::Known(t2.clone()), None)
             } else {
-                (Info::Contradiction, None)
+                todo!();
+                //(Info::Contradiction, None)
             }
         }
     }
