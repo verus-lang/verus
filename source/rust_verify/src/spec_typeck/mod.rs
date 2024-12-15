@@ -10,6 +10,7 @@ mod finalize_expr;
 
 mod reverse_type_map;
 mod method_probe;
+mod project;
 
 pub struct State<'a, 'tcx> {
     scope_map: air::scope_map::ScopeMap<vir::ast::VarIdent, vir::ast::Typ>,
