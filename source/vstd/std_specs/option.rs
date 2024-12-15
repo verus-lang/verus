@@ -188,4 +188,21 @@ pub fn ex_option_clone<T: Clone>(opt: &Option<T>) -> (res: Option<T>)
     opt.clone()
 }
 
+// unwrap_or
+#[verifier::inline]
+pub open spec fn spec_ok_or<T, E>(option: Option<T>, err: E) -> Result<T, E> {
+    match option {
+        Some(t) => Ok(t),
+        None => Err(err),
+    }
+}
+
+#[verifier::external_fn_specification]
+pub fn ex_ok_or<T, E>(option: Option<T>, err: E) -> (res: Result<T, E>)
+    ensures
+        res == spec_ok_or(option, err),
+{
+    option.ok_or(err)
+}
+
 } // verus!
