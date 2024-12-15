@@ -312,7 +312,7 @@ impl<'a, 'b, 'tcx> TypeFolder<TyCtxt<'tcx>> for AssocTypeNormalizer<'a, 'b, 'tcx
                         self.cause.span,
                         false,
                         |diag| {
-                            diag.note(crate::fluent_generated::trait_selection_ty_alias_overflow);
+                            diag.note(crate::fluent_generated::trait_selection_verus_fork_ty_alias_overflow);
                         },
                     );
                 }

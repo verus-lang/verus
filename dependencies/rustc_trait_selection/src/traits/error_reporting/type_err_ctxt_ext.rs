@@ -3249,7 +3249,7 @@ impl<'tcx> TypeErrCtxt<'_, 'tcx> {
         {
             err.span_help(
                 self.tcx.def_span(trait_ref.def_id()),
-                crate::fluent_generated::trait_selection_trait_has_no_impls,
+                crate::fluent_generated::trait_selection_verus_fork_trait_has_no_impls,
             );
         } else if !suggested && !unsatisfied_const {
             // Can't show anything else useful, try to find similar impls.

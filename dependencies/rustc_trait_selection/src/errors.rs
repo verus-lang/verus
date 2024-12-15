@@ -8,7 +8,7 @@ use rustc_middle::ty::{self, ClosureKind, PolyTraitRef, Ty};
 use rustc_span::{Span, Symbol};
 
 #[derive(Diagnostic)]
-#[diag(trait_selection_dump_vtable_entries)]
+#[diag(trait_selection_verus_fork_dump_vtable_entries)]
 pub struct DumpVTableEntries<'a> {
     #[primary_span]
     pub span: Span,
@@ -17,7 +17,7 @@ pub struct DumpVTableEntries<'a> {
 }
 
 #[derive(Diagnostic)]
-#[diag(trait_selection_unable_to_construct_constant_value)]
+#[diag(trait_selection_verus_fork_unable_to_construct_constant_value)]
 pub struct UnableToConstructConstantValue<'a> {
     #[primary_span]
     pub span: Span,
@@ -25,7 +25,7 @@ pub struct UnableToConstructConstantValue<'a> {
 }
 
 #[derive(Diagnostic)]
-#[diag(trait_selection_empty_on_clause_in_rustc_on_unimplemented, code = E0232)]
+#[diag(trait_selection_verus_fork_empty_on_clause_in_rustc_on_unimplemented, code = E0232)]
 pub struct EmptyOnClauseInOnUnimplemented {
     #[primary_span]
     #[label]
@@ -33,7 +33,7 @@ pub struct EmptyOnClauseInOnUnimplemented {
 }
 
 #[derive(Diagnostic)]
-#[diag(trait_selection_invalid_on_clause_in_rustc_on_unimplemented, code = E0232)]
+#[diag(trait_selection_verus_fork_invalid_on_clause_in_rustc_on_unimplemented, code = E0232)]
 pub struct InvalidOnClauseInOnUnimplemented {
     #[primary_span]
     #[label]
@@ -41,7 +41,7 @@ pub struct InvalidOnClauseInOnUnimplemented {
 }
 
 #[derive(Diagnostic)]
-#[diag(trait_selection_no_value_in_rustc_on_unimplemented, code = E0232)]
+#[diag(trait_selection_verus_fork_no_value_in_rustc_on_unimplemented, code = E0232)]
 #[note]
 pub struct NoValueInOnUnimplemented {
     #[primary_span]
@@ -60,26 +60,26 @@ pub struct NegativePositiveConflict<'tcx> {
 impl<G: EmissionGuarantee> Diagnostic<'_, G> for NegativePositiveConflict<'_> {
     #[track_caller]
     fn into_diag(self, dcx: &DiagCtxt, level: Level) -> Diag<'_, G> {
-        let mut diag = Diag::new(dcx, level, fluent::trait_selection_negative_positive_conflict);
+        let mut diag = Diag::new(dcx, level, fluent::trait_selection_verus_fork_negative_positive_conflict);
         diag.arg("trait_desc", self.trait_desc.print_only_trait_path().to_string());
         diag.arg("self_desc", self.self_ty.map_or_else(|| "none".to_string(), |ty| ty.to_string()));
         diag.span(self.impl_span);
         diag.code(E0751);
         match self.negative_impl_span {
             Ok(span) => {
-                diag.span_label(span, fluent::trait_selection_negative_implementation_here);
+                diag.span_label(span, fluent::trait_selection_verus_fork_negative_implementation_here);
             }
             Err(cname) => {
-                diag.note(fluent::trait_selection_negative_implementation_in_crate);
+                diag.note(fluent::trait_selection_verus_fork_negative_implementation_in_crate);
                 diag.arg("negative_impl_cname", cname.to_string());
             }
         }
         match self.positive_impl_span {
             Ok(span) => {
-                diag.span_label(span, fluent::trait_selection_positive_implementation_here);
+                diag.span_label(span, fluent::trait_selection_verus_fork_positive_implementation_here);
             }
             Err(cname) => {
-                diag.note(fluent::trait_selection_positive_implementation_in_crate);
+                diag.note(fluent::trait_selection_verus_fork_positive_implementation_in_crate);
                 diag.arg("positive_impl_cname", cname.to_string());
             }
         }
@@ -88,7 +88,7 @@ impl<G: EmissionGuarantee> Diagnostic<'_, G> for NegativePositiveConflict<'_> {
 }
 
 #[derive(Diagnostic)]
-#[diag(trait_selection_inherent_projection_normalization_overflow)]
+#[diag(trait_selection_verus_fork_inherent_projection_normalization_overflow)]
 pub struct InherentProjectionNormalizationOverflow {
     #[primary_span]
     pub span: Span,
@@ -110,7 +110,7 @@ impl Subdiagnostic for AdjustSignatureBorrow {
             AdjustSignatureBorrow::Borrow { to_borrow } => {
                 diag.arg("len", to_borrow.len());
                 diag.multipart_suggestion_verbose(
-                    fluent::trait_selection_adjust_signature_borrow,
+                    fluent::trait_selection_verus_fork_adjust_signature_borrow,
                     to_borrow,
                     Applicability::MaybeIncorrect,
                 );
@@ -118,7 +118,7 @@ impl Subdiagnostic for AdjustSignatureBorrow {
             AdjustSignatureBorrow::RemoveBorrow { remove_borrow } => {
                 diag.arg("len", remove_borrow.len());
                 diag.multipart_suggestion_verbose(
-                    fluent::trait_selection_adjust_signature_remove_borrow,
+                    fluent::trait_selection_verus_fork_adjust_signature_remove_borrow,
                     remove_borrow,
                     Applicability::MaybeIncorrect,
                 );
@@ -128,14 +128,14 @@ impl Subdiagnostic for AdjustSignatureBorrow {
 }
 
 #[derive(Diagnostic)]
-#[diag(trait_selection_closure_kind_mismatch, code = E0525)]
+#[diag(trait_selection_verus_fork_closure_kind_mismatch, code = E0525)]
 pub struct ClosureKindMismatch {
     #[primary_span]
     #[label]
     pub closure_span: Span,
     pub expected: ClosureKind,
     pub found: ClosureKind,
-    #[label(trait_selection_closure_kind_requirement)]
+    #[label(trait_selection_verus_fork_closure_kind_requirement)]
     pub cause_span: Span,
 
     pub trait_prefix: &'static str,
@@ -148,7 +148,7 @@ pub struct ClosureKindMismatch {
 }
 
 #[derive(Subdiagnostic)]
-#[label(trait_selection_closure_fn_once_label)]
+#[label(trait_selection_verus_fork_closure_fn_once_label)]
 pub struct ClosureFnOnceLabel {
     #[primary_span]
     pub span: Span,
@@ -156,7 +156,7 @@ pub struct ClosureFnOnceLabel {
 }
 
 #[derive(Subdiagnostic)]
-#[label(trait_selection_closure_fn_mut_label)]
+#[label(trait_selection_verus_fork_closure_fn_mut_label)]
 pub struct ClosureFnMutLabel {
     #[primary_span]
     pub span: Span,
@@ -164,7 +164,7 @@ pub struct ClosureFnMutLabel {
 }
 
 #[derive(Diagnostic)]
-#[diag(trait_selection_async_closure_not_fn)]
+#[diag(trait_selection_verus_fork_async_closure_not_fn)]
 pub(crate) struct AsyncClosureNotFn {
     #[primary_span]
     pub span: Span,

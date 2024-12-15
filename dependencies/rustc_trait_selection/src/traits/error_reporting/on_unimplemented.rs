@@ -312,7 +312,7 @@ pub enum AppendConstMessage {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(trait_selection_malformed_on_unimplemented_attr)]
+#[diag(trait_selection_verus_fork_malformed_on_unimplemented_attr)]
 #[help]
 pub struct MalformedOnUnimplementedAttrLint {
     #[label]
@@ -326,17 +326,17 @@ impl MalformedOnUnimplementedAttrLint {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(trait_selection_missing_options_for_on_unimplemented_attr)]
+#[diag(trait_selection_verus_fork_missing_options_for_on_unimplemented_attr)]
 #[help]
 pub struct MissingOptionsForOnUnimplementedAttr;
 
 #[derive(LintDiagnostic)]
-#[diag(trait_selection_ignored_diagnostic_option)]
+#[diag(trait_selection_verus_fork_ignored_diagnostic_option)]
 pub struct IgnoredDiagnosticOption {
     pub option_name: &'static str,
     #[label]
     pub span: Span,
-    #[label(trait_selection_other_label)]
+    #[label(trait_selection_verus_fork_other_label)]
     pub prev_span: Span,
 }
 
@@ -362,7 +362,7 @@ impl IgnoredDiagnosticOption {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(trait_selection_unknown_format_parameter_for_on_unimplemented_attr)]
+#[diag(trait_selection_verus_fork_unknown_format_parameter_for_on_unimplemented_attr)]
 #[help]
 pub struct UnknownFormatParameterForOnUnimplementedAttr {
     argument_name: Symbol,
@@ -370,17 +370,17 @@ pub struct UnknownFormatParameterForOnUnimplementedAttr {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(trait_selection_disallowed_positional_argument)]
+#[diag(trait_selection_verus_fork_disallowed_positional_argument)]
 #[help]
 pub struct DisallowedPositionalArgument;
 
 #[derive(LintDiagnostic)]
-#[diag(trait_selection_invalid_format_specifier)]
+#[diag(trait_selection_verus_fork_invalid_format_specifier)]
 #[help]
 pub struct InvalidFormatSpecifier;
 
 #[derive(LintDiagnostic)]
-#[diag(trait_selection_wrapped_parser_error)]
+#[diag(trait_selection_verus_fork_wrapped_parser_error)]
 pub struct WrappedParserError {
     description: String,
     label: String,
