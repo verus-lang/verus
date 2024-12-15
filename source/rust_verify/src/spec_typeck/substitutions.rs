@@ -50,6 +50,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 false,
             )?;
             let vir_typ = subst_typ(&typ_substs, &vir_typ);
+            let vir_typ = self.normalize_typ(&vir_typ);
             vir_input_typs.push(vir_typ);
         }
 
@@ -62,6 +63,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             false,
         )?;
         let vir_output_typ = subst_typ(&typ_substs, &vir_output_typ);
+        let vir_output_typ = self.normalize_typ(&vir_output_typ);
 
         Ok((Arc::new(vir_input_typs), vir_output_typ))
     }
@@ -115,6 +117,8 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             &item_ty,
             false,
         )?;
+        let vir_item_typ = subst_typ(&typ_substs, &vir_item_typ);
+        let vir_item_typ = self.normalize_typ(&vir_item_typ);
 
         Ok(vir_item_typ)
     }
@@ -163,6 +167,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             false,
         )?;
         let vir_field_typ = subst_typ(&typ_substs, &vir_field_typ);
+        let vir_field_typ = self.normalize_typ(&vir_field_typ);
 
         Ok(vir_field_typ)
        

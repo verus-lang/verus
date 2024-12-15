@@ -19,7 +19,7 @@ pub struct State<'a, 'tcx> {
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     whole_span: rustc_span::Span,
 
-    deferred_projection_obligations: Vec<(vir::ast::Typ, vir::ast::Typ)>,
+    deferred_projection_obligations: Vec<(unifier::Alias, vir::ast::Typ)>,
 }
 
 pub fn typecheck<'tcx>(

@@ -15,7 +15,7 @@ impl State<'_, '_> {
     fn finalize_one_typ(&mut self, t: &Typ) -> Result<Typ, VirErr> {
         Ok(match &**t {
             TypX::UnificationVar(_)  => self.get_finished_typ(t),
-            | TypX::Projection { .. } => self.finalized_normalize(t), // TODO obligations
+            | TypX::Projection { .. } => unreachable!(),
             _ => t.clone(),
         })
     }

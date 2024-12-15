@@ -1,4 +1,4 @@
-use vir::ast::{Typ, TypX, VirErr, IntRange};
+use vir::ast::{Typ, TypX, VirErr, IntRange, Typs};
 use super::State;
 use std::sync::Arc;
 
@@ -6,7 +6,20 @@ use std::sync::Arc;
 enum Info {
     Unknown,
     UnknownIntegerType,
+    Alias(Alias),
     Known(Typ),
+}
+
+#[derive(Clone)]
+pub struct Alias {
+    pub def_id: rustc_span::def_id::DefId,
+    pub args: Typs,
+}
+
+#[derive(Clone)]
+pub enum AliasOrTyp {
+    Alias(Alias),
+    Typ(Typ),
 }
 
 struct UFNode {
@@ -97,6 +110,7 @@ impl State<'_, '_> {
         let typ = match &self.unifier.info[i] {
             Info::Unknown => todo!(),
             Info::UnknownIntegerType => vir::ast_util::int_typ(),
+            Info::Alias(_) => todo!(),
             Info::Known(typ) => typ.clone(),
         };
 
@@ -118,6 +132,7 @@ impl State<'_, '_> {
     }
 
     pub(crate) fn check_deferred_obligations(&mut self) {
+        /*
         let span = self.whole_span;
 
         use crate::rustc_infer::infer::TyCtxtInferExt;
@@ -174,6 +189,8 @@ impl State<'_, '_> {
         }
 
         assert!(self.deferred_projection_obligations.len() == 0);
+        */
+        todo!();
     }
 
     fn get_finished_typ_without_normalizing(&mut self, typ: &Typ) -> Typ {
@@ -197,9 +214,7 @@ impl State<'_, '_> {
                     let node = state.unifier.get_node(*uid);
                     Ok(state.unifier.final_typs.as_ref().unwrap()[node].clone().unwrap())
                 }
-                TypX::Projection { .. } => {
-                    Ok(state.finalized_normalize(t))
-                }
+                TypX::Projection { .. } => unreachable!(),
                 _ => Ok(t.clone())
             }
         }).unwrap()
@@ -223,22 +238,13 @@ impl State<'_, '_> {
         match &**t {
             TypX::UnificationVar(id) => {
                 let node = self.unifier.get_node(*id);
+                self.reduce_node(node);
                 match &self.unifier.info[node] {
-                    Info::Known(known_typ) => {
-                        if matches!(&**known_typ, TypX::Projection { .. }) {
-                            let normalized_known_typ = self.normalize(&known_typ.clone());
-                            self.unifier.info[node] = Info::Known(normalized_known_typ.clone());
-                            normalized_known_typ
-                        } else {
-                            known_typ.clone()
-                        }
-                    }
+                    Info::Known(known_typ) => known_typ.clone(),
                     _ => t.clone(),
                 }
             }
-            TypX::Projection { .. } => {
-                self.normalize(t)
-            }
+            TypX::Projection { .. } => unreachable!(),
             _ => t.clone(),
         }
     }
@@ -285,7 +291,7 @@ impl State<'_, '_> {
             Err(_ue) => {
                 dbg!(t1);
                 dbg!(t2);
-                panic!("asdf");
+                panic!("expect_exact");
             }
         }
     }
@@ -330,24 +336,6 @@ impl State<'_, '_> {
                     self.unify(typ1, &rt2)?;
                 }
                 Ok(())
-            }
-            (TypX::Projection { .. }, _) | (_, TypX::Projection { .. }) => {
-                let norm_t1 = match &**typ1 {
-                    TypX::Projection { .. } => self.normalize(typ1),
-                    _ => typ1.clone(),
-                };
-                let norm_t2 = match &**typ2 {
-                    TypX::Projection { .. } => self.normalize(typ2),
-                    _ => typ2.clone(),
-                };
-                if matches!(&*norm_t1, TypX::Projection { .. })
-                    || matches!(&*norm_t2, TypX::Projection { .. })
-                {
-                    self.deferred_projection_obligations.push((norm_t1, norm_t2));
-                    Ok(())
-                } else {
-                    self.unify(&norm_t1, &norm_t2)
-                }
             }
             (_ty1, _ty2) => {
                 self.unify_heads(typ1, typ2)
@@ -463,6 +451,7 @@ impl State<'_, '_> {
         }
     }
 
+    /*
     pub fn finalized_normalize(&mut self, typ: &Typ) -> Typ {
         //use crate::rustc_infer::infer::TyCtxtInferExt;
         let ty = self.finalized_vir_typ_to_typ(typ);
@@ -482,10 +471,45 @@ impl State<'_, '_> {
             false,
         ).unwrap()
     }
+    */
 
-    fn normalize(&mut self, typ: &Typ) -> Typ {
-        let r = rustc_trait_selection::traits::project::normalize_projection_type;
+    pub(crate) fn normalize_typ(&mut self, typ: &Typ) -> Typ {
+        vir::ast_visitor::map_typ_visitor_env(typ, self, &|state: &mut Self, t: &Typ| {
+            match &**t {
+                TypX::Projection { trait_typ_args, trait_path, name } => {
+                    let trait_def_id = crate::rust_to_vir_base::def_id_of_vir_path(trait_path);
+                    let assoc_item = state.tcx.associated_items(trait_def_id)
+                          .find_by_name_and_kinds(state.tcx, rustc_span::symbol::Ident::from_str(&name),
+                            &[rustc_middle::ty::AssocKind::Type], trait_def_id).unwrap();
+                    let alias = Alias {
+                        def_id: assoc_item.def_id,
+                        args: trait_typ_args.clone(),
+                    };
 
+                    let uid = state.unifier.new_node(Info::Alias(alias));
+                    Ok(Arc::new(TypX::UnificationVar(uid)))
+                }
+                _ => Ok(t.clone()),
+            }
+        }).unwrap()
+    }
+
+    fn reduce_node(&mut self, node: usize) {
+        match &self.unifier.info[node] {
+            Info::Alias(alias) => {
+                let new_info = match self.reduce_alias(&alias.clone()) {
+                    AliasOrTyp::Alias(new_alias) => Info::Alias(new_alias),
+                    AliasOrTyp::Typ(typ) => Info::Known(typ),
+                };
+                self.unifier.info[node] = new_info;
+            }
+            _ => { }
+        }
+    }
+
+    fn reduce_alias(&mut self, _alias: &Alias) -> AliasOrTyp {
+        todo!();
+        /*
         assert!(matches!(&**typ, TypX::Projection { .. }));
 
         use crate::rustc_trait_selection::traits::NormalizeExt;
@@ -514,6 +538,7 @@ impl State<'_, '_> {
         }
 
         norm_typ
+        */
     }
 }
 
@@ -553,6 +578,8 @@ fn merge_info(info1: &Info, info2: &Info) -> (Info, Option<(Typ, Typ)>) {
                 //(Info::Contradiction, None)
             }
         }
+        (Info::Alias(_), _) => todo!(),
+        (_, Info::Alias(_)) => todo!(),
     }
 }
 
@@ -560,6 +587,7 @@ fn merge_info_concrete(info1: &Info, t2: &Typ) -> (Info, Option<Typ>) {
     match info1 {
         Info::Unknown => (Info::Known(t2.clone()), None),
         Info::Known(t1) => (Info::Known(t1.clone()), Some(t1.clone())),
+        Info::Alias(_) => todo!(),
         Info::UnknownIntegerType => {
             if is_definitely_integer_type(t2) {
                 (Info::Known(t2.clone()), None)
