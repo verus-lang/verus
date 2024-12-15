@@ -508,7 +508,11 @@ impl State<'_, '_> {
     }
 
     fn reduce_alias(&mut self, _alias: &Alias) -> AliasOrTyp {
+        //let selcx = rustc_trait_selection_verus_fork::traits::SelectionContext::new(
         todo!();
+
+        //rustc_trait_selection_verus_fork::traits::project::project;
+        //todo!();
         /*
         assert!(matches!(&**typ, TypX::Projection { .. }));
 
