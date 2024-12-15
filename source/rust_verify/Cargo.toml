@@ -8,6 +8,7 @@ edition = "2018"
 [dependencies]
 air = { path = "../air" }
 vir = { path = "../vir" }
+rustc_trait_selection_verus_fork = { path = "../../dependencies/rustc_trait_selection" }
 serde = "1"
 serde_json = { version = ">=1.0.95", features = ["preserve_order"] }
 bincode = "1.0.1"

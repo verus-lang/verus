@@ -28,6 +28,7 @@
 #![feature(never_type)]
 #![feature(type_alias_impl_trait)]
 #![recursion_limit = "512"] // For rustdoc
+#![feature(rustc_private)]
 
 #[macro_use]
 extern crate rustc_macros;
@@ -40,6 +41,22 @@ extern crate tracing;
 extern crate rustc_middle;
 #[macro_use]
 extern crate smallvec;
+
+extern crate rustc_errors;
+extern crate rustc_infer;
+extern crate rustc_hir;
+extern crate rustc_span;
+extern crate rustc_session;
+extern crate rustc_next_trait_solver;
+extern crate rustc_index;
+extern crate rustc_ast;
+extern crate rustc_transmute;
+extern crate rustc_ast_ir;
+extern crate rustc_attr;
+extern crate rustc_parse_format;
+extern crate rustc_target;
+extern crate rustc_fluent_macro;
+extern crate rustc_query_system;
 
 pub mod errors;
 pub mod infer;
