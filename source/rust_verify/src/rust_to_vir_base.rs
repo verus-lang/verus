@@ -1038,41 +1038,43 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             rustc_middle::ty::AliasKind::Projection | rustc_middle::ty::AliasKind::Inherent,
             t,
         ) => {
-            // First, try to normalize to a non-projection type.
-            // This can enable concrete operations on the type (e.g.
-            // arithmetic if the normalized type is int) that
-            // wouldn't be allowed if the type were left in an unnormalized form.
-            use crate::rustc_trait_selection::traits::NormalizeExt;
-            let param_env = tcx.param_env(param_env_src);
-            let infcx = tcx.infer_ctxt().ignoring_regions().build();
-            let cause = rustc_infer::traits::ObligationCause::dummy();
-            let at = infcx.at(&cause, param_env);
-            let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
-            let norm = at.normalize(*ty);
-            if norm.value != *ty {
-                let mut has_infer = false;
-                for arg in norm.value.walk().into_iter() {
-                    if let GenericArgKind::Type(t) = arg.unpack() {
-                        if let TyKind::Infer(..) = t.kind() {
-                            // If we find any Infer variables, abort the normalization.
-                            //
-                            // Why this comes up:
-                            // 'normalize' will create inference variables if it encounters
-                            // a projection type that it can't normalize.
-                            // Probably, we shouldn't be calling normalize with non-normalizable
-                            // types.
-                            //
-                            // Currently, the reason this comes up has to do with the way
-                            // we invoke mid_ty_to_vir on an external_trait_specification.
-                            // Specifically, the param_env has [ Self: ProxyTrait ]
-                            // but we attempt to normalize <Self as ExternalTrait>::AssocTyp.
-                            // There may be a better way to handle this.
-                            has_infer = true;
+            if infers.is_none() {
+                // First, try to normalize to a non-projection type.
+                // This can enable concrete operations on the type (e.g.
+                // arithmetic if the normalized type is int) that
+                // wouldn't be allowed if the type were left in an unnormalized form.
+                use crate::rustc_trait_selection::traits::NormalizeExt;
+                let param_env = tcx.param_env(param_env_src);
+                let infcx = tcx.infer_ctxt().ignoring_regions().build();
+                let cause = rustc_infer::traits::ObligationCause::dummy();
+                let at = infcx.at(&cause, param_env);
+                let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
+                let norm = at.normalize(*ty);
+                if norm.value != *ty {
+                    let mut has_infer = false;
+                    for arg in norm.value.walk().into_iter() {
+                        if let GenericArgKind::Type(t) = arg.unpack() {
+                            if let TyKind::Infer(..) = t.kind() {
+                                // If we find any Infer variables, abort the normalization.
+                                //
+                                // Why this comes up:
+                                // 'normalize' will create inference variables if it encounters
+                                // a projection type that it can't normalize.
+                                // Probably, we shouldn't be calling normalize with non-normalizable
+                                // types.
+                                //
+                                // Currently, the reason this comes up has to do with the way
+                                // we invoke mid_ty_to_vir on an external_trait_specification.
+                                // Specifically, the param_env has [ Self: ProxyTrait ]
+                                // but we attempt to normalize <Self as ExternalTrait>::AssocTyp.
+                                // There may be a better way to handle this.
+                                has_infer = true;
+                            }
+                        }
+                        if !has_infer {
+                            return t_rec(&norm.value);
                         }
                     }
-                }
-                if !has_infer {
-                    return t_rec(&norm.value);
                 }
             }
             // If normalization isn't possible, return a projection type:
