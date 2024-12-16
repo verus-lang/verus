@@ -18,7 +18,6 @@ struct ReverseTypeState<'tcx> {
 }
 
 impl<'a, 'tcx> State<'a, 'tcx> {
-    /*
     pub fn finalized_vir_typs_to_generic_args(&self, typs: &Typs)
         -> &'tcx GenericArgs<'tcx>
     {
@@ -28,7 +27,6 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         }
         self.tcx.mk_args(&mid_args)
     }
-    */
 
     pub fn finalized_vir_typ_to_typ(&self, typ: &Typ) -> Ty<'tcx>
     {

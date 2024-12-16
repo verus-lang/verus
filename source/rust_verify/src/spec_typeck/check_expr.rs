@@ -2,10 +2,10 @@ use crate::util::{err_span};
 use crate::unsupported_err;
 use crate::spec_typeck::State;
 use crate::spec_typeck::check_path::PathResolution;
-use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant, FunX, CallTargetKind, AutospecUsage, Dt, Ident, VirErr};
+use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant, FunX, CallTargetKind, AutospecUsage, Dt, Ident, VirErr, InequalityOp};
 use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt, ExprField};
 use std::sync::Arc;
-use vir::ast_util::{unit_typ, int_typ, integer_typ, bool_typ};
+use vir::ast_util::{unit_typ, int_typ, integer_typ, bool_typ, nat_typ};
 use crate::spec_typeck::check_ty::{integer_typ_of_int_ty, integer_typ_of_uint_ty};
 use rustc_ast::ast::{LitKind, LitIntType};
 use num_bigint::BigInt;
@@ -16,6 +16,7 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{AdtDef, VariantDef};
 use std::collections::HashSet;
 use rustc_hir::def::CtorKind;
+use crate::spec_typeck::unifier::UnknownInteger;
 
 impl<'a, 'tcx> State<'a, 'tcx> {
     pub fn check_expr(
@@ -357,6 +358,27 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             }
             ExprKind::Binary(bin_op, lhs, rhs) => {
                 match &bin_op.node {
+                    BinOpKind::Add | BinOpKind::Mul => {
+                        let l = self.check_expr(lhs)?;
+                        let r = self.check_expr(rhs)?;
+                        let l_ir = self.expect_integer_and_choose_int_range(&l.typ)?;
+                        let r_ir = self.expect_integer_and_choose_int_range(&r.typ)?;
+
+                        let typ = if l_ir.is_unsigned_or_nat() && r_ir.is_unsigned_or_nat() {
+                            nat_typ()
+                        } else {
+                            int_typ()
+                        };
+                        let arith_op = match &bin_op.node {
+                            BinOpKind::Add => ArithOp::Add,
+                            BinOpKind::Mul => ArithOp::Mul,
+                            _ => unreachable!(),
+                        };
+                        mk_expr(
+                            &typ,
+                            ExprX::Binary(BinaryOp::Arith(arith_op, Mode::Spec), l, r),
+                        )
+                    }
                     BinOpKind::Sub => {
                         let l = self.check_expr(lhs)?;
                         let r = self.check_expr(rhs)?;
@@ -375,6 +397,23 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         let bin_op = match &bin_op.node {
                             BinOpKind::And => BinaryOp::And,
                             BinOpKind::Or => BinaryOp::Or,
+                            _ => unreachable!(),
+                        };
+                        mk_expr(
+                            &bool_typ(),
+                            ExprX::Binary(bin_op, l, r),
+                        )
+                    }
+                    BinOpKind::Le | BinOpKind::Ge | BinOpKind::Lt | BinOpKind::Gt => {
+                        let l = self.check_expr(lhs)?;
+                        let r = self.check_expr(rhs)?;
+                        self.expect_integer(&l.typ)?;
+                        self.expect_integer(&r.typ)?;
+                        let bin_op = match &bin_op.node {
+                            BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
+                            BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
+                            BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
+                            BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
                             _ => unreachable!(),
                         };
                         mk_expr(
@@ -421,7 +460,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         let typ = match suffix {
             LitIntSuffix::Int => integer_typ(IntRange::Int),
             LitIntSuffix::Nat => integer_typ(IntRange::Nat),
-            LitIntSuffix::Normal(LitIntType::Unsuffixed) => self.new_unknown_integer_typ(),
+            LitIntSuffix::Normal(LitIntType::Unsuffixed) => self.new_unknown_integer_typ(UnknownInteger::Any),
             LitIntSuffix::Normal(LitIntType::Signed(s)) => integer_typ_of_int_ty(s),
             LitIntSuffix::Normal(LitIntType::Unsigned(u)) => integer_typ_of_uint_ty(u),
         };

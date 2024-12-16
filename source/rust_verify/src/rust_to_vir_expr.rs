@@ -442,7 +442,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ, exprx))
 }
 
-fn handle_dot_dot(
+pub(crate) fn handle_dot_dot(
     num_entries_in_pat: usize,
     total_entries: usize,
     dot_dot_pos: &rustc_hir::DotDotPos,

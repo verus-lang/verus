@@ -293,6 +293,18 @@ impl IntRange {
             | IntRange::Char => true,
         }
     }
+
+    pub fn is_unsigned_or_nat(self) -> bool {
+        match self {
+            IntRange::Int
+              | IntRange::I(_) 
+              | IntRange::ISize => false,
+            IntRange::Nat
+              | IntRange::U(_) 
+              | IntRange::USize => true,
+            IntRange::Char => false,
+        }
+    }
 }
 
 pub(crate) fn dt_as_friendly_rust_name(dt: &Dt) -> String {
@@ -480,6 +492,10 @@ pub fn str_typ() -> Typ {
 
 pub fn int_typ() -> Typ {
     Arc::new(TypX::Int(IntRange::Int))
+}
+
+pub fn nat_typ() -> Typ {
+    Arc::new(TypX::Int(IntRange::Nat))
 }
 
 pub fn integer_typ(ir: IntRange) -> Typ {
