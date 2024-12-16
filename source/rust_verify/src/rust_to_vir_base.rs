@@ -1017,8 +1017,19 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
                 for arg in norm.value.walk().into_iter() {
                     if let GenericArgKind::Type(t) = arg.unpack() {
                         if let TyKind::Infer(..) = t.kind() {
-                            // It's not clear why normalize returns Infer
-                            // but it's not what we want
+                            // If we find any Infer variables, abort the normalization.
+                            //
+                            // Why this comes up:
+                            // 'normalize' will create inference variables if it encounters
+                            // a projection type that it can't normalize.
+                            // Probably, we shouldn't be calling normalize with non-normalizable
+                            // types.
+                            //
+                            // Currently, the reason this comes up has to do with the way
+                            // we invoke mid_ty_to_vir on an external_trait_specification.
+                            // Specifically, the param_env has [ Self: ProxyTrait ]
+                            // but we attempt to normalize <Self as ExternalTrait>::AssocTyp.
+                            // There may be a better way to handle this.
                             has_infer = true;
                         }
                     }
