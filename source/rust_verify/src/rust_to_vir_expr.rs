@@ -2419,6 +2419,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
                     bctx.fun_id,
                     lhs.span,
                     &bctx.types.expr_ty_adjusted(lhs),
+                    None,
                     true,
                 )?
                 .1;

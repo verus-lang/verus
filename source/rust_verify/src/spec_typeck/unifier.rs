@@ -563,6 +563,7 @@ impl State<'_, '_> {
 
     fn reduce_alias(&self, alias: &Alias) -> AliasOrTyp {
         use crate::rust_to_vir_base::mid_ty_to_vir;
+        use crate::rust_to_vir_base::mid_ty_to_vir_ghost;
         use rustc_middle::ty::GenericArgKind;
 
         let (args, infcx, unif_map) = self.vir_typs_to_middle_tys(self.whole_span, &alias.args);
@@ -601,8 +602,8 @@ impl State<'_, '_> {
 
         match m_alias_or_ty {
             MiddleAliasOrTy::Ty(ty) => {
-                let typ = mid_ty_to_vir(self.tcx, &self.bctx.ctxt.verus_items, 
-                    self.bctx.fun_id, self.whole_span, &ty, false).unwrap();
+                let typ = mid_ty_to_vir_ghost(self.tcx, &self.bctx.ctxt.verus_items, 
+                    self.bctx.fun_id, self.whole_span, &ty, Some(&unif_map), false).unwrap().0;
                 AliasOrTyp::Typ(typ)
             }
             MiddleAliasOrTy::Alias(alias) => {
@@ -610,8 +611,8 @@ impl State<'_, '_> {
                 for arg in alias.args.iter() {
                     match arg.unpack() {
                         GenericArgKind::Type(ty) => {
-                            let typ = mid_ty_to_vir(self.tcx, &self.bctx.ctxt.verus_items, 
-                                self.bctx.fun_id, self.whole_span, &ty, false).unwrap();
+                            let typ = mid_ty_to_vir_ghost(self.tcx, &self.bctx.ctxt.verus_items, 
+                                self.bctx.fun_id, self.whole_span, &ty, Some(&unif_map), false).unwrap().0;
                             typs.push(typ);
                         }
                         _ => todo!()
