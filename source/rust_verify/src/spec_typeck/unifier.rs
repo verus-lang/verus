@@ -3,6 +3,7 @@ use super::State;
 use std::sync::Arc;
 use std::collections::HashSet;
 use std::cell::Cell;
+use rustc_middle::ty::GenericArg;
 
 #[derive(Clone, Debug)]
 pub enum Info {
@@ -134,7 +135,6 @@ impl State<'_, '_> {
     }
 
     pub(crate) fn check_deferred_obligations(&mut self) {
-        /*
         let span = self.whole_span;
 
         use crate::rustc_infer::infer::TyCtxtInferExt;
@@ -147,22 +147,22 @@ impl State<'_, '_> {
 
         let deferred_projection_obligations = std::mem::take(&mut self.deferred_projection_obligations);
 
-        for (t1, t2) in deferred_projection_obligations.iter() {
-            let (t1, t2) = if matches!(&**t1, TypX::Projection { .. }) { (t1, t2) } else { (t2, t1) };
+        for (alias, typ) in deferred_projection_obligations.iter() {
+            let typ = self.get_finished_typ(typ);
+            let ty = self.finalized_vir_typ_to_typ(&typ);
 
-            let t1 = self.get_finished_typ_without_normalizing(&t1);
-            let t2 = self.get_finished_typ_without_normalizing(&t2);
-            let ty1 = self.finalized_vir_typ_to_typ(&t1);
-            let ty2 = self.finalized_vir_typ_to_typ(&t2);
+            let mut mid_args: Vec<GenericArg<'_>> = vec![];
+            for typ in alias.args.iter() {
+                let typ = self.get_finished_typ(typ);
+                let ty = self.finalized_vir_typ_to_typ(&typ);
+                mid_args.push(GenericArg::from(ty));
+            }
 
-            let alias_ty = match ty1.kind() {
-                rustc_middle::ty::TyKind::Alias(_alias_kind, ty_alias) => ty_alias,
-                _ => unreachable!(),
-            };
+            let alias_ty = rustc_middle::ty::AliasTy::new(self.tcx, alias.def_id, mid_args);
 
             let pp = rustc_middle::ty::ProjectionPredicate {
-                projection_ty: *alias_ty,
-                term: rustc_middle::ty::Term::from(ty2),
+                projection_ty: alias_ty,
+                term: rustc_middle::ty::Term::from(ty),
             };
             let ck = rustc_middle::ty::ClauseKind::Projection(pp);
             let pk = rustc_middle::ty::PredicateKind::Clause(ck);
@@ -191,20 +191,7 @@ impl State<'_, '_> {
         }
 
         assert!(self.deferred_projection_obligations.len() == 0);
-        */
         todo!();
-    }
-
-    fn get_finished_typ_without_normalizing(&mut self, typ: &Typ) -> Typ {
-        vir::ast_visitor::map_typ_visitor_env(typ, self, &|state: &mut Self, t: &Typ| {
-            match &**t {
-                TypX::UnificationVar(uid) => {
-                    let node = state.unifier.get_node(*uid);
-                    Ok(state.unifier.final_typs.as_ref().unwrap()[node].clone().unwrap())
-                }
-                _ => Ok(t.clone())
-            }
-        }).unwrap()
     }
 
     /// Get the final type with no unification variables.
@@ -321,25 +308,40 @@ impl State<'_, '_> {
                     Ok(())
                 }
             }
-            (TypX::UnificationVar(id1), _ty2) => {
-                let node = self.unifier.get_node(*id1);
-                let (new_info, recurse_typ) = merge_info_concrete(&self.unifier.info[node], typ2);
-                self.unifier.info[node] = new_info;
+            (TypX::UnificationVar(uid), _) | (_, TypX::UnificationVar(uid)) => {
+                let (typ, uvar_on_left) = if matches!(&**typ1, TypX::UnificationVar(_)) {
+                    (typ2, true)
+                } else {
+                    (typ1, false)
+                };
 
-                if let Some(rt1) = recurse_typ {
-                    self.unify(&rt1, typ2)?;
+                let node = self.unifier.get_node(*uid);
+                match &self.unifier.info[node] {
+                    Info::Unknown => {
+                        self.unifier.info[node] = Info::Known(typ.clone());
+                        Ok(())
+                    }
+                    Info::UnknownIntegerType => {
+                        if is_definitely_integer_type(typ) {
+                            self.unifier.info[node] = Info::Known(typ.clone());
+                        } else {
+                            todo!();
+                        }
+                        Ok(())
+                    }
+                    Info::Known(known_typ) => {
+                        if uvar_on_left {
+                            self.unify(&known_typ.clone(), typ)
+                        } else {
+                            self.unify(typ, &known_typ.clone())
+                        }
+                    }
+                    Info::Alias(alias) => {
+                        self.deferred_projection_obligations.push((alias.clone(), typ.clone()));
+                        self.unifier.info[node] = Info::Known(typ.clone());
+                        Ok(())
+                    }
                 }
-                Ok(())
-            }
-            (_ty1, TypX::UnificationVar(id2)) => {
-                let node = self.unifier.get_node(*id2);
-                let (new_info, recurse_typ) = merge_info_concrete(&self.unifier.info[node], typ1);
-                self.unifier.info[node] = new_info;
-
-                if let Some(rt2) = recurse_typ {
-                    self.unify(typ1, &rt2)?;
-                }
-                Ok(())
             }
             (_ty1, _ty2) => {
                 self.unify_heads(typ1, typ2)
@@ -553,7 +555,7 @@ impl State<'_, '_> {
                 AliasOrTyp::Alias(alias) => Info::Alias(alias),
                 AliasOrTyp::Typ(t) => {
                     match &*t {
-                        TypX::UnificationVar(v) => todo!(),
+                        TypX::UnificationVar(_v) => todo!(),
                         _ => Info::Known(t),
                     }
                 }
