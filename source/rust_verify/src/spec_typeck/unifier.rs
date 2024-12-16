@@ -2,8 +2,8 @@ use vir::ast::{Typ, TypX, VirErr, IntRange, Typs};
 use super::State;
 use std::sync::Arc;
 use std::collections::HashSet;
-use std::cell::Cell;
 use rustc_middle::ty::GenericArg;
+use super::unification_table::NodeClass;
 
 #[derive(Debug, Clone, Copy)]
 pub enum UnknownInteger {
@@ -22,6 +22,12 @@ pub enum Info {
 }
 
 #[derive(Clone, Debug)]
+pub struct Entry {
+    pub info: Info,
+    pub final_typ: Option<Typ>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Alias {
     pub def_id: rustc_span::def_id::DefId,
     pub args: Typs,
@@ -33,78 +39,16 @@ pub enum AliasOrTyp {
     Typ(Typ),
 }
 
-struct UFNode {
-    parent: Cell<usize>,
-    rank: usize,
-}
-
-pub struct Unifier {
-    uf_nodes: Vec<UFNode>,
-    pub info: Vec<Info>,
-    final_typs: Option<Vec<Option<Typ>>>,
-}
-
 enum UnifyError {
     Error,
-}
-
-impl Unifier {
-    pub fn new() -> Self {
-        Unifier {
-            uf_nodes: vec![],
-            info: vec![],
-            final_typs: None,
-        }
-    }
-
-    fn new_node(&mut self, info: Info) -> usize {
-        assert!(self.final_typs.is_none());
-        self.info.push(info);
-        let me = self.uf_nodes.len();
-        self.uf_nodes.push(UFNode { parent: Cell::new(me), rank: 0 });
-        me
-    }
-
-    pub fn get_node(&self, i: usize) -> usize {
-        if self.uf_nodes[i].parent.get() == i {
-            return i;
-        }
-        let root = self.get_node(self.uf_nodes[i].parent.get());
-        self.uf_nodes[i].parent.set(root);
-        return root;
-    }
-
-    fn merge_nodes(&mut self, i: usize, j: usize, info: Info) {
-        assert!(self.final_typs.is_none());
-        assert!(i != j);
-        assert!(self.uf_nodes[i].parent.get() == i);
-        assert!(self.uf_nodes[j].parent.get() == j);
-
-        let new_node;
-        if self.uf_nodes[i].rank > self.uf_nodes[j].rank {
-            self.uf_nodes[j].parent.set(i);
-            new_node = i;
-        } else if self.uf_nodes[i].rank < self.uf_nodes[j].rank {
-            self.uf_nodes[i].parent.set(j);
-            new_node = j;
-        } else {
-            self.uf_nodes[j].parent.set(i);
-            self.uf_nodes[j].rank += 1;
-            new_node = i;
-        }
-
-        self.info[new_node] = info;
-    }
 }
 
 impl State<'_, '_> {
     // TODO overflow checking
     pub fn finish_unification(&mut self) -> Result<(), VirErr> {
-        self.unifier.final_typs = Some(vec![None; self.unifier.uf_nodes.len()]);
-
-        for i in 0 .. self.unifier.uf_nodes.len() {
-            if self.unifier.uf_nodes[i].parent.get() == i {
-               self.finish_rec(i);
+        for i in 0 .. self.unifier.len() {
+            if let Some(class) = self.unifier.is_root_of_class(i) {
+               self.finish_rec(class);
             }
         }
 
@@ -113,12 +57,12 @@ impl State<'_, '_> {
         Ok(())
     }
 
-    fn finish_rec(&mut self, i: usize) {
-        if self.unifier.final_typs.as_ref().unwrap()[i].is_some() {
+    fn finish_rec(&mut self, node: NodeClass) {
+        if self.unifier[node].final_typ.is_some() {
             return;
         }
 
-        let typ = match &self.unifier.info[i] {
+        let typ = match &self.unifier[node].info {
             Info::Unknown => todo!(),
             Info::UnknownInteger(UnknownInteger::Any) => vir::ast_util::nat_typ(),
             Info::UnknownInteger(UnknownInteger::Signed) => vir::ast_util::int_typ(),
@@ -131,7 +75,7 @@ impl State<'_, '_> {
                 TypX::UnificationVar(uid) => {
                     let node = state.unifier.get_node(*uid);
                     state.finish_rec(node);
-                    Ok(state.unifier.final_typs.as_ref().unwrap()[node].clone().unwrap())
+                    Ok(state.unifier[node].final_typ.clone().unwrap())
                 }
                 TypX::Projection { .. } => {
                     todo!();
@@ -140,7 +84,7 @@ impl State<'_, '_> {
             }
         }).unwrap();
 
-        self.unifier.final_typs.as_mut().unwrap()[i] = Some(t);
+        self.unifier[node].final_typ = Some(t);
     }
 
     pub(crate) fn check_deferred_obligations(&mut self) {
@@ -210,7 +154,7 @@ impl State<'_, '_> {
             match &**t {
                 TypX::UnificationVar(uid) => {
                     let node = state.unifier.get_node(*uid);
-                    Ok(state.unifier.final_typs.as_ref().unwrap()[node].clone().unwrap())
+                    Ok(state.unifier[node].final_typ.clone().unwrap())
                 }
                 TypX::Projection { .. } => unreachable!(),
                 _ => Ok(t.clone())
@@ -218,14 +162,18 @@ impl State<'_, '_> {
         }).unwrap()
     }
 
-    pub fn new_unknown_typ(&mut self) -> Typ {
-        let uid = self.unifier.new_node(Info::Unknown);
+    pub fn fresh_typ_with_info(&mut self, info: Info) -> Typ {
+        let entry = Entry { info, final_typ: None };
+        let uid = self.unifier.fresh_node(entry);
         Arc::new(TypX::UnificationVar(uid))
     }
 
+    pub fn new_unknown_typ(&mut self) -> Typ {
+        self.fresh_typ_with_info(Info::Unknown)
+    }
+
     pub fn new_unknown_integer_typ(&mut self, u: UnknownInteger) -> Typ {
-        let uid = self.unifier.new_node(Info::UnknownInteger(u));
-        Arc::new(TypX::UnificationVar(uid))
+        self.fresh_typ_with_info(Info::UnknownInteger(u))
     }
 
     pub fn expect_integer(&mut self, _u2: &Typ) -> Result<(), VirErr> {
@@ -240,10 +188,10 @@ impl State<'_, '_> {
         match &**t {
             TypX::UnificationVar(id) => {
                 let node = self.unifier.get_node(*id);
-                if matches!(&self.unifier.info[node], Info::Alias(_)) {
+                if matches!(&self.unifier[node].info, Info::Alias(_)) {
                     self.reduce_node_as_much_as_possible(node);
                 }
-                match &self.unifier.info[node] {
+                match &self.unifier[node].info {
                     Info::Known(known_typ) => known_typ.clone(),
                     _ => t.clone(),
                 }
@@ -308,9 +256,9 @@ impl State<'_, '_> {
                 let node2 = self.unifier.get_node(*id2);
                 if node1 != node2 {
                     let (merged_info, recurse_tys) = merge_info(
-                        &self.unifier.info[node1],
-                        &self.unifier.info[node2]);
-                    self.unifier.merge_nodes(node1, node2, merged_info);
+                        &self.unifier[node1].info,
+                        &self.unifier[node2].info);
+                    self.unifier.merge_nodes(node1, node2, Entry { info: merged_info, final_typ: None });
 
                     if let Some((rt1, rt2)) = recurse_tys {
                         self.unify(&rt1, &rt2)?;
@@ -329,14 +277,14 @@ impl State<'_, '_> {
                 };
 
                 let node = self.unifier.get_node(*uid);
-                match &self.unifier.info[node] {
+                match &self.unifier[node].info {
                     Info::Unknown => {
-                        self.unifier.info[node] = Info::Known(typ.clone());
+                        self.unifier[node].info = Info::Known(typ.clone());
                         Ok(())
                     }
                     Info::UnknownInteger(u) => {
                         if is_definitely_integer_type(typ, *u) {
-                            self.unifier.info[node] = Info::Known(typ.clone());
+                            self.unifier[node].info = Info::Known(typ.clone());
                         } else {
                             todo!();
                         }
@@ -351,7 +299,7 @@ impl State<'_, '_> {
                     }
                     Info::Alias(alias) => {
                         self.deferred_projection_obligations.push((alias.clone(), typ.clone()));
-                        self.unifier.info[node] = Info::Known(typ.clone());
+                        self.unifier[node].info = Info::Known(typ.clone());
                         Ok(())
                     }
                 }
@@ -505,17 +453,16 @@ impl State<'_, '_> {
                         args: trait_typ_args.clone(),
                     };
 
-                    let uid = state.unifier.new_node(Info::Alias(alias));
-                    Ok(Arc::new(TypX::UnificationVar(uid)))
+                    Ok(state.fresh_typ_with_info(Info::Alias(alias)))
                 }
                 _ => Ok(t.clone()),
             }
         }).unwrap()
     }
 
-    fn reduce_node_as_much_as_possible(&mut self, node: usize) {
+    fn reduce_node_as_much_as_possible(&mut self, node: NodeClass) {
         let mut reachable = vec![node];
-        let mut is_in_reachable = HashSet::<usize>::new();
+        let mut is_in_reachable = HashSet::<NodeClass>::new();
         is_in_reachable.insert(node);
 
         let mut idx = 0;
@@ -523,7 +470,7 @@ impl State<'_, '_> {
             let n = reachable[idx];
             idx += 1;
 
-            let typs: &[Typ] = match &self.unifier.info[n] {
+            let typs: &[Typ] = match &self.unifier[n].info {
                 Info::Alias(alias) => &alias.args,
                 Info::Known(t) => &[t.clone()],
                 Info::Unknown | Info::UnknownInteger(_) => &[]
@@ -544,7 +491,7 @@ impl State<'_, '_> {
 
         for node in reachable.iter().rev() {
             let node = *node;
-            if matches!(&self.unifier.info[node], Info::Alias(_)) {
+            if matches!(&self.unifier[node].info, Info::Alias(_)) {
                 self.reduce_one_node(node);
             }
         }
@@ -561,10 +508,10 @@ impl State<'_, '_> {
         */
     }
 
-    fn reduce_one_node(&mut self, node: usize) {
-        if let Info::Alias(alias) = &self.unifier.info[node] {
+    fn reduce_one_node(&mut self, node: NodeClass) {
+        if let Info::Alias(alias) = &self.unifier[node].info {
             let alias_or_typ = self.reduce_alias(alias);
-            self.unifier.info[node] = match alias_or_typ {
+            self.unifier[node].info = match alias_or_typ {
                 AliasOrTyp::Alias(alias) => Info::Alias(alias),
                 AliasOrTyp::Typ(t) => {
                     match &*t {

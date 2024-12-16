@@ -10,10 +10,11 @@ use rustc_middle::ty::GenericArgs;
 use std::sync::Arc;
 use vir::ast::IntRange;
 use rustc_middle::ty::TyVid;
+use super::unification_table::NodeClass;
 
 struct ReverseTypeState<'tcx> {
     span: Span,
-    id_map: HashMap<usize, rustc_middle::ty::Ty<'tcx>>,
+    id_map: HashMap<NodeClass, rustc_middle::ty::Ty<'tcx>>,
     infcx: InferCtxt<'tcx>,
 }
 
@@ -59,7 +60,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         for (our_uid, rust_ty) in r.id_map.iter() {
             match rust_ty.kind() {
                 TyKind::Infer(InferTy::TyVar(rust_ty_vid)) => {
-                    h.insert(*rust_ty_vid, *our_uid);
+                    h.insert(*rust_ty_vid, our_uid.0);
                 }
                 _ => unreachable!()
             }
@@ -89,7 +90,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             TypX::UnificationVar(i) => {
                 let rstate: &mut ReverseTypeState<'tcx> = r.as_mut().unwrap();
                 let node = self.unifier.get_node(*i);
-                if let Info::Known(t) = &self.unifier.info[node] {
+                if let Info::Known(t) = &self.unifier[node].info {
                     self.vir_ty_to_middle_rec(r, t)
                 } else {
                     if rstate.id_map.contains_key(&node) {

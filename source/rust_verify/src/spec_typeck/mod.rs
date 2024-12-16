@@ -5,6 +5,7 @@ mod check_expr;
 mod check_ty;
 mod check_pat;
 mod check_path;
+mod unification_table;
 mod unifier;
 mod substitutions;
 mod finalize_expr;
@@ -17,7 +18,7 @@ mod method_probe;
 pub struct State<'a, 'tcx> {
     scope_map: air::scope_map::ScopeMap<vir::ast::VarIdent, vir::ast::Typ>,
     param_name_to_param_ty: std::collections::HashMap<vir::ast::Ident, rustc_middle::ty::Ty<'tcx>>,
-    unifier: unifier::Unifier,
+    unifier: unification_table::UnificationTable<unifier::Entry>,
     bctx: &'a crate::context::BodyCtxt<'tcx>,
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     whole_span: rustc_span::Span,
@@ -33,7 +34,7 @@ pub fn typecheck<'tcx>(
 {
     let mut state = State {
         scope_map: air::scope_map::ScopeMap::new(),
-        unifier: unifier::Unifier::new(),
+        unifier: unification_table::UnificationTable::new(),
         param_name_to_param_ty: reverse_type_map::make_param_map(bctx),
         bctx: bctx,
         tcx: bctx.ctxt.tcx,
