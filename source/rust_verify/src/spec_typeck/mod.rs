@@ -7,6 +7,7 @@ mod check_pat;
 mod check_path;
 mod unification_table;
 mod unifier;
+mod normalize_projection;
 mod substitutions;
 mod finalize_expr;
 

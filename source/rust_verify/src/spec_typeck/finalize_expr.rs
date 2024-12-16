@@ -1,7 +1,8 @@
 use super::State;
-use vir::ast::{Expr, VirErr, Stmt, Typ, TypX, ExprX, CallTarget, Typs};
+use vir::ast::{Expr, VirErr, Stmt, Typ, TypX, ExprX, CallTarget, Typs, Constant};
 use air::scope_map::ScopeMap;
 use rustc_hir::def_id::DefId;
+use rustc_middle::ty::GenericArg;
 
 impl State<'_, '_> {
     pub fn finalize_expr(&mut self, expr: &Expr) -> Result<Expr, VirErr> {
@@ -32,6 +33,10 @@ impl State<'_, '_> {
                     CallTarget::FnSpec(_) => Ok(expr.clone()),
                     _ => todo!(),
                 }
+            }
+            ExprX::Const(Constant::Int(_i)) => {
+                // TODO check int literal is in range for whatever type was inferred
+                todo!()
             }
             _ => Ok(expr.clone())
         }
@@ -71,5 +76,65 @@ impl State<'_, '_> {
             let err_ctxt = infcx.err_ctxt();
             err_ctxt.report_fulfillment_errors(errors);
         }
+    }
+
+    pub(crate) fn check_deferred_obligations(&mut self) {
+        let span = self.whole_span;
+
+        use crate::rustc_infer::infer::TyCtxtInferExt;
+        use crate::rustc_trait_selection::traits::TraitEngineExt;
+        use crate::rustc_trait_selection::traits::error_reporting::TypeErrCtxtExt;
+        use crate::rustc_middle::ty::ToPredicate;
+
+        let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
+        let mut fulfillment_cx = <dyn rustc_trait_selection::traits::TraitEngine<'_>>::new(&infcx);
+
+        let deferred_projection_obligations = std::mem::take(&mut self.deferred_projection_obligations);
+
+        for (alias, typ) in deferred_projection_obligations.iter() {
+            let typ = self.get_finished_typ(typ);
+            let ty = self.finalized_vir_typ_to_typ(&typ);
+
+            let mut mid_args: Vec<GenericArg<'_>> = vec![];
+            for typ in alias.args.iter() {
+                let typ = self.get_finished_typ(typ);
+                let ty = self.finalized_vir_typ_to_typ(&typ);
+                mid_args.push(GenericArg::from(ty));
+            }
+
+            let alias_ty = rustc_middle::ty::AliasTy::new(self.tcx, alias.def_id, mid_args);
+
+            let pp = rustc_middle::ty::ProjectionPredicate {
+                projection_ty: alias_ty,
+                term: rustc_middle::ty::Term::from(ty),
+            };
+            let ck = rustc_middle::ty::ClauseKind::Projection(pp);
+            let pk = rustc_middle::ty::PredicateKind::Clause(ck);
+            let p: rustc_middle::ty::Predicate = pk.to_predicate(self.tcx);
+
+            let cause = rustc_trait_selection::traits::ObligationCause::new(
+                span,
+                self.bctx.fun_id.expect_local(),
+                rustc_trait_selection::traits::ObligationCauseCode::MiscObligation,
+            );
+            let obligation = rustc_trait_selection::traits::Obligation::new(
+                self.tcx,
+                cause,
+                self.tcx.param_env(self.bctx.fun_id),
+                p,
+            );
+            fulfillment_cx.register_predicate_obligation(&infcx, obligation);
+        }
+
+        let mut errors = fulfillment_cx.select_where_possible(&infcx);
+        errors.append(&mut fulfillment_cx.collect_remaining_errors(&infcx));
+
+        if errors.len() > 0 {
+            let err_ctxt = infcx.err_ctxt();
+            err_ctxt.report_fulfillment_errors(errors);
+        }
+
+        assert!(self.deferred_projection_obligations.len() == 0);
+        todo!();
     }
 }

@@ -2,7 +2,6 @@ use vir::ast::{Typ, TypX, VirErr, IntRange, Typs};
 use super::State;
 use std::sync::Arc;
 use std::collections::HashSet;
-use rustc_middle::ty::GenericArg;
 use super::unification_table::NodeClass;
 
 #[derive(Debug, Clone, Copy)]
@@ -85,66 +84,6 @@ impl State<'_, '_> {
         }).unwrap();
 
         self.unifier[node].final_typ = Some(t);
-    }
-
-    pub(crate) fn check_deferred_obligations(&mut self) {
-        let span = self.whole_span;
-
-        use crate::rustc_infer::infer::TyCtxtInferExt;
-        use crate::rustc_trait_selection::traits::TraitEngineExt;
-        use crate::rustc_trait_selection::traits::error_reporting::TypeErrCtxtExt;
-        use crate::rustc_middle::ty::ToPredicate;
-
-        let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
-        let mut fulfillment_cx = <dyn rustc_trait_selection::traits::TraitEngine<'_>>::new(&infcx);
-
-        let deferred_projection_obligations = std::mem::take(&mut self.deferred_projection_obligations);
-
-        for (alias, typ) in deferred_projection_obligations.iter() {
-            let typ = self.get_finished_typ(typ);
-            let ty = self.finalized_vir_typ_to_typ(&typ);
-
-            let mut mid_args: Vec<GenericArg<'_>> = vec![];
-            for typ in alias.args.iter() {
-                let typ = self.get_finished_typ(typ);
-                let ty = self.finalized_vir_typ_to_typ(&typ);
-                mid_args.push(GenericArg::from(ty));
-            }
-
-            let alias_ty = rustc_middle::ty::AliasTy::new(self.tcx, alias.def_id, mid_args);
-
-            let pp = rustc_middle::ty::ProjectionPredicate {
-                projection_ty: alias_ty,
-                term: rustc_middle::ty::Term::from(ty),
-            };
-            let ck = rustc_middle::ty::ClauseKind::Projection(pp);
-            let pk = rustc_middle::ty::PredicateKind::Clause(ck);
-            let p: rustc_middle::ty::Predicate = pk.to_predicate(self.tcx);
-
-            let cause = rustc_trait_selection::traits::ObligationCause::new(
-                span,
-                self.bctx.fun_id.expect_local(),
-                rustc_trait_selection::traits::ObligationCauseCode::MiscObligation,
-            );
-            let obligation = rustc_trait_selection::traits::Obligation::new(
-                self.tcx,
-                cause,
-                self.tcx.param_env(self.bctx.fun_id),
-                p,
-            );
-            fulfillment_cx.register_predicate_obligation(&infcx, obligation);
-        }
-
-        let mut errors = fulfillment_cx.select_where_possible(&infcx);
-        errors.append(&mut fulfillment_cx.collect_remaining_errors(&infcx));
-
-        if errors.len() > 0 {
-            let err_ctxt = infcx.err_ctxt();
-            err_ctxt.report_fulfillment_errors(errors);
-        }
-
-        assert!(self.deferred_projection_obligations.len() == 0);
-        todo!();
     }
 
     /// Get the final type with no unification variables.
@@ -522,129 +461,6 @@ impl State<'_, '_> {
             };
         }
     }
-
-    fn reduce_alias(&self, alias: &Alias) -> AliasOrTyp {
-        use crate::rust_to_vir_base::mid_ty_to_vir;
-        use crate::rust_to_vir_base::mid_ty_to_vir_ghost;
-        use rustc_middle::ty::GenericArgKind;
-
-        let (args, infcx, unif_map) = self.vir_typs_to_middle_tys(self.whole_span, &alias.args);
-        let alias_ty = rustc_middle::ty::AliasTy::new(self.tcx, alias.def_id, args);
-        let ty = self.tcx.mk_ty_from_kind(rustc_middle::ty::Alias(rustc_middle::ty::AliasKind::Projection, alias_ty));
-
-        let param_env = self.tcx.param_env(self.bctx.fun_id);
-        let cause = rustc_infer::traits::ObligationCause::dummy();
-        let at = infcx.at(&cause, param_env);
-        let ty = &crate::rust_to_vir_base::clean_all_escaping_bound_vars(self.tcx, ty, self.bctx.fun_id);
-        use crate::rustc_trait_selection::traits::NormalizeExt;
-        let norm = at.normalize(*ty);
-
-        dbg!(ty);
-        dbg!(&norm);
-
-        let mut obligations = norm.obligations;
-
-        let m_alias_or_ty = if let rustc_middle::ty::TyKind::Infer(t) = norm.value.kind() {
-            let rustc_middle::ty::InferTy::TyVar(tyvid) = t else { unreachable!() };
-            if unif_map.contains_key(tyvid) {
-                MiddleAliasOrTy::Ty(norm.value)
-            } else {
-                MiddleAliasOrTy::Alias(
-                    Self::get_alias_from_normalize_result(*tyvid, &mut obligations)
-                )
-            }
-        } else {
-            MiddleAliasOrTy::Ty(norm.value)
-        };
-
-        dbg!(&m_alias_or_ty);
-        assert!(obligations.len() == 0);
-
-        match m_alias_or_ty {
-            MiddleAliasOrTy::Ty(ty) => {
-                let typ = mid_ty_to_vir_ghost(self.tcx, &self.bctx.ctxt.verus_items, 
-                    self.bctx.fun_id, self.whole_span, &ty, Some(&unif_map), false).unwrap().0;
-                AliasOrTyp::Typ(typ)
-            }
-            MiddleAliasOrTy::Alias(alias) => {
-                let mut typs = vec![];
-                for arg in alias.args.iter() {
-                    match arg.unpack() {
-                        GenericArgKind::Type(ty) => {
-                            let typ = mid_ty_to_vir_ghost(self.tcx, &self.bctx.ctxt.verus_items, 
-                                self.bctx.fun_id, self.whole_span, &ty, Some(&unif_map), false).unwrap().0;
-                            typs.push(typ);
-                        }
-                        _ => todo!()
-                    }
-                }
-                AliasOrTyp::Alias(Alias { def_id: alias.def_id, args: Arc::new(typs) })
-            }
-        }
-
-
-        //let selcx = rustc_trait_selection_verus_fork::traits::SelectionContext::new(
-
-        //rustc_trait_selection_verus_fork::traits::project::project;
-        //todo!();
-        /*
-        assert!(matches!(&**typ, TypX::Projection { .. }));
-
-        use crate::rustc_trait_selection::traits::NormalizeExt;
-        let (ty, infcx) = self.vir_ty_to_middle(self.whole_span, typ);
-
-        let param_env = self.tcx.param_env(self.bctx.fun_id);
-        let cause = rustc_infer::traits::ObligationCause::dummy();
-        let at = infcx.at(&cause, param_env);
-        let ty = &crate::rust_to_vir_base::clean_all_escaping_bound_vars(self.tcx, ty, self.bctx.fun_id);
-        let norm = at.normalize(*ty); // TODO is normalize recursive?
-
-        dbg!(&ty);
-        dbg!(&norm.value);
-        dbg!(&norm);
-        let norm_typ = crate::rust_to_vir_base::mid_ty_to_vir(
-            self.tcx,
-            &self.bctx.ctxt.verus_items,
-            self.bctx.fun_id,
-            self.whole_span,
-            &norm.value,
-            false,
-        ).unwrap();
-
-        if !vir::ast_util::types_equal(typ, &norm_typ) {
-            self.deferred_projection_obligations.push((typ.clone(), norm_typ.clone()));
-        }
-
-        norm_typ
-        */
-    }
-
-    fn get_alias_from_normalize_result<'tcx>(
-        tyvid: rustc_middle::ty::TyVid,
-        obligations: &mut rustc_infer::traits::PredicateObligations<'tcx>)
-        -> rustc_middle::ty::AliasTy<'tcx>
-    {
-        use rustc_middle::ty::PredicateKind;
-        use rustc_middle::ty::ClauseKind;
-        use rustc_middle::ty::TermKind;
-        use rustc_middle::ty::TyKind;
-        use rustc_middle::ty::InferTy;
-        for i in 0 .. obligations.len() {
-            let predicate = &obligations[i].predicate;
-            if let PredicateKind::Clause(ClauseKind::Projection(projection_pred)) = predicate.kind().skip_binder() {
-                if let TermKind::Ty(ty) = projection_pred.term.unpack() {
-                    if let TyKind::Infer(infer_ty) = ty.kind() {
-                        if *infer_ty == InferTy::TyVar(tyvid) {
-                            let ma = projection_pred.projection_ty;
-                            obligations.remove(i);
-                            return ma;
-                        }
-                    }
-                }
-            }
-        }
-        panic!("get_alias_from_normalize_result failed");
-    }
 }
 
 fn int_range_equal_or_implicit_coercion_ok(ir1: IntRange, ir2: IntRange) -> bool {
@@ -731,8 +547,3 @@ fn is_definitely_integer_type(t: &Typ, u: UnknownInteger) -> bool {
     }
 }
 
-#[derive(Clone, Debug)]
-pub enum MiddleAliasOrTy<'tcx> {
-    Alias(rustc_middle::ty::AliasTy<'tcx>),
-    Ty(rustc_middle::ty::Ty<'tcx>),
-}
