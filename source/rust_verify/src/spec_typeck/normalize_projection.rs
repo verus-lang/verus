@@ -15,6 +15,49 @@ enum MiddleAliasOrTy<'tcx> {
 }
 
 impl State<'_, '_> {
+    /// This normalizes the given projection as much as possible.
+    ///
+    /// If the projection depends on other projections, those are treated as opaque inference
+    /// variables for the purposes of this operation. Caller is responsible for ordering
+    /// and scheduleing the projection operations.
+
+    // To do this, we use rustc's `normalize` function. In the ideal case, the type will
+    // normalize to some totally concrete type. This is not always possible, of course.
+    //
+    // Since the output of `normalize` is, well, normalized, it doesn't contain any
+    // non-normalized projections. Instead, it creates inference variables for these
+    // projections and creates obligations that relate to the new inference variables to
+    // the projections. Thus, we need to dig through the obligations to find all the information
+    // we need, and if rustc creates any new inference variables, we'll need to reproduce
+    // those in our unification engine.
+    //
+    // Here are some examples:
+    //
+    // Example 1.  The input projection might normalize to a concrete type:
+    //    InferOk(
+    //        value:  Bool
+    //        obligations:  None
+    //    )
+    //
+    // Examples 2. It might normalize to a projection that uses a generic type param.
+    //    InferOk(
+    //        value:  T::AssocType
+    //        obligations:  None
+    //    )
+    // This is considered normalized, so we turn it into TypX::Projection
+    //
+    // Example 3. Rust might not be able to make any progress at all.
+    // Suppose we're trying to normalize SomethingType<?0>::AssocType.
+    // We might end up with:
+    //
+    //   InferOk(
+    //       value: ?1
+    //       obligations: [ ClauseKind::Projection( SomethingType<?0>::AssocType --> ?1 ) ]
+    //   )
+    //
+    // where ?1 is a new type inference variable. In this case, we have to look through the
+    // obligations to find the projection type.
+
     pub(crate) fn reduce_projection(&self, projection: &Projection) -> ProjectionOrTyp {
         let (args, infcx, unif_map) = self.vir_typs_to_middle_tys(self.whole_span, &projection.args);
         let projection_ty = AliasTy::new(self.tcx, projection.def_id, args);
@@ -36,16 +79,20 @@ impl State<'_, '_> {
             if unif_map.contains_key(tyvid) {
                 MiddleAliasOrTy::Ty(norm.value)
             } else {
+                // Like in 'Example 3'
                 MiddleAliasOrTy::Alias(
                     Self::get_projection_from_normalize_result(*tyvid, &mut obligations)
                 )
             }
         } else {
+            // Like in 'Example 1 or 2'
             MiddleAliasOrTy::Ty(norm.value)
         };
 
         dbg!(&m_projection_or_ty);
-        assert!(obligations.len() == 0);
+        if obligations.len() != 0 {
+            todo!();
+        }
 
         match m_projection_or_ty {
             MiddleAliasOrTy::Ty(ty) => {

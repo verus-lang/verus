@@ -19,6 +19,8 @@ use rustc_hir::def::CtorKind;
 use crate::spec_typeck::unifier::UnknownInteger;
 
 impl<'a, 'tcx> State<'a, 'tcx> {
+    /// Type-check the given expression and returns its type.
+
     pub fn check_expr(
         &mut self,
         expr: &'tcx Expr<'tcx>,

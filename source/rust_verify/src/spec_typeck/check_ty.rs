@@ -9,6 +9,11 @@ use std::sync::Arc;
 use rustc_ast::{UintTy, IntTy};
 
 impl<'a, 'tcx> State<'a, 'tcx> {
+    /// Give a type annotation (like you'd find in `let x: T = ...` or
+    /// in a type argument `Foo::<T>(args...)`) turn it into a type.
+    ///
+    /// Lifetime args are ignored. Placeholder types (like when the user writes _)
+    /// become inference variables. Projection types go into the unification table.
     pub fn check_ty(
         &mut self,
         ty: &Ty<'tcx>,

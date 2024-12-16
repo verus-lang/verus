@@ -1,10 +1,17 @@
 use std::cell::Cell;
 use std::ops::{Index, IndexMut};
 
-struct UFNode {
-    parent: Cell<usize>,
-    rank: usize,
-}
+/// Unification table
+///
+/// Nodes are labeled by `usize` and grouped into equivalence classes, labeled by `NodeClass`.
+/// The table maps `NodeClass` to type `T`
+///
+/// To access the data for a given label, first get the NodeClass, then use it as an index:
+/// 
+///     let node = table.get_class(i);
+///     let info = &mut table[node];
+///
+/// Of course, nodes might be invalidated after a merge.
 
 pub struct UnificationTable<T> {
     uf_nodes: Vec<UFNode>,
@@ -13,6 +20,14 @@ pub struct UnificationTable<T> {
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeClass(pub usize);
+
+// We implement standard union-find with union-by-rank
+// https://en.wikipedia.org/wiki/Disjoint-set_data_structure#Union_by_rank
+// The `parent` field is a Cell so that `get_class` can be implemented with `&self`.
+struct UFNode {
+    parent: Cell<usize>,
+    rank: usize,
+}
 
 impl<T> UnificationTable<T> {
     pub fn new() -> Self {
@@ -29,16 +44,16 @@ impl<T> UnificationTable<T> {
         me
     }
 
-    pub fn get_node(&self, i: usize) -> NodeClass {
+    pub fn get_class(&self, i: usize) -> NodeClass {
         if self.uf_nodes[i].parent.get() == i {
             return NodeClass(i);
         }
-        let root = self.get_node(self.uf_nodes[i].parent.get());
+        let root = self.get_class(self.uf_nodes[i].parent.get());
         self.uf_nodes[i].parent.set(root.0);
         return root;
     }
 
-    pub fn merge_nodes(&mut self, i: NodeClass, j: NodeClass, t: T) {
+    pub fn merge_classes(&mut self, i: NodeClass, j: NodeClass, t: T) {
         let i = i.0;
         let j = j.0;
         assert!(i != j);
@@ -65,6 +80,8 @@ impl<T> UnificationTable<T> {
         self.uf_nodes.len()
     }
 
+    /// Check if the given index is the root node for its class.
+    /// Used for iterating over all classes.
     pub fn is_root_of_class(&self, i: usize) -> Option<NodeClass> {
         if self.uf_nodes[i].parent.get() == i {
             Some(NodeClass(i))

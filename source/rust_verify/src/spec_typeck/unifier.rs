@@ -4,13 +4,38 @@ use std::sync::Arc;
 use std::collections::HashSet;
 use super::unification_table::NodeClass;
 
-#[derive(Debug, Clone, Copy)]
-pub enum UnknownInteger {
-    /// Can be any *signed* integer type. Will default to 'int'
-    Signed,
-    /// Can be any integer type. Will default to 'nat'
-    Any,
-}
+/// During type inference, we create type variables which are unified into equivalence
+/// classes in the unification table (UnificationTable<Entry>).
+/// Each equivalence class maps to some 'Entry' and with an 'info' field that tells us what
+/// we know about that variable.
+///
+/// An `Info::Known` type should never be a lone inference variable. Inference variables
+/// should be unified through the unification table instead.
+/// The Known type can still have inference variables in arguments, e.g.,
+///   ?1  -->  Known( SomeDatatype<?2, ?3> )
+/// The Known type must have a "concrete head".
+///
+/// If cycles ever happen, it can cause infinite recursion, so we have to detect that case
+/// and report an error.
+///
+/// ** Working with projections **
+///
+/// All types stored in info must be _normalized_.
+/// This means no non-normalized TypX::Projection types.
+/// (A Projection can be normalized if it uses a type param, like `T::AssocType` which has
+/// obligations that must be met through a 'where' clause. We use rust's normalizer to tell
+/// the difference.)
+///
+/// To normalize a type, all non-normalized projections are replaced with inference vars;
+/// these vars can be mapped to the projections via Info::Projection. (The type arguments
+/// in an Info::Projection should in turn be normalized.)
+///
+/// When we need concrete types, we attempt to reduce the projections as much as possible.
+/// Ideally, Projections eventually become Known. If, at the end, we can't reduce all the
+/// Projections to Known, then we have to error.
+///
+/// Also note there *can* be cycles of inference vars through the Projection types.
+/// That isn't necessarily an error.
 
 #[derive(Clone, Debug)]
 pub enum Info {
@@ -23,7 +48,18 @@ pub enum Info {
 #[derive(Clone, Debug)]
 pub struct Entry {
     pub info: Info,
+    /// The 'final_typ' is filled in at the end. It should have no inference variables
+    /// and no non-normalized projection types.
     pub final_typ: Option<Typ>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum UnknownInteger {
+    /// Can be any *signed* integer type.
+    /// If it's not determined by the end of inference, it will default to 'int'.
+    Signed,
+    /// Can be any integer type. Will default to 'nat'.
+    Any,
 }
 
 #[derive(Clone, Debug)]
@@ -72,7 +108,7 @@ impl State<'_, '_> {
         let t = vir::ast_visitor::map_typ_visitor_env(&typ, self, &|state: &mut Self, t: &Typ| {
             match &**t {
                 TypX::UnificationVar(uid) => {
-                    let node = state.unifier.get_node(*uid);
+                    let node = state.unifier.get_class(*uid);
                     state.finish_rec(node);
                     Ok(state.unifier[node].final_typ.clone().unwrap())
                 }
@@ -92,7 +128,7 @@ impl State<'_, '_> {
         vir::ast_visitor::map_typ_visitor_env(typ, self, &|state: &mut Self, t: &Typ| {
             match &**t {
                 TypX::UnificationVar(uid) => {
-                    let node = state.unifier.get_node(*uid);
+                    let node = state.unifier.get_class(*uid);
                     Ok(state.unifier[node].final_typ.clone().unwrap())
                 }
                 TypX::Projection { .. } => unreachable!(),
@@ -126,7 +162,7 @@ impl State<'_, '_> {
     pub fn get_typ_with_concrete_head_if_possible(&mut self, t: &Typ) -> Typ {
         match &**t {
             TypX::UnificationVar(id) => {
-                let node = self.unifier.get_node(*id);
+                let node = self.unifier.get_class(*id);
                 if matches!(&self.unifier[node].info, Info::Projection(_)) {
                     self.reduce_node_as_much_as_possible(node);
                 }
@@ -191,13 +227,13 @@ impl State<'_, '_> {
     fn unify(&mut self, typ1: &Typ, typ2: &Typ) -> Result<(), UnifyError> {
         match (&**typ1, &**typ2) {
             (TypX::UnificationVar(id1), TypX::UnificationVar(id2)) => {
-                let node1 = self.unifier.get_node(*id1);
-                let node2 = self.unifier.get_node(*id2);
+                let node1 = self.unifier.get_class(*id1);
+                let node2 = self.unifier.get_class(*id2);
                 if node1 != node2 {
                     let (merged_info, recurse_tys) = merge_info(
                         &self.unifier[node1].info,
                         &self.unifier[node2].info);
-                    self.unifier.merge_nodes(node1, node2, Entry { info: merged_info, final_typ: None });
+                    self.unifier.merge_classes(node1, node2, Entry { info: merged_info, final_typ: None });
 
                     if let Some((rt1, rt2)) = recurse_tys {
                         self.unify(&rt1, &rt2)?;
@@ -215,7 +251,7 @@ impl State<'_, '_> {
                     (typ1, false)
                 };
 
-                let node = self.unifier.get_node(*uid);
+                let node = self.unifier.get_class(*uid);
                 match &self.unifier[node].info {
                     Info::Unknown => {
                         self.unifier[node].info = Info::Known(typ.clone());
@@ -400,6 +436,8 @@ impl State<'_, '_> {
     }
 
     fn reduce_node_as_much_as_possible(&mut self, node: NodeClass) {
+        // TODO need a better approach here
+
         let mut reachable = vec![node];
         let mut is_in_reachable = HashSet::<NodeClass>::new();
         is_in_reachable.insert(node);
@@ -417,7 +455,7 @@ impl State<'_, '_> {
             for t in typs.iter() {
                 vir::ast_visitor::typ_visitor_check(t, &mut |t| {
                     if let TypX::UnificationVar(v) = &**t {
-                        let n = self.unifier.get_node(*v);
+                        let n = self.unifier.get_class(*v);
                         if !is_in_reachable.contains(&n) {
                             reachable.push(n);
                             is_in_reachable.insert(n);

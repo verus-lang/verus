@@ -16,6 +16,12 @@ use crate::util::err_span;
 use rustc_hir::GenericArgsParentheses;
 use std::collections::HashSet;
 
+/// This file is for translating QPaths. This is complicated because there's lot of different
+/// types of paths which may have type arguments along various segments. We need to translate
+/// those type arguments and map them to the correct generic params of whatever the item is.
+///
+/// We also handle TypeRelative paths here, and method calls.
+
 pub enum PathResolution {
     Local(HirId),
     Fn(DefId, Typs),

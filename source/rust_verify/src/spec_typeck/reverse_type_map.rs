@@ -89,7 +89,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             }
             TypX::UnificationVar(i) => {
                 let rstate: &mut ReverseTypeState<'tcx> = r.as_mut().unwrap();
-                let node = self.unifier.get_node(*i);
+                let node = self.unifier.get_class(*i);
                 if let Info::Known(t) = &self.unifier[node].info {
                     self.vir_ty_to_middle_rec(r, t)
                 } else {

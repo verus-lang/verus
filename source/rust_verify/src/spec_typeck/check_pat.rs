@@ -12,7 +12,8 @@ use air::ast_util::ident_binder;
 use vir::def::positional_field_ident;
 
 impl State<'_, '_> {
-    /// Checks the pattern and adds bindings to the scope map
+    /// Checks that the pattern matches the expected type, and adds bindings to the scope map
+
     pub fn check_pat<'tcx>(
         &mut self,
         pat: &Pat,
