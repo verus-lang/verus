@@ -205,6 +205,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
     }
 }
 
+/// Intended to be called on the pre-Poly SST
 pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
@@ -226,7 +227,8 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_native(ctx, t)))
         }
-        TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
+        TypX::Boxed(_) => panic!("Boxed unexpected here"),
+        TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::Primitive(_, _) => {
             if typ_as_mono(typ).is_none() {
                 Arc::new(TypX::Boxed(typ.clone()))
