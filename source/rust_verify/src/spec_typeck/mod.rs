@@ -17,14 +17,17 @@ mod method_probe;
 //mod project;
 
 pub struct State<'a, 'tcx> {
-    scope_map: air::scope_map::ScopeMap<vir::ast::VarIdent, vir::ast::Typ>,
     param_name_to_param_ty: std::collections::HashMap<vir::ast::Ident, rustc_middle::ty::Ty<'tcx>>,
-    unifier: unification_table::UnificationTable<unifier::Entry>,
     bctx: &'a crate::context::BodyCtxt<'tcx>,
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     whole_span: rustc_span::Span,
 
-    deferred_projection_obligations: Vec<(unifier::Alias, vir::ast::Typ)>,
+    // Stateful context throughout the first past
+    scope_map: air::scope_map::ScopeMap<vir::ast::VarIdent, vir::ast::Typ>,
+    unifier: unification_table::UnificationTable<unifier::Entry>,
+
+    // Obligations collected in the first pass to be discharged at the end
+    deferred_projection_obligations: Vec<(unifier::Projection, vir::ast::Typ)>,
 }
 
 pub fn typecheck<'tcx>(

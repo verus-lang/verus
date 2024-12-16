@@ -1,5 +1,5 @@
 use vir::ast::{Typ, TypX, VirErr, Typs};
-use super::unifier::{Alias, AliasOrTyp};
+use super::unifier::{Projection, ProjectionOrTyp};
 use super::State;
 use std::sync::Arc;
 use crate::rust_to_vir_base::mid_ty_to_vir;
@@ -15,10 +15,10 @@ enum MiddleAliasOrTy<'tcx> {
 }
 
 impl State<'_, '_> {
-    pub(crate) fn reduce_alias(&self, alias: &Alias) -> AliasOrTyp {
-        let (args, infcx, unif_map) = self.vir_typs_to_middle_tys(self.whole_span, &alias.args);
-        let alias_ty = AliasTy::new(self.tcx, alias.def_id, args);
-        let ty = self.tcx.mk_ty_from_kind(rustc_middle::ty::Alias(AliasKind::Projection, alias_ty));
+    pub(crate) fn reduce_projection(&self, projection: &Projection) -> ProjectionOrTyp {
+        let (args, infcx, unif_map) = self.vir_typs_to_middle_tys(self.whole_span, &projection.args);
+        let projection_ty = AliasTy::new(self.tcx, projection.def_id, args);
+        let ty = self.tcx.mk_ty_from_kind(rustc_middle::ty::Alias(AliasKind::Projection, projection_ty));
 
         let param_env = self.tcx.param_env(self.bctx.fun_id);
         let cause = ObligationCause::dummy();
@@ -31,31 +31,31 @@ impl State<'_, '_> {
 
         let mut obligations = norm.obligations;
 
-        let m_alias_or_ty = if let TyKind::Infer(t) = norm.value.kind() {
+        let m_projection_or_ty = if let TyKind::Infer(t) = norm.value.kind() {
             let InferTy::TyVar(tyvid) = t else { unreachable!() };
             if unif_map.contains_key(tyvid) {
                 MiddleAliasOrTy::Ty(norm.value)
             } else {
                 MiddleAliasOrTy::Alias(
-                    Self::get_alias_from_normalize_result(*tyvid, &mut obligations)
+                    Self::get_projection_from_normalize_result(*tyvid, &mut obligations)
                 )
             }
         } else {
             MiddleAliasOrTy::Ty(norm.value)
         };
 
-        dbg!(&m_alias_or_ty);
+        dbg!(&m_projection_or_ty);
         assert!(obligations.len() == 0);
 
-        match m_alias_or_ty {
+        match m_projection_or_ty {
             MiddleAliasOrTy::Ty(ty) => {
                 let typ = mid_ty_to_vir_ghost(self.tcx, &self.bctx.ctxt.verus_items, 
                     self.bctx.fun_id, self.whole_span, &ty, Some(&unif_map), false).unwrap().0;
-                AliasOrTyp::Typ(typ)
+                ProjectionOrTyp::Typ(typ)
             }
-            MiddleAliasOrTy::Alias(alias) => {
+            MiddleAliasOrTy::Alias(projection) => {
                 let mut typs = vec![];
-                for arg in alias.args.iter() {
+                for arg in projection.args.iter() {
                     match arg.unpack() {
                         GenericArgKind::Type(ty) => {
                             let typ = mid_ty_to_vir_ghost(self.tcx, &self.bctx.ctxt.verus_items, 
@@ -65,7 +65,7 @@ impl State<'_, '_> {
                         _ => todo!()
                     }
                 }
-                AliasOrTyp::Alias(Alias { def_id: alias.def_id, args: Arc::new(typs) })
+                ProjectionOrTyp::Projection(Projection { def_id: projection.def_id, args: Arc::new(typs) })
             }
         }
 
@@ -106,7 +106,7 @@ impl State<'_, '_> {
         */
     }
 
-    fn get_alias_from_normalize_result<'tcx>(
+    fn get_projection_from_normalize_result<'tcx>(
         tyvid: rustc_middle::ty::TyVid,
         obligations: &mut rustc_infer::traits::PredicateObligations<'tcx>)
         -> rustc_middle::ty::AliasTy<'tcx>
@@ -125,6 +125,6 @@ impl State<'_, '_> {
                 }
             }
         }
-        panic!("get_alias_from_normalize_result failed");
+        panic!("get_projection_from_normalize_result failed");
     }
 }

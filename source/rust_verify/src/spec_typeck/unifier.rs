@@ -16,7 +16,7 @@ pub enum UnknownInteger {
 pub enum Info {
     Unknown,
     UnknownInteger(UnknownInteger),
-    Alias(Alias),
+    Projection(Projection),
     Known(Typ),
 }
 
@@ -27,14 +27,14 @@ pub struct Entry {
 }
 
 #[derive(Clone, Debug)]
-pub struct Alias {
+pub struct Projection {
     pub def_id: rustc_span::def_id::DefId,
     pub args: Typs,
 }
 
 #[derive(Clone)]
-pub enum AliasOrTyp {
-    Alias(Alias),
+pub enum ProjectionOrTyp {
+    Projection(Projection),
     Typ(Typ),
 }
 
@@ -65,7 +65,7 @@ impl State<'_, '_> {
             Info::Unknown => todo!(),
             Info::UnknownInteger(UnknownInteger::Any) => vir::ast_util::nat_typ(),
             Info::UnknownInteger(UnknownInteger::Signed) => vir::ast_util::int_typ(),
-            Info::Alias(_) => todo!(),
+            Info::Projection(_) => todo!(),
             Info::Known(typ) => typ.clone(),
         };
 
@@ -127,7 +127,7 @@ impl State<'_, '_> {
         match &**t {
             TypX::UnificationVar(id) => {
                 let node = self.unifier.get_node(*id);
-                if matches!(&self.unifier[node].info, Info::Alias(_)) {
+                if matches!(&self.unifier[node].info, Info::Projection(_)) {
                     self.reduce_node_as_much_as_possible(node);
                 }
                 match &self.unifier[node].info {
@@ -236,8 +236,8 @@ impl State<'_, '_> {
                             self.unify(typ, &known_typ.clone())
                         }
                     }
-                    Info::Alias(alias) => {
-                        self.deferred_projection_obligations.push((alias.clone(), typ.clone()));
+                    Info::Projection(projection) => {
+                        self.deferred_projection_obligations.push((projection.clone(), typ.clone()));
                         self.unifier[node].info = Info::Known(typ.clone());
                         Ok(())
                     }
@@ -387,12 +387,12 @@ impl State<'_, '_> {
                     let assoc_item = state.tcx.associated_items(trait_def_id)
                           .find_by_name_and_kinds(state.tcx, rustc_span::symbol::Ident::from_str(&name),
                             &[rustc_middle::ty::AssocKind::Type], trait_def_id).unwrap();
-                    let alias = Alias {
+                    let projection = Projection {
                         def_id: assoc_item.def_id,
                         args: trait_typ_args.clone(),
                     };
 
-                    Ok(state.fresh_typ_with_info(Info::Alias(alias)))
+                    Ok(state.fresh_typ_with_info(Info::Projection(projection)))
                 }
                 _ => Ok(t.clone()),
             }
@@ -410,7 +410,7 @@ impl State<'_, '_> {
             idx += 1;
 
             let typs: &[Typ] = match &self.unifier[n].info {
-                Info::Alias(alias) => &alias.args,
+                Info::Projection(projection) => &projection.args,
                 Info::Known(t) => &[t.clone()],
                 Info::Unknown | Info::UnknownInteger(_) => &[]
             };
@@ -430,15 +430,15 @@ impl State<'_, '_> {
 
         for node in reachable.iter().rev() {
             let node = *node;
-            if matches!(&self.unifier[node].info, Info::Alias(_)) {
+            if matches!(&self.unifier[node].info, Info::Projection(_)) {
                 self.reduce_one_node(node);
             }
         }
 
         /*
-                let new_info = match self.reduce_alias(&alias.clone()) {
-                    AliasOrTyp::Alias(new_alias) => Info::Alias(new_alias),
-                    AliasOrTyp::Typ(typ) => Info::Known(typ),
+                let new_info = match self.reduce_projection(&projection.clone()) {
+                    ProjectionOrTyp::Projection(new_projection) => Info::Projection(new_projection),
+                    ProjectionOrTyp::Typ(typ) => Info::Known(typ),
                 };
                 self.unifier.info[node] = new_info;
             }
@@ -448,11 +448,11 @@ impl State<'_, '_> {
     }
 
     fn reduce_one_node(&mut self, node: NodeClass) {
-        if let Info::Alias(alias) = &self.unifier[node].info {
-            let alias_or_typ = self.reduce_alias(alias);
-            self.unifier[node].info = match alias_or_typ {
-                AliasOrTyp::Alias(alias) => Info::Alias(alias),
-                AliasOrTyp::Typ(t) => {
+        if let Info::Projection(projection) = &self.unifier[node].info {
+            let projection_or_typ = self.reduce_projection(projection);
+            self.unifier[node].info = match projection_or_typ {
+                ProjectionOrTyp::Projection(projection) => Info::Projection(projection),
+                ProjectionOrTyp::Typ(t) => {
                     match &*t {
                         TypX::UnificationVar(_v) => todo!(),
                         _ => Info::Known(t),
@@ -496,11 +496,10 @@ fn merge_info(info1: &Info, info2: &Info) -> (Info, Option<(Typ, Typ)>) {
                 (Info::Known(t.clone()), None)
             } else {
                 todo!();
-                //(Info::Contradiction, None)
             }
         }
-        (Info::Alias(_), _) => todo!(),
-        (_, Info::Alias(_)) => todo!(),
+        (Info::Projection(_), _) => todo!(),
+        (_, Info::Projection(_)) => todo!(),
     }
 }
 
@@ -546,4 +545,3 @@ fn is_definitely_integer_type(t: &Typ, u: UnknownInteger) -> bool {
         }
     }
 }
-
