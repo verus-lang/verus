@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::collections::HashSet;
 use std::cell::Cell;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Info {
     Unknown,
     UnknownIntegerType,
@@ -12,7 +12,7 @@ pub enum Info {
     Known(Typ),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Alias {
     pub def_id: rustc_span::def_id::DefId,
     pub args: Typs,
@@ -580,18 +580,16 @@ impl State<'_, '_> {
         dbg!(ty);
         dbg!(&norm);
 
-        let value = norm.value;
         let mut obligations = norm.obligations;
 
         let m_alias_or_ty = if let rustc_middle::ty::TyKind::Infer(t) = norm.value.kind() {
             let rustc_middle::ty::InferTy::TyVar(tyvid) = t else { unreachable!() };
-            match unif_map.get(tyvid) {
-                Some(u) => MiddleAliasOrTy::Ty(norm.value),
-                None => {
-                    MiddleAliasOrTy::Alias(
-                        Self::get_alias_from_normalize_result(*tyvid, &mut obligations)
-                    )
-                }
+            if unif_map.contains_key(tyvid) {
+                MiddleAliasOrTy::Ty(norm.value)
+            } else {
+                MiddleAliasOrTy::Alias(
+                    Self::get_alias_from_normalize_result(*tyvid, &mut obligations)
+                )
             }
         } else {
             MiddleAliasOrTy::Ty(norm.value)
@@ -729,6 +727,8 @@ fn merge_info(info1: &Info, info2: &Info) -> (Info, Option<(Typ, Typ)>) {
 }
 
 fn merge_info_concrete(info1: &Info, t2: &Typ) -> (Info, Option<Typ>) {
+    dbg!(info1);
+    dbg!(t2);
     match info1 {
         Info::Unknown => (Info::Known(t2.clone()), None),
         Info::Known(t1) => (Info::Known(t1.clone()), Some(t1.clone())),
