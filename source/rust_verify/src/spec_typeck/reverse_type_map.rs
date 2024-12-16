@@ -1,13 +1,15 @@
 use rustc_infer::infer::InferCtxt;
 use crate::rustc_infer::infer::TyCtxtInferExt;
+use super::unifier::Info;
 use rustc_span::Span;
 use super::State;
 use vir::ast::{Typ, TypX, Dt, Typs};
 use std::collections::HashMap;
-use rustc_middle::ty::{Ty, GenericArg, TyKind, AssocKind, AliasKind, AliasTy, UintTy};
+use rustc_middle::ty::{Ty, GenericArg, TyKind, AssocKind, AliasKind, AliasTy, UintTy, InferTy};
 use rustc_middle::ty::GenericArgs;
 use std::sync::Arc;
 use vir::ast::IntRange;
+use rustc_middle::ty::TyVid;
 
 struct ReverseTypeState<'tcx> {
     span: Span,
@@ -16,7 +18,7 @@ struct ReverseTypeState<'tcx> {
 }
 
 impl<'a, 'tcx> State<'a, 'tcx> {
-    pub fn finalized_vir_typs_to_generic_args(&mut self, typs: &Typs)
+    pub fn finalized_vir_typs_to_generic_args(&self, typs: &Typs)
         -> &'tcx GenericArgs<'tcx>
     {
         let mut mid_args: Vec<GenericArg<'_>> = vec![];
@@ -26,12 +28,12 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         self.tcx.mk_args(&mid_args)
     }
 
-    pub fn finalized_vir_typ_to_typ(&mut self, typ: &Typ) -> Ty<'tcx>
+    pub fn finalized_vir_typ_to_typ(&self, typ: &Typ) -> Ty<'tcx>
     {
         self.vir_ty_to_middle_rec(&mut None, typ)
     }
 
-    pub fn vir_ty_to_middle(&mut self, span: Span, t: &Typ)
+    pub fn vir_ty_to_middle(&self, span: Span, t: &Typ)
         -> (Ty<'tcx>, InferCtxt<'tcx>)
     {
         let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
@@ -40,7 +42,35 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         (ty, r.unwrap().infcx)
     }
 
-    fn vir_ty_to_middle_rec(&mut self, r: &mut Option<ReverseTypeState<'tcx>>, t: &Typ) -> Ty<'tcx> {
+    pub fn vir_typs_to_middle_tys(&self, span: Span, typs: &Typs)
+        -> (Vec<GenericArg<'tcx>>, InferCtxt<'tcx>, HashMap<TyVid, usize>)
+    {
+        let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
+        let mut r = Some(ReverseTypeState { infcx: infcx, span, id_map: HashMap::new() });
+        let mut mid_args: Vec<GenericArg<'_>> = vec![];
+        for typ in typs.iter() {
+            let ty = self.vir_ty_to_middle_rec(&mut r, typ);
+            mid_args.push(GenericArg::from(ty));
+        }
+
+        let r = r.unwrap();
+
+        let mut h = HashMap::<TyVid, usize>::new();
+        for (our_uid, rust_ty) in r.id_map.iter() {
+            match rust_ty.kind() {
+                TyKind::Infer(InferTy::TyVar(rust_ty_vid)) => {
+                    h.insert(*rust_ty_vid, *our_uid);
+                }
+                _ => unreachable!()
+            }
+        }
+
+        (mid_args, r.infcx, h)
+    }
+
+
+    // TODO overflow checking
+    fn vir_ty_to_middle_rec(&self, r: &mut Option<ReverseTypeState<'tcx>>, t: &Typ) -> Ty<'tcx> {
         let tcx = self.tcx;
         match &**t {
             TypX::Datatype(Dt::Path(path), args, _) => {
@@ -57,15 +87,18 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 *self.param_name_to_param_ty.get(t).unwrap()
             }
             TypX::UnificationVar(i) => {
-                let r: &mut ReverseTypeState<'tcx> = r.as_mut().unwrap();
+                let rstate: &mut ReverseTypeState<'tcx> = r.as_mut().unwrap();
                 let node = self.unifier.get_node(*i);
-                // TODO check if Known
-                if r.id_map.contains_key(&node) {
-                    r.id_map[&node]
+                if let Info::Known(t) = &self.unifier.info[node] {
+                    self.vir_ty_to_middle_rec(r, t)
                 } else {
-                    let ty = r.infcx.next_ty_var(rustc_infer::infer::type_variable::TypeVariableOrigin { span: r.span, param_def_id: None });
-                    r.id_map.insert(node, ty);
-                    ty
+                    if rstate.id_map.contains_key(&node) {
+                        rstate.id_map[&node]
+                    } else {
+                        let ty = rstate.infcx.next_ty_var(rustc_infer::infer::type_variable::TypeVariableOrigin { span: rstate.span, param_def_id: None });
+                        rstate.id_map.insert(node, ty);
+                        ty
+                    }
                 }
             }
             TypX::Projection { trait_typ_args, trait_path, name } => {

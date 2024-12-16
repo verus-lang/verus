@@ -100,7 +100,7 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
     }
 }
 
-pub(crate) fn typ_visitor_check<E, MF>(typ: &Typ, mf: &mut MF) -> Result<(), E>
+pub fn typ_visitor_check<E, MF>(typ: &Typ, mf: &mut MF) -> Result<(), E>
 where
     MF: FnMut(&Typ) -> Result<(), E>,
 {

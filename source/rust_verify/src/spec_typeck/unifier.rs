@@ -1,9 +1,11 @@
 use vir::ast::{Typ, TypX, VirErr, IntRange, Typs};
 use super::State;
 use std::sync::Arc;
+use std::collections::HashSet;
+use std::cell::Cell;
 
 #[derive(Clone)]
-enum Info {
+pub enum Info {
     Unknown,
     UnknownIntegerType,
     Alias(Alias),
@@ -23,13 +25,13 @@ pub enum AliasOrTyp {
 }
 
 struct UFNode {
-    parent: usize,
+    parent: Cell<usize>,
     rank: usize,
 }
 
 pub struct Unifier {
     uf_nodes: Vec<UFNode>,
-    info: Vec<Info>,
+    pub info: Vec<Info>,
     final_typs: Option<Vec<Option<Typ>>>,
 }
 
@@ -50,34 +52,34 @@ impl Unifier {
         assert!(self.final_typs.is_none());
         self.info.push(info);
         let me = self.uf_nodes.len();
-        self.uf_nodes.push(UFNode { parent: me, rank: 0 });
+        self.uf_nodes.push(UFNode { parent: Cell::new(me), rank: 0 });
         me
     }
 
-    pub fn get_node(&mut self, i: usize) -> usize {
-        if self.uf_nodes[i].parent == i {
+    pub fn get_node(&self, i: usize) -> usize {
+        if self.uf_nodes[i].parent.get() == i {
             return i;
         }
-        let root = self.get_node(self.uf_nodes[i].parent);
-        self.uf_nodes[i].parent = root;
+        let root = self.get_node(self.uf_nodes[i].parent.get());
+        self.uf_nodes[i].parent.set(root);
         return root;
     }
 
     fn merge_nodes(&mut self, i: usize, j: usize, info: Info) {
         assert!(self.final_typs.is_none());
         assert!(i != j);
-        assert!(self.uf_nodes[i].parent == i);
-        assert!(self.uf_nodes[j].parent == j);
+        assert!(self.uf_nodes[i].parent.get() == i);
+        assert!(self.uf_nodes[j].parent.get() == j);
 
         let new_node;
         if self.uf_nodes[i].rank > self.uf_nodes[j].rank {
-            self.uf_nodes[j].parent = i;
+            self.uf_nodes[j].parent.set(i);
             new_node = i;
         } else if self.uf_nodes[i].rank < self.uf_nodes[j].rank {
-            self.uf_nodes[i].parent = j;
+            self.uf_nodes[i].parent.set(j);
             new_node = j;
         } else {
-            self.uf_nodes[j].parent = i;
+            self.uf_nodes[j].parent.set(i);
             self.uf_nodes[j].rank += 1;
             new_node = i;
         }
@@ -92,7 +94,7 @@ impl State<'_, '_> {
         self.unifier.final_typs = Some(vec![None; self.unifier.uf_nodes.len()]);
 
         for i in 0 .. self.unifier.uf_nodes.len() {
-            if self.unifier.uf_nodes[i].parent == i {
+            if self.unifier.uf_nodes[i].parent.get() == i {
                self.finish_rec(i);
             }
         }
@@ -234,11 +236,13 @@ impl State<'_, '_> {
         todo!();
     }
 
-    fn get_typ_if_known(&mut self, t: &Typ) -> Typ {
+    fn get_typ_with_concrete_head_if_possible(&mut self, t: &Typ) -> Typ {
         match &**t {
             TypX::UnificationVar(id) => {
                 let node = self.unifier.get_node(*id);
-                self.reduce_node(node);
+                if matches!(&self.unifier.info[node], Info::Alias(_)) {
+                    self.reduce_node_as_much_as_possible(node);
+                }
                 match &self.unifier.info[node] {
                     Info::Known(known_typ) => known_typ.clone(),
                     _ => t.clone(),
@@ -253,8 +257,8 @@ impl State<'_, '_> {
     /// for the most part this means types are exactly equal, except for
     /// some integer type coercions
     pub fn expect_allowing_coercion(&mut self, t1: &Typ, t2: &Typ) -> Result<(), VirErr> {
-        let t1c = self.get_typ_if_known(t1);
-        let t2c = self.get_typ_if_known(t2);
+        let t1c = self.get_typ_with_concrete_head_if_possible(t1);
+        let t2c = self.get_typ_with_concrete_head_if_possible(t2);
 
         match (&*t1c, &*t2c) {
             (TypX::Int(ir1), TypX::Int(ir2)) 
@@ -494,9 +498,43 @@ impl State<'_, '_> {
         }).unwrap()
     }
 
-    fn reduce_node(&mut self, node: usize) {
-        match &self.unifier.info[node] {
-            Info::Alias(alias) => {
+    fn reduce_node_as_much_as_possible(&mut self, node: usize) {
+        let mut reachable = vec![node];
+        let mut is_in_reachable = HashSet::<usize>::new();
+        is_in_reachable.insert(node);
+
+        let mut idx = 0;
+        while idx < reachable.len() {
+            let n = reachable[idx];
+            idx += 1;
+
+            let typs: &[Typ] = match &self.unifier.info[n] {
+                Info::Alias(alias) => &alias.args,
+                Info::Known(t) => &[t.clone()],
+                Info::Unknown | Info::UnknownIntegerType => &[]
+            };
+            for t in typs.iter() {
+                vir::ast_visitor::typ_visitor_check(t, &mut |t| {
+                    if let TypX::UnificationVar(v) = &**t {
+                        let n = self.unifier.get_node(*v);
+                        if !is_in_reachable.contains(&n) {
+                            reachable.push(n);
+                            is_in_reachable.insert(n);
+                        }
+                    }
+                    Ok::<(), ()>(())
+                }).unwrap();
+            }
+        }
+
+        for node in reachable.iter().rev() {
+            let node = *node;
+            if matches!(&self.unifier.info[node], Info::Alias(_)) {
+                self.reduce_one_node(node);
+            }
+        }
+
+        /*
                 let new_info = match self.reduce_alias(&alias.clone()) {
                     AliasOrTyp::Alias(new_alias) => Info::Alias(new_alias),
                     AliasOrTyp::Typ(typ) => Info::Known(typ),
@@ -505,11 +543,86 @@ impl State<'_, '_> {
             }
             _ => { }
         }
+        */
     }
 
-    fn reduce_alias(&mut self, _alias: &Alias) -> AliasOrTyp {
+    fn reduce_one_node(&mut self, node: usize) {
+        if let Info::Alias(alias) = &self.unifier.info[node] {
+            let alias_or_typ = self.reduce_alias(alias);
+            self.unifier.info[node] = match alias_or_typ {
+                AliasOrTyp::Alias(alias) => Info::Alias(alias),
+                AliasOrTyp::Typ(t) => {
+                    match &*t {
+                        TypX::UnificationVar(v) => todo!(),
+                        _ => Info::Known(t),
+                    }
+                }
+            };
+        }
+    }
+
+    fn reduce_alias(&self, alias: &Alias) -> AliasOrTyp {
+        use crate::rust_to_vir_base::mid_ty_to_vir;
+        use rustc_middle::ty::GenericArgKind;
+
+        let (args, infcx, unif_map) = self.vir_typs_to_middle_tys(self.whole_span, &alias.args);
+        let alias_ty = rustc_middle::ty::AliasTy::new(self.tcx, alias.def_id, args);
+        let ty = self.tcx.mk_ty_from_kind(rustc_middle::ty::Alias(rustc_middle::ty::AliasKind::Projection, alias_ty));
+
+        let param_env = self.tcx.param_env(self.bctx.fun_id);
+        let cause = rustc_infer::traits::ObligationCause::dummy();
+        let at = infcx.at(&cause, param_env);
+        let ty = &crate::rust_to_vir_base::clean_all_escaping_bound_vars(self.tcx, ty, self.bctx.fun_id);
+        use crate::rustc_trait_selection::traits::NormalizeExt;
+        let norm = at.normalize(*ty);
+
+        dbg!(ty);
+        dbg!(&norm);
+
+        let value = norm.value;
+        let mut obligations = norm.obligations;
+
+        let m_alias_or_ty = if let rustc_middle::ty::TyKind::Infer(t) = norm.value.kind() {
+            let rustc_middle::ty::InferTy::TyVar(tyvid) = t else { unreachable!() };
+            match unif_map.get(tyvid) {
+                Some(u) => MiddleAliasOrTy::Ty(norm.value),
+                None => {
+                    MiddleAliasOrTy::Alias(
+                        Self::get_alias_from_normalize_result(*tyvid, &mut obligations)
+                    )
+                }
+            }
+        } else {
+            MiddleAliasOrTy::Ty(norm.value)
+        };
+
+        dbg!(&m_alias_or_ty);
+        assert!(obligations.len() == 0);
+
+        match m_alias_or_ty {
+            MiddleAliasOrTy::Ty(ty) => {
+                let typ = mid_ty_to_vir(self.tcx, &self.bctx.ctxt.verus_items, 
+                    self.bctx.fun_id, self.whole_span, &ty, false).unwrap();
+                AliasOrTyp::Typ(typ)
+            }
+            MiddleAliasOrTy::Alias(alias) => {
+                let mut typs = vec![];
+                for arg in alias.args.iter() {
+                    match arg.unpack() {
+                        GenericArgKind::Type(ty) => {
+                            let typ = mid_ty_to_vir(self.tcx, &self.bctx.ctxt.verus_items, 
+                                self.bctx.fun_id, self.whole_span, &ty, false).unwrap();
+                            typs.push(typ);
+                        }
+                        _ => todo!()
+                    }
+                }
+                AliasOrTyp::Alias(Alias { def_id: alias.def_id, args: Arc::new(typs) })
+            }
+        }
+
+
         //let selcx = rustc_trait_selection_verus_fork::traits::SelectionContext::new(
-        todo!();
 
         //rustc_trait_selection_verus_fork::traits::project::project;
         //todo!();
@@ -543,6 +656,33 @@ impl State<'_, '_> {
 
         norm_typ
         */
+    }
+
+    fn get_alias_from_normalize_result<'tcx>(
+        tyvid: rustc_middle::ty::TyVid,
+        obligations: &mut rustc_infer::traits::PredicateObligations<'tcx>)
+        -> rustc_middle::ty::AliasTy<'tcx>
+    {
+        use rustc_middle::ty::PredicateKind;
+        use rustc_middle::ty::ClauseKind;
+        use rustc_middle::ty::TermKind;
+        use rustc_middle::ty::TyKind;
+        use rustc_middle::ty::InferTy;
+        for i in 0 .. obligations.len() {
+            let predicate = &obligations[i].predicate;
+            if let PredicateKind::Clause(ClauseKind::Projection(projection_pred)) = predicate.kind().skip_binder() {
+                if let TermKind::Ty(ty) = projection_pred.term.unpack() {
+                    if let TyKind::Infer(infer_ty) = ty.kind() {
+                        if *infer_ty == InferTy::TyVar(tyvid) {
+                            let ma = projection_pred.projection_ty;
+                            obligations.remove(i);
+                            return ma;
+                        }
+                    }
+                }
+            }
+        }
+        panic!("get_alias_from_normalize_result failed");
     }
 }
 
@@ -616,4 +756,10 @@ fn is_definitely_integer_type(t: &Typ) -> bool {
         }
         _ => false,
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum MiddleAliasOrTy<'tcx> {
+    Alias(rustc_middle::ty::AliasTy<'tcx>),
+    Ty(rustc_middle::ty::Ty<'tcx>),
 }
