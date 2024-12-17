@@ -28,21 +28,56 @@ pub struct UnificationsToBeDone {
 }
 
 impl State<'_, '_> {
-    pub(crate) fn reduce_projection(
+    /// This normalizes the given projection as much as possible.
+    ///
+    /// If the projection depends on other projections, those are treated as opaque inference
+    /// variables for the purposes of this operation.
+    /// If a projection gets stuck, it can only get unstuck if any of the "dependencies"
+    /// make progress.
+    ///
+    /// The caller is responsible for ordering and scheduling the projection
+    /// reduction operations.
+    ///
+    /// This function can create new inference vars, but it does not perform any unification.
+    /// Pending unifications are instead returned to the caller.
+
+    pub(crate) fn reduce_projection_once(
         &mut self,
         projection: &Projection
-    ) -> Result<Option<(ProjectionOrTyp, UnificationsToBeDone)>, VirErr>
-    {
+    ) -> Result<Option<(ProjectionOrTyp, UnificationsToBeDone)>, VirErr> {
+        // note: Rustc's "normalize" function does a lot of what we want and it's
+        // easy to invoke. Therefore, I considered trying to just use that.
+        // However, it does a lot of other complex
+        // stuff, too, such as performing unification, so it's difficult to use
+        // for our purposes while we have our own unification engine.
+
+        // The actual function that is closed to what we want is `project`:
+        // https://doc.rust-lang.org/1.79.0/nightly-rustc/rustc_trait_selection/traits/project/fn.project.html
+        // Unfortunately, it's private. It's also kinda difficult to disentangle
+        // from the significant crate that it's in (though I wonder if I should try harder)
+
         // TODO we also need to check the param_env
         // Use this as a reference:
-        // https://doc.rust-lang.org/1.79.0/nightly-rustc/rustc_trait_selection/traits/project/fn.project.html
         // (Unfortunately this function is private and difficult to untangle from its crate)
 
         let candidate = self.get_candidate(projection);
         match candidate {
             None => Ok(None),
             Some(Candidate::Impl(impl_def_id)) => {
+                // Suppose we've selected the impl:
+                //
+                //    impl<Args...> Trait<TraitArgs...> for Self {
+                //        type AssocTyp = ...;
+                //    }
+                //
+                // We instantiate new inference vars for the Args.
+                // We can then plug those in to get the assoc type.
+                //
+                // We also need to unify the trait args (Self, TraitArgs...) of this impl
+                // with the trait args in the projection.
+
                 // TODO add obligations that impl is satisfied
+
                 let n_args = self.get_generic_defs(self.tcx.generics_of(impl_def_id)).len();
                 let mut args = vec![];
                 for _i in 0 .. n_args {
@@ -55,10 +90,8 @@ impl State<'_, '_> {
                 assert!(ts.len() == projection.args.len());
 
                 let unifs = UnificationsToBeDone {
-                    unifications: ts.iter().cloned().zip(projection.args.iter().cloned()).collect(),
+                    unifications: projection.args.iter().cloned().zip(ts.iter().cloned()).collect(),
                 };
-
-                dbg!(&unifs);
 
                 let assoc_id_on_impl = *self.tcx.impl_item_implementor_ids(impl_def_id).get(&projection.def_id).unwrap();
 
@@ -139,11 +172,6 @@ impl State<'_, '_> {
     }
 
 /*
-    /// This normalizes the given projection as much as possible.
-    ///
-    /// If the projection depends on other projections, those are treated as opaque inference
-    /// variables for the purposes of this operation. Caller is responsible for ordering
-    /// and scheduleing the projection operations.
 
     // To do this, we use rustc's `normalize` function. In the ideal case, the type will
     // normalize to some totally concrete type. This is not always possible, of course.
