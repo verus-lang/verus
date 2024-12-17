@@ -79,10 +79,13 @@ enum UnifyError {
 }
 
 impl State<'_, '_> {
+    /// Finish unification, solve all projections, concretize everything.
+    /// Error if there any unresolved vars or 
+    ///
+    /// This should be called after all constraints are in.
+
     // TODO overflow checking
     pub fn finish_unification(&mut self) -> Result<(), VirErr> {
-        dbg!(&self.unifier);
-
         for i in 0 .. self.unifier.len() {
             if let Some(class) = self.unifier.is_root_of_class(i) {
                self.finish_rec(class);
@@ -125,7 +128,7 @@ impl State<'_, '_> {
     }
 
     /// Get the final type with no unification variables.
-    /// This must be called after `finish`
+    /// This must be called after `finish_unification`
     pub fn get_finished_typ(&mut self, typ: &Typ) -> Typ {
         vir::ast_visitor::map_typ_visitor_env(typ, self, &|state: &mut Self, t: &Typ| {
             match &**t {
@@ -138,6 +141,9 @@ impl State<'_, '_> {
             }
         }).unwrap()
     }
+
+    /////////////////////////////////////////////////////////////////////
+    ///////// Utilities to be called by the main type-checking logic
 
     pub fn fresh_typ_with_info(&mut self, info: Info) -> Typ {
         let entry = Entry { info, final_typ: None };
@@ -209,9 +215,7 @@ impl State<'_, '_> {
         self.expect_exact(t1, &vir::ast_util::bool_typ())
     }
 
-    /// t1 can be used where t2 is expected
-    /// for the most part this means types are exactly equal, except for
-    /// some integer type coercions
+    /// expect t1 to match t2 exactly
     pub fn expect_exact(&mut self, t1: &Typ, t2: &Typ) -> Result<(), VirErr> {
         let e = self.unify(t1, t2);
         match e {
@@ -223,6 +227,9 @@ impl State<'_, '_> {
             }
         }
     }
+
+    /////////////////////////////////////////////////////////////////////
+    ///////// Unification
 
     // TODO overflow checking
     fn unify(&mut self, typ1: &Typ, typ2: &Typ) -> Result<(), UnifyError> {
@@ -416,6 +423,13 @@ impl State<'_, '_> {
     }
     */
 
+    /////////////////////////////////////////////////////////////////////
+    ///////// "Normalize" types.
+
+    /// Normalize the type by removing all the projection types.
+    /// This doesn't attempt to reduce the projections, just instantiates new
+    /// inference vars for them.
+    /// This should be called after performing substitution into some item.
     pub(crate) fn normalize_typ(&mut self, typ: &Typ) -> Typ {
         vir::ast_visitor::map_typ_visitor_env(typ, self, &|state: &mut Self, t: &Typ| {
             match &**t {
@@ -436,6 +450,8 @@ impl State<'_, '_> {
         }).unwrap()
     }
 
+    /// Same as above, but if the root of the given type is a Projection,
+    /// it returns a 'ProjectionOrTyp::Projection' rather than making an inference var.
     pub(crate) fn normalize_typ_or_proj(&mut self, typ: &Typ) -> ProjectionOrTyp {
         match &**typ {
             TypX::Projection { trait_typ_args, trait_path, name } => {
@@ -457,6 +473,9 @@ impl State<'_, '_> {
             }
         }
     }
+
+    /////////////////////////////////////////////////////////////////////
+    ///////// Attempt to solve projections
 
     fn reduce_node_as_much_as_possible(&mut self, node: NodeClass) -> Result<(), VirErr> {
         // TODO need a better approach here
