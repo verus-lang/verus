@@ -230,6 +230,7 @@ impl State<'_, '_> {
             Err(_ue) => {
                 dbg!(t1);
                 dbg!(t2);
+                dbg!(&self.unifier);
                 panic!("expect_exact");
             }
         }

@@ -152,12 +152,18 @@ impl<'a, 'tcx> State<'a, 'tcx> {
     fn get_typ_substs(&self, def_id: DefId, typ_args: &Typs) -> HashMap<Ident, Typ> {
         let mut sig_typ_params: Vec<vir::ast::Ident> = vec![];
 
-        let generic_defs = self.get_generic_defs(self.tcx.generics_of(def_id));
+        let (mut has_self, generic_defs) = self.get_generic_defs(self.tcx.generics_of(def_id));
         for generic_def in generic_defs.iter() {
             match &generic_def.kind {
                 GenericParamDefKind::Type { synthetic: _, has_default: _ } | GenericParamDefKind::Const { is_host_effect: false, has_default: _ } => {
-                    let ident = crate::rust_to_vir_base::generic_param_def_to_vir_name(generic_def);
-                    sig_typ_params.push(Arc::new(ident));
+                    if has_self {
+                        has_self = false;
+                        let ident = vir::def::trait_self_type_param();
+                        sig_typ_params.push(ident);
+                    } else {
+                        let ident = crate::rust_to_vir_base::generic_param_def_to_vir_name(generic_def);
+                        sig_typ_params.push(Arc::new(ident));
+                    }
                 }
                 GenericParamDefKind::Const { is_host_effect: true, .. } => { }
                 GenericParamDefKind::Lifetime => { }
@@ -172,15 +178,16 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         typ_substs
     }
 
-    pub(crate) fn get_generic_defs(&self, generics: &Generics) -> Vec<GenericParamDef> {
+    pub(crate) fn get_generic_defs(&self, generics: &Generics) -> (bool, Vec<GenericParamDef>) {
         match &generics.parent {
-            None => generics.params.clone(),
+            None => {
+                (generics.has_self, generics.params.clone())
+            }
             Some(parent_id) => {
-                let mut v = self.get_generic_defs(self.tcx.generics_of(parent_id));
+                let (has_self, mut v) = self.get_generic_defs(self.tcx.generics_of(parent_id));
                 v.append(&mut generics.params.clone());
-                v
+                (has_self, v)
             }
         }
     }
-
 }

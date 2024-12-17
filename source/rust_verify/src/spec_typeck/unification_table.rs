@@ -131,6 +131,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for UnificationTable<T> {
             }
         }
 
+        write!(f, "\n")?;
         for (node, others) in map.iter() {
             write!(f, "( ?{:}", node.0)?;
             for o in others.iter() {

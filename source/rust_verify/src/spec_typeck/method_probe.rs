@@ -64,6 +64,7 @@ pub(crate) fn lookup_method<'tcx>(
     match e {
         Ok(o) => Ok(o),
         Err(e) => {
+            println!("{:#?}", self_ty);
             println!("{:#?}", e);
             return crate::util::err_span(
                 span,

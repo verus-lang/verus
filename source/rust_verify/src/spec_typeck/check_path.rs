@@ -288,26 +288,37 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 todo!();
             }
         }
+        if qualified_self.is_some() {
+            assert!(generics.has_self);
+        }
 
         let mut idx = 0;
-        let mut self_ty = qualified_self;
+        let mut self_ty = if generics.has_self {
+            Some(qualified_self)
+        } else {
+            None
+        };
         let get_next_segment_arg = &mut || {
             if self_ty.is_some() {
                 let s = self_ty.unwrap();
                 self_ty = None;
-                return Some(GenericArg::Type(s));
-            }
-            match &segment.args {
-                None => None,
-                Some(args) => {
-                    while idx < args.args.len() && matches!(args.args[idx], GenericArg::Lifetime(_)) {
-                        idx += 1
-                    }
-                    if idx < args.args.len() {
-                        idx += 1;
-                        Some(args.args[idx - 1])
-                    } else {
-                        None
+                match s {
+                    None => None, // self type exists but is unknown
+                    Some(s) => Some(GenericArg::Type(s)),
+                }
+            } else {
+                match &segment.args {
+                    None => None,
+                    Some(args) => {
+                        while idx < args.args.len() && matches!(args.args[idx], GenericArg::Lifetime(_)) {
+                            idx += 1
+                        }
+                        if idx < args.args.len() {
+                            idx += 1;
+                            Some(args.args[idx - 1])
+                        } else {
+                            None
+                        }
                     }
                 }
             }

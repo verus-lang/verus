@@ -78,7 +78,7 @@ impl State<'_, '_> {
 
                 // TODO add obligations that impl is satisfied
 
-                let n_args = self.get_generic_defs(self.tcx.generics_of(impl_def_id)).len();
+                let n_args = self.get_generic_defs(self.tcx.generics_of(impl_def_id)).1.len();
                 let mut args = vec![];
                 for _i in 0 .. n_args {
                     args.push(self.new_unknown_typ());
