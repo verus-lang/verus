@@ -16,7 +16,6 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{AdtDef, VariantDef};
 use std::collections::HashSet;
 use rustc_hir::def::CtorKind;
-use crate::spec_typeck::unifier::UnknownInteger;
 
 impl<'a, 'tcx> State<'a, 'tcx> {
     /// Type-check the given expression and returns its type.
@@ -363,10 +362,16 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     BinOpKind::Add | BinOpKind::Mul => {
                         let l = self.check_expr(lhs)?;
                         let r = self.check_expr(rhs)?;
-                        let l_ir = self.expect_integer_as_nat_or_int(&l.typ)?;
-                        let r_ir = self.expect_integer_as_nat_or_int(&r.typ)?;
 
-                        let typ = if l_ir == NatOrInt::Nat && r_ir == NatOrInt::Nat {
+                        self.expect_integer(&l.typ)?;
+                        self.expect_integer(&r.typ)?;
+
+                        let l1 = self.get_typ_with_concrete_head_if_possible(&l.typ)?;
+                        let r1 = self.get_typ_with_concrete_head_if_possible(&r.typ)?;
+
+                        let typ = if matches!(&*l1, TypX::Int(IntRange::Nat))
+                                    && matches!(&*r1, TypX::Int(IntRange::Nat))
+                        {
                             nat_typ()
                         } else {
                             int_typ()
@@ -462,7 +467,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         let typ = match suffix {
             LitIntSuffix::Int => integer_typ(IntRange::Int),
             LitIntSuffix::Nat => integer_typ(IntRange::Nat),
-            LitIntSuffix::Normal(LitIntType::Unsuffixed) => self.new_unknown_integer_typ(UnknownInteger::Any),
+            LitIntSuffix::Normal(LitIntType::Unsuffixed) => self.new_unknown_integer_typ(),
             LitIntSuffix::Normal(LitIntType::Signed(s)) => integer_typ_of_int_ty(s),
             LitIntSuffix::Normal(LitIntType::Unsigned(u)) => integer_typ_of_uint_ty(u),
         };

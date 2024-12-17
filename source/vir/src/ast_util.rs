@@ -12,6 +12,7 @@ use crate::util::vec_map;
 use air::ast::{Binder, Binders};
 pub use air::ast_util::{ident_binder, str_ident};
 use num_bigint::BigInt;
+use num_traits::One;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::str::FromStr;
@@ -282,6 +283,13 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<IntegerTypeBitwidth> {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum RangeContains {
+    Yes,
+    No,
+    Depends, // for usize and isize
+}
+
 impl IntRange {
     pub fn is_bounded(&self) -> bool {
         match self {
@@ -303,6 +311,53 @@ impl IntRange {
               | IntRange::U(_) 
               | IntRange::USize => true,
             IntRange::Char => false,
+        }
+    }
+
+    pub fn contains(self, i: &BigInt, arch: ArchWordBits) -> RangeContains {
+        let from_bool = |b: bool| if b {
+            RangeContains::Yes
+        } else {
+            RangeContains::No
+        };
+        match self {
+            IntRange::Int => RangeContains::Yes,
+            IntRange::Nat => from_bool(*i >= BigInt::from(0)),
+            IntRange::U(n) =>
+                  from_bool(*i >= BigInt::from(0)
+                && *i < (BigInt::one() << n)),
+            IntRange::I(n) => 
+                  from_bool(*i >= -1 * (BigInt::one() << (n - 1))
+                && *i < (BigInt::one() << (n - 1))),
+            IntRange::USize => {
+                match arch {
+                    ArchWordBits::Exactly(n) => IntRange::U(n).contains(i, arch),
+                    ArchWordBits::Either32Or64 => {
+                        let a32 = IntRange::U(32).contains(i, arch);
+                        let a64 = IntRange::U(64).contains(i, arch);
+                        if a32 == a64 {
+                            a32
+                        } else {
+                            RangeContains::Depends
+                        }
+                    }
+                }
+            }
+            IntRange::ISize => {
+                match arch {
+                    ArchWordBits::Exactly(n) => IntRange::I(n).contains(i, arch),
+                    ArchWordBits::Either32Or64 => {
+                        let a32 = IntRange::I(32).contains(i, arch);
+                        let a64 = IntRange::I(64).contains(i, arch);
+                        if a32 == a64 {
+                            a32
+                        } else {
+                            RangeContains::Depends
+                        }
+                    }
+                }
+            }
+            IntRange::Char => from_bool(crate::unicode::valid_unicode_scalar_bigint(i))
         }
     }
 }

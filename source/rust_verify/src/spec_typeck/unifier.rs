@@ -41,7 +41,7 @@ use super::unification_table::NodeClass;
 #[derive(Clone, Debug)]
 pub enum Info {
     Unknown,
-    UnknownInteger(UnknownInteger),
+    UnknownInteger,
     Projection(Projection),
     Known(Typ),
 }
@@ -52,15 +52,6 @@ pub struct Entry {
     /// The 'final_typ' is filled in at the end. It should have no inference variables
     /// and no non-normalized projection types.
     pub final_typ: Option<Typ>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum UnknownInteger {
-    /// Can be any *signed* integer type.
-    /// If it's not determined by the end of inference, it will default to 'int'.
-    Signed,
-    /// Can be any integer type. Will default to 'nat'.
-    Any,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -110,8 +101,7 @@ impl State<'_, '_> {
 
         let typ = match &self.unifier[node].info {
             Info::Unknown => todo!(),
-            Info::UnknownInteger(UnknownInteger::Any) => vir::ast_util::nat_typ(),
-            Info::UnknownInteger(UnknownInteger::Signed) => vir::ast_util::int_typ(),
+            Info::UnknownInteger => vir::ast_util::int_typ(),
             Info::Projection(_) => todo!(),
             Info::Known(typ) => typ.clone(),
         };
@@ -161,71 +151,33 @@ impl State<'_, '_> {
         self.fresh_typ_with_info(Info::Unknown)
     }
 
-    pub fn new_unknown_integer_typ(&mut self, u: UnknownInteger) -> Typ {
-        self.fresh_typ_with_info(Info::UnknownInteger(u))
+    pub fn new_unknown_integer_typ(&mut self) -> Typ {
+        self.fresh_typ_with_info(Info::UnknownInteger)
     }
 
     /// Require the given type to be an integer
     pub fn expect_integer(&mut self, t: &Typ) -> Result<(), VirErr> {
-        match t {
+        match &**t {
             TypX::Int(
               IntRange::Int
               | IntRange::Nat
               | IntRange::U(_)
               | IntRange::I(_)
-              | IntRange::Usize
-              | IntRange::Isize) => Ok(()),
+              | IntRange::USize
+              | IntRange::ISize) => Ok(()),
             TypX::UnificationVar(id) => {
                 let node = self.unifier.get_class(*id);
                 match &self.unifier[node].info {
                     Info::Known(t) => self.expect_integer(&t.clone()),
-                    Info::UnknownInteger(_) => Ok(()),
+                    Info::UnknownInteger => Ok(()),
                     Info::Projection(_) => todo!(),
                     Info::Unknown => {
-                        self.unifier[node].info = Info::UnknownInteger(UnknownIntege::Any);
+                        self.unifier[node].info = Info::UnknownInteger;
+                        Ok(())
                     }
                 }
             }
             _ => todo!(),
-        }
-    }
-
-    /// Require the given type to be an integer
-    /// and coercible to either nat or int, and return which one.
-    pub fn expect_integer_as_nat_or_int(&mut self, t: &Typ)
-        -> Result<IntOrNat, VirErr>
-    {
-        self.expect_integer(t)?;
-
-        // Since we demanded it to be an integer, we know it can be coerced to int.
-        // If we can also guarantee it is coercible to nat, then do so:
-        // Otherwise return int
-        match t {
-            TypX::Int(
-                IntRange::Nat
-                | IntRange::U(_)
-                | IntRange::Usize) => IntOrNat::Nat,
-            TypX::UnificationVar(id) => {
-                let node = self.unifier.get_class(*id);
-                match &self.unifier[node].info {
-                    Info::Known(t) => match &*t {
-                        TypX::Int(
-                          IntRange::Nat
-                          | IntRange::U(_)
-                          | IntRange::Usize) => IntOrNat::Nat,
-                    }
-                    Info::UnknownInteger(UnknownInteger::Signed) => {
-                        self.unifier[node].info = Info::Known(int_typ());
-                        IntOrNat::Int
-                    }
-                    Info::UnknownInteger(UnknownInteger::Any) => {
-                        self.unifier[node].info = Info::Known(nat_typ());
-                        IntOrNat::Nat
-                    }
-                    Info::Projection(_) => IntOrNat::Int,
-                    Info::Unknown => unreachable!(), // because we just called expect_integer
-                }
-            }
         }
     }
 
@@ -320,8 +272,8 @@ impl State<'_, '_> {
                         self.unifier[node].info = Info::Known(typ.clone());
                         Ok(())
                     }
-                    Info::UnknownInteger(u) => {
-                        if is_definitely_integer_type(typ, *u) {
+                    Info::UnknownInteger => {
+                        if is_definitely_integer_type(typ) {
                             self.unifier[node].info = Info::Known(typ.clone());
                         } else {
                             todo!();
@@ -545,9 +497,10 @@ impl State<'_, '_> {
             idx += 1;
 
             let typs: &[Typ] = match &self.unifier[n].info {
+                Info::Unknown => &[],
+                Info::UnknownInteger => &[],
                 Info::Projection(projection) => &projection.args,
                 Info::Known(t) => &[t.clone()],
-                Info::Unknown | Info::UnknownInteger(_) => &[]
             };
             for t in typs.iter() {
                 vir::ast_visitor::typ_visitor_check(t, &mut |t| {
@@ -621,7 +574,7 @@ fn merge_info(info1: &Info, info2: &Info) -> (Info, Option<(Typ, Typ)>) {
     match (info1, info2) {
         (Info::Unknown, info) => (info.clone(), None),
         (info, Info::Unknown) => (info.clone(), None),
-        (Info::UnknownInteger(a), Info::UnknownInteger(b)) => (Info::UnknownInteger(a.join(*b)), None),
+        (Info::UnknownInteger, Info::UnknownInteger) => (Info::UnknownInteger, None),
         (Info::Known(t1), Info::Known(t2)) => {
             let t = if matches!(&**t2, TypX::Projection { .. })
                 && !matches!(&**t1, TypX::Projection { .. })
@@ -632,10 +585,10 @@ fn merge_info(info1: &Info, info2: &Info) -> (Info, Option<(Typ, Typ)>) {
             };
             (Info::Known(t), Some((t1.clone(), t2.clone())))
         }
-        (Info::UnknownInteger(u), Info::Known(t))
-        | (Info::Known(t), Info::UnknownInteger(u))
+        (Info::UnknownInteger, Info::Known(t))
+        | (Info::Known(t), Info::UnknownInteger)
         => { 
-            if is_definitely_integer_type(t, *u) {
+            if is_definitely_integer_type(t) {
                 (Info::Known(t.clone()), None)
             } else {
                 todo!();
@@ -646,45 +599,17 @@ fn merge_info(info1: &Info, info2: &Info) -> (Info, Option<(Typ, Typ)>) {
     }
 }
 
-impl UnknownInteger {
-    fn join(self, b: UnknownInteger) -> UnknownInteger {
-        match (self, b) {
-            (UnknownInteger::Signed, _) => UnknownInteger::Signed,
-            (_, UnknownInteger::Signed) => UnknownInteger::Signed,
-            (UnknownInteger::Any, UnknownInteger::Any) => UnknownInteger::Any,
+fn is_definitely_integer_type(t: &Typ) -> bool {
+    match &**t {
+        TypX::Int(ir) => match ir {
+            IntRange::Int
+            | IntRange::Nat
+            | IntRange::U(_)
+            | IntRange::I(_)
+            | IntRange::USize
+            | IntRange::ISize => true,
+            IntRange::Char => false,
         }
-    }
-}
-
-fn is_definitely_integer_type(t: &Typ, u: UnknownInteger) -> bool {
-    match u {
-        UnknownInteger::Any => {
-            match &**t {
-                TypX::Int(ir) => match ir {
-                    IntRange::Int
-                    | IntRange::Nat
-                    | IntRange::U(_)
-                    | IntRange::I(_)
-                    | IntRange::USize
-                    | IntRange::ISize => true,
-                    IntRange::Char => false,
-                }
-                _ => false,
-            }
-        }
-        UnknownInteger::Signed => {
-            match &**t {
-                TypX::Int(ir) => match ir {
-                    IntRange::Int
-                    | IntRange::I(_)
-                    | IntRange::ISize => true,
-                    IntRange::Nat
-                    | IntRange::U(_)
-                    | IntRange::USize => false,
-                    IntRange::Char => false,
-                }
-                _ => false,
-            }
-        }
+        _ => false,
     }
 }

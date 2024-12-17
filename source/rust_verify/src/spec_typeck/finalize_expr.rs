@@ -1,8 +1,10 @@
 use super::State;
 use vir::ast::{Expr, VirErr, Stmt, Typ, TypX, ExprX, CallTarget, Typs, Constant};
+use vir::ast_util::{RangeContains, typ_to_diagnostic_str};
 use air::scope_map::ScopeMap;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::GenericArg;
+use vir::messages::error;
 
 impl State<'_, '_> {
     pub fn finalize_expr(&mut self, expr: &Expr) -> Result<Expr, VirErr> {
@@ -22,6 +24,8 @@ impl State<'_, '_> {
     }
 
     fn finalize_one_expr(&mut self, expr: &Expr) -> Result<Expr, VirErr> {
+        // TODO check trait bounds for ctors
+        // TODO fill in ImplPaths for calls, etc.
         match &expr.x {
             ExprX::Call(call_target, _args) => {
                 match call_target {
@@ -34,9 +38,20 @@ impl State<'_, '_> {
                     _ => todo!(),
                 }
             }
-            ExprX::Const(Constant::Int(_i)) => {
-                // TODO check int literal is in range for whatever type was inferred
-                todo!()
+            ExprX::Const(Constant::Int(i)) => {
+                match &*expr.typ {
+                    TypX::Int(int_range) => {
+                        match int_range.contains(i, self.bctx.ctxt.arch_word_bits.unwrap()) {
+                            RangeContains::Yes => { }
+                            RangeContains::No | RangeContains::Depends => {
+                                return Err(error(&expr.span,
+                                    format!("integer is out of range for {:}", typ_to_diagnostic_str(&expr.typ))));
+                            }
+                        }
+                    }
+                    _ => todo!()
+                }
+                Ok(expr.clone())
             }
             _ => Ok(expr.clone())
         }
