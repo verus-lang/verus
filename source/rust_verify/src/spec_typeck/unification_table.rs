@@ -1,5 +1,6 @@
 use std::cell::Cell;
 use std::ops::{Index, IndexMut};
+use indexmap::IndexMap;
 
 /// Unification table
 ///
@@ -112,5 +113,31 @@ impl<T> IndexMut<NodeClass> for UnificationTable<T> {
 impl NodeClass {
     pub fn as_id(self) -> usize {
         self.0
+    }
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for UnificationTable<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut map: IndexMap<NodeClass, Vec<usize>> = IndexMap::new();
+        for i in 0 .. self.uf_nodes.len() {
+            let node = self.get_class(i);
+
+            if !map.contains_key(&node) {
+                map.insert(node, vec![]);
+            }
+
+            if i != node.0 {
+                map[&node].push(i);
+            }
+        }
+
+        for (node, others) in map.iter() {
+            write!(f, "( ?{:}", node.0)?;
+            for o in others.iter() {
+                write!(f, " ?{:}", o)?;
+            }
+            write!(f, " ) -> {:?}\n", &self.data[node.0])?;
+        }
+        Ok(())
     }
 }

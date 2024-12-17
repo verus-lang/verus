@@ -49,7 +49,7 @@ impl State<'_, '_> {
                 mk_pattern(PatternX::Var { name: var_ident, mutable: false })
             }
             PatKind::Tuple(pats, dot_dot_pos) => {
-                let t = self.get_typ_with_concrete_head_if_possible(typ);
+                let t = self.get_typ_with_concrete_head_if_possible(typ)?;
                 let typs = match &*t {
                     TypX::Datatype(Dt::Tuple(n), typ_args, _) => {
                         assert!(typ_args.len() == *n);

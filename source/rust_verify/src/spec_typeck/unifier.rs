@@ -81,6 +81,8 @@ enum UnifyError {
 impl State<'_, '_> {
     // TODO overflow checking
     pub fn finish_unification(&mut self) -> Result<(), VirErr> {
+        dbg!(&self.unifier);
+
         for i in 0 .. self.unifier.len() {
             if let Some(class) = self.unifier.is_root_of_class(i) {
                self.finish_rec(class);
@@ -159,20 +161,19 @@ impl State<'_, '_> {
         todo!();
     }
 
-    pub fn get_typ_with_concrete_head_if_possible(&mut self, t: &Typ) -> Typ {
+    pub fn get_typ_with_concrete_head_if_possible(&mut self, t: &Typ) -> Result<Typ, VirErr> {
         match &**t {
             TypX::UnificationVar(id) => {
                 let node = self.unifier.get_class(*id);
                 if matches!(&self.unifier[node].info, Info::Projection(_)) {
-                    self.reduce_node_as_much_as_possible(node);
+                    self.reduce_node_as_much_as_possible(node)?;
                 }
                 match &self.unifier[node].info {
-                    Info::Known(known_typ) => known_typ.clone(),
-                    _ => t.clone(),
+                    Info::Known(known_typ) => Ok(known_typ.clone()),
+                    _ => Ok(t.clone()),
                 }
             }
-            TypX::Projection { .. } => unreachable!(),
-            _ => t.clone(),
+            _ => Ok(t.clone()),
         }
     }
 
@@ -180,8 +181,8 @@ impl State<'_, '_> {
     /// for the most part this means types are exactly equal, except for
     /// some integer type coercions
     pub fn expect_allowing_coercion(&mut self, t1: &Typ, t2: &Typ) -> Result<(), VirErr> {
-        let t1c = self.get_typ_with_concrete_head_if_possible(t1);
-        let t2c = self.get_typ_with_concrete_head_if_possible(t2);
+        let t1c = self.get_typ_with_concrete_head_if_possible(t1)?;
+        let t2c = self.get_typ_with_concrete_head_if_possible(t2)?;
 
         match (&*t1c, &*t2c) {
             (TypX::Int(ir1), TypX::Int(ir2)) 
@@ -435,7 +436,29 @@ impl State<'_, '_> {
         }).unwrap()
     }
 
-    fn reduce_node_as_much_as_possible(&mut self, node: NodeClass) {
+    pub(crate) fn normalize_typ_or_proj(&mut self, typ: &Typ) -> ProjectionOrTyp {
+        match &**typ {
+            TypX::Projection { trait_typ_args, trait_path, name } => {
+                let mut ts = vec![];
+                for t in trait_typ_args.iter() {
+                    ts.push(self.normalize_typ(t));
+                }
+                let trait_def_id = crate::rust_to_vir_base::def_id_of_vir_path(trait_path);
+                let assoc_item = self.tcx.associated_items(trait_def_id)
+                      .find_by_name_and_kinds(self.tcx, rustc_span::symbol::Ident::from_str(&name),
+                        &[rustc_middle::ty::AssocKind::Type], trait_def_id).unwrap();
+                ProjectionOrTyp::Projection(Projection {
+                    def_id: assoc_item.def_id,
+                    args: Arc::new(ts),
+                })
+            }
+            _ => {
+                ProjectionOrTyp::Typ(self.normalize_typ(typ))
+            }
+        }
+    }
+
+    fn reduce_node_as_much_as_possible(&mut self, node: NodeClass) -> Result<(), VirErr> {
         // TODO need a better approach here
 
         let mut reachable = vec![node];
@@ -469,9 +492,11 @@ impl State<'_, '_> {
         for node in reachable.iter().rev() {
             let node = *node;
             if matches!(&self.unifier[node].info, Info::Projection(_)) {
-                self.reduce_one_node(node);
+                self.reduce_one_node(node)?;
             }
         }
+
+        Ok(())
 
         /*
                 let new_info = match self.reduce_projection(&projection.clone()) {
@@ -485,19 +510,25 @@ impl State<'_, '_> {
         */
     }
 
-    fn reduce_one_node(&mut self, node: NodeClass) {
+    fn reduce_one_node(&mut self, node: NodeClass) -> Result<(), VirErr> {
         if let Info::Projection(projection) = &self.unifier[node].info {
-            let projection_or_typ = self.reduce_projection(projection);
-            self.unifier[node].info = match projection_or_typ {
-                ProjectionOrTyp::Projection(projection) => Info::Projection(projection),
-                ProjectionOrTyp::Typ(t) => {
-                    match &*t {
-                        TypX::UnificationVar(_v) => todo!(),
-                        _ => Info::Known(t),
+            let projection_or_typ_opt = self.reduce_projection(&projection.clone())?;
+            if let Some((projection_or_typ, unifs)) = projection_or_typ_opt {
+                self.unifier[node].info = match projection_or_typ {
+                    ProjectionOrTyp::Projection(projection) => Info::Projection(projection),
+                    ProjectionOrTyp::Typ(t) => {
+                        match &*t {
+                            TypX::UnificationVar(_v) => todo!(),
+                            _ => Info::Known(t),
+                        }
                     }
+                };
+                for (t1, t2) in unifs.unifications.iter() {
+                    self.expect_exact(t1, t2)?;
                 }
-            };
+            }
         }
+        Ok(())
     }
 }
 

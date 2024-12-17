@@ -4,9 +4,12 @@ use super::State;
 use std::sync::Arc;
 use crate::rust_to_vir_base::mid_ty_to_vir;
 use crate::rust_to_vir_base::mid_ty_to_vir_ghost;
-use rustc_middle::ty::{GenericArgKind, AliasTy, AliasKind, TyKind, InferTy, PredicateKind, ClauseKind, TermKind};
+use rustc_hir::def_id::DefId;
+use rustc_middle::ty::{GenericArgKind, AliasTy, AliasKind, TyKind, InferTy, PredicateKind, ClauseKind, TermKind, TraitPredicate, TraitRef, PredicatePolarity};
 use rustc_infer::traits::ObligationCause;
 use crate::rustc_trait_selection::traits::NormalizeExt;
+use rustc_trait_selection::traits::TraitObligation;
+use rustc_trait_selection::traits::{BuiltinImplSource, ImplSource};
 
 #[derive(Clone, Debug)]
 enum MiddleAliasOrTy<'tcx> {
@@ -14,7 +17,128 @@ enum MiddleAliasOrTy<'tcx> {
     Ty(rustc_middle::ty::Ty<'tcx>),
 }
 
+#[derive(Clone, Debug)]
+enum Candidate {
+    Impl(DefId),
+}
+
+#[derive( Debug)]
+pub struct UnificationsToBeDone {
+    pub unifications: Vec<(Typ, Typ)>
+}
+
 impl State<'_, '_> {
+    pub(crate) fn reduce_projection(
+        &mut self,
+        projection: &Projection
+    ) -> Result<Option<(ProjectionOrTyp, UnificationsToBeDone)>, VirErr>
+    {
+        // TODO we also need to check the param_env
+        // Use this as a reference:
+        // https://doc.rust-lang.org/1.79.0/nightly-rustc/rustc_trait_selection/traits/project/fn.project.html
+        // (Unfortunately this function is private and difficult to untangle from its crate)
+
+        let candidate = self.get_candidate(projection);
+        match candidate {
+            None => Ok(None),
+            Some(Candidate::Impl(impl_def_id)) => {
+                // TODO add obligations that impl is satisfied
+                let n_args = self.get_generic_defs(self.tcx.generics_of(impl_def_id)).len();
+                let mut args = vec![];
+                for _i in 0 .. n_args {
+                    args.push(self.new_unknown_typ());
+                }
+                let args = Arc::new(args);
+
+                let ts = self.impl_trait_ref_substitution(self.whole_span, impl_def_id, &args)?;
+
+                assert!(ts.len() == projection.args.len());
+
+                let unifs = UnificationsToBeDone {
+                    unifications: ts.iter().cloned().zip(projection.args.iter().cloned()).collect(),
+                };
+
+                dbg!(&unifs);
+
+                let assoc_id_on_impl = *self.tcx.impl_item_implementor_ids(impl_def_id).get(&projection.def_id).unwrap();
+
+                let proj_or_ty = self.item_type_substitution_or_proj(
+                    self.whole_span,
+                    assoc_id_on_impl,
+                    &args)?;
+
+                Ok(Some((proj_or_ty, unifs)))
+            }
+        }
+    }
+
+    fn get_candidate(&self, projection: &Projection) -> Option<Candidate> {
+        let assoc_ty_def_id = projection.def_id;
+        let trait_def_id = self.tcx.trait_of_item(assoc_ty_def_id).unwrap();
+
+        let (args, infcx, _unif_map) = self.vir_typs_to_middle_tys(self.whole_span, &projection.args);
+        let mut selcx = rustc_trait_selection::traits::SelectionContext::new(&infcx);
+
+        let trait_obligation = TraitObligation::new(
+            self.tcx,
+            ObligationCause::dummy(),
+            self.tcx.param_env(self.bctx.fun_id),
+            TraitPredicate {
+                trait_ref: TraitRef::new(
+                    self.tcx,
+                    trait_def_id,
+                    args,
+                ),
+                polarity: PredicatePolarity::Positive,
+            },
+        );
+
+        dbg!(&trait_obligation);
+
+        let impl_source = match selcx.select(&trait_obligation) {
+            Ok(Some(impl_source)) => impl_source,
+            Ok(None) => {
+                return None;
+                //candidate_set.mark_ambiguous();
+                //return Err(());
+            }
+            Err(_e) => {
+                todo!()
+                //debug!(error = ?e, "selection error");
+                //candidate_set.mark_error(e);
+                //return Err(());
+            }
+        };
+
+        match impl_source {
+            ImplSource::UserDefined(impl_data) => {
+                //let mut typs = vec![];
+                /*
+                dbg!(&impl_data.args);
+                for arg in impl_data.args.iter() {
+                    match arg.unpack() {
+                        GenericArgKind::Type(ty) => {
+                            let typ = mid_ty_to_vir_ghost(self.tcx, &self.bctx.ctxt.verus_items, 
+                                self.bctx.fun_id, self.whole_span, &ty, Some(&unif_map), false).unwrap().0;
+                            typs.push(typ);
+                        }
+                        _ => todo!()
+                    }
+                }
+                let typs = Arc::new(typs);
+                */
+                Some(Candidate::Impl(impl_data.impl_def_id))
+            }
+            ImplSource::Builtin(..) => {
+                todo!();
+            }
+            ImplSource::Param(..) => {
+                None
+            }
+        }
+    }
+
+/*
     /// This normalizes the given projection as much as possible.
     ///
     /// If the projection depends on other projections, those are treated as opaque inference
@@ -174,4 +298,5 @@ impl State<'_, '_> {
         }
         panic!("get_projection_from_normalize_result failed");
     }
+    */
 }

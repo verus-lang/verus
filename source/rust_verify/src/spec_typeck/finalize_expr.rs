@@ -135,6 +135,5 @@ impl State<'_, '_> {
         }
 
         assert!(self.deferred_projection_obligations.len() == 0);
-        todo!();
     }
 }
