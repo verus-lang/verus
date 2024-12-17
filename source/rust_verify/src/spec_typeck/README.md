@@ -81,14 +81,20 @@ In that case, all we have to do is instantiate the generic args as described abo
 For type-directed lookup (`TypeRelative` paths and `MethodCall` expressions),
 we fork code from rustc, specifically we fork `probe.rs`:
 <https://doc.rust-lang.org/1.79.0/nightly-rustc/src/rustc_hir_typeck/method/probe.rs.html>.
-This is a provide module in `rustc_typeck`, about 2000 lines. We modify it slightly to not rely on
+This is a private module in `rustc_typeck`, about 2000 lines. We modify it slightly to not rely on
 the rest of `rustc_typeck`. The forked version is in `method_probe.rs`.
 This module doesn't include the complex code
 for offering suggestions when the given item isn't found.
 
+The module does include code for the fairly complex auto-deref procedure; however, I think
+this can be removed as it isn't useful in spec code. (In principle, we could implement
+auto-_view_ as has been discussed aspirationally before.)
+
 In order to call into `method_probe.rs`, we have to map our VIR types back to rustc types
 (see `reverse_type_map.rs`). The result of a method probe is a `DefId` which lets us move on.
 If resolution doesn't succeed, then we error.
+
+Though hackish, this approach mostly seems to "just work".
 
 ### Trait obligations
 
@@ -124,3 +130,39 @@ The unification table supports an `UnknownInteger` type which we can use for int
 If, at the end of inference, there are any `UnknownInteger` types that
 haven't been concretized to a specific integer type, we defaults to `int`.
 
+# Alternatives
+
+There are at least 2 kinda awkward things we might consider changing.
+
+**Type representations**
+Type inference is mostly done with VIR Typs, which I chose because I figured it would
+make it easier to write Verus-specific type checking logic. However, this does
+mean we need to a "reverse map" whenever we call into Rustc machinery.
+An alternative might be to do all the type-checking with rustc_middle::ty::Ty and then
+lower to VIR Typs at the end.
+
+**Rolling our own type inference**
+
+Rustc obviously has a lot of machinery for doing type inference, mostly found in its
+`InferCtxt` object. We create a few of these contexts when we need to call rustc stuff, 
+but we never use them "properly", i.e., we never actually use its unification procedures
+or do anything complicated with InferTy values.
+An alternative would be to use the `InferCtxt` "properly" and actually use it for
+unification and normalization.
+
+I made this choice because I thought relying on rustc's InferCtxt too deeply would be a bad
+idea because it's probably very unstable and would make maintenance difficult. On the other hand,
+it's probably highly well-tuned for corner cases like cycle checking and everything.
+So this question really comes down to: do we want to maintain compatability with some evolving APIs
+(more than we already are) or do we want to maintain our own unifiers and normalizers?
+
+# Benefits
+
+Writing our own ghost-code type checkers unlock a number of useful possibilities:
+
+ * Auto-Coercing integer types to `nat` or `int`
+ * Automatically typing a spec function as `fn_spec(...) -> _`
+ * Better inference for arguments to a spec closure
+ * No unnecessary `Sized` trait bounds
+ * Recursive Spec-mode ADTs without `Box`
+ * Better diagnostics and suggestions specific to spec/proof code
