@@ -12,6 +12,17 @@ use vir::ast::IntRange;
 use rustc_middle::ty::TyVid;
 use super::unification_table::NodeClass;
 
+// Functions to turn a VIR Typ into a rustc_middle::ty::Ty.
+// This is needed for cases where we want to call into rustc machinery, e.g.,
+// to solve traits or do method probing.
+//
+// Some of the functions here are only for finalized types (no inference vars)
+// and some support inference vars. For the latter case, we handle an inference var
+// as follows:
+//
+//  - If it's in the Known state, use the known type.
+//  - Anything else, we translate it to an inference variable in the rustc InferCtxt.
+
 struct ReverseTypeState<'tcx> {
     span: Span,
     id_map: HashMap<NodeClass, rustc_middle::ty::Ty<'tcx>>,

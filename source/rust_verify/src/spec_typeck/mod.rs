@@ -1,20 +1,22 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+mod unification_table;
+mod unifier;
+mod reduce_projection;
+mod substitutions;
+mod reverse_type_map;
+
+mod method_probe;
+
 mod check_expr;
 mod check_ty;
 mod check_pat;
 mod check_path;
-mod unification_table;
-mod unifier;
-mod normalize_projection;
-mod substitutions;
+
 mod finalize_expr;
 
-mod reverse_type_map;
-
-mod method_probe;
-//mod project;
+// See README for explanation
 
 pub struct State<'a, 'tcx> {
     param_name_to_param_ty: std::collections::HashMap<vir::ast::Ident, rustc_middle::ty::Ty<'tcx>>,
