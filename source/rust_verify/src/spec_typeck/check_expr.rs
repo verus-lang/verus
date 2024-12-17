@@ -363,10 +363,10 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     BinOpKind::Add | BinOpKind::Mul => {
                         let l = self.check_expr(lhs)?;
                         let r = self.check_expr(rhs)?;
-                        let l_ir = self.expect_integer_and_choose_int_range(&l.typ)?;
-                        let r_ir = self.expect_integer_and_choose_int_range(&r.typ)?;
+                        let l_ir = self.expect_integer_as_nat_or_int(&l.typ)?;
+                        let r_ir = self.expect_integer_as_nat_or_int(&r.typ)?;
 
-                        let typ = if l_ir.is_unsigned_or_nat() && r_ir.is_unsigned_or_nat() {
+                        let typ = if l_ir == NatOrInt::Nat && r_ir == NatOrInt::Nat {
                             nat_typ()
                         } else {
                             int_typ()

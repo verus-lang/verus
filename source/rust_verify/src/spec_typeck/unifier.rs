@@ -1,4 +1,5 @@
 use vir::ast::{Typ, TypX, VirErr, IntRange, Typs};
+use vir::ast_util::{int_typ, nat_typ};
 use super::State;
 use std::sync::Arc;
 use std::collections::HashSet;
@@ -60,6 +61,11 @@ pub enum UnknownInteger {
     Signed,
     /// Can be any integer type. Will default to 'nat'.
     Any,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum IntOrNat {
+    Int, Nat
 }
 
 #[derive(Clone, Debug)]
@@ -159,12 +165,73 @@ impl State<'_, '_> {
         self.fresh_typ_with_info(Info::UnknownInteger(u))
     }
 
-    pub fn expect_integer(&mut self, _u2: &Typ) -> Result<(), VirErr> {
-        todo!();
+    /// Require the given type to be an integer
+    pub fn expect_integer(&mut self, t: &Typ) -> Result<(), VirErr> {
+        match t {
+            TypX::Int(
+              IntRange::Int
+              | IntRange::Nat
+              | IntRange::U(_)
+              | IntRange::I(_)
+              | IntRange::Usize
+              | IntRange::Isize) => Ok(()),
+            TypX::UnificationVar(id) => {
+                let node = self.unifier.get_class(*id);
+                match &self.unifier[node].info {
+                    Info::Known(t) => self.expect_integer(&t.clone()),
+                    Info::UnknownInteger(_) => Ok(()),
+                    Info::Projection(_) => todo!(),
+                    Info::Unknown => {
+                        self.unifier[node].info = Info::UnknownInteger(UnknownIntege::Any);
+                    }
+                }
+            }
+            _ => todo!(),
+        }
     }
 
-    pub fn expect_integer_and_choose_int_range(&mut self, _u2: &Typ) -> Result<IntRange, VirErr> {
-        todo!();
+    /// Require the given type to be an integer
+    /// and coercible to either nat or int, and return which one.
+    pub fn expect_integer_as_nat_or_int(&mut self, t: &Typ)
+        -> Result<IntOrNat, VirErr>
+    {
+        self.expect_integer(t)?;
+
+        // Since we demanded it to be an integer, we know it can be coerced to int.
+        // If we can also guarantee it is coercible to nat, then do so:
+        // Otherwise return int
+        match t {
+            TypX::Int(
+                IntRange::Nat
+                | IntRange::U(_)
+                | IntRange::Usize) => IntOrNat::Nat,
+            TypX::UnificationVar(id) => {
+                let node = self.unifier.get_class(*id);
+                match &self.unifier[node].info {
+                    Info::Known(t) => match &*t {
+                        TypX::Int(
+                          IntRange::Nat
+                          | IntRange::U(_)
+                          | IntRange::Usize) => IntOrNat::Nat,
+                    }
+                    Info::UnknownInteger(UnknownInteger::Signed) => {
+                        self.unifier[node].info = Info::Known(int_typ());
+                        IntOrNat::Int
+                    }
+                    Info::UnknownInteger(UnknownInteger::Any) => {
+                        self.unifier[node].info = Info::Known(nat_typ());
+                        IntOrNat::Nat
+                    }
+                    Info::Projection(_) => IntOrNat::Int,
+                    Info::Unknown => unreachable!(), // because we just called expect_integer
+                }
+            }
+        }
+    }
+
+    /// Require the given type to be bool
+    pub fn expect_bool(&mut self, t1: &Typ) -> Result<(), VirErr> {
+        self.expect_exact(t1, &vir::ast_util::bool_typ())
     }
 
     pub fn get_typ_with_concrete_head_if_possible(&mut self, t: &Typ) -> Result<Typ, VirErr> {
@@ -200,19 +267,7 @@ impl State<'_, '_> {
             _ => { }
         }
 
-        let e = self.unify(t1, t2);
-        match e {
-            Ok(()) => Ok(()),
-            Err(_ue) => {
-                dbg!(&t1);
-                dbg!(&t2);
-                todo!()
-            }
-        }
-    }
-
-    pub fn expect_bool(&mut self, t1: &Typ) -> Result<(), VirErr> {
-        self.expect_exact(t1, &vir::ast_util::bool_typ())
+        self.expect_exact(t1, t2)
     }
 
     /// expect t1 to match t2 exactly
@@ -229,7 +284,7 @@ impl State<'_, '_> {
     }
 
     /////////////////////////////////////////////////////////////////////
-    ///////// Unification
+    ///////// The unification
 
     // TODO overflow checking
     fn unify(&mut self, typ1: &Typ, typ2: &Typ) -> Result<(), UnifyError> {
@@ -531,7 +586,7 @@ impl State<'_, '_> {
 
     fn reduce_one_node(&mut self, node: NodeClass) -> Result<(), VirErr> {
         if let Info::Projection(projection) = &self.unifier[node].info {
-            let projection_or_typ_opt = self.reduce_projection(&projection.clone())?;
+            let projection_or_typ_opt = self.reduce_projection_once(&projection.clone())?;
             if let Some((projection_or_typ, unifs)) = projection_or_typ_opt {
                 self.unifier[node].info = match projection_or_typ {
                     ProjectionOrTyp::Projection(projection) => Info::Projection(projection),
