@@ -434,6 +434,12 @@ fn run() -> Result<(), String> {
         .map(|p| args.remove(p))
         .is_some();
 
+    let vstd_no_lifetime = args
+        .iter()
+        .position(|x| x.as_str() == "--vstd-no-lifetime")
+        .map(|p| args.remove(p))
+        .is_some();
+
     let vstd_no_verusfmt = args
         .iter()
         .position(|x| x.as_str() == "--vstd-no-verusfmt")
@@ -1109,6 +1115,7 @@ fn run() -> Result<(), String> {
                         .arg(target);
                     if release {
                         cmd = cmd.arg("--release");
+                        // cmd = cmd.arg("--no-lifetime")
                     }
                     cmd = cmd.args(extra_args);
                     log_command(&cmd, verbose);
@@ -1373,6 +1380,9 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                         }
                         if vstd_log_all {
                             vstd_build = vstd_build.arg("--log-all");
+                        }
+                        if vstd_no_lifetime {
+                            vstd_build = vstd_build.arg("--no-lifetime");
                         }
                         if verbose {
                             vstd_build = vstd_build.arg("--verbose");

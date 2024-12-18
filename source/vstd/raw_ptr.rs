@@ -18,6 +18,9 @@ they can be seamlessly cast to and fro.
 
 use super::layout::*;
 use super::prelude::*;
+// use len_trait::len;
+use core::slice::SliceIndex;
+use core::ops::Index;
 
 verus! {
 
@@ -536,6 +539,7 @@ pub fn expose_provenance<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>
 /// Construct a pointer with the given provenance from a _usize_ address.
 /// The provenance must have previously been exposed.
 #[verifier::external_body]
+#[allow(fuzzy_provenance_casts)]
 pub fn with_exposed_provenance<T: Sized>(
     addr: usize,
     Tracked(provenance): Tracked<IsExposed>,
@@ -754,9 +758,12 @@ pub fn deallocate(
 /// The existence of `SharedReference<'a, T>` is a stop-gap.
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
-pub struct SharedReference<'a, T>(&'a T);
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::SharedReference")]
+pub struct SharedReference<'a, T: ?Sized>(&'a T);
+// pub struct SharedReference<'a, T: ?Sized>(&'a [T]);
 
-impl<'a, T> Clone for SharedReference<'a, T> {
+
+impl<'a, T: ?Sized> Clone for SharedReference<'a, T> {
     #[verifier::external_body]
     fn clone(&self) -> (ret: Self)
         ensures
@@ -766,38 +773,38 @@ impl<'a, T> Clone for SharedReference<'a, T> {
     }
 }
 
-impl<'a, T> Copy for SharedReference<'a, T> {
+impl<'a, T: ?Sized> Copy for SharedReference<'a, T> {
 
 }
 
 impl<'a, T> SharedReference<'a, T> {
-    pub spec fn value(self) -> T;
+    // pub spec fn value(self) -> T;
 
-    pub spec fn ptr(self) -> *const T;
+    // pub spec fn ptr(self) -> *const T;
 
-    #[verifier::external_body]
-    fn new(t: &'a T) -> (s: Self)
-        ensures
-            s.value() == t,
-    {
-        SharedReference(t)
-    }
+    // #[verifier::external_body]
+    // pub fn new(t: &'a T) -> (s: Self)
+    //     ensures
+    //         s.value() == t,
+    // {
+    //     SharedReference(t)
+    // }
 
-    #[verifier::external_body]
-    fn as_ref(self) -> (t: &'a T)
-        ensures
-            t == self.value(),
-    {
-        self.0
-    }
+    // #[verifier::external_body]
+    // pub fn as_ptr(self) -> (ptr: *const T)
+    //     ensures
+    //         ptr == self.ptr(),
+    // {
+    //     &*self.0
+    // }
 
-    #[verifier::external_body]
-    fn as_ptr(self) -> (ptr: *const T)
-        ensures
-            ptr == self.ptr(),
-    {
-        &*self.0
-    }
+    // #[verifier::external_body]
+    // fn as_ref(&self) -> (t: &'a T)
+    //     ensures
+    //         t == self.value(),
+    // {
+    //     self.0
+    // }
 
     #[verifier::external_body]
     proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
@@ -807,6 +814,134 @@ impl<'a, T> SharedReference<'a, T> {
             pt.value() == self.value(),
     {
         unimplemented!();
+    }
+}
+
+impl<'a, T: ?Sized> SharedReference<'a, T> {
+    pub spec fn value(self) -> &'a T;
+
+    pub spec fn ptr(self) -> *const T;
+
+    #[verifier::external_body]
+    pub fn new(t: &'a T) -> (s: Self)
+        ensures
+            s.value() == t,
+    {
+        SharedReference(t)
+    }
+
+    // #[verifier::external_body]
+    // pub fn as_ptr(&self) -> (ptr: *const T)
+    //     ensures
+    //         ptr == self.ptr(),
+    // {
+    //     &*self.0
+    // }
+
+    #[verifier::external_body]
+    const fn as_ref(&self) -> (t: &'a T)
+        ensures
+            t == self.value(),
+    {
+        self.0
+    }
+}
+
+impl<'a, T> SharedReference<'a, [T]> {
+    // pub spec fn ptr(self) -> *const T;
+
+    #[verifier::external_body]
+    pub const fn as_ptr(&self) -> (ptr: *const T)
+        ensures
+            ptr == self.ptr() as *const T,
+    {
+        self.0.as_ptr()
+    }
+
+    // #[verifier::external_body]
+    // const fn as_ref(&self) -> (t: &'a [T])
+    //     ensures
+    //         t == self.value(),
+    // {
+    //     self.0
+    // }
+
+    pub const fn len(&self) -> usize
+    {
+        self.as_ref().len()
+    }
+}
+
+impl<'a, T> View for SharedReference<'a, [T]> {
+    type V = Seq<T>;
+
+    spec fn view(&self) -> Seq<T>;
+}
+
+// impl<'a, T> Index<usize> for SharedReference<'a, [T]> 
+// where
+//     // T: Index<I> + ?Sized, 
+//     // I: SliceIndex<[T]>,
+// {
+//     type Output = T; 
+
+//     #[inline(always)]
+//     fn index(&self, idx: usize) ->(out: &Self::Output) 
+//         requires
+//             0 <= idx < self.view().len(),
+//         // ensures
+//         //     *out == self.as_ref().index(idx as int),
+//     {
+//         // idx.index(self.0)
+//         // &(  (*(  self.as_ref()  ))[idx]  )
+//         &(*self.as_ref())[idx]
+//     }
+// }
+
+// #[verifier::external_trait_specification]
+// impl<'a, T, I> Index<I> for SharedReference<'a, [T]>
+// where
+//     I: SliceIndex<[T]>,
+// {
+//     type Output = I::Output;
+
+//     #[inline(always)]
+//     fn index(&self, index: I) -> &I::Output {
+//         index.index(self.as_ref())
+//     }
+// }
+#[verifier::external_trait_specification]
+pub trait ExIndex<Idx> 
+where
+    Idx: ?Sized,
+{
+    type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
+
+    type Output: ?Sized;
+
+    fn index(&self, index: Idx) -> &Self::Output;
+}
+
+// impl<'a, T, I> Index<I> for &'a T 
+// where
+//     T: Index<I>, 
+// {
+//     type Output = T::Output;
+
+//     fn index(&self, index: I) -> &T::Output {
+//         self.index(index)
+//     }
+// }
+
+impl<'a, T, I> Index<I> for SharedReference<'a, T> 
+where
+    T: Index<I> + ?Sized, 
+{
+    type Output = T::Output;
+
+    #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::Index::index")]
+    fn index(&self, index: I) -> &T::Output {
+        self.as_ref().index(index)
     }
 }
 
