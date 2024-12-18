@@ -73,14 +73,18 @@ fn check_path_and_get_datatype<'a>(
                 return Err(error(
                     span,
                     &format!(
-                        "cannot use type marked `external_type_specification` directly; use `{:}` instead",
+                        "cannot use type `{:}` marked `external_type_specification` directly; use `{:}` instead",
+                        path_as_friendly_rust_name(path),
                         dt_as_friendly_rust_name(actual_path),
                     ),
                 ));
             } else if is_external(ctxt, path) {
                 return Err(error(
                     span,
-                    "cannot use type marked `external`; try marking it `external_body` instead?",
+                    &format!(
+                        "cannot use type `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
+                        path_as_friendly_rust_name(path),
+                    ),
                 ));
             } else {
                 let rpath = path_as_friendly_rust_name(path);
