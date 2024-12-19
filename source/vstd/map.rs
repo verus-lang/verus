@@ -231,7 +231,6 @@ pub broadcast proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: 
 /// Inserting `value` at `key2` does not change the value mapped to by any other keys in `m`
 pub broadcast proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
     requires
-        m.dom().contains(key1),
         key1 != key2,
     ensures
         #[trigger] m.insert(key2, value)[key1] == m[key1],
@@ -252,7 +251,6 @@ pub broadcast proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
 /// any other keys in the map.
 pub broadcast proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
     requires
-        m.dom().contains(key1),
         key1 != key2,
     ensures
         #[trigger] m.remove(key2)[key1] == m[key1],
