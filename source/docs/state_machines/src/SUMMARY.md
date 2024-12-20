@@ -52,6 +52,7 @@
       - [`multiset`](./strategy-multiset.md)
       - [`bool`](./strategy-bool.md)
       - [`count`](./strategy-count.md)
+      - [`persistent_option`](./strategy-persistent-option.md)
       - [`not_tokenized`](./strategy-not-tokenized.md)
       - [`storage_option`](./strategy-storage-option.md)
     - [Operation definitions](./operations.md)
