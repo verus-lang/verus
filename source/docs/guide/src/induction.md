@@ -146,7 +146,7 @@ If we somehow knew that
 `triangle(1) <= triangle(10)`,
 and so on,
 then we could derive what we want from `triangle(10) < 0x1_0000_0000`.
-What we need is a *lemma* that proves the if `i <= j`,
+What we need is a *lemma* that proves that if `i <= j`,
 then `triangle(i) <= triangle(j)`.
 In other words, we need to prove that `triangle` is monotonic.
 
