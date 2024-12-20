@@ -221,6 +221,7 @@ fn opts_in_to_verus(eattrs: &ExternalAttrs) -> bool {
 impl<'a, 'tcx> VisitMod<'a, 'tcx> {
     fn visit_general(&mut self, general_item: GeneralItem<'tcx>, hir_id: HirId, span: Span) {
         let attrs = self.ctxt.tcx.hir().attrs(hir_id);
+
         let eattrs = match self.ctxt.get_external_attrs(attrs) {
             Ok(eattrs) => eattrs,
             Err(err) => {
@@ -248,7 +249,8 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
             VerifState::Default => {
                 if eattrs.external {
                     VerifState::External
-                } else if opts_in_to_verus(&eattrs) {
+                } else if opts_in_to_verus(&eattrs)
+                      || opts_in_by_automatic_derive(&self.ctxt, &general_item, &attrs) {
                     VerifState::Verify
                 } else {
                     VerifState::Default
@@ -493,4 +495,53 @@ impl<'a> GeneralItem<'a> {
             },
         }
     }
+}
+
+fn opts_in_by_automatic_derive<'tcx>(
+    ctxt: &Context<'tcx>,
+    general_item: &GeneralItem<'tcx>,
+    attrs: &[rustc_ast::Attribute],
+) -> bool {
+    if is_automatically_derived(attrs) {
+        match general_item {
+            GeneralItem::Item(item) => match &item.kind {
+                ItemKind::Impl(impll) => {
+                    let def_id = match impll.self_ty.kind {
+                        rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => path.res.def_id(),
+                        _ => { return false; }
+                    };
+                    if let Some(local_def_id) = def_id.as_local() {
+                        let hir_id = ctxt.tcx.local_def_id_to_hir_id(local_def_id);
+                        let attrs = ctxt.tcx.hir().attrs(hir_id);
+                        let eattrs = match ctxt.get_external_attrs(attrs) {
+                            Ok(eattrs) => eattrs,
+                            Err(_) => { return false; }
+                        };
+                        opts_in_to_verus(&eattrs)
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            }
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
+fn is_automatically_derived(attrs: &[rustc_ast::Attribute]) -> bool {
+    for attr in attrs.iter() {
+        match &attr.kind {
+            rustc_ast::AttrKind::Normal(item) => match &item.item.path.segments[..] {
+                [segment] => if segment.ident.as_str() == "automatically_derived" {
+                    return true;
+                }
+                _ => { }
+            }
+            _ => { }
+        }
+    }
+    false
 }
