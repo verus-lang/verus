@@ -136,14 +136,18 @@ fn check_path_and_get_function<'a>(
                 return Err(error(
                     span,
                     &format!(
-                        "cannot call function marked `external_fn_specification` directly; call `{:}` instead",
+                        "cannot call function `{:}` marked `external_fn_specification` directly; call `{:}` instead",
+                        path_as_friendly_rust_name(&x.path),
                         path_as_friendly_rust_name(actual_path),
                     ),
                 ));
             } else if is_external(ctxt, &x) {
                 return Err(error(
                     span,
-                    "cannot call function marked `external`; try marking it `external_body` instead, or add a Verus specification via `external_fn_specification`?",
+                    &format!(
+                        "cannot use function `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
+                        path_as_friendly_rust_name(&x.path),
+                    ),
                 ));
             } else {
                 let path = path_as_friendly_rust_name(&x.path);
