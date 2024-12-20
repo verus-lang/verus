@@ -56,6 +56,9 @@ pub trait VisitMut {
     fn visit_assume_mut(&mut self, i: &mut Assume) {
         visit_assume_mut(self, i);
     }
+    fn visit_assume_specification_mut(&mut self, i: &mut AssumeSpecification) {
+        visit_assume_specification_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_attr_style_mut(&mut self, i: &mut AttrStyle) {
         visit_attr_style_mut(self, i);
@@ -1037,6 +1040,47 @@ where
     tokens_helper(v, &mut node.assume_token.span);
     tokens_helper(v, &mut node.paren_token.span);
     v.visit_expr_mut(&mut *node.expr);
+}
+pub fn visit_assume_specification_mut<V>(v: &mut V, node: &mut AssumeSpecification)
+where
+    V: VisitMut + ?Sized,
+{
+    for it in &mut node.attrs {
+        v.visit_attribute_mut(it);
+    }
+    v.visit_visibility_mut(&mut node.vis);
+    tokens_helper(v, &mut node.assume_specification.span);
+    v.visit_generics_mut(&mut node.generics);
+    tokens_helper(v, &mut node.bracket_token.span);
+    if let Some(it) = &mut node.qself {
+        v.visit_qself_mut(it);
+    }
+    v.visit_path_mut(&mut node.path);
+    tokens_helper(v, &mut node.paren_token.span);
+    for el in Punctuated::pairs_mut(&mut node.inputs) {
+        let (it, p) = el.into_tuple();
+        full!(v.visit_fn_arg_mut(it));
+        if let Some(p) = p {
+            tokens_helper(v, &mut p.spans);
+        }
+    }
+    v.visit_return_type_mut(&mut node.output);
+    if let Some(it) = &mut node.requires {
+        v.visit_requires_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.returns {
+        v.visit_returns_mut(it);
+    }
+    if let Some(it) = &mut node.invariants {
+        v.visit_signature_invariants_mut(it);
+    }
+    if let Some(it) = &mut node.unwind {
+        v.visit_signature_unwind_mut(it);
+    }
+    tokens_helper(v, &mut node.semi.spans);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_attr_style_mut<V>(v: &mut V, node: &mut AttrStyle)
@@ -2808,6 +2852,9 @@ where
         }
         Item::BroadcastGroup(_binding_0) => {
             v.visit_item_broadcast_group_mut(_binding_0);
+        }
+        Item::AssumeSpecification(_binding_0) => {
+            v.visit_assume_specification_mut(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),

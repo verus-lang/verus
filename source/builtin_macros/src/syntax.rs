@@ -22,16 +22,16 @@ use syn_verus::visit_mut::{
 use syn_verus::BroadcastUse;
 use syn_verus::ExprBlock;
 use syn_verus::{
-    braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
-    Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
-    ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Global, Ident,
-    ImplItem, ImplItemMethod, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
-    InvariantNameSetList, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
-    ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
-    ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends,
-    Requires, ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants,
-    SignatureUnwind, Stmt, Token, TraitItem, TraitItemMethod, Type, TypeFnSpec, TypePath, UnOp,
-    Visibility,
+    braced, bracketed, parenthesized, parse_macro_input, AssumeSpecification, AttrStyle, Attribute,
+    BareFnArg, BinOp, Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit,
+    ExprLoop, ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArg, FnArgKind, FnMode,
+    Global, Ident, ImplItem, ImplItemMethod, Invariant, InvariantEnsures, InvariantExceptBreak,
+    InvariantNameSet, InvariantNameSetList, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn,
+    ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr,
+    MatchesOpToken, ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path, PathArguments,
+    PathSegment, Publish, Recommends, Requires, ReturnType, Returns, Signature, SignatureDecreases,
+    SignatureInvariants, SignatureUnwind, Stmt, Token, TraitItem, TraitItemMethod, Type,
+    TypeFnSpec, TypePath, UnOp, Visibility,
 };
 
 pub const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -267,7 +267,6 @@ impl Visitor {
             }
 
             // Check for Ghost(x) or Tracked(x) argument
-            use syn_verus::PatType;
             if let FnArgKind::Typed(PatType { pat, .. }) = &mut arg.kind {
                 let pat = &mut **pat;
                 let mut tracked_wrapper = false;
@@ -1189,9 +1188,121 @@ impl Visitor {
                         self.handle_broadcast_group(item_broadcast_group, item.span()),
                     );
                 }
+                Item::AssumeSpecification(assume_specification) => {
+                    *item = self.handle_assume_specification(assume_specification, item.span());
+                }
                 _ => (),
             }
         }
+    }
+
+    fn handle_assume_specification(
+        &mut self,
+        assume_specification: &AssumeSpecification,
+        span: Span,
+    ) -> Item {
+        let AssumeSpecification {
+            mut attrs,
+            vis,
+            assume_specification: assume_specification_token,
+            generics,
+            bracket_token: _,
+            qself,
+            path,
+            paren_token,
+            inputs,
+            output,
+            requires,
+            ensures,
+            returns,
+            invariants,
+            unwind,
+            semi,
+        } = assume_specification.clone();
+        let ex_ident = get_ex_ident_mangle_path(&qself, &path);
+
+        let mut sig = Signature {
+            publish: Publish::Default,
+            constness: None,
+            asyncness: None,
+            unsafety: None,
+            abi: None,
+            broadcast: None,
+            mode: FnMode::Default,
+            fn_token: token::Fn { span },
+            ident: ex_ident,
+            generics: generics,
+            paren_token: paren_token,
+            inputs: inputs,
+            variadic: None,
+            output: output,
+            prover: None,
+            requires: requires,
+            recommends: None,
+            ensures: ensures,
+            returns: returns,
+            decreases: None,
+            invariants: invariants,
+            unwind: unwind,
+        };
+
+        match sig.inputs.first() {
+            Some(FnArg { tracked: _, kind: FnArgKind::Receiver(_) }) => {
+                return Item::Verbatim(
+                    quote_spanned!(span => compile_error!("use a named param instead of 'self' argument");),
+                );
+            }
+            _ => false,
+        };
+
+        attrs.push(mk_verus_attr(
+            assume_specification_token.span,
+            quote_spanned! { assume_specification_token.span => external_fn_specification },
+        ));
+        attrs.push(mk_rust_attr(
+            assume_specification_token.span,
+            "allow",
+            quote! { non_snake_case },
+        ));
+
+        let mut stmts = self.visit_fn(&mut attrs, Some(&vis), &mut sig, Some(semi), false);
+
+        let mut args = vec![];
+        for input in sig.inputs.iter() {
+            let ident = match &input.kind {
+                FnArgKind::Receiver(recvr) => {
+                    return Item::Verbatim(
+                        quote_spanned!(recvr.self_token.span() => compile_error!("bad argument");),
+                    );
+                }
+                FnArgKind::Typed(pat_type) => match &*pat_type.pat {
+                    Pat::Ident(PatIdent { ident, .. }) => ident,
+                    _ => {
+                        return Item::Verbatim(
+                            quote_spanned!(pat_type.pat.span() => compile_error!("'assume_specification' expects ident, not complex pattern");),
+                        );
+                    }
+                },
+            };
+            args.push(Expr::Verbatim(quote! { #ident }));
+        }
+
+        let callee =
+            syn_verus::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
+        let e = Expr::Verbatim(quote! {
+            #callee(#(#args),*)
+        });
+        stmts.push(Stmt::Expr(e));
+        let block = Box::new(Block { brace_token: token::Brace { span }, stmts });
+
+        let mut item_fn = ItemFn { attrs, vis, sig, block, semi_token: None };
+        if self.rustdoc {
+            crate::rustdoc::process_item_fn_assume_specification(
+                &mut item_fn,
+                assume_specification,
+            );
+        }
+        Item::Fn(item_fn)
     }
 
     fn handle_broadcast_group(
@@ -3878,4 +3989,25 @@ impl ToTokens for Vstd {
             tokens.extend(quote_spanned! { self.0 => ::vstd });
         }
     }
+}
+
+fn get_ex_ident_mangle_path(qself: &Option<syn_verus::QSelf>, path: &Path) -> Ident {
+    let mut s = "_verus_external_fn_specification_".to_string();
+
+    let expr_path = syn_verus::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
+    let mut tokens = TokenStream::new();
+    expr_path.to_tokens(&mut tokens);
+    let toks = tokens.to_string();
+
+    for c in toks.chars() {
+        if c.is_ascii_alphanumeric() {
+            s += &c.to_string();
+        } else if c == '_' {
+            s += "__";
+        } else {
+            s += &format!("_{:}_", c as u32);
+        }
+    }
+
+    return Ident::new(&s, path.span());
 }

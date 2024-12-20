@@ -53,6 +53,12 @@ pub trait Fold {
     fn fold_assume(&mut self, i: Assume) -> Assume {
         fold_assume(self, i)
     }
+    fn fold_assume_specification(
+        &mut self,
+        i: AssumeSpecification,
+    ) -> AssumeSpecification {
+        fold_assume_specification(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_attr_style(&mut self, i: AttrStyle) -> AttrStyle {
         fold_attr_style(self, i)
@@ -1038,6 +1044,34 @@ where
         assume_token: Token![assume](tokens_helper(f, &node.assume_token.span)),
         paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
         expr: Box::new(f.fold_expr(*node.expr)),
+    }
+}
+pub fn fold_assume_specification<F>(
+    f: &mut F,
+    node: AssumeSpecification,
+) -> AssumeSpecification
+where
+    F: Fold + ?Sized,
+{
+    AssumeSpecification {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        vis: f.fold_visibility(node.vis),
+        assume_specification: Token![
+            assume_specification
+        ](tokens_helper(f, &node.assume_specification.span)),
+        generics: f.fold_generics(node.generics),
+        bracket_token: Bracket(tokens_helper(f, &node.bracket_token.span)),
+        qself: (node.qself).map(|it| f.fold_qself(it)),
+        path: f.fold_path(node.path),
+        paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
+        inputs: FoldHelper::lift(node.inputs, |it| full!(f.fold_fn_arg(it))),
+        output: f.fold_return_type(node.output),
+        requires: (node.requires).map(|it| f.fold_requires(it)),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        returns: (node.returns).map(|it| f.fold_returns(it)),
+        invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
+        unwind: (node.unwind).map(|it| f.fold_signature_unwind(it)),
+        semi: Token![;](tokens_helper(f, &node.semi.spans)),
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -2560,6 +2594,9 @@ where
         }
         Item::BroadcastGroup(_binding_0) => {
             Item::BroadcastGroup(f.fold_item_broadcast_group(_binding_0))
+        }
+        Item::AssumeSpecification(_binding_0) => {
+            Item::AssumeSpecification(f.fold_assume_specification(_binding_0))
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),

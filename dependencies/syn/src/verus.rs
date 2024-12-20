@@ -281,6 +281,27 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct AssumeSpecification {
+        pub attrs: Vec<Attribute>,
+        pub vis: Visibility,
+        pub assume_specification: Token![assume_specification],
+        pub generics: Generics,
+        pub bracket_token: token::Bracket,
+        pub qself: Option<QSelf>,
+        pub path: Path,
+        pub paren_token: token::Paren,
+        pub inputs: Punctuated<FnArg, Token![,]>,
+        pub output: ReturnType,
+        pub requires: Option<Requires>,
+        pub ensures: Option<Ensures>,
+        pub returns: Option<Returns>,
+        pub invariants: Option<SignatureInvariants>,
+        pub unwind: Option<SignatureUnwind>,
+        pub semi: Token![;],
+    }
+}
+
+ast_struct! {
     pub struct View {
         pub attrs: Vec<Attribute>,
         pub expr: Box<Expr>,
@@ -1081,6 +1102,55 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for AssumeSpecification {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = input.call(Attribute::parse_outer)?;
+            let vis = input.parse()?;
+            let assume_specification = input.parse()?;
+
+            let mut generics: Generics = input.parse()?;
+
+            let content;
+            let bracket_token = bracketed!(content in input);
+            let (qself, path) = path::parsing::qpath(&content, true)?;
+
+            let content;
+            let paren_token = parenthesized!(content in input);
+            let inputs = crate::item::parsing::parse_fn_args(&content)?;
+
+            let output: ReturnType = input.parse()?;
+            generics.where_clause = input.parse()?;
+
+            let requires: Option<Requires> = input.parse()?;
+            let ensures: Option<Ensures> = input.parse()?;
+            let returns: Option<Returns> = input.parse()?;
+            let invariants: Option<SignatureInvariants> = input.parse()?;
+            let unwind: Option<SignatureUnwind> = input.parse()?;
+
+            let semi = input.parse()?;
+
+            Ok(AssumeSpecification {
+                attrs,
+                vis,
+                assume_specification,
+                bracket_token,
+                generics,
+                qself,
+                path,
+                paren_token,
+                inputs,
+                output,
+                requires,
+                ensures,
+                returns,
+                invariants,
+                unwind,
+                semi,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for ItemBroadcastGroup {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = Vec::new();
@@ -1624,6 +1694,45 @@ mod printing {
             self.base.to_tokens(tokens);
             self.arrow_token.to_tokens(tokens);
             self.member.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for AssumeSpecification {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.vis.to_tokens(tokens);
+            self.assume_specification.to_tokens(tokens);
+            self.generics.to_tokens(tokens);
+
+            self.bracket_token.surround(tokens, |tokens| {
+                path::printing::print_path(tokens, &self.qself, &self.path)
+            });
+
+            use crate::punctuated::Pair;
+            self.paren_token.surround(tokens, |tokens| {
+                for input in self.inputs.pairs() {
+                    match input {
+                        Pair::Punctuated(input, comma) => {
+                            crate::item::printing::maybe_variadic_to_tokens(input, tokens);
+                            comma.to_tokens(tokens);
+                        }
+                        Pair::End(input) => {
+                            crate::item::printing::maybe_variadic_to_tokens(input, tokens);
+                        }
+                    }
+                }
+            });
+
+            self.output.to_tokens(tokens);
+            self.generics.where_clause.to_tokens(tokens);
+
+            self.requires.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
+            self.returns.to_tokens(tokens);
+            self.invariants.to_tokens(tokens);
+            self.unwind.to_tokens(tokens);
+            self.semi.to_tokens(tokens);
         }
     }
 }

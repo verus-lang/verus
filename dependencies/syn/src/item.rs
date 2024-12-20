@@ -84,6 +84,7 @@ ast_enum_of_structs! {
 
         /// Broadcast group definition
         BroadcastGroup(ItemBroadcastGroup),
+        AssumeSpecification(AssumeSpecification),
 
         // Not public API.
         //
@@ -402,7 +403,10 @@ impl Item {
             | Item::Macro2(ItemMacro2 { attrs, .. })
             | Item::Global(Global { attrs, .. })
             | Item::BroadcastUse(BroadcastUse { attrs, .. })
-            | Item::BroadcastGroup(ItemBroadcastGroup { attrs, .. }) => mem::replace(attrs, new),
+            | Item::BroadcastGroup(ItemBroadcastGroup { attrs, .. })
+            | Item::AssumeSpecification(AssumeSpecification { attrs, .. }) => {
+                mem::replace(attrs, new)
+            }
             Item::Verbatim(_) => Vec::new(),
 
             #[cfg(syn_no_non_exhaustive)]
@@ -1058,6 +1062,8 @@ pub mod parsing {
 
             let mut item = if lookahead.peek(Token![broadcast]) && ahead.peek2(Token![group]) {
                 input.parse().map(Item::BroadcastGroup)
+            } else if lookahead.peek(Token![assume_specification]) {
+                input.parse().map(Item::AssumeSpecification)
             } else if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
                 let vis: Visibility = input.parse()?;
                 let sig: Signature = input.parse()?;
@@ -1840,7 +1846,7 @@ pub mod parsing {
         }
     }
 
-    fn parse_fn_args(input: ParseStream) -> Result<Punctuated<FnArg, Token![,]>> {
+    pub(crate) fn parse_fn_args(input: ParseStream) -> Result<Punctuated<FnArg, Token![,]>> {
         let mut args = Punctuated::new();
         let mut has_receiver = false;
 
@@ -3032,7 +3038,7 @@ pub mod parsing {
 }
 
 #[cfg(feature = "printing")]
-mod printing {
+pub(crate) mod printing {
     use super::*;
     use crate::attr::FilterAttrs;
     use crate::print::TokensOrDefault;
@@ -3529,7 +3535,7 @@ mod printing {
         }
     }
 
-    fn maybe_variadic_to_tokens(arg: &FnArg, tokens: &mut TokenStream) -> bool {
+    pub(crate) fn maybe_variadic_to_tokens(arg: &FnArg, tokens: &mut TokenStream) -> bool {
         arg.tracked.to_tokens(tokens);
 
         let arg = match &arg.kind {

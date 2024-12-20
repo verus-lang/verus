@@ -55,6 +55,9 @@ pub trait Visit<'ast> {
     fn visit_assume(&mut self, i: &'ast Assume) {
         visit_assume(self, i);
     }
+    fn visit_assume_specification(&mut self, i: &'ast AssumeSpecification) {
+        visit_assume_specification(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_attr_style(&mut self, i: &'ast AttrStyle) {
         visit_attr_style(self, i);
@@ -1036,6 +1039,47 @@ where
     tokens_helper(v, &node.assume_token.span);
     tokens_helper(v, &node.paren_token.span);
     v.visit_expr(&*node.expr);
+}
+pub fn visit_assume_specification<'ast, V>(v: &mut V, node: &'ast AssumeSpecification)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_visibility(&node.vis);
+    tokens_helper(v, &node.assume_specification.span);
+    v.visit_generics(&node.generics);
+    tokens_helper(v, &node.bracket_token.span);
+    if let Some(it) = &node.qself {
+        v.visit_qself(it);
+    }
+    v.visit_path(&node.path);
+    tokens_helper(v, &node.paren_token.span);
+    for el in Punctuated::pairs(&node.inputs) {
+        let (it, p) = el.into_tuple();
+        full!(v.visit_fn_arg(it));
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
+    }
+    v.visit_return_type(&node.output);
+    if let Some(it) = &node.requires {
+        v.visit_requires(it);
+    }
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
+    if let Some(it) = &node.returns {
+        v.visit_returns(it);
+    }
+    if let Some(it) = &node.invariants {
+        v.visit_signature_invariants(it);
+    }
+    if let Some(it) = &node.unwind {
+        v.visit_signature_unwind(it);
+    }
+    tokens_helper(v, &node.semi.spans);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_attr_style<'ast, V>(v: &mut V, node: &'ast AttrStyle)
@@ -2814,6 +2858,9 @@ where
         }
         Item::BroadcastGroup(_binding_0) => {
             v.visit_item_broadcast_group(_binding_0);
+        }
+        Item::AssumeSpecification(_binding_0) => {
+            v.visit_assume_specification(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),

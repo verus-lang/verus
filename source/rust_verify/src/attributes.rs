@@ -655,6 +655,9 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "size_of_broadcast_proof" => {
                         v.push(Attr::SizeOfBroadcastProof)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
+                        v.push(Attr::ExternalFnSpecification)
+                    }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }

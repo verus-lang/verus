@@ -350,7 +350,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     if !vir::ast_util::is_visible_to_opt(&visibility, &external_item_visibility.restricted_to) {
         return err_span(
             sig.span,
-            "a function marked `external_fn_specification` must be visible to the function it provides a spec for",
+            "a function marked `external_fn_specification` must be at least as visible as the function it provides a spec for (try adding 'pub' to the specification declaration)",
         );
     }
 

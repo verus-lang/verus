@@ -169,16 +169,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_call_proxy2 verus_code! {
-        fn test() {
-            let x: u8 = 5;
-            let y: u8 = 7;
-            vstd::std_specs::core::ex_swap(&mut x, &mut y);
-        }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external_fn_specification` directly; call `core::mem::swap` instead")
-}
-
-test_verify_one_file! {
     #[test] test_call_external verus_code! {
         #[verifier(external)]
         fn some_external_fn() { }
@@ -323,7 +313,7 @@ test_verify_one_file! {
         pub fn negate_bool(b: bool, x: u8) -> bool {
             !b
         }
-    } => Err(err) => assert_vir_error_msg(err, "a function marked `external_fn_specification` must be visible to the function it provides a spec for")
+    } => Err(err) => assert_vir_error_msg(err, "a function marked `external_fn_specification` must be at least as visible")
 }
 
 test_verify_one_file! {
@@ -334,7 +324,7 @@ test_verify_one_file! {
         {
             std::mem::swap(a, b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "a function marked `external_fn_specification` must be visible to the function it provides a spec for")
+    } => Err(err) => assert_vir_error_msg(err, "a function marked `external_fn_specification` must be at least as visible")
 }
 
 // Test the attribute in weird places

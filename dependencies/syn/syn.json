@@ -233,6 +233,81 @@
       }
     },
     {
+      "ident": "AssumeSpecification",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "vis": {
+          "syn": "Visibility"
+        },
+        "assume_specification": {
+          "token": "AssumeSpecification"
+        },
+        "generics": {
+          "syn": "Generics"
+        },
+        "bracket_token": {
+          "group": "Bracket"
+        },
+        "qself": {
+          "option": {
+            "syn": "QSelf"
+          }
+        },
+        "path": {
+          "syn": "Path"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "inputs": {
+          "punctuated": {
+            "element": {
+              "syn": "FnArg"
+            },
+            "punct": "Comma"
+          }
+        },
+        "output": {
+          "syn": "ReturnType"
+        },
+        "requires": {
+          "option": {
+            "syn": "Requires"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
+        "returns": {
+          "option": {
+            "syn": "Returns"
+          }
+        },
+        "invariants": {
+          "option": {
+            "syn": "SignatureInvariants"
+          }
+        },
+        "unwind": {
+          "option": {
+            "syn": "SignatureUnwind"
+          }
+        },
+        "semi": {
+          "token": "Semi"
+        }
+      }
+    },
+    {
       "ident": "AttrStyle",
       "features": {
         "any": [
@@ -3496,6 +3571,11 @@
         "BroadcastGroup": [
           {
             "syn": "ItemBroadcastGroup"
+          }
+        ],
+        "AssumeSpecification": [
+          {
+            "syn": "AssumeSpecification"
           }
         ]
       },
@@ -7033,6 +7113,7 @@
     "As": "as",
     "Assert": "assert",
     "Assume": "assume",
+    "AssumeSpecification": "assume_specification",
     "Async": "async",
     "At": "@",
     "Auto": "auto",
