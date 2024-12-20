@@ -23,9 +23,10 @@ that `triangle` is monotonic; i.e., if you increase the argument to `triangle`, 
 Showing this property requires an [inductive proof](induction.md).  We cover inductive proofs
 later; the important thing here is that we can do this proof using a `proof` function
 (`triangle_is_monotonic`).  To invoke the results of our proof in our `exec` implementation, 
-we assert that the new sum fits, and as justification, we  an invoke our proof with the relevant arguments.
-At the call site, Verus will check that the preconditions for
-`triangle_is_monotonic` hold and then assume that the postdconditions hold.
+we [assert](proof_functions.md#assert-by) that the new sum fits, and as
+justification, we  an invoke our proof with the relevant arguments.  At the
+call site, Verus will check that the preconditions for `triangle_is_monotonic`
+hold and then assume that the postdconditions hold.
 
 Finally, our implementation uses a while loop, which means it requires some [loop invariants](while.md),
 which we cover later.
@@ -37,7 +38,6 @@ which we cover later.
 ```rust
 {{#include ../../../rust_verify/example/guide/recursion.rs:mono}}
 ```
-
 
 ```rust
 {{#include ../../../rust_verify/example/guide/recursion.rs:loop}}
