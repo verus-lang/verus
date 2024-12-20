@@ -1,19 +1,52 @@
-# Putting It All Together
+# Devising Invariants for Loops and Recursion
 
-To show how `spec`, `proof`, and `exec` code work together, consider the example
-below of computing values in the [Fibonacci sequence](https://en.wikipedia.org/wiki/Fibonacci_sequence).
+Below, we develop several examples that show how to work through
+the process of devising invariants for loops
+and for recursive functions.
+
+
+## Example 1: Fibonacci
+
+Suppose our goal is to compute values in the [Fibonacci sequence](https://en.wikipedia.org/wiki/Fibonacci_sequence).
 We use a `spec` function `fib` to mathematically define our specification using `nat`s
-and a recursive description.  We then write a more efficient iterative implementation
-as the `exec` function `fib_impl` (recall that `exec` is the default mode for functions;
-we include the annotation here for clarity).  We connect the correctness of `fib_impl`'s
-return value to our mathematical specification in `fib_impl`'s `ensures` clause.
+and a recursive description:
+```rust
+{{#include ../../../rust_verify/example/guide/invariants.rs:fib_spec}}
+```
 
-However, to successfully verify `fib_impl`, we need a few more things.  First, in executable
-code, we have to worry about the possibility of arithmetic overflow.  To keep things simple here,
-we add a precondition to `fib_impl` saying that the result needs to fit into a `u64` value.
-Rather than writing the necessary condition directly in the `requires` clause, we define another
-`spec` function (`fib_fits_u64`) to make the intent of the requirement clear, and so that other
-code can potentially impose a similar requirement (e.g., on its caller).
+Our goal is to write a more efficient iterative implementation as the `exec`
+function `fib_impl`.  To keep things simple, we'll add a precondition to
+`fib_impl` saying that the result needs to fit into a `u64` value.
+We connect the correctness of `fib_impl`'s return value
+to our mathematical specification in `fib_impl`'s `ensures` clause.
+```rust
+{{#include ../../../rust_verify/example/guide/invariants.rs:fib_impl_no_proof}}
+```
+However, if we ask Verus to verify this code, it reports two errors:
+```
+error: postcondition not satisfied
+   |
+   |           result == fib(n as nat),
+   |           ----------------------- failed this postcondition
+```
+and 
+```
+error: possible arithmetic underflow/overflow
+   |
+   |         let new_cur = cur + prev;
+   |                       ^^^^^^^^^^
+```
+
+
+
+
+
+
+
+
+
+
+
 
 We also need to translate the knowledge that the final `fib` result fits into a `u64`
 into the knowledge that each individual step of computing the result won't overflow,
@@ -28,7 +61,25 @@ that the preconditions for `lemma_fib_is_monotonic` hold and then assume that th
 Finally, our implementation uses a while loop, which means it requires some [loop invariants](while.md),
 which we cover later.
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Here's the final version that verifies properly:
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:fib}}
+{{#include ../../../rust_verify/example/guide/invariants.rs:fib_final}}
 ```
 
