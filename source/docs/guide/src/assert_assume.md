@@ -54,7 +54,7 @@ verification results:: verified: 1 errors: 0
 There are two paths through the code, one when `s1.is_empty()` and one when `!s1.empty()`.
 The failure could lie along either path, or both.
 Let's prepare to work on each branch of the `if`/`else` separately
-by moving a separate copy the `assume` into each branch:
+by moving a separate copy of the `assume` into each branch:
 
 ```rust
 {
@@ -182,7 +182,7 @@ error: assertion failed
 So we've narrowed in on the problem:
 the intersection of the empty set `s1` with another set should equal the empty set,
 but the verifier doesn't see this automatically.
-And from the previous section's discussion of equality, we can guess why:
+And from the previous section's [discussion of equality](spec_lib.md#proving-properties-of-seq-set-map), we can guess why:
 the SMT solver doesn't always automatically prove equalities between collections,
 but instead requires us to assert the equality using extensionality.
 So we can add the extensionality assertion:
