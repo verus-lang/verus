@@ -19,7 +19,7 @@
     - [spec functions vs. proof functions, recommends](spec_vs_proof.md)
     - [Ghost code vs. exec code](ghost_vs_exec.md)
     - [const declarations](const.md)
-    - [Putting it all together](fib.md)
+    - [Putting it all together](triangle.md)
 - [Recursion and loops](recursion_loops.md)
     - [Recursive spec functions, decreases, fuel](recursion.md)
     - [Recursive exec and proof functions, proofs by induction](induction.md)
@@ -36,7 +36,9 @@
 
 # Tutorial: Understanding the prover
 
-- [Using assert and assume to develop proofs](develop_proofs.md)
+- [Developing proofs](develop_proofs.md)
+    - [Using assert and assume](assert_assume.md)
+    - [Devising invariants for loops and recursion](invariants.md)
 - [Quantifiers](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
