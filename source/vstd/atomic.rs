@@ -1,14 +1,12 @@
 #![allow(unused_imports)]
 
 use core::sync::atomic::{
-    AtomicBool, AtomicI16, AtomicI32, AtomicI8, AtomicIsize, AtomicPtr, AtomicU16,
-    AtomicU32, AtomicU8, AtomicUsize, Ordering,
+    AtomicBool, AtomicI16, AtomicI32, AtomicI8, AtomicIsize, AtomicPtr, AtomicU16, AtomicU32,
+    AtomicU8, AtomicUsize, Ordering,
 };
 
 #[cfg(target_has_atomic = "64")]
-use core::sync::atomic::{
-    AtomicI64, AtomicU64
-};
+use core::sync::atomic::{AtomicI64, AtomicU64};
 
 use super::modes::*;
 use super::pervasive::*;
