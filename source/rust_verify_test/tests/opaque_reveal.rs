@@ -420,3 +420,41 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "test_crate::m1::f is not a broadcast proof fn")
 }
+
+test_verify_one_file! {
+    #[test] reveal_closed_error verus_code! {
+        mod m {
+            use super::*;
+
+            pub closed spec fn foo(u: u64) -> u64
+                decreases u
+            {
+                if u == 0 { 0 } else { foo((u-1) as u64) }
+            }
+        }
+
+        proof fn q() {
+            reveal(m::foo);
+            assert(m::foo(0) == 0);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "reveal/fuel statement is not allowed here because the function `crate::m::foo` is marked 'closed' and thus its body is not visible here")
+}
+
+test_verify_one_file! {
+    #[test] reveal_closed_not_error verus_code! {
+        mod m {
+            use super::*;
+
+            pub closed spec fn foo(u: u64) -> u64
+                decreases u
+            {
+                if u == 0 { 0 } else { foo((u-1) as u64) }
+            }
+
+            proof fn q() {
+                reveal(foo);
+                assert(foo(0) == 0);
+            }
+        }
+    } => Ok(())
+}

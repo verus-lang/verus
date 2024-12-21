@@ -4,7 +4,7 @@ use crate::ast::{
     UnwindSpec, VirErr, VirErrAs,
 };
 use crate::ast_util::{
-    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to_opt,
+    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to_of_owner, is_visible_to_opt,
     path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
     undecorate_typ,
 };
@@ -434,6 +434,18 @@ fn check_one_expr(
                         &expr.span,
                         "reveal_with_fuel statements require a spec function with a decreases clause",
                     ));
+                }
+                if let Some(my_module) = &function.x.owning_module {
+                    if f.x.publish == None && !is_visible_to_of_owner(&f.x.owning_module, my_module)
+                    {
+                        return Err(error(
+                            &expr.span,
+                            format!(
+                                "reveal/fuel statement is not allowed here because the function `{:}` is marked 'closed' and thus its body is not visible here. (Note: 'reveal' statements are intended for functions that are opaque, not functions that are closed)",
+                                path_as_friendly_rust_name(&f.x.name.path),
+                            ),
+                        ));
+                    }
                 }
             }
         }
