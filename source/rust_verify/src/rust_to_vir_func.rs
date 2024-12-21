@@ -18,11 +18,12 @@ use rustc_hir::{
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
-    GenericArgsRef, Region, TyCtxt, TyKind,
+    GenericArgsRef, Region, TraitRef, TyCtxt, TyKind,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
+use rustc_trait_selection::traits::ImplSource;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
@@ -1555,16 +1556,45 @@ pub(crate) fn get_external_def_id<'tcx>(
         let node_substs = types.node_args(hir_id);
         let param_env = tcx.param_env(proxy_fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let inst =
-            rustc_middle::ty::Instance::resolve(tcx, param_env, external_id, normalized_substs);
-        let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
-        if let Ok(Some(inst)) = inst {
-            if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
-                let impl_def_id = tcx.impl_of_method(did).expect("impl_of_method");
+
+        let trait_ref = TraitRef::new(tcx, trait_def_id, normalized_substs);
+        let candidate = tcx.codegen_select_candidate((param_env, trait_ref));
+
+        match candidate {
+            Ok(ImplSource::UserDefined(u)) => {
+                let impl_def_id = u.impl_def_id;
                 let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
 
+                let inst = rustc_middle::ty::Instance::resolve(
+                    tcx,
+                    param_env,
+                    external_id,
+                    normalized_substs,
+                );
+                let Ok(Some(inst)) = inst else {
+                    return err_span(
+                        sig.span,
+                        "Verus Internal Error: handling external_fn_specification, resolve failed",
+                    );
+                };
+                let rustc_middle::ty::InstanceDef::Item(did) = inst.def else {
+                    return err_span(
+                        sig.span,
+                        "Verus Internal Error: handling external_fn_specification, resolve failed",
+                    );
+                };
+
+                let is_default = tcx.impl_of_method(did).is_none();
+                unsupported_err_unless!(
+                    !is_default,
+                    sig.span,
+                    "external_fn_specification for a provided trait method"
+                );
+
+                let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
+
                 let mut types: Vec<Typ> = Vec::new();
-                for ty in trait_ref.instantiate(tcx, inst.args).args.types() {
+                for ty in trait_ref.instantiate(tcx, u.args).args.types() {
                     types.push(mid_ty_to_vir(tcx, &verus_items, did, sig.span, &ty, false)?);
                 }
 
@@ -1577,21 +1607,25 @@ pub(crate) fn get_external_def_id<'tcx>(
                     trait_typ_args: Arc::new(types),
                 };
                 return Ok((did, kind));
-            } else {
+            }
+            Ok(ImplSource::Builtin(b, _)) => {
+                return err_span(
+                    sig.span,
+                    format!(
+                        "Verus external_fn_specification does not support ImplSource::Builtin '{:?}'",
+                        b
+                    ),
+                );
+            }
+            Ok(ImplSource::Param(_)) => {
+                return err_span(
+                    sig.span,
+                    "external_fn_specification not supported for unresolved trait functions",
+                );
+            }
+            Err(_) => {
                 return err_span(sig.span, "Verus internal error: expected InstanceDef::Item");
             }
-        } else {
-            // This is the actual, generic trait method.
-            // Be conservative with this feature for now.
-            // let rust_item = crate::verus_items::get_rust_item(tcx, external_id);
-            // if rust_item == Some(crate::verus_items::RustItem::Clone) {
-            //     return Ok((external_id, FunctionKind::TraitMethodDecl { trait_path }));
-            // }
-
-            return err_span(
-                sig.span,
-                "external_fn_specification not supported for unresolved trait functions",
-            );
         }
     } else {
         Ok((external_id, FunctionKind::Static))

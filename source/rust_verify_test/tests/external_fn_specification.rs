@@ -1342,3 +1342,26 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file! {
+    #[test] provided_trait_method verus_code! {
+        pub trait Tr {
+            fn foo(&self) -> bool { true }
+        }
+
+        pub struct X { }
+
+        impl Tr for X {
+        }
+
+        verus!{
+            #[verifier(external_type_specification)]
+            pub struct ExX(X);
+
+            #[verifier(external_fn_specification)]
+            pub fn ex_X_foo(p: &X) -> bool {
+                p.foo()
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification for a provided trait method")
+}
