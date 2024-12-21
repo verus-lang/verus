@@ -1,10 +1,10 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
-    FieldOpr, Fun, FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, Ident, InequalityOp,
-    IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Param, ParamX, Params, Path, PathX,
-    Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs,
-    UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants,
-    Visibility,
+    FieldOpr, Fun, FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, HeaderExprX, Ident,
+    InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Param, ParamX, Params,
+    Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg,
+    TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent,
+    Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -1010,6 +1010,34 @@ impl Dt {
                 panic!(
                     "expect_path expected a Path; this assumption is only reasonable pre-ast-simplify"
                 );
+            }
+        }
+    }
+}
+
+impl HeaderExprX {
+    pub(crate) fn location_for_diagnostic(&self) -> &'static str {
+        match self {
+            HeaderExprX::UnwrapParameter(_)
+            | HeaderExprX::NoMethodBody
+            | HeaderExprX::Requires(_)
+            | HeaderExprX::Returns(_)
+            | HeaderExprX::Recommends(_)
+            | HeaderExprX::DecreasesWhen(_)
+            | HeaderExprX::DecreasesBy(_)
+            | HeaderExprX::InvariantOpens(_)
+            | HeaderExprX::InvariantOpensExcept(_)
+            | HeaderExprX::Hide(_)
+            | HeaderExprX::ExtraDependency(_)
+            | HeaderExprX::NoUnwind
+            | HeaderExprX::NoUnwindWhen(_) => "beginning of the function body",
+
+            HeaderExprX::InvariantExceptBreak(_) | HeaderExprX::Invariant(_) => {
+                "beginning of a loop body"
+            }
+
+            HeaderExprX::Ensures(..) | HeaderExprX::Decreases(_) => {
+                "beginning of the function body or a loop body"
             }
         }
     }

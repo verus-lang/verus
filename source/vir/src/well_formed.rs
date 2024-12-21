@@ -479,6 +479,15 @@ fn check_one_expr(
 
             check_typ(ctxt, &expr.typ, &expr.span)?;
         }
+        ExprX::Header(header) => {
+            return Err(error(
+                &expr.span,
+                format!(
+                    "This kind of statement should go at the {:}",
+                    header.location_for_diagnostic()
+                ),
+            ));
+        }
         _ => {}
     }
     Ok(())
