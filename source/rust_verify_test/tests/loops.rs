@@ -1452,3 +1452,65 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] loop_continue_no_break verus_code! {
+        fn test() {
+            let mut i = 0;
+            while i < 5
+                invariant i <= 5
+            {
+                continue;
+            }
+            assert(i == 5);
+        }
+
+        fn test_fail_beginning() {
+            let mut x = 0;
+            let mut i = 7;
+            while i < 5
+                invariant x == 1 // FAILS
+            {
+                x = 1;
+                continue;
+            }
+        }
+
+        fn test_fail_at_continue() {
+            let mut x = 2;
+            let mut i = 7;
+            while i < 5
+                invariant x == 2
+            {
+                x = 1;
+                continue; // FAILS
+            }
+        }
+
+        fn test_fail_at_end_after_continue(b: bool) {
+            let mut x = 2;
+            let mut i = 7;
+            while i < 5
+                invariant x == 2 // FAILS
+            {
+                if b {
+                    continue;
+                }
+                x = 1;
+            }
+        }
+
+        fn test_fail_at_end_after_continue_except_break(b: bool) {
+            let mut x = 2;
+            let mut i = 7;
+            loop
+                invariant_except_break x == 2 // FAILS
+            {
+                if b {
+                    continue;
+                }
+                x = 1;
+            }
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
