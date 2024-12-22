@@ -1865,6 +1865,28 @@ impl Visitor {
         true
     }
 
+    /// Handle `assume` statements. Automatically wrap them in a proof block.
+    fn handle_assume(&mut self, expr: &mut Expr) -> bool {
+        let Expr::Assume(_) = expr else {
+            return false;
+        };
+
+        self.inside_ghost += 1;
+        visit_expr_mut(self, expr);
+        self.inside_ghost -= 1;
+
+        let Expr::Assume(assume) = take_expr(expr) else { unreachable!() };
+
+        let span = assume.assume_token.span;
+        let arg = assume.expr;
+        let attrs = assume.attrs;
+        *expr = quote_verbatim!(builtin, span, attrs => #builtin::assume_(#arg));
+
+        self.auto_proof_block(expr, span);
+
+        true
+    }
+
     /// Handle `assert` statements. Automatically wrap them in a proof block.
     fn handle_assert(&mut self, expr: &mut Expr) -> bool {
         let Expr::Assert(_) = expr else {
@@ -1953,6 +1975,118 @@ impl Visitor {
         }
 
         self.auto_proof_block(expr, span);
+
+        true
+    }
+
+    /// Handle `assert forall` statements. Automatically wrap them in a proof block.
+    fn handle_assert_forall(&mut self, expr: &mut Expr) -> bool {
+        let Expr::AssertForall(_) = expr else {
+            return false;
+        };
+
+        self.inside_ghost += 1;
+        visit_expr_mut(self, expr);
+        self.inside_ghost -= 1;
+
+        let Expr::AssertForall(assert) = take_expr(expr) else { unreachable!() };
+        let span = assert.assert_token.span;
+        let mut arg = assert.expr;
+        match self.extract_quant_triggers(assert.attrs, span) {
+            Ok(ExtractQuantTriggersFound::Auto) => {
+                arg = Box::new(Expr::Verbatim(
+                    quote_spanned!(arg.span() => #[verus::internal(auto_trigger)] #arg),
+                ));
+            }
+            Ok(ExtractQuantTriggersFound::AllTriggers) => {
+                arg = Box::new(Expr::Verbatim(
+                    quote_spanned!(arg.span() => #[verus::internal(all_triggers)] #arg),
+                ));
+            }
+            Ok(ExtractQuantTriggersFound::Triggers(tuple)) => {
+                arg = Box::new(Expr::Verbatim(
+                    quote_spanned_builtin!(builtin, span => #builtin::with_triggers(#tuple, #arg)),
+                ));
+            }
+            Ok(ExtractQuantTriggersFound::None) => {}
+            Err(err_expr) => {
+                *expr = err_expr;
+                return true;
+            }
+        }
+        let inputs = assert.inputs;
+        let mut block = assert.body;
+        let mut stmts: Vec<Stmt> = Vec::new();
+        if let Some((_, rhs)) = assert.implies {
+            stmts.push(stmt_with_semi!(builtin, span => #builtin::requires(#arg)));
+            stmts.push(stmt_with_semi!(builtin, span => #builtin::ensures(#rhs)));
+        } else {
+            stmts.push(stmt_with_semi!(builtin, span => #builtin::ensures(#arg)));
+        }
+        block.stmts.splice(0..0, stmts);
+        *expr = Expr::Verbatim(
+            quote_spanned_builtin!(builtin, span => {#builtin::assert_forall_by(|#inputs| #block);}),
+        );
+
+        self.auto_proof_block(expr, span);
+
+        true
+    }
+
+    /// Handle `reveal` and `hide` statements.
+    /// Automatically `reveal` statements in a proof block.
+    fn handle_reveal_hide(&mut self, expr: &mut Expr) -> bool {
+        let Expr::RevealHide(_) = expr else {
+            return false;
+        };
+
+        self.inside_ghost += 1;
+        visit_expr_mut(self, expr);
+        self.inside_ghost -= 1;
+
+        let Expr::RevealHide(reveal) = take_expr(expr) else { unreachable!() };
+
+        let span = reveal
+            .reveal_token
+            .map(|x| x.span)
+            .or(reveal.reveal_with_fuel_token.map(|x| x.span))
+            .or(reveal.hide_token.map(|x| x.span))
+            .expect("span for Reveal");
+        let reveal_fuel = if let Some((_, fuel)) = reveal.fuel {
+            quote_spanned!(span => #fuel)
+        } else if reveal.hide_token.is_some() {
+            quote_spanned!(span => 0)
+        } else {
+            quote_spanned!(span => 1)
+        };
+        let is_hide = reveal.hide_token.is_some();
+        let path = reveal.path;
+        let expr_replacement = if path.path.segments.first().map(|x| x.ident.to_string())
+            == Some("Self".to_owned())
+            || path.qself.as_ref().and_then(|qself| match &*qself.ty {
+                Type::Path(qself_ty_path) => {
+                    qself_ty_path.path.segments.first().map(|x| x.ident.to_string())
+                }
+                _ => None,
+            }) == Some("Self".to_owned())
+        {
+            Expr::Verbatim(
+                quote_spanned!(span => { compile_error!("Self is not supported in reveal/hide, use the type name instead, or <T as X> for functions in trait impls") }),
+            )
+        } else {
+            Expr::Verbatim(
+                quote_spanned_builtin!(builtin, span => #builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, #reveal_fuel) ),
+            )
+        };
+        if is_hide {
+            *expr = self.maybe_erase_expr(span, expr_replacement);
+        } else {
+            *expr = expr_replacement;
+        }
+
+        if !is_hide {
+            self.auto_proof_block(expr, span);
+        }
 
         true
     }
@@ -2522,32 +2656,16 @@ impl VisitMut for Visitor {
         if self.chain_operators(expr)
             || self.closure_quant_operators(expr)
             || self.handle_binary_ops(expr)
+            || self.handle_assume(expr)
             || self.handle_assert(expr)
+            || self.handle_assert_forall(expr)
+            || self.handle_reveal_hide(expr)
             || self.handle_mode_blocks(expr)
             || self.handle_cast(expr)
             || self.handle_lit(expr)
             || self.handle_closures(expr)
         {
             return;
-        }
-
-        let is_auto_proof_block = if self.inside_ghost == 0 {
-            match &expr {
-                Expr::Assume(a) => Some(a.assume_token.span),
-                Expr::AssertForall(a) => Some(a.assert_token.span),
-                Expr::RevealHide(a) if a.hide_token.is_none() => Some(
-                    a.reveal_token
-                        .map(|x| x.span)
-                        .or(a.reveal_with_fuel_token.map(|x| x.span))
-                        .expect("missing span for Reveal"),
-                ),
-                _ => None,
-            }
-        } else {
-            None
-        };
-        if let Some(_) = is_auto_proof_block {
-            self.inside_ghost += 1;
         }
 
         let sub_inside_arith = match expr {
@@ -2637,7 +2755,6 @@ impl VisitMut for Visitor {
             Expr::Unary(ExprUnary { op: UnOp::Exists(..), .. }) => true,
             Expr::Unary(ExprUnary { op: UnOp::Choose(..), .. }) => true,
             Expr::Unary(ExprUnary { op: UnOp::Neg(..), .. }) if use_spec_traits => true,
-            Expr::Assume(..) | Expr::AssertForall(..) | Expr::RevealHide(..) => true,
             Expr::View(..) => true,
             Expr::Is(..) => true,
             Expr::Has(..) => true,
@@ -2690,94 +2807,6 @@ impl VisitMut for Visitor {
                     let borrowed: Expr =
                         Expr::Verbatim(quote_spanned!(span1 => #base.borrow_mut()));
                     *expr = quote_verbatim!(span2, attrs => (*(#borrowed)));
-                }
-                Expr::Assume(assume) => {
-                    let span = assume.assume_token.span;
-                    let arg = assume.expr;
-                    let attrs = assume.attrs;
-                    *expr = quote_verbatim!(builtin, span, attrs => #builtin::assume_(#arg));
-                }
-                Expr::AssertForall(assert) => {
-                    let span = assert.assert_token.span;
-                    let mut arg = assert.expr;
-                    match self.extract_quant_triggers(assert.attrs, span) {
-                        Ok(ExtractQuantTriggersFound::Auto) => {
-                            arg = Box::new(Expr::Verbatim(
-                                quote_spanned!(arg.span() => #[verus::internal(auto_trigger)] #arg),
-                            ));
-                        }
-                        Ok(ExtractQuantTriggersFound::AllTriggers) => {
-                            arg = Box::new(Expr::Verbatim(
-                                quote_spanned!(arg.span() => #[verus::internal(all_triggers)] #arg),
-                            ));
-                        }
-                        Ok(ExtractQuantTriggersFound::Triggers(tuple)) => {
-                            arg = Box::new(Expr::Verbatim(
-                                quote_spanned_builtin!(builtin, span => #builtin::with_triggers(#tuple, #arg)),
-                            ));
-                        }
-                        Ok(ExtractQuantTriggersFound::None) => {}
-                        Err(err_expr) => {
-                            *expr = err_expr;
-                            return;
-                        }
-                    }
-                    let inputs = assert.inputs;
-                    let mut block = assert.body;
-                    let mut stmts: Vec<Stmt> = Vec::new();
-                    if let Some((_, rhs)) = assert.implies {
-                        stmts.push(stmt_with_semi!(builtin, span => #builtin::requires(#arg)));
-                        stmts.push(stmt_with_semi!(builtin, span => #builtin::ensures(#rhs)));
-                    } else {
-                        stmts.push(stmt_with_semi!(builtin, span => #builtin::ensures(#arg)));
-                    }
-                    block.stmts.splice(0..0, stmts);
-                    *expr = Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, span => {#builtin::assert_forall_by(|#inputs| #block);}),
-                    );
-                }
-                Expr::RevealHide(reveal) => {
-                    let span = reveal
-                        .reveal_token
-                        .map(|x| x.span)
-                        .or(reveal.reveal_with_fuel_token.map(|x| x.span))
-                        .or(reveal.hide_token.map(|x| x.span))
-                        .expect("span for Reveal");
-                    let reveal_fuel = if let Some((_, fuel)) = reveal.fuel {
-                        quote_spanned!(span => #fuel)
-                    } else if reveal.hide_token.is_some() {
-                        quote_spanned!(span => 0)
-                    } else {
-                        quote_spanned!(span => 1)
-                    };
-                    let is_hide = reveal.hide_token.is_some();
-                    let path = reveal.path;
-                    let expr_replacement = if path
-                        .path
-                        .segments
-                        .first()
-                        .map(|x| x.ident.to_string())
-                        == Some("Self".to_owned())
-                        || path.qself.as_ref().and_then(|qself| match &*qself.ty {
-                            Type::Path(qself_ty_path) => {
-                                qself_ty_path.path.segments.first().map(|x| x.ident.to_string())
-                            }
-                            _ => None,
-                        }) == Some("Self".to_owned())
-                    {
-                        Expr::Verbatim(
-                            quote_spanned!(span => { compile_error!("Self is not supported in reveal/hide, use the type name instead, or <T as X> for functions in trait impls") }),
-                        )
-                    } else {
-                        Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, span => #builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, #reveal_fuel) ),
-                        )
-                    };
-                    if is_hide {
-                        *expr = self.maybe_erase_expr(span, expr_replacement);
-                    } else {
-                        *expr = expr_replacement;
-                    }
                 }
                 Expr::ForLoop(for_loop) => {
                     *expr = self.desugar_for_loop(for_loop);
@@ -2837,12 +2866,6 @@ impl VisitMut for Visitor {
                 }
                 _ => panic!("expected to replace expression"),
             }
-        }
-
-        if let Some(span) = is_auto_proof_block {
-            // automatically put assert/assume in a proof block
-            self.inside_ghost -= 1;
-            self.auto_proof_block(expr, span);
         }
     }
 
