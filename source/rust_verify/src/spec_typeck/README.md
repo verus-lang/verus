@@ -46,7 +46,7 @@ _also_ resolve to trait methods, so it depends on the trait bounds that are in s
 
 The main type-checking pass traverses the entire expression (`check_expr`),
 creating type inference variables where necessary and acculumating constraints.
-The constraints are solved via unification (`unifier.rs`).
+The constraints are solved via unification (`constraints.rs`).
 The output of `check_expr` is a VIR `Expr` whose types may include inference variables.
 
 Then (if we successfully resolve all inference vars), we "finalize" the expression

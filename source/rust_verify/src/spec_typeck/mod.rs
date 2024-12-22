@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 
 mod unification_table;
-mod unifier;
+mod constraints;
 mod reduce_projection;
 mod substitutions;
 mod reverse_type_map;
@@ -26,10 +26,10 @@ pub struct State<'a, 'tcx> {
 
     // Stateful context throughout the first past
     scope_map: air::scope_map::ScopeMap<vir::ast::VarIdent, vir::ast::Typ>,
-    unifier: unification_table::UnificationTable<unifier::Entry>,
+    unifier: unification_table::UnificationTable<constraints::Entry>,
 
     // Obligations collected in the first pass to be discharged at the end
-    deferred_projection_obligations: Vec<(unifier::Projection, vir::ast::Typ)>,
+    deferred_projection_obligations: Vec<(constraints::Projection, vir::ast::Typ)>,
 }
 
 pub fn typecheck<'tcx>(

@@ -1,5 +1,5 @@
 use vir::ast::{Typ, TypX, VirErr, Typs};
-use super::unifier::{Projection, ProjectionOrTyp};
+use super::constraints::{Projection, ProjectionOrTyp};
 use super::State;
 use std::sync::Arc;
 use crate::rust_to_vir_base::mid_ty_to_vir;

@@ -1,6 +1,6 @@
 use rustc_infer::infer::InferCtxt;
 use crate::rustc_infer::infer::TyCtxtInferExt;
-use super::unifier::Info;
+use super::constraints::Info;
 use rustc_span::Span;
 use super::State;
 use vir::ast::{Typ, TypX, Dt, Typs};

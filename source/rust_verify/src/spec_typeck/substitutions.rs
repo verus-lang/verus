@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use crate::rust_to_vir_base::mid_ty_to_vir;
 use std::sync::Arc;
 use rustc_middle::ty::{Generics, GenericParamDefKind, GenericParamDef, VariantDef, GenericArgKind};
-use crate::spec_typeck::unifier::ProjectionOrTyp;
+use crate::spec_typeck::constraints::ProjectionOrTyp;
 
 impl<'a, 'tcx> State<'a, 'tcx> {
     pub fn fn_item_type_substitution(&mut self, span: Span, def_id: DefId, typ_args: &Typs)
