@@ -625,6 +625,7 @@ pub fn func_def_to_sst(
                 let exp =
                     expr_to_exp_skip_checks(ctx, diagnostics, &ens_pars, &e_with_req_ens_params)?;
                 let exp = subst_exp(&trait_typ_substs, &HashMap::new(), &exp);
+                let exp = crate::heuristics::insert_ext_eq_in_assert_or_ensures(ctx, &exp);
                 enss.push(exp);
             }
         }
@@ -634,7 +635,9 @@ pub fn func_def_to_sst(
             ens_spec_precondition_stms.extend(check_pure_expr(ctx, &mut state, &e)?);
         } else {
             // skip checks because we call expr_to_pure_exp_check above
-            enss.push(expr_to_exp_skip_checks(ctx, diagnostics, &ens_pars, &e)?);
+            let exp = expr_to_exp_skip_checks(ctx, diagnostics, &ens_pars, &e)?;
+            let exp = crate::heuristics::insert_ext_eq_in_assert_or_ensures(ctx, &exp);
+            enss.push(exp);
         }
     }
 
