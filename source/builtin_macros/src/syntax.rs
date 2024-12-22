@@ -93,6 +93,8 @@ struct Visitor {
 
     // Add extra verus signature information to the docstring
     rustdoc: bool,
+
+    new_ghost_code: bool,
 }
 
 // For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
@@ -2007,7 +2009,7 @@ impl Visitor {
             return false;
         };
 
-        if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 {
+        if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 && !self.new_ghost_code {
             let span = lit.span();
             let n = lit.base10_digits().to_string();
             if lit.suffix() == "" {
@@ -2150,7 +2152,11 @@ impl Visitor {
             }
         } else {
             // Normal 'assert'
-            *expr = quote_verbatim!(builtin, span, attrs => #builtin::assert_(#arg));
+            if self.new_ghost_code {
+                *expr = quote_verbatim!(builtin, span, attrs => #builtin::assert_(#builtin::ghost_code(|| #arg)));
+            } else {
+                *expr = quote_verbatim!(builtin, span, attrs => #builtin::assert_(#arg));
+            }
         }
 
         self.auto_proof_block(expr, span);
@@ -3633,6 +3639,7 @@ pub(crate) fn rewrite_items(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        new_ghost_code: env_new_ghost_code(),
     };
     visitor.visit_items_prefilter(&mut items.items);
     for mut item in &mut items.items {
@@ -3666,6 +3673,7 @@ pub(crate) fn rewrite_expr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        new_ghost_code: env_new_ghost_code(),
     };
     visitor.visit_expr_mut(&mut expr);
     expr.to_tokens(&mut new_stream);
@@ -3683,6 +3691,7 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        new_ghost_code: env_new_ghost_code(),
     };
     visitor.visit_expr_mut(expr);
 }
@@ -3795,6 +3804,7 @@ pub(crate) fn proof_block(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        new_ghost_code: env_new_ghost_code(),
     };
     visitor.visit_block_mut(&mut invoke);
     invoke.to_tokens(&mut new_stream);
@@ -3819,6 +3829,7 @@ pub(crate) fn proof_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        new_ghost_code: env_new_ghost_code(),
     };
     for element in &mut invoke.elements.elements {
         match element {
@@ -3848,6 +3859,7 @@ pub(crate) fn inv_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        new_ghost_code: env_new_ghost_code(),
     };
     for (idx, element) in invoke.elements.elements.iter_mut().enumerate() {
         match element {
@@ -3883,6 +3895,7 @@ pub(crate) fn proof_macro_explicit_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        new_ghost_code: env_new_ghost_code(),
     };
     for element in &mut invoke.elements.elements {
         match element {
@@ -3985,4 +3998,17 @@ impl ToTokens for Vstd {
             tokens.extend(quote_spanned! { self.0 => ::vstd });
         }
     }
+}
+
+#[cfg(verus_keep_ghost)]
+pub fn env_new_ghost_code() -> bool {
+    match proc_macro::tracked_env::var("NEW_GHOST_CODE") {
+        Err(_) => false, // VERUSDOC key not present in environment
+        Ok(s) => s == "1",
+    }
+}
+
+#[cfg(not(verus_keep_ghost))]
+pub fn env_new_ghost_code() -> bool {
+    false
 }

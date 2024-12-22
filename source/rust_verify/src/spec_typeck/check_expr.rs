@@ -453,7 +453,10 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 LitKind::Bool(b) => {
                     mk_expr(&bool_typ(), ExprX::Const(Constant::Bool(*b)))
                 }
-                _ => todo!()
+                _ => {
+                    dbg!(&lit);
+                    todo!()
+                }
             }
             _ => {
                 unsupported_err!(expr.span, format!("{:?}", expr));

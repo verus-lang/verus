@@ -5,12 +5,13 @@ use rustc_span::Span;
 use super::State;
 use vir::ast::{Typ, TypX, Dt, Typs};
 use std::collections::HashMap;
-use rustc_middle::ty::{Ty, GenericArg, TyKind, AssocKind, AliasKind, AliasTy, UintTy, InferTy};
+use rustc_middle::ty::{Ty, GenericArg, TyKind, AssocKind, AliasKind, AliasTy, UintTy, IntTy, InferTy};
 use rustc_middle::ty::GenericArgs;
 use std::sync::Arc;
 use vir::ast::IntRange;
 use rustc_middle::ty::TyVid;
 use super::unification_table::NodeClass;
+use crate::verus_items::{VerusItem, BuiltinTypeItem};
 
 // Functions to turn a VIR Typ into a rustc_middle::ty::Ty.
 // This is needed for cases where we want to call into rustc machinery, e.g.,
@@ -126,13 +127,37 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     AliasKind::Projection,
                     AliasTy::new(self.tcx, assoc_item.def_id, mid_args)))
             }
-            TypX::Int(IntRange::U(8)) => tcx.mk_ty_from_kind(TyKind::Uint(UintTy::U8)),
+            TypX::Int(ir) => match ir {
+                IntRange::U(8) => tcx.mk_ty_from_kind(TyKind::Uint(UintTy::U8)),
+                IntRange::U(16) => tcx.mk_ty_from_kind(TyKind::Uint(UintTy::U16)),
+                IntRange::U(32) => tcx.mk_ty_from_kind(TyKind::Uint(UintTy::U32)),
+                IntRange::U(64) => tcx.mk_ty_from_kind(TyKind::Uint(UintTy::U64)),
+                IntRange::U(128) => tcx.mk_ty_from_kind(TyKind::Uint(UintTy::U128)),
+                IntRange::USize => tcx.mk_ty_from_kind(TyKind::Uint(UintTy::Usize)),
+                IntRange::I(8) => tcx.mk_ty_from_kind(TyKind::Int(IntTy::I8)),
+                IntRange::I(16) => tcx.mk_ty_from_kind(TyKind::Int(IntTy::I16)),
+                IntRange::I(32) => tcx.mk_ty_from_kind(TyKind::Int(IntTy::I32)),
+                IntRange::I(64) => tcx.mk_ty_from_kind(TyKind::Int(IntTy::I64)),
+                IntRange::I(128) => tcx.mk_ty_from_kind(TyKind::Int(IntTy::I128)),
+                IntRange::ISize => tcx.mk_ty_from_kind(TyKind::Int(IntTy::Isize)),
+                IntRange::Int => self.adt_from_verus_item(VerusItem::BuiltinType(BuiltinTypeItem::Int)),
+                IntRange::Nat => self.adt_from_verus_item(VerusItem::BuiltinType(BuiltinTypeItem::Nat)),
+                IntRange::Char => tcx.mk_ty_from_kind(TyKind::Char),
+                IntRange::U(_) => unreachable!(),
+                IntRange::I(_) => unreachable!(),
+            },
             TypX::Bool => tcx.mk_ty_from_kind(TyKind::Bool),
             _ => {
                 dbg!(t);
                 todo!();
             }
         }
+    }
+
+    fn adt_from_verus_item(&self, verus_item: VerusItem) -> Ty<'tcx> {
+        let def_id = self.bctx.ctxt.verus_items.name_to_id.get(&verus_item).unwrap();
+        let adt_def = self.tcx.adt_def(*def_id);
+        self.tcx.mk_ty_from_kind(TyKind::Adt(adt_def, self.tcx.mk_args(&[])))
     }
 }
 
