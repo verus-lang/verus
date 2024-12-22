@@ -1578,6 +1578,8 @@ impl Visitor {
         true
     }
 
+    /// Handle all BinaryOp expressions, transforming them if necessar
+    /// (e.g., `a + b` -> `a.spec_add(b)`
     fn handle_binary_ops(&mut self, expr: &mut Expr) -> bool {
         let Expr::Binary(binary) = expr else {
             return false;
@@ -1784,6 +1786,7 @@ impl Visitor {
         true
     }
 
+    /// Handle `as` casts. These need to turn into `spec_cast_integer` calls in spec contexts.
     fn handle_cast(&mut self, expr: &mut Expr) -> bool {
         let Expr::Cast(_) = expr else {
             return false;
@@ -1819,6 +1822,50 @@ impl Visitor {
         true
     }
 
+    /// Handle integer literals.
+    fn handle_lit(&mut self, expr: &mut Expr) -> bool {
+        let Expr::Lit(ExprLit { lit: Lit::Int(lit), attrs }) = expr else {
+            return false;
+        };
+
+        if self.use_spec_traits && self.inside_ghost > 0 && self.inside_type == 0 {
+            let span = lit.span();
+            let n = lit.base10_digits().to_string();
+            if lit.suffix() == "" {
+                match self.inside_arith {
+                    InsideArith::None => {
+                        // We don't know which integer type to use,
+                        // so defer the decision to type inference.
+                        *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_integer(#n));
+                    }
+                    InsideArith::Widen if n.starts_with("-") => {
+                        // Use int inside +, -, etc., since these promote to int anyway
+                        *expr =
+                            quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_int(#n));
+                    }
+                    InsideArith::Widen => {
+                        // Use int inside +, -, etc., since these promote to int anyway
+                        *expr =
+                            quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_nat(#n));
+                    }
+                    InsideArith::Fixed => {
+                        // We generally won't want int/nat literals for bitwise ops,
+                        // so use Rust's native integer literals
+                    }
+                }
+            } else if lit.suffix() == "int" {
+                *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_int(#n));
+            } else if lit.suffix() == "nat" {
+                *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_nat(#n));
+            } else {
+                // Has a native Rust integer suffix, so leave it as a native Rust literal
+            }
+        }
+
+        true
+    }
+
+    /// Handle `assert` statements. Automatically wrap them in a proof block.
     fn handle_assert(&mut self, expr: &mut Expr) -> bool {
         let Expr::Assert(_) = expr else {
             return false;
@@ -1997,6 +2044,89 @@ impl Visitor {
                     );
                 }
             }
+        }
+
+        true
+    }
+
+    /// Handle closures
+    fn handle_closures(&mut self, expr: &mut Expr) -> bool {
+        if !matches!(expr, Expr::Closure(..)) {
+            return false;
+        };
+
+        visit_expr_mut(self, expr);
+
+        let Expr::Closure(mut clos) = take_expr(expr) else {
+            unreachable!();
+        };
+
+        if self.inside_ghost > 0 {
+            let span = clos.span();
+            if clos.requires.is_some() || clos.ensures.is_some() {
+                let err = "ghost closures cannot have requires/ensures";
+                *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
+            } else {
+                *expr = Expr::Verbatim(quote_spanned_builtin!(builtin, span =>
+                    #builtin::closure_to_fn_spec(#clos)
+                ));
+            }
+        } else {
+            let ret_pat = match &mut clos.output {
+                ReturnType::Default => None,
+                ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
+                    self.visit_type_mut(ty);
+                    if let Some(tracked) = tracked {
+                        *expr = Expr::Verbatim(quote_spanned!(tracked.span() =>
+                            compile_error!("'tracked' not supported here")
+                        ));
+                        return true;
+                    }
+                    match std::mem::take(ret_opt) {
+                        None => None,
+                        Some(ret) => Some((ret.1.clone(), ty.clone())),
+                    }
+                }
+            };
+            let requires = self.take_ghost(&mut clos.requires);
+            let ensures = self.take_ghost(&mut clos.ensures);
+            let mut stmts: Vec<Stmt> = Vec::new();
+            // TODO: wrap specs inside ghost blocks
+            self.inside_ghost += 1;
+            if let Some(Requires { token, mut exprs }) = requires {
+                for expr in exprs.exprs.iter_mut() {
+                    self.visit_expr_mut(expr);
+                }
+                stmts.push(stmt_with_semi!(
+                    builtin, token.span => #builtin::requires([#exprs])));
+            }
+            if let Some(Ensures { token, mut exprs, attrs }) = ensures {
+                if attrs.len() > 0 {
+                    let err = "outer attributes only allowed on function's ensures";
+                    let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
+                    stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                } else {
+                    for expr in exprs.exprs.iter_mut() {
+                        self.visit_expr_mut(expr);
+                    }
+                    if let Some((p, ty)) = ret_pat {
+                        stmts.push(stmt_with_semi!(
+                            builtin, token.span => #builtin::ensures(|#p: #ty| [#exprs])));
+                    } else {
+                        stmts.push(stmt_with_semi!(
+                            builtin, token.span => #builtin::ensures([#exprs])));
+                    }
+                }
+            }
+            self.inside_ghost -= 1;
+            if stmts.len() > 0 {
+                if let Expr::Block(block) = &mut *clos.body {
+                    block.block.stmts.splice(0..0, stmts);
+                } else {
+                    panic!("parser requires Expr::Block for requires/ensures")
+                }
+            }
+            *expr = Expr::Closure(clos);
         }
 
         true
@@ -2389,17 +2519,15 @@ enum ExtractQuantTriggersFound {
 
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
-        if self.chain_operators(expr) {
-            return;
-        } else if self.closure_quant_operators(expr) {
-            return;
-        } else if self.handle_binary_ops(expr) {
-            return;
-        } else if self.handle_assert(expr) {
-            return;
-        } else if self.handle_mode_blocks(expr) {
-            return;
-        } else if self.handle_cast(expr) {
+        if self.chain_operators(expr)
+            || self.closure_quant_operators(expr)
+            || self.handle_binary_ops(expr)
+            || self.handle_assert(expr)
+            || self.handle_mode_blocks(expr)
+            || self.handle_cast(expr)
+            || self.handle_lit(expr)
+            || self.handle_closures(expr)
+        {
             return;
         }
 
@@ -2504,7 +2632,6 @@ impl VisitMut for Visitor {
         }
 
         let do_replace = match &expr {
-            Expr::Lit(ExprLit { lit: Lit::Int(..), .. }) if use_spec_traits => true,
             Expr::Index(..) if use_spec_traits => true,
             Expr::Unary(ExprUnary { op: UnOp::Forall(..), .. }) => true,
             Expr::Unary(ExprUnary { op: UnOp::Exists(..), .. }) => true,
@@ -2512,7 +2639,6 @@ impl VisitMut for Visitor {
             Expr::Unary(ExprUnary { op: UnOp::Neg(..), .. }) if use_spec_traits => true,
             Expr::Assume(..) | Expr::AssertForall(..) | Expr::RevealHide(..) => true,
             Expr::View(..) => true,
-            Expr::Closure(..) => true,
             Expr::Is(..) => true,
             Expr::Has(..) => true,
             Expr::ForLoop(..) => true,
@@ -2522,41 +2648,6 @@ impl VisitMut for Visitor {
         };
         if do_replace && self.inside_type == 0 {
             match take_expr(expr) {
-                Expr::Lit(ExprLit { lit: Lit::Int(lit), attrs }) => {
-                    let span = lit.span();
-                    let n = lit.base10_digits().to_string();
-                    if lit.suffix() == "" {
-                        match is_inside_arith {
-                            InsideArith::None => {
-                                // We don't know which integer type to use,
-                                // so defer the decision to type inference.
-                                *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_integer(#n));
-                            }
-                            InsideArith::Widen if n.starts_with("-") => {
-                                // Use int inside +, -, etc., since these promote to int anyway
-                                *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_int(#n));
-                            }
-                            InsideArith::Widen => {
-                                // Use int inside +, -, etc., since these promote to int anyway
-                                *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_nat(#n));
-                            }
-                            InsideArith::Fixed => {
-                                // We generally won't want int/nat literals for bitwise ops,
-                                // so use Rust's native integer literals
-                                *expr = Expr::Lit(ExprLit { lit: Lit::Int(lit), attrs });
-                            }
-                        }
-                    } else if lit.suffix() == "int" {
-                        *expr =
-                            quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_int(#n));
-                    } else if lit.suffix() == "nat" {
-                        *expr =
-                            quote_verbatim!(builtin, span, attrs => #builtin::spec_literal_nat(#n));
-                    } else {
-                        // Has a native Rust integer suffix, so leave it as a native Rust literal
-                        *expr = Expr::Lit(ExprLit { lit: Lit::Int(lit), attrs });
-                    }
-                }
                 Expr::Index(idx) => {
                     let span = idx.span();
                     let src = idx.expr;
@@ -2690,77 +2781,6 @@ impl VisitMut for Visitor {
                 }
                 Expr::ForLoop(for_loop) => {
                     *expr = self.desugar_for_loop(for_loop);
-                }
-                Expr::Closure(mut clos) => {
-                    if is_inside_ghost {
-                        let span = clos.span();
-                        if clos.requires.is_some() || clos.ensures.is_some() {
-                            let err = "ghost closures cannot have requires/ensures";
-                            *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
-                            return;
-                        }
-                        *expr = Expr::Verbatim(quote_spanned_builtin!(builtin, span =>
-                            #builtin::closure_to_fn_spec(#clos)
-                        ));
-                    } else {
-                        let ret_pat = match &mut clos.output {
-                            ReturnType::Default => None,
-                            ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
-                                self.visit_type_mut(ty);
-                                if let Some(tracked) = tracked {
-                                    *expr = Expr::Verbatim(quote_spanned!(tracked.span() =>
-                                        compile_error!("'tracked' not supported here")
-                                    ));
-                                    return;
-                                }
-                                match std::mem::take(ret_opt) {
-                                    None => None,
-                                    Some(ret) => Some((ret.1.clone(), ty.clone())),
-                                }
-                            }
-                        };
-                        let requires = self.take_ghost(&mut clos.requires);
-                        let ensures = self.take_ghost(&mut clos.ensures);
-                        let mut stmts: Vec<Stmt> = Vec::new();
-                        // TODO: wrap specs inside ghost blocks
-                        self.inside_ghost += 1;
-                        if let Some(Requires { token, mut exprs }) = requires {
-                            for expr in exprs.exprs.iter_mut() {
-                                self.visit_expr_mut(expr);
-                            }
-                            stmts.push(stmt_with_semi!(
-                                builtin, token.span => #builtin::requires([#exprs])));
-                        }
-                        if let Some(Ensures { token, mut exprs, attrs }) = ensures {
-                            if attrs.len() > 0 {
-                                let err = "outer attributes only allowed on function's ensures";
-                                let expr = Expr::Verbatim(
-                                    quote_spanned!(token.span => compile_error!(#err)),
-                                );
-                                stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
-                            } else {
-                                for expr in exprs.exprs.iter_mut() {
-                                    self.visit_expr_mut(expr);
-                                }
-                                if let Some((p, ty)) = ret_pat {
-                                    stmts.push(stmt_with_semi!(
-                                        builtin, token.span => #builtin::ensures(|#p: #ty| [#exprs])));
-                                } else {
-                                    stmts.push(stmt_with_semi!(
-                                        builtin, token.span => #builtin::ensures([#exprs])));
-                                }
-                            }
-                        }
-                        self.inside_ghost -= 1;
-                        if stmts.len() > 0 {
-                            if let Expr::Block(block) = &mut *clos.body {
-                                block.block.stmts.splice(0..0, stmts);
-                            } else {
-                                panic!("parser requires Expr::Block for requires/ensures")
-                            }
-                        }
-                        *expr = Expr::Closure(clos);
-                    }
                 }
                 Expr::Is(is_) => {
                     let _is_token = is_.is_token;
