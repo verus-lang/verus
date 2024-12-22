@@ -1578,7 +1578,49 @@ impl Visitor {
         true
     }
 
-    /// Handle all BinaryOp expressions, transforming them if necessar
+    /// Handle UnaryOp expressions Neg and Sub
+    fn handle_unary_ops(&mut self, expr: &mut Expr) -> bool {
+        let Expr::Unary(unary) = expr else {
+            return false;
+        };
+
+        let sub_inside_arith = match unary.op {
+            UnOp::Neg(..) => InsideArith::Widen,
+            UnOp::Not(..) => InsideArith::Fixed,
+            _ => InsideArith::None,
+        };
+
+        let is_inside_arith = self.inside_arith;
+        self.inside_arith = sub_inside_arith;
+
+        visit_expr_mut(self, expr);
+
+        self.inside_arith = is_inside_arith;
+
+        let Expr::Unary(unary) = expr else {
+            unreachable!();
+        };
+
+        if self.use_spec_traits && self.inside_ghost > 0 {
+            let span = unary.span();
+            let attrs = &unary.attrs;
+            match &unary.op {
+                UnOp::Neg(_neg) => {
+                    let arg = &unary.expr;
+                    if let Expr::Lit(..) = &**arg {
+                        // leave native Rust literal with native Rust negation
+                    } else {
+                        *expr = quote_verbatim!(span, attrs => (#arg).spec_neg());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        true
+    }
+
+    /// Handle all BinaryOp expressions, transforming them if necessary
     /// (e.g., `a + b` -> `a.spec_add(b)`
     fn handle_binary_ops(&mut self, expr: &mut Expr) -> bool {
         let Expr::Binary(binary) = expr else {
@@ -1628,10 +1670,13 @@ impl Visitor {
         let is_inside_arith = self.inside_arith;
         self.inside_arith = sub_inside_arith;
 
-        self.visit_expr_mut(&mut binary.left);
-        self.visit_expr_mut(&mut binary.right);
+        visit_expr_mut(self, expr);
 
         self.inside_arith = is_inside_arith;
+
+        let Expr::Binary(binary) = expr else {
+            unreachable!();
+        };
 
         let span = binary.span();
         let low_prec_op = match binary.op {
@@ -2664,17 +2709,13 @@ impl VisitMut for Visitor {
             || self.handle_cast(expr)
             || self.handle_lit(expr)
             || self.handle_closures(expr)
+            || self.handle_unary_ops(expr)
         {
             return;
         }
 
         let sub_inside_arith = match expr {
             Expr::Paren(..) | Expr::Block(..) | Expr::Group(..) => self.inside_arith,
-            Expr::Unary(unary) => match unary.op {
-                UnOp::Neg(..) => InsideArith::Widen,
-                UnOp::Not(..) => InsideArith::Fixed,
-                _ => InsideArith::None,
-            },
             _ => InsideArith::None,
         };
         let sub_assign_to = match expr {
@@ -2751,10 +2792,6 @@ impl VisitMut for Visitor {
 
         let do_replace = match &expr {
             Expr::Index(..) if use_spec_traits => true,
-            Expr::Unary(ExprUnary { op: UnOp::Forall(..), .. }) => true,
-            Expr::Unary(ExprUnary { op: UnOp::Exists(..), .. }) => true,
-            Expr::Unary(ExprUnary { op: UnOp::Choose(..), .. }) => true,
-            Expr::Unary(ExprUnary { op: UnOp::Neg(..), .. }) if use_spec_traits => true,
             Expr::View(..) => true,
             Expr::Is(..) => true,
             Expr::Has(..) => true,
@@ -2771,23 +2808,6 @@ impl VisitMut for Visitor {
                     let attrs = idx.attrs;
                     let index = idx.index;
                     *expr = quote_verbatim!(span, attrs => #src.spec_index(#index));
-                }
-                Expr::Unary(unary) => {
-                    let span = unary.span();
-                    let attrs = unary.attrs;
-                    match unary.op {
-                        UnOp::Neg(neg) => {
-                            let arg = unary.expr;
-                            if let Expr::Lit(..) = &*arg {
-                                // leave native Rust literal with native Rust negation
-                                *expr =
-                                    Expr::Unary(ExprUnary { op: UnOp::Neg(neg), expr: arg, attrs });
-                            } else {
-                                *expr = quote_verbatim!(span, attrs => (#arg).spec_neg());
-                            }
-                        }
-                        _ => panic!("unary"),
-                    }
                 }
                 Expr::View(view) if !self.assign_to => {
                     let at_token = view.at_token;
