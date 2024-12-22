@@ -1584,7 +1584,7 @@ impl Visitor {
             return false;
         }
 
-        visit_expr_mut(self, expr);
+        self.visit_expr_with_arith(expr, InsideArith::None);
 
         if let Expr::BigAnd(exprs) = expr {
             let mut new_expr = take_expr(&mut exprs.exprs[0].1);
@@ -1621,6 +1621,110 @@ impl Visitor {
         true
     }
 
+    fn handle_spec_operators(&mut self, expr: &mut Expr) -> bool {
+        if !matches!(
+            expr,
+            Expr::Index(_)
+                | Expr::View(_)
+                | Expr::Is(_)
+                | Expr::Has(_)
+                | Expr::Matches(_)
+                | Expr::GetField(_)
+        ) {
+            return false;
+        }
+
+        self.visit_expr_with_arith(expr, InsideArith::None);
+
+        match take_expr(expr) {
+            Expr::Index(idx) => {
+                if self.use_spec_traits && self.inside_ghost > 0 {
+                    let span = idx.span();
+                    let src = idx.expr;
+                    let attrs = idx.attrs;
+                    let index = idx.index;
+                    *expr = quote_verbatim!(span, attrs => #src.spec_index(#index));
+                } else {
+                    *expr = Expr::Index(idx);
+                }
+            }
+            Expr::View(view) if !self.assign_to => {
+                let at_token = view.at_token;
+                let view_call = quote_spanned!(at_token.span => .view());
+                let span = view.span();
+                let attrs = view.attrs;
+                let base = view.expr;
+                *expr = quote_verbatim!(span, attrs => (#base#view_call));
+            }
+            Expr::View(view) => {
+                assert!(self.assign_to);
+                let at_token = view.at_token;
+                let span1 = at_token.span;
+                let span2 = view.span();
+                let attrs = view.attrs;
+                let base = view.expr;
+                let borrowed: Expr = Expr::Verbatim(quote_spanned!(span1 => #base.borrow_mut()));
+                *expr = quote_verbatim!(span2, attrs => (*(#borrowed)));
+            }
+            Expr::Is(is_) => {
+                let _is_token = is_.is_token;
+                let span = is_.span();
+                let base = is_.base;
+                let variant_str = is_.variant_ident.to_string();
+                *expr = Expr::Verbatim(
+                    quote_spanned_builtin!(builtin, span => #builtin::is_variant(#base, #variant_str)),
+                );
+            }
+            Expr::Has(has) => {
+                let has_token = has.has_token;
+                let span = has.span();
+                let rhs = has.rhs;
+                let has_call = quote_spanned!(has_token.span => .spec_has(#rhs));
+                let lhs = has.lhs;
+                *expr = Expr::Verbatim(quote_spanned!(span => (#lhs#has_call)));
+            }
+            Expr::Matches(matches) => {
+                let span = matches.span();
+                let syn_verus::ExprMatches { attrs: _, lhs, matches_token: _, pat, op_expr } =
+                    matches;
+                if let Some(op_expr) = op_expr {
+                    let MatchesOpExpr { op_token, rhs } = op_expr;
+                    match op_token {
+                        MatchesOpToken::Implies(_) => {
+                            *expr = Expr::Verbatim(quote_spanned!(span => (
+                                (if let #pat = (#lhs) { #rhs } else { true })
+                            )));
+                        }
+                        MatchesOpToken::AndAnd(_) => {
+                            *expr = Expr::Verbatim(quote_spanned!(span => (
+                                (if let #pat = (#lhs) { #rhs } else { false })
+                            )));
+                        }
+                        MatchesOpToken::BigAnd => {
+                            *expr = Expr::Verbatim(quote_spanned!(span => (
+                                (if let #pat = (#lhs) { #rhs } else { false })
+                            )));
+                        }
+                    }
+                } else {
+                    *expr = Expr::Verbatim(quote_spanned!(span => (
+                        (if let #pat = (#lhs) { true } else { false })
+                    )));
+                }
+            }
+            Expr::GetField(gf) => {
+                let span = gf.span();
+                let base = gf.base;
+                let member_ident = quote::format_ident!("arrow_{}", gf.member);
+                let get_call = quote_spanned!(gf.arrow_token.span() => .#member_ident());
+                *expr = Expr::Verbatim(quote_spanned!(span => (#base#get_call)));
+            }
+            _ => unreachable!(),
+        }
+
+        true
+    }
+
     /// Handle UnaryOp expressions Neg and Sub
     fn handle_unary_ops(&mut self, expr: &mut Expr) -> bool {
         let Expr::Unary(unary) = expr else {
@@ -1633,12 +1737,7 @@ impl Visitor {
             _ => InsideArith::None,
         };
 
-        let is_inside_arith = self.inside_arith;
-        self.inside_arith = sub_inside_arith;
-
-        visit_expr_mut(self, expr);
-
-        self.inside_arith = is_inside_arith;
+        self.visit_expr_with_arith(expr, sub_inside_arith);
 
         let Expr::Unary(unary) = expr else {
             unreachable!();
@@ -1710,12 +1809,7 @@ impl Visitor {
             _ => InsideArith::None,
         };
 
-        let is_inside_arith = self.inside_arith;
-        self.inside_arith = sub_inside_arith;
-
-        visit_expr_mut(self, expr);
-
-        self.inside_arith = is_inside_arith;
+        self.visit_expr_with_arith(expr, sub_inside_arith);
 
         let Expr::Binary(binary) = expr else {
             unreachable!();
@@ -1880,10 +1974,7 @@ impl Visitor {
             return false;
         };
 
-        let is_inside_arith = self.inside_arith;
-        self.inside_arith = InsideArith::Widen;
-        visit_expr_mut(self, expr);
-        self.inside_arith = is_inside_arith;
+        self.visit_expr_with_arith(expr, InsideArith::Widen);
 
         let Expr::Cast(cast) = &*expr else {
             unreachable!();
@@ -1960,7 +2051,7 @@ impl Visitor {
         };
 
         self.inside_ghost += 1;
-        visit_expr_mut(self, expr);
+        self.visit_expr_with_arith(expr, InsideArith::None);
         self.inside_ghost -= 1;
 
         let Expr::Assume(assume) = take_expr(expr) else { unreachable!() };
@@ -1982,7 +2073,7 @@ impl Visitor {
         };
 
         self.inside_ghost += 1;
-        visit_expr_mut(self, expr);
+        self.visit_expr_with_arith(expr, InsideArith::None);
         self.inside_ghost -= 1;
 
         let Expr::Assert(assert) = take_expr(expr) else { unreachable!() };
@@ -2074,7 +2165,7 @@ impl Visitor {
         };
 
         self.inside_ghost += 1;
-        visit_expr_mut(self, expr);
+        self.visit_expr_with_arith(expr, InsideArith::None);
         self.inside_ghost -= 1;
 
         let Expr::AssertForall(assert) = take_expr(expr) else { unreachable!() };
@@ -2129,7 +2220,7 @@ impl Visitor {
         };
 
         self.inside_ghost += 1;
-        visit_expr_mut(self, expr);
+        self.visit_expr_with_arith(expr, InsideArith::None);
         self.inside_ghost -= 1;
 
         let Expr::RevealHide(reveal) = take_expr(expr) else { unreachable!() };
@@ -2218,7 +2309,7 @@ impl Visitor {
         };
 
         self.inside_ghost += 1;
-        visit_expr_mut(self, expr);
+        self.visit_expr_with_arith(expr, InsideArith::None);
         self.inside_ghost -= 1;
 
         let is_inside_ghost = self.inside_ghost > 0;
@@ -2277,7 +2368,7 @@ impl Visitor {
             return false;
         };
 
-        visit_expr_mut(self, expr);
+        self.visit_expr_with_arith(expr, InsideArith::None);
 
         let Expr::Closure(mut clos) = take_expr(expr) else {
             unreachable!();
@@ -2716,6 +2807,15 @@ impl Visitor {
             ExtractQuantTriggersFound::None
         })
     }
+
+    fn visit_expr_with_arith(&mut self, expr: &mut Expr, arith_mode: InsideArith) {
+        if !(self.inside_ghost > 0 && self.erase_ghost.erase()) || self.inside_const {
+            let is_inside_arith = self.inside_arith;
+            self.inside_arith = arith_mode;
+            visit_expr_mut(self, expr);
+            self.inside_arith = is_inside_arith;
+        }
+    }
 }
 
 enum ExtractQuantTriggersFound {
@@ -2754,6 +2854,7 @@ impl VisitMut for Visitor {
             || self.handle_closures(expr)
             || self.handle_unary_ops(expr)
             || self.handle_big_and_big_or(expr)
+            || self.handle_spec_operators(expr)
         {
             return;
         }
@@ -2771,7 +2872,6 @@ impl VisitMut for Visitor {
         let is_inside_ghost = self.inside_ghost > 0;
         let is_inside_arith = self.inside_arith;
         let is_assign_to = self.assign_to;
-        let use_spec_traits = self.use_spec_traits && is_inside_ghost;
         self.inside_arith = sub_inside_arith;
         self.assign_to = sub_assign_to;
         let assign_left = if let Expr::Assign(assign) = expr {
@@ -2807,98 +2907,13 @@ impl VisitMut for Visitor {
         }
 
         let do_replace = match &expr {
-            Expr::Index(..) if use_spec_traits => true,
-            Expr::View(..) => true,
-            Expr::Is(..) => true,
-            Expr::Has(..) => true,
             Expr::ForLoop(..) => true,
-            Expr::Matches(..) => true,
-            Expr::GetField(..) => true,
             _ => false,
         };
         if do_replace && self.inside_type == 0 {
             match take_expr(expr) {
-                Expr::Index(idx) => {
-                    let span = idx.span();
-                    let src = idx.expr;
-                    let attrs = idx.attrs;
-                    let index = idx.index;
-                    *expr = quote_verbatim!(span, attrs => #src.spec_index(#index));
-                }
-                Expr::View(view) if !self.assign_to => {
-                    let at_token = view.at_token;
-                    let view_call = quote_spanned!(at_token.span => .view());
-                    let span = view.span();
-                    let attrs = view.attrs;
-                    let base = view.expr;
-                    *expr = quote_verbatim!(span, attrs => (#base#view_call));
-                }
-                Expr::View(view) => {
-                    assert!(self.assign_to);
-                    let at_token = view.at_token;
-                    let span1 = at_token.span;
-                    let span2 = view.span();
-                    let attrs = view.attrs;
-                    let base = view.expr;
-                    let borrowed: Expr =
-                        Expr::Verbatim(quote_spanned!(span1 => #base.borrow_mut()));
-                    *expr = quote_verbatim!(span2, attrs => (*(#borrowed)));
-                }
                 Expr::ForLoop(for_loop) => {
                     *expr = self.desugar_for_loop(for_loop);
-                }
-                Expr::Is(is_) => {
-                    let _is_token = is_.is_token;
-                    let span = is_.span();
-                    let base = is_.base;
-                    let variant_str = is_.variant_ident.to_string();
-                    *expr = Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, span => #builtin::is_variant(#base, #variant_str)),
-                    );
-                }
-                Expr::Has(has) => {
-                    let has_token = has.has_token;
-                    let span = has.span();
-                    let rhs = has.rhs;
-                    let has_call = quote_spanned!(has_token.span => .spec_has(#rhs));
-                    let lhs = has.lhs;
-                    *expr = Expr::Verbatim(quote_spanned!(span => (#lhs#has_call)));
-                }
-                Expr::Matches(matches) => {
-                    let span = matches.span();
-                    let syn_verus::ExprMatches { attrs: _, lhs, matches_token: _, pat, op_expr } =
-                        matches;
-                    if let Some(op_expr) = op_expr {
-                        let MatchesOpExpr { op_token, rhs } = op_expr;
-                        match op_token {
-                            MatchesOpToken::Implies(_) => {
-                                *expr = Expr::Verbatim(quote_spanned!(span => (
-                                    (if let #pat = (#lhs) { #rhs } else { true })
-                                )));
-                            }
-                            MatchesOpToken::AndAnd(_) => {
-                                *expr = Expr::Verbatim(quote_spanned!(span => (
-                                    (if let #pat = (#lhs) { #rhs } else { false })
-                                )));
-                            }
-                            MatchesOpToken::BigAnd => {
-                                *expr = Expr::Verbatim(quote_spanned!(span => (
-                                    (if let #pat = (#lhs) { #rhs } else { false })
-                                )));
-                            }
-                        }
-                    } else {
-                        *expr = Expr::Verbatim(quote_spanned!(span => (
-                            (if let #pat = (#lhs) { true } else { false })
-                        )));
-                    }
-                }
-                Expr::GetField(gf) => {
-                    let span = gf.span();
-                    let base = gf.base;
-                    let member_ident = quote::format_ident!("arrow_{}", gf.member);
-                    let get_call = quote_spanned!(gf.arrow_token.span() => .#member_ident());
-                    *expr = Expr::Verbatim(quote_spanned!(span => (#base#get_call)));
                 }
                 _ => panic!("expected to replace expression"),
             }
