@@ -1585,6 +1585,212 @@ impl Visitor {
         true
     }
 
+    fn handle_binary_ops(&mut self, expr: &mut Expr) -> bool {
+        let Expr::Binary(binary) = expr else {
+            return false;
+        };
+
+        if let Expr::Matches(ExprMatches {
+            op_expr: Some(MatchesOpExpr { op_token, .. }), ..
+        }) = &*binary.right
+        {
+            match op_token {
+                MatchesOpToken::BigAnd => {}
+                MatchesOpToken::Implies(_) => {
+                    *expr = Expr::Verbatim(
+                        quote_spanned! { expr.span() => compile_error!("matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)") },
+                    );
+                    return true;
+                }
+                MatchesOpToken::AndAnd(_) => {
+                    *expr = Expr::Verbatim(
+                        quote_spanned! { expr.span() => compile_error!("matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)") },
+                    );
+                    return true;
+                }
+            }
+        }
+
+        let sub_inside_arith = match binary.op {
+            BinOp::Add(..)
+            | BinOp::Sub(..)
+            | BinOp::Mul(..)
+            | BinOp::Eq(..)
+            | BinOp::Ne(..)
+            | BinOp::Lt(..)
+            | BinOp::Le(..)
+            | BinOp::Gt(..)
+            | BinOp::Ge(..) => InsideArith::Widen,
+            BinOp::Div(..) | BinOp::Rem(..) => InsideArith::None,
+            BinOp::BitXor(..)
+            | BinOp::BitAnd(..)
+            | BinOp::BitOr(..)
+            | BinOp::Shl(..)
+            | BinOp::Shr(..) => InsideArith::Fixed,
+            _ => InsideArith::None,
+        };
+
+        let is_inside_arith = self.inside_arith;
+        self.inside_arith = sub_inside_arith;
+
+        self.visit_expr_mut(&mut binary.left);
+        self.visit_expr_mut(&mut binary.right);
+
+        self.inside_arith = is_inside_arith;
+
+        let span = binary.span();
+        let low_prec_op = match binary.op {
+            BinOp::Equiv(syn_verus::token::Equiv { spans }) => {
+                let spans = [spans[1], spans[2]];
+                Some(BinOp::Eq(syn_verus::token::EqEq { spans }))
+            }
+            _ => None,
+        };
+        let ply = match binary.op {
+            BinOp::Imply(_) => Some(true),
+            BinOp::Exply(_) => Some(false),
+            _ => None,
+        };
+        let verus_eq = match binary.op {
+            BinOp::BigEq(_) => true,
+            BinOp::BigNe(_) => true,
+            BinOp::ExtEq(_) => true,
+            BinOp::ExtNe(_) => true,
+            BinOp::ExtDeepEq(_) => true,
+            BinOp::ExtDeepNe(_) => true,
+            _ => false,
+        };
+        if let Some(op) = low_prec_op {
+            let attrs = std::mem::take(&mut binary.attrs);
+            let left = take_expr(&mut *binary.left);
+            let right = take_expr(&mut *binary.right);
+            let left = Box::new(Expr::Verbatim(quote_spanned!(left.span() => (#left))));
+            let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
+            let bin = ExprBinary { attrs, op, left, right };
+            *expr = Expr::Binary(bin);
+        } else if let Some(imply) = ply {
+            let attrs = std::mem::take(&mut binary.attrs);
+            let func =
+                Box::new(Expr::Verbatim(quote_spanned_builtin!(builtin, span => #builtin::imply)));
+            let paren_token = Paren { span };
+            let mut args = Punctuated::new();
+            if imply {
+                // imply `left ==> right`
+                args.push(take_expr(&mut *binary.left));
+                args.push(take_expr(&mut *binary.right));
+            } else {
+                // exply `left <== right` (flip the arguments)
+                args.push(take_expr(&mut *binary.right));
+                args.push(take_expr(&mut *binary.left));
+            }
+            *expr = Expr::Call(ExprCall { attrs, func, paren_token, args });
+        } else if verus_eq {
+            let attrs = std::mem::take(&mut binary.attrs);
+            let func = match binary.op {
+                BinOp::BigEq(_) | BinOp::BigNe(_) => Box::new(Expr::Verbatim(
+                    quote_spanned_builtin!(builtin, span => #builtin::equal),
+                )),
+                BinOp::ExtEq(_) | BinOp::ExtNe(_) => Box::new(Expr::Verbatim(
+                    quote_spanned_builtin!(builtin, span => #builtin::ext_equal),
+                )),
+                BinOp::ExtDeepEq(_) | BinOp::ExtDeepNe(_) => Box::new(Expr::Verbatim(
+                    quote_spanned_builtin!(builtin, span => #builtin::ext_equal_deep),
+                )),
+                _ => unreachable!(),
+            };
+            let eq = match binary.op {
+                BinOp::BigEq(_) | BinOp::ExtEq(_) | BinOp::ExtDeepEq(_) => true,
+                BinOp::BigNe(_) | BinOp::ExtNe(_) | BinOp::ExtDeepNe(_) => false,
+                _ => unreachable!(),
+            };
+            let paren_token = Paren { span };
+            let mut args = Punctuated::new();
+            args.push(take_expr(&mut *binary.left));
+            args.push(take_expr(&mut *binary.right));
+            let call = Expr::Call(ExprCall { attrs, func, paren_token, args });
+            if eq {
+                *expr = call;
+            } else {
+                *expr = Expr::Verbatim(quote_spanned!(span => ! #call));
+            }
+        } else if self.use_spec_traits && self.inside_ghost > 0 {
+            let attrs = &binary.attrs;
+            let left = &binary.left;
+            let right = &binary.right;
+            match binary.op {
+                BinOp::Eq(..) => {
+                    *expr =
+                        quote_verbatim!(builtin, span, attrs => #builtin::spec_eq(#left, #right));
+                }
+                BinOp::Ne(..) => {
+                    *expr =
+                        quote_verbatim!(builtin, span, attrs => ! #builtin::spec_eq(#left, #right));
+                }
+                BinOp::Le(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_le(#right));
+                }
+                BinOp::Lt(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_lt(#right));
+                }
+                BinOp::Ge(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_ge(#right));
+                }
+                BinOp::Gt(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_gt(#right));
+                }
+                BinOp::Add(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_add(#right));
+                }
+                BinOp::Sub(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_sub(#right));
+                }
+                BinOp::Mul(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_mul(#right));
+                }
+                BinOp::Div(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_euclidean_div(#right));
+                }
+                BinOp::Rem(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_euclidean_mod(#right));
+                }
+                BinOp::BitAnd(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_bitand(#right));
+                }
+                BinOp::BitOr(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_bitor(#right));
+                }
+                BinOp::BitXor(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_bitxor(#right));
+                }
+                BinOp::Shl(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_shl(#right));
+                }
+                BinOp::Shr(..) => {
+                    let left = quote_spanned! { left.span() => (#left) };
+                    *expr = quote_verbatim!(span, attrs => #left.spec_shr(#right));
+                }
+                _ => {
+                    // nothing to do
+                }
+            }
+        }
+
+        true
+    }
+
     fn add_loop_specs(
         &mut self,
         stmts: &mut Vec<Stmt>,
@@ -1976,28 +2182,8 @@ impl VisitMut for Visitor {
             return;
         } else if self.closure_quant_operators(expr) {
             return;
-        }
-
-        if let Expr::Binary(ExprBinary { op, right, .. }) = &expr {
-            if let Expr::Matches(ExprMatches {
-                op_expr: Some(MatchesOpExpr { op_token, .. }),
-                ..
-            }) = &**right
-            {
-                match (op, op_token) {
-                    (_, MatchesOpToken::BigAnd) => (),
-                    (_, MatchesOpToken::Implies(_)) => {
-                        *expr = Expr::Verbatim(
-                            quote_spanned! { expr.span() => compile_error!("matches with ==> is currently not allowed on the right-hand-side of most binary operators (use parentheses)") },
-                        );
-                    }
-                    (_, MatchesOpToken::AndAnd(_)) => {
-                        *expr = Expr::Verbatim(
-                            quote_spanned! { expr.span() => compile_error!("matches with && is currently not allowed on the right-hand-side of most binary operators (use parentheses)") },
-                        );
-                    }
-                }
-            }
+        } else if self.handle_binary_ops(expr) {
+            return;
         }
 
         let is_inside_bitvector = match &expr {
@@ -2058,24 +2244,6 @@ impl VisitMut for Visitor {
             Expr::Unary(unary) => match unary.op {
                 UnOp::Neg(..) => InsideArith::Widen,
                 UnOp::Not(..) => InsideArith::Fixed,
-                _ => InsideArith::None,
-            },
-            Expr::Binary(binary) => match binary.op {
-                BinOp::Add(..)
-                | BinOp::Sub(..)
-                | BinOp::Mul(..)
-                | BinOp::Eq(..)
-                | BinOp::Ne(..)
-                | BinOp::Lt(..)
-                | BinOp::Le(..)
-                | BinOp::Gt(..)
-                | BinOp::Ge(..) => InsideArith::Widen,
-                BinOp::Div(..) | BinOp::Rem(..) => InsideArith::None,
-                BinOp::BitXor(..)
-                | BinOp::BitAnd(..)
-                | BinOp::BitOr(..)
-                | BinOp::Shl(..)
-                | BinOp::Shr(..) => InsideArith::Fixed,
                 _ => InsideArith::None,
             },
             _ => InsideArith::None,
@@ -2163,84 +2331,6 @@ impl VisitMut for Visitor {
                     }
                 }
             }
-        } else if let Expr::Binary(binary) = expr {
-            let span = binary.span();
-            let low_prec_op = match binary.op {
-                BinOp::Equiv(syn_verus::token::Equiv { spans }) => {
-                    let spans = [spans[1], spans[2]];
-                    Some(BinOp::Eq(syn_verus::token::EqEq { spans }))
-                }
-                _ => None,
-            };
-            let ply = match binary.op {
-                BinOp::Imply(_) => Some(true),
-                BinOp::Exply(_) => Some(false),
-                _ => None,
-            };
-            let verus_eq = match binary.op {
-                BinOp::BigEq(_) => true,
-                BinOp::BigNe(_) => true,
-                BinOp::ExtEq(_) => true,
-                BinOp::ExtNe(_) => true,
-                BinOp::ExtDeepEq(_) => true,
-                BinOp::ExtDeepNe(_) => true,
-                _ => false,
-            };
-            if let Some(op) = low_prec_op {
-                let attrs = std::mem::take(&mut binary.attrs);
-                let left = take_expr(&mut *binary.left);
-                let right = take_expr(&mut *binary.right);
-                let left = Box::new(Expr::Verbatim(quote_spanned!(left.span() => (#left))));
-                let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
-                let bin = ExprBinary { attrs, op, left, right };
-                *expr = Expr::Binary(bin);
-            } else if let Some(imply) = ply {
-                let attrs = std::mem::take(&mut binary.attrs);
-                let func = Box::new(Expr::Verbatim(
-                    quote_spanned_builtin!(builtin, span => #builtin::imply),
-                ));
-                let paren_token = Paren { span };
-                let mut args = Punctuated::new();
-                if imply {
-                    // imply `left ==> right`
-                    args.push(take_expr(&mut *binary.left));
-                    args.push(take_expr(&mut *binary.right));
-                } else {
-                    // exply `left <== right` (flip the arguments)
-                    args.push(take_expr(&mut *binary.right));
-                    args.push(take_expr(&mut *binary.left));
-                }
-                *expr = Expr::Call(ExprCall { attrs, func, paren_token, args });
-            } else if verus_eq {
-                let attrs = std::mem::take(&mut binary.attrs);
-                let func = match binary.op {
-                    BinOp::BigEq(_) | BinOp::BigNe(_) => Box::new(Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, span => #builtin::equal),
-                    )),
-                    BinOp::ExtEq(_) | BinOp::ExtNe(_) => Box::new(Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, span => #builtin::ext_equal),
-                    )),
-                    BinOp::ExtDeepEq(_) | BinOp::ExtDeepNe(_) => Box::new(Expr::Verbatim(
-                        quote_spanned_builtin!(builtin, span => #builtin::ext_equal_deep),
-                    )),
-                    _ => unreachable!(),
-                };
-                let eq = match binary.op {
-                    BinOp::BigEq(_) | BinOp::ExtEq(_) | BinOp::ExtDeepEq(_) => true,
-                    BinOp::BigNe(_) | BinOp::ExtNe(_) | BinOp::ExtDeepNe(_) => false,
-                    _ => unreachable!(),
-                };
-                let paren_token = Paren { span };
-                let mut args = Punctuated::new();
-                args.push(take_expr(&mut *binary.left));
-                args.push(take_expr(&mut *binary.right));
-                let call = Expr::Call(ExprCall { attrs, func, paren_token, args });
-                if eq {
-                    *expr = call;
-                } else {
-                    *expr = Expr::Verbatim(quote_spanned!(span => ! #call));
-                }
-            }
         } else if let Expr::BigAnd(exprs) = expr {
             let mut new_expr = take_expr(&mut exprs.exprs[0].1);
             for i in 1..exprs.exprs.len() {
@@ -2291,26 +2381,6 @@ impl VisitMut for Visitor {
             Expr::Unary(ExprUnary { op: UnOp::Exists(..), .. }) => true,
             Expr::Unary(ExprUnary { op: UnOp::Choose(..), .. }) => true,
             Expr::Unary(ExprUnary { op: UnOp::Neg(..), .. }) if use_spec_traits => true,
-            Expr::Binary(ExprBinary {
-                op:
-                    BinOp::Eq(..)
-                    | BinOp::Ne(..)
-                    | BinOp::Le(..)
-                    | BinOp::Lt(..)
-                    | BinOp::Ge(..)
-                    | BinOp::Gt(..)
-                    | BinOp::Add(..)
-                    | BinOp::Sub(..)
-                    | BinOp::Mul(..)
-                    | BinOp::Div(..)
-                    | BinOp::Rem(..)
-                    | BinOp::BitAnd(..)
-                    | BinOp::BitOr(..)
-                    | BinOp::BitXor(..)
-                    | BinOp::Shl(..)
-                    | BinOp::Shr(..),
-                ..
-            }) if use_spec_traits => true,
             Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) | Expr::RevealHide(..) => {
                 true
             }
@@ -2389,79 +2459,6 @@ impl VisitMut for Visitor {
                             }
                         }
                         _ => panic!("unary"),
-                    }
-                }
-                Expr::Binary(binary) => {
-                    let span = binary.span();
-                    let attrs = binary.attrs;
-                    let left = binary.left;
-                    let right = binary.right;
-                    match binary.op {
-                        BinOp::Eq(..) => {
-                            *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_eq(#left, #right));
-                        }
-                        BinOp::Ne(..) => {
-                            *expr = quote_verbatim!(builtin, span, attrs => ! #builtin::spec_eq(#left, #right));
-                        }
-                        BinOp::Le(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr = quote_verbatim!(span, attrs => #left.spec_le(#right));
-                        }
-                        BinOp::Lt(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr = quote_verbatim!(span, attrs => #left.spec_lt(#right));
-                        }
-                        BinOp::Ge(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr = quote_verbatim!(span, attrs => #left.spec_ge(#right));
-                        }
-                        BinOp::Gt(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr = quote_verbatim!(span, attrs => #left.spec_gt(#right));
-                        }
-                        BinOp::Add(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr = quote_verbatim!(span, attrs => #left.spec_add(#right));
-                        }
-                        BinOp::Sub(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr = quote_verbatim!(span, attrs => #left.spec_sub(#right));
-                        }
-                        BinOp::Mul(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr = quote_verbatim!(span, attrs => #left.spec_mul(#right));
-                        }
-                        BinOp::Div(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr =
-                                quote_verbatim!(span, attrs => #left.spec_euclidean_div(#right));
-                        }
-                        BinOp::Rem(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr =
-                                quote_verbatim!(span, attrs => #left.spec_euclidean_mod(#right));
-                        }
-                        BinOp::BitAnd(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr = quote_verbatim!(span, attrs => #left.spec_bitand(#right));
-                        }
-                        BinOp::BitOr(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr = quote_verbatim!(span, attrs => #left.spec_bitor(#right));
-                        }
-                        BinOp::BitXor(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr = quote_verbatim!(span, attrs => #left.spec_bitxor(#right));
-                        }
-                        BinOp::Shl(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr = quote_verbatim!(span, attrs => #left.spec_shl(#right));
-                        }
-                        BinOp::Shr(..) => {
-                            let left = quote_spanned! { left.span() => (#left) };
-                            *expr = quote_verbatim!(span, attrs => #left.spec_shr(#right));
-                        }
-                        _ => panic!("binary"),
                     }
                 }
                 Expr::View(view) if !self.assign_to => {
