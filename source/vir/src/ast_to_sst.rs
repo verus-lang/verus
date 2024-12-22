@@ -1535,7 +1535,7 @@ pub(crate) fn expr_to_stm_opt(
             let (check_stms, body_exp) = expr_to_pure_exp_check(ctx, state, body)?;
             Ok((check_stms, ReturnValue::Some(mk_exp(ExpX::WithTriggers(trigs, body_exp)))))
         }
-        ExprX::Fuel(x, fuel, _) => {
+        ExprX::Fuel(x, fuel, is_broadcast_use) => {
             // It's possible that the function may have pruned out of the crate
             // because there are no transitive dependencies.
             // If so, just skip the fuel/reveal statement entirely
@@ -1550,6 +1550,16 @@ pub(crate) fn expr_to_stm_opt(
             let stms = if skip {
                 vec![]
             } else {
+                if !is_broadcast_use {
+                    let function = get_function(ctx, &expr.span, x)?;
+                    if *fuel >= 2 && !crate::recursion::fun_is_recursive(ctx, &function) {
+                        return Err(error(
+                            &expr.span,
+                            "this function is not recursive (nor mutually recursive), so fuel cannot be set to more than 1",
+                        ));
+                    }
+                }
+
                 let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
                 vec![stm]
             };
