@@ -1887,6 +1887,86 @@ impl Visitor {
         }
     }
 
+    /// Handle:
+    ///   - proof { ... } blocks
+    ///   - Ghost(...)
+    ///   - Tracked(...)
+    fn handle_mode_blocks(&mut self, expr: &mut Expr) -> bool {
+        let mode_block = match expr {
+            Expr::Unary(ExprUnary { op: UnOp::Proof(..), .. }) => (false, false),
+            Expr::Call(ExprCall { func, args, .. }) => match &**func {
+                Expr::Path(path) if path.qself.is_none() && args.len() == 1 => {
+                    if path_is_ident(&path.path, "Ghost") {
+                        (true, false)
+                    } else if path_is_ident(&path.path, "Tracked") {
+                        (true, true)
+                    } else {
+                        return false;
+                    }
+                }
+                _ => {
+                    return false;
+                }
+            },
+            _ => {
+                return false;
+            }
+        };
+
+        self.inside_ghost += 1;
+        visit_expr_mut(self, expr);
+        self.inside_ghost -= 1;
+
+        let is_inside_ghost = self.inside_ghost > 0;
+
+        if let Expr::Call(call) = expr {
+            let (_, is_tracked) = mode_block;
+            let span = call.span();
+            if is_tracked {
+                // Tracked(...)
+                let inner = take_expr(&mut call.args[0]);
+                *expr = Expr::Verbatim(if self.erase_ghost.erase() {
+                    quote_spanned!(span => Tracked::assume_new_fallback(|| unreachable!()))
+                } else if is_inside_ghost {
+                    quote_spanned_builtin!(builtin, span => #builtin::Tracked::new(#inner))
+                } else {
+                    quote_spanned_builtin!(builtin, span => #[verifier::ghost_wrapper] /* vattr */ #builtin::tracked_exec(#[verifier::tracked_block_wrapped] /* vattr */ #inner))
+                });
+            } else {
+                // Ghost(...)
+                let inner = take_expr(&mut call.args[0]);
+                *expr = Expr::Verbatim(if self.erase_ghost.erase() {
+                    quote_spanned!(span => Ghost::assume_new_fallback(|| unreachable!()))
+                } else if is_inside_ghost {
+                    quote_spanned_builtin!(builtin, span => #builtin::Ghost::new(#inner))
+                } else {
+                    quote_spanned_builtin!(builtin, span => #[verifier::ghost_wrapper] /* vattr */ #builtin::ghost_exec(#[verifier::ghost_block_wrapped] /* vattr */ #inner))
+                });
+            }
+        } else if let Expr::Unary(unary) = expr {
+            let span = unary.span();
+            match (is_inside_ghost, mode_block, &*unary.expr) {
+                (false, (false, _), Expr::Block(..)) => {
+                    // proof { ... }
+                    let inner = take_expr(&mut *unary.expr);
+                    *expr = self.maybe_erase_expr(
+                        span,
+                        Expr::Verbatim(
+                            quote_spanned!(span => #[verifier::proof_block] /* vattr */ #inner),
+                        ),
+                    );
+                }
+                _ => {
+                    *expr = Expr::Verbatim(
+                        quote_spanned!(span => compile_error!("unexpected proof block")),
+                    );
+                }
+            }
+        }
+
+        true
+    }
+
     fn add_loop_specs(
         &mut self,
         stmts: &mut Vec<Stmt>,
@@ -2282,6 +2362,8 @@ impl VisitMut for Visitor {
             return;
         } else if self.handle_assert(expr) {
             return;
+        } else if self.handle_mode_blocks(expr) {
+            return;
         }
 
         let is_auto_proof_block = if self.inside_ghost == 0 {
@@ -2303,23 +2385,6 @@ impl VisitMut for Visitor {
             self.inside_ghost += 1;
         }
 
-        let mode_block = match expr {
-            Expr::Unary(ExprUnary { op: UnOp::Proof(..), .. }) => Some((false, false)),
-            Expr::Call(ExprCall { func, args, .. }) => match &**func {
-                Expr::Path(path) if path.qself.is_none() && args.len() == 1 => {
-                    if path_is_ident(&path.path, "Ghost") {
-                        Some((true, false))
-                    } else if path_is_ident(&path.path, "Tracked") {
-                        Some((true, true))
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            },
-            _ => None,
-        };
-
         let sub_inside_arith = match expr {
             Expr::Paren(..) | Expr::Block(..) | Expr::Group(..) => self.inside_arith,
             Expr::Cast(..) => InsideArith::Widen,
@@ -2340,9 +2405,6 @@ impl VisitMut for Visitor {
         let is_inside_arith = self.inside_arith;
         let is_assign_to = self.assign_to;
         let use_spec_traits = self.use_spec_traits && is_inside_ghost;
-        if mode_block.is_some() {
-            self.inside_ghost += 1;
-        }
         self.inside_arith = sub_inside_arith;
         self.assign_to = sub_assign_to;
         let assign_left = if let Expr::Assign(assign) = expr {
@@ -2360,60 +2422,10 @@ impl VisitMut for Visitor {
         if let Expr::Assign(assign) = expr {
             assign.left = Box::new(assign_left.expect("assign_left"));
         }
-        if mode_block.is_some() {
-            self.inside_ghost -= 1;
-        }
         self.inside_arith = is_inside_arith;
         self.assign_to = is_assign_to;
 
-        if let Expr::Call(call) = expr {
-            if let Some((_, is_tracked)) = mode_block {
-                let span = call.span();
-                if is_tracked {
-                    // Tracked(...)
-                    let inner = take_expr(&mut call.args[0]);
-                    *expr = Expr::Verbatim(if self.erase_ghost.erase() {
-                        quote_spanned!(span => Tracked::assume_new_fallback(|| unreachable!()))
-                    } else if is_inside_ghost {
-                        quote_spanned_builtin!(builtin, span => #builtin::Tracked::new(#inner))
-                    } else {
-                        quote_spanned_builtin!(builtin, span => #[verifier::ghost_wrapper] /* vattr */ #builtin::tracked_exec(#[verifier::tracked_block_wrapped] /* vattr */ #inner))
-                    });
-                } else {
-                    // Ghost(...)
-                    let inner = take_expr(&mut call.args[0]);
-                    *expr = Expr::Verbatim(if self.erase_ghost.erase() {
-                        quote_spanned!(span => Ghost::assume_new_fallback(|| unreachable!()))
-                    } else if is_inside_ghost {
-                        quote_spanned_builtin!(builtin, span => #builtin::Ghost::new(#inner))
-                    } else {
-                        quote_spanned_builtin!(builtin, span => #[verifier::ghost_wrapper] /* vattr */ #builtin::ghost_exec(#[verifier::ghost_block_wrapped] /* vattr */ #inner))
-                    });
-                }
-            }
-        } else if let Expr::Unary(unary) = expr {
-            let span = unary.span();
-            if let Some(mode_block) = mode_block {
-                match (is_inside_ghost, mode_block, &*unary.expr) {
-                    (false, (false, _), Expr::Block(..)) => {
-                        // proof { ... }
-                        let inner = take_expr(&mut *unary.expr);
-                        *expr = self.maybe_erase_expr(
-                            span,
-                            Expr::Verbatim(
-                                quote_spanned!(span => #[verifier::proof_block] /* vattr */ #inner),
-                            ),
-                        );
-                    }
-                    _ => {
-                        *expr = Expr::Verbatim(
-                            quote_spanned!(span => compile_error!("unexpected proof block")),
-                        );
-                        return;
-                    }
-                }
-            }
-        } else if let Expr::BigAnd(exprs) = expr {
+        if let Expr::BigAnd(exprs) = expr {
             let mut new_expr = take_expr(&mut exprs.exprs[0].1);
             for i in 1..exprs.exprs.len() {
                 let span = exprs.exprs[i].0.span();
