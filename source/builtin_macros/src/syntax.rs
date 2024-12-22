@@ -1578,6 +1578,49 @@ impl Visitor {
         true
     }
 
+    /// Handle &&& and |||
+    fn handle_big_and_big_or(&mut self, expr: &mut Expr) -> bool {
+        if !matches!(expr, Expr::BigAnd(_) | Expr::BigOr(_)) {
+            return false;
+        }
+
+        visit_expr_mut(self, expr);
+
+        if let Expr::BigAnd(exprs) = expr {
+            let mut new_expr = take_expr(&mut exprs.exprs[0].1);
+            for i in 1..exprs.exprs.len() {
+                let span = exprs.exprs[i].0.span();
+                let spans = [span, span];
+                let right = take_expr(&mut exprs.exprs[i].1);
+                let left = Box::new(Expr::Verbatim(quote_spanned!(new_expr.span() => (#new_expr))));
+                let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
+                let attrs = Vec::new();
+                let op = BinOp::And(syn_verus::token::AndAnd { spans });
+                let bin = ExprBinary { attrs, op, left, right };
+                new_expr = Expr::Binary(bin);
+            }
+            *expr = new_expr;
+        } else if let Expr::BigOr(exprs) = expr {
+            let mut new_expr = take_expr(&mut exprs.exprs[0].1);
+            for i in 1..exprs.exprs.len() {
+                let span = exprs.exprs[i].0.span();
+                let spans = [span, span];
+                let right = take_expr(&mut exprs.exprs[i].1);
+                let left = Box::new(Expr::Verbatim(quote_spanned!(new_expr.span() => (#new_expr))));
+                let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
+                let attrs = Vec::new();
+                let op = BinOp::Or(syn_verus::token::OrOr { spans });
+                let bin = ExprBinary { attrs, op, left, right };
+                new_expr = Expr::Binary(bin);
+            }
+            *expr = new_expr;
+        } else {
+            unreachable!();
+        }
+
+        true
+    }
+
     /// Handle UnaryOp expressions Neg and Sub
     fn handle_unary_ops(&mut self, expr: &mut Expr) -> bool {
         let Expr::Unary(unary) = expr else {
@@ -2710,6 +2753,7 @@ impl VisitMut for Visitor {
             || self.handle_lit(expr)
             || self.handle_closures(expr)
             || self.handle_unary_ops(expr)
+            || self.handle_big_and_big_or(expr)
         {
             return;
         }
@@ -2748,35 +2792,7 @@ impl VisitMut for Visitor {
         self.inside_arith = is_inside_arith;
         self.assign_to = is_assign_to;
 
-        if let Expr::BigAnd(exprs) = expr {
-            let mut new_expr = take_expr(&mut exprs.exprs[0].1);
-            for i in 1..exprs.exprs.len() {
-                let span = exprs.exprs[i].0.span();
-                let spans = [span, span];
-                let right = take_expr(&mut exprs.exprs[i].1);
-                let left = Box::new(Expr::Verbatim(quote_spanned!(new_expr.span() => (#new_expr))));
-                let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
-                let attrs = Vec::new();
-                let op = BinOp::And(syn_verus::token::AndAnd { spans });
-                let bin = ExprBinary { attrs, op, left, right };
-                new_expr = Expr::Binary(bin);
-            }
-            *expr = new_expr;
-        } else if let Expr::BigOr(exprs) = expr {
-            let mut new_expr = take_expr(&mut exprs.exprs[0].1);
-            for i in 1..exprs.exprs.len() {
-                let span = exprs.exprs[i].0.span();
-                let spans = [span, span];
-                let right = take_expr(&mut exprs.exprs[i].1);
-                let left = Box::new(Expr::Verbatim(quote_spanned!(new_expr.span() => (#new_expr))));
-                let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
-                let attrs = Vec::new();
-                let op = BinOp::Or(syn_verus::token::OrOr { spans });
-                let bin = ExprBinary { attrs, op, left, right };
-                new_expr = Expr::Binary(bin);
-            }
-            *expr = new_expr;
-        } else if let Expr::Macro(macro_expr) = expr {
+        if let Expr::Macro(macro_expr) = expr {
             macro_expr.mac.path.segments.first_mut().map(|x| {
                 let ident = x.ident.to_string();
                 // NOTE: this is currently hardcoded for
