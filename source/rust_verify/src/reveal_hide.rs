@@ -69,8 +69,17 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
                         .expect("non-blanked impl for ty with def")
                 }
                 crate::hir_hide_reveal_rewrite::ResOrSymbol::Symbol(sym) => {
+                    let Some(def_id) = ty_res.opt_def_id() else {
+                        return err_span(
+                            expr.span,
+                            format!(
+                                "`{}` requires clarification, use the universal function call syntax to disambiguate (`<Type as Trait>::function`)",
+                                sym.as_str()
+                            ),
+                        );
+                    };
                     let matching_impls: Vec<_> = tcx
-                        .inherent_impls(ty_res.def_id())
+                        .inherent_impls(def_id)
                         .expect("found inherent impls")
                         .iter()
                         .filter_map(|impl_def_id| {
@@ -89,7 +98,7 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
                         return err_span(
                             expr.span,
                             format!(
-                                "{} is ambiguous, use the universal function call syntax to disambiguate (`<Type as Trait>::function`)",
+                                "`{}` is ambiguous, use the universal function call syntax to disambiguate (`<Type as Trait>::function`)",
                                 sym.as_str()
                             ),
                         );
