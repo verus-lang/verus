@@ -1784,6 +1784,41 @@ impl Visitor {
         true
     }
 
+    fn handle_cast(&mut self, expr: &mut Expr) -> bool {
+        let Expr::Cast(_) = expr else {
+            return false;
+        };
+
+        let is_inside_arith = self.inside_arith;
+        self.inside_arith = InsideArith::Widen;
+        visit_expr_mut(self, expr);
+        self.inside_arith = is_inside_arith;
+
+        let Expr::Cast(cast) = &*expr else {
+            unreachable!();
+        };
+        let do_replace = self.use_spec_traits && self.inside_ghost > 0 && !is_ptr_type(&cast.ty);
+
+        if do_replace {
+            let Expr::Cast(cast) = take_expr(expr) else {
+                unreachable!();
+            };
+            let span = cast.span();
+            let src = cast.expr;
+            let attrs = cast.attrs;
+            let ty = cast.ty;
+            *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_cast_integer::<_, #ty>(#src));
+        } else {
+            if is_probably_nat_or_int_type(&cast.ty) {
+                *expr = Expr::Verbatim(
+                    quote_spanned!(expr.span() => compile_error!("The Verus types 'nat' and 'int' can only be used in ghost code (e.g., in a 'spec' or 'proof' function, inside a 'proof' block, or when assigning to a 'ghost' or 'tracked' variable)")),
+                );
+            }
+        }
+
+        true
+    }
+
     fn handle_assert(&mut self, expr: &mut Expr) -> bool {
         let Expr::Assert(_) = expr else {
             return false;
@@ -2364,6 +2399,8 @@ impl VisitMut for Visitor {
             return;
         } else if self.handle_mode_blocks(expr) {
             return;
+        } else if self.handle_cast(expr) {
+            return;
         }
 
         let is_auto_proof_block = if self.inside_ghost == 0 {
@@ -2387,7 +2424,6 @@ impl VisitMut for Visitor {
 
         let sub_inside_arith = match expr {
             Expr::Paren(..) | Expr::Block(..) | Expr::Group(..) => self.inside_arith,
-            Expr::Cast(..) => InsideArith::Widen,
             Expr::Unary(unary) => match unary.op {
                 UnOp::Neg(..) => InsideArith::Widen,
                 UnOp::Not(..) => InsideArith::Fixed,
@@ -2469,7 +2505,6 @@ impl VisitMut for Visitor {
 
         let do_replace = match &expr {
             Expr::Lit(ExprLit { lit: Lit::Int(..), .. }) if use_spec_traits => true,
-            Expr::Cast(cast) if use_spec_traits && !is_ptr_type(&cast.ty) => true,
             Expr::Index(..) if use_spec_traits => true,
             Expr::Unary(ExprUnary { op: UnOp::Forall(..), .. }) => true,
             Expr::Unary(ExprUnary { op: UnOp::Exists(..), .. }) => true,
@@ -2521,13 +2556,6 @@ impl VisitMut for Visitor {
                         // Has a native Rust integer suffix, so leave it as a native Rust literal
                         *expr = Expr::Lit(ExprLit { lit: Lit::Int(lit), attrs });
                     }
-                }
-                Expr::Cast(cast) => {
-                    let span = cast.span();
-                    let src = cast.expr;
-                    let attrs = cast.attrs;
-                    let ty = cast.ty;
-                    *expr = quote_verbatim!(builtin, span, attrs => #builtin::spec_cast_integer::<_, #ty>(#src));
                 }
                 Expr::Index(idx) => {
                     let span = idx.span();
@@ -2788,19 +2816,6 @@ impl VisitMut for Visitor {
                     *expr = Expr::Verbatim(quote_spanned!(span => (#base#get_call)));
                 }
                 _ => panic!("expected to replace expression"),
-            }
-        }
-
-        if !do_replace {
-            if let Expr::Cast(cast) = &expr {
-                // In theory, the user might alias 'nat' or 'int' to some other type,
-                // thus causing a false positive for this error. However, this seems exceedingly
-                // niche compared to the value of this error.
-                if is_probably_nat_or_int_type(&cast.ty) {
-                    *expr = Expr::Verbatim(
-                        quote_spanned!(expr.span() => compile_error!("The Verus types 'nat' and 'int' can only be used in ghost code (e.g., in a 'spec' or 'proof' function, inside a 'proof' block, or when assigning to a 'ghost' or 'tracked' variable)")),
-                    );
-                }
             }
         }
 
