@@ -93,10 +93,6 @@ struct Visitor {
 
     // Add extra verus signature information to the docstring
     rustdoc: bool,
-
-    // if we are inside bit-vector assertion, warn users to use add/sub/mul for fixed-width operators,
-    // rather than +/-/*, which will be promoted to integer operators
-    inside_bitvector: bool,
 }
 
 // For exec "let pat = init" declarations, recursively find Tracked(x), Ghost(x), x in pat
@@ -410,8 +406,6 @@ impl Visitor {
         });
 
         self.inside_ghost += 1; // for requires, ensures, etc.
-        self.inside_bitvector =
-            sig.prover.as_ref().map_or(false, |(_, _, attr)| attr == "bit_vector");
 
         let requires = self.take_ghost(&mut sig.requires);
         let recommends = self.take_ghost(&mut sig.recommends);
@@ -629,7 +623,6 @@ impl Visitor {
         }
 
         self.inside_ghost -= 1;
-        self.inside_bitvector = false;
 
         sig.publish = Publish::Default;
         sig.mode = FnMode::Default;
@@ -1791,6 +1784,109 @@ impl Visitor {
         true
     }
 
+    fn handle_assert(&mut self, expr: &mut Expr) -> bool {
+        let Expr::Assert(_) = expr else {
+            return false;
+        };
+
+        self.inside_ghost += 1;
+        visit_expr_mut(self, expr);
+        self.inside_ghost -= 1;
+
+        let Expr::Assert(assert) = take_expr(expr) else { unreachable!() };
+
+        let span = assert.assert_token.span;
+        let arg = assert.expr;
+        let attrs = assert.attrs;
+
+        if let Some(prover) = &assert.prover {
+            let prover_id = prover.1.to_string();
+            match prover_id.as_str() {
+                "compute" => {
+                    if assert.body.is_some() {
+                        *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute' prover does not support a body"));
+                    } else if assert.requires.is_some() {
+                        *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute' prover does not support a 'requires' clause"));
+                    } else {
+                        *expr = Expr::Verbatim(
+                            quote_spanned_builtin!(builtin, span => #builtin::assert_by_compute(#arg)),
+                        );
+                    }
+                }
+                "compute_only" => {
+                    if assert.body.is_some() {
+                        *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute_only' prover does not support a body"));
+                    } else if assert.requires.is_some() {
+                        *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute_only' prover does not support a 'requires' clause"));
+                    } else {
+                        *expr = Expr::Verbatim(
+                            quote_spanned_builtin!(builtin, span => #builtin::assert_by_compute_only(#arg)),
+                        );
+                    }
+                }
+                "bit_vector" | "nonlinear_arith" => {
+                    let mut block = if let Some(block) = assert.body {
+                        *block
+                    } else {
+                        Block { brace_token: token::Brace { span }, stmts: vec![] }
+                    };
+                    let mut stmts: Vec<Stmt> = Vec::new();
+                    if let Some(Requires { token, exprs }) = &assert.requires {
+                        stmts.push(Stmt::Semi(
+                            Expr::Verbatim(
+                                quote_spanned_builtin!(builtin, token.span => #builtin::requires([#exprs])),
+                            ),
+                            Semi { spans: [token.span] },
+                        ));
+                    }
+                    stmts.push(Stmt::Semi(
+                        Expr::Verbatim(
+                            quote_spanned_builtin!(builtin, span => #builtin::ensures(#arg)),
+                        ),
+                        Semi { spans: [span] },
+                    ));
+                    block.stmts.splice(0..0, stmts);
+                    let assert_x_by: Expr = if prover_id == "bit_vector" {
+                        quote_verbatim!(builtin, span, attrs => #builtin::assert_bitvector_by(#block))
+                    } else {
+                        quote_verbatim!(builtin, span, attrs => #builtin::assert_nonlinear_by(#block))
+                    };
+                    *expr = Expr::Verbatim(quote_spanned!(span => {#assert_x_by}));
+                }
+                _ => {
+                    *expr = quote_verbatim!(span, attrs => compile_error!("unknown prover name for assert-by (supported provers: 'compute_only', 'compute', 'bit_vector', and 'nonlinear_arith')"));
+                }
+            }
+        } else if let Some(block) = &assert.body {
+            // assert-by
+            if assert.requires.is_some() {
+                *expr = quote_verbatim!(span, attrs => compile_error!("the 'requires' clause is only used with the 'bit_vector' and 'nonlinear_arith' solvers (use `by(bit_vector)` or `by(nonlinear_arith)"));
+            } else {
+                *expr =
+                    quote_verbatim!(builtin, span, attrs => {#builtin::assert_by(#arg, #block);});
+            }
+        } else {
+            // Normal 'assert'
+            *expr = quote_verbatim!(builtin, span, attrs => #builtin::assert_(#arg));
+        }
+
+        self.auto_proof_block(expr, span);
+
+        true
+    }
+
+    fn auto_proof_block(&mut self, expr: &mut Expr, span: Span) {
+        if self.inside_ghost == 0 {
+            let inner = take_expr(expr);
+            *expr = self.maybe_erase_expr(
+                span,
+                Expr::Verbatim(
+                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { #inner } ),
+                ),
+            );
+        }
+    }
+
     fn add_loop_specs(
         &mut self,
         stmts: &mut Vec<Stmt>,
@@ -2184,27 +2280,13 @@ impl VisitMut for Visitor {
             return;
         } else if self.handle_binary_ops(expr) {
             return;
+        } else if self.handle_assert(expr) {
+            return;
         }
-
-        let is_inside_bitvector = match &expr {
-            Expr::Assert(a) => match &a.prover {
-                Some((_, id)) => {
-                    if id.to_string() == "bit_vector" {
-                        self.inside_bitvector = true;
-                        true
-                    } else {
-                        false
-                    }
-                }
-                None => false,
-            },
-            _ => false,
-        };
 
         let is_auto_proof_block = if self.inside_ghost == 0 {
             match &expr {
                 Expr::Assume(a) => Some(a.assume_token.span),
-                Expr::Assert(a) => Some(a.assert_token.span),
                 Expr::AssertForall(a) => Some(a.assert_token.span),
                 Expr::RevealHide(a) if a.hide_token.is_none() => Some(
                     a.reveal_token
@@ -2381,9 +2463,7 @@ impl VisitMut for Visitor {
             Expr::Unary(ExprUnary { op: UnOp::Exists(..), .. }) => true,
             Expr::Unary(ExprUnary { op: UnOp::Choose(..), .. }) => true,
             Expr::Unary(ExprUnary { op: UnOp::Neg(..), .. }) if use_spec_traits => true,
-            Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) | Expr::RevealHide(..) => {
-                true
-            }
+            Expr::Assume(..) | Expr::AssertForall(..) | Expr::RevealHide(..) => true,
             Expr::View(..) => true,
             Expr::Closure(..) => true,
             Expr::Is(..) => true,
@@ -2485,81 +2565,6 @@ impl VisitMut for Visitor {
                     let arg = assume.expr;
                     let attrs = assume.attrs;
                     *expr = quote_verbatim!(builtin, span, attrs => #builtin::assume_(#arg));
-                }
-                Expr::Assert(assert) => {
-                    let span = assert.assert_token.span;
-                    let arg = assert.expr;
-                    let attrs = assert.attrs;
-
-                    if let Some(prover) = assert.prover {
-                        let prover_id = prover.1.to_string();
-                        match prover_id.as_str() {
-                            "compute" => {
-                                if assert.body.is_some() {
-                                    *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute' prover does not support a body"));
-                                } else if assert.requires.is_some() {
-                                    *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute' prover does not support a 'requires' clause"));
-                                } else {
-                                    *expr = Expr::Verbatim(
-                                        quote_spanned_builtin!(builtin, span => #builtin::assert_by_compute(#arg)),
-                                    );
-                                }
-                            }
-                            "compute_only" => {
-                                if assert.body.is_some() {
-                                    *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute_only' prover does not support a body"));
-                                } else if assert.requires.is_some() {
-                                    *expr = quote_verbatim!(span, attrs => compile_error!("the 'compute_only' prover does not support a 'requires' clause"));
-                                } else {
-                                    *expr = Expr::Verbatim(
-                                        quote_spanned_builtin!(builtin, span => #builtin::assert_by_compute_only(#arg)),
-                                    );
-                                }
-                            }
-                            "bit_vector" | "nonlinear_arith" => {
-                                let mut block = if let Some(block) = assert.body {
-                                    *block
-                                } else {
-                                    Block { brace_token: token::Brace { span }, stmts: vec![] }
-                                };
-                                let mut stmts: Vec<Stmt> = Vec::new();
-                                if let Some(Requires { token, exprs }) = assert.requires {
-                                    stmts.push(Stmt::Semi(
-                                        Expr::Verbatim(
-                                            quote_spanned_builtin!(builtin, token.span => #builtin::requires([#exprs])),
-                                        ),
-                                        Semi { spans: [token.span] },
-                                    ));
-                                }
-                                stmts.push(Stmt::Semi(
-                                    Expr::Verbatim(
-                                        quote_spanned_builtin!(builtin, span => #builtin::ensures(#arg)),
-                                    ),
-                                    Semi { spans: [span] },
-                                ));
-                                block.stmts.splice(0..0, stmts);
-                                let assert_x_by: Expr = if prover_id == "bit_vector" {
-                                    quote_verbatim!(builtin, span, attrs => #builtin::assert_bitvector_by(#block))
-                                } else {
-                                    quote_verbatim!(builtin, span, attrs => #builtin::assert_nonlinear_by(#block))
-                                };
-                                *expr = Expr::Verbatim(quote_spanned!(span => {#assert_x_by}));
-                            }
-                            _ => {
-                                *expr = quote_verbatim!(span, attrs => compile_error!("unknown prover name for assert-by (supported provers: 'compute_only', 'compute', 'bit_vector', and 'nonlinear_arith')"));
-                            }
-                        }
-                    } else if let Some(block) = assert.body {
-                        // assert-by
-                        if assert.requires.is_some() {
-                            *expr = quote_verbatim!(span, attrs => compile_error!("the 'requires' clause is only used with the 'bit_vector' and 'nonlinear_arith' solvers (use `by(bit_vector)` or `by(nonlinear_arith)"));
-                        } else {
-                            *expr = quote_verbatim!(builtin, span, attrs => {#builtin::assert_by(#arg, #block);});
-                        }
-                    } else {
-                        // Normal 'assert'
-                        *expr = quote_verbatim!(builtin, span, attrs => #builtin::assert_(#arg));
-                    }
                 }
                 Expr::AssertForall(assert) => {
                     let span = assert.assert_token.span;
@@ -2790,16 +2795,7 @@ impl VisitMut for Visitor {
         if let Some(span) = is_auto_proof_block {
             // automatically put assert/assume in a proof block
             self.inside_ghost -= 1;
-            let inner = take_expr(expr);
-            *expr = self.maybe_erase_expr(
-                span,
-                Expr::Verbatim(
-                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { #inner } ),
-                ),
-            );
-        }
-        if is_inside_bitvector {
-            self.inside_bitvector = false;
+            self.auto_proof_block(expr, span);
         }
     }
 
@@ -3516,7 +3512,6 @@ pub(crate) fn rewrite_items(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
-        inside_bitvector: false,
     };
     visitor.visit_items_prefilter(&mut items.items);
     for mut item in &mut items.items {
@@ -3550,7 +3545,6 @@ pub(crate) fn rewrite_expr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
-        inside_bitvector: false,
     };
     visitor.visit_expr_mut(&mut expr);
     expr.to_tokens(&mut new_stream);
@@ -3568,7 +3562,6 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
-        inside_bitvector: false,
     };
     visitor.visit_expr_mut(expr);
 }
@@ -3681,7 +3674,6 @@ pub(crate) fn proof_block(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
-        inside_bitvector: false,
     };
     visitor.visit_block_mut(&mut invoke);
     invoke.to_tokens(&mut new_stream);
@@ -3706,7 +3698,6 @@ pub(crate) fn proof_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
-        inside_bitvector: false,
     };
     for element in &mut invoke.elements.elements {
         match element {
@@ -3736,7 +3727,6 @@ pub(crate) fn inv_macro_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
-        inside_bitvector: false,
     };
     for (idx, element) in invoke.elements.elements.iter_mut().enumerate() {
         match element {
@@ -3772,7 +3762,6 @@ pub(crate) fn proof_macro_explicit_exprs(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
-        inside_bitvector: false,
     };
     for element in &mut invoke.elements.elements {
         match element {
