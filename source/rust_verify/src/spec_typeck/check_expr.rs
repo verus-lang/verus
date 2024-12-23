@@ -408,7 +408,16 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                             ExprX::Binary(bin_op, l, r),
                         )
                     }
-                    _ => todo!()
+                    BinOpKind::Eq => {
+                        self.check_equality(expr.span, lhs, rhs, false)
+                    }
+                    BinOpKind::Ne => {
+                        self.check_equality(expr.span, lhs, rhs, true)
+                    }
+                    _ => {
+                        dbg!(&bin_op.node);
+                        todo!()
+                    }
                 }
             }
 
@@ -510,6 +519,25 @@ impl<'a, 'tcx> State<'a, 'tcx> {
     pub fn def_id_to_friendly(&self, def_id: DefId) -> String {
         crate::rust_to_vir_base::def_id_to_friendly(self.tcx, Some(&self.bctx.ctxt.verus_items),
             def_id)
+    }
+
+    pub fn check_equality(&mut self, span: Span, lhs: &'tcx Expr<'tcx>, rhs: &'tcx Expr<'tcx>, negate: bool)
+      -> Result<vir::ast::Expr, vir::ast::VirErr>
+    {
+        let l = self.check_expr(lhs)?;
+        let r = self.check_expr(rhs)?;
+
+        self.expect_types_comparable_by_eq(&l.typ, &l.typ)?;
+
+        let op = if negate {
+            BinaryOp::Ne
+        } else {
+            BinaryOp::Eq(Mode::Spec)
+        };
+
+        Ok(self.bctx.spanned_typed_new(span,
+            &bool_typ(), ExprX::Binary(op, l, r)))
+
     }
 }
 

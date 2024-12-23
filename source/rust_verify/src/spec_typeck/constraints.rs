@@ -226,6 +226,22 @@ impl State<'_, '_> {
         self.expect_exact(t1, t2)
     }
 
+    /// t1 and t2 can be compared with (==)
+    pub fn expect_types_comparable_by_eq(&mut self, t1: &Typ, t2: &Typ) -> Result<(), VirErr> {
+        // TODO peel off decorations
+
+        let t1c = self.get_typ_with_concrete_head_if_possible(t1)?;
+        let t2c = self.get_typ_with_concrete_head_if_possible(t2)?;
+
+        if is_definitely_integer_type(&t1c)
+            && is_definitely_integer_type(&t2c)
+        {
+            return Ok(());
+        }
+
+        self.expect_exact(t1, t2)
+    }
+
     /// expect t1 to match t2 exactly
     pub fn expect_exact(&mut self, t1: &Typ, t2: &Typ) -> Result<(), VirErr> {
         let e = self.unify(t1, t2);
