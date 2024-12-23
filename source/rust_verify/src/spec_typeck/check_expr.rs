@@ -238,7 +238,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 match self.check_qpath_for_expr(qpath, expr.hir_id)? {
                     PathResolution::Datatype(def_id, typ_args) => {
                         // TODO visibility of fields...
-                        let (variant_name, variant_def) = self.check_braces_ctor_valid(
+                        let (variant_name, variant_def) = self.check_braces_struct_valid(
                             def_id, fields, &[], spread_opt.is_some(), qpath.span())?;
 
                         self.braces_ctor(expr.span, &typ_args, fields,
@@ -555,7 +555,55 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             &typ, ExprX::Const(Constant::Int(i))))
     }
 
-    pub(crate) fn check_braces_ctor_valid(
+    /* Some notes about how Rust / rustc works with variants:
+
+    Any variant can optionally have a "constructor", which is either
+    CtorKind::Const or CtorKind::Fn.
+
+    enum Foo {
+        VariantConst                  // Some(CtorKind::Const)
+        VariantFn(bool)               // Some(CtorKind::Fn)
+        VariantBraces { b: bool }     // None
+    }
+
+    struct StructConst;               // Some(CtorKind::Const)
+    struct StructFn(bool);            // Some(CtorKind::Fn)
+    struct StructBraces { b: bool }   // None
+
+    Now, when writing a 'Struct' expression or pattern (with braces), any of these 3 kinds
+    is acceptable. For const-style, it would be empty (StructConst { }) and for paren-style
+    you would add numeric fields: (StructFn { 0: true }).
+
+    When a variant shows up as a constant (or in a function call) however, it has
+    to be a constructor.
+
+    This is valid:
+     - VariantConst
+     - VariantFn(b)
+
+    This is invalid:
+     - VariantConst(b)
+
+    Of course, rustc lets you use VariantFn on its own without calling it; it has function type.
+    (But this isn't supported by us right now.)
+    */
+
+    /// Check if a 'braces-style construct' (e.g., `Foo { a, b, c }`) is valid
+    /// for:
+    ///  - structs and unions in expressions 
+    ///  - structs in patterns
+    /// Errors for enums.
+    ///
+    /// This checks if all field names are valid and that there are no duplicates.
+    ///
+    /// Caller should provide either `expr_fields` or `pat_fields`; put empty list []
+    /// for the other.
+    ///
+    /// can_skip_fields: If true, you're allowed to skip fields, otherwise, you must
+    /// provide all fields. For a struct, this should be true if a spread is provided,
+    /// and for patterns, this should be true if a '..' is a provided.
+
+    pub(crate) fn check_braces_struct_valid(
         &mut self,
         def_id: DefId,
         expr_fields: &'tcx [ExprField<'tcx>],
@@ -578,7 +626,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         }
     }
 
-    fn check_braces_variant_valid(
+    pub(crate) fn check_braces_variant_valid(
         &mut self,
         adt_def: &AdtDef,
         variant_def: &'tcx VariantDef,

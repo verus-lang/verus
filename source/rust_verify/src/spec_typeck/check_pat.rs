@@ -14,6 +14,7 @@ use std::sync::Arc;
 use vir::ast_util::mk_tuple_typ;
 use air::ast_util::ident_binder;
 use vir::def::positional_field_ident;
+use air::ast_util::str_ident;
 
 impl<'a, 'tcx> State<'a, 'tcx> {
     /// Checks that the pattern matches the expected type, and adds bindings to the scope map
@@ -21,11 +22,11 @@ impl<'a, 'tcx> State<'a, 'tcx> {
     pub fn check_pat(
         &mut self,
         pat: &Pat<'tcx>,
-        typ: &Typ,
+        expected_typ: &Typ,
     ) -> Result<Pattern, VirErr>
     {
         let mut bindings = vec![];
-        let pat = self.check_pat_rec(pat, typ, &mut bindings)?;
+        let pat = self.check_pat_rec(pat, expected_typ, &mut bindings)?;
 
         for (var_ident, typ) in bindings.into_iter() {
             self.scope_map.insert(var_ident, typ).expect("scope_map insert");
@@ -37,11 +38,11 @@ impl<'a, 'tcx> State<'a, 'tcx> {
     fn check_pat_rec(
         &mut self,
         pat: &Pat<'tcx>,
-        typ: &Typ,
+        expected_typ: &Typ,
         bindings: &mut Vec<(VarIdent, Typ)>,
     ) -> Result<Pattern, VirErr> {
         let bctx = self.bctx;
-        let mk_pattern = |x| Ok(bctx.spanned_typed_new(pat.span, typ, x));
+        let mk_pattern = |x| Ok(bctx.spanned_typed_new(pat.span, expected_typ, x));
 
         match &pat.kind {
             PatKind::Wild => {
@@ -49,11 +50,11 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             }
             PatKind::Binding(BindingMode(ByRef::No, Mutability::Not), hir_id, ident, None) => {
                 let var_ident = crate::rust_to_vir_base::local_to_var(ident, hir_id.local_id);
-                add_binding(pat.span, bindings, var_ident.clone(), typ)?;
+                add_binding(pat.span, bindings, var_ident.clone(), expected_typ)?;
                 mk_pattern(PatternX::Var { name: var_ident, mutable: false })
             }
             PatKind::Tuple(pats, dot_dot_pos) => {
-                let t = self.get_typ_with_concrete_head_if_possible(typ)?;
+                let t = self.get_typ_with_concrete_head_if_possible(expected_typ)?;
                 let typs = match &*t {
                     TypX::Datatype(Dt::Tuple(n), typ_args, _) => {
                         assert!(typ_args.len() == *n);
@@ -70,7 +71,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         }
                         let typ_args = Arc::new(typ_args);
                         let tup_typ = mk_tuple_typ(&typ_args);
-                        self.expect_exact(typ, &tup_typ)?;
+                        self.expect_exact(expected_typ, &tup_typ)?;
                         typ_args
                     }
                     _ => todo!(),
@@ -96,16 +97,22 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 match self.check_qpath_for_expr(qpath, pat.hir_id)? {
                     PathResolution::Datatype(def_id, typ_args) => {
                         // TODO visibility of fields
-                        let (variant_name, variant_def) = self.check_braces_ctor_valid(
+                        let (variant_name, variant_def) = self.check_braces_struct_valid(
                             def_id, &[], fields, *has_dot_dot, qpath.span())?;
-
                         self.pattern_braces_ctor(pat.span, &typ_args, fields,
                            def_id,
                            variant_def,
-                           variant_name, typ)
+                           variant_name, expected_typ)
                     }
-                    PathResolution::DatatypeVariant(_def_id, _typ_args) => {
-                        todo!();
+                    PathResolution::DatatypeVariant(variant_def_id, typ_args) => {
+                        let enum_did = self.tcx.parent(variant_def_id);
+                        let adt_def = self.tcx.adt_def(enum_did);
+                        let variant_def = adt_def.variant_with_id(variant_def_id);
+                        self.check_braces_variant_valid(&adt_def, variant_def,
+                            &[], fields, *has_dot_dot, qpath.span())?;
+                        let variant_name = str_ident(&variant_def.ident(self.tcx).as_str());
+                        self.pattern_braces_ctor(pat.span, &typ_args, fields,
+                           enum_did, variant_def, variant_name, expected_typ)
                     }
                     _ => {
                         return err_span(pat.span, "expected struct or enum variant");
@@ -124,14 +131,14 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         adt_def_id: DefId,
         variant_def: &VariantDef,
         variant_name: vir::ast::Ident,
-        input_typ: &Typ,
+        expected_typ: &Typ,
     ) -> Result<vir::ast::Pattern, VirErr> {
         let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
                             &self.bctx.ctxt.verus_items, adt_def_id);
         let dt = Dt::Path(path);
         let typ = Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
 
-        self.expect_exact(input_typ, &typ)?;
+        self.expect_exact(expected_typ, &typ)?;
 
         let mut ident_binders = vec![];
         for field in fields.iter() {
