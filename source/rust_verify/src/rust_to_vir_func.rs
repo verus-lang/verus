@@ -679,43 +679,23 @@ pub(crate) fn check_item_fn<'tcx>(
     )?;
     let fuel = get_fuel(&vattrs);
 
-    let (vir_body, header, params): (_, _, Vec<(VarIdent, Span, Option<HirId>, bool)>) =
-        match body_id {
-            CheckItemFnEither::BodyId(body_id) => {
-                let body = find_body(ctxt, body_id);
-                let Body { params, value: _ } = body;
-                let mut ps = Vec::new();
-                for Param { hir_id, pat, ty_span: _, span } in params.iter() {
-                    let (is_mut_var, name) = pat_to_mut_var(pat)?;
-                    // is_mut_var: means a parameter is like `mut x: X`
-                    // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
-                    ps.push((name, *span, Some(*hir_id), is_mut_var));
-                }
-                let external_body = vattrs.external_body || vattrs.external_fn_specification;
-                let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
-                let header = vir::headers::read_header(&mut vir_body)?;
-                (Some(vir_body), header, ps)
+    let params: Vec<(VarIdent, Span, Option<HirId>, bool)> = match body_id {
+        CheckItemFnEither::BodyId(body_id) => {
+            let body = find_body(ctxt, body_id);
+            let Body { params, value: _ } = body;
+            let mut ps = Vec::new();
+            for Param { hir_id, pat, ty_span: _, span } in params.iter() {
+                let (is_mut_var, name) = pat_to_mut_var(pat)?;
+                // is_mut_var: means a parameter is like `mut x: X`
+                // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
+                ps.push((name, *span, Some(*hir_id), is_mut_var));
             }
-            CheckItemFnEither::ParamNames(params) => {
-                let params =
-                    params.iter().map(|p| (no_body_param_to_var(p), p.span, None, false)).collect();
-                let header = vir::headers::read_header_block(&mut vec![])?;
-                (None, header, params)
-            }
-        };
-    if vattrs.reveal_group {
-        create_reveal_group(
-            ctxt,
-            reveal_groups,
-            &name,
-            visibility,
-            module_path,
-            &vattrs,
-            &vir_body,
-            sig.span,
-        )?;
-        return Ok(None);
-    }
+            ps
+        }
+        CheckItemFnEither::ParamNames(params) => {
+            params.iter().map(|p| (no_body_param_to_var(p), p.span, None, false)).collect()
+        }
+    };
 
     let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
@@ -808,6 +788,34 @@ pub(crate) fn check_item_fn<'tcx>(
     }
 
     let n_params = vir_params.len();
+
+    let (vir_body, header) = match body_id {
+        CheckItemFnEither::BodyId(body_id) => {
+            let body = find_body(ctxt, body_id);
+            let external_body = vattrs.external_body || vattrs.external_fn_specification;
+            let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
+            let header = vir::headers::read_header(&mut vir_body)?;
+            (Some(vir_body), header)
+        }
+        CheckItemFnEither::ParamNames(_params) => {
+            let header = vir::headers::read_header_block(&mut vec![])?;
+            (None, header)
+        }
+    };
+
+    if vattrs.reveal_group {
+        create_reveal_group(
+            ctxt,
+            reveal_groups,
+            &name,
+            visibility,
+            module_path,
+            &vattrs,
+            &vir_body,
+            sig.span,
+        )?;
+        return Ok(None);
+    }
 
     match (&kind, header.no_method_body, is_verus_spec, vir_body.is_some()) {
         (FunctionKind::TraitMethodDecl { .. }, false, false, _) => {}
