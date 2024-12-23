@@ -13,6 +13,8 @@ mod check_expr;
 mod check_special_calls;
 mod check_ty;
 mod check_pat;
+mod check_ctors;
+mod check_closures;
 mod check_path;
 
 mod finalize_expr;
