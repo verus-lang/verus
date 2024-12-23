@@ -2737,8 +2737,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             continue;
         }
         if !id_to_hir.contains_key(&span.id) {
-            dbg!(span, span.id);
-            panic!("missing id_to_hir");
+            //dbg!(span, span.id);
+            //panic!("missing id_to_hir");
+            continue;
         }
         for hir_id in &id_to_hir[&span.id] {
             if ctxt.var_modes.contains_key(hir_id) {

@@ -105,8 +105,10 @@ impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
     }
 
     fn visit_expr(&mut self, ex: &'tcx Expr<'tcx>) {
-        if let ExprKind::Closure(Closure { body, .. }) = &ex.kind {
-            self.ids.push(*body);
+        if self.in_ghost_code_wrapper {
+            if let ExprKind::Closure(Closure { body, .. }) = &ex.kind {
+                self.ids.push(*body);
+            }
         }
 
         if let ExprKind::Call(callee, args) = &ex.kind {
