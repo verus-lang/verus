@@ -2,8 +2,12 @@ use crate::util::{
     err_span,
 };
 use crate::spec_typeck::State;
-use vir::ast::{PatternX, Pattern, Typ, VirErr, VarIdent, TypX, Dt, Binder};
-use rustc_hir::{PatKind, BindingMode, ByRef, Mutability, Pat};
+use crate::spec_typeck::check_path::PathResolution;
+use vir::ast::{PatternX, Pattern, Typ, VirErr, VarIdent, TypX, Dt, Binder, Typs};
+use rustc_hir::{PatKind, BindingMode, ByRef, Mutability, Pat, PatField};
+use rustc_middle::ty::VariantDef;
+use vir::def::field_ident_from_rust;
+use rustc_hir::def_id::DefId;
 use rustc_span::Span;
 use crate::rust_to_vir_expr::handle_dot_dot;
 use std::sync::Arc;
@@ -11,10 +15,10 @@ use vir::ast_util::mk_tuple_typ;
 use air::ast_util::ident_binder;
 use vir::def::positional_field_ident;
 
-impl State<'_, '_> {
+impl<'a, 'tcx> State<'a, 'tcx> {
     /// Checks that the pattern matches the expected type, and adds bindings to the scope map
 
-    pub fn check_pat<'tcx>(
+    pub fn check_pat(
         &mut self,
         pat: &Pat,
         typ: &Typ,
@@ -30,7 +34,7 @@ impl State<'_, '_> {
         Ok(pat)
     }
 
-    fn check_pat_rec<'tcx>(
+    fn check_pat_rec(
         &mut self,
         pat: &Pat<'tcx>,
         typ: &Typ,
@@ -88,8 +92,58 @@ impl State<'_, '_> {
                 let variant_name = vir::def::prefix_tuple_variant(n);
                 mk_pattern(PatternX::Constructor(Dt::Tuple(n), variant_name, Arc::new(binders)))
             }
+            PatKind::Struct(qpath, fields, has_dot_dot) => {
+                match self.check_qpath_for_expr(qpath, pat.hir_id)? {
+                    PathResolution::Datatype(def_id, typ_args) => {
+                        // TODO visibility of fields
+                        let (variant_name, variant_def) = self.check_braces_ctor_valid(
+                            def_id, fields, *has_dot_dot, qpath.span())?;
+
+                        self.pattern_braces_ctor(pat.span, &typ_args, fields,
+                           def_id,
+                           variant_def,
+                           variant_name)
+                    }
+                    PathResolution::DatatypeVariant(_def_id, _typ_args) => {
+                        todo!();
+                    }
+                    _ => {
+                        return err_span(pat.span, "expected struct or enum variant");
+                    }
+                }
+            }
             _ => todo!(),
         }
+    }
+
+    fn pattern_braces_ctor(
+        &mut self,
+        span: Span,
+        typ_args: &Typs,
+        fields: &'tcx [PatField],
+        adt_def_id: DefId,
+        variant_def: &VariantDef,
+        variant_name: vir::ast::Ident,
+        input_typ: &Typ,
+    ) -> Result<vir::ast::Expr, VirErr> {
+        let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
+                            &self.bctx.ctxt.verus_items, adt_def_id);
+        let dt = Dt::Path(path);
+        let typ = Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
+
+        self.expect_exact(input_typ, typ)?;
+
+        let mut ident_binders = vec![];
+        for field in fields.iter() {
+            let field_typ = self.get_field_typ(field.span, variant_def, &typ_args, &field.ident.as_str())?;
+            let vir_pattern = self.check_pat(&field.pat, &field_typ)?;
+
+            let ident = field_ident_from_rust(field.ident.as_str());
+            ident_binders.push(ident_binder(&ident, &vir_pattern));
+        }
+
+        let x = PatternX::Ctor(dt, variant_name, Arc::new(ident_binders));
+        Ok(self.bctx.spanned_typed_new(span, &typ, x))
     }
 }
 

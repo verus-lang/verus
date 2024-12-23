@@ -4,7 +4,7 @@ use crate::unsupported_err;
 use crate::spec_typeck::State;
 use crate::spec_typeck::check_path::PathResolution;
 use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant, FunX, CallTargetKind, AutospecUsage, Dt, Ident, VirErr, InequalityOp, Typs};
-use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt, ExprField};
+use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt, ExprField, PatField};
 use std::sync::Arc;
 use vir::ast_util::{unit_typ, int_typ, integer_typ, bool_typ, nat_typ};
 use crate::spec_typeck::check_ty::{integer_typ_of_int_ty, integer_typ_of_uint_ty};
@@ -239,7 +239,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     PathResolution::Datatype(def_id, typ_args) => {
                         // TODO visibility of fields...
                         let (variant_name, variant_def) = self.check_braces_ctor_valid(
-                            def_id, fields, *spread_opt, qpath.span())?;
+                            def_id, fields, spread_opt.is_some(), qpath.span())?;
 
                         self.braces_ctor(expr.span, &typ_args, fields,
                            *spread_opt,
@@ -257,7 +257,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         assert!(adt_def.is_enum());
                         let variant_def = adt_def.variant_with_id(variant_def_id);
 
-                        self.check_braces_variant_valid(&adt_def, variant_def, fields, None, expr.span)?;
+                        self.check_braces_variant_valid(&adt_def, variant_def, fields, false, expr.span)?;
 
                         let variant_name = str_ident(&variant_def.ident(self.tcx).as_str());
 
@@ -506,17 +506,18 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             &typ, ExprX::Const(Constant::Int(i))))
     }
 
-    fn check_braces_ctor_valid(
+    pub(crate) fn check_braces_ctor_valid(
         &mut self,
         def_id: DefId,
-        fields: &'tcx [ExprField<'tcx>],
-        spread_opt: Option<&'tcx Expr<'tcx>>,
+        expr_fields: &'tcx [ExprField<'tcx>],
+        pat_fields: &'tcx [PatField<'tcx>],
+        can_skip_fields: bool,
         span: Span,
     ) -> Result<(Ident, &'tcx VariantDef), VirErr> {
         let adt_def = self.tcx.adt_def(def_id);
         if adt_def.is_struct() {
             let variant_def = adt_def.non_enum_variant();
-            self.check_braces_variant_valid(&adt_def, variant_def, fields, spread_opt, span)?;
+            self.check_braces_variant_valid(&adt_def, variant_def, expr_fields, pat_fields, can_skip_fields, span)?;
             let variant_name = str_ident(&variant_def.ident(self.tcx).as_str());
             Ok((variant_name, variant_def))
         } else if adt_def.is_union() {
@@ -532,36 +533,41 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         &mut self,
         adt_def: &AdtDef,
         variant_def: &'tcx VariantDef,
-        fields: &'tcx [ExprField<'tcx>],
-        spread_opt: Option<&'tcx Expr<'tcx>>,
+        expr_fields: &'tcx [ExprField<'tcx>],
+        pat_fields: &'tcx [PatField<'tcx>],
+        can_skip_fields: bool,
         span: Span,
     ) -> Result<(), VirErr> {
         let is_valid_field = |name: &str| variant_def.fields.iter().any(|f| f.ident(self.tcx).as_str() == name);
 
         let mut seen_fields = HashSet::<String>::new();
-        for f in fields {
-            if !is_valid_field(f.ident.as_str()) {
+
+        let idents = expr_fields.iter().map(|f| &f.ident.as_str())
+               .chain(pat_fields.iter().map(|f| &f.ident.as_str()));
+
+        for f_ident in idents {
+            if !is_valid_field(f_ident) {
                 if adt_def.is_struct() {
                     return err_span(f.span,
                       format!("struct `{:}` has no field named `{:}`",
-                        self.def_id_to_friendly(adt_def.did()), f.ident.as_str()));
+                        self.def_id_to_friendly(adt_def.did()), f_ident));
                 } else if adt_def.is_enum() {
                     return err_span(f.span,
                       format!("variant `{:}::{:}` has no field named `{:}`",
-                        self.def_id_to_friendly(adt_def.did()), variant_def.ident(self.tcx).as_str(), f.ident.as_str()));
+                        self.def_id_to_friendly(adt_def.did()), variant_def.ident(self.tcx).as_str(), f_ident));
                 } else {
                     unreachable!()
                 }
             }
             
-            let not_dupe = seen_fields.insert(f.ident.as_str().to_string());
+            let not_dupe = seen_fields.insert(f_ident.to_string());
             if !not_dupe {
                 return err_span(f.span,
-                  format!("field `{:}` specified more than once", f.ident.as_str()));
+                  format!("field `{:}` specified more than once", f_ident));
             }
         }
 
-        if spread_opt.is_none() && seen_fields.len() != variant_def.fields.len() {
+        if !can_skip_fields && seen_fields.len() != variant_def.fields.len() {
             let mut unspecified_fields = vec![];
             for f in variant_def.fields.iter() {
                 if !seen_fields.contains(f.ident(self.tcx).as_str()) {
