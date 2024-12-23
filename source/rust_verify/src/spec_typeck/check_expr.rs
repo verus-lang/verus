@@ -3,10 +3,10 @@ use crate::verus_items;
 use crate::unsupported_err;
 use crate::spec_typeck::State;
 use crate::spec_typeck::check_path::PathResolution;
-use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant, FunX, CallTargetKind, AutospecUsage, Dt, Ident, VirErr, InequalityOp, Typs};
+use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant, FunX, CallTargetKind, AutospecUsage, Dt, Ident, VirErr, InequalityOp, Typs, FieldOpr, VariantCheck, UnaryOpr};
 use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt, ExprField, PatField};
 use std::sync::Arc;
-use vir::ast_util::{unit_typ, int_typ, integer_typ, bool_typ, nat_typ};
+use vir::ast_util::{unit_typ, int_typ, integer_typ, bool_typ, nat_typ, typ_to_diagnostic_str};
 use crate::spec_typeck::check_ty::{integer_typ_of_int_ty, integer_typ_of_uint_ty};
 use rustc_ast::ast::{LitKind, LitIntType};
 use num_bigint::BigInt;
@@ -486,8 +486,57 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     todo!()
                 }
             }
+
+            ExprKind::Field(expr, ident) => {
+                let vir_expr = self.check_expr(expr)?;
+                let t = self.get_typ_with_concrete_head_if_possible(&vir_expr.typ)?;
+                if let TypX::UnificationVar(_) = &*t {
+                    return err_span(expr.span, format!("cannot infer the type of the receiver"));
+                }
+                let TypX::Datatype(dt, typ_args, _) = &*t else {
+                    return err_span(expr.span, format!("`{:}` is not a datatype and therefore doesn't have fields", typ_to_diagnostic_str(&t)));
+                };
+                let field_name = ident.as_str();
+                match dt {
+                    Dt::Path(path) => {
+                        let def_id = crate::rust_to_vir_base::def_id_of_vir_path(path);
+                        let adt_def = self.tcx.adt_def(def_id);
+                        if adt_def.is_struct() {
+                            let variant_def = adt_def.non_enum_variant();
+                            let is_valid = variant_def.fields.iter().any(|f| f.ident(self.tcx).as_str() == field_name);
+                            if !is_valid {
+                                return err_span(ident.span,
+                                  format!("no field `{:}` on type `{:}`", ident.as_str(), typ_to_diagnostic_str(&t)));
+                            }
+
+                            let field_typ = self.get_field_typ(expr.span, variant_def, &typ_args, &ident.as_str())?;
+                            let field_opr = FieldOpr {
+                                datatype: dt.clone(),
+                                variant: str_ident(&variant_def.ident(self.tcx).as_str()),
+                                field: str_ident(field_name),
+                                get_variant: false,
+                                check: VariantCheck::None,
+                            };
+
+                            mk_expr(
+                                &field_typ,
+                                ExprX::UnaryOpr(UnaryOpr::Field(field_opr), vir_expr),
+                            )
+
+                        } else if adt_def.is_enum() {
+                            todo!();
+                        } else if adt_def.is_union() {
+                            todo!();
+                        } else {
+                            unreachable!();
+                        }
+                    }
+                    Dt::Tuple(_) => todo!(),
+                }
+            }
+
             _ => {
-                unsupported_err!(expr.span, format!("{:?}", expr));
+                return err_span(expr.span, format!("Verus ghost code does not support the following expression kind: {:?}", &expr.kind));
             }
         }
     }
