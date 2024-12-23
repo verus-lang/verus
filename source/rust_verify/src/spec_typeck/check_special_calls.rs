@@ -19,7 +19,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         verus_item: &VerusItem,
         expr: &'tcx Expr<'tcx>,
         args: &'tcx [Expr<'tcx>],
-    ) -> Result<vir::ast::Expr, VirErr> {
+    ) -> Result<Option<vir::ast::Expr>, VirErr> {
         match verus_item {
             VerusItem::Quant(quant_item) => {
                 unsupported_err_unless!(args.len() == 1, expr.span, "expected forall/exists", &args);
@@ -28,7 +28,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     QuantItem::Exists => air::ast::Quant::Exists,
                 };
                 let quant = Quant { quant };
-                self.extract_quant(expr.span, quant, &args[0])
+                Ok(Some(self.extract_quant(expr.span, quant, &args[0])?))
             }
             _ => todo!(),
         }

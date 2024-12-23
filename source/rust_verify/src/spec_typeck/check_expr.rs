@@ -18,6 +18,8 @@ use rustc_middle::ty::{AdtDef, VariantDef};
 use std::collections::HashSet;
 use rustc_hir::def::CtorKind;
 use crate::verus_items::VerusItem;
+use rustc_hir::QPath;
+use rustc_hir::def::Res;
 
 impl<'a, 'tcx> State<'a, 'tcx> {
     /// Type-check the given expression and returns its type.
@@ -126,17 +128,27 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 )
             }
             ExprKind::Call(Expr { kind: ExprKind::Path(qpath), .. }, args) => {
+                if let QPath::Resolved(_qualified_self, path) = qpath {
+                    if let Res::Def(_, def_id) = &path.res {
+                        if let Some(verus_item) = self.bctx.ctxt.get_verus_item(*def_id) {
+                            let e = self.check_call_verus_item(verus_item, expr, args)?;
+                            if let Some(e) = e {
+                                return Ok(e);
+                            }
+                        }
+                    };
+                }
                 match self.check_qpath_for_expr(qpath, expr.hir_id)? {
                     PathResolution::Fn(def_id, typ_args) => {
                         if let Some(rust_item) = verus_items::get_rust_item(self.tcx, def_id) {
                             return self.check_call_rust_item(rust_item);
                         }
-                        if let Some(verus_item) = self.bctx.ctxt.get_verus_item(def_id) {
-                            if !matches!(verus_item,
-                                VerusItem::Vstd(_, _) | VerusItem::Marker(_) | VerusItem::BuiltinType(_)) {
-                                return self.check_call_verus_item(verus_item, expr, args);
-                            }
-                        }
+                        //if let Some(verus_item) = self.bctx.ctxt.get_verus_item(def_id) {
+                        //    if !matches!(verus_item,
+                        //        VerusItem::Vstd(_, _) | VerusItem::Marker(_) | VerusItem::BuiltinType(_)) {
+                        //        return self.check_call_verus_item(verus_item, expr, args);
+                        //    }
+                        //}
 
                         let (input_typs, output_typ) = self.fn_item_type_substitution(expr.span,def_id, &typ_args)?;
 

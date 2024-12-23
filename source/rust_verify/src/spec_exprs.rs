@@ -87,7 +87,7 @@ fn get_relevant_closure_ids<'tcx>(
     main_body_id: &BodyId,
 ) -> Vec<BodyId>
 {
-    let mut v = VisitMod { tcx, ids: vec![], owner_info };
+    let mut v = VisitMod { tcx, ids: vec![], owner_info, in_ghost_code_wrapper: false };
     v.visit_body(&owner_info.nodes.bodies[&main_body_id.hir_id.local_id]);
     return v.ids;
 }
@@ -96,6 +96,7 @@ struct VisitMod<'tcx> {
     owner_info: &'tcx OwnerInfo<'tcx>,
     tcx: TyCtxt<'tcx>,
     ids: Vec<BodyId>,
+    in_ghost_code_wrapper: bool,
 }
 
 impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
@@ -104,19 +105,26 @@ impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'tcx> {
     }
 
     fn visit_expr(&mut self, ex: &'tcx Expr<'tcx>) {
-        if let ExprKind::Call(callee, args) = &ex.kind {
-            let a = is_spec_code_wrapper(self.tcx, callee);
-            if a {
-                assert!(args.len() == 1);
+        if let ExprKind::Closure(Closure { body, .. }) = &ex.kind {
+            self.ids.push(*body);
+        }
 
-                if let ExprKind::Closure(Closure { body, .. }) = &args[0].kind {
-                    self.ids.push(*body);
-                } else {
+        if let ExprKind::Call(callee, args) = &ex.kind {
+            let mut ghost_code = self.in_ghost_code_wrapper
+                || is_spec_code_wrapper(self.tcx, callee);
+
+            if ghost_code && !self.in_ghost_code_wrapper {
+                if !matches!(&args[0].kind, ExprKind::Closure(Closure { .. })) {
                     panic!("get_relevant_closure_ids: expected Closure");
                 }
             }
+
+            std::mem::swap(&mut ghost_code, &mut self.in_ghost_code_wrapper);
+            crate::rustc_hir::intravisit::walk_expr(self, ex);
+            std::mem::swap(&mut ghost_code, &mut self.in_ghost_code_wrapper);
+        } else {
+            crate::rustc_hir::intravisit::walk_expr(self, ex);
         }
-        crate::rustc_hir::intravisit::walk_expr(self, ex);
     }
 }
 

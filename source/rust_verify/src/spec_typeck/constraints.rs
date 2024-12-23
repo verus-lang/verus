@@ -101,7 +101,10 @@ impl State<'_, '_> {
         }
 
         let typ = match &self.unifier[node].info {
-            Info::Unknown => todo!(),
+            Info::Unknown => {
+                dbg!(&self.unifier);
+                todo!();
+            }
             Info::UnknownInteger => vir::ast_util::int_typ(),
             Info::Projection(_) => todo!(),
             Info::Known(typ) => typ.clone(),
