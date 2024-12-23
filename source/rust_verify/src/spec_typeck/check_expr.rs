@@ -134,7 +134,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         if let Some(verus_item) = self.bctx.ctxt.get_verus_item(def_id) {
                             if !matches!(verus_item,
                                 VerusItem::Vstd(_, _) | VerusItem::Marker(_) | VerusItem::BuiltinType(_)) {
-                                return self.check_call_verus_item(verus_item);
+                                return self.check_call_verus_item(verus_item, expr, args);
                             }
                         }
 
@@ -792,6 +792,73 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             def_id)
     }
 
+    pub fn extract_quant(
+        &mut self,
+        span: Span,
+        quant: vir::ast::Quant,
+        expr: &'tcx Expr<'tcx>,
+    ) -> Result<vir::ast::Expr, VirErr> {
+        match &expr.kind {
+            ExprKind::Closure(closure) => {
+                let Closure {
+                    def_id: _,
+                    binder: ClosureBinder::Default,
+                    constness: Constness::NotConst,
+                    capture_clause: CaptureBy::Ref,
+                    bound_generic_params: [],
+                    fn_decl: FnDecl {
+                        inputs, output: _, c_variadic: false, implicit_self: ImplicitSelfKind::None,
+                            lifetime_elision_allowed: _,
+                    },
+                    body,
+                    fn_decl_span: _,
+                    fn_arg_span: _,
+                    kind: ClosureKind::Closure
+                } = closure else {
+                    unsupported_err!(expr.span, "complex closure");
+                };
+
+                let mut binder_typs = vec![];
+                for input in inputs.iter() {
+                    binder_typs.push(self.check_ty(input)?);
+                }
+
+                let closure_body = self.tcx.hir().body(*body);
+                let Body { params, value: _ } = closure_body;
+
+                self.scope_map.push_scope(false);
+
+                let mut var_binders = vec![];
+                for (i, param) in params.iter().enumerate() {
+                    let name = match &param.pat.kind {
+                        PatKind::Binding(
+                            BindingMode(ByRef::No, Mutability::Not),
+                            hir_id,
+                            ident,
+                            None
+                        ) => {
+                            crate::rust_to_vir_base::local_to_var(ident, hir_id.local_id)
+                        }
+                        _ => {
+                            unsupported_err!(expr.span, "complex closure pattern argument");
+                        }
+                    };
+                    self.scope_map.insert(name.clone(), binder_typs[i].clone()).expect("scope_map insert");
+                    var_binders.push(Arc::new(VarBinderX { name, a: binder_typs[i].clone() }));
+                }
+
+                let body_expr = self.bctx.ctxt.spec_hir.bodies.get(&body).unwrap();
+                let vir_expr = self.check_expr(body_expr)?;
+                self.scope_map.pop_scope();
+
+                self.expect_bool(&vir_expr.typ)?;
+
+                Ok(self.bctx.spanned_typed_new(span, &bool_typ(),
+                    ExprX::Quant(quant, Arc::new(var_binders), vir_expr)))
+            }
+            _ => err_span(expr.span, "Encoding error: argument to forall/exists must be a closure"),
+        }
+    }
 }
 
 enum LitIntSuffix {
