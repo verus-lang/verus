@@ -20,7 +20,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
 
     pub fn check_pat(
         &mut self,
-        pat: &Pat,
+        pat: &Pat<'tcx>,
         typ: &Typ,
     ) -> Result<Pattern, VirErr>
     {
@@ -97,12 +97,12 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     PathResolution::Datatype(def_id, typ_args) => {
                         // TODO visibility of fields
                         let (variant_name, variant_def) = self.check_braces_ctor_valid(
-                            def_id, fields, *has_dot_dot, qpath.span())?;
+                            def_id, &[], fields, *has_dot_dot, qpath.span())?;
 
                         self.pattern_braces_ctor(pat.span, &typ_args, fields,
                            def_id,
                            variant_def,
-                           variant_name)
+                           variant_name, typ)
                     }
                     PathResolution::DatatypeVariant(_def_id, _typ_args) => {
                         todo!();
@@ -125,13 +125,13 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         variant_def: &VariantDef,
         variant_name: vir::ast::Ident,
         input_typ: &Typ,
-    ) -> Result<vir::ast::Expr, VirErr> {
+    ) -> Result<vir::ast::Pattern, VirErr> {
         let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
                             &self.bctx.ctxt.verus_items, adt_def_id);
         let dt = Dt::Path(path);
         let typ = Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
 
-        self.expect_exact(input_typ, typ)?;
+        self.expect_exact(input_typ, &typ)?;
 
         let mut ident_binders = vec![];
         for field in fields.iter() {
@@ -142,7 +142,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             ident_binders.push(ident_binder(&ident, &vir_pattern));
         }
 
-        let x = PatternX::Ctor(dt, variant_name, Arc::new(ident_binders));
+        let x = PatternX::Constructor(dt, variant_name, Arc::new(ident_binders));
         Ok(self.bctx.spanned_typed_new(span, &typ, x))
     }
 }

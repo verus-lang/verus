@@ -239,7 +239,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     PathResolution::Datatype(def_id, typ_args) => {
                         // TODO visibility of fields...
                         let (variant_name, variant_def) = self.check_braces_ctor_valid(
-                            def_id, fields, spread_opt.is_some(), qpath.span())?;
+                            def_id, fields, &[], spread_opt.is_some(), qpath.span())?;
 
                         self.braces_ctor(expr.span, &typ_args, fields,
                            *spread_opt,
@@ -257,7 +257,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         assert!(adt_def.is_enum());
                         let variant_def = adt_def.variant_with_id(variant_def_id);
 
-                        self.check_braces_variant_valid(&adt_def, variant_def, fields, false, expr.span)?;
+                        self.check_braces_variant_valid(&adt_def, variant_def, fields, &[], false, expr.span)?;
 
                         let variant_name = str_ident(&variant_def.ident(self.tcx).as_str());
 
@@ -542,17 +542,17 @@ impl<'a, 'tcx> State<'a, 'tcx> {
 
         let mut seen_fields = HashSet::<String>::new();
 
-        let idents = expr_fields.iter().map(|f| &f.ident.as_str())
-               .chain(pat_fields.iter().map(|f| &f.ident.as_str()));
+        let idents = expr_fields.iter().map(|f| (f.ident.as_str(), f.span))
+               .chain(pat_fields.iter().map(|f| (f.ident.as_str(), f.span)));
 
-        for f_ident in idents {
+        for (f_ident, span) in idents {
             if !is_valid_field(f_ident) {
                 if adt_def.is_struct() {
-                    return err_span(f.span,
+                    return err_span(span,
                       format!("struct `{:}` has no field named `{:}`",
                         self.def_id_to_friendly(adt_def.did()), f_ident));
                 } else if adt_def.is_enum() {
-                    return err_span(f.span,
+                    return err_span(span,
                       format!("variant `{:}::{:}` has no field named `{:}`",
                         self.def_id_to_friendly(adt_def.did()), variant_def.ident(self.tcx).as_str(), f_ident));
                 } else {
@@ -562,7 +562,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             
             let not_dupe = seen_fields.insert(f_ident.to_string());
             if !not_dupe {
-                return err_span(f.span,
+                return err_span(span,
                   format!("field `{:}` specified more than once", f_ident));
             }
         }
