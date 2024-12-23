@@ -10,6 +10,7 @@ mod reverse_type_map;
 mod method_probe;
 
 mod check_expr;
+mod check_special_calls;
 mod check_ty;
 mod check_pat;
 mod check_path;

@@ -1,4 +1,5 @@
 use crate::util::{err_span};
+use crate::verus_items;
 use crate::unsupported_err;
 use crate::spec_typeck::State;
 use crate::spec_typeck::check_path::PathResolution;
@@ -16,6 +17,7 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::ty::{AdtDef, VariantDef};
 use std::collections::HashSet;
 use rustc_hir::def::CtorKind;
+use crate::verus_items::VerusItem;
 
 impl<'a, 'tcx> State<'a, 'tcx> {
     /// Type-check the given expression and returns its type.
@@ -126,6 +128,16 @@ impl<'a, 'tcx> State<'a, 'tcx> {
             ExprKind::Call(Expr { kind: ExprKind::Path(qpath), .. }, args) => {
                 match self.check_qpath_for_expr(qpath, expr.hir_id)? {
                     PathResolution::Fn(def_id, typ_args) => {
+                        if let Some(rust_item) = verus_items::get_rust_item(self.tcx, def_id) {
+                            return self.check_call_rust_item(rust_item);
+                        }
+                        if let Some(verus_item) = self.bctx.ctxt.get_verus_item(def_id) {
+                            if !matches!(verus_item,
+                                VerusItem::Vstd(_, _) | VerusItem::Marker(_) | VerusItem::BuiltinType(_)) {
+                                return self.check_call_verus_item(verus_item);
+                            }
+                        }
+
                         let (input_typs, output_typ) = self.fn_item_type_substitution(expr.span,def_id, &typ_args)?;
 
                         if input_typs.len() != args.len() {
