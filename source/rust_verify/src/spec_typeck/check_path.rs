@@ -22,6 +22,7 @@ use std::collections::HashSet;
 ///
 /// We also handle TypeRelative paths here, and method calls.
 
+#[derive(Debug)]
 pub enum PathResolution {
     Local(HirId),
     Fn(DefId, Typs),
@@ -129,6 +130,11 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                         assert!(qualified_self.is_none());
                         let generic_params = self.check_path_generics_last_only(*def_id, segments)?;
                         Ok(PathResolution::Datatype(*def_id, Arc::new(generic_params)))
+                    }
+                    DefKind::Variant => {
+                        assert!(qualified_self.is_none());
+                        let generic_params = self.check_path_generics_penultimate_only(*def_id, segments)?;
+                        Ok(PathResolution::DatatypeVariant(*def_id, Arc::new(generic_params)))
                     }
                     DefKind::Ctor(CtorOf::Struct, CtorKind::Fn | CtorKind::Const) => {
                         assert!(qualified_self.is_none());
@@ -238,6 +244,21 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         }
         let generics = self.tcx.generics_of(def_id);
         self.check_segment_generics(None, &segments[segments.len() - 1], generics)
+    }
+
+    pub fn check_path_generics_penultimate_only(
+        &mut self,
+        def_id: DefId,
+        segments: &'tcx [PathSegment],
+    ) -> Result<Vec<Typ>, VirErr> {
+        assert!(segments.len() >= 2);
+        for (i, seg) in segments.iter().enumerate() {
+            if i != segments.len() - 2 && seg.args.is_some() {
+                return err_span(seg.args.unwrap().span_ext, "unexpected generic arguments here");
+            }
+        }
+        let generics = self.tcx.generics_of(def_id);
+        self.check_segment_generics(None, &segments[segments.len() - 2], generics)
     }
 
     pub fn check_path_generics(

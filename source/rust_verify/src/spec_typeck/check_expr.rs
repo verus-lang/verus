@@ -2,7 +2,7 @@ use crate::util::{err_span};
 use crate::unsupported_err;
 use crate::spec_typeck::State;
 use crate::spec_typeck::check_path::PathResolution;
-use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant, FunX, CallTargetKind, AutospecUsage, Dt, Ident, VirErr, InequalityOp};
+use vir::ast::{Typ, TypX, VarBinderX, ExprX, BinaryOp, CallTarget, Mode, ArithOp, StmtX, IntRange, Constant, FunX, CallTargetKind, AutospecUsage, Dt, Ident, VirErr, InequalityOp, Typs};
 use rustc_hir::{Expr, ExprKind, Block, BlockCheckMode, Closure, ClosureBinder, Constness, CaptureBy, FnDecl, ImplicitSelfKind, ClosureKind, Body, PatKind, BindingMode, ByRef, Mutability, BinOpKind, FnRetTy, StmtKind, LetStmt, ExprField};
 use std::sync::Arc;
 use vir::ast_util::{unit_typ, int_typ, integer_typ, bool_typ, nat_typ};
@@ -54,6 +54,33 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                             Mode::Spec => todo!(),
                             Mode::Proof => todo!(),
                         }
+                    }
+                    PathResolution::Datatype(def_id, typ_args) => {
+                        let adt_def = self.tcx.adt_def(def_id);
+                        if adt_def.is_enum() {
+                            return err_span(expr.span, format!("expected function, tuple struct or tuple variant, found enum `{:}`", self.def_id_to_friendly(def_id)));
+                        }
+                        if adt_def.is_union() {
+                            return err_span(expr.span, format!("expected function, tuple struct or tuple variant, found union `{:}`", self.def_id_to_friendly(def_id)));
+                        }
+                        assert!(adt_def.is_struct());
+
+                        // TODO visibility of fields ...
+
+                        let variant_def = adt_def.non_enum_variant();
+
+                        let variant_name = str_ident(&variant_def.ident(self.tcx).as_str());
+                        self.const_ctor(expr.span, &typ_args, variant_def, &adt_def, variant_name)
+                    }
+                    PathResolution::DatatypeVariant(variant_def_id, typ_args) => {
+                        // TODO visibility of fields ...
+                        let enum_did = self.tcx.parent(variant_def_id);
+                        let adt_def = self.tcx.adt_def(enum_did);
+                        assert!(adt_def.is_enum());
+                        let variant_def = adt_def.variant_with_id(variant_def_id);
+
+                        let variant_name = str_ident(&variant_def.ident(self.tcx).as_str());
+                        self.const_ctor(expr.span, &typ_args, variant_def, &adt_def, variant_name)
                     }
                     _ => todo!()
                 }
@@ -129,43 +156,37 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                             ExprX::Call(ct, Arc::new(vir_args))
                         )
                     }
+                    PathResolution::Datatype(def_id, typ_args) => {
+                        let adt_def = self.tcx.adt_def(def_id);
+                        if adt_def.is_enum() {
+                            return err_span(expr.span, format!("expected function, tuple struct or tuple variant, found enum `{:}`", self.def_id_to_friendly(def_id)));
+                        }
+                        if adt_def.is_union() {
+                            return err_span(expr.span, format!("expected function, tuple struct or tuple variant, found union `{:}`", self.def_id_to_friendly(def_id)));
+                        }
+                        assert!(adt_def.is_struct());
+
+                        // TODO visibility of fields ...
+
+                        let variant_def = adt_def.non_enum_variant();
+
+                        let variant_name = str_ident(&variant_def.ident(self.tcx).as_str());
+                        self.parens_ctor(expr.span, &typ_args, args, variant_def, &adt_def, variant_name)
+                    }
                     PathResolution::DatatypeVariant(variant_def_id, typ_args) => {
-                        dbg!(variant_def_id);
+                        // TODO visibility of fields ...
                         let enum_did = self.tcx.parent(variant_def_id);
-                        dbg!(&enum_did);
                         let adt_def = self.tcx.adt_def(enum_did);
                         assert!(adt_def.is_enum());
-                        let variant_def = self.tcx.adt_def(enum_did).variant_with_id(variant_def_id);
-                        if variant_def.ctor_kind() != Some(CtorKind::Fn) {
-                            return err_span(expr.span, format!("this constructor is not a function-call constructor"));
-                        }
-                        if args.len() != variant_def.fields.len() {
-                            return err_span(expr.span, format!("this struct takes {:} argument{:} but {:} argument{:} were supplied",
-                                variant_def.fields.len(),
-                                if variant_def.fields.len() != 1 { "s" } else { "" },
-                                args.len(),
-                                if args.len() != 1 { "s" } else { "" }));
-                        }
+                        let variant_def = adt_def.variant_with_id(variant_def_id);
 
-                        let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
-                            &self.bctx.ctxt.verus_items, adt_def.did());
-                        let dt = Dt::Path(path);
-                        let typ = Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
-
-                        let mut ident_binders = vec![];
-                        for (i, arg) in args.iter().enumerate() {
-                            let vir_arg = self.check_expr(arg)?;
-                            let field_typ = self.get_field_typ_positional(arg.span, variant_def, &typ_args, i)?;
-                            self.expect_allowing_coercion(&vir_arg.typ, &field_typ)?;
-                            let ident = positional_field_ident(i);
-                            ident_binders.push(ident_binder(&ident, &vir_arg));
-                        }
-
-                        let variant = str_ident(&variant_def.ident(self.tcx).as_str());
-
-                        mk_expr(&typ, ExprX::Ctor(dt, variant, Arc::new(ident_binders), None))
+                        let variant_name = str_ident(&variant_def.ident(self.tcx).as_str());
+                        self.parens_ctor(expr.span, &typ_args, args, variant_def, &adt_def, variant_name)
                     }
-                    _ => todo!(),
+                    pr => {
+                        dbg!(pr);
+                        todo!()
+                    }
                 }
             }
             ExprKind::Call(callee, args) => {
@@ -205,39 +226,34 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 match self.check_qpath_for_expr(qpath, expr.hir_id)? {
                     PathResolution::Datatype(def_id, typ_args) => {
                         // TODO visibility of fields...
-                        let (variant, variant_def) = self.check_braces_ctor_valid(
+                        let (variant_name, variant_def) = self.check_braces_ctor_valid(
                             def_id, fields, *spread_opt, qpath.span())?;
 
-                        let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
-                            &self.bctx.ctxt.verus_items, def_id);
-                        let dt = Dt::Path(path);
-                        let typ = Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
-
-                        let vir_spread_opt = match spread_opt {
-                            Some(spread) => {
-                                let vir_spread = self.check_expr(spread)?;
-                                self.expect_exact(&vir_spread.typ, &typ)?;
-                                Some(vir_spread)
-                            }
-                            None => None,
-                        };
-                        let mut ident_binders = vec![];
-                        for field in fields.iter() {
-                            let ExprField { hir_id: _, ident, expr: field_expr, span: _, is_shorthand: _ } = field;
-                            let vir_field_expr = self.check_expr(field_expr)?;
-                            let field_typ = self.get_field_typ(field.span, variant_def, &typ_args, &ident.as_str())?;
-                            self.expect_allowing_coercion(&vir_field_expr.typ, &field_typ)?;
-
-                            let ident = field_ident_from_rust(ident.as_str());
-                            ident_binders.push(ident_binder(&ident, &vir_field_expr));
-                        }
-                        mk_expr(&typ, ExprX::Ctor(dt, variant, Arc::new(ident_binders), vir_spread_opt))
+                        self.braces_ctor(expr.span, &typ_args, fields,
+                           *spread_opt,
+                           def_id,
+                           variant_def,
+                           variant_name)
                     }
-                    PathResolution::DatatypeVariant(_def_id, _typs) => {
+                    PathResolution::DatatypeVariant(variant_def_id, typ_args) => {
                         if spread_opt.is_some() {
                             todo!();
                         }
-                        todo!();
+
+                        let enum_did = self.tcx.parent(variant_def_id);
+                        let adt_def = self.tcx.adt_def(enum_did);
+                        assert!(adt_def.is_enum());
+                        let variant_def = adt_def.variant_with_id(variant_def_id);
+
+                        self.check_braces_variant_valid(&adt_def, variant_def, fields, None, expr.span)?;
+
+                        let variant_name = str_ident(&variant_def.ident(self.tcx).as_str());
+
+                        self.braces_ctor(expr.span, &typ_args, fields,
+                           None,
+                           enum_did,
+                           variant_def,
+                           variant_name)
                     }
                     _ => todo!(),
                 }
@@ -556,10 +572,111 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         Ok(())
     }
 
+    fn braces_ctor(
+        &mut self,
+        span: Span,
+        typ_args: &Typs,
+        fields: &'tcx [ExprField],
+        spread_opt: Option<&'tcx Expr<'tcx>>,
+        adt_def_id: DefId,
+        variant_def: &VariantDef,
+        variant_name: vir::ast::Ident,
+    ) -> Result<vir::ast::Expr, VirErr> {
+        let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
+                            &self.bctx.ctxt.verus_items, adt_def_id);
+        let dt = Dt::Path(path);
+        let typ = Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
+
+        let vir_spread_opt = match spread_opt {
+            Some(spread) => {
+                let vir_spread = self.check_expr(spread)?;
+                self.expect_exact(&vir_spread.typ, &typ)?;
+                Some(vir_spread)
+            }
+            None => None,
+        };
+        let mut ident_binders = vec![];
+        for field in fields.iter() {
+            let ExprField { hir_id: _, ident, expr: field_expr, span: _, is_shorthand: _ } = field;
+            let vir_field_expr = self.check_expr(field_expr)?;
+            let field_typ = self.get_field_typ(field.span, variant_def, &typ_args, &ident.as_str())?;
+            self.expect_allowing_coercion(&vir_field_expr.typ, &field_typ)?;
+
+            let ident = field_ident_from_rust(ident.as_str());
+            ident_binders.push(ident_binder(&ident, &vir_field_expr));
+        }
+
+        let x = ExprX::Ctor(dt, variant_name, Arc::new(ident_binders), vir_spread_opt);
+        Ok(self.bctx.spanned_typed_new(span, &typ, x))
+    }
+
+    fn parens_ctor(
+        &mut self,
+        span: Span,
+        typ_args: &Typs,
+        args: &'tcx [Expr],
+        variant_def: &VariantDef,
+        adt_def: &AdtDef,
+        variant_name: vir::ast::Ident,
+    ) -> Result<vir::ast::Expr, VirErr> {
+        if variant_def.ctor_kind() != Some(CtorKind::Fn) {
+            return err_span(span, format!("this constructor is not a function-call constructor"));
+        }
+        if args.len() != variant_def.fields.len() {
+            return err_span(span, format!("this construtor takes {:} argument{:} but {:} argument{:} were supplied",
+                variant_def.fields.len(),
+                if variant_def.fields.len() != 1 { "s" } else { "" },
+                args.len(),
+                if args.len() != 1 { "s" } else { "" }));
+        }
+
+        let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
+            &self.bctx.ctxt.verus_items, adt_def.did());
+        let dt = Dt::Path(path);
+        let typ = Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
+
+        let mut ident_binders = vec![];
+        for (i, arg) in args.iter().enumerate() {
+            let vir_arg = self.check_expr(arg)?;
+            let field_typ = self.get_field_typ_positional(span, variant_def, &typ_args, i)?;
+            self.expect_allowing_coercion(&vir_arg.typ, &field_typ)?;
+            let ident = positional_field_ident(i);
+            ident_binders.push(ident_binder(&ident, &vir_arg));
+        }
+
+        let x = ExprX::Ctor(dt, variant_name, Arc::new(ident_binders), None);
+        Ok(self.bctx.spanned_typed_new(span, &typ, x))
+    }
+
+    fn const_ctor(
+        &mut self,
+        span: Span,
+        typ_args: &Typs,
+        variant_def: &VariantDef,
+        adt_def: &AdtDef,
+        variant_name: vir::ast::Ident,
+    ) -> Result<vir::ast::Expr, VirErr> {
+        if variant_def.ctor_kind() != Some(CtorKind::Const) {
+            return err_span(span, format!("this constructor is not a const-style constructor"));
+        }
+        assert!(variant_def.fields.len() == 0);
+
+        let path = crate::rust_to_vir_base::def_id_to_vir_path(self.tcx,
+            &self.bctx.ctxt.verus_items, adt_def.did());
+        let dt = Dt::Path(path);
+        let typ = Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
+
+        let ident_binders = vec![];
+
+        let x = ExprX::Ctor(dt, variant_name, Arc::new(ident_binders), None);
+        Ok(self.bctx.spanned_typed_new(span, &typ, x))
+    }
+
     fn def_id_to_friendly(&self, def_id: DefId) -> String {
         crate::rust_to_vir_base::def_id_to_friendly(self.tcx, Some(&self.bctx.ctxt.verus_items),
             def_id)
     }
+
 }
 
 enum LitIntSuffix {
