@@ -46,7 +46,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
         let def_id = crate::spec_typeck::method_probe::lookup_method(
             self.tcx, self_ty, path_segment, span,
             expr, 
-            self.tcx.param_env(self.bctx.fun_id),
+            self.param_env,
             self.bctx.fun_id.expect_local(),
             infcx)?;
 
@@ -73,7 +73,7 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     mty,
                     ty.span,
                     expr_hir_id,
-                    self.tcx.param_env(self.bctx.fun_id),
+                    self.param_env,
                     self.bctx.fun_id.expect_local(),
                     infcx,
                 )?;

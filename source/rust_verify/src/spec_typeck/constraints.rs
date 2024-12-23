@@ -414,7 +414,7 @@ impl State<'_, '_> {
         //use crate::rustc_infer::infer::TyCtxtInferExt;
         let ty = self.finalized_vir_typ_to_typ(typ);
 
-        //let param_env = self.tcx.param_env(self.bctx.fun_id);
+        //let param_env = self.param_env;
         //let infcx = self.tcx.infer_ctxt().ignoring_regions().build();
         //let cause = rustc_infer::traits::ObligationCause::dummy();
         //let at = infcx.at(&cause, param_env);

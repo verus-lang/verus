@@ -115,7 +115,7 @@ impl State<'_, '_> {
         let trait_obligation = TraitObligation::new(
             self.tcx,
             ObligationCause::dummy(),
-            self.tcx.param_env(self.bctx.fun_id),
+            self.param_env,
             TraitPredicate {
                 trait_ref: TraitRef::new(
                     self.tcx,

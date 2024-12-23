@@ -79,7 +79,7 @@ impl State<'_, '_> {
             let obligation = rustc_trait_selection::traits::Obligation::new(
                 self.tcx,
                 cause,
-                self.tcx.param_env(self.bctx.fun_id),
+                self.param_env,
                 clause);
             fulfillment_cx.register_predicate_obligation(&infcx, obligation);
         }
@@ -135,7 +135,7 @@ impl State<'_, '_> {
             let obligation = rustc_trait_selection::traits::Obligation::new(
                 self.tcx,
                 cause,
-                self.tcx.param_env(self.bctx.fun_id),
+                self.param_env,
                 p,
             );
             fulfillment_cx.register_predicate_obligation(&infcx, obligation);
