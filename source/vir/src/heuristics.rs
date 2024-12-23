@@ -28,7 +28,7 @@ fn auto_ext_equal_typ(ctx: &Ctx, typ: &Typ) -> bool {
     }
 }
 
-pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
+pub(crate) fn insert_ext_eq_in_assert_or_ensures(ctx: &Ctx, exp: &Exp) -> Exp {
     // In ordinary asserts,
     // in positive positions,
     // for == on types explicitly supporting ext_eq,
@@ -54,7 +54,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
             | UnaryOp::MustBeElaborated
             | UnaryOp::HeightTrigger
             | UnaryOp::CastToInteger => {
-                exp.new_x(ExpX::Unary(*op, insert_ext_eq_in_assert(ctx, e)))
+                exp.new_x(ExpX::Unary(*op, insert_ext_eq_in_assert_or_ensures(ctx, e)))
             }
         },
         ExpX::UnaryOpr(op, e) => match op {
@@ -63,7 +63,7 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
             UnaryOpr::IntegerTypeBound(..) => exp.clone(),
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => panic!("unexpected box"),
             UnaryOpr::CustomErr(_) => {
-                exp.new_x(ExpX::UnaryOpr(op.clone(), insert_ext_eq_in_assert(ctx, e)))
+                exp.new_x(ExpX::UnaryOpr(op.clone(), insert_ext_eq_in_assert_or_ensures(ctx, e)))
             }
         },
         ExpX::Binary(op, e1, e2) => match op {
@@ -75,12 +75,12 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
                 exp.new_x(ExpX::BinaryOpr(op, e1.clone(), e2.clone()))
             }
             BinaryOp::And | BinaryOp::Or => {
-                let e1 = insert_ext_eq_in_assert(ctx, e1);
-                let e2 = insert_ext_eq_in_assert(ctx, e2);
+                let e1 = insert_ext_eq_in_assert_or_ensures(ctx, e1);
+                let e2 = insert_ext_eq_in_assert_or_ensures(ctx, e2);
                 exp.new_x(ExpX::Binary(*op, e1, e2))
             }
             BinaryOp::Implies => {
-                let e2 = insert_ext_eq_in_assert(ctx, e2);
+                let e2 = insert_ext_eq_in_assert_or_ensures(ctx, e2);
                 exp.new_x(ExpX::Binary(*op, e1.clone(), e2))
             }
             BinaryOp::Eq(_)
@@ -95,23 +95,23 @@ pub(crate) fn insert_ext_eq_in_assert(ctx: &Ctx, exp: &Exp) -> Exp {
         },
         ExpX::BinaryOpr(BinaryOpr::ExtEq(..), _, _) => exp.clone(),
         ExpX::If(e1, e2, e3) => {
-            let e2 = insert_ext_eq_in_assert(ctx, e2);
-            let e3 = insert_ext_eq_in_assert(ctx, e3);
+            let e2 = insert_ext_eq_in_assert_or_ensures(ctx, e2);
+            let e3 = insert_ext_eq_in_assert_or_ensures(ctx, e3);
             exp.new_x(ExpX::If(e1.clone(), e2, e3))
         }
         ExpX::WithTriggers(trigs, e) => {
-            let e = insert_ext_eq_in_assert(ctx, e);
+            let e = insert_ext_eq_in_assert_or_ensures(ctx, e);
             exp.new_x(ExpX::WithTriggers(trigs.clone(), e.clone()))
         }
         ExpX::Bind(bnd, e) => match &bnd.x {
             BndX::Let(..) | BndX::Quant(..) => {
-                let e = insert_ext_eq_in_assert(ctx, e);
+                let e = insert_ext_eq_in_assert_or_ensures(ctx, e);
                 exp.new_x(ExpX::Bind(bnd.clone(), e))
             }
             BndX::Lambda(..) | BndX::Choose(..) => exp.clone(),
         },
         ExpX::ArrayLiteral(es) => {
-            let es = es.iter().map(|e| insert_ext_eq_in_assert(ctx, e)).collect();
+            let es = es.iter().map(|e| insert_ext_eq_in_assert_or_ensures(ctx, e)).collect();
             exp.new_x(ExpX::ArrayLiteral(Arc::new(es)))
         }
         ExpX::Const(_)
