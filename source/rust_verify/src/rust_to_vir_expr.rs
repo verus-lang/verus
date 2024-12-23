@@ -476,6 +476,9 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                 Mutability::Mut => true,
             };
             let name = local_to_var(x, canonical.local_id);
+
+            bctx.scope_map_insert(name.clone(), pat_typ.clone());
+
             match subpat {
                 None => PatternX::Var { name, mutable },
                 Some(subpat) => {
@@ -656,6 +659,8 @@ pub(crate) fn block_to_vir<'tcx>(
     ty: &Typ,
     mut modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
+    bctx.push_scope(true);
+
     let mut vir_stmts: Vec<vir::ast::Stmt> = Vec::new();
     let mut stmts_iter = block.stmts.iter();
     while let Some(mut some_stmts) = stmts_to_vir(bctx, &mut stmts_iter)? {
@@ -665,6 +670,8 @@ pub(crate) fn block_to_vir<'tcx>(
         modifier = ExprModifier { deref_mut: false, ..modifier };
     }
     let vir_expr = block.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
+
+    bctx.pop_scope();
 
     let x = ExprX::Block(Arc::new(vir_stmts), vir_expr);
     Ok(bctx.spanned_typed_new(span.clone(), ty, x))

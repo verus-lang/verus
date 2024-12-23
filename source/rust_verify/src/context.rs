@@ -73,7 +73,7 @@ impl<'tcx> BodyCtxt<'tcx> {
         self.scope_map.borrow_mut().push_scope(shadow);
     }
 
-    pub(crate) fn pop_scope() {
+    pub(crate) fn pop_scope(&self) {
         self.scope_map.borrow_mut().pop_scope();
     }
 

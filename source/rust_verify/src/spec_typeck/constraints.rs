@@ -248,6 +248,8 @@ impl State<'_, '_> {
         match e {
             Ok(()) => Ok(()),
             Err(_ue) => {
+                dbg!(&t1);
+                dbg!(&t2);
                 return err_span(
                     self.whole_span,
                     format!("got `{:}`, expected `{:}`",
@@ -395,16 +397,16 @@ impl State<'_, '_> {
             }
             (TypX::TypParam(id1), TypX::TypParam(id2)) => {
                 if id1 == id2 {
-                    Err(UnifyError::Error)
-                } else {
                     Ok(())
+                } else {
+                    Err(UnifyError::Error)
                 }
             }
             (TypX::ConstInt(a1), TypX::ConstInt(a2)) => {
                 if a1 == a2 {
-                    Err(UnifyError::Error)
-                } else {
                     Ok(())
+                } else {
+                    Err(UnifyError::Error)
                 }
             }
 

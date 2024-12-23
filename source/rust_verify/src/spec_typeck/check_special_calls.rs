@@ -41,7 +41,15 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                 let vop = BinaryOp::Implies;
                 mk_expr(&bool_typ(), ExprX::Binary(vop, lhs, rhs))
             }
-            _ => todo!(),
+            VerusItem::BinaryOp(BinaryOpItem::Equality(EqualityItem::Equal)) => {
+                unsupported_err_unless!(args.len() == 2, expr.span, "expected 2 arguments", &args);
+                let e = self.check_equality(expr.span, &args[0], &args[1], false)?;
+                Ok(Some(e))
+            }
+            _ => {
+                dbg!(verus_item);
+                todo!();
+            }
         }
     }
 

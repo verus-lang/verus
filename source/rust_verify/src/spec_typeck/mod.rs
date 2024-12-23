@@ -45,7 +45,7 @@ pub fn typecheck<'tcx>(
 ) -> Result<vir::ast::Expr, vir::ast::VirErr>
 {
     let mut state = State {
-        scope_map: air::scope_map::ScopeMap::new(),
+        scope_map: bctx.scope_map.borrow().clone(),
         unifier: unification_table::UnificationTable::new(),
         param_name_to_param_ty: reverse_type_map::make_param_map(bctx),
         param_env: bctx.ctxt.tcx.param_env(bctx.fun_id),
