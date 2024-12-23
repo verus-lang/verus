@@ -32,6 +32,8 @@ pub struct State<'a, 'tcx> {
 
     // Obligations collected in the first pass to be discharged at the end
     deferred_projection_obligations: Vec<(constraints::Projection, vir::ast::Typ)>,
+
+    any_error_found: bool,
 }
 
 pub fn typecheck<'tcx>(
@@ -49,6 +51,7 @@ pub fn typecheck<'tcx>(
         tcx: bctx.ctxt.tcx,
         whole_span: expr.span,
         deferred_projection_obligations: vec![],
+        any_error_found: false,
     };
 
     let e = state.check_expr(expr)?;
@@ -56,9 +59,19 @@ pub fn typecheck<'tcx>(
 
     state.finish_unification()?;
 
+    if state.any_error_found {
+        return crate::util::err_span(expr.span, "found error");
+    }
+
     let e = state.finalize_expr(&e)?;
 
-    dbg!(e);
+    if state.any_error_found {
+        return crate::util::err_span(expr.span, "found error");
+    }
+
+    Ok(e)
+
+    //dbg!(e);
 
     // do substitutions
     // match exhaustiveness
@@ -66,6 +79,4 @@ pub fn typecheck<'tcx>(
     // trait checks, impl paths, static resolutions
 
     // deprecated, visibility checks...?
-
-    crate::util::err_span(expr.span, "done")
 }

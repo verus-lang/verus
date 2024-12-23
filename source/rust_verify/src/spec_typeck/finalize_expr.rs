@@ -90,6 +90,7 @@ impl State<'_, '_> {
         if errors.len() > 0 {
             let err_ctxt = infcx.err_ctxt();
             err_ctxt.report_fulfillment_errors(errors);
+            self.any_error_found = true;
         }
     }
 
@@ -147,6 +148,7 @@ impl State<'_, '_> {
         if errors.len() > 0 {
             let err_ctxt = infcx.err_ctxt();
             err_ctxt.report_fulfillment_errors(errors);
+            self.any_error_found = true;
         }
 
         assert!(self.deferred_projection_obligations.len() == 0);

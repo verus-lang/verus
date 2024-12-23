@@ -1892,7 +1892,7 @@ impl Visitor {
             } else {
                 *expr = Expr::Verbatim(quote_spanned!(span => ! #call));
             }
-        } else if self.use_spec_traits && self.inside_ghost > 0 {
+        } else if self.use_spec_traits && self.inside_ghost > 0 && !self.new_ghost_code {
             let attrs = &binary.attrs;
             let left = &binary.left;
             let right = &binary.right;

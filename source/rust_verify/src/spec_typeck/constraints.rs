@@ -4,6 +4,7 @@ use super::State;
 use std::sync::Arc;
 use std::collections::HashSet;
 use super::unification_table::NodeClass;
+use crate::util::err_span;
 
 /// During type inference, we create type variables which are unified into equivalence
 /// classes in the unification table (UnificationTable<Entry>).
@@ -228,10 +229,13 @@ impl State<'_, '_> {
         match e {
             Ok(()) => Ok(()),
             Err(_ue) => {
-                dbg!(t1);
-                dbg!(t2);
-                dbg!(&self.unifier);
-                panic!("expect_exact");
+                return err_span(
+                    self.whole_span,
+                    format!("got `{:}`, expected `{:}`",
+                        vir::ast_util::typ_to_diagnostic_str(t1),
+                        vir::ast_util::typ_to_diagnostic_str(t2),
+                    )
+                );
             }
         }
     }
