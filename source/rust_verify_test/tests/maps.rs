@@ -81,6 +81,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test1_fails_eq verus_code! {
+        use vstd::set::*;
+        use vstd::map::*;
+
+        #[verifier::auto_ext_equal(/* no auto_ext_equal */)]
+        proof fn testfun_eq() {
+            let s = Set::<int>::empty().insert(1).insert(2).insert(3);
+            let m1 = s.mk_map(|x: int| x + 4);
+            let m2 = s.mk_map(|y: int| (2 + 2) + y);
+            // would require extensional equality:
+            assert(m1 === m2); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] map_contains verus_code! {
         use vstd::set::*;
         use vstd::map::*;

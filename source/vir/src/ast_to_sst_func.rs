@@ -31,6 +31,7 @@ pub trait FunctionCommon {
     fn vis_abs(&self) -> crate::ast::Visibility;
     fn owning_module(&self) -> &Option<Path>;
     fn mode(&self) -> crate::ast::Mode;
+    fn attrs(&self) -> &crate::ast::FunctionAttrs;
 }
 
 impl FunctionCommon for crate::ast::FunctionX {
@@ -57,6 +58,10 @@ impl FunctionCommon for crate::ast::FunctionX {
     fn mode(&self) -> crate::ast::Mode {
         self.mode
     }
+
+    fn attrs(&self) -> &crate::ast::FunctionAttrs {
+        &self.attrs
+    }
 }
 
 impl FunctionCommon for FunctionSstX {
@@ -75,6 +80,10 @@ impl FunctionCommon for FunctionSstX {
     fn mode(&self) -> crate::ast::Mode {
         self.mode
     }
+
+    fn attrs(&self) -> &crate::ast::FunctionAttrs {
+        &self.attrs
+    }
 }
 
 pub fn mk_fun_ctx_dec<F: FunctionCommon>(
@@ -89,6 +98,7 @@ pub fn mk_fun_ctx_dec<F: FunctionCommon>(
         checking_spec_decreases,
         module_for_chosen_triggers: f.x.owning_module().clone(),
         current_fun: f.x.name().clone(),
+        current_fun_attrs: f.x.attrs().clone(),
     })
 }
 
@@ -625,7 +635,7 @@ pub fn func_def_to_sst(
                 let exp =
                     expr_to_exp_skip_checks(ctx, diagnostics, &ens_pars, &e_with_req_ens_params)?;
                 let exp = subst_exp(&trait_typ_substs, &HashMap::new(), &exp);
-                let exp = crate::heuristics::insert_ext_eq_in_assert_or_ensures(ctx, &exp);
+                let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
                 enss.push(exp);
             }
         }
@@ -636,7 +646,7 @@ pub fn func_def_to_sst(
         } else {
             // skip checks because we call expr_to_pure_exp_check above
             let exp = expr_to_exp_skip_checks(ctx, diagnostics, &ens_pars, &e)?;
-            let exp = crate::heuristics::insert_ext_eq_in_assert_or_ensures(ctx, &exp);
+            let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
             enss.push(exp);
         }
     }

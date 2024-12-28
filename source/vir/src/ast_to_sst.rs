@@ -1583,7 +1583,7 @@ pub(crate) fn expr_to_stm_opt(
                 // Use expr_to_pure_exp_skip_checks,
                 // because we checked spec preconditions above with expr_to_stm_or_error
                 let exp = expr_to_pure_exp_skip_checks(ctx, state, e)?;
-                let exp = crate::heuristics::insert_ext_eq_in_assert_or_ensures(ctx, &exp);
+                let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.assert);
                 let small = is_small_exp_or_loc(&exp);
                 let exp = if small {
                     exp.clone()
@@ -1663,7 +1663,9 @@ pub(crate) fn expr_to_stm_opt(
                 // because we checked spec preconditions above with check_pure_expr
                 let ensure_exp = expr_to_pure_exp_skip_checks(ctx, state, &ensure)?;
                 let ensure_exp =
-                    crate::heuristics::insert_ext_eq_in_assert_or_ensures(ctx, &ensure_exp);
+                    crate::heuristics::maybe_insert_auto_ext_equal(ctx, &ensure_exp, |x| {
+                        x.assert_by
+                    });
                 let assert = Spanned::new(
                     ensure.span.clone(),
                     StmX::Assert(state.next_assert_id(), None, ensure_exp),
