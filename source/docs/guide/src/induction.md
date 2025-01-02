@@ -91,7 +91,7 @@ the verification of `rec_triangle`.
 
 Next, let's try to eliminate the excessive stack usage by making the function
 [tail recursive](https://en.wikipedia.org/wiki/Tail_call).
-We do this by introducing and index variable `idx` that counts up from `0` to `n`,
+We do this by introducing an index variable `idx` that counts up from `0` to `n`,
 just as a while loop would do:
 
 ```rust
@@ -128,7 +128,7 @@ and then performed the addition.
 This allowed them to prove all the necessary
 facts about overflow first in the series of recursive calls
 (e.g. proving `triangle(10) < 0x1_0000_0000`, `triangle(9) < 0x1_0000_0000`,
-..., `triangle(0) < 0x1_0000_0000`.)
+..., `triangle(0) < 0x1_0000_0000`)
 before doing the arithmetic that depends on these facts.
 But `tail_triangle` tries to perform the arithmetic first,
 before the recursion,
@@ -146,7 +146,7 @@ If we somehow knew that
 `triangle(1) <= triangle(10)`,
 and so on,
 then we could derive what we want from `triangle(10) < 0x1_0000_0000`.
-What we need is a *lemma* that proves the if `i <= j`,
+What we need is a *lemma* that proves that if `i <= j`,
 then `triangle(i) <= triangle(j)`.
 In other words, we need to prove that `triangle` is monotonic.
 
