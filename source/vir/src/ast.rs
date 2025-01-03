@@ -924,6 +924,14 @@ pub enum AcceptRecursiveType {
 /// Each type parameter is (name: Ident, GenericBound, AcceptRecursiveType)
 pub type TypPositives = Arc<Vec<(Ident, AcceptRecursiveType)>>;
 
+/// When verifying a function, specify where we auto-promote == to =~=.
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq)]
+pub struct AutoExtEqual {
+    pub assert: bool,
+    pub assert_by: bool,
+    pub ensures: bool,
+}
+
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]
 pub struct FunctionAttrsX {
@@ -939,6 +947,8 @@ pub struct FunctionAttrsX {
     pub broadcast_forall_only: bool,
     /// In triggers_auto, don't use this function as a trigger
     pub no_auto_trigger: bool,
+    /// Specify which places we auto-promote == to =~= when verifying this function
+    pub auto_ext_equal: AutoExtEqual,
     /// Custom error message to display when a pre-condition fails
     pub custom_req_err: Option<String>,
     /// When used in a ghost context, redirect to a specified spec function

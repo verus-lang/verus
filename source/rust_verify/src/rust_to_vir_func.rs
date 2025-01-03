@@ -516,7 +516,9 @@ fn create_reveal_group<'tcx>(
     err_span(span, "reveal_group must have body")
 }
 
-fn make_attributes(
+fn make_attributes<'tcx>(
+    ctxt: &Context<'tcx>,
+    def_id: DefId,
     vattrs: &crate::attributes::VerifierAttrs,
     uses_ghost_blocks: bool,
     hidden: Arc<Vec<Fun>>,
@@ -540,6 +542,7 @@ fn make_attributes(
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
         broadcast_forall_only: false,
+        auto_ext_equal: crate::attributes::get_auto_ext_equal_walk_parents(ctxt.tcx, def_id),
         bit_vector: vattrs.bit_vector,
         autospec,
         atomic: vattrs.atomic,
@@ -1019,6 +1022,8 @@ pub(crate) fn check_item_fn<'tcx>(
     }
 
     let fattrs = make_attributes(
+        ctxt,
+        id,
         &vattrs,
         vattrs.verus_macro,
         Arc::new(header.hidden),
@@ -1737,6 +1742,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         Arc::new(FunX { path })
     });
     let fattrs = make_attributes(
+        ctxt,
+        id,
         &vattrs,
         false,
         Arc::new(vec![]),

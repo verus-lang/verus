@@ -1042,3 +1042,9 @@ impl HeaderExprX {
         }
     }
 }
+
+impl Default for crate::ast::AutoExtEqual {
+    fn default() -> Self {
+        crate::ast::AutoExtEqual { assert: true, assert_by: false, ensures: false }
+    }
+}
