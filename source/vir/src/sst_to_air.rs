@@ -2775,7 +2775,7 @@ pub(crate) fn body_stm_to_air(
             for req in reqs.iter() {
                 let error = error_with_label(
                     &req.span,
-                    "Unspported expression in integer_ring".to_string(),
+                    "Unsupported expression in integer_ring".to_string(),
                     "at the require clause".to_string(),
                 );
                 let air_expr = exp_to_expr(ctx, req, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
@@ -2787,7 +2787,7 @@ pub(crate) fn body_stm_to_air(
             for ens in post_condition.ens_exps.iter() {
                 let error = error_with_label(
                     &ens.span,
-                    "Unspported expression in integer_ring".to_string(),
+                    "Unsupported expression in integer_ring".to_string(),
                     "at the ensure clause".to_string(),
                 );
                 let air_expr = exp_to_expr(ctx, ens, &ExprCtxt::new_mode(ExprMode::BodyPre))?;
