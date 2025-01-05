@@ -103,8 +103,8 @@ struct_with_invariants!{
         // the same value as the atomic (`v`).
         // Furthermore, the ghost token should have the appropriate `instance`.
         invariant on atomic with (instance) is (v: u32, g: X::counter) {
-            g@.instance == instance@
-            && g@.value == v as int
+            g.instance_id() == instance@.id()
+            && g.value() == v as int
         }
     }
 }
@@ -132,7 +132,7 @@ fn main() {
     let join_handle1 = spawn(
         (move || -> (new_token: Tracked<X::inc_a>)
             ensures
-                new_token@@.instance == instance && new_token@@.value == true,
+                new_token@.instance_id() == instance.id() && new_token@.value() == true,
             {
                 // `inc_a_token` is moved into the closure
                 let tracked mut token = inc_a_token;
@@ -153,7 +153,7 @@ fn main() {
     let join_handle2 = spawn(
         (move || -> (new_token: Tracked<X::inc_b>)
             ensures
-                new_token@@.instance == instance && new_token@@.value == true,
+                new_token@.instance_id() == instance.id() && new_token@.value() == true,
             {
                 // `inc_b_token` is moved into the closure
                 let tracked mut token = inc_b_token;

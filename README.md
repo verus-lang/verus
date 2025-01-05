@@ -1,6 +1,6 @@
 [![Quick Start](https://img.shields.io/badge/tutorial-quick%20start-informational)](https://verus-lang.github.io/verus/guide/getting_started.html) [![Library Documentation](https://img.shields.io/badge/docs-vstd-informational)](https://verus-lang.github.io/verus/verusdoc/vstd/) [![project chat](https://img.shields.io/badge/zulip-join_chat-brightgreen.svg)](https://verus-lang.zulipchat.com)
 
-# <a href="https://verus-lang.github.io/verus/verus/logo.html"><img height="60px" src="https://verus-lang.github.io/verus/verus/assets/verus-color.svg" alt="Verus" /></a> <a href="https://github.com/verus-lang/verus"><img height="60px" src="https://verus-lang.github.io/verus/verus/assets/verus-text.svg" alt="Verus" /></a>
+# <a href="https://verus-lang.github.io/verus/verus/logo.html"><img height="60px" src="https://verus-lang.github.io/verus/verus/assets/verus-color.svg" alt="Verus" /></a> <a href="https://github.com/verus-lang/verus"><picture><source media="(prefers-color-scheme: dark)" height="60px" height="60px" srcset="https://verus-lang.github.io/verus/verus/assets/verus-text-dark.svg" /><img height="60px" height="60px" src="https://verus-lang.github.io/verus/verus/assets/verus-text-light.svg" alt="Verus" /></picture></a>
 
 Verus is a tool for verifying the correctness of code written in Rust.
 Developers write specifications of what their code should do,
@@ -20,7 +20,10 @@ Verus is under *active development*. Features may be broken and/or missing, and
 the documentation is still incomplete. If you want to try Verus, please be
 prepared to ask for help in the [💬 Zulip](https://verus-lang.zulipchat.com/).
 
-The Verus community has published a number of research papers, and there are a variety of industry and academic projects using Verus. You can find a list on our <a href="https://verus-lang.github.io/verus/publications-and-projects/">publications and projects</a> page. If you're using Verus please consider adding your project to that page (see the instructions there).
+The Verus community has published a number of research papers, and there are a
+variety of industry and academic projects using Verus. You can find a list on our
+<a href="https://verus-lang.github.io/verus/publications-and-projects/">publications and projects</a> page. 
+If you're using Verus please consider adding your project to that page (see the instructions there).
 
 ## Try Verus
 
@@ -28,6 +31,8 @@ To try Verus in your browser, please visit the [Verus Playground](https://play.v
 For more involved development, please follow our [installation instructions](INSTALL.md).
 Then you can dive into the documentation below, starting
 with the [📖 Tutorial and reference](https://verus-lang.github.io/verus/guide/).
+We also support an auto-formatter ([verusfmt](https://github.com/verus-lang/verusfmt)) for your
+Verus code.
 
 ## Documentation
 Our (work-in-progress) documentation resources include:
@@ -38,6 +43,13 @@ Our (work-in-progress) documentation resources include:
  * [Contributing to Verus](CONTRIBUTING.md)
  * [Verus License](LICENSE)
  * [Verus Logos](https://verus-lang.github.io/verus/verus/logo.html)
+
+## Examples of Using Verus
+In addition to the documentation above, it can be helpful to see Verus used in action.  Here are some starting points.
+ * <a href="https://verus-lang.github.io/verus/publications-and-projects/">Publications and projects</a> using Verus.
+ * [Standalone examples](https://github.com/secure-foundations/human-eval-verus/) showing Verus in use for small, concrete tasks.
+ * [Small and medium-sized examples](source/rust_verify/example) illustrating various Verus features
+ * [Unit tests](source/rust_verify_test/tests) for Verus, containing examples of Verus syntax and features.
 
 ## Getting in touch, reporting issues, and starting discussions
 

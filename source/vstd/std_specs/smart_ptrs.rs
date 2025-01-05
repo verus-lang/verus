@@ -40,4 +40,12 @@ pub fn arc_new<T>(t: T) -> (v: Arc<T>)
     Arc::new(t)
 }
 
+#[verifier::external_fn_specification]
+pub fn box_clone<T: Clone, A: Allocator + Clone>(b: &Box<T, A>) -> (res: Box<T, A>)
+    ensures
+        call_ensures(T::clone, (&**b,), *res),
+{
+    b.clone()
+}
+
 } // verus!

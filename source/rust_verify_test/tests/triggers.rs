@@ -371,3 +371,22 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_nested verus_code! {
+        spec fn f(x: int) -> bool;
+        spec fn g(x: int) -> bool;
+
+        proof fn test() {
+            // trigger for outer quantifier should be f(x)
+            // trigger for inner quantifier should be g(y) (and NOT include f(x))
+            assume(forall |x: int|
+              forall |y: int|
+                #[trigger] f(x) && #[trigger] g(y));
+
+            let t = f(3);
+            let u = g(4);
+            assert(f(3) && g(4));
+        }
+    } => Ok(())
+}

@@ -13,7 +13,7 @@ use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_to_vir, mk_visibility};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::rust_to_vir_impl::ExternalInfo;
-use crate::util::{err_span, unsupported_err_span};
+use crate::util::err_span;
 use crate::verus_items::{self, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 

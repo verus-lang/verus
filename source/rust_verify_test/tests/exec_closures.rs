@@ -771,7 +771,7 @@ test_verify_one_file_with_options! {
                 y
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "a mutable reference is expected here")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file_with_options! {
@@ -1233,7 +1233,7 @@ test_verify_one_file! {
         fn stuff() {
             let f = |x: X| { };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
 }
 
 test_verify_one_file! {
@@ -1244,7 +1244,7 @@ test_verify_one_file! {
         fn stuff() {
             let f = || -> X { loop { } };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
 }
 
 test_verify_one_file_with_options! {

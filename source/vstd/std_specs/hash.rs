@@ -73,7 +73,7 @@ pub fn ex_default_hasher_new() -> (result: DefaultHasher)
 #[verifier::external_fn_specification]
 pub fn ex_default_hasher_write(state: &mut DefaultHasher, bytes: &[u8])
     ensures
-        state@ == old::<&mut _>(state)@.push(bytes@),
+        state@ == old(state)@.push(bytes@),
 {
     state.write(bytes)
 }

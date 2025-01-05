@@ -1300,3 +1300,31 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] hide_not_at_start_of_body_issue1365 verus_code! {
+        spec fn foo() -> bool { true }
+
+        proof fn bar() {
+            assume(true);
+            hide(foo);
+        }
+    } => Err(e) => assert_vir_error_msg(e, "This kind of statement should go at the beginning of the function body")
+}
+
+test_verify_one_file! {
+    #[test] reveal_trait_method_of_prim_ty verus_code! {
+        trait Foo {
+            spec fn do_something() -> nat;
+        }
+
+        impl Foo for u64 {
+            #[verifier::opaque]
+            spec fn do_something() -> nat { 0 }
+        }
+
+        fn test() {
+            reveal(u64::do_something);
+        }
+    } => Err(e) => assert_vir_error_msg(e, "use the universal function call syntax to disambiguate")
+}

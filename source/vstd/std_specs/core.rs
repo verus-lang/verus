@@ -95,6 +95,8 @@ pub fn ex_swap<T>(a: &mut T, b: &mut T)
     ensures
         *a == *old(b),
         *b == *old(a),
+    opens_invariants none
+    no_unwind
 {
     core::mem::swap(a, b)
 }

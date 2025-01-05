@@ -42,4 +42,15 @@ fn unwrap_or_test() {
     runtime_assert(b.unwrap_or(3) == 3);
 }
 
+fn ok_or_test() {
+    let a: Option<i32> = Option::Some(2);
+    let b: Option<i32> = Option::None;
+    let ra: Result<i32, bool> = a.ok_or(false);
+    let rb: Result<i32, bool> = b.ok_or(false);
+    assert(ra.is_ok());
+    assert(ra.unwrap() == 2);
+    assert(rb.is_err());
+    assert(rb.unwrap_err() == false);
+}
+
 } // verus!

@@ -1535,7 +1535,7 @@ pub(crate) fn expr_to_stm_opt(
             let (check_stms, body_exp) = expr_to_pure_exp_check(ctx, state, body)?;
             Ok((check_stms, ReturnValue::Some(mk_exp(ExpX::WithTriggers(trigs, body_exp)))))
         }
-        ExprX::Fuel(x, fuel, _) => {
+        ExprX::Fuel(x, fuel, is_broadcast_use) => {
             // It's possible that the function may have pruned out of the crate
             // because there are no transitive dependencies.
             // If so, just skip the fuel/reveal statement entirely
@@ -1550,6 +1550,16 @@ pub(crate) fn expr_to_stm_opt(
             let stms = if skip {
                 vec![]
             } else {
+                if !is_broadcast_use {
+                    let function = get_function(ctx, &expr.span, x)?;
+                    if *fuel >= 2 && !crate::recursion::fun_is_recursive(ctx, &function) {
+                        return Err(error(
+                            &expr.span,
+                            "this function is not recursive (nor mutually recursive), so fuel cannot be set to more than 1",
+                        ));
+                    }
+                }
+
                 let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
                 vec![stm]
             };
@@ -1573,7 +1583,7 @@ pub(crate) fn expr_to_stm_opt(
                 // Use expr_to_pure_exp_skip_checks,
                 // because we checked spec preconditions above with expr_to_stm_or_error
                 let exp = expr_to_pure_exp_skip_checks(ctx, state, e)?;
-                let exp = crate::heuristics::insert_ext_eq_in_assert(ctx, &exp);
+                let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.assert);
                 let small = is_small_exp_or_loc(&exp);
                 let exp = if small {
                     exp.clone()
@@ -1652,6 +1662,10 @@ pub(crate) fn expr_to_stm_opt(
                 // Use expr_to_pure_exp_skip_checks,
                 // because we checked spec preconditions above with check_pure_expr
                 let ensure_exp = expr_to_pure_exp_skip_checks(ctx, state, &ensure)?;
+                let ensure_exp =
+                    crate::heuristics::maybe_insert_auto_ext_equal(ctx, &ensure_exp, |x| {
+                        x.assert_by
+                    });
                 let assert = Spanned::new(
                     ensure.span.clone(),
                     StmX::Assert(state.next_assert_id(), None, ensure_exp),

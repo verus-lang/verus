@@ -1,9 +1,12 @@
 #![allow(unused_imports)]
 
 use core::sync::atomic::{
-    AtomicBool, AtomicI16, AtomicI32, AtomicI64, AtomicI8, AtomicIsize, AtomicPtr, AtomicU16,
-    AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
+    AtomicBool, AtomicI16, AtomicI32, AtomicI8, AtomicIsize, AtomicPtr, AtomicU16, AtomicU32,
+    AtomicU8, AtomicUsize, Ordering,
 };
+
+#[cfg(target_has_atomic = "64")]
+use core::sync::atomic::{AtomicI64, AtomicU64};
 
 use super::modes::*;
 use super::pervasive::*;
@@ -582,6 +585,8 @@ make_unsigned_integer_atomic!(
     wrapping_add_u32,
     wrapping_sub_u32
 );
+
+#[cfg(target_has_atomic = "64")]
 make_unsigned_integer_atomic!(
     PAtomicU64,
     PermissionU64,
@@ -628,6 +633,8 @@ make_signed_integer_atomic!(
     wrapping_add_i32,
     wrapping_sub_i32
 );
+
+#[cfg(target_has_atomic = "64")]
 make_signed_integer_atomic!(
     PAtomicI64,
     PermissionI64,
