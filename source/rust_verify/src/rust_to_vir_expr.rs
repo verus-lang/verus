@@ -1672,6 +1672,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 (TypX::Int(_), TypX::Int(_)) => {
                     Ok(mk_ty_clip(&to_vir_ty, &source_vir, expr_vattrs.truncate))
                 }
+                (TypX::Bool, TypX::Int(_)) => {
+                    let zero = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(0)))?;
+                    let one = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(1)))?;
+                    mk_expr(ExprX::If(source_vir, one, Some(zero)))
+                }
                 _ => {
                     let source_ty = bctx.types.expr_ty_adjusted(source);
                     let to_ty = bctx.types.expr_ty(expr);

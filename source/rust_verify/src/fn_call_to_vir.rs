@@ -1061,6 +1061,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
                 }
+                ((TypX::Bool, _), TypX::Int(_)) => {
+                    let zero = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(0)))?;
+                    let one = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(1)))?;
+                    mk_expr(ExprX::If(source_vir, one, Some(zero)))
+                }
                 ((_, true), TypX::Int(IntRange::Int)) => {
                     mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))
                 }

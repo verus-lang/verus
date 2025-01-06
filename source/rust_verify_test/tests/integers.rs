@@ -504,3 +504,13 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "types 'nat' and 'int' can only be used in ghost code")
 }
+
+test_verify_one_file! {
+    #[test] test_bool_to_int verus_code! {
+        fn test1() {
+            assert(true as usize == 1);
+            assert(false as usize == 0);
+            assert(false as int == 0);
+        }
+    } => Ok(())
+}
