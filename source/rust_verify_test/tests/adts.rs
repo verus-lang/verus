@@ -1775,3 +1775,23 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 5)
 }
+
+test_verify_one_file! {
+    #[test] test_field_update_tuple_path verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        fn get_i() -> (res: u8) ensures res == 10 { 10 }
+
+        fn tup_test1() {
+            let mut y = (Y { x: X { i: 12, j: 25 } }, 13);
+            y.0.x.i = 10;
+        }
+    } => Ok(())
+}
