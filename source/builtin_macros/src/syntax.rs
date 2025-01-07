@@ -31,7 +31,7 @@ use syn_verus::{
     ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends,
     Requires, ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants,
     SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem, TraitItemMethod,
-    Type, TypePath, TypeFnSpec, UnOp, Visibility,
+    Type, TypeFnSpec, TypePath, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
