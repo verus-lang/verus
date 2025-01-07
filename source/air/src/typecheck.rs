@@ -282,7 +282,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 if let [s] = &params[..] {
                     if t1 != *s {
                         Err(format!(
-                            "in field-update, argument type {:?} does not match struct type {:?}",
+                            "in field-update, argument type {:?} does not match datatype type {:?}",
                             t1, *s
                         ))
                     } else if t2 != *ret {
