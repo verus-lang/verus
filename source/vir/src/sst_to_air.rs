@@ -1923,55 +1923,40 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
         }
         StmX::Assign { lhs: Dest { dest, is_init: false }, rhs } => {
             let mut stmts: Vec<Stmt> = Vec::new();
-            // TODO(andrea) is this case redundant? or will it become redundant once we
-            // simplify the else branch?
-            if let Some(x) = loc_is_var(dest) {
-                let name = suffix_local_unique_id(x);
-                stmts.push(Arc::new(StmtX::Assign(name, exp_to_expr(ctx, rhs, expr_ctxt)?)));
-                if ctx.debug {
-                    // Add a snapshot after we modify the destination
-                    let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
-                    let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
-                    stmts.push(snapshot);
-                    // Update the snap_map so that it reflects the state _after_ the
-                    // statement takes effect.
-                    state.map_span(&stm, SpanKind::Full);
-                }
-            } else {
-                if ctx.debug {
-                    unimplemented!("complex assignments are unsupported in debugger mode");
-                }
+            if ctx.debug {
+                unimplemented!("assignments are unsupported in debugger mode");
+            }
 
-                let dest = dest;
-                let mut value = exp_to_expr(ctx, &rhs, expr_ctxt)?;
-                let mut value_typ = rhs.typ.clone();
+            let dest = dest;
+            let mut value = exp_to_expr(ctx, &rhs, expr_ctxt)?;
+            let mut value_typ = rhs.typ.clone();
 
-                let (base_var, LocFieldInfo { base_typ, base_span: _, a: fields }) =
-                    loc_to_field_update_data(&dest);
+            let (base_var, LocFieldInfo { base_typ, base_span: _, a: fields }) =
+                loc_to_field_update_data(&dest);
 
-                for FieldUpdateDatum { opr, field_typ, base_exp } in fields.iter().rev() {
-                    let acc = variant_field_ident_internal(
-                        &encode_dt_as_path(&opr.datatype),
-                        &opr.variant,
-                        &opr.field,
-                        true,
-                    );
-                    let bop = air::ast::BinaryOp::FieldUpdate(acc);
-                    if typ_is_poly(ctx, field_typ) && !typ_is_poly(ctx, &value_typ) {
-                        value = try_box(ctx, value, &value_typ).expect("box field update");
-                    }
-                    let base_expr = exp_to_expr(ctx, &base_exp, expr_ctxt)?;
-                    value = Arc::new(ExprX::Binary(bop, base_expr, value));
-                    value_typ = base_exp.typ.clone();
-                }
-
-                if typ_is_poly(ctx, &base_typ) && !typ_is_poly(ctx, &value_typ) {
+            for FieldUpdateDatum { opr, field_typ, base_exp } in fields.iter().rev() {
+                let acc = variant_field_ident_internal(
+                    &encode_dt_as_path(&opr.datatype),
+                    &opr.variant,
+                    &opr.field,
+                    true,
+                );
+                let bop = air::ast::BinaryOp::FieldUpdate(acc);
+                if typ_is_poly(ctx, field_typ) && !typ_is_poly(ctx, &value_typ) {
                     value = try_box(ctx, value, &value_typ).expect("box field update");
                 }
-
-                let a = Arc::new(StmtX::Assign(suffix_local_unique_id(&base_var), value));
-                stmts.push(a);
+                let base_expr = exp_to_expr(ctx, &base_exp, expr_ctxt)?;
+                value = Arc::new(ExprX::Binary(bop, base_expr, value));
+                value_typ = base_exp.typ.clone();
             }
+
+            if typ_is_poly(ctx, &base_typ) && !typ_is_poly(ctx, &value_typ) {
+                value = try_box(ctx, value, &value_typ).expect("box field update");
+            }
+
+            let a = Arc::new(StmtX::Assign(suffix_local_unique_id(&base_var), value));
+            stmts.push(a);
+
             stmts
         }
         StmX::DeadEnd(s) => {
