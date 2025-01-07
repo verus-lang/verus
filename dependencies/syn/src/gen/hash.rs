@@ -2768,6 +2768,15 @@ impl Hash for PredicateType {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Prover {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.id.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for Publish {
     fn hash<H>(&self, state: &mut H)
     where
@@ -2914,14 +2923,7 @@ impl Hash for Signature {
         self.inputs.hash(state);
         self.variadic.hash(state);
         self.output.hash(state);
-        self.prover.hash(state);
-        self.requires.hash(state);
-        self.recommends.hash(state);
-        self.ensures.hash(state);
-        self.returns.hash(state);
-        self.decreases.hash(state);
-        self.invariants.hash(state);
-        self.unwind.hash(state);
+        self.spec.hash(state);
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
@@ -2942,6 +2944,32 @@ impl Hash for SignatureInvariants {
         H: Hasher,
     {
         self.set.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for SignatureSpec {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.prover.hash(state);
+        self.requires.hash(state);
+        self.recommends.hash(state);
+        self.ensures.hash(state);
+        self.returns.hash(state);
+        self.decreases.hash(state);
+        self.invariants.hash(state);
+        self.unwind.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for SignatureSpecAttr {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.ret_pat.hash(state);
+        self.spec.hash(state);
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
