@@ -183,7 +183,7 @@ fn func_body_to_sst(
     check_state.declare_params(&pars);
     check_state.view_as_spec = true;
     check_state.check_spec_decreases = Some((function.x.name.clone(), scc_rep));
-    let check_body_stm = expr_to_one_stm_with_post(&ctx, &mut check_state, &body)?;
+    let check_body_stm = expr_to_one_stm_with_post(&ctx, &mut check_state, &body, &function.span)?;
     let check_body_stm = check_state.finalize_stm(ctx, &check_body_stm)?;
 
     let mut proof_body: Vec<Expr> = Vec::new();
@@ -639,7 +639,7 @@ pub fn func_def_to_sst(
     }
 
     // AST --> SST
-    let mut stm = expr_to_one_stm_with_post(&ctx, &mut state, &body)?;
+    let mut stm = expr_to_one_stm_with_post(&ctx, &mut state, &body, &function.span)?;
     if ctx.checking_spec_preconditions() && trait_typ_substs.len() == 0 {
         if let Some(fun) = &function.x.decrease_by {
             let decrease_by_fun = &ctx.func_map[fun];

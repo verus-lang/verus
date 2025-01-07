@@ -9,7 +9,7 @@ use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{types_equal, undecorate_typ, unit_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
-use crate::messages::{error, error_with_label, internal_error, warning, Span, ToAny};
+use crate::messages::{error, error_with_secondary_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
@@ -766,13 +766,14 @@ pub(crate) fn expr_to_one_stm_with_post(
     ctx: &Ctx,
     state: &mut State,
     expr: &Expr,
+    func_span: &Span,
 ) -> Result<Stm, VirErr> {
     let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
 
     // secondary label (indicating which post-condition failed) is added later
     // in ast_to_sst when the post condition is expanded
-    let base_error = error_with_label(
-        &expr.span,
+    let base_error = error_with_secondary_label(
+        find_last_span_in_expr(&expr, func_span),
         crate::def::POSTCONDITION_FAILURE.to_string(),
         "at the end of the function body".to_string(),
     );
@@ -812,6 +813,13 @@ pub(crate) fn expr_to_one_stm_with_post(
         }
     };
     Ok(stms_to_one_stm(&expr.span, stms))
+}
+
+fn find_last_span_in_expr<'x>(expr: &'x Expr, fn_span: &'x Span) -> &'x Span {
+    match &expr.x {
+        ExprX::Block(_vec, block_expr) => block_expr.as_ref().map(|x| &x.span).unwrap_or(&fn_span),
+        _ => &expr.span,
+    }
 }
 
 fn is_small_exp(exp: &Exp) -> bool {
@@ -2106,7 +2114,7 @@ pub(crate) fn expr_to_stm_opt(
             let containing_closure = state.containing_closure.clone();
             match &containing_closure {
                 None => {
-                    let base_error = error_with_label(
+                    let base_error = error_with_secondary_label(
                         &expr.span,
                         crate::def::POSTCONDITION_FAILURE.to_string(),
                         "at this exit".to_string(),
@@ -2422,12 +2430,12 @@ fn closure_emit_postconditions(
     if ensures.len() > 0 && !state.checking_spec_preconditions(ctx) {
         stms.push(init_var(&ret_value.span, dest, &ret_value));
         for ens in ensures.iter() {
-            let er = error_with_label(
+            let er = error_with_secondary_label(
                 &ret_value.span,
                 "unable to prove post-condition of closure",
                 "returning this expression",
             )
-            .secondary_label(&ens.span, crate::def::THIS_POST_FAILED);
+            .primary_label(&ens.span, crate::def::THIS_POST_FAILED);
             let stm = Spanned::new(
                 ens.span.clone(),
                 StmX::Assert(state.next_assert_id(), Some(er), ens.clone()),

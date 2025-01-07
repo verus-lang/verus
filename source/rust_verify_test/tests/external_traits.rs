@@ -274,8 +274,8 @@ test_verify_one_file! {
         impl T for u32 {
             fn f(&self, q: &Self, b: bool) -> (r: usize) {
                 assert(b);
-                6
-            } // FAILS
+                6 // FAILS
+            }
             type X = u16;
         }
     } => Err(e) => assert_one_fails(e)

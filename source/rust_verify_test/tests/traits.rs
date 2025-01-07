@@ -1401,8 +1401,8 @@ test_verify_one_file! {
             }
 
             fn f(&self, a: &u64) -> u64 {
-                self.x / 2 + a
-            } // FAILS
+                self.x / 2 + a // FAILS
+            }
         }
 
         fn p<A, Z: T<A>>(a: &A, z: &Z) -> (rz: A)
@@ -1462,8 +1462,8 @@ test_verify_one_file! {
             }
 
             fn f(a: &u64) -> u64 {
-                a * 2
-            } // FAILS
+                a * 2 // FAILS
+            }
         }
 
         fn p<A, Z: T<A>>(a: &A) -> (rz: A)
@@ -1783,8 +1783,8 @@ test_verify_one_file! {
 
         impl T for S {
             fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
-                if b { self } else { self }
-            } // FAILS
+                if b { self } else { self } // FAILS
+            }
         }
 
         fn test() {
