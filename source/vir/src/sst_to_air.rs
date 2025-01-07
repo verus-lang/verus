@@ -1942,6 +1942,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     true,
                 );
                 let bop = air::ast::BinaryOp::FieldUpdate(acc);
+                // TODO(andrea) move this to poly.rs once we have general support for mutable references
                 if typ_is_poly(ctx, field_typ) && !typ_is_poly(ctx, &value_typ) {
                     value = try_box(ctx, value, &value_typ).expect("box field update");
                 }
@@ -1950,6 +1951,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 value_typ = base_exp.typ.clone();
             }
 
+            // TODO(andrea) move this to poly.rs once we have general support for mutable references
             if typ_is_poly(ctx, &base_typ) && !typ_is_poly(ctx, &value_typ) {
                 value = try_box(ctx, value, &value_typ).expect("box field update");
             }
