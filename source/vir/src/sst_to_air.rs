@@ -1967,7 +1967,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             let is_air_break = *is_break && !loop_info.loop_isolation;
             let mut stmts: Vec<Stmt> = Vec::new();
             if !ctx.checking_spec_preconditions() && !is_air_break {
-                assert!(!loop_info.some_cond); // AST-to-SST conversion must eliminate the cond
+                assert!(!is_break || !loop_info.some_cond); // AST-to-SST conversion must eliminate the cond
                 if loop_info.is_for_loop && !*is_break {
                     // At the very least, the syntax macro will need to advance the ghost iterator
                     // at each continue.

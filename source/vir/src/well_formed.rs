@@ -4,7 +4,7 @@ use crate::ast::{
     UnwindSpec, VirErr, VirErrAs,
 };
 use crate::ast_util::{
-    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to_opt,
+    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to_of_owner, is_visible_to_opt,
     path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
     undecorate_typ,
 };
@@ -73,14 +73,18 @@ fn check_path_and_get_datatype<'a>(
                 return Err(error(
                     span,
                     &format!(
-                        "cannot use type marked `external_type_specification` directly; use `{:}` instead",
+                        "cannot use type `{:}` marked `external_type_specification` directly; use `{:}` instead",
+                        path_as_friendly_rust_name(path),
                         dt_as_friendly_rust_name(actual_path),
                     ),
                 ));
             } else if is_external(ctxt, path) {
                 return Err(error(
                     span,
-                    "cannot use type marked `external`; try marking it `external_body` instead?",
+                    &format!(
+                        "cannot use type `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
+                        path_as_friendly_rust_name(path),
+                    ),
                 ));
             } else {
                 let rpath = path_as_friendly_rust_name(path);
@@ -132,14 +136,18 @@ fn check_path_and_get_function<'a>(
                 return Err(error(
                     span,
                     &format!(
-                        "cannot call function marked `external_fn_specification` directly; call `{:}` instead",
+                        "cannot call function `{:}` marked `external_fn_specification` directly; call `{:}` instead",
+                        path_as_friendly_rust_name(&x.path),
                         path_as_friendly_rust_name(actual_path),
                     ),
                 ));
             } else if is_external(ctxt, &x) {
                 return Err(error(
                     span,
-                    "cannot call function marked `external`; try marking it `external_body` instead, or add a Verus specification via `external_fn_specification`?",
+                    &format!(
+                        "cannot use function `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
+                        path_as_friendly_rust_name(&x.path),
+                    ),
                 ));
             } else {
                 let path = path_as_friendly_rust_name(&x.path);
@@ -427,6 +435,18 @@ fn check_one_expr(
                         "reveal_with_fuel statements require a spec function with a decreases clause",
                     ));
                 }
+                if let Some(my_module) = &function.x.owning_module {
+                    if f.x.publish == None && !is_visible_to_of_owner(&f.x.owning_module, my_module)
+                    {
+                        return Err(error(
+                            &expr.span,
+                            format!(
+                                "reveal/fuel statement is not allowed here because the function `{:}` is marked 'closed' and thus its body is not visible here. (Note: 'reveal' statements are intended for functions that are opaque, not functions that are closed)",
+                                path_as_friendly_rust_name(&f.x.name.path),
+                            ),
+                        ));
+                    }
+                }
             }
         }
         ExprX::ExecFnByName(fun) => {
@@ -458,6 +478,15 @@ fn check_one_expr(
             }
 
             check_typ(ctxt, &expr.typ, &expr.span)?;
+        }
+        ExprX::Header(header) => {
+            return Err(error(
+                &expr.span,
+                format!(
+                    "This kind of statement should go at the {:}",
+                    header.location_for_diagnostic()
+                ),
+            ));
         }
         _ => {}
     }

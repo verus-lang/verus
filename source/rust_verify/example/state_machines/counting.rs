@@ -142,33 +142,33 @@ tracked struct ReadRef<T> {
 }
 
 impl<T> MainCounter<T> {
-    pub closed spec fn instance(self) -> Instance<T> {
-        Instance { instance: self.token@.instance }
+    pub closed spec fn instance_id(self) -> InstanceId {
+        self.token.instance_id()
     }
 
     pub closed spec fn value(self) -> Option<(nat, T)> {
-        self.token@.value
+        self.token.value()
     }
 }
 
 impl<T> ReadRef<T> {
-    pub closed spec fn instance(self) -> Instance<T> {
-        Instance { instance: self.token@.instance }
+    pub closed spec fn instance_id(self) -> InstanceId {
+        self.token.instance_id()
     }
 
     pub closed spec fn value(self) -> T {
-        self.token@.key
-    }
-
-    pub closed spec fn wf(self) -> bool {
-        self.token@.count == 1
+        self.token.element()
     }
 }
 
 impl<T> Instance<T> {
+    pub closed spec fn id(self) -> InstanceId {
+      self.instance.id()
+    }
+
     proof fn new() -> (tracked res: (Instance<T>, MainCounter<T>))
         ensures
-            res.1.instance() == res.0,
+            res.1.instance_id() == res.0.id(),
             res.1.value() === None
     {
         let tracked (Tracked(inst), Tracked(c), Tracked(_r)) =
@@ -182,10 +182,10 @@ impl<T> Instance<T> {
         tracked t: T
     )
         requires
-            old(counter).instance() == self,
+            old(counter).instance_id() == self.id(),
             old(counter).value() === None,
         ensures
-            counter.instance() == self,
+            counter.instance_id() == self.id(),
             counter.value() === Some((0, t)),
     {
         self.instance.writeable_to_readable(t, t, &mut counter.token);
@@ -196,13 +196,13 @@ impl<T> Instance<T> {
         tracked counter: &mut MainCounter<T>,
     ) -> (tracked t: T)
         requires
-            old(counter).instance() == self,
+            old(counter).instance_id() == self.id(),
             match old(counter).value() {
                 None => false,
                 Some((count, _)) => count == 0,
             }
         ensures
-            counter.instance() == self,
+            counter.instance_id() == self.id(),
             counter.value() === None,
             t == old(counter).value().unwrap().1,
     {
@@ -214,17 +214,16 @@ impl<T> Instance<T> {
         tracked counter: &mut MainCounter<T>,
     ) -> (tracked read_ref: ReadRef<T>)
         requires
-            old(counter).instance() == self,
+            old(counter).instance_id() == self.id(),
             old(counter).value().is_some()
         ensures
-            counter.instance() == self,
+            counter.instance_id() == self.id(),
             match old(counter).value() {
                 None => false,
                 Some((count, t)) =>
                     counter.value() == Some((count + 1, t))
                       && read_ref.value() == t
             },
-            read_ref.wf(),
     {
         ReadRef { token: self.instance.new_ref(&mut counter.token) }
     }
@@ -235,12 +234,11 @@ impl<T> Instance<T> {
         tracked read_ref: ReadRef<T>,
     )
         requires
-            old(counter).instance() == self,
+            old(counter).instance_id() == self.id(),
             old(counter).value().is_some(),
-            read_ref.instance() == self,
-            read_ref.wf(),
+            read_ref.instance_id() == self.id(),
         ensures
-            counter.instance() == self,
+            counter.instance_id() == self.id(),
             match old(counter).value() {
                 None => false,
                 Some((count, t)) =>
@@ -248,15 +246,15 @@ impl<T> Instance<T> {
                       && counter.value() == Some(((count - 1) as nat, t))
             },
     {
-        self.instance.delete_ref(read_ref.token@.key, &mut counter.token, read_ref.token)
+        self.instance.delete_ref(read_ref.token.element(), &mut counter.token, read_ref.token)
     }
 
     proof fn read_ref_guards<'a>(
         tracked &self,
         tracked read_ref: &'a ReadRef<T>,
     ) -> (tracked borrowed_t: &'a T)
-        requires read_ref.wf(),
-            read_ref.instance() == self,
+        requires
+            read_ref.instance_id() == self.id(),
         ensures
             borrowed_t == read_ref.value()
     {

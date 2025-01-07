@@ -60,7 +60,7 @@ test_verify_one_file! {
             let m1 = s1.mk_map(|k: int| 10 * k);
             assert(m1.index(2) == 20);
             let s2 = Set::<int>::empty().insert(1).insert(3).insert(2);
-            let m2 = s2.mk_map(|k: int| 3 * k + 7 * k);
+            let m2 = s2.mk_map(|k: int| 3 * k + 8 * k);
             assert(equal(m1, m2)) by {} // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -85,12 +85,13 @@ test_verify_one_file! {
         use vstd::set::*;
         use vstd::map::*;
 
+        #[verifier::auto_ext_equal(/* no auto_ext_equal */)]
         proof fn testfun_eq() {
             let s = Set::<int>::empty().insert(1).insert(2).insert(3);
             let m1 = s.mk_map(|x: int| x + 4);
             let m2 = s.mk_map(|y: int| (2 + 2) + y);
             // would require extensional equality:
-            assert(m1 === m2) by {} // FAILS
+            assert(m1 === m2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

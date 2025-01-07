@@ -348,13 +348,13 @@ struct_with_invariants_vstd!{
     #[verifier::type_invariant]
     spec fn wf(&self) -> bool {
         invariant on exc with (inst) is (v: bool, g: RwLockToks::flag_exc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>) {
-            g@.instance == inst@
-                && g@.value == v
+            g.instance_id() == inst@.id()
+                && g.value() == v
         }
 
         invariant on rc with (inst) is (v: u64, g: RwLockToks::flag_rc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>) {
-            g@.instance == inst@
-                && g@.value == v
+            g.instance_id() == inst@.id()
+                && g.value() == v
         }
 
         predicate {
@@ -392,7 +392,7 @@ impl<'a, V, Pred: RwLockPredicate<V>> WriteHandle<'a, V, Pred> {
     #[verifier::type_invariant]
     spec fn wf_write_handle(self) -> bool {
         equal(self.perm@.view().pcell, self.rwlock.cell.id()) && self.perm@.view().value.is_None()
-            && equal(self.handle@.view().instance, self.rwlock.inst@) && self.rwlock.wf()
+            && equal(self.handle@.instance_id(), self.rwlock.inst@.id()) && self.rwlock.wf()
     }
 
     pub closed spec fn rwlock(self) -> RwLock<V, Pred> {
@@ -421,15 +421,15 @@ impl<'a, V, Pred: RwLockPredicate<V>> WriteHandle<'a, V, Pred> {
 impl<'a, V, Pred: RwLockPredicate<V>> ReadHandle<'a, V, Pred> {
     #[verifier::type_invariant]
     spec fn wf_read_handle(self) -> bool {
-        equal(self.handle@.view().instance, self.rwlock.inst@)
-            && self.handle@.view().key.view().value.is_Some() && equal(
-            self.handle@.view().key.view().pcell,
+        equal(self.handle@.instance_id(), self.rwlock.inst@.id())
+            && self.handle@.element().view().value.is_Some() && equal(
+            self.handle@.element().view().pcell,
             self.rwlock.cell.id(),
-        ) && self.handle@.view().count == 1 && self.rwlock.wf()
+        ) && self.rwlock.wf()
     }
 
     pub closed spec fn view(self) -> V {
-        self.handle@.view().key.view().value.unwrap()
+        self.handle@.element().view().value.unwrap()
     }
 
     pub closed spec fn rwlock(self) -> RwLock<V, Pred> {
@@ -445,7 +445,7 @@ impl<'a, V, Pred: RwLockPredicate<V>> ReadHandle<'a, V, Pred> {
             use_type_invariant(self);
         }
         let tracked perm = self.rwlock.inst.borrow().read_guard(
-            self.handle@.view().key,
+            self.handle@.element(),
             self.handle.borrow(),
         );
         self.rwlock.cell.borrow(Tracked(&perm))
@@ -463,8 +463,8 @@ impl<'a, V, Pred: RwLockPredicate<V>> ReadHandle<'a, V, Pred> {
         use_type_invariant(read_handle1);
         use_type_invariant(read_handle2);
         read_handle1.rwlock.inst.borrow().read_match(
-            read_handle1.handle@.view().key,
-            read_handle2.handle@.view().key,
+            read_handle1.handle@.element(),
+            read_handle2.handle@.element(),
             &read_handle1.handle.borrow(),
             &read_handle2.handle.borrow(),
         );
@@ -481,7 +481,7 @@ impl<'a, V, Pred: RwLockPredicate<V>> ReadHandle<'a, V, Pred> {
             &rwlock.rc => fetch_sub(1);
             ghost g =>
         {
-            rwlock.inst.borrow().release_shared(handle.view().key, &mut g, handle);
+            rwlock.inst.borrow().release_shared(handle.element(), &mut g, handle);
         });
     }
 }
@@ -542,7 +542,10 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         > = Option::None;
         while !done
             invariant
-                done ==> token.is_Some() && equal(token.get_Some_0().view().instance, self.inst@),
+                done ==> token.is_Some() && equal(
+                    token.get_Some_0().instance_id(),
+                    self.inst@.id(),
+                ),
                 self.wf(),
         {
             let result =
@@ -564,7 +567,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         }
         loop
             invariant
-                token.is_Some() && equal(token.get_Some_0().view().instance, self.inst@),
+                token.is_Some() && equal(token.get_Some_0().instance_id(), self.inst@.id()),
                 self.wf(),
         {
             let tracked mut perm_opt: Option<PointsTo<V>> = None;

@@ -13,9 +13,7 @@ use crate::rust_to_vir_base::{
 };
 use crate::rust_to_vir_func::find_body;
 use crate::spans::err_air_span;
-use crate::util::{
-    err_span, err_span_bare, slice_vec_map_result, unsupported_err_span, vec_map_result,
-};
+use crate::util::{err_span, err_span_bare, slice_vec_map_result, vec_map_result};
 use crate::verus_items::{
     self, CompilableOprItem, InvariantItem, OpenInvariantBlockItem, RustItem, SpecGhostTrackedItem,
     UnaryOpItem, VerusItem, VstdItem,
@@ -1673,6 +1671,11 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             match (&*undecorate_typ(source_vir_ty), &*undecorate_typ(&to_vir_ty)) {
                 (TypX::Int(_), TypX::Int(_)) => {
                     Ok(mk_ty_clip(&to_vir_ty, &source_vir, expr_vattrs.truncate))
+                }
+                (TypX::Bool, TypX::Int(_)) => {
+                    let zero = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(0)))?;
+                    let one = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(1)))?;
+                    mk_expr(ExprX::If(source_vir, one, Some(zero)))
                 }
                 _ => {
                     let source_ty = bctx.types.expr_ty_adjusted(source);

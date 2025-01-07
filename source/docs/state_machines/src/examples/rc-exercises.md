@@ -1,4 +1,4 @@
-# Exerises
+# Exercises
 
  1. Implement a thread-safe reference-counted pointer, `Arc`.
     The `Arc<T>` typed should satisfy the `Send` and `Sync` marker traits.

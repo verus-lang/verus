@@ -193,13 +193,13 @@ test_verify_one_file! {
         pub struct ExOption1<T>(core::option::Option<T>);
 
         pub fn test(a: ExOption1<u8>) { }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external_type_specification`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::ExOption1` marked `external_type_specification` directly")
 }
 
 test_verify_one_file! {
     #[test] test_use_proxy2 verus_code! {
         pub fn test(a: vstd::std_specs::core::ExOption<u8>) { }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external_type_specification`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `vstd::std_specs::core::ExOption` marked `external_type_specification` directly")
 }
 
 test_verify_one_file! {
@@ -210,7 +210,7 @@ test_verify_one_file! {
         pub fn test() {
             let a = ExOption1::<u8>(core::option::Option::<u8>::None);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external_type_specification`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::ExOption1` marked `external_type_specification` directly")
 }
 
 test_verify_one_file! {
@@ -221,7 +221,7 @@ test_verify_one_file! {
         fn test() {
             let x = X { };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
 }
 
 // If you wrongly try to apply a mode
@@ -455,5 +455,5 @@ test_verify_one_file! {
         fn stuff() -> X {
             loop { }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
 }

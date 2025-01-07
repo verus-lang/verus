@@ -18,7 +18,7 @@ pub(crate) type Declared = Arc<DeclaredX>;
 pub(crate) enum DeclaredX {
     Type,
     Var { typ: Typ, mutable: bool },
-    Fun(Typs, Typ),
+    Fun { params: Typs, ret: Typ, field_accessor: bool }, //args, ret, accessor
 }
 
 pub struct Typing {
@@ -214,7 +214,9 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             (true, _) => Err(format!("use of undeclared variable {}", x)),
         },
         ExprX::Apply(x, es) => match typing.get(x).cloned() {
-            Some(DeclaredX::Fun(f_typs, f_typ)) => check_exprs(typing, x, &f_typs, &f_typ, es),
+            Some(DeclaredX::Fun { params, ret, field_accessor: _ }) => {
+                check_exprs(typing, x, &params, &ret, es)
+            }
             _ => Err(format!("use of undeclared function {}", x)),
         },
         ExprX::ApplyFun(t, e0, es) => {
@@ -261,6 +263,31 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     typ_name(&t2)
                 ))
             }
+        }
+        ExprX::Binary(BinaryOp::FieldUpdate(field_ident), e1, e2) => {
+            let t1 = check_expr(typing, e1)?;
+            let t2 = check_expr(typing, e2)?;
+
+            match &*t1 {
+                TypX::Named(s) => match typing.get(s) {
+                    Some(DeclaredX::Type) => {}
+                    _ => return Err(format!("in field update, the destination is not a datatype")),
+                },
+                _ => return Err(format!("in field update, the destination is not a datatype")),
+            }
+
+            if let Some(DeclaredX::Fun { params, ret, field_accessor: true }) =
+                typing.get(field_ident)
+            {
+                // t is the type of the field
+                if let [s] = &params[..] {
+                    if t1 == *s && t2 == *ret {
+                        return Ok(t1);
+                    }
+                }
+            }
+
+            Err(format!("field update types do not match"))
         }
         ExprX::Binary(BinaryOp::Le, e1, e2) => {
             check_exprs(typing, "<=", &[it(), it()], &bt(), &[e1.clone(), e2.clone()])
@@ -612,15 +639,27 @@ pub(crate) fn add_decl<'ctx>(
                 for variant in datatype.a.iter() {
                     let typ = Arc::new(TypX::Named(datatype.name.clone()));
                     let typs = vec_map(&variant.a, |field| field.a.clone());
-                    let fun = DeclaredX::Fun(Arc::new(typs), typ.clone());
+                    let fun = DeclaredX::Fun {
+                        params: Arc::new(typs),
+                        ret: typ.clone(),
+                        field_accessor: false,
+                    };
                     context.typing.insert(&variant.name, Arc::new(fun))?;
                     let is_variant = Arc::new("is-".to_string() + &variant.name.to_string());
-                    let fun = DeclaredX::Fun(Arc::new(vec![typ.clone()]), bt());
+                    let fun = DeclaredX::Fun {
+                        params: Arc::new(vec![typ.clone()]),
+                        ret: bt(),
+                        field_accessor: false,
+                    };
                     context.typing.insert(&is_variant, Arc::new(fun))?;
                     for field in variant.a.iter() {
                         check_typ(&context.typing, &field.a)?;
                         let typs: Typs = Arc::new(vec![typ.clone()]);
-                        let fun = DeclaredX::Fun(typs, field.a.clone());
+                        let fun = DeclaredX::Fun {
+                            params: typs,
+                            ret: field.a.clone(),
+                            field_accessor: true,
+                        };
                         context.typing.insert(&field.name, Arc::new(fun))?;
                     }
                 }
@@ -631,7 +670,8 @@ pub(crate) fn add_decl<'ctx>(
             context.typing.insert(x, var)?;
         }
         DeclX::Fun(x, typs, typ) => {
-            let fun = DeclaredX::Fun(typs.clone(), typ.clone());
+            let fun =
+                DeclaredX::Fun { params: typs.clone(), ret: typ.clone(), field_accessor: false };
             context.typing.insert(x, Arc::new(fun))?;
         }
         DeclX::Var(x, typ) => {

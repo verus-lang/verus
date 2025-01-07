@@ -419,3 +419,86 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] heuristic_assert_by verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::auto_ext_equal(assert_by)]
+        proof fn test_assert_by(s: Seq<int>) {
+            let t = s.push(5).drop_last();
+            assert(s == t) by { };
+            assert(s == t);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] heuristic_ensures verus_code! {
+        use vstd::prelude::*;
+
+        #[verifier::auto_ext_equal(assert, assert_by, ensures)]
+        proof fn test_ensures(s: Seq<int>) -> (t: Seq<int>)
+            ensures s == t,
+        {
+            let t = s.push(5).drop_last();
+            t
+        }
+
+        #[verifier::auto_ext_equal(assert, assert_by)]
+        proof fn test_ensures(s: Seq<int>) -> (t: Seq<int>)
+            ensures s == t, // FAILS
+        {
+            let t = s.push(5).drop_last();
+            t
+        }
+
+        #[verifier::auto_ext_equal(ensures)]
+        proof fn test_ensures_with_return_stmt(s: Seq<int>) -> (t: Seq<int>)
+            ensures s == t,
+        {
+            let t = s.push(5).drop_last();
+            return t;
+        }
+
+        trait Tr : Sized {
+            proof fn foo(self) -> (s: (Self, Self))
+                ensures s.0 == s.1;
+        }
+
+        struct X { }
+
+        #[verifier::auto_ext_equal(ensures)]
+        impl Tr for X {
+            proof fn foo(self) -> (s: (Self, Self))
+            {
+                (X { }, X { })
+            }
+        }
+
+        #[verifier::auto_ext_equal(ensures)]
+        impl Tr for Seq<int> {
+            proof fn foo(self) -> (s: (Self, Self))
+            {
+                let s = self;
+                let t = s.push(5).drop_last();
+                (s, t)
+            }
+        }
+
+        trait Tr2 : Sized {
+            proof fn foo(self) -> (s: (Self, Self));
+        }
+
+        #[verifier::auto_ext_equal(ensures)]
+        impl Tr2 for Seq<int> {
+            proof fn foo(self) -> (s: (Self, Self))
+                ensures s.0 == s.1
+            {
+                let s = self;
+                let t = s.push(5).drop_last();
+                (s, t)
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}

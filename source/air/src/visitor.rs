@@ -25,13 +25,13 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
         }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor(e1, f);
-            let expr = Arc::new(ExprX::Unary(*op, expr1));
+            let expr = Arc::new(ExprX::Unary(op.clone(), expr1));
             f(&expr)
         }
         ExprX::Binary(op, e1, e2) => {
             let expr1 = map_expr_visitor(e1, f);
             let expr2 = map_expr_visitor(e2, f);
-            let expr = Arc::new(ExprX::Binary(*op, expr1, expr2));
+            let expr = Arc::new(ExprX::Binary(op.clone(), expr1, expr2));
             f(&expr)
         }
         ExprX::Multi(op, es) => {

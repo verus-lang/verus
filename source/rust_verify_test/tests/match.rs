@@ -1052,7 +1052,7 @@ test_verify_one_file! {
                 _ => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X` which is ignored")
 }
 
 test_verify_one_file! {

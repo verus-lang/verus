@@ -191,13 +191,17 @@ macro_rules! declare_atomic_type_generic {
     };
 }
 
+#[cfg(target_has_atomic = "64")]
 declare_atomic_type!(AtomicU64, PAtomicU64, PermissionU64, u64, AtomicPredU64);
+
 declare_atomic_type!(AtomicU32, PAtomicU32, PermissionU32, u32, AtomicPredU32);
 declare_atomic_type!(AtomicU16, PAtomicU16, PermissionU16, u16, AtomicPredU16);
 declare_atomic_type!(AtomicU8, PAtomicU8, PermissionU8, u8, AtomicPredU8);
 declare_atomic_type!(AtomicUsize, PAtomicUsize, PermissionUsize, usize, AtomicPredUsize);
 
+#[cfg(target_has_atomic = "64")]
 declare_atomic_type!(AtomicI64, PAtomicI64, PermissionI64, i64, AtomicPredI64);
+
 declare_atomic_type!(AtomicI32, PAtomicI32, PermissionI32, i32, AtomicPredI32);
 declare_atomic_type!(AtomicI16, PAtomicI16, PermissionI16, i16, AtomicPredI16);
 declare_atomic_type!(AtomicI8, PAtomicI8, PermissionI8, i8, AtomicPredI8);
