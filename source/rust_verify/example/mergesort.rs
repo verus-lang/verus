@@ -66,8 +66,8 @@ verus! {
             0 <= i2 <= v2.len(),
             is_sorted(v1),
             is_sorted(v2),
-            (forall | i : int | i1 < v1.len() ==> 0 <= i < r.len() ==> r[i] <= v1[i1 as int]),
-            (forall | i : int | i2 < v2.len() ==> 0 <= i < r.len() ==> r[i] <= v2[i2 as int]),
+            forall | i : int | i1 < v1.len() ==> 0 <= i < r.len() ==> r[i] <= v1[i1 as int],
+            forall | i : int | i2 < v2.len() ==> 0 <= i < r.len() ==> r[i] <= v2[i2 as int],
             r@.to_multiset() =~= (v1@.subrange(0 as int, i1 as int) + v2@.subrange(0 as int, i2 as int)).to_multiset(),
             is_sorted(&r),
         {
@@ -75,18 +75,22 @@ verus! {
             proof { r@.to_multiset_ensures(); }
             if v1[i1] < v2[i2] {
                 r.push(v1[i1]);
-                proof { lemma_to_multiset_distributes_over_add(v1@.subrange(0 as int, i1 as int), v2@.subrange(0 as int, i2 as int)); }
-                proof { v1@.subrange(0 as int, i1 as int).to_multiset_ensures(); }
-                proof { lemma_subrange_push(v1@, 0 as int, i1 as int); }
-                proof { lemma_to_multiset_distributes_over_add(v1@.subrange(0 as int, (i1 + 1) as int), v2@.subrange(0 as int, i2 as int)); }
+                proof {
+                    lemma_to_multiset_distributes_over_add(v1@.subrange(0 as int, i1 as int), v2@.subrange(0 as int, i2 as int));
+                    v1@.subrange(0 as int, i1 as int).to_multiset_ensures();
+                    lemma_subrange_push(v1@, 0 as int, i1 as int);
+                    lemma_to_multiset_distributes_over_add(v1@.subrange(0 as int, (i1 + 1) as int), v2@.subrange(0 as int, i2 as int));
+                }
                 i1+=1;
             }
             else {
                 r.push(v2[i2]);
-                proof { lemma_to_multiset_distributes_over_add(v1@.subrange(0 as int, i1 as int), v2@.subrange(0 as int, i2 as int)); }
-                proof { v2@.subrange(0 as int, i2 as int).to_multiset_ensures(); }
-                proof { lemma_subrange_push(v2@, 0 as int, i2 as int); }
-                proof { lemma_to_multiset_distributes_over_add(v1@.subrange(0 as int, i1 as int), v2@.subrange(0 as int, (i2 + 1) as int)); }
+                proof {
+                    lemma_to_multiset_distributes_over_add(v1@.subrange(0 as int, i1 as int), v2@.subrange(0 as int, i2 as int));
+                    v2@.subrange(0 as int, i2 as int).to_multiset_ensures();
+                    lemma_subrange_push(v2@, 0 as int, i2 as int);
+                    lemma_to_multiset_distributes_over_add(v1@.subrange(0 as int, i1 as int), v2@.subrange(0 as int, (i2 + 1) as int));
+                }
                 i2+=1;
             }
 
@@ -96,13 +100,17 @@ verus! {
 
         if i1 < v1.len() {
             extend_from_idx(&mut r, v1, i1);
-            proof { lemma_subrange_add(v1@, 0 as int, i1 as int, v1.len() as int); }
-            assert (r@.to_multiset() =~= (v1@ + v2@).to_multiset());
+            proof {
+                lemma_subrange_add(v1@, 0 as int, i1 as int, v1.len() as int);
+                assert(r@.to_multiset() =~= (v1@ + v2@).to_multiset());
+            }
         }
         else if i2 < v2.len() {
             extend_from_idx(&mut r, v2, i2);
-            proof { lemma_subrange_add(v2@, 0 as int, i2 as int, v2.len() as int); }
-            assert (r@.to_multiset() =~= (v1@ + v2@).to_multiset());
+            proof {
+                lemma_subrange_add(v2@, 0 as int, i2 as int, v2.len() as int);
+                assert (r@.to_multiset() =~= (v1@ + v2@).to_multiset());
+            }
         }
         r
     }
@@ -127,13 +135,73 @@ verus! {
         }
     }
 
-    #[verifier::external_body]
+    pub open spec fn seq_count_value<A>(s: Seq<A>, a: A) -> nat
+        decreases s.len()
+    {
+        if s.len() == 0 {
+            0
+        } else {
+            ((if s.last() == a { 1nat } else { 0nat }) + seq_count_value(s.drop_last(), a)) as nat
+        }
+    }
+
+    pub proof fn lemma_multiset_matching_sequences<A>(s1: Seq<A>, s2: Seq<A>)
+        requires
+            s1.len() == s2.len(),
+            forall|a: A| seq_count_value(s1, a) == seq_count_value(s2, a),
+        ensures 
+            s1.to_multiset() == s2.to_multiset()
+        decreases
+            s1.len(),
+    {
+        reveal_with_fuel(seq_count_value, 10);
+        s1.to_multiset_ensures();
+        s2.to_multiset_ensures();
+        if forall|a: A| seq_count_value(s1, a) == 0 {
+            assert(forall|a: A| seq_count_value(s2, a) == 0);
+            if s1.len() != 0 {
+                let x = s1.last();
+                assert(seq_count_value(s1, x) >= 1);
+            }
+            assert(s1.to_multiset() == s2.to_multiset());
+        } else {
+            let a = s1.last();
+            assert(seq_count_value(s1, a) == seq_count_value(s2, a));
+            if forall|i2: nat| i2 < s2.len() ==> s2[i2 as int] != a {
+                assert(seq_count_value(s2, a) == 0);
+                assert(false);
+            }
+            let i2 = choose|i2: nat| i2 < s2.len() && s2[i2 as int] == a;
+            let s1_d = s1.drop_last();
+            s1_d.to_multiset_ensures();
+            assert(s1_d.to_multiset() == s1.to_multiset().remove(a));
+            let s2_d = s2.subrange(0int, i2 as int) + s2.subrange((i2 + 1) as int, s2.len() as int);
+            s2_d.to_multiset_ensures();
+            assert(s2_d.to_multiset() == s1.to_multiset().remove(a));
+            assert(seq_count_value(s1_d, a) == seq_count_value(s1, a) - 1);
+            assert forall|aa: A| seq_count_value(s1_d, aa) == seq_count_value(s2_d, aa) by {
+
+            }
+            lemma_multiset_matching_sequences(s1_d, s2_d);
+            assert(s1_d.to_multiset().insert(a) == s2_d.to_multiset().insert(a));
+            assert(s1.to_multiset() == s2.to_multiset());
+        }
+    }
+
     fn main () {
         let v = vec![9, 10, 4, 5, 1, 3];
         let v_sorted = merge_sort(&v);
         // Why does this fail
-        let res : Vec<u64> = vec![1,3,4,5,9,10];
-        assert(v_sorted =~= res);
+        let ghost expected_res: Seq<u64> = seq![1, 3, 4, 5, 9, 10];
+        proof {
+            reveal_with_fuel(seq_count_value, 10);
+            lemma_multiset_matching_sequences(expected_res, v@);
+            assert(expected_res.to_multiset() =~= v@.to_multiset());
+            assert(is_sorted(&v_sorted));
+            assert(vstd::relations::sorted_by(expected_res, |a: u64, b: u64| a <= b));
+            vstd::seq_lib::lemma_sorted_unique(expected_res, v_sorted@, |a: u64, b: u64| a <= b);
+            assert(v_sorted@ =~= expected_res);
+        }
     }
 
 } // verus!
