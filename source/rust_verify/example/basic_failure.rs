@@ -16,5 +16,9 @@ verus! {
     {
         *r = 0;
     }
+    
+    proof fn external_span(s: Seq<nat>) {
+        assert(s[0] == 0);
+    }
 
 }
