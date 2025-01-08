@@ -1237,6 +1237,57 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                 }
             }
 
+            fn copy_dir(
+                src: &std::path::Path,
+                dest: &std::path::Path,
+                exclude: &[&std::path::Path],
+            ) -> std::io::Result<()> {
+                assert!(exclude.iter().all(|x| x.is_relative()));
+                copy_dir_internal(src, dest, exclude, 0)
+            }
+
+            fn copy_dir_internal<'a>(
+                src: &std::path::Path,
+                dest: &std::path::Path,
+                exclude: &[&std::path::Path],
+                depth: usize,
+            ) -> std::io::Result<()> {
+                std::fs::create_dir_all(dest)?;
+                for entry in std::fs::read_dir(src)? {
+                    let entry = entry?;
+                    let path = entry.path();
+                    let dest_path = dest.join(path.file_name().unwrap());
+                    if exclude.iter().any(|xcl| {
+                        let xcl = xcl.iter().skip(depth).collect::<std::path::PathBuf>();
+                        path.starts_with(xcl)
+                    }) {
+                        continue;
+                    }
+                    if entry.file_type()?.is_dir() {
+                        copy_dir(&path, &dest_path, exclude)?;
+                    } else {
+                        std::fs::copy(&path, &dest_path)?;
+                    }
+                }
+                Ok(())
+            }
+
+            for src in [
+                format!("builtin"),
+                format!("builtin_macros"),
+                format!("state_machines_macros"),
+                format!("vstd"),
+            ] {
+                let from_d = std::path::Path::new(&src);
+                let to_d = target_verus_dir.join(&src);
+
+                if to_d.exists() {
+                    std::fs::remove_dir_all(&to_d).unwrap();
+                }
+                copy_dir(from_d, &to_d, &[&std::path::Path::new("target")])
+                    .map_err(|_| format!("could not copy source directory {src}"))?;
+            }
+
             let stored_fingerprint = if fingerprint_path.exists() {
                 let s = std::fs::read_to_string(&fingerprint_path)
                     .map_err(|x| format!("cannot read {} ({x:?})", fingerprint_path.display()))?;

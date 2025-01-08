@@ -2,6 +2,7 @@ use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
+use crate::externs::VerusExterns;
 use crate::spans::{from_raw_span, SpanContext, SpanContextX};
 use crate::user_filter::UserFilter;
 use crate::util::error;
@@ -2762,6 +2763,7 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     pub(crate) rustc_args: Vec<String>,
     pub(crate) file_loader:
         Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
+    pub(crate) verus_externs: Option<VerusExterns>,
 }
 
 pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
@@ -2846,6 +2848,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 tcx.stable_crate_id(LOCAL_CRATE),
                 compiler.sess.source_map(),
                 imported.metadatas.into_iter().map(|c| (c.crate_id, c.original_files)).collect(),
+                self.verus_externs.as_ref(),
             );
             {
                 let reporter = Reporter::new(&spans, compiler);
