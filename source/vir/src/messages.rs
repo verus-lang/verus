@@ -226,6 +226,21 @@ pub fn message_with_label<S: Into<String>, T: Into<String>>(
     })
 }
 
+pub fn message_with_secondary_label<S: Into<String>, T: Into<String>>(
+    level: MessageLevel,
+    note: S,
+    span: &Span,
+    label: T,
+) -> Message {
+    Arc::new(MessageX {
+        level,
+        note: note.into(),
+        spans: vec![],
+        labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
+        help: None,
+    })
+}
+
 // Convenience functions
 
 /// Bare note without any spans
@@ -274,6 +289,14 @@ pub fn error_with_label<S: Into<String>, T: Into<String>>(
     message_with_label(MessageLevel::Error, note, span, label)
 }
 
+pub fn error_with_secondary_label<S: Into<String>, T: Into<String>>(
+    span: &Span,
+    note: S,
+    label: T,
+) -> Message {
+    message_with_secondary_label(MessageLevel::Error, note, span, label)
+}
+
 // Add additional stuff with the "builders" below.
 
 impl MessageX {
@@ -303,6 +326,14 @@ impl MessageX {
     pub fn secondary_label<S: Into<String>>(&self, span: &Span, label: S) -> Message {
         let mut e = self.clone();
         e.labels.push(MessageLabel { span: span.clone(), note: label.into() });
+        Arc::new(e)
+    }
+
+    pub fn ensure_primary_label(&self) -> Message {
+        let mut e = self.clone();
+        if e.spans.len() == 0 && e.labels.len() > 0 {
+            e.spans.push(e.labels[0].span.clone());
+        }
         Arc::new(e)
     }
 
