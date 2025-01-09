@@ -202,7 +202,26 @@ pub broadcast proof fn axiom_set_remove_insert<A>(s: Set<A>, a: A)
     ensures
         (#[trigger] s.remove(a)).insert(a) == s,
 {
-    admit();
+    assert forall|aa| #![all_triggers] s.remove(a).insert(a).contains(aa) implies s.contains(
+        aa,
+    ) by {
+        if a == aa {
+        } else {
+            axiom_set_remove_different(s, aa, a);
+            axiom_set_insert_different(s.remove(a), aa, a);
+        }
+    };
+    assert forall|aa| #![all_triggers] s.contains(aa) implies s.remove(a).insert(a).contains(
+        aa,
+    ) by {
+        if a == aa {
+            axiom_set_insert_same(s.remove(a), a);
+        } else {
+            axiom_set_remove_different(s, aa, a);
+            axiom_set_insert_different(s.remove(a), aa, a);
+        }
+    };
+    axiom_set_ext_equal(s.remove(a).insert(a), s);
 }
 
 /// If `a1` does not equal `a2`, then the result of removing element `a2` from set `s`
