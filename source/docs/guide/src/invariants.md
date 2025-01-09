@@ -4,7 +4,6 @@ Below, we develop several examples that show how to work through
 the process of devising invariants for loops
 and for recursive functions.
 
-
 ## Example 1: Fibonacci
 
 Suppose our goal is to compute values in the [Fibonacci sequence](https://en.wikipedia.org/wiki/Fibonacci_sequence).
@@ -128,3 +127,115 @@ In this case, we're decreasing the distance between `j` and `i`, so `j - i` work
 {{#include ../../../rust_verify/example/guide/invariants.rs:fib_is_mono}}
 ```
 With these additions, the proof succeeds, meaning that our entire program now verifies successfully!
+
+
+## Example 2: Account Balance
+
+In this example, we're given a slice of `i64` values that represent a series of deposits and 
+withdrawals from a bank account.  The goal is to determine whether the account's balance ever
+drops below 0. We formalize this requirement with the spec function `always_non_negative`,
+which is itself defined in terms of computing a sum of a sequence of `i64` values.
+```rust
+{{#include ../../../rust_verify/example/guide/invariants.rs:bank_spec}}
+```
+
+In our implementation, as usual, we tie the concerete result `r` to our spec
+in the ensures clause.
+```rust
+{{#include ../../../rust_verify/example/guide/invariants.rs:bank_no_proof}}
+```
+Note that we use `i128` to compute the account's running 
+sum since it allows us to have sufficiently large numbers without overflowing.
+As an exercise, you can try modifying the implementation to use an `i64` for
+the sum instead, adding any additional invariants and proofs you need.
+Here we use a for loop instead of a while loop, which means that we get a free
+invariant that `0 <= i <= operations.len()`.  As before, however, that's not
+enough to prove our postcondition or even to rule out overflow; Verus reports:
+```rust
+error: postcondition not satisfied
+   |
+   |           r == always_non_negative(operations@),
+   |           ------------------------------------- failed this postcondition
+   | / {
+   | |     let mut s = 0i128;
+   | |     for i in 0usize..operations.len()
+   | |     {
+...  |
+   | |     true
+   | | }
+   | |_^ at the end of the function body
+
+error: possible arithmetic underflow/overflow
+   |
+   |         s = s + operations[i] as i128;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+```
+
+Let's address the possible underflow/overflow first.  Why don't we expect this to happen?
+Well, we don't expect underflow because we start with `s = 0`, and if at any point `s` goes
+below 0, we immediately return.  How far can `s` go below 0? At worst, we might subtract `i64::MIN`
+from 0, so we can argue that `i64::MIN <= s` is an invariant.  To rule out overflow, we need
+to consider how large can `s` can grow.  A simple bound is to say that if we add `i` `i64` values
+together, the sum must be bounded by `i64::MAX * i`.  Putting this together, we can add a loop
+invariant that says `i64::MIN <= s <= i64::MAX * i`.  With this invariant in place, Verus no
+longer complains about possible arithmetic underflow/overflow.
+
+Now let's address functional correctness, so that we can prove the postcondition holds.  As before,
+we want our loop invariants to summarize the progress that we've made towards the postcondition,
+ideally in a form such that when the loop terminates, the invariant nicely matches up with the
+expression in the postcondition.  A first step in this direction is to make it explicit that `s`
+represents the sum of the values up to `i`; i.e., `s == sum(operations@.take(i as int))`.  We
+also need to keep track of the fact that we've checked each individual sum to confirm that it's non-negative.
+In other words, we need `forall|j: int| 0 <= j <= i ==> sum(#[trigger] operations@.take(j)) >= 0`.
+With these additions, Verus produces new complaints:
+```rust
+error: invariant not satisfied at end of loop body
+   |
+   |             s == sum(operations@.take(i as int)),
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: postcondition not satisfied
+   |
+   |         r == always_non_negative(operations@),
+   |         ------------------------------------- failed this postcondition
+...
+   |             return false;
+   |             ^^^^^^^^^^^^ at this exit
+```
+Are these two different issues or two symptoms of the same underlying issue?  One way to check this
+is by assuming that the first one is true and seeing what happens to the second error.  In other words,
+we update the body of the loop to be:
+```rust
+s = s + operations[i] as i128;
+assume(s == sum(operations@.take((i + 1) as int)));
+if s < 0 {
+    return false;
+}
+```
+It turns out this assumption eliminates both errors, so we really only need to convince Verus that
+we've correctly computed the sum of the first `i+1` operations.  If we let `ops_i_plus_1` be `operations@.take((i + 1) as int)` and unfold the definition of `sum`,
+we can see that `sum(ops_i_plus_1) == sum(ops_i_plus_1.drop_last()) + ops_i_plus_1.last()`.
+This means Verus is having trouble determining that the righthand side matches the value we computed
+(namely `s + operations[i]`).  Lets check that the second term in the two sums match, namely:
+```rust
+assert(operations[i as int] == ops_i_plus_1.last());
+```
+That succeeds, so the problem must be showing that `s` 
+(which we know from our invariant is `sum(operations@.take(i as int))`) is equal to `sum(ops_i_plus_1.drop_last())`.
+Clearly, these two values would be equal if the arguments to sum were equal, so let's see if Verus can prove that
+by writing:
+```rust
+assert(operations@.take(i as int) == ops_i_plus_1.drop_last());
+```
+Verus is able to verify this assertion, and not only that, it can then prove our previous assumption that
+`s == sum(operations@.take((i + 1) as int)`, hence completing our proof.  Why does this work?  Stating the
+assertion causes Verus to invoke axioms about [sequence extensionality](spec_lib.md), i.e., the conditions
+under which two sequences are equal, which then allows it to prove our sequences are equal, which proves
+the sums are equal, which completes the proof.
+
+Here's the full version of the verifying implementation.
+```rust
+{{#include ../../../rust_verify/example/guide/invariants.rs:bank_final}}
+```
+

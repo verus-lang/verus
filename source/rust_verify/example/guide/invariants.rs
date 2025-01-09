@@ -128,6 +128,68 @@ fn fib_impl(n: u64) -> (result: u64)
 }
 // ANCHOR_END: fib_final
 
+
+// ANCHOR: bank_spec
+spec fn always_non_negative(s: Seq<i64>) -> bool
+{
+    forall|i: int| 0 <= i <= s.len() ==> sum(#[trigger] s.take(i)) >= 0    
+}
+
+spec fn sum(s: Seq<i64>) -> int
+    decreases s.len(),
+{
+    if s.len() == 0 {
+        0
+    } else {
+        sum(s.drop_last()) + s.last()
+    }
+}
+// ANCHOR_END: bank_spec
+
+/*
+// ANCHOR: bank_no_proof
+fn non_negative(operations: &[i64]) -> (r: bool)
+    ensures
+        r == always_non_negative(operations@),
+{
+    let mut s = 0i128;
+    for i in 0usize..operations.len()
+    {
+        s = s + operations[i] as i128;
+        if s < 0 {
+            return false;
+        }
+    }
+    true
+}
+// ANCHOR_END: bank_no_proof
+*/
+
+// ANCHOR: bank_final
+fn non_negative(operations: &[i64]) -> (r: bool)
+    ensures
+        r == always_non_negative(operations@),
+{
+    let mut s = 0i128;
+    for i in 0usize..operations.len()
+        invariant
+            s == sum(operations@.take(i as int)),
+            forall|j: int| 0 <= j <= i ==> sum(#[trigger] operations@.take(j)) >= 0,
+            i64::MIN <= s <= i64::MAX * i,
+    {
+        assert(operations@.take(i as int) =~= operations@.take(
+            (i + 1) as int,
+        ).drop_last());
+        s = s + operations[i] as i128;
+        if s < 0 {
+            return false;
+        }
+    }
+    true
+}
+// ANCHOR_END: bank_final
+
+
 fn main() {
 }
 
