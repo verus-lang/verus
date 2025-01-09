@@ -36,7 +36,8 @@
 
 # Tutorial: Understanding the prover
 
-- [Using assert and assume to develop proofs](assert_assume.md)
+- [Developing proofs](develop_proofs.md)
+    - [Using assert and assume](assert_assume.md)
 - [Quantifiers](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
