@@ -1412,10 +1412,12 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                     !f.is_file()
                 })
             {
-                info(format!("removing {}", verus_root_path.display()).as_str());
-                std::fs::remove_file(&verus_root_path).map_err(|x| {
-                    format!("could not delete file {} ({x})", verus_root_path.display())
-                })?;
+                if verus_root_path.exists() {
+                    info(format!("removing {}", verus_root_path.display()).as_str());
+                    std::fs::remove_file(&verus_root_path).map_err(|x| {
+                        format!("could not delete file {} ({x})", verus_root_path.display())
+                    })?;
+                }
             } else {
                 std::mem::drop(
                     std::fs::OpenOptions::new()
