@@ -16,6 +16,7 @@ use rustc_errors::{Diag, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
+use vir::mono::Specialization;
 
 use vir::messages::{
     message, note, note_bare, warning_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
@@ -33,6 +34,7 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
+use vir::mono::PolyStrategy;
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
@@ -1252,6 +1254,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
+        specializations: HashMap<Fun, HashSet<Specialization>>,
     ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
@@ -1357,14 +1360,36 @@ impl Verifier {
 
         let mut function_decl_commands = vec![];
 
-        // Declare the function symbols
         for function in &krate.functions {
             ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
-            let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, function)?;
+            let commands = vir::sst_to_air_func::func_name_to_air(
+                ctx,
+                reporter,
+                function,
+                &Specialization::empty(),
+            )?;
             let comment =
                 "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
             self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
             function_decl_commands.push((commands.clone(), comment.clone()));
+
+            if ctx.global.poly_strategy != PolyStrategy::Mono {
+                continue;
+            }
+
+            let Some(specs) = specializations.get(&function.x.name) else {
+                continue;
+            };
+            for spec in specs.iter() {
+                if spec.typs.is_empty() {
+                    continue;
+                }
+                let commands =
+                    vir::sst_to_air_func::func_name_to_air(ctx, reporter, function, spec)?;
+                let inner_comment = comment.clone() + &spec.comment();
+                self.run_commands(bucket_id, reporter, &mut air_context, &commands, &inner_comment);
+                function_decl_commands.push((commands.clone(), comment.clone()));
+            }
         }
         ctx.fun = None;
 
@@ -1901,6 +1926,7 @@ impl Verifier {
             .find(|m| &m.x.path == bucket_id.module())
             .expect("module in krate")
             .clone();
+        let poly_strategy = global_ctx.poly_strategy;
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
@@ -1923,10 +1949,20 @@ impl Verifier {
             &self.get_bucket(bucket_id).funs,
             &pruned_krate,
         )?;
+        let specializations = match poly_strategy {
+            PolyStrategy::Mono => vir::mono::mono_krate_for_module(&krate_sst),
+            PolyStrategy::Poly => Default::default(),
+        };
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
-        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
-            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx)?;
+        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } = self.verify_bucket(
+            reporter,
+            &krate_sst,
+            source_map,
+            bucket_id,
+            &mut ctx,
+            specializations,
+        )?;
 
         global_ctx = ctx.free();
 
@@ -2177,13 +2213,11 @@ impl Verifier {
                         // if it is the active bucket, mark it as done, and reset the active bucket
                         if let Some(m) = active_bucket {
                             if m == id {
-                                assert!(
-                                    messages
-                                        .get_mut(id)
-                                        .expect("message id out of range")
-                                        .1
-                                        .is_empty()
-                                );
+                                assert!(messages
+                                    .get_mut(id)
+                                    .expect("message id out of range")
+                                    .1
+                                    .is_empty());
                                 active_bucket = None;
                             }
                         }
