@@ -725,6 +725,9 @@ pub trait Fold {
     fn fold_predicate_type(&mut self, i: PredicateType) -> PredicateType {
         fold_predicate_type(self, i)
     }
+    fn fold_prover(&mut self, i: Prover) -> Prover {
+        fold_prover(self, i)
+    }
     fn fold_publish(&mut self, i: Publish) -> Publish {
         fold_publish(self, i)
     }
@@ -750,6 +753,9 @@ pub trait Fold {
     fn fold_return_type(&mut self, i: ReturnType) -> ReturnType {
         fold_return_type(self, i)
     }
+    fn fold_returns(&mut self, i: Returns) -> Returns {
+        fold_returns(self, i)
+    }
     fn fold_reveal_hide(&mut self, i: RevealHide) -> RevealHide {
         fold_reveal_hide(self, i)
     }
@@ -765,6 +771,15 @@ pub trait Fold {
         i: SignatureInvariants,
     ) -> SignatureInvariants {
         fold_signature_invariants(self, i)
+    }
+    fn fold_signature_spec(&mut self, i: SignatureSpec) -> SignatureSpec {
+        fold_signature_spec(self, i)
+    }
+    fn fold_signature_spec_attr(&mut self, i: SignatureSpecAttr) -> SignatureSpecAttr {
+        fold_signature_spec_attr(self, i)
+    }
+    fn fold_signature_unwind(&mut self, i: SignatureUnwind) -> SignatureUnwind {
+        fold_signature_unwind(self, i)
     }
     fn fold_span(&mut self, i: Span) -> Span {
         fold_span(self, i)
@@ -3465,6 +3480,16 @@ where
         bounds: FoldHelper::lift(node.bounds, |it| f.fold_type_param_bound(it)),
     }
 }
+pub fn fold_prover<F>(f: &mut F, node: Prover) -> Prover
+where
+    F: Fold + ?Sized,
+{
+    Prover {
+        by_token: Token![by](tokens_helper(f, &node.by_token.span)),
+        paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
+        id: f.fold_ident(node.id),
+    }
+}
 pub fn fold_publish<F>(f: &mut F, node: Publish) -> Publish
 where
     F: Fold + ?Sized,
@@ -3563,6 +3588,15 @@ where
         }
     }
 }
+pub fn fold_returns<F>(f: &mut F, node: Returns) -> Returns
+where
+    F: Fold + ?Sized,
+{
+    Returns {
+        token: Token![returns](tokens_helper(f, &node.token.span)),
+        exprs: f.fold_specification(node.exprs),
+    }
+}
 pub fn fold_reveal_hide<F>(f: &mut F, node: RevealHide) -> RevealHide
 where
     F: Fold + ?Sized,
@@ -3604,17 +3638,7 @@ where
         inputs: FoldHelper::lift(node.inputs, |it| f.fold_fn_arg(it)),
         variadic: (node.variadic).map(|it| f.fold_variadic(it)),
         output: f.fold_return_type(node.output),
-        prover: (node.prover)
-            .map(|it| (
-                Token![by](tokens_helper(f, &(it).0.span)),
-                Paren(tokens_helper(f, &(it).1.span)),
-                f.fold_ident((it).2),
-            )),
-        requires: (node.requires).map(|it| f.fold_requires(it)),
-        recommends: (node.recommends).map(|it| f.fold_recommends(it)),
-        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
-        decreases: (node.decreases).map(|it| f.fold_signature_decreases(it)),
-        invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
+        spec: f.fold_signature_spec(node.spec),
     }
 }
 pub fn fold_signature_decreases<F>(
@@ -3645,6 +3669,50 @@ where
     SignatureInvariants {
         token: Token![opens_invariants](tokens_helper(f, &node.token.span)),
         set: f.fold_invariant_name_set(node.set),
+    }
+}
+pub fn fold_signature_spec<F>(f: &mut F, node: SignatureSpec) -> SignatureSpec
+where
+    F: Fold + ?Sized,
+{
+    SignatureSpec {
+        prover: (node.prover).map(|it| f.fold_prover(it)),
+        requires: (node.requires).map(|it| f.fold_requires(it)),
+        recommends: (node.recommends).map(|it| f.fold_recommends(it)),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        returns: (node.returns).map(|it| f.fold_returns(it)),
+        decreases: (node.decreases).map(|it| f.fold_signature_decreases(it)),
+        invariants: (node.invariants).map(|it| f.fold_signature_invariants(it)),
+        unwind: (node.unwind).map(|it| f.fold_signature_unwind(it)),
+    }
+}
+pub fn fold_signature_spec_attr<F>(
+    f: &mut F,
+    node: SignatureSpecAttr,
+) -> SignatureSpecAttr
+where
+    F: Fold + ?Sized,
+{
+    SignatureSpecAttr {
+        ret_pat: (node.ret_pat)
+            .map(|it| (
+                full!(f.fold_pat((it).0)),
+                Token![=>](tokens_helper(f, &(it).1.spans)),
+            )),
+        spec: f.fold_signature_spec(node.spec),
+    }
+}
+pub fn fold_signature_unwind<F>(f: &mut F, node: SignatureUnwind) -> SignatureUnwind
+where
+    F: Fold + ?Sized,
+{
+    SignatureUnwind {
+        token: Token![no_unwind](tokens_helper(f, &node.token.span)),
+        when: (node.when)
+            .map(|it| (
+                Token![when](tokens_helper(f, &(it).0.span)),
+                f.fold_expr((it).1),
+            )),
     }
 }
 pub fn fold_span<F>(f: &mut F, node: Span) -> Span

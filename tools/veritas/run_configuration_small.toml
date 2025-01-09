@@ -1,11 +1,11 @@
 verus_git_url = "https://github.com/verus-lang/verus.git"
-verus_refspec = "main"
+verus_revspec = "main"
 verus_features = ["singular"]
 
 [[project]]
 name = "page-table"
 git_url = "https://github.com/utaal/verified-nrkernel.git"
-refspec = "page-table"
+revspec = "page-table"
 crate_root = "page-table/main.rs"
 extra_args = ["--rlimit", "60"]
 

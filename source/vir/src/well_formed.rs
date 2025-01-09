@@ -1,10 +1,12 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Expr, ExprX, FieldOpr, Fun,
-    Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, TypX, UnaryOp, UnaryOpr, VirErr,
-    VirErrAs,
+    CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX, FieldOpr, Fun,
+    Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, Trait, TypX, UnaryOp, UnaryOpr,
+    UnwindSpec, VirErr, VirErrAs,
 };
 use crate::ast_util::{
-    fun_as_friendly_rust_name, is_visible_to_opt, path_as_friendly_rust_name, referenced_vars_expr,
+    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to_of_owner, is_visible_to_opt,
+    path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
+    undecorate_typ,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::user_local_name;
@@ -19,13 +21,20 @@ struct Ctxt {
     pub(crate) reveal_groups: HashSet<Fun>,
     pub(crate) dts: HashMap<Path, Datatype>,
     pub(crate) krate: Krate,
+    unpruned_krate: Krate,
 }
 
 #[warn(unused_must_use)]
 fn check_typ(ctxt: &Ctxt, typ: &Arc<TypX>, span: &crate::messages::Span) -> Result<(), VirErr> {
     crate::ast_visitor::typ_visitor_check(typ, &mut |t| {
-        if let TypX::Datatype(path, _, _) = &**t {
+        if let TypX::Datatype(Dt::Path(path), _, _) = &**t {
             check_path_and_get_datatype(ctxt, path, span)?;
+            Ok(())
+        } else if let TypX::FnDef(fun, _typs, opt_res_fun) = &**t {
+            check_path_and_get_function(ctxt, fun, None, span)?;
+            if let Some(res_fun) = opt_res_fun {
+                check_path_and_get_function(ctxt, res_fun, None, span)?;
+            }
             Ok(())
         } else {
             Ok(())
@@ -39,12 +48,12 @@ fn check_path_and_get_datatype<'a>(
     path: &Path,
     span: &crate::messages::Span,
 ) -> Result<&'a Datatype, VirErr> {
-    fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
-        for dt in &ctxt.krate.datatypes {
+    fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Dt> {
+        for dt in &ctxt.unpruned_krate.datatypes {
             match &dt.x.proxy {
                 Some(proxy) => {
                     if &proxy.x == path {
-                        return Some(&dt.x.path);
+                        return Some(&dt.x.name);
                     }
                 }
                 None => {}
@@ -64,14 +73,18 @@ fn check_path_and_get_datatype<'a>(
                 return Err(error(
                     span,
                     &format!(
-                        "cannot use type marked `external_type_specification` directly; use `{:}` instead",
-                        path_as_friendly_rust_name(actual_path),
+                        "cannot use type `{:}` marked `external_type_specification` directly; use `{:}` instead",
+                        path_as_friendly_rust_name(path),
+                        dt_as_friendly_rust_name(actual_path),
                     ),
                 ));
             } else if is_external(ctxt, path) {
                 return Err(error(
                     span,
-                    "cannot use type marked `external`; try marking it `external_body` instead?",
+                    &format!(
+                        "cannot use type `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
+                        path_as_friendly_rust_name(path),
+                    ),
                 ));
             } else {
                 let rpath = path_as_friendly_rust_name(path);
@@ -99,7 +112,7 @@ fn check_path_and_get_function<'a>(
 ) -> Result<&'a Function, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
         // Linear scan, but this only happens if this uncommon error message triggers
-        for function in &ctxt.krate.functions {
+        for function in &ctxt.unpruned_krate.functions {
             match &function.x.proxy {
                 Some(proxy) => {
                     if &proxy.x == path {
@@ -123,14 +136,18 @@ fn check_path_and_get_function<'a>(
                 return Err(error(
                     span,
                     &format!(
-                        "cannot call function marked `external_fn_specification` directly; call `{:}` instead",
+                        "cannot call function `{:}` marked `external_fn_specification` directly; call `{:}` instead",
+                        path_as_friendly_rust_name(&x.path),
                         path_as_friendly_rust_name(actual_path),
                     ),
                 ));
             } else if is_external(ctxt, &x) {
                 return Err(error(
                     span,
-                    "cannot call function marked `external`; try marking it `external_body` instead, or add a Verus specification via `external_fn_specification`?",
+                    &format!(
+                        "cannot use function `{:}` which is ignored because it is either declared outside the verus! macro or it is marked as `external`",
+                        path_as_friendly_rust_name(&x.path),
+                    ),
                 ));
             } else {
                 let path = path_as_friendly_rust_name(&x.path);
@@ -166,6 +183,7 @@ fn check_one_expr(
     expr: &Expr,
     disallow_private_access: Option<(&Option<Path>, &str)>,
     place: Place,
+    diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::Var(x) => {
@@ -191,8 +209,8 @@ fn check_one_expr(
             let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
             match kind {
                 CallTargetKind::Static => {}
-                CallTargetKind::Method(None) => {}
-                CallTargetKind::Method(Some((resolved_fun, _, _))) => {
+                CallTargetKind::Dynamic => {}
+                CallTargetKind::DynamicResolved { resolved: resolved_fun, .. } => {
                     check_path_and_get_function(
                         ctxt,
                         resolved_fun,
@@ -246,7 +264,7 @@ fn check_one_expr(
                 }
             }
         }
-        ExprX::Ctor(path, _variant, _fields, _update) => {
+        ExprX::Ctor(Dt::Path(path), _variant, _fields, _update) => {
             let dt = check_path_and_get_datatype(ctxt, path, &expr.span)?;
             if let Some(module) = &function.x.owning_module {
                 if !is_datatype_transparent(&module, dt) {
@@ -285,7 +303,7 @@ fn check_one_expr(
         }
         ExprX::UnaryOpr(
             UnaryOpr::Field(FieldOpr {
-                datatype: path,
+                datatype: Dt::Path(path),
                 variant,
                 field: _,
                 get_variant: _,
@@ -370,6 +388,17 @@ fn check_one_expr(
                 VisitorControlFlow::Stop(e) => Err(e),
             }?;
         }
+        ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
+            ExprX::Binary(crate::ast::BinaryOp::Implies, _, _) => {
+                if !vars.is_empty() {
+                    diags.push(VirErrAs::Warning(
+                        error(&expr.span, "using ==> in `assert forall` does not currently assume the antecedent in the body; consider using `implies` instead of `==>`")
+                            .help("If you didn't mean to assume the antecedent, we're very curious to hear why! To tell us, please open an issue on the Verus issue tracker on github with the title `Don't always make assert forall assume the antecedent`. If no one opens such an issue, we'll soon change the behavior of Verus to always assume the antecedent of the outermost implication")
+                    ));
+                }
+            }
+            _ => {}
+        },
         ExprX::ExecClosure { params, ret, .. } => {
             for p in params.iter() {
                 check_typ(ctxt, &p.a, &expr.span)?;
@@ -406,6 +435,18 @@ fn check_one_expr(
                         "reveal_with_fuel statements require a spec function with a decreases clause",
                     ));
                 }
+                if let Some(my_module) = &function.x.owning_module {
+                    if f.x.publish == None && !is_visible_to_of_owner(&f.x.owning_module, my_module)
+                    {
+                        return Err(error(
+                            &expr.span,
+                            format!(
+                                "reveal/fuel statement is not allowed here because the function `{:}` is marked 'closed' and thus its body is not visible here. (Note: 'reveal' statements are intended for functions that are opaque, not functions that are closed)",
+                                path_as_friendly_rust_name(&f.x.name.path),
+                            ),
+                        ));
+                    }
+                }
             }
         }
         ExprX::ExecFnByName(fun) => {
@@ -420,7 +461,7 @@ fn check_one_expr(
             }
 
             let u_expr_typ = match &*expr.typ {
-                TypX::Decorate(crate::ast::TypDecoration::Ref, typ) => &typ,
+                TypX::Decorate(crate::ast::TypDecoration::Ref, None, typ) => &typ,
                 _ => &expr.typ,
             };
             let typs = match &**u_expr_typ {
@@ -435,6 +476,17 @@ fn check_one_expr(
             for typ in typs.iter() {
                 check_typ(ctxt, typ, &expr.span)?;
             }
+
+            check_typ(ctxt, &expr.typ, &expr.span)?;
+        }
+        ExprX::Header(header) => {
+            return Err(error(
+                &expr.span,
+                format!(
+                    "This kind of statement should go at the {:}",
+                    header.location_for_diagnostic()
+                ),
+            ));
         }
         _ => {}
     }
@@ -453,9 +505,10 @@ fn check_expr(
     expr: &Expr,
     disallow_private_access: Option<(&Option<Path>, &str)>,
     place: Place,
+    diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
     crate::ast_visitor::expr_visitor_check(expr, &mut |_scope_map, expr| {
-        check_one_expr(ctxt, function, expr, disallow_private_access, place)
+        check_one_expr(ctxt, function, expr, disallow_private_access, place, diags)
     })
 }
 
@@ -476,6 +529,12 @@ fn check_function(
             return Err(error(
                 &function.span,
                 "trait method implementation cannot declare an opens_invariants spec; this can only be inherited from the trait declaration",
+            ));
+        }
+        if function.x.unwind_spec.is_some() {
+            return Err(error(
+                &function.span,
+                "trait method implementation cannot declare an unwind specification; this can only be inherited from the trait declaration",
             ));
         }
     }
@@ -516,7 +575,13 @@ fn check_function(
                 "decreases_by/recommends_by function cannot have ensures clauses",
             ));
         }
-        if function.x.has_return() {
+        if function.x.returns.is_some() {
+            return Err(error(
+                &function.span,
+                "decreases_by/recommends_by function cannot have ensures clauses",
+            ));
+        }
+        if function.x.ens_has_return {
             return Err(error(
                 &function.span,
                 "decreases_by/recommends_by function cannot have a return value",
@@ -582,6 +647,12 @@ fn check_function(
     if function.x.mask_spec.is_some() && function.x.mode == Mode::Spec {
         return Err(error(&function.span, "invariants cannot be opened in spec functions"));
     }
+    if function.x.unwind_spec.is_some() && function.x.mode != Mode::Exec {
+        return Err(error(
+            &function.span,
+            "an 'unwind' specification can only be given on exec functions",
+        ));
+    }
     if function.x.attrs.broadcast_forall {
         if function.x.mode != Mode::Proof {
             return Err(error(
@@ -589,7 +660,7 @@ fn check_function(
                 "broadcast_forall function must be declared as proof",
             ));
         }
-        if function.x.has_return() {
+        if function.x.ens_has_return {
             return Err(error(&function.span, "broadcast_forall function cannot have return type"));
         }
         for param in function.x.params.iter() {
@@ -658,7 +729,6 @@ fn check_function(
 
     #[cfg(feature = "singular")]
     if function.x.attrs.integer_ring {
-        use crate::ast_util::undecorate_typ;
         let _ = match std::env::var("VERUS_SINGULAR_PATH") {
             Ok(_) => {}
             Err(_) => {
@@ -695,7 +765,7 @@ fn check_function(
                 }
             }
         }
-        if function.x.has_return() {
+        if function.x.ens_has_return {
             return Err(error(
                 &function.span,
                 "integer_ring mode function cannot have a return value",
@@ -753,14 +823,8 @@ fn check_function(
                 Ok(())
             })?;
         }
-    }
-
-    if function.x.attrs.nonlinear {
-        if function.x.mode == Mode::Spec {
-            return Err(error(
-                &function.span,
-                "#[verifier(nonlinear) is only allowed on proof and exec functions",
-            ));
+        if let Some(r) = &function.x.returns {
+            return Err(error(&r.span, "integer_ring should not have a `returns` clause"));
         }
     }
 
@@ -787,12 +851,39 @@ fn check_function(
     for req in function.x.require.iter() {
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, req, disallow_private_access, Place::PreState("requires"))?;
+        check_expr(
+            ctxt,
+            function,
+            req,
+            disallow_private_access,
+            Place::PreState("requires"),
+            diags,
+        )?;
     }
     for ens in function.x.ensure.iter() {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState)?;
+        check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState, diags)?;
+    }
+    if let Some(r) = &function.x.returns {
+        if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
+            return Err(error(
+                &r.span,
+                "type of `returns` clause does not match function return type",
+            )
+            .secondary_label(
+                &function.span,
+                format!("this function returns `{}`", typ_to_diagnostic_str(&function.x.ret.x.typ)),
+            )
+            .secondary_label(
+                &r.span,
+                format!("the `returns` clause has type `{}`", typ_to_diagnostic_str(&r.typ)),
+            ));
+        }
+
+        let msg = "'requires' clause of public function";
+        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        check_expr(ctxt, function, r, disallow_private_access, Place::PreState("returns"), diags)?;
     }
     match &function.x.mask_spec {
         None => {}
@@ -806,8 +897,24 @@ fn check_function(
                     expr,
                     disallow_private_access,
                     Place::PreState("opens_invariants clause"),
+                    diags,
                 )?;
             }
+        }
+    }
+    match &function.x.unwind_spec {
+        None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
+        Some(UnwindSpec::NoUnwindWhen(expr)) => {
+            let msg = "unwind clause of public function";
+            let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+            check_expr(
+                ctxt,
+                function,
+                expr,
+                disallow_private_access,
+                Place::PreState("opens_invariants clause"),
+                diags,
+            )?;
         }
     }
     for expr in function.x.decrease.iter() {
@@ -819,6 +926,7 @@ fn check_function(
             expr,
             disallow_private_access,
             Place::PreState("decreases clause"),
+            diags,
         )?;
     }
     if let Some(expr) = &function.x.decrease_when {
@@ -836,7 +944,14 @@ fn check_function(
                 "decreases_when can only be used when there is a decreases clause (use recommends(...) for nonrecursive functions)",
             ));
         }
-        check_expr(ctxt, function, expr, disallow_private_access, Place::PreState("when clause"))?;
+        check_expr(
+            ctxt,
+            function,
+            expr,
+            disallow_private_access,
+            Place::PreState("when clause"),
+            diags,
+        )?;
     }
 
     if function.x.mode == Mode::Exec
@@ -856,7 +971,42 @@ fn check_function(
             }
             _ => None,
         };
-        check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState)?;
+        check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState, diags)?;
+    }
+
+    if function.x.attrs.is_type_invariant_fn {
+        if function.x.mode != Mode::Spec {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function must be `spec`",
+            ));
+        }
+        if !matches!(&*function.x.ret.x.typ, TypX::Bool) {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function must return bool",
+            ));
+        }
+        if !matches!(function.x.kind, FunctionKind::Static) {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function cannot be a trait function",
+            ));
+        }
+
+        // Not strictly needed, but probably a mistake on the user's part
+        if function.x.decrease_when.is_some() {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function should not have a 'when' clause (consider adding it as a conjunct in the body)",
+            ));
+        }
+        if function.x.require.len() > 0 {
+            return Err(error(
+                &function.span,
+                "#[verifier::type_invariant] function should not have a 'recommends' clause (consider adding it as a conjunct in the body)",
+            ));
+        }
     }
 
     Ok(())
@@ -867,6 +1017,26 @@ fn check_datatype(ctxt: &Ctxt, dt: &Datatype) -> Result<(), VirErr> {
         for field in variant.fields.iter() {
             let typ = &field.a.0;
             check_typ(ctxt, typ, &dt.span)?;
+        }
+    }
+
+    if dt.x.user_defined_invariant_fn.is_some() {
+        if dt.x.proxy.is_some() {
+            return Err(error(
+                &dt.span,
+                "#[verifier::type_invariant] cannot be applied to a datatype that uses #[verifier::external_type_specification]",
+            ));
+        }
+        match &dt.x.transparency {
+            DatatypeTransparency::Never => {}
+            DatatypeTransparency::WhenVisible(vis) => {
+                if vis.is_public() {
+                    return Err(error(
+                        &dt.span,
+                        "#[verifier::type_invariant]: a struct with a type invariant cannot have any fields public to the crate",
+                    ));
+                }
+            }
         }
     }
 
@@ -973,10 +1143,28 @@ fn datatype_conflict_error(dt1: &Datatype, dt2: &Datatype) -> Message {
 
     let err = crate::messages::error_bare(format!(
         "duplicate specification for `{:}`",
-        crate::ast_util::path_as_friendly_rust_name(&dt1.x.path)
+        crate::ast_util::dt_as_friendly_rust_name(&dt1.x.name)
     ));
     let err = add_label(err, dt1);
     let err = add_label(err, dt2);
+    err
+}
+
+pub(crate) fn trait_conflict_error(tr1: &Trait, tr2: &Trait, msg: &str) -> Message {
+    let add_label = |err: Message, tr: &Trait| match &tr.x.proxy {
+        Some(proxy) => err.primary_label(
+            &proxy.span,
+            "specification declared via `external_trait_specification`",
+        ),
+        None => err.primary_label(&tr.span, "declared here (and not marked as `external`)"),
+    };
+
+    let err = crate::messages::error_bare(format!(
+        "{msg} `{:}`",
+        crate::ast_util::path_as_friendly_rust_name(&tr1.x.name)
+    ));
+    let err = add_label(err, tr1);
+    let err = add_label(err, tr2);
     err
 }
 
@@ -1003,6 +1191,7 @@ pub fn check_one_crate(krate: &Krate) -> Result<(), VirErr> {
 
 pub fn check_crate(
     krate: &Krate,
+    unpruned_krate: Krate,
     diags: &mut Vec<VirErrAs>,
     no_verify: bool,
 ) -> Result<(), VirErr> {
@@ -1018,13 +1207,29 @@ pub fn check_crate(
     }
     let mut dts: HashMap<Path, Datatype> = HashMap::new();
     for datatype in krate.datatypes.iter() {
-        match dts.get(&datatype.x.path) {
+        let path = match &datatype.x.name {
+            Dt::Path(p) => p,
+            Dt::Tuple(_) => {
+                panic!("Verus Internal Error: Dt::Tuple not expected in well_formed.rs")
+            }
+        };
+        match dts.get(path) {
             Some(other_datatype) => {
                 return Err(datatype_conflict_error(datatype, other_datatype));
             }
             None => {}
         }
-        dts.insert(datatype.x.path.clone(), datatype.clone());
+        dts.insert(path.clone(), datatype.clone());
+    }
+    let mut traits: HashMap<Path, Trait> = HashMap::new();
+    for tr in krate.traits.iter() {
+        match traits.get(&tr.x.name) {
+            Some(other_tr) => {
+                return Err(trait_conflict_error(tr, other_tr, "duplicate specification for"));
+            }
+            None => {}
+        }
+        traits.insert(tr.x.name.clone(), tr.clone());
     }
     let reveal_groups: HashSet<Fun> =
         krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
@@ -1128,6 +1333,38 @@ pub fn check_crate(
                 }
             }
         }
+        if function.x.attrs.broadcast_forall {
+            use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
+            let mut f_find_trigger = |_: &mut VisitorScopeMap, expr: &Expr| match &expr.x {
+                ExprX::WithTriggers { .. } => VisitorControlFlow::Stop(()),
+                ExprX::Unary(UnaryOp::Trigger(..), _) => VisitorControlFlow::Stop(()),
+                ExprX::Quant(..) => VisitorControlFlow::Return,
+                _ => VisitorControlFlow::Recurse,
+            };
+            let mut found_trigger = false;
+            for expr in function
+                .x
+                .require
+                .iter()
+                .chain(function.x.ensure.iter())
+                .chain(function.x.returns.iter())
+            {
+                let control = crate::ast_visitor::expr_visitor_dfs(
+                    expr,
+                    &mut air::scope_map::ScopeMap::new(),
+                    &mut f_find_trigger,
+                );
+                if control == VisitorControlFlow::Stop(()) {
+                    found_trigger = true;
+                }
+            }
+            if !found_trigger {
+                diags.push(VirErrAs::Warning(error(
+                    &function.span,
+                    "broadcast functions should have explicit #[trigger] or #![trigger ...]",
+                )));
+            }
+        }
     }
     for function in krate.functions.iter() {
         if function.x.attrs.is_decrease_by
@@ -1159,7 +1396,7 @@ pub fn check_crate(
             }
         }
     }
-    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone() };
+    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone(), unpruned_krate };
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags, no_verify)?;
     }

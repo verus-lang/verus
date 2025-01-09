@@ -8,7 +8,6 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
     let _ = map_typ_visitor(typ, &|typ| match &**typ {
         crate::ast::TypX::Bool
         | crate::ast::TypX::Int(_)
-        | crate::ast::TypX::Tuple(_)
         | crate::ast::TypX::Datatype(_, _, _)
         | crate::ast::TypX::Decorate(
             TypDecoration::Ref
@@ -18,19 +17,19 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
             | TypDecoration::Tracked
             | TypDecoration::Ghost
             | TypDecoration::Never,
+            None,
             _,
         )
         | crate::ast::TypX::Boxed(_)
         | crate::ast::TypX::ConstInt(_)
         | crate::ast::TypX::Primitive(_, _) => Ok(typ.clone()),
 
-        crate::ast::TypX::Lambda(_, _)
+        crate::ast::TypX::SpecFn(_, _)
         | crate::ast::TypX::AnonymousClosure(_, _, _)
         | crate::ast::TypX::FnDef(..)
-        | crate::ast::TypX::Decorate(_, _)
+        | crate::ast::TypX::Decorate(_, _, _)
         | crate::ast::TypX::TypParam(_)
-        | crate::ast::TypX::Projection { .. }
-        | crate::ast::TypX::StrSlice => {
+        | crate::ast::TypX::Projection { .. } => {
             return Err(error(span, "this type is not supported in global size_of / align_of"));
         }
 

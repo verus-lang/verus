@@ -35,9 +35,8 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
-    AttrStyle, Attribute, Block, Expr, ExprBlock, FnMode, Ident, ImplItemMethod, ItemFn, Meta,
-    MetaList, NestedMeta, Path, PathArguments, PathSegment, Publish, ReturnType, Signature,
-    TraitItemMethod,
+    AttrStyle, Attribute, Block, Expr, ExprBlock, FnMode, Ident, ImplItemMethod, ItemFn, Pat,
+    PatIdent, Path, PathArguments, PathSegment, Publish, ReturnType, Signature, TraitItemMethod,
 };
 
 /// Check if VERUSDOC=1.
@@ -58,7 +57,7 @@ pub fn env_rustdoc() -> bool {
 // Main hooks for the verus! macro to manipulate ItemFn, etc.
 
 pub fn process_item_fn(item: &mut ItemFn) {
-    match attr_for_sig(&mut item.attrs, &item.sig, Some(&item.block)) {
+    match attr_for_sig(&item.sig, Some(&item.block)) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
@@ -72,14 +71,14 @@ pub fn process_item_fn_broadcast_group(item: &mut ItemFn) {
 }
 
 pub fn process_impl_item_method(item: &mut ImplItemMethod) {
-    match attr_for_sig(&mut item.attrs, &item.sig, Some(&item.block)) {
+    match attr_for_sig(&item.sig, Some(&item.block)) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
 }
 
 pub fn process_trait_item_method(item: &mut TraitItemMethod) {
-    match attr_for_sig(&mut item.attrs, &item.sig, item.default.as_ref()) {
+    match attr_for_sig(&item.sig, item.default.as_ref()) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
@@ -89,16 +88,12 @@ pub fn process_trait_item_method(item: &mut TraitItemMethod) {
 /// formatting tricks, and then package it all up into a #[doc = "..."] attribute
 /// (as a syn_verus::Attribute object) that we can apply to the item.
 
-fn attr_for_sig(
-    attrs: &mut Vec<Attribute>,
-    sig: &Signature,
-    block: Option<&Block>,
-) -> Option<Attribute> {
+fn attr_for_sig(sig: &Signature, block: Option<&Block>) -> Option<Attribute> {
     let mut v = vec![];
 
     v.push(encoded_sig_info(sig));
 
-    match &sig.requires {
+    match &sig.spec.requires {
         Some(es) => {
             for expr in es.exprs.exprs.iter() {
                 v.push(encoded_expr("requires", expr));
@@ -106,7 +101,7 @@ fn attr_for_sig(
         }
         None => {}
     }
-    match &sig.recommends {
+    match &sig.spec.recommends {
         Some(es) => {
             for expr in es.exprs.exprs.iter() {
                 v.push(encoded_expr("recommends", expr));
@@ -114,7 +109,7 @@ fn attr_for_sig(
         }
         None => {}
     }
-    match &sig.ensures {
+    match &sig.spec.ensures {
         Some(es) => {
             for expr in es.exprs.exprs.iter() {
                 v.push(encoded_expr("ensures", expr));
@@ -126,7 +121,7 @@ fn attr_for_sig(
     match block {
         Some(block) => {
             if is_spec(&sig) {
-                if show_body(attrs) {
+                if show_body(sig) {
                     let b =
                         Expr::Block(ExprBlock { attrs: vec![], label: None, block: block.clone() });
                     v.push(encoded_body("body", &b));
@@ -154,32 +149,11 @@ fn is_spec(sig: &Signature) -> bool {
     }
 }
 
-/// Check for:
-///  #[doc(verus_show_body)]
+/// Do we want to show the body for the given spec function?
+/// If it's 'open', then yes
 
-fn show_body(attrs: &mut Vec<Attribute>) -> bool {
-    for (i, attr) in attrs.iter().enumerate() {
-        match attr.parse_meta() {
-            Ok(Meta::List(MetaList { path, nested, .. })) => {
-                if nested.len() == 1 && path.is_ident("doc") {
-                    match nested.iter().next().unwrap() {
-                        NestedMeta::Meta(Meta::Path(p)) => {
-                            if p.is_ident("verus_show_body") {
-                                // Remove the attribute; otherwise when rustdoc runs
-                                // it will give an error about the unrecognized attribute.
-                                attrs.remove(i);
-
-                                return true;
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-    false
+fn show_body(sig: &Signature) -> bool {
+    matches!(sig.publish, Publish::Open(_))
 }
 
 fn fn_mode_to_string(mode: &FnMode, publish: &Publish) -> String {
@@ -213,14 +187,20 @@ fn module_path_to_string(p: &Path) -> String {
 
 fn encoded_sig_info(sig: &Signature) -> String {
     let fn_mode = fn_mode_to_string(&sig.mode, &sig.publish);
-    let ret_mode = match &sig.output {
-        ReturnType::Default => "Default",
-        ReturnType::Type(_, tracked_token, _, _) => {
-            if tracked_token.is_some() {
-                "Tracked"
-            } else {
-                "Default"
-            }
+    let (ret_mode, ret_name) = match &sig.output {
+        ReturnType::Default => ("Default", "".to_string()),
+        ReturnType::Type(_, tracked_token, opt_name, _) => {
+            let mode = if tracked_token.is_some() { "Tracked" } else { "Default" };
+
+            let name = match opt_name {
+                None => "".to_string(),
+                Some(b) => match &b.1 {
+                    Pat::Ident(PatIdent { ident, .. }) => ident.to_string(),
+                    _ => "".to_string(),
+                },
+            };
+
+            (mode, name)
         }
     };
 
@@ -241,7 +221,7 @@ fn encoded_sig_info(sig: &Signature) -> String {
     // complicate the post-processing.
 
     let info = format!(
-        r#"// {{ "fn_mode": "{fn_mode:}", "ret_mode": "{ret_mode:}", "param_modes": [{param_modes:}], "broadcast": {broadcast:} }}"#
+        r#"// {{ "fn_mode": "{fn_mode:}", "ret_mode": "{ret_mode:}", "param_modes": [{param_modes:}], "broadcast": {broadcast:}, "ret_name": "{ret_name:}" }}"#
     );
 
     encoded_str("modes", &info)

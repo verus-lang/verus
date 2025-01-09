@@ -177,9 +177,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_fails_multi verus_code! {
         use vstd::string::*;
-        const x: StrSlice<'static> = new_strlit("Hello World");
-        const y: StrSlice<'static> = new_strlit("Gello World");
-        const z: StrSlice<'static> = new_strlit("Insert string here");
+        const x: StrSlice<'static> = "Hello World";
+        const y: StrSlice<'static> = "Gello World";
+        const z: StrSlice<'static> = "Insert string here";
 
         fn test_multi_fails1() {
             assert(x@.len() === 11); // FAILS
@@ -193,13 +193,6 @@ test_verify_one_file! {
             assert(x === y); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
-}
-
-test_verify_one_file! {
-    #[test] test_new_strlit_invalid verus_code! {
-        use vstd::string::*;
-        const x: StrSlice<'static> = new_strlit(12);
-    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {
@@ -254,8 +247,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_strlit_neq verus_code! {
         use vstd::string::*;
-        const x: StrSlice<'static> = new_strlit("Hello World");
-        const y: StrSlice<'static> = new_strlit("Gello World");
+        const x: StrSlice<'static> = "Hello World";
+        const y: StrSlice<'static> = "Gello World";
         fn test() {
             assert(x !== y);
         }
@@ -265,8 +258,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_strlit_neq_soundness verus_code! {
         use vstd::string::*;
-        const x: StrSlice<'static> = new_strlit("Hello World");
-        const y: StrSlice<'static> = new_strlit("Gello World");
+        const x: StrSlice<'static> = "Hello World";
+        const y: StrSlice<'static> = "Gello World";
         fn test() {
             assert(x !== y);
             assert(false); // FAILS
@@ -527,7 +520,7 @@ test_verify_one_file! {
             ensures
                 ret@.len() > 10
         {
-            x.as_bytes()
+            x.as_bytes_vec()
         }
     } => Ok(())
 }
@@ -782,4 +775,24 @@ test_verify_one_file! {
             assert(x ==> c >= 0xDEEE);
         }
     } => Err(err) => assert_fails(err, 19)
+}
+
+test_verify_one_file! {
+    #[test] test_reveal_empty_string_issue1240 verus_code! {
+        use vstd::*;
+        use vstd::string::*;
+
+        pub fn test() {
+            proof { reveal_strlit(""); }
+            let mut res = String::from_str("");
+            assert(res@ =~= seq![]);
+        }
+
+        pub fn test2() {
+            proof { reveal_strlit(""); }
+            let mut res = String::from_str("");
+            assert(res@ =~= seq![]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

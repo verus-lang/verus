@@ -133,7 +133,7 @@ test_verify_one_file! {
 
         #[verifier::external_body]
         broadcast proof fn f_is_true()
-            ensures f(),
+            ensures #[trigger] f(),
         {
         }
 
@@ -580,11 +580,34 @@ test_verify_one_file! {
             use super::*;
 
             pub broadcast proof fn lemma(i: int)
-                ensures f(i)
+                ensures #[trigger] f(i)
                 decreases i
             {
                 assume(false);
             }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] pruning_for_krate_regression_1209 verus_code! {
+        pub proof fn mod_mult_zero_implies_mod_zero(a: nat, b: nat, c: nat)
+            requires a % (b * c) == 0, b > 0, c > 0
+            ensures a % b == 0
+        {
+            broadcast use vstd::arithmetic::div_mod::lemma_mod_breakdown;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] pruning_for_krate_regression_1209_2 verus_code! {
+        broadcast use vstd::arithmetic::div_mod::lemma_mod_breakdown;
+
+        pub proof fn mod_mult_zero_implies_mod_zero(a: nat, b: nat, c: nat)
+            requires a % (b * c) == 0, b > 0, c > 0
+            ensures a % b == 0
+        {
         }
     } => Ok(())
 }

@@ -165,7 +165,7 @@ test_verify_one_file! {
         fn test() {
             negate_bool_requires_ensures(false, 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external_fn_specification` directly; call `crate::negate_bool` instead")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::negate_bool_requires_ensures` marked `external_fn_specification` directly; call `crate::negate_bool` instead")
 }
 
 test_verify_one_file! {
@@ -175,7 +175,7 @@ test_verify_one_file! {
             let y: u8 = 7;
             vstd::std_specs::core::ex_swap(&mut x, &mut y);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external_fn_specification` directly; call `core::mem::swap` instead")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `vstd::std_specs::core::ex_swap` marked `external_fn_specification` directly; call `core::mem::swap` instead")
 }
 
 test_verify_one_file! {
@@ -186,7 +186,7 @@ test_verify_one_file! {
         fn test() {
             some_external_fn();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::some_external_fn` which is ignored")
 }
 
 test_verify_one_file! {
@@ -199,7 +199,7 @@ test_verify_one_file! {
         fn test() {
             stuff();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::stuff` which is ignored")
 }
 
 // If you wrongly try to apply a mode
@@ -949,7 +949,7 @@ test_verify_one_file! {
             let a = exec_foo(true);
             assert(a == false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external_fn_specification` directly")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::exec_foo` marked `external_fn_specification`")
 }
 
 test_verify_one_file! {
@@ -1310,4 +1310,58 @@ test_verify_one_file! {
             fn foo(&self) { }
         }
     } => Err(err) => assert_vir_error_msg(err, "an item in a trait impl cannot be marked 'external'")
+}
+
+test_verify_one_file! {
+    #[test] test_returns_clause verus_code! {
+        #[verifier(external)]
+        fn negate_bool(b: bool, x: u8) -> bool {
+            !b
+        }
+
+        #[verifier(external_fn_specification)]
+        fn negate_bool_requires_ensures(b: bool, x: u8) -> bool
+            requires x != 0,
+            returns !b
+        {
+            negate_bool(b, x)
+        }
+
+        fn test1() {
+            let ret_b = negate_bool(true, 1);
+            assert(ret_b == false);
+        }
+
+        fn test2() {
+            let ret_b = negate_bool(true, 0); // FAILS
+        }
+
+        fn test3() {
+            let ret_b = negate_bool(true, 1);
+            assert(ret_b == true); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] provided_trait_method verus_code! {
+        pub trait Tr {
+            fn foo(&self) -> bool { true }
+        }
+
+        pub struct X { }
+
+        impl Tr for X {
+        }
+
+        verus!{
+            #[verifier(external_type_specification)]
+            pub struct ExX(X);
+
+            #[verifier(external_fn_specification)]
+            pub fn ex_X_foo(p: &X) -> bool {
+                p.foo()
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification for a provided trait method")
 }

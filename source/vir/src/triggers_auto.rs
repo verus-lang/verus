@@ -1,8 +1,8 @@
 use crate::ast::{
-    BinaryOp, BitwiseOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
+    BinaryOp, BitwiseOp, Constant, Dt, FieldOpr, Fun, Ident, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VarIdent, VirErr,
 };
-use crate::ast_util::path_as_friendly_rust_name;
+use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::messages::{error, Span};
 use crate::sst::{CallFun, Exp, ExpX, Trig, Trigs, UniqueIdent};
@@ -39,10 +39,10 @@ pub enum AutoType {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum App {
     Const(Constant),
-    Field(Path, Ident, Ident),
+    Field(Dt, Ident, Ident),
     Call(Fun),
     // datatype constructor: (Path, Variant)
-    Ctor(Path, Ident),
+    Ctor(Dt, Ident),
     // u64 is an id, assigned via a simple counter
     Other(u64),
     VarAt(UniqueIdent, VarAt),
@@ -79,7 +79,7 @@ impl std::fmt::Debug for TermX {
                 match c {
                     App::Call(x) => write!(f, "{}(", path_as_friendly_rust_name(&x.path))?,
                     App::Ctor(path, variant) => {
-                        write!(f, "{}::{}(", path_as_friendly_rust_name(path), variant)?
+                        write!(f, "{}::{}(", dt_as_friendly_rust_name(path), variant)?
                     }
                     _ => unreachable!(),
                 }
@@ -309,7 +309,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 }
             }
         }
-        ExpX::CallLambda(_, e0, es) => {
+        ExpX::CallLambda(e0, es) => {
             // REVIEW: maybe we should include CallLambdas in the auto-triggers
             let depth = 1;
             let (_, term0) = gather_terms(ctxt, ctx, e0, depth);
@@ -328,7 +328,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::NullaryOpr(_) => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![])))),
         ExpX::Unary(UnaryOp::Trigger(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::Unary(UnaryOp::CoerceMode { .. }, e1) => gather_terms(ctxt, ctx, e1, depth),
-        ExpX::Unary(UnaryOp::MustBeFinalized, e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::Unary(UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated, e1) => {
+            gather_terms(ctxt, ctx, e1, depth)
+        }
         ExpX::Unary(UnaryOp::CastToInteger, _) => {
             panic!("internal error: CastToInteger should have been removed before here")
         }
@@ -337,23 +339,24 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::Not
                 | UnaryOp::CoerceMode { .. }
                 | UnaryOp::MustBeFinalized
+                | UnaryOp::MustBeElaborated
                 | UnaryOp::CastToInteger => 0,
                 UnaryOp::HeightTrigger => 1,
-                UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot => 1,
+                UnaryOp::Trigger(_) | UnaryOp::Clip { .. } | UnaryOp::BitNot(_) => 1,
                 UnaryOp::InferSpecForLoopIter { .. } => 1,
                 UnaryOp::StrIsAscii | UnaryOp::StrLen => fail_on_strop(),
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             match op {
-                UnaryOp::BitNot => (
+                UnaryOp::BitNot(_) => (
                     true,
                     Arc::new(TermX::App(App::BitOp(BitOpName::BitNot), Arc::new(vec![term1]))),
                 ),
                 _ => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1])))),
             }
         }
-        ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, ctx, e1, depth),
-        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::UnaryOpr(UnaryOpr::Box(_), _) => panic!("unexpected box"),
+        ExpX::UnaryOpr(UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
         ExpX::UnaryOpr(UnaryOpr::CustomErr(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
@@ -364,9 +367,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             // Even if we did, it might be best not to trigger on IsVariants generated from Match
             let (_, term1) = gather_terms(ctxt, ctx, e1, 1);
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
-        }
-        ExpX::UnaryOpr(UnaryOpr::TupleField { .. }, _) => {
-            panic!("internal error: TupleField should have been removed before here")
         }
         ExpX::UnaryOpr(
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }),
@@ -389,6 +389,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 Ne | Inequality(_) | Arith(..) => 1,
                 Bitwise(..) => 1,
                 StrGetChar => fail_on_strop(),
+                ArrayIndex => 1,
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
@@ -397,8 +398,8 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     let bop = match bp {
                         BitwiseOp::BitXor => BitOpName::BitXor,
                         BitwiseOp::BitAnd => BitOpName::BitAnd,
-                        BitwiseOp::Shr => BitOpName::Shr,
-                        BitwiseOp::Shl => BitOpName::Shl,
+                        BitwiseOp::Shr(..) => BitOpName::Shr,
+                        BitwiseOp::Shl(..) => BitOpName::Shl,
                         BitwiseOp::BitOr => BitOpName::BitOr,
                     };
                     (true, Arc::new(TermX::App(App::BitOp(bop), Arc::new(vec![term1, term2]))))
@@ -424,6 +425,12 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Bind(_, _) => {
             // REVIEW: we could at least look for matching loops here
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
+        }
+        ExpX::ArrayLiteral(es) => {
+            let (is_pures, terms): (Vec<bool>, Vec<Term>) =
+                es.iter().map(|e| gather_terms(ctxt, ctx, e, depth + 1)).unzip();
+            let is_pure = is_pures.into_iter().all(|b| b);
+            (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
         }
         ExpX::Interp(_) => {
             panic!("Found an interpreter expression {:?} outside the interpreter", exp)

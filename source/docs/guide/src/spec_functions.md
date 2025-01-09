@@ -22,8 +22,8 @@ allowing assertions about the function's body to succeed in other modules:
 
 By contrast, if the function is marked `closed`,
 then other modules cannot see the function's body,
-even if they can see the function's declaration. By contrast,
-functions within the same module can view a `closed spec fn`'s body. 
+even if they can see the function's declaration. However,
+functions within the same module *can* view a `closed spec fn`'s body. 
 In other words, `pub` makes the declaration public,
 while `open` and `closed` make the body public or private.
 All `pub` `spec` functions must be marked either `open` or `closed`;

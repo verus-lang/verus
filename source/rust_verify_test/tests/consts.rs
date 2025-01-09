@@ -8,7 +8,7 @@ test_verify_one_file! {
         spec fn f() -> int { 1 }
         const C: u64 = 3 + 5;
         spec const S: int = C as int + f();
-        fn e() -> (u: u64) ensures u == 1 { 1 }
+        const fn e() -> (u: u64) ensures u == 1 { 1 }
         exec const E: u64 ensures E == 2 { 1 + e() }
 
         fn test1() {
@@ -58,14 +58,14 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails5 verus_code! {
-        fn f() -> u64 { 1 }
+        const fn f() -> u64 { 1 }
         const S: u64 = 1 + f();
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::f` with mode exec")
 }
 
 test_verify_one_file! {
     #[test] test1_fails6 verus_code! {
-        fn e() -> (u: u64) ensures u >= 1 { 1 }
+        const fn e() -> (u: u64) ensures u >= 1 { 1 }
         exec const E: u64 = 1 + e(); // FAILS
     } => Err(e) => assert_vir_error_msg(e, "possible arithmetic underflow/overflow")
 }
@@ -226,7 +226,7 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot read static with mode exec")
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when evaluating initializer of static `E`")
 }
 
 test_verify_one_file! {
@@ -239,7 +239,7 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(e) => assert_vir_error_msg(e, "cannot read const with mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode exec")
 }
 
 test_verify_one_file! {
@@ -297,6 +297,58 @@ test_verify_one_file! {
         fn test2() {
             let y = X;
             assert(2 <= y <= 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] arrays verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: [u32; 3] = [1, 2, 3];
+
+        proof fn test() {
+            assert(MyArray[2] == 3);
+        }
+
+        fn exec_test() {
+            let x = MyArray[1];
+            assert(x == 2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] array_out_of_bounds verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: [u32; 3] = [1, 2, 3];
+
+        proof fn test() {
+            assert(MyArray[5] == 3);    // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] array_incorrect_value verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: [u32; 3] = [1, 2, 3];
+
+        proof fn test() {
+            assert(MyArray[1] == 42);    // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] exec_const_body_with_proof verus_code! {
+        spec fn f() -> int { 1 }
+        const fn e() -> (u: u64) ensures u == 1 { 1 }
+        exec const E: u64 ensures E == 2 {
+            assert(f() == 1);
+            1 + e()
         }
     } => Ok(())
 }

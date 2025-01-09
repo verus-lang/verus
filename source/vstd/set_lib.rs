@@ -829,20 +829,15 @@ pub proof fn lemma_set_properties<A>()
         + #[trigger] a.intersect(b).len() == a.len() + b.len() by {
         lemma_set_intersect_union_lens(a, b);
     }
-    assert forall|a: Set<A>, b: Set<A>|
-        (a.finite() && b.finite()) ==> #[trigger] a.difference(b).len() + b.difference(a).len()
-            + a.intersect(b).len() == (a + b).len() by {
-        if a.finite() && b.finite() {
-            lemma_set_difference_len(a, b);
-        }
+    assert forall|a: Set<A>, b: Set<A>| (a.finite() && b.finite()) implies #[trigger] a.difference(
+        b,
+    ).len() + b.difference(a).len() + a.intersect(b).len() == (a + b).len() by {
+        lemma_set_difference_len(a, b);
     }
-    assert forall|a: Set<A>, b: Set<A>|
-        (a.finite() && b.finite()) ==> #[trigger] a.difference(b).len() == a.len() - a.intersect(
-            b,
-        ).len() by {
-        if a.finite() && b.finite() {
-            lemma_set_difference_len(a, b);
-        }
+    assert forall|a: Set<A>, b: Set<A>| (a.finite() && b.finite()) implies #[trigger] a.difference(
+        b,
+    ).len() == a.len() - a.intersect(b).len() by {
+        lemma_set_difference_len(a, b);
     }
 }
 
@@ -917,7 +912,6 @@ macro_rules! assert_sets_equal_internal {
     }
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_set_lib_axioms {
     axiom_is_empty,
 }

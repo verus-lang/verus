@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" verision="1.1" height="60" width="120">
+  <style>
+    .heavy {
+      font: bold 2em sans-serif;
+    }
+  </style>
+
+  <text x="10px" y="45px" class="heavy">Verus</text>
+</svg>

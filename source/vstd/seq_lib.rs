@@ -28,7 +28,6 @@ impl<A> Seq<A> {
 
     /// Applies the function `f` to each element of the sequence, and returns
     /// the resulting sequence.
-    /// The `int` parameter of `f` is the index of the element being mapped.
     // TODO(verus): rename to map, because this is what everybody wants.
     pub open spec fn map_values<B>(self, f: spec_fn(A) -> B) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(self[i]))
@@ -220,7 +219,7 @@ impl<A> Seq<A> {
         requires
             a.len() == 0,
         ensures
-            a + b == b,
+            #[trigger] (a + b) == b,
     {
         assert(a + b =~= b);
     }
@@ -229,7 +228,7 @@ impl<A> Seq<A> {
         requires
             b.len() == 0,
         ensures
-            a + b == a,
+            #[trigger] (a + b) == a,
     {
         assert(a + b =~= a);
     }
@@ -447,12 +446,19 @@ impl<A> Seq<A> {
     pub proof fn to_multiset_ensures(self)
         ensures
             forall|a: A| #[trigger] (self.push(a).to_multiset()) =~= self.to_multiset().insert(a),
+            forall|i: int|
+                0 <= i < self.len() ==> #[trigger] (self.remove(i).to_multiset())
+                    =~= self.to_multiset().remove(self[i]),
             self.len() == self.to_multiset().len(),
             forall|a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0,
     {
         assert forall|a: A| #[trigger]
             (self.push(a).to_multiset()) =~= self.to_multiset().insert(a) by {
             to_multiset_build(self, a);
+        }
+        assert forall|i: int| 0 <= i < self.len() implies #[trigger] (self.remove(i).to_multiset())
+            =~= self.to_multiset().remove(self[i]) by {
+            to_multiset_remove(self, i);
         }
         to_multiset_len(self);
         assert forall|a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0 by {
@@ -647,20 +653,22 @@ impl<A> Seq<A> {
         }
     }
 
-    /// An auxiliary lemma for proving [`Self::lemma_fold_right_alt`].
-    proof fn aux_lemma_fold_right_alt<B>(self, f: spec_fn(A, B) -> B, b: B, k: int)
+    /// A lemma that proves how [`Self::fold_right`] distributes over splitting a sequence.
+    pub proof fn lemma_fold_right_split<B>(self, f: spec_fn(A, B) -> B, b: B, k: int)
         requires
-            0 <= k < self.len(),
+            0 <= k <= self.len(),
         ensures
             self.subrange(0, k).fold_right(f, self.subrange(k, self.len() as int).fold_right(f, b))
                 == self.fold_right(f, b),
         decreases self.len(),
     {
         reveal_with_fuel(Seq::fold_right, 2);
-        if k == self.len() - 1 {
+        if k == self.len() {
+            assert(self.subrange(0, k) == self);
+        } else if k == self.len() - 1 {
             // trivial base case
         } else {
-            self.subrange(0, self.len() - 1).aux_lemma_fold_right_alt(f, f(self.last(), b), k);
+            self.subrange(0, self.len() - 1).lemma_fold_right_split(f, f(self.last(), b), k);
             assert_seqs_equal!(
                 self.subrange(0, self.len() - 1).subrange(0, k) ==
                 self.subrange(0, k)
@@ -676,6 +684,19 @@ impl<A> Seq<A> {
         }
     }
 
+    // Lemma that proves it's possible to commute a commutative operator across fold_right.
+    pub proof fn lemma_fold_right_commute_one<B>(self, a: A, f: spec_fn(A, B) -> B, v: B)
+        requires
+            commutative_foldr(f),
+        ensures
+            self.fold_right(f, f(a, v)) == f(a, self.fold_right(f, v)),
+        decreases self.len(),
+    {
+        if self.len() > 0 {
+            self.drop_last().lemma_fold_right_commute_one(a, f, f(self.last(), v));
+        }
+    }
+
     /// [`Self::fold_right`] and [`Self::fold_right_alt`] are equivalent.
     pub proof fn lemma_fold_right_alt<B>(self, f: spec_fn(A, B) -> B, b: B)
         ensures
@@ -688,7 +709,7 @@ impl<A> Seq<A> {
             // trivial base cases
         } else {
             self.subrange(1, self.len() as int).lemma_fold_right_alt(f, b);
-            self.aux_lemma_fold_right_alt(f, b, 1);
+            self.lemma_fold_right_split(f, b, 1);
         }
     }
 
@@ -711,6 +732,43 @@ impl<A> Seq<A> {
             lemma_seq_properties::<A>();
             assert(self.drop_last().push(self.last()) =~= self);
             self.drop_last().lemma_multiset_has_no_duplicates();
+        }
+    }
+
+    /// If, in a sequence's conversion to a multiset, each element occurs only once,
+    /// the sequence has no duplicates.
+    pub proof fn lemma_multiset_has_no_duplicates_conv(self)
+        requires
+            forall|x: A| self.to_multiset().contains(x) ==> self.to_multiset().count(x) == 1,
+        ensures
+            self.no_duplicates(),
+    {
+        broadcast use super::multiset::group_multiset_axioms;
+
+        assert forall|i, j| (0 <= i < self.len() && 0 <= j < self.len() && i != j) implies self[i]
+            != self[j] by {
+            let mut a = if (i < j) {
+                i
+            } else {
+                j
+            };
+            let mut b = if (i < j) {
+                j
+            } else {
+                i
+            };
+
+            if (self[a] == self[b]) {
+                let s0 = self.subrange(0, b);
+                let s1 = self.subrange(b, self.len() as int);
+                assert(self == s0 + s1);
+
+                s0.to_multiset_ensures();
+                s1.to_multiset_ensures();
+
+                lemma_multiset_commutative(s0, s1);
+                assert(self.to_multiset().count(self[a]) >= 2);
+            }
         }
     }
 
@@ -1321,6 +1379,23 @@ proof fn to_multiset_build<A>(s: Seq<A>, a: A)
     }
 }
 
+proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
+    requires
+        0 <= i < s.len(),
+    ensures
+        s.remove(i).to_multiset() =~= s.to_multiset().remove(s[i]),
+{
+    broadcast use super::multiset::group_multiset_axioms;
+
+    let s0 = s.subrange(0, i);
+    let s1 = s.subrange(i, s.len() as int);
+    let s2 = s.subrange(i + 1, s.len() as int);
+    lemma_seq_union_to_multiset_commutative(s0, s2);
+    lemma_seq_union_to_multiset_commutative(s0, s1);
+    assert(s == s0 + s1);
+    assert(s2 + s0 == (s1 + s0).drop_first());
+}
+
 /// to_multiset() preserves length
 proof fn to_multiset_len<A>(s: Seq<A>)
     ensures
@@ -1670,6 +1745,49 @@ pub proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x:
     }
 }
 
+// Definition of a commutative fold_right operator.
+pub open spec fn commutative_foldr<A, B>(f: spec_fn(A, B) -> B) -> bool {
+    forall|x: A, y: A, v: B| #[trigger] f(x, f(y, v)) == f(y, f(x, v))
+}
+
+// For a commutative fold_right operator, any folding order
+// (i.e., any permutation) produces the same result.
+pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_fn(A, B) -> B, v: B)
+    requires
+        commutative_foldr(f),
+        l1.to_multiset() == l2.to_multiset(),
+    ensures
+        l1.fold_right(f, v) == l2.fold_right(f, v),
+    decreases l1.len(),
+{
+    l1.to_multiset_ensures();
+    l2.to_multiset_ensures();
+
+    if l1.len() > 0 {
+        let a = l1.last();
+        let i = l2.index_of(a);
+        let l2r = l2.subrange(i + 1, l2.len() as int).fold_right(f, v);
+
+        assert(l1.to_multiset().count(a) > 0);
+        l1.drop_last().lemma_fold_right_commute_one(a, f, v);
+        l2.subrange(0, i).lemma_fold_right_commute_one(a, f, l2r);
+
+        l2.lemma_fold_right_split(f, v, i + 1);
+        l2.remove(i).lemma_fold_right_split(f, v, i);
+
+        assert(l2.subrange(0, i + 1).drop_last() == l2.subrange(0, i));
+        assert(l1.drop_last() == l1.remove(l1.len() - 1));
+
+        assert(l2.remove(i).subrange(0, i) == l2.subrange(0, i));
+        assert(l2.remove(i).subrange(i, l2.remove(i).len() as int) == l2.subrange(
+            i + 1,
+            l2.len() as int,
+        ));
+
+        lemma_fold_right_permutation(l1.drop_last(), l2.remove(i), f, v);
+    }
+}
+
 /************************** Lemmas about Take/Skip ***************************/
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -1706,6 +1824,24 @@ pub proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
     ensures
         0 <= j < n <= s.len() ==> s.take(n)[j] == s[j],
 {
+}
+
+pub proof fn subrange_of_matching_take<T>(a: Seq<T>, b: Seq<T>, s: int, e: int, l: int)
+    requires
+        a.take(l) == b.take(l),
+        l <= a.len(),
+        l <= b.len(),
+        0 <= s <= e <= l,
+    ensures
+        a.subrange(s, e) == b.subrange(s, e),
+{
+    assert forall|i| 0 <= i < e - s implies a.subrange(s, e)[i] == b.subrange(s, e)[i] by {
+        assert(a.subrange(s, e)[i] == a.take(l)[i + s]);
+        //             assert( b.subrange(s, e)[i] == b.take(l)[i + s] );   // either trigger will do
+    }
+    // trigger extn equality (verus issue #1257)
+
+    assert(a.subrange(s, e) == b.subrange(s, e));
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
@@ -2100,7 +2236,6 @@ macro_rules! assert_seqs_equal_internal {
     }
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_seq_lib_default {
     Seq::filter_lemma,
     Seq::add_empty_left,

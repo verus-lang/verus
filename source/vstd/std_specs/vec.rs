@@ -15,24 +15,11 @@ verus! {
 #[verifier::reject_recursive_types(A)]
 pub struct ExVec<T, A: Allocator>(Vec<T, A>);
 
+// this is a bit of a hack; verus treats Global specially already,
+// but putting this here helps Verus pick up all the trait impls for Global
 #[verifier::external_type_specification]
 #[verifier::external_body]
 pub struct ExGlobal(alloc::alloc::Global);
-
-impl<T, A: Allocator> View for Vec<T, A> {
-    type V = Seq<T>;
-
-    spec fn view(&self) -> Seq<T>;
-}
-
-impl<T: DeepView, A: Allocator> DeepView for Vec<T, A> {
-    type V = Seq<T::V>;
-
-    open spec fn deep_view(&self) -> Seq<T::V> {
-        let v = self.view();
-        Seq::new(v.len(), |i: int| v[i].deep_view())
-    }
-}
 
 pub trait VecAdditionalSpecFns<T>: View<V = Seq<T>> {
     spec fn spec_index(&self, i: int) -> T
@@ -138,6 +125,7 @@ pub fn ex_vec_pop<T, A: Allocator>(vec: &mut Vec<T, A>) -> (value: Option<T>)
 pub fn ex_vec_append<T, A: Allocator>(vec: &mut Vec<T, A>, other: &mut Vec<T, A>)
     ensures
         vec@ == old(vec)@ + old(other)@,
+        other@ == Seq::<T>::empty(),
 {
     vec.append(other)
 }
@@ -201,6 +189,8 @@ pub fn ex_vec_split_off<T, A: Allocator + core::clone::Clone>(
     vec: &mut Vec<T, A>,
     at: usize,
 ) -> (return_value: Vec<T, A>)
+    requires
+        at <= old(vec)@.len(),
     ensures
         vec@ == old(vec)@.subrange(0, at as int),
         return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),
@@ -225,11 +215,10 @@ pub fn ex_vec_clone<T: Clone, A: Allocator + Clone>(vec: &Vec<T, A>) -> (res: Ve
     vec.clone()
 }
 
-/*
-//TODO: improve pruning so that this is pruned away unless vec_clone_trigger is used
-#[verifier::external_body]
-#[verifier::broadcast_forall]
-pub proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(v1: Vec<T, A>, v2: Vec<T, A>)
+pub broadcast proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(
+    v1: Vec<T, A>,
+    v2: Vec<T, A>,
+)
     requires
         #[trigger] vec_clone_trigger(v1, v2),
         v1.deep_view() =~= v2.deep_view(),
@@ -237,7 +226,6 @@ pub proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(v1: Vec<T, A>,
         v1.deep_view() == v2.deep_view(),
 {
 }
-*/
 
 #[verifier::external_fn_specification]
 pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
@@ -248,9 +236,19 @@ pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
     vec.truncate(len)
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
+pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
+    requires
+        0 <= i < v.len(),
+    ensures
+        #[trigger] (decreases_to!(v => v[i])),
+{
+    admit();
+}
+
 pub broadcast group group_vec_axioms {
     axiom_spec_len,
+    axiom_vec_index_decreases,
+    vec_clone_deep_view_proof,
 }
 
 } // verus!

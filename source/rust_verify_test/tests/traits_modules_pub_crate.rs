@@ -660,8 +660,8 @@ test_verify_one_file! {
                 }
 
                 fn f(&self, a: &u64) -> u64 {
-                    self.x / 2 + a
-                } // FAILS
+                    self.x / 2 + a // FAILS
+                }
             }
         }
 
@@ -1029,8 +1029,8 @@ test_verify_one_file! {
 
             impl crate::M1::T for S {
                 fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
-                    if b { self } else { self }
-                } // FAILS
+                    if b { self } else { self } // FAILS
+                }
             }
         }
 

@@ -1,3 +1,4 @@
+use air::context::SmtSolver;
 use getopts::Options;
 use std::{collections::HashSet, sync::Arc};
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
@@ -27,6 +28,7 @@ pub const INTERPRETER_FILE_SUFFIX: &str = ".interp";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
 pub const AIR_FINAL_FILE_SUFFIX: &str = "-final.air";
 pub const SMT_FILE_SUFFIX: &str = ".smt2";
+pub const SMT_TRANSCRIPT_FILE_SUFFIX: &str = ".smt_transcript";
 pub const PROFILE_FILE_SUFFIX: &str = ".profile";
 pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
@@ -46,6 +48,7 @@ pub struct LogArgs {
     pub log_air_initial: bool,
     pub log_air_final: bool,
     pub log_smt: bool,
+    pub log_smt_transcript: bool,
     pub log_triggers: bool,
     pub log_call_graph: bool,
 }
@@ -101,6 +104,9 @@ pub struct ArgsX {
     pub trace: bool,
     pub report_long_running: bool,
     pub use_crate_name: bool,
+    pub solver: SmtSolver,
+    #[cfg(feature = "axiom-usage-info")]
+    pub broadcast_usage_info: bool,
 }
 
 impl ArgsX {
@@ -142,6 +148,9 @@ impl ArgsX {
             trace: Default::default(),
             report_long_running: Default::default(),
             use_crate_name: Default::default(),
+            solver: Default::default(),
+            #[cfg(feature = "axiom-usage-info")]
+            broadcast_usage_info: Default::default(),
         }
     }
 }
@@ -225,6 +234,7 @@ pub fn parse_args_with_imports(
     const LOG_AIR: &str = "air";
     const LOG_AIR_FINAL: &str = "air-final";
     const LOG_SMT: &str = "smt";
+    const LOG_SMT_TRANSCRIPT: &str = "smt-transcript";
     const LOG_TRIGGERS: &str = "triggers";
     const LOG_CALL_GRAPH: &str = "call-graph";
 
@@ -241,6 +251,7 @@ pub fn parse_args_with_imports(
         (LOG_AIR, "Log AIR queries in initial form"),
         (LOG_AIR_FINAL, "Log AIR queries in final form"),
         (LOG_SMT, "Log SMT queries"),
+        (LOG_SMT_TRANSCRIPT, "Log complete SMT transcript"),
         (LOG_TRIGGERS, "Log automatically chosen triggers"),
         (LOG_CALL_GRAPH, "Log the call graph"),
     ];
@@ -265,8 +276,11 @@ pub fn parse_args_with_imports(
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
     const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
+    const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
+    #[cfg(feature = "axiom-usage-info")]
+    const EXTENDED_BROADCAST_USAGE_INFO: &str = "broadcast-usage-info";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -283,10 +297,16 @@ pub fn parse_args_with_imports(
             EXTENDED_USE_INTERNAL_PROFILER,
             "Use an internal profiler that shows internal quantifier instantiations",
         ),
+        (EXTENDED_CVC5, "Use the cvc5 SMT solver, rather than the default (Z3)"),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
         (
             EXTENDED_USE_CRATE_NAME,
             "Use the crate name in paths (useful when verifying vstd without --export)",
+        ),
+        #[cfg(feature = "axiom-usage-info")]
+        (
+            EXTENDED_BROADCAST_USAGE_INFO,
+            "Print usage info for broadcasted axioms, lemmas, and groups",
         ),
     ];
 
@@ -421,7 +441,6 @@ pub fn parse_args_with_imports(
 
     let error = |msg: String| -> ! {
         eprintln!("Error: {}", msg);
-        print_usage();
         std::process::exit(-1)
     };
 
@@ -573,6 +592,7 @@ pub fn parse_args_with_imports(
             log_air_initial: log.get(LOG_AIR).is_some(),
             log_air_final: log.get(LOG_AIR_FINAL).is_some(),
             log_smt: log.get(LOG_SMT).is_some(),
+            log_smt_transcript: log.get(LOG_SMT_TRANSCRIPT).is_some(),
             log_triggers: log.get(LOG_TRIGGERS).is_some(),
             log_call_graph: log.get(LOG_CALL_GRAPH).is_some(),
         },
@@ -601,7 +621,7 @@ pub fn parse_args_with_imports(
         profile_all: {
             if matches.opt_present(OPT_PROFILE_ALL) {
                 if !matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("Must pass --verify-module when using profile-all. To capture a full project's profile, consider --capture-profiles".to_string())
+                    error("Must pass --verify-module when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
                 }
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --profile-all are mutually exclusive".to_string())
@@ -630,6 +650,9 @@ pub fn parse_args_with_imports(
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
         use_crate_name: extended.get(EXTENDED_USE_CRATE_NAME).is_some(),
+        solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
+        #[cfg(feature = "axiom-usage-info")]
+        broadcast_usage_info: extended.get(EXTENDED_BROADCAST_USAGE_INFO).is_some(),
     };
 
     (Arc::new(args), unmatched)

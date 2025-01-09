@@ -145,7 +145,7 @@ test_verify_one_file! {
         {
             assume(false)
         }
-    } => Err(err) => assert_vir_error_msg(err, "variable `a` in trigger cannot appear in both arithmetic and non-arithmetic positions")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -368,6 +368,25 @@ test_verify_one_file! {
             ensures
                 #[trigger] (2 * x + 2 * y) == (x + y) * 2
         {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_nested verus_code! {
+        spec fn f(x: int) -> bool;
+        spec fn g(x: int) -> bool;
+
+        proof fn test() {
+            // trigger for outer quantifier should be f(x)
+            // trigger for inner quantifier should be g(y) (and NOT include f(x))
+            assume(forall |x: int|
+              forall |y: int|
+                #[trigger] f(x) && #[trigger] g(y));
+
+            let t = f(3);
+            let u = g(4);
+            assert(f(3) && g(4));
         }
     } => Ok(())
 }

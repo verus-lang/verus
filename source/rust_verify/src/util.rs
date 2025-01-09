@@ -26,13 +26,12 @@ pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirE
 #[macro_export]
 macro_rules! unsupported_err {
     ($span: expr, $msg: expr) => {{
-        dbg!();
-        unsupported_err_span($span, $msg.to_string())?;
+        crate::util::unsupported_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
     ($span: expr, $msg: expr, $info: expr) => {{
         dbg!($info);
-        unsupported_err_span($span, $msg.to_string())?;
+        crate::util::unsupported_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
 }
@@ -41,7 +40,6 @@ macro_rules! unsupported_err {
 macro_rules! unsupported_err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
-            dbg!();
             crate::util::unsupported_err_span($span, $msg.to_string())?;
         }
     };
@@ -57,7 +55,6 @@ macro_rules! unsupported_err_unless {
 macro_rules! err_unless {
     ($assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
-            dbg!();
             crate::util::err_span($span, $msg)?;
         }
     };
@@ -232,8 +229,10 @@ pub fn hir_prim_ty_to_mir_ty<'tcx>(
             rustc_ast::UintTy::U128 => tcx.types.u128,
         },
         rustc_hir::PrimTy::Float(float_ty) => match float_ty {
+            rustc_ast::FloatTy::F16 => tcx.types.f16,
             rustc_ast::FloatTy::F32 => tcx.types.f32,
             rustc_ast::FloatTy::F64 => tcx.types.f64,
+            rustc_ast::FloatTy::F128 => tcx.types.f128,
         },
         rustc_hir::PrimTy::Str => tcx.types.str_,
         rustc_hir::PrimTy::Bool => tcx.types.bool,

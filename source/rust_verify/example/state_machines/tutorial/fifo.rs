@@ -11,7 +11,6 @@ use vstd::map::*;
 use vstd::modes::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
-use vstd::ptr::*;
 use vstd::seq::*;
 use vstd::{pervasive::*, prelude::*, *};
 
@@ -476,13 +475,13 @@ struct_with_invariants!{
         }
 
         invariant on head with (instance) is (v: u64, g: FifoQueue::head<T>) {
-            &&& g@.instance === instance@
-            &&& g@.value == v as int
+            &&& g.instance_id() === instance@.id()
+            &&& g.value() == v as int
         }
 
         invariant on tail with (instance) is (v: u64, g: FifoQueue::tail<T>) {
-            &&& g@.instance === instance@
-            &&& g@.value == v as int
+            &&& g.instance_id() === instance@.id()
+            &&& g.value() == v as int
         }
     }
 }
@@ -497,9 +496,10 @@ pub struct Producer<T> {
 
 impl<T> Producer<T> {
     pub closed spec fn wf(&self) -> bool {
-        (*self.queue).wf() && self.producer@@.instance == (*self.queue).instance@
-            && self.producer@@.value == ProducerState::Idle(self.tail as nat) && (self.tail as int)
-            < (*self.queue).buffer@.len()
+        (*self.queue).wf()
+            && self.producer@.instance_id() == (*self.queue).instance@.id()
+            && self.producer@.value() == ProducerState::Idle(self.tail as nat)
+            && (self.tail as int) < (*self.queue).buffer@.len()
     }
 }
 // ANCHOR_END: impl_producer_struct
@@ -513,9 +513,10 @@ pub struct Consumer<T> {
 
 impl<T> Consumer<T> {
     pub closed spec fn wf(&self) -> bool {
-        (*self.queue).wf() && self.consumer@@.instance === (*self.queue).instance@
-            && self.consumer@@.value === ConsumerState::Idle(self.head as nat) && (self.head as int)
-            < (*self.queue).buffer@.len()
+        (*self.queue).wf()
+            && self.consumer@.instance_id() === (*self.queue).instance@.id()
+            && self.consumer@.value() === ConsumerState::Idle(self.head as nat)
+            && (self.head as int) < (*self.queue).buffer@.len()
     }
 }
 // ANCHOR_END: impl_consumer_struct

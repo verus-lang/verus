@@ -709,6 +709,9 @@ pub trait Visit<'ast> {
     fn visit_predicate_type(&mut self, i: &'ast PredicateType) {
         visit_predicate_type(self, i);
     }
+    fn visit_prover(&mut self, i: &'ast Prover) {
+        visit_prover(self, i);
+    }
     fn visit_publish(&mut self, i: &'ast Publish) {
         visit_publish(self, i);
     }
@@ -734,6 +737,9 @@ pub trait Visit<'ast> {
     fn visit_return_type(&mut self, i: &'ast ReturnType) {
         visit_return_type(self, i);
     }
+    fn visit_returns(&mut self, i: &'ast Returns) {
+        visit_returns(self, i);
+    }
     fn visit_reveal_hide(&mut self, i: &'ast RevealHide) {
         visit_reveal_hide(self, i);
     }
@@ -746,6 +752,15 @@ pub trait Visit<'ast> {
     }
     fn visit_signature_invariants(&mut self, i: &'ast SignatureInvariants) {
         visit_signature_invariants(self, i);
+    }
+    fn visit_signature_spec(&mut self, i: &'ast SignatureSpec) {
+        visit_signature_spec(self, i);
+    }
+    fn visit_signature_spec_attr(&mut self, i: &'ast SignatureSpecAttr) {
+        visit_signature_spec_attr(self, i);
+    }
+    fn visit_signature_unwind(&mut self, i: &'ast SignatureUnwind) {
+        visit_signature_unwind(self, i);
     }
     fn visit_span(&mut self, i: &Span) {
         visit_span(self, i);
@@ -3853,6 +3868,14 @@ where
         }
     }
 }
+pub fn visit_prover<'ast, V>(v: &mut V, node: &'ast Prover)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.by_token.span);
+    tokens_helper(v, &node.paren_token.span);
+    v.visit_ident(&node.id);
+}
 pub fn visit_publish<'ast, V>(v: &mut V, node: &'ast Publish)
 where
     V: Visit<'ast> + ?Sized,
@@ -3955,6 +3978,13 @@ where
         }
     }
 }
+pub fn visit_returns<'ast, V>(v: &mut V, node: &'ast Returns)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_specification(&node.exprs);
+}
 pub fn visit_reveal_hide<'ast, V>(v: &mut V, node: &'ast RevealHide)
 where
     V: Visit<'ast> + ?Sized,
@@ -4015,26 +4045,7 @@ where
         v.visit_variadic(it);
     }
     v.visit_return_type(&node.output);
-    if let Some(it) = &node.prover {
-        tokens_helper(v, &(it).0.span);
-        tokens_helper(v, &(it).1.span);
-        v.visit_ident(&(it).2);
-    }
-    if let Some(it) = &node.requires {
-        v.visit_requires(it);
-    }
-    if let Some(it) = &node.recommends {
-        v.visit_recommends(it);
-    }
-    if let Some(it) = &node.ensures {
-        v.visit_ensures(it);
-    }
-    if let Some(it) = &node.decreases {
-        v.visit_signature_decreases(it);
-    }
-    if let Some(it) = &node.invariants {
-        v.visit_signature_invariants(it);
-    }
+    v.visit_signature_spec(&node.spec);
 }
 pub fn visit_signature_decreases<'ast, V>(v: &mut V, node: &'ast SignatureDecreases)
 where
@@ -4056,6 +4067,55 @@ where
 {
     tokens_helper(v, &node.token.span);
     v.visit_invariant_name_set(&node.set);
+}
+pub fn visit_signature_spec<'ast, V>(v: &mut V, node: &'ast SignatureSpec)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    if let Some(it) = &node.prover {
+        v.visit_prover(it);
+    }
+    if let Some(it) = &node.requires {
+        v.visit_requires(it);
+    }
+    if let Some(it) = &node.recommends {
+        v.visit_recommends(it);
+    }
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
+    if let Some(it) = &node.returns {
+        v.visit_returns(it);
+    }
+    if let Some(it) = &node.decreases {
+        v.visit_signature_decreases(it);
+    }
+    if let Some(it) = &node.invariants {
+        v.visit_signature_invariants(it);
+    }
+    if let Some(it) = &node.unwind {
+        v.visit_signature_unwind(it);
+    }
+}
+pub fn visit_signature_spec_attr<'ast, V>(v: &mut V, node: &'ast SignatureSpecAttr)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    if let Some(it) = &node.ret_pat {
+        full!(v.visit_pat(& (it).0));
+        tokens_helper(v, &(it).1.spans);
+    }
+    v.visit_signature_spec(&node.spec);
+}
+pub fn visit_signature_unwind<'ast, V>(v: &mut V, node: &'ast SignatureUnwind)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    if let Some(it) = &node.when {
+        tokens_helper(v, &(it).0.span);
+        v.visit_expr(&(it).1);
+    }
 }
 pub fn visit_span<'ast, V>(v: &mut V, node: &Span)
 where

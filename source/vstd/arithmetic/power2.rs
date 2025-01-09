@@ -17,19 +17,7 @@ use super::super::prelude::*;
 verus! {
 
 #[cfg(verus_keep_ghost)]
-use super::power::{
-    pow,
-    lemma_pow_positive,
-    group_pow_properties,
-    lemma_pow_adds,
-    lemma_pow_strictly_increases,
-};
-#[cfg(verus_keep_ghost)]
-use super::internals::mul_internals::lemma_mul_induction_auto;
-#[cfg(verus_keep_ghost)]
-use super::internals::general_internals::is_le;
-#[cfg(verus_keep_ghost)]
-use super::super::calc_macro::*;
+use super::power::{pow, lemma_pow_positive, lemma_pow_adds, lemma_pow_strictly_increases};
 
 /// This function computes 2 to the power of the given natural number
 /// `e`. It's opaque so that the SMT solver doesn't waste time
@@ -50,28 +38,18 @@ pub open spec fn pow2(e: nat) -> nat
 
 /// Proof that 2 to the power of any natural number (specifically,
 /// `e`) is positive
-pub proof fn lemma_pow2_pos(e: nat)
+pub broadcast proof fn lemma_pow2_pos(e: nat)
     ensures
-        pow2(e) > 0,
+        #[trigger] pow2(e) > 0,
 {
     reveal(pow2);
     lemma_pow_positive(2, e);
 }
 
-/// Proof that 2 to the power of any natural number is positive
-pub proof fn lemma_pow2_pos_auto()
-    ensures
-        forall|e: nat| #[trigger] pow2(e) > 0,
-{
-    assert forall|e: nat| #[trigger] pow2(e) > 0 by {
-        lemma_pow2_pos(e);
-    }
-}
-
 /// Proof that `pow2(e)` is equivalent to `pow(2, e)`
-pub proof fn lemma_pow2(e: nat)
+pub broadcast proof fn lemma_pow2(e: nat)
     ensures
-        pow2(e) == pow(2, e) as int,
+        #[trigger] pow2(e) == pow(2, e) as int,
     decreases e,
 {
     reveal(pow);
@@ -81,41 +59,21 @@ pub proof fn lemma_pow2(e: nat)
     }
 }
 
-/// Proof that `pow2(e)` is equivalent to `pow(2, e)` for all `e`
-pub proof fn lemma_pow2_auto()
-    ensures
-        forall|e: nat| #[trigger] pow2(e) == pow(2, e),
-{
-    assert forall|e: nat| #[trigger] pow2(e) == pow(2, e) by {
-        lemma_pow2(e);
-    }
-}
-
-/// Proof relating 2^e to 2^(e-1) for a specific e.
-pub proof fn lemma_pow2_unfold(e: nat)
+/// Proof relating 2^e to 2^(e-1).
+pub broadcast proof fn lemma_pow2_unfold(e: nat)
     requires
         e > 0,
     ensures
-        pow2(e) == 2 * pow2((e - 1) as nat),
+        #[trigger] pow2(e) == 2 * pow2((e - 1) as nat),
 {
     lemma_pow2(e);
     lemma_pow2((e - 1) as nat);
 }
 
-/// Proof relating 2^e to 2^(e-1) for all e.
-pub proof fn lemma_pow2_unfold_auto()
-    ensures
-        forall|e: nat| e > 0 ==> #[trigger] pow2(e) == 2 * pow2((e - 1) as nat),
-{
-    assert forall|e: nat| e > 0 implies #[trigger] pow2(e) == 2 * pow2((e - 1) as nat) by {
-        lemma_pow2_unfold(e);
-    }
-}
-
 /// Proof that `2^(e1 + e2)` is equivalent to `2^e1 * 2^e2`.
-pub proof fn lemma_pow2_adds(e1: nat, e2: nat)
+pub broadcast proof fn lemma_pow2_adds(e1: nat, e2: nat)
     ensures
-        pow2(e1 + e2) == pow2(e1) * pow2(e2),
+        #[trigger] pow2(e1 + e2) == pow2(e1) * pow2(e2),
 {
     lemma_pow2(e1);
     lemma_pow2(e2);
@@ -123,36 +81,16 @@ pub proof fn lemma_pow2_adds(e1: nat, e2: nat)
     lemma_pow_adds(2, e1, e2);
 }
 
-/// Proof that `2^(e1 + e2)` is equivalent to `2^e1 * 2^e2` for all exponents `e1`, `e2`.
-pub proof fn lemma_pow2_adds_auto()
-    ensures
-        forall|e1: nat, e2: nat| #[trigger] pow2(e1 + e2) == pow2(e1) * pow2(e2),
-{
-    assert forall|e1: nat, e2: nat| #[trigger] pow2(e1 + e2) == pow2(e1) * pow2(e2) by {
-        lemma_pow2_adds(e1, e2);
-    }
-}
-
-/// Proof that if `e1 < e2` then `2^e1 < 2^e2` for given `e1`, `e2`.
-pub proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
+/// Proof that if `e1 < e2` then `2^e1 < 2^e2`.
+pub broadcast proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
     requires
         e1 < e2,
     ensures
-        pow2(e1) < pow2(e2),
+        #[trigger] pow2(e1) < #[trigger] pow2(e2),
 {
     lemma_pow2(e1);
     lemma_pow2(e2);
     lemma_pow_strictly_increases(2, e1, e2);
-}
-
-/// Proof that if `e1 < e2` then `2^e1 < 2^e2` for all `e1`, `e2`.
-pub proof fn lemma_pow2_strictly_increases_auto()
-    ensures
-        forall|e1: nat, e2: nat| e1 < e2 ==> #[trigger] pow2(e1) < #[trigger] pow2(e2),
-{
-    assert forall|e1: nat, e2: nat| e1 < e2 implies #[trigger] pow2(e1) < #[trigger] pow2(e2) by {
-        lemma_pow2_strictly_increases(e1, e2);
-    }
 }
 
 /// Proof establishing the concrete values for all powers of 2 from 0 to 32 and also 2^64
@@ -230,6 +168,83 @@ pub proof fn lemma2_to64()
         pow2(30) == 0x40000000 &&
         pow2(31) == 0x80000000 &&
         pow2(32) == 0x100000000 &&
+        pow2(64) == 0x10000000000000000
+    ) by(compute_only);
+}
+
+/// Proof establishing the concrete values for all powers of 2 from 33 to 64.
+/// This lemma is separated from `lemma2_to64()` to avoid a stack overflow issue
+/// while executing ./tools/docs.sh.
+pub proof fn lemma2_to64_rest()
+    ensures
+        pow2(33) == 0x200000000,
+        pow2(34) == 0x400000000,
+        pow2(35) == 0x800000000,
+        pow2(36) == 0x1000000000,
+        pow2(37) == 0x2000000000,
+        pow2(38) == 0x4000000000,
+        pow2(39) == 0x8000000000,
+        pow2(40) == 0x10000000000,
+        pow2(41) == 0x20000000000,
+        pow2(42) == 0x40000000000,
+        pow2(43) == 0x80000000000,
+        pow2(44) == 0x100000000000,
+        pow2(45) == 0x200000000000,
+        pow2(46) == 0x400000000000,
+        pow2(47) == 0x800000000000,
+        pow2(48) == 0x1000000000000,
+        pow2(49) == 0x2000000000000,
+        pow2(50) == 0x4000000000000,
+        pow2(51) == 0x8000000000000,
+        pow2(52) == 0x10000000000000,
+        pow2(53) == 0x20000000000000,
+        pow2(54) == 0x40000000000000,
+        pow2(55) == 0x80000000000000,
+        pow2(56) == 0x100000000000000,
+        pow2(57) == 0x200000000000000,
+        pow2(58) == 0x400000000000000,
+        pow2(59) == 0x800000000000000,
+        pow2(60) == 0x1000000000000000,
+        pow2(61) == 0x2000000000000000,
+        pow2(62) == 0x4000000000000000,
+        pow2(63) == 0x8000000000000000,
+        pow2(64) == 0x10000000000000000,
+{
+    reveal(pow2);
+    reveal(pow);
+    #[verusfmt::skip]
+    assert(
+        pow2(33) == 0x200000000 &&
+        pow2(34) == 0x400000000 &&
+        pow2(35) == 0x800000000 &&
+        pow2(36) == 0x1000000000 &&
+        pow2(37) == 0x2000000000 &&
+        pow2(38) == 0x4000000000 &&
+        pow2(39) == 0x8000000000 &&
+        pow2(40) == 0x10000000000 &&
+        pow2(41) == 0x20000000000 &&
+        pow2(42) == 0x40000000000 &&
+        pow2(43) == 0x80000000000 &&
+        pow2(44) == 0x100000000000 &&
+        pow2(45) == 0x200000000000 &&
+        pow2(46) == 0x400000000000 &&
+        pow2(47) == 0x800000000000 &&
+        pow2(48) == 0x1000000000000 &&
+        pow2(49) == 0x2000000000000 &&
+        pow2(50) == 0x4000000000000 &&
+        pow2(51) == 0x8000000000000 &&
+        pow2(52) == 0x10000000000000 &&
+        pow2(53) == 0x20000000000000 &&
+        pow2(54) == 0x40000000000000 &&
+        pow2(55) == 0x80000000000000 &&
+        pow2(56) == 0x100000000000000 &&
+        pow2(57) == 0x200000000000000 &&
+        pow2(58) == 0x400000000000000 &&
+        pow2(59) == 0x800000000000000 &&
+        pow2(60) == 0x1000000000000000 &&
+        pow2(61) == 0x2000000000000000 &&
+        pow2(62) == 0x4000000000000000 &&
+        pow2(63) == 0x8000000000000000 &&
         pow2(64) == 0x10000000000000000
     ) by(compute_only);
 }

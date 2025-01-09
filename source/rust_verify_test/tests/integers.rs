@@ -355,6 +355,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_regression_979_1 verus_code! {
+        use vstd::prelude::*;
         pub trait Obligations<T> {
             spec fn reveal_(t: T) -> T
                 ;
@@ -381,6 +382,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_regression_979_2 verus_code! {
+        use vstd::prelude::*;
         pub trait Obligations<T> {
             spec fn reveal_(t: T) -> T
                 ;
@@ -413,6 +415,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_1 verus_code! {
+        use vstd::prelude::*;
         pub open spec fn plus_three<T: Integer>(t: T) -> int {
             t as int + 3
         }
@@ -425,6 +428,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_2 verus_code! {
+        use vstd::prelude::*;
         pub open spec fn plus_three<T: Integer>(t: T) -> int {
             t as int + 3
         }
@@ -437,14 +441,16 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_3 verus_code! {
+        use vstd::prelude::*;
         pub open spec fn plus_three<T: Integer>(t: T) -> int {
             t as u64 + 3
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types and `char` to integer types")
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types, `char`, and pointer types to integer types")
 }
 
 test_verify_one_file! {
     #[test] test_integer_trait_sealed_1 verus_code! {
+        use vstd::prelude::*;
         struct S;
         impl Integer for S {}
     } => Err(err) => assert_rust_error_msg(err, "the trait `builtin::Integer` requires an `unsafe impl` declaration")
@@ -452,15 +458,59 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_integer_trait_sealed_2 verus_code! {
+        use vstd::prelude::*;
         pub open spec fn plus_three<T: Integer>(t: T) -> nat {
             t as nat + 3
         }
 
+        #[derive(Copy, Clone)]
         struct S;
-        unsafe impl Integer for S {}
+        unsafe impl Integer for S {
+            const CONST_DEFAULT: S = S;
+        }
 
         proof fn test() {
             assert(plus_three(S) + 1 == 1 + plus_three(S));
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot implement `sealed` trait")
+}
+
+test_verify_one_file! {
+    #[test] test_spec_const verus_code! {
+        pub open spec fn f() -> int { 30000000000000000000000int + 20000000000000000000000 }
+
+        spec const A: int = 30000000000000000000000int + 20000000000000000000000;
+        pub spec const B: int = add(30000000000000000000000int, 20000000000000000000000);
+
+        spec const M: int = 30000000000000000000000int * 20000000000000000000000;
+        pub spec const N: int = mul(30000000000000000000000int, 20000000000000000000000);
+
+        spec const X: int = 30000000000000000000000 - 20000000000000000000000;
+        pub spec const Y: int = sub(30000000000000000000000, 20000000000000000000000);
+
+        proof fn test() {
+            assert(A == f());
+            assert(A == B);
+            assert(M == N);
+            assert(X == Y);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] nat_int_cast_in_exec_code verus_code! {
+        fn test(u: u64) {
+            let x = u as nat;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "types 'nat' and 'int' can only be used in ghost code")
+}
+
+test_verify_one_file! {
+    #[test] test_bool_to_int verus_code! {
+        fn test1() {
+            assert(true as usize == 1);
+            assert(false as usize == 0);
+            assert(false as int == 0);
+        }
+    } => Ok(())
 }

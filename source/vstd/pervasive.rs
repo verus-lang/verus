@@ -33,6 +33,11 @@ pub proof fn affirm(b: bool)
 {
 }
 
+// An artificial trigger that can be used in case no expression naturally serves as a trigger
+pub open spec fn trigger<A>(a: A) -> bool {
+    true
+}
+
 // TODO: when default trait methods are supported, most of these should be given defaults
 pub trait ForLoopGhostIterator {
     type ExecIter;
@@ -176,6 +181,7 @@ pub fn unreached<A>() -> A
     panic!("unreached_external")
 }
 
+#[allow(unused_variables)]  // when built with cfg(not(feature = "std"))
 #[verifier::external_body]  /* vattr */
 pub fn print_u64(i: u64) {
     println!("{}", i);

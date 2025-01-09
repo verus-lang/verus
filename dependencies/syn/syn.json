@@ -5417,6 +5417,23 @@
       }
     },
     {
+      "ident": "Prover",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "by_token": {
+          "token": "By"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "id": {
+          "proc_macro2": "Ident"
+        }
+      }
+    },
+    {
       "ident": "Publish",
       "features": {
         "any": []
@@ -5612,6 +5629,20 @@
       }
     },
     {
+      "ident": "Returns",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Returns"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
       "ident": "RevealHide",
       "features": {
         "any": []
@@ -5728,45 +5759,8 @@
         "output": {
           "syn": "ReturnType"
         },
-        "prover": {
-          "option": {
-            "tuple": [
-              {
-                "token": "By"
-              },
-              {
-                "group": "Paren"
-              },
-              {
-                "proc_macro2": "Ident"
-              }
-            ]
-          }
-        },
-        "requires": {
-          "option": {
-            "syn": "Requires"
-          }
-        },
-        "recommends": {
-          "option": {
-            "syn": "Recommends"
-          }
-        },
-        "ensures": {
-          "option": {
-            "syn": "Ensures"
-          }
-        },
-        "decreases": {
-          "option": {
-            "syn": "SignatureDecreases"
-          }
-        },
-        "invariants": {
-          "option": {
-            "syn": "SignatureInvariants"
-          }
+        "spec": {
+          "syn": "SignatureSpec"
         }
       }
     },
@@ -5816,6 +5810,100 @@
         },
         "set": {
           "syn": "InvariantNameSet"
+        }
+      }
+    },
+    {
+      "ident": "SignatureSpec",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "prover": {
+          "option": {
+            "syn": "Prover"
+          }
+        },
+        "requires": {
+          "option": {
+            "syn": "Requires"
+          }
+        },
+        "recommends": {
+          "option": {
+            "syn": "Recommends"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
+        "returns": {
+          "option": {
+            "syn": "Returns"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "SignatureDecreases"
+          }
+        },
+        "invariants": {
+          "option": {
+            "syn": "SignatureInvariants"
+          }
+        },
+        "unwind": {
+          "option": {
+            "syn": "SignatureUnwind"
+          }
+        }
+      }
+    },
+    {
+      "ident": "SignatureSpecAttr",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "ret_pat": {
+          "option": {
+            "tuple": [
+              {
+                "syn": "Pat"
+              },
+              {
+                "token": "FatArrow"
+              }
+            ]
+          }
+        },
+        "spec": {
+          "syn": "SignatureSpec"
+        }
+      }
+    },
+    {
+      "ident": "SignatureUnwind",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "NoUnwind"
+        },
+        "when": {
+          "option": {
+            "tuple": [
+              {
+                "token": "When"
+              },
+              {
+                "syn": "Expr"
+              }
+            ]
+          }
         }
       }
     },
@@ -7069,6 +7157,7 @@
     "Mut": "mut",
     "Ne": "!=",
     "NeEq": "!==",
+    "NoUnwind": "no_unwind",
     "Open": "open",
     "OpensInvariants": "opens_invariants",
     "Or": "|",
@@ -7087,6 +7176,7 @@
     "RemEq": "%=",
     "Requires": "requires",
     "Return": "return",
+    "Returns": "returns",
     "Reveal": "reveal",
     "RevealWithFuel": "reveal_with_fuel",
     "SelfType": "Self",

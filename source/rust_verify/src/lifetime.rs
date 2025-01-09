@@ -173,6 +173,10 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
     queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
         let hir = tcx.hir();
         let krate = hir.krate();
+        rustc_hir_analysis::check_crate(tcx);
+        if tcx.dcx().err_count() != 0 {
+            return;
+        }
         for owner in &krate.owners {
             if let MaybeOwner::Owner(owner) = owner {
                 match owner.node() {
@@ -201,6 +205,9 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
 
 const PRELUDE: &str = "\
 #![feature(box_patterns)]
+#![feature(ptr_metadata)]
+#![feature(never_type)]
+#![feature(allocator_api)]
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
@@ -216,6 +223,11 @@ const PRELUDE: &str = "\
 use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::alloc::Allocator;
+use std::alloc::Global;
+use std::mem::ManuallyDrop;
+use std::ptr::Pointee;
+use std::ptr::Thin;
 fn op<A, B>(a: A) -> B { panic!() }
 fn static_ref<T>(t: T) -> &'static T { panic!() }
 fn tracked_new<T>(t: T) -> Tracked<T> { panic!() }
@@ -243,18 +255,24 @@ fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V
 fn open_local_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V) { panic!(); }
 fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) { panic!() }
 fn index<'a, V, Idx, Output>(v: &'a V, index: Idx) -> &'a Output { panic!() }
+struct C<const N: usize, A: ?Sized>(Box<A>);
+struct Arr<A: ?Sized, const N: usize>(Box<A>);
+fn use_type_invariant<A>(a: A) -> A { a }
+fn main() {}
 ";
 
 fn emit_check_tracked_lifetimes<'tcx>(
     cmd_line_args: crate::config::Args,
     tcx: TyCtxt<'tcx>,
     verus_items: std::sync::Arc<VerusItems>,
+    spans: &SpanContext,
     krate: &'tcx Crate<'tcx>,
     emit_state: &mut EmitState,
     erasure_hints: &ErasureHints,
     item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
+    vir_crate: &vir::ast::Krate,
 ) -> State {
-    let gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
+    let mut gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
         cmd_line_args,
         tcx,
         verus_items,
@@ -262,6 +280,8 @@ fn emit_check_tracked_lifetimes<'tcx>(
         erasure_hints,
         item_to_module_map,
     );
+    crate::trait_conflicts::gen_check_trait_impl_conflicts(spans, vir_crate, &mut gen_state);
+
     for line in PRELUDE.split('\n') {
         emit_state.writeln(line.replace("\r", ""));
     }
@@ -272,8 +292,8 @@ fn emit_check_tracked_lifetimes<'tcx>(
     for d in gen_state.datatype_decls.iter() {
         emit_datatype_decl(emit_state, d);
     }
-    for (a, fns) in gen_state.assoc_type_impls.iter() {
-        emit_assoc_type_impl(emit_state, a, fns);
+    for t in gen_state.trait_impls.iter() {
+        emit_trait_impl(emit_state, t);
     }
     for f in gen_state.fun_decls.iter() {
         emit_fun_decl(emit_state, f);
@@ -284,7 +304,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
 struct LifetimeCallbacks {}
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
-    fn after_crate_root_parsing<'tcx>(
+    fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
@@ -331,6 +351,7 @@ struct Diagnostic {
     message: String,
     level: String,
     spans: Vec<DiagnosticSpan>,
+    rendered: Option<String>,
 }
 
 pub const LIFETIME_DRIVER_ARG: &'static str = "--internal-lifetime-driver";
@@ -352,6 +373,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     spans: &SpanContext,
     erasure_hints: &ErasureHints,
     item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
+    vir_crate: &vir::ast::Krate,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
     let krate = tcx.hir().krate();
@@ -360,10 +382,12 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
         cmd_line_args,
         tcx,
         verus_items,
+        spans,
         krate,
         &mut emit_state,
         erasure_hints,
         item_to_module_map,
+        vir_crate,
     );
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {
@@ -410,6 +434,9 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
                 if debug {
                     dbg!(&msg);
                 }
+                use std::collections::HashSet;
+                let mut missing_span = diag.spans.len() == 0;
+                let mut missing_span_line_seqs: HashSet<(usize, usize)> = HashSet::new();
                 for dspan in &diag.spans {
                     if debug {
                         dbg!(&dspan);
@@ -420,7 +447,32 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
                         dspan.line_end - 1,
                         dspan.column_end - 1,
                     );
-                    msg = msg.primary_span(&spans.to_air_span(span));
+                    if let Some(span) = span {
+                        msg = msg.primary_span(&spans.to_air_span(span));
+                    } else {
+                        eprintln!(
+                            "note: could not find span associated with error message; printing raw error message instead"
+                        );
+                        missing_span = true;
+                        let mut l1 = dspan.line_start - 1;
+                        let mut l2 = dspan.line_end - 1;
+                        while l1 > 0 && !emit_state.lines[l1].start_of_decl {
+                            l1 -= 1;
+                        }
+                        while l2 + 1 < emit_state.lines.len() && !emit_state.lines[l2].start_of_decl
+                        {
+                            l2 += 1;
+                        }
+                        if !missing_span_line_seqs.contains(&(l1, l2)) {
+                            for i in l1..=l2 {
+                                eprintln!("{}", &emit_state.lines[i].text);
+                            }
+                            missing_span_line_seqs.insert((l1, l2));
+                        }
+                    }
+                }
+                if missing_span {
+                    eprintln!("{}", &diag.rendered.unwrap());
                 }
                 msgs.push(msg);
             }

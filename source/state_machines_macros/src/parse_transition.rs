@@ -543,16 +543,16 @@ fn parse_let(
                 let pat_tup;
 
                 if ids.len() > 1 {
-                    match_select = expr_from_tokens(quote_spanned! { stmt_span =>
-                        match #tmp_ident { #pat => (#(#ids),*) , _ => ::vstd::pervasive::arbitrary() }
+                    match_select = expr_from_tokens(quote_spanned_vstd! { vstd, stmt_span =>
+                        match #tmp_ident { #pat => (#(#ids),*) , _ => #vstd::pervasive::arbitrary() }
                     });
                     pat_tup = pat_from_tokens(quote_spanned! { stmt_span =>
                         (#(#ids),*)
                     });
                 } else {
                     let id = &ids[0];
-                    match_select = expr_from_tokens(quote_spanned! { stmt_span =>
-                        match #tmp_ident { #pat => #id , _ => ::vstd::pervasive::arbitrary() }
+                    match_select = expr_from_tokens(quote_spanned_vstd! { vstd, stmt_span =>
+                        match #tmp_ident { #pat => #id , _ => #vstd::pervasive::arbitrary() }
                     });
                     pat_tup = pat_from_tokens(quote_spanned! { stmt_span =>
                         #id

@@ -8,8 +8,8 @@ use super::seq::*;
 verus! {
 
 broadcast use super::group_vstd_default;
-/// Combines a list of values into one value using P::op().
 
+/// Combines a list of values into one value using P::op().
 pub open spec fn combine_values<P: PCM>(values: Seq<P>) -> P
     decreases values.len(),
 {

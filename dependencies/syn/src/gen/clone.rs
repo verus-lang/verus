@@ -2167,6 +2167,16 @@ impl Clone for PredicateType {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Prover {
+    fn clone(&self) -> Self {
+        Prover {
+            by_token: self.by_token.clone(),
+            paren_token: self.paren_token.clone(),
+            id: self.id.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for Publish {
     fn clone(&self) -> Self {
         match self {
@@ -2244,6 +2254,15 @@ impl Clone for ReturnType {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Returns {
+    fn clone(&self) -> Self {
+        Returns {
+            token: self.token.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for RevealHide {
     fn clone(&self) -> Self {
         RevealHide {
@@ -2276,12 +2295,7 @@ impl Clone for Signature {
             inputs: self.inputs.clone(),
             variadic: self.variadic.clone(),
             output: self.output.clone(),
-            prover: self.prover.clone(),
-            requires: self.requires.clone(),
-            recommends: self.recommends.clone(),
-            ensures: self.ensures.clone(),
-            decreases: self.decreases.clone(),
-            invariants: self.invariants.clone(),
+            spec: self.spec.clone(),
         }
     }
 }
@@ -2301,6 +2315,39 @@ impl Clone for SignatureInvariants {
         SignatureInvariants {
             token: self.token.clone(),
             set: self.set.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for SignatureSpec {
+    fn clone(&self) -> Self {
+        SignatureSpec {
+            prover: self.prover.clone(),
+            requires: self.requires.clone(),
+            recommends: self.recommends.clone(),
+            ensures: self.ensures.clone(),
+            returns: self.returns.clone(),
+            decreases: self.decreases.clone(),
+            invariants: self.invariants.clone(),
+            unwind: self.unwind.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for SignatureSpecAttr {
+    fn clone(&self) -> Self {
+        SignatureSpecAttr {
+            ret_pat: self.ret_pat.clone(),
+            spec: self.spec.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for SignatureUnwind {
+    fn clone(&self) -> Self {
+        SignatureUnwind {
+            token: self.token.clone(),
+            when: self.when.clone(),
         }
     }
 }

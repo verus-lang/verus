@@ -2,10 +2,10 @@
 // (Z3 and the Z3 crate will also type-check, but their type errors are uninformative panics)
 
 use crate::ast::{
-    BinaryOp, BindX, Binder, BinderX, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp,
-    Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
+    Axiom, BinaryOp, BindX, Binder, BinderX, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident,
+    MultiOp, Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
-use crate::context::Context;
+use crate::context::{Context, SmtSolver};
 use crate::messages::MessageInterface;
 use crate::printer::{node_to_string, Printer};
 use crate::scope_map::ScopeMap;
@@ -18,7 +18,7 @@ pub(crate) type Declared = Arc<DeclaredX>;
 pub(crate) enum DeclaredX {
     Type,
     Var { typ: Typ, mutable: bool },
-    Fun(Typs, Typ),
+    Fun { params: Typs, ret: Typ, field_accessor: bool }, //args, ret, accessor
 }
 
 pub struct Typing {
@@ -28,6 +28,7 @@ pub struct Typing {
     pub(crate) snapshots: HashSet<Ident>,
     pub(crate) break_labels_local: HashSet<Ident>,
     pub(crate) break_labels_in_scope: ScopeMap<Ident, ()>,
+    pub(crate) solver: SmtSolver,
 }
 
 impl Typing {
@@ -55,7 +56,7 @@ fn typ_name(typ: &Typ) -> String {
     match &**typ {
         TypX::Bool => "Bool".to_string(),
         TypX::Int => "Int".to_string(),
-        TypX::Lambda => "Fun".to_string(),
+        TypX::Fun => "Fun".to_string(),
         TypX::Named(x) => x.to_string(),
         TypX::BitVec(n) => format!("BitVec{}", n),
     }
@@ -73,7 +74,7 @@ fn check_typ(typing: &Typing, typ: &Typ) -> Result<(), TypeError> {
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int => Ok(()),
-        TypX::Lambda => Ok(()),
+        TypX::Fun => Ok(()),
         TypX::Named(x) => match typing.get(x) {
             Some(DeclaredX::Type) => Ok(()),
             _ => Err(format!("use of undeclared type {}", x)),
@@ -136,17 +137,18 @@ fn check_bv_unary_exprs(
     expr: &Expr,
 ) -> Result<Typ, TypeError> {
     match op {
-        UnaryOp::BitExtract(high, _) => {
+        UnaryOp::BitExtract(high, lo) => {
             let t0 = check_expr(typing, expr)?;
             let w_old = get_bv_width(&t0)?;
-            let w_new = high + 1;
-            if w_old < w_new {
+            if w_old < high + 1 {
                 Err(format!(
                     "Interner Error: bit-vec extract to a longer size. {} to {} ",
-                    w_old, w_new
+                    w_old, high
                 ))
+            } else if lo > high {
+                Err(format!("Interner Error: bit-vec extract has lo > high. {} to {} ", lo, high))
             } else {
-                Ok(Arc::new(TypX::BitVec(w_new)))
+                Ok(Arc::new(TypX::BitVec(high + 1 - lo)))
             }
         }
         UnaryOp::BitNot => {
@@ -154,6 +156,13 @@ fn check_bv_unary_exprs(
             match get_bv_width(&t0) {
                 Ok(_) => Ok(t0.clone()),
                 Err(..) => Err("Interner Error: not a bv type inside a bvnot".to_string()),
+            }
+        }
+        UnaryOp::BitZeroExtend(n) | UnaryOp::BitSignExtend(n) => {
+            let t0 = check_expr(typing, expr)?;
+            match get_bv_width(&t0) {
+                Ok(m) => Ok(Arc::new(TypX::BitVec(n + m))),
+                Err(..) => Err(format!("Interner Error: not a bv type inside a {}", f_name)),
             }
         }
         _ => Err(format!("Interner Error: not a bv unary op, got {}", f_name)),
@@ -185,6 +194,7 @@ fn check_bv_exprs(
     // return bool type if it is comparision op
     match bop {
         BinaryOp::BitUGe | BinaryOp::BitULe | BinaryOp::BitUGt | BinaryOp::BitULt => Ok(bt()),
+        BinaryOp::BitSGe | BinaryOp::BitSLe | BinaryOp::BitSGt | BinaryOp::BitSLt => Ok(bt()),
         _ => Ok(t0.clone()),
     }
 }
@@ -204,13 +214,15 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             (true, _) => Err(format!("use of undeclared variable {}", x)),
         },
         ExprX::Apply(x, es) => match typing.get(x).cloned() {
-            Some(DeclaredX::Fun(f_typs, f_typ)) => check_exprs(typing, x, &f_typs, &f_typ, es),
+            Some(DeclaredX::Fun { params, ret, field_accessor: _ }) => {
+                check_exprs(typing, x, &params, &ret, es)
+            }
             _ => Err(format!("use of undeclared function {}", x)),
         },
-        ExprX::ApplyLambda(t, e0, es) => {
+        ExprX::ApplyFun(t, e0, es) => {
             let t0 = check_expr(typing, e0)?;
             match &*t0 {
-                TypX::Lambda => {
+                TypX::Fun => {
                     for e in es.iter() {
                         check_expr(typing, e)?;
                     }
@@ -225,6 +237,12 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         }
         ExprX::Unary(UnaryOp::BitExtract(high, low), e1) => {
             check_bv_unary_exprs(typing, UnaryOp::BitExtract(*high, *low), "extract", &e1.clone())
+        }
+        ExprX::Unary(UnaryOp::BitZeroExtend(n), e1) => {
+            check_bv_unary_exprs(typing, UnaryOp::BitZeroExtend(*n), "zero_extend", &e1.clone())
+        }
+        ExprX::Unary(UnaryOp::BitSignExtend(n), e1) => {
+            check_bv_unary_exprs(typing, UnaryOp::BitSignExtend(*n), "sign_extend", &e1.clone())
         }
         ExprX::Binary(BinaryOp::Implies, e1, e2) => {
             check_exprs(typing, "=>", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])
@@ -244,6 +262,42 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     typ_name(&t1),
                     typ_name(&t2)
                 ))
+            }
+        }
+        ExprX::Binary(BinaryOp::FieldUpdate(field_ident), e1, e2) => {
+            let t1 = check_expr(typing, e1)?;
+            let t2 = check_expr(typing, e2)?;
+
+            match &*t1 {
+                TypX::Named(s) => match typing.get(s) {
+                    Some(DeclaredX::Type) => {}
+                    _ => return Err(format!("in field update, the destination is not a datatype")),
+                },
+                _ => return Err(format!("in field update, the destination is not a datatype")),
+            }
+
+            if let Some(DeclaredX::Fun { params, ret, field_accessor: true }) =
+                typing.get(field_ident)
+            {
+                if let [s] = &params[..] {
+                    if t1 != *s {
+                        Err(format!(
+                            "in field-update, argument type {:?} does not match datatype type {:?}",
+                            t1, *s
+                        ))
+                    } else if t2 != *ret {
+                        Err(format!(
+                            "in field-update, type of new value ({:?}) does not match field type {:?}",
+                            t2, *ret
+                        ))
+                    } else {
+                        Ok(t1)
+                    }
+                } else {
+                    Err(format!("field accessor {:?} should only have one parameter", field_ident))
+                }
+            } else {
+                Err(format!("cannot find field accessor {:?}", field_ident))
             }
         }
         ExprX::Binary(BinaryOp::Le, e1, e2) => {
@@ -276,6 +330,18 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::BitUGe, e1, e2) => {
             check_bv_exprs(typing, BinaryOp::BitUGe, "bvge", &[e1.clone(), e2.clone()])
         }
+        ExprX::Binary(BinaryOp::BitSLt, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::BitSLt, "bvslt", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitSGt, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::BitSGt, "bvsgt", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitSLe, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::BitSLe, "bvsle", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitSGe, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::BitSGe, "bvsge", &[e1.clone(), e2.clone()])
+        }
         ExprX::Binary(BinaryOp::BitXor, e1, e2) => {
             check_bv_exprs(typing, BinaryOp::BitXor, "^", &[e1.clone(), e2.clone()])
         }
@@ -301,7 +367,10 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             check_bv_exprs(typing, BinaryOp::BitUDiv, "bvdiv", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::LShr, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::LShr, ">>", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::LShr, ">> (lshr)", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::AShr, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::AShr, ">> (ashr)", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shl, e1, e2) => {
             check_bv_exprs(typing, BinaryOp::Shl, "<<", &[e1.clone(), e2.clone()])
@@ -353,6 +422,16 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             } else {
                 Ok(t2)
             }
+        }
+        ExprX::Array(exprs) => {
+            if exprs.len() > 0 {
+                let t0 = check_expr(typing, &exprs[0])?;
+                for e in &exprs[1..] {
+                    let tk = check_expr(typing, e)?;
+                    expect_typ(&tk, &t0, "arguments to array must all have same type")?;
+                }
+            }
+            Ok(Arc::new(TypX::Fun))
         }
         ExprX::Bind(bind, e1) => {
             // For Let, get types of binder expressions
@@ -407,7 +486,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     expect_typ(&t1, &bt(), "forall/exists body must have type bool")?;
                     t1
                 }
-                BindX::Lambda(_, _, _) => Arc::new(TypX::Lambda),
+                BindX::Lambda(_, _, _) => Arc::new(TypX::Fun),
                 BindX::Choose(..) => t1,
             };
             // Done
@@ -421,7 +500,8 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         Ok(t) => Ok(t),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(typing.message_interface.clone(), false).expr_to_node(expr),
+                &Printer::new(typing.message_interface.clone(), false, typing.solver.clone())
+                    .expr_to_node(expr),
             );
             Err(format!("error '{}' in expression '{}'", err, node_str))
         }
@@ -513,7 +593,8 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
         Ok(()) => Ok(()),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(typing.message_interface.clone(), false).stmt_to_node(stmt),
+                &Printer::new(typing.message_interface.clone(), false, typing.solver.clone())
+                    .stmt_to_node(stmt),
             );
             Err(format!("error '{}' in statement '{}'", err, node_str))
         }
@@ -535,7 +616,7 @@ pub(crate) fn check_decl(
             check_typs(typing, &typs_vec)
         }
         DeclX::Var(_, typ) => check_typ(typing, typ),
-        DeclX::Axiom(expr) => {
+        DeclX::Axiom(Axiom { named: _, expr }) => {
             expect_typ(&check_expr(typing, expr)?, &bt(), "axiom expects expression of type bool")
         }
     };
@@ -543,7 +624,8 @@ pub(crate) fn check_decl(
         Ok(()) => Ok(crate::closure::simplify_decl(context, decl)),
         Err(err) => {
             let node_str = node_to_string(
-                &Printer::new(context.message_interface.clone(), false).decl_to_node(decl),
+                &Printer::new(context.message_interface.clone(), false, context.solver.clone())
+                    .decl_to_node(decl),
             );
             Err(format!("error '{}' in declaration '{}'", err, node_str))
         }
@@ -568,15 +650,27 @@ pub(crate) fn add_decl<'ctx>(
                 for variant in datatype.a.iter() {
                     let typ = Arc::new(TypX::Named(datatype.name.clone()));
                     let typs = vec_map(&variant.a, |field| field.a.clone());
-                    let fun = DeclaredX::Fun(Arc::new(typs), typ.clone());
+                    let fun = DeclaredX::Fun {
+                        params: Arc::new(typs),
+                        ret: typ.clone(),
+                        field_accessor: false,
+                    };
                     context.typing.insert(&variant.name, Arc::new(fun))?;
                     let is_variant = Arc::new("is-".to_string() + &variant.name.to_string());
-                    let fun = DeclaredX::Fun(Arc::new(vec![typ.clone()]), bt());
+                    let fun = DeclaredX::Fun {
+                        params: Arc::new(vec![typ.clone()]),
+                        ret: bt(),
+                        field_accessor: false,
+                    };
                     context.typing.insert(&is_variant, Arc::new(fun))?;
                     for field in variant.a.iter() {
                         check_typ(&context.typing, &field.a)?;
                         let typs: Typs = Arc::new(vec![typ.clone()]);
-                        let fun = DeclaredX::Fun(typs, field.a.clone());
+                        let fun = DeclaredX::Fun {
+                            params: typs,
+                            ret: field.a.clone(),
+                            field_accessor: true,
+                        };
                         context.typing.insert(&field.name, Arc::new(fun))?;
                     }
                 }
@@ -587,7 +681,8 @@ pub(crate) fn add_decl<'ctx>(
             context.typing.insert(x, var)?;
         }
         DeclX::Fun(x, typs, typ) => {
-            let fun = DeclaredX::Fun(typs.clone(), typ.clone());
+            let fun =
+                DeclaredX::Fun { params: typs.clone(), ret: typ.clone(), field_accessor: false };
             context.typing.insert(x, Arc::new(fun))?;
         }
         DeclX::Var(x, typ) => {

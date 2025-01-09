@@ -942,13 +942,7 @@ ast_struct! {
         pub inputs: Punctuated<FnArg, Token![,]>,
         pub variadic: Option<Variadic>,
         pub output: ReturnType,
-        // When adding Verus fields here, update erase_spec_fields:
-        pub prover: Option<(Token![by], token::Paren, Ident)>,
-        pub requires: Option<Requires>,
-        pub recommends: Option<Recommends>,
-        pub ensures: Option<Ensures>,
-        pub decreases: Option<SignatureDecreases>,
-        pub invariants: Option<SignatureInvariants>,
+        pub spec: SignatureSpec,
     }
 }
 
@@ -971,12 +965,7 @@ impl Signature {
 
     pub fn erase_spec_fields(&mut self) {
         self.publish = Publish::Default;
-        self.prover = None;
-        self.requires = None;
-        self.recommends = None;
-        self.ensures = None;
-        self.decreases = None;
-        self.invariants = None;
+        self.spec.erase_spec_fields();
     }
 }
 
@@ -1711,20 +1700,7 @@ pub mod parsing {
 
             let output: ReturnType = input.parse()?;
             generics.where_clause = input.parse()?;
-            let prover = if input.peek(Token![by]) {
-                let by_token: Token![by] = input.parse()?;
-                let content;
-                let paren_token = parenthesized!(content in input);
-                let id = content.parse()?;
-                Some((by_token, paren_token, id))
-            } else {
-                None
-            };
-            let requires: Option<Requires> = input.parse()?;
-            let recommends: Option<Recommends> = input.parse()?;
-            let ensures: Option<Ensures> = input.parse()?;
-            let decreases: Option<SignatureDecreases> = input.parse()?;
-            let invariants: Option<SignatureInvariants> = input.parse()?;
+            let spec = input.parse()?;
 
             Ok(Signature {
                 publish,
@@ -1741,12 +1717,7 @@ pub mod parsing {
                 inputs,
                 variadic,
                 output,
-                prover,
-                requires,
-                recommends,
-                ensures,
-                decreases,
-                invariants,
+                spec,
             })
         }
     }
@@ -3584,10 +3555,7 @@ mod printing {
             });
             self.output.to_tokens(tokens);
             self.generics.where_clause.to_tokens(tokens);
-            self.requires.to_tokens(tokens);
-            self.recommends.to_tokens(tokens);
-            self.ensures.to_tokens(tokens);
-            self.decreases.to_tokens(tokens);
+            self.spec.to_tokens(tokens);
         }
     }
 

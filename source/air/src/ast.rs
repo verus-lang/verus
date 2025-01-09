@@ -18,8 +18,8 @@ pub type Typs = Arc<Vec<Typ>>;
 pub enum TypX {
     Bool,
     Int,
-    // Lambda deliberately omits argument, return types to make box/unbox for generics easier
-    Lambda,
+    // Fun deliberately omits argument, return types to make box/unbox for generics easier
+    Fun,
     Named(Ident),
     BitVec(u32),
 }
@@ -36,6 +36,8 @@ pub enum UnaryOp {
     Not,
     BitNot,
     BitExtract(u32, u32),
+    BitZeroExtend(u32),
+    BitSignExtend(u32),
 }
 
 /// These are Z3 special relations x <= y that are documented at
@@ -54,7 +56,7 @@ pub enum Relation {
     PiecewiseLinearOrder,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     Implies,
     Eq,
@@ -77,14 +79,20 @@ pub enum BinaryOp {
     BitSub,
     BitMul,
     BitUDiv,
+    BitUMod,
     BitULt,
     BitUGt,
     BitULe,
     BitUGe,
-    BitUMod,
+    BitSLt,
+    BitSGt,
+    BitSLe,
+    BitSGe,
+    AShr,
     LShr,
     Shl,
     BitConcat,
+    FieldUpdate(Ident),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -138,12 +146,14 @@ pub enum ExprX {
     // Old(snap, x) reads x from snapshot snap
     Old(Ident, Ident),
     Apply(Ident, Exprs),
-    // ApplyLambda applies function Expr to arguments Exprs, returning a value of type Typ
-    ApplyLambda(Typ, Expr, Exprs),
+    // ApplyFun applies Expr of type Fun to arguments Exprs, returning a value of type Typ
+    ApplyFun(Typ, Expr, Exprs),
     Unary(UnaryOp, Expr),
     Binary(BinaryOp, Expr, Expr),
     Multi(MultiOp, Exprs),
     IfElse(Expr, Expr, Expr),
+    // (array t e0 ... en) creates a TypX::Fun mapping 0..n of type Int to e0..en (each of type t)
+    Array(Exprs),
     Bind(Bind, Expr),
     // Sometimes an axiom will have additional error messages. If an assert fails
     // and this axiom was relevant, then we append the error labels to the Message.
@@ -176,6 +186,12 @@ pub enum StmtX {
     Switch(Stmts),
 }
 
+#[derive(Debug)]
+pub struct Axiom {
+    pub named: Option<Ident>,
+    pub expr: Expr,
+}
+
 pub type Field = Binder<Typ>;
 pub type Fields = Binders<Typ>;
 pub type Variant = Binder<Fields>;
@@ -192,7 +208,7 @@ pub enum DeclX {
     Const(Ident, Typ),
     Fun(Ident, Typs, Typ),
     Var(Ident, Typ),
-    Axiom(Expr),
+    Axiom(Axiom),
 }
 
 pub type Query = Arc<QueryX>;

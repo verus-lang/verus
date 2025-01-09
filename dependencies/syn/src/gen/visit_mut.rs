@@ -710,6 +710,9 @@ pub trait VisitMut {
     fn visit_predicate_type_mut(&mut self, i: &mut PredicateType) {
         visit_predicate_type_mut(self, i);
     }
+    fn visit_prover_mut(&mut self, i: &mut Prover) {
+        visit_prover_mut(self, i);
+    }
     fn visit_publish_mut(&mut self, i: &mut Publish) {
         visit_publish_mut(self, i);
     }
@@ -735,6 +738,9 @@ pub trait VisitMut {
     fn visit_return_type_mut(&mut self, i: &mut ReturnType) {
         visit_return_type_mut(self, i);
     }
+    fn visit_returns_mut(&mut self, i: &mut Returns) {
+        visit_returns_mut(self, i);
+    }
     fn visit_reveal_hide_mut(&mut self, i: &mut RevealHide) {
         visit_reveal_hide_mut(self, i);
     }
@@ -747,6 +753,15 @@ pub trait VisitMut {
     }
     fn visit_signature_invariants_mut(&mut self, i: &mut SignatureInvariants) {
         visit_signature_invariants_mut(self, i);
+    }
+    fn visit_signature_spec_mut(&mut self, i: &mut SignatureSpec) {
+        visit_signature_spec_mut(self, i);
+    }
+    fn visit_signature_spec_attr_mut(&mut self, i: &mut SignatureSpecAttr) {
+        visit_signature_spec_attr_mut(self, i);
+    }
+    fn visit_signature_unwind_mut(&mut self, i: &mut SignatureUnwind) {
+        visit_signature_unwind_mut(self, i);
     }
     fn visit_span_mut(&mut self, i: &mut Span) {
         visit_span_mut(self, i);
@@ -3847,6 +3862,14 @@ where
         }
     }
 }
+pub fn visit_prover_mut<V>(v: &mut V, node: &mut Prover)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.by_token.span);
+    tokens_helper(v, &mut node.paren_token.span);
+    v.visit_ident_mut(&mut node.id);
+}
 pub fn visit_publish_mut<V>(v: &mut V, node: &mut Publish)
 where
     V: VisitMut + ?Sized,
@@ -3949,6 +3972,13 @@ where
         }
     }
 }
+pub fn visit_returns_mut<V>(v: &mut V, node: &mut Returns)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
+}
 pub fn visit_reveal_hide_mut<V>(v: &mut V, node: &mut RevealHide)
 where
     V: VisitMut + ?Sized,
@@ -4009,26 +4039,7 @@ where
         v.visit_variadic_mut(it);
     }
     v.visit_return_type_mut(&mut node.output);
-    if let Some(it) = &mut node.prover {
-        tokens_helper(v, &mut (it).0.span);
-        tokens_helper(v, &mut (it).1.span);
-        v.visit_ident_mut(&mut (it).2);
-    }
-    if let Some(it) = &mut node.requires {
-        v.visit_requires_mut(it);
-    }
-    if let Some(it) = &mut node.recommends {
-        v.visit_recommends_mut(it);
-    }
-    if let Some(it) = &mut node.ensures {
-        v.visit_ensures_mut(it);
-    }
-    if let Some(it) = &mut node.decreases {
-        v.visit_signature_decreases_mut(it);
-    }
-    if let Some(it) = &mut node.invariants {
-        v.visit_signature_invariants_mut(it);
-    }
+    v.visit_signature_spec_mut(&mut node.spec);
 }
 pub fn visit_signature_decreases_mut<V>(v: &mut V, node: &mut SignatureDecreases)
 where
@@ -4050,6 +4061,55 @@ where
 {
     tokens_helper(v, &mut node.token.span);
     v.visit_invariant_name_set_mut(&mut node.set);
+}
+pub fn visit_signature_spec_mut<V>(v: &mut V, node: &mut SignatureSpec)
+where
+    V: VisitMut + ?Sized,
+{
+    if let Some(it) = &mut node.prover {
+        v.visit_prover_mut(it);
+    }
+    if let Some(it) = &mut node.requires {
+        v.visit_requires_mut(it);
+    }
+    if let Some(it) = &mut node.recommends {
+        v.visit_recommends_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.returns {
+        v.visit_returns_mut(it);
+    }
+    if let Some(it) = &mut node.decreases {
+        v.visit_signature_decreases_mut(it);
+    }
+    if let Some(it) = &mut node.invariants {
+        v.visit_signature_invariants_mut(it);
+    }
+    if let Some(it) = &mut node.unwind {
+        v.visit_signature_unwind_mut(it);
+    }
+}
+pub fn visit_signature_spec_attr_mut<V>(v: &mut V, node: &mut SignatureSpecAttr)
+where
+    V: VisitMut + ?Sized,
+{
+    if let Some(it) = &mut node.ret_pat {
+        full!(v.visit_pat_mut(& mut (it).0));
+        tokens_helper(v, &mut (it).1.spans);
+    }
+    v.visit_signature_spec_mut(&mut node.spec);
+}
+pub fn visit_signature_unwind_mut<V>(v: &mut V, node: &mut SignatureUnwind)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    if let Some(it) = &mut node.when {
+        tokens_helper(v, &mut (it).0.span);
+        v.visit_expr_mut(&mut (it).1);
+    }
 }
 pub fn visit_span_mut<V>(v: &mut V, node: &mut Span)
 where

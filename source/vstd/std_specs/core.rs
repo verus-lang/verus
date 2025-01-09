@@ -2,11 +2,101 @@ use super::super::prelude::*;
 
 verus! {
 
+#[verifier::external_trait_specification]
+pub trait ExInteger: Copy {
+    type ExternalTraitSpecificationFor: Integer;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExSpecOrd<Rhs> {
+    type ExternalTraitSpecificationFor: SpecOrd<Rhs>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExAllocator {
+    type ExternalTraitSpecificationFor: core::alloc::Allocator;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExFreeze {
+    type ExternalTraitSpecificationFor: core::marker::Freeze;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExDebug {
+    type ExternalTraitSpecificationFor: core::fmt::Debug;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExFrom<T>: Sized {
+    type ExternalTraitSpecificationFor: core::convert::From<T>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExPartialEq<Rhs: ?Sized> {
+    type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExEq: PartialEq {
+    type ExternalTraitSpecificationFor: core::cmp::Eq;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
+    type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExOrd: Eq + PartialOrd {
+    type ExternalTraitSpecificationFor: Ord;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExHash {
+    type ExternalTraitSpecificationFor: core::hash::Hash;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExPtrPointee {
+    type ExternalTraitSpecificationFor: core::ptr::Pointee;
+
+    type Metadata:
+        Copy + Send + Sync + Ord + core::hash::Hash + Unpin + core::fmt::Debug + Sized + core::marker::Freeze;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExIterator {
+    type ExternalTraitSpecificationFor: core::iter::Iterator;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExIntoIterator {
+    type ExternalTraitSpecificationFor: core::iter::IntoIterator;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExIterStep: Clone + PartialOrd + Sized {
+    type ExternalTraitSpecificationFor: core::iter::Step;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExBorrow<Borrowed> where Borrowed: ?Sized {
+    type ExternalTraitSpecificationFor: core::borrow::Borrow<Borrowed>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExStructural {
+    type ExternalTraitSpecificationFor: Structural;
+}
+
 #[verifier::external_fn_specification]
 pub fn ex_swap<T>(a: &mut T, b: &mut T)
     ensures
         *a == *old(b),
         *b == *old(a),
+    opens_invariants none
+    no_unwind
 {
     core::mem::swap(a, b)
 }
@@ -43,8 +133,7 @@ pub fn ex_iter_into_iter<I: Iterator>(i: I) -> (r: I)
 pub struct ExDuration(core::time::Duration);
 
 #[verifier::external_type_specification]
-#[verifier::external_body]
-#[verifier::reject_recursive_types_in_ground_variants(V)]
+#[verifier::accept_recursive_types(V)]
 pub struct ExPhantomData<V: ?Sized>(core::marker::PhantomData<V>);
 
 #[verifier::external_fn_specification]

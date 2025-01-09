@@ -1,56 +1,131 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBounds,
-    Ident, ImplPath, ImplPaths, Krate, Mode, Path, SpannedTyped, Trait, TraitImpl, Typ, TypX, Typs,
-    VirErr, Visibility, WellKnownItem,
+    CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
+    GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, SpannedTyped,
+    Trait, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility, WellKnownItem,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::messages::{error, Span};
+use crate::messages::{error, warning, Span, ToAny};
 use crate::sst_to_air::typ_to_ids;
 use air::ast::{Command, CommandX, Commands, DeclX};
-use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, str_typ};
+use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, mk_unnamed_axiom, str_typ};
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-// We currently do not support trait bounds for traits from other crates
-// and we consider methods for traits from other crates to be static.
-pub fn demote_foreign_traits(
+fn get_trait(fun: &Fun) -> Path {
+    fun.path.pop_segment()
+}
+
+fn demote_one_expr(
+    traits: &HashSet<Path>,
+    internal_traits: &HashSet<Path>,
+    funs: &HashSet<Fun>,
+    expr: &Expr,
+) -> Result<Expr, VirErr> {
+    match &expr.x {
+        ExprX::Call(
+            CallTarget::Fun(
+                CallTargetKind::DynamicResolved {
+                    resolved: resolved_fun,
+                    typs: resolved_typs,
+                    impl_paths,
+                    is_trait_default: _,
+                },
+                fun,
+                _typs,
+                _impl_paths,
+                autospec_usage,
+            ),
+            args,
+        ) if !traits.contains(&get_trait(fun)) || !funs.contains(fun) => {
+            let ct = CallTarget::Fun(
+                CallTargetKind::Static,
+                resolved_fun.clone(),
+                resolved_typs.clone(),
+                impl_paths.clone(),
+                *autospec_usage,
+            );
+            Ok(expr.new_x(ExprX::Call(ct, args.clone())))
+        }
+        ExprX::Call(
+            CallTarget::Fun(
+                CallTargetKind::DynamicResolved {
+                    resolved: resolved_fun,
+                    typs: _,
+                    impl_paths: _,
+                    is_trait_default: true,
+                },
+                fun,
+                typs,
+                impl_paths,
+                autospec_usage,
+            ),
+            args,
+        ) if traits.contains(&get_trait(fun))
+            && !internal_traits.contains(&get_trait(fun))
+            && funs.contains(fun)
+            && !funs.contains(resolved_fun) =>
+        {
+            // Calls to external trait default functions are considered to be calls
+            // to the trait declaration (since we have a spec for the declaration)
+            let ct = CallTarget::Fun(
+                CallTargetKind::Dynamic,
+                fun.clone(),
+                typs.clone(),
+                impl_paths.clone(),
+                *autospec_usage,
+            );
+            Ok(expr.new_x(ExprX::Call(ct, args.clone())))
+        }
+        _ => Ok(expr.clone()),
+    }
+}
+
+// We consider methods for external traits to be static.
+pub fn demote_external_traits(
+    diagnostics: &impl air::messages::Diagnostics,
     path_to_well_known_item: &HashMap<Path, WellKnownItem>,
     krate: &Krate,
 ) -> Result<Krate, VirErr> {
     check_no_dupe_impls(krate)?;
 
     let traits: HashSet<Path> = krate.traits.iter().map(|t| t.x.name.clone()).collect();
+    let internal_traits: HashSet<Path> =
+        krate.traits.iter().filter(|t| t.x.proxy.is_none()).map(|t| t.x.name.clone()).collect();
+    let funs: HashSet<Fun> = krate.functions.iter().map(|f| f.x.name.clone()).collect();
 
     let mut kratex = (**krate).clone();
     for function in &mut kratex.functions {
-        /* TODO: this check was broken in earlier versions of this code, and fixing would break
-         * some std_specs declarations (for bounds X: Allocator and X: Debug).
-         * In the long run, we should probably reenable this check
-         * and allow users to declare external traits in order to satisfy this check.
-         * In the meantime, omitting this check doesn't cause any soundness issues.
-        for bounds in function.x.typ_bounds.iter() {
-            let GenericBoundX::Trait(trait_path, _) = &**bounds;
+        for bound in function.x.typ_bounds.iter() {
+            let trait_path = match &**bound {
+                GenericBoundX::Trait(path, _) => path,
+                GenericBoundX::TypEquality(path, _, _, _) => path,
+                GenericBoundX::ConstTyp(..) => continue,
+            };
             let our_trait = traits.contains(trait_path);
-           if !our_trait {
-                return error(
-                    &function.span,
-                    format!(
-                        "cannot use trait {} from another crate as a bound",
-                        crate::ast_util::path_as_friendly_rust_name(trait_path)
-                    ),
+            if !our_trait {
+                diagnostics.report(
+                    &warning(
+                        &function.span,
+                        format!(
+                            "cannot use external trait {} as a bound without declaring the trait \
+                            (use #[verifier::external_trait_specification] to declare the trait); \
+                            this is a warning for now but will eventually be an error",
+                            crate::ast_util::path_as_friendly_rust_name(trait_path)
+                        ),
+                    )
+                    .to_any(),
                 );
             }
         }
-        */
 
-        if let FunctionKind::TraitMethodImpl { trait_path, .. } = &function.x.kind {
-            let our_trait = traits.contains(trait_path);
+        if let FunctionKind::TraitMethodImpl { method, trait_path, .. } = &function.x.kind {
+            let our_trait_method = traits.contains(trait_path) && funs.contains(method);
             let mut functionx = function.x.clone();
-            if !our_trait {
+            if !our_trait_method {
                 if path_to_well_known_item.get(trait_path) == Some(&WellKnownItem::DropTrait) {
                     if !function.x.require.is_empty() {
                         return Err(error(
@@ -63,6 +138,12 @@ pub fn demote_foreign_traits(
                         return Err(error(
                             &function.span,
                             "the implementation for Drop must be marked opens_invariants none",
+                        ));
+                    }
+                    if !matches!(&function.x.unwind_spec, Some(crate::ast::UnwindSpec::NoUnwind)) {
+                        return Err(error(
+                            &function.span,
+                            "the implementation for Drop must be marked no_unwind",
                         ));
                     }
                 }
@@ -79,9 +160,9 @@ pub fn demote_foreign_traits(
             trait_typ_args,
         } = &function.x.kind
         {
-            let our_trait = traits.contains(trait_path);
+            let our_trait_method = traits.contains(trait_path) && funs.contains(method);
             let mut functionx = function.x.clone();
-            if our_trait {
+            if our_trait_method {
                 functionx.kind = FunctionKind::TraitMethodImpl {
                     method: method.clone(),
                     impl_path: impl_path.clone(),
@@ -101,13 +182,72 @@ pub fn demote_foreign_traits(
             &function,
             &mut map,
             &mut (),
-            &|_state, _, expr| demote_one_expr(&traits, expr),
+            &|_state, _, expr| demote_one_expr(&traits, &internal_traits, &funs, expr),
             &|_state, _, stmt| Ok(vec![stmt.clone()]),
             &|_state, typ| Ok(typ.clone()),
         )?;
     }
 
     Ok(Arc::new(kratex))
+}
+
+pub fn rewrite_one_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> Typ {
+    match &**typ {
+        TypX::Projection { trait_typ_args, trait_path, name } if trait_path == from_path => {
+            Arc::new(TypX::Projection {
+                trait_typ_args: trait_typ_args.clone(),
+                trait_path: to_path.clone(),
+                name: name.clone(),
+            })
+        }
+        _ => typ.clone(),
+    }
+}
+
+pub fn rewrite_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> Typ {
+    let ft = |t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
+    crate::ast_visitor::map_typ_visitor(typ, &ft).expect("rewrite_external_typ")
+}
+
+pub fn rewrite_external_bounds(
+    from_path: &Path,
+    to_path: &Path,
+    bounds: &GenericBounds,
+) -> GenericBounds {
+    let mut bs: Vec<GenericBound> = Vec::new();
+    for bound in bounds.iter() {
+        let b = match &**bound {
+            GenericBoundX::Trait(path, ts) if path == from_path => {
+                Arc::new(GenericBoundX::Trait(to_path.clone(), ts.clone()))
+            }
+            GenericBoundX::TypEquality(path, ts, x, t) if path == from_path => Arc::new(
+                GenericBoundX::TypEquality(to_path.clone(), ts.clone(), x.clone(), t.clone()),
+            ),
+            _ => bound.clone(),
+        };
+        bs.push(b);
+    }
+    let ft = |_: &mut (), t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
+    crate::ast_visitor::map_generic_bounds_visitor(&Arc::new(bs), &mut (), &ft)
+        .expect("rewrite_external_bounds")
+}
+
+pub fn rewrite_external_function(
+    from_path: &Path,
+    to_path: &Path,
+    function: &Function,
+) -> Function {
+    let ft = |_: &mut (), t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
+    let mut map: VisitorScopeMap = ScopeMap::new();
+    crate::ast_visitor::map_function_visitor_env(
+        function,
+        &mut map,
+        &mut (),
+        &|_state, _, expr| Ok(expr.clone()),
+        &|_state, _, stmt| Ok(vec![stmt.clone()]),
+        &ft,
+    )
+    .expect("rewrite_external_typ")
 }
 
 /*
@@ -168,7 +308,7 @@ copy by fn_call_to_vir in the rust_verify crate.  For example:
     f = vir::def::trait_inherit_default_name(&f, &impl_path)
   }
 */
-pub fn inherit_default_bodies(krate: &Krate) -> Krate {
+pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
     let mut kratex = (**krate).clone();
 
     let mut trait_map: HashMap<Path, &Trait> = HashMap::new();
@@ -177,16 +317,20 @@ pub fn inherit_default_bodies(krate: &Krate) -> Krate {
     // set of all impl methods (&impl_path, &trait_method_name)
     let mut method_impls: HashSet<(&Path, &Fun)> = HashSet::new();
     for tr in &krate.traits {
-        assert!(!trait_map.contains_key(&tr.x.name));
+        if trait_map.contains_key(&tr.x.name) {
+            return Err(crate::well_formed::trait_conflict_error(
+                &trait_map[&tr.x.name],
+                tr,
+                "duplicate specification for",
+            ));
+        }
         trait_map.insert(tr.x.name.clone(), tr);
         assert!(!default_methods.contains_key(&tr.x.name));
         default_methods.insert(tr.x.name.clone(), Vec::new());
     }
     for f in &krate.functions {
-        if let FunctionKind::TraitMethodDecl { trait_path } = &f.x.kind {
-            if f.x.body.is_some() {
-                default_methods.get_mut(trait_path).expect("trait_path").push(f);
-            }
+        if let FunctionKind::TraitMethodDecl { trait_path, has_default: true } = &f.x.kind {
+            default_methods.get_mut(trait_path).expect("trait_path").push(f);
         }
         if let FunctionKind::TraitMethodImpl { impl_path, method, .. } = &f.x.kind {
             let p = (impl_path, method);
@@ -206,7 +350,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Krate {
             if !method_impls.contains(&(impl_path, method)) {
                 // Create a shell Function for trait_impl, with these purposes:
                 // - used as a recursion::Node::Fun in the call graph
-                // - for spec functions, used by func_to_air to create a definition axiom
+                // - for spec functions, used by sst_to_air_func to create a definition axiom
                 let inherit_kind = FunctionKind::TraitMethodImpl {
                     method: default_function.x.name.clone(),
                     impl_path: impl_path.clone(),
@@ -264,14 +408,16 @@ pub fn inherit_default_bodies(krate: &Krate) -> Krate {
                     typ_bounds: trait_impl.x.typ_bounds.clone(),
                     params,
                     ret,
+                    ens_has_return: default_function.x.ens_has_return,
                     require: Arc::new(vec![]),
                     ensure: Arc::new(vec![]),
+                    returns: None,
                     decrease: Arc::new(vec![]),
                     decrease_when: None,
                     decrease_by: None,
-                    broadcast_forall: None,
                     fndef_axioms: None,
                     mask_spec: None,
+                    unwind_spec: None,
                     item_kind: default_function.x.item_kind,
                     publish: default_function.x.publish,
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
@@ -283,7 +429,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Krate {
         }
     }
 
-    Arc::new(kratex)
+    Ok(Arc::new(kratex))
 }
 
 pub(crate) fn redirect_calls_in_default_methods(
@@ -388,48 +534,18 @@ fn check_modes(function: &Function, span: &Span) -> Result<(), VirErr> {
     Ok(())
 }
 
-fn get_trait(fun: &Fun) -> Path {
-    fun.path.pop_segment()
-}
-
-fn demote_one_expr(traits: &HashSet<Path>, expr: &Expr) -> Result<Expr, VirErr> {
-    match &expr.x {
-        ExprX::Call(
-            CallTarget::Fun(
-                CallTargetKind::Method(Some((resolved_fun, resolved_typs, impl_paths))),
-                fun,
-                _typs,
-                _impl_paths,
-                autospec_usage,
-            ),
-            args,
-        ) if !traits.contains(&get_trait(fun)) => {
-            let kind = CallTargetKind::Static;
-            let ct = CallTarget::Fun(
-                kind,
-                resolved_fun.clone(),
-                resolved_typs.clone(),
-                impl_paths.clone(),
-                *autospec_usage,
-            );
-            Ok(expr.new_x(ExprX::Call(ct, args.clone())))
-        }
-        _ => Ok(expr.clone()),
-    }
-}
-
 pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBounds) -> Vec<Expr> {
     let mut bound_exprs: Vec<Expr> = Vec::new();
     for bound in typ_bounds.iter() {
         let exprx = match &**bound {
-            crate::ast::GenericBoundX::Trait(path, typ_args) => {
-                if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
+            GenericBoundX::Trait(path, typ_args) => {
+                if !ctx.trait_map.contains_key(path) {
                     continue;
                 }
                 let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
                 ExprX::NullaryOpr(op)
             }
-            crate::ast::GenericBoundX::TypEquality(path, typ_args, name, typ) => {
+            GenericBoundX::TypEquality(path, typ_args, name, typ) => {
                 let op = crate::ast::NullaryOpr::TypEqualityBound(
                     path.clone(),
                     typ_args.clone(),
@@ -438,7 +554,7 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
                 );
                 ExprX::NullaryOpr(op)
             }
-            crate::ast::GenericBoundX::ConstTyp(t1, t2) => {
+            GenericBoundX::ConstTyp(t1, t2) => {
                 let op = crate::ast::NullaryOpr::ConstTypBound(t1.clone(), t2.clone());
                 ExprX::NullaryOpr(op)
             }
@@ -456,14 +572,14 @@ pub(crate) fn trait_bounds_to_sst(
     let mut bound_exps: Vec<crate::sst::Exp> = Vec::new();
     for bound in typ_bounds.iter() {
         let expx = match &**bound {
-            crate::ast::GenericBoundX::Trait(path, typ_args) => {
-                if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
+            GenericBoundX::Trait(path, typ_args) => {
+                if !ctx.trait_map.contains_key(path) {
                     continue;
                 }
                 let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
                 crate::sst::ExpX::NullaryOpr(op)
             }
-            crate::ast::GenericBoundX::TypEquality(path, typ_args, name, typ) => {
+            GenericBoundX::TypEquality(path, typ_args, name, typ) => {
                 let op = crate::ast::NullaryOpr::TypEqualityBound(
                     path.clone(),
                     typ_args.clone(),
@@ -472,7 +588,7 @@ pub(crate) fn trait_bounds_to_sst(
                 );
                 crate::sst::ExpX::NullaryOpr(op)
             }
-            crate::ast::GenericBoundX::ConstTyp(t1, t2) => {
+            GenericBoundX::ConstTyp(t1, t2) => {
                 let op = crate::ast::NullaryOpr::ConstTypBound(t1.clone(), t2.clone());
                 crate::sst::ExpX::NullaryOpr(op)
             }
@@ -487,7 +603,7 @@ pub(crate) fn trait_bound_to_air(
     path: &Path,
     typ_args: &Typs,
 ) -> Option<air::ast::Expr> {
-    if !ctx.trait_map.contains_key(path) || !ctx.bound_traits.contains(path) {
+    if !ctx.trait_map.contains_key(path) {
         return None;
     }
     let mut typ_exprs: Vec<air::ast::Expr> = Vec::new();
@@ -533,15 +649,15 @@ pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<
     let mut bound_exprs: Vec<air::ast::Expr> = Vec::new();
     for bound in typ_bounds.iter() {
         match &**bound {
-            crate::ast::GenericBoundX::Trait(path, typ_args) => {
+            GenericBoundX::Trait(path, typ_args) => {
                 if let Some(bound) = trait_bound_to_air(ctx, path, typ_args) {
                     bound_exprs.push(bound);
                 }
             }
-            crate::ast::GenericBoundX::TypEquality(path, typ_args, name, typ) => {
+            GenericBoundX::TypEquality(path, typ_args, name, typ) => {
                 bound_exprs.push(typ_equality_bound_to_air(ctx, path, typ_args, name, typ));
             }
-            crate::ast::GenericBoundX::ConstTyp(c, t) => {
+            GenericBoundX::ConstTyp(c, t) => {
                 bound_exprs.push(const_typ_bound_to_air(ctx, c, t));
             }
         }
@@ -549,7 +665,7 @@ pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<
     bound_exprs
 }
 
-pub fn traits_to_air(ctx: &Ctx, krate: &Krate) -> Commands {
+pub fn traits_to_air(_ctx: &Ctx, krate: &crate::sst::KrateSst) -> Commands {
     // Axioms about broadcast_forall and spec functions need justification
     // for any trait bounds.
     let mut commands: Vec<Command> = Vec::new();
@@ -557,26 +673,96 @@ pub fn traits_to_air(ctx: &Ctx, krate: &Krate) -> Commands {
     // Declare predicates for bounds
     //   (declare-fun tr_bound%T (... Dcr Type ...) Bool)
     for tr in krate.traits.iter() {
-        if ctx.bound_traits.contains(&tr.x.name) {
-            let mut tparams: Vec<air::ast::Typ> = Vec::new();
-            tparams.extend(crate::def::types().iter().map(|s| str_typ(s))); // Self
-            for _ in tr.x.typ_params.iter() {
-                tparams.extend(crate::def::types().iter().map(|s| str_typ(s)));
-            }
-            let decl_trait_bound = Arc::new(DeclX::Fun(
-                crate::def::trait_bound(&tr.x.name),
-                Arc::new(tparams),
-                air::ast_util::bool_typ(),
-            ));
-            commands.push(Arc::new(CommandX::Global(decl_trait_bound)));
+        let mut tparams: Vec<air::ast::Typ> = Vec::new();
+        tparams.extend(crate::def::types().iter().map(|s| str_typ(s))); // Self
+        for _ in tr.x.typ_params.iter() {
+            tparams.extend(crate::def::types().iter().map(|s| str_typ(s)));
+        }
+        let decl_trait_bound = Arc::new(DeclX::Fun(
+            crate::def::trait_bound(&tr.x.name),
+            Arc::new(tparams),
+            air::ast_util::bool_typ(),
+        ));
+        commands.push(Arc::new(CommandX::Global(decl_trait_bound)));
+    }
+    Arc::new(commands)
+}
+
+pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
+    // forall typ_params. #[trigger] tr_bound%T(typ_params) ==> typ_bounds
+    // Example:
+    //   trait T<A: U> where Self: Q<A> {}
+    // -->
+    //   forall Self, A. tr_bound%T(Self, A) ==> tr_bound%U(A) && tr_bound%Q(Self, A)
+    let mut commands: Vec<Command> = Vec::new();
+    for tr in traits {
+        let mut typ_params: Vec<crate::ast::Ident> =
+            (*tr.x.typ_params).iter().map(|(x, _)| x.clone()).collect();
+        typ_params.insert(0, crate::def::trait_self_type_param());
+        let typ_args: Vec<Typ> =
+            typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
+        if let Some(tr_bound) = trait_bound_to_air(ctx, &tr.x.name, &Arc::new(typ_args)) {
+            let all_bounds =
+                tr.x.typ_bounds.iter().chain(tr.x.assoc_typs_bounds.iter()).cloned().collect();
+            let typ_bounds = trait_bounds_to_air(ctx, &Arc::new(all_bounds));
+            let qname = format!(
+                "{}_{}",
+                crate::ast_util::path_as_friendly_rust_name(&tr.x.name),
+                crate::def::QID_TRAIT_TYPE_BOUNDS
+            );
+            let trigs = vec![tr_bound.clone()];
+            let bind = crate::sst_to_air_func::func_bind_trig(
+                ctx,
+                qname,
+                &Arc::new(typ_params),
+                &Arc::new(vec![]),
+                &trigs,
+                false,
+            );
+            let imply = air::ast_util::mk_implies(&tr_bound, &air::ast_util::mk_and(&typ_bounds));
+            let forall = mk_bind_expr(&bind, &imply);
+            let axiom = Arc::new(DeclX::Axiom(air::ast::Axiom { named: None, expr: forall }));
+            commands.push(Arc::new(CommandX::Global(axiom)));
         }
     }
     Arc::new(commands)
 }
 
+// Consider a trait impl like:
+//   impl<A, B: T> U<A, B, B::X> for S { ... }
+// This is an impl for U<S, A, B, B::X>.
+// Naively, we might generate axioms triggered on U<S, A, B, B::X>.
+// However, such a trigger could fail to match U<t0, t1, t2, t3>
+// if t3 didn't have exactly the form B::X.
+// So it's better to use a trigger that hides the B::X behind a fresh "hole" type parameter H0:
+//   U<S, A, B, H0>
+// with a restriction inside the axiom that H0 = B::X.
+// This function returns a new type with projections replace by holes,
+// along with a vector of H = typ equations.
+pub(crate) fn hide_projections(typs: &Typs) -> (Typs, Vec<(Ident, Typ)>) {
+    use crate::ast_visitor::{Rewrite, TypVisitor};
+    struct ProjVisitor {
+        holes: Vec<(Ident, Typ)>,
+    }
+    impl TypVisitor<Rewrite, ()> for ProjVisitor {
+        fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, ()> {
+            match &**typ {
+                TypX::Projection { .. } => {
+                    let x = crate::def::proj_param(self.holes.len());
+                    self.holes.push((x.clone(), typ.clone()));
+                    Ok(Arc::new(TypX::TypParam(x)))
+                }
+                _ => self.visit_typ_rec(typ),
+            }
+        }
+    }
+    let mut visitor = ProjVisitor { holes: Vec::new() };
+    let typs = visitor.visit_typs(typs).expect("hide_projections");
+    (Arc::new(typs), visitor.holes)
+}
+
 pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     // Axiom for bounds predicates (based on trait impls)
-    assert!(ctx.bound_traits.contains(&imp.x.trait_path));
     // forall typ_params. typ_bounds ==> tr_bound%T(...typ_args...)
     // Example:
     //   trait T1 {}
@@ -584,8 +770,10 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     //   impl<A: T1> T2<Set<A>> for S<Seq<A>>
     // -->
     //   forall A. tr_bound%T1(A) ==> tr_bound%T2(S<Seq<A>>, Set<A>)
+    let (trait_typ_args, holes) = crate::traits::hide_projections(&imp.x.trait_typ_args);
+    let (typ_params, eqs) = crate::sst_to_air_func::hide_projections_air(&imp.x.typ_params, holes);
     let tr_bound =
-        if let Some(tr_bound) = trait_bound_to_air(ctx, &imp.x.trait_path, &imp.x.trait_typ_args) {
+        if let Some(tr_bound) = trait_bound_to_air(ctx, &imp.x.trait_path, &trait_typ_args) {
             tr_bound
         } else {
             return Arc::new(vec![]);
@@ -593,18 +781,19 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     let name =
         format!("{}_{}", path_as_friendly_rust_name(&imp.x.impl_path), crate::def::QID_TRAIT_IMPL);
     let trigs = vec![tr_bound.clone()];
-    let bind = crate::func_to_air::func_bind_trig(
+    let bind = crate::sst_to_air_func::func_bind_trig(
         ctx,
         name,
-        &imp.x.typ_params,
+        &typ_params,
         &Arc::new(vec![]),
         &trigs,
         false,
     );
-    let req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
+    let mut req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
+    req_bounds.extend(eqs);
     let imply = mk_implies(&air::ast_util::mk_and(&req_bounds), &tr_bound);
     let forall = mk_bind_expr(&bind, &imply);
-    let axiom = Arc::new(DeclX::Axiom(forall));
+    let axiom = mk_unnamed_axiom(forall);
     Arc::new(vec![Arc::new(CommandX::Global(axiom))])
 }
 
@@ -626,4 +815,145 @@ pub fn check_no_dupe_impls(krate: &Krate) -> Result<(), VirErr> {
         }
     }
     Ok(())
+}
+
+// Allow multiple external_trait_specification to specify different members of the same trait,
+// so that we don't have to specify all of the default members of a trait at once (e.g. Iterator).
+// We merge partial specifications together here.
+pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
+    use crate::ast_util::generic_bounds_equal;
+    use crate::well_formed::trait_conflict_error;
+    let mut kratex = (*krate).clone();
+    let mut traits: Vec<Trait> = Vec::new();
+    let mut prev_trait_index: HashMap<Path, usize> = HashMap::new();
+    for t in &kratex.traits {
+        if t.x.proxy.is_some() {
+            if let Some(index) = prev_trait_index.get(&t.x.name) {
+                let prev = &traits[*index];
+                // merge t into prev
+                let TraitX {
+                    name,
+                    proxy,
+                    visibility,
+                    typ_params,
+                    typ_bounds,
+                    assoc_typs,
+                    assoc_typs_bounds,
+                    mut methods,
+                } = prev.x.clone();
+                assert!(name == t.x.name);
+                if visibility != t.x.visibility {
+                    return Err(trait_conflict_error(prev, t, "mismatched visibilities"));
+                }
+                if typ_params != t.x.typ_params {
+                    return Err(trait_conflict_error(prev, t, "mismatched type parameters"));
+                }
+                let mut assoc_typs = (*assoc_typs).clone();
+                for assoc_typ in t.x.assoc_typs.iter() {
+                    if !assoc_typs.contains(assoc_typ) {
+                        assoc_typs.push(assoc_typ.clone());
+                    }
+                }
+                let assoc_typs = Arc::new(assoc_typs);
+                let mut typ_bounds = (*typ_bounds).clone();
+                for b in t.x.typ_bounds.iter() {
+                    if !typ_bounds.iter().any(|b2| generic_bounds_equal(b, b2)) {
+                        typ_bounds.push(b.clone());
+                    }
+                }
+                let typ_bounds = Arc::new(typ_bounds);
+                let mut assoc_typs_bounds = (*assoc_typs_bounds).clone();
+                for b in t.x.assoc_typs_bounds.iter() {
+                    if !assoc_typs_bounds.iter().any(|b2| generic_bounds_equal(b, b2)) {
+                        assoc_typs_bounds.push(b.clone());
+                    }
+                }
+                let assoc_typs_bounds = Arc::new(assoc_typs_bounds);
+                for m in t.x.methods.iter() {
+                    if methods.iter().any(|m2| m == m2) {
+                        return Err(trait_conflict_error(
+                            prev,
+                            t,
+                            &format!(
+                                "duplicate method {}",
+                                crate::ast_util::fun_as_friendly_rust_name(m)
+                            ),
+                        ));
+                    }
+                }
+                methods = Arc::new(methods.iter().chain(t.x.methods.iter()).cloned().collect());
+                let prevx = TraitX {
+                    name,
+                    proxy,
+                    visibility,
+                    typ_params,
+                    typ_bounds,
+                    assoc_typs,
+                    assoc_typs_bounds,
+                    methods,
+                };
+                traits[*index] = prev.new_x(prevx);
+            } else {
+                prev_trait_index.insert(t.x.name.clone(), traits.len());
+                traits.push(t.clone());
+            }
+        } else {
+            traits.push(t.clone());
+        }
+    }
+
+    // Also remove any duplicate auto-imported trait impls:
+    let mut trait_impls: Vec<TraitImpl> = Vec::new();
+    let mut trait_impl_set: HashSet<Path> = HashSet::new();
+    for ti in &kratex.trait_impls {
+        if ti.x.auto_imported && trait_impl_set.contains(&ti.x.impl_path) {
+            continue;
+        }
+        trait_impls.push(ti.clone());
+        trait_impl_set.insert(ti.x.impl_path.clone());
+    }
+
+    kratex.traits = traits;
+    kratex.trait_impls = trait_impls;
+    Ok(Arc::new(kratex))
+}
+
+/// For trait method impls, the 'ens_has_return' should be inherited from the method decl
+pub fn fixup_ens_has_return_for_trait_method_impls(krate: Krate) -> Result<Krate, VirErr> {
+    let mut krate = krate;
+    let kratex = &mut Arc::make_mut(&mut krate);
+    let mut fun_map = HashMap::<Fun, Function>::new();
+    for function in kratex.functions.iter() {
+        if matches!(function.x.kind, FunctionKind::TraitMethodDecl { .. }) {
+            fun_map.insert(function.x.name.clone(), function.clone());
+        }
+    }
+    for function in kratex.functions.iter_mut() {
+        if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
+            let method = method.clone();
+            if !function.x.ens_has_return {
+                match fun_map.get(&method) {
+                    None => {}
+                    Some(f) if f.x.ens_has_return => {
+                        let functionx = &mut Arc::make_mut(&mut *function).x;
+                        functionx.ens_has_return = true;
+                    }
+                    Some(_) => {}
+                }
+            }
+            if function.x.returns.is_some() {
+                match fun_map.get(&method) {
+                    None => {}
+                    Some(f) if f.x.returns.is_some() => {
+                        return Err(error(
+                            &function.span,
+                            "a `returns` clause cannot be declared on both a trait method impl and its declaration",
+                        ).secondary_span(&f.span));
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
+    }
+    Ok(krate)
 }

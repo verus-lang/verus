@@ -1052,7 +1052,7 @@ test_verify_one_file! {
                 _ => { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X` which is ignored")
 }
 
 test_verify_one_file! {
@@ -1202,4 +1202,19 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot read const with mode spec")
+}
+
+test_verify_one_file! {
+    #[test] pattern_has_both_or_pat_and_if_guard_issue1208 verus_code! {
+        fn stuff() {
+            let m = match (true, false) {
+                (true, a) | (a, false) if a => {
+                    // Rust enters this block
+                    assert(false); // FAILS
+                }
+                _ => { }
+            };
+        }
+    //} => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and an if-guard")
 }

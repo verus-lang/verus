@@ -64,9 +64,20 @@ pub(crate) fn stm_assign(
             }
             stm.clone()
         }
+        StmX::AssertQuery { mode, typ_inv_exps, typ_inv_vars, body } => {
+            assert!(typ_inv_vars.len() == 0);
+            let vars = crate::sst_util::free_vars_exps(typ_inv_exps);
+            let mode = *mode;
+            let typ_inv_exps = Arc::new(vec![]);
+            let typ_inv_vars = Arc::new(
+                declared.clone().into_iter().filter(|(x, _)| vars.contains_key(x)).collect(),
+            );
+            let body = body.clone();
+            stm.new_x(StmX::AssertQuery { mode, typ_inv_exps, typ_inv_vars, body })
+        }
         StmX::Assert(..)
         | StmX::AssertBitVector { .. }
-        | StmX::AssertQuery { .. }
+        | StmX::AssertCompute(..)
         | StmX::Assume(_)
         | StmX::Fuel(..)
         | StmX::RevealString(_)
@@ -171,14 +182,9 @@ pub(crate) fn stm_assign(
             };
             Spanned::new(stm.span.clone(), loop_x)
         }
-        StmX::OpenInvariant(inv, ident, ty, body_stm, atomicity) => {
-            assigned.insert(ident.clone());
-            modified.insert(ident.clone());
+        StmX::OpenInvariant(ns_exp, body_stm) => {
             let body_stm = stm_assign(assign_map, declared, assigned, modified, body_stm);
-            Spanned::new(
-                stm.span.clone(),
-                StmX::OpenInvariant(inv.clone(), ident.clone(), ty.clone(), body_stm, *atomicity),
-            )
+            Spanned::new(stm.span.clone(), StmX::OpenInvariant(ns_exp.clone(), body_stm))
         }
         StmX::Block(stms) => {
             let mut pre_assigned = assigned.clone();
@@ -197,7 +203,7 @@ pub(crate) fn stm_assign(
     result
 }
 
-pub(crate) fn stms_assign(
+fn stms_assign(
     assign_map: &mut AssignMap,
     declared: &IndexMap<UniqueIdent, Typ>,
     assigned: &mut IndexSet<UniqueIdent>,

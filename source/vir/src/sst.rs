@@ -7,8 +7,8 @@
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
 use crate::ast::{
-    AssertQueryMode, BinaryOp, Constant, Fun, InvAtomicity, Mode, NullaryOpr, Path, Quant,
-    SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt, VarBinders, VarIdent,
+    AssertQueryMode, BinaryOp, Constant, Dt, Fun, Mode, NullaryOpr, Path, Quant, SpannedTyped, Typ,
+    Typs, UnaryOp, UnaryOpr, VarAt, VarBinders, VarIdent,
 };
 use crate::def::Spanned;
 use crate::interpreter::InterpExp;
@@ -29,11 +29,15 @@ pub struct BndInfo {
     pub user: Option<BndInfoUser>,
 }
 
+// For AssertBy, this records the LocalDecl vars that correspond to the VarBinders
+// (used by sst_elaborate.rs and poly.rs)
+pub type AssertByLocals = Option<Arc<Vec<VarIdent>>>;
+
 pub type Bnd = Arc<Spanned<BndX>>;
 #[derive(Clone, Debug)]
 pub enum BndX {
     Let(VarBinders<Exp>),
-    Quant(Quant, VarBinders<Typ>, Trigs),
+    Quant(Quant, VarBinders<Typ>, Trigs, AssertByLocals),
     Lambda(VarBinders<Typ>, Trigs),
     Choose(VarBinders<Typ>, Trigs, Exp),
 }
@@ -47,7 +51,6 @@ pub enum InternalFun {
     ClosureEns,
     CheckDecreaseInt,
     CheckDecreaseHeight,
-    HasType,
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -72,8 +75,8 @@ pub enum ExpX {
     Old(Ident, UniqueIdent),
     // call to spec function
     Call(CallFun, Typs, Exps),
-    CallLambda(Typ, Exp, Exps),
-    Ctor(Path, Ident, Binders<Exp>),
+    CallLambda(Exp, Exps),
+    Ctor(Dt, Ident, Binders<Exp>),
     NullaryOpr(NullaryOpr),
     Unary(UnaryOp, Exp),
     UnaryOpr(UnaryOpr, Exp),
@@ -83,6 +86,7 @@ pub enum ExpX {
     WithTriggers(Trigs, Exp),
     Bind(Bnd, Exp),
     ExecFnByName(Fun),
+    ArrayLiteral(Exps),
     // only used internally by the interpreter; should never be seen outside it
     Interp(InterpExp),
     FuelConst(usize),
@@ -103,6 +107,7 @@ pub struct ParX {
     pub name: VarIdent,
     pub typ: Typ,
     pub mode: Mode,
+    pub is_mut: bool,
     pub purpose: ParPurpose,
 }
 
@@ -147,6 +152,13 @@ pub enum StmX {
         requires: Exps,
         ensures: Exps,
     },
+    AssertQuery {
+        mode: AssertQueryMode,
+        typ_inv_exps: Exps,
+        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
+        body: Stm,
+    },
+    AssertCompute(Option<AssertId>, Exp, crate::ast::ComputeMode),
     Assume(Exp),
     Assign {
         lhs: Dest,
@@ -184,66 +196,150 @@ pub enum StmX {
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         modified_vars: Arc<Vec<UniqueIdent>>,
     },
-    OpenInvariant(Exp, UniqueIdent, Typ, Stm, InvAtomicity),
-    Block(Stms),
+    OpenInvariant(Exp, Stm),
     ClosureInner {
         body: Stm,
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
     },
-    AssertQuery {
-        mode: AssertQueryMode,
-        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
-        body: Stm,
-    },
     Air(Arc<String>),
+    Block(Stms),
+}
+
+// poly.rs uses the specific kind of each local to decide on a poly/native type for the local
+#[derive(Debug, Clone, Copy)]
+pub enum LocalDeclKind {
+    Param { mutable: bool },
+    Return,
+    StmtLet { mutable: bool },
+    // temp var inherits kind of the initializer used to assign to it:
+    TempViaAssign,
+    Decreases,
+    StmCallArg { native: bool },
+    Assert,
+    AssertByVar { native: bool },
+    LetBinder,
+    QuantBinder,
+    ChooseBinder,
+    ClosureBinder,
+    OpenInvariantBinder,
+    ExecClosureId,
+    ExecClosureParam,
+    ExecClosureRet,
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct LocalDeclX {
     pub ident: UniqueIdent,
     pub typ: Typ,
-    pub mutable: bool,
+    pub kind: LocalDeclKind,
 }
 
-#[derive(Clone)]
-pub struct FunctionSst {
-    pub reqs: Exps,
-    pub post_condition: PostConditionSst,
-    pub mask_set: crate::inv_masks::MaskSet, // Actually AIR
-    pub body: Stm,
-    pub local_decls: Vec<LocalDecl>,
-    pub statics: Vec<Fun>,
+#[derive(Debug, Clone)]
+pub enum UnwindSst {
+    MayUnwind,
+    NoUnwind,
+    NoUnwindWhen(Exp),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum PostConditionKind {
     Ensures,
     DecreasesImplicitLemma,
     DecreasesBy,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct PostConditionSst {
     /// Identifier that holds the return value.
     /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
     pub dest: Option<VarIdent>,
     /// Post-conditions (only used in non-recommends-checking mode)
-    pub ens_exps: Vec<Exp>,
+    pub ens_exps: Exps,
     /// Recommends checks (only used in recommends-checking mode)
-    pub ens_spec_precondition_stms: Vec<Stm>,
+    pub ens_spec_precondition_stms: Stms,
     /// Extra info about PostCondition for error reporting
     pub kind: PostConditionKind,
 }
 
-pub struct PostConditionInfo {
-    /// Identifier that holds the return value.
-    /// May be referenced by `ens_exprs` or `ens_spec_precondition_stms`.
-    pub dest: Option<VarIdent>,
-    /// Post-conditions (only used in non-recommends-checking mode)
-    pub ens_exprs: Vec<(Span, air::ast::Expr)>,
-    /// Recommends checks (only used in recommends-checking mode)
-    pub ens_spec_precondition_stms: Vec<Stm>,
-    /// Extra info about PostCondition for error reporting
-    pub kind: PostConditionKind,
+#[derive(Debug)]
+pub struct FuncDeclSst {
+    pub req_inv_pars: Pars,
+    pub ens_pars: Pars,
+    pub post_pars: Pars,
+    pub reqs: Exps,
+    pub enss: Exps,
+    pub inv_masks: Arc<Vec<Exps>>,
+    pub unwind_condition: Option<Exp>,
+    pub fndef_axioms: Exps,
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncCheckSst {
+    pub reqs: Exps,
+    pub post_condition: Arc<PostConditionSst>,
+    pub mask_set: Arc<crate::inv_masks::MaskSetE<Exp>>,
+    pub unwind: UnwindSst,
+    pub body: Stm,
+    pub local_decls: Arc<Vec<LocalDecl>>,
+    pub statics: Arc<Vec<Fun>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncSpecBodySst {
+    pub decrease_when: Option<Exp>,
+    pub termination_check: Option<FuncCheckSst>,
+    pub body_exp: Exp,
+}
+
+#[derive(Debug, Clone)]
+pub struct FuncAxiomsSst {
+    pub spec_axioms: Option<FuncSpecBodySst>,
+    pub proof_exec_axioms: Option<(Pars, Exp, Trigs)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionSstHas {
+    pub has_body: bool,
+    pub has_requires: bool,
+    pub has_ensures: bool,
+    pub has_decrease: bool,
+    pub has_mask_spec: bool,
+    pub has_return_name: bool,
+    pub is_recursive: bool,
+}
+
+pub type FunctionSst = Arc<Spanned<FunctionSstX>>;
+#[derive(Debug, Clone)]
+pub struct FunctionSstX {
+    pub name: Fun,
+    pub kind: crate::ast::FunctionKind,
+    pub vis_abs: crate::ast::Visibility,
+    pub owning_module: Option<Path>,
+    pub mode: crate::ast::Mode,
+    pub fuel: u32,
+    pub typ_params: crate::ast::Idents,
+    pub typ_bounds: crate::ast::GenericBounds,
+    pub pars: Pars,
+    pub ret: Par,
+    pub ens_has_return: bool,
+    pub item_kind: crate::ast::ItemKind,
+    pub publish: Option<bool>,
+    pub attrs: crate::ast::FunctionAttrs,
+    pub has: FunctionSstHas,
+    pub decl: Arc<FuncDeclSst>,
+    pub axioms: Arc<FuncAxiomsSst>,
+    pub exec_proof_check: Option<Arc<FuncCheckSst>>,
+    pub recommends_check: Option<Arc<FuncCheckSst>>,
+}
+
+pub type KrateSst = Arc<KrateSstX>;
+#[derive(Debug)]
+pub struct KrateSstX {
+    pub functions: Vec<FunctionSst>,
+    pub datatypes: Vec<crate::ast::Datatype>,
+    pub traits: Vec<crate::ast::Trait>,
+    pub trait_impls: Vec<crate::ast::TraitImpl>,
+    pub assoc_type_impls: Vec<crate::ast::AssocTypeImpl>,
+    pub reveal_groups: Vec<crate::ast::RevealGroup>,
 }

@@ -278,7 +278,7 @@ test_verify_one_file! {
             let lock = opt_lock.get_SomeX_0();   // This line triggers panic
             true
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::OptionX::get_SomeX_0` with mode spec")
 }
 
 test_verify_one_file! {
@@ -884,6 +884,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] use_import_is_not_supported_in_traits_or_impls verus_code! {
         use state_machines_macros::state_machine;
+        use vstd::*;
 
         state_machine!{ MachineWithProof {
         fields {
@@ -1261,4 +1262,69 @@ test_verify_one_file! {
         fn rawr() {
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] arithmetic_trigger_choose_issue923 verus_code! {
+        proof fn foo(a: nat, b: nat) {
+            let i = choose|i: nat| a == #[trigger] (b * i);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] slice_of_tuple_issue1259 verus_code! {
+        use vstd::*;
+        pub fn run(val: &[(u32, u32)]) -> u64
+            requires
+                val.len() > 0,
+        {
+            val[0].0 as u64 + val[0].1 as u64
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] external_body_trait_item_issue1134 verus_code! {
+        trait Serializable : Sized {
+            fn serialized_len() -> (out: u64);
+
+            #[verifier::external_body]
+            fn as_bytes(&self)
+            {
+                let ptr = self as *const Self as *const u8;
+                let slice = unsafe {
+                    std::slice::from_raw_parts(ptr, Self::serialized_len() as usize)
+                };
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] hide_not_at_start_of_body_issue1365 verus_code! {
+        spec fn foo() -> bool { true }
+
+        proof fn bar() {
+            assume(true);
+            hide(foo);
+        }
+    } => Err(e) => assert_vir_error_msg(e, "This kind of statement should go at the beginning of the function body")
+}
+
+test_verify_one_file! {
+    #[test] reveal_trait_method_of_prim_ty verus_code! {
+        trait Foo {
+            spec fn do_something() -> nat;
+        }
+
+        impl Foo for u64 {
+            #[verifier::opaque]
+            spec fn do_something() -> nat { 0 }
+        }
+
+        fn test() {
+            reveal(u64::do_something);
+        }
+    } => Err(e) => assert_vir_error_msg(e, "use the universal function call syntax to disambiguate")
 }
