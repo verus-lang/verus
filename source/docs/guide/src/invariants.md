@@ -35,7 +35,7 @@ error: possible arithmetic underflow/overflow
    |                       ^^^^^^^^^^
 ```
 
-Let's start by addressing the first failure.  It shouldn't be suprising that Verus
+Let's start by addressing the first failure.  It shouldn't be surprising that Verus
 can't tell that we satisfy the postcondition, since our while loop doesn't have any
 invariants.  This means that after the while loop terminates, Verus doesn't know
 anything about what happened inside the loop, except that the loop's conditional (`i < n`)
@@ -55,17 +55,18 @@ need to use `i <= n`, since in the last iteration of the loop, we will start
 with `i == n - 1` and then increment `i`, and an invariant must always be
 true after the loop body executes.
 
-With this new invariant, Verus no longer reports an error about the postcondition,
-so we've made progress!  To be explicit, after the loop terminates, Verus now
-knows (thanks to our new invariant) that `i <= n`, and from the fact that the loop
-terminates, it also knows that `i >= n`, so it can conclude that `i == n`, and hence
-from the invariant that `cur == fib(i as nat)`, it now knows that `cur == fib(n as nat)`.
+With this new invariant, Verus no longer reports an error about the
+postcondition, so we've made progress!  To be explicit about the progress we've
+made, after the loop terminates, Verus now knows (thanks to our new invariant)
+that `i <= n`, and from the fact that the loop terminates, it also knows that
+`i >= n`, so it can conclude that `i == n`, and hence from the invariant that
+`cur == fib(i as nat)`, it now knows that `cur == fib(n as nat)`.
 
 Unfortunately, Verus is still concerned about arithmetic underflow/overflow,
 and it also reports a new error, saying that our new invariant about `cur`
-doesn't hold.  Let's tackle the underflow/overflow issue first.  First, We can
-deduce that the problem is a potential overflow (since we're adding two
-non-negative numbers).  Second, We know from our precondition, that `fib(n as
+doesn't hold.  Let's tackle the underflow/overflow issue first.  Note that we can
+deduce that the problem is a potential overflow, since we're adding two
+non-negative numbers.  We also know from our precondition that `fib(n as
 nat)` will fit into a `u64`, but to use this information inside the while loop,
 we need to add it as an invariant too.  See the earlier [discussion of loops
 and invariants](while.md) for why this is the case.  This still isn't enough,
@@ -81,7 +82,7 @@ mean that `fib(i as nat)` won't overflow.  As humans, we know this is true, beca
 Proving this property, however, requires an [inductive proof](induction.md). Before writing
 the proof itself, let's just state the property we want as a lemma and see if
 it suffices to make our proof go through.  Here's the Verus version of the
-informal propery we want.  We write it as a `proof` mode function, since its
+informal property we want.  We write it as a `proof` mode function, since its
 only purpose is to establish this property.
 ```rust
 {{#include ../../../rust_verify/example/guide/invariants.rs:fib_mono_no_proof}}
@@ -89,7 +90,7 @@ only purpose is to establish this property.
 Verus can't yet prove this, but let's try invoking it in our while loop.
 To call this lemma in our `exec` implementation, we employ
 a `proof {}` block and pass in the relevant arguments.  At the call site, Verus checks
-that the preconditions for `lemma_fib_is_monotonic` hold and then assumes that the postdconditions hold.
+that the preconditions for `lemma_fib_is_monotonic` hold and then assumes that the postconditions hold.
 ```rust
 {{#include ../../../rust_verify/example/guide/invariants.rs:fib_final}}
 ```
@@ -107,7 +108,7 @@ Notice that we've added `assume(false)` to the two trickier cases (following the
 of [using assert and assume](assert_assume.md) to build our proof).  When we run
 Verus, it succeeds, indicating that Verus doesn't need any help with our base cases.
 However, if we remove the first `assume(false)`, Verus reports that the postcondition
-is not satisfied, confirming that it needs help here.  We can help Verus by (essentially)
+is not satisfied, confirming that Verus needs help here.  We can help Verus by (essentially)
 telling it to unfold the definition of `fib(j)` one level, i.e., by writing:
 ```rust
 assert(fib(j) == fib((j - 2) as nat) + fib((j - 1) as nat));
@@ -133,21 +134,21 @@ With these additions, the proof succeeds, meaning that our entire program now ve
 In this example, we're given a slice of `i64` values that represent a series of deposits and 
 withdrawals from a bank account.  The goal is to determine whether the account's balance ever
 drops below 0. We formalize this requirement with the spec function `always_non_negative`,
-which is itself defined in terms of computing a sum of a sequence of `i64` values.
+which is itself defined in terms of computing a sum of the first `i` elements in a sequence of `i64` values.
 ```rust
 {{#include ../../../rust_verify/example/guide/invariants.rs:bank_spec}}
 ```
 
-In our implementation, as usual, we tie the concerete result `r` to our spec
+In our implementation, as usual, we tie the concrete result `r` to our spec
 in the ensures clause.
 ```rust
 {{#include ../../../rust_verify/example/guide/invariants.rs:bank_no_proof}}
 ```
-Note that we use `i128` to compute the account's running 
+Note that we use an `i128` to compute the account's running 
 sum since it allows us to have sufficiently large numbers without overflowing.
 As an exercise, you can try modifying the implementation to use an `i64` for
 the sum instead, adding any additional invariants and proofs you need.
-Here we use a for loop instead of a while loop, which means that we get a free
+Here we use a `for` loop instead of a `while` loop, which means that we get a free
 invariant that `0 <= i <= operations.len()`.  As before, however, that's not
 enough to prove our postcondition or even to rule out overflow; Verus reports:
 ```rust
@@ -175,7 +176,7 @@ Let's address the possible underflow/overflow first.  Why don't we expect this t
 Well, we don't expect underflow because we start with `s = 0`, and if at any point `s` goes
 below 0, we immediately return.  How far can `s` go below 0? At worst, we might subtract `i64::MIN`
 from 0, so we can argue that `i64::MIN <= s` is an invariant.  To rule out overflow, we need
-to consider how large can `s` can grow.  A simple bound is to say that if we add `i` `i64` values
+to consider how large `s` can grow.  A simple bound is to say that if we add `i` `i64` values
 together, the sum must be bounded by `i64::MAX * i`.  Putting this together, we can add a loop
 invariant that says `i64::MIN <= s <= i64::MAX * i`.  With this invariant in place, Verus no
 longer complains about possible arithmetic underflow/overflow.
@@ -215,15 +216,15 @@ if s < 0 {
 It turns out this assumption eliminates both errors, so we really only need to convince Verus that
 we've correctly computed the sum of the first `i+1` operations.  If we let `ops_i_plus_1` be `operations@.take((i + 1) as int)` and unfold the definition of `sum`,
 we can see that `sum(ops_i_plus_1) == sum(ops_i_plus_1.drop_last()) + ops_i_plus_1.last()`.
-This means Verus is having trouble determining that the righthand side matches the value we computed
+This means Verus is having trouble determining that the right-hand side matches the value we computed
 (namely `s + operations[i]`).  Lets check that the second term in the two sums match, namely:
 ```rust
 assert(operations[i as int] == ops_i_plus_1.last());
 ```
 That succeeds, so the problem must be showing that `s` 
 (which we know from our invariant is `sum(operations@.take(i as int))`) is equal to `sum(ops_i_plus_1.drop_last())`.
-Clearly, these two values would be equal if the arguments to sum were equal, so let's see if Verus can prove that
-by writing:
+Clearly, these two values would be equal if the arguments to sum were equal, so let's see if Verus can prove that,
+which we can check by writing:
 ```rust
 assert(operations@.take(i as int) == ops_i_plus_1.drop_last());
 ```
