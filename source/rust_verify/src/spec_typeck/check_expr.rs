@@ -648,7 +648,17 @@ impl<'a, 'tcx> State<'a, 'tcx> {
                     _ => { }
                 }
 
-                todo!();
+                let vir_expr = self.check_expr(inner)?;
+                self.expect_integer(&vir_expr.typ)?;
+
+                let zero_const = vir::ast_util::const_int_from_u128(0);
+                let zero = bctx.spanned_typed_new(expr.span,
+                    &int_typ(), ExprX::Const(zero_const));
+                mk_expr(&int_typ(), ExprX::Binary(
+                    BinaryOp::Arith(ArithOp::Sub, Mode::Spec),
+                    zero,
+                    vir_expr,
+                ))
             }
 
             ExprKind::Cast(expr, ty) => {

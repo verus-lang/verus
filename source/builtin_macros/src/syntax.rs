@@ -1810,7 +1810,7 @@ impl Visitor {
             unreachable!();
         };
 
-        if self.use_spec_traits && self.inside_ghost > 0 {
+        if self.use_spec_traits && self.inside_ghost > 0 && !(new_ghost_code() && self.inside_new_ghost > 0) {
             let span = unary.span();
             let attrs = &unary.attrs;
             match &unary.op {
@@ -3817,6 +3817,7 @@ pub(crate) fn sig_specs_attr(
         inside_arith: InsideArith::None,
         assign_to: false,
         rustdoc: env_rustdoc(),
+        inside_new_ghost: 0,
     };
     let sig_span = sig.span().clone();
     visitor.take_sig_specs(&mut spec, ret_pat, sig.constness.is_some(), sig_span)
