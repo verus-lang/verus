@@ -1,8 +1,7 @@
-# Devising Invariants for Loops and Recursion
+# Devising Loop Invariants
 
 Below, we develop several examples that show how to work through
-the process of devising invariants for loops
-and for recursive functions.
+the process of devising invariants for loops.
 
 ## Example 1: Fibonacci
 

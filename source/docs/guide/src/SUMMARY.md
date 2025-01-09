@@ -38,7 +38,7 @@
 
 - [Developing proofs](develop_proofs.md)
     - [Using assert and assume](assert_assume.md)
-    - [Devising invariants for loops and recursion](invariants.md)
+    - [Devising loop invariants](invariants.md)
 - [Quantifiers](quants.md)
     - [forall and triggers](forall.md)
     - [Multiple variables, multiple triggers, matching loops](multitriggers.md)
