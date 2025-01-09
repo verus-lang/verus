@@ -72,6 +72,24 @@ symbolically.  For example, given variables `a, b, c, d`, the following succeeds
 {{#include ../../../rust_verify/example/guide/assert_by_compute.rs:seq_example}}
 ```
 
+Many proofs by computation take place over a concrete range of integers.  To reduce
+the boilerplate needed for such proofs, you can use
+[`all_spec`](https://verus-lang.github.io/verus/verusdoc/vstd/compute/trait.RangeAll.html#tymethod.all_spec).
+In the example below,
+```rust
+{{#include ../../../rust_verify/example/guide/assert_by_compute.rs:all_spec}}
+```
+we use `all_spec` to prove that `p` holds for all values between 25 and 100,
+and hence it must hold for a generic value `u` that we know is in that range.
+Note that `all_spec` currently expects to operate over `int`s, so you may need
+add casts as appropriate.  Also, due to some techinical restrictions, at present,
+you can't pass a top-level function like `p` to `all_spec`. Instead, you need
+to wrap it in a closure, as seen in this example.  Finally, the lemmas in `vstd`
+will give you a quantified resulted about the outcome of `all_spec`, so you may
+need to add an additional assertion (in our example, `assert(prop(u))`) to trigger
+that quantifier.  This guide provides more detail on [quantifiers and
+triggers](forall.md) in another chapter.
+
 To prevent infinite interpretation loops (which can arise even when the code is
 proven to terminate, since the termination proof only applies to concrete
 inputs, whereas the interpreter may encounter symbolic values), Verus limits

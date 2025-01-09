@@ -776,3 +776,23 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 19)
 }
+
+test_verify_one_file! {
+    #[test] test_reveal_empty_string_issue1240 verus_code! {
+        use vstd::*;
+        use vstd::string::*;
+
+        pub fn test() {
+            proof { reveal_strlit(""); }
+            let mut res = String::from_str("");
+            assert(res@ =~= seq![]);
+        }
+
+        pub fn test2() {
+            proof { reveal_strlit(""); }
+            let mut res = String::from_str("");
+            assert(res@ =~= seq![]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

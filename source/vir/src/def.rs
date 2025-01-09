@@ -42,6 +42,7 @@ const SUFFIX_RUSTC_ID: &str = "~";
 const SUFFIX_DECORATE_TYPE_PARAM: &str = "&.";
 const SUFFIX_REC_PARAM: &str = "!$";
 const SUFFIX_PATH: &str = ".";
+const PREFIX_ESCAPE: &str = "$~";
 const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 const PREFIX_REQUIRES: &str = "req%";
@@ -49,7 +50,7 @@ const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_OPEN_INV: &str = "openinv%";
 const PREFIX_NO_UNWIND_WHEN: &str = "no_unwind_when%";
 const PREFIX_RECURSIVE: &str = "rec%";
-const SIMPLIFY_TEMP_VAR: &str = "tmp%%";
+const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
 pub const PREFIX_EXPAND_ERRORS_TEMP_VAR: &str = "expand%";
 const PREFIX_PRE_VAR: &str = "pre%";
@@ -237,9 +238,23 @@ pub const SPLIT_POST_FAILURE: &str = "split postcondition failure";
 
 pub const PERVASIVE_ASSERT: &[&str] = &["pervasive", "assert"];
 
+pub fn krate_to_string(krate: &Ident) -> String {
+    // rustc allows crate names to begin with digits and to contain unicode
+    // TODO: Rust identifiers can in general contain unicode; we should handle this in general
+    let krate = krate.escape_default().to_string();
+    let krate = krate.replace('\\', PREFIX_ESCAPE);
+    let krate = krate.replace('{', PREFIX_ESCAPE);
+    let krate = krate.replace('}', PREFIX_ESCAPE);
+    if krate.len() > 0 && krate.bytes().next().unwrap().is_ascii_digit() {
+        PREFIX_ESCAPE.to_string() + &krate
+    } else {
+        krate
+    }
+}
+
 pub fn path_to_string(path: &Path) -> String {
     let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;
-    if let Some(krate) = &path.krate { krate.to_string() + KRATE_SEPARATOR + &s } else { s }
+    if let Some(krate) = &path.krate { krate_to_string(krate) + KRATE_SEPARATOR + &s } else { s }
 }
 
 pub fn fun_to_string(fun: &Fun) -> String {
@@ -505,7 +520,10 @@ pub fn new_temp_var(n: u64) -> VarIdent {
 
 // ast_simplify introduces its own temporary variables; we don't want these to conflict with prefix_temp_var
 pub fn simplify_temp_var(n: u64) -> VarIdent {
-    crate::ast_util::str_unique_var(SIMPLIFY_TEMP_VAR, crate::ast::VarIdentDisambiguate::VirTemp(n))
+    crate::ast_util::str_unique_var(
+        PREFIX_SIMPLIFY_TEMP_VAR,
+        crate::ast::VarIdentDisambiguate::VirTemp(n),
+    )
 }
 
 pub fn prefix_pre_var(name: &Ident) -> Ident {

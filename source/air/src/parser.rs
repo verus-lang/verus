@@ -66,6 +66,15 @@ fn relation_binary_op(n1: &Node, n2: &Node) -> Option<BinaryOp> {
     }
 }
 
+fn field_update_binary_op(n1: &Node, n2: &Node) -> Option<BinaryOp> {
+    match (n1, n2) {
+        (Node::Atom(s1), Node::Atom(s2)) if s1.as_str() == "update-field" => {
+            Some(BinaryOp::FieldUpdate(Arc::new(s2.clone())))
+        }
+        _ => None,
+    }
+}
+
 fn map_nodes_to_vec<A, F>(nodes: &[Node], f: &F) -> Result<Arc<Vec<A>>, String>
 where
     F: Fn(&Node) -> Result<A, String>,
@@ -300,6 +309,13 @@ impl Parser {
                             && relation_binary_op(&nodes[1], &nodes[2]).is_some() =>
                     {
                         relation_binary_op(&nodes[1], &nodes[2])
+                    }
+                    Node::List(nodes)
+                        if nodes.len() == 3
+                            && nodes[0] == Node::Atom("_".to_string())
+                            && field_update_binary_op(&nodes[1], &nodes[2]).is_some() =>
+                    {
+                        field_update_binary_op(&nodes[1], &nodes[2])
                     }
                     _ => None,
                 };

@@ -1,7 +1,8 @@
 # Attributes
 
+ - [`all_triggers`](#all_triggers)
  - [`atomic`](#verifieratomic)
- - `auto`
+ - [`auto`](#auto)
  - `accept_recursive_types`
  - [`external`](#verifierexternal)
  - `external_body`
@@ -15,10 +16,19 @@
  - `reject_recursive_types`
  - `reject_recursive_types_in_ground_variants`
  - [`rlimit`](#verifierrlimitn-and-verifierrlimitinfinity)
- - `trigger`
+ - [`trigger`](#trigger)
  - [`truncate`](#verifiertruncate)
  - [`type_invariant`](#verifiertype_invariant)
  - `when_used_as_spec`
+
+## `#![all_triggers]`
+
+Applied to a quantifier, and instructs Verus to aggressively select trigger groups for
+the quantifier.
+See [the trigger specification procedure](./trigger-annotations.md#selecting-trigger-groups)
+for more information.
+
+Unlike most Verus attributes, this does not require the `verifier::` prefix.
 
 ## `#[verifier::atomic]`
 
@@ -31,6 +41,16 @@ Verus checks that the body is indeed atomic, unless the function is also marked
 signature.
 
 This attribute is used by `vstd`'s [trusted atomic types](https://verus-lang.github.io/verus/verusdoc/vstd/atomic/index.html).
+
+## `#![auto]`
+
+Applied to a quantifier, and indicates intent for Verus to use heuristics to automatically 
+infer 
+Technically has no effect on verification, but may impact verbose trigger logging.
+See [the trigger specification procedure](./trigger-annotations.md#selecting-trigger-groups)
+for more information.
+
+Unlike most Verus attributes, this does not require the `verifier::` prefix.
 
 ## `#[verifier::external]`
 
@@ -83,6 +103,14 @@ by the solver before it gives up. The default, 10, is meant to be around 2 secon
 The rlmit may be set to `infinity` to remove the limit.
 
 The rlimit can also be configured with the `--rlimit` command line option.
+
+## `#[trigger]`
+
+Used to manually specify trigger groups for a quantifier.
+See [the trigger specification procedure](./trigger-annotations.md#selecting-trigger-groups)
+for more information.
+
+Unlike most Verus attributes, this does not require the `verifier::` prefix.
 
 ## `#[verifier::truncate]`
 

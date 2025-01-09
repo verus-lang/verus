@@ -9,12 +9,23 @@ fields {
 }
 ```
 
-This creates a token type, `State::field`, which a field `value: V`.
+**Tokens.**
+VerusSync creates a fresh token type, <code style="font-style: italic; color: #408040">tok</code>,
+named `State::field` where `State` is the name of the VerusSync system and `field` is the name of the field.
+
+The token type <code style="font-style: italic; color: #408040">tok</code> implements the
+[`UniqueValueToken<V>`](https://verus-lang.github.io/verus/verusdoc/vstd/tokens/trait.UniqueValueToken.html) trait.
+
+**Relationship between global field value and the token.**
 When `field` is `None`, this corresponds to no token existing, while
 when `field` is `Some(v)`, this corresponds to a token of value `v` existing.
 Having multiple such tokens at the same time is an impossible state.
 
+## Manipulation of the field
+
 ### Quick Reference
+
+In the following table, `v: V` and `v_opt: Option<V>`.
 
 <div class="table-wrapper" style="font-size: 13px"><table>
   <colgroup>
@@ -34,35 +45,35 @@ Having multiple such tokens at the same time is an impossible state.
     <tr>
       <td><code>init field = v_opt;</code></td>
       <td><code>init field = v_opt;</code></td>
-      <td>Output <code>Option&lt;State::field&gt;</code></td>
+      <td>Output <code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code></td>
     </tr> <tr>
       <td><code>remove field -= Some(v);</code></td>
-      <td><code>require field === Some(v);</code><br><code>update field = None;</code></td>
-      <td>Input <code>State::field</code></td>
+      <td><code>require field == Some(v);</code><br><code>update field = None;</code></td>
+      <td>Input <code><span style="font-style: italic; color: #408040">tok</span></code></td>
     </tr> <tr>
       <td><code>have field &gt;= Some(v);</code></td>
-      <td><code>require field === Some(v);</code></td>
-      <td>Input <code>&amp;State::field</code></td>
+      <td><code>require field == Some(v);</code></td>
+      <td>Input <code>&amp;<span style="font-style: italic; color: #408040">tok</span></code></td>
     </tr> <tr>
       <td><code>add field += Some(v);</code></td>
-      <td><code>assert field === None;</code><br><code>update field = Some(v);</code></td>
-      <td>Output <code>State::field</code></td>
+      <td><code>assert field == None;</code><br><code>update field = Some(v);</code></td>
+      <td>Output <code><span style="font-style: italic; color: #408040">tok</span></code></td>
     </tr> <tr>
       <td><code>remove field -= (v_opt);</code></td>
-      <td><code style="white-space: pre">require v_opt === None || field === v_opt;
-update field = if v_opt === None { field }
+      <td><code style="white-space: pre">require v_opt == None || field == v_opt;
+update field = if v_opt == None { field }
                else { None };</code></td>
-      <td>Input <code>Option&lt;State::field&gt;</code></td>
+      <td>Input <code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code></td>
     </tr> <tr>
       <td><code>have field &gt;= (v_opt);</code></td>
-      <td><code>require v_opt === None || field === v_opt;</code></td>
-      <td>Input <code>&amp;Option&lt;State::field&gt;</code></td>
+      <td><code>require v_opt == None || field == v_opt;</code></td>
+      <td>Input <code>&amp;Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code></td>
     </tr> <tr>
       <td><code>add field += (v_opt);</code></td>
-      <td><code style="white-space: pre">assert field === None || v_opt === None;
-update field = if v_opt === None { field }
+      <td><code style="white-space: pre">assert field == None || v_opt == None;
+update field = if v_opt == None { field }
                else { v_opt };</code></td>
-      <td>Output <code>Option&lt;State::field&gt;</code></td>
+      <td>Output <code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code></td>
     </tr>
   </tbody>
 </table></div>
@@ -75,13 +86,13 @@ Initializing the field is done with the usual `init` statement (as it for all st
 init field = opt_v;
 ```
 
-The instance-init function will return a token of type `Option<State::field>`,
+The instance-init function will return a token of type <code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code>,
 related as follows:
 
 <table>
   <tr>
-    <th>value of <code>opt_v: V</code></th>
-    <th>&nbsp;&nbsp;&nbsp;value of optional token <code>Option&lt;State::field></code></th>
+    <th>value of <code>opt_v: Option&lt;V&gt;</code></th>
+    <th>&nbsp;&nbsp;&nbsp;value of optional token <code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>></code></th>
   </tr>
   <tr>
     <td><code>None</code></td>
@@ -89,7 +100,7 @@ related as follows:
   </tr>
   <tr>
     <td><code>Some(v)</code></td>
-    <td><code>Some(tok)</code> where <code>tok@.value === v</code></td>
+    <td><code>Some(tok)</code> where <code>tok.value() == v</code></td>
   </tr>
 </table>
 
@@ -105,7 +116,7 @@ add field += Some(v);
 ```
 
 This operation has an inherent safety condition that the prior value of `field` is `None`.
-The resulting token exchange function will return a token of type `State::field`
+The resulting token exchange function will return a token of type <code><span style="font-style: italic; color: #408040">tok</span></code>
 and with value `v`.
 
 If you require manual proof to prove the inherent safety condition, you can add
@@ -129,7 +140,7 @@ operation:
 remove field -= Some(v);
 ```
 
-The resulting exchange function will consume a `State::field` token with value `v`
+The resulting exchange function will consume a <code><span style="font-style: italic; color: #408040">tok</span></code> token with value `v`
 as a parameter.
 
 Instead of specifying `v` as an exact expression, you can also pattern-match
@@ -152,7 +163,7 @@ have field >= Some(v);
 ```
 
 The resulting exchange function will accept an immutable reference
-`&State::field` (that is, it takes the token as input but does not consume it).
+<code>&amp;<span style="font-style: italic; color: #408040">tok</span></code> (that is, it takes the token as input but does not consume it).
 
 Instead of specifying `v` as an exact expression, you can also pattern-match
 by using the `let` keyword.
@@ -177,29 +188,30 @@ add field += Some(new_v);
 ### Operations that manipulate optional tokens
 
 You can also write versions of the above operations that operate on optional tokens.
-These operations are equivalent to above versions whenever `opt_v = Some(v)`,
-and they are all no-ops when `opt_v = None`.
+The operations below are equivalent to the above versions whenever `opt_v == Some(v)`,
+and they are all no-ops when `opt_v == None`.
 
-To create an `Option<State::field>`:
+To create an <code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code>:
 
 ```rust
 add field += (opt_v);
 ```
 
-To consume an `Option<State::field>`:
+To consume an <code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code>:
 
 ```rust
 remove field -= (opt_v);
 ```
 
-To check the value of an `Option<State::field>`:
+To check the value of an <code>&amp;Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code>:
 
 ```rust
 have field >= (opt_v);
 ```
 
 
-The value of `opt_v` is related to the value of `Option<State::field>`
+The value of `opt_v` is related to the value of
+<code>Option&lt;<span style="font-style: italic; color: #408040">tok</span>&gt;</code>
 as [they are for initialization](#initializing-the-field).
 
 ## Example

@@ -140,9 +140,9 @@ tracked struct GhostStuff<S> {
 impl<S> GhostStuff<S> {
     pub open spec fn wf(self, inst: RefCounter::Instance<MemPerms<S>>, cell: PCell<u64>) -> bool {
         &&& self.rc_perm@.pcell == cell.id()
-        &&& self.rc_token@.instance == inst
+        &&& self.rc_token.instance_id() == inst.id()
         &&& self.rc_perm@.value.is_Some()
-        &&& self.rc_perm@.value.get_Some_0() as nat == self.rc_token@.value
+        &&& self.rc_perm@.value.get_Some_0() as nat == self.rc_token.value()
     }
 }
 
@@ -165,12 +165,11 @@ struct_with_invariants!{
 
     spec fn wf(self) -> bool {
         predicate {
-            &&& self.reader@@.key.pptr() == self.ptr
+            &&& self.reader@.element().pptr() == self.ptr
 
-            &&& self.reader@@.instance == self.inst@
-            &&& self.reader@@.count == 1
-            &&& self.reader@@.key.is_init()
-            &&& self.reader@@.key.value().rc_cell == self.rc_cell
+            &&& self.reader@.instance_id() == self.inst@.id()
+            &&& self.reader@.element().is_init()
+            &&& self.reader@.element().value().rc_cell == self.rc_cell
         }
 
         invariant on inv with (inst, rc_cell)
@@ -184,7 +183,7 @@ struct_with_invariants!{
 
 impl<S> MyRc<S> {
     spec fn view(self) -> S {
-        self.reader@@.key.value().s
+        self.reader@.element().value().s
     }
 
     fn new(s: S) -> (rc: Self)
@@ -218,7 +217,7 @@ impl<S> MyRc<S> {
     {
         let tracked inst = self.inst.borrow();
         let tracked reader = self.reader.borrow();
-        let tracked perm = inst.reader_guard(reader@.key, &reader);
+        let tracked perm = inst.reader_guard(reader.element(), &reader);
         &self.ptr.borrow(Tracked(perm)).s
     }
 
@@ -230,7 +229,7 @@ impl<S> MyRc<S> {
     {
         let tracked inst = self.inst.borrow();
         let tracked reader = self.reader.borrow();
-        let tracked perm = inst.reader_guard(reader@.key, &reader);
+        let tracked perm = inst.reader_guard(reader.element(), &reader);
         let inner_rc_ref = self.ptr.borrow(Tracked(perm));
         let tracked new_reader;
         open_local_invariant!(self.inv.borrow().borrow() => g => {
@@ -245,7 +244,7 @@ impl<S> MyRc<S> {
 
             proof {
                 new_reader = self.inst.borrow().do_clone(
-                    reader@.key,
+                    reader.element(),
                     &mut rc_token,
                     &reader);
             }
@@ -272,7 +271,7 @@ impl<S> MyRc<S> {
             ptr,
             rc_cell: _,
         } = self;
-        let tracked perm = inst.reader_guard(reader@.key, &reader);
+        let tracked perm = inst.reader_guard(reader.element(), &reader);
         let inner_rc_ref = &ptr.borrow(Tracked(perm));
 
         let count;
@@ -288,13 +287,13 @@ impl<S> MyRc<S> {
 
                 proof {
                     inst.dec_basic(
-                        reader.view().key,
+                        reader.element(),
                         &mut rc_token,
                         reader);
                 }
             } else {
                 let tracked mut inner_rc_perm = inst.dec_to_zero(
-                    reader.view().key,
+                    reader.element(),
                     &mut rc_token,
                     reader);
 

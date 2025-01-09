@@ -398,7 +398,7 @@ pub(crate) fn expand_call_graph(
     let f_node = Node::Fun(function.x.name.clone());
 
     // Add T --> f if T declares method f
-    if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
+    if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
         // T --> f
         call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
     }
@@ -429,7 +429,7 @@ pub(crate) fn expand_call_graph(
 
     // Add f --> T for any function f with "where ...: T(...)"
     for bound in function.x.typ_bounds.iter() {
-        if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
+        if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
             if crate::recursive_types::suppress_bound_in_trait_decl(
                 &trait_path,
                 &function.x.typ_params,

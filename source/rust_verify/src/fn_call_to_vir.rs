@@ -11,7 +11,7 @@ use crate::rust_to_vir_expr::{
     check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array, extract_tuple,
     get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var, ExprModifier,
 };
-use crate::util::{err_span, unsupported_err_span, vec_map, vec_map_result, vir_err_span_str};
+use crate::util::{err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
     self, ArithItem, AssertItem, BinaryOpItem, BuiltinFunctionItem, ChainedItem, CompilableOprItem,
     DirectiveItem, EqualityItem, ExprItem, QuantItem, RustItem, SpecArithItem,
@@ -22,7 +22,7 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
-use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind};
+use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, InstanceDef, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -193,13 +193,15 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let target_kind = if tcx.trait_of_item(f).is_none() {
         vir::ast::CallTargetKind::Static
     } else {
-        let mut target_kind = vir::ast::CallTargetKind::Dynamic;
         let param_env = tcx.param_env(bctx.fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let inst = rustc_middle::ty::Instance::resolve(tcx, param_env, f, normalized_substs);
-        if let Ok(Some(inst)) = inst {
-            if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
-                let typs = mk_typ_args(bctx, &inst.args, did, expr.span)?;
+        let inst = Instance::resolve(tcx, param_env, f, normalized_substs);
+        let Ok(inst) = inst else {
+            return err_span(expr.span, "Verus internal error: Instance::resolve");
+        };
+        match inst {
+            Some(Instance { def: InstanceDef::Item(did), args }) => {
+                let typs = mk_typ_args(bctx, args, did, expr.span)?;
                 let mut f =
                     Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
                 record_name = f.clone();
@@ -214,7 +216,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                     is_trait_default = true;
                     remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
                 }
-                let impl_paths = get_impl_paths(bctx, did, &inst.args, remove_self_trait_bound);
+                let impl_paths = get_impl_paths(bctx, did, args, remove_self_trait_bound);
                 if tcx.trait_of_item(did).is_some() {
                     if let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
                     {
@@ -226,15 +228,21 @@ pub(crate) fn fn_call_to_vir<'tcx>(
                         );
                     }
                 }
-                target_kind = vir::ast::CallTargetKind::DynamicResolved {
+                vir::ast::CallTargetKind::DynamicResolved {
                     resolved: f,
                     typs,
                     impl_paths,
                     is_trait_default,
-                };
+                }
+            }
+            Some(inst) => {
+                unsupported_err!(expr.span, format!("instance {:?}", &inst.def));
+            }
+            None => {
+                // Method is generic
+                vir::ast::CallTargetKind::Dynamic
             }
         }
-        target_kind
     };
 
     record_call(bctx, expr, ResolvedCall::Call(record_name, autospec_usage));
@@ -1052,6 +1060,11 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &source_vir, expr_vattrs.truncate))
+                }
+                ((TypX::Bool, _), TypX::Int(_)) => {
+                    let zero = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(0)))?;
+                    let one = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(1)))?;
+                    mk_expr(ExprX::If(source_vir, one, Some(zero)))
                 }
                 ((_, true), TypX::Int(IntRange::Int)) => {
                     mk_expr(ExprX::Unary(UnaryOp::CastToInteger, source_vir))

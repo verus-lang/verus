@@ -32,6 +32,7 @@ fn main() {
     let mut verbose = false;
     let mut trace = false;
     let mut log_all = false;
+    let mut no_solver_version_check = false;
     for arg in args {
         if arg == "--release" {
             release = true;
@@ -47,6 +48,8 @@ fn main() {
             trace = true;
         } else if arg == "--log-all" {
             log_all = true;
+        } else if arg == "--no-solver-version-check" {
+            no_solver_version_check = true;
         } else {
             panic!("unexpected argument: {:}", arg)
         }
@@ -109,6 +112,10 @@ fn main() {
     }
     if log_all {
         child_args.push("--log-all".to_string());
+    }
+    if no_solver_version_check {
+        child_args.push("-V".to_string());
+        child_args.push("no-solver-version-check".to_string());
     }
     if release {
         child_args.push("-C".to_string());

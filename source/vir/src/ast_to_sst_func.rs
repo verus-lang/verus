@@ -31,6 +31,7 @@ pub trait FunctionCommon {
     fn vis_abs(&self) -> crate::ast::Visibility;
     fn owning_module(&self) -> &Option<Path>;
     fn mode(&self) -> crate::ast::Mode;
+    fn attrs(&self) -> &crate::ast::FunctionAttrs;
 }
 
 impl FunctionCommon for crate::ast::FunctionX {
@@ -57,6 +58,10 @@ impl FunctionCommon for crate::ast::FunctionX {
     fn mode(&self) -> crate::ast::Mode {
         self.mode
     }
+
+    fn attrs(&self) -> &crate::ast::FunctionAttrs {
+        &self.attrs
+    }
 }
 
 impl FunctionCommon for FunctionSstX {
@@ -75,6 +80,10 @@ impl FunctionCommon for FunctionSstX {
     fn mode(&self) -> crate::ast::Mode {
         self.mode
     }
+
+    fn attrs(&self) -> &crate::ast::FunctionAttrs {
+        &self.attrs
+    }
 }
 
 pub fn mk_fun_ctx_dec<F: FunctionCommon>(
@@ -89,6 +98,7 @@ pub fn mk_fun_ctx_dec<F: FunctionCommon>(
         checking_spec_decreases,
         module_for_chosen_triggers: f.x.owning_module().clone(),
         current_fun: f.x.name().clone(),
+        current_fun_attrs: f.x.attrs().clone(),
     })
 }
 
@@ -183,7 +193,7 @@ fn func_body_to_sst(
     check_state.declare_params(&pars);
     check_state.view_as_spec = true;
     check_state.check_spec_decreases = Some((function.x.name.clone(), scc_rep));
-    let check_body_stm = expr_to_one_stm_with_post(&ctx, &mut check_state, &body)?;
+    let check_body_stm = expr_to_one_stm_with_post(&ctx, &mut check_state, &body, &function.span)?;
     let check_body_stm = check_state.finalize_stm(ctx, &check_body_stm)?;
 
     let mut proof_body: Vec<Expr> = Vec::new();
@@ -625,6 +635,7 @@ pub fn func_def_to_sst(
                 let exp =
                     expr_to_exp_skip_checks(ctx, diagnostics, &ens_pars, &e_with_req_ens_params)?;
                 let exp = subst_exp(&trait_typ_substs, &HashMap::new(), &exp);
+                let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
                 enss.push(exp);
             }
         }
@@ -634,12 +645,14 @@ pub fn func_def_to_sst(
             ens_spec_precondition_stms.extend(check_pure_expr(ctx, &mut state, &e)?);
         } else {
             // skip checks because we call expr_to_pure_exp_check above
-            enss.push(expr_to_exp_skip_checks(ctx, diagnostics, &ens_pars, &e)?);
+            let exp = expr_to_exp_skip_checks(ctx, diagnostics, &ens_pars, &e)?;
+            let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
+            enss.push(exp);
         }
     }
 
     // AST --> SST
-    let mut stm = expr_to_one_stm_with_post(&ctx, &mut state, &body)?;
+    let mut stm = expr_to_one_stm_with_post(&ctx, &mut state, &body, &function.span)?;
     if ctx.checking_spec_preconditions() && trait_typ_substs.len() == 0 {
         if let Some(fun) = &function.x.decrease_by {
             let decrease_by_fun = &ctx.func_map[fun];

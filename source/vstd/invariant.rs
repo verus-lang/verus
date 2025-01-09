@@ -509,9 +509,9 @@ pub use open_atomic_invariant_internal;
 /// ```
 /// error: possible invariant collision
 ///   |
-///   |   open_atomic_invariant!(&inv => id1 => {
+///   |   open_local_invariant!(&inv => id1 => {
 ///   |                           ^ this invariant
-///   |       open_atomic_invariant!(&inv => id2 => {
+///   |       open_local_invariant!(&inv => id2 => {
 ///   |                               ^ might be the same as this invariant
 ///   ...
 ///   |       }

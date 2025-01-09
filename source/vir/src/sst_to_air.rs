@@ -15,9 +15,9 @@ use crate::def::{
     path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when,
     prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
     snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
-    unique_local, variant_field_ident, variant_ident, CommandsWithContext, CommandsWithContextX,
-    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
-    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_ASSIGN,
+    unique_local, variant_field_ident, variant_field_ident_internal, variant_ident,
+    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
+    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
     SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
     STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
     SUFFIX_SNAP_WHILE_END, U_HI,
@@ -25,7 +25,7 @@ use crate::def::{
 use crate::inv_masks::{MaskSet, MaskSingleton};
 use crate::messages::{error, error_with_label, Span};
 use crate::mono;
-use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
+use crate::poly::{typ_as_mono, typ_is_poly, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
     UnwindSst,
@@ -843,6 +843,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
             }
             let typ = match &*exp.typ {
+                TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
                 TypX::Decorate(_dec, _, t) => match &**t {
                     TypX::Boxed(t) => match &**t {
                         TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
@@ -1394,7 +1395,20 @@ struct LocFieldInfo<A> {
     a: A,
 }
 
-fn loc_to_field_path(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldOpr>>) {
+fn var_locs_to_bare_vars(arg: &Exp) -> Exp {
+    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
+        ExpX::VarLoc(x) => SpannedTyped::new(&e.span, &e.typ, ExpX::Var(x.clone())),
+        _ => e.clone(),
+    })
+}
+
+struct FieldUpdateDatum {
+    opr: FieldOpr,
+    field_typ: Typ,
+    base_exp: Exp,
+}
+
+fn loc_to_field_update_data(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldUpdateDatum>>) {
     let mut e: &Exp = loc;
     let mut fields = Vec::new();
     loop {
@@ -1408,8 +1422,12 @@ fn loc_to_field_path(loc: &Exp) -> (UniqueIdent, LocFieldInfo<Vec<FieldOpr>>) {
                     LocFieldInfo { base_typ: e.typ.clone(), base_span: e.span.clone(), a: fields },
                 );
             }
-            ExpX::UnaryOpr(UnaryOpr::Field(field), ee) => {
-                fields.push(field.clone());
+            ExpX::UnaryOpr(UnaryOpr::Field(opr), ee) => {
+                fields.push(FieldUpdateDatum {
+                    opr: opr.clone(),
+                    field_typ: e.typ.clone(),
+                    base_exp: var_locs_to_bare_vars(ee),
+                });
                 e = ee;
             }
             _ => panic!("loc unexpected {:?}", e),
@@ -1426,15 +1444,9 @@ fn snapshotted_var_locs(arg: &Exp, snapshot_name: &str) -> Exp {
     })
 }
 
-fn snapshotted_vars(arg: &Exp, snapshot_name: &str) -> Exp {
-    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
-        ExpX::Var(x) => {
-            SpannedTyped::new(&e.span, &e.typ, ExpX::Old(snapshot_ident(snapshot_name), x.clone()))
-        }
-        _ => e.clone(),
-    })
-}
-
+// REVIEW this function will likely no longer be necessary once we handle mutable references
+// using prophecy variables (it is currently used on function call when one of the arguments
+// is a mutable reference to a path)
 fn assume_other_fields_unchanged(
     ctx: &Ctx,
     snapshot_name: &str,
@@ -1683,12 +1695,12 @@ fn stm_to_stmts(
                 if param.x.is_mut {
                     call_snapshot = true;
                     let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
-                        loc_to_field_path(arg);
+                        loc_to_field_update_data(arg);
                     mutated_fields
                         .entry(base_var)
                         .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
                         .a
-                        .push(fields);
+                        .push(fields.iter().map(|o| o.opr.clone()).collect());
                     let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?);
@@ -1841,16 +1853,21 @@ fn stm_to_stmts(
                         // to the 'ensures' clause that fails.
                         let error = match state.post_condition_info.kind {
                             PostConditionKind::Ensures => base_error
-                                .secondary_label(&span, crate::def::THIS_POST_FAILED.to_string()),
-                            PostConditionKind::DecreasesImplicitLemma => base_error.clone(),
+                                .primary_label(&span, crate::def::THIS_POST_FAILED.to_string()),
+                            PostConditionKind::DecreasesImplicitLemma => {
+                                base_error.ensure_primary_label()
+                            }
                             PostConditionKind::DecreasesBy => {
-                                let mut e = (**base_error).clone();
-                                e.note = "unable to show termination via `decreases_by` lemma"
-                                    .to_string();
-                                e.secondary_label(
-                                    &span,
-                                    "need to show decreases conditions for this body",
-                                )
+                                let mut e = (**base_error).ensure_primary_label();
+                                {
+                                    let e = Arc::make_mut(&mut e);
+                                    e.note = "unable to show termination via `decreases_by` lemma"
+                                        .to_string();
+                                    e.secondary_label(
+                                        &span,
+                                        "need to show decreases conditions for this body",
+                                    )
+                                }
                             }
                         };
 
@@ -1955,44 +1972,42 @@ fn stm_to_stmts(
         }
         StmX::Assign { lhs: Dest { dest, is_init: false }, rhs } => {
             let mut stmts: Vec<Stmt> = Vec::new();
-            if let Some(x) = loc_is_var(dest) {
-                let name = suffix_local_unique_id(x);
-                stmts.push(Arc::new(StmtX::Assign(name, exp_to_expr(ctx, rhs, expr_ctxt)?)));
-                if ctx.debug {
-                    // Add a snapshot after we modify the destination
-                    let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
-                    let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
-                    stmts.push(snapshot);
-                    // Update the snap_map so that it reflects the state _after_ the
-                    // statement takes effect.
-                    state.map_span(&stm, SpanKind::Full);
-                }
-            } else {
-                let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
-                    loc_to_field_path(dest);
-                stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_ASSIGN))));
-                stmts.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&base_var))));
-                let snapshotted_rhs = snapshotted_vars(rhs, SNAPSHOT_ASSIGN);
-                let eqx = ExpX::Binary(BinaryOp::Eq(Mode::Spec), dest.clone(), snapshotted_rhs);
-                let eq = SpannedTyped::new(&stm.span, &Arc::new(TypX::Bool), eqx);
-                stmts.extend(stm_to_stmts(
-                    ctx,
-                    state,
-                    &Spanned::new(stm.span.clone(), StmX::Assume(eq)),
-                    spec_map,
-                )?);
-                stmts.extend(assume_other_fields_unchanged(
-                    ctx,
-                    SNAPSHOT_ASSIGN,
-                    &stm.span,
-                    &base_var,
-                    &LocFieldInfo { base_typ, base_span, a: vec![fields] },
-                    expr_ctxt,
-                )?);
-                if ctx.debug {
-                    unimplemented!("complex assignments are unsupported in debugger mode");
-                }
+            if ctx.debug {
+                unimplemented!("assignments are unsupported in debugger mode");
             }
+
+            let dest = dest;
+            let mut value = exp_to_expr(ctx, &rhs, expr_ctxt)?;
+            let mut value_typ = rhs.typ.clone();
+
+            let (base_var, LocFieldInfo { base_typ, base_span: _, a: fields }) =
+                loc_to_field_update_data(&dest);
+
+            for FieldUpdateDatum { opr, field_typ, base_exp } in fields.iter().rev() {
+                let acc = variant_field_ident_internal(
+                    &encode_dt_as_path(&opr.datatype),
+                    &opr.variant,
+                    &opr.field,
+                    true,
+                );
+                let bop = air::ast::BinaryOp::FieldUpdate(acc);
+                // TODO(andrea) move this to poly.rs once we have general support for mutable references
+                if typ_is_poly(ctx, field_typ) && !typ_is_poly(ctx, &value_typ) {
+                    value = try_box(ctx, value, &value_typ).expect("box field update");
+                }
+                let base_expr = exp_to_expr(ctx, &base_exp, expr_ctxt)?;
+                value = Arc::new(ExprX::Binary(bop, base_expr, value));
+                value_typ = base_exp.typ.clone();
+            }
+
+            // TODO(andrea) move this to poly.rs once we have general support for mutable references
+            if typ_is_poly(ctx, &base_typ) && !typ_is_poly(ctx, &value_typ) {
+                value = try_box(ctx, value, &value_typ).expect("box field update");
+            }
+
+            let a = Arc::new(StmtX::Assign(suffix_local_unique_id(&base_var), value));
+            stmts.push(a);
+
             stmts
         }
         StmX::DeadEnd(s) => {
@@ -2011,7 +2026,7 @@ fn stm_to_stmts(
             let is_air_break = *is_break && !loop_info.loop_isolation;
             let mut stmts: Vec<Stmt> = Vec::new();
             if !ctx.checking_spec_preconditions() && !is_air_break {
-                assert!(!loop_info.some_cond); // AST-to-SST conversion must eliminate the cond
+                assert!(!is_break || !loop_info.some_cond); // AST-to-SST conversion must eliminate the cond
                 if loop_info.is_for_loop && !*is_break {
                     // At the very least, the syntax macro will need to advance the ghost iterator
                     // at each continue.
@@ -2546,6 +2561,9 @@ fn string_index_to_air(cnst: &Expr, index: usize, value: char) -> Expr {
 }
 
 fn string_indices_to_air(ctx: &Ctx, lit: Arc<String>) -> Expr {
+    if lit.len() == 0 {
+        return Arc::new(ExprX::Const(Constant::Bool(true)));
+    }
     let cnst = str_to_const_str(ctx, lit.clone());
     let mut exprs = Vec::new();
     for (i, c) in lit.chars().enumerate() {

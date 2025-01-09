@@ -134,7 +134,7 @@ tokenized_state_machine!(RefCounter<S> {
 
     #[invariant]
     pub fn reader_agrees_storage(&self) -> bool {
-        forall |t: Perm<S>| self.reader.count(t) > 0 ==>
+        forall |t: Perm<S>| #[trigger] self.reader.count(t) > 0 ==>
             self.storage == Option::Some(t)
     }
 
@@ -251,9 +251,9 @@ pub tracked struct GhostStuff<S> {
 impl<S> GhostStuff<S> {
     pub closed spec fn wf(self, inst: RefCounter::Instance<S>, rc_cell: PCell<isize>) -> bool {
         &&& self.rc_perm@.pcell == rc_cell.id()
-        &&& self.flag_token@.instance == inst
+        &&& self.flag_token.instance_id() == inst.id()
         &&& self.rc_perm@.value.is_Some()
-        &&& self.rc_perm@.value.get_Some_0() as int == match self.flag_token@.value {
+        &&& self.rc_perm@.value.get_Some_0() as int == match self.flag_token.value() {
             BorrowFlag::MutBorrow => 1,
             BorrowFlag::ReadBorrow(n) => -n,
         }
@@ -294,13 +294,14 @@ pub struct Ref<'a, S> {
 
 impl<'a, S> Ref<'a, S> {
     pub closed spec fn wf(&self) -> bool {
-        self.ref_cell.wf() && self.reader@@.instance == self.ref_cell.inst@ && self.reader@@.count
-            == 1 && self.reader@@.key@.pcell == self.ref_cell.value_cell.id()
-            && self.reader@@.key@.value.is_Some()
+        self.ref_cell.wf()
+            && self.reader@.instance_id() == self.ref_cell.inst@.id()
+            && self.reader@.element()@.pcell == self.ref_cell.value_cell.id()
+            && self.reader@.element()@.value.is_Some()
     }
 
     pub closed spec fn value(&self) -> S {
-        self.reader@@.key@.value.get_Some_0()
+        self.reader@.element()@.value.get_Some_0()
     }
 }
 
@@ -312,8 +313,10 @@ pub struct RefMut<'a, S> {
 
 impl<'a, S> RefMut<'a, S> {
     pub closed spec fn wf(&self) -> bool {
-        self.ref_cell.wf() && self.writer@@.instance == self.ref_cell.inst@ && self.perm@@.pcell
-            == self.ref_cell.value_cell.id() && self.perm@@.value.is_Some()
+        self.ref_cell.wf()
+          && self.writer@.instance_id() == self.ref_cell.inst@.id()
+          && self.perm@@.pcell == self.ref_cell.value_cell.id()
+          && self.perm@@.value.is_Some()
     }
 
     pub closed spec fn value(&self) -> S {
@@ -422,7 +425,7 @@ impl<'a, S> Ref<'a, S> {
     {
         self.ref_cell.value_cell.borrow(
             Tracked(
-                self.ref_cell.inst.borrow().reader_guard(self.reader@@.key, self.reader.borrow()),
+                self.ref_cell.inst.borrow().reader_guard(self.reader@.element(), self.reader.borrow()),
             ),
         )
     }
@@ -436,7 +439,7 @@ impl<'a, S> Ref<'a, S> {
             let tracked GhostStuff { rc_perm: mut rc_perm, flag_token: mut flag_token } = g;
 
             proof {
-                ref_cell.inst.borrow().drop_reader(reader@.key, &mut flag_token, reader);
+                ref_cell.inst.borrow().drop_reader(reader.element(), &mut flag_token, reader);
             }
 
             let cur_rc = *ref_cell.rc_cell.borrow(Tracked(&rc_perm));

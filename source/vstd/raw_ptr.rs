@@ -698,7 +698,7 @@ impl Dealloc {
 
 /// Allocate with the global allocator.
 /// Precondition should be consistent with the [documented safety conditions on `alloc`](https://doc.rust-lang.org/alloc/alloc/trait.GlobalAlloc.html#tymethod.alloc).
-#[cfg(feature = "alloc")]
+#[cfg(feature = "std")]
 #[verifier::external_body]
 pub fn allocate(size: usize, align: usize) -> (pt: (
     *mut u8,
@@ -725,6 +725,9 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
     let layout = unsafe { alloc::alloc::Layout::from_size_align_unchecked(size, align) };
     // SAFETY: size != 0
     let p = unsafe { ::alloc::alloc::alloc(layout) };
+    if p == core::ptr::null_mut() {
+        std::process::abort();
+    }
     (p, Tracked::assume_new(), Tracked::assume_new())
 }
 
@@ -752,6 +755,93 @@ pub fn deallocate(
     unsafe {
         ::alloc::alloc::dealloc(p, layout);
     }
+}
+
+/// This is meant to be a replacement for `&'a T` that allows Verus to keep track of
+/// not just the `T` value but the pointer as well.
+/// It would be better to get rid of this and use normal reference types `&'a T`,
+/// but there are a lot of unsolved implementation questions.
+/// The existence of `SharedReference<'a, T>` is a stop-gap.
+#[verifier::external_body]
+#[verifier::accept_recursive_types(T)]
+pub struct SharedReference<'a, T>(&'a T);
+
+impl<'a, T> Clone for SharedReference<'a, T> {
+    #[verifier::external_body]
+    fn clone(&self) -> (ret: Self)
+        ensures
+            ret == *self,
+    {
+        SharedReference(self.0)
+    }
+}
+
+impl<'a, T> Copy for SharedReference<'a, T> {
+
+}
+
+impl<'a, T> SharedReference<'a, T> {
+    pub spec fn value(self) -> T;
+
+    pub spec fn ptr(self) -> *const T;
+
+    #[verifier::external_body]
+    fn new(t: &'a T) -> (s: Self)
+        ensures
+            s.value() == t,
+    {
+        SharedReference(t)
+    }
+
+    #[verifier::external_body]
+    fn as_ref(self) -> (t: &'a T)
+        ensures
+            t == self.value(),
+    {
+        self.0
+    }
+
+    #[verifier::external_body]
+    fn as_ptr(self) -> (ptr: *const T)
+        ensures
+            ptr == self.ptr(),
+    {
+        &*self.0
+    }
+
+    #[verifier::external_body]
+    proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
+        ensures
+            pt.ptr() == self.ptr(),
+            pt.is_init(),
+            pt.value() == self.value(),
+    {
+        unimplemented!();
+    }
+}
+
+/// Like [`ptr_ref`] but returns a `SharedReference` so it keeps track of the relationship
+/// between the pointers.
+/// Note the resulting reference's pointers does NOT have the same provenance.
+/// This is because in Rust models like Stacked Borrows / Tree Borrows, the pointer
+/// gets a new tag.
+#[inline(always)]
+#[verifier::external_body]
+pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: SharedReference<
+    'a,
+    T,
+>)
+    requires
+        perm.ptr() == ptr,
+        perm.is_init(),
+    ensures
+        v.value() == perm.value(),
+        v.ptr().addr() == ptr.addr(),
+        v.ptr()@.metadata == ptr@.metadata,
+    opens_invariants none
+    no_unwind
+{
+    SharedReference(unsafe { &*ptr })
 }
 
 } // verus!

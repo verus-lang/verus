@@ -256,7 +256,7 @@ test_verify_one_file! {
             let a = true;
             assert(old(a) == true);
         }
-    } => Err(err) => assert_vir_error_msg(err, "a mutable reference is expected here")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {
@@ -523,4 +523,22 @@ test_verify_one_file! {
             stuff(&mut &y); // this does NOT modify y
         }
     } => Err(err) => assert_vir_error_msg(err, "complex arguments to &mut parameters are currently unsupported")
+}
+
+test_verify_one_file! {
+    #[test] mut_ref_coerce_to_ref_with_old_issue671 verus_code! {
+        spec fn check_inc(a: &u32, b: &u32) -> bool {
+            &&& *a == *b + 1
+        }
+
+        fn add1(a: &mut u32)
+            requires
+                *old(a) < 10,
+            ensures
+                //*a == *old(a) + 1,
+                check_inc(a, old(a)),
+        {
+            *a = *a + 1;
+        }
+    } => Ok(())
 }

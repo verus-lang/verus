@@ -54,10 +54,23 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
 
     let sm_name = &bundle.sm.name;
 
+    let mut use_traits = TokenStream::new();
+    if concurrent {
+        use_traits = quote_vstd! { vstd =>
+            use #vstd::tokens::ValueToken;
+            use #vstd::tokens::KeyValueToken;
+            use #vstd::tokens::CountToken;
+            use #vstd::tokens::MonotonicCountToken;
+            use #vstd::tokens::ElementToken;
+            use #vstd::tokens::SimpleToken;
+        };
+    }
+
     let final_code = quote! {
         #[allow(unused_parens)]
         pub mod #sm_name {
             use super::*;
+            #use_traits
 
             #root_stream
 
@@ -167,6 +180,22 @@ fn generic_components_for_fn(generics: &Option<Generics>) -> (TokenStream, Token
     }
 }
 
+pub fn generics_for_decl(generics: &Option<Generics>) -> (TokenStream, TokenStream) {
+    match generics {
+        None => (TokenStream::new(), TokenStream::new()),
+        Some(gen) => {
+            if gen.params.len() > 0 {
+                let params = &gen.params;
+                let where_clause = &gen.where_clause;
+                (quote! { <#params> }, quote! { #where_clause })
+            } else {
+                let where_clause = &gen.where_clause;
+                (TokenStream::new(), quote! { #where_clause })
+            }
+        }
+    }
+}
+
 pub fn impl_decl_stream(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
     match generics {
         None => {
@@ -180,6 +209,28 @@ pub fn impl_decl_stream(self_ty: &Type, generics: &Option<Generics>) -> TokenStr
             } else {
                 let where_clause = &gen.where_clause;
                 quote! { #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))] impl #self_ty #where_clause }
+            }
+        }
+    }
+}
+
+pub fn impl_decl_stream_for(
+    self_ty: &Type,
+    generics: &Option<Generics>,
+    for_trait: TokenStream,
+) -> TokenStream {
+    match generics {
+        None => {
+            quote! { #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))] impl #for_trait for #self_ty }
+        }
+        Some(gen) => {
+            if gen.params.len() > 0 {
+                let params = &gen.params;
+                let where_clause = &gen.where_clause;
+                quote! { #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))] impl<#params> #for_trait for #self_ty #where_clause }
+            } else {
+                let where_clause = &gen.where_clause;
+                quote! { #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))] impl #for_trait for #self_ty #where_clause }
             }
         }
     }

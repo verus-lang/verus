@@ -325,7 +325,7 @@ test_verify_one_file! {
         spec fn test() -> bool {
             call_requires(foo, ())
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::foo` which is ignored")
 }
 
 test_verify_one_file! {
@@ -1679,4 +1679,49 @@ test_verify_one_file! {
             assert(call_ensures(Y::test, (&t, i), &r) <== 20 <= i < 35 && r == t); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] unrecognized_trait_impl_issue1332 verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Foo {
+            val: u64,
+        }
+
+        #[verifier::external]
+        impl Clone for Foo {
+            fn clone(&self) -> Foo {
+                Foo { val: self.val }
+            }
+        }
+
+        impl Foo {
+            proof fn lemma_clone()
+                ensures
+                    forall |a: Self, b: Self| call_ensures(Clone::clone, (&a,), b) ==> a == b,
+            { assume(false); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Foo::clone` is not supported")
+}
+
+test_verify_one_file! {
+    #[test] clone_assign_type_param_trait_function_to_variable verus_code! {
+        use vstd::*;
+
+        pub struct X<T> {
+            pub t: T,
+        }
+
+        impl<T: Clone> Clone for X<T> {
+            fn clone(&self) -> (s: Self)
+                ensures
+                    call_ensures(T::clone, (&self.t,), s.t)
+            {
+                let t_clone = T::clone;
+                let new_t = t_clone(&self.t);
+                X { t: new_t }
+            }
+        }
+    } => Ok(())
 }

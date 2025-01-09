@@ -7,8 +7,8 @@
 
 use crate::ast::{
     ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Dt, Fun, FunX, Idents,
-    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, SpannedTyped, Typ,
-    TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
+    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
+    SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
@@ -26,6 +26,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::hash::{Hash, Hasher};
 use std::io::Write;
+use std::iter::FromIterator;
 use std::ops::ControlFlow;
 use std::sync::Arc;
 use std::thread;
@@ -187,6 +188,7 @@ trait SyntacticEquality {
     fn definitely_eq(&self, other: &Self) -> bool {
         matches!(self.syntactic_eq(other), Some(true))
     }
+    #[allow(dead_code)]
     fn definitely_ne(&self, other: &Self) -> bool {
         matches!(self.syntactic_eq(other), Some(false))
     }
@@ -642,6 +644,89 @@ fn display_perf_stats(state: &State) {
 }
 
 /***********************************************
+ * Special handling for interpreting arrays    *
+ ***********************************************/
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+pub enum ArrayFn {
+    View,
+}
+
+// TODO: Make the matching here more robust to changes in vstd
+/// Identify array functions for which we provide custom interpretation
+pub(crate) fn is_array_fn(fun: &Fun) -> Option<ArrayFn> {
+    use ArrayFn::*;
+    match path_as_vstd_name(&fun.path).as_ref().map(|x| x.as_str()) {
+        Some("array::array_view") => Some(View),
+        _ => None,
+    }
+}
+
+/// Custom interpretation for array functions.
+/// Expects to be called after is_array_fn has already identified
+/// the relevant array function, and the args have already been simplified.
+/// We still pass in the original Call Exp,
+/// so that we can return it as a default if we encounter symbolic values
+fn eval_array(
+    ctx: &Ctx,
+    _state: &mut State,
+    array_fn: ArrayFn,
+    exp: &Exp,
+    args: &Exps,
+) -> Result<Exp, VirErr> {
+    use ExpX::*;
+    use InterpExp::*;
+    match &exp.x {
+        Call(_fun, _typs, _old_args) => {
+            use ArrayFn::*;
+            match array_fn {
+                View => {
+                    let array_exp = &args[0];
+                    match &array_exp.x {
+                        Interp(Array(es)) => {
+                            let im_vec: Vector<Exp> =
+                                Vector::from_iter(es.iter().map(|e| e.clone()));
+                            let inner_typ = match &*array_exp.typ {
+                                TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                                TypX::Decorate(_, _, t) => match &**t {
+                                    TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
+                                    _ => panic!(
+                                        "Expected array_view with decorated argument to contain an array type.  Got: {:?}",
+                                        array_exp.typ
+                                    ),
+                                },
+                                _ => panic!(
+                                    "Expected array_view to be called with an array or decorated type.  Got: {:?}",
+                                    array_exp.typ
+                                ),
+                            };
+                            let seq_type_path = Arc::new(PathX {
+                                krate: Some(Arc::new("vstd".to_string())),
+                                segments: strs_to_idents(vec!["seq", "Seq"]),
+                            });
+                            let seq_typ = Arc::new(TypX::Datatype(
+                                Dt::Path(seq_type_path),
+                                Arc::new(vec![inner_typ]),
+                                Arc::new(vec![]),
+                            ));
+                            let e = SpannedTyped::new(&exp.span, &seq_typ, Interp(Seq(im_vec)));
+                            Ok(e)
+                        }
+                        _ => panic!(
+                            "Expected the argument to array_view to already be an Interp(Array(_)).  Got: {:?}",
+                            array_exp
+                        ),
+                    }
+                }
+            }
+        }
+        _ => panic!(
+            "Expected array expression to be a Call.  Got {:} instead.",
+            exp.x.to_user_string(&ctx.global)
+        ),
+    }
+}
+/***********************************************
  * Special handling for interpreting sequences *
  ***********************************************/
 
@@ -691,20 +776,10 @@ pub(crate) fn is_seq_to_sst_fun(fun: &Fun) -> bool {
 }
 
 /// Convert an interpreter-internal sequence representation back into a
-/// representation we can pass to AIR
+/// representation we can pass to AIR.  The algorithm follows the seq_internal
+/// macro definition in vstd's seq.rs.
 // TODO: More robust way of pointing to vstd's sequence functions
 fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
-    let typs = Arc::new(vec![inner_typ.clone()]);
-    let path_empty = Arc::new(PathX {
-        krate: Some(Arc::new("vstd".to_string())),
-        segments: strs_to_idents(vec!["seq", "Seq", "empty"]),
-    });
-    let path_push = Arc::new(PathX {
-        krate: Some(Arc::new("vstd".to_string())),
-        segments: strs_to_idents(vec!["seq", "Seq", "push"]),
-    });
-    let fun_empty = Arc::new(FunX { path: path_empty });
-    let fun_push = Arc::new(FunX { path: path_push });
     let seq_type_path = Arc::new(PathX {
         krate: Some(Arc::new("vstd".to_string())),
         segments: strs_to_idents(vec!["seq", "Seq"]),
@@ -715,21 +790,59 @@ fn seq_to_sst(span: &Span, inner_typ: Typ, s: &Vector<Exp>) -> Exp {
         Arc::new(vec![]),
     ));
     let new_seq_exp = |e: ExpX| SpannedTyped::new(span, &seq_typ, e);
-    let empty =
-        new_seq_exp(ExpX::Call(CallFun::Fun(fun_empty, None), typs.clone(), Arc::new(vec![])));
-    let seq = s.iter().fold(empty, |acc, e| {
-        let args = Arc::new(vec![acc, e.clone()]);
-        new_seq_exp(ExpX::Call(CallFun::Fun(fun_push.clone(), None), typs.clone(), args))
-    });
-    seq
+    if s.len() <= 1 {
+        let typs = Arc::new(vec![inner_typ.clone()]);
+        let path_empty = Arc::new(PathX {
+            krate: Some(Arc::new("vstd".to_string())),
+            segments: strs_to_idents(vec!["seq", "Seq", "empty"]),
+        });
+        let path_push = Arc::new(PathX {
+            krate: Some(Arc::new("vstd".to_string())),
+            segments: strs_to_idents(vec!["seq", "Seq", "push"]),
+        });
+        let fun_empty = Arc::new(FunX { path: path_empty });
+        let fun_push = Arc::new(FunX { path: path_push });
+        let empty =
+            new_seq_exp(ExpX::Call(CallFun::Fun(fun_empty, None), typs.clone(), Arc::new(vec![])));
+        let seq = s.iter().fold(empty, |acc, e| {
+            let args = Arc::new(vec![acc, e.clone()]);
+            new_seq_exp(ExpX::Call(CallFun::Fun(fun_push.clone(), None), typs.clone(), args))
+        });
+        seq
+    } else {
+        // Describe the sequence in terms of a view on an array literal
+        let path_view = Arc::new(PathX {
+            krate: Some(Arc::new("vstd".to_string())),
+            segments: strs_to_idents(vec!["array", "array_view"]),
+        });
+        let fun_view = Arc::new(FunX { path: path_view });
+        let array = cleanup_array(span, inner_typ.clone(), s);
+        let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(s.len())));
+        let array_view = new_seq_exp(ExpX::Call(
+            CallFun::Fun(fun_view, None),
+            Arc::new(vec![inner_typ.clone(), array_len_typ]),
+            Arc::new(vec![array]),
+        ));
+        array_view
+    }
 }
 
 /// Convert an interpreter-internal array representation back into a
 /// representation we can pass to AIR
 fn array_to_sst(span: &Span, typ: Typ, arr: &Vector<Exp>) -> Exp {
-    let exp_new = |e: ExpX| SpannedTyped::new(span, &typ, e);
-    let exps = Arc::new(arr.iter().cloned().collect());
-    exp_new(ExpX::ArrayLiteral(exps))
+    let arr_typ = if !matches!(*typ, TypX::Primitive(Primitive::Array, _)) {
+        // We only have the inner type for the array, so we need to construct the rest
+        let array_len_typ = Arc::new(TypX::ConstInt(BigInt::from(arr.len())));
+        let array_typs = Arc::new(vec![typ, array_len_typ]);
+        let array_typ = Arc::new(TypX::Primitive(Primitive::Array, array_typs));
+        array_typ
+    } else {
+        typ
+    };
+    let exp_new = |e: ExpX| SpannedTyped::new(span, &arr_typ, e);
+    let exps = Arc::new(arr.iter().map(|e| cleanup_exp(e)).flatten().collect());
+    let exp = exp_new(ExpX::ArrayLiteral(exps));
+    exp
 }
 
 /// Custom interpretation for sequence functions.
@@ -1462,60 +1575,59 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_args = Arc::new(new_args?);
-
-            match is_sequence_fn(&fun) {
-                Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
-                None => {
-                    // Try to find the function's body
-                    match ctx.fun_ssts.get(fun) {
-                        Some(func) if func.x.axioms.spec_axioms.is_some() => {
-                            let memoize = func.x.attrs.memoize;
-                            match state.lookup_call(&fun, &new_args, memoize) {
-                                Some(prev_result) => {
-                                    state.cache_hits += 1;
-                                    Ok(prev_result)
+            if let Some(array_fn) = is_array_fn(&fun) {
+                eval_array(ctx, state, array_fn, exp, &new_args)
+            } else if let Some(seq_fn) = is_sequence_fn(&fun) {
+                eval_seq(ctx, state, seq_fn, exp, &new_args)
+            } else {
+                // Try to find the function's body
+                match ctx.fun_ssts.get(fun) {
+                    Some(func) if func.x.axioms.spec_axioms.is_some() => {
+                        let memoize = func.x.attrs.memoize;
+                        match state.lookup_call(&fun, &new_args, memoize) {
+                            Some(prev_result) => {
+                                state.cache_hits += 1;
+                                Ok(prev_result)
+                            }
+                            None => {
+                                let typ_params = &func.x.typ_params;
+                                let pars = &func.x.pars;
+                                let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
+                                state.cache_misses += 1;
+                                state.env.push_scope(true);
+                                for (formal, actual) in pars.iter().zip(new_args.iter()) {
+                                    let formal_id = formal.x.name.clone();
+                                    state.env.insert(formal_id, actual.clone()).unwrap();
                                 }
-                                None => {
-                                    let typ_params = &func.x.typ_params;
-                                    let pars = &func.x.pars;
-                                    let body =
-                                        &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
-                                    state.cache_misses += 1;
-                                    state.env.push_scope(true);
-                                    for (formal, actual) in pars.iter().zip(new_args.iter()) {
-                                        let formal_id = formal.x.name.clone();
-                                        state.env.insert(formal_id, actual.clone()).unwrap();
+                                // Account for const generics by adding, e.g., { N => 7 } to the environment
+                                for (formal, actual) in typ_params.iter().zip(typs.iter()) {
+                                    if let TypX::ConstInt(c) = &**actual {
+                                        let formal_id = VarIdent(
+                                            formal.clone(),
+                                            VarIdentDisambiguate::TypParamBare,
+                                        );
+                                        let value = SpannedTyped::new(
+                                            &exp.span,
+                                            &exp.typ,
+                                            Const(Constant::Int(c.clone())),
+                                        );
+                                        state.env.insert(formal_id, value).unwrap();
                                     }
-                                    // Account for const generics by adding, e.g., { N => 7 } to the environment
-                                    for (formal, actual) in typ_params.iter().zip(typs.iter()) {
-                                        if let TypX::ConstInt(c) = &**actual {
-                                            let formal_id = VarIdent(
-                                                formal.clone(),
-                                                VarIdentDisambiguate::TypParamBare,
-                                            );
-                                            let value = SpannedTyped::new(
-                                                &exp.span,
-                                                &exp.typ,
-                                                Const(Constant::Int(c.clone())),
-                                            );
-                                            state.env.insert(formal_id, value).unwrap();
-                                        }
-                                    }
-                                    let result = eval_expr_internal(ctx, state, &body);
-                                    state.env.pop_scope();
-                                    state.insert_call(fun, &new_args, &result.clone()?, memoize);
-                                    result
                                 }
+                                let result = eval_expr_internal(ctx, state, &body);
+                                state.env.pop_scope();
+                                state.insert_call(fun, &new_args, &result.clone()?, memoize);
+                                result
                             }
                         }
-                        _ => {
-                            // We don't have the body for this function, so we can't simplify further
-                            exp_new(Call(
-                                CallFun::Fun(fun.clone(), resolved_method.clone()),
-                                typs.clone(),
-                                new_args.clone(),
-                            ))
-                        }
+                    }
+                    _ => {
+                        // We don't have the body for this function, so we can't simplify further
+                        exp_new(Call(
+                            CallFun::Fun(fun.clone(), resolved_method.clone()),
+                            typs.clone(),
+                            new_args.clone(),
+                        ))
                     }
                 }
             }
@@ -1633,8 +1745,8 @@ fn cleanup_seq(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
     }
 }
 
-fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Result<Exp, VirErr> {
-    Ok(array_to_sst(span, typ.clone(), v))
+fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Exp {
+    array_to_sst(span, typ.clone(), v)
 }
 
 /// Restore the free variables we hid during interpretation
@@ -1644,7 +1756,7 @@ fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
         ExpX::Interp(InterpExp::FreeVar(v)) => {
             Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
         }
-        ExpX::Interp(InterpExp::Array(v)) => cleanup_array(&e.span, e.typ.clone(), v),
+        ExpX::Interp(InterpExp::Array(v)) => Ok(cleanup_array(&e.span, e.typ.clone(), v)),
         ExpX::Interp(InterpExp::Seq(v)) => cleanup_seq(&e.span, e.typ.clone(), v),
         ExpX::Interp(InterpExp::Closure(..)) => Err(error(
             &e.span,

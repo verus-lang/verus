@@ -105,6 +105,7 @@ pub struct Context {
     pub(crate) air_middle_log: Emitter,
     pub(crate) air_final_log: Emitter,
     pub(crate) smt_log: Emitter,
+    pub(crate) smt_transcript_log: Option<Box<dyn std::io::Write>>,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
     pub(crate) rlimit_count: Option<u64>,
@@ -168,6 +169,7 @@ impl Context {
                 solver.clone(),
             ),
             smt_log: Emitter::new(message_interface.clone(), true, true, None, solver.clone()),
+            smt_transcript_log: None,
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
             rlimit_count: match solver {
@@ -195,7 +197,8 @@ impl Context {
     pub fn get_smt_process(&mut self) -> &mut SmtProcess {
         // Only start the smt process if there are queries to run
         if self.smt_process.is_none() {
-            self.smt_process = Some(SmtProcess::launch(&self.solver));
+            let transcript_log = self.smt_transcript_log.take();
+            self.smt_process = Some(SmtProcess::launch(&self.solver, transcript_log));
         }
         self.smt_process.as_mut().unwrap()
     }
@@ -214,6 +217,14 @@ impl Context {
 
     pub fn set_smt_log(&mut self, writer: Box<dyn std::io::Write>) {
         self.smt_log.set_log(Some(writer));
+    }
+
+    pub fn set_smt_transcript_log(&mut self, writer: Box<dyn std::io::Write>) {
+        if let Some(smt_process) = &mut self.smt_process {
+            smt_process.set_transcript_log(writer);
+        } else {
+            self.smt_transcript_log = Some(writer);
+        }
     }
 
     pub fn set_debug(&mut self, debug: bool) {

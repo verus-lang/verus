@@ -5,7 +5,6 @@ use crate::ast::{
     TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
-use crate::messages::error;
 use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::{Returner, Rewrite, VisitorControlFlow, Walk};
@@ -13,6 +12,7 @@ use air::scope_map::ScopeMap;
 use std::sync::Arc;
 
 pub struct ScopeEntry {
+    #[allow(dead_code)]
     pub typ: Typ,
     pub is_mut: bool,
     pub init: bool,
@@ -423,9 +423,7 @@ where
                 }
                 ExprX::Fuel(_, _, _) => (),
                 ExprX::RevealString(_) => (),
-                ExprX::Header(_) => {
-                    panic!("header expression not allowed here: {:?}", &expr.span);
-                }
+                ExprX::Header(_) => (),
                 ExprX::AssertAssume { is_assume: _, expr: e1 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                 }
@@ -943,9 +941,7 @@ where
             ExprX::Fuel(path.clone(), *fuel, *is_broadcast_use)
         }
         ExprX::RevealString(path) => ExprX::RevealString(path.clone()),
-        ExprX::Header(_) => {
-            return Err(error(&expr.span, "header expression not allowed here"));
-        }
+        ExprX::Header(_) => expr.x.clone(),
         ExprX::AssertAssume { is_assume, expr: e1 } => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::AssertAssume { is_assume: *is_assume, expr: expr1 }
@@ -1227,7 +1223,9 @@ where
     let name = name.clone();
     let proxy = proxy.clone();
     let kind = match kind {
-        FunctionKind::Static | FunctionKind::TraitMethodDecl { trait_path: _ } => kind.clone(),
+        FunctionKind::Static | FunctionKind::TraitMethodDecl { trait_path: _, has_default: _ } => {
+            kind.clone()
+        }
         FunctionKind::TraitMethodImpl {
             method,
             impl_path,

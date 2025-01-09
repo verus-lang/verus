@@ -8,7 +8,7 @@ use crate::rust_to_vir_base::{
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
 use crate::rust_to_vir_impl::ExternalInfo;
-use crate::util::{err_span, err_span_bare, unsupported_err_span};
+use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;
@@ -18,11 +18,12 @@ use rustc_hir::{
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
-    GenericArgsRef, Region, TyCtxt, TyKind,
+    GenericArgsRef, Region, TraitRef, TyCtxt, TyKind,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
+use rustc_trait_selection::traits::ImplSource;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
@@ -83,8 +84,8 @@ fn check_fn_decl<'tcx>(
     match implicit_self {
         rustc_hir::ImplicitSelfKind::None => {}
         rustc_hir::ImplicitSelfKind::Imm => {}
-        rustc_hir::ImplicitSelfKind::ImmRef => {}
-        rustc_hir::ImplicitSelfKind::MutRef => {}
+        rustc_hir::ImplicitSelfKind::RefImm => {}
+        rustc_hir::ImplicitSelfKind::RefMut => {}
         rustc_hir::ImplicitSelfKind::Mut => unsupported_err!(span, "mut self"),
     }
     match output {
@@ -515,7 +516,9 @@ fn create_reveal_group<'tcx>(
     err_span(span, "reveal_group must have body")
 }
 
-fn make_attributes(
+fn make_attributes<'tcx>(
+    ctxt: &Context<'tcx>,
+    def_id: DefId,
     vattrs: &crate::attributes::VerifierAttrs,
     uses_ghost_blocks: bool,
     hidden: Arc<Vec<Fun>>,
@@ -539,6 +542,7 @@ fn make_attributes(
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
         broadcast_forall_only: false,
+        auto_ext_equal: crate::attributes::get_auto_ext_equal_walk_parents(ctxt.tcx, def_id),
         bit_vector: vattrs.bit_vector,
         autospec,
         atomic: vattrs.atomic,
@@ -678,49 +682,23 @@ pub(crate) fn check_item_fn<'tcx>(
     )?;
     let fuel = get_fuel(&vattrs);
 
-    let (vir_body, header, params): (_, _, Vec<(VarIdent, Span, Option<HirId>, bool)>) =
-        match body_id {
-            CheckItemFnEither::BodyId(body_id) => {
-                let body = find_body(ctxt, body_id);
-                let Body { params, value: _, coroutine_kind } = body;
-                match coroutine_kind {
-                    None => {}
-                    _ => {
-                        unsupported_err!(sig.span, "coroutine_kind", coroutine_kind);
-                    }
-                }
-                let mut ps = Vec::new();
-                for Param { hir_id, pat, ty_span: _, span } in params.iter() {
-                    let (is_mut_var, name) = pat_to_mut_var(pat)?;
-                    // is_mut_var: means a parameter is like `mut x: X`
-                    // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
-                    ps.push((name, *span, Some(*hir_id), is_mut_var));
-                }
-                let external_body = vattrs.external_body || vattrs.external_fn_specification;
-                let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
-                let header = vir::headers::read_header(&mut vir_body)?;
-                (Some(vir_body), header, ps)
+    let params: Vec<(VarIdent, Span, Option<HirId>, bool)> = match body_id {
+        CheckItemFnEither::BodyId(body_id) => {
+            let body = find_body(ctxt, body_id);
+            let Body { params, value: _ } = body;
+            let mut ps = Vec::new();
+            for Param { hir_id, pat, ty_span: _, span } in params.iter() {
+                let (is_mut_var, name) = pat_to_mut_var(pat)?;
+                // is_mut_var: means a parameter is like `mut x: X`
+                // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
+                ps.push((name, *span, Some(*hir_id), is_mut_var));
             }
-            CheckItemFnEither::ParamNames(params) => {
-                let params =
-                    params.iter().map(|p| (no_body_param_to_var(p), p.span, None, false)).collect();
-                let header = vir::headers::read_header_block(&mut vec![])?;
-                (None, header, params)
-            }
-        };
-    if vattrs.reveal_group {
-        create_reveal_group(
-            ctxt,
-            reveal_groups,
-            &name,
-            visibility,
-            module_path,
-            &vattrs,
-            &vir_body,
-            sig.span,
-        )?;
-        return Ok(None);
-    }
+            ps
+        }
+        CheckItemFnEither::ParamNames(params) => {
+            params.iter().map(|p| (no_body_param_to_var(p), p.span, None, false)).collect()
+        }
+    };
 
     let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
@@ -813,6 +791,34 @@ pub(crate) fn check_item_fn<'tcx>(
     }
 
     let n_params = vir_params.len();
+
+    let (vir_body, header) = match body_id {
+        CheckItemFnEither::BodyId(body_id) => {
+            let body = find_body(ctxt, body_id);
+            let external_body = vattrs.external_body || vattrs.external_fn_specification;
+            let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
+            let header = vir::headers::read_header(&mut vir_body)?;
+            (Some(vir_body), header)
+        }
+        CheckItemFnEither::ParamNames(_params) => {
+            let header = vir::headers::read_header_block(&mut vec![])?;
+            (None, header)
+        }
+    };
+
+    if vattrs.reveal_group {
+        create_reveal_group(
+            ctxt,
+            reveal_groups,
+            &name,
+            visibility,
+            module_path,
+            &vattrs,
+            &vir_body,
+            sig.span,
+        )?;
+        return Ok(None);
+    }
 
     match (&kind, header.no_method_body, is_verus_spec, vir_body.is_some()) {
         (FunctionKind::TraitMethodDecl { .. }, false, false, _) => {}
@@ -1016,6 +1022,8 @@ pub(crate) fn check_item_fn<'tcx>(
     }
 
     let fattrs = make_attributes(
+        ctxt,
+        id,
         &vattrs,
         vattrs.verus_macro,
         Arc::new(header.hidden),
@@ -1561,16 +1569,45 @@ pub(crate) fn get_external_def_id<'tcx>(
         let node_substs = types.node_args(hir_id);
         let param_env = tcx.param_env(proxy_fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let inst =
-            rustc_middle::ty::Instance::resolve(tcx, param_env, external_id, normalized_substs);
-        let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
-        if let Ok(Some(inst)) = inst {
-            if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
-                let impl_def_id = tcx.impl_of_method(did).expect("impl_of_method");
+
+        let trait_ref = TraitRef::new(tcx, trait_def_id, normalized_substs);
+        let candidate = tcx.codegen_select_candidate((param_env, trait_ref));
+
+        match candidate {
+            Ok(ImplSource::UserDefined(u)) => {
+                let impl_def_id = u.impl_def_id;
                 let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
 
+                let inst = rustc_middle::ty::Instance::resolve(
+                    tcx,
+                    param_env,
+                    external_id,
+                    normalized_substs,
+                );
+                let Ok(Some(inst)) = inst else {
+                    return err_span(
+                        sig.span,
+                        "Verus Internal Error: handling external_fn_specification, resolve failed",
+                    );
+                };
+                let rustc_middle::ty::InstanceDef::Item(did) = inst.def else {
+                    return err_span(
+                        sig.span,
+                        "Verus Internal Error: handling external_fn_specification, resolve failed",
+                    );
+                };
+
+                let is_default = tcx.impl_of_method(did).is_none();
+                unsupported_err_unless!(
+                    !is_default,
+                    sig.span,
+                    "external_fn_specification for a provided trait method"
+                );
+
+                let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
+
                 let mut types: Vec<Typ> = Vec::new();
-                for ty in trait_ref.instantiate(tcx, inst.args).args.types() {
+                for ty in trait_ref.instantiate(tcx, u.args).args.types() {
                     types.push(mid_ty_to_vir(tcx, &verus_items, did, sig.span, &ty, false)?);
                 }
 
@@ -1583,21 +1620,25 @@ pub(crate) fn get_external_def_id<'tcx>(
                     trait_typ_args: Arc::new(types),
                 };
                 return Ok((did, kind));
-            } else {
+            }
+            Ok(ImplSource::Builtin(b, _)) => {
+                return err_span(
+                    sig.span,
+                    format!(
+                        "Verus external_fn_specification does not support ImplSource::Builtin '{:?}'",
+                        b
+                    ),
+                );
+            }
+            Ok(ImplSource::Param(_)) => {
+                return err_span(
+                    sig.span,
+                    "external_fn_specification not supported for unresolved trait functions",
+                );
+            }
+            Err(_) => {
                 return err_span(sig.span, "Verus internal error: expected InstanceDef::Item");
             }
-        } else {
-            // This is the actual, generic trait method.
-            // Be conservative with this feature for now.
-            // let rust_item = crate::verus_items::get_rust_item(tcx, external_id);
-            // if rust_item == Some(crate::verus_items::RustItem::Clone) {
-            //     return Ok((external_id, FunctionKind::TraitMethodDecl { trait_path }));
-            // }
-
-            return err_span(
-                sig.span,
-                "external_fn_specification not supported for unresolved trait functions",
-            );
         }
     } else {
         Ok((external_id, FunctionKind::Static))
@@ -1653,7 +1694,27 @@ pub(crate) fn check_item_const_or_static<'tcx>(
 
     let fuel = get_fuel(&vattrs);
     let body = find_body(ctxt, body_id);
-    let mut vir_body = body_to_vir(ctxt, id, body_id, body, body_mode, vattrs.external_body)?;
+    let (actual_body_id, actual_body) = if let ExprKind::Block(block, _) = body.value.kind {
+        let first_stmt = block.stmts.iter().next();
+        if let Some(rustc_hir::StmtKind::Item(item)) = first_stmt.map(|stmt| &stmt.kind) {
+            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+            let vattrs = ctxt.get_verifier_attrs(attrs)?;
+            if vattrs.internal_const_body {
+                let body_id = ctxt.tcx.hir().body_owned_by(item.owner_id.def_id);
+                let body = find_body(ctxt, &body_id);
+                Some((body_id, body))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+    .unwrap_or((*body_id, body));
+    let mut vir_body =
+        body_to_vir(ctxt, id, &actual_body_id, actual_body, body_mode, vattrs.external_body)?;
     let header = vir::headers::read_header(&mut vir_body)?;
     if header.require.len() + header.recommend.len() > 0 {
         return err_span(span, "consts cannot have requires/recommends");
@@ -1681,6 +1742,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         Arc::new(FunX { path })
     });
     let fattrs = make_attributes(
+        ctxt,
+        id,
         &vattrs,
         false,
         Arc::new(vec![]),

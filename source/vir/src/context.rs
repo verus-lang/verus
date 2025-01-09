@@ -71,6 +71,7 @@ pub struct FunctionCtx {
     pub module_for_chosen_triggers: Option<Path>,
     // used to create quantifier identifiers and for checking_spec_preconditions
     pub current_fun: Fun,
+    pub current_fun_attrs: crate::ast::FunctionAttrs,
 }
 
 // Context for verifying one module
