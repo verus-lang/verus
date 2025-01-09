@@ -31,7 +31,6 @@ proof fn lemma_fib_is_monotonic(i: nat, j: nat)
     } else if i == j {
     } else if i == j - 1 {
         assert(fib(j) == fib((j - 2) as nat) + fib((j - 1) as nat));
-        lemma_fib_is_monotonic(i, (j - 1) as nat);
     } else {
         lemma_fib_is_monotonic(i, (j - 1) as nat);
         lemma_fib_is_monotonic(i, (j - 2) as nat);
@@ -65,10 +64,42 @@ fn fib_impl(n: u64) -> (result: u64)
 // ANCHOR_END: fib_impl_no_proof
 */
 
-// ANCHOR: fib_final
-exec fn fib_impl(n: u64) -> (result: u64)
+/*
+// ANCHOR: fib_mono_no_proof
+proof fn lemma_fib_is_monotonic(i: nat, j: nat)
     requires
-        fib_fits_u64(n as nat),
+        i <= j,
+    ensures
+        fib(i) <= fib(j),
+{
+}
+// ANCHOR_END: fib_mono_no_proof
+*/
+
+/*
+// ANCHOR: fib_mono_skeleton
+proof fn lemma_fib_is_monotonic(i: nat, j: nat)
+    requires
+        i <= j,
+    ensures
+        fib(i) <= fib(j),
+{
+    if i < 2 && j < 2 {
+    } else if i == j {
+    } else if i == j - 1 {
+        assume(false);
+    } else {
+        assume(false);
+    }
+
+}
+// ANCHOR_END: fib_mono_skeleton
+*/
+
+// ANCHOR: fib_final
+fn fib_impl(n: u64) -> (result: u64)
+    requires
+        fib(n as nat) <= 0xffff_ffff_ffff_ffff
     ensures
         result == fib(n as nat),
 {
@@ -81,8 +112,7 @@ exec fn fib_impl(n: u64) -> (result: u64)
     while i < n
         invariant
             0 < i <= n,
-            fib_fits_u64(n as nat),
-            fib_fits_u64(i as nat),
+            fib(n as nat) <= 0xffff_ffff_ffff_ffff,
             cur == fib(i as nat),
             prev == fib((i - 1) as nat),
     {
