@@ -836,11 +836,14 @@ fn width_of_int_range(state: &mut State, span: &Span, range: &IntRange) -> Resul
 
 fn minimal_bv_for_const(i: &BigInt) -> (BvTyp, String) {
     if i.lt(&BigInt::zero()) {
-        let mut twos_complement = BigInt::from_i64(-1).unwrap().sub(i);
-        // Set the sign bit
+        let twos_complement = BigInt::from_i64(-1).unwrap().sub(i);
         let width = twos_complement.bits() + 1;
-        twos_complement.set_bit(width - 1, true);
-        (BvTyp::Bv(width.try_into().unwrap(), Extend::Sign), twos_complement.to_string())
+
+        let mut x = BigInt::zero();
+        x.set_bit(width, true);
+        x = x + i;
+
+        (BvTyp::Bv(width.try_into().unwrap(), Extend::Sign), x.to_string())
     } else {
         let width = std::cmp::max(i.bits(), 1);
         (BvTyp::Bv(width.try_into().unwrap(), Extend::Zero), i.to_string())
