@@ -442,6 +442,73 @@ impl<A> Set<A> {
     }
 }
 
+/// The result of inserting an element `a` into a set `s` is finite iff `s` is finite.
+pub broadcast proof fn lemma_set_insert_finite_iff<A>(s: Set<A>, a: A)
+    ensures
+        #[trigger] s.insert(a).finite() <==> s.finite(),
+{
+    if s.insert(a).finite() {
+        if s.contains(a) {
+            assert(s == s.insert(a));
+        } else {
+            assert(s == s.insert(a).remove(a));
+        }
+    }
+    assert(s.insert(a).finite() ==> s.finite());
+}
+
+/// The result of removing an element `a` into a set `s` is finite iff `s` is finite.
+pub broadcast proof fn lemma_set_remove_finite_iff<A>(s: Set<A>, a: A)
+    ensures
+        #[trigger] s.remove(a).finite() <==> s.finite(),
+{
+    if s.remove(a).finite() {
+        if s.contains(a) {
+            assert(s == s.remove(a).insert(a));
+        } else {
+            assert(s == s.remove(a));
+        }
+    }
+}
+
+/// The union of two sets is finite iff both sets are finite.
+pub broadcast proof fn lemma_set_union_finite_iff<A>(s1: Set<A>, s2: Set<A>)
+    ensures
+        #[trigger] s1.union(s2).finite() <==> s1.finite() && s2.finite(),
+{
+    if s1.union(s2).finite() {
+        lemma_set_union_finite_implies_sets_finite(s1, s2);
+    }
+}
+
+pub proof fn lemma_set_union_finite_implies_sets_finite<A>(s1: Set<A>, s2: Set<A>)
+    requires
+        s1.union(s2).finite(),
+    ensures
+        s1.finite(),
+        s2.finite(),
+    decreases s1.union(s2).len(),
+{
+    if s1.union(s2) =~= set![] {
+        assert(s1 =~= set![]);
+        assert(s2 =~= set![]);
+    } else {
+        let a = s1.union(s2).choose();
+        assert(s1.remove(a).union(s2.remove(a)) == s1.union(s2).remove(a));
+        axiom_set_remove_len(s1.union(s2), a);
+        lemma_set_union_finite_implies_sets_finite(s1.remove(a), s2.remove(a));
+        assert(forall|s: Set<A>|
+            #![auto]
+            s.remove(a).insert(a) == if s.contains(a) {
+                s
+            } else {
+                s.insert(a)
+            });
+        lemma_set_insert_finite_iff(s1, a);
+        lemma_set_insert_finite_iff(s2, a);
+    }
+}
+
 /// The size of a union of two sets is less than or equal to the size of
 /// both individual sets combined.
 pub proof fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>)
