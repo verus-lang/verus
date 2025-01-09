@@ -1795,3 +1795,22 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] test_is_panic_regression_1380 verus_code! {
+        use vstd::seq::*;
+
+        enum Alternative {
+            Yes,
+            No,
+        }
+
+        spec fn is_test_original(s: Seq<Option<Alternative>>) -> bool {
+            &&& forall|b:nat| b < s.len() ==> s[b as int] is Some(Alternative::Yes)
+        }
+
+        spec fn is_test_minimal(s: Seq<Option<Alternative>>) -> bool {
+            &&& forall|b:nat| s[b as int] is Some(Alternative::Yes)
+        }
+    } => Err(e) => assert_rust_error_msg(e, todo!())
+}
