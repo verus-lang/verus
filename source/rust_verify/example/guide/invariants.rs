@@ -43,7 +43,7 @@ proof fn lemma_fib_is_monotonic(i: nat, j: nat)
 // ANCHOR: fib_impl_no_proof
 fn fib_impl(n: u64) -> (result: u64)
     requires
-        fib(n as nat) <= 0xffff_ffff_ffff_ffff
+        fib(n as nat) <= u64::MAX
     ensures
         result == fib(n as nat),
 {
@@ -100,7 +100,7 @@ proof fn lemma_fib_is_monotonic(i: nat, j: nat)
 // ANCHOR: fib_final
 fn fib_impl(n: u64) -> (result: u64)
     requires
-        fib(n as nat) <= 0xffff_ffff_ffff_ffff
+        fib(n as nat) <= u64::MAX
     ensures
         result == fib(n as nat),
 {
@@ -113,7 +113,7 @@ fn fib_impl(n: u64) -> (result: u64)
     while i < n
         invariant
             0 < i <= n,
-            fib(n as nat) <= 0xffff_ffff_ffff_ffff,
+            fib(n as nat) <= u64::MAX,
             cur == fib(i as nat),
             prev == fib((i - 1) as nat),
     {
