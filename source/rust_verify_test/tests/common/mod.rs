@@ -272,7 +272,7 @@ pub fn run_verus(
     let mut verus_args = Vec::new();
     let mut external_by_default = false;
     let mut is_core = false;
-    verus_args.push("--internal-test-mode".to_string());
+    let mut use_internal_test_mode = true;
 
     for option in options.iter() {
         if *option == "--expand-errors" {
@@ -295,9 +295,14 @@ pub fn run_verus(
         } else if *option == "--is-core" {
             verus_args.push("--is-core".to_string());
             is_core = true;
+        } else if *option == "--disable-internal-test-mode" {
+            use_internal_test_mode = false;
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
+    }
+    if use_internal_test_mode {
+        verus_args.insert(0, "--internal-test-mode".to_string());
     }
     if !external_by_default {
         verus_args.push("--no-external-by-default".to_string());
@@ -330,7 +335,7 @@ pub fn run_verus(
     verus_args.push(entry_file.to_str().unwrap().to_string());
     verus_args.append(&mut vec!["--cfg".to_string(), "erasure_macro_todo".to_string()]);
 
-    if import_vstd && !is_core {
+    if import_vstd && !is_core && use_internal_test_mode {
         let lib_vstd_vir_path = verus_target_path.join("vstd.vir");
         let lib_vstd_vir_path = lib_vstd_vir_path.to_str().unwrap();
         let lib_vstd_path = verus_target_path.join("libvstd.rlib");
@@ -380,10 +385,10 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
     #![allow(unused_imports)]
     #![allow(unused_macros)]
     #![allow(deprecated)]
-    #![feature(exclusive_range_pattern)]
     #![feature(strict_provenance)]
     #![feature(allocator_api)]
     #![feature(proc_macro_hygiene)]
+    #![feature(const_refs_to_static)]
 
     use builtin::*;
     use builtin_macros::*;

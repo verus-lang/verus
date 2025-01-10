@@ -281,8 +281,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] test_trait4 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_trait4 ["--disable-internal-test-mode"] => verus_code! {
         #[verifier::external_trait_specification]
         pub trait ExIntoIterator {
             type ExternalTraitSpecificationFor: core::iter::IntoIterator;

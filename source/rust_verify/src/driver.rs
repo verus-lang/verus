@@ -268,18 +268,6 @@ where
         lifetime_end_time,
         ..
     } = verifier_callbacks;
-    if !verifier.args.output_json && !verifier.encountered_vir_error {
-        println!(
-            "verification results:: {} verified, {} errors{}",
-            verifier.count_verified,
-            verifier.count_errors,
-            if !is_verifying_entire_crate(&verifier) {
-                " (partial verification with `--verify-*`)"
-            } else {
-                ""
-            }
-        );
-    }
     let time1 = Instant::now();
     let time_lifetime = match (lifetime_start_time, lifetime_end_time) {
         (Some(t1), Some(t2)) => t2 - t1,

@@ -366,20 +366,12 @@ fn instantiate_pred_clauses<'tcx>(
     let mut clauses: Vec<(Option<ClauseFrom<'tcx>>, Clause<'tcx>)> = Vec::new();
     for def_id in ancestors.iter().rev() {
         let preds = tcx.predicates_of(def_id);
-        let mut preds_on = Vec::new();
-        preds_on.extend(tcx.explicit_predicates_of(def_id).predicates);
-        preds_on.extend(tcx.inferred_outlives_of(def_id));
-        assert!(
-            preds.predicates.len() == preds_on.len()
-                || preds.predicates.len() == preds_on.len() + 1
-        );
-        assert!(preds_on.iter().all(|p| preds.predicates.contains(p)));
         for (clause, span) in preds.predicates {
             // This is based on GenericPredicates.instantiate_into, which is close to what
             // we need but doesn't track the relation between the uninstantiated and
             // instantiated clauses.
             let inst = rustc_middle::ty::EarlyBinder::bind(*clause).instantiate(tcx, args);
-            let is_self_trait_bound = !preds_on.contains(&(*clause, *span));
+            let is_self_trait_bound = *span == rustc_span::DUMMY_SP;
             if is_self_trait_bound {
                 if let ClauseKind::Trait(TraitPredicate { trait_ref, .. }) =
                     clause.kind().skip_binder()

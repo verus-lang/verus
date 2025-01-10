@@ -2819,13 +2819,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
         self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
-        // write_dep_info will internally check whether the `--emit=dep-info` flag is set
-        /*if let Err(_) = queries.write_dep_info() {
-            // ErrorGuaranteed indicates than an error has already been reported to the user, so we can just exit
-            std::process::exit(-1);
-        }*/
-
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
+            rustc_interface::passes::write_dep_info(tcx);
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
 
             let time_import0 = Instant::now();
@@ -2962,6 +2957,18 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             }
         });
+        if !self.verifier.args.output_json && !self.verifier.encountered_vir_error {
+            println!(
+                "verification results:: {} verified, {} errors{}",
+                self.verifier.count_verified,
+                self.verifier.count_errors,
+                if !crate::driver::is_verifying_entire_crate(&self.verifier) {
+                    " (partial verification with `--verify-*`)"
+                } else {
+                    ""
+                }
+            );
+        }
         rustc_driver::Compilation::Stop
     }
 }
