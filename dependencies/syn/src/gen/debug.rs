@@ -2964,6 +2964,16 @@ impl Debug for PredicateType {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Prover {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Prover");
+        formatter.field("by_token", &self.by_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("id", &self.id);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for Publish {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -3107,14 +3117,7 @@ impl Debug for Signature {
         formatter.field("inputs", &self.inputs);
         formatter.field("variadic", &self.variadic);
         formatter.field("output", &self.output);
-        formatter.field("prover", &self.prover);
-        formatter.field("requires", &self.requires);
-        formatter.field("recommends", &self.recommends);
-        formatter.field("ensures", &self.ensures);
-        formatter.field("returns", &self.returns);
-        formatter.field("decreases", &self.decreases);
-        formatter.field("invariants", &self.invariants);
-        formatter.field("unwind", &self.unwind);
+        formatter.field("spec", &self.spec);
         formatter.finish()
     }
 }
@@ -3134,6 +3137,30 @@ impl Debug for SignatureInvariants {
         let mut formatter = formatter.debug_struct("SignatureInvariants");
         formatter.field("token", &self.token);
         formatter.field("set", &self.set);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for SignatureSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("SignatureSpec");
+        formatter.field("prover", &self.prover);
+        formatter.field("requires", &self.requires);
+        formatter.field("recommends", &self.recommends);
+        formatter.field("ensures", &self.ensures);
+        formatter.field("returns", &self.returns);
+        formatter.field("decreases", &self.decreases);
+        formatter.field("invariants", &self.invariants);
+        formatter.field("unwind", &self.unwind);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for SignatureSpecAttr {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("SignatureSpecAttr");
+        formatter.field("ret_pat", &self.ret_pat);
+        formatter.field("spec", &self.spec);
         formatter.finish()
     }
 }

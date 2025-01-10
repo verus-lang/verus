@@ -22,7 +22,7 @@ fn label_asserts<'ctx>(
             // asserts are on rhs of =>
             // (slight hack to also allow rhs of == for quantified function definitions)
             Arc::new(ExprX::Binary(
-                *op,
+                op.clone(),
                 lhs.clone(),
                 label_asserts(context, infos, axiom_infos, rhs),
             ))

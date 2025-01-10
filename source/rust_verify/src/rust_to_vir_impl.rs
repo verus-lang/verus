@@ -4,7 +4,7 @@ use crate::rust_to_vir_base::{
     typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
-use crate::util::{err_span, unsupported_err_span};
+use crate::util::err_span;
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use crate::{err_unless, unsupported_err};
 use indexmap::{IndexMap, IndexSet};
@@ -288,12 +288,8 @@ pub(crate) fn translate_impl<'tcx>(
                 ty
             );
             true
-        } else if let Some(
-            RustItem::StructuralEq
-            | RustItem::StructuralPartialEq
-            | RustItem::PartialEq
-            | RustItem::Eq,
-        ) = rust_item
+        } else if let Some(RustItem::StructuralPartialEq | RustItem::PartialEq | RustItem::Eq) =
+            rust_item
         {
             // TODO SOUNDNESS additional checks of the implementation
             true

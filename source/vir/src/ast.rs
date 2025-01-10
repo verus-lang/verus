@@ -28,7 +28,7 @@ pub type Idents = Arc<Vec<Ident>>;
 
 /// A fully-qualified name, such as a module name, function name, or datatype name
 pub type Path = Arc<PathX>;
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PathX {
     pub krate: Option<Ident>, // None for local crate
     pub segments: Idents,
@@ -90,7 +90,7 @@ pub struct VarBinderX<A: Clone> {
 
 /// Static function identifier
 pub type Fun = Arc<FunX>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FunX {
     /// Path of function
     pub path: Path,
@@ -805,6 +805,7 @@ pub enum ExprX {
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
+    /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
@@ -924,6 +925,14 @@ pub enum AcceptRecursiveType {
 /// Each type parameter is (name: Ident, GenericBound, AcceptRecursiveType)
 pub type TypPositives = Arc<Vec<(Ident, AcceptRecursiveType)>>;
 
+/// When verifying a function, specify where we auto-promote == to =~=.
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq)]
+pub struct AutoExtEqual {
+    pub assert: bool,
+    pub assert_by: bool,
+    pub ensures: bool,
+}
+
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]
 pub struct FunctionAttrsX {
@@ -939,6 +948,8 @@ pub struct FunctionAttrsX {
     pub broadcast_forall_only: bool,
     /// In triggers_auto, don't use this function as a trigger
     pub no_auto_trigger: bool,
+    /// Specify which places we auto-promote == to =~= when verifying this function
+    pub auto_ext_equal: AutoExtEqual,
     /// Custom error message to display when a pre-condition fails
     pub custom_req_err: Option<String>,
     /// When used in a ghost context, redirect to a specified spec function

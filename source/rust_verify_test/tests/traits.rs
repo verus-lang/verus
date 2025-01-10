@@ -111,123 +111,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_macro_attributes code!{
-        struct Abc<T> {
-            t: T,
-        }
-
-        trait SomeTrait {
-            #[requires(true)]
-            #[ensures(|ret: bool| ret)]
-            fn f(&self) -> bool;
-        }
-
-        impl<S> Abc<S> {
-            fn foo(&self)
-                where S: SomeTrait
-            {
-                let ret = self.t.f();
-                proof!{assert(ret);}
-            }
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] test_bad_macro_attributes_in_trait code!{
-        trait SomeTrait {
-            #[requires(true)]
-            type T;
-        }
-    } => Err(err) => assert_custom_attr_error_msg(err, "Misuse of #[requires()]")
-}
-
-test_verify_one_file! {
-    #[test] test_no_verus_verify_attributes_in_trait_impl code!{
-        struct Abc<T> {
-            t: T,
-        }
-
-        #[verus_verify]
-        trait SomeTrait {
-            #[verus_verify]
-            #[requires(true)]
-            fn f(&self) -> bool;
-        }
-
-        impl<S> Abc<S> {
-            fn foo(&self)
-                where S: SomeTrait
-            {
-                let ret = self.t.f();
-                proof!{assert(ret);}
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "assertion failed")
-}
-
-test_verify_one_file! {
-    #[test] test_failed_ensures_macro_attributes code!{
-        trait SomeTrait {
-            #[requires(true)]
-            #[ensures(|ret: bool| [true, ret])]
-            fn f(&self) -> bool;
-        }
-
-        impl SomeTrait for bool {
-            fn f(&self) -> bool {
-                *self
-            }
-        }
-    } => Err(err) => assert_any_vir_error_msg(err, "postcondition not satisfied")
-}
-
-test_verify_one_file! {
-    #[test] test_default_fn_use_macro_attributes code!{
-        struct Abc<T> {
-            t: T,
-        }
-
-        #[verus_verify]
-        trait SomeTrait {
-            #[verus_verify]
-            #[requires(true)]
-            #[ensures(|ret: bool| ret)]
-            fn f(&self) -> bool {
-                true
-            }
-        }
-
-        #[verus_verify]
-        impl<S> Abc<S> {
-            fn foo(&self)
-                where S: SomeTrait
-            {
-                let ret = self.t.f();
-                proof!{assert(ret);}
-            }
-        }
-    } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] test_default_failed_fn_use_macro_attributes code!{
-        struct Abc<T> {
-            t: T,
-        }
-
-        #[verus_verify]
-        trait SomeTrait {
-            #[requires(true)]
-            #[ensures(|ret: bool| [ret, !ret])]
-            fn f(&self) -> bool {
-                true
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "postcondition not satisfied")
-}
-
-test_verify_one_file! {
     #[test] test_ill_formed_3 code! {
         trait T1 {
             fn f(&self) {
@@ -1401,8 +1284,8 @@ test_verify_one_file! {
             }
 
             fn f(&self, a: &u64) -> u64 {
-                self.x / 2 + a
-            } // FAILS
+                self.x / 2 + a // FAILS
+            }
         }
 
         fn p<A, Z: T<A>>(a: &A, z: &Z) -> (rz: A)
@@ -1462,8 +1345,8 @@ test_verify_one_file! {
             }
 
             fn f(a: &u64) -> u64 {
-                a * 2
-            } // FAILS
+                a * 2 // FAILS
+            }
         }
 
         fn p<A, Z: T<A>>(a: &A) -> (rz: A)
@@ -1783,8 +1666,8 @@ test_verify_one_file! {
 
         impl T for S {
             fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
-                if b { self } else { self }
-            } // FAILS
+                if b { self } else { self } // FAILS
+            }
         }
 
         fn test() {
@@ -4166,4 +4049,158 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_recursion_through_copy_impl_is_checked verus_code! {
+        use vstd::*;
+
+        trait Tr {
+            proof fn tr_g() {
+            }
+        }
+
+        struct X<T, S> {
+            t: T,
+            s: S,
+        }
+
+        impl<T: Clone, S: Clone> Clone for X<T, S> {
+            fn clone(&self) -> Self {
+                X { t: self.t.clone(), s: self.s.clone() }
+            }
+        }
+
+        impl<T: Copy + Tr, S: Copy> Copy for X<T, S> {
+        }
+
+
+        trait Sr {
+            proof fn f() { }
+        }
+
+        struct Y<R> {
+            r: R,
+        }
+
+        impl<W: Copy> Sr for Y<W> {
+            proof fn f() { }
+        }
+
+
+        #[derive(Clone, Copy)]
+        struct A1 { }
+
+        #[derive(Clone, Copy)]
+        struct B1 { }
+
+        impl Tr for A1 {
+            proof fn tr_g() {
+                test();
+            }
+        }
+
+        // Depends on `X<A1, B1> : Copy`
+        // Depends on A1: Tr
+        // which depends recursively on `test`
+        proof fn test() {
+            let r = Y::<X<A1, B1>>::f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
+    #[test] test_recursion_through_sync_impl_is_checked verus_code! {
+        trait Tr {
+            proof fn tr_g() {
+            }
+        }
+
+        struct X<T, S> {
+            rc: std::rc::Rc<u64>,
+            t: T,
+            s: S,
+        }
+
+        #[verifier::external]
+        unsafe impl<T: Sync + Tr, S: Sync> Sync for X<T, S> {
+        }
+
+
+        trait Sr {
+            proof fn f() { }
+        }
+
+        struct Y<R> {
+            r: R,
+        }
+
+        impl<W: Sync> Sr for Y<W> {
+            proof fn f() { }
+        }
+
+
+        struct A1 { }
+
+        struct B1 { }
+
+        impl Tr for A1 {
+            proof fn tr_g() {
+                test();
+            }
+        }
+
+
+        proof fn test() {
+            let r = Y::<X<A1, B1>>::f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
+}
+
+test_verify_one_file! {
+    #[test] test_recursion_through_send_impl_is_checked verus_code! {
+        trait Tr {
+            proof fn tr_g() {
+            }
+        }
+
+        struct X<T, S> {
+            rc: std::rc::Rc<u64>,
+            t: T,
+            s: S,
+        }
+
+        #[verifier::external]
+        unsafe impl<T: Send + Tr, S: Send> Send for X<T, S> {
+        }
+
+
+        trait Sr {
+            proof fn f() { }
+        }
+
+        struct Y<R> {
+            r: R,
+        }
+
+        impl<W: Send> Sr for Y<W> {
+            proof fn f() { }
+        }
+
+
+        struct A1 { }
+
+        struct B1 { }
+
+        impl Tr for A1 {
+            proof fn tr_g() {
+                test();
+            }
+        }
+
+
+        proof fn test() {
+            let r = Y::<X<A1, B1>>::f();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }

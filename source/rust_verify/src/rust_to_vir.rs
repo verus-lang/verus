@@ -13,7 +13,7 @@ use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_to_vir, mk_visibility};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::rust_to_vir_impl::ExternalInfo;
-use crate::util::{err_span, unsupported_err_span};
+use crate::util::err_span;
 use crate::verus_items::{self, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 
@@ -53,6 +53,9 @@ fn check_item<'tcx>(
     let attrs = ctxt.tcx.hir().attrs(item.hir_id());
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     if vattrs.internal_reveal_fn {
+        return Ok(());
+    }
+    if vattrs.internal_const_body {
         return Ok(());
     }
     if vattrs.external_fn_specification && !matches!(&item.kind, ItemKind::Fn(..)) {
@@ -405,6 +408,7 @@ fn check_item<'tcx>(
             origin: OpaqueTyOrigin::AsyncFn(_),
             in_trait: _,
             lifetime_mapping: _,
+            precise_capturing_args: None,
         }) => {
             return Ok(());
         }
@@ -630,6 +634,7 @@ pub fn crate_to_vir<'tcx>(
                     }
                 },
                 OwnerNode::Crate(_mod_) => (),
+                OwnerNode::Synthetic => (),
             }
         }
     }

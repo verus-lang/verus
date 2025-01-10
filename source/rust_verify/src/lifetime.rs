@@ -173,11 +173,9 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
     queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
         let hir = tcx.hir();
         let krate = hir.krate();
-        match rustc_hir_analysis::check_crate(tcx) {
-            Ok(()) => {}
-            Err(_) => {
-                return;
-            }
+        rustc_hir_analysis::check_crate(tcx);
+        if tcx.dcx().err_count() != 0 {
+            return;
         }
         for owner in &krate.owners {
             if let MaybeOwner::Owner(owner) = owner {
@@ -306,7 +304,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
 struct LifetimeCallbacks {}
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
-    fn after_crate_root_parsing<'tcx>(
+    fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,

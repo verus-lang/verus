@@ -188,6 +188,7 @@ trait SyntacticEquality {
     fn definitely_eq(&self, other: &Self) -> bool {
         matches!(self.syntactic_eq(other), Some(true))
     }
+    #[allow(dead_code)]
     fn definitely_ne(&self, other: &Self) -> bool {
         matches!(self.syntactic_eq(other), Some(false))
     }

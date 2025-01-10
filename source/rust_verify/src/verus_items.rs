@@ -15,13 +15,13 @@ fn ty_to_stable_string_partial<'tcx>(
         TyKind::Int(t) => format!("{}", t.name_str()),
         TyKind::Uint(t) => format!("{}", t.name_str()),
         TyKind::Float(t) => format!("{}", t.name_str()),
-        TyKind::RawPtr(ref tm) => format!(
+        TyKind::RawPtr(ref ty, ref tm) => format!(
             "*{} {}",
-            match tm.mutbl {
+            match tm {
                 rustc_ast::Mutability::Mut => "mut",
                 rustc_ast::Mutability::Not => "const",
             },
-            ty_to_stable_string_partial(tcx, &tm.ty)?,
+            ty_to_stable_string_partial(tcx, ty)?,
         ),
         TyKind::Ref(_r, ty, mutbl) => format!(
             "&{} {}",
@@ -579,7 +579,6 @@ pub(crate) enum RustItem {
     Sized,
     Copy,
     Clone,
-    StructuralEq,
     StructuralPartialEq,
     Eq,
     PartialEq,
@@ -620,9 +619,6 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     }
     if tcx.lang_items().drop_trait() == Some(def_id) {
         return Some(RustItem::Drop);
-    }
-    if tcx.lang_items().structural_teq_trait() == Some(def_id) {
-        return Some(RustItem::StructuralEq);
     }
     if tcx.lang_items().structural_peq_trait() == Some(def_id) {
         return Some(RustItem::StructuralPartialEq);

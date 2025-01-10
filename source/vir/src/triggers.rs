@@ -207,7 +207,10 @@ fn check_trigger_expr(
             }
             ExpX::VarAt(_, VarAt::Pre) => Ok(()),
             ExpX::Old(_, _) => panic!("internal error: Old"),
-            ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_)) => Ok(()),
+            ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(typ)) => {
+                crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
+                Ok(())
+            }
             ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => {
                 Err(error(&exp.span, "triggers cannot contain trait bounds"))
             }
@@ -337,6 +340,9 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                         // it must be the nested quantifier's trigger, not ours.
                         return Ok(());
                     }
+                }
+                if !state.trigger_vars.iter().any(|trigger_var| free_vars.contains(trigger_var)) {
+                    return Ok(());
                 }
                 if !state.triggers.contains_key(group) {
                     state.triggers.insert(*group, Vec::new());

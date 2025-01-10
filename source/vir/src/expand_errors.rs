@@ -1017,6 +1017,7 @@ fn split_precondition(ctx: &Ctx, span: &Span, name: &Fun, typs: &Typs, args: &Ex
     exps
 }
 
+#[allow(dead_code)]
 struct DiagnosticsVoid {}
 impl air::messages::Diagnostics for DiagnosticsVoid {
     fn report_as(&self, _msg: &air::messages::ArcDynMessage, _level: air::messages::MessageLevel) {}

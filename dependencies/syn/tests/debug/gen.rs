@@ -5898,6 +5898,14 @@ impl Debug for Lite<syn::PredicateType> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::Prover> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("Prover");
+        formatter.field("id", Lite(&_val.id));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::Publish> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -6281,16 +6289,72 @@ impl Debug for Lite<syn::Signature> {
             formatter.field("variadic", Print::ref_cast(val));
         }
         formatter.field("output", Lite(&_val.output));
-        if let Some(val) = &_val.prover {
+        formatter.field("spec", Lite(&_val.spec));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::SignatureDecreases> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("SignatureDecreases");
+        formatter.field("decreases", Lite(&_val.decreases));
+        if let Some(val) = &_val.when {
             #[derive(RefCast)]
             #[repr(transparent)]
-            struct Print((syn::token::By, syn::token::Paren, proc_macro2::Ident));
+            struct Print((syn::token::When, syn::Expr));
             impl Debug for Print {
                 fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                     formatter.write_str("Some")?;
                     let _val = &self.0;
                     formatter.write_str("(")?;
-                    Debug::fmt(Lite(&_val.2), formatter)?;
+                    Debug::fmt(Lite(&_val.1), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("when", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.via {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print((syn::token::Via, syn::Expr));
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(&_val.1), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("via", Print::ref_cast(val));
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::SignatureInvariants> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("SignatureInvariants");
+        formatter.field("set", Lite(&_val.set));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::SignatureSpec> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("SignatureSpec");
+        if let Some(val) = &_val.prover {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Prover);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
                     formatter.write_str(")")?;
                     Ok(())
                 }
@@ -6412,51 +6476,27 @@ impl Debug for Lite<syn::Signature> {
         formatter.finish()
     }
 }
-impl Debug for Lite<syn::SignatureDecreases> {
+impl Debug for Lite<syn::SignatureSpecAttr> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
-        let mut formatter = formatter.debug_struct("SignatureDecreases");
-        formatter.field("decreases", Lite(&_val.decreases));
-        if let Some(val) = &_val.when {
+        let mut formatter = formatter.debug_struct("SignatureSpecAttr");
+        if let Some(val) = &_val.ret_pat {
             #[derive(RefCast)]
             #[repr(transparent)]
-            struct Print((syn::token::When, syn::Expr));
+            struct Print((syn::Pat, syn::token::FatArrow));
             impl Debug for Print {
                 fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                     formatter.write_str("Some")?;
                     let _val = &self.0;
                     formatter.write_str("(")?;
-                    Debug::fmt(Lite(&_val.1), formatter)?;
+                    Debug::fmt(Lite(&_val.0), formatter)?;
                     formatter.write_str(")")?;
                     Ok(())
                 }
             }
-            formatter.field("when", Print::ref_cast(val));
+            formatter.field("ret_pat", Print::ref_cast(val));
         }
-        if let Some(val) = &_val.via {
-            #[derive(RefCast)]
-            #[repr(transparent)]
-            struct Print((syn::token::Via, syn::Expr));
-            impl Debug for Print {
-                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                    formatter.write_str("Some")?;
-                    let _val = &self.0;
-                    formatter.write_str("(")?;
-                    Debug::fmt(Lite(&_val.1), formatter)?;
-                    formatter.write_str(")")?;
-                    Ok(())
-                }
-            }
-            formatter.field("via", Print::ref_cast(val));
-        }
-        formatter.finish()
-    }
-}
-impl Debug for Lite<syn::SignatureInvariants> {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        let _val = &self.value;
-        let mut formatter = formatter.debug_struct("SignatureInvariants");
-        formatter.field("set", Lite(&_val.set));
+        formatter.field("spec", Lite(&_val.spec));
         formatter.finish()
     }
 }

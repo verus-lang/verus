@@ -2067,6 +2067,14 @@ impl PartialEq for PredicateType {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Prover {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Prover {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for Publish {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for Publish {
@@ -2183,10 +2191,7 @@ impl PartialEq for Signature {
             && self.mode == other.mode && self.ident == other.ident
             && self.generics == other.generics && self.inputs == other.inputs
             && self.variadic == other.variadic && self.output == other.output
-            && self.prover == other.prover && self.requires == other.requires
-            && self.recommends == other.recommends && self.ensures == other.ensures
-            && self.returns == other.returns && self.decreases == other.decreases
-            && self.invariants == other.invariants && self.unwind == other.unwind
+            && self.spec == other.spec
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
@@ -2204,6 +2209,25 @@ impl Eq for SignatureInvariants {}
 impl PartialEq for SignatureInvariants {
     fn eq(&self, other: &Self) -> bool {
         self.set == other.set
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for SignatureSpec {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for SignatureSpec {
+    fn eq(&self, other: &Self) -> bool {
+        self.prover == other.prover && self.requires == other.requires
+            && self.recommends == other.recommends && self.ensures == other.ensures
+            && self.returns == other.returns && self.decreases == other.decreases
+            && self.invariants == other.invariants && self.unwind == other.unwind
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for SignatureSpecAttr {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for SignatureSpecAttr {
+    fn eq(&self, other: &Self) -> bool {
+        self.ret_pat == other.ret_pat && self.spec == other.spec
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]

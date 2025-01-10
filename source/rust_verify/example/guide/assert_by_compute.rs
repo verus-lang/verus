@@ -69,5 +69,21 @@ proof fn test_fibonacci() {
 }
 // ANCHOR_END: fibonacci_memoize
 
+// ANCHOR: all_spec
+use vstd::compute::RangeAll;
+
+spec fn p(u: usize) -> bool {
+    u >> 8 == 0
+}
+
+proof fn range_property(u: usize)
+    requires 25 <= u < 100,
+    ensures p(u),
+{
+    assert((25..100int).all_spec(|x| p(x as usize))) by (compute_only);
+    let prop = |x| p(x as usize);
+    assert(prop(u));
+}
+// ANCHOR_END: all_spec
 
 } // verus!

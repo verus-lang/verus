@@ -1775,3 +1775,42 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 5)
 }
+
+test_verify_one_file! {
+    #[test] test_field_update_tuple_path verus_code! {
+        struct X {
+            i: u8,
+            j: u8,
+        }
+
+        struct Y {
+            x: X,
+        }
+
+        fn get_i() -> (res: u8) ensures res == 10 { 10 }
+
+        fn tup_test1() {
+            let mut y = (Y { x: X { i: 12, j: 25 } }, 13);
+            y.0.x.i = 10;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] test_is_panic_regression_1380 verus_code! {
+        use vstd::seq::*;
+
+        enum Alternative {
+            Yes,
+            No,
+        }
+
+        spec fn is_test_original(s: Seq<Option<Alternative>>) -> bool {
+            &&& forall|b:nat| b < s.len() ==> s[b as int] is Some(Alternative::Yes)
+        }
+
+        spec fn is_test_minimal(s: Seq<Option<Alternative>>) -> bool {
+            &&& forall|b:nat| s[b as int] is Some(Alternative::Yes)
+        }
+    } => Err(e) => assert_rust_error_msg(e, todo!())
+}
