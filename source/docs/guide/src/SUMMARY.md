@@ -19,6 +19,7 @@
     - [spec functions vs. proof functions, recommends](spec_vs_proof.md)
     - [Ghost code vs. exec code](ghost_vs_exec.md)
     - [const declarations](const.md)
+    - [Putting it all together](triangle.md)
 - [Recursion and loops](recursion_loops.md)
     - [Recursive spec functions, decreases, fuel](recursion.md)
     - [Recursive exec and proof functions, proofs by induction](induction.md)
