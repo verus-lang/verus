@@ -78,14 +78,10 @@ pub broadcast proof fn axiom_spec_len<T>(slice: &[T])
     admit();
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(spec_slice_len)]
-pub fn slice_len<T>(slice: &[T]) -> (len: usize)
+pub assume_specification<T> [<[T]>::len] (slice: &[T]) -> (len: usize)
     ensures
-        len == spec_slice_len(slice),
-{
-    slice.len()
-}
+        len == spec_slice_len(slice);
 
 #[cfg(feature = "alloc")]
 #[verifier::external_body]

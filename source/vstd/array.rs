@@ -107,13 +107,9 @@ pub fn array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
     ar
 }
 
-#[verifier::external_fn_specification]
-pub fn ex_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
+pub assume_specification<T, const N: usize> [ <[T; N]>::as_slice ](ar: &[T; N]) -> (out: &[T])
     ensures
-        ar@ == out@,
-{
-    ar.as_slice()
-}
+        ar@ == out@;
 
 pub spec fn spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T) -> (res: [T; N]);
 
