@@ -22,16 +22,16 @@ use syn_verus::visit_mut::{
 use syn_verus::BroadcastUse;
 use syn_verus::ExprBlock;
 use syn_verus::{
-    braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
-    Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
-    ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Global, Ident,
-    ImplItem, ImplItemMethod, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
-    InvariantNameSetList, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
-    ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
-    ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends,
-    Requires, ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants,
-    SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem, TraitItemMethod,
-    Type, TypeFnSpec, TypePath, UnOp, Visibility,
+    braced, bracketed, parenthesized, parse_macro_input, AssumeSpecification, AttrStyle, Attribute,
+    BareFnArg, BinOp, Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit,
+    ExprLoop, ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArg, FnArgKind, FnMode,
+    Global, Ident, ImplItem, ImplItemMethod, Invariant, InvariantEnsures, InvariantExceptBreak,
+    InvariantNameSet, InvariantNameSetList, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn,
+    ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr,
+    MatchesOpToken, ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path, PathArguments,
+    PathSegment, Publish, Recommends, Requires, ReturnType, Returns, Signature, SignatureDecreases,
+    SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem,
+    TraitItemMethod, Type, TypeFnSpec, TypePath, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -1319,14 +1319,16 @@ impl Visitor {
             inputs: inputs,
             variadic: None,
             output: output,
-            prover: None,
-            requires: requires,
-            recommends: None,
-            ensures: ensures,
-            returns: returns,
-            decreases: None,
-            invariants: invariants,
-            unwind: unwind,
+            spec: SignatureSpec {
+                prover: None,
+                requires: requires,
+                recommends: None,
+                ensures: ensures,
+                returns: returns,
+                decreases: None,
+                invariants: invariants,
+                unwind: unwind,
+            },
         };
 
         match sig.inputs.first() {

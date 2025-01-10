@@ -334,6 +334,7 @@ ast_struct! {
         pub paren_token: token::Paren,
         pub inputs: Punctuated<FnArg, Token![,]>,
         pub output: ReturnType,
+        // REVIEW: consider replacing these with SignatureSpec
         pub requires: Option<Requires>,
         pub ensures: Option<Ensures>,
         pub returns: Option<Returns>,
