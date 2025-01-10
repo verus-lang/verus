@@ -86,20 +86,6 @@ impl<K, V> Map<K, V> {
         self.dom().len()
     }
 
-    /// DEPRECATED: use =~= or =~~= instead.
-    /// Returns true if the two maps are pointwise equal, i.e.,
-    /// they have the same domains and the corresponding values are equal
-    /// for each key. This is equivalent to the maps being actually equal
-    /// by [`axiom_map_ext_equal`].
-    ///
-    /// To prove that two maps are equal via extensionality, it may be easier
-    /// to use the general-purpose `=~=` or `=~~=` or
-    /// to use the [`assert_maps_equal!`] macro, rather than using `.ext_equal` directly.
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    pub open spec fn ext_equal(self, m2: Map<K, V>) -> bool {
-        self =~= m2
-    }
-
     #[verifier::external_body]
     pub proof fn tracked_empty() -> (tracked out_v: Self)
         ensures

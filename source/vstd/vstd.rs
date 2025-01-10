@@ -28,7 +28,6 @@ pub mod bytes;
 pub mod calc_macro;
 pub mod cell;
 pub mod compute;
-pub mod function;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]
@@ -45,8 +44,6 @@ pub mod pcm;
 pub mod pcm_lib;
 pub mod pervasive;
 pub mod proph;
-#[cfg(feature = "alloc")]
-pub mod ptr;
 pub mod raw_ptr;
 
 // TODO this should be permitted even in not(verus_keep_ghost)

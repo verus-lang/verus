@@ -62,11 +62,6 @@ impl<V> Multiset<V> {
     /// must be finite, or else this multiset is arbitrary.
     pub open spec fn from_map(m: Map<V, nat>) -> Self;
 
-    #[cfg_attr(not(verus_verify_core), deprecated = "use from_map instead")]
-    pub open spec fn new(m: Map<V, nat>) -> Self {
-        Self::from_map(m)
-    }
-
     pub open spec fn from_set(m: Set<V>) -> Self {
         Self::from_map(Map::new(|k| m.contains(k), |v| 1))
     }
@@ -123,28 +118,8 @@ impl<V> Multiset<V> {
     }
 
     #[verifier::inline]
-    #[cfg_attr(not(verus_verify_core), deprecated = "use m1.subset_of(m2) or m1 <= m2 instead")]
-    pub open spec fn le(self, m2: Self) -> bool {
-        self.subset_of(m2)
-    }
-
-    #[verifier::inline]
     pub open spec fn spec_le(self, m2: Self) -> bool {
         self.subset_of(m2)
-    }
-
-    /// DEPRECATED: use =~= or =~~= instead.
-    /// Returns true if the two multisets are pointwise equal, i.e.,
-    /// for every value `v: V`, the counts are the same in each multiset.
-    /// This is equivalent to the multisets actually being equal
-    /// by [`axiom_multiset_ext_equal`].
-    ///
-    /// To prove that two maps are equal via extensionality, it may be easier
-    /// to use the general-purpose `=~=` or `=~~=` or
-    /// to use the [`assert_multisets_equal!`] macro, rather than using `ext_equal` directly.
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    pub open spec fn ext_equal(self, m2: Self) -> bool {
-        self =~= m2
     }
 
     // TODO define this in terms of a more general constructor?

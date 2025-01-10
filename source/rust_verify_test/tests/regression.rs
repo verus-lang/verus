@@ -638,7 +638,7 @@ test_verify_one_file! {
         proof fn test(mymap: Map<nat, nat>)
             requires !mymap.dom().finite() {
 
-            let m = Multiset::new(mymap);
+            let m = Multiset::from_map(mymap);
             assert(m.dom().finite());
 
             assert(!m.dom().finite()); // FAILS
@@ -653,7 +653,7 @@ test_verify_one_file! {
         proof fn test(mymap: Map<nat, nat>)
             requires !mymap.dom().finite() {
 
-            let m = Multiset::new(mymap);
+            let m = Multiset::from_map(mymap);
             assert(m.dom().finite());
 
             assert(m.dom() =~= mymap.dom()); // FAILS
@@ -669,8 +669,8 @@ test_verify_one_file! {
         use vstd::seq::*;
         proof fn test(s2: Seq<char>, s1: Seq<char>)
             requires
-                (s1 + new_strlit("-ab")@ == s2 + new_strlit("-cde")@) ||
-                (s1 + new_strlit("-cde")@ == s2 + new_strlit("-cde")@),
+                (s1 + ("-ab")@ == s2 + ("-cde")@) ||
+                (s1 + ("-cde")@ == s2 + ("-cde")@),
         {
             assert(
                 (s1.len() + 3 == s2.len() + 4) ||
@@ -678,28 +678,28 @@ test_verify_one_file! {
             ) by {
                 reveal_strlit("-cde");
                 reveal_strlit("-ab");
-                assert((s1 + new_strlit("-ab")@).len() == s1.len() + new_strlit("-ab")@.len() == s1.len() + 3);
-                assert((s1 + new_strlit("-cde")@).len() == s1.len() + new_strlit("-cde")@.len() == s1.len() + 4);
-                assert((s2 + new_strlit("-cde")@).len() == s2.len() + new_strlit("-cde")@.len() == s2.len() + 4);
+                assert((s1 + ("-ab")@).len() == s1.len() + ("-ab")@.len() == s1.len() + 3);
+                assert((s1 + ("-cde")@).len() == s1.len() + ("-cde")@.len() == s1.len() + 4);
+                assert((s2 + ("-cde")@).len() == s2.len() + ("-cde")@.len() == s2.len() + 4);
             };
 
-            assert(s1 + new_strlit("-ab")@ != s2 + new_strlit("-cde")@) by {
-                let str1 = s1 + new_strlit("-ab")@;
-                let str2 = s2 + new_strlit("-cde")@;
+            assert(s1 + ("-ab")@ != s2 + ("-cde")@) by {
+                let str1 = s1 + ("-ab")@;
+                let str2 = s2 + ("-cde")@;
                 assert(str1.len() == s1.len() + 3) by {
                     reveal_strlit("-ab");
-                    assert(str1.len() == (s1 + new_strlit("-ab")@).len() == s1.len() + new_strlit("-ab")@.len() == s1.len() + 3);
+                    assert(str1.len() == (s1 + ("-ab")@).len() == s1.len() + ("-ab")@.len() == s1.len() + 3);
                 };
                 assert(str2.len() == s2.len() + 4) by {
                     reveal_strlit("-cde");
-                    assert(str2.len() == (s2 + new_strlit("-cde")@).len() == s2.len() + new_strlit("-cde")@.len() == s2.len() + 4);
+                    assert(str2.len() == (s2 + ("-cde")@).len() == s2.len() + ("-cde")@.len() == s2.len() + 4);
                 };
                 if str2.len() == str1.len() {
                     assert(s1.len() + 3 == s2.len() + 4);
-                    assert(s1 + new_strlit("-ab")@ == s2 + new_strlit("-cde")@); // from the requires
+                    assert(s1 + ("-ab")@ == s2 + ("-cde")@); // from the requires
 
-                    assert(str1 == s2 + new_strlit("-cde")@);
-                    assert(str1 == s1 + new_strlit("-ab")@);
+                    assert(str1 == s2 + ("-cde")@);
+                    assert(str1 == s1 + ("-ab")@);
 
                     reveal_strlit("-ab");
                     reveal_strlit("-cde");

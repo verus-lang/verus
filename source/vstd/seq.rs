@@ -97,22 +97,6 @@ impl<A> Seq<A> {
             0 <= i < self.len(),
     ;
 
-    /// DEPRECATED: use =~= or =~~= instead.
-    /// Returns `true` if the two sequences are pointwise equal, i.e.,
-    /// they have the same length and the corresponding values are equal
-    /// at each index. This is equivalent to the sequences being actually equal
-    /// by [`axiom_seq_ext_equal`].
-    ///
-    /// To prove that two sequences are equal via extensionality, it may be easier
-    /// to use the general-purpose `=~=` or `=~~=` or
-    /// to use the [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro,
-    /// rather than using `.ext_equal` directly.
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    #[rustc_diagnostic_item = "verus::vstd::seq::Seq::ext_equal"]
-    pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
-        self =~= s2
-    }
-
     /// Returns a sequence for the given subrange.
     ///
     /// ## Example

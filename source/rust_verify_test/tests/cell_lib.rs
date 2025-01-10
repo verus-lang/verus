@@ -7,7 +7,8 @@ const IMPORTS: &str = code_str! {
     #[allow(unused_imports)] use vstd::*;
     #[allow(unused_imports)] use vstd::pervasive::*;
     #[allow(unused_imports)] use vstd::{cell::*};
-    #[allow(unused_imports)] use vstd::{ptr::*};
+    #[allow(unused_imports)] use vstd::{raw_ptr::*};
+    #[allow(unused_imports)] use vstd::layout::*;
     #[allow(unused_imports)] use vstd::{modes::*};
     #[allow(unused_imports)] use vstd::prelude::*;
 };
@@ -54,28 +55,30 @@ test_verify_one_file! {
 }
 
 const PTR_TEST: &str = code_str! {
-    let (ptr, Tracked(mut token), Tracked(dealloc)) = PPtr::<u32>::empty();
-    assert(equal(token.view().pptr, ptr.id()));
-    assert(equal(token.view().value, Option::None));
+    assume(size_of::<u32>() == 4);
+    assume(align_of::<u32>() == 4);
+    layout_for_type_is_valid::<u32>();
+    let (ptr, Tracked(token), Tracked(dealloc)) = allocate(4, 4);
+    let tracked mut token = token.into_typed::<u32>(ptr as usize);
+    let ptr = ptr as *mut u32;
 
-    ptr.put(Tracked(&mut token), 5);
-    assert(equal(token.view().pptr, ptr.id()));
-    assert(equal(token.view().value, Option::Some(5)));
+    assert(equal(token.ptr(), ptr));
+    assert(equal(token.opt_value(), MemContents::Uninit));
 
-    let x = ptr.replace(Tracked(&mut token), 7);
-    assert(equal(token.view().pptr, ptr.id()));
-    assert(equal(token.view().value, Option::Some(7)));
+    ptr_mut_write(ptr, Tracked(&mut token), 5);
+    assert(equal(token.ptr(), ptr));
+    assert(equal(token.opt_value(), MemContents::Init(5)));
+
+    let t = ptr_ref(ptr, Tracked(&token));
+    assert(equal(*t, 5));
+
+    let x = ptr_mut_read(ptr, Tracked(&mut token));
+    assert(equal(token.ptr(), ptr));
+    assert(equal(token.opt_value(), MemContents::Uninit));
     assert(equal(x, 5));
 
-    let t = ptr.borrow(Tracked(&token));
-    assert(equal(*t, 7));
-
-    let x = ptr.take(Tracked(&mut token));
-    assert(equal(token.view().pptr, ptr.id()));
-    assert(equal(token.view().value, Option::None));
-    assert(equal(x, 7));
-
-    ptr.dispose(Tracked(token), Tracked(dealloc));
+    let tracked token = token.into_raw();
+    deallocate(ptr as *mut u8, 4, 4, Tracked(token), Tracked(dealloc));
 };
 
 test_verify_one_file! {
@@ -171,113 +174,122 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] ptr_mismatch_put IMPORTS.to_string() + verus_code_str! {
+        global layout u32 is size == 4, align == 4;
         pub fn f() {
-            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
-            let (ptr2, Tracked(mut token2), Tracked(dealloc)) = PPtr::<u32>::empty();
-            ptr1.put(Tracked(&mut token2), 5); // FAILS
+            layout_for_type_is_valid::<u32>();
+            let (ptr1, Tracked(token1), Tracked(dealloc)) = allocate(4, 4);
+            let (ptr2, Tracked(token2), Tracked(dealloc)) = allocate(4, 4);
+            let tracked mut token1 = token1.into_typed::<u32>(ptr1 as usize);
+            let tracked mut token2 = token2.into_typed::<u32>(ptr2 as usize);
+            let ptr1 = ptr1 as *mut u32;
+            let ptr2 = ptr2 as *mut u32;
+
+            ptr_mut_write(ptr1, Tracked(&mut token2), 5); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] ptr_mismatch_take IMPORTS.to_string() + verus_code_str! {
+        global layout u32 is size == 4, align == 4;
         pub fn f() {
-            let (ptr1, Tracked(mut token1), Tracked(dealloc1)) = PPtr::<u32>::empty();
-            let (ptr2, Tracked(mut token2), Tracked(dealloc2)) = PPtr::<u32>::empty();
-            ptr1.put(Tracked(&mut token1), 5);
-            ptr2.put(Tracked(&mut token2), 5);
-            let x = ptr1.take(Tracked(&mut token2)); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
-}
+            layout_for_type_is_valid::<u32>();
+            let (ptr1, Tracked(token1), Tracked(dealloc)) = allocate(4, 4);
+            let (ptr2, Tracked(token2), Tracked(dealloc)) = allocate(4, 4);
+            let tracked mut token1 = token1.into_typed::<u32>(ptr1 as usize);
+            let tracked mut token2 = token2.into_typed::<u32>(ptr2 as usize);
+            let ptr1 = ptr1 as *mut u32;
+            let ptr2 = ptr2 as *mut u32;
+            ptr_mut_write(ptr1, Tracked(&mut token1), 5);
+            ptr_mut_write(ptr2, Tracked(&mut token2), 5);
 
-test_verify_one_file! {
-    #[test] ptr_mismatch_replace IMPORTS.to_string() + verus_code_str! {
-        pub fn f() {
-            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
-            let (ptr2, Tracked(mut token2), Tracked(dealloc)) = PPtr::<u32>::empty();
-            ptr1.put(Tracked(&mut token1), 5);
-            ptr2.put(Tracked(&mut token2), 5);
-            let x = ptr1.replace(Tracked(&mut token2), 7); // FAILS
+            let x = ptr_mut_read(ptr1, Tracked(&mut token2)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] ptr_mismatch_borrow IMPORTS.to_string() + verus_code_str! {
+        global layout u32 is size == 4, align == 4;
         pub fn f() {
-            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
-            let (ptr2, Tracked(mut token2), Tracked(dealloc)) = PPtr::<u32>::empty();
-            ptr1.put(Tracked(&mut token1), 5);
-            ptr2.put(Tracked(&mut token2), 5);
-            let x = ptr1.borrow(Tracked(&token2)); // FAILS
+            layout_for_type_is_valid::<u32>();
+            let (ptr1, Tracked(token1), Tracked(dealloc)) = allocate(4, 4);
+            let (ptr2, Tracked(token2), Tracked(dealloc)) = allocate(4, 4);
+            let tracked mut token1 = token1.into_typed::<u32>(ptr1 as usize);
+            let tracked mut token2 = token2.into_typed::<u32>(ptr2 as usize);
+            let ptr1 = ptr1 as *mut u32;
+            let ptr2 = ptr2 as *mut u32;
+            ptr_mut_write(ptr1, Tracked(&mut token1), 5);
+            ptr_mut_write(ptr2, Tracked(&mut token2), 5);
+
+            let x = ptr_ref(ptr1, Tracked(&token2)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] ptr_mismatch_dispose IMPORTS.to_string() + verus_code_str! {
+        global layout u32 is size == 4, align == 4;
         pub fn f() {
-            let (ptr1, Tracked(mut token1), Tracked(dealloc1)) = PPtr::<u32>::empty();
-            let (ptr2, Tracked(mut token2), Tracked(dealloc2)) = PPtr::<u32>::empty();
-            ptr1.dispose(Tracked(token2), Tracked(dealloc1)); // FAILS
+            layout_for_type_is_valid::<u32>();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc1)) = allocate(4, 4);
+            let (ptr2, Tracked(mut token2), Tracked(dealloc2)) = allocate(4, 4);
+            deallocate(ptr1, 4, 4, Tracked(token2), Tracked(dealloc1)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] ptr_mismatch_dispose2 IMPORTS.to_string() + verus_code_str! {
+        global layout u32 is size == 4, align == 4;
         pub fn f() {
-            let (ptr1, Tracked(mut token1), Tracked(dealloc1)) = PPtr::<u32>::empty();
-            let (ptr2, Tracked(mut token2), Tracked(dealloc2)) = PPtr::<u32>::empty();
-            ptr1.dispose(Tracked(token1), Tracked(dealloc2)); // FAILS
+            layout_for_type_is_valid::<u32>();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc1)) = allocate(4, 4);
+            let (ptr2, Tracked(mut token2), Tracked(dealloc2)) = allocate(4, 4);
+            deallocate(ptr1, 4, 4, Tracked(token1), Tracked(dealloc2)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] ptr_some_put IMPORTS.to_string() + verus_code_str! {
+        global layout u32 is size == 4, align == 4;
         pub fn f() {
-            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
-            ptr1.put(Tracked(&mut token1), 7);
-            ptr1.put(Tracked(&mut token1), 5); // FAILS
+            layout_for_type_is_valid::<u32>();
+            let (ptr1, Tracked(token1), Tracked(dealloc)) = allocate(4, 4);
+            let tracked mut token1 = token1.into_typed::<u32>(ptr1 as usize);
+            let ptr1 = ptr1 as *mut u32;
+
+            ptr_mut_write(ptr1, Tracked(&mut token1), 7);
+            ptr_mut_write(ptr1, Tracked(&mut token1), 5); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] ptr_none_take IMPORTS.to_string() + verus_code_str! {
+        global layout u32 is size == 4, align == 4;
         pub fn f() {
-            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
-            let x = ptr1.take(Tracked(&mut token1)); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
-}
+            layout_for_type_is_valid::<u32>();
+            let (ptr1, Tracked(token1), Tracked(dealloc)) = allocate(4, 4);
+            let tracked mut token1 = token1.into_typed::<u32>(ptr1 as usize);
+            let ptr1 = ptr1 as *mut u32;
 
-test_verify_one_file! {
-    #[test] ptr_none_replace IMPORTS.to_string() + verus_code_str! {
-        pub fn f() {
-            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
-            let x = ptr1.replace(Tracked(&mut token1), 7); // FAILS
+            let x = ptr_mut_read(ptr1, Tracked(&mut token1)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
     #[test] ptr_none_borrow IMPORTS.to_string() + verus_code_str! {
+        global layout u32 is size == 4, align == 4;
         pub fn f() {
-            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
-            let x = ptr1.borrow(Tracked(&token1)); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
-}
+            layout_for_type_is_valid::<u32>();
+            let (ptr1, Tracked(token1), Tracked(dealloc)) = allocate(4, 4);
+            let tracked mut token1 = token1.into_typed::<u32>(ptr1 as usize);
+            let ptr1 = ptr1 as *mut u32;
 
-test_verify_one_file! {
-    #[test] ptr_some_dispose IMPORTS.to_string() + verus_code_str! {
-        pub fn f() {
-            let (ptr1, Tracked(mut token1), Tracked(dealloc)) = PPtr::<u32>::empty();
-            ptr1.put(Tracked(&mut token1), 5);
-            ptr1.dispose(Tracked(token1), Tracked(dealloc)); // FAILS
+            let x = ptr_ref(ptr1, Tracked(&token1)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

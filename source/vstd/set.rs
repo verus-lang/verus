@@ -56,20 +56,6 @@ impl<A> Set<A> {
         self.contains(a)
     }
 
-    /// DEPRECATED: use =~= or =~~= instead.
-    /// Returns `true` if for every value `a: A`, it is either in both input sets or neither.
-    /// This is equivalent to the sets being actually equal
-    /// by [`axiom_set_ext_equal`].
-    ///
-    /// To prove that two sets are equal via extensionality, it may be easier
-    /// to use the general-purpose `=~=` or `=~~=` or
-    /// to use the [`assert_sets_equal!`](crate::set_lib::assert_sets_equal) macro,
-    /// rather than using `.ext_equal` directly.
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    pub open spec fn ext_equal(self, s2: Set<A>) -> bool {
-        self =~= s2
-    }
-
     /// Returns `true` if the first argument is a subset of the second.
     pub open spec fn subset_of(self, s2: Set<A>) -> bool {
         forall|a: A| self.contains(a) ==> s2.contains(a)

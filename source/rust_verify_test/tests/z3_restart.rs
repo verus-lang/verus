@@ -160,7 +160,7 @@ test_verify_one_file! {
         #[verifier(spinoff_prover)] /* vattr */
         pub proof fn sub_add_cancel<V>(a: Multiset<V>, b: Multiset<V>)
             requires
-                b.le(a),
+                b.subset_of(a),
             ensures
                 a.sub(b).add(b) === a
         {

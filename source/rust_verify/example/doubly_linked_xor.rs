@@ -1,6 +1,5 @@
 use vstd::prelude::*;
 use vstd::simple_pptr::*;
-use vstd::string::*;
 use vstd::*;
 
 // "XOR Linked List". This is a sorta-cute (if not usually practical) folk data structure:
@@ -493,7 +492,7 @@ impl<V> DListXor<V> {
 }
 
 #[verifier::external_body]
-fn print_result(msg: StrSlice<'static>, value: u32) {
+fn print_result(msg: &'static str, value: u32) {
     println!("{}: {value}", msg);
 }
 
@@ -502,18 +501,18 @@ fn main() {
     t.push_back(2);
     t.push_back(3);
     t.push_front(1);  // 1, 2, 3
-    print_result(new_strlit("pushed"), 2);
-    print_result(new_strlit("pushed"), 3);
-    print_result(new_strlit("pushed"), 1);
+    print_result("pushed", 2);
+    print_result("pushed", 3);
+    print_result("pushed", 1);
     let x = t.pop_back();  // 3
     let y = t.pop_front();  // 1
     let z = t.pop_front();  // 2
     assert(x == 3);
     assert(y == 1);
     assert(z == 2);
-    print_result(new_strlit("popped"), x);
-    print_result(new_strlit("popped"), y);
-    print_result(new_strlit("popped"), z);
+    print_result("popped", x);
+    print_result("popped", y);
+    print_result("popped", z);
 }
 
 } // verus!

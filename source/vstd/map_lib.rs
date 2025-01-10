@@ -74,13 +74,6 @@ impl<K, V> Map<K, V> {
         self.submap_of(m2)
     }
 
-    /// Deprecated synonym for `submap_of`
-    #[verifier::inline]
-    #[cfg_attr(not(verus_verify_core), deprecated = "use m1.submap_of(m2) or m1 <= m2 instead")]
-    pub open spec fn le(self, m2: Self) -> bool {
-        self.submap_of(m2)
-    }
-
     /// Gives the union of two maps, defined as:
     ///  * The domain is the union of the two input maps.
     ///  * For a given key in _both_ input maps, it maps to the same value that it maps to in the _right_ map (`m2`).
