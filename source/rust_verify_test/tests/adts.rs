@@ -1812,5 +1812,5 @@ test_verify_one_file! {
         spec fn is_test_minimal(s: Seq<Option<Alternative>>) -> bool {
             &&& forall|b:nat| s[b as int] is Some(Alternative::Yes)
         }
-    } => Err(e) => assert_rust_error_msg(e, todo!())
+    } => Err(_e) => todo!() //assert_rust_error_msg(e, todo!())
 }
