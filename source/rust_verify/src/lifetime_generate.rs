@@ -411,7 +411,10 @@ fn erase_hir_region<'tcx>(ctxt: &Context<'tcx>, state: &mut State, r: &RegionKin
 }
 
 fn erase_generic_const<'tcx>(ctxt: &Context<'tcx>, state: &mut State, cnst: &Const<'tcx>) -> Typ {
-    match &*mid_ty_const_to_vir(ctxt.tcx, None, cnst).expect("mit_ty_const_to_vir failed") {
+    use crate::rustc_middle::query::Key;
+    match &*mid_ty_const_to_vir(ctxt.tcx, Some(cnst.default_span(ctxt.tcx)), cnst)
+        .expect("mit_ty_const_to_vir failed")
+    {
         vir::ast::TypX::TypParam(x) => {
             Box::new(TypX::TypParam(state.typ_param(x.to_string(), None)))
         }
