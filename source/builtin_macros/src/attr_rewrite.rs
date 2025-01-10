@@ -33,7 +33,7 @@
 use core::convert::TryFrom;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use syn::{parse2, spanned::Spanned, AttributeArgs, Ident, Item};
+use syn::{parse2, spanned::Spanned, Attribute, AttributeArgs, Ident, Item};
 
 use crate::{
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
@@ -165,12 +165,12 @@ pub fn rewrite_verus_attribute(
 ) -> TokenStream {
     if erase.keep() {
         let item: Item = parse2(input).expect("#[verus_verify] must be applied to an item");
-        let mut attributes: Vec<TokenStream> = vec![];
+        let mut attributes: Vec<Attribute> = vec![];
         const VERIFIER_ATTRS: [&str; 2] = ["external", "external_body"];
         for arg in attr_args {
             if let syn::NestedMeta::Meta(m) = arg {
                 if VERIFIER_ATTRS.contains(&m.to_token_stream().to_string().as_str()) {
-                    attributes.push(quote_spanned!(m.span() => #[verifier::#m]));
+                    attributes.push(mk_verus_attr_syn(m.span(), quote! { #m }));
                 } else {
                     panic!(
                         "unsupported parameters {:?} in #[verus_verify(...)]",
@@ -180,7 +180,7 @@ pub fn rewrite_verus_attribute(
             }
         }
         if attributes.len() == 0 {
-            attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
+            attributes.push(mk_verus_attr_syn(item.span(), quote! { verus_macro }));
         }
 
         quote_spanned! {item.span()=>
