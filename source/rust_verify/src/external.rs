@@ -249,8 +249,8 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
             VerifState::Default => {
                 if eattrs.external {
                     VerifState::External
-                } else if opts_in_to_verus(&eattrs)
-                      || opts_in_by_automatic_derive(&self.ctxt, &general_item, &attrs) {
+                } else if opts_in_to_verus(&eattrs) {
+                      //|| opts_in_by_automatic_derive(&self.ctxt, &general_item, &attrs) {
                     VerifState::Verify
                 } else {
                     VerifState::Default
@@ -497,6 +497,7 @@ impl<'a> GeneralItem<'a> {
     }
 }
 
+/*
 fn opts_in_by_automatic_derive<'tcx>(
     ctxt: &Context<'tcx>,
     general_item: &GeneralItem<'tcx>,
@@ -545,3 +546,4 @@ fn is_automatically_derived(attrs: &[rustc_ast::Attribute]) -> bool {
     }
     false
 }
+*/
