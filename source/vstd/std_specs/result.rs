@@ -106,19 +106,14 @@ pub open spec fn spec_unwrap_err<T: core::fmt::Debug, E>(result: Result<T, E>) -
 }
 
 #[verifier::when_used_as_spec(spec_unwrap_err)]
-#[verifier::external_fn_specification]
-pub fn unwrap_err<T: core::fmt::Debug, E>(result: Result<T, E>) -> (e: E)
+pub assume_specification<T: core::fmt::Debug, E>[Result::<T, E>::unwrap_err](result: Result<T, E>) -> (e: E)
     requires
         result.is_Err(),
     ensures
-        e == result.get_Err_0(),
-{
-    result.unwrap_err()
-}
+        e == result.get_Err_0();
 
 // map
-#[verifier::external_fn_specification]
-pub fn map<T, E, U, F: FnOnce(T) -> U>(result: Result<T, E>, op: F) -> (mapped_result: Result<U, E>)
+pub assume_specification<T, E, U, F: FnOnce(T) -> U>[Result::<T, E>::map](result: Result<T, E>, op: F) -> (mapped_result: Result<U, E>)
     requires
         result.is_ok() ==> op.requires((result.get_Ok_0(),)),
     ensures
@@ -126,15 +121,11 @@ pub fn map<T, E, U, F: FnOnce(T) -> U>(result: Result<T, E>, op: F) -> (mapped_r
             (result.get_Ok_0(),),
             mapped_result.get_Ok_0(),
         ),
-        result.is_err() ==> mapped_result == Result::<U, E>::Err(result.get_Err_0()),
-{
-    result.map(op)
-}
+        result.is_err() ==> mapped_result == Result::<U, E>::Err(result.get_Err_0());
 
 // map_err
-#[verifier::external_fn_specification]
 #[verusfmt::skip]
-pub fn map_err<T, E, F, O: FnOnce(E) -> F>(result: Result<T, E>, op: O) -> (mapped_result: Result<T, F>)
+pub assume_specification<T, E, F, O: FnOnce(E) -> F>[Result::<T, E>::map_err](result: Result<T, E>, op: O) -> (mapped_result: Result<T, F>)
     requires
         result.is_err() ==> op.requires((result.get_Err_0(),)),
     ensures
@@ -142,10 +133,7 @@ pub fn map_err<T, E, F, O: FnOnce(E) -> F>(result: Result<T, E>, op: O) -> (mapp
             (result.get_Err_0(),),
             mapped_result.get_Err_0(),
         ),
-        result.is_ok() ==> mapped_result == Result::<T, F>::Ok(result.get_Ok_0()),
-{
-    result.map_err(op)
-}
+        result.is_ok() ==> mapped_result == Result::<T, F>::Ok(result.get_Ok_0());
 
 // ok
 #[verifier::inline]
@@ -156,14 +144,10 @@ pub open spec fn ok<T, E>(result: Result<T, E>) -> Option<T> {
     }
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(ok)]
-pub fn ex_result_ok<T, E>(result: Result<T, E>) -> (opt: Option<T>)
+pub assume_specification<T, E>[Result::<T, E>::ok](result: Result<T, E>) -> (opt: Option<T>)
     ensures
-        opt == ok(result),
-{
-    result.ok()
-}
+        opt == ok(result);
 
 // err
 #[verifier::inline]
@@ -174,13 +158,9 @@ pub open spec fn err<T, E>(result: Result<T, E>) -> Option<E> {
     }
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(err)]
-pub fn ex_result_err<T, E>(result: Result<T, E>) -> (opt: Option<E>)
+pub assume_specification<T, E>[Result::<T, E>::err](result: Result<T, E>) -> (opt: Option<E>)
     ensures
-        opt == err(result),
-{
-    result.err()
-}
+        opt == err(result);
 
 } // verus!

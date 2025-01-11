@@ -111,14 +111,10 @@ pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
     i
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(iter_into_iter_spec)]
-pub fn ex_iter_into_iter<I: Iterator>(i: I) -> (r: I)
+pub assume_specification<I: Iterator>[I::into_iter](i: I) -> (r: I)
     ensures
-        r == i,
-{
-    i.into_iter()
-}
+        r == i;
 
 // I don't really expect this to be particularly useful;
 // this is mostly here because I wanted an easy way to test

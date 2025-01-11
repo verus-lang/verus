@@ -87,14 +87,10 @@ pub open spec fn is_some<T>(option: &Option<T>) -> bool {
     is_variant(option, "Some")
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(is_some)]
-pub fn ex_option_is_some<T>(option: &Option<T>) -> (b: bool)
+pub assume_specification<T>[Option::<T>::is_some](option: &Option<T>) -> (b: bool)
     ensures
-        b == is_some(option),
-{
-    option.is_some()
-}
+        b == is_some(option);
 
 // is_none
 #[verifier::inline]
@@ -102,24 +98,16 @@ pub open spec fn is_none<T>(option: &Option<T>) -> bool {
     is_variant(option, "None")
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(is_none)]
-pub fn ex_option_is_none<T>(option: &Option<T>) -> (b: bool)
+pub assume_specification<T>[Option::<T>::is_none](option: &Option<T>) -> (b: bool)
     ensures
-        b == is_none(option),
-{
-    option.is_none()
-}
+        b == is_none(option);
 
 // as_ref
-#[verifier::external_fn_specification]
-pub fn as_ref<T>(option: &Option<T>) -> (a: Option<&T>)
+pub assume_specification<T>[Option::<T>::as_ref](option: &Option<T>) -> (a: Option<&T>)
     ensures
         a.is_Some() <==> option.is_Some(),
-        a.is_Some() ==> option.get_Some_0() == a.get_Some_0(),
-{
-    option.as_ref()
-}
+        a.is_Some() ==> option.get_Some_0() == a.get_Some_0();
 
 // unwrap
 #[verifier::inline]
@@ -131,15 +119,11 @@ pub open spec fn spec_unwrap<T>(option: Option<T>) -> T
 }
 
 #[verifier::when_used_as_spec(spec_unwrap)]
-#[verifier::external_fn_specification]
-pub fn unwrap<T>(option: Option<T>) -> (t: T)
+pub assume_specification<T>[Option::<T>::unwrap](option: Option<T>) -> (t: T)
     requires
         option.is_Some(),
     ensures
-        t == spec_unwrap(option),
-{
-    option.unwrap()
-}
+        t == spec_unwrap(option);
 
 // unwrap_or
 #[verifier::inline]
@@ -151,42 +135,26 @@ pub open spec fn spec_unwrap_or<T>(option: Option<T>, default: T) -> T {
 }
 
 #[verifier::when_used_as_spec(spec_unwrap_or)]
-#[verifier::external_fn_specification]
-pub fn unwrap_or<T>(option: Option<T>, default: T) -> (t: T)
+pub assume_specification<T>[Option::<T>::unwrap_or](option: Option<T>, default: T) -> (t: T)
     ensures
-        t == spec_unwrap_or(option, default),
-{
-    option.unwrap_or(default)
-}
+        t == spec_unwrap_or(option, default);
 
-#[verifier::external_fn_specification]
-pub fn take<T>(option: &mut Option<T>) -> (t: Option<T>)
+pub assume_specification<T>[Option::<T>::take](option: &mut Option<T>) -> (t: Option<T>)
     ensures
         t == old(option),
-        *option is None,
-{
-    option.take()
-}
+        *option is None;
 
-#[verifier::external_fn_specification]
-pub fn ex_map<T, U, F: FnOnce(T) -> U>(a: Option<T>, f: F) -> (ret: Option<U>)
+pub assume_specification<T, U, F: FnOnce(T) -> U>[Option::<T>::map](a: Option<T>, f: F) -> (ret: Option<U>)
     requires
         a.is_some() ==> f.requires((a.unwrap(),)),
     ensures
         ret.is_some() == a.is_some(),
-        ret.is_some() ==> f.ensures((a.unwrap(),), ret.unwrap()),
-{
-    a.map(f)
-}
+        ret.is_some() ==> f.ensures((a.unwrap(),), ret.unwrap());
 
-#[verifier::external_fn_specification]
-pub fn ex_option_clone<T: Clone>(opt: &Option<T>) -> (res: Option<T>)
+pub assume_specification<T: Clone>[<Option<T> as Clone>::clone](opt: &Option<T>) -> (res: Option<T>)
     ensures
         opt.is_none() ==> res.is_none(),
-        opt.is_some() ==> res.is_some() && call_ensures(T::clone, (&opt.unwrap(),), res.unwrap()),
-{
-    opt.clone()
-}
+        opt.is_some() ==> res.is_some() && call_ensures(T::clone, (&opt.unwrap(),), res.unwrap());
 
 // ok_or
 #[verifier::inline]
@@ -197,13 +165,9 @@ pub open spec fn spec_ok_or<T, E>(option: Option<T>, err: E) -> Result<T, E> {
     }
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(spec_ok_or)]
-pub fn ex_ok_or<T, E>(option: Option<T>, err: E) -> (res: Result<T, E>)
+pub assume_specification<T, E>[Option::ok_or](option: Option<T>, err: E) -> (res: Result<T, E>)
     ensures
-        res == spec_ok_or(option, err),
-{
-    option.ok_or(err)
-}
+        res == spec_ok_or(option, err);
 
 } // verus!

@@ -15,90 +15,56 @@ macro_rules! atomic_specs_common {
         #[verifier::external_body]
         pub struct ExAtomic($at);
 
-        #[verifier::external_fn_specification]
-        pub fn ex_new(v: $ty) -> $at {
-            <$at>::new(v)
-        }
+        verus!{
 
-        #[verifier::external_fn_specification]
-        pub fn ex_compare_exchange(
+        pub assume_specification [ <$at>::new ](v: $ty) -> $at;
+
+        pub assume_specification [ <$at>::compare_exchange ](
             atomic: &$at,
             current: $ty,
             new: $ty,
             success: Ordering,
             failure: Ordering,
-        ) -> Result<$ty, $ty> {
-            atomic.compare_exchange(current, new, success, failure)
-        }
+        ) -> Result<$ty, $ty>;
 
-        #[verifier::external_fn_specification]
-        pub fn ex_compare_exchange_weak(
+        pub assume_specification [ <$at>::compare_exchange_weak ](
             atomic: &$at,
             current: $ty,
             new: $ty,
             success: Ordering,
             failure: Ordering,
-        ) -> Result<$ty, $ty> {
-            atomic.compare_exchange_weak(current, new, success, failure)
-        }
+        ) -> Result<$ty, $ty>;
 
-        #[verifier::external_fn_specification]
-        pub fn ex_fetch_and(atomic: &$at, val: $ty, order: Ordering) -> $ty {
-            atomic.fetch_and(val, order)
-        }
+        pub assume_specification [ <$at>::fetch_and ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
 
-        #[verifier::external_fn_specification]
-        pub fn ex_fetch_nand(atomic: &$at, val: $ty, order: Ordering) -> $ty {
-            atomic.fetch_nand(val, order)
-        }
+        pub assume_specification [ <$at>::fetch_nand ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
 
-        #[verifier::external_fn_specification]
-        pub fn ex_fetch_or(atomic: &$at, val: $ty, order: Ordering) -> $ty {
-            atomic.fetch_or(val, order)
-        }
+        pub assume_specification [ <$at>::fetch_or ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
 
-        #[verifier::external_fn_specification]
-        pub fn ex_fetch_xor(atomic: &$at, val: $ty, order: Ordering) -> $ty {
-            atomic.fetch_xor(val, order)
-        }
+        pub assume_specification [ <$at>::fetch_xor ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
 
-        #[verifier::external_fn_specification]
-        pub fn ex_load(atomic: &$at, order: Ordering) -> $ty {
-            atomic.load(order)
-        }
+        pub assume_specification [ <$at>::load ](atomic: &$at, order: Ordering) -> $ty;
 
-        #[verifier::external_fn_specification]
-        pub fn ex_store(atomic: &$at, val: $ty, order: Ordering) {
-            atomic.store(val, order)
-        }
+        pub assume_specification [ <$at>::store ](atomic: &$at, val: $ty, order: Ordering);
 
-        #[verifier::external_fn_specification]
-        pub fn ex_swap(atomic: &$at, val: $ty, order: Ordering) -> $ty {
-            atomic.swap(val, order)
+        pub assume_specification [ <$at>::swap ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
+
         }
     };
 }
 
 macro_rules! atomic_specs_int_specific {
     ($at:ty, $ty:ty) => {
-        #[verifier::external_fn_specification]
-        pub fn ex_fetch_add(atomic: &$at, val: $ty, order: Ordering) -> $ty {
-            atomic.fetch_add(val, order)
-        }
+        verus!{
 
-        #[verifier::external_fn_specification]
-        pub fn ex_fetch_sub(atomic: &$at, val: $ty, order: Ordering) -> $ty {
-            atomic.fetch_sub(val, order)
-        }
+        pub assume_specification [ <$at>::fetch_add ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
 
-        #[verifier::external_fn_specification]
-        pub fn ex_fetch_min(atomic: &$at, val: $ty, order: Ordering) -> $ty {
-            atomic.fetch_min(val, order)
-        }
+        pub assume_specification [ <$at>::fetch_sub ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
 
-        #[verifier::external_fn_specification]
-        pub fn ex_fetch_max(atomic: &$at, val: $ty, order: Ordering) -> $ty {
-            atomic.fetch_max(val, order)
+        pub assume_specification [ <$at>::fetch_min ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
+
+        pub assume_specification [ <$at>::fetch_max ](atomic: &$at, val: $ty, order: Ordering) -> $ty;
+
         }
     };
 }

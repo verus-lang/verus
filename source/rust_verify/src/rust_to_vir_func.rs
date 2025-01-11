@@ -1553,6 +1553,8 @@ pub(crate) fn get_external_def_id<'tcx>(
             }
         },
         ExprKind::MethodCall(_name_and_generics, _receiver, _other_args, _fn_span) => {
+            // TODO maybe deprecate this; it isn't used with the new
+            // 'assume_specification' style
             let def_id =
                 types.type_dependent_def_id(expr.hir_id).expect("def id of the method definition");
             (def_id, expr.hir_id)

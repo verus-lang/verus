@@ -39,20 +39,12 @@ pub fn ex_bool_clone_from(dest: &mut bool, source: &bool)
 */
 
 // Cloning a Tracked copies the underlying ghost T
-#[verifier::external_fn_specification]
-pub fn ex_tracked_clone<T: Copy>(b: &Tracked<T>) -> (res: Tracked<T>)
+pub assume_specification<T: Copy>[<Tracked<T> as Clone>::clone](b: &Tracked<T>) -> (res: Tracked<T>)
     ensures
-        res == b,
-{
-    b.clone()
-}
+        res == b;
 
-#[verifier::external_fn_specification]
-pub fn ex_ghost_clone<T>(b: &Ghost<T>) -> (res: Ghost<T>)
+pub assume_specification<T>[<Ghost<T> as Clone>::clone](b: &Ghost<T>) -> (res: Ghost<T>)
     ensures
-        res == b,
-{
-    b.clone()
-}
+        res == b;
 
 } // verus!
