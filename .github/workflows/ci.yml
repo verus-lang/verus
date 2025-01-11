@@ -214,7 +214,7 @@ jobs:
             path: verus-x86-win.zip
 
   smoke-test-and-release-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: checkout
         uses: actions/checkout@v4
