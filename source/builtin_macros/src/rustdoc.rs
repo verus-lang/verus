@@ -36,8 +36,8 @@ use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
     AssumeSpecification, AttrStyle, Attribute, Block, Expr, ExprBlock, ExprPath, FnMode, Ident,
-    ImplItemMethod, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, ReturnType,
-    Signature, TraitItemMethod,
+    ImplItemMethod, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
+    ReturnType, Signature, TraitItemMethod, Type, TypeGroup, TypePath,
 };
 
 /// Check if VERUSDOC=1.
@@ -252,7 +252,36 @@ fn encoded_sig_info(sig: &Signature) -> String {
 /// Get the assume_specification line
 
 fn assume_specification_link_line(e: &Expr) -> String {
-    let s = prettyplease_verus::unparse_expr(e);
+    // Change `<A>::B` to `A::B` if it's reasonable to do so, so the link is more likely to work
+    let mut e = e.clone();
+    match &e {
+        Expr::Path(ExprPath {
+            attrs,
+            qself: Some(QSelf { lt_token: _, ty, position: 0, as_token: None, gt_token: _ }),
+            path: Path { leading_colon: Some(leading_colon), segments },
+        }) => {
+            let mut ty = ty;
+            if let Type::Group(TypeGroup { group_token: _, elem }) = &**ty {
+                ty = elem;
+            }
+            if let Type::Path(TypePath { qself: None, path: inner_path }) = &**ty {
+                if !inner_path.segments.trailing_punct() && !segments.trailing_punct() {
+                    let mut new_path = inner_path.clone();
+                    new_path.segments.push_punct(leading_colon.clone());
+                    for (i, value) in segments.iter().enumerate() {
+                        new_path.segments.push_value(value.clone());
+                        if i + 1 < segments.len() {
+                            new_path.segments.push_punct(leading_colon.clone());
+                        }
+                    }
+                    e = Expr::Path(ExprPath { attrs: attrs.clone(), qself: None, path: new_path });
+                }
+            }
+        }
+        _ => {}
+    }
+
+    let s = prettyplease_verus::unparse_expr(&e);
     let s = s.replace("\n", " ");
     format!("**Specification for [`{:}`]**", s)
 }
