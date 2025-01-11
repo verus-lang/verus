@@ -136,7 +136,7 @@ fn check_path_and_get_function<'a>(
                 return Err(error(
                     span,
                     &format!(
-                        "cannot call function `{:}` marked `external_fn_specification` directly; call `{:}` instead",
+                        "cannot call function `{:}` which is an artificial function for `assume_specification`; call `{:}` instead",
                         path_as_friendly_rust_name(&x.path),
                         path_as_friendly_rust_name(actual_path),
                     ),
@@ -154,7 +154,7 @@ fn check_path_and_get_function<'a>(
                 return Err(error(
                     span,
                     &format!(
-                        "`{path:}` is not supported (note: you may be able to add a Verus specification to this function with the `external_fn_specification` attribute){:}",
+                        "`{path:}` is not supported (note: you may be able to add a Verus specification to this function with `assume_specification`){:}",
                         if x.path.is_rust_std_path() {
                             " (note: the vstd library provides some specification for the Rust std library, but it is currently limited)"
                         } else {
@@ -1114,12 +1114,12 @@ fn check_functions_match(
 /// Construct an error message for when our Krate has two functions of the same name.
 /// If this happen it's probably either:
 ///  (i) an issue with our conversion from rust paths to VIR paths not being injective
-///  (ii) the user's use of `external_fn_specification` resulting in overlap
+///  (ii) the user's use of external_fn_specification/assume_specification resulting in overlap
 ///  (iii) an existing issue related to traits
 fn func_conflict_error(function1: &Function, function2: &Function) -> Message {
     let add_label = |err: Message, function: &Function| match &function.x.proxy {
         Some(proxy) => {
-            err.primary_label(&proxy.span, "specification declared via `external_fn_specification`")
+            err.primary_label(&proxy.span, "specification declared via `assume_specification`")
         }
         None => err.primary_label(&function.span, "declared here (and not marked as `external`)"),
     };
