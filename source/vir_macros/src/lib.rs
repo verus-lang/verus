@@ -8,51 +8,55 @@ fn to_node_inner(
 
     let mut name_override = None;
 
-    let (attr_args, trait_impl) = if let Some(attr) = attribute {
-        let attr_args = if !attr.is_empty() {
-            let parser =
-                syn::punctuated::Punctuated::<syn::NestedMeta, syn::Token![,]>::parse_terminated;
-            use syn::parse::Parser;
-            Some(parser.parse2(attr).expect("invalid macro input"))
+    let (attr_args, trait_impl): (Option<proc_macro2::TokenStream>, bool) =
+        if let Some(attr) = attribute {
+            let attr_args = if !attr.is_empty() {
+                // let parser =
+                //     syn::punctuated::Punctuated::<_/* TODO(syn2) syn::NestedMeta */, syn::Token![,]>::parse_terminated;
+                // use syn::parse::Parser;
+                // let parser =
+                //     syn::MetaList::parse_nested_meta(&self, logic)
+                //     syn::punctuated::Punctuated::<_/* TODO(syn2) syn::NestedMeta */, syn::Token![,]>::parse_terminated;
+                // Some(parser.parse2(attr).expect("invalid macro input"))
+                Some(attr.clone())
+            } else {
+                None
+            };
+            (attr_args, false)
         } else {
-            None
+            let attr_args = match input
+                .attrs
+                .iter()
+                .find(|attr| match attr.path().get_ident() {
+                    Some(attr_ident) if attr_ident == "to_node" => true,
+                    _ => false,
+                })
+                .map(|attr| attr.meta.clone())
+            {
+                Some(syn::Meta::List(args)) => Some(args.tokens.clone()),
+                Some(otherwise) => {
+                    let err = format!("Invalid to_node attribute: {:?}", otherwise);
+                    return quote! { compile_error!(#err) };
+                }
+                None => None,
+            };
+            (attr_args, true)
         };
-        (attr_args, false)
-    } else {
-        let attr_args = match input
-            .attrs
-            .iter()
-            .find(|attr| match attr.path.get_ident() {
-                Some(attr_ident) if attr_ident == "to_node" => true,
-                _ => false,
-            })
-            .map(|attr| attr.parse_meta())
-        {
-            Some(Ok(syn::Meta::List(args))) => Some(args.nested),
-            Some(Ok(e)) => {
-                let err = format!("Invalid to_node attribute: {:?}", e);
-                return quote! { compile_error!(#err) };
-            }
-            Some(Err(err)) => {
-                let e_string = format!("Invalid to_node attribute: {}", err);
-                return quote! { compile_error!(#e_string) };
-            }
-            None => None,
-        };
-        (attr_args, true)
-    };
 
     if let Some(args) = attr_args {
-        for arg in args.iter() {
+        let parser = syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated;
+        use syn::parse::Parser;
+        let parsed_args = parser.parse2(args).expect("invalid macro input");
+        for arg in parsed_args.iter() {
             match arg {
-                syn::NestedMeta::Meta(syn::Meta::NameValue(syn::MetaNameValue {
-                    path,
-                    lit,
-                    ..
-                })) => {
+                syn::Meta::NameValue(syn::MetaNameValue { path, value, .. }) => {
                     if let Some(param) = path.get_ident() {
                         if param == "name" {
-                            if let syn::Lit::Str(lit_str) = lit {
+                            if let syn::Expr::Lit(syn::ExprLit {
+                                lit: syn::Lit::Str(lit_str),
+                                attrs: _,
+                            }) = value
+                            {
                                 name_override = Some(lit_str.value().clone());
                                 continue;
                             }
@@ -61,11 +65,8 @@ fn to_node_inner(
                     let err = format!("Invalid to_node attribute: {:?}", path);
                     return quote! { compile_error!(#err) };
                 }
-                syn::NestedMeta::Meta(_) => {
-                    return quote! { compile_error!("Invalid to_node attribute") };
-                }
-                syn::NestedMeta::Lit(lit) => {
-                    let err = format!("Invalid to_node attribute: {:?}", lit);
+                other => {
+                    let err = format!("Invalid to_node attribute: {:?}", other);
                     return quote! { compile_error!(#err) };
                 }
             }
