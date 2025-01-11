@@ -192,27 +192,25 @@ pub(crate) fn handle_external_fn<'tcx>(
     if mode != Mode::Exec {
         return err_span(
             sig.span,
-            format!("a function marked `external_fn_specification` cannot be marked `{mode:}`",),
+            format!("an `assume_specification` declaration cannot be marked `{mode:}`"),
         );
     }
 
     if vattrs.external {
         return err_span(
             sig.span,
-            format!("a function cannot be marked both `external_fn_specification` and `external`",),
+            format!("an `assume_specification` declaration cannot be marked `external`"),
         );
     }
     if vattrs.external_body {
         return err_span(
             sig.span,
-            format!(
-                "a function cannot be marked both `external_fn_specification` and `external_body`",
-            ),
+            format!("an `assume_specification` declaration cannot be marked `external_body`"),
         );
     }
 
     if self_generics.is_some() && external_fn_specification_via_external_trait.is_none() {
-        return err_span(sig.span, "`external_fn_specification` attribute not supported here");
+        return err_span(sig.span, "`assume_specification` declaration not supported here");
     }
 
     let (external_id, kind) =
@@ -224,7 +222,7 @@ pub(crate) fn handle_external_fn<'tcx>(
                 _ => {
                     return err_span(
                         sig.span,
-                        "external_fn_specification not supported for trait functions",
+                        "assume_specification not supported for trait functions",
                     );
                 }
             };
@@ -238,7 +236,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     {
         return err_span(
             sig.span,
-            "cannot apply `external_fn_specification` to Verus builtin functions",
+            "cannot apply `assume_specification` to Verus builtin functions",
         );
     }
 
@@ -283,7 +281,7 @@ pub(crate) fn handle_external_fn<'tcx>(
         return err_span(
             sig.span,
             format!(
-                "external_fn_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
+                "assume_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
             ),
         );
     };
@@ -309,7 +307,7 @@ pub(crate) fn handle_external_fn<'tcx>(
         return err_span(
             sig.span,
             format!(
-                "external_fn_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
+                "assume_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
             ),
         );
     }
@@ -339,8 +337,8 @@ pub(crate) fn handle_external_fn<'tcx>(
     if !preds_match {
         let err = err_span_bare(
             sig.span,
-            "external_fn_specification trait bound mismatch")
-            .help(format!("external_fn_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
+            "assume_specification trait bound mismatch")
+            .help(format!("assume_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
           but the proxy function's trait bounds are:\n{}\nthe external function's trait bounds are:\n{}",
           proxy_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n"),
           external_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n")));
@@ -351,7 +349,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     if !vir::ast_util::is_visible_to_opt(&visibility, &external_item_visibility.restricted_to) {
         return err_span(
             sig.span,
-            "a function marked `external_fn_specification` must be at least as visible as the function it provides a spec for (try adding 'pub' to the specification declaration)",
+            "an `assume_specification` declaration must be at least as visible as the function it provides a spec for (try writing `pub assume_specification ...`)",
         );
     }
 
@@ -602,7 +600,7 @@ pub(crate) fn check_item_fn<'tcx>(
         if is_verus_spec {
             return err_span(
                 sig.span,
-                "`external_fn_specification` attribute not supported with VERUS_SPEC",
+                "assume_specification attribute not supported with VERUS_SPEC",
             );
         }
 
@@ -856,7 +854,7 @@ pub(crate) fn check_item_fn<'tcx>(
         return err_span(sig.span, "non-spec functions cannot have recommends");
     }
     if mode != Mode::Exec && vattrs.external_fn_specification {
-        return err_span(sig.span, "external_fn_specification should be 'exec'");
+        return err_span(sig.span, "assume_specification should be 'exec'");
     }
     if header.ensure.len() > 0 {
         match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
@@ -1515,7 +1513,7 @@ pub(crate) fn get_external_def_id<'tcx>(
     let err = || {
         err_span(
             sig.span,
-            format!("external_fn_specification encoding error: body should end in call expression"),
+            format!("assume_specification encoding error: body should end in call expression"),
         )
     };
 
@@ -1589,13 +1587,13 @@ pub(crate) fn get_external_def_id<'tcx>(
                 let Ok(Some(inst)) = inst else {
                     return err_span(
                         sig.span,
-                        "Verus Internal Error: handling external_fn_specification, resolve failed",
+                        "Verus Internal Error: handling assume_specification, resolve failed",
                     );
                 };
                 let rustc_middle::ty::InstanceDef::Item(did) = inst.def else {
                     return err_span(
                         sig.span,
-                        "Verus Internal Error: handling external_fn_specification, resolve failed",
+                        "Verus Internal Error: handling assume_specification, resolve failed",
                     );
                 };
 
@@ -1603,7 +1601,7 @@ pub(crate) fn get_external_def_id<'tcx>(
                 unsupported_err_unless!(
                     !is_default,
                     sig.span,
-                    "external_fn_specification for a provided trait method"
+                    "assume_specification for a provided trait method"
                 );
 
                 let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
@@ -1627,7 +1625,7 @@ pub(crate) fn get_external_def_id<'tcx>(
                 return err_span(
                     sig.span,
                     format!(
-                        "Verus external_fn_specification does not support ImplSource::Builtin '{:?}'",
+                        "Verus assume_specification does not support ImplSource::Builtin '{:?}'",
                         b
                     ),
                 );
@@ -1635,7 +1633,7 @@ pub(crate) fn get_external_def_id<'tcx>(
             Ok(ImplSource::Param(_)) => {
                 return err_span(
                     sig.span,
-                    "external_fn_specification not supported for unresolved trait functions",
+                    "assume_specification not supported for unresolved trait functions",
                 );
             }
             Err(_) => {
@@ -1691,7 +1689,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
     if vattrs.external_fn_specification {
-        return err_span(span, "`external_fn_specification` attribute not yet supported for const");
+        return err_span(span, "`assume_specification` attribute not yet supported for const");
     }
 
     let fuel = get_fuel(&vattrs);
@@ -1809,7 +1807,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let name = Arc::new(FunX { path });
 
     if vattrs.external_fn_specification {
-        return err_span(span, "`external_fn_specification` attribute not supported here");
+        return err_span(span, "assume_specification not supported here");
     }
     if vattrs.is_external(&ctxt.cmd_line_args) {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
