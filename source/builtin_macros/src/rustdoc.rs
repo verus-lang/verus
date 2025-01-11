@@ -144,7 +144,11 @@ fn attr_for_sig(
     }
 
     if let Some(as_spec) = as_spec {
-        let e = Expr::Path(ExprPath { attrs: vec![], qself: as_spec.qself.clone(), path: as_spec.path.clone() });
+        let e = Expr::Path(ExprPath {
+            attrs: vec![],
+            qself: as_spec.qself.clone(),
+            path: as_spec.path.clone(),
+        });
         v.push(encoded_expr("assume_specification", &e));
         v.push(assume_specification_link_line(&e));
     }

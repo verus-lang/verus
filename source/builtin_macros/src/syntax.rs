@@ -1304,7 +1304,7 @@ impl Visitor {
         } = assume_specification.clone();
         let ex_ident = get_ex_ident_mangle_path(&qself, &path);
 
-        let mut sig = Signature {
+        let sig = Signature {
             publish: Publish::Default,
             constness: None,
             asyncness: None,
@@ -1350,10 +1350,26 @@ impl Visitor {
             quote! { non_snake_case },
         ));
 
-        let mut stmts = self.visit_fn(&mut attrs, Some(&vis), &mut sig, Some(semi), false);
+        let block = Box::new(Block { brace_token: token::Brace { span }, stmts: vec![] });
+        let mut item_fn = ItemFn { attrs, vis, sig, block, semi_token: None };
+
+        if self.rustdoc {
+            crate::rustdoc::process_item_fn_assume_specification(
+                &mut item_fn,
+                assume_specification,
+            );
+        }
+
+        let mut stmts = self.visit_fn(
+            &mut item_fn.attrs,
+            Some(&item_fn.vis),
+            &mut item_fn.sig,
+            Some(semi),
+            false,
+        );
 
         let mut args = vec![];
-        for input in sig.inputs.iter() {
+        for input in item_fn.sig.inputs.iter() {
             let ident = match &input.kind {
                 FnArgKind::Receiver(recvr) => {
                     return Item::Verbatim(
@@ -1378,15 +1394,9 @@ impl Visitor {
             #callee(#(#args),*)
         });
         stmts.push(Stmt::Expr(e));
-        let block = Box::new(Block { brace_token: token::Brace { span }, stmts });
 
-        let mut item_fn = ItemFn { attrs, vis, sig, block, semi_token: None };
-        if self.rustdoc {
-            crate::rustdoc::process_item_fn_assume_specification(
-                &mut item_fn,
-                assume_specification,
-            );
-        }
+        item_fn.block.stmts = stmts;
+
         Item::Fn(item_fn)
     }
 
