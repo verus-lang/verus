@@ -4199,7 +4199,10 @@ impl ToTokens for Vstd {
 }
 
 fn get_ex_ident_mangle_path(qself: &Option<syn_verus::QSelf>, path: &Path) -> Ident {
-    let mut s = "_verus_external_fn_specification_".to_string();
+    static UID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let uid = UID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+    let mut s = format!("_verus_external_fn_specification_{:}_", uid);
 
     let expr_path = syn_verus::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
     let mut tokens = TokenStream::new();
