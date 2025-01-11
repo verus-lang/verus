@@ -1098,6 +1098,7 @@ impl Visitor {
             // as Ghost<D> or Tracked<D>.
         }
         let erase_ghost = self.erase_ghost.erase();
+        let mut assume_spec_extra_impl_items = vec![];
         // We'd like to erase ghost items, but there may be dangling references to the ghost items:
         // - "use" declarations may refer to the items ("use m::f;" makes it hard to erase f)
         // - "impl" may refer to struct and enum items ("impl<A> S<A> { ... }" impedes erasing S)
@@ -1272,10 +1273,21 @@ impl Visitor {
                     );
                 }
                 Item::AssumeSpecification(assume_specification) => {
-                    *item = self.handle_assume_specification(assume_specification, item.span());
+                    *item = self.handle_assume_specification(
+                        assume_specification,
+                        item.span(),
+                        &mut assume_spec_extra_impl_items,
+                    );
                 }
                 _ => (),
             }
+        }
+        if assume_spec_extra_impl_items.len() > 0 {
+            items.push(Item::Verbatim(quote_vstd! {vstd =>
+                impl #vstd::std_specs::VstdSpecsForRustStdLib {
+                    #(#assume_spec_extra_impl_items)*
+                }
+            }))
         }
     }
 
@@ -1283,6 +1295,7 @@ impl Visitor {
         &mut self,
         assume_specification: &AssumeSpecification,
         span: Span,
+        assume_spec_extra_impl_items: &mut Vec<ImplItem>,
     ) -> Item {
         let AssumeSpecification {
             mut attrs,
@@ -1367,6 +1380,20 @@ impl Visitor {
             Some(semi),
             false,
         );
+
+        if self.rustdoc && crate::cfg_verify_vstd() {
+            let mut block = (*item_fn.block).clone();
+            block.stmts.push(Stmt::Expr(Expr::Verbatim(quote! { ::core::unimplemented!() })));
+            let impl_item_fn = syn_verus::ImplItem::Method(syn_verus::ImplItemMethod {
+                attrs: item_fn.attrs.clone(),
+                vis: item_fn.vis.clone(),
+                defaultness: None,
+                sig: item_fn.sig.clone(),
+                block,
+                semi_token: None,
+            });
+            assume_spec_extra_impl_items.push(impl_item_fn);
+        }
 
         let mut args = vec![];
         for input in item_fn.sig.inputs.iter() {
