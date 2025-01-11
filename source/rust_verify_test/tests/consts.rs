@@ -343,12 +343,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_const_body_with_proof verus_code! {
+    #[test] exec_const_body_with_proof_assert verus_code! {
         spec fn f() -> int { 1 }
         const fn e() -> (u: u64) ensures u == 1 { 1 }
         exec const E: u64 ensures E == 2 {
             assert(f() == 1);
             1 + e()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_const_body_with_proof_call verus_code! {
+        #[verifier::opaque]
+        spec fn f() -> int { 1 }
+        proof fn e() -> (u: u64)
+            ensures
+                u == f(),
+                u == 1
+        {
+            reveal(f);
+            1
+        }
+        exec const E: u64 ensures E == f() {
+            proof {
+                let x = e();
+                assert(x == f());
+                assert(x == 1);
+            }
+            assert(1 == f());
+            1
         }
     } => Ok(())
 }
