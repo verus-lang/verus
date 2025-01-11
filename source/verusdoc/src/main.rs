@@ -29,6 +29,7 @@ enum VerusDocAttr {
     ModeInfo(DocSigInfo),
     Specification(String, NodeRef),
     BroadcastGroup,
+    AssumeSpecification,
 }
 
 // Types of spec clauses we handle.
@@ -161,7 +162,7 @@ fn interpret_as_verusdoc_attribute(node: &NodeRef) -> Option<VerusDocAttr> {
     } else if attr_name == "broadcast_group" {
         Some(VerusDocAttr::BroadcastGroup)
     } else {
-        panic!("unrecognized attr_name: '{:}'", attr_name);
+        Some(VerusDocAttr::AssumeSpecification)
     }
 }
 
