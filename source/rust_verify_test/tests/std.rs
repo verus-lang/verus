@@ -501,3 +501,40 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: instance")
 }
+
+test_verify_one_file! {
+    #[test] derive_copy verus_code! {
+        // When an auto-derived impl is produce, it doesn't get the verus_macro attribute.
+        // However, this test case does not use --external-by-default, so verus will
+        // process the derived impls anyway. This currently causes verus to fail,
+        // but should probably be fixed.
+
+        #[derive(Clone, Copy)]
+        struct X {
+            u: u64,
+        }
+
+        fn test(x: X) {
+            let a = x;
+            let b = x;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "let-pattern declaration must have an initializer")
+}
+
+test_verify_one_file_with_options! {
+    #[test] derive_copy_external_by_default ["--external-by-default"] => verus_code! {
+        // When an auto-derived impl is produce, it doesn't get the verus_macro attribute.
+        // Since this test case uses --external-by-default, these derived impls do not
+        // get processed.
+
+        #[derive(Clone, Copy)]
+        struct X {
+            u: u64,
+        }
+
+        fn test(x: X) {
+            let a = x;
+            let b = x;
+        }
+    } => Ok(())
+}
