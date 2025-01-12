@@ -1058,7 +1058,7 @@ pub struct FunctionX {
     /// Name of function
     pub name: Fun,
     /// Proxy used to declare the spec of this function
-    /// (e.g., some function marked `external_fn_specification`)
+    /// (e.g., some function marked `external_fn_specification`/`assume_specification`)
     pub proxy: Option<Spanned<Path>>,
     /// Kind (translation to AIR is different for each different kind)
     pub kind: FunctionKind,

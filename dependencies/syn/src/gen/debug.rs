@@ -82,6 +82,29 @@ impl Debug for Assume {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for AssumeSpecification {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("AssumeSpecification");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("vis", &self.vis);
+        formatter.field("assume_specification", &self.assume_specification);
+        formatter.field("generics", &self.generics);
+        formatter.field("bracket_token", &self.bracket_token);
+        formatter.field("qself", &self.qself);
+        formatter.field("path", &self.path);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("inputs", &self.inputs);
+        formatter.field("output", &self.output);
+        formatter.field("requires", &self.requires);
+        formatter.field("ensures", &self.ensures);
+        formatter.field("returns", &self.returns);
+        formatter.field("invariants", &self.invariants);
+        formatter.field("unwind", &self.unwind);
+        formatter.field("semi", &self.semi);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for AttrStyle {
@@ -2010,6 +2033,11 @@ impl Debug for Item {
             }
             Item::BroadcastGroup(v0) => {
                 let mut formatter = formatter.debug_tuple("BroadcastGroup");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Item::AssumeSpecification(v0) => {
+                let mut formatter = formatter.debug_tuple("AssumeSpecification");
                 formatter.field(v0);
                 formatter.finish()
             }

@@ -35,8 +35,9 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
-    AttrStyle, Attribute, Block, Expr, ExprBlock, FnMode, Ident, ImplItemMethod, ItemFn, Pat,
-    PatIdent, Path, PathArguments, PathSegment, Publish, ReturnType, Signature, TraitItemMethod,
+    AssumeSpecification, AttrStyle, Attribute, Block, Expr, ExprBlock, ExprPath, FnMode, Ident,
+    ImplItemMethod, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
+    ReturnType, Signature, TraitItemMethod, Type, TypeGroup, TypePath,
 };
 
 /// Check if VERUSDOC=1.
@@ -57,28 +58,35 @@ pub fn env_rustdoc() -> bool {
 // Main hooks for the verus! macro to manipulate ItemFn, etc.
 
 pub fn process_item_fn(item: &mut ItemFn) {
-    match attr_for_sig(&item.sig, Some(&item.block)) {
+    match attr_for_sig(&item.sig, Some(&item.block), None) {
+        Some(attr) => item.attrs.insert(0, attr),
+        None => {}
+    }
+}
+
+pub fn process_item_fn_assume_specification(item: &mut ItemFn, as_spec: &AssumeSpecification) {
+    match attr_for_sig(&item.sig, Some(&item.block), Some(as_spec)) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
 }
 
 pub fn process_item_fn_broadcast_group(item: &mut ItemFn) {
-    match attr_for_broadcast_group(&mut item.attrs, &item.sig) {
+    match attr_for_broadcast_group(&item.sig) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
 }
 
 pub fn process_impl_item_method(item: &mut ImplItemMethod) {
-    match attr_for_sig(&item.sig, Some(&item.block)) {
+    match attr_for_sig(&item.sig, Some(&item.block), None) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
 }
 
 pub fn process_trait_item_method(item: &mut TraitItemMethod) {
-    match attr_for_sig(&item.sig, item.default.as_ref()) {
+    match attr_for_sig(&item.sig, item.default.as_ref(), None) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
@@ -88,7 +96,11 @@ pub fn process_trait_item_method(item: &mut TraitItemMethod) {
 /// formatting tricks, and then package it all up into a #[doc = "..."] attribute
 /// (as a syn_verus::Attribute object) that we can apply to the item.
 
-fn attr_for_sig(sig: &Signature, block: Option<&Block>) -> Option<Attribute> {
+fn attr_for_sig(
+    sig: &Signature,
+    block: Option<&Block>,
+    as_spec: Option<&AssumeSpecification>,
+) -> Option<Attribute> {
     let mut v = vec![];
 
     v.push(encoded_sig_info(sig));
@@ -131,10 +143,20 @@ fn attr_for_sig(sig: &Signature, block: Option<&Block>) -> Option<Attribute> {
         None => {}
     }
 
+    if let Some(as_spec) = as_spec {
+        let e = Expr::Path(ExprPath {
+            attrs: vec![],
+            qself: as_spec.qself.clone(),
+            path: as_spec.path.clone(),
+        });
+        v.push(encoded_expr("assume_specification", &e));
+        v.push(assume_specification_link_line(&e));
+    }
+
     if v.len() == 0 { None } else { Some(doc_attr_from_string(&v.join("\n\n"), sig.span())) }
 }
 
-fn attr_for_broadcast_group(_attrs: &mut Vec<Attribute>, sig: &Signature) -> Option<Attribute> {
+fn attr_for_broadcast_group(sig: &Signature) -> Option<Attribute> {
     let mut v = vec![];
 
     v.push(encoded_str("broadcast_group", ""));
@@ -225,6 +247,43 @@ fn encoded_sig_info(sig: &Signature) -> String {
     );
 
     encoded_str("modes", &info)
+}
+
+/// Get the assume_specification line
+
+fn assume_specification_link_line(e: &Expr) -> String {
+    // Change `<A>::B` to `A::B` if it's reasonable to do so, so the link is more likely to work
+    let mut e = e.clone();
+    match &e {
+        Expr::Path(ExprPath {
+            attrs,
+            qself: Some(QSelf { lt_token: _, ty, position: 0, as_token: None, gt_token: _ }),
+            path: Path { leading_colon: Some(leading_colon), segments },
+        }) => {
+            let mut ty = ty;
+            if let Type::Group(TypeGroup { group_token: _, elem }) = &**ty {
+                ty = elem;
+            }
+            if let Type::Path(TypePath { qself: None, path: inner_path }) = &**ty {
+                if !inner_path.segments.trailing_punct() && !segments.trailing_punct() {
+                    let mut new_path = inner_path.clone();
+                    new_path.segments.push_punct(leading_colon.clone());
+                    for (i, value) in segments.iter().enumerate() {
+                        new_path.segments.push_value(value.clone());
+                        if i + 1 < segments.len() {
+                            new_path.segments.push_punct(leading_colon.clone());
+                        }
+                    }
+                    e = Expr::Path(ExprPath { attrs: attrs.clone(), qself: None, path: new_path });
+                }
+            }
+        }
+        _ => {}
+    }
+
+    let s = prettyplease_verus::unparse_expr(&e);
+    let s = s.replace("\n", " ");
+    format!("**Specification for [`{:}`]**", s)
 }
 
 /// Pretty print the expression, then wrap in a code block.

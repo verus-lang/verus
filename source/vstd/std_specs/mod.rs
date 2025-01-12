@@ -17,3 +17,7 @@ pub mod vec;
 
 #[cfg(feature = "alloc")]
 pub mod smart_ptrs;
+
+// This struct is a hack that exists purely to create
+// a rustdoc page dedicated to 'assume_specification' specs
+pub struct VstdSpecsForRustStdLib;

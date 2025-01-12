@@ -620,14 +620,14 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         for (fun_def_id, fun_span) in funs.iter() {
             let path = def_id_to_vir_path(tcx, &ctxt.verus_items, *fun_def_id);
             if !methods_we_have.insert(path.last_segment()) {
-                return err_span(*fun_span, "duplicate external_fn_specification for this method");
+                return err_span(*fun_span, "duplicate assume_specification for this method");
             }
         }
 
         if traitt.x.assoc_typs_bounds.len() > 0 {
             return err_span(
                 span,
-                "not supported: using external_fn_specification for a trait method impl where the trait has associated types",
+                "not supported: using assume_specification for a trait method impl where the trait has associated types",
             );
         }
         for method in traitt.x.methods.iter() {
@@ -635,7 +635,7 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                 return err_span(
                     span,
                     format!(
-                        "using external_fn_specification for this function requires you to specify all other functions for the same trait impl, but the method `{:}` is missing",
+                        "using assume_specification for this function requires you to specify all other functions for the same trait impl, but the method `{:}` is missing",
                         method.path.last_segment()
                     ),
                 );
