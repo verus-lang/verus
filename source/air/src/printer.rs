@@ -116,7 +116,11 @@ impl Printer {
     }
 
     pub(crate) fn filter_to_node(&self, filter: &Option<Ident>) -> Node {
-        if let Some(filter) = filter { nodes!({ str_to_node(filter) }) } else { Node::List(vec![]) }
+        if let Some(filter) = filter {
+            nodes!({ str_to_node(filter) })
+        } else {
+            Node::List(vec![])
+        }
     }
 
     pub fn expr_to_node(&self, expr: &Expr) -> Node {

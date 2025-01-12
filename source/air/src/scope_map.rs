@@ -72,7 +72,11 @@ impl<K: Eq + Hash + Clone, V> ScopeMap<K, V> {
         }
         let undo_prev = scope.undo_map.insert(key, (prev, scope.count));
         scope.count += 1;
-        if undo_prev.is_none() { Ok(()) } else { Err(()) }
+        if undo_prev.is_none() {
+            Ok(())
+        } else {
+            Err(())
+        }
     }
 
     pub fn insert(&mut self, key: K, value: V) -> Result<(), ()> {

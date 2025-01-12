@@ -12,7 +12,11 @@ fn find_version(versions: &IndexMap<Ident, u32>, x: &String) -> u32 {
 }
 
 pub fn rename_var(x: &String, n: u32) -> String {
-    if x.ends_with("@") { format!("{}{}", x, n) } else { format!("{}@{}", x, n) }
+    if x.ends_with("@") {
+        format!("{}{}", x, n)
+    } else {
+        format!("{}@{}", x, n)
+    }
 }
 
 fn lower_expr_visitor(versions: &IndexMap<Ident, u32>, snapshots: &Snapshots, expr: &Expr) -> Expr {

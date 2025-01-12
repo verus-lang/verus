@@ -31,8 +31,7 @@ use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
 use rustc_middle::ty::{
-    AdtDef, ClauseKind, GenericArg, ToPredicate, TraitPredicate, TraitRef, TyCtxt, TyKind,
-    VariantDef,
+    AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, Upcast, VariantDef,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
@@ -741,30 +740,27 @@ pub(crate) fn invariant_block_open<'a>(
                 Pat {
                     kind:
                         PatKind::Tuple(
-                            [
-                                Pat {
-                                    kind:
-                                        PatKind::Binding(
-                                            BindingMode(_, Mutability::Not),
-                                            guard_hir,
-                                            _,
-                                            None,
-                                        ),
-                                    default_binding_modes: true,
-                                    ..
-                                },
-                                inner_pat @ Pat {
-                                    kind:
-                                        PatKind::Binding(
-                                            BindingMode(_, Mutability::Mut),
-                                            inner_hir,
-                                            _,
-                                            None,
-                                        ),
-                                    default_binding_modes: true,
-                                    ..
-                                },
-                            ],
+                            [Pat {
+                                kind:
+                                    PatKind::Binding(
+                                        BindingMode(_, Mutability::Not),
+                                        guard_hir,
+                                        _,
+                                        None,
+                                    ),
+                                default_binding_modes: true,
+                                ..
+                            }, inner_pat @ Pat {
+                                kind:
+                                    PatKind::Binding(
+                                        BindingMode(_, Mutability::Mut),
+                                        inner_hir,
+                                        _,
+                                        None,
+                                    ),
+                                default_binding_modes: true,
+                                ..
+                            }],
                             dot_dot_pos,
                         ),
                     ..
@@ -823,24 +819,21 @@ pub(crate) fn invariant_block_close(close_stmt: &Stmt) -> Option<(HirId, HirId, 
                             )),
                         ..
                     },
-                    [
-                        Expr {
-                            kind:
-                                ExprKind::Path(QPath::Resolved(
-                                    None,
-                                    rustc_hir::Path { res: Res::Local(hir_id1), .. },
-                                )),
-                            ..
-                        },
-                        Expr {
-                            kind:
-                                ExprKind::Path(QPath::Resolved(
-                                    None,
-                                    rustc_hir::Path { res: Res::Local(hir_id2), .. },
-                                )),
-                            ..
-                        },
-                    ],
+                    [Expr {
+                        kind:
+                            ExprKind::Path(QPath::Resolved(
+                                None,
+                                rustc_hir::Path { res: Res::Local(hir_id1), .. },
+                            )),
+                        ..
+                    }, Expr {
+                        kind:
+                            ExprKind::Path(QPath::Resolved(
+                                None,
+                                rustc_hir::Path { res: Res::Local(hir_id2), .. },
+                            )),
+                        ..
+                    }],
                 ),
             ..
         }) => Some((*hir_id1, *hir_id2, *fun_id)),
@@ -1542,7 +1535,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 ),
                                 polarity: rustc_middle::ty::PredicatePolarity::Positive,
                             }))
-                            .to_predicate(tcx);
+                            .upcast(tcx);
                         let impl_paths = get_impl_paths_for_clauses(
                             tcx,
                             &bctx.ctxt.verus_items,
@@ -1890,7 +1883,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
                     mk_expr(ExprX::ConstVar(Arc::new(fun), autospec_usage))
                 }
-                Res::Def(DefKind::Static { mutability: Mutability::Not, nested: false }, id) => {
+                Res::Def(
+                    DefKind::Static { mutability: Mutability::Not, nested: false, .. },
+                    id,
+                ) => {
                     let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
                     let fun = FunX { path };
                     mk_expr(ExprX::StaticVar(Arc::new(fun)))
@@ -2005,7 +2001,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::If(cond, lhs, rhs) => {
             let cond = cond.peel_drop_temps();
             match cond.kind {
-                ExprKind::Let(LetExpr { pat, init: expr, ty: _, span: _, is_recovered: None }) => {
+                ExprKind::Let(LetExpr { pat, init: expr, ty: _, span: _, .. }) => {
                     // if let
                     let vir_expr = expr_to_vir(bctx, expr, modifier)?;
                     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
@@ -2094,20 +2090,15 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     ExprKind::Block(
                         Block {
                             stmts:
-                                [
-                                    Stmt {
-                                        kind:
-                                            StmtKind::Expr(Expr {
-                                                kind:
-                                                    ExprKind::Break(
-                                                        Destination { label: None, .. },
-                                                        None,
-                                                    ),
-                                                ..
-                                            }),
-                                        ..
-                                    },
-                                ],
+                                [Stmt {
+                                    kind:
+                                        StmtKind::Expr(Expr {
+                                            kind:
+                                                ExprKind::Break(Destination { label: None, .. }, None),
+                                            ..
+                                        }),
+                                    ..
+                                }],
                             expr: None,
                             ..
                         },

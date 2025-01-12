@@ -570,7 +570,11 @@ fn u128_to_arch_width(u: u128, arch: ArchWordBits) -> Option<BigInt> {
         ArchWordBits::Either32Or64 => {
             let v32 = u128_to_fixed_width(u, 32);
             let v64 = u128_to_fixed_width(u, 64);
-            if v32 == v64 { Some(v32) } else { None }
+            if v32 == v64 {
+                Some(v32)
+            } else {
+                None
+            }
         }
         ArchWordBits::Exactly(v) => Some(u128_to_fixed_width(u, v)),
     }
@@ -582,7 +586,11 @@ fn i128_to_arch_width(i: i128, arch: ArchWordBits) -> Option<BigInt> {
         ArchWordBits::Either32Or64 => {
             let v32 = i128_to_fixed_width(i, 32);
             let v64 = i128_to_fixed_width(i, 64);
-            if v32 == v64 { Some(v32) } else { None }
+            if v32 == v64 {
+                Some(v32)
+            } else {
+                None
+            }
         }
         ArchWordBits::Exactly(v) => Some(i128_to_fixed_width(i, v)),
     }
@@ -1752,7 +1760,8 @@ fn cleanup_array(span: &Span, typ: Typ, v: &Vector<Exp>) -> Exp {
 /// Restore the free variables we hid during interpretation
 /// and any sequence expressions we partially simplified during interpretation
 fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
-    crate::sst_visitor::map_exp_visitor_result(exp, &mut |e| match &e.x {
+    crate::sst_visitor::map_exp_visitor_result(exp, &mut |e| {
+        match &e.x {
         ExpX::Interp(InterpExp::FreeVar(v)) => {
             Ok(SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone())))
         }
@@ -1763,6 +1772,7 @@ fn cleanup_exp(exp: &Exp) -> Result<Exp, VirErr> {
             "Proof by computation included a closure literal that wasn't applied.  This is not yet supported.",
         )),
         _ => Ok(e.clone()),
+    }
     })
 }
 

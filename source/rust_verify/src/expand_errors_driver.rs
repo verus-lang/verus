@@ -505,7 +505,11 @@ impl ExpandErrorsDriver {
             }
             j += 1;
         }
-        if all_ok { Style::SuccessGreen } else { Style::Normal }
+        if all_ok {
+            Style::SuccessGreen
+        } else {
+            Style::Normal
+        }
     }
 
     pub fn has_strange_result(&self) -> bool {
@@ -550,7 +554,8 @@ impl ExpandErrorsDriver {
         let s = if matches!(
             error_format,
             Some(rustc_session::config::ErrorOutputType::HumanReadable(
-                rustc_errors::emitter::HumanReadableErrorType::Short(_)
+                rustc_errors::emitter::HumanReadableErrorType::Short,
+                _
             ))
         ) {
             "diagnostics via expansion".into()

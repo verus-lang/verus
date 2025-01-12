@@ -610,7 +610,11 @@ fn get_opt_trait_info(path: &Path, document: &NodeRef) -> Option<TraitInfo> {
     let filename = path.file_name().unwrap();
     if filename.to_string_lossy().starts_with("trait.") {
         let nodes: Vec<_> = document.select(".item-decl").expect("code selector").collect();
-        if nodes.len() == 1 { Some(TraitInfo { node: nodes[0].as_node().clone() }) } else { None }
+        if nodes.len() == 1 {
+            Some(TraitInfo { node: nodes[0].as_node().clone() })
+        } else {
+            None
+        }
     } else {
         None
     }

@@ -432,7 +432,11 @@ fn focus_commands_with_context_on_assert_id(
 impl Op {
     pub fn to_air_comment(&self) -> String {
         fn append_profile_rerun(s: &str, profile: bool) -> String {
-            if !profile { s.to_owned() } else { format!("{s}-Profile-Rerun") }
+            if !profile {
+                s.to_owned()
+            } else {
+                format!("{s}-Profile-Rerun")
+            }
         }
         let prefix = match &self.kind {
             OpKind::Context(ContextOp::SpecDefinition, _) => "Function-Axioms".into(),
@@ -461,7 +465,11 @@ impl Op {
     /// Intended for Query ops, so the driver can describe queries to the user
     pub fn to_friendly_desc(&self) -> Option<String> {
         fn append_profile_rerun(s: &str, profile: bool) -> String {
-            if !profile { s.to_owned() } else { format!("{s} (profile rerun)") }
+            if !profile {
+                s.to_owned()
+            } else {
+                format!("{s} (profile rerun)")
+            }
         }
         match &self.kind {
             OpKind::Context(_, _) => None,

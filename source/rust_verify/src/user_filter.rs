@@ -286,5 +286,9 @@ impl UserFilter {
 }
 
 fn module_id_of_path(p: &Path) -> ModuleId {
-    if p.segments.len() == 0 { ModuleId::Root } else { ModuleId::Module(module_name(p)) }
+    if p.segments.len() == 0 {
+        ModuleId::Root
+    } else {
+        ModuleId::Module(module_name(p))
+    }
 }

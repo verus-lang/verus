@@ -188,7 +188,11 @@ impl EmitState {
             }
             let (c, pos) = positions[i];
             let p = pos.0 as isize + column as isize - c as isize;
-            if p < 0 { None } else { Some(BytePos(p as u32)) }
+            if p < 0 {
+                None
+            } else {
+                Some(BytePos(p as u32))
+            }
         } else if found_line < line {
             // last pos on found_line is closest
             Some(positions.last().expect("found_line").1)
@@ -1068,14 +1072,24 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
 }
 
 pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
-    let TraitImpl { span, trait_as_datatype, self_typ, generic_params, generic_bounds, assoc_typs } =
-        t;
+    let TraitImpl {
+        span,
+        trait_as_datatype,
+        self_typ,
+        generic_params,
+        generic_bounds,
+        assoc_typs,
+        trait_polarity,
+    } = t;
     state.newdecl();
     state.newline();
     state.begin_span_opt(*span);
     state.write("impl");
     emit_generic_params(state, &generic_params);
     state.write(" ");
+    if trait_polarity == &rustc_middle::ty::ImplPolarity::Negative {
+        state.write("!");
+    }
     state.write(&trait_as_datatype.to_string());
     state.write(" for ");
     state.write(&self_typ.to_string());

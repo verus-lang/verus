@@ -188,7 +188,8 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
                             for item in impll.items {
                                 match item.kind {
                                     AssocItemKind::Fn { .. } => {
-                                        tcx.ensure().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
+                                        tcx.ensure().mir_borrowck(item.id.owner_id.def_id);
+                                        // REVIEW(main_new) correct?
                                     }
                                     _ => {}
                                 }
@@ -204,6 +205,8 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
 }
 
 const PRELUDE: &str = "\
+#![feature(negative_impls)]
+#![feature(with_negative_coherence)]
 #![feature(box_patterns)]
 #![feature(ptr_metadata)]
 #![feature(never_type)]

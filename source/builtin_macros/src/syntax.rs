@@ -220,7 +220,11 @@ impl Visitor {
     }
 
     fn maybe_erase_expr(&self, span: Span, e: Expr) -> Expr {
-        if self.erase_ghost.erase() { Expr::Verbatim(quote_spanned!(span => {})) } else { e }
+        if self.erase_ghost.erase() {
+            Expr::Verbatim(quote_spanned!(span => {}))
+        } else {
+            e
+        }
     }
 
     fn filter_attrs(&mut self, attrs: &mut Vec<Attribute>) {
@@ -2331,7 +2335,7 @@ impl Visitor {
             *expr = self.maybe_erase_expr(
                 span,
                 Expr::Verbatim(
-                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { #inner } ),
+                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { #[verus::internal(const_header_wrapper)]||{#inner}; } ),
                 ),
             );
         }

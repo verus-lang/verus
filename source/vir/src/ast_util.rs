@@ -207,7 +207,11 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
 }
 
 pub fn undecorate_typ(typ: &Typ) -> Typ {
-    if let TypX::Decorate(_, _, t) = &**typ { undecorate_typ(t) } else { typ.clone() }
+    if let TypX::Decorate(_, _, t) = &**typ {
+        undecorate_typ(t)
+    } else {
+        typ.clone()
+    }
 }
 
 pub fn allowed_bitvector_type(typ: &Typ) -> bool {
@@ -446,7 +450,11 @@ impl Visibility {
                 assert!(p1.krate == p2.krate);
                 let m = std::cmp::min(p1.segments.len(), p2.segments.len());
                 assert!(&p1.segments[..m] == &p2.segments[..m]);
-                if p1.segments.len() < p2.segments.len() { vis2.clone() } else { self.clone() }
+                if p1.segments.len() < p2.segments.len() {
+                    vis2.clone()
+                } else {
+                    self.clone()
+                }
             }
         }
     }

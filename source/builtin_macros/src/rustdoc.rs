@@ -131,7 +131,11 @@ fn attr_for_sig(sig: &Signature, block: Option<&Block>) -> Option<Attribute> {
         None => {}
     }
 
-    if v.len() == 0 { None } else { Some(doc_attr_from_string(&v.join("\n\n"), sig.span())) }
+    if v.len() == 0 {
+        None
+    } else {
+        Some(doc_attr_from_string(&v.join("\n\n"), sig.span()))
+    }
 }
 
 fn attr_for_broadcast_group(_attrs: &mut Vec<Attribute>, sig: &Signature) -> Option<Attribute> {
@@ -139,7 +143,11 @@ fn attr_for_broadcast_group(_attrs: &mut Vec<Attribute>, sig: &Signature) -> Opt
 
     v.push(encoded_str("broadcast_group", ""));
 
-    if v.len() == 0 { None } else { Some(doc_attr_from_string(&v.join("\n\n"), sig.span())) }
+    if v.len() == 0 {
+        None
+    } else {
+        Some(doc_attr_from_string(&v.join("\n\n"), sig.span()))
+    }
 }
 
 fn is_spec(sig: &Signature) -> bool {
