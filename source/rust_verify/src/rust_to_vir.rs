@@ -484,7 +484,7 @@ pub fn crate_to_vir<'a, 'tcx>(
                     }
                 }
             }
-            VerifOrExternal::External { path: Some(my_path), path_string: _ } => {
+            VerifOrExternal::External { path: Some(my_path), path_string: _, explicit: _ } => {
                 // If possible, track this item in the VIR Krate for diagnostic purposes
                 let (is_fn, is_datatype) = match crate_item.id {
                     GeneralItemId::ItemId(item_id) => {
@@ -520,7 +520,7 @@ pub fn crate_to_vir<'a, 'tcx>(
                     vir.external_types.push(my_path.clone());
                 }
             }
-            VerifOrExternal::External { path: None, path_string: _ } => {}
+            VerifOrExternal::External { path: None, path_string: _, explicit: _ } => {}
         }
     }
 

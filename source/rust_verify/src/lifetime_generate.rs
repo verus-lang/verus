@@ -2503,7 +2503,7 @@ fn erase_impl<'tcx>(
             AssocItemKind::Type => {
                 // handled in erase_trait
             }
-            _ => panic!("unexpected impl"),
+            _ => panic!("unexpected impl {:?}", impl_item_ref),
         }
     }
 }
@@ -2776,6 +2776,11 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
                 OwnerNode::Item(item) => {
+                    if matches!(&item.kind, ItemKind::Impl(_))
+                        && crate_items.is_item_explicitly_external(item.item_id())
+                    {
+                        continue;
+                    }
                     if !matches!(&item.kind, ItemKind::Impl(_))
                         && crate_items.is_item_external(item.item_id())
                     {
@@ -2815,6 +2820,11 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
                 OwnerNode::Item(item) => {
+                    if matches!(&item.kind, ItemKind::Impl(_))
+                        && crate_items.is_item_explicitly_external(item.item_id())
+                    {
+                        continue;
+                    }
                     if !matches!(&item.kind, ItemKind::Impl(_))
                         && crate_items.is_item_external(item.item_id())
                     {
