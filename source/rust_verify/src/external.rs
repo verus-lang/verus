@@ -250,7 +250,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                 if eattrs.external {
                     VerifState::External
                 } else if opts_in_to_verus(&eattrs) {
-                      //|| opts_in_by_automatic_derive(&self.ctxt, &general_item, &attrs) {
+                    //|| opts_in_by_automatic_derive(&self.ctxt, &general_item, &attrs) {
                     VerifState::Verify
                 } else {
                     VerifState::Default
