@@ -1275,7 +1275,7 @@ test_verify_one_file! {
         impl Tr for X {
             fn foo(&self) { }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`; try marking it `external_body` instead, or add a Verus specification via `external_fn_specification`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::foo` which is ignored")
 }
 
 test_verify_one_file! {

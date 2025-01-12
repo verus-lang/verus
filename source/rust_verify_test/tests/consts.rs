@@ -416,15 +416,20 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] allow_external_body_const_regression_1322_1 verus_code! {
+        #[verifier::external]
+        const fn stuff() -> usize { 0 }
+
         #[verifier(external_body)]
-        const A: usize = unimplemented!();
+        const A: usize = stuff();
     } => Ok(())
 }
 
 test_verify_one_file! {
-    // TODO un-ignore once fixed
     #[ignore] #[test] allow_external_body_const_regression_1322_2 verus_code! {
+        #[verifier::external]
+        const fn stuff() -> usize { 0 }
+
         #[verifier(external_body)]
-        const A: usize ensures 32 <= A <= 52 { unimplemented!() }
+        const A: usize ensures 32 <= A <= 52 { stuff() }
     } => Ok(())
 }
