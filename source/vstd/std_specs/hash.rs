@@ -275,18 +275,15 @@ pub assume_specification<Key, Value>[HashMap::<Key, Value>::with_capacity](capac
     ensures
         m@ == Map::<Key, Value>::empty();
 
-pub assume_specification<Key, Value, S>[HashMap::<Key, Value, S>::reserve](m: &mut HashMap<Key, Value, S>, additional: usize) where
-    Key: Eq + Hash,
-    S: BuildHasher,
-
+pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher>[HashMap::<Key, Value, S>::reserve](m: &mut HashMap<Key, Value, S>, additional: usize)
     ensures
         m@ == old(m)@;
 
-pub assume_specification<Key, Value, S>[HashMap::<Key, Value, S>::insert](
+pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher>[HashMap::<Key, Value, S>::insert](
     m: &mut HashMap<Key, Value, S>,
     k: Key,
     v: Value,
-) -> (result: Option<Value>) where Key: Eq + Hash, S: BuildHasher
+) -> (result: Option<Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& m@ == old(m)@.insert(k, v)
@@ -328,8 +325,8 @@ pub broadcast proof fn axiom_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q
     admit();
 }
 
-pub assume_specification<Key, Value, S, Q>[HashMap::<Key, Value, S>::contains_key::<Q>](m: &HashMap<Key, Value, S>, k: &Q) -> (result:
-    bool) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
+pub assume_specification<Key: Borrow<Q> + Hash + Eq, Value, S: BuildHasher, Q: Hash + Eq + ?Sized>[HashMap::<Key, Value, S>::contains_key::<Q>](m: &HashMap<Key, Value, S>, k: &Q) -> (result:
+    bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result == contains_borrowed_key(
             m@,
@@ -377,8 +374,8 @@ pub broadcast proof fn axiom_maps_box_key_to_value<Q, Value>(m: Map<Box<Q>, Valu
     admit();
 }
 
-pub assume_specification<'a, Key, Value, S, Q>[HashMap::<Key, Value, S>::get::<Q>](m: &'a HashMap<Key, Value, S>, k: &Q) -> (result:
-    Option<&'a Value>) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
+pub assume_specification<'a, Key: Borrow<Q> + Hash + Eq, Value, S: BuildHasher, Q: Hash + Eq + ?Sized>[HashMap::<Key, Value, S>::get::<Q>](m: &'a HashMap<Key, Value, S>, k: &Q) -> (result:
+    Option<&'a Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
             Some(v) => maps_borrowed_key_to_value(m@, k, *v),
@@ -431,8 +428,8 @@ pub broadcast proof fn axiom_box_key_removed<Q, Value>(
     admit();
 }
 
-pub assume_specification<Key, Value, S, Q>[HashMap::<Key, Value, S>::remove::<Q>](m: &mut HashMap<Key, Value, S>, k: &Q) -> (result:
-    Option<Value>) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
+pub assume_specification<Key: Borrow<Q> + Hash + Eq, Value, S: BuildHasher, Q: Hash + Eq + ?Sized>[HashMap::<Key, Value, S>::remove::<Q>](m: &mut HashMap<Key, Value, S>, k: &Q) -> (result:
+    Option<Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& borrowed_key_removed(old(m)@, m@, k)
@@ -483,17 +480,11 @@ pub assume_specification<Key>[HashSet::<Key>::with_capacity](capacity: usize) ->
     ensures
         m@ == Set::<Key>::empty();
 
-pub assume_specification<Key, S>[HashSet::<Key, S>::reserve](m: &mut HashSet<Key, S>, additional: usize) where
-    Key: Eq + Hash,
-    S: BuildHasher,
-
+pub assume_specification<Key: Eq + Hash, S: BuildHasher>[HashSet::<Key, S>::reserve](m: &mut HashSet<Key, S>, additional: usize)
     ensures
         m@ == old(m)@;
 
-pub assume_specification<Key, S>[HashSet::<Key, S>::insert](m: &mut HashSet<Key, S>, k: Key) -> (result: bool) where
-    Key: Eq + Hash,
-    S: BuildHasher,
-
+pub assume_specification<Key: Eq + Hash, S: BuildHasher>[HashSet::<Key, S>::insert](m: &mut HashSet<Key, S>, k: Key) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& m@ == old(m)@.insert(k)
@@ -530,11 +521,7 @@ pub broadcast proof fn axiom_set_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
     admit();
 }
 
-pub assume_specification<Key, S, Q>[HashSet::<Key, S>::contains](m: &HashSet<Key, S>, k: &Q) -> (result: bool) where
-    Key: Borrow<Q> + Hash + Eq,
-    Q: Hash + Eq + ?Sized,
-    S: BuildHasher,
-
+pub assume_specification<Key: Borrow<Q> + Hash + Eq, S: BuildHasher, Q: Hash + Eq + ?Sized>[HashSet::<Key, S>::contains](m: &HashSet<Key, S>, k: &Q) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result
             == set_contains_borrowed_key(m@, k);
@@ -573,9 +560,9 @@ pub broadcast proof fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &
     admit();
 }
 
-pub assume_specification<'a, Key, S, Q>[HashSet::<Key, S>::get::<Q>](m: &'a HashSet<Key, S>, k: &Q) -> (result: Option<
+pub assume_specification<'a, Key: Borrow<Q> + Hash + Eq, S: BuildHasher, Q: Hash + Eq + ?Sized>[HashSet::<Key, S>::get::<Q>](m: &'a HashSet<Key, S>, k: &Q) -> (result: Option<
     &'a Key,
->) where Key: Borrow<Q> + Hash + Eq, Q: Hash + Eq + ?Sized, S: BuildHasher
+>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
             Some(v) => sets_borrowed_key_to_key(m@, k, v),
@@ -619,11 +606,7 @@ pub broadcast proof fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: S
     admit();
 }
 
-pub assume_specification<Key, S, Q>[HashSet::<Key, S>::remove::<Q>](m: &mut HashSet<Key, S>, k: &Q) -> (result: bool) where
-    Key: Borrow<Q> + Hash + Eq,
-    Q: Hash + Eq + ?Sized,
-    S: BuildHasher,
-
+pub assume_specification<Key: Borrow<Q> + Hash + Eq, S: BuildHasher, Q: Hash + Eq + ?Sized>[HashSet::<Key, S>::remove::<Q>](m: &mut HashSet<Key, S>, k: &Q) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& sets_differ_by_borrowed_key(old(m)@, m@, k)
