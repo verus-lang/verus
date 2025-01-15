@@ -18,28 +18,22 @@ impl View for str {
 
 pub spec fn str_slice_is_ascii(s: &str) -> bool;
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(str_slice_is_ascii)]
-pub fn ex_str_slice_is_ascii(s: &str) -> (b: bool)
+pub assume_specification[ str::is_ascii ](s: &str) -> (b: bool)
     ensures
         b == str_slice_is_ascii(s),
-{
-    s.is_ascii()
-}
+;
 
 pub open spec fn new_strlit_spec(s: &str) -> &str {
     s
 }
 
 #[cfg(feature = "alloc")]
-#[verifier::external_fn_specification]
-pub fn ex_str_to_string(s: &str) -> (res: String)
+pub assume_specification[ str::to_string ](s: &str) -> (res: String)
     ensures
         s@ == res@,
         s.is_ascii() == res.is_ascii(),
-{
-    s.to_string()
-}
+;
 
 #[verifier::external]
 pub trait StrSliceExecFns {
@@ -201,42 +195,30 @@ pub struct ExString(String);
 pub spec fn string_is_ascii(s: &String) -> bool;
 
 #[cfg(feature = "alloc")]
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(string_is_ascii)]
-pub fn ex_string_is_ascii(s: &String) -> (b: bool)
+pub assume_specification[ String::is_ascii ](s: &String) -> (b: bool)
     ensures
         b == string_is_ascii(s),
-{
-    s.is_ascii()
-}
+;
 
 #[cfg(feature = "alloc")]
-#[verifier::external_fn_specification]
-pub fn ex_string_as_str<'a>(s: &'a String) -> (res: &'a str)
+pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
         s.is_ascii() == res.is_ascii(),
-{
-    s.as_str()
-}
+;
 
 #[cfg(feature = "alloc")]
-#[verifier::external_fn_specification]
-pub fn ex_string_clone(s: &String) -> (res: String)
+pub assume_specification[ <String as Clone>::clone ](s: &String) -> (res: String)
     ensures
         res == s,
-{
-    s.clone()
-}
+;
 
 #[cfg(feature = "alloc")]
-#[verifier::external_fn_specification]
-pub fn ex_string_eq(s: &String, other: &String) -> (res: bool)
+pub assume_specification[ <String as PartialEq>::eq ](s: &String, other: &String) -> (res: bool)
     ensures
         res == (s@ == other@),
-{
-    s.eq(other)
-}
+;
 
 #[cfg(feature = "alloc")]
 #[verifier::external]

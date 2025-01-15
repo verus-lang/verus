@@ -201,6 +201,119 @@ impl Debug for Lite<syn::Assume> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::AssumeSpecification> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("AssumeSpecification");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("vis", Lite(&_val.vis));
+        formatter.field("generics", Lite(&_val.generics));
+        if let Some(val) = &_val.qself {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::QSelf);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("qself", Print::ref_cast(val));
+        }
+        formatter.field("path", Lite(&_val.path));
+        if !_val.inputs.is_empty() {
+            formatter.field("inputs", Lite(&_val.inputs));
+        }
+        formatter.field("output", Lite(&_val.output));
+        if let Some(val) = &_val.requires {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Requires);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("requires", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Ensures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("ensures", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.returns {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Returns);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("returns", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.invariants {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::SignatureInvariants);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("invariants", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.unwind {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::SignatureUnwind);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("unwind", Print::ref_cast(val));
+        }
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::AttrStyle> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -4248,6 +4361,13 @@ impl Debug for Lite<syn::Item> {
                     formatter.field("paths", Lite(&_val.paths));
                 }
                 formatter.finish()
+            }
+            syn::Item::AssumeSpecification(_val) => {
+                formatter.write_str("AssumeSpecification")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
             }
             _ => unreachable!(),
         }

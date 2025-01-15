@@ -283,16 +283,15 @@ pub open spec fn ptr_null<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> *c
 }
 
 #[cfg(verus_keep_ghost)]
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(ptr_null)]
-pub fn ex_ptr_null<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> (res: *const T)
+pub assume_specification<
+    T: ?Sized + core::ptr::Pointee<Metadata = ()>,
+>[ core::ptr::null ]() -> (res: *const T)
     ensures
         res == ptr_null::<T>(),
     opens_invariants none
     no_unwind
-{
-    core::ptr::null()
-}
+;
 
 #[verifier::inline]
 pub open spec fn ptr_null_mut<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> *mut T {
@@ -300,16 +299,15 @@ pub open spec fn ptr_null_mut<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -
 }
 
 #[cfg(verus_keep_ghost)]
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(ptr_null_mut)]
-pub fn ex_ptr_null_mut<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> (res: *mut T)
+pub assume_specification<
+    T: ?Sized + core::ptr::Pointee<Metadata = ()>,
+>[ core::ptr::null_mut ]() -> (res: *mut T)
     ensures
         res == ptr_null_mut::<T>(),
     opens_invariants none
     no_unwind
-{
-    core::ptr::null_mut()
-}
+;
 
 //////////////////////////////////////
 // Casting
@@ -459,29 +457,21 @@ macro_rules! pointer_specs {
             #[verifier::inline]
             pub open spec fn spec_addr<T: ?Sized>(p: *$mu T) -> usize { p@.addr }
 
-            #[verifier::external_fn_specification]
             #[verifier::when_used_as_spec(spec_addr)]
-            pub fn ex_addr<T: ?Sized>(p: *$mu T) -> (addr: usize)
+            pub assume_specification<T: ?Sized>[<*$mu T>::addr](p: *$mu T) -> (addr: usize)
                 ensures addr == spec_addr(p)
                 opens_invariants none
-                no_unwind
-            {
-                p.addr()
-            }
+                no_unwind;
 
             pub open spec fn spec_with_addr<T: ?Sized>(p: *$mu T, addr: usize) -> *$mu T {
                 $ptr_from_data(PtrData { addr: addr, .. p@ })
             }
 
-            #[verifier::external_fn_specification]
             #[verifier::when_used_as_spec(spec_with_addr)]
-            pub fn ex_with_addr<T: ?Sized>(p: *$mu T, addr: usize) -> (q: *$mu T)
+            pub assume_specification<T: ?Sized>[<*$mu T>::with_addr](p: *$mu T, addr: usize) -> (q: *$mu T)
                 ensures q == spec_with_addr(p, addr)
                 opens_invariants none
-                no_unwind
-            {
-                p.with_addr(addr)
-            }
+                no_unwind;
 
             }
         }

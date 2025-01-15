@@ -55,14 +55,11 @@ pub open spec fn is_ok<T, E>(result: &Result<T, E>) -> bool {
     is_variant(result, "Ok")
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(is_ok)]
-pub fn ex_result_is_ok<T, E>(result: &Result<T, E>) -> (b: bool)
+pub assume_specification<T, E>[ Result::<T, E>::is_ok ](r: &Result<T, E>) -> (b: bool)
     ensures
-        b == is_ok(result),
-{
-    result.is_ok()
-}
+        b == is_ok(r),
+;
 
 // is_err
 #[verifier::inline]
@@ -70,26 +67,23 @@ pub open spec fn is_err<T, E>(result: &Result<T, E>) -> bool {
     is_variant(result, "Err")
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(is_err)]
-pub fn ex_result_is_err<T, E>(result: &Result<T, E>) -> (b: bool)
+pub assume_specification<T, E>[ Result::<T, E>::is_err ](r: &Result<T, E>) -> (b: bool)
     ensures
-        b == is_err(result),
-{
-    result.is_err()
-}
+        b == is_err(r),
+;
 
 // as_ref
-#[verifier::external_fn_specification]
-pub fn as_ref<T, E>(result: &Result<T, E>) -> (r: Result<&T, &E>)
+pub assume_specification<T, E>[ Result::<T, E>::as_ref ](result: &Result<T, E>) -> (r: Result<
+    &T,
+    &E,
+>)
     ensures
         r.is_Ok() <==> result.is_Ok(),
         r.is_Ok() ==> result.get_Ok_0() == r.get_Ok_0(),
         r.is_Err() <==> result.is_Err(),
         r.is_Err() ==> result.get_Err_0() == r.get_Err_0(),
-{
-    result.as_ref()
-}
+;
 
 // unwrap
 #[verifier::inline]
@@ -101,15 +95,14 @@ pub open spec fn spec_unwrap<T, E: core::fmt::Debug>(result: Result<T, E>) -> T
 }
 
 #[verifier::when_used_as_spec(spec_unwrap)]
-#[verifier::external_fn_specification]
-pub fn unwrap<T, E: core::fmt::Debug>(result: Result<T, E>) -> (t: T)
+pub assume_specification<T, E: core::fmt::Debug>[ Result::<T, E>::unwrap ](
+    result: Result<T, E>,
+) -> (t: T)
     requires
         result.is_Ok(),
     ensures
         t == result.get_Ok_0(),
-{
-    result.unwrap()
-}
+;
 
 // unwrap_err
 #[verifier::inline]
@@ -121,19 +114,20 @@ pub open spec fn spec_unwrap_err<T: core::fmt::Debug, E>(result: Result<T, E>) -
 }
 
 #[verifier::when_used_as_spec(spec_unwrap_err)]
-#[verifier::external_fn_specification]
-pub fn unwrap_err<T: core::fmt::Debug, E>(result: Result<T, E>) -> (e: E)
+pub assume_specification<T: core::fmt::Debug, E>[ Result::<T, E>::unwrap_err ](
+    result: Result<T, E>,
+) -> (e: E)
     requires
         result.is_Err(),
     ensures
         e == result.get_Err_0(),
-{
-    result.unwrap_err()
-}
+;
 
 // map
-#[verifier::external_fn_specification]
-pub fn map<T, E, U, F: FnOnce(T) -> U>(result: Result<T, E>, op: F) -> (mapped_result: Result<U, E>)
+pub assume_specification<T, E, U, F: FnOnce(T) -> U>[ Result::<T, E>::map ](
+    result: Result<T, E>,
+    op: F,
+) -> (mapped_result: Result<U, E>)
     requires
         result.is_ok() ==> op.requires((result.get_Ok_0(),)),
     ensures
@@ -142,14 +136,11 @@ pub fn map<T, E, U, F: FnOnce(T) -> U>(result: Result<T, E>, op: F) -> (mapped_r
             mapped_result.get_Ok_0(),
         ),
         result.is_err() ==> mapped_result == Result::<U, E>::Err(result.get_Err_0()),
-{
-    result.map(op)
-}
+;
 
 // map_err
-#[verifier::external_fn_specification]
 #[verusfmt::skip]
-pub fn map_err<T, E, F, O: FnOnce(E) -> F>(result: Result<T, E>, op: O) -> (mapped_result: Result<T, F>)
+pub assume_specification<T, E, F, O: FnOnce(E) -> F>[Result::<T, E>::map_err](result: Result<T, E>, op: O) -> (mapped_result: Result<T, F>)
     requires
         result.is_err() ==> op.requires((result.get_Err_0(),)),
     ensures
@@ -157,10 +148,7 @@ pub fn map_err<T, E, F, O: FnOnce(E) -> F>(result: Result<T, E>, op: O) -> (mapp
             (result.get_Err_0(),),
             mapped_result.get_Err_0(),
         ),
-        result.is_ok() ==> mapped_result == Result::<T, F>::Ok(result.get_Ok_0()),
-{
-    result.map_err(op)
-}
+        result.is_ok() ==> mapped_result == Result::<T, F>::Ok(result.get_Ok_0());
 
 // ok
 #[verifier::inline]
@@ -171,14 +159,11 @@ pub open spec fn ok<T, E>(result: Result<T, E>) -> Option<T> {
     }
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(ok)]
-pub fn ex_result_ok<T, E>(result: Result<T, E>) -> (opt: Option<T>)
+pub assume_specification<T, E>[ Result::<T, E>::ok ](result: Result<T, E>) -> (opt: Option<T>)
     ensures
         opt == ok(result),
-{
-    result.ok()
-}
+;
 
 // err
 #[verifier::inline]
@@ -189,13 +174,10 @@ pub open spec fn err<T, E>(result: Result<T, E>) -> Option<E> {
     }
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(err)]
-pub fn ex_result_err<T, E>(result: Result<T, E>) -> (opt: Option<E>)
+pub assume_specification<T, E>[ Result::<T, E>::err ](result: Result<T, E>) -> (opt: Option<E>)
     ensures
         opt == err(result),
-{
-    result.err()
-}
+;
 
 } // verus!
