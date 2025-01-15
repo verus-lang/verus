@@ -38,6 +38,23 @@ impl<T> SliceAdditionalSpecFns<T> for [T] {
     }
 }
 
+#[verifier::external]
+pub trait SliceAdditionalExecFns<T> {
+    fn set(&mut self, idx: usize, t: T);
+}
+
+impl<T> SliceAdditionalExecFns<T> for [T] {
+    #[verifier::external_body]
+    fn set(&mut self, idx: usize, t: T)
+        requires
+            0 <= idx < old(self)@.len(),
+        ensures
+            self@ == old(self)@.update(idx as int, t),
+    {
+        self[idx] = t;
+    }
+}
+
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::slice::slice_index_get")]
 pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
