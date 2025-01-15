@@ -18,7 +18,6 @@ impl<T: View> View for Option<T> {
     }
 }
 
-
 ////// Add is_variant-style spec functions
 pub trait OptionAdditionalFns<T>: Sized {
     #[allow(non_snake_case)]
