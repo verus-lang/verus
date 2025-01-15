@@ -90,12 +90,13 @@ pub trait ExStructural {
     type ExternalTraitSpecificationFor: Structural;
 }
 
-pub assume_specification<T> [core::mem::swap::<T>] (a: &mut T, b: &mut T)
+pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
     ensures
         *a == *old(b),
         *b == *old(a),
     opens_invariants none
-    no_unwind;
+    no_unwind
+;
 
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(V)]
@@ -112,9 +113,10 @@ pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
 }
 
 #[verifier::when_used_as_spec(iter_into_iter_spec)]
-pub assume_specification<I: Iterator>[I::into_iter](i: I) -> (r: I)
+pub assume_specification<I: Iterator>[ I::into_iter ](i: I) -> (r: I)
     ensures
-        r == i;
+        r == i,
+;
 
 // I don't really expect this to be particularly useful;
 // this is mostly here because I wanted an easy way to test
@@ -128,13 +130,15 @@ pub struct ExDuration(core::time::Duration);
 #[verifier::accept_recursive_types(V)]
 pub struct ExPhantomData<V: ?Sized>(core::marker::PhantomData<V>);
 
-pub assume_specification [core::intrinsics::likely] (b: bool) -> (c: bool)
+pub assume_specification[ core::intrinsics::likely ](b: bool) -> (c: bool)
     ensures
-        c == b;
+        c == b,
+;
 
-pub assume_specification [core::intrinsics::unlikely] (b: bool) -> (c: bool)
+pub assume_specification[ core::intrinsics::unlikely ](b: bool) -> (c: bool)
     ensures
-        c == b;
+        c == b,
+;
 
 #[verifier::external_type_specification]
 #[verifier::external_body]

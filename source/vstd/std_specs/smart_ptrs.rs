@@ -9,24 +9,31 @@ use core::alloc::Allocator;
 verus! {
 
 // TODO
-pub assume_specification<T, A: Allocator>[<[T]>::into_vec](b: Box<[T], A>) -> (v: Vec<T, A>)
+pub assume_specification<T, A: Allocator>[ <[T]>::into_vec ](b: Box<[T], A>) -> (v: Vec<T, A>)
     ensures
-        v@ == b@;
+        v@ == b@,
+;
 
-pub assume_specification<T>[Box::<T>::new](t: T) -> (v: Box<T>)
+pub assume_specification<T>[ Box::<T>::new ](t: T) -> (v: Box<T>)
     ensures
-        v == t;
+        v == t,
+;
 
-pub assume_specification<T>[Rc::<T>::new](t: T) -> (v: Rc<T>)
+pub assume_specification<T>[ Rc::<T>::new ](t: T) -> (v: Rc<T>)
     ensures
-        v == t;
+        v == t,
+;
 
-pub assume_specification<T>[Arc::<T>::new](t: T) -> (v: Arc<T>)
+pub assume_specification<T>[ Arc::<T>::new ](t: T) -> (v: Arc<T>)
     ensures
-        v == t;
+        v == t,
+;
 
-pub assume_specification<T: Clone, A: Allocator + Clone>[<Box<T, A> as Clone>::clone](b: &Box<T, A>) -> (res: Box<T, A>)
+pub assume_specification<T: Clone, A: Allocator + Clone>[ <Box<T, A> as Clone>::clone ](
+    b: &Box<T, A>,
+) -> (res: Box<T, A>)
     ensures
-        call_ensures(T::clone, (&**b,), *res);
+        call_ensures(T::clone, (&**b,), *res),
+;
 
 } // verus!

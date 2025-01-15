@@ -69,38 +69,52 @@ pub broadcast proof fn axiom_spec_len<A>(v: &Vec<A>)
 }
 
 #[verifier::when_used_as_spec(spec_vec_len)]
-pub assume_specification<T, A: Allocator>[Vec::<T, A>::len](vec: &Vec<T, A>) -> (len: usize)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::len ](vec: &Vec<T, A>) -> (len: usize)
     ensures
-        len == spec_vec_len(vec);
+        len == spec_vec_len(vec),
+;
 
 ////// Other functions
-pub assume_specification<T>[Vec::<T>::new]() -> (v: Vec<T>)
+pub assume_specification<T>[ Vec::<T>::new ]() -> (v: Vec<T>)
     ensures
-        v@ == Seq::<T>::empty();
+        v@ == Seq::<T>::empty(),
+;
 
-pub assume_specification<T>[Vec::<T>::with_capacity](capacity: usize) -> (v: Vec<T>)
+pub assume_specification<T>[ Vec::<T>::with_capacity ](capacity: usize) -> (v: Vec<T>)
     ensures
-        v@ == Seq::<T>::empty();
+        v@ == Seq::<T>::empty(),
+;
 
-pub assume_specification<T, A: Allocator>[Vec::<T, A>::reserve](vec: &mut Vec<T, A>, additional: usize)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::reserve ](
+    vec: &mut Vec<T, A>,
+    additional: usize,
+)
     ensures
-        vec@ == old(vec)@;
+        vec@ == old(vec)@,
+;
 
-pub assume_specification<T, A: Allocator>[Vec::<T, A>::push](vec: &mut Vec<T, A>, value: T)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::push ](vec: &mut Vec<T, A>, value: T)
     ensures
-        vec@ == old(vec)@.push(value);
+        vec@ == old(vec)@.push(value),
+;
 
-pub assume_specification<T, A: Allocator>[Vec::<T, A>::pop](vec: &mut Vec<T, A>) -> (value: Option<T>)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::pop ](vec: &mut Vec<T, A>) -> (value:
+    Option<T>)
     ensures
         old(vec)@.len() > 0 ==> value == Some(old(vec)@[old(vec)@.len() - 1]) && vec@ == old(
             vec,
         )@.subrange(0, old(vec)@.len() - 1),
-        old(vec)@.len() == 0 ==> value == None::<T> && vec@ == old(vec)@;
+        old(vec)@.len() == 0 ==> value == None::<T> && vec@ == old(vec)@,
+;
 
-pub assume_specification<T, A: Allocator>[Vec::<T, A>::append](vec: &mut Vec<T, A>, other: &mut Vec<T, A>)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::append ](
+    vec: &mut Vec<T, A>,
+    other: &mut Vec<T, A>,
+)
     ensures
         vec@ == old(vec)@ + old(other)@,
-        other@ == Seq::<T>::empty();
+        other@ == Seq::<T>::empty(),
+;
 
 /*
 // TODO find a way to support this
@@ -114,28 +128,39 @@ pub assume_specification<T, A: Allocator>[Vec::<T,A>::index](vec: &Vec<T>, i: us
         *r == vec[i as int];
 */
 
-pub assume_specification<T, A: Allocator>[Vec::<T, A>::insert](vec: &mut Vec<T, A>, i: usize, element: T)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::insert ](
+    vec: &mut Vec<T, A>,
+    i: usize,
+    element: T,
+)
     requires
         i <= old(vec).len(),
     ensures
-        vec@ == old(vec)@.insert(i as int, element);
+        vec@ == old(vec)@.insert(i as int, element),
+;
 
-pub assume_specification<T, A: Allocator>[Vec::<T, A>::remove](vec: &mut Vec<T, A>, i: usize) -> (element: T)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::remove ](
+    vec: &mut Vec<T, A>,
+    i: usize,
+) -> (element: T)
     requires
         i < old(vec).len(),
     ensures
         element == old(vec)[i as int],
-        vec@ == old(vec)@.remove(i as int);
+        vec@ == old(vec)@.remove(i as int),
+;
 
-pub assume_specification<T, A: Allocator>[Vec::<T, A>::clear](vec: &mut Vec<T, A>)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::clear ](vec: &mut Vec<T, A>)
     ensures
-        vec.view() == Seq::<T>::empty();
+        vec.view() == Seq::<T>::empty(),
+;
 
-pub assume_specification<T, A: Allocator>[Vec::<T, A>::as_slice](vec: &Vec<T, A>) -> (slice: &[T])
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, A>) -> (slice: &[T])
     ensures
-        slice@ == vec@;
+        slice@ == vec@,
+;
 
-pub assume_specification<T, A: Allocator + core::clone::Clone>[Vec::<T, A>::split_off](
+pub assume_specification<T, A: Allocator + core::clone::Clone>[ Vec::<T, A>::split_off ](
     vec: &mut Vec<T, A>,
     at: usize,
 ) -> (return_value: Vec<T, A>)
@@ -143,20 +168,24 @@ pub assume_specification<T, A: Allocator + core::clone::Clone>[Vec::<T, A>::spli
         at <= old(vec)@.len(),
     ensures
         vec@ == old(vec)@.subrange(0, at as int),
-        return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int);
+        return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),
+;
 
 pub open spec fn vec_clone_trigger<T, A: Allocator>(v1: Vec<T, A>, v2: Vec<T, A>) -> bool {
     true
 }
 
-pub assume_specification<T: Clone, A: Allocator + Clone>[<Vec<T, A> as Clone>::clone](vec: &Vec<T, A>) -> (res: Vec<T, A>)
+pub assume_specification<T: Clone, A: Allocator + Clone>[ <Vec<T, A> as Clone>::clone ](
+    vec: &Vec<T, A>,
+) -> (res: Vec<T, A>)
     ensures
         res.len() == vec.len(),
         forall|i|
             #![all_triggers]
             0 <= i < vec.len() ==> call_ensures(T::clone, (&vec[i],), res[i]),
         vec_clone_trigger(*vec, res),
-        vec@ =~= res@ ==> vec@ == res@;
+        vec@ =~= res@ ==> vec@ == res@,
+;
 
 pub broadcast proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(
     v1: Vec<T, A>,
@@ -170,10 +199,11 @@ pub broadcast proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(
 {
 }
 
-pub assume_specification<T, A: Allocator>[Vec::<T, A>::truncate](vec: &mut Vec<T, A>, len: usize)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::truncate ](vec: &mut Vec<T, A>, len: usize)
     ensures
         len <= vec.len() ==> vec@ == old(vec)@.subrange(0, len as int),
-        len > vec.len() ==> vec@ == old(vec)@;
+        len > vec.len() ==> vec@ == old(vec)@,
+;
 
 pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
     requires

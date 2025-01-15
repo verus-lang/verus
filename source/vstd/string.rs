@@ -19,19 +19,21 @@ impl View for str {
 pub spec fn str_slice_is_ascii(s: &str) -> bool;
 
 #[verifier::when_used_as_spec(str_slice_is_ascii)]
-pub assume_specification [ str::is_ascii ] (s: &str) -> (b: bool)
+pub assume_specification[ str::is_ascii ](s: &str) -> (b: bool)
     ensures
-        b == str_slice_is_ascii(s);
+        b == str_slice_is_ascii(s),
+;
 
 pub open spec fn new_strlit_spec(s: &str) -> &str {
     s
 }
 
 #[cfg(feature = "alloc")]
-pub assume_specification [ str::to_string ](s: &str) -> (res: String)
+pub assume_specification[ str::to_string ](s: &str) -> (res: String)
     ensures
         s@ == res@,
-        s.is_ascii() == res.is_ascii();
+        s.is_ascii() == res.is_ascii(),
+;
 
 #[verifier::external]
 pub trait StrSliceExecFns {
@@ -194,25 +196,29 @@ pub spec fn string_is_ascii(s: &String) -> bool;
 
 #[cfg(feature = "alloc")]
 #[verifier::when_used_as_spec(string_is_ascii)]
-pub assume_specification [String::is_ascii](s: &String) -> (b: bool)
+pub assume_specification[ String::is_ascii ](s: &String) -> (b: bool)
     ensures
-        b == string_is_ascii(s);
+        b == string_is_ascii(s),
+;
 
 #[cfg(feature = "alloc")]
-pub assume_specification<'a> [String::as_str](s: &'a String) -> (res: &'a str)
+pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
-        s.is_ascii() == res.is_ascii();
+        s.is_ascii() == res.is_ascii(),
+;
 
 #[cfg(feature = "alloc")]
-pub assume_specification [<String as Clone>::clone](s: &String) -> (res: String)
+pub assume_specification[ <String as Clone>::clone ](s: &String) -> (res: String)
     ensures
-        res == s;
+        res == s,
+;
 
 #[cfg(feature = "alloc")]
-pub assume_specification [<String as PartialEq>::eq](s: &String, other: &String) -> (res: bool)
+pub assume_specification[ <String as PartialEq>::eq ](s: &String, other: &String) -> (res: bool)
     ensures
-        res == (s@ == other@);
+        res == (s@ == other@),
+;
 
 #[cfg(feature = "alloc")]
 #[verifier::external]

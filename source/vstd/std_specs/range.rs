@@ -27,9 +27,11 @@ pub trait StepSpec where Self: Sized {
 
 pub spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
 
-pub assume_specification<A: core::iter::Step>[Range::<A>::next](range: &mut Range<A>) -> (r: Option<A>)
+pub assume_specification<A: core::iter::Step>[ Range::<A>::next ](range: &mut Range<A>) -> (r:
+    Option<A>)
     ensures
-        (*range, r) == spec_range_next(*old(range));
+        (*range, r) == spec_range_next(*old(range)),
+;
 
 pub struct RangeGhostIterator<A> {
     pub start: A,

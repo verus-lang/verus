@@ -284,11 +284,14 @@ pub open spec fn ptr_null<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> *c
 
 #[cfg(verus_keep_ghost)]
 #[verifier::when_used_as_spec(ptr_null)]
-pub assume_specification <T: ?Sized + core::ptr::Pointee<Metadata = ()>> [ core::ptr::null ]() -> (res: *const T)
+pub assume_specification<
+    T: ?Sized + core::ptr::Pointee<Metadata = ()>,
+>[ core::ptr::null ]() -> (res: *const T)
     ensures
         res == ptr_null::<T>(),
     opens_invariants none
-    no_unwind;
+    no_unwind
+;
 
 #[verifier::inline]
 pub open spec fn ptr_null_mut<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -> *mut T {
@@ -297,11 +300,14 @@ pub open spec fn ptr_null_mut<T: ?Sized + core::ptr::Pointee<Metadata = ()>>() -
 
 #[cfg(verus_keep_ghost)]
 #[verifier::when_used_as_spec(ptr_null_mut)]
-pub assume_specification<T: ?Sized + core::ptr::Pointee<Metadata = ()>> [ core::ptr::null_mut ]() -> (res: *mut T)
+pub assume_specification<
+    T: ?Sized + core::ptr::Pointee<Metadata = ()>,
+>[ core::ptr::null_mut ]() -> (res: *mut T)
     ensures
         res == ptr_null_mut::<T>(),
     opens_invariants none
-    no_unwind;
+    no_unwind
+;
 
 //////////////////////////////////////
 // Casting

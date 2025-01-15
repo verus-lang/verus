@@ -15,7 +15,7 @@ pub struct ExControlFlow<B, C>(ControlFlow<B, C>);
 #[verifier::external_body]
 pub struct ExInfallible(Infallible);
 
-pub assume_specification<T, E>[Result::<T, E>::branch](result: Result<T, E>) -> (cf: ControlFlow<
+pub assume_specification<T, E>[ Result::<T, E>::branch ](result: Result<T, E>) -> (cf: ControlFlow<
     <Result<T, E> as Try>::Residual,
     <Result<T, E> as Try>::Output,
 >)
@@ -23,9 +23,10 @@ pub assume_specification<T, E>[Result::<T, E>::branch](result: Result<T, E>) -> 
         cf === match result {
             Ok(v) => ControlFlow::Continue(v),
             Err(e) => ControlFlow::Break(Err(e)),
-        };
+        },
+;
 
-pub assume_specification<T>[Option::<T>::branch](option: Option<T>) -> (cf: ControlFlow<
+pub assume_specification<T>[ Option::<T>::branch ](option: Option<T>) -> (cf: ControlFlow<
     <Option<T> as Try>::Residual,
     <Option<T> as Try>::Output,
 >)
@@ -33,12 +34,15 @@ pub assume_specification<T>[Option::<T>::branch](option: Option<T>) -> (cf: Cont
         cf === match option {
             Some(v) => ControlFlow::Continue(v),
             None => ControlFlow::Break(None),
-        };
+        },
+;
 
-pub assume_specification<T>[Option::<T>::from_residual](option: Option<Infallible>) -> (option2: Option<T>)
+pub assume_specification<T>[ Option::<T>::from_residual ](option: Option<Infallible>) -> (option2:
+    Option<T>)
     ensures
         option.is_none(),
-        option2.is_none();
+        option2.is_none(),
+;
 
 pub spec fn spec_from<S, T>(value: T, ret: S) -> bool;
 
@@ -49,15 +53,15 @@ pub broadcast proof fn spec_from_blanket_identity<T>(t: T, s: T)
     admit();
 }
 
-pub assume_specification<T, E, F: From<E>>[Result::<T, F>::from_residual](result: Result<Infallible, E>) -> (result2: Result<
-    T,
-    F,
->)
+pub assume_specification<T, E, F: From<E>>[ Result::<T, F>::from_residual ](
+    result: Result<Infallible, E>,
+) -> (result2: Result<T, F>)
     ensures
         match (result, result2) {
             (Err(e), Err(e2)) => spec_from::<F, E>(e, e2),
             _ => false,
-        };
+        },
+;
 
 pub broadcast group group_control_flow_axioms {
     spec_from_blanket_identity,

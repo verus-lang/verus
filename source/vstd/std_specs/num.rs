@@ -274,18 +274,20 @@ verus! {
 
 // TODO move all these into the num_specs! macro to handle them for other integer widths
 // == u32 methods ==
-pub assume_specification[u32::checked_rem](lhs: u32, rhs: u32) -> (result: Option<u32>)
+pub assume_specification[ u32::checked_rem ](lhs: u32, rhs: u32) -> (result: Option<u32>)
     ensures
         rhs == 0 ==> result.is_None(),
-        rhs != 0 ==> result == Some((lhs % rhs) as u32);
+        rhs != 0 ==> result == Some((lhs % rhs) as u32),
+;
 
-pub assume_specification[u32::checked_rem_euclid](lhs: u32, rhs: u32) -> (result: Option<u32>)
+pub assume_specification[ u32::checked_rem_euclid ](lhs: u32, rhs: u32) -> (result: Option<u32>)
     ensures
         rhs == 0 ==> result.is_None(),
-        rhs != 0 ==> result == Some((lhs % rhs) as u32),;
+        rhs != 0 ==> result == Some((lhs % rhs) as u32),
+;
 
 // == i32 methods ==
-pub assume_specification[i32::checked_div](lhs: i32, rhs: i32) -> (result: Option<i32>)
+pub assume_specification[ i32::checked_div ](lhs: i32, rhs: i32) -> (result: Option<i32>)
     ensures
         rhs == 0 ==> result.is_None(),
         ({
@@ -307,15 +309,17 @@ pub assume_specification[i32::checked_div](lhs: i32, rhs: i32) -> (result: Optio
             } else {
                 result == Some(output as i32)
             }
-        });
+        }),
+;
 
-pub assume_specification[i32::checked_div_euclid](lhs: i32, rhs: i32) -> (result: Option<i32>)
+pub assume_specification[ i32::checked_div_euclid ](lhs: i32, rhs: i32) -> (result: Option<i32>)
     ensures
         rhs == 0 ==> result.is_None(),
         lhs / rhs < i32::MIN || lhs / rhs > i32::MAX ==> result.is_None(),
-        i32::MIN <= lhs / rhs <= i32::MAX ==> result == Some((lhs / rhs) as i32);
+        i32::MIN <= lhs / rhs <= i32::MAX ==> result == Some((lhs / rhs) as i32),
+;
 
-pub assume_specification[i32::checked_rem](lhs: i32, rhs: i32) -> (result: Option<i32>)
+pub assume_specification[ i32::checked_rem ](lhs: i32, rhs: i32) -> (result: Option<i32>)
     ensures
         rhs == 0 ==> result.is_None(),
         ({
@@ -337,12 +341,14 @@ pub assume_specification[i32::checked_rem](lhs: i32, rhs: i32) -> (result: Optio
             } else {
                 result == Some(output as i32)
             }
-        });
+        }),
+;
 
-pub assume_specification[i32::checked_rem_euclid](lhs: i32, rhs: i32) -> (result: Option<i32>)
+pub assume_specification[ i32::checked_rem_euclid ](lhs: i32, rhs: i32) -> (result: Option<i32>)
     ensures
         rhs == 0 ==> result.is_None(),
         lhs % rhs < i32::MIN || lhs % rhs > i32::MAX ==> result.is_None(),
-        i32::MIN <= lhs % rhs <= i32::MAX ==> result == Some((lhs % rhs) as i32);
+        i32::MIN <= lhs % rhs <= i32::MAX ==> result == Some((lhs % rhs) as i32),
+;
 
 } // verus!

@@ -61,19 +61,22 @@ impl DefaultHasherAdditionalSpecFns for DefaultHasher {
 }
 
 // This is the specification of behavior for `DefaultHasher::new()`.
-pub assume_specification[DefaultHasher::new]() -> (result: DefaultHasher)
+pub assume_specification[ DefaultHasher::new ]() -> (result: DefaultHasher)
     ensures
-        result@ == Seq::<Seq<u8>>::empty();
+        result@ == Seq::<Seq<u8>>::empty(),
+;
 
 // This is the specification of behavior for `DefaultHasher::write(&[u8])`.
-pub assume_specification[DefaultHasher::write](state: &mut DefaultHasher, bytes: &[u8])
+pub assume_specification[ DefaultHasher::write ](state: &mut DefaultHasher, bytes: &[u8])
     ensures
-        state@ == old(state)@.push(bytes@);
+        state@ == old(state)@.push(bytes@),
+;
 
 // This is the specification of behavior for `DefaultHasher::finish()`.
-pub assume_specification[DefaultHasher::finish](state: &DefaultHasher) -> (result: u64)
+pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (result: u64)
     ensures
-        result == DefaultHasher::spec_finish(state@);
+        result == DefaultHasher::spec_finish(state@),
+;
 
 // This function specifies whether a type obeys the requirements
 // to be a key in a hash table and have that hash table conform to our
@@ -259,27 +262,38 @@ pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, V
 }
 
 #[verifier::when_used_as_spec(spec_hash_map_len)]
-pub assume_specification<Key, Value, S>[HashMap::<Key, Value, S>::len](m: &HashMap<Key, Value, S>) -> (len: usize)
+pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::len ](
+    m: &HashMap<Key, Value, S>,
+) -> (len: usize)
     ensures
-        len == spec_hash_map_len(m);
+        len == spec_hash_map_len(m),
+;
 
-pub assume_specification<Key, Value>[HashMap::<Key, Value>::new]() -> (m: HashMap<Key, Value, RandomState>)
-    ensures
-        m@ == Map::<Key, Value>::empty();
-
-pub assume_specification<Key, Value>[HashMap::<Key, Value>::with_capacity](capacity: usize) -> (m: HashMap<
+pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: HashMap<
     Key,
     Value,
     RandomState,
 >)
     ensures
-        m@ == Map::<Key, Value>::empty();
+        m@ == Map::<Key, Value>::empty(),
+;
 
-pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher>[HashMap::<Key, Value, S>::reserve](m: &mut HashMap<Key, Value, S>, additional: usize)
+pub assume_specification<Key, Value>[ HashMap::<Key, Value>::with_capacity ](capacity: usize) -> (m:
+    HashMap<Key, Value, RandomState>)
     ensures
-        m@ == old(m)@;
+        m@ == Map::<Key, Value>::empty(),
+;
 
-pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher>[HashMap::<Key, Value, S>::insert](
+pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher>[ HashMap::<
+    Key,
+    Value,
+    S,
+>::reserve ](m: &mut HashMap<Key, Value, S>, additional: usize)
+    ensures
+        m@ == old(m)@,
+;
+
+pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher>[ HashMap::<Key, Value, S>::insert ](
     m: &mut HashMap<Key, Value, S>,
     k: Key,
     v: Value,
@@ -291,7 +305,8 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher>[HashMap::<Key, V
                 Some(v) => old(m)@.contains_key(k) && v == old(m)[k],
                 None => !old(m)@.contains_key(k),
             }
-        };
+        },
+;
 
 // The specification for `contains_key` has a parameter `key: &Q`
 // where you'd expect to find `key: &Key`. This allows for the case
@@ -325,13 +340,19 @@ pub broadcast proof fn axiom_contains_box<Q, Value>(m: Map<Box<Q>, Value>, k: &Q
     admit();
 }
 
-pub assume_specification<Key: Borrow<Q> + Hash + Eq, Value, S: BuildHasher, Q: Hash + Eq + ?Sized>[HashMap::<Key, Value, S>::contains_key::<Q>](m: &HashMap<Key, Value, S>, k: &Q) -> (result:
+pub assume_specification<
+    Key: Borrow<Q> + Hash + Eq,
+    Value,
+    S: BuildHasher,
+    Q: Hash + Eq + ?Sized,
+>[ HashMap::<Key, Value, S>::contains_key::<Q> ](m: &HashMap<Key, Value, S>, k: &Q) -> (result:
     bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result == contains_borrowed_key(
             m@,
             k,
-        );
+        ),
+;
 
 // The specification for `get` has a parameter `key: &Q` where you'd
 // expect to find `key: &Key`. This allows for the case that `Key` can
@@ -374,13 +395,21 @@ pub broadcast proof fn axiom_maps_box_key_to_value<Q, Value>(m: Map<Box<Q>, Valu
     admit();
 }
 
-pub assume_specification<'a, Key: Borrow<Q> + Hash + Eq, Value, S: BuildHasher, Q: Hash + Eq + ?Sized>[HashMap::<Key, Value, S>::get::<Q>](m: &'a HashMap<Key, Value, S>, k: &Q) -> (result:
-    Option<&'a Value>)
+pub assume_specification<
+    'a,
+    Key: Borrow<Q> + Hash + Eq,
+    Value,
+    S: BuildHasher,
+    Q: Hash + Eq + ?Sized,
+>[ HashMap::<Key, Value, S>::get::<Q> ](m: &'a HashMap<Key, Value, S>, k: &Q) -> (result: Option<
+    &'a Value,
+>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
             Some(v) => maps_borrowed_key_to_value(m@, k, *v),
             None => !contains_borrowed_key(m@, k),
-        };
+        },
+;
 
 // The specification for `remove` has a parameter `key: &Q` where
 // you'd expect to find `key: &Key`. This allows for the case that
@@ -428,7 +457,12 @@ pub broadcast proof fn axiom_box_key_removed<Q, Value>(
     admit();
 }
 
-pub assume_specification<Key: Borrow<Q> + Hash + Eq, Value, S: BuildHasher, Q: Hash + Eq + ?Sized>[HashMap::<Key, Value, S>::remove::<Q>](m: &mut HashMap<Key, Value, S>, k: &Q) -> (result:
+pub assume_specification<
+    Key: Borrow<Q> + Hash + Eq,
+    Value,
+    S: BuildHasher,
+    Q: Hash + Eq + ?Sized,
+>[ HashMap::<Key, Value, S>::remove::<Q> ](m: &mut HashMap<Key, Value, S>, k: &Q) -> (result:
     Option<Value>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
@@ -437,11 +471,15 @@ pub assume_specification<Key: Borrow<Q> + Hash + Eq, Value, S: BuildHasher, Q: H
                 Some(v) => maps_borrowed_key_to_value(old(m)@, k, v),
                 None => !contains_borrowed_key(old(m)@, k),
             }
-        };
+        },
+;
 
-pub assume_specification<Key, Value, S>[HashMap::<Key, Value, S>::clear](m: &mut HashMap<Key, Value, S>)
+pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::clear ](
+    m: &mut HashMap<Key, Value, S>,
+)
     ensures
-        m@ == Map::<Key, Value>::empty();
+        m@ == Map::<Key, Value>::empty(),
+;
 
 // We now specify the behavior of `HashSet`.
 #[verifier::external_type_specification]
@@ -468,28 +506,42 @@ pub broadcast proof fn axiom_spec_hash_set_len<Key, S>(m: &HashSet<Key, S>)
 }
 
 #[verifier::when_used_as_spec(spec_hash_set_len)]
-pub assume_specification<Key, S>[HashSet::<Key, S>::len](m: &HashSet<Key, S>) -> (len: usize)
+pub assume_specification<Key, S>[ HashSet::<Key, S>::len ](m: &HashSet<Key, S>) -> (len: usize)
     ensures
-        len == spec_hash_set_len(m);
+        len == spec_hash_set_len(m),
+;
 
-pub assume_specification<Key>[HashSet::<Key>::new]() -> (m: HashSet<Key, RandomState>)
+pub assume_specification<Key>[ HashSet::<Key>::new ]() -> (m: HashSet<Key, RandomState>)
     ensures
-        m@ == Set::<Key>::empty();
+        m@ == Set::<Key>::empty(),
+;
 
-pub assume_specification<Key>[HashSet::<Key>::with_capacity](capacity: usize) -> (m: HashSet<Key, RandomState>)
+pub assume_specification<Key>[ HashSet::<Key>::with_capacity ](capacity: usize) -> (m: HashSet<
+    Key,
+    RandomState,
+>)
     ensures
-        m@ == Set::<Key>::empty();
+        m@ == Set::<Key>::empty(),
+;
 
-pub assume_specification<Key: Eq + Hash, S: BuildHasher>[HashSet::<Key, S>::reserve](m: &mut HashSet<Key, S>, additional: usize)
+pub assume_specification<Key: Eq + Hash, S: BuildHasher>[ HashSet::<Key, S>::reserve ](
+    m: &mut HashSet<Key, S>,
+    additional: usize,
+)
     ensures
-        m@ == old(m)@;
+        m@ == old(m)@,
+;
 
-pub assume_specification<Key: Eq + Hash, S: BuildHasher>[HashSet::<Key, S>::insert](m: &mut HashSet<Key, S>, k: Key) -> (result: bool)
+pub assume_specification<Key: Eq + Hash, S: BuildHasher>[ HashSet::<Key, S>::insert ](
+    m: &mut HashSet<Key, S>,
+    k: Key,
+) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& m@ == old(m)@.insert(k)
             &&& result == !old(m)@.contains(k)
-        };
+        },
+;
 
 // The specification for `contains` has a parameter `key: &Q`
 // where you'd expect to find `key: &Key`. This allows for the case
@@ -521,10 +573,15 @@ pub broadcast proof fn axiom_set_contains_box<Q>(m: Set<Box<Q>>, k: &Q)
     admit();
 }
 
-pub assume_specification<Key: Borrow<Q> + Hash + Eq, S: BuildHasher, Q: Hash + Eq + ?Sized>[HashSet::<Key, S>::contains](m: &HashSet<Key, S>, k: &Q) -> (result: bool)
+pub assume_specification<
+    Key: Borrow<Q> + Hash + Eq,
+    S: BuildHasher,
+    Q: Hash + Eq + ?Sized,
+>[ HashSet::<Key, S>::contains ](m: &HashSet<Key, S>, k: &Q) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> result
-            == set_contains_borrowed_key(m@, k);
+            == set_contains_borrowed_key(m@, k),
+;
 
 // The specification for `get` has a parameter `key: &Q` where you'd
 // expect to find `key: &Key`. This allows for the case that `Key` can
@@ -560,14 +617,18 @@ pub broadcast proof fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &
     admit();
 }
 
-pub assume_specification<'a, Key: Borrow<Q> + Hash + Eq, S: BuildHasher, Q: Hash + Eq + ?Sized>[HashSet::<Key, S>::get::<Q>](m: &'a HashSet<Key, S>, k: &Q) -> (result: Option<
-    &'a Key,
->)
+pub assume_specification<
+    'a,
+    Key: Borrow<Q> + Hash + Eq,
+    S: BuildHasher,
+    Q: Hash + Eq + ?Sized,
+>[ HashSet::<Key, S>::get::<Q> ](m: &'a HashSet<Key, S>, k: &Q) -> (result: Option<&'a Key>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> match result {
             Some(v) => sets_borrowed_key_to_key(m@, k, v),
             None => !set_contains_borrowed_key(m@, k),
-        };
+        },
+;
 
 // The specification for `remove` has a parameter `key: &Q` where
 // you'd expect to find `key: &Key`. This allows for the case that
@@ -606,16 +667,22 @@ pub broadcast proof fn axiom_set_box_key_removed<Q>(old_m: Set<Box<Q>>, new_m: S
     admit();
 }
 
-pub assume_specification<Key: Borrow<Q> + Hash + Eq, S: BuildHasher, Q: Hash + Eq + ?Sized>[HashSet::<Key, S>::remove::<Q>](m: &mut HashSet<Key, S>, k: &Q) -> (result: bool)
+pub assume_specification<
+    Key: Borrow<Q> + Hash + Eq,
+    S: BuildHasher,
+    Q: Hash + Eq + ?Sized,
+>[ HashSet::<Key, S>::remove::<Q> ](m: &mut HashSet<Key, S>, k: &Q) -> (result: bool)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             &&& sets_differ_by_borrowed_key(old(m)@, m@, k)
             &&& result == set_contains_borrowed_key(old(m)@, k)
-        };
+        },
+;
 
-pub assume_specification<Key, S>[HashSet::<Key, S>::clear](m: &mut HashSet<Key, S>)
+pub assume_specification<Key, S>[ HashSet::<Key, S>::clear ](m: &mut HashSet<Key, S>)
     ensures
-        m@ == Set::<Key>::empty();
+        m@ == Set::<Key>::empty(),
+;
 
 pub broadcast group group_hash_axioms {
     axiom_box_key_removed,
