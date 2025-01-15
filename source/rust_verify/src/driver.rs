@@ -227,7 +227,11 @@ where
             if in_vargo && !std::env::var("VERUS_Z3_PATH").is_ok() {
                 panic!("we are in vargo, but VERUS_Z3_PATH is not set; this is a bug");
             }
-            if !in_vargo { Some(externs) } else { None }
+            if !in_vargo {
+                Some(externs)
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -268,18 +272,6 @@ where
         lifetime_end_time,
         ..
     } = verifier_callbacks;
-    if !verifier.args.output_json && !verifier.encountered_vir_error {
-        println!(
-            "verification results:: {} verified, {} errors{}",
-            verifier.count_verified,
-            verifier.count_errors,
-            if !is_verifying_entire_crate(&verifier) {
-                " (partial verification with `--verify-*`)"
-            } else {
-                ""
-            }
-        );
-    }
     let time1 = Instant::now();
     let time_lifetime = match (lifetime_start_time, lifetime_end_time) {
         (Some(t1), Some(t2)) => t2 - t1,

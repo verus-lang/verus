@@ -243,9 +243,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "a union field can only be exec-mode")
 }
 
-test_verify_one_file! {
-    #[test] lifetime_union verus_code! {
-        use vstd::*;
+test_verify_one_file_with_options! {
+    #[test] lifetime_union ["--disable-internal-test-mode", "--external-by-default"] => verus_code! {
         use core::mem::ManuallyDrop;
         struct X { }
         struct Y { }
@@ -264,8 +263,8 @@ test_verify_one_file! {
     } => Err(err) => assert_rust_error_msg(err, "use of moved value: `u`")
 }
 
-test_verify_one_file! {
-    #[test] lifetime_union2 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] lifetime_union2 ["--disable-internal-test-mode", "--external-by-default"] => verus_code! {
         use vstd::*;
         use core::mem::ManuallyDrop;
         struct X { }

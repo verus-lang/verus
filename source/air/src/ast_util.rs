@@ -44,13 +44,21 @@ impl<A: Clone + Debug> std::fmt::Debug for BinderX<A> {
 
 impl ExprX {
     pub fn apply_or_var(x: Ident, args: Exprs) -> ExprX {
-        if args.len() == 0 { ExprX::Var(x) } else { ExprX::Apply(x, args) }
+        if args.len() == 0 {
+            ExprX::Var(x)
+        } else {
+            ExprX::Apply(x, args)
+        }
     }
 }
 
 impl DeclX {
     pub fn fun_or_const(x: Ident, typs: Typs, typ: Typ) -> DeclX {
-        if typs.len() == 0 { DeclX::Const(x, typ) } else { DeclX::Fun(x, typs, typ) }
+        if typs.len() == 0 {
+            DeclX::Const(x, typ)
+        } else {
+            DeclX::Fun(x, typs, typ)
+        }
     }
 }
 
@@ -120,7 +128,11 @@ pub fn mk_bind_expr(bind: &Bind, body: &Expr) -> Expr {
         BindX::Quant(_, bs, _, _) => bs.len(),
         BindX::Lambda(..) | BindX::Choose(..) => 1,
     };
-    if n == 0 { body.clone() } else { Arc::new(ExprX::Bind(bind.clone(), body.clone())) }
+    if n == 0 {
+        body.clone()
+    } else {
+        Arc::new(ExprX::Bind(bind.clone(), body.clone()))
+    }
 }
 
 pub fn mk_let(binders: &Vec<Binder<Expr>>, body: &Expr) -> Expr {

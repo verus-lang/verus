@@ -36,7 +36,11 @@ pub fn safety_condition_body_simpl_vec(sops: &Vec<SimplStmt>) -> Option<Expr> {
             h.push(q);
         }
     }
-    if h.len() > 0 { Some(Expr::Verbatim(quote! { #(#h)* })) } else { None }
+    if h.len() > 0 {
+        Some(Expr::Verbatim(quote! { #(#h)* }))
+    } else {
+        None
+    }
 }
 
 pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Option<Expr> {

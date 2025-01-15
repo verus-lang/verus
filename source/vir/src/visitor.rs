@@ -111,7 +111,11 @@ impl Returner for Rewrite {
         o: &Option<A>,
         f: &mut impl FnMut(&A) -> Result<Self::Ret<B>, Err>,
     ) -> Result<Self::Opt<B>, Err> {
-        if let Some(a) = o { Ok(Some(f(a)?)) } else { Ok(None) }
+        if let Some(a) = o {
+            Ok(Some(f(a)?))
+        } else {
+            Ok(None)
+        }
     }
     fn ret<A, Err>(f: impl FnOnce() -> A) -> Result<Self::Ret<A>, Err> {
         Ok(f())

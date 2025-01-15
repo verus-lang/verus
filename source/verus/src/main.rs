@@ -91,7 +91,11 @@ fn run() -> Result<std::process::ExitStatus, String> {
     };
 
     let current_exe = std::env::current_exe().ok().and_then(|c| {
-        if c.symlink_metadata().ok()?.is_symlink() { std::fs::read_link(c).ok() } else { Some(c) }
+        if c.symlink_metadata().ok()?.is_symlink() {
+            std::fs::read_link(c).ok()
+        } else {
+            Some(c)
+        }
     });
 
     let parent = current_exe.and_then(|current| current.parent().map(std::path::PathBuf::from));

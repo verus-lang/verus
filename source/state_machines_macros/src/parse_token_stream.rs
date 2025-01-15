@@ -131,7 +131,11 @@ pub fn keyword(input: ParseStream, token: &str) -> parse::Result<Span> {
 }
 
 pub fn peek_keyword(cursor: Cursor, token: &str) -> bool {
-    if let Some((ident, _rest)) = cursor.ident() { ident == token } else { false }
+    if let Some((ident, _rest)) = cursor.ident() {
+        ident == token
+    } else {
+        false
+    }
 }
 
 ///////// ParseResult -> SM AST

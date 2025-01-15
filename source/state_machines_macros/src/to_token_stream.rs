@@ -648,9 +648,17 @@ fn output_step_datatype(
         .map(|t| {
             let step_args = just_args(&t.params, use_label);
             let tr_args = if is_init {
-                if use_label { post_label_args(&t.params) } else { post_args(&t.params) }
+                if use_label {
+                    post_label_args(&t.params)
+                } else {
+                    post_args(&t.params)
+                }
             } else {
-                if use_label { pre_post_label_args(&t.params) } else { pre_post_args(&t.params) }
+                if use_label {
+                    pre_post_label_args(&t.params)
+                } else {
+                    pre_post_args(&t.params)
+                }
             };
             let tr_name = &t.name;
             quote! {

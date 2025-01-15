@@ -20,7 +20,7 @@ use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::IsAuto;
 use rustc_hir::{
     ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId, ItemKind, MaybeOwner,
-    Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode, Unsafety,
+    Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode, Safety,
 };
 use vir::def::Spanned;
 
@@ -368,7 +368,7 @@ fn check_item<'tcx>(
             unsupported_err!(item.span, "static mut");
         }
         ItemKind::Macro(_, _) => {}
-        ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, _bounds, trait_items) => {
+        ItemKind::Trait(IsAuto::No, Safety::Safe, trait_generics, _bounds, trait_items) => {
             if vattrs.is_external(&ctxt.cmd_line_args) {
                 if vattrs.external_trait_specification.is_some() {
                     return err_span(
@@ -378,7 +378,6 @@ fn check_item<'tcx>(
                 }
                 return Ok(());
             }
-
             let trait_def_id = item.owner_id.to_def_id();
             crate::rust_to_vir_trait::translate_trait(
                 ctxt,
@@ -408,7 +407,6 @@ fn check_item<'tcx>(
             origin: OpaqueTyOrigin::AsyncFn(_),
             in_trait: _,
             lifetime_mapping: _,
-            precise_capturing_args: None,
         }) => {
             return Ok(());
         }
@@ -429,7 +427,7 @@ fn check_foreign_item<'tcx>(
     item: &'tcx ForeignItem<'tcx>,
 ) -> Result<(), VirErr> {
     match &item.kind {
-        ForeignItemKind::Fn(decl, idents, generics) => {
+        ForeignItemKind::Fn(rustc_hir::FnSig { decl, .. }, idents, generics) => {
             check_foreign_item_fn(
                 ctxt,
                 vir,

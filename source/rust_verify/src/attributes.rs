@@ -542,11 +542,13 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(span, name, Some(box [AttrTree::Fun(_, r, None)]))
                     if name == "rlimit" =>
                 {
-                    let Some(rlimit) = r
-                        .parse::<f32>()
-                        .ok()
-                        .or_else(|| if r == "infinity" { Some(f32::INFINITY) } else { None })
-                    else {
+                    let Some(rlimit) = r.parse::<f32>().ok().or_else(|| {
+                        if r == "infinity" {
+                            Some(f32::INFINITY)
+                        } else {
+                            None
+                        }
+                    }) else {
                         return err_span(*span, "expected number, or `infinity` for rlimit");
                     };
                     v.push(Attr::RLimit(rlimit));
@@ -826,7 +828,11 @@ pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<Stri
 }
 
 pub(crate) fn get_fuel(vattrs: &VerifierAttrs) -> u32 {
-    if vattrs.opaque { 0 } else { 1 }
+    if vattrs.opaque {
+        0
+    } else {
+        1
+    }
 }
 
 pub(crate) fn get_publish(

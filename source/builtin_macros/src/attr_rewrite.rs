@@ -151,11 +151,11 @@ fn insert_spec_call(any_fn: &mut dyn AnyAttrBlock, call: &str, verus_expr: Token
     let fname = Ident::new(call, verus_expr.span());
     let tokens: TokenStream =
         syntax::rewrite_expr(EraseGhost::Keep, true, verus_expr.into()).into();
-    any_fn
-        .block_mut()
-        .unwrap()
-        .stmts
-        .insert(0, parse2(quote! { ::builtin::#fname(#tokens); }).unwrap());
+    any_fn.block_mut().unwrap().stmts.insert(
+        0,
+        parse2(quote! { #[verus::internal(const_header_wrapper)]||{::builtin::#fname(#tokens);};})
+            .unwrap(),
+    );
 }
 
 pub fn rewrite_verus_attribute(
@@ -278,7 +278,9 @@ pub fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro::Token
             syntax::proof_block(erase, quote_spanned!(input.span() => {#input}).into()).into();
         quote! {
             #[verifier::proof_block]
-            #block
+            {
+                #[verus::internal(const_header_wrapper)]||#block;
+            }
         }
         .into()
     } else {

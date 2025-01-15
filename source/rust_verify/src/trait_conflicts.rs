@@ -317,6 +317,7 @@ pub(crate) fn gen_check_trait_impl_conflicts(
                 ));
             }
         }
+        let trait_polarity = rustc_middle::ty::ImplPolarity::Positive;
         let decl = TraitImpl {
             span,
             self_typ,
@@ -324,6 +325,7 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             generic_bounds,
             trait_as_datatype,
             assoc_typs,
+            trait_polarity,
         };
         state.trait_impls.push(decl);
     }

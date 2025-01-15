@@ -138,5 +138,9 @@ where
     } else {
         enable(&crate::ast::AutoExtEqual::default())
     };
-    if enabled { insert_auto_ext_equal(ctx, exp) } else { exp.clone() }
+    if enabled {
+        insert_auto_ext_equal(ctx, exp)
+    } else {
+        exp.clone()
+    }
 }

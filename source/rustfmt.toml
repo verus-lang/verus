@@ -2,6 +2,6 @@
 
 # Run rustfmt with this config (it should be picked up automatically).
 # unstable_features=true # provided by vargo
-# version=Two # provided by vargo
+# style_edition= "2021" # provided by vargo
 use_small_heuristics = "Max"
 merge_derives = false

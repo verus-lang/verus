@@ -2489,7 +2489,11 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
         TransitionStmt::Block(span, v) => {
             let res: Vec<TransitionStmt> =
                 v.into_iter().filter_map(|t| prune_irrelevant_ops_rec(ctxt, t)).collect();
-            if res.len() == 0 { None } else { Some(TransitionStmt::Block(span, res)) }
+            if res.len() == 0 {
+                None
+            } else {
+                Some(TransitionStmt::Block(span, res))
+            }
         }
         TransitionStmt::Split(span, split_kind, splits) => {
             let pruned_splits: Vec<Option<TransitionStmt>> =
@@ -2524,7 +2528,11 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
                 ShardableType::NotTokenized(..) => true,
                 _ => false,
             };
-            if is_not_tokenized { None } else { Some(TransitionStmt::Update(span, id, e)) }
+            if is_not_tokenized {
+                None
+            } else {
+                Some(TransitionStmt::Update(span, id, e))
+            }
         }
 
         TransitionStmt::Initialize(span, id, e) => {
@@ -2533,7 +2541,11 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
                 ShardableType::NotTokenized(..) => true,
                 _ => false,
             };
-            if is_not_tokenized { None } else { Some(TransitionStmt::Initialize(span, id, e)) }
+            if is_not_tokenized {
+                None
+            } else {
+                Some(TransitionStmt::Initialize(span, id, e))
+            }
         }
 
         TransitionStmt::Require(span, req_e) => Some(TransitionStmt::Require(span, req_e)),
@@ -2619,7 +2631,11 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
             panic!("sub-update not supported here");
         }
         TransitionStmt::Initialize(_span, id, e) | TransitionStmt::Update(_span, id, e) => {
-            if *id.to_string() == *field.name.to_string() { Some(e.clone()) } else { None }
+            if *id.to_string() == *field.name.to_string() {
+                Some(e.clone())
+            } else {
+                None
+            }
         }
         TransitionStmt::Require(..)
         | TransitionStmt::Assert(..)

@@ -20,7 +20,11 @@ pub fn record_history_commit(
             let project_repo = Repository::discover(project_dir).ok();
             let project_head_shorthand = project_repo.as_ref().and_then(|pr| {
                 pr.head().ok().and_then(|h| {
-                    if h.is_branch() { h.shorthand().map(|x| x.to_owned()) } else { None }
+                    if h.is_branch() {
+                        h.shorthand().map(|x| x.to_owned())
+                    } else {
+                        None
+                    }
                 })
             });
             let project_head_hash = project_repo.as_ref().and_then(|pr| {

@@ -690,7 +690,11 @@ fn parse_arm(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<(Arm, Transit
 
     let requires_comma = false;
     let comma = {
-        if requires_comma && !input.is_empty() { Some(input.parse()?) } else { input.parse()? }
+        if requires_comma && !input.is_empty() {
+            Some(input.parse()?)
+        } else {
+            input.parse()?
+        }
     };
 
     let arm = Arm { pat, guard, fat_arrow_token, comma };

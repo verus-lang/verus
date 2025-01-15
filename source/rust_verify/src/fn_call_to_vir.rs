@@ -22,7 +22,7 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
-use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, InstanceDef, TyKind};
+use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -195,12 +195,12 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     } else {
         let param_env = tcx.param_env(bctx.fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let inst = Instance::resolve(tcx, param_env, f, normalized_substs);
+        let inst = Instance::try_resolve(tcx, param_env, f, normalized_substs);
         let Ok(inst) = inst else {
             return err_span(expr.span, "Verus internal error: Instance::resolve");
         };
         match inst {
-            Some(Instance { def: InstanceDef::Item(did), args }) => {
+            Some(Instance { def: rustc_middle::ty::InstanceKind::Item(did), args }) => {
                 let typs = mk_typ_args(bctx, args, did, expr.span)?;
                 let mut f =
                     Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
@@ -719,10 +719,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_spec_fn_no_proof_args(bctx, expr);
                 assert!(args.len() == 2);
                 let arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-                let print_hint = matches!(
-                    &args[1],
-                    Expr { kind: ExprKind::Lit(Spanned { node: LitKind::Bool(true), .. }), .. }
-                );
+                let print_hint = matches!(&args[1], Expr {
+                    kind: ExprKind::Lit(Spanned { node: LitKind::Bool(true), .. }),
+                    ..
+                });
                 mk_expr(ExprX::Unary(UnaryOp::InferSpecForLoopIter { print_hint }, arg))
             }
             ExprItem::IsVariant => {
@@ -795,15 +795,11 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::CompilableOpr(
             compilable_opr @ (CompilableOprItem::GhostExec | CompilableOprItem::TrackedExec),
         ) => {
-            record_compilable_operator(
-                bctx,
-                expr,
-                match compilable_opr {
-                    CompilableOprItem::GhostExec => CompilableOperator::GhostExec,
-                    CompilableOprItem::TrackedExec => CompilableOperator::TrackedExec,
-                    _ => unreachable!(),
-                },
-            );
+            record_compilable_operator(bctx, expr, match compilable_opr {
+                CompilableOprItem::GhostExec => CompilableOperator::GhostExec,
+                CompilableOprItem::TrackedExec => CompilableOperator::TrackedExec,
+                _ => unreachable!(),
+            });
 
             unsupported_err_unless!(args_len == 1, expr.span, "expected Ghost/Tracked", &args);
             let arg = &args[0];
@@ -1208,15 +1204,11 @@ fn verus_item_to_vir<'tcx, 'a>(
         VerusItem::CompilableOpr(
             opr @ (CompilableOprItem::TrackedGet | CompilableOprItem::TrackedBorrow),
         ) => {
-            record_compilable_operator(
-                bctx,
-                expr,
-                match opr {
-                    CompilableOprItem::TrackedGet => CompilableOperator::TrackedGet,
-                    CompilableOprItem::TrackedBorrow => CompilableOperator::TrackedBorrow,
-                    _ => unreachable!(),
-                },
-            );
+            record_compilable_operator(bctx, expr, match opr {
+                CompilableOprItem::TrackedGet => CompilableOperator::TrackedGet,
+                CompilableOprItem::TrackedBorrow => CompilableOperator::TrackedBorrow,
+                _ => unreachable!(),
+            });
 
             let vir_args = mk_vir_args(bctx, node_substs, f, &args)?;
             assert!(vir_args.len() == 1);
