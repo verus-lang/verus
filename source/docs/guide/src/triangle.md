@@ -26,7 +26,7 @@ later; the important thing here is that we can do this proof using a `proof` fun
 we [assert](proof_functions.md#assert-by) that the new sum fits, and as
 justification, we  an invoke our proof with the relevant arguments.  At the
 call site, Verus will check that the preconditions for `triangle_is_monotonic`
-hold and then assume that the postdconditions hold.
+hold and then assume that the postconditions hold.
 
 Finally, our implementation uses a while loop, which means it requires some [loop invariants](while.md),
 which we cover later.
