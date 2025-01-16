@@ -62,6 +62,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test1_fails_const_fn verus_code! {
+        fn x() {
+        }
+        const fn y() {
+            x()
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot call non-const fn `x` in constant functions")
+}
+
+test_verify_one_file! {
     #[test] test1_fails3 verus_code! {
         spec const C: u64 = S;
         spec const S: u64 = C;
@@ -245,7 +255,7 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(err) => assert_rust_error_msg(err, "cycle detected when evaluating initializer of static `E`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read static with mode exec")
 }
 
 test_verify_one_file! {

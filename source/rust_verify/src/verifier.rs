@@ -2786,6 +2786,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         config.override_queries = Some(|_session, providers| {
             providers.hir_crate = hir_crate;
 
+            // Hooking mir_const_qualif solves constness issue in function body,
+            // but const-eval will still do check-const when evaluating const
+            // value. Thus const_header_wrapper is still needed.
+            providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
             // Prevent the borrow checker from running, as we will run our own lifetime analysis.
             // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
             // by const evaluation through the mir interpreter.
