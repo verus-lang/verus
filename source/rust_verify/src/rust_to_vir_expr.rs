@@ -31,8 +31,7 @@ use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
 use rustc_middle::ty::{
-    AdtDef, ClauseKind, GenericArg, ToPredicate, TraitPredicate, TraitRef, TyCtxt, TyKind,
-    VariantDef,
+    AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, Upcast, VariantDef,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
@@ -1542,7 +1541,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 ),
                                 polarity: rustc_middle::ty::PredicatePolarity::Positive,
                             }))
-                            .to_predicate(tcx);
+                            .upcast(tcx);
                         let impl_paths = get_impl_paths_for_clauses(
                             tcx,
                             &bctx.ctxt.verus_items,
@@ -1890,7 +1889,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
                     mk_expr(ExprX::ConstVar(Arc::new(fun), autospec_usage))
                 }
-                Res::Def(DefKind::Static { mutability: Mutability::Not, nested: false }, id) => {
+                Res::Def(
+                    DefKind::Static { mutability: Mutability::Not, nested: false, .. },
+                    id,
+                ) => {
                     let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
                     let fun = FunX { path };
                     mk_expr(ExprX::StaticVar(Arc::new(fun)))
@@ -2005,7 +2007,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::If(cond, lhs, rhs) => {
             let cond = cond.peel_drop_temps();
             match cond.kind {
-                ExprKind::Let(LetExpr { pat, init: expr, ty: _, span: _, is_recovered: None }) => {
+                ExprKind::Let(LetExpr { pat, init: expr, ty: _, span: _, .. }) => {
                     // if let
                     let vir_expr = expr_to_vir(bctx, expr, modifier)?;
                     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();

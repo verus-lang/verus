@@ -2481,7 +2481,7 @@ impl Visitor {
             *expr = self.maybe_erase_expr(
                 span,
                 Expr::Verbatim(
-                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { #inner } ),
+                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { #[verus::internal(const_header_wrapper)]||{#inner}; } ),
                 ),
             );
         }
@@ -2548,7 +2548,12 @@ impl Visitor {
             match (is_inside_ghost, mode_block, &*unary.expr) {
                 (false, (false, _), Expr::Block(..)) => {
                     // proof { ... }
-                    let inner = take_expr(&mut *unary.expr);
+                    let mut inner = take_expr(&mut *unary.expr);
+                    if self.inside_const {
+                        inner = Expr::Verbatim(
+                            quote_spanned!(span => {#[verus::internal(const_header_wrapper)] ||/* vattr */{#inner};}),
+                        );
+                    }
                     *expr = self.maybe_erase_expr(
                         span,
                         Expr::Verbatim(

@@ -64,7 +64,7 @@ impl<'tcx> Reporter<'tcx> {
     pub(crate) fn new(spans: &SpanContext, compiler: &'tcx Compiler) -> Self {
         Reporter {
             spans: spans.clone(),
-            compiler_diagnostics: compiler.sess.dcx(),
+            compiler_diagnostics: &compiler.sess.dcx(),
             source_map: compiler.sess.source_map(),
         }
     }
@@ -113,17 +113,17 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         match level {
             MessageLevel::Note => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_note(msg.note.clone()),
+                self.compiler_diagnostics.handle().struct_note(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Warning => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_warn(msg.note.clone()),
+                self.compiler_diagnostics.handle().struct_warn(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Error => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_err(msg.note.clone()),
+                self.compiler_diagnostics.handle().struct_err(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
@@ -2786,12 +2786,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         config.override_queries = Some(|_session, providers| {
             providers.hir_crate = hir_crate;
 
-            // Do not actually evaluate consts if we are not compiling, as doing so triggers the
-            // constness checker, which is more restrictive than necessary for verification.
-            // Doing this will delay some const-ness errors to when verus is run with `--compile`.
-            providers.eval_to_const_value_raw =
-                |_tcx, _key| Ok(rustc_middle::mir::ConstValue::ZeroSized);
-
+            // Hooking mir_const_qualif solves constness issue in function body,
+            // but const-eval will still do check-const when evaluating const
+            // value. Thus const_header_wrapper is still needed.
+            providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
             // Prevent the borrow checker from running, as we will run our own lifetime analysis.
             // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
             // by const evaluation through the mir interpreter.
@@ -2819,13 +2817,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
         self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
-        // write_dep_info will internally check whether the `--emit=dep-info` flag is set
-        if let Err(_) = queries.write_dep_info() {
-            // ErrorGuaranteed indicates than an error has already been reported to the user, so we can just exit
-            std::process::exit(-1);
-        }
-
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
+            rustc_interface::passes::write_dep_info(tcx);
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
 
             let time_import0 = Instant::now();
@@ -2962,6 +2955,18 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             }
         });
+        if !self.verifier.args.output_json && !self.verifier.encountered_vir_error {
+            println!(
+                "verification results:: {} verified, {} errors{}",
+                self.verifier.count_verified,
+                self.verifier.count_errors,
+                if !crate::driver::is_verifying_entire_crate(&self.verifier) {
+                    " (partial verification with `--verify-*`)"
+                } else {
+                    ""
+                }
+            );
+        }
         rustc_driver::Compilation::Stop
     }
 }
