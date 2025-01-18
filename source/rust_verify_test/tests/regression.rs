@@ -1338,3 +1338,13 @@ test_verify_one_file_with_options! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] fieldless_enum_regression_1339 verus_code! {
+        enum FieldLess {
+            A = 0,
+            B = 1,
+            C = 2,
+        }
+    } => Ok(())
+}
