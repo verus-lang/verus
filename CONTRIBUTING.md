@@ -18,7 +18,7 @@ If you want to aid us in debugging (or are unable to share your full recording, 
 
 ## Building Verus from Source
 
-**See [BUILD.md](./build.md) for how to build Verus from source.**
+**See [BUILD.md](BUILD.md) for how to build Verus from source.**
 
 ## Editing the source code of Verus
 
