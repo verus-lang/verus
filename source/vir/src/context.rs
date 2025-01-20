@@ -576,6 +576,22 @@ impl Ctx {
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
         fun_ident_map.extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&g), g.clone())));
+
+        let axioms = crate::prelude::prelude_axioms();
+        
+        for x in axioms {
+            let axiom_path = Arc::new(crate::ast::PathX {
+                krate: None, // TODO: by default it will print "crate::"
+                segments: Arc::new(vec![Arc::new(String::from(&x))]),
+            });
+
+            fun_ident_map.insert(
+                Ident::from(x),
+                Arc::new(crate::ast::FunX { path: axiom_path }),
+            );
+            
+        }
+
         let quantifier_count = Cell::new(0);
         let string_hashes = RefCell::new(HashMap::new());
 
