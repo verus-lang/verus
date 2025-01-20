@@ -344,6 +344,23 @@ fn clean_vstd(target_verus_dir: &std::path::PathBuf) -> Result<(), String> {
     Ok(())
 }
 
+const EXPECTED_FEATURES: &[&str] = &["singular", "axiom-usage-info", "record-history"];
+
+fn check_expected_features(feature_args: &Vec<String>) -> Result<(), String> {
+    let feature_args: Vec<_> = feature_args
+        .iter()
+        .flat_map(|x| x.split(",").map(|x| x.to_owned()).collect::<Vec<_>>())
+        .collect();
+    if let Some(unexpected_feature) = feature_args.iter().find(|a| {
+        !EXPECTED_FEATURES.contains(&a.as_str())
+            && !(a.as_str() == "-F")
+            && !(a.as_str() == "--features")
+    }) {
+        return Err(format!("feature {unexpected_feature} is not expected"));
+    }
+    Ok(())
+}
+
 fn filter_features(
     feature_args: &Vec<String>,
     accepted: std::collections::HashSet<&'static str>,
@@ -665,6 +682,8 @@ fn run() -> Result<(), String> {
         args_bucket = new_args_bucket.into_iter().map(|(_, x)| x).collect();
         feature_args.into_iter().map(|(_, x)| x).collect()
     };
+
+    check_expected_features(&feature_args)?;
 
     if !in_nextest {
         match (task, package.as_ref().map(|x| x.as_str())) {
