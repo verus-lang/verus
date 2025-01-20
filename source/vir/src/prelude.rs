@@ -794,12 +794,16 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
         // Rewrite as ([array_index] ...), which vstd can more easily trigger on.
         // (Note that there's no axiom in the reverse direction converting array_index to apply,
         // because that would create a matching loop on i via I and %I.)
-        (axiom (forall ((Tdcr [decoration]) (T [typ]) (N Int) (Fn Fun) (i Int)) (!
+        (axiom (!
+            (forall ((Tdcr [decoration]) (T [typ]) (N Int) (Fn Fun) (i Int)) (!
             (= ([array_index] Tdcr T $ ([type_id_const_int] N) Fn (I i)) (apply [Poly] Fn i))
             :pattern (([array_new] Tdcr T N Fn) (apply [Poly] Fn i))
             :qid prelude_array_index_trigger
             :skolemid skolem_prelude_array_index_trigger
-        )))
+            ))
+            :named
+            prelude_array_index
+        ))
     )
 }
 
@@ -884,4 +888,10 @@ pub(crate) fn datatype_height_axioms(
     } else {
         vec![axiom1]
     }
+}
+
+pub(crate) fn prelude_axioms() -> Vec<String> {
+    let axioms = vec![String::from("prelude_array_index")];
+
+    axioms
 }
