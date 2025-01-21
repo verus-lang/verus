@@ -442,14 +442,16 @@ impl<A> Seq<A> {
         }
     }
 
+    // Parts of verified lemma used to be an axiom in the Dafny prelude
+    // TODO: maybe split this into multiple lemmas
     /// Proof of function to_multiset() correctness
-    pub proof fn to_multiset_ensures(self)
+    pub broadcast proof fn to_multiset_ensures(self)
         ensures
             forall|a: A| #[trigger] (self.push(a).to_multiset()) =~= self.to_multiset().insert(a),
             forall|i: int|
                 0 <= i < self.len() ==> #[trigger] (self.remove(i).to_multiset())
                     =~= self.to_multiset().remove(self[i]),
-            self.len() == self.to_multiset().len(),
+            self.len() == #[trigger] self.to_multiset().len(),
             forall|a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0,
     {
         assert forall|a: A| #[trigger]
@@ -1662,35 +1664,37 @@ pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: spec_fn(A, A) -> 
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
-pub proof fn lemma_seq_contains<A>(s: Seq<A>, x: A)
+pub broadcast proof fn lemma_seq_contains<A>(s: Seq<A>, x: A)
     ensures
+        // TODO: I don't understand why annotating the triggers like this works
+        #[trigger s[i], x]
         s.contains(x) <==> exists|i: int| 0 <= i < s.len() && s[i] == x,
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The empty sequence contains nothing
-pub proof fn lemma_seq_empty_contains_nothing<A>(x: A)
+pub broadcast proof fn lemma_seq_empty_contains_nothing<A>(x: A)
     ensures
-        !Seq::<A>::empty().contains(x),
+        ! (#[trigger] Seq::<A>::empty().contains(x)),
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 // Note: Dafny only does one way implication, but theoretically it could go both ways
 /// A sequence with length 0 is equivalent to the empty sequence
-pub proof fn lemma_seq_empty_equality<A>(s: Seq<A>)
+pub broadcast proof fn lemma_seq_empty_equality<A>(s: Seq<A>)
     ensures
-        s.len() == 0 ==> s =~= Seq::<A>::empty(),
+        #[trigger] s.len() == 0 ==> s =~= Seq::<A>::empty(),
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The concatenation of two sequences contains only the elements
 /// of the two sequences
-pub proof fn lemma_seq_concat_contains_all_elements<A>(x: Seq<A>, y: Seq<A>, elt: A)
+pub broadcast proof fn lemma_seq_concat_contains_all_elements<A>(x: Seq<A>, y: Seq<A>, elt: A)
     ensures
-        (x + y).contains(elt) <==> x.contains(elt) || y.contains(elt),
+        #[trigger] (x + y).contains(elt) <==> x.contains(elt) || y.contains(elt),
     decreases x.len(),
 {
     if x.len() == 0 && y.len() > 0 {
@@ -1713,9 +1717,9 @@ pub proof fn lemma_seq_concat_contains_all_elements<A>(x: Seq<A>, y: Seq<A>, elt
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// After pushing an element onto a sequence, the sequence contains that element
-pub proof fn lemma_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
+pub broadcast proof fn lemma_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
     ensures
-        (s.push(v).contains(x) <==> v == x || s.contains(x)) && s.push(v).contains(v),
+        (#[trigger] s.push(v).contains(x) <==> v == x || s.contains(x)) && #[trigger] s.push(v).contains(v),
 {
     assert forall|elt: A| #[trigger] s.contains(elt) implies #[trigger] s.push(v).contains(elt) by {
         let index = choose|i: int| 0 <= i < s.len() && s[i] == elt;
@@ -1727,12 +1731,12 @@ pub proof fn lemma_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The subrange of a sequence contains only the elements within the indices `start` and `stop`
 /// of the original sequence.
-pub proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x: A)
+pub broadcast proof fn lemma_seq_subrange_elements<A>(s: Seq<A>, start: int, stop: int, x: A)
     requires
         0 <= start <= stop <= s.len(),
     ensures
-        s.subrange(start, stop).contains(x) <==> (exists|i: int|
-            0 <= start <= i < stop <= s.len() && s[i] == x),
+        #[trigger] s.subrange(start, stop).contains(x) <==> (exists|i: int|
+            0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x),
 {
     assert((exists|i: int| 0 <= start <= i < stop <= s.len() && s[i] == x) ==> s.subrange(
         start,
@@ -1793,20 +1797,20 @@ pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the first `n` elements of a sequence results in a sequence of length `n`,
 /// as long as `n` is within the bounds of the original sequence.
-pub proof fn lemma_seq_take_len<A>(s: Seq<A>, n: int)
+pub broadcast proof fn lemma_seq_take_len<A>(s: Seq<A>, n: int)
     ensures
-        0 <= n <= s.len() ==> s.take(n).len() == n,
+        0 <= n <= s.len() ==> #[trigger] s.take(n).len() == n,
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The resulting sequence after taking the first `n` elements from sequence `s` contains
 /// element `x` if and only if `x` is contained in the first `n` elements of `s`.
-pub proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
+pub broadcast proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
     requires
         0 <= n <= s.len(),
     ensures
-        s.take(n).contains(x) <==> (exists|i: int| 0 <= i < n <= s.len() && s[i] == x),
+        #[trigger] s.take(n).contains(x) <==> (exists|i: int| 0 <= i < n <= s.len() && #[trigger] s[i] == x),
 {
     assert((exists|i: int| 0 <= i < n <= s.len() && #[trigger] s[i] == x) ==> s.take(n).contains(x))
         by {
@@ -1820,9 +1824,9 @@ pub proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If `j` is a valid index less than `n`, then the `j`th element of the sequence `s`
 /// is the same as `j`th element of the sequence after taking the first `n` elements of `s`.
-pub proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
+pub broadcast proof fn lemma_seq_take_index<A>(s: Seq<A>, n: int, j: int)
     ensures
-        0 <= j < n <= s.len() ==> s.take(n)[j] == s[j],
+        0 <= j < n <= s.len() ==> #[trigger] s.take(n)[j] == s[j],
 {
 }
 
@@ -1847,20 +1851,20 @@ pub proof fn subrange_of_matching_take<T>(a: Seq<T>, b: Seq<T>, s: int, e: int, 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Skipping the first `n` elements of a sequence gives a sequence of length `n` less than
 /// the original sequence's length.
-pub proof fn lemma_seq_skip_len<A>(s: Seq<A>, n: int)
+pub broadcast proof fn lemma_seq_skip_len<A>(s: Seq<A>, n: int)
     ensures
-        0 <= n <= s.len() ==> s.skip(n).len() == s.len() - n,
+        0 <= n <= s.len() ==> #[trigger] s.skip(n).len() == s.len() - n,
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The resulting sequence after skipping the first `n` elements from sequence `s` contains
 /// element `x` if and only if `x` is contained in `s` before index `n`.
-pub proof fn lemma_seq_skip_contains<A>(s: Seq<A>, n: int, x: A)
+pub broadcast proof fn lemma_seq_skip_contains<A>(s: Seq<A>, n: int, x: A)
     requires
         0 <= n <= s.len(),
     ensures
-        s.skip(n).contains(x) <==> (exists|i: int| 0 <= n <= i < s.len() && s[i] == x),
+        #[trigger] s.skip(n).contains(x) <==> (exists|i: int| 0 <= n <= i < s.len() && #[trigger] s[i] == x),
 {
     assert((exists|i: int| 0 <= n <= i < s.len() && #[trigger] s[i] == x) ==> s.skip(n).contains(x))
         by {
@@ -1872,9 +1876,9 @@ pub proof fn lemma_seq_skip_contains<A>(s: Seq<A>, n: int, x: A)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If `j` is a valid index less than `s.len() - n`, then the `j`th element of the sequence
 /// `s.skip(n)` is the same as the `j+n`th element of the sequence `s`.
-pub proof fn lemma_seq_skip_index<A>(s: Seq<A>, n: int, j: int)
+pub broadcast proof fn lemma_seq_skip_index<A>(s: Seq<A>, n: int, j: int)
     ensures
-        0 <= n && 0 <= j < (s.len() - n) ==> s.skip(n)[j] == s[j + n],
+        0 <= n && 0 <= j < (s.len() - n) ==> #[trigger] s.skip(n)[j] == s[j + n],
 {
 }
 
@@ -1882,6 +1886,7 @@ pub proof fn lemma_seq_skip_index<A>(s: Seq<A>, n: int, j: int)
 /// If `k` is a valid index between `n` (inclusive) and the length of sequence `s` (exclusive),
 /// then the `k-n`th element of the sequence `s.skip(n)` is the same as the `k`th element of the
 /// original sequence `s`.
+// TODO: this is a bit hard to trigger on for `k - n`
 pub proof fn lemma_seq_skip_index2<A>(s: Seq<A>, n: int, k: int)
     ensures
         0 <= n <= k < s.len() ==> (s.skip(n))[k - n] == s[k],
@@ -1892,8 +1897,10 @@ pub proof fn lemma_seq_skip_index2<A>(s: Seq<A>, n: int, k: int)
 /// If `n` is the length of sequence `a`, then taking the first `n` elements of the concatenation
 /// `a + b` is equivalent to the sequence `a` and skipping the first `n` elements of the concatenation
 /// `a + b` is equivalent to the sequence `b`.
-pub proof fn lemma_seq_append_take_skip<A>(a: Seq<A>, b: Seq<A>, n: int)
+pub broadcast proof fn lemma_seq_append_take_skip<A>(a: Seq<A>, b: Seq<A>, n: int)
     ensures
+        #![trigger (a + b).take(n)]
+        #![trigger (a + b).skip(n)]
         n == a.len() ==> ((a + b).take(n) =~= a && (a + b).skip(n) =~= b),
 {
 }
@@ -1904,8 +1911,10 @@ pub proof fn lemma_seq_append_take_skip<A>(a: Seq<A>, b: Seq<A>, n: int)
 /// If `i` is in the first `n` indices of sequence `s`, updating sequence `s` at index `i` with
 /// value `v` and then taking the first `n` elements is equivalent to first taking the first `n`
 /// elements of `s` and then updating index `i` to value `v`.
-pub proof fn lemma_seq_take_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
+pub broadcast proof fn lemma_seq_take_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
+        #![trigger s.update(i, v).take(n)]
+        #![trigger s.take(n).update(i, v)]
         0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).take(n) =~= s.take(n).update(i, v),
 {
 }
@@ -1914,7 +1923,7 @@ pub proof fn lemma_seq_take_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
 /// If `i` is a valid index after the first `n` indices of sequence `s`, updating sequence `s` at
 /// index `i` with value `v` and then taking the first `n` elements is equivalent to just taking the first `n`
 /// elements of `s` without the update.
-pub proof fn lemma_seq_take_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
+pub broadcast proof fn lemma_seq_take_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
         0 <= n <= i < s.len() ==> #[trigger] s.update(i, v).take(n) =~= s.take(n),
 {
@@ -1924,7 +1933,7 @@ pub proof fn lemma_seq_take_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
 /// If `i` is a valid index after the first `n` indices of sequence `s`, updating sequence `s` at
 /// index `i` with value `v` and then skipping the first `n` elements is equivalent to skipping the first `n`
 /// elements of `s` and then updating index `i-n` to value `v`.
-pub proof fn lemma_seq_skip_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
+pub broadcast proof fn lemma_seq_skip_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
         0 <= n <= i < s.len() ==> #[trigger] s.update(i, v).skip(n) =~= s.skip(n).update(i - n, v),
 {
@@ -1934,34 +1943,37 @@ pub proof fn lemma_seq_skip_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
 /// If `i` is a valid index in the first `n` indices of sequence `s`, updating sequence `s` at
 /// index `i` with value `v` and then skipping the first `n` elements is equivalent to just skipping
 /// the first `n` elements without the update.
-pub proof fn lemma_seq_skip_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
+pub broadcast proof fn lemma_seq_skip_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-        0 <= i < n <= s.len() ==> s.update(i, v).skip(n) =~= s.skip(n),
+
+        0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).skip(n) =~= s.skip(n),
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Pushing element `v` onto the end of sequence `s` and then skipping the first `n` elements is
 /// equivalent to skipping the first `n` elements of `s` and then pushing `v` onto the end.
-pub proof fn lemma_seq_skip_build_commut<A>(s: Seq<A>, v: A, n: int)
+pub broadcast proof fn lemma_seq_skip_build_commut<A>(s: Seq<A>, v: A, n: int)
     ensures
+        #![trigger s.push(v).skip(n)]
+        #![trigger s.skip(n).push(v)]
         0 <= n <= s.len() ==> s.push(v).skip(n) =~= s.skip(n).push(v),
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// `s.skip(0)` is equivalent to `s`.
-pub proof fn lemma_seq_skip_nothing<A>(s: Seq<A>, n: int)
+pub broadcast proof fn lemma_seq_skip_nothing<A>(s: Seq<A>, n: int)
     ensures
-        n == 0 ==> s.skip(n) =~= s,
+        n == 0 ==> #[trigger] s.skip(n) =~= s,
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// `s.take(0)` is equivalent to the empty sequence.
-pub proof fn lemma_seq_take_nothing<A>(s: Seq<A>, n: int)
+pub broadcast proof fn lemma_seq_take_nothing<A>(s: Seq<A>, n: int)
     ensures
-        n == 0 ==> s.take(n) =~= Seq::<A>::empty(),
+        n == 0 ==> #[trigger] s.take(n) =~= Seq::<A>::empty(),
 {
 }
 
@@ -1969,9 +1981,9 @@ pub proof fn lemma_seq_take_nothing<A>(s: Seq<A>, n: int)
 /// If `m + n` is less than or equal to the length of sequence `s`, then skipping the first `m` elements
 /// and then skipping the first `n` elements of the resulting sequence is equivalent to just skipping
 /// the first `m + n` elements.
-pub proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
+pub broadcast proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
     ensures
-        (0 <= m && 0 <= n && m + n <= s.len()) ==> s.skip(m).skip(n) =~= s.skip(m + n),
+        (0 <= m && 0 <= n && m + n <= s.len()) ==> #[trigger] s.skip(m).skip(n) =~= s.skip(m + n),
 {
 }
 
@@ -2029,110 +2041,14 @@ pub proof fn lemma_seq_properties<A>()
             s.contains(a) <==> #[trigger] s.to_multiset().count(a)
                 > 0,  //from to_multiset_ensures
 {
-    assert forall|x: Seq<A>, y: Seq<A>, elt: A| #[trigger] (x + y).contains(elt) implies x.contains(
-        elt,
-    ) || y.contains(elt) by {
-        lemma_seq_concat_contains_all_elements(x, y, elt);
-    }
-    assert forall|x: Seq<A>, y: Seq<A>, elt: A|
-        x.contains(elt) || y.contains(elt) implies #[trigger] (x + y).contains(elt) by {
-        lemma_seq_concat_contains_all_elements(x, y, elt);
-    }
-    assert forall|s: Seq<A>, v: A, x: A| #[trigger] s.push(v).contains(x) implies v == x
-        || s.contains(x) by {
-        lemma_seq_contains_after_push(s, v, x);
-    }
+    broadcast use group_lemma_seq_properties;
     assert forall|s: Seq<A>, v: A, x: A| v == x || s.contains(x) implies #[trigger] s.push(
         v,
     ).contains(x) by {
         lemma_seq_contains_after_push(s, v, x);
     }
-    assert forall|s: Seq<A>, start: int, stop: int, x: A|
-        0 <= start <= stop <= s.len() && #[trigger] s.subrange(start, stop).contains(
-            x,
-        ) implies exists|i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x by {
-        lemma_seq_subrange_elements(s, start, stop, x);
-    }
-    assert forall|s: Seq<A>, start: int, stop: int, x: A|
-        exists|i: int|
-            0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x implies #[trigger] s.subrange(
-        start,
-        stop,
-    ).contains(x) by {
-        lemma_seq_subrange_elements(s, start, stop, x);
-    }
-    assert forall|s: Seq<A>, n: int, x: A| #[trigger]
-        s.take(n).contains(x) && 0 <= n <= s.len() implies (exists|i: int|
-        0 <= i < n <= s.len() && #[trigger] s[i] == x) by {
-        lemma_seq_take_contains(s, n, x);
-    }
-    assert forall|s: Seq<A>, n: int, x: A|
-        (exists|i: int| 0 <= i < n <= s.len() && #[trigger] s[i] == x) implies #[trigger] s.take(
-        n,
-    ).contains(x) by {
-        lemma_seq_take_contains(s, n, x);
-    }
-    assert forall|s: Seq<A>, n: int, j: int| 0 <= j < n <= s.len() implies #[trigger] s.take(n)[j]
-        == s[j] by {
-        lemma_seq_take_len(s, n);
-        assert(0 <= n <= s.len() ==> s.take(n).len() == n);
-        assert(0 <= n <= s.len());
-        assert(s.take(n).len() == n);
-        lemma_seq_take_index(s, n, j);
-    }
-    assert forall|s: Seq<A>, n: int, x: A| #[trigger]
-        s.skip(n).contains(x) && 0 <= n <= s.len() implies (exists|i: int|
-        0 <= n <= i < s.len() && #[trigger] s[i] == x) by {
-        lemma_seq_skip_contains(s, n, x);
-    }
-    assert forall|s: Seq<A>, n: int, x: A|
-        (exists|i: int| 0 <= n <= i < s.len() && #[trigger] s[i] == x) implies #[trigger] s.skip(
-        n,
-    ).contains(x) && 0 <= n <= s.len() by {
-        lemma_seq_skip_contains(s, n, x);
-    }
-    assert forall|s: Seq<A>, i: int, v: A, n: int|
-        0 <= i < n <= s.len() implies #[trigger] s.update(i, v).take(n) == s.take(n).update(
-        i,
-        v,
-    ) by {
-        lemma_seq_take_update_commut1(s, i, v, n);
-    }
-    assert forall|s: Seq<A>, i: int, v: A, n: int|
-        0 <= n <= i < s.len() implies #[trigger] s.update(i, v).take(n) == s.take(n) by {
-        lemma_seq_take_update_commut2(s, i, v, n);
-    }
-    assert forall|s: Seq<A>, i: int, v: A, n: int|
-        0 <= n <= i < s.len() implies #[trigger] s.update(i, v).skip(n) == s.skip(n).update(
-        i - n,
-        v,
-    ) by {
-        lemma_seq_skip_update_commut1(s, i, v, n);
-    }
-    assert forall|s: Seq<A>, i: int, v: A, n: int|
-        0 <= i < n <= s.len() implies #[trigger] s.update(i, v).skip(n) == s.skip(n) by {
-        lemma_seq_skip_update_commut2(s, i, v, n);
-    }
-    assert forall|s: Seq<A>, v: A, n: int| 0 <= n <= s.len() implies #[trigger] s.push(v).skip(n)
-        == s.skip(n).push(v) by {
-        lemma_seq_skip_build_commut(s, v, n);
-    }
-    assert forall|s: Seq<A>, n: int| n == 0 implies #[trigger] s.skip(n) == s by {
-        lemma_seq_skip_nothing(s, n);
-    }
-    assert forall|s: Seq<A>, n: int| n == 0 implies #[trigger] s.take(n) == Seq::<A>::empty() by {
-        lemma_seq_take_nothing(s, n);
-    }
-    assert forall|s: Seq<A>, m: int, n: int| (0 <= m && 0 <= n && m + n <= s.len()) implies s.skip(
-        m,
-    ).skip(n) == s.skip(m + n) by {
-        lemma_seq_skip_of_skip(s, m, n);
-    }
     assert forall|s: Seq<A>, a: A| #[trigger]
         (s.push(a).to_multiset()) =~= s.to_multiset().insert(a) by {
-        s.to_multiset_ensures();
-    }
-    assert forall|s: Seq<A>| s.len() == #[trigger] s.to_multiset().len() by {
         s.to_multiset_ensures();
     }
     assert forall|s: Seq<A>, a: A| s.contains(a) implies #[trigger] s.to_multiset().count(a)
@@ -2244,6 +2160,34 @@ pub broadcast group group_seq_lib_default {
     Seq::filter_distributes_over_add,
     seq_to_set_is_finite,
 }
+
+// include all the Dafny prelude lemmas
+pub broadcast group group_lemma_seq_properties {
+    lemma_seq_contains,
+    lemma_seq_empty_contains_nothing,
+    lemma_seq_empty_equality,
+    lemma_seq_concat_contains_all_elements,
+    lemma_seq_contains_after_push,
+    lemma_seq_subrange_elements,
+    lemma_seq_take_len,
+    lemma_seq_take_contains,
+    lemma_seq_take_index,
+    lemma_seq_skip_len,
+    lemma_seq_skip_contains,
+    lemma_seq_skip_index,
+    // lemma_seq_skip_index2,
+    lemma_seq_append_take_skip,
+    lemma_seq_take_update_commut1,
+    lemma_seq_take_update_commut2,
+    lemma_seq_skip_update_commut1,
+    lemma_seq_skip_update_commut2,
+    lemma_seq_skip_build_commut,
+    lemma_seq_skip_nothing,
+    lemma_seq_take_nothing,
+    lemma_seq_skip_of_skip,
+    Seq::to_multiset_ensures,
+}
+
 
 #[doc(hidden)]
 pub use assert_seqs_equal_internal;
