@@ -713,10 +713,7 @@ pub(crate) fn check_item_fn<'tcx>(
         };
         let is_ref_mut = is_mut_ty(ctxt, *input);
         if is_ref_mut.is_some() && mode == Mode::Spec {
-            return err_span(
-                span,
-                format!("&mut argument not allowed for #[verifier::spec] functions"),
-            );
+            return err_span(span, format!("&mut parameter not allowed for spec functions"));
         }
 
         let typ = {

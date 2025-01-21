@@ -124,7 +124,7 @@ test_verify_one_file! {
         spec fn add1(a: &mut u64) {
             *a = add(*a, 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "&mut argument not allowed for #[verifier::spec] functions")
+    } => Err(err) => assert_vir_error_msg(err, "&mut parameter not allowed for spec functions")
 }
 
 test_verify_one_file! {
@@ -230,7 +230,7 @@ test_verify_one_file! {
                 *self = Value { v: add(v, 1) };
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "&mut argument not allowed for #[verifier::spec] functions")
+    } => Err(err) => assert_vir_error_msg(err, "&mut parameter not allowed for spec functions")
 }
 
 test_verify_one_file! {
