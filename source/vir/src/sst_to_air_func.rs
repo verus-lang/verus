@@ -16,6 +16,7 @@ use crate::sst::FuncCheckSst;
 use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParPurpose, ParX, Pars};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
+    LocalContext,
 };
 use crate::util::vec_map;
 use air::ast::{
@@ -247,7 +248,12 @@ fn func_body_to_air(
 
     let spec_map = specialization.create_spec_map(&function.x.typ_params);
     if let Some(exp) = decrease_when {
-        let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec, &spec_map))?;
+        let expr = exp_to_expr(
+            ctx,
+            &exp,
+            &ExprCtxt::new_mode(ExprMode::Spec, &spec_map),
+            &LocalContext::empty(ctx),
+        )?;
         // conditions on value arguments:
         def_reqs.push(expr);
     }
@@ -302,7 +308,8 @@ fn func_body_to_air(
     //   (axiom (forall (... fuel) (= (rec%f ... fuel) (rec%f ... zero) )))
     //   (axiom (forall (... fuel) (= (rec%f ... (succ fuel)) body[rec%f ... fuel] )))
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
-    let body_expr = exp_to_expr(&ctx, &new_body_exp, &ExprCtxt::new(&spec_map))?;
+    let body_expr =
+        exp_to_expr(&ctx, &new_body_exp, &ExprCtxt::new(&spec_map), &LocalContext::empty(ctx))?;
     let def_body = if !function.x.has.is_recursive {
         body_expr
     } else {
@@ -415,7 +422,7 @@ fn req_ens_to_air(
             } else {
                 ExprCtxt::new_mode(ExprMode::Spec, spec_map)
             };
-            let expr = exp_to_expr(ctx, exp, &expr_ctxt)?;
+            let expr = exp_to_expr(ctx, exp, &expr_ctxt, &LocalContext::empty(ctx))?;
             let loc_expr = match msg {
                 None => expr,
                 Some(msg) => {
@@ -540,8 +547,10 @@ pub fn func_decl_to_air(
                 // NOTE: Maybe we should use a different specialization
                 let ens =
                     prefix_ensures(&specialization.transform_ident(fun_to_air_ident(&method)));
-                let mut typ_args: Vec<Typ> = trait_typ_args.iter()
-                                                  .map(|typ| specialization.transform_typ(&function.x.typ_params, typ)).collect::<Vec<_>>();
+                let mut typ_args: Vec<Typ> = trait_typ_args
+                    .iter()
+                    .map(|typ| specialization.transform_typ(&function.x.typ_params, typ))
+                    .collect::<Vec<_>>();
                 //let mut typ_args = (**trait_typ_args).clone();
                 let num_trait_and_method_typ_params = ctx.func_map[method].x.typ_params.len();
                 let num_method_typ_params = num_trait_and_method_typ_params - trait_typ_args.len();
@@ -720,7 +729,12 @@ pub fn func_decl_to_air(
     ctx.funcs_with_ensure_predicate.insert(function.x.name.clone(), has_ens_pred);
 
     for exp in func_decl_sst.fndef_axioms.iter() {
-        let expr = exp_to_expr(ctx, exp, &ExprCtxt::new_mode(ExprMode::Spec, &spec_map))?;
+        let expr = exp_to_expr(
+            ctx,
+            exp,
+            &ExprCtxt::new_mode(ExprMode::Spec, &spec_map),
+            &LocalContext::empty(ctx),
+        )?;
         let axiom = mk_unnamed_axiom(expr);
         decl_commands.push(Arc::new(CommandX::Global(axiom)));
     }
@@ -879,7 +893,7 @@ pub fn func_axioms_to_air(
                 } else {
                     ExprCtxt::new_mode(ExprMode::Spec, &spec_map)
                 };
-                let expr = exp_to_expr(ctx, &forall, &expr_ctxt)?;
+                let expr = exp_to_expr(ctx, &forall, &expr_ctxt, &LocalContext::empty(ctx))?;
 
                 let fuel_imply = if function.x.attrs.size_of_broadcast_proof {
                     // special broadcast lemma for size_of global
