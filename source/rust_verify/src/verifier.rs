@@ -1595,6 +1595,10 @@ impl Verifier {
                                     let axioms_list = used_axioms
                                         .iter()
                                         .map(|x| {
+                                            if x.starts_with("prelude_axiom") {
+                                                return format!("  - (prelude) {}", x);
+                                            }
+
                                             let funx = &function_opgen.ctx().fun_ident_map[x];
                                             let is_reveal_group = krate
                                                 .reveal_groups

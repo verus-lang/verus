@@ -802,7 +802,7 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
             :skolemid skolem_prelude_array_index_trigger
             ))
             :named
-            prelude_array_index
+            prelude_axiom_array_index
         ))
     )
 }
@@ -888,10 +888,4 @@ pub(crate) fn datatype_height_axioms(
     } else {
         vec![axiom1]
     }
-}
-
-pub(crate) fn prelude_axioms() -> Vec<String> {
-    let axioms = vec![String::from("prelude_array_index")];
-
-    axioms
 }
