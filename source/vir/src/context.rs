@@ -576,7 +576,6 @@ impl Ctx {
         let reveal_group_set: HashSet<Fun> =
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
         fun_ident_map.extend(reveal_group_set.iter().map(|g| (fun_to_air_ident(&g), g.clone())));
-
         let quantifier_count = Cell::new(0);
         let string_hashes = RefCell::new(HashMap::new());
 
