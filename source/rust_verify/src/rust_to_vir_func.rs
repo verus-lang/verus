@@ -67,7 +67,16 @@ pub(crate) fn body_to_vir<'tcx>(
         external_body,
         in_ghost: mode != Mode::Exec,
     };
-    expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)
+    let e = expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)?;
+
+    if external_body {
+        match &e.x {
+            vir::ast::ExprX::NeverToAny(e) => Ok(e.clone()),
+            _ => Ok(e),
+        }
+    } else {
+        Ok(e)
+    }
 }
 
 fn check_fn_decl<'tcx>(
