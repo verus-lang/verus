@@ -406,3 +406,10 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] allow_external_body_const_regression_1322 verus_code! {
+        #[verifier(external_body)]
+        const A: usize = unimplemented!();
+    } => Err(err) => assert_rust_error_msg(err, "evaluation of constant value failed")
+}
