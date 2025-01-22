@@ -174,7 +174,6 @@ fn main() {
     let v = vec![9, 10, 4, 5, 1, 3];
     let v_sorted = merge_sort(&v);
     let ghost expected_res: Seq<u64> = seq![1, 3, 4, 5, 9, 10];
-
     proof {
         vstd::seq_lib::lemma_seq_properties::<u64>();
         // triggers, see examples in multiset.rs
