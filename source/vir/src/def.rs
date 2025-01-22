@@ -221,6 +221,9 @@ pub const PERVASIVE_PREFIX: &str = "pervasive::";
 
 pub const RUST_DEF_CTOR: &str = "ctor%";
 
+// used by axiom-usage-info to identify axioms from the prelude
+pub const AXIOM_NAME_PRELUDE: &str = "prelude_axiom_";
+
 // List of pre-defined error messages
 pub const ASSERTION_FAILURE: &str = "assertion failure";
 pub const PRECONDITION_FAILURE: &str = "precondition not satisfied";
@@ -660,6 +663,11 @@ pub fn new_internal_qid(ctx: &crate::context::Ctx, name: String) -> Option<Ident
 
 pub fn snapshot_ident(name: &str) -> Ident {
     Arc::new(format!("{}{}", PREFIX_SNAPSHOT, name))
+}
+
+// only used by axiom-usage-info to identify prelude axioms
+pub fn prelude_axiom_name(name: &str) -> String {
+    format!("{AXIOM_NAME_PRELUDE}{name}")
 }
 
 /// For a given snapshot, does it represent the state

@@ -1127,7 +1127,7 @@ impl Verifier {
             air_context.set_z3_param(&option, &value);
         }
         #[cfg(feature = "axiom-usage-info")]
-        if self.args.broadcast_usage_info {
+        if self.args.axiom_usage_info {
             air_context.enable_usage_info();
         }
 
@@ -1595,6 +1595,10 @@ impl Verifier {
                                     let axioms_list = used_axioms
                                         .iter()
                                         .map(|x| {
+                                            if x.starts_with(vir::def::AXIOM_NAME_PRELUDE) {
+                                                return format!("  - (prelude) {}", x);
+                                            }
+
                                             let funx = &function_opgen.ctx().fun_ident_map[x];
                                             let is_reveal_group = krate
                                                 .reveal_groups
