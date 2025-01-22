@@ -1595,7 +1595,7 @@ impl Verifier {
                                     let axioms_list = used_axioms
                                         .iter()
                                         .map(|x| {
-                                            if x.starts_with("prelude_axiom") {
+                                            if x.starts_with(vir::def::AXIOM_NAME_PRELUDE) {
                                                 return format!("  - (prelude) {}", x);
                                             }
 
