@@ -1044,13 +1044,25 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     let adjustment = &adjustments[adjustment_idx - 1];
 
     match &adjustment.kind {
-        Adjust::NeverToAny => expr_to_vir_with_adjustments(
-            bctx,
-            expr,
-            current_modifier,
-            adjustments,
-            adjustment_idx - 1,
-        ),
+        Adjust::NeverToAny => {
+            let e = expr_to_vir_with_adjustments(
+                bctx,
+                expr,
+                current_modifier,
+                adjustments,
+                adjustment_idx - 1,
+            )?;
+            let expr_typ = mid_ty_to_vir(
+                bctx.ctxt.tcx,
+                &bctx.ctxt.verus_items,
+                bctx.fun_id,
+                expr.span,
+                &adjustments[adjustment_idx - 1].target,
+                false,
+            )?;
+            let x = ExprX::NeverToAny(e);
+            Ok(bctx.spanned_typed_new(expr.span, &expr_typ, x))
+        }
         Adjust::Deref(None) => {
             // handle same way as the UnOp::Deref case
             let new_modifier = is_expr_typ_mut_ref(get_inner_ty(), current_modifier)?;

@@ -517,6 +517,9 @@ where
                         }
                     }
                 }
+                ExprX::NeverToAny(e) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf))
+                }
             }
             VisitorControlFlow::Recurse
         }
@@ -1067,6 +1070,10 @@ where
             ExprX::OpenInvariant(expr1, binder, expr2, *atomicity)
         }
         ExprX::AirStmt(s) => ExprX::AirStmt(s.clone()),
+        ExprX::NeverToAny(e) => {
+            let expr = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
+            ExprX::NeverToAny(expr)
+        }
     };
     let expr = SpannedTyped::new(&expr.span, &map_typ_visitor_env(&expr.typ, env, ft)?, exprx);
     fe(env, map, &expr)

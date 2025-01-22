@@ -2156,6 +2156,11 @@ pub(crate) fn expr_to_stm_opt(
             let stm = Spanned::new(expr.span.clone(), stmx);
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
         }
+        ExprX::NeverToAny(e) => {
+            let (mut stms, _e) = expr_to_stm_opt(ctx, state, e)?;
+            stms.push(assume_false(&expr.span));
+            Ok((stms, ReturnValue::Never))
+        }
         ExprX::Ghost { .. } => {
             panic!("internal error: ExprX::Ghost should have been simplified by ast_simplify")
         }

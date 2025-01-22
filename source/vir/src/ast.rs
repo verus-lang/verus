@@ -856,6 +856,8 @@ pub enum ExprX {
     Block(Stmts, Option<Expr>),
     /// Inline AIR statement
     AirStmt(Arc<String>),
+    /// never-to-any conversion
+    NeverToAny(Expr),
 }
 
 /// Statement, similar to rustc_hir::Stmt
