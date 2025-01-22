@@ -205,10 +205,17 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::truncate ](vec: &mut Vec
         len > old(vec).len() ==> vec@ == old(vec)@,
 ;
 
-pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](vec: &mut Vec<T, A>, len: usize, value: T)
+pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
+    vec: &mut Vec<T, A>,
+    len: usize,
+    value: T,
+)
     ensures
         len <= old(vec).len() ==> vec@ == old(vec)@.subrange(0, len as int),
-        len > old(vec).len() ==> vec@ == old(vec)@ + Seq::new((len - old(vec).len()) as nat, |i: int| value),
+        len > old(vec).len() ==> vec@ == old(vec)@ + Seq::new(
+            (len - old(vec).len()) as nat,
+            |i: int| value,
+        ),
 ;
 
 pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
