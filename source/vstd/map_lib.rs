@@ -271,7 +271,8 @@ pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: Map<K, V>, m2: Map<K, V>,
     ensures
         m1.submap_of(m3),
 {
-    assert forall |k| m1.dom().contains(k) implies #[trigger] m3.dom().contains(k) && m1[k] == m3[k] by {
+    assert forall|k| m1.dom().contains(k) implies #[trigger] m3.dom().contains(k) && m1[k]
+        == m3[k] by {
         assert(m2.dom().contains(k));
     }
 }
