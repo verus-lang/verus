@@ -263,6 +263,19 @@ pub proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     }
 }
 
+/// submap_of (<=) is transitive.
+pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: Map<K, V>, m2: Map<K, V>, m3: Map<K, V>)
+    requires
+        #[trigger] m1.submap_of(m2),
+        #[trigger] m2.submap_of(m3),
+    ensures
+        m1.submap_of(m3),
+{
+    assert forall |k| m1.dom().contains(k) implies #[trigger] m3.dom().contains(k) && m1[k] == m3[k] by {
+        assert(m2.dom().contains(k));
+    }
+}
+
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `Set::new(fk)`.
 pub proof fn lemma_map_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
