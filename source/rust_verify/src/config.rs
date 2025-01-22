@@ -304,10 +304,7 @@ pub fn parse_args_with_imports(
             "Use the crate name in paths (useful when verifying vstd without --export)",
         ),
         #[cfg(feature = "axiom-usage-info")]
-        (
-            EXTENDED_AXIOM_USAGE_INFO,
-            "Print usage info for broadcasted axioms, lemmas, and groups",
-        ),
+        (EXTENDED_AXIOM_USAGE_INFO, "Print usage info for broadcasted axioms, lemmas, and groups"),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
