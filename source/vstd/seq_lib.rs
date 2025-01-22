@@ -443,29 +443,21 @@ impl<A> Seq<A> {
     }
 
     // Parts of verified lemma used to be an axiom in the Dafny prelude
-    // TODO: maybe split this into multiple lemmas
+    // Note: the inner triggers in this lemma are blocked by `to_multiset_len`
     /// Proof of function to_multiset() correctness
     pub broadcast proof fn to_multiset_ensures(self)
         ensures
-            forall|a: A| #[trigger] (self.push(a).to_multiset()) =~= self.to_multiset().insert(a),
+            forall|a: A| #[trigger] (self.push(a).to_multiset()) =~= self.to_multiset().insert(a),  // to_multiset_build
             forall|i: int|
                 0 <= i < self.len() ==> #[trigger] (self.remove(i).to_multiset())
-                    =~= self.to_multiset().remove(self[i]),
-            self.len() == #[trigger] self.to_multiset().len(),
-            forall|a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0,
+                    =~= self.to_multiset().remove(self[i]),  // to_multiset_remove
+            self.len() == #[trigger] self.to_multiset().len(),  // to_multiset_len
+            forall|a: A|
+                self.contains(a) <==> #[trigger] self.to_multiset().count(a)
+                    > 0,  // to_multiset_contains
     {
-        assert forall|a: A| #[trigger]
-            (self.push(a).to_multiset()) =~= self.to_multiset().insert(a) by {
-            to_multiset_build(self, a);
-        }
-        assert forall|i: int| 0 <= i < self.len() implies #[trigger] (self.remove(i).to_multiset())
-            =~= self.to_multiset().remove(self[i]) by {
-            to_multiset_remove(self, i);
-        }
-        to_multiset_len(self);
-        assert forall|a: A| self.contains(a) <==> #[trigger] self.to_multiset().count(a) > 0 by {
-            to_multiset_contains(self, a);
-        }
+        broadcast use group_lemma_seq_properties;
+
     }
 
     /// Insert item a at index i, shifting remaining elements (if any) to the right
@@ -1361,8 +1353,10 @@ pub proof fn lemma_min_of_concat(x: Seq<int>, y: Seq<int>)
 /************************* Sequence to Multiset Conversion **************************/
 
 /// push(a) o to_multiset = to_multiset o insert(a)
-proof fn to_multiset_build<A>(s: Seq<A>, a: A)
+pub broadcast proof fn to_multiset_build<A>(s: Seq<A>, a: A)
     ensures
+        #![trigger s.push(a).to_multiset()]
+        #![trigger s.to_multiset().insert(a)]
         s.push(a).to_multiset() =~= s.to_multiset().insert(a),
     decreases s.len(),
 {
@@ -1381,10 +1375,12 @@ proof fn to_multiset_build<A>(s: Seq<A>, a: A)
     }
 }
 
-proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
+pub broadcast proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
     requires
         0 <= i < s.len(),
     ensures
+        #![trigger s.remove(i).to_multiset()]
+        #![trigger s.to_multiset().remove(s[i])]
         s.remove(i).to_multiset() =~= s.to_multiset().remove(s[i]),
 {
     broadcast use super::multiset::group_multiset_axioms;
@@ -1399,8 +1395,9 @@ proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
 }
 
 /// to_multiset() preserves length
-proof fn to_multiset_len<A>(s: Seq<A>)
+pub broadcast proof fn to_multiset_len<A>(s: Seq<A>)
     ensures
+        #[trigger s.to_multiset().len()]
         s.len() == s.to_multiset().len(),
     decreases s.len(),
 {
@@ -1417,8 +1414,9 @@ proof fn to_multiset_len<A>(s: Seq<A>)
 }
 
 /// to_multiset() contains only the elements of the sequence
-proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
+pub broadcast proof fn to_multiset_contains<A>(s: Seq<A>, a: A)
     ensures
+        #![trigger s.to_multiset().count(a)]
         s.contains(a) <==> s.to_multiset().count(a) > 0,
     decreases s.len(),
 {
@@ -1666,9 +1664,7 @@ pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: spec_fn(A, A) -> 
 // This verified lemma used to be an axiom in the Dafny prelude
 pub broadcast proof fn lemma_seq_contains<A>(s: Seq<A>, x: A)
     ensures
-        // TODO: I don't understand why annotating the triggers like this works
-        #[trigger s[i], x]
-        s.contains(x) <==> exists|i: int| 0 <= i < s.len() && s[i] == x,
+        #[trigger] s.contains(x) <==> exists|i: int| 0 <= i < s.len() && s[i] == x,
 {
 }
 
@@ -1676,7 +1672,7 @@ pub broadcast proof fn lemma_seq_contains<A>(s: Seq<A>, x: A)
 /// The empty sequence contains nothing
 pub broadcast proof fn lemma_seq_empty_contains_nothing<A>(x: A)
     ensures
-        ! (#[trigger] Seq::<A>::empty().contains(x)),
+        !(#[trigger] Seq::<A>::empty().contains(x)),
 {
 }
 
@@ -1719,7 +1715,9 @@ pub broadcast proof fn lemma_seq_concat_contains_all_elements<A>(x: Seq<A>, y: S
 /// After pushing an element onto a sequence, the sequence contains that element
 pub broadcast proof fn lemma_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
     ensures
-        (#[trigger] s.push(v).contains(x) <==> v == x || s.contains(x)) && #[trigger] s.push(v).contains(v),
+        (#[trigger] s.push(v).contains(x) <==> v == x || s.contains(x)) && #[trigger] s.push(
+            v,
+        ).contains(v),
 {
     assert forall|elt: A| #[trigger] s.contains(elt) implies #[trigger] s.push(v).contains(elt) by {
         let index = choose|i: int| 0 <= i < s.len() && s[i] == elt;
@@ -1810,7 +1808,8 @@ pub broadcast proof fn lemma_seq_take_contains<A>(s: Seq<A>, n: int, x: A)
     requires
         0 <= n <= s.len(),
     ensures
-        #[trigger] s.take(n).contains(x) <==> (exists|i: int| 0 <= i < n <= s.len() && #[trigger] s[i] == x),
+        #[trigger] s.take(n).contains(x) <==> (exists|i: int|
+            0 <= i < n <= s.len() && #[trigger] s[i] == x),
 {
     assert((exists|i: int| 0 <= i < n <= s.len() && #[trigger] s[i] == x) ==> s.take(n).contains(x))
         by {
@@ -1864,7 +1863,8 @@ pub broadcast proof fn lemma_seq_skip_contains<A>(s: Seq<A>, n: int, x: A)
     requires
         0 <= n <= s.len(),
     ensures
-        #[trigger] s.skip(n).contains(x) <==> (exists|i: int| 0 <= n <= i < s.len() && #[trigger] s[i] == x),
+        #[trigger] s.skip(n).contains(x) <==> (exists|i: int|
+            0 <= n <= i < s.len() && #[trigger] s[i] == x),
 {
     assert((exists|i: int| 0 <= n <= i < s.len() && #[trigger] s[i] == x) ==> s.skip(n).contains(x))
         by {
@@ -1945,7 +1945,6 @@ pub broadcast proof fn lemma_seq_skip_update_commut1<A>(s: Seq<A>, i: int, v: A,
 /// the first `n` elements without the update.
 pub broadcast proof fn lemma_seq_skip_update_commut2<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
-
         0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).skip(n) =~= s.skip(n),
 {
 }
@@ -2185,9 +2184,12 @@ pub broadcast group group_lemma_seq_properties {
     lemma_seq_skip_nothing,
     lemma_seq_take_nothing,
     lemma_seq_skip_of_skip,
-    Seq::to_multiset_ensures,
+    // Seq::to_multiset_ensures,
+    to_multiset_build,
+    to_multiset_remove,
+    to_multiset_len,
+    to_multiset_contains,
 }
-
 
 #[doc(hidden)]
 pub use assert_seqs_equal_internal;
