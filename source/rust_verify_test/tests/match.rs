@@ -1218,3 +1218,14 @@ test_verify_one_file! {
     //} => Err(err) => assert_one_fails(err)
     } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and an if-guard")
 }
+
+test_verify_one_file! {
+    #[test] let_expr_not_supported verus_code! {
+        fn stuff(x: Option<u64>) {
+            let Some(y) = x
+            else {
+                loop { }
+            };
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: let-else")
+}

@@ -786,7 +786,11 @@ pub(crate) fn invariant_block_open<'a>(
                         ),
                     ..
                 }),
-            ..
+            els: None,
+            ty: _,
+            hir_id: _,
+            span: _,
+            source: _,
         }) if dot_dot_pos.as_opt_usize().is_none() => {
             let verus_item = verus_items.id_to_name.get(fun_id);
             let atomicity = match verus_item {
@@ -2007,7 +2011,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::If(cond, lhs, rhs) => {
             let cond = cond.peel_drop_temps();
             match cond.kind {
-                ExprKind::Let(LetExpr { pat, init: expr, ty: _, span: _, .. }) => {
+                ExprKind::Let(LetExpr { pat, init: expr, ty: _, span: _, recovered: _ }) => {
                     // if let
                     let vir_expr = expr_to_vir(bctx, expr, modifier)?;
                     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
@@ -2524,7 +2528,10 @@ fn unwrap_parameter_to_vir<'tcx>(
             },
         ty: None,
         init: None,
-        ..
+        els: None,
+        hir_id: _,
+        span: _,
+        source: _,
     }) = &stmt1.kind
     {
         Some((pat.hir_id, local_to_var(x, hir_id.local_id)))
@@ -2640,8 +2647,11 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 unsupported_err!(stmt.span, "internal item statements", stmt)
             }
         }
-        StmtKind::Let(LetStmt { pat, ty: _, init, els: _, hir_id: _, span: _, source: _ }) => {
+        StmtKind::Let(LetStmt { pat, ty: _, init, els: None, hir_id: _, span: _, source: _ }) => {
             let_stmt_to_vir(bctx, pat, init, bctx.ctxt.tcx.hir().attrs(stmt.hir_id))
+        }
+        StmtKind::Let(LetStmt { els: Some(_), .. }) => {
+            unsupported_err!(stmt.span, "let-else", stmt)
         }
     }
 }
