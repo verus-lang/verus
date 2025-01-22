@@ -212,10 +212,13 @@ pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
 )
     ensures
         len <= old(vec).len() ==> vec@ == old(vec)@.subrange(0, len as int),
-        len > old(vec).len() ==> vec@ == old(vec)@ + Seq::new(
-            (len - old(vec).len()) as nat,
-            |i: int| value,
-        ),
+        len > old(vec).len() ==> {
+            &&& vec@.len() == len
+            &&& vec@.subrange(0, len as int) == old(vec)@
+            &&& forall|i|
+                #![all_triggers]
+                old(vec).len() <= i < len ==> call_ensures(T::clone, (&value,), vec@[i])
+        },
 ;
 
 pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
