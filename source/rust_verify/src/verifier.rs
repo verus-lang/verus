@@ -1127,7 +1127,7 @@ impl Verifier {
             air_context.set_z3_param(&option, &value);
         }
         #[cfg(feature = "axiom-usage-info")]
-        if self.args.broadcast_usage_info {
+        if self.args.axiom_usage_info {
             air_context.enable_usage_info();
         }
 

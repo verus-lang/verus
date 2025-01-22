@@ -2024,9 +2024,6 @@ pub proof fn lemma_seq_properties<A>()
         forall|s: Seq<A>, m: int, n: int|
             (0 <= m && 0 <= n && m + n <= s.len()) ==> s.skip(m).skip(n) == s.skip(m + n),  //from lemma_seq_skip_of_skip(s, m, n),
         forall|s: Seq<A>, a: A| #[trigger] (s.push(a).to_multiset()) =~= s.to_multiset().insert(a),  //from o_multiset_properties
-        // For seq!, it desugars to Seq::new, which only accesss by indexing `axiom_seq_new_index`
-        // but the lemma above only reasons about push
-        //
         forall|s: Seq<A>| s.len() == #[trigger] s.to_multiset().len(),  //from to_multiset_ensures
         forall|s: Seq<A>, a: A|
             s.contains(a) <==> #[trigger] s.to_multiset().count(a)
