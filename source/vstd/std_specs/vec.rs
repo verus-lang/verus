@@ -217,7 +217,7 @@ pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
             &&& vec@.subrange(0, len as int) == old(vec)@
             &&& forall|i|
                 #![all_triggers]
-                old(vec).len() <= i < len ==> call_ensures(T::clone, (&value,), vec@[i])
+                old(vec).len() <= i < len ==> call_ensures(T::clone, (&value,), vec@[i]) || value == vec@[i]
         },
 ;
 
