@@ -2041,23 +2041,12 @@ pub proof fn lemma_seq_properties<A>()
                 > 0,  //from to_multiset_ensures
 {
     broadcast use group_lemma_seq_properties;
+    // TODO: for some reason this still needs to be explicitly stated
+
     assert forall|s: Seq<A>, v: A, x: A| v == x || s.contains(x) implies #[trigger] s.push(
         v,
     ).contains(x) by {
         lemma_seq_contains_after_push(s, v, x);
-    }
-    assert forall|s: Seq<A>, a: A| #[trigger]
-        (s.push(a).to_multiset()) =~= s.to_multiset().insert(a) by {
-        s.to_multiset_ensures();
-    }
-    assert forall|s: Seq<A>, a: A| s.contains(a) implies #[trigger] s.to_multiset().count(a)
-        > 0 by {
-        s.to_multiset_ensures();
-    }
-    assert forall|s: Seq<A>, a: A| #[trigger] s.to_multiset().count(a) > 0 implies s.contains(
-        a,
-    ) by {
-        s.to_multiset_ensures();
     }
 }
 
