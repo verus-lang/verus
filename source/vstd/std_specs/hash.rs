@@ -618,9 +618,8 @@ impl<'a, Key: 'a> IterAdditionalSpecFns<'a, Key> for Iter<'a, Key> {
     spec fn view(self: &Iter<'a, Key>) -> (int, Seq<Key>);
 }
 
-pub assume_specification<'a, Key>[ Iter::<'a, Key>::next ](elements: &mut Iter<'a, Key>) -> (r: Option<
-    &'a Key,
->)
+pub assume_specification<'a, Key>[ Iter::<'a, Key>::next ](elements: &mut Iter<'a, Key>) -> (r:
+    Option<&'a Key>)
     ensures
         ({
             let (old_index, old_seq) = old(elements)@;
@@ -906,7 +905,10 @@ pub assume_specification<Key, S>[ HashSet::<Key, S>::clear ](m: &mut HashSet<Key
         m@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<Key, S>) -> (r: Iter<'a, Key>)
+pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<Key, S>) -> (r: Iter<
+    'a,
+    Key,
+>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             let (index, s) = r@;
