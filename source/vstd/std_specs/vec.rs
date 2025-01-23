@@ -201,8 +201,25 @@ pub broadcast proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(
 
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::truncate ](vec: &mut Vec<T, A>, len: usize)
     ensures
-        len <= vec.len() ==> vec@ == old(vec)@.subrange(0, len as int),
-        len > vec.len() ==> vec@ == old(vec)@,
+        len <= old(vec).len() ==> vec@ == old(vec)@.subrange(0, len as int),
+        len > old(vec).len() ==> vec@ == old(vec)@,
+;
+
+pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
+    vec: &mut Vec<T, A>,
+    len: usize,
+    value: T,
+)
+    ensures
+        len <= old(vec).len() ==> vec@ == old(vec)@.subrange(0, len as int),
+        len > old(vec).len() ==> {
+            &&& vec@.len() == len
+            &&& vec@.subrange(0, old(vec).len() as int) == old(vec)@
+            &&& forall|i|
+                #![all_triggers]
+                old(vec).len() <= i < len ==> call_ensures(T::clone, (&value,), vec@[i]) || value
+                    == vec@[i]
+        },
 ;
 
 pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)

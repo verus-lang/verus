@@ -72,6 +72,7 @@ impl Printer {
             Expr::Is(expr) => self.expr_is(expr),
             Expr::Has(expr) => self.expr_has(expr),
             Expr::GetField(expr) => self.expr_get_field(expr),
+            Expr::Matches(m) => self.expr_matches(m),
 
             #[cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
             _ => unimplemented!("unknown Expr {:?}", expr),
@@ -107,6 +108,30 @@ impl Printer {
         self.expr(&expr.lhs);
         self.word(" has ");
         self.expr(&expr.rhs);
+    }
+
+    pub fn expr_matches(&mut self, expr: &syn_verus::ExprMatches) {
+        self.outer_attrs(&expr.attrs);
+        self.expr(&expr.lhs);
+        self.word(" matches ");
+        self.pat(&expr.pat);
+        match &expr.op_expr {
+            None => {}
+            Some(syn_verus::MatchesOpExpr { op_token, rhs }) => {
+                match op_token {
+                    syn_verus::MatchesOpToken::Implies(..) => {
+                        self.word(" ==> ");
+                    }
+                    syn_verus::MatchesOpToken::AndAnd(..) => {
+                        self.word(" && ");
+                    }
+                    syn_verus::MatchesOpToken::BigAnd => {
+                        self.word(" &&& ");
+                    }
+                }
+                self.expr(rhs);
+            }
+        }
     }
 
     pub fn expr_get_field(&mut self, expr: &syn_verus::ExprGetField) {

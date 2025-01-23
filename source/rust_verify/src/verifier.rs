@@ -128,6 +128,12 @@ impl air::messages::Diagnostics for Reporter<'_> {
                 &msg.help,
             ),
         }
+
+        if let Some(fancy_note) = &msg.fancy_note {
+            // The fancy_note might use terminal colors, which will get escaped if we use
+            // the Rust emitter. Thus, we have to emit this note out-of-band.
+            eprintln!("{:}{:}", console::style("note: ").bright().blue().to_string(), fancy_note);
+        }
     }
 
     fn report(&self, msg: &ArcDynMessage) {
