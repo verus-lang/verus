@@ -793,6 +793,46 @@ test_verify_one_file! {
             assert(items@.to_set() =~= set![3u32, 6u32]) by {
                 assert(g_keys.take(g_keys.len() as int) =~= g_keys);
             }
+            assert(items@.no_duplicates());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_hash_set_iter verus_code! {
+        use std::collections::HashSet;
+        use std::collections::hash_set::Iter;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::*;
+        fn test()
+        {
+            broadcast use vstd::std_specs::hash::group_hash_axioms;
+            let mut m = HashSet::<u32>::new();
+            assert(m@ == Set::<u32>::empty());
+
+            m.insert(3);
+            m.insert(6);
+            let m_iter = m.iter();
+            assert(m_iter@.0 == 0);
+            assert(m_iter@.1.to_set() =~= set![3u32, 6u32]);
+            let ghost g_elements = m_iter@.1;
+
+            let mut items = Vec::<u32>::new();
+            assert(items@ =~= g_elements.take(0));
+
+            for k in iter: m_iter
+                invariant
+                    iter.elements == g_elements,
+                    g_elements.to_set() =~= set![3u32, 6u32],
+                    items@ == iter@,
+            {
+                assert(iter.elements.take(iter.pos).push(*k) =~= iter.elements.take(iter.pos + 1));
+                items.push(*k);
+            }
+            assert(items@.to_set() =~= set![3u32, 6u32]) by {
+                assert(g_elements.take(g_elements.len() as int) =~= g_elements);
+            }
+            assert(items@.no_duplicates());
         }
     } => Ok(())
 }
