@@ -484,27 +484,11 @@ fn loop_body_has_break(loop_label: &Option<String>, body: &Expr) -> bool {
 }
 
 /// Determine if it's possible for control flow to reach the statement after the loop exit.
-/// Naturally, we need to be conservative and answer 'yes' if we can't tell.
-/// However, this analysis is also relevant to the typing of the program: in particular,
-/// we ALSO need to return 'no' if any case where rustc's typechecker
-/// might have said 'no'.
+/// To be conservative, we need to answer 'yes' (true) if we can't tell.
 ///
-/// The reason is that: if rustc determines that the loop can't exit, then
-/// the code after this will be unreachable, which means the user might be allowed
-/// to leave off a return expression. We need to detect that case, or else we might
-/// wrongly determine that it returns a 'unit' and we'll create malformed AIR code.
-///
-/// So when does Rust do this? As far as I can tell, it only does this if:
-///
-///   (i) it's a 'loop' statement, and
-///   (ii) it doesn't have ANY 'break' statement in it
-///        (It is possible that a 'break' statement in a while loop might itself be
-///        unreachable, but Rust doesn't seem to take that into account for this purpose.)
-///
-/// TODO: Update this check when we support 'break' statements.
-/// Notes: it may be possible to get this information from rustc, either typeck or MIR.
-/// On the other hand, we'll need to answer the question "does this loop have any break
-/// statements?" for invariant gen anyway, and that's a slightly different question.
+/// Note: we originally used this to handle the case where the loop body returns
+/// the never type (!). However, that isn't actually important anymore since loops will
+/// be wrapped in the NeverToAny node. It's likely that this check can simply be removed.
 
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
