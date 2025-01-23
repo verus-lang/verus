@@ -87,7 +87,7 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 // isn't satisfied by having `Key` implement `Hash`, since this trait
 // doesn't mandate determinism.
 #[verifier::external_body]
-pub spec fn obeys_key_model<Key: ?Sized>() -> bool;
+pub closed spec fn obeys_key_model<Key: ?Sized>() -> bool;
 
 // These axioms state that any primitive type, or `Box` thereof,
 // obeys the requirements to be a key in a hash table that
@@ -207,7 +207,7 @@ pub trait ExBuildHasher {
 }
 
 #[verifier::external_body]
-pub spec fn builds_valid_hashers<T: ?Sized>() -> bool;
+pub closed spec fn builds_valid_hashers<T: ?Sized>() -> bool;
 
 // A commonly used type of trait `BuildHasher` is `RandomState`. We
 // model that type here. In particular, we have an axiom that
