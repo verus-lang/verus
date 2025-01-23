@@ -389,6 +389,7 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
     #![feature(allocator_api)]
     #![feature(proc_macro_hygiene)]
     #![feature(const_refs_to_static)]
+    #![feature(never_type)]
 
     use builtin::*;
     use builtin_macros::*;

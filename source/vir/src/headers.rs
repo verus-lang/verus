@@ -48,7 +48,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     for stmt in block.iter() {
         let mut is_unwrap_parameter = false;
         match &stmt.x {
-            StmtX::Expr(expr) => match &expr.x {
+            StmtX::Expr(expr) => match &peel(expr).x {
                 ExprX::Header(header) => match &**header {
                     HeaderExprX::UnwrapParameter(unwrap) => {
                         if !unwrap_parameter_allowed {
@@ -227,6 +227,8 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
 }
 
 pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
+    let body = peel_mut(body);
+
     #[derive(Clone, Copy)]
     enum NestedHeaderBlock {
         No,
@@ -293,7 +295,7 @@ pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
             }
             let mut header = read_header_block(&mut block)?;
             if let Some(e) = &expr {
-                if let ExprX::Header(h) = &e.x {
+                if let ExprX::Header(h) = &peel(e).x {
                     if let HeaderExprX::NoMethodBody = **h {
                         if block.len() != 0 {
                             return Err(error(
@@ -482,4 +484,21 @@ pub fn make_trait_decls(methods: Vec<Function>) -> Result<Vec<Function>, VirErr>
         return Err(error(&extra_spec.span, "no matching method found for method specification"));
     }
     Ok(decls)
+}
+
+fn peel(expr: &Expr) -> &Expr {
+    match &expr.x {
+        ExprX::NeverToAny(e) => e,
+        _ => expr,
+    }
+}
+
+fn peel_mut(expr: &mut Expr) -> &mut Expr {
+    match &expr.x {
+        ExprX::NeverToAny(_) => match &mut Arc::make_mut(expr).x {
+            ExprX::NeverToAny(e) => e,
+            _ => unreachable!(),
+        },
+        _ => expr,
+    }
 }

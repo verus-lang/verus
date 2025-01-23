@@ -1516,6 +1516,13 @@ fn check_expr_handle_mut_arg(
             Ok(Mode::Exec)
         }
         ExprX::AirStmt(_) => Ok(Mode::Exec),
+        ExprX::NeverToAny(e) => {
+            let mode = check_expr(ctxt, record, typing, outer_mode, e)?;
+            if mode == Mode::Spec {
+                return Err(error(&expr.span, "never-to-any coercion is not allowed in spec mode"));
+            }
+            Ok(mode)
+        }
     };
     Ok((mode?, None))
 }
