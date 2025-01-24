@@ -115,8 +115,8 @@ impl<A> Seq<A> {
             assert forall|x: A| !self.contains(x) implies !(#[trigger] self.sort_by(leq).contains(
                 x,
             )) by {
-                self.to_multiset_ensures();
-                self.sort_by(leq).to_multiset_ensures();
+                broadcast use group_to_multiset_ensures;
+
                 assert(!self.contains(x) ==> self.to_multiset().count(x) == 0);
             }
         }
@@ -151,7 +151,45 @@ impl<A> Seq<A> {
         }
     }
 
-    pub broadcast proof fn filter_lemma(self, pred: spec_fn(A) -> bool)
+    pub broadcast proof fn lemma_filter_len(self, pred: spec_fn(A) -> bool)
+        ensures
+    // the filtered list can't grow
+
+            #[trigger] self.filter(pred).len() <= self.len(),
+        decreases self.len(),
+    {
+        reveal(Seq::filter);
+        let out = self.filter(pred);
+        if 0 < self.len() {
+            self.drop_last().lemma_filter_len(pred);
+        }
+    }
+
+    pub broadcast proof fn lemma_filter_pred(self, pred: spec_fn(A) -> bool, i: int)
+        requires
+            0 <= i < self.filter(pred).len(),
+        ensures
+            pred(#[trigger] self.filter(pred)[i]),
+    {
+        // TODO: remove this after proved filter_lemma is proved
+        #[allow(deprecated)]
+        self.filter_lemma(pred);
+    }
+
+    pub broadcast proof fn lemma_filter_contains(self, pred: spec_fn(A) -> bool, i: int)
+        requires
+            0 <= i < self.len() && pred(self[i]),
+        ensures
+            #[trigger] self.filter(pred).contains(self[i]),
+    {
+        // TODO: remove this after proved filter_lemma is proved
+        #[allow(deprecated)]
+        self.filter_lemma(pred);
+    }
+
+    // deprecated since the triggers inside of 2 of the conjuncts are blocked
+    #[deprecated = "Use `broadcast use group_filter_ensures` instead" ]
+    pub proof fn filter_lemma(self, pred: spec_fn(A) -> bool)
         ensures
     // we don't keep anything bad
     // TODO(andrea): recommends didn't catch this error, where i isn't known to be in
@@ -456,7 +494,7 @@ impl<A> Seq<A> {
                 self.contains(a) <==> #[trigger] self.to_multiset().count(a)
                     > 0,  // to_multiset_contains
     {
-        broadcast use group_lemma_seq_properties;
+        broadcast use group_seq_properties;
 
     }
 
@@ -723,7 +761,8 @@ impl<A> Seq<A> {
             assert(forall|x: A|
                 self.to_multiset().contains(x) ==> self.to_multiset().count(x) == 1);
         } else {
-            lemma_seq_properties::<A>();
+            broadcast use group_seq_properties;
+
             assert(self.drop_last().push(self.last()) =~= self);
             self.drop_last().lemma_multiset_has_no_duplicates();
         }
@@ -757,8 +796,7 @@ impl<A> Seq<A> {
                 let s1 = self.subrange(b, self.len() as int);
                 assert(self == s0 + s1);
 
-                s0.to_multiset_ensures();
-                s1.to_multiset_ensures();
+                broadcast use group_to_multiset_ensures;
 
                 lemma_multiset_commutative(s0, s1);
                 assert(self.to_multiset().count(self[a]) >= 2);
@@ -870,8 +908,8 @@ impl<A> Seq<A> {
         decreases self.len(),
     {
         broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
+        broadcast use group_seq_properties;
 
-        lemma_seq_properties::<A>();
         lemma_set_properties::<A>();
         if self.len() == 0 {
         } else {
@@ -907,6 +945,7 @@ impl<A> Seq<A> {
         decreases self.len(),
     {
         broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
+        // broadcast use group_seq_properties;
 
         lemma_seq_properties::<A>();
         if self.len() == 0 {
@@ -1039,8 +1078,8 @@ impl<A> Seq<Seq<A>> {
             self.flatten_alt().len() <= self.len() * j,
         decreases self.len(),
     {
-        lemma_seq_properties::<A>();
-        lemma_seq_properties::<Seq<A>>();
+        broadcast use group_seq_properties;
+
         if self.len() == 0 {
         } else {
             self.drop_last().lemma_flatten_length_le_mul(j);
@@ -1226,6 +1265,7 @@ proof fn lemma_merge_sorted_with_ensures<A>(left: Seq<A>, right: Seq<A>, leq: sp
         sorted_by(merge_sorted_with(left, right, leq), leq),
     decreases left.len(), right.len(),
 {
+    // broadcat use group_seq_properties;
     lemma_seq_properties::<A>();
     if left.len() == 0 {
         assert(left + right =~= right);
@@ -1300,6 +1340,7 @@ pub proof fn lemma_max_of_concat(x: Seq<int>, y: Seq<int>)
         forall|elt: int| (x + y).contains(elt) ==> elt <= (x + y).max(),
     decreases x.len(),
 {
+    // broadcast use group_seq_properties;
     lemma_seq_properties::<int>();
     x.max_ensures();
     y.max_ensures();
@@ -1333,6 +1374,7 @@ pub proof fn lemma_min_of_concat(x: Seq<int>, y: Seq<int>)
     x.min_ensures();
     y.min_ensures();
     (x + y).min_ensures();
+    // broadcast use group_seq_properties;
     lemma_seq_properties::<int>();
     if x.len() == 1 {
         assert((x + y).min() <= y.min()) by {
@@ -1641,9 +1683,8 @@ pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: spec_fn(A, A) -> 
     decreases x.len(), y.len(),
 {
     broadcast use super::multiset::group_multiset_axioms;
+    broadcast use group_to_multiset_ensures;
 
-    x.to_multiset_ensures();
-    y.to_multiset_ensures();
     if x.len() == 0 || y.len() == 0 {
     } else {
         assert(x.to_multiset().contains(x[0]));
@@ -1762,8 +1803,7 @@ pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_
         l1.fold_right(f, v) == l2.fold_right(f, v),
     decreases l1.len(),
 {
-    l1.to_multiset_ensures();
-    l2.to_multiset_ensures();
+    broadcast use group_to_multiset_ensures;
 
     if l1.len() > 0 {
         let a = l1.last();
@@ -1886,10 +1926,9 @@ pub broadcast proof fn lemma_seq_skip_index<A>(s: Seq<A>, n: int, j: int)
 /// If `k` is a valid index between `n` (inclusive) and the length of sequence `s` (exclusive),
 /// then the `k-n`th element of the sequence `s.skip(n)` is the same as the `k`th element of the
 /// original sequence `s`.
-// TODO: this is a bit hard to trigger on for `k - n`
-pub proof fn lemma_seq_skip_index2<A>(s: Seq<A>, n: int, k: int)
+pub broadcast proof fn lemma_seq_skip_index2<A>(s: Seq<A>, n: int, k: int)
     ensures
-        0 <= n <= k < s.len() ==> (s.skip(n))[k - n] == s[k],
+        0 <= n <= k < s.len() ==> (#[trigger] s.skip(n))[k - n] == #[trigger] s[k],
 {
 }
 
@@ -1987,6 +2026,7 @@ pub broadcast proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
 }
 
 /// Properties of sequences from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
+#[deprecated = "Use `broadcast use group_seq_properties` instead"]
 pub proof fn lemma_seq_properties<A>()
     ensures
         forall|s: Seq<A>, x: A|
@@ -2040,7 +2080,7 @@ pub proof fn lemma_seq_properties<A>()
             s.contains(a) <==> #[trigger] s.to_multiset().count(a)
                 > 0,  //from to_multiset_ensures
 {
-    broadcast use group_lemma_seq_properties;
+    broadcast use group_seq_properties;
     // TODO: for some reason this still needs to be explicitly stated
 
     assert forall|s: Seq<A>, v: A, x: A| v == x || s.contains(x) implies #[trigger] s.push(
@@ -2140,8 +2180,15 @@ macro_rules! assert_seqs_equal_internal {
     }
 }
 
+pub broadcast group group_filter_ensures {
+    Seq::lemma_filter_len,
+    Seq::lemma_filter_pred,
+    Seq::lemma_filter_contains,
+}
+
 pub broadcast group group_seq_lib_default {
-    Seq::filter_lemma,
+    // TODO: somehow removing the following line will cause `lemma_sorted_unique` to fail
+    group_filter_ensures,
     Seq::add_empty_left,
     Seq::add_empty_right,
     Seq::push_distributes_over_add,
@@ -2149,8 +2196,15 @@ pub broadcast group group_seq_lib_default {
     seq_to_set_is_finite,
 }
 
+pub broadcast group group_to_multiset_ensures {
+    to_multiset_build,
+    to_multiset_remove,
+    to_multiset_len,
+    to_multiset_contains,
+}
+
 // include all the Dafny prelude lemmas
-pub broadcast group group_lemma_seq_properties {
+pub broadcast group group_seq_properties {
     lemma_seq_contains,
     lemma_seq_empty_contains_nothing,
     lemma_seq_empty_equality,
@@ -2163,7 +2217,7 @@ pub broadcast group group_lemma_seq_properties {
     lemma_seq_skip_len,
     lemma_seq_skip_contains,
     lemma_seq_skip_index,
-    // lemma_seq_skip_index2,
+    lemma_seq_skip_index2,
     lemma_seq_append_take_skip,
     lemma_seq_take_update_commut1,
     lemma_seq_take_update_commut2,
@@ -2173,11 +2227,7 @@ pub broadcast group group_lemma_seq_properties {
     lemma_seq_skip_nothing,
     lemma_seq_take_nothing,
     lemma_seq_skip_of_skip,
-    // Seq::to_multiset_ensures,
-    to_multiset_build,
-    to_multiset_remove,
-    to_multiset_len,
-    to_multiset_contains,
+    group_to_multiset_ensures,
 }
 
 #[doc(hidden)]
