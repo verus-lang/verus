@@ -74,8 +74,9 @@ impl Printer {
             Expr::GetField(expr) => self.expr_get_field(expr),
             Expr::Matches(m) => self.expr_matches(m),
 
-            #[cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
-            _ => unimplemented!("unknown Expr {:?}", expr),
+            Expr::Assume(_) | Expr::Assert(_) | Expr::AssertForall(_) | Expr::RevealHide(_) => {
+                unimplemented!("unknown Expr {:?}", expr)
+            }
         }
     }
 
