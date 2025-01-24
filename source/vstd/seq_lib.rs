@@ -945,9 +945,7 @@ impl<A> Seq<A> {
         decreases self.len(),
     {
         broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
-        // broadcast use group_seq_properties;
 
-        lemma_seq_properties::<A>();
         if self.len() == 0 {
         } else {
             assert(self =~= Seq::empty().push(self.first()).add(self.drop_first()));
@@ -1265,8 +1263,12 @@ proof fn lemma_merge_sorted_with_ensures<A>(left: Seq<A>, right: Seq<A>, leq: sp
         sorted_by(merge_sorted_with(left, right, leq), leq),
     decreases left.len(), right.len(),
 {
-    // broadcat use group_seq_properties;
-    lemma_seq_properties::<A>();
+    // TODO: lemma_seq_properties will verify, but not broadcast use
+    // lemma_seq_properties::<A>();
+    // broadcast use group_seq_properties;
+    // singled out the only lemma that helps with the proof
+    broadcast use lemma_seq_append_take_skip;
+
     if left.len() == 0 {
         assert(left + right =~= right);
     } else if right.len() == 0 {
@@ -1340,8 +1342,8 @@ pub proof fn lemma_max_of_concat(x: Seq<int>, y: Seq<int>)
         forall|elt: int| (x + y).contains(elt) ==> elt <= (x + y).max(),
     decreases x.len(),
 {
-    // broadcast use group_seq_properties;
-    lemma_seq_properties::<int>();
+    broadcast use group_seq_properties;
+
     x.max_ensures();
     y.max_ensures();
     (x + y).max_ensures();
@@ -1374,8 +1376,8 @@ pub proof fn lemma_min_of_concat(x: Seq<int>, y: Seq<int>)
     x.min_ensures();
     y.min_ensures();
     (x + y).min_ensures();
-    // broadcast use group_seq_properties;
-    lemma_seq_properties::<int>();
+    broadcast use group_seq_properties;
+
     if x.len() == 1 {
         assert((x + y).min() <= y.min()) by {
             assert((x + y).contains(y.min()));
@@ -1398,7 +1400,6 @@ pub proof fn lemma_min_of_concat(x: Seq<int>, y: Seq<int>)
 pub broadcast proof fn to_multiset_build<A>(s: Seq<A>, a: A)
     ensures
         #![trigger s.push(a).to_multiset()]
-        #![trigger s.to_multiset().insert(a)]
         s.push(a).to_multiset() =~= s.to_multiset().insert(a),
     decreases s.len(),
 {
@@ -1422,7 +1423,6 @@ pub broadcast proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
         0 <= i < s.len(),
     ensures
         #![trigger s.remove(i).to_multiset()]
-        #![trigger s.to_multiset().remove(s[i])]
         s.remove(i).to_multiset() =~= s.to_multiset().remove(s[i]),
 {
     broadcast use super::multiset::group_multiset_axioms;
@@ -1705,7 +1705,7 @@ pub proof fn lemma_sorted_unique<A>(x: Seq<A>, y: Seq<A>, leq: spec_fn(A, A) -> 
 // This verified lemma used to be an axiom in the Dafny prelude
 pub broadcast proof fn lemma_seq_contains<A>(s: Seq<A>, x: A)
     ensures
-        #[trigger] s.contains(x) <==> exists|i: int| 0 <= i < s.len() && s[i] == x,
+        #[trigger] s.contains(x) <==> exists|i: int| 0 <= i < s.len() && #[trigger] s[i] == x,
 {
 }
 
@@ -1953,7 +1953,6 @@ pub broadcast proof fn lemma_seq_append_take_skip<A>(a: Seq<A>, b: Seq<A>, n: in
 pub broadcast proof fn lemma_seq_take_update_commut1<A>(s: Seq<A>, i: int, v: A, n: int)
     ensures
         #![trigger s.update(i, v).take(n)]
-        #![trigger s.take(n).update(i, v)]
         0 <= i < n <= s.len() ==> #[trigger] s.update(i, v).take(n) =~= s.take(n).update(i, v),
 {
 }
@@ -1994,7 +1993,6 @@ pub broadcast proof fn lemma_seq_skip_update_commut2<A>(s: Seq<A>, i: int, v: A,
 pub broadcast proof fn lemma_seq_skip_build_commut<A>(s: Seq<A>, v: A, n: int)
     ensures
         #![trigger s.push(v).skip(n)]
-        #![trigger s.skip(n).push(v)]
         0 <= n <= s.len() ==> s.push(v).skip(n) =~= s.skip(n).push(v),
 {
 }
@@ -2026,6 +2024,7 @@ pub broadcast proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
 }
 
 /// Properties of sequences from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
+// TODO: seems like this warning doesn't come up?
 #[deprecated = "Use `broadcast use group_seq_properties` instead"]
 pub proof fn lemma_seq_properties<A>()
     ensures
@@ -2187,7 +2186,6 @@ pub broadcast group group_filter_ensures {
 }
 
 pub broadcast group group_seq_lib_default {
-    // TODO: somehow removing the following line will cause `lemma_sorted_unique` to fail
     group_filter_ensures,
     Seq::add_empty_left,
     Seq::add_empty_right,
