@@ -227,8 +227,8 @@ pub broadcast proof fn axiom_random_state_builds_valid_hashers()
 // so we specify that type here.
 #[verifier::external_type_specification]
 #[verifier::external_body]
-#[verifier::reject_recursive_types(Key)]
-#[verifier::reject_recursive_types(Value)]
+#[verifier::accept_recursive_types(Key)]
+#[verifier::accept_recursive_types(Value)]
 pub struct ExKeys<'a, Key: 'a, Value: 'a>(Keys<'a, Key, Value>);
 
 pub trait KeysAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
@@ -335,8 +335,8 @@ impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
 // We now specify the behavior of `HashMap`.
 #[verifier::external_type_specification]
 #[verifier::external_body]
-#[verifier::reject_recursive_types(Key)]
-#[verifier::reject_recursive_types(Value)]
+#[verifier::accept_recursive_types(Key)]
+#[verifier::accept_recursive_types(Value)]
 #[verifier::reject_recursive_types(S)]
 pub struct ExHashMap<Key, Value, S>(HashMap<Key, Value, S>);
 
@@ -607,7 +607,7 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::keys ](
 // so we specify that type here.
 #[verifier::external_type_specification]
 #[verifier::external_body]
-#[verifier::reject_recursive_types(Key)]
+#[verifier::accept_recursive_types(Key)]
 pub struct ExIter<'a, Key: 'a>(Iter<'a, Key>);
 
 pub trait IterAdditionalSpecFns<'a, Key: 'a> {
@@ -705,7 +705,7 @@ impl<'a, Key> View for IterGhostIterator<'a, Key> {
 // We now specify the behavior of `HashSet`.
 #[verifier::external_type_specification]
 #[verifier::external_body]
-#[verifier::reject_recursive_types(Key)]
+#[verifier::accept_recursive_types(Key)]
 #[verifier::reject_recursive_types(S)]
 pub struct ExHashSet<Key, S>(HashSet<Key, S>);
 
