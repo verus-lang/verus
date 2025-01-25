@@ -595,12 +595,12 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::keys ](
     m: &'a HashMap<Key, Value, S>,
 ) -> (keys: Keys<'a, Key, Value>)
     ensures
-        ({
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             let (index, s) = keys@;
             &&& index == 0
             &&& s.to_set() == m@.dom()
             &&& s.no_duplicates()
-        }),
+        },
 ;
 
 // The `iter` method of a `HashSet` returns an iterator of type `Iter`,
