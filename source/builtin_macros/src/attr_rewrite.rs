@@ -33,7 +33,7 @@
 use core::convert::TryFrom;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use syn::{parse2, spanned::Spanned, Attribute, AttributeArgs, Ident, Item};
+use syn::{parse2, spanned::Spanned, AttributeArgs, Ident, Item};
 
 use crate::{
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
@@ -165,7 +165,7 @@ pub fn rewrite_verus_attribute(
 ) -> TokenStream {
     if erase.keep() {
         let item: Item = parse2(input).expect("#[verus_verify] must be applied to an item");
-        let mut attributes: Vec<Attribute> = vec![];
+        let mut attributes = Vec::new();
         const VERIFIER_ATTRS: [&str; 2] = ["external", "external_body"];
         for arg in attr_args {
             if let syn::NestedMeta::Meta(m) = arg {
