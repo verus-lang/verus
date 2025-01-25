@@ -1539,7 +1539,7 @@ fn check_stmt(
             let _ = check_expr(ctxt, record, typing, outer_mode, e)?;
             Ok(())
         }
-        StmtX::Decl { pattern, mode: None, init } => {
+        StmtX::Decl { pattern, mode: None, init, els: _ } => {
             // Special case mode inference just for our encoding of "let tracked pat = ..."
             // in Rust as "let xl; ... { let pat ... xl = xr; }".
             match (&pattern.x, init) {
@@ -1550,7 +1550,7 @@ fn check_stmt(
             }
             Ok(())
         }
-        StmtX::Decl { pattern, mode: Some(mode), init } => {
+        StmtX::Decl { pattern, mode: Some(mode), init, els: _ } => {
             let mode = if typing.block_ghostness != Ghost::Exec && *mode == Mode::Exec {
                 Mode::Spec
             } else {

@@ -2489,10 +2489,23 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     pattern: &rustc_hir::Pat<'tcx>,
     initializer: &Option<&Expr<'tcx>>,
+    els: &Option<&Block<'tcx>>,
     attrs: &[Attribute],
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     let mode = get_var_mode(bctx.mode, attrs);
     let infer_mode = parse_attrs_opt(attrs, None).contains(&Attr::InferMode);
+    let els = if let Some(els) = els {
+        if matches!(mode, Mode::Spec | Mode::Proof) {
+            unsupported_err!(els.span, "let-else in spec/proof", els);
+        }
+        let init = initializer.unwrap();
+        let init_type = typ_of_node(bctx, els.span, &init.hir_id, false)?;
+        let els_typ = typ_of_node(bctx, els.span, &els.hir_id, false)?;
+        let els_block = block_to_vir(bctx, els, &els.span, &els_typ, ExprModifier::REGULAR)?;
+        Some(bctx.spanned_typed_new(els.span, &init_type, ExprX::NeverToAny(els_block)))
+    } else {
+        None
+    };
     let init = initializer.map(|e| expr_to_vir(bctx, e, ExprModifier::REGULAR)).transpose()?;
 
     if parse_attrs_opt(attrs, Some(&mut *bctx.ctxt.diagnostics.borrow_mut()))
@@ -2523,7 +2536,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
 
     let vir_pattern = pattern_to_vir(bctx, pattern)?;
     let mode = if infer_mode { None } else { Some(mode) };
-    Ok(vec![bctx.spanned_new(pattern.span, StmtX::Decl { pattern: vir_pattern, mode, init })])
+    Ok(vec![bctx.spanned_new(pattern.span, StmtX::Decl { pattern: vir_pattern, mode, init, els })])
 }
 
 fn unwrap_parameter_to_vir<'tcx>(
@@ -2659,11 +2672,8 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 unsupported_err!(stmt.span, "internal item statements", stmt)
             }
         }
-        StmtKind::Let(LetStmt { pat, ty: _, init, els: None, hir_id: _, span: _, source: _ }) => {
-            let_stmt_to_vir(bctx, pat, init, bctx.ctxt.tcx.hir().attrs(stmt.hir_id))
-        }
-        StmtKind::Let(LetStmt { els: Some(_), .. }) => {
-            unsupported_err!(stmt.span, "let-else", stmt)
+        StmtKind::Let(LetStmt { pat, ty: _, init, els, hir_id: _, span: _, source: _ }) => {
+            let_stmt_to_vir(bctx, pat, init, els, bctx.ctxt.tcx.hir().attrs(stmt.hir_id))
         }
     }
 }

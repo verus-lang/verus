@@ -871,7 +871,7 @@ pub enum StmtX {
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
     /// (The mode is only allowed to be None for one special case; see modes.rs)
-    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Expr> },
+    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Expr>, els: Option<Expr> },
 }
 
 /// Function parameter
