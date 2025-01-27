@@ -2072,7 +2072,7 @@ pub proof fn lemma_seq_properties<A>()
         forall|s: Seq<A>, n: int| n == 0 ==> #[trigger] s.skip(n) == s,  //from lemma_seq_skip_nothing(s, n),
         forall|s: Seq<A>, n: int| n == 0 ==> #[trigger] s.take(n) == Seq::<A>::empty(),  //from lemma_seq_take_nothing(s, n),
         forall|s: Seq<A>, m: int, n: int|
-            (0 <= m && 0 <= n && m + n <= s.len()) ==> s.skip(m).skip(n) == s.skip(m + n),  //from lemma_seq_skip_of_skip(s, m, n),
+            (0 <= m && 0 <= n && m + n <= s.len()) ==> #[trigger] s.skip(m).skip(n) == s.skip(m + n),  //from lemma_seq_skip_of_skip(s, m, n),
         forall|s: Seq<A>, a: A| #[trigger] (s.push(a).to_multiset()) =~= s.to_multiset().insert(a),  //from o_multiset_properties
         forall|s: Seq<A>| s.len() == #[trigger] s.to_multiset().len(),  //from to_multiset_ensures
         forall|s: Seq<A>, a: A|
