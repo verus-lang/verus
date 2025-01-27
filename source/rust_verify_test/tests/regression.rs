@@ -1328,3 +1328,23 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error_msg(e, "use the universal function call syntax to disambiguate")
 }
+
+test_verify_one_file_with_options! {
+    #[test] const_in_array_types_regression_1334 ["vstd"] => verus_code! {
+        const TEST: usize = 4;
+
+        pub fn get_array() -> [u8; TEST] {
+            return [0; TEST]
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] fieldless_enum_regression_1339 verus_code! {
+        enum FieldLess {
+            A = 0,
+            B = 1,
+            C = 2,
+        }
+    } => Ok(())
+}

@@ -19,6 +19,7 @@
     - [spec functions vs. proof functions, recommends](spec_vs_proof.md)
     - [Ghost code vs. exec code](ghost_vs_exec.md)
     - [const declarations](const.md)
+    - [Putting it all together](triangle.md)
 - [Recursion and loops](recursion_loops.md)
     - [Recursive spec functions, decreases, fuel](recursion.md)
     - [Recursive exec and proof functions, proofs by induction](induction.md)
@@ -92,6 +93,9 @@
   - [Implementing `Clone`](./container_bst_clone.md)
   - [Full source for the examples](./container_bst_all_source.md)
 
+- [Interacting with unverified code]()
+  - [Calling unverified code from verified code](./calling-unverified-from-unverified.md)
+
 - [Understanding the guarantees of a verified program](./guarantees.md)
   - [Assumptions and trusted components](./tcb.md)
   - [Memory safety is conditional on verification](./memory-safety.md)
@@ -156,7 +160,9 @@
   - [Cyclic definitions]()
 - [Type invariants](./reference-type-invariants.md)
 - [Attribute list](./reference-attributes.md)
-- [The "global" directive](./reference-global.md)
+- [Directives]()
+  - [`assume_specification`](./reference-assume-specification.md)
+  - [`global`](./reference-global.md)
 - [Misc. Rust features]()
   - [Statics](./static.md)
   - [char](./char.md)

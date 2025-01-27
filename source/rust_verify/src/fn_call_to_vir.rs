@@ -22,7 +22,7 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
-use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, InstanceDef, TyKind};
+use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -195,12 +195,12 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     } else {
         let param_env = tcx.param_env(bctx.fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let inst = Instance::resolve(tcx, param_env, f, normalized_substs);
+        let inst = Instance::try_resolve(tcx, param_env, f, normalized_substs);
         let Ok(inst) = inst else {
             return err_span(expr.span, "Verus internal error: Instance::resolve");
         };
         match inst {
-            Some(Instance { def: InstanceDef::Item(did), args }) => {
+            Some(Instance { def: rustc_middle::ty::InstanceKind::Item(did), args }) => {
                 let typs = mk_typ_args(bctx, args, did, expr.span)?;
                 let mut f =
                     Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });

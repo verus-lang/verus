@@ -151,11 +151,11 @@ fn insert_spec_call(any_fn: &mut dyn AnyAttrBlock, call: &str, verus_expr: Token
     let fname = Ident::new(call, verus_expr.span());
     let tokens: TokenStream =
         syntax::rewrite_expr(EraseGhost::Keep, true, verus_expr.into()).into();
-    any_fn
-        .block_mut()
-        .unwrap()
-        .stmts
-        .insert(0, parse2(quote! { ::builtin::#fname(#tokens); }).unwrap());
+    any_fn.block_mut().unwrap().stmts.insert(
+        0,
+        parse2(quote! { #[verus::internal(const_header_wrapper)]||{::builtin::#fname(#tokens);};})
+            .unwrap(),
+    );
 }
 
 pub fn rewrite_verus_attribute(
@@ -165,12 +165,12 @@ pub fn rewrite_verus_attribute(
 ) -> TokenStream {
     if erase.keep() {
         let item: Item = parse2(input).expect("#[verus_verify] must be applied to an item");
-        let mut attributes: Vec<TokenStream> = vec![];
+        let mut attributes = Vec::new();
         const VERIFIER_ATTRS: [&str; 2] = ["external", "external_body"];
         for arg in attr_args {
             if let syn::NestedMeta::Meta(m) = arg {
                 if VERIFIER_ATTRS.contains(&m.to_token_stream().to_string().as_str()) {
-                    attributes.push(quote_spanned!(m.span() => #[verifier::#m]));
+                    attributes.push(mk_verus_attr_syn(m.span(), quote! { #m }));
                 } else {
                     panic!(
                         "unsupported parameters {:?} in #[verus_verify(...)]",
@@ -180,7 +180,7 @@ pub fn rewrite_verus_attribute(
             }
         }
         if attributes.len() == 0 {
-            attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
+            attributes.push(mk_verus_attr_syn(item.span(), quote! { verus_macro }));
         }
 
         quote_spanned! {item.span()=>
@@ -278,7 +278,9 @@ pub fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro::Token
             syntax::proof_block(erase, quote_spanned!(input.span() => {#input}).into()).into();
         quote! {
             #[verifier::proof_block]
-            #block
+            {
+                #[verus::internal(const_header_wrapper)]||#block;
+            }
         }
         .into()
     } else {

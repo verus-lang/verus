@@ -106,7 +106,7 @@ pub struct ArgsX {
     pub use_crate_name: bool,
     pub solver: SmtSolver,
     #[cfg(feature = "axiom-usage-info")]
-    pub broadcast_usage_info: bool,
+    pub axiom_usage_info: bool,
 }
 
 impl ArgsX {
@@ -150,7 +150,7 @@ impl ArgsX {
             use_crate_name: Default::default(),
             solver: Default::default(),
             #[cfg(feature = "axiom-usage-info")]
-            broadcast_usage_info: Default::default(),
+            axiom_usage_info: Default::default(),
         }
     }
 }
@@ -280,7 +280,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
     #[cfg(feature = "axiom-usage-info")]
-    const EXTENDED_BROADCAST_USAGE_INFO: &str = "broadcast-usage-info";
+    const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -304,10 +304,7 @@ pub fn parse_args_with_imports(
             "Use the crate name in paths (useful when verifying vstd without --export)",
         ),
         #[cfg(feature = "axiom-usage-info")]
-        (
-            EXTENDED_BROADCAST_USAGE_INFO,
-            "Print usage info for broadcasted axioms, lemmas, and groups",
-        ),
+        (EXTENDED_AXIOM_USAGE_INFO, "Print usage info for broadcasted axioms, lemmas, and groups"),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -652,7 +649,7 @@ pub fn parse_args_with_imports(
         use_crate_name: extended.get(EXTENDED_USE_CRATE_NAME).is_some(),
         solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         #[cfg(feature = "axiom-usage-info")]
-        broadcast_usage_info: extended.get(EXTENDED_BROADCAST_USAGE_INFO).is_some(),
+        axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
     };
 
     (Arc::new(args), unmatched)

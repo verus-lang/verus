@@ -194,3 +194,21 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "postcondition not satisfied")
 }
+
+test_verify_one_file! {
+    #[test] test_external_body code!{
+        #[verus_verify(external_body)]
+        #[verus_spec(ret =>
+            requires true
+            ensures ret
+        )]
+        fn f() -> bool {
+            false
+        }
+
+        fn g() {
+            let r = f();
+            proof!{assert(r);}
+        }
+    } => Ok(())
+}

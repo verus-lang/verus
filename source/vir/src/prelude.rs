@@ -748,6 +748,7 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
     let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
+    let prelude_axiom_array_index = str_to_node(&prelude_axiom_name("array_index"));
 
     nodes_vec!(
         // array literals
@@ -794,12 +795,16 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
         // Rewrite as ([array_index] ...), which vstd can more easily trigger on.
         // (Note that there's no axiom in the reverse direction converting array_index to apply,
         // because that would create a matching loop on i via I and %I.)
-        (axiom (forall ((Tdcr [decoration]) (T [typ]) (N Int) (Fn Fun) (i Int)) (!
+        (axiom (!
+            (forall ((Tdcr [decoration]) (T [typ]) (N Int) (Fn Fun) (i Int)) (!
             (= ([array_index] Tdcr T $ ([type_id_const_int] N) Fn (I i)) (apply [Poly] Fn i))
             :pattern (([array_new] Tdcr T N Fn) (apply [Poly] Fn i))
             :qid prelude_array_index_trigger
             :skolemid skolem_prelude_array_index_trigger
-        )))
+            ))
+            :named
+            [prelude_axiom_array_index]
+        ))
     )
 }
 

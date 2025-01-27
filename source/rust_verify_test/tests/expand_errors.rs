@@ -378,6 +378,7 @@ test_verify_one_file_with_options! {
             assert(maybe()); // FAILS
         }
     } => Err(err) => {
+        dbg!(&err.expand_errors_notes[0].rendered);
         assert!(err.expand_errors_notes[0].rendered.contains("function is uninterpreted"));
     }
 }

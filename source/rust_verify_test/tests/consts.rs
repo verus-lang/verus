@@ -4,6 +4,25 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] test_const_eval1 verus_code!{
+        #[repr(u8)]
+        enum TestConst {
+            Zero = 0,
+            One = 1,
+        }
+    }  => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_generic_const_eval2 verus_code!{
+        const S: usize = 10;
+        struct TestConst {
+            a: [u8; S],
+        }
+    }  => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test1 verus_code! {
         spec fn f() -> int { 1 }
         const C: u64 = 3 + 5;
@@ -39,7 +58,17 @@ test_verify_one_file! {
     #[test] test1_fails2 verus_code! {
         const C: u64 = S;
         const S: u64 = C;
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => assert_rust_error_msg(err, "cycle detected when simplifying constant for the type system `C`")
+}
+
+test_verify_one_file! {
+    #[test] test1_fails_const_fn verus_code! {
+        fn x() {
+        }
+        const fn y() {
+            x()
+        }
+    } => Err(err) => assert_rust_error_msg(err, "cannot call non-const fn `x` in constant functions")
 }
 
 test_verify_one_file! {
@@ -226,13 +255,14 @@ test_verify_one_file! {
             proof { let x = E; }
             0
         }
-    } => Err(err) => assert_rust_error_msg(err, "cycle detected when evaluating initializer of static `E`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot read static with mode exec")
 }
 
 test_verify_one_file! {
     #[test] const_recurse2 verus_code! {
+        exec const D: u64 = 1;
         exec const E: u64 ensures false {
-            proof { let x = F; }
+            proof { let x = D; }
             0
         }
         exec const F: u64 ensures false {
@@ -375,4 +405,11 @@ test_verify_one_file! {
             1
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] allow_external_body_const_regression_1322 verus_code! {
+        #[verifier(external_body)]
+        const A: usize = unimplemented!();
+    } => Err(err) => assert_rust_error_msg(err, "evaluation of constant value failed")
 }

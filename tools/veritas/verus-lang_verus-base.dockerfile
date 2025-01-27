@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 ubuntu:mantic
+FROM --platform=linux/amd64 ubuntu:24.04
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install -y \
     build-essential curl wget singular git unzip openssh-client pkg-config libssl-dev

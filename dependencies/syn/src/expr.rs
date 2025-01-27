@@ -87,7 +87,7 @@ ast_enum_of_structs! {
     /// see names getting repeated in your code, like accessing
     /// `receiver.receiver` or `pat.pat` or `cond.cond`.
     #[cfg_attr(doc_cfg, doc(cfg(any(feature = "full", feature = "derive"))))]
-    #[cfg_attr(not(syn_no_non_exhaustive), non_exhaustive)]
+    //#[cfg_attr(not(syn_no_non_exhaustive), non_exhaustive)]
     pub enum Expr {
         /// A slice literal expression: `[a, b, c, d]`.
         Array(ExprArray),

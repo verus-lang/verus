@@ -1,4 +1,4 @@
-[![Quick Start](https://img.shields.io/badge/tutorial-quick%20start-informational)](https://verus-lang.github.io/verus/guide/getting_started.html) [![Library Documentation](https://img.shields.io/badge/docs-vstd-informational)](https://verus-lang.github.io/verus/verusdoc/vstd/) [![project chat](https://img.shields.io/badge/zulip-join_chat-brightgreen.svg)](https://verus-lang.zulipchat.com)
+[![Quick Start](https://img.shields.io/badge/tutorial-quick%20start-informational)](https://verus-lang.github.io/verus/guide/getting_started.html) [![Verus docs](https://img.shields.io/badge/docs-verus-informational)](https://verus-lang.github.io/verus/guide/) [![Library Documentation](https://img.shields.io/badge/docs-vstd-informational)](https://verus-lang.github.io/verus/verusdoc/vstd/) [![project chat](https://img.shields.io/badge/zulip-join_chat-brightgreen.svg)](https://verus-lang.zulipchat.com)
 
 # <a href="https://verus-lang.github.io/verus/verus/logo.html"><img height="60px" src="https://verus-lang.github.io/verus/verus/assets/verus-color.svg" alt="Verus" /></a> <a href="https://github.com/verus-lang/verus"><picture><source media="(prefers-color-scheme: dark)" height="60px" height="60px" srcset="https://verus-lang.github.io/verus/verus/assets/verus-text-dark.svg" /><img height="60px" height="60px" src="https://verus-lang.github.io/verus/verus/assets/verus-text-light.svg" alt="Verus" /></picture></a>
 
@@ -46,7 +46,8 @@ Our (work-in-progress) documentation resources include:
 
 ## Examples of Using Verus
 In addition to the documentation above, it can be helpful to see Verus used in action.  Here are some starting points.
- * <a href="https://verus-lang.github.io/verus/publications-and-projects/">Publications and projects</a> using Verus.
+ * [Publications and projects](https://verus-lang.github.io/verus/publications-and-projects/) using Verus.
+ * [Videos, slides, and exercises](https://verus-lang.github.io/event-sites/2024-sosp/) from a day-long Verus tutorial.
  * [Standalone examples](https://github.com/secure-foundations/human-eval-verus/) showing Verus in use for small, concrete tasks.
  * [Small and medium-sized examples](source/rust_verify/example) illustrating various Verus features
  * [Unit tests](source/rust_verify_test/tests) for Verus, containing examples of Verus syntax and features.

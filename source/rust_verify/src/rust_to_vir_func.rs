@@ -14,7 +14,7 @@ use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
     Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HirId, MaybeOwner, Param,
-    Unsafety,
+    Safety,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
@@ -67,7 +67,16 @@ pub(crate) fn body_to_vir<'tcx>(
         external_body,
         in_ghost: mode != Mode::Exec,
     };
-    expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)
+    let e = expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)?;
+
+    if external_body {
+        match &e.x {
+            vir::ast::ExprX::NeverToAny(e) => Ok(e.clone()),
+            _ => Ok(e),
+        }
+    } else {
+        Ok(e)
+    }
 }
 
 fn check_fn_decl<'tcx>(
@@ -151,8 +160,8 @@ fn compare_external_sig<'tcx>(
     use rustc_middle::ty::FnSig;
     // Ignore abi for the sake of comparison
     // Useful for rust-intrinsics
-    let FnSig { inputs_and_output: io1, c_variadic: c1, unsafety: u1, abi: _ } = sig1;
-    let FnSig { inputs_and_output: io2, c_variadic: c2, unsafety: u2, abi: _ } = sig2;
+    let FnSig { inputs_and_output: io1, c_variadic: c1, safety: s1, abi: _ } = sig1;
+    let FnSig { inputs_and_output: io2, c_variadic: c2, safety: s2, abi: _ } = sig2;
     if io1.len() != io2.len() {
         return Ok(false);
     }
@@ -169,7 +178,7 @@ fn compare_external_sig<'tcx>(
             return Ok(false);
         }
     }
-    Ok(c1 == c2 && u1 == u2)
+    Ok(c1 == c2 && s1 == s2)
 }
 
 pub(crate) fn handle_external_fn<'tcx>(
@@ -192,27 +201,25 @@ pub(crate) fn handle_external_fn<'tcx>(
     if mode != Mode::Exec {
         return err_span(
             sig.span,
-            format!("a function marked `external_fn_specification` cannot be marked `{mode:}`",),
+            format!("an `assume_specification` declaration cannot be marked `{mode:}`"),
         );
     }
 
     if vattrs.external {
         return err_span(
             sig.span,
-            format!("a function cannot be marked both `external_fn_specification` and `external`",),
+            format!("an `assume_specification` declaration cannot be marked `external`"),
         );
     }
     if vattrs.external_body {
         return err_span(
             sig.span,
-            format!(
-                "a function cannot be marked both `external_fn_specification` and `external_body`",
-            ),
+            format!("an `assume_specification` declaration cannot be marked `external_body`"),
         );
     }
 
     if self_generics.is_some() && external_fn_specification_via_external_trait.is_none() {
-        return err_span(sig.span, "`external_fn_specification` attribute not supported here");
+        return err_span(sig.span, "`assume_specification` declaration not supported here");
     }
 
     let (external_id, kind) =
@@ -224,7 +231,7 @@ pub(crate) fn handle_external_fn<'tcx>(
                 _ => {
                     return err_span(
                         sig.span,
-                        "external_fn_specification not supported for trait functions",
+                        "assume_specification not supported for trait functions",
                     );
                 }
             };
@@ -238,7 +245,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     {
         return err_span(
             sig.span,
-            "cannot apply `external_fn_specification` to Verus builtin functions",
+            "cannot apply `assume_specification` to Verus builtin functions",
         );
     }
 
@@ -283,7 +290,7 @@ pub(crate) fn handle_external_fn<'tcx>(
         return err_span(
             sig.span,
             format!(
-                "external_fn_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
+                "assume_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
             ),
         );
     };
@@ -309,7 +316,7 @@ pub(crate) fn handle_external_fn<'tcx>(
         return err_span(
             sig.span,
             format!(
-                "external_fn_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
+                "assume_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
             ),
         );
     }
@@ -339,8 +346,8 @@ pub(crate) fn handle_external_fn<'tcx>(
     if !preds_match {
         let err = err_span_bare(
             sig.span,
-            "external_fn_specification trait bound mismatch")
-            .help(format!("external_fn_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
+            "assume_specification trait bound mismatch")
+            .help(format!("assume_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
           but the proxy function's trait bounds are:\n{}\nthe external function's trait bounds are:\n{}",
           proxy_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n"),
           external_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n")));
@@ -351,7 +358,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     if !vir::ast_util::is_visible_to_opt(&visibility, &external_item_visibility.restricted_to) {
         return err_span(
             sig.span,
-            "a function marked `external_fn_specification` must be visible to the function it provides a spec for",
+            "an `assume_specification` declaration must be at least as visible as the function it provides a spec for (try writing `pub assume_specification ...`)",
         );
     }
 
@@ -602,7 +609,7 @@ pub(crate) fn check_item_fn<'tcx>(
         if is_verus_spec {
             return err_span(
                 sig.span,
-                "`external_fn_specification` attribute not supported with VERUS_SPEC",
+                "assume_specification attribute not supported with VERUS_SPEC",
             );
         }
 
@@ -658,11 +665,11 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let ret_typ_mode = match sig {
         FnSig {
-            header: FnHeader { unsafety, constness: _, asyncness: _, abi: _ },
+            header: FnHeader { safety, constness: _, asyncness: _, abi: _ },
             decl,
             span: _,
         } => {
-            if mode != Mode::Exec && *unsafety != Unsafety::Normal {
+            if mode != Mode::Exec && safety == &Safety::Unsafe {
                 return err_span(
                     sig.span,
                     format!("'unsafe' only makes sense on exec-mode functions"),
@@ -715,10 +722,7 @@ pub(crate) fn check_item_fn<'tcx>(
         };
         let is_ref_mut = is_mut_ty(ctxt, *input);
         if is_ref_mut.is_some() && mode == Mode::Spec {
-            return err_span(
-                span,
-                format!("&mut argument not allowed for #[verifier::spec] functions"),
-            );
+            return err_span(span, format!("&mut parameter not allowed for spec functions"));
         }
 
         let typ = {
@@ -856,7 +860,7 @@ pub(crate) fn check_item_fn<'tcx>(
         return err_span(sig.span, "non-spec functions cannot have recommends");
     }
     if mode != Mode::Exec && vattrs.external_fn_specification {
-        return err_span(sig.span, "external_fn_specification should be 'exec'");
+        return err_span(sig.span, "assume_specification should be 'exec'");
     }
     if header.ensure.len() > 0 {
         match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
@@ -1408,10 +1412,14 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
                 rust_item != Some(crate::verus_items::RustItem::Destruct)
             }
         }
-        rustc_middle::ty::ClauseKind::<'tcx>::ConstArgHasType(cnst, ty) => {
-            match (cnst.kind(), ty.kind()) {
-                (ConstKind::Value(ValTree::Leaf(ScalarInt::TRUE)), ty::TyKind::Bool) => false,
-                _ => true,
+        rustc_middle::ty::ClauseKind::<'tcx>::ConstArgHasType(cnst, _ty) => {
+            if let ConstKind::Value(ty, ValTree::Leaf(ScalarInt::TRUE)) = cnst.kind() {
+                match ty.kind() {
+                    TyKind::Bool => false,
+                    _ => true,
+                }
+            } else {
+                false
             }
         }
         _ => true,
@@ -1515,7 +1523,7 @@ pub(crate) fn get_external_def_id<'tcx>(
     let err = || {
         err_span(
             sig.span,
-            format!("external_fn_specification encoding error: body should end in call expression"),
+            format!("assume_specification encoding error: body should end in call expression"),
         )
     };
 
@@ -1553,6 +1561,8 @@ pub(crate) fn get_external_def_id<'tcx>(
             }
         },
         ExprKind::MethodCall(_name_and_generics, _receiver, _other_args, _fn_span) => {
+            // TODO maybe deprecate this; it isn't used with the new
+            // 'assume_specification' style
             let def_id =
                 types.type_dependent_def_id(expr.hir_id).expect("def id of the method definition");
             (def_id, expr.hir_id)
@@ -1569,7 +1579,6 @@ pub(crate) fn get_external_def_id<'tcx>(
         let node_substs = types.node_args(hir_id);
         let param_env = tcx.param_env(proxy_fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-
         let trait_ref = TraitRef::new(tcx, trait_def_id, normalized_substs);
         let candidate = tcx.codegen_select_candidate((param_env, trait_ref));
 
@@ -1578,7 +1587,7 @@ pub(crate) fn get_external_def_id<'tcx>(
                 let impl_def_id = u.impl_def_id;
                 let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
 
-                let inst = rustc_middle::ty::Instance::resolve(
+                let inst = rustc_middle::ty::Instance::try_resolve(
                     tcx,
                     param_env,
                     external_id,
@@ -1587,13 +1596,13 @@ pub(crate) fn get_external_def_id<'tcx>(
                 let Ok(Some(inst)) = inst else {
                     return err_span(
                         sig.span,
-                        "Verus Internal Error: handling external_fn_specification, resolve failed",
+                        "Verus Internal Error: handling assume_specification, resolve failed",
                     );
                 };
-                let rustc_middle::ty::InstanceDef::Item(did) = inst.def else {
+                let rustc_middle::ty::InstanceKind::Item(did) = inst.def else {
                     return err_span(
                         sig.span,
-                        "Verus Internal Error: handling external_fn_specification, resolve failed",
+                        "Verus Internal Error: handling assume_specification, resolve failed",
                     );
                 };
 
@@ -1601,7 +1610,7 @@ pub(crate) fn get_external_def_id<'tcx>(
                 unsupported_err_unless!(
                     !is_default,
                     sig.span,
-                    "external_fn_specification for a provided trait method"
+                    "assume_specification for a provided trait method"
                 );
 
                 let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
@@ -1625,7 +1634,7 @@ pub(crate) fn get_external_def_id<'tcx>(
                 return err_span(
                     sig.span,
                     format!(
-                        "Verus external_fn_specification does not support ImplSource::Builtin '{:?}'",
+                        "Verus assume_specification does not support ImplSource::Builtin '{:?}'",
                         b
                     ),
                 );
@@ -1633,7 +1642,7 @@ pub(crate) fn get_external_def_id<'tcx>(
             Ok(ImplSource::Param(_)) => {
                 return err_span(
                     sig.span,
-                    "external_fn_specification not supported for unresolved trait functions",
+                    "assume_specification not supported for unresolved trait functions",
                 );
             }
             Err(_) => {
@@ -1689,7 +1698,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
     if vattrs.external_fn_specification {
-        return err_span(span, "`external_fn_specification` attribute not yet supported for const");
+        return err_span(span, "`assume_specification` attribute not yet supported for const");
     }
 
     let fuel = get_fuel(&vattrs);
@@ -1700,7 +1709,11 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             let attrs = ctxt.tcx.hir().attrs(item.hir_id());
             let vattrs = ctxt.get_verifier_attrs(attrs)?;
             if vattrs.internal_const_body {
-                let body_id = ctxt.tcx.hir().body_owned_by(item.owner_id.def_id);
+                let body_id = ctxt
+                    .tcx
+                    .hir_node_by_def_id(item.owner_id.def_id)
+                    .body_id()
+                    .expect("failed to get body_id");
                 let body = find_body(ctxt, &body_id);
                 Some((body_id, body))
             } else {
@@ -1807,7 +1820,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let name = Arc::new(FunX { path });
 
     if vattrs.external_fn_specification {
-        return err_span(span, "`external_fn_specification` attribute not supported here");
+        return err_span(span, "assume_specification not supported here");
     }
     if vattrs.is_external(&ctxt.cmd_line_args) {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();

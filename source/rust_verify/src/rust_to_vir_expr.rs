@@ -31,8 +31,7 @@ use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
 use rustc_middle::ty::{
-    AdtDef, ClauseKind, GenericArg, ToPredicate, TraitPredicate, TraitRef, TyCtxt, TyKind,
-    VariantDef,
+    AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, Upcast, VariantDef,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
@@ -787,7 +786,11 @@ pub(crate) fn invariant_block_open<'a>(
                         ),
                     ..
                 }),
-            ..
+            els: None,
+            ty: _,
+            hir_id: _,
+            span: _,
+            source: _,
         }) if dot_dot_pos.as_opt_usize().is_none() => {
             let verus_item = verus_items.id_to_name.get(fun_id);
             let atomicity = match verus_item {
@@ -1041,13 +1044,25 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     let adjustment = &adjustments[adjustment_idx - 1];
 
     match &adjustment.kind {
-        Adjust::NeverToAny => expr_to_vir_with_adjustments(
-            bctx,
-            expr,
-            current_modifier,
-            adjustments,
-            adjustment_idx - 1,
-        ),
+        Adjust::NeverToAny => {
+            let e = expr_to_vir_with_adjustments(
+                bctx,
+                expr,
+                current_modifier,
+                adjustments,
+                adjustment_idx - 1,
+            )?;
+            let expr_typ = mid_ty_to_vir(
+                bctx.ctxt.tcx,
+                &bctx.ctxt.verus_items,
+                bctx.fun_id,
+                expr.span,
+                &adjustments[adjustment_idx - 1].target,
+                false,
+            )?;
+            let x = ExprX::NeverToAny(e);
+            Ok(bctx.spanned_typed_new(expr.span, &expr_typ, x))
+        }
         Adjust::Deref(None) => {
             // handle same way as the UnOp::Deref case
             let new_modifier = is_expr_typ_mut_ref(get_inner_ty(), current_modifier)?;
@@ -1542,7 +1557,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                                 ),
                                 polarity: rustc_middle::ty::PredicatePolarity::Positive,
                             }))
-                            .to_predicate(tcx);
+                            .upcast(tcx);
                         let impl_paths = get_impl_paths_for_clauses(
                             tcx,
                             &bctx.ctxt.verus_items,
@@ -1890,7 +1905,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
                     mk_expr(ExprX::ConstVar(Arc::new(fun), autospec_usage))
                 }
-                Res::Def(DefKind::Static { mutability: Mutability::Not, nested: false }, id) => {
+                Res::Def(
+                    DefKind::Static { mutability: Mutability::Not, nested: false, .. },
+                    id,
+                ) => {
                     let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
                     let fun = FunX { path };
                     mk_expr(ExprX::StaticVar(Arc::new(fun)))
@@ -2005,7 +2023,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::If(cond, lhs, rhs) => {
             let cond = cond.peel_drop_temps();
             match cond.kind {
-                ExprKind::Let(LetExpr { pat, init: expr, ty: _, span: _, is_recovered: None }) => {
+                ExprKind::Let(LetExpr { pat, init: expr, ty: _, span: _, recovered: _ }) => {
                     // if let
                     let vir_expr = expr_to_vir(bctx, expr, modifier)?;
                     let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
@@ -2522,7 +2540,10 @@ fn unwrap_parameter_to_vir<'tcx>(
             },
         ty: None,
         init: None,
-        ..
+        els: None,
+        hir_id: _,
+        span: _,
+        source: _,
     }) = &stmt1.kind
     {
         Some((pat.hir_id, local_to_var(x, hir_id.local_id)))
@@ -2638,8 +2659,11 @@ pub(crate) fn stmt_to_vir<'tcx>(
                 unsupported_err!(stmt.span, "internal item statements", stmt)
             }
         }
-        StmtKind::Let(LetStmt { pat, ty: _, init, els: _, hir_id: _, span: _, source: _ }) => {
+        StmtKind::Let(LetStmt { pat, ty: _, init, els: None, hir_id: _, span: _, source: _ }) => {
             let_stmt_to_vir(bctx, pat, init, bctx.ctxt.tcx.hir().attrs(stmt.hir_id))
+        }
+        StmtKind::Let(LetStmt { els: Some(_), .. }) => {
+            unsupported_err!(stmt.span, "let-else", stmt)
         }
     }
 }

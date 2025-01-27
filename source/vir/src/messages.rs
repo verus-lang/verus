@@ -66,6 +66,7 @@ pub struct MessageX {
     pub spans: Vec<Span>,          // "primary" spans
     pub labels: Vec<MessageLabel>, // additional spans, with string annotations
     pub help: Option<String>,
+    pub fancy_note: Option<String>, // allows terminal-colored output
 }
 
 pub type Message = Arc<MessageX>;
@@ -96,6 +97,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
             spans: Vec::new(),
             labels: Vec::new(),
             help: None,
+            fancy_note: None,
         })
     }
 
@@ -115,6 +117,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
             spans: Vec::new(),
             labels: Vec::new(),
             help: None,
+            fancy_note: None,
         })
     }
 
@@ -125,6 +128,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
             labels: Vec::new(),
             spans: Vec::new(),
             help: None,
+            fancy_note: None,
         })
     }
 
@@ -187,6 +191,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
                     .cloned()
                     .collect(),
                 help: None,
+                fancy_note: None,
             })
         }
     }
@@ -202,12 +207,20 @@ pub fn message<S: Into<String>>(level: MessageLevel, note: S, span: &Span) -> Me
         spans: vec![span.clone()],
         labels: Vec::new(),
         help: None,
+        fancy_note: None,
     })
 }
 
 /// Bare message without any span
 pub fn message_bare<S: Into<String>>(level: MessageLevel, note: S) -> Message {
-    Arc::new(MessageX { level, note: note.into(), spans: vec![], labels: Vec::new(), help: None })
+    Arc::new(MessageX {
+        level,
+        note: note.into(),
+        spans: vec![],
+        labels: Vec::new(),
+        help: None,
+        fancy_note: None,
+    })
 }
 
 /// Message with a span to be highlighted with ^^^^^^, and a label for that span
@@ -223,6 +236,7 @@ pub fn message_with_label<S: Into<String>, T: Into<String>>(
         spans: vec![span.clone()],
         labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
         help: None,
+        fancy_note: None,
     })
 }
 
@@ -238,6 +252,7 @@ pub fn message_with_secondary_label<S: Into<String>, T: Into<String>>(
         spans: vec![],
         labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
         help: None,
+        fancy_note: None,
     })
 }
 
@@ -338,13 +353,26 @@ impl MessageX {
     }
 
     pub fn help(&self, help: impl Into<String>) -> Message {
-        let MessageX { level, note, spans, labels, help: _ } = &self;
+        let MessageX { level, note, spans, labels, help: _, fancy_note } = &self;
         Arc::new(MessageX {
             level: *level,
             note: note.clone(),
             spans: spans.clone(),
             labels: labels.clone(),
             help: Some(help.into()),
+            fancy_note: fancy_note.clone(),
+        })
+    }
+
+    pub fn fancy_note(&self, fancy_note: impl Into<String>) -> Message {
+        let MessageX { level, note, spans, labels, help, fancy_note: _ } = &self;
+        Arc::new(MessageX {
+            level: *level,
+            note: note.clone(),
+            spans: spans.clone(),
+            labels: labels.clone(),
+            help: help.clone(),
+            fancy_note: Some(fancy_note.into()),
         })
     }
 }

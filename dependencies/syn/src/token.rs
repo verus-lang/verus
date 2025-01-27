@@ -745,6 +745,7 @@ define_keywords! {
     "matches"     pub struct Matches      /// `matches`
     "broadcast"   pub struct Broadcast    /// `broadcast`
     "group"       pub struct BroadcastGroup    /// `group`
+    "assume_specification" pub struct AssumeSpecification /// `assume_specification`
 }
 
 define_punctuation! {
@@ -970,6 +971,7 @@ macro_rules! export_token_macro {
             [group]       => { $crate::token::BroadcastGroup };
             [FnSpec]      => { $crate::token::FnSpec };
             [SpecFn]      => { $crate::token::SpecFn };
+            [assume_specification]   => { $crate::token::AssumeSpecification };
             [&&&]         => { $crate::token::BigAnd };
             [|||]         => { $crate::token::BigOr };
             [<==>]        => { $crate::token::Equiv };

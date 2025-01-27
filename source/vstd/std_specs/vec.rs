@@ -35,7 +35,7 @@ impl<T, A: Allocator> VecAdditionalSpecFns<T> for Vec<T, A> {
     }
 }
 
-// TODO this should really be a 'external_fn_specification' function
+// TODO this should really be an 'assume_specification' function
 // but it's difficult to handle vec.index right now because
 // it uses more trait polymorphism than we can handle right now.
 //
@@ -68,124 +68,99 @@ pub broadcast proof fn axiom_spec_len<A>(v: &Vec<A>)
     admit();
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(spec_vec_len)]
-pub fn ex_vec_len<T, A: Allocator>(vec: &Vec<T, A>) -> (len: usize)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::len ](vec: &Vec<T, A>) -> (len: usize)
     ensures
         len == spec_vec_len(vec),
-{
-    vec.len()
-}
+;
 
 ////// Other functions
-#[verifier::external_fn_specification]
-pub fn ex_vec_new<T>() -> (v: Vec<T>)
+pub assume_specification<T>[ Vec::<T>::new ]() -> (v: Vec<T>)
     ensures
         v@ == Seq::<T>::empty(),
-{
-    Vec::<T>::new()
-}
+;
 
-#[verifier::external_fn_specification]
-pub fn ex_vec_with_capacity<T>(capacity: usize) -> (v: Vec<T>)
+pub assume_specification<T>[ Vec::<T>::with_capacity ](capacity: usize) -> (v: Vec<T>)
     ensures
         v@ == Seq::<T>::empty(),
-{
-    Vec::<T>::with_capacity(capacity)
-}
+;
 
-#[verifier::external_fn_specification]
-pub fn ex_vec_reserve<T, A: Allocator>(vec: &mut Vec<T, A>, additional: usize)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::reserve ](
+    vec: &mut Vec<T, A>,
+    additional: usize,
+)
     ensures
         vec@ == old(vec)@,
-{
-    vec.reserve(additional)
-}
+;
 
-#[verifier::external_fn_specification]
-pub fn ex_vec_push<T, A: Allocator>(vec: &mut Vec<T, A>, value: T)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::push ](vec: &mut Vec<T, A>, value: T)
     ensures
         vec@ == old(vec)@.push(value),
-{
-    vec.push(value)
-}
+;
 
-#[verifier::external_fn_specification]
-pub fn ex_vec_pop<T, A: Allocator>(vec: &mut Vec<T, A>) -> (value: Option<T>)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::pop ](vec: &mut Vec<T, A>) -> (value:
+    Option<T>)
     ensures
         old(vec)@.len() > 0 ==> value == Some(old(vec)@[old(vec)@.len() - 1]) && vec@ == old(
             vec,
         )@.subrange(0, old(vec)@.len() - 1),
         old(vec)@.len() == 0 ==> value == None::<T> && vec@ == old(vec)@,
-{
-    vec.pop()
-}
+;
 
-#[verifier::external_fn_specification]
-pub fn ex_vec_append<T, A: Allocator>(vec: &mut Vec<T, A>, other: &mut Vec<T, A>)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::append ](
+    vec: &mut Vec<T, A>,
+    other: &mut Vec<T, A>,
+)
     ensures
         vec@ == old(vec)@ + old(other)@,
         other@ == Seq::<T>::empty(),
-{
-    vec.append(other)
-}
+;
 
 /*
 // TODO find a way to support this
 // This is difficult because of the SliceIndex trait
 use std::ops::Index;
 
-#[verifier::external_fn_specification]
-pub fn index<T, A: Allocator>(vec: &Vec<T>, i: usize) -> (r: &T)
+pub assume_specification<T, A: Allocator>[Vec::<T,A>::index](vec: &Vec<T>, i: usize) -> (r: &T)
     requires
         i < vec.len(),
     ensures
-        *r == vec[i as int],
-{
-
-    vec.index(i)
-}
+        *r == vec[i as int];
 */
 
-#[verifier::external_fn_specification]
-pub fn ex_vec_insert<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize, element: T)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::insert ](
+    vec: &mut Vec<T, A>,
+    i: usize,
+    element: T,
+)
     requires
         i <= old(vec).len(),
     ensures
         vec@ == old(vec)@.insert(i as int, element),
-{
-    vec.insert(i, element)
-}
+;
 
-#[verifier::external_fn_specification]
-pub fn ex_vec_remove<T, A: Allocator>(vec: &mut Vec<T, A>, i: usize) -> (element: T)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::remove ](
+    vec: &mut Vec<T, A>,
+    i: usize,
+) -> (element: T)
     requires
         i < old(vec).len(),
     ensures
         element == old(vec)[i as int],
         vec@ == old(vec)@.remove(i as int),
-{
-    vec.remove(i)
-}
+;
 
-#[verifier::external_fn_specification]
-pub fn ex_vec_clear<T, A: Allocator>(vec: &mut Vec<T, A>)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::clear ](vec: &mut Vec<T, A>)
     ensures
         vec.view() == Seq::<T>::empty(),
-{
-    vec.clear()
-}
+;
 
-#[verifier::external_fn_specification]
-pub fn ex_vec_as_slice<T, A: Allocator>(vec: &Vec<T, A>) -> (slice: &[T])
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::as_slice ](vec: &Vec<T, A>) -> (slice: &[T])
     ensures
         slice@ == vec@,
-{
-    vec.as_slice()
-}
+;
 
-#[verifier::external_fn_specification]
-pub fn ex_vec_split_off<T, A: Allocator + core::clone::Clone>(
+pub assume_specification<T, A: Allocator + core::clone::Clone>[ Vec::<T, A>::split_off ](
     vec: &mut Vec<T, A>,
     at: usize,
 ) -> (return_value: Vec<T, A>)
@@ -194,16 +169,15 @@ pub fn ex_vec_split_off<T, A: Allocator + core::clone::Clone>(
     ensures
         vec@ == old(vec)@.subrange(0, at as int),
         return_value@ == old(vec)@.subrange(at as int, old(vec)@.len() as int),
-{
-    vec.split_off(at)
-}
+;
 
 pub open spec fn vec_clone_trigger<T, A: Allocator>(v1: Vec<T, A>, v2: Vec<T, A>) -> bool {
     true
 }
 
-#[verifier::external_fn_specification]
-pub fn ex_vec_clone<T: Clone, A: Allocator + Clone>(vec: &Vec<T, A>) -> (res: Vec<T, A>)
+pub assume_specification<T: Clone, A: Allocator + Clone>[ <Vec<T, A> as Clone>::clone ](
+    vec: &Vec<T, A>,
+) -> (res: Vec<T, A>)
     ensures
         res.len() == vec.len(),
         forall|i|
@@ -211,9 +185,7 @@ pub fn ex_vec_clone<T: Clone, A: Allocator + Clone>(vec: &Vec<T, A>) -> (res: Ve
             0 <= i < vec.len() ==> call_ensures(T::clone, (&vec[i],), res[i]),
         vec_clone_trigger(*vec, res),
         vec@ =~= res@ ==> vec@ == res@,
-{
-    vec.clone()
-}
+;
 
 pub broadcast proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(
     v1: Vec<T, A>,
@@ -227,14 +199,28 @@ pub broadcast proof fn vec_clone_deep_view_proof<T: DeepView, A: Allocator>(
 {
 }
 
-#[verifier::external_fn_specification]
-pub fn ex_vec_truncate<T, A: Allocator>(vec: &mut Vec<T, A>, len: usize)
+pub assume_specification<T, A: Allocator>[ Vec::<T, A>::truncate ](vec: &mut Vec<T, A>, len: usize)
     ensures
-        len <= vec.len() ==> vec@ == old(vec)@.subrange(0, len as int),
-        len > vec.len() ==> vec@ == old(vec)@,
-{
-    vec.truncate(len)
-}
+        len <= old(vec).len() ==> vec@ == old(vec)@.subrange(0, len as int),
+        len > old(vec).len() ==> vec@ == old(vec)@,
+;
+
+pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
+    vec: &mut Vec<T, A>,
+    len: usize,
+    value: T,
+)
+    ensures
+        len <= old(vec).len() ==> vec@ == old(vec)@.subrange(0, len as int),
+        len > old(vec).len() ==> {
+            &&& vec@.len() == len
+            &&& vec@.subrange(0, old(vec).len() as int) == old(vec)@
+            &&& forall|i|
+                #![all_triggers]
+                old(vec).len() <= i < len ==> call_ensures(T::clone, (&value,), vec@[i]) || value
+                    == vec@[i]
+        },
+;
 
 pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
     requires
