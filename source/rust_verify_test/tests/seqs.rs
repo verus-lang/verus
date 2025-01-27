@@ -127,6 +127,8 @@ test_verify_one_file! {
             assert(forall|i: nat| i < s2.len() ==> s2[i as int] < 40);
             // Test for successful broadcast of filter_distributes_over_add
             assert((s1 + s3).filter(|x: int| x < 40) == (s2 + s4));
+            // TODO: the following test will verify even if
+            // push_distributes_over_add is not broadcasted.
             // Test for successful broadcast of push_distributes_over_add
             assert((s2 + s4).push(120) == s2 + s4.push(120));
         }
