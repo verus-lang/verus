@@ -7,12 +7,20 @@ use core::option::Option::Some;
 
 verus! {
 
-impl<T: View> View for Option<T> {
+impl<T> View for Option<T> {
+    type V = Option<T>;
+
+    open spec fn view(&self) -> Option<T> {
+        *self
+    }
+}
+
+impl<T: DeepView> DeepView for Option<T> {
     type V = Option<T::V>;
 
-    open spec fn view(&self) -> Option<T::V> {
+    open spec fn deep_view(&self) -> Option<T::V> {
         match self {
-            Some(t) => Some(t@),
+            Some(t) => Some(t.deep_view()),
             None => None,
         }
     }
