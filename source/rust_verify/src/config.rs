@@ -10,7 +10,9 @@ pub enum ShowTriggers {
     Silent,
     Selective,
     Module,
+    AllModules,
     Verbose,
+    VerboseAllModules,
 }
 impl Default for ShowTriggers {
     fn default() -> Self {
@@ -256,10 +258,32 @@ pub fn parse_args_with_imports(
         (LOG_CALL_GRAPH, "Log the call graph"),
     ];
 
-    const OPT_TRIGGERS_SILENT: &str = "triggers-silent";
-    const OPT_TRIGGERS_SELECTIVE: &str = "triggers-selective";
     const OPT_TRIGGERS: &str = "triggers";
-    const OPT_TRIGGERS_VERBOSE: &str = "triggers-verbose";
+    const OPT_TRIGGERS_MODE: &str = "triggers-mode";
+
+    const TRIGGERS_MODE_SILENT: &str = "silent";
+    const TRIGGERS_MODE_SELECTIVE: &str = "selective";
+    const TRIGGERS_MODE_ALL_MODULES: &str = "all-modules";
+    const TRIGGERS_MODE_VERBOSE: &str = "verbose";
+    const TRIGGERS_MODE_VERBOSE_ALL_MODULES: &str = "verbose-all-modules";
+
+    const TRIGGERS_MODE_ITEMS: &[(&str, &str)] = &[
+        (TRIGGERS_MODE_SILENT, "Do not show automatically chosen triggers"),
+        (
+            TRIGGERS_MODE_SELECTIVE,
+            "Show automatically chosen triggers for some potentially ambiguous cases in verified modules (this is the default behavior)",
+        ),
+        (
+            TRIGGERS_MODE_ALL_MODULES,
+            "Show all automatically chosen triggers for verified modules and imported definitions from other modules",
+        ),
+        (TRIGGERS_MODE_VERBOSE, "Show all triggers (manually or auto) for verified modules"),
+        (
+            TRIGGERS_MODE_VERBOSE_ALL_MODULES,
+            "Show all triggers (manually or automatically chosen) for verified modules and imported definitions from other modules",
+        ),
+    ];
+
     const OPT_PROFILE: &str = "profile";
     const OPT_PROFILE_ALL: &str = "profile-all";
     const OPT_COMPILE: &str = "compile";
@@ -385,10 +409,20 @@ pub fn parse_args_with_imports(
         "OPTION=VALUE",
     );
 
-    opts.optflag("", OPT_TRIGGERS_SILENT, "Do not show automatically chosen triggers");
-    opts.optflag("", OPT_TRIGGERS_SELECTIVE, "Show automatically chosen triggers for some potentially ambiguous cases in verified modules (this is the default behavior)");
     opts.optflag("", OPT_TRIGGERS, "Show all automatically chosen triggers for verified modules");
-    opts.optflag("", OPT_TRIGGERS_VERBOSE, "Show all automatically chosen triggers for verified modules and imported definitions from other modules");
+    opts.optopt(
+        "",
+        OPT_TRIGGERS_MODE,
+        {
+            let mut s = "Display triggers:\n".to_owned();
+            for (f, d) in TRIGGERS_MODE_ITEMS {
+                s += format!("--{} {} : {}\n", OPT_LOG_MULTI, *f, d).as_str();
+            }
+            s
+        }
+        .as_str(),
+        &TRIGGERS_MODE_ITEMS.iter().map(|(x, _)| x.to_owned()).collect::<Vec<_>>().join("|"),
+    );
     opts.optflag(
         "",
         OPT_PROFILE,
@@ -593,14 +627,20 @@ pub fn parse_args_with_imports(
             log_triggers: log.get(LOG_TRIGGERS).is_some(),
             log_call_graph: log.get(LOG_CALL_GRAPH).is_some(),
         },
-        show_triggers: if matches.opt_present(OPT_TRIGGERS_VERBOSE) {
-            ShowTriggers::Verbose
-        } else if matches.opt_present(OPT_TRIGGERS) {
+        show_triggers: if matches.opt_present(OPT_TRIGGERS) {
+            if matches.opt_present(OPT_TRIGGERS_MODE) {
+                error("--triggers and --triggers-mode are mutually exclusive".to_owned())
+            }
             ShowTriggers::Module
-        } else if matches.opt_present(OPT_TRIGGERS_SELECTIVE) {
-            ShowTriggers::Selective
-        } else if matches.opt_present(OPT_TRIGGERS_SILENT) {
-            ShowTriggers::Silent
+        } else if let Some(triggers_mode) = matches.opt_str(OPT_TRIGGERS_MODE) {
+            match triggers_mode.as_str() {
+                TRIGGERS_MODE_ALL_MODULES => ShowTriggers::AllModules,
+                TRIGGERS_MODE_SELECTIVE => ShowTriggers::Selective,
+                TRIGGERS_MODE_SILENT => ShowTriggers::Silent,
+                TRIGGERS_MODE_VERBOSE_ALL_MODULES => ShowTriggers::VerboseAllModules,
+                TRIGGERS_MODE_VERBOSE => ShowTriggers::Verbose,
+                _ => error(format!("invalid --triggers-mode {triggers_mode}")),
+            }
         } else {
             ShowTriggers::default()
         },

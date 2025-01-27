@@ -308,9 +308,10 @@ pub struct Verifier {
 fn report_chosen_triggers(
     diagnostics: &impl air::messages::Diagnostics,
     chosen: &vir::context::ChosenTriggers,
+    automatically: bool,
 ) {
-    diagnostics
-        .report(&note(&chosen.span, "automatically chose triggers for this expression:").to_any());
+    let s = if automatically { "automatically chose" } else { "selected" }.to_owned();
+    diagnostics.report(&note(&chosen.span, s + " triggers for this expression:").to_any());
 
     for (n, trigger) in chosen.triggers.iter().enumerate() {
         let note = format!("  trigger {} of {}:", n + 1, chosen.triggers.len());
@@ -2466,18 +2467,33 @@ impl Verifier {
             match (
                 self.args.show_triggers,
                 modules_to_verify.iter().find(|m| &m.x.path == &chosen.module).is_some(),
+                chosen.auto,
             ) {
-                (ShowTriggers::Selective, true) if chosen.low_confidence => {
-                    report_chosen_triggers(&reporter, &chosen);
+                (ShowTriggers::Selective, true, true) if chosen.low_confidence => {
+                    report_chosen_triggers(&reporter, &chosen, true);
                     low_confidence_triggers = Some(chosen.span);
                 }
-                (ShowTriggers::Module, true) => {
-                    report_chosen_triggers(&reporter, &chosen);
+                (ShowTriggers::Module, true, true) => {
+                    report_chosen_triggers(&reporter, &chosen, true);
                 }
-                (ShowTriggers::Verbose, _) => {
-                    report_chosen_triggers(&reporter, &chosen);
+                (ShowTriggers::AllModules, _, true) => {
+                    report_chosen_triggers(&reporter, &chosen, true);
                 }
-                _ => {}
+                (ShowTriggers::Verbose, true, _) => {
+                    report_chosen_triggers(&reporter, &chosen, chosen.auto);
+                }
+                (ShowTriggers::VerboseAllModules, _, _) => {
+                    report_chosen_triggers(&reporter, &chosen, chosen.auto);
+                }
+                (
+                    ShowTriggers::Selective
+                    | ShowTriggers::Module
+                    | ShowTriggers::AllModules
+                    | ShowTriggers::Silent
+                    | ShowTriggers::Verbose,
+                    _,
+                    _,
+                ) => {}
             }
         }
         if let Some(span) = low_confidence_triggers {

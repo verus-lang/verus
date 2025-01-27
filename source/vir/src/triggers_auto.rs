@@ -720,6 +720,7 @@ pub(crate) fn build_triggers(
         span: span.clone(),
         triggers: found_triggers,
         low_confidence: state.low_confidence && (auto_trigger == AutoType::None),
+        auto: true,
     };
     chosen_triggers_vec.push(chosen_triggers);
     if state.chosen_triggers.len() >= 1 {
