@@ -473,7 +473,7 @@ pub(crate) fn build_triggers(
             span: span.clone(),
             triggers: found_triggers,
             low_confidence: false,
-            auto: false,
+            manual: true,
         };
         chosen_triggers_vec.push(chosen_triggers);
         Ok(Arc::new(trigs))

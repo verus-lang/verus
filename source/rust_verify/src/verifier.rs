@@ -2467,23 +2467,23 @@ impl Verifier {
             match (
                 self.args.show_triggers,
                 modules_to_verify.iter().find(|m| &m.x.path == &chosen.module).is_some(),
-                chosen.auto,
+                chosen.manual,
             ) {
-                (ShowTriggers::Selective, true, true) if chosen.low_confidence => {
+                (ShowTriggers::Selective, true, false) if chosen.low_confidence => {
                     report_chosen_triggers(&reporter, &chosen, true);
                     low_confidence_triggers = Some(chosen.span);
                 }
-                (ShowTriggers::Module, true, true) => {
+                (ShowTriggers::Module, true, false) => {
                     report_chosen_triggers(&reporter, &chosen, true);
                 }
-                (ShowTriggers::AllModules, _, true) => {
+                (ShowTriggers::AllModules, _, false) => {
                     report_chosen_triggers(&reporter, &chosen, true);
                 }
                 (ShowTriggers::Verbose, true, _) => {
-                    report_chosen_triggers(&reporter, &chosen, chosen.auto);
+                    report_chosen_triggers(&reporter, &chosen, !chosen.manual);
                 }
                 (ShowTriggers::VerboseAllModules, _, _) => {
-                    report_chosen_triggers(&reporter, &chosen, chosen.auto);
+                    report_chosen_triggers(&reporter, &chosen, !chosen.manual);
                 }
                 (
                     ShowTriggers::Selective

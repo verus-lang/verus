@@ -31,7 +31,7 @@ pub struct ChosenTriggers {
     pub span: Span,
     pub triggers: Vec<ChosenTrigger>,
     pub low_confidence: bool,
-    pub auto: bool,
+    pub manual: bool,
 }
 
 /// Context for across all modules
