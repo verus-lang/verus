@@ -1744,7 +1744,9 @@ impl Verifier {
                         }
 
                         if matches!(query_op, QueryOp::Body(Style::Normal)) {
-                            if (any_invalid && !self.args.no_auto_recommends_check)
+                            if (any_invalid
+                                && !self.args.no_auto_recommends_check
+                                && !any_timed_out)
                                 || function.x.attrs.check_recommends
                             {
                                 function_opgen.retry_with_recommends(&op, any_invalid)?;
@@ -1772,7 +1774,9 @@ impl Verifier {
                         }
 
                         if matches!(query_op, QueryOp::SpecTermination) {
-                            if (any_invalid && !self.args.no_auto_recommends_check)
+                            if (any_invalid
+                                && !self.args.no_auto_recommends_check
+                                && !any_timed_out)
                                 || function.x.attrs.check_recommends
                             {
                                 // Do recommends-checking for the body of the function.
