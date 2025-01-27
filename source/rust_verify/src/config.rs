@@ -416,7 +416,7 @@ pub fn parse_args_with_imports(
         {
             let mut s = "Display triggers:\n".to_owned();
             for (f, d) in TRIGGERS_MODE_ITEMS {
-                s += format!("--{} {} : {}\n", OPT_LOG_MULTI, *f, d).as_str();
+                s += format!("--{} {} : {}\n", OPT_TRIGGERS_MODE, *f, d).as_str();
             }
             s
         }
