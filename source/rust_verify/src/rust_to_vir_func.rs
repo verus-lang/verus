@@ -1389,7 +1389,22 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
     use rustc_middle::ty::{ConstKind, ScalarInt, ValTree};
     preds.retain(|p: &Clause<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
-            if in_trait && trait_ids.contains(&tp.trait_ref.def_id) && tp.trait_ref.args.len() >= 1
+            let td = tcx.trait_def(tp.trait_ref.def_id);
+            // Recursively check parent path visibility
+            let mut visible = tcx.visibility(td.def_id).is_visible_locally();
+            let mut def_id = td.def_id;
+            while let Some(parent_def_id) = tcx.opt_parent(def_id) {
+                if !tcx.visibility(parent_def_id).is_visible_locally() {
+                    visible = false;
+                    break;
+                }
+                def_id = parent_def_id;
+            }
+            if !visible {
+                false
+            } else if in_trait
+                && trait_ids.contains(&tp.trait_ref.def_id)
+                && tp.trait_ref.args.len() >= 1
             {
                 if let GenericArgKind::Type(ty) = tp.trait_ref.args[0].unpack() {
                     match ty.kind() {
