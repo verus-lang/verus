@@ -2613,27 +2613,24 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
     } else {
         ctxt.tcx.item_attrs(id)
     };
+
+    let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
+    if let Some(RustItem::Box
+        | RustItem::Rc
+        | RustItem::Arc
+        | RustItem::AllocGlobal
+        | RustItem::ManuallyDrop
+        | RustItem::PhantomData,
+    ) = rust_item {
+        return;
+    }
+
     let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
     if vattrs.external_type_specification {
         return;
     }
 
-    let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
-
-    if let Some(RustItem::Box) = rust_item {
-        return;
-    }
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
-    if let Some(
-        RustItem::Rc
-        | RustItem::Arc
-        | RustItem::AllocGlobal
-        | RustItem::ManuallyDrop
-        | RustItem::PhantomData,
-    ) = rust_item
-    {
-        return;
-    }
 
     // Check if the struct is 'external_body'
     // (Recall that the 'external_body' label may have been applied by a proxy type,
