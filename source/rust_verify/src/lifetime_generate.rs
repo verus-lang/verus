@@ -2615,13 +2615,15 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
     };
 
     let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
-    if let Some(RustItem::Box
+    if let Some(
+        RustItem::Box
         | RustItem::Rc
         | RustItem::Arc
         | RustItem::AllocGlobal
         | RustItem::ManuallyDrop
         | RustItem::PhantomData,
-    ) = rust_item {
+    ) = rust_item
+    {
         return;
     }
 
