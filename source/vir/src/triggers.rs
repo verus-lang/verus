@@ -6,6 +6,7 @@ use crate::context::Ctx;
 use crate::messages::{error, Span};
 use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs};
 use crate::triggers_auto::AutoType;
+use crate::util::vec_map;
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -458,6 +459,23 @@ pub(crate) fn build_triggers(
                 ));
             }
         }
+        let mut chosen_triggers_vec = ctx.global.chosen_triggers.borrow_mut();
+        let found_triggers: Vec<Vec<(Span, String)>> =
+            vec_map(&trigs, |trig| vec_map(&trig, |t| (t.span.clone(), format!("{:?}", t.x))));
+        let module = match &ctx.fun {
+            Some(crate::context::FunctionCtx { module_for_chosen_triggers: Some(m), .. }) => {
+                m.clone()
+            }
+            _ => ctx.module.x.path.clone(),
+        };
+        let chosen_triggers = crate::context::ChosenTriggers {
+            module,
+            span: span.clone(),
+            triggers: found_triggers,
+            low_confidence: false,
+            manual: true,
+        };
+        chosen_triggers_vec.push(chosen_triggers);
         Ok(Arc::new(trigs))
     } else {
         crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)
