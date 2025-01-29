@@ -150,7 +150,7 @@ pub(crate) fn get_crate_items<'tcx>(ctxt: &Context<'tcx>) -> Result<CrateItems, 
         is_impl_trait: false,
     };
     let owner = ctxt.tcx.hir_owner_node(rustc_hir::CRATE_OWNER_ID);
-    visitor.visit_mod(root_module, *owner.span(), rustc_hir::CRATE_HIR_ID);
+    visitor.visit_mod(root_module, owner.span(), rustc_hir::CRATE_HIR_ID);
 
     if visitor.errors.len() > 0 {
         return Err(visitor.errors[0].clone());
@@ -416,12 +416,12 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
         } else if eattrs.external_fn_specification {
             diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
                 span,
-                format!("#[verifier::external_fn_specification] has no effect because item is already marked external"),
+                format!("an `assume_specification` declaration cannot be marked `external`"),
             )));
             if eattrs.external {
                 errors.push(crate::util::err_span_bare(
                     span,
-                    format!("a function cannot be marked both `external_fn_specification` and `external`"),
+                    format!("an `assume_specification` declaration cannot be marked `external`"),
                 ));
             }
         } else if eattrs.external_type_specification {
