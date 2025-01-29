@@ -1786,6 +1786,7 @@ fn erase_const_or_static<'tcx>(
             params: vec![],
             ret: Some((None, return_typ)),
             body: body,
+            check_unsized: true,
         };
         state.fun_decls.push(decl);
         ctxt.types_opt = None;
@@ -2155,6 +2156,7 @@ fn erase_fn_common<'tcx>(
             params,
             ret,
             body: body_exp,
+            check_unsized: id.is_local(),
         };
         state.fun_decls.push(decl);
         ctxt.types_opt = None;
