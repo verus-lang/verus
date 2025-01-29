@@ -464,9 +464,30 @@ test_verify_one_file! {
         pub trait ExAddMethod<Rhs> {
             type ExternalTraitSpecificationFor: core::ops::Add<Rhs>;
             type Output;
-            // Required method
-            fn add(self, rhs: Rhs) -> (ret: Self::Output) where Self: std::marker::Sized
+            // Required method does not have Sized but we added it here to pass lifetime checker
+            fn add(self, rhs: Rhs) -> (ret: Self::Output) where Self: Sized
             returns spec_add::<_, _, Self::Output>(self, rhs);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_add2 verus_code! {
+        pub open spec fn spec_add<Lhs, Rhs, Output>(lhs: Lhs, rhs: Rhs) -> Output;
+
+        #[verifier::external_trait_specification]
+        pub trait ExAddMethod<Rhs> {
+            type ExternalTraitSpecificationFor: core::ops::Add<Rhs>;
+            type Output;
+
+            // Required method does not have Sized but we added it here to pass lifetime checker
+            fn add(self, rhs: Rhs) -> (ret: Self::Output) where Self: Sized
+            returns spec_add::<_, _, Self::Output>(self, rhs);
+        }
+
+        // lifetime should not add ?Sized for the imported add function.
+        fn test_add<T: core::ops::Add<Output = T>> (lhs: T, rhs: T) -> T {
+            lhs.add(rhs)
         }
     } => Ok(())
 }
