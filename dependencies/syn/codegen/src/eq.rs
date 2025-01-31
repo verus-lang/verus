@@ -1,14 +1,13 @@
-use crate::{cfg, file, lookup};
+use crate::{cfg, file, full, lookup};
 use anyhow::Result;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote};
 use syn_codegen::{Data, Definitions, Node, Type};
 
-const DEBUG_SRC: &str = "../src/gen/eq.rs";
+const EQ_SRC: &str = "src/gen/eq.rs";
 
 fn always_eq(field_type: &Type) -> bool {
     match field_type {
-        Type::Syn(node) => node == "Reserved",
         Type::Ext(ty) => ty == "Span",
         Type::Token(_) | Type::Group(_) => true,
         Type::Box(inner) => always_eq(inner),
@@ -22,12 +21,14 @@ fn expand_impl_body(defs: &Definitions, node: &Node) -> TokenStream {
     let ident = Ident::new(type_name, Span::call_site());
 
     match &node.data {
+        Data::Enum(variants) if variants.is_empty() => quote!(match *self {}),
         Data::Enum(variants) => {
+            let mixed_derive_full = full::is_mixed_derive_full_enum(defs, node);
             let arms = variants.iter().map(|(variant_name, fields)| {
                 let variant = Ident::new(variant_name, Span::call_site());
                 if fields.is_empty() {
                     quote! {
-                        (#ident::#variant, #ident::#variant) => true,
+                        (crate::#ident::#variant, crate::#ident::#variant) => true,
                     }
                 } else {
                     let mut this_pats = Vec::new();
@@ -57,25 +58,31 @@ fn expand_impl_body(defs: &Definitions, node: &Node) -> TokenStream {
                         comparisons.push(quote!(true));
                     }
                     let mut cfg = None;
-                    if node.ident == "Expr" {
+                    if mixed_derive_full {
                         if let Type::Syn(ty) = &fields[0] {
-                            if !lookup::node(defs, ty).features.any.contains("derive") {
+                            let features = &lookup::node(defs, ty).features;
+                            if features.any.contains("full") && !features.any.contains("derive") {
                                 cfg = Some(quote!(#[cfg(feature = "full")]));
                             }
                         }
                     }
                     quote! {
                         #cfg
-                        (#ident::#variant(#(#this_pats),*), #ident::#variant(#(#other_pats),*)) => {
+                        (crate::#ident::#variant(#(#this_pats),*), crate::#ident::#variant(#(#other_pats),*)) => {
                             #(#comparisons)&&*
                         }
                     }
                 }
             });
+            let fallthrough = if variants.len() == 1 {
+                None
+            } else {
+                Some(quote!(_ => false,))
+            };
             quote! {
                 match (self, other) {
                     #(#arms)*
-                    _ => false,
+                    #fallthrough
                 }
             }
         }
@@ -109,12 +116,11 @@ fn expand_impl(defs: &Definitions, node: &Node) -> TokenStream {
     }
 
     let ident = Ident::new(&node.ident, Span::call_site());
-    let cfg_features = cfg::features(&node.features);
+    let cfg_features = cfg::features(&node.features, "extra-traits");
 
     let eq = quote! {
         #cfg_features
-        #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
-        impl Eq for #ident {}
+        impl Eq for crate::#ident {}
     };
 
     let manual_partial_eq = node.data == Data::Private;
@@ -123,18 +129,17 @@ fn expand_impl(defs: &Definitions, node: &Node) -> TokenStream {
     }
 
     let body = expand_impl_body(defs, node);
-    let other = if body.to_string() == "true" {
-        quote!(_other)
-    } else {
-        quote!(other)
+    let other = match &node.data {
+        Data::Enum(variants) if variants.is_empty() => quote!(_other),
+        Data::Struct(fields) if fields.values().all(always_eq) => quote!(_other),
+        _ => quote!(other),
     };
 
     quote! {
         #eq
 
         #cfg_features
-        #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
-        impl PartialEq for #ident {
+        impl PartialEq for crate::#ident {
             fn eq(&self, #other: &Self) -> bool {
                 #body
             }
@@ -149,11 +154,10 @@ pub fn generate(defs: &Definitions) -> Result<()> {
     }
 
     file::write(
-        DEBUG_SRC,
+        EQ_SRC,
         quote! {
             #[cfg(any(feature = "derive", feature = "full"))]
             use crate::tt::TokenStreamHelper;
-            use crate::*;
 
             #impls
         },

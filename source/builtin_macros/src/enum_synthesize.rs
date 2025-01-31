@@ -50,13 +50,16 @@ pub(crate) fn visit_item_enum_synthesize(
 
     enum_.attrs.retain(|attr| {
         if let syn_verus::AttrStyle::Outer = attr.style {
-            match &attr.path.segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
-                [attr_name] if attr_name.to_string() == "allow" => {
-                    if attr.tokens.to_string() == "(inconsistent_fields)" {
+            match &attr.path().segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
+                [attr_name] if attr_name.to_string() == "allow" => match &attr.meta {
+                    syn_verus::Meta::List(list)
+                        if list.tokens.to_string() == "inconsistent_fields" =>
+                    {
                         allow_inconsistent_fields = true;
                         return false;
                     }
-                }
+                    _ => {}
+                },
                 _ => (),
             }
         }

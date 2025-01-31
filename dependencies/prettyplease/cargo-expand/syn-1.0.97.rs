@@ -8104,9 +8104,8 @@ mod attr {
                 {
                     input.parse().map(NestedMeta::Lit)
                 } else if input.peek(Ident::peek_any)
-                        || input.peek(crate::token::Colon2)
-                            && input.peek3(Ident::peek_any)
-                    {
+                    || input.peek(crate::token::Colon2) && input.peek3(Ident::peek_any)
+                {
                     input.parse().map(NestedMeta::Meta)
                 } else {
                     Err(input.error("expected identifier or literal"))
@@ -9626,9 +9625,9 @@ mod expr {
                         })
                     };
                 } else if Precedence::Assign >= base && input.peek(crate::token::Eq)
-                        && !input.peek(crate::token::EqEq)
-                        && !input.peek(crate::token::FatArrow)
-                    {
+                    && !input.peek(crate::token::EqEq)
+                    && !input.peek(crate::token::FatArrow)
+                {
                     let eq_token: crate::token::Eq = input.parse()?;
                     let mut rhs = unary_expr(input, allow_struct)?;
                     loop {
@@ -9683,8 +9682,8 @@ mod expr {
                         ty: Box::new(ty),
                     });
                 } else if Precedence::Cast >= base && input.peek(crate::token::Colon)
-                        && !input.peek(crate::token::Colon2)
-                    {
+                    && !input.peek(crate::token::Colon2)
+                {
                     let colon_token: crate::token::Colon = input.parse()?;
                     let ty = input.call(Type::without_plus)?;
                     check_cast(input)?;
@@ -9704,14 +9703,14 @@ mod expr {
             if let Ok(op) = input.fork().parse() {
                 Precedence::of(&op)
             } else if input.peek(crate::token::Eq) && !input.peek(crate::token::FatArrow)
-                {
+            {
                 Precedence::Assign
             } else if input.peek(crate::token::Dot2) {
                 Precedence::Range
             } else if input.peek(crate::token::As)
-                    || true && input.peek(crate::token::Colon)
-                        && !input.peek(crate::token::Colon2)
-                {
+                || true && input.peek(crate::token::Colon)
+                    && !input.peek(crate::token::Colon2)
+            {
                 Precedence::Cast
             } else {
                 Precedence::Any
@@ -9784,8 +9783,8 @@ mod expr {
             } else if input.peek(crate::token::Box) {
                 expr_box(input, attrs, allow_struct).map(Expr::Box)
             } else if input.peek(crate::token::Star) || input.peek(crate::token::Bang)
-                    || input.peek(crate::token::Sub)
-                {
+                || input.peek(crate::token::Sub)
+            {
                 expr_unary(input, attrs, allow_struct).map(Expr::Unary)
             } else {
                 trailer_expr(begin, attrs, input, allow_struct)
@@ -9829,12 +9828,12 @@ mod expr {
                         args: content.parse_terminated(Expr::parse)?,
                     });
                 } else if input.peek(crate::token::Dot)
-                        && !input.peek(crate::token::Dot2)
-                        && match e {
-                            Expr::Range(_) => false,
-                            _ => true,
-                        }
-                    {
+                    && !input.peek(crate::token::Dot2)
+                    && match e {
+                        Expr::Range(_) => false,
+                        _ => true,
+                    }
+                {
                     let mut dot_token: crate::token::Dot = input.parse()?;
                     let await_token: Option<token::Await> = input.parse()?;
                     if let Some(await_token) = await_token {
@@ -9926,33 +9925,31 @@ mod expr {
             } else if input.peek(Lit) {
                 input.parse().map(Expr::Lit)
             } else if input.peek(crate::token::Async)
-                    && (input.peek2(token::Brace)
-                        || input.peek2(crate::token::Move) && input.peek3(token::Brace))
-                {
+                && (input.peek2(token::Brace)
+                    || input.peek2(crate::token::Move) && input.peek3(token::Brace))
+            {
                 input.parse().map(Expr::Async)
             } else if input.peek(crate::token::Try) && input.peek2(token::Brace) {
                 input.parse().map(Expr::TryBlock)
             } else if input.peek(crate::token::Or)
-                    || input.peek(crate::token::Async)
-                        && (input.peek2(crate::token::Or)
-                            || input.peek2(crate::token::Move))
-                    || input.peek(crate::token::Static) || input.peek(crate::token::Move)
-                {
+                || input.peek(crate::token::Async)
+                    && (input.peek2(crate::token::Or) || input.peek2(crate::token::Move))
+                || input.peek(crate::token::Static) || input.peek(crate::token::Move)
+            {
                 expr_closure(input, allow_struct).map(Expr::Closure)
             } else if input.peek(crate::token::For) && input.peek2(crate::token::Lt)
-                    && input.peek3(Lifetime)
-                {
+                && input.peek3(Lifetime)
+            {
                 let begin = input.fork();
                 input.parse::<BoundLifetimes>()?;
                 expr_closure(input, allow_struct)?;
                 let verbatim = verbatim::between(begin, input);
                 Ok(Expr::Verbatim(verbatim))
             } else if input.peek(Ident) || input.peek(crate::token::Colon2)
-                    || input.peek(crate::token::Lt)
-                    || input.peek(crate::token::SelfValue)
-                    || input.peek(crate::token::SelfType)
-                    || input.peek(crate::token::Super) || input.peek(crate::token::Crate)
-                {
+                || input.peek(crate::token::Lt) || input.peek(crate::token::SelfValue)
+                || input.peek(crate::token::SelfType) || input.peek(crate::token::Super)
+                || input.peek(crate::token::Crate)
+            {
                 path_or_macro_or_struct(input, allow_struct)
             } else if input.peek(token::Paren) {
                 paren_or_tuple(input)
@@ -11311,9 +11308,8 @@ mod expr {
                 if input.peek2(token::Await) {
                     "`.await`"
                 } else if input.peek2(Ident)
-                        && (input.peek3(token::Paren)
-                            || input.peek3(crate::token::Colon2))
-                    {
+                    && (input.peek3(token::Paren) || input.peek3(crate::token::Colon2))
+                {
                     "a method call"
                 } else {
                     "a field access"
@@ -14004,13 +14000,13 @@ mod item {
                 } else if lookahead.peek(crate::token::Trait) {
                     input.call(parse_trait_or_trait_alias)
                 } else if lookahead.peek(crate::token::Auto)
-                        && ahead.peek2(crate::token::Trait)
-                    {
+                    && ahead.peek2(crate::token::Trait)
+                {
                     input.parse().map(Item::Trait)
                 } else if lookahead.peek(crate::token::Impl)
-                        || lookahead.peek(crate::token::Default)
-                            && !ahead.peek2(crate::token::Bang)
-                    {
+                    || lookahead.peek(crate::token::Default)
+                        && !ahead.peek2(crate::token::Bang)
+                {
                     let allow_verbatim_impl = true;
                     if let Some(item) = parse_impl(input, allow_verbatim_impl)? {
                         Ok(Item::Impl(item))
@@ -14020,12 +14016,11 @@ mod item {
                 } else if lookahead.peek(crate::token::Macro) {
                     input.parse().map(Item::Macro2)
                 } else if vis.is_inherited()
-                        && (lookahead.peek(Ident)
-                            || lookahead.peek(crate::token::SelfValue)
-                            || lookahead.peek(crate::token::Super)
-                            || lookahead.peek(crate::token::Crate)
-                            || lookahead.peek(crate::token::Colon2))
-                    {
+                    && (lookahead.peek(Ident) || lookahead.peek(crate::token::SelfValue)
+                        || lookahead.peek(crate::token::Super)
+                        || lookahead.peek(crate::token::Crate)
+                        || lookahead.peek(crate::token::Colon2))
+                {
                     input.parse().map(Item::Macro)
                 } else if ahead.peek(macro_rules) {
                     input.advance_to(&ahead);
@@ -14507,8 +14502,8 @@ mod item {
             let mut has_receiver = false;
             while !input.is_empty() {
                 let attrs = input.call(Attribute::parse_outer)?;
-                let arg = if let Some(dots)
-                    = input.parse::<Option<crate::token::Dot3>>()?
+                let arg = if let Some(dots) = input
+                    .parse::<Option<crate::token::Dot3>>()?
                 {
                     FnArg::Typed(PatType {
                         attrs,
@@ -14716,12 +14711,11 @@ mod item {
                 } else if lookahead.peek(crate::token::Type) {
                     parse_foreign_item_type(begin, input)
                 } else if vis.is_inherited()
-                        && (lookahead.peek(Ident)
-                            || lookahead.peek(crate::token::SelfValue)
-                            || lookahead.peek(crate::token::Super)
-                            || lookahead.peek(crate::token::Crate)
-                            || lookahead.peek(crate::token::Colon2))
-                    {
+                    && (lookahead.peek(Ident) || lookahead.peek(crate::token::SelfValue)
+                        || lookahead.peek(crate::token::Super)
+                        || lookahead.peek(crate::token::Crate)
+                        || lookahead.peek(crate::token::Colon2))
+                {
                     input.parse().map(ForeignItem::Macro)
                 } else {
                     Err(lookahead.error())
@@ -15130,10 +15124,10 @@ mod item {
                     {
                         input.parse().map(TraitItem::Const)
                     } else if lookahead.peek(crate::token::Async)
-                            || lookahead.peek(crate::token::Unsafe)
-                            || lookahead.peek(crate::token::Extern)
-                            || lookahead.peek(crate::token::Fn)
-                        {
+                        || lookahead.peek(crate::token::Unsafe)
+                        || lookahead.peek(crate::token::Extern)
+                        || lookahead.peek(crate::token::Fn)
+                    {
                         input.parse().map(TraitItem::Method)
                     } else {
                         Err(lookahead.error())
@@ -15141,11 +15135,11 @@ mod item {
                 } else if lookahead.peek(crate::token::Type) {
                     parse_trait_item_type(begin.fork(), input)
                 } else if lookahead.peek(Ident)
-                        || lookahead.peek(crate::token::SelfValue)
-                        || lookahead.peek(crate::token::Super)
-                        || lookahead.peek(crate::token::Crate)
-                        || lookahead.peek(crate::token::Colon2)
-                    {
+                    || lookahead.peek(crate::token::SelfValue)
+                    || lookahead.peek(crate::token::Super)
+                    || lookahead.peek(crate::token::Crate)
+                    || lookahead.peek(crate::token::Colon2)
+                {
                     input.parse().map(TraitItem::Macro)
                 } else {
                     Err(lookahead.error())
@@ -15493,12 +15487,11 @@ mod item {
                 } else if lookahead.peek(crate::token::Type) {
                     parse_impl_item_type(begin, input)
                 } else if vis.is_inherited() && defaultness.is_none()
-                        && (lookahead.peek(Ident)
-                            || lookahead.peek(crate::token::SelfValue)
-                            || lookahead.peek(crate::token::Super)
-                            || lookahead.peek(crate::token::Crate)
-                            || lookahead.peek(crate::token::Colon2))
-                    {
+                    && (lookahead.peek(Ident) || lookahead.peek(crate::token::SelfValue)
+                        || lookahead.peek(crate::token::Super)
+                        || lookahead.peek(crate::token::Crate)
+                        || lookahead.peek(crate::token::Colon2))
+                {
                     input.parse().map(ImplItem::Macro)
                 } else {
                     Err(lookahead.error())
@@ -15548,8 +15541,8 @@ mod item {
                 let vis: Visibility = input.parse()?;
                 let defaultness: Option<crate::token::Default> = input.parse()?;
                 let sig: Signature = input.parse()?;
-                let block = if let Some(semi)
-                    = input.parse::<Option<crate::token::Semi>>()?
+                let block = if let Some(semi) = input
+                    .parse::<Option<crate::token::Semi>>()?
                 {
                     let mut punct = Punct::new(';', Spacing::Alone);
                     punct.set_span(semi.span);
@@ -18779,28 +18772,26 @@ mod stmt {
             if input.peek(crate::token::Let) {
                 stmt_local(input, attrs, begin)
             } else if input.peek(crate::token::Pub)
-                    || input.peek(crate::token::Crate)
-                        && !input.peek2(crate::token::Colon2)
-                    || input.peek(crate::token::Extern) || input.peek(crate::token::Use)
-                    || input.peek(crate::token::Static)
-                        && (input.peek2(crate::token::Mut) || input.peek2(Ident))
-                    || input.peek(crate::token::Const) && !input.peek2(token::Brace)
-                    || input.peek(crate::token::Unsafe) && !input.peek2(token::Brace)
-                    || input.peek(crate::token::Async)
-                        && (input.peek2(crate::token::Unsafe)
-                            || input.peek2(crate::token::Extern)
-                            || input.peek2(crate::token::Fn))
-                    || input.peek(crate::token::Fn) || input.peek(crate::token::Mod)
-                    || input.peek(crate::token::Type) || input.peek(crate::token::Struct)
-                    || input.peek(crate::token::Enum)
-                    || input.peek(crate::token::Union) && input.peek2(Ident)
-                    || input.peek(crate::token::Auto) && input.peek2(crate::token::Trait)
-                    || input.peek(crate::token::Trait)
-                    || input.peek(crate::token::Default)
-                        && (input.peek2(crate::token::Unsafe)
-                            || input.peek2(crate::token::Impl))
-                    || input.peek(crate::token::Impl) || input.peek(crate::token::Macro)
-                {
+                || input.peek(crate::token::Crate) && !input.peek2(crate::token::Colon2)
+                || input.peek(crate::token::Extern) || input.peek(crate::token::Use)
+                || input.peek(crate::token::Static)
+                    && (input.peek2(crate::token::Mut) || input.peek2(Ident))
+                || input.peek(crate::token::Const) && !input.peek2(token::Brace)
+                || input.peek(crate::token::Unsafe) && !input.peek2(token::Brace)
+                || input.peek(crate::token::Async)
+                    && (input.peek2(crate::token::Unsafe)
+                        || input.peek2(crate::token::Extern)
+                        || input.peek2(crate::token::Fn)) || input.peek(crate::token::Fn)
+                || input.peek(crate::token::Mod) || input.peek(crate::token::Type)
+                || input.peek(crate::token::Struct) || input.peek(crate::token::Enum)
+                || input.peek(crate::token::Union) && input.peek2(Ident)
+                || input.peek(crate::token::Auto) && input.peek2(crate::token::Trait)
+                || input.peek(crate::token::Trait)
+                || input.peek(crate::token::Default)
+                    && (input.peek2(crate::token::Unsafe)
+                        || input.peek2(crate::token::Impl))
+                || input.peek(crate::token::Impl) || input.peek(crate::token::Macro)
+            {
                 let mut item: Item = input.parse()?;
                 attrs.extend(item.replace_attrs(Vec::new()));
                 item.replace_attrs(attrs);
@@ -19196,9 +19187,8 @@ mod ty {
                         );
                     }
                 } else if input.peek(crate::token::Lt)
-                        || input.peek(crate::token::Colon2)
-                            && input.peek3(crate::token::Lt)
-                    {
+                    || input.peek(crate::token::Colon2) && input.peek3(crate::token::Lt)
+                {
                     if let Type::Path(mut ty) = *group.elem {
                         let arguments = &mut ty
                             .path
@@ -19360,9 +19350,9 @@ mod ty {
                     }),
                 )
             } else if lookahead.peek(crate::token::Fn)
-                    || lookahead.peek(crate::token::Unsafe)
-                    || lookahead.peek(crate::token::Extern)
-                {
+                || lookahead.peek(crate::token::Unsafe)
+                || lookahead.peek(crate::token::Extern)
+            {
                 let allow_mut_self = true;
                 if let Some(mut bare_fn) = parse_bare_fn(input, allow_mut_self)? {
                     bare_fn.lifetimes = lifetimes;
@@ -19371,12 +19361,11 @@ mod ty {
                     Ok(Type::Verbatim(verbatim::between(begin, input)))
                 }
             } else if lookahead.peek(Ident) || input.peek(crate::token::Super)
-                    || input.peek(crate::token::SelfValue)
-                    || input.peek(crate::token::SelfType)
-                    || input.peek(crate::token::Crate)
-                    || lookahead.peek(crate::token::Colon2)
-                    || lookahead.peek(crate::token::Lt)
-                {
+                || input.peek(crate::token::SelfValue)
+                || input.peek(crate::token::SelfType) || input.peek(crate::token::Crate)
+                || lookahead.peek(crate::token::Colon2)
+                || lookahead.peek(crate::token::Lt)
+            {
                 if input.peek(crate::token::Dyn) {
                     let trait_object = TypeTraitObject::parse(input, allow_plus)?;
                     return Ok(Type::TraitObject(trait_object));
@@ -19477,7 +19466,7 @@ mod ty {
             } else if lookahead.peek(crate::token::And) {
                 input.parse().map(Type::Reference)
             } else if lookahead.peek(crate::token::Bang) && !input.peek(crate::token::Eq)
-                {
+            {
                 input.parse().map(Type::Never)
             } else if lookahead.peek(crate::token::Impl) {
                 TypeImplTrait::parse(input, allow_plus).map(Type::ImplTrait)
@@ -19828,10 +19817,10 @@ mod ty {
                         let colon: crate::token::Colon = input.parse()?;
                         Some((name, colon))
                     } else if allow_mut_self && input.peek(crate::token::Mut)
-                            && input.peek2(crate::token::SelfValue)
-                            && input.peek3(crate::token::Colon)
-                            && !input.peek3(crate::token::Colon2)
-                        {
+                        && input.peek2(crate::token::SelfValue)
+                        && input.peek3(crate::token::Colon)
+                        && !input.peek3(crate::token::Colon2)
+                    {
                         has_mut_self = true;
                         allow_mut_self = false;
                         input.parse::<crate::token::Mut>()?;
@@ -19862,8 +19851,8 @@ mod ty {
                         .collect();
                     Type::Verbatim(tokens)
                 } else if allow_mut_self && input.peek(crate::token::Mut)
-                        && input.peek2(crate::token::SelfValue)
-                    {
+                    && input.peek2(crate::token::SelfValue)
+                {
                     has_mut_self = true;
                     input.parse::<crate::token::Mut>()?;
                     Type::Path(TypePath {
@@ -20314,13 +20303,13 @@ mod pat {
                 } else if input.peek(crate::token::Box) {
                     input.call(pat_box).map(Pat::Box)
                 } else if input.peek(crate::token::Sub) || lookahead.peek(Lit)
-                        || lookahead.peek(crate::token::Const)
-                    {
+                    || lookahead.peek(crate::token::Const)
+                {
                     pat_lit_or_range(input)
                 } else if lookahead.peek(crate::token::Ref)
-                        || lookahead.peek(crate::token::Mut)
-                        || input.peek(crate::token::SelfValue) || input.peek(Ident)
-                    {
+                    || lookahead.peek(crate::token::Mut)
+                    || input.peek(crate::token::SelfValue) || input.peek(Ident)
+                {
                     input.call(pat_ident).map(Pat::Ident)
                 } else if lookahead.peek(crate::token::And) {
                     input.call(pat_reference).map(Pat::Reference)
@@ -20329,8 +20318,8 @@ mod pat {
                 } else if lookahead.peek(token::Bracket) {
                     input.call(pat_slice).map(Pat::Slice)
                 } else if lookahead.peek(crate::token::Dot2)
-                        && !input.peek(crate::token::Dot3)
-                    {
+                    && !input.peek(crate::token::Dot3)
+                {
                     pat_range_half_open(input, begin)
                 } else if lookahead.peek(crate::token::Const) {
                     input.call(pat_const).map(Pat::Verbatim)
@@ -20646,12 +20635,12 @@ mod pat {
             let expr = if lookahead.peek(Lit) {
                 Expr::Lit(input.parse()?)
             } else if lookahead.peek(Ident) || lookahead.peek(crate::token::Colon2)
-                    || lookahead.peek(crate::token::Lt)
-                    || lookahead.peek(crate::token::SelfValue)
-                    || lookahead.peek(crate::token::SelfType)
-                    || lookahead.peek(crate::token::Super)
-                    || lookahead.peek(crate::token::Crate)
-                {
+                || lookahead.peek(crate::token::Lt)
+                || lookahead.peek(crate::token::SelfValue)
+                || lookahead.peek(crate::token::SelfType)
+                || lookahead.peek(crate::token::Super)
+                || lookahead.peek(crate::token::Crate)
+            {
                 Expr::Path(input.parse()?)
             } else if lookahead.peek(crate::token::Const) {
                 Expr::Verbatim(input.call(expr::parsing::expr_const)?)
@@ -22832,9 +22821,9 @@ mod whitespace {
                     s = &s[4..];
                     continue;
                 } else if s.starts_with("/*")
-                        && (!s.starts_with("/**") || s.starts_with("/***"))
-                        && !s.starts_with("/*!")
-                    {
+                    && (!s.starts_with("/**") || s.starts_with("/***"))
+                    && !s.starts_with("/*!")
+                {
                     let mut depth = 0;
                     let bytes = s.as_bytes();
                     let mut i = 0;
@@ -43909,8 +43898,9 @@ pub mod parse {
     }
     impl<'a> Drop for ParseBuffer<'a> {
         fn drop(&mut self) {
-            if let Some(unexpected_span)
-                = span_of_unexpected_ignoring_nones(self.cursor()) {
+            if let Some(unexpected_span) = span_of_unexpected_ignoring_nones(
+                self.cursor(),
+            ) {
                 let (inner, old_span) = inner_unexpected(self);
                 if old_span.is_none() {
                     inner.set(Unexpected::Some(unexpected_span));
@@ -44222,8 +44212,9 @@ pub mod parse {
             let state = tokens_to_parse_buffer(&buf);
             let node = self(&state)?;
             state.check_unexpected()?;
-            if let Some(unexpected_span)
-                = span_of_unexpected_ignoring_nones(state.cursor()) {
+            if let Some(unexpected_span) = span_of_unexpected_ignoring_nones(
+                state.cursor(),
+            ) {
                 Err(Error::new(unexpected_span, "unexpected token"))
             } else {
                 Ok(node)
@@ -44241,8 +44232,9 @@ pub mod parse {
             let state = new_parse_buffer(scope, cursor, unexpected);
             let node = self(&state)?;
             state.check_unexpected()?;
-            if let Some(unexpected_span)
-                = span_of_unexpected_ignoring_nones(state.cursor()) {
+            if let Some(unexpected_span) = span_of_unexpected_ignoring_nones(
+                state.cursor(),
+            ) {
                 Err(Error::new(unexpected_span, "unexpected token"))
             } else {
                 Ok(node)

@@ -13,4 +13,4 @@ path = "update-examples.rs"
 anyhow = "1.0"
 prettyplease = { path = "../../" }
 quote = { version = "1.0", default-features = false }
-syn = { version = "1.0", default-features = false, features = ["parsing", "printing"] }
+syn = { version = "2.0", default-features = false, features = ["parsing", "printing"] }

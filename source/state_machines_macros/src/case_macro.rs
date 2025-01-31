@@ -228,7 +228,8 @@ fn parse_arm(input: ParseStream) -> parse::Result<Arm> {
 
     let param_stream;
     let _ = parenthesized!(param_stream in input);
-    let params: Punctuated<Ident, token::Comma> = param_stream.parse_terminated(Ident::parse)?;
+    let params: Punctuated<Ident, token::Comma> =
+        param_stream.parse_terminated(Ident::parse, Token![,])?;
 
     let _: Token![=>] = input.parse()?;
     let block: ExprBlock = input.parse()?;

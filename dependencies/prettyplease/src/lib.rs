@@ -49,16 +49,16 @@
 //! more detail comparing the output of each of these libraries.
 //!
 //! | | prettyplease | rustc | rustfmt |
-//! | --- | --- | --- | --- |
-//! | non-pathological behavior on big or generated code | ✅ | ❌ | ❌ |
-//! | idiomatic modern formatting ("locally indistinguishable from rustfmt") | ✅ | ❌ | ✅ |
+//! |:---|:---:|:---:|:---:|
+//! | non-pathological behavior on big or generated code | 💚 | ❌ | ❌ |
+//! | idiomatic modern formatting ("locally indistinguishable from rustfmt") | 💚 | ❌ | 💚 |
 //! | throughput | 60 MB/s | 39 MB/s | 2.8 MB/s |
 //! | number of dependencies | 3 | 72 | 66 |
 //! | compile time including dependencies | 2.4 sec | 23.1 sec | 29.8 sec |
-//! | buildable using a stable Rust compiler | ✅ | ❌ | ❌ |
-//! | published to crates.io | ✅ | ❌ | ❌ |
-//! | extensively configurable output | ❌ | ❌ | ✅ |
-//! | intended to accommodate hand-maintained source code | ❌ | ❌ | ✅ |
+//! | buildable using a stable Rust compiler | 💚 | ❌ | ❌ |
+//! | published to crates.io | 💚 | ❌ | ❌ |
+//! | extensively configurable output | ❌ | ❌ | 💚 |
+//! | intended to accommodate hand-maintained source code | ❌ | ❌ | 💚 |
 //!
 //! <br>
 //!
@@ -179,8 +179,8 @@
 //!
 //! ```
 //! // [dependencies]
-//! // prettyplease = "0.1"
-//! // syn = { version = "1", default-features = false, features = ["full", "parsing"] }
+//! // prettyplease = "0.2"
+//! // syn = { version = "2", default-features = false, features = ["full", "parsing"] }
 //!
 //! const INPUT: &str = stringify! {
 //!     use crate::{
@@ -276,7 +276,7 @@
 //! style. The reason is that in the paper, the complete non-whitespace contents
 //! are assumed to be independent of linebreak decisions, with Scan and Print
 //! being only in control of the whitespace (spaces and line breaks). In Rust as
-//! idiomatically formattted by rustfmt, that is not the case. Trailing commas
+//! idiomatically formatted by rustfmt, that is not the case. Trailing commas
 //! are one example; the punctuation is only known *after* the broken vs
 //! non-broken status of the surrounding group is known:
 //!
@@ -320,19 +320,24 @@
 //! these situations with conditional punctuation tokens whose selection can be
 //! deferred and populated after it's known that the group is or is not broken.
 
+#![doc(html_root_url = "https://docs.rs/prettyplease/0.2.29")]
 #![allow(
+    clippy::bool_to_int_with_if,
     clippy::cast_possible_wrap,
     clippy::cast_sign_loss,
     clippy::derive_partial_eq_without_eq,
     clippy::doc_markdown,
     clippy::enum_glob_use,
     clippy::items_after_statements,
+    clippy::let_underscore_untyped,
     clippy::match_like_matches_macro,
     clippy::match_same_arms,
     clippy::module_name_repetitions,
     clippy::must_use_candidate,
     clippy::needless_pass_by_value,
+    clippy::ref_option,
     clippy::similar_names,
+    clippy::struct_excessive_bools,
     clippy::too_many_lines,
     clippy::unused_self,
     clippy::vec_init_then_push
@@ -341,10 +346,12 @@
 
 mod algorithm;
 mod attr;
+mod classify;
 mod convenience;
 mod data;
 mod expr;
 mod file;
+mod fixup;
 mod generics;
 mod item;
 mod iter;
@@ -353,6 +360,7 @@ mod lit;
 mod mac;
 mod pat;
 mod path;
+mod precedence;
 mod ring;
 mod stmt;
 mod token;
@@ -379,6 +387,6 @@ pub fn unparse(file: &File) -> String {
 
 pub fn unparse_expr(e: &Expr) -> String {
     let mut p = Printer::new();
-    p.expr(e);
+    p.expr(e, crate::fixup::FixupContext::NONE);
     p.eof()
 }
