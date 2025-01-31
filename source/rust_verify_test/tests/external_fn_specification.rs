@@ -1275,7 +1275,7 @@ test_verify_one_file! {
         impl Tr for X {
             fn foo(&self) { }
         }
-    } => Err(err) => assert_vir_error_msg(err, "X::foo` is not supported") // TODO could have clearer error msg
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::foo` which is ignored")
 }
 
 test_verify_one_file! {
@@ -1354,4 +1354,19 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "assume_specification for a provided trait method")
+}
+
+test_verify_one_file! {
+    #[test] module_external code! {
+        #[verifier::external]
+        mod moo {
+            #[verifier::verify]
+            fn stuff() {
+                builtin::assert_(false);
+            }
+        }
+    } => Ok(err) => {
+        assert!(err.warnings.len() == 2);
+        assert!(err.warnings[0].message.contains("#[verifier::verify] has no effect because item is already marked external"));
+    }
 }
