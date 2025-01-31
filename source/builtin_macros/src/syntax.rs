@@ -25,7 +25,7 @@ use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AssumeSpecification, AttrStyle, Attribute,
     BareFnArg, BinOp, Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit,
     ExprLoop, ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArg, FnArgKind, FnMode,
-    Global, Ident, ImplItem, ImplItemMethod, Invariant, InvariantEnsures, InvariantExceptBreak,
+    Global, Ident, ImplItem, ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak,
     InvariantNameSet, InvariantNameSetList, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn,
     ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr,
     MatchesOpToken, ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path, PathArguments,
@@ -1384,7 +1384,7 @@ impl Visitor {
         if self.rustdoc && crate::cfg_verify_vstd() {
             let mut block = (*item_fn.block).clone();
             block.stmts.push(Stmt::Expr(Expr::Verbatim(quote! { ::core::unimplemented!() })));
-            let impl_item_fn = syn_verus::ImplItem::Method(syn_verus::ImplItemMethod {
+            let impl_item_fn = syn_verus::ImplItem::Fn(syn_verus::ImplItemFn {
                 attrs: item_fn.attrs.clone(),
                 vis: item_fn.vis.clone(),
                 defaultness: None,
@@ -1486,7 +1486,7 @@ impl Visitor {
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
-                ImplItem::Method(fun) => match fun.sig.mode {
+                ImplItem::Fn(fun) => match fun.sig.mode {
                     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
@@ -1501,7 +1501,7 @@ impl Visitor {
         // Unfortunately, we just have to assume that if for_trait == true,
         // the methods might be public
         items.retain(|item| match item {
-            ImplItem::Method(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
+            ImplItem::Fn(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
                 (
                     (Visibility::Public(_), _) | (_, true),
                     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_),
@@ -1519,7 +1519,7 @@ impl Visitor {
         for item in items.iter_mut() {
             let span = item.span();
             match item {
-                ImplItem::Method(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
+                ImplItem::Fn(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
                     (
                         (Visibility::Public(_), _) | (_, true),
                         FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_),
@@ -1794,9 +1794,9 @@ impl Visitor {
         if let Expr::BigAnd(exprs) = expr {
             let mut new_expr = take_expr(&mut exprs.exprs[0].1);
             for i in 1..exprs.exprs.len() {
-                let span = exprs.exprs[i].0.span();
+                let span = exprs.exprs[i].tok.span();
                 let spans = [span, span];
-                let right = take_expr(&mut exprs.exprs[i].1);
+                let right = take_expr(&mut exprs.exprs[i].expr);
                 let left = Box::new(Expr::Verbatim(quote_spanned!(new_expr.span() => (#new_expr))));
                 let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
                 let attrs = Vec::new();
@@ -1808,9 +1808,9 @@ impl Visitor {
         } else if let Expr::BigOr(exprs) = expr {
             let mut new_expr = take_expr(&mut exprs.exprs[0].1);
             for i in 1..exprs.exprs.len() {
-                let span = exprs.exprs[i].0.span();
+                let span = exprs.exprs[i].tok.span();
                 let spans = [span, span];
-                let right = take_expr(&mut exprs.exprs[i].1);
+                let right = take_expr(&mut exprs.exprs[i].expr);
                 let left = Box::new(Expr::Verbatim(quote_spanned!(new_expr.span() => (#new_expr))));
                 let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
                 let attrs = Vec::new();
@@ -3328,7 +3328,7 @@ impl VisitMut for Visitor {
         }
     }
 
-    fn visit_impl_item_method_mut(&mut self, method: &mut ImplItemMethod) {
+    fn visit_impl_item_method_mut(&mut self, method: &mut ImplItemFn) {
         if self.rustdoc {
             crate::rustdoc::process_impl_item_method(method);
         }

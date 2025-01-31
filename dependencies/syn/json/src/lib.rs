@@ -13,9 +13,9 @@
 //!   of the [`visit`], [`visit_mut`], and [`fold`] modules can be generated
 //!   programmatically from a description of the syntax tree.
 //!
-//!   [`visit`]: https://docs.rs/syn/1.0/syn/visit/index.html
-//!   [`visit_mut`]: https://docs.rs/syn/1.0/syn/visit_mut/index.html
-//!   [`fold`]: https://docs.rs/syn/1.0/syn/fold/index.html
+//!   [`visit`]: https://docs.rs/syn/2.0/syn/visit/index.html
+//!   [`visit_mut`]: https://docs.rs/syn/2.0/syn/visit_mut/index.html
+//!   [`fold`]: https://docs.rs/syn/2.0/syn/fold/index.html
 //!
 //! To make this type of code as easy as possible to implement in any language,
 //! every Syn release comes with a machine-readable description of that version
@@ -44,15 +44,19 @@
 //! }
 //! ```
 
-#![doc(html_root_url = "https://docs.rs/syn-codegen/0.2.0")]
+#![doc(html_root_url = "https://docs.rs/syn-codegen/0.4.2")]
 
 use indexmap::IndexMap;
 use semver::Version;
-use serde::{Deserialize, Deserializer, Serialize};
+#[cfg(feature = "serde")]
+use serde::de::{Deserialize, Deserializer};
+#[cfg(feature = "serde")]
+use serde_derive::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// Top-level content of the syntax tree description.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Definitions {
     /// The Syn version whose syntax tree is described by this data.
     pub version: Version,
@@ -71,7 +75,8 @@ pub struct Definitions {
 }
 
 /// Syntax tree type defined by Syn.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Node {
     /// Name of the type.
     ///
@@ -82,29 +87,36 @@ pub struct Node {
     pub features: Features,
 
     /// Content of the data structure.
-    #[serde(
-        flatten,
-        skip_serializing_if = "is_private",
-        deserialize_with = "private_if_absent"
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            flatten,
+            skip_serializing_if = "is_private",
+            deserialize_with = "private_if_absent"
+        )
     )]
     pub data: Data,
 
-    #[serde(skip_serializing_if = "is_true", default = "bool_true")]
+    #[cfg_attr(
+        feature = "serde",
+        serde(skip_serializing_if = "is_true", default = "bool_true")
+    )]
     pub exhaustive: bool,
 }
 
 /// Content of a syntax tree data structure.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum Data {
-    /// This is an opaque type with no publicy accessible structure.
+    /// This is an opaque type with no publicly accessible structure.
     Private,
 
     /// This type is a braced struct with named fields.
-    #[serde(rename = "fields")]
+    #[cfg_attr(feature = "serde", serde(rename = "fields"))]
     Struct(Fields),
 
     /// This type is an enum.
-    #[serde(rename = "variants")]
+    #[cfg_attr(feature = "serde", serde(rename = "variants"))]
     Enum(Variants),
 }
 
@@ -122,8 +134,12 @@ pub type Fields = IndexMap<String, Type>;
 pub type Variants = IndexMap<String, Vec<Type>>;
 
 /// Type of a struct field or tuple variant field in the syntax tree.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(Serialize, Deserialize),
+    serde(rename_all = "lowercase")
+)]
 pub enum Type {
     /// Syntax tree type defined by Syn.
     ///
@@ -140,7 +156,7 @@ pub enum Type {
     ///
     /// The type is accessible in the proc-macro2 public API as
     /// `proc_macro2::#name`.
-    #[serde(rename = "proc_macro2")]
+    #[cfg_attr(feature = "serde", serde(rename = "proc_macro2"))]
     Ext(String),
 
     /// Keyword or punctuation token type defined by Syn.
@@ -177,20 +193,23 @@ pub enum Type {
 /// This refers to `syn::punctuated::Punctuated<#element, #punct>`.
 ///
 /// The punct string will match one of the keys in the `tokens` map.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Punctuated {
     pub element: Box<Type>,
     pub punct: String,
 }
 
 /// Features behind which a syntax tree type is cfg gated.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Features {
     /// Type is accessible if at least one of these features is enabled against
     /// the Syn dependency.
     pub any: BTreeSet<String>,
 }
 
+#[cfg(feature = "serde")]
 fn is_private(data: &Data) -> bool {
     match data {
         Data::Private => true,
@@ -198,6 +217,7 @@ fn is_private(data: &Data) -> bool {
     }
 }
 
+#[cfg(feature = "serde")]
 fn private_if_absent<'de, D>(deserializer: D) -> Result<Data, D::Error>
 where
     D: Deserializer<'de>,
@@ -206,10 +226,12 @@ where
     Ok(option.unwrap_or(Data::Private))
 }
 
+#[cfg(feature = "serde")]
 fn is_true(b: &bool) -> bool {
     *b
 }
 
+#[cfg(feature = "serde")]
 fn bool_true() -> bool {
     true
 }

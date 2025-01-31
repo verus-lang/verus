@@ -6,7 +6,7 @@ pub enum Operand {
     Owned(TokenStream),
 }
 
-pub use self::Operand::*;
+pub use self::Operand::{Borrowed, Owned};
 
 impl Operand {
     pub fn tokens(&self) -> &TokenStream {

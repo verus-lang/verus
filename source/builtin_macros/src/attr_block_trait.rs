@@ -1,5 +1,5 @@
 use syn::{
-    Attribute, Block, ExprForLoop, ExprLoop, ExprWhile, ImplItemMethod, ItemFn, TraitItemMethod,
+    Attribute, Block, ExprForLoop, ExprLoop, ExprWhile, ImplItemFn, ItemFn, TraitItemMethod,
 };
 
 pub trait AnyAttrBlock {
@@ -18,7 +18,7 @@ impl AnyAttrBlock for ItemFn {
     }
 }
 
-impl AnyAttrBlock for ImplItemMethod {
+impl AnyAttrBlock for ImplItemFn {
     fn attrs_mut(&mut self) -> &mut Vec<Attribute> {
         &mut self.attrs
     }

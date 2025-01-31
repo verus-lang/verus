@@ -460,7 +460,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         self.visit_block(&i.body);
     }
 
-    fn visit_impl_item_method(&mut self, i: &'ast syn_verus::ImplItemMethod) {
+    fn visit_impl_item_fn(&mut self, i: &'ast syn_verus::ImplItemFn) {
         let content_code_kind = i.sig.mode.to_code_kind();
         let exit = self.item_attr_enter(&i.attrs);
         let code_kind = self.mode_or_trusted(content_code_kind);

@@ -18,7 +18,7 @@ use syn_verus::spanned::Spanned;
 use syn_verus::Token;
 use syn_verus::{
     braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, FnArgKind, FnMode, GenericArgument,
-    GenericParam, Generics, Ident, ImplItemMethod, Item, ItemFn, Meta, MetaList, NestedMeta,
+    GenericParam, Generics, Ident, ImplItemFn, Item, ItemFn, Meta, MetaList, NestedMeta,
     PathArguments, Receiver, ReturnType, Type, TypeParam, TypePath, Visibility, WhereClause,
 };
 
@@ -28,7 +28,7 @@ pub struct SMBundle {
     pub extras: Extras,
     // Any extra functions the user declares, which are copied verbatim to the
     // 'impl' of the resulting datatype, with no extra processing.
-    pub normal_fns: Vec<ImplItemMethod>,
+    pub normal_fns: Vec<ImplItemFn>,
 }
 
 ///////// TokenStream -> ParseResult
@@ -136,7 +136,7 @@ pub fn peek_keyword(cursor: Cursor, token: &str) -> bool {
 
 ///////// ParseResult -> SM AST
 
-// For a given ImplItemMethod, we check its attributes to see if it needs special processing.
+// For a given ImplItemFn, we check its attributes to see if it needs special processing.
 // Transitions (init, transition, and readonly) require the most processing. We have to
 // translate the body AST, interpreting it as our mini-language.
 // The other special functions (inv, lemma) are kept as-is for now, although they receive
@@ -278,7 +278,7 @@ fn attr_is_polarity(attr: &Attribute) -> bool {
 // Check that the user did not apply an explicit mode. We will apply the modes ourselves
 // during macro expansion.
 
-fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> parse::Result<()> {
+fn ensure_no_mode(impl_item_method: &ImplItemFn, msg: &str) -> parse::Result<()> {
     for attr in &impl_item_method.attrs {
         if attr_is_any_mode(attr) {
             return Err(Error::new(attr.span(), msg));
@@ -288,7 +288,7 @@ fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> parse::Result
     return Ok(());
 }
 
-fn to_invariant(impl_item_method: ImplItemMethod) -> parse::Result<Invariant> {
+fn to_invariant(impl_item_method: ImplItemFn) -> parse::Result<Invariant> {
     ensure_no_mode(
         &impl_item_method,
         "an invariant fn is implied to be 'spec'; it should not be explicitly labelled",
@@ -355,7 +355,7 @@ fn to_invariant(impl_item_method: ImplItemMethod) -> parse::Result<Invariant> {
     return Ok(Invariant { func: impl_item_method });
 }
 
-fn to_lemma(impl_item_method: ImplItemMethod, purpose: LemmaPurpose) -> parse::Result<Lemma> {
+fn to_lemma(impl_item_method: ImplItemFn, purpose: LemmaPurpose) -> parse::Result<Lemma> {
     ensure_no_mode(
         &impl_item_method,
         "an inductivity lemma is implied to be 'proof'; it should not be explicitly labelled",
@@ -664,10 +664,10 @@ fn to_fields(
     return Ok(v);
 }
 
-fn impl_item_method_from_item_fn(item_fn: ItemFn) -> ImplItemMethod {
+fn impl_item_method_from_item_fn(item_fn: ItemFn) -> ImplItemFn {
     let ItemFn { attrs, vis, sig, block, semi_token } = item_fn;
     let block = *block;
-    ImplItemMethod { attrs, vis, sig, block, semi_token, defaultness: None }
+    ImplItemFn { attrs, vis, sig, block, semi_token, defaultness: None }
 }
 
 fn item_type_check_name(ident: &Ident) -> parse::Result<bool> {

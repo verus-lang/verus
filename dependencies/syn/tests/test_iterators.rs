@@ -1,5 +1,11 @@
+#![allow(
+    clippy::map_unwrap_or,
+    clippy::needless_lifetimes,
+    clippy::uninlined_format_args
+)]
+
 use syn::punctuated::{Pair, Punctuated};
-use syn::Token;
+use syn::{parse_quote, GenericParam, Generics, Lifetime, LifetimeParam, Token};
 
 #[macro_use]
 mod macros;
@@ -46,4 +52,42 @@ fn iter() {
     assert_eq!(p.iter().next_back(), Some(&4));
     assert_eq!(p.iter_mut().next_back(), Some(&mut 4));
     assert_eq!(p.into_iter().next_back(), Some(4));
+}
+
+#[test]
+fn may_dangle() {
+    let p: Punctuated<_, Token![,]> = punctuated!(2, 3, 4);
+    for element in &p {
+        if *element == 2 {
+            drop(p);
+            break;
+        }
+    }
+
+    let mut p: Punctuated<_, Token![,]> = punctuated!(2, 3, 4);
+    for element in &mut p {
+        if *element == 2 {
+            drop(p);
+            break;
+        }
+    }
+}
+
+// Regression test for https://github.com/dtolnay/syn/issues/1718
+#[test]
+fn no_opaque_drop() {
+    let mut generics = Generics::default();
+
+    let _ = generics
+        .lifetimes()
+        .next()
+        .map(|param| param.lifetime.clone())
+        .unwrap_or_else(|| {
+            let lifetime: Lifetime = parse_quote!('a);
+            generics.params.insert(
+                0,
+                GenericParam::Lifetime(LifetimeParam::new(lifetime.clone())),
+            );
+            lifetime
+        });
 }

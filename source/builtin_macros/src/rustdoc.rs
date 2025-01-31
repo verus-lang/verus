@@ -36,7 +36,7 @@ use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
     AssumeSpecification, AttrStyle, Attribute, Block, Expr, ExprBlock, ExprPath, FnMode, Ident,
-    ImplItemMethod, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
+    ImplItemFn, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
     ReturnType, Signature, TraitItemMethod, Type, TypeGroup, TypePath,
 };
 
@@ -78,7 +78,7 @@ pub fn process_item_fn_broadcast_group(item: &mut ItemFn) {
     }
 }
 
-pub fn process_impl_item_method(item: &mut ImplItemMethod) {
+pub fn process_impl_item_method(item: &mut ImplItemFn) {
     match attr_for_sig(&item.sig, Some(&item.block), None) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}

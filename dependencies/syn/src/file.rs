@@ -1,9 +1,12 @@
-use super::*;
+use crate::attr::Attribute;
+use crate::item::Item;
 
 ast_struct! {
     /// A complete file of Rust source code.
     ///
-    /// *This type is available only if Syn is built with the `"full"` feature.*
+    /// Typically `File` objects are created with [`parse_file`].
+    ///
+    /// [`parse_file`]: crate::parse_file
     ///
     /// # Example
     ///
@@ -12,8 +15,7 @@ ast_struct! {
     ///
     /// ```
     /// use std::env;
-    /// use std::fs::File;
-    /// use std::io::Read;
+    /// use std::fs;
     /// use std::process;
     ///
     /// fn main() {
@@ -31,12 +33,8 @@ ast_struct! {
     ///         }
     ///     };
     ///
-    ///     let mut file = File::open(&filename).expect("Unable to open file");
-    ///
-    ///     let mut src = String::new();
-    ///     file.read_to_string(&mut src).expect("Unable to read file");
-    ///
-    ///     let syntax = syn::parse_file(&src).expect("Unable to parse file");
+    ///     let src = fs::read_to_string(&filename).expect("unable to read file");
+    ///     let syntax = syn::parse_file(&src).expect("unable to parse file");
     ///
     ///     // Debug impl is available if Syn is built with "extra-traits" feature.
     ///     println!("{:#?}", syntax);
@@ -77,7 +75,7 @@ ast_struct! {
     ///         ),
     /// ...
     /// ```
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "full")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     pub struct File {
         pub shebang: Option<String>,
         pub attrs: Vec<Attribute>,
@@ -86,11 +84,13 @@ ast_struct! {
 }
 
 #[cfg(feature = "parsing")]
-pub mod parsing {
-    use super::*;
-    use crate::parse::{Parse, ParseStream, Result};
+pub(crate) mod parsing {
+    use crate::attr::Attribute;
+    use crate::error::Result;
+    use crate::file::File;
+    use crate::parse::{Parse, ParseStream};
 
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
     impl Parse for File {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(File {
@@ -110,12 +110,12 @@ pub mod parsing {
 
 #[cfg(feature = "printing")]
 mod printing {
-    use super::*;
     use crate::attr::FilterAttrs;
+    use crate::file::File;
     use proc_macro2::TokenStream;
     use quote::{ToTokens, TokenStreamExt};
 
-    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    #[cfg_attr(docsrs, doc(cfg(feature = "printing")))]
     impl ToTokens for File {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(self.attrs.inner());

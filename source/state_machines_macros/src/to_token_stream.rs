@@ -25,7 +25,7 @@ use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
     AngleBracketedGenericArguments, Attribute, Block, Expr, ExprBlock, FnArg, FnArgKind, FnMode,
-    GenericArgument, GenericParam, Generics, Ident, ImplItemMethod, Meta, MetaList, ModeProof,
+    GenericArgument, GenericParam, Generics, Ident, ImplItemFn, Meta, MetaList, ModeProof,
     ModeSpec, Open, Pat, Path, PathArguments, PathSegment, Publish, Signature, Stmt, Type,
     TypePath,
 };
@@ -1073,7 +1073,7 @@ fn output_other_fns(
     impl_stream: &mut TokenStream,
     invariants: &Vec<Invariant>,
     lemmas: &Vec<Lemma>,
-    normal_fns: &Vec<ImplItemMethod>,
+    normal_fns: &Vec<ImplItemFn>,
 ) {
     let inv_names = invariants.iter().map(|i| &i.func.sig.ident);
     let conj = if inv_names.len() == 0 {
@@ -1163,7 +1163,7 @@ fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
 /// For 'readonly' transitions, there is no need to prove inductiveness.
 /// We should have already ruled out the existence of such lemmas.
 
-fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
+fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemFn) {
     let trans = get_transition(&bundle.sm.transitions, &l.purpose.transition.to_string())
         .expect("transition");
 
