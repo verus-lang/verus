@@ -102,7 +102,7 @@ fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
     let name = temp.clone();
     let patternx = PatternX::Var { name, mutable: false };
     let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
-    let decl = StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(expr.clone()) };
+    let decl = StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(expr.clone()), els: None };
     let temp_decl = Spanned::new(expr.span.clone(), decl);
     (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(temp)))
 }
@@ -139,7 +139,8 @@ fn pattern_to_exprs(
         let patternx = PatternX::Var { name, mutable };
         let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
         // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
-        let decl = StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(expr.clone()) };
+        let decl =
+            StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(expr.clone()), els: None };
         decls.push(Spanned::new(expr.span.clone(), decl));
     }
 
@@ -593,17 +594,27 @@ fn tuple_get_field_expr(
 
 fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<Vec<Stmt>, VirErr> {
     match &stmt.x {
-        StmtX::Decl { pattern, mode: _, init: None } => match &pattern.x {
+        StmtX::Decl { pattern, mode: _, init: None, els: None } => match &pattern.x {
             PatternX::Var { .. } => Ok(vec![stmt.clone()]),
             _ => Err(error(&stmt.span, "let-pattern declaration must have an initializer")),
         },
-        StmtX::Decl { pattern, mode: _, init: Some(init) }
+        StmtX::Decl { pattern, mode: _, init: Some(init), els }
             if !matches!(pattern.x, PatternX::Var { .. }) =>
         {
             let mut decls: Vec<Stmt> = Vec::new();
             let (temp_decl, init) = small_or_temp(state, init);
             decls.extend(temp_decl.into_iter());
-            let _ = pattern_to_exprs(ctx, state, &init, &pattern, &mut decls)?;
+            let mut decls2: Vec<Stmt> = Vec::new();
+            let pattern_check = pattern_to_exprs(ctx, state, &init, &pattern, &mut decls2)?;
+            if let Some(els) = &els {
+                let e = ExprX::Unary(UnaryOp::Not, pattern_check.clone());
+                let check = SpannedTyped::new(&pattern_check.span, &pattern_check.typ, e);
+                let ifx = ExprX::If(check.clone(), els.clone(), Some(init.clone()));
+                let init = SpannedTyped::new(&els.span, &init.typ, ifx);
+                let (temp_decl, _) = temp_expr(state, &init);
+                decls.push(temp_decl);
+            }
+            decls.extend(decls2);
             Ok(decls)
         }
         _ => Ok(vec![stmt.clone()]),
@@ -732,7 +743,8 @@ fn exec_closure_spec_requires(
         let patternx = PatternX::Var { name: p.name.clone(), mutable: false };
         let pattern = SpannedTyped::new(span, &p.a, patternx);
         let tuple_field = tuple_get_field_expr(state, span, &p.a, &tuple_var, params.len(), i);
-        let decl = StmtX::Decl { pattern, mode: Some(Mode::Spec), init: Some(tuple_field) };
+        let decl =
+            StmtX::Decl { pattern, mode: Some(Mode::Spec), init: Some(tuple_field), els: None };
         decls.push(Spanned::new(span.clone(), decl));
     }
 
@@ -792,7 +804,8 @@ fn exec_closure_spec_ensures(
         let patternx = PatternX::Var { name: p.name.clone(), mutable: false };
         let pattern = SpannedTyped::new(span, &p.a, patternx);
         let tuple_field = tuple_get_field_expr(state, span, &p.a, &tuple_var, params.len(), i);
-        let decl = StmtX::Decl { pattern, mode: Some(Mode::Spec), init: Some(tuple_field) };
+        let decl =
+            StmtX::Decl { pattern, mode: Some(Mode::Spec), init: Some(tuple_field), els: None };
         decls.push(Spanned::new(span.clone(), decl));
     }
 

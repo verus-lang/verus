@@ -2257,7 +2257,10 @@ fn stmt_to_stm(
             let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
             Ok((stms, exp, None))
         }
-        StmtX::Decl { pattern, mode: _, init } => {
+        StmtX::Decl { pattern, mode: _, init, els } => {
+            if els.is_some() {
+                panic!("let-else should be simplified in ast_simpllify {:?}.", stmt)
+            }
             let (name, mutable) = match &pattern.x {
                 PatternX::Var { name, mutable } => (name, mutable),
                 _ => panic!("internal error: Decl should have been simplified by ast_simplify"),

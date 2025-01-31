@@ -109,7 +109,7 @@ pub(crate) type Stm = Box<(Span, StmX)>;
 #[derive(Debug, Clone)]
 pub(crate) enum StmX {
     Expr(Exp),
-    Let(Pattern, Typ, Option<Exp>),
+    Let(Pattern, Typ, Option<Exp>, Option<Exp>),
 }
 
 #[derive(Debug)]

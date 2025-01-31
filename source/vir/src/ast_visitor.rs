@@ -546,10 +546,13 @@ where
         StmtX::Expr(e) => {
             expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
         }
-        StmtX::Decl { pattern, mode: _, init } => {
+        StmtX::Decl { pattern, mode: _, init, els } => {
             map.push_scope(true);
             if let Some(init) = init {
                 expr_visitor_control_flow!(expr_visitor_dfs(init, map, mf));
+            }
+            if let Some(els) = els {
+                expr_visitor_control_flow!(expr_visitor_dfs(els, map, mf));
             }
             insert_pattern_vars(map, &pattern, init.is_some());
             expr_visitor_control_flow!(pat_visitor_dfs(&pattern, map, mf));
@@ -1111,12 +1114,14 @@ where
             let expr = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
             fs(env, map, &Spanned::new(stmt.span.clone(), StmtX::Expr(expr)))
         }
-        StmtX::Decl { pattern, mode, init } => {
+        StmtX::Decl { pattern, mode, init, els } => {
             let pattern = map_pattern_visitor_env(pattern, map, env, fe, fs, ft)?;
             let init =
                 init.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
             insert_pattern_vars(map, &pattern, init.is_some());
-            let decl = StmtX::Decl { pattern, mode: *mode, init };
+            let els =
+                els.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
+            let decl = StmtX::Decl { pattern, mode: *mode, init, els };
             fs(env, map, &Spanned::new(stmt.span.clone(), decl))
         }
     }

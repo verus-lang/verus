@@ -714,14 +714,21 @@ pub(crate) fn emit_stm(state: &mut EmitState, stm: &Stm) {
             emit_exp(state, exp);
             state.write(";");
         }
-        StmX::Let(pat, typ, init) => {
+        StmX::Let(pat, typ, init, els) => {
             state.write("let ");
             emit_pattern(state, pat);
-            state.write(": ");
-            state.write(typ.to_string());
+            if els.is_none() {
+                state.write(": ");
+                state.write(typ.to_string());
+            }
             if let Some(init) = init {
                 state.write(" = ");
                 emit_exp(state, init);
+            }
+            if let Some(els) = els {
+                state.write(" else {");
+                emit_exp(state, els);
+                state.write("}");
             }
             state.write(";");
         }

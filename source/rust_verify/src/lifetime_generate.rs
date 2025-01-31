@@ -1681,8 +1681,11 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
                 vec![]
             }
         }
-        StmtKind::Let(LetStmt { pat, ty: _, init, els: _, hir_id, span: _, source: _ }) => {
+        StmtKind::Let(LetStmt { pat, ty: _, init, els, hir_id, span: _, source: _ }) => {
             let mode = ctxt.var_modes[&pat.hir_id];
+            if mode != Mode::Exec && els.is_some() {
+                panic!("let-else is not supported in spec");
+            }
             if mode == Mode::Spec {
                 if let Some(init) = init {
                     if let Some(e) = erase_expr(ctxt, state, true, init) {
@@ -1698,7 +1701,13 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
                 let typ = erase_ty(ctxt, state, &ctxt.types().node_type(*hir_id));
                 let init_exp =
                     if let Some(init) = init { erase_expr(ctxt, state, false, init) } else { None };
-                vec![Box::new((stmt.span, StmX::Let(pat, typ, init_exp)))]
+                let els_expr = if let Some(els) = els {
+                    erase_block(ctxt, state, false, &els)
+                        .or_else(|| Some(Box::new((els.span, ExpX::Panic))))
+                } else {
+                    None
+                };
+                vec![Box::new((stmt.span, StmX::Let(pat, typ, init_exp, els_expr)))]
             }
         }
         StmtKind::Item(..) => panic!("unexpected statement"),
