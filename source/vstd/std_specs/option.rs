@@ -7,6 +7,25 @@ use core::option::Option::Some;
 
 verus! {
 
+impl<T> View for Option<T> {
+    type V = Option<T>;
+
+    open spec fn view(&self) -> Option<T> {
+        *self
+    }
+}
+
+impl<T: DeepView> DeepView for Option<T> {
+    type V = Option<T::V>;
+
+    open spec fn deep_view(&self) -> Option<T::V> {
+        match self {
+            Some(t) => Some(t.deep_view()),
+            None => None,
+        }
+    }
+}
+
 ////// Add is_variant-style spec functions
 pub trait OptionAdditionalFns<T>: Sized {
     #[allow(non_snake_case)]

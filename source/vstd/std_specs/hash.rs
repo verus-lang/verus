@@ -135,6 +135,13 @@ pub broadcast proof fn axiom_u128_obeys_hash_table_key_model()
     admit();
 }
 
+pub broadcast proof fn axiom_usize_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<usize>(),
+{
+    admit();
+}
+
 pub broadcast proof fn axiom_i8_obeys_hash_table_key_model()
     ensures
         #[trigger] obeys_key_model::<i8>(),
@@ -166,6 +173,13 @@ pub broadcast proof fn axiom_i164_obeys_hash_table_key_model()
 pub broadcast proof fn axiom_i128_obeys_hash_table_key_model()
     ensures
         #[trigger] obeys_key_model::<i128>(),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_isize_obeys_hash_table_key_model()
+    ensures
+        #[trigger] obeys_key_model::<isize>(),
 {
     admit();
 }
@@ -931,11 +945,13 @@ pub broadcast group group_hash_axioms {
     axiom_u32_obeys_hash_table_key_model,
     axiom_u64_obeys_hash_table_key_model,
     axiom_u128_obeys_hash_table_key_model,
+    axiom_usize_obeys_hash_table_key_model,
     axiom_i8_obeys_hash_table_key_model,
     axiom_i16_obeys_hash_table_key_model,
     axiom_i32_obeys_hash_table_key_model,
     axiom_i164_obeys_hash_table_key_model,
     axiom_i128_obeys_hash_table_key_model,
+    axiom_isize_obeys_hash_table_key_model,
     axiom_box_bool_obeys_hash_table_key_model,
     axiom_box_integer_type_obeys_hash_table_key_model,
     axiom_random_state_builds_valid_hashers,
