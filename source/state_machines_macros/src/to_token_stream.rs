@@ -301,7 +301,7 @@ pub fn output_primary_stuff(
     let attrs = &bundle.sm.attrs;
     let code: TokenStream = quote_spanned! { sm.fields_named_ast.span() =>
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
-        #[verifier::ext_equal]
+        #[cfg_attr(verus_keep_ghost, verifier::ext_equal)]
         #(#attrs)*
         pub struct State #gen {
             #(#fields),*
