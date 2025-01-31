@@ -12,6 +12,9 @@ const MINIMUM_VERUSFMT_VERSION: [u64; 3] = [0, 5, 0];
 
 mod util;
 
+use std::ffi::OsStr;
+use std::process::Command;
+
 use filetime::FileTime as FFileTime;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -238,6 +241,98 @@ impl PartialOrd for Fingerprint {
                 (Greater, Greater) => Some(Greater),
                 _ => None,
             }
+        }
+    }
+}
+
+#[derive(Debug)]
+enum Toolchain {
+    Rustup { toolchain: String, channel: String },
+    Host,
+}
+
+impl Toolchain {
+    fn from_environment() -> Option<Self> {
+        std::env::var("VARGO_TOOLCHAIN").ok().and_then(|toolchain| {
+            match toolchain.as_str() {
+                "" => None,
+                "host" => Some(Self::Host),
+                _ => {
+                    // More relaxed than `rustup show active-toolchain`
+                    let channel = toolchain
+                        .split('-')
+                        .next()
+                        .unwrap_or(&toolchain)
+                        .to_string();
+
+                    Some(Self::Rustup { toolchain, channel })
+                }
+            }
+        })
+    }
+
+    fn from_active_rustup_toolchain() -> Result<Self, String> {
+        let output = std::process::Command::new("rustup")
+            .arg("show")
+            .arg("active-toolchain")
+            .stderr(std::process::Stdio::inherit())
+            .output()
+            .map_err(|x| format!("could not execute rustup ({})", x))?;
+
+        if !output.status.success() {
+            return Err(format!("rustup failed"));
+        }
+
+        let active_toolchain_re = Regex::new(
+            r"^(([A-Za-z0-9.-]+)-(?:aarch64|x86_64)-[A-Za-z0-9]+-[A-Za-z0-9-]+) \(overridden by '(.*)'\)"
+        )
+        .unwrap();
+
+        let stdout = std::str::from_utf8(&output.stdout)
+            .map_err(|_| format!("rustup output is invalid utf8"))?;
+
+        let mut captures = active_toolchain_re.captures_iter(&stdout);
+        if let Some(cap) = captures.next() {
+            Ok(Self::Rustup {
+                toolchain: cap[1].to_string(),
+                channel: cap[2].to_string(),
+            })
+        } else {
+            Err(format!("unexpected output from `rustup show active-toolchain`\nexpected a toolchain override\ngot: {stdout}"))
+        }
+    }
+
+    fn has_rustup_channel(&self, channel: &str) -> bool {
+        if let Self::Rustup {
+            channel: self_channel,
+            ..
+        } = self
+        {
+            channel == self_channel
+        } else {
+            false
+        }
+    }
+
+    fn command(&self, command: impl AsRef<OsStr>) -> Command {
+        match self {
+            Self::Rustup { toolchain, .. } => {
+                let mut cmd = Command::new("rustup");
+                cmd.arg("run")
+                    .arg(toolchain)
+                    .arg("--")
+                    .arg(command.as_ref());
+
+                cmd
+            }
+            Self::Host => Command::new(command),
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        match self {
+            Self::Rustup { toolchain, .. } => toolchain,
+            Self::Host => "host",
         }
     }
 }
@@ -480,44 +575,26 @@ fn run() -> Result<(), String> {
         }
     }
 
-    let rust_toolchain_toml_channel = rust_toolchain_toml.get("toolchain").and_then(|t| t.get("channel"))
-        .and_then(|t| if let toml::Value::String(s) = t { Some(s) } else { None })
-        .ok_or(
-            format!("rust-toolchain.toml does not contain the toolchain.channel key, or it isn't a string\nrun vargo in `source`"))?;
+    let toolchain = if let Some(env) = Toolchain::from_environment() {
+        Some(env)
+    } else if !in_nextest {
+        let active = Toolchain::from_active_rustup_toolchain()?;
 
-    let toolchain = if !in_nextest {
-        let output = std::process::Command::new("rustup")
-            .arg("show")
-            .arg("active-toolchain")
-            .stderr(std::process::Stdio::inherit())
-            .output()
-            .map_err(|x| format!("could not execute rustup ({})", x))?;
-        if !output.status.success() {
-            return Err(format!("rustup failed"));
+        let rust_toolchain_toml_channel = rust_toolchain_toml.get("toolchain").and_then(|t| t.get("channel"))
+            .and_then(|t| if let toml::Value::String(s) = t { Some(s) } else { None })
+            .ok_or(
+                format!("rust-toolchain.toml does not contain the toolchain.channel key, or it isn't a string\nrun vargo in `source`"))?;
+
+        if !active.has_rustup_channel(&rust_toolchain_toml_channel) {
+            return Err(format!("The current toolchain is {active:?} but we expect a toolchain with channel {rust_toolchain_toml_channel}\ndo you have a rustup override set?"));
         }
-        let active_toolchain_re = Regex::new(
-            r"^(([A-Za-z0-9.-]+)-(?:aarch64|x86_64)-[A-Za-z0-9]+-[A-Za-z0-9-]+) \(overridden by '(.*)'\)"
-        )
-        .unwrap();
-        let stdout = std::str::from_utf8(&output.stdout)
-            .map_err(|_| format!("rustup output is invalid utf8"))?;
-        let mut captures = active_toolchain_re.captures_iter(&stdout);
-        if let Some(cap) = captures.next() {
-            let channel = &cap[2];
-            let toolchain = cap[1].to_string();
-            if rust_toolchain_toml_channel != channel {
-                return Err(format!("rustup is using a toolchain with channel {channel}, we expect {rust_toolchain_toml_channel}\ndo you have a rustup override set?"));
-            }
-            Some(toolchain)
-        } else {
-            return Err(format!("unexpected output from `rustup show active-toolchain`\nexpected a toolchain override\ngot: {stdout}"));
-        }
+        Some(active)
     } else {
         None
     };
 
     if let Some(ref toolchain) = toolchain {
-        std::env::set_var("VARGO_TOOLCHAIN", toolchain);
+        std::env::set_var("VARGO_TOOLCHAIN", toolchain.as_str());
     }
 
     let solver_binary_z3 = SmtSolverBinary::find_path(SmtSolverType::Z3, vargo_nest)
@@ -570,10 +647,12 @@ fn run() -> Result<(), String> {
     }
 
     if task == Task::Cmd {
-        return std::process::Command::new("rustup")
+        let command = args_bucket.pop().expect("Must have a command to run");
+
+        return toolchain
+            .expect("No toolchain available")
+            .command(command)
             .env("RUST_MIN_STACK", test_rust_min_stack())
-            .arg("run")
-            .arg(toolchain.expect("not in nextest"))
             .args(args_bucket)
             .stderr(std::process::Stdio::inherit())
             .stdout(std::process::Stdio::inherit())
