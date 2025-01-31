@@ -1,6 +1,13 @@
 //! Extensions to the parsing API with niche applicability.
 
-use super::*;
+use crate::buffer::Cursor;
+use crate::error::Result;
+use crate::parse::{inner_unexpected, ParseBuffer, Unexpected};
+use proc_macro2::extra::DelimSpan;
+use proc_macro2::Delimiter;
+use std::cell::Cell;
+use std::mem;
+use std::rc::Rc;
 
 /// Extensions to the `ParseStream` API to support speculative parsing.
 pub trait Speculative {
@@ -160,7 +167,7 @@ pub trait Speculative {
 impl<'a> Speculative for ParseBuffer<'a> {
     fn advance_to(&self, fork: &Self) {
         if !crate::buffer::same_scope(self.cursor(), fork.cursor()) {
-            panic!("Fork was not derived from the advancing parse stream");
+            panic!("fork was not derived from the advancing parse stream");
         }
 
         let (self_unexp, self_sp) = inner_unexpected(self);
@@ -168,8 +175,8 @@ impl<'a> Speculative for ParseBuffer<'a> {
         if !Rc::ptr_eq(&self_unexp, &fork_unexp) {
             match (fork_sp, self_sp) {
                 // Unexpected set on the fork, but not on `self`, copy it over.
-                (Some(span), None) => {
-                    self_unexp.set(Unexpected::Some(span));
+                (Some((span, delimiter)), None) => {
+                    self_unexp.set(Unexpected::Some(span, delimiter));
                 }
                 // Unexpected unset. Use chain to propagate errors from fork.
                 (None, None) => {
@@ -190,5 +197,29 @@ impl<'a> Speculative for ParseBuffer<'a> {
         // See comment on `cell` in the struct definition.
         self.cell
             .set(unsafe { mem::transmute::<Cursor, Cursor<'static>>(fork.cursor()) });
+    }
+}
+
+/// Extensions to the `ParseStream` API to support manipulating invisible
+/// delimiters the same as if they were visible.
+pub trait AnyDelimiter {
+    /// Returns the delimiter, the span of the delimiter token, and the nested
+    /// contents for further parsing.
+    fn parse_any_delimiter(&self) -> Result<(Delimiter, DelimSpan, ParseBuffer)>;
+}
+
+impl<'a> AnyDelimiter for ParseBuffer<'a> {
+    fn parse_any_delimiter(&self) -> Result<(Delimiter, DelimSpan, ParseBuffer)> {
+        self.step(|cursor| {
+            if let Some((content, delimiter, span, rest)) = cursor.any_group() {
+                let scope = span.close();
+                let nested = crate::parse::advance_step_cursor(cursor, content);
+                let unexpected = crate::parse::get_unexpected(self);
+                let content = crate::parse::new_parse_buffer(scope, nested, unexpected);
+                Ok(((delimiter, span, content), rest))
+            } else {
+                Err(cursor.error("expected any delimiter"))
+            }
+        })
     }
 }
