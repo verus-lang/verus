@@ -1,6 +1,7 @@
 #![feature(rustc_private)]
 
 extern crate rustc_ast_pretty;
+extern crate rustc_driver;
 extern crate rustc_parse;
 extern crate rustc_session;
 extern crate rustc_span;
@@ -9,7 +10,6 @@ use anyhow::Result;
 use quote::quote;
 use rustc_session::parse::ParseSess;
 use rustc_span::edition::Edition::Edition2021;
-use rustc_span::source_map::FilePathMapping;
 use std::fs::{self, File};
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -35,9 +35,11 @@ fn main() -> Result<()> {
 
     // Write output.rustc.rs
     let output_path = manifest_dir.join("..").join("output.rustc.rs");
-    let mut string = rustc_span::create_session_globals_then(Edition2021, || {
-        let sess = ParseSess::new(FilePathMapping::new(Vec::new()));
-        let krate = rustc_parse::parse_crate_from_file(&input_path, &sess).unwrap();
+    let mut string = rustc_span::create_session_globals_then(Edition2021, None, || {
+        let locale_resources = rustc_driver::DEFAULT_LOCALE_RESOURCES.to_vec();
+        let sess = ParseSess::new(locale_resources);
+        let mut parser = rustc_parse::new_parser_from_file(&sess, &input_path, None).unwrap();
+        let krate = parser.parse_crate_mod().unwrap();
         rustc_ast_pretty::pprust::crate_to_string_for_macros(&krate)
     });
     string.push('\n');
