@@ -37,7 +37,7 @@ use syn_verus::token;
 use syn_verus::{
     AssumeSpecification, AttrStyle, Attribute, Block, Expr, ExprBlock, ExprPath, FnMode, Ident,
     ImplItemFn, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
-    ReturnType, Signature, TraitItemMethod, Type, TypeGroup, TypePath,
+    ReturnType, Signature, TraitItemFn, Type, TypeGroup, TypePath,
 };
 
 /// Check if VERUSDOC=1.
@@ -85,7 +85,7 @@ pub fn process_impl_item_method(item: &mut ImplItemFn) {
     }
 }
 
-pub fn process_trait_item_method(item: &mut TraitItemMethod) {
+pub fn process_trait_item_method(item: &mut TraitItemFn) {
     match attr_for_sig(&item.sig, item.default.as_ref(), None) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
@@ -310,20 +310,27 @@ fn encoded_str(kind: &str, data: &str) -> String {
 /// Create an attr that looks like #[doc = "doc_str"]
 
 fn doc_attr_from_string(doc_str: &str, span: Span) -> Attribute {
-    Attribute {
-        pound_token: token::Pound { spans: [span] },
-        style: AttrStyle::Outer,
-        bracket_token: token::Bracket { span },
-        path: Path {
-            leading_colon: None,
-            segments: Punctuated::from_iter(vec![PathSegment {
-                ident: Ident::new("doc", span),
-                arguments: PathArguments::None,
-            }]),
-        },
+    let path = Path {
+        leading_colon: None,
+        segments: Punctuated::from_iter(vec![PathSegment {
+            ident: Ident::new("doc", span),
+            arguments: PathArguments::None,
+        }]),
+    };
+    let list = syn_verus::MetaList {
+        path,
+        delimiter: syn_verus::MacroDelimiter::Paren(token::Paren {
+            span: crate::syntax::into_spans(span),
+        }),
         tokens: proc_macro2::TokenStream::from_iter(vec![
             TokenTree::Punct(proc_macro2::Punct::new('=', proc_macro2::Spacing::Alone)),
             TokenTree::Literal(proc_macro2::Literal::string(doc_str)),
         ]),
+    };
+    Attribute {
+        pound_token: token::Pound { spans: [span] },
+        style: AttrStyle::Outer,
+        bracket_token: token::Bracket { span: crate::syntax::into_spans(span) },
+        meta: syn_verus::Meta::List(list),
     }
 }

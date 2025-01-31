@@ -33,7 +33,7 @@
 use core::convert::TryFrom;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use syn::{parse2, spanned::Spanned, AttributeArgs, Ident, Item};
+use syn::{parse2, spanned::Spanned, Ident, Item};
 
 use crate::{
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
@@ -160,7 +160,7 @@ fn insert_spec_call(any_fn: &mut dyn AnyAttrBlock, call: &str, verus_expr: Token
 
 pub fn rewrite_verus_attribute(
     erase: &EraseGhost,
-    attr_args: AttributeArgs,
+    attr_args: Vec<syn::Ident>,
     input: TokenStream,
 ) -> TokenStream {
     if erase.keep() {
@@ -168,15 +168,13 @@ pub fn rewrite_verus_attribute(
         let mut attributes = Vec::new();
         const VERIFIER_ATTRS: [&str; 2] = ["external", "external_body"];
         for arg in attr_args {
-            if let syn::NestedMeta::Meta(m) = arg {
-                if VERIFIER_ATTRS.contains(&m.to_token_stream().to_string().as_str()) {
-                    attributes.push(mk_verus_attr_syn(m.span(), quote! { #m }));
-                } else {
-                    panic!(
-                        "unsupported parameters {:?} in #[verus_verify(...)]",
-                        m.to_token_stream().to_string()
-                    );
-                }
+            if VERIFIER_ATTRS.contains(&arg.to_string().as_str()) {
+                attributes.push(mk_verus_attr_syn(arg.span(), quote! { #arg }));
+            } else {
+                let span = arg.span();
+                return proc_macro2::TokenStream::from(quote_spanned!(span =>
+                    compile_error!("unsupported parameters {:?} in #[verus_verify(...)]");
+                ));
             }
         }
         if attributes.len() == 0 {

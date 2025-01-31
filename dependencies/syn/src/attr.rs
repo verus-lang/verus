@@ -719,6 +719,9 @@ pub(crate) mod parsing {
     }
 
     pub(crate) fn parse_meta_after_path(path: Path, input: ParseStream) -> Result<Meta> {
+        if path.get_ident().is_some_and(|x| x.to_string() == "trigger") {
+            return parse_meta_list_after_path(path, input).map(Meta::List);
+        }
         if input.peek(token::Paren) || input.peek(token::Bracket) || input.peek(token::Brace) {
             parse_meta_list_after_path(path, input).map(Meta::List)
         } else if input.peek(Token![=]) {
@@ -729,6 +732,19 @@ pub(crate) mod parsing {
     }
 
     fn parse_meta_list_after_path(path: Path, input: ParseStream) -> Result<MetaList> {
+        if path.get_ident().is_some_and(|x| x.to_string() == "trigger") {
+            use crate::span::IntoSpans;
+            use crate::spanned::Spanned;
+            let paren = token::Paren {
+                span: path.span().into_spans(),
+            };
+            let delimiter = crate::MacroDelimiter::Paren(paren);
+            return Ok(MetaList {
+                path,
+                delimiter,
+                tokens: input.parse()?,
+            });
+        }
         let (delimiter, tokens) = mac::parse_delimiter(input)?;
         Ok(MetaList {
             path,
@@ -821,6 +837,14 @@ mod printing {
     impl ToTokens for MetaList {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             path::printing::print_path(tokens, &self.path, PathStyle::Mod);
+            if self
+                .path
+                .get_ident()
+                .is_some_and(|x| x.to_string() == "trigger")
+            {
+                self.tokens.to_tokens(tokens);
+                return;
+            }
             self.delimiter.surround(tokens, self.tokens.clone());
         }
     }

@@ -165,7 +165,7 @@ impl Parse for InvariantDecl {
                 let paren_content;
                 let _ = parenthesized!(paren_content in input);
                 let deps: Punctuated<Ident, token::Comma> =
-                    paren_content.parse_terminated(Ident::parse)?;
+                    paren_content.parse_terminated(Ident::parse, Token![,])?;
                 deps.into_iter().collect()
             } else {
                 Vec::new()
@@ -204,8 +204,8 @@ impl Parse for InvariantDecl {
                 let paren_content;
                 let ptoken = parenthesized!(paren_content in input);
                 let params: Punctuated<FnArg, token::Comma> =
-                    paren_content.parse_terminated(FnArg::parse)?;
-                (ptoken.span, params.into_iter().collect())
+                    paren_content.parse_terminated(FnArg::parse, Token![,])?;
+                (ptoken.span.join(), params.into_iter().collect())
             };
 
             let predicate: Block = input.parse()?;
@@ -239,7 +239,7 @@ fn parse_quants(input: ParseStream) -> parse::Result<Vec<PatType>> {
         if input.peek(Token![|]) {
             break;
         }
-        let pat = Pat::parse(input)?;
+        let pat = Pat::parse_single(input)?;
         let colon_token: Token![:] = input.parse()?;
         let ty = Type::parse(input)?;
         let pat_type = PatType { attrs: vec![], pat: Box::new(pat), colon_token, ty: Box::new(ty) };
@@ -1181,6 +1181,8 @@ fn is_first_param_self(sig: &Signature) -> bool {
             reference: _,
             mutability: None,
             self_token: _,
+            colon_token: _,
+            ty: _,
         }) => true,
         _ => false,
     }

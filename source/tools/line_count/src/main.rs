@@ -1139,7 +1139,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         syn_verus::visit::visit_trait_item_macro(self, i);
     }
 
-    fn visit_trait_item_method(&mut self, i: &'ast syn_verus::TraitItemMethod) {
+    fn visit_trait_item_method(&mut self, i: &'ast syn_verus::TraitItemFn) {
         let exit = self.item_attr_enter(&i.attrs);
         let content_code_kind = i.sig.mode.to_code_kind();
         let code_kind = self.mode_or_trusted(content_code_kind);

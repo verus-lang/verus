@@ -163,9 +163,9 @@ dependencies = [
  "prettyplease_verus",
  "proc-macro2",
  "quote",
- "syn 1.0.109",
+ "syn 2.0.25",
  "syn_verus",
- "synstructure",
+ "synstructure 0.13.1",
 ]
 
 [[package]]
@@ -1239,7 +1239,7 @@ checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
 name = "prettyplease_verus"
-version = "0.1.15"
+version = "0.2.29"
 dependencies = [
  "proc-macro2",
  "syn_verus",
@@ -1807,6 +1807,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "synstructure"
+version = "0.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c8af7666ab7b6390ab78131fb5b0fce11d6b7a6951602017c35fa82800708971"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.25",
+]
+
+[[package]]
 name = "tabled"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2105,7 +2116,7 @@ version = "0.1.0"
 dependencies = [
  "proc-macro2",
  "syn 1.0.109",
- "synstructure",
+ "synstructure 0.12.6",
 ]
 
 [[package]]

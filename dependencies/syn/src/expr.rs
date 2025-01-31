@@ -1417,13 +1417,6 @@ pub(crate) mod parsing {
                         break;
                     }
                 }
-                if precedence == Precedence::Compare {
-                    if let Expr::Binary(lhs) = &lhs {
-                        if Precedence::of_binop(&lhs.op) == Precedence::Compare {
-                            return Err(input.error("comparison operators cannot be chained"));
-                        }
-                    }
-                }
                 input.advance_to(&ahead);
                 let right = parse_binop_rhs(input, allow_struct, precedence)?;
                 lhs = Expr::Binary(ExprBinary {
@@ -1507,13 +1500,6 @@ pub(crate) mod parsing {
                 let precedence = Precedence::of_binop(&op);
                 if precedence < base {
                     break;
-                }
-                if precedence == Precedence::Compare {
-                    if let Expr::Binary(lhs) = &lhs {
-                        if Precedence::of_binop(&lhs.op) == Precedence::Compare {
-                            return Err(input.error("comparison operators cannot be chained"));
-                        }
-                    }
                 }
                 input.advance_to(&ahead);
                 let right = parse_binop_rhs(input, precedence)?;

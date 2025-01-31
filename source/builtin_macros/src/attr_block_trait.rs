@@ -1,6 +1,4 @@
-use syn::{
-    Attribute, Block, ExprForLoop, ExprLoop, ExprWhile, ImplItemFn, ItemFn, TraitItemMethod,
-};
+use syn::{Attribute, Block, ExprForLoop, ExprLoop, ExprWhile, ImplItemFn, ItemFn, TraitItemFn};
 
 pub trait AnyAttrBlock {
     #[allow(dead_code)]
@@ -58,7 +56,7 @@ impl AnyAttrBlock for ExprWhile {
     }
 }
 
-impl AnyAttrBlock for TraitItemMethod {
+impl AnyAttrBlock for TraitItemFn {
     fn attrs_mut(&mut self) -> &mut Vec<Attribute> {
         &mut self.attrs
     }
@@ -71,7 +69,7 @@ impl AnyAttrBlock for TraitItemMethod {
 #[derive(Debug, PartialEq, Eq)]
 pub enum AnyFnOrLoop {
     Fn(syn::ItemFn),
-    TraitMethod(syn::TraitItemMethod),
+    TraitMethod(syn::TraitItemFn),
     Loop(syn::ExprLoop),
     ForLoop(syn::ExprForLoop),
     While(syn::ExprWhile),
@@ -87,9 +85,9 @@ impl syn::parse::Parse for AnyFnOrLoop {
             return Ok(AnyFnOrLoop::Fn(func));
         }
 
-        // Try to parse as TraitItemMethod
+        // Try to parse as TraitItemFn
         let fork = input.fork();
-        if let Ok(method) = fork.parse::<TraitItemMethod>() {
+        if let Ok(method) = fork.parse::<TraitItemFn>() {
             input.advance_to(&fork);
             return Ok(AnyFnOrLoop::TraitMethod(method));
         }
