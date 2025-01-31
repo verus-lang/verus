@@ -1263,11 +1263,8 @@ proof fn lemma_merge_sorted_with_ensures<A>(left: Seq<A>, right: Seq<A>, leq: sp
         sorted_by(merge_sorted_with(left, right, leq), leq),
     decreases left.len(), right.len(),
 {
-    // TODO: lemma_seq_properties will verify, but not broadcast use
-    // lemma_seq_properties::<A>();
-    // broadcast use group_seq_properties;
-    // singled out the only lemma that helps with the proof
-    broadcast use lemma_seq_append_take_skip;
+    // TODO: lemma_seq_skip_of_skip and lemma_seq_skip_index2 cause a lot of QIs
+    broadcast use group_seq_properties;
 
     if left.len() == 0 {
         assert(left + right =~= right);
@@ -2072,14 +2069,16 @@ pub proof fn lemma_seq_properties<A>()
         forall|s: Seq<A>, n: int| n == 0 ==> #[trigger] s.skip(n) == s,  //from lemma_seq_skip_nothing(s, n),
         forall|s: Seq<A>, n: int| n == 0 ==> #[trigger] s.take(n) == Seq::<A>::empty(),  //from lemma_seq_take_nothing(s, n),
         forall|s: Seq<A>, m: int, n: int|
-            (0 <= m && 0 <= n && m + n <= s.len()) ==> #[trigger] s.skip(m).skip(n) == s.skip(m + n),  //from lemma_seq_skip_of_skip(s, m, n),
+            (0 <= m && 0 <= n && m + n <= s.len()) ==> #[trigger] s.skip(m).skip(n) == s.skip(
+                m + n,
+            ),  //from lemma_seq_skip_of_skip(s, m, n),
         forall|s: Seq<A>, a: A| #[trigger] (s.push(a).to_multiset()) =~= s.to_multiset().insert(a),  //from o_multiset_properties
         forall|s: Seq<A>| s.len() == #[trigger] s.to_multiset().len(),  //from to_multiset_ensures
         forall|s: Seq<A>, a: A|
             s.contains(a) <==> #[trigger] s.to_multiset().count(a)
                 > 0,  //from to_multiset_ensures
 {
-    broadcast use group_seq_properties;
+    broadcast use group_seq_properties, lemma_seq_skip_of_skip;
     // TODO: for some reason this still needs to be explicitly stated
 
     assert forall|s: Seq<A>, v: A, x: A| v == x || s.contains(x) implies #[trigger] s.push(
@@ -2224,7 +2223,9 @@ pub broadcast group group_seq_properties {
     lemma_seq_skip_build_commut,
     lemma_seq_skip_nothing,
     lemma_seq_take_nothing,
-    lemma_seq_skip_of_skip,
+    // Removed the following from group due to bad verification performance
+    // for `lemma_merge_sorted_with_ensures`
+    // lemma_seq_skip_of_skip,
     group_to_multiset_ensures,
 }
 
