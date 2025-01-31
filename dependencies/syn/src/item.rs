@@ -1133,7 +1133,7 @@ pub(crate) mod parsing {
                     None,
                     Some(input.parse()?),
                 ),
-                (None, Some(_)) => (None, Some(input.parse()?), None),
+                (None, Some(_)) => (Some((None, None)), Some(input.parse()?), None),
                 _ => return Err(lookahead.error()),
             };
             match value {

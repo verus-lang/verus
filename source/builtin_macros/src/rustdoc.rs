@@ -29,7 +29,6 @@
 // some data explaining the function mode, param modes, and return mode.
 
 use proc_macro2::Span;
-use proc_macro2::TokenTree;
 use std::iter::FromIterator;
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
@@ -317,20 +316,16 @@ fn doc_attr_from_string(doc_str: &str, span: Span) -> Attribute {
             arguments: PathArguments::None,
         }]),
     };
-    let list = syn_verus::MetaList {
+    let lit = syn_verus::Lit::Str(syn_verus::LitStr::new(doc_str, span));
+    let name_value = syn_verus::MetaNameValue {
         path,
-        delimiter: syn_verus::MacroDelimiter::Paren(token::Paren {
-            span: crate::syntax::into_spans(span),
-        }),
-        tokens: proc_macro2::TokenStream::from_iter(vec![
-            TokenTree::Punct(proc_macro2::Punct::new('=', proc_macro2::Spacing::Alone)),
-            TokenTree::Literal(proc_macro2::Literal::string(doc_str)),
-        ]),
+        eq_token: token::Eq { spans: [span] },
+        value: Expr::Lit(syn_verus::ExprLit { attrs: vec![], lit }),
     };
     Attribute {
         pound_token: token::Pound { spans: [span] },
         style: AttrStyle::Outer,
         bracket_token: token::Bracket { span: crate::syntax::into_spans(span) },
-        meta: syn_verus::Meta::List(list),
+        meta: syn_verus::Meta::NameValue(name_value),
     }
 }

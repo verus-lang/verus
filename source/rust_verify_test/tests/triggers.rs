@@ -18,8 +18,8 @@ test_verify_one_file! {
                 forall|i: nat, j: nat|
                     i < self.nodes.len() && j < self.nodes.index(spec_cast_integer::<nat, int>(i)).values.len() ==>
                     {
-                        let values = #[verifier(trigger)] self.nodes.index(spec_cast_integer::<nat, int>(i)).values;
-                        self.base_v <= #[verifier(trigger)] values.index(spec_cast_integer::<nat, int>(j))
+                        let values = #[trigger] self.nodes.index(spec_cast_integer::<nat, int>(i)).values;
+                        self.base_v <= #[trigger] values.index(spec_cast_integer::<nat, int>(j))
                     }
             }
         }

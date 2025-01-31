@@ -340,7 +340,8 @@ impl Printer {
         );
         let left_needs_group = match binop_prec {
             Precedence::Assign => left_prec <= Precedence::Range,
-            Precedence::Compare => left_prec <= binop_prec,
+            // verus supports chained comparisons:
+            // Precedence::Compare => left_prec <= binop_prec,
             _ => left_prec < binop_prec,
         };
         let right_fixup = fixup.rightmost_subexpression_fixup(false, false, binop_prec);

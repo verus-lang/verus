@@ -3214,22 +3214,23 @@ impl VisitMut for Visitor {
                             };
                             let mut path_segments = path_verifier(span);
                             path_segments.push(second_segment.clone());
-                            let list = syn_verus::MetaList {
-                                path: Path { leading_colon: None, segments: path_segments },
-                                delimiter: syn_verus::MacroDelimiter::Paren(token::Paren {
-                                    span: into_spans(span),
-                                }),
-                                tokens: if let Some(nested) = nested {
-                                    quote! { #nested }
-                                } else {
-                                    quote! {}
-                                },
+                            let path = Path { leading_colon: None, segments: path_segments };
+                            let meta = if let Some(nested) = nested {
+                                syn_verus::Meta::List(syn_verus::MetaList {
+                                    path,
+                                    delimiter: syn_verus::MacroDelimiter::Paren(token::Paren {
+                                        span: into_spans(span),
+                                    }),
+                                    tokens: quote! { #nested },
+                                })
+                            } else {
+                                syn_verus::Meta::Path(path)
                             };
                             *attr = Attribute {
                                 pound_token: token::Pound { spans: [span] },
                                 style: syn_verus::AttrStyle::Outer,
                                 bracket_token: token::Bracket { span: into_spans(span) },
-                                meta: syn_verus::Meta::List(list),
+                                meta,
                             };
                         }
                         _ => {
@@ -3640,6 +3641,7 @@ enum MacroElement {
     Comma(Token![,]),
     Semi(Token![;]),
     FatArrow(Token![=>]),
+    Colon(Token![:]),
     Expr(Expr),
 }
 
@@ -3648,6 +3650,7 @@ enum MacroElementExplicitExpr {
     Comma(Token![,]),
     Semi(Token![;]),
     FatArrow(Token![=>]),
+    Colon(Token![:]),
     ExplicitExpr(Token![@], Token![@], Expr),
     TT(TokenTree),
 }
@@ -3693,6 +3696,8 @@ impl Parse for MacroElement {
             Ok(MacroElement::Semi(input.parse()?))
         } else if input.peek(Token![=>]) {
             Ok(MacroElement::FatArrow(input.parse()?))
+        } else if input.peek(Token![:]) {
+            Ok(MacroElement::Colon(input.parse()?))
         } else {
             Ok(MacroElement::Expr(input.parse()?))
         }
@@ -3707,6 +3712,8 @@ impl Parse for MacroElementExplicitExpr {
             Ok(MacroElementExplicitExpr::Semi(input.parse()?))
         } else if input.peek(Token![=>]) {
             Ok(MacroElementExplicitExpr::FatArrow(input.parse()?))
+        } else if input.peek(Token![:]) {
+            Ok(MacroElementExplicitExpr::Colon(input.parse()?))
         } else if input.peek(Token![@]) && input.peek2(Token![@]) {
             let at1 = input.parse()?;
             let at2 = input.parse()?;
@@ -3791,6 +3798,7 @@ impl ToTokens for MacroElement {
             MacroElement::Comma(e) => e.to_tokens(tokens),
             MacroElement::Semi(e) => e.to_tokens(tokens),
             MacroElement::FatArrow(e) => e.to_tokens(tokens),
+            MacroElement::Colon(e) => e.to_tokens(tokens),
             MacroElement::Expr(e) => e.to_tokens(tokens),
         }
     }
@@ -3802,6 +3810,7 @@ impl ToTokens for MacroElementExplicitExpr {
             MacroElementExplicitExpr::Comma(e) => e.to_tokens(tokens),
             MacroElementExplicitExpr::Semi(e) => e.to_tokens(tokens),
             MacroElementExplicitExpr::FatArrow(e) => e.to_tokens(tokens),
+            MacroElementExplicitExpr::Colon(e) => e.to_tokens(tokens),
             MacroElementExplicitExpr::ExplicitExpr(_at1, _at2, e) => e.to_tokens(tokens),
             MacroElementExplicitExpr::TT(e) => e.to_tokens(tokens),
         }
@@ -4206,16 +4215,23 @@ macro_rules! declare_mk_rust_attr {
                 ident: $s::Ident::new(name, span),
                 arguments: $s::PathArguments::None,
             });
-            let list = $s::MetaList {
-                path: $s::Path { leading_colon: None, segments: path_segments },
-                delimiter: $s::MacroDelimiter::Paren($s::token::Paren { span: into_spans(span) }),
-                tokens: quote! { #tokens },
+            let path = $s::Path { leading_colon: None, segments: path_segments };
+            let meta = if tokens.is_empty() {
+                $s::Meta::Path(path)
+            } else {
+                $s::Meta::List($s::MetaList {
+                    path,
+                    delimiter: $s::MacroDelimiter::Paren($s::token::Paren {
+                        span: into_spans(span),
+                    }),
+                    tokens: quote! { #tokens },
+                })
             };
             $s::Attribute {
                 pound_token: $s::token::Pound { spans: [span] },
                 style: $s::AttrStyle::Outer,
                 bracket_token: $s::token::Bracket { span: into_spans(span) },
-                meta: $s::Meta::List(list),
+                meta,
             }
         }
     };
@@ -4236,16 +4252,23 @@ macro_rules! declare_mk_verus_attr {
                 ident: $s::Ident::new("internal", span),
                 arguments: $s::PathArguments::None,
             });
-            let list = $s::MetaList {
-                path: $s::Path { leading_colon: None, segments: path_segments },
-                delimiter: $s::MacroDelimiter::Paren($s::token::Paren { span: into_spans(span) }),
-                tokens: quote! { #tokens },
+            let path = $s::Path { leading_colon: None, segments: path_segments };
+            let meta = if tokens.is_empty() {
+                $s::Meta::Path(path)
+            } else {
+                $s::Meta::List($s::MetaList {
+                    path,
+                    delimiter: $s::MacroDelimiter::Paren($s::token::Paren {
+                        span: into_spans(span),
+                    }),
+                    tokens: quote! { #tokens },
+                })
             };
             $s::Attribute {
                 pound_token: $s::token::Pound { spans: [span] },
                 style: $s::AttrStyle::Outer,
                 bracket_token: $s::token::Bracket { span: into_spans(span) },
-                meta: $s::Meta::List(list),
+                meta,
             }
         }
     };

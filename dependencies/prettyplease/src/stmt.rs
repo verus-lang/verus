@@ -85,8 +85,7 @@ pub fn add_semi(expr: &Expr) -> bool {
         Expr::Assign(_) | Expr::Break(_) | Expr::Continue(_) | Expr::Return(_) | Expr::Yield(_) => {
             true
         }
-        Expr::Binary(expr) =>
-        {
+        Expr::Binary(expr) => {
             match expr.op {
                 #![cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
                 BinOp::AddAssign(_)
@@ -117,6 +116,18 @@ pub fn add_semi(expr: &Expr) -> bool {
                 | BinOp::Ne(_)
                 | BinOp::Ge(_)
                 | BinOp::Gt(_) => false,
+
+                // verus
+                BinOp::Equiv(_)
+                | BinOp::Imply(_)
+                | BinOp::Exply(_)
+                | BinOp::BigEq(_)
+                | BinOp::BigNe(_)
+                | BinOp::ExtEq(_)
+                | BinOp::ExtNe(_)
+                | BinOp::ExtDeepEq(_)
+                | BinOp::ExtDeepNe(_) => false,
+
                 _ => unimplemented!("unknown BinOp"),
             }
         }

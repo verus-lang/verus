@@ -3611,7 +3611,8 @@ pub(crate) mod printing {
         );
         let left_needs_group = match binop_prec {
             Precedence::Assign => left_prec <= Precedence::Range,
-            Precedence::Compare => left_prec <= binop_prec,
+            // verus supports chained comparisons:
+            // Precedence::Compare => left_prec <= binop_prec,
             _ => left_prec < binop_prec,
         };
 
