@@ -30,26 +30,6 @@ impl<A> Set<A> {
         Set::new(|a: B| exists|x: A| self.contains(x) && a == f(x))
     }
 
-    /// Folds the set, applying `f` to perform the fold. The next element for the fold is chosen by
-    /// the choose operator.
-    ///
-    /// Given a set `s = {x0, x1, x2, ..., xn}`, applying this function `s.fold(init, f)`
-    /// returns `f(...f(f(init, x0), x1), ..., xn)`.
-    pub open spec fn fold<E>(self, init: E, f: spec_fn(E, A) -> E) -> E
-        decreases self.len(),
-    {
-        if self.finite() {
-            if self.len() == 0 {
-                init
-            } else {
-                let a = self.choose();
-                self.remove(a).fold(f(init, a), f)
-            }
-        } else {
-            arbitrary()
-        }
-    }
-
     /// Converts a set into a sequence with an arbitrary ordering.
     pub open spec fn to_seq(self) -> Seq<A>
         recommends
