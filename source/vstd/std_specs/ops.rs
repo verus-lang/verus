@@ -1,7 +1,9 @@
-use vstd::prelude::*;
+#![allow(unused_imports)]
+use super::super::prelude::*;
 
 verus! {
-pub broadcast group ops_def_group {
+
+pub broadcast group group_ops_axioms {
     axiom_add_requires,
     axiom_add,
     axiom_sub_requires,
@@ -10,8 +12,8 @@ pub broadcast group ops_def_group {
     axiom_bitand,
     axiom_not,
 }
-}
 
+} // verus!
 macro_rules! def_uop_spec {
     ($trait:path, $extrait: ident, $fun:ident, $spec_trait:ident, $spec_ensures:ident, $axiom_ensures:ident) => {
         builtin_macros::verus! {
@@ -35,14 +37,14 @@ macro_rules! def_uop_spec {
 
             pub broadcast proof fn $axiom_ensures<T>(v: T, ret: T::Output)
             where
-                T: crate::ops::$spec_trait
+                T: $spec_trait
             ensures
                 T::$spec_ensures(v, ret) == #[trigger]$spec_ensures(v, ret),
             {
                 admit()
             }
         }
-    };
+};
 }
 
 macro_rules! def_bin_ops_spec {
@@ -81,24 +83,17 @@ macro_rules! def_bin_ops_spec {
 
             pub broadcast proof fn $axiom_requires<T, Rhs>(v: T, rhs: Rhs)
             where
-                T: crate::ops::$spec_trait<Rhs>
+                T: $spec_trait<Rhs>
             ensures
                 (#[trigger]$spec_requires(v, rhs)) == T::$spec_requires(v, rhs),
             {
                 admit()
             }
         }
-    };
+};
 }
 
-def_uop_spec!(
-    core::ops::Not,
-    ExNot,
-    not,
-    SpecNotOp,
-    spec_not_ensures,
-    axiom_not
-);
+def_uop_spec!(core::ops::Not, ExNot, not, SpecNotOp, spec_not_ensures, axiom_not);
 def_bin_ops_spec!(
     core::ops::Add,
     ExAdd,
