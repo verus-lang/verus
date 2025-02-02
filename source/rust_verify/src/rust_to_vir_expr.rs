@@ -1288,6 +1288,108 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     }
 }
 
+/// Return None if we do not want to overload the operator.
+/// We do not replace operators for some primitive types so that we still see consistent errors for
+/// integer overflow/underflow.
+fn operator_overload_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    current_modifier: ExprModifier,
+) -> Result<Option<vir::ast::Expr>, VirErr> {
+    let (fun, typ_args, args) = match expr.kind {
+        ExprKind::Binary(op, lhs, rhs) => {
+            let do_replace = match op.node {
+                BinOpKind::Eq | BinOpKind::Ne => {
+                    !is_smt_equality(bctx, expr.span, &lhs.hir_id, &rhs.hir_id)?
+                }
+                BinOpKind::Add
+                | BinOpKind::Sub
+                | BinOpKind::Mul
+                | BinOpKind::Div
+                | BinOpKind::Rem
+                | BinOpKind::Le
+                | BinOpKind::Ge
+                | BinOpKind::Lt
+                | BinOpKind::Gt => {
+                    !is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)?
+                }
+                _ => false,
+            };
+            if !do_replace {
+                return Ok(None);
+            }
+            let fun = match op.node {
+                BinOpKind::Add => vir::fun!("core" => "ops", "arith", "Add", "add"),
+                BinOpKind::Sub => vir::fun!("core" => "ops", "arith", "Sub", "sub"),
+                BinOpKind::Mul => vir::fun!("core" => "ops", "arith", "Mul", "mul"),
+                BinOpKind::Div => vir::fun!("core" => "ops", "arith", "Div", "div"),
+                BinOpKind::Rem => vir::fun!("core" => "ops", "arith", "Rem", "rem"),
+                BinOpKind::BitAnd => vir::fun!("core" => "ops", "bit", "BitAnd", "bitand"),
+                BinOpKind::BitOr => vir::fun!("core" => "ops", "bit", "BitOr", "bitor"),
+                BinOpKind::BitXor => vir::fun!("core" => "ops", "bit", "BitXor", "bitxor"),
+                BinOpKind::Shl => vir::fun!("core" => "ops", "bit", "Shl", "shl"),
+                BinOpKind::Shr => vir::fun!("core" => "ops", "bit", "Shr", "shr"),
+                BinOpKind::Eq => vir::fun!("core" => "cmp", "PartialEq", "eq"),
+                BinOpKind::Ne => vir::fun!("core" => "cmp", "PartialEq", "ne"),
+                BinOpKind::Gt => vir::fun!("core" => "cmp", "PartialOrd", "gt"),
+                BinOpKind::Lt => vir::fun!("core" => "cmp", "PartialOrd", "lt"),
+                BinOpKind::Ge => vir::fun!("core" => "cmp", "PartialOrd", "ge"),
+                BinOpKind::Le => vir::fun!("core" => "cmp", "PartialOrd", "le"),
+                _ => {
+                    unsupported_err!(expr.span, "operator_overload_to_vir");
+                }
+            };
+            let lhs = expr_to_vir(bctx, lhs, ExprModifier::REGULAR)?;
+            let rhs = expr_to_vir(bctx, rhs, ExprModifier::REGULAR)?;
+
+            let lhs_typ = undecorate_typ(&lhs.typ).clone();
+            let rhs_typ = undecorate_typ(&rhs.typ).clone();
+            let typ_args = Arc::new(vec![lhs_typ, rhs_typ]);
+            let args = Arc::new(vec![lhs, rhs]);
+            (fun, typ_args, args)
+        }
+        ExprKind::Unary(op, arg) => {
+            let ty = bctx.types.expr_ty_adjusted(arg);
+            match ty.kind() {
+                TyKind::Adt(_, _) | TyKind::Uint(_) | TyKind::Int(_) | TyKind::Bool => {
+                    return Ok(None);
+                }
+                _ => {}
+            }
+            let fun = match op {
+                UnOp::Not => vir::fun!("core" => "ops", "bit", "Not", "not"),
+                _ => {
+                    return Ok(None);
+                }
+            };
+            let arg = expr_to_vir(bctx, arg, ExprModifier::REGULAR)?;
+            let typ = undecorate_typ(&arg.typ).clone();
+            let typ_args = Arc::new(vec![typ]);
+            let args = Arc::new(vec![arg]);
+            (fun, typ_args, args)
+        }
+        _ => {
+            return Ok(None);
+        }
+    };
+    let expr_typ = |e: &Expr| {
+        if current_modifier.deref_mut {
+            typ_of_node_expect_mut_ref(bctx, e.span, &expr.hir_id)
+        } else {
+            typ_of_node(bctx, e.span, &e.hir_id, false)
+        }
+    };
+    let ret_type = &expr_typ(expr)?;
+    let call_target = CallTarget::Fun(
+        vir::ast::CallTargetKind::Static,
+        fun.clone(),
+        typ_args,
+        Arc::new(vec![ImplPath::FnDefImplPath(fun)]),
+        AutospecUsage::Final,
+    );
+    Ok(Some(bctx.spanned_typed_new(expr.span, ret_type, ExprX::Call(call_target, args))))
+}
+
 pub(crate) fn expr_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -1731,7 +1833,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         UnaryOp::BitNot(if s { None } else { Some(w) })
                     }
                     TyKind::Bool => UnaryOp::Not,
-                    _ => panic!("Internal error on UnOp::Not translation"),
+                    _ => {
+                        let ret = operator_overload_to_vir(bctx, expr, modifier)?;
+                        if ret.is_some() {
+                            return Ok(ret.unwrap());
+                        }
+                        panic!("Internal error on UnOp::Not translation");
+                    }
                 };
                 let varg = expr_to_vir(bctx, arg, modifier)?;
                 mk_expr(ExprX::Unary(not_op, varg))
@@ -1800,6 +1908,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Binary(op, lhs, rhs) => {
             let vlhs = expr_to_vir(bctx, lhs, modifier)?;
             let vrhs = expr_to_vir(bctx, rhs, modifier)?;
+            let ret = operator_overload_to_vir(bctx, expr, modifier)?;
+            if ret.is_some() {
+                return Ok(ret.unwrap());
+            }
             match op.node {
                 BinOpKind::Eq | BinOpKind::Ne => unsupported_err_unless!(
                     is_smt_equality(bctx, expr.span, &lhs.hir_id, &rhs.hir_id)?,
@@ -1812,12 +1924,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 | BinOpKind::Le
                 | BinOpKind::Ge
                 | BinOpKind::Lt
-                | BinOpKind::Gt => unsupported_err_unless!(
-                    is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)?,
-                    expr.span,
-                    "cmp or arithmetic for non smt arithmetic types",
-                    expr
-                ),
+                | BinOpKind::Gt => {
+                    if !is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)? {
+                        let vir_fun = operator_overload_to_vir(bctx, expr, modifier)?;
+                        if let Some(vir_fun) = vir_fun {
+                            return Ok(vir_fun);
+                        }
+                    }
+                }
                 _ => (),
             }
             let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
