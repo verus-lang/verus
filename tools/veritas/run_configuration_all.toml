@@ -1,6 +1,7 @@
 verus_git_url = "https://github.com/verus-lang/verus.git"
 verus_revspec = "main"
 verus_features = ["singular"]
+verus_verify_vstd = false
 
 [[project]]
 name = "memory-allocator"
@@ -14,7 +15,7 @@ extra_args = [
 prepare_script = """
 pushd test_libc
 cargo clean
-cargo +1.79.0 build --release
+cargo +1.82.0 build --release
 popd
 LIBC_RLIB_NAME=$(find ./test_libc/target/release/deps/ -name 'liblibc-*.rlib')
 mkdir -p build
@@ -24,9 +25,9 @@ cp $LIBC_RLIB_NAME build/liblibc.rlib
 [[project]]
 name = "page-table"
 git_url = "https://github.com/utaal/verified-nrkernel.git"
-revspec = "page-table"
-crate_root = "page-table/main.rs"
-extra_args = ["--rlimit", "60"]
+revspec = "main"
+crate_root = "page-table/src/lib.rs"
+extra_args = ["--crate-type=lib", "--rlimit", "60"]
 
 [[project]]
 name = "verified-storage"
@@ -52,7 +53,7 @@ cargo build
 
 [[project]]
 name = "node-replication"
-git_url = "https://github.com/achreto/verified-node-replication.git"
+git_url = "https://github.com/verus-lang/verified-node-replication.git"
 revspec = "main"
 crate_root = "verified-node-replication/src/lib.rs"
 extra_args = ["--crate-type=dylib"]
