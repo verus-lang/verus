@@ -23,7 +23,8 @@ test_verify_one_file! {
         ensures is_a(x) == ret
         {
             let X::A(a) = x else {
-                return false
+                let x: bool = false;
+                return x;
             };
             return true;
         }
