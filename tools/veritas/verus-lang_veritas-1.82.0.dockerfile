@@ -1,4 +1,4 @@
-FROM --platform=linux/amd64 ghcr.io/utaal/verus-lang/verus-base:rust-1.79.0
+FROM --platform=linux/amd64 ghcr.io/utaal/verus-lang/verus-base:rust-1.82.0
 
 VOLUME /root/veritas
 

@@ -18,8 +18,8 @@ use syn_verus::spanned::Spanned;
 use syn_verus::Token;
 use syn_verus::{
     braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, FnArgKind, FnMode, GenericArgument,
-    GenericParam, Generics, Ident, ImplItemMethod, Item, ItemFn, Meta, MetaList, NestedMeta,
-    PathArguments, Receiver, ReturnType, Type, TypeParam, TypePath, Visibility, WhereClause,
+    GenericParam, Generics, Ident, ImplItemFn, Item, ItemFn, Meta, MetaList, PathArguments,
+    Receiver, ReturnType, Type, TypeParam, TypePath, Visibility, WhereClause,
 };
 
 pub struct SMBundle {
@@ -28,7 +28,7 @@ pub struct SMBundle {
     pub extras: Extras,
     // Any extra functions the user declares, which are copied verbatim to the
     // 'impl' of the resulting datatype, with no extra processing.
-    pub normal_fns: Vec<ImplItemMethod>,
+    pub normal_fns: Vec<ImplItemFn>,
 }
 
 ///////// TokenStream -> ParseResult
@@ -136,7 +136,7 @@ pub fn peek_keyword(cursor: Cursor, token: &str) -> bool {
 
 ///////// ParseResult -> SM AST
 
-// For a given ImplItemMethod, we check its attributes to see if it needs special processing.
+// For a given ImplItemFn, we check its attributes to see if it needs special processing.
 // Transitions (init, transition, and readonly) require the most processing. We have to
 // translate the body AST, interpreting it as our mini-language.
 // The other special functions (inv, lemma) are kept as-is for now, although they receive
@@ -166,35 +166,19 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> parse::Result<FnAttrInfo> {
             AttrStyle::Outer => {}
         }
 
-        match attr.parse_meta()? {
+        match &attr.meta {
             Meta::Path(path) => {
                 if path.is_ident("invariant") {
                     err_on_dupe(&fn_attr_info, attr.span())?;
                     fn_attr_info = FnAttrInfo::Invariant;
                 }
             }
-            Meta::List(MetaList { path, nested, .. }) => {
+            Meta::List(MetaList { path, .. }) => {
                 if path.is_ident("inductive") {
                     let lp_kind = LemmaPurposeKind::PreservesInvariant;
-                    if nested.len() != 1 {
-                        return Err(Error::new(
-                            attr.span(),
-                            "expected transition name: #[inductive(name)]",
-                        ));
-                    }
-                    err_on_dupe(&fn_attr_info, attr.span())?;
-
-                    let transition_name = match nested.iter().next() {
-                        Some(NestedMeta::Meta(Meta::Path(path))) => match path.get_ident() {
-                            Some(ident) => ident.clone(),
-                            None => {
-                                return Err(Error::new(
-                                    attr.span(),
-                                    "expected transition name: #[inductive(name)]",
-                                ));
-                            }
-                        },
-                        _ => {
+                    let transition_name: Ident = match attr.parse_args() {
+                        Ok(name) => name,
+                        Err(_) => {
                             return Err(Error::new(
                                 attr.span(),
                                 "expected transition name: #[inductive(name)]",
@@ -202,6 +186,7 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> parse::Result<FnAttrInfo> {
                         }
                     };
 
+                    err_on_dupe(&fn_attr_info, attr.span())?;
                     fn_attr_info = FnAttrInfo::Lemma(LemmaPurpose {
                         transition: transition_name,
                         kind: lp_kind,
@@ -216,8 +201,8 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> parse::Result<FnAttrInfo> {
 }
 
 fn attr_is_any_mode(attr: &Attribute) -> bool {
-    match attr.parse_meta() {
-        Ok(Meta::Path(path)) => {
+    match &attr.meta {
+        Meta::Path(path) => {
             let segments = path.segments.iter().collect::<Vec<_>>();
             match &segments[..] {
                 [prefix_segment, segment] if prefix_segment.ident.to_string() == "verifier" => {
@@ -238,36 +223,47 @@ fn check_polarity_attribute(name: &str) -> bool {
 }
 
 fn attr_is_polarity(attr: &Attribute) -> bool {
-    match attr.parse_meta() {
-        Ok(Meta::List(list)) => {
+    match &attr.meta {
+        Meta::List(list) => {
             let segments =
                 list.path.segments.iter().map(|e| e.ident.to_string()).collect::<Vec<_>>();
             match &segments[..] {
                 [prefix_segment, name] if prefix_segment == "verifier" => {
                     check_polarity_attribute(name.as_str())
                 }
-                [segment] if segment == "cfg_attr" => list.nested.iter().all(|elm| match elm {
-                    NestedMeta::Meta(Meta::Path(path)) => {
-                        let segments =
-                            path.segments.iter().map(|e| e.ident.to_string()).collect::<Vec<_>>();
-                        segments[..] == ["verus_keep_ghost"]
-                    }
-                    NestedMeta::Meta(Meta::List(list)) => {
-                        let segments = list
-                            .path
-                            .segments
-                            .iter()
-                            .map(|e| e.ident.to_string())
-                            .collect::<Vec<_>>();
-                        match &segments[..] {
-                            [prefix_segment, name] if prefix_segment == "verifier" => {
-                                check_polarity_attribute(name)
-                            }
-                            _ => false,
+                [segment] if segment == "cfg_attr" => {
+                    let nested = match attr.parse_args_with(
+                        syn_verus::punctuated::Punctuated::<Meta, Token![,]>::parse_terminated,
+                    ) {
+                        Ok(nested) => nested,
+                        Err(_) => return false,
+                    };
+                    nested.iter().all(|elm| match elm {
+                        Meta::Path(path) => {
+                            let segments = path
+                                .segments
+                                .iter()
+                                .map(|e| e.ident.to_string())
+                                .collect::<Vec<_>>();
+                            segments[..] == ["verus_keep_ghost"]
                         }
-                    }
-                    _ => false,
-                }),
+                        Meta::List(list) => {
+                            let segments = list
+                                .path
+                                .segments
+                                .iter()
+                                .map(|e| e.ident.to_string())
+                                .collect::<Vec<_>>();
+                            match &segments[..] {
+                                [prefix_segment, name] if prefix_segment == "verifier" => {
+                                    check_polarity_attribute(name)
+                                }
+                                _ => false,
+                            }
+                        }
+                        _ => false,
+                    })
+                }
                 _ => false,
             }
         }
@@ -278,7 +274,7 @@ fn attr_is_polarity(attr: &Attribute) -> bool {
 // Check that the user did not apply an explicit mode. We will apply the modes ourselves
 // during macro expansion.
 
-fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> parse::Result<()> {
+fn ensure_no_mode(impl_item_method: &ImplItemFn, msg: &str) -> parse::Result<()> {
     for attr in &impl_item_method.attrs {
         if attr_is_any_mode(attr) {
             return Err(Error::new(attr.span(), msg));
@@ -288,7 +284,7 @@ fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> parse::Result
     return Ok(());
 }
 
-fn to_invariant(impl_item_method: ImplItemMethod) -> parse::Result<Invariant> {
+fn to_invariant(impl_item_method: ImplItemFn) -> parse::Result<Invariant> {
     ensure_no_mode(
         &impl_item_method,
         "an invariant fn is implied to be 'spec'; it should not be explicitly labelled",
@@ -355,7 +351,7 @@ fn to_invariant(impl_item_method: ImplItemMethod) -> parse::Result<Invariant> {
     return Ok(Invariant { func: impl_item_method });
 }
 
-fn to_lemma(impl_item_method: ImplItemMethod, purpose: LemmaPurpose) -> parse::Result<Lemma> {
+fn to_lemma(impl_item_method: ImplItemFn, purpose: LemmaPurpose) -> parse::Result<Lemma> {
     ensure_no_mode(
         &impl_item_method,
         "an inductivity lemma is implied to be 'proof'; it should not be explicitly labelled",
@@ -400,25 +396,28 @@ fn get_sharding_type(
     let mut res = None;
 
     for attr in attrs {
-        match attr.parse_meta() {
-            Ok(Meta::Path(path)) if path.is_ident("sharding") => {
+        match &attr.meta {
+            Meta::Path(path) if path.is_ident("sharding") => {
                 return Err(Error::new(
                     attr.span(),
                     "expected 1 argument as the sharding strategy, e.g., #[sharding(variable)]",
                 ));
             }
-            Ok(Meta::List(MetaList { path, paren_token: _, nested }))
-                if path.is_ident("sharding") =>
-            {
+            Meta::List(MetaList { path, delimiter: _, tokens: _ }) if path.is_ident("sharding") => {
+                let msg =
+                    "expected 1 argument as the sharding strategy, e.g., #[sharding(variable)]";
+                let nested = match attr.parse_args_with(
+                    syn_verus::punctuated::Punctuated::<Meta, Token![,]>::parse_terminated,
+                ) {
+                    Ok(nested) => nested,
+                    Err(_) => return Err(Error::new(attr.span(), msg)),
+                };
                 if nested.len() != 1 {
-                    return Err(Error::new(
-                        attr.span(),
-                        "expected 1 argument as the sharding strategy, e.g., #[sharding(variable)]",
-                    ));
+                    return Err(Error::new(attr.span(), msg));
                 }
                 let arg = &nested[0];
                 match arg {
-                    NestedMeta::Meta(Meta::Path(p)) => match p.get_ident() {
+                    Meta::Path(p) => match p.get_ident() {
                         Some(ident) => {
                             let t = match ident.to_string().as_str() {
                                 "variable" => ShardingType::Variable,
@@ -461,19 +460,9 @@ fn get_sharding_type(
                             }
                             res = Some(t);
                         }
-                        None => {
-                            return Err(Error::new(
-                                attr.span(),
-                                "expected a single identifier as the sharding strategy, e.g., #[sharding(variable)]",
-                            ));
-                        }
+                        None => return Err(Error::new(attr.span(), msg)),
                     },
-                    _ => {
-                        return Err(Error::new(
-                            attr.span(),
-                            "expected a single identifier as the sharding strategy, e.g., #[sharding(variable)]",
-                        ));
-                    }
+                    _ => return Err(Error::new(attr.span(), msg)),
                 }
             }
             _ => {}
@@ -664,10 +653,10 @@ fn to_fields(
     return Ok(v);
 }
 
-fn impl_item_method_from_item_fn(item_fn: ItemFn) -> ImplItemMethod {
+fn impl_item_method_from_item_fn(item_fn: ItemFn) -> ImplItemFn {
     let ItemFn { attrs, vis, sig, block, semi_token } = item_fn;
     let block = *block;
-    ImplItemMethod { attrs, vis, sig, block, semi_token, defaultness: None }
+    ImplItemFn { attrs, vis, sig, block, semi_token, defaultness: None }
 }
 
 fn item_type_check_name(ident: &Ident) -> parse::Result<bool> {

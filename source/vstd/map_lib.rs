@@ -246,14 +246,57 @@ impl Map<int, int> {
 }
 
 // Proven lemmas
+pub broadcast proof fn lemma_union_insert_left<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K, v: V)
+    requires
+        !m2.contains_key(k),
+    ensures
+        #[trigger] m1.insert(k, v).union_prefer_right(m2) == m1.union_prefer_right(m2).insert(k, v),
+{
+    assert(m1.insert(k, v).union_prefer_right(m2) =~= m1.union_prefer_right(m2).insert(k, v));
+}
+
+pub broadcast proof fn lemma_union_insert_right<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K, v: V)
+    ensures
+        #[trigger] m1.union_prefer_right(m2.insert(k, v)) == m1.union_prefer_right(m2).insert(k, v),
+{
+    assert(m1.union_prefer_right(m2.insert(k, v)) =~= m1.union_prefer_right(m2).insert(k, v));
+}
+
+pub broadcast proof fn lemma_union_remove_left<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K)
+    requires
+        m1.contains_key(k),
+        !m2.contains_key(k),
+    ensures
+        #[trigger] m1.union_prefer_right(m2).remove(k) == m1.remove(k).union_prefer_right(m2),
+{
+    assert(m1.remove(k).union_prefer_right(m2) =~= m1.union_prefer_right(m2).remove(k));
+}
+
+pub broadcast proof fn lemma_union_remove_right<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K)
+    requires
+        !m1.contains_key(k),
+        m2.contains_key(k),
+    ensures
+        #[trigger] m1.union_prefer_right(m2).remove(k) == m1.union_prefer_right(m2.remove(k)),
+{
+    assert(m1.union_prefer_right(m2.remove(k)) =~= m1.union_prefer_right(m2).remove(k));
+}
+
+pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
+    ensures
+        #[trigger] m1.union_prefer_right(m2).dom() == m1.dom().union(m2.dom()),
+{
+    assert(m1.dom().union(m2.dom()) =~= m1.union_prefer_right(m2).dom());
+}
+
 /// The size of the union of two disjoint maps is equal to the sum of the sizes of the individual maps
-pub proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K, V>)
+pub broadcast proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     requires
         m1.dom().disjoint(m2.dom()),
         m1.dom().finite(),
         m2.dom().finite(),
     ensures
-        m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
+        #[trigger] m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
 {
     let u = m1.union_prefer_right(m2);
     assert(u.dom() =~= m1.dom() + m2.dom());  //proves u.dom() is finite
@@ -261,6 +304,15 @@ pub proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     assert(u.remove_keys(m1.dom()).dom().len() == u.dom().len() - m1.dom().len()) by {
         u.lemma_remove_keys_len(m1.dom());
     }
+}
+
+pub broadcast group group_map_union {
+    lemma_union_dom,
+    lemma_union_remove_left,
+    lemma_union_remove_right,
+    lemma_union_insert_left,
+    lemma_union_insert_right,
+    lemma_disjoint_union_size,
 }
 
 /// submap_of (<=) is transitive.

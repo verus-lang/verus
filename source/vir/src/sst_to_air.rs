@@ -965,9 +965,22 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
+                let (ts, num_variants) = match &*undecorate_typ(&exp.typ) {
+                    TypX::Datatype(Dt::Path(p), ts, _) => {
+                        let (_, variants) = &ctx.global.datatypes[p];
+                        (ts.clone(), variants.len())
+                    }
+                    TypX::Datatype(Dt::Tuple(_), ts, _) => (ts.clone(), 1),
+                    _ => panic!("internal error: expected datatype in field op"),
+                };
+                let mut exprs: Vec<Expr> =
+                    crate::datatype_to_air::field_typ_args(num_variants, || {
+                        ts.iter().map(typ_to_ids).flatten().collect()
+                    });
+                exprs.push(expr);
                 Arc::new(ExprX::Apply(
                     variant_field_ident(&encode_dt_as_path(datatype), variant, field),
-                    Arc::new(vec![expr]),
+                    Arc::new(exprs),
                 ))
             }
             UnaryOpr::CustomErr(_) => {

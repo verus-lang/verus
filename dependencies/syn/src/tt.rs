@@ -1,7 +1,7 @@
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use std::hash::{Hash, Hasher};
 
-pub struct TokenTreeHelper<'a>(pub &'a TokenTree);
+pub(crate) struct TokenTreeHelper<'a>(pub &'a TokenTree);
 
 impl<'a> PartialEq for TokenTreeHelper<'a> {
     fn eq(&self, other: &Self) -> bool {
@@ -62,7 +62,7 @@ impl<'a> Hash for TokenTreeHelper<'a> {
                 for item in g.stream() {
                     TokenTreeHelper(&item).hash(h);
                 }
-                0xffu8.hash(h); // terminator w/ a variant we don't normally hash
+                0xFFu8.hash(h); // terminator w/ a variant we don't normally hash
             }
             TokenTree::Punct(op) => {
                 1u8.hash(h);
@@ -78,7 +78,7 @@ impl<'a> Hash for TokenTreeHelper<'a> {
     }
 }
 
-pub struct TokenStreamHelper<'a>(pub &'a TokenStream);
+pub(crate) struct TokenStreamHelper<'a>(pub &'a TokenStream);
 
 impl<'a> PartialEq for TokenStreamHelper<'a> {
     fn eq(&self, other: &Self) -> bool {

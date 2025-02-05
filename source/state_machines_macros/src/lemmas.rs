@@ -341,7 +341,7 @@ fn check_no_explicit_conditions(bundle: &SMBundle) -> parse::Result<()> {
         if l.func.block.stmts.len() > 0 {
             let stmt = &l.func.block.stmts[0];
             match stmt {
-                Stmt::Semi(Expr::Call(ExprCall { func, .. }), _) => match &**func {
+                Stmt::Expr(Expr::Call(ExprCall { func, .. }), Some(_)) => match &**func {
                     Expr::Path(ExprPath { path, .. })
                         if path.is_ident("requires") || path.is_ident("ensures") =>
                     {

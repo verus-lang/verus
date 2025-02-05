@@ -29,15 +29,14 @@
 // some data explaining the function mode, param modes, and return mode.
 
 use proc_macro2::Span;
-use proc_macro2::TokenTree;
 use std::iter::FromIterator;
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
     AssumeSpecification, AttrStyle, Attribute, Block, Expr, ExprBlock, ExprPath, FnMode, Ident,
-    ImplItemMethod, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
-    ReturnType, Signature, TraitItemMethod, Type, TypeGroup, TypePath,
+    ImplItemFn, ItemFn, Pat, PatIdent, Path, PathArguments, PathSegment, Publish, QSelf,
+    ReturnType, Signature, TraitItemFn, Type, TypeGroup, TypePath,
 };
 
 /// Check if VERUSDOC=1.
@@ -78,14 +77,14 @@ pub fn process_item_fn_broadcast_group(item: &mut ItemFn) {
     }
 }
 
-pub fn process_impl_item_method(item: &mut ImplItemMethod) {
+pub fn process_impl_item_method(item: &mut ImplItemFn) {
     match attr_for_sig(&item.sig, Some(&item.block), None) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
     }
 }
 
-pub fn process_trait_item_method(item: &mut TraitItemMethod) {
+pub fn process_trait_item_method(item: &mut TraitItemFn) {
     match attr_for_sig(&item.sig, item.default.as_ref(), None) {
         Some(attr) => item.attrs.insert(0, attr),
         None => {}
@@ -310,20 +309,23 @@ fn encoded_str(kind: &str, data: &str) -> String {
 /// Create an attr that looks like #[doc = "doc_str"]
 
 fn doc_attr_from_string(doc_str: &str, span: Span) -> Attribute {
+    let path = Path {
+        leading_colon: None,
+        segments: Punctuated::from_iter(vec![PathSegment {
+            ident: Ident::new("doc", span),
+            arguments: PathArguments::None,
+        }]),
+    };
+    let lit = syn_verus::Lit::Str(syn_verus::LitStr::new(doc_str, span));
+    let name_value = syn_verus::MetaNameValue {
+        path,
+        eq_token: token::Eq { spans: [span] },
+        value: Expr::Lit(syn_verus::ExprLit { attrs: vec![], lit }),
+    };
     Attribute {
         pound_token: token::Pound { spans: [span] },
         style: AttrStyle::Outer,
-        bracket_token: token::Bracket { span },
-        path: Path {
-            leading_colon: None,
-            segments: Punctuated::from_iter(vec![PathSegment {
-                ident: Ident::new("doc", span),
-                arguments: PathArguments::None,
-            }]),
-        },
-        tokens: proc_macro2::TokenStream::from_iter(vec![
-            TokenTree::Punct(proc_macro2::Punct::new('=', proc_macro2::Spacing::Alone)),
-            TokenTree::Literal(proc_macro2::Literal::string(doc_str)),
-        ]),
+        bracket_token: token::Bracket { span: crate::syntax::into_spans(span) },
+        meta: syn_verus::Meta::NameValue(name_value),
     }
 }

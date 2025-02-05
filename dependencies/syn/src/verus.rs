@@ -1,4 +1,5 @@
 use super::*;
+use crate::parse::ParseStream;
 use crate::punctuated::Punctuated;
 
 ast_enum_of_structs! {
@@ -365,16 +366,30 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct BigAndExpr {
+        pub tok: Token![&&&],
+        pub expr: Box<Expr>,
+    }
+}
+
+ast_struct! {
     pub struct BigAnd {
         /// exprs.len() must be >= 1
-        pub exprs: Vec<(Token![&&&], Box<Expr>)>,
+        pub exprs: Vec<BigAndExpr>,
+    }
+}
+
+ast_struct! {
+    pub struct BigOrExpr {
+        pub tok: Token![|||],
+        pub expr: Box<Expr>,
     }
 }
 
 ast_struct! {
     pub struct BigOr {
         /// exprs.len() must be >= 1
-        pub exprs: Vec<(Token![|||], Box<Expr>)>,
+        pub exprs: Vec<BigOrExpr>,
     }
 }
 
@@ -829,7 +844,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let content;
             let bracket_token = bracketed!(content in input);
-            let exprs = content.parse_terminated(Expr::parse)?;
+            let exprs = content.parse_terminated(Expr::parse, Token![,])?;
             Ok(InvariantNameSetList {
                 bracket_token,
                 exprs,
@@ -987,7 +1002,7 @@ pub mod parsing {
     impl Parse for SignatureSpecAttr {
         fn parse(input: ParseStream) -> Result<Self> {
             let ret_pat = if input.peek2(Token![=>]) {
-                let pat = input.parse()?;
+                let pat = Pat::parse_single(&input)?;
                 let token = input.parse()?;
                 Some((pat, token))
             } else {
@@ -1092,7 +1107,7 @@ pub mod parsing {
             let or1_token: Token![|] = input.parse()?;
             let mut inputs = Punctuated::new();
             while !input.peek(Token![|]) {
-                let mut pat = input.parse()?;
+                let mut pat = Pat::parse_single(&input)?;
                 if input.peek(Token![:]) {
                     let colon_token = input.parse()?;
                     let ty = input.parse()?;
@@ -1226,7 +1241,10 @@ pub mod parsing {
 
             let content;
             let paren_token = parenthesized!(content in input);
-            let inputs = crate::item::parsing::parse_fn_args(&content)?;
+            let (inputs, variadic) = crate::item::parsing::parse_fn_args(&content)?;
+            if variadic.is_some() {
+                return Err(content.error("variadic parameters not allowed"));
+            }
 
             let output: ReturnType = input.parse()?;
             generics.where_clause = input.parse()?;
@@ -1270,7 +1288,7 @@ pub mod parsing {
             let ident = input.parse()?;
             let content;
             let brace_token = braced!(content in input);
-            let paths = content.parse_terminated(ExprPath::parse)?;
+            let paths = content.parse_terminated(ExprPath::parse, Token![,])?;
 
             Ok(ItemBroadcastGroup {
                 attrs,
@@ -1740,9 +1758,9 @@ mod printing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for BigAnd {
         fn to_tokens(&self, tokens: &mut TokenStream) {
-            for (prefix, expr) in &self.exprs {
-                prefix.to_tokens(tokens);
-                expr.to_tokens(tokens);
+            for expr in &self.exprs {
+                expr.tok.to_tokens(tokens);
+                expr.expr.to_tokens(tokens);
             }
         }
     }
@@ -1750,9 +1768,9 @@ mod printing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for BigOr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
-            for (prefix, expr) in &self.exprs {
-                prefix.to_tokens(tokens);
-                expr.to_tokens(tokens);
+            for expr in &self.exprs {
+                expr.tok.to_tokens(tokens);
+                expr.expr.to_tokens(tokens);
             }
         }
     }
@@ -1851,22 +1869,12 @@ mod printing {
             self.generics.to_tokens(tokens);
 
             self.bracket_token.surround(tokens, |tokens| {
-                path::printing::print_path(tokens, &self.qself, &self.path)
+                use crate::path::printing::PathStyle;
+                path::printing::print_qpath(tokens, &self.qself, &self.path, PathStyle::Mod)
             });
 
-            use crate::punctuated::Pair;
             self.paren_token.surround(tokens, |tokens| {
-                for input in self.inputs.pairs() {
-                    match input {
-                        Pair::Punctuated(input, comma) => {
-                            crate::item::printing::maybe_variadic_to_tokens(input, tokens);
-                            comma.to_tokens(tokens);
-                        }
-                        Pair::End(input) => {
-                            crate::item::printing::maybe_variadic_to_tokens(input, tokens);
-                        }
-                    }
-                }
+                self.inputs.to_tokens(tokens);
             });
 
             self.output.to_tokens(tokens);
@@ -1903,7 +1911,7 @@ pub(crate) fn parse_matches(
     big_and: bool,
 ) -> Result<Expr> {
     let matches_token: Token![matches] = input.parse()?;
-    let pat = input.parse()?;
+    let pat = Pat::parse_single(&input)?;
 
     let op_expr = if input.peek(Token![&&&]) {
         if big_and {
@@ -1930,9 +1938,9 @@ pub(crate) fn parse_matches(
         loop {
             let next = expr::parsing::peek_precedence(input);
             if matches!(op_token, MatchesOpToken::Implies(_))
-                && next >= expr::parsing::Precedence::Imply
+                && next >= crate::precedence::Precedence::Imply
                 || matches!(op_token, MatchesOpToken::AndAnd(_))
-                    && next >= expr::parsing::Precedence::And
+                    && next >= crate::precedence::Precedence::And
             {
                 rhs = expr::parsing::parse_expr(input, rhs, allow_struct, next)?;
             } else {
@@ -1968,7 +1976,7 @@ pub(crate) fn parse_prefix_binop(
         if attrs.len() != 0 {
             return Err(input.error("`&&&` cannot have attributes"));
         }
-        let mut exprs: Vec<(Token![&&&], Box<Expr>)> = Vec::new();
+        let mut exprs: Vec<BigAndExpr> = Vec::new();
         while let Ok(token) = input.parse() {
             let lhs = expr::parsing::unary_expr(input, AllowStruct(true))?;
             let expr: Expr = if input.peek(Token![matches]) {
@@ -1981,24 +1989,62 @@ pub(crate) fn parse_prefix_binop(
                     input,
                     lhs,
                     AllowStruct(true),
-                    expr::parsing::Precedence::Any,
+                    crate::precedence::Precedence::Assign,
                 )?
             };
 
-            exprs.push((token, Box::new(expr)));
+            exprs.push(BigAndExpr {
+                tok: token,
+                expr: Box::new(expr),
+            });
         }
         Ok(Some(Expr::BigAnd(BigAnd { exprs })))
     } else if !big_and_only && input.peek(Token![|||]) {
         if attrs.len() != 0 {
             return Err(input.error("`|||` cannot have attributes"));
         }
-        let mut exprs: Vec<(Token![|||], Box<Expr>)> = Vec::new();
+        let mut exprs: Vec<BigOrExpr> = Vec::new();
         while let Ok(token) = input.parse() {
             let expr: Expr = input.parse()?;
-            exprs.push((token, Box::new(expr)));
+            exprs.push(BigOrExpr {
+                tok: token,
+                expr: Box::new(expr),
+            });
         }
         Ok(Some(Expr::BigOr(BigOr { exprs })))
     } else {
         Ok(None)
     }
+}
+
+pub(crate) fn parse_fn_spec(input: ParseStream) -> Result<TypeFnSpec> {
+    let args;
+
+    let fn_spec = TypeFnSpec {
+        fn_spec_token: input.parse()?,
+        spec_fn_token: input.parse()?,
+        paren_token: parenthesized!(args in input),
+        inputs: {
+            let mut inputs = Punctuated::new();
+
+            while !args.is_empty() {
+                let attrs = args.call(Attribute::parse_outer)?;
+
+                let arg = crate::ty::parsing::parse_bare_fn_arg(&args, false)?;
+                inputs.push_value(BareFnArg { attrs, ..arg });
+
+                if args.is_empty() {
+                    break;
+                }
+
+                let comma = args.parse()?;
+                inputs.push_punct(comma);
+            }
+
+            inputs
+        },
+        output: input.call(ReturnType::without_plus)?,
+    };
+
+    Ok(fn_spec)
 }

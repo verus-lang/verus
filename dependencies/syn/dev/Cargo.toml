@@ -2,7 +2,7 @@
 name = "syn-dev"
 version = "0.0.0"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
-edition = "2018"
+edition = "2021"
 publish = false
 
 [lib]
@@ -14,9 +14,9 @@ path = "main.rs"
 name = "syn-dev"
 
 [dependencies]
-quote = "1.0"
+quote = "1"
 
 [dependencies.syn_verus]
-path = ".."
 default-features = false
-features = ["parsing", "full", "extra-traits", "proc-macro", "clone-impls", "printing"]
+features = ["extra-traits", "full", "parsing", "proc-macro", "clone-impls", "printing"]
+path = ".."

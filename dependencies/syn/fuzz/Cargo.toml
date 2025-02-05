@@ -1,0 +1,31 @@
+[package]
+name = "syn-fuzz"
+version = "0.0.0"
+authors = ["David Tolnay <dtolnay@gmail.com>"]
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+proc-macro2 = "1.0.52"
+syn = { path = "..", default-features = false, features = ["full", "parsing"] }
+
+[features]
+span-locations = ["proc-macro2/span-locations"]
+
+[[bin]]
+name = "create_token_buffer"
+path = "fuzz_targets/create_token_buffer.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "parse_file"
+path = "fuzz_targets/parse_file.rs"
+test = false
+doc = false
+
+[workspace]

@@ -4,9 +4,10 @@ set -x
 unset RUSTUP_TOOLCHAIN
 cd source
 
-pushd tools/line_count
-cargo build --release
-popd
+# TODO restore once line_count is fixed
+# pushd tools/line_count
+# cargo build --release
+# popd
 
 . ../tools/activate
 # ./tools/get-z3.sh

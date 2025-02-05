@@ -2,7 +2,7 @@ use proc_macro2::Span;
 use std::rc::Rc;
 use syn_verus::token;
 use syn_verus::{
-    Attribute, Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Item, Pat, Type,
+    Attribute, Block, Expr, FieldsNamed, Generics, Ident, ImplItemFn, Item, Pat, Type,
 };
 
 #[derive(Clone, Debug)]
@@ -415,7 +415,7 @@ impl TransitionStmt {
 
 #[derive(Clone, Debug)]
 pub struct Invariant {
-    pub func: ImplItemMethod,
+    pub func: ImplItemFn,
 }
 
 #[derive(Clone, Debug, Hash)]
@@ -432,7 +432,7 @@ pub struct LemmaPurpose {
 #[derive(Clone, Debug)]
 pub struct Lemma {
     pub purpose: LemmaPurpose,
-    pub func: ImplItemMethod,
+    pub func: ImplItemFn,
 }
 
 impl ShardableType {
