@@ -771,6 +771,7 @@ define_keywords! {
     "exists"      pub struct Exists
     "choose"      pub struct Choose
     "is"          pub struct Is
+    "isnt"        pub struct Isnt
     "FnSpec"      pub struct FnSpec
     "spec_fn"     pub struct SpecFn
     "via"         pub struct Via
@@ -1058,6 +1059,7 @@ macro_rules! Token {
     [exists]      => { $crate::token::Exists };
     [choose]      => { $crate::token::Choose };
     [is]          => { $crate::token::Is };
+    [isnt]        => { $crate::token::Isnt };
     [has]         => { $crate::token::Has };
     [global]      => { $crate::token::Global };
     [size_of]     => { $crate::token::SizeOf };

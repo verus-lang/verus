@@ -492,6 +492,7 @@ impl PartialEq for crate::Expr {
             (crate::Expr::BigAnd(self0), crate::Expr::BigAnd(other0)) => self0 == other0,
             (crate::Expr::BigOr(self0), crate::Expr::BigOr(other0)) => self0 == other0,
             (crate::Expr::Is(self0), crate::Expr::Is(other0)) => self0 == other0,
+            (crate::Expr::Isnt(self0), crate::Expr::Isnt(other0)) => self0 == other0,
             (crate::Expr::Has(self0), crate::Expr::Has(other0)) => self0 == other0,
             (crate::Expr::Matches(self0), crate::Expr::Matches(other0)) => {
                 self0 == other0
@@ -718,6 +719,15 @@ impl PartialEq for crate::ExprInfer {
 impl Eq for crate::ExprIs {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::ExprIs {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.base == other.base
+            && self.variant_ident == other.variant_ident
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::ExprIsnt {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::ExprIsnt {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.base == other.base
             && self.variant_ident == other.variant_ident

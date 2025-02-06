@@ -14,10 +14,12 @@ An `enum` is often used just for its tags, without member fields:
 ## Identifying a variant with the `is` operator
 
 In spec contexts, the `is` operator lets you query which variant of an
-enum a variable contains. 
+enum a variable contains.
 ```rust
 {{#include ../../../rust_verify/example/guide/datatypes.rs:make_float}}
 ```
+
+The syntax `isnt` is a shorthand for `!(.. is ..)`.
 
 ## Accessing fields with the arrow operator
 

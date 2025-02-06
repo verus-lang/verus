@@ -771,6 +771,7 @@ fn scan_right(
         | Expr::BigOr(_)
         | Expr::Has(_)
         | Expr::Is(_)
+        | Expr::Isnt(_)
         | Expr::Matches(_)
 
         | Expr::While(_) => match fixup.next_operator {
