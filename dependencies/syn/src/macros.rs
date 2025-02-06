@@ -4,14 +4,17 @@
 )]
 macro_rules! ast_struct {
     (
-        [$($attrs_pub:tt)*]
-        struct $name:ident #full $($rest:tt)*
+        $(#[$attr:meta])*
+        $pub:ident $struct:ident $name:ident #full $body:tt
     ) => {
+        check_keyword_matches!(pub $pub);
+        check_keyword_matches!(struct $struct);
+
         #[cfg(feature = "full")]
-        $($attrs_pub)* struct $name $($rest)*
+        $(#[$attr])* $pub $struct $name $body
 
         #[cfg(not(feature = "full"))]
-        $($attrs_pub)* struct $name {
+        $(#[$attr])* $pub $struct $name {
             _noconstruct: ::std::marker::PhantomData<::proc_macro2::Span>,
         }
 
@@ -24,35 +27,26 @@ macro_rules! ast_struct {
     };
 
     (
-        [$($attrs_pub:tt)*]
-        struct $name:ident $($rest:tt)*
+        $(#[$attr:meta])*
+        $pub:ident $struct:ident $name:ident $body:tt
     ) => {
-        $($attrs_pub)* struct $name $($rest)*
-    };
+        check_keyword_matches!(pub $pub);
+        check_keyword_matches!(struct $struct);
 
-    ($($t:tt)*) => {
-        strip_attrs_pub!(ast_struct!($($t)*));
+        $(#[$attr])* $pub $struct $name $body
     };
 }
 
+#[cfg(any(feature = "full", feature = "derive"))]
 macro_rules! ast_enum {
-    // Drop the `#no_visit` attribute, if present.
     (
-        [$($attrs_pub:tt)*]
-        enum $name:ident #no_visit $($rest:tt)*
-    ) => (
-        ast_enum!([$($attrs_pub)*] enum $name $($rest)*);
-    );
+        $(#[$enum_attr:meta])*
+        $pub:ident $enum:ident $name:ident $body:tt
+    ) => {
+        check_keyword_matches!(pub $pub);
+        check_keyword_matches!(enum $enum);
 
-    (
-        [$($attrs_pub:tt)*]
-        enum $name:ident $($rest:tt)*
-    ) => (
-        $($attrs_pub)* enum $name $($rest)*
-    );
-
-    ($($t:tt)*) => {
-        strip_attrs_pub!(ast_enum!($($t)*));
+        $(#[$enum_attr])* $pub $enum $name $body
     };
 }
 
@@ -60,45 +54,32 @@ macro_rules! ast_enum_of_structs {
     (
         $(#[$enum_attr:meta])*
         $pub:ident $enum:ident $name:ident $body:tt
-        $($remaining:tt)*
     ) => {
-        ast_enum!($(#[$enum_attr])* $pub $enum $name $body);
-        ast_enum_of_structs_impl!($pub $enum $name $body $($remaining)*);
+        check_keyword_matches!(pub $pub);
+        check_keyword_matches!(enum $enum);
+
+        $(#[$enum_attr])* $pub $enum $name $body
+
+        ast_enum_of_structs_impl!($name $body);
+
+        #[cfg(feature = "printing")]
+        generate_to_tokens!(() tokens $name $body);
     };
 }
 
 macro_rules! ast_enum_of_structs_impl {
     (
-        $pub:ident $enum:ident $name:ident {
+        $name:ident {
             $(
                 $(#[cfg $cfg_attr:tt])*
                 $(#[doc $($doc_attr:tt)*])*
-                $variant:ident $( ($($member:ident)::+) )*,
+                $variant:ident $( ($member:ident) )*,
             )*
         }
-
-        $($remaining:tt)*
     ) => {
-        check_keyword_matches!(pub $pub);
-        check_keyword_matches!(enum $enum);
-
         $($(
-            ast_enum_from_struct!($name::$variant, $($member)::+);
+            ast_enum_from_struct!($name::$variant, $member);
         )*)*
-
-        #[cfg(feature = "printing")]
-        generate_to_tokens! {
-            $($remaining)*
-            ()
-            tokens
-            $name {
-                $(
-                    $(#[cfg $cfg_attr])*
-                    $(#[doc $($doc_attr)*])*
-                    $variant $($($member)::+)*,
-                )*
-            }
-        }
     };
 }
 
@@ -116,13 +97,7 @@ macro_rules! ast_enum_from_struct {
 }
 
 #[cfg(feature = "printing")]
-#[cfg_attr(
-    not(any(feature = "full", feature = "derive")),
-    allow(unknown_lints, unused_macro_rules)
-)]
 macro_rules! generate_to_tokens {
-    (do_not_generate_to_tokens $($foo:tt)*) => ();
-
     (
         ($($arms:tt)*) $tokens:ident $name:ident {
             $(#[cfg $cfg_attr:tt])*
@@ -141,7 +116,7 @@ macro_rules! generate_to_tokens {
         ($($arms:tt)*) $tokens:ident $name:ident {
             $(#[cfg $cfg_attr:tt])*
             $(#[doc $($doc_attr:tt)*])*
-            $variant:ident $member:ident,
+            $variant:ident($member:ident),
             $($next:tt)*
         }
     ) => {
@@ -152,7 +127,7 @@ macro_rules! generate_to_tokens {
     };
 
     (($($arms:tt)*) $tokens:ident $name:ident {}) => {
-        #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+        #[cfg_attr(docsrs, doc(cfg(feature = "printing")))]
         impl ::quote::ToTokens for $name {
             fn to_tokens(&self, $tokens: &mut ::proc_macro2::TokenStream) {
                 match self {
@@ -163,15 +138,45 @@ macro_rules! generate_to_tokens {
     };
 }
 
-macro_rules! strip_attrs_pub {
-    ($mac:ident!($(#[$m:meta])* $pub:ident $($t:tt)*)) => {
+// Rustdoc bug: does not respect the doc(hidden) on some items.
+#[cfg(all(doc, feature = "parsing"))]
+macro_rules! pub_if_not_doc {
+    ($(#[$m:meta])* $pub:ident $($item:tt)*) => {
         check_keyword_matches!(pub $pub);
 
-        $mac!([$(#[$m])* $pub] $($t)*);
+        $(#[$m])*
+        $pub(crate) $($item)*
+    };
+}
+
+#[cfg(all(not(doc), feature = "parsing"))]
+macro_rules! pub_if_not_doc {
+    ($(#[$m:meta])* $pub:ident $($item:tt)*) => {
+        check_keyword_matches!(pub $pub);
+
+        $(#[$m])*
+        $pub $($item)*
     };
 }
 
 macro_rules! check_keyword_matches {
     (enum enum) => {};
     (pub pub) => {};
+    (struct struct) => {};
+}
+
+#[cfg(any(feature = "full", feature = "derive"))]
+macro_rules! return_impl_trait {
+    (
+        $(#[$attr:meta])*
+        $vis:vis fn $name:ident $args:tt -> $impl_trait:ty [$concrete:ty] $body:block
+    ) => {
+        #[cfg(not(docsrs))]
+        $(#[$attr])*
+        $vis fn $name $args -> $concrete $body
+
+        #[cfg(docsrs)]
+        $(#[$attr])*
+        $vis fn $name $args -> $impl_trait $body
+    };
 }

@@ -391,10 +391,10 @@ fn run(run_configuration_path: &str) -> Result<(), VeritasError> {
                     revspec: run_configuration.verus_revspec.clone(),
                     crate_root: "source/vstd/vstd.rs".to_owned(),
                     extra_args: Some(vec![
-                        "--no-vstd".to_owned(),
+                        "--is-vstd".to_owned(),
                         "--crate-type=lib".to_owned(),
-                        "-V".to_owned(),
-                        "use-crate-name".to_owned(),
+                        // "-V".to_owned(),
+                        // "use-crate-name".to_owned(),
                     ]),
                     prepare_script: None,
                 },
@@ -466,8 +466,8 @@ fn run(run_configuration_path: &str) -> Result<(), VeritasError> {
 
     info("verus ready");
     let verus_binary_path = verus_workdir.join("source/target-verus/release/verus");
-    // TODO perform line counting?
-    let _verus_line_count_path = verus_workdir.join("source/target/release/line_count");
+    // TODO perform line counting? (once line_count is fixed)
+    // let _verus_line_count_path = verus_workdir.join("source/target/release/line_count");
 
     let output_path = env_var_dir_or_err(OUTPUT_PATH_VAR)?;
     let date = chrono::Utc::now()

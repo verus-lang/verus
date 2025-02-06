@@ -569,33 +569,33 @@ mod internals {
                                             default.set(word, Default::Default);
                                         }
                                         syn::Fields::Unnamed(_) | syn::Fields::Unit => {
-                                            cx
-                                                .error_spanned_by(
-                                                    fields,
-                                                    "#[serde(default)] can only be used on structs with named fields",
-                                                )
+                                            cx.error_spanned_by(
+                                                fields,
+                                                "#[serde(default)] can only be used on structs with named fields",
+                                            )
                                         }
                                     }
                                 }
                                 syn::Data::Enum(syn::DataEnum { enum_token, .. }) => {
-                                    cx
-                                        .error_spanned_by(
-                                            enum_token,
-                                            "#[serde(default)] can only be used on structs with named fields",
-                                        )
+                                    cx.error_spanned_by(
+                                        enum_token,
+                                        "#[serde(default)] can only be used on structs with named fields",
+                                    )
                                 }
                                 syn::Data::Union(syn::DataUnion { union_token, .. }) => {
-                                    cx
-                                        .error_spanned_by(
-                                            union_token,
-                                            "#[serde(default)] can only be used on structs with named fields",
-                                        )
+                                    cx.error_spanned_by(
+                                        union_token,
+                                        "#[serde(default)] can only be used on structs with named fields",
+                                    )
                                 }
                             }
                         }
                         Meta(NameValue(m)) if m.path == DEFAULT => {
-                            if let Ok(path)
-                                = parse_lit_into_expr_path(cx, DEFAULT, &m.lit) {
+                            if let Ok(path) = parse_lit_into_expr_path(
+                                cx,
+                                DEFAULT,
+                                &m.lit,
+                            ) {
                                 match &item.data {
                                     syn::Data::Struct(syn::DataStruct { fields, .. }) => {
                                         match fields {
@@ -603,34 +603,35 @@ mod internals {
                                                 default.set(&m.path, Default::Path(path));
                                             }
                                             syn::Fields::Unnamed(_) | syn::Fields::Unit => {
-                                                cx
-                                                    .error_spanned_by(
-                                                        fields,
-                                                        "#[serde(default = \"...\")] can only be used on structs with named fields",
-                                                    )
+                                                cx.error_spanned_by(
+                                                    fields,
+                                                    "#[serde(default = \"...\")] can only be used on structs with named fields",
+                                                )
                                             }
                                         }
                                     }
                                     syn::Data::Enum(syn::DataEnum { enum_token, .. }) => {
-                                        cx
-                                            .error_spanned_by(
-                                                enum_token,
-                                                "#[serde(default = \"...\")] can only be used on structs with named fields",
-                                            )
+                                        cx.error_spanned_by(
+                                            enum_token,
+                                            "#[serde(default = \"...\")] can only be used on structs with named fields",
+                                        )
                                     }
                                     syn::Data::Union(syn::DataUnion { union_token, .. }) => {
-                                        cx
-                                            .error_spanned_by(
-                                                union_token,
-                                                "#[serde(default = \"...\")] can only be used on structs with named fields",
-                                            )
+                                        cx.error_spanned_by(
+                                            union_token,
+                                            "#[serde(default = \"...\")] can only be used on structs with named fields",
+                                        )
                                     }
                                 }
                             }
                         }
                         Meta(NameValue(m)) if m.path == BOUND => {
-                            if let Ok(where_predicates)
-                                = parse_lit_into_where(cx, BOUND, BOUND, &m.lit) {
+                            if let Ok(where_predicates) = parse_lit_into_where(
+                                cx,
+                                BOUND,
+                                BOUND,
+                                &m.lit,
+                            ) {
                                 ser_bound.set(&m.path, where_predicates.clone());
                                 de_bound.set(&m.path, where_predicates);
                             }
@@ -715,8 +716,11 @@ mod internals {
                             }
                         }
                         Meta(NameValue(m)) if m.path == TRY_FROM => {
-                            if let Ok(try_from_ty)
-                                = parse_lit_into_ty(cx, TRY_FROM, &m.lit) {
+                            if let Ok(try_from_ty) = parse_lit_into_ty(
+                                cx,
+                                TRY_FROM,
+                                &m.lit,
+                            ) {
                                 type_try_from.set_opt(&m.path, Some(try_from_ty));
                             }
                         }
@@ -1148,8 +1152,12 @@ mod internals {
                             other.set_true(word);
                         }
                         Meta(NameValue(m)) if m.path == BOUND => {
-                            if let Ok(where_predicates)
-                                = parse_lit_into_where(cx, BOUND, BOUND, &m.lit) {
+                            if let Ok(where_predicates) = parse_lit_into_where(
+                                cx,
+                                BOUND,
+                                BOUND,
+                                &m.lit,
+                            ) {
                                 ser_bound.set(&m.path, where_predicates.clone());
                                 de_bound.set(&m.path, where_predicates);
                             }
@@ -1161,8 +1169,11 @@ mod internals {
                             }
                         }
                         Meta(NameValue(m)) if m.path == WITH => {
-                            if let Ok(path)
-                                = parse_lit_into_expr_path(cx, WITH, &m.lit) {
+                            if let Ok(path) = parse_lit_into_expr_path(
+                                cx,
+                                WITH,
+                                &m.lit,
+                            ) {
                                 let mut ser_path = path.clone();
                                 ser_path
                                     .path
@@ -1178,14 +1189,20 @@ mod internals {
                             }
                         }
                         Meta(NameValue(m)) if m.path == SERIALIZE_WITH => {
-                            if let Ok(path)
-                                = parse_lit_into_expr_path(cx, SERIALIZE_WITH, &m.lit) {
+                            if let Ok(path) = parse_lit_into_expr_path(
+                                cx,
+                                SERIALIZE_WITH,
+                                &m.lit,
+                            ) {
                                 serialize_with.set(&m.path, path);
                             }
                         }
                         Meta(NameValue(m)) if m.path == DESERIALIZE_WITH => {
-                            if let Ok(path)
-                                = parse_lit_into_expr_path(cx, DESERIALIZE_WITH, &m.lit) {
+                            if let Ok(path) = parse_lit_into_expr_path(
+                                cx,
+                                DESERIALIZE_WITH,
+                                &m.lit,
+                            ) {
                                 deserialize_with.set(&m.path, path);
                             }
                         }
@@ -1260,16 +1277,12 @@ mod internals {
             }
             pub fn rename_by_rules(&mut self, rules: &RenameAllRules) {
                 if !self.name.serialize_renamed {
-                    self
-                        .name
-                        .serialize = rules
+                    self.name.serialize = rules
                         .serialize
                         .apply_to_variant(&self.name.serialize);
                 }
                 if !self.name.deserialize_renamed {
-                    self
-                        .name
-                        .deserialize = rules
+                    self.name.deserialize = rules
                         .deserialize
                         .apply_to_variant(&self.name.deserialize);
                 }
@@ -1389,8 +1402,11 @@ mod internals {
                             default.set(word, Default::Default);
                         }
                         Meta(NameValue(m)) if m.path == DEFAULT => {
-                            if let Ok(path)
-                                = parse_lit_into_expr_path(cx, DEFAULT, &m.lit) {
+                            if let Ok(path) = parse_lit_into_expr_path(
+                                cx,
+                                DEFAULT,
+                                &m.lit,
+                            ) {
                                 default.set(&m.path, Default::Path(path));
                             }
                         }
@@ -1405,30 +1421,38 @@ mod internals {
                             skip_deserializing.set_true(word);
                         }
                         Meta(NameValue(m)) if m.path == SKIP_SERIALIZING_IF => {
-                            if let Ok(path)
-                                = parse_lit_into_expr_path(
-                                    cx,
-                                    SKIP_SERIALIZING_IF,
-                                    &m.lit,
-                                ) {
+                            if let Ok(path) = parse_lit_into_expr_path(
+                                cx,
+                                SKIP_SERIALIZING_IF,
+                                &m.lit,
+                            ) {
                                 skip_serializing_if.set(&m.path, path);
                             }
                         }
                         Meta(NameValue(m)) if m.path == SERIALIZE_WITH => {
-                            if let Ok(path)
-                                = parse_lit_into_expr_path(cx, SERIALIZE_WITH, &m.lit) {
+                            if let Ok(path) = parse_lit_into_expr_path(
+                                cx,
+                                SERIALIZE_WITH,
+                                &m.lit,
+                            ) {
                                 serialize_with.set(&m.path, path);
                             }
                         }
                         Meta(NameValue(m)) if m.path == DESERIALIZE_WITH => {
-                            if let Ok(path)
-                                = parse_lit_into_expr_path(cx, DESERIALIZE_WITH, &m.lit) {
+                            if let Ok(path) = parse_lit_into_expr_path(
+                                cx,
+                                DESERIALIZE_WITH,
+                                &m.lit,
+                            ) {
                                 deserialize_with.set(&m.path, path);
                             }
                         }
                         Meta(NameValue(m)) if m.path == WITH => {
-                            if let Ok(path)
-                                = parse_lit_into_expr_path(cx, WITH, &m.lit) {
+                            if let Ok(path) = parse_lit_into_expr_path(
+                                cx,
+                                WITH,
+                                &m.lit,
+                            ) {
                                 let mut ser_path = path.clone();
                                 ser_path
                                     .path
@@ -1444,8 +1468,12 @@ mod internals {
                             }
                         }
                         Meta(NameValue(m)) if m.path == BOUND => {
-                            if let Ok(where_predicates)
-                                = parse_lit_into_where(cx, BOUND, BOUND, &m.lit) {
+                            if let Ok(where_predicates) = parse_lit_into_where(
+                                cx,
+                                BOUND,
+                                BOUND,
+                                &m.lit,
+                            ) {
                                 ser_bound.set(&m.path, where_predicates.clone());
                                 de_bound.set(&m.path, where_predicates);
                             }
@@ -1457,16 +1485,25 @@ mod internals {
                             }
                         }
                         Meta(Path(word)) if word == BORROW => {
-                            if let Ok(borrowable)
-                                = borrowable_lifetimes(cx, &ident, field) {
+                            if let Ok(borrowable) = borrowable_lifetimes(
+                                cx,
+                                &ident,
+                                field,
+                            ) {
                                 borrowed_lifetimes.set(word, borrowable);
                             }
                         }
                         Meta(NameValue(m)) if m.path == BORROW => {
-                            if let Ok(lifetimes)
-                                = parse_lit_into_lifetimes(cx, BORROW, &m.lit) {
-                                if let Ok(borrowable)
-                                    = borrowable_lifetimes(cx, &ident, field) {
+                            if let Ok(lifetimes) = parse_lit_into_lifetimes(
+                                cx,
+                                BORROW,
+                                &m.lit,
+                            ) {
+                                if let Ok(borrowable) = borrowable_lifetimes(
+                                    cx,
+                                    &ident,
+                                    field,
+                                ) {
                                     for lifetime in &lifetimes {
                                         if !borrowable.contains(lifetime) {
                                             cx.error_spanned_by(
@@ -1491,8 +1528,11 @@ mod internals {
                             }
                         }
                         Meta(NameValue(m)) if m.path == GETTER => {
-                            if let Ok(path)
-                                = parse_lit_into_expr_path(cx, GETTER, &m.lit) {
+                            if let Ok(path) = parse_lit_into_expr_path(
+                                cx,
+                                GETTER,
+                                &m.lit,
+                            ) {
                                 getter.set(&m.path, path);
                             }
                         }
@@ -1595,16 +1635,12 @@ mod internals {
             }
             pub fn rename_by_rules(&mut self, rules: &RenameAllRules) {
                 if !self.name.serialize_renamed {
-                    self
-                        .name
-                        .serialize = rules
+                    self.name.serialize = rules
                         .serialize
                         .apply_to_field(&self.name.serialize);
                 }
                 if !self.name.deserialize_renamed {
-                    self
-                        .name
-                        .deserialize = rules
+                    self.name.deserialize = rules
                         .deserialize
                         .apply_to_field(&self.name.deserialize);
                 }
@@ -2081,8 +2117,8 @@ mod internals {
                         collect_lifetimes(&qself.ty, out);
                     }
                     for seg in &ty.path.segments {
-                        if let syn::PathArguments::AngleBracketed(bracketed)
-                            = &seg.arguments
+                        if let syn::PathArguments::AngleBracketed(bracketed) = &seg
+                            .arguments
                         {
                             for arg in &bracketed.args {
                                 match arg {
@@ -2258,8 +2294,7 @@ mod internals {
                     as_token: None,
                     gt_token: ::syn::token::Gt(span),
                 });
-                path
-                    .leading_colon = Some(
+                path.leading_colon = Some(
                     **path.segments.pairs().next().unwrap().punct().unwrap(),
                 );
                 let segments = mem::replace(&mut path.segments, Punctuated::new());
@@ -2269,13 +2304,14 @@ mod internals {
                 let self_ty = self.self_ty(path.segments[0].ident.span());
                 let variant = mem::replace(path, self_ty.path);
                 for segment in &mut path.segments {
-                    if let PathArguments::AngleBracketed(bracketed)
-                        = &mut segment.arguments
+                    if let PathArguments::AngleBracketed(bracketed) = &mut segment
+                        .arguments
                     {
                         if bracketed.colon2_token.is_none() && !bracketed.args.is_empty()
                         {
-                            bracketed
-                                .colon2_token = Some(<::syn::token::Colon2>::default());
+                            bracketed.colon2_token = Some(
+                                <::syn::token::Colon2>::default(),
+                            );
                         }
                     }
                 }
@@ -10435,8 +10471,8 @@ mod de {
             ::quote::ToTokens::to_tokens(&this, &mut _s);
             _s
         };
-        let (ordinary, fallthrough, fallthrough_borrowed) = if let Some(last)
-            = variants.last()
+        let (ordinary, fallthrough, fallthrough_borrowed) = if let Some(last) = variants
+            .last()
         {
             let last_ident = &last.ident;
             if last.attrs.other() {
@@ -15014,8 +15050,7 @@ mod de {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             let mut generics = self.0.generics.clone();
             if let Some(de_lifetime) = self.0.borrowed.de_lifetime_def() {
-                generics
-                    .params = Some(syn::GenericParam::Lifetime(de_lifetime))
+                generics.params = Some(syn::GenericParam::Lifetime(de_lifetime))
                     .into_iter()
                     .chain(generics.params)
                     .collect();
@@ -15035,8 +15070,7 @@ mod de {
                     colon_token: None,
                     bounds: Punctuated::new(),
                 };
-                generics
-                    .params = Some(syn::GenericParam::Lifetime(def))
+                generics.params = Some(syn::GenericParam::Lifetime(def))
                     .into_iter()
                     .chain(generics.params)
                     .collect();

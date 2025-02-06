@@ -3,7 +3,8 @@
 #[path = "../debug/mod.rs"]
 pub mod debug;
 
-use syn::parse::{Parse, Result};
+use std::str::FromStr;
+use syn::parse::Result;
 
 macro_rules! errorf {
     ($($tt:tt)*) => {{
@@ -35,17 +36,25 @@ macro_rules! snapshot {
 
 macro_rules! snapshot_impl {
     (($expr:ident) as $t:ty, @$snapshot:literal) => {
-        let $expr = crate::macros::Tokens::parse::<$t>($expr).unwrap();
+        let tokens = crate::macros::TryIntoTokens::try_into_tokens($expr).unwrap();
+        let $expr: $t = syn::parse_quote!(#tokens);
         let debug = crate::macros::debug::Lite(&$expr);
         if !cfg!(miri) {
-            insta::assert_debug_snapshot!(debug, @$snapshot);
+            #[allow(clippy::needless_raw_string_hashes)] // https://github.com/mitsuhiko/insta/issues/389
+            {
+                insta::assert_debug_snapshot!(debug, @$snapshot);
+            }
         }
     };
     (($($expr:tt)*) as $t:ty, @$snapshot:literal) => {{
-        let syntax_tree = crate::macros::Tokens::parse::<$t>($($expr)*).unwrap();
+        let tokens = crate::macros::TryIntoTokens::try_into_tokens($($expr)*).unwrap();
+        let syntax_tree: $t = syn::parse_quote!(#tokens);
         let debug = crate::macros::debug::Lite(&syntax_tree);
         if !cfg!(miri) {
-            insta::assert_debug_snapshot!(debug, @$snapshot);
+            #[allow(clippy::needless_raw_string_hashes)]
+            {
+                insta::assert_debug_snapshot!(debug, @$snapshot);
+            }
         }
         syntax_tree
     }};
@@ -53,7 +62,10 @@ macro_rules! snapshot_impl {
         let syntax_tree = $($expr)*;
         let debug = crate::macros::debug::Lite(&syntax_tree);
         if !cfg!(miri) {
-            insta::assert_debug_snapshot!(debug, @$snapshot);
+            #[allow(clippy::needless_raw_string_hashes)]
+            {
+                insta::assert_debug_snapshot!(debug, @$snapshot);
+            }
         }
         syntax_tree
     }};
@@ -62,18 +74,20 @@ macro_rules! snapshot_impl {
     };
 }
 
-pub trait Tokens {
-    fn parse<T: Parse>(self) -> Result<T>;
+pub trait TryIntoTokens {
+    #[allow(dead_code)]
+    fn try_into_tokens(self) -> Result<proc_macro2::TokenStream>;
 }
 
-impl<'a> Tokens for &'a str {
-    fn parse<T: Parse>(self) -> Result<T> {
-        syn::parse_str(self)
+impl TryIntoTokens for &str {
+    fn try_into_tokens(self) -> Result<proc_macro2::TokenStream> {
+        let tokens = proc_macro2::TokenStream::from_str(self)?;
+        Ok(tokens)
     }
 }
 
-impl Tokens for proc_macro2::TokenStream {
-    fn parse<T: Parse>(self) -> Result<T> {
-        syn::parse2(self)
+impl TryIntoTokens for proc_macro2::TokenStream {
+    fn try_into_tokens(self) -> Result<proc_macro2::TokenStream> {
+        Ok(self)
     }
 }

@@ -1,4 +1,4 @@
-use crate::ast::Path;
+use crate::ast::{Idents, Path};
 use crate::def::*;
 use crate::sst_to_air::path_to_air_ident;
 use air::ast::Ident;
@@ -833,10 +833,11 @@ pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {
     )
 }
 
-pub(crate) fn datatype_height_axiom(
+fn datatype_height_axiom(
     typ_name1: &Path,
     typ_name2: &Option<Path>,
     is_variant_ident: &Ident,
+    tparams: &Idents,
     field: &Ident,
     recursive_function_field: bool,
 ) -> Node {
@@ -849,18 +850,34 @@ pub(crate) fn datatype_height_axiom(
     let is_variant = str_to_node(is_variant_ident.as_str());
     let typ1 = str_to_node(path_to_air_ident(typ_name1).as_str());
     let box_t1 = str_to_node(prefix_box(typ_name1).as_str());
+    let mut forall_params: Vec<Node> = Vec::new();
+    let mut field_x: Vec<Node> = Vec::new();
+    field_x.push(field);
+    for typ_param in tparams.iter() {
+        for (x, t) in crate::def::suffix_typ_param_ids_types(&typ_param) {
+            use crate::ast_util::LowerUniqueVar;
+            let x = str_to_node(&x.lower());
+            let t = str_to_node(t);
+            forall_params.push(node!(([x][t])));
+            field_x.push(x);
+        }
+    }
+    forall_params.push(node!((x[typ1])));
+    field_x.push(node!(x));
+    let forall_params = Node::List(forall_params);
+    let field_x = Node::List(field_x);
     let field_of_x = match typ_name2 {
         Some(typ2) => {
             let box_t2 = str_to_node(prefix_box(&typ2).as_str());
-            node!(([box_t2] ([field] x)))
+            node!(([box_t2][field_x]))
         }
         // for a field with generic type, [field]'s return type is already "Poly"
-        None => node!(([field] x)),
+        None => field_x,
     };
     let field_of_x =
         if recursive_function_field { node!(([height_rec_fun][field_of_x])) } else { field_of_x };
     node!(
-        (axiom (forall ((x [typ1])) (!
+        (axiom (forall [forall_params] (!
             (=>
                 ([is_variant] x)
                 ([height_lt]
@@ -879,12 +896,15 @@ pub(crate) fn datatype_height_axioms(
     typ_name1: &Path,
     typ_name2: &Option<Path>,
     is_variant_ident: &Ident,
+    tparams: &Idents,
     field: &Ident,
     recursive_function_field: bool,
 ) -> Vec<Node> {
-    let axiom1 = datatype_height_axiom(typ_name1, typ_name2, is_variant_ident, field, false);
+    let axiom1 =
+        datatype_height_axiom(typ_name1, typ_name2, is_variant_ident, tparams, field, false);
     if recursive_function_field {
-        let axiom2 = datatype_height_axiom(typ_name1, typ_name2, is_variant_ident, field, true);
+        let axiom2 =
+            datatype_height_axiom(typ_name1, typ_name2, is_variant_ident, tparams, field, true);
         vec![axiom1, axiom2]
     } else {
         vec![axiom1]

@@ -1,3 +1,4 @@
+use crate::operand::{Borrowed, Operand, Owned};
 use crate::{file, lookup};
 use anyhow::Result;
 use proc_macro2::{Ident, Span, TokenStream};
@@ -5,7 +6,7 @@ use quote::{format_ident, quote};
 use syn::Index;
 use syn_codegen::{Data, Definitions, Node, Type};
 
-const DEBUG_SRC: &str = "../tests/debug/gen.rs";
+const TESTS_DEBUG_SRC: &str = "tests/debug/gen.rs";
 
 fn rust_type(ty: &Type) -> TokenStream {
     match ty {
@@ -55,44 +56,44 @@ fn is_printable(ty: &Type) -> bool {
         Type::Box(ty) => is_printable(ty),
         Type::Tuple(ty) => ty.iter().any(is_printable),
         Type::Token(_) | Type::Group(_) => false,
-        Type::Syn(name) => name != "Reserved",
-        Type::Std(_) | Type::Punctuated(_) | Type::Option(_) | Type::Vec(_) => true,
+        Type::Syn(_) | Type::Std(_) | Type::Punctuated(_) | Type::Option(_) | Type::Vec(_) => true,
     }
 }
 
-fn format_field(val: &TokenStream, ty: &Type) -> Option<TokenStream> {
+fn format_field(val: &Operand, ty: &Type) -> Option<TokenStream> {
     if !is_printable(ty) {
         return None;
     }
     let format = match ty {
         Type::Option(ty) => {
-            let inner = quote!(_val);
-            let format = format_field(&inner, ty).map(|format| {
-                quote! {
-                    formatter.write_str("(")?;
-                    Debug::fmt(#format, formatter)?;
-                    formatter.write_str(")")?;
-                }
-            });
-            let ty = rust_type(ty);
-            quote!({
-                #[derive(RefCast)]
-                #[repr(transparent)]
-                struct Print(Option<#ty>);
-                impl Debug for Print {
-                    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                        match &self.0 {
-                            Some(#inner) => {
-                                formatter.write_str("Some")?;
-                                #format
-                                Ok(())
+            if let Some(format) = format_field(&Borrowed(quote!(_val)), ty) {
+                let ty = rust_type(ty);
+                let val = val.ref_tokens();
+                quote!({
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(Option<#ty>);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            match &self.0 {
+                                Some(_val) => {
+                                    formatter.write_str("Some(")?;
+                                    Debug::fmt(#format, formatter)?;
+                                    formatter.write_str(")")?;
+                                    Ok(())
+                                }
+                                None => formatter.write_str("None"),
                             }
-                            None => formatter.write_str("None"),
                         }
                     }
+                    Print::ref_cast(#val)
+                })
+            } else {
+                let val = val.tokens();
+                quote! {
+                    &super::Option { present: #val.is_some() }
                 }
-                Print::ref_cast(#val)
-            })
+            }
         }
         Type::Tuple(ty) => {
             let printable: Vec<TokenStream> = ty
@@ -100,8 +101,9 @@ fn format_field(val: &TokenStream, ty: &Type) -> Option<TokenStream> {
                 .enumerate()
                 .filter_map(|(i, ty)| {
                     let index = Index::from(i);
-                    let val = quote!(&#val.#index);
-                    format_field(&val, ty)
+                    let val = val.tokens();
+                    let inner = Owned(quote!(#val.#index));
+                    format_field(&inner, ty)
                 })
                 .collect();
             if printable.len() == 1 {
@@ -112,7 +114,10 @@ fn format_field(val: &TokenStream, ty: &Type) -> Option<TokenStream> {
                 }
             }
         }
-        _ => quote! { Lite(#val) },
+        _ => {
+            let val = val.ref_tokens();
+            quote! { Lite(#val) }
+        }
     };
     Some(format)
 }
@@ -121,27 +126,43 @@ fn syntax_tree_enum<'a>(outer: &str, inner: &str, fields: &'a [Type]) -> Option<
     if fields.len() != 1 {
         return None;
     }
-    const WHITELIST: &[&str] = &["PathArguments", "Visibility"];
+    const WHITELIST: &[(&str, &str)] = &[
+        ("Meta", "Path"),
+        ("PathArguments", "AngleBracketed"),
+        ("PathArguments", "Parenthesized"),
+        ("Stmt", "Local"),
+        ("TypeParamBound", "Lifetime"),
+        ("Visibility", "Public"),
+        ("Visibility", "Restricted"),
+    ];
     match &fields[0] {
-        Type::Syn(ty) if WHITELIST.contains(&outer) || outer.to_owned() + inner == *ty => Some(ty),
+        Type::Syn(ty) if WHITELIST.contains(&(outer, inner)) || outer.to_owned() + inner == *ty => {
+            Some(ty)
+        }
         _ => None,
     }
 }
 
-fn expand_impl_body(defs: &Definitions, node: &Node, name: &str) -> TokenStream {
+fn expand_impl_body(defs: &Definitions, node: &Node, name: &str, val: &Operand) -> TokenStream {
     let ident = Ident::new(&node.ident, Span::call_site());
 
     match &node.data {
+        Data::Enum(variants) if variants.is_empty() => quote!(unreachable!()),
         Data::Enum(variants) => {
             let arms = variants.iter().map(|(v, fields)| {
+                let path = format!("{}::{}", name, v);
                 let variant = Ident::new(v, Span::call_site());
                 if fields.is_empty() {
                     quote! {
-                        syn::#ident::#variant => formatter.write_str(#v),
+                        syn::#ident::#variant => formatter.write_str(#path),
                     }
                 } else if let Some(inner) = syntax_tree_enum(name, v, fields) {
-                    let path = format!("{}::{}", name, v);
-                    let format = expand_impl_body(defs, lookup::node(defs, inner), &path);
+                    let format = expand_impl_body(
+                        defs,
+                        lookup::node(defs, inner),
+                        &path,
+                        &Borrowed(quote!(_val)),
+                    );
                     quote! {
                         syn::#ident::#variant(_val) => {
                             #format
@@ -157,7 +178,7 @@ fn expand_impl_body(defs: &Definitions, node: &Node, name: &str) -> TokenStream 
                         })
                     } else {
                         let ty = &fields[0];
-                        format_field(&val, ty).map(|format| {
+                        format_field(&Borrowed(val), ty).map(|format| {
                             quote! {
                                 formatter.write_str("(")?;
                                 Debug::fmt(#format, formatter)?;
@@ -167,7 +188,7 @@ fn expand_impl_body(defs: &Definitions, node: &Node, name: &str) -> TokenStream 
                     };
                     quote! {
                         syn::#ident::#variant(_val) => {
-                            formatter.write_str(#v)?;
+                            formatter.write_str(#path)?;
                             #format
                             Ok(())
                         }
@@ -177,14 +198,14 @@ fn expand_impl_body(defs: &Definitions, node: &Node, name: &str) -> TokenStream 
                     let fields = fields.iter().enumerate().filter_map(|(i, ty)| {
                         let index = format_ident!("_v{}", i);
                         let val = quote!(#index);
-                        let format = format_field(&val, ty)?;
+                        let format = format_field(&Borrowed(val), ty)?;
                         Some(quote! {
                             formatter.field(#format);
                         })
                     });
                     quote! {
                         syn::#ident::#variant(#(#pats),*) => {
-                            let mut formatter = formatter.debug_tuple(#v);
+                            let mut formatter = formatter.debug_tuple(#path);
                             #(#fields)*
                             formatter.finish()
                         }
@@ -196,8 +217,9 @@ fn expand_impl_body(defs: &Definitions, node: &Node, name: &str) -> TokenStream 
             } else {
                 Some(quote!(_ => unreachable!()))
             };
+            let val = val.ref_tokens();
             quote! {
-                match _val {
+                match #val {
                     #(#arms)*
                     #nonexhaustive
                 }
@@ -207,43 +229,65 @@ fn expand_impl_body(defs: &Definitions, node: &Node, name: &str) -> TokenStream 
             let fields = fields.iter().filter_map(|(f, ty)| {
                 let ident = Ident::new(f, Span::call_site());
                 if let Type::Option(ty) = ty {
-                    let inner = quote!(_val);
-                    let format = format_field(&inner, ty).map(|format| {
+                    Some(if let Some(format) = format_field(&Owned(quote!(self.0)), ty) {
+                        let val = val.tokens();
+                        let ty = rust_type(ty);
                         quote! {
-                            let #inner = &self.0;
-                            formatter.write_str("(")?;
-                            Debug::fmt(#format, formatter)?;
-                            formatter.write_str(")")?;
-                        }
-                    });
-                    let ty = rust_type(ty);
-                    Some(quote! {
-                        if let Some(val) = &_val.#ident {
-                            #[derive(RefCast)]
-                            #[repr(transparent)]
-                            struct Print(#ty);
-                            impl Debug for Print {
-                                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                                    formatter.write_str("Some")?;
-                                    #format
-                                    Ok(())
+                            if let Some(val) = &#val.#ident {
+                                #[derive(RefCast)]
+                                #[repr(transparent)]
+                                struct Print(#ty);
+                                impl Debug for Print {
+                                    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                                        formatter.write_str("Some(")?;
+                                        Debug::fmt(#format, formatter)?;
+                                        formatter.write_str(")")?;
+                                        Ok(())
+                                    }
                                 }
+                                formatter.field(#f, Print::ref_cast(val));
                             }
-                            formatter.field(#f, Print::ref_cast(val));
+                        }
+                    } else {
+                        let val = val.tokens();
+                        quote! {
+                            if #val.#ident.is_some() {
+                                formatter.field(#f, &Present);
+                            }
                         }
                     })
                 } else {
-                    let val = quote!(&_val.#ident);
-                    let format = format_field(&val, ty)?;
+                    let val = val.tokens();
+                    let inner = Owned(quote!(#val.#ident));
+                    let format = format_field(&inner, ty)?;
                     let mut call = quote! {
                         formatter.field(#f, #format);
                     };
-                    if let Type::Vec(_) | Type::Punctuated(_) = ty {
+                    if node.ident == "Block" && f == "stmts" {
+                        // Format regardless of whether is_empty().
+                    } else if let Type::Vec(_) | Type::Punctuated(_) = ty {
                         call = quote! {
-                            if !_val.#ident.is_empty() {
+                            if !#val.#ident.is_empty() {
                                 #call
                             }
                         };
+                    } else if let Type::Syn(inner) = ty {
+                        for node in &defs.types {
+                            if node.ident == *inner {
+                                if let Data::Enum(variants) = &node.data {
+                                    if variants.get("None").is_some_and(Vec::is_empty) {
+                                        let ty = rust_type(ty);
+                                        call = quote! {
+                                            match #val.#ident {
+                                                #ty::None => {}
+                                                _ => { #call }
+                                            }
+                                        };
+                                    }
+                                }
+                                break;
+                            }
+                        }
                     }
                     Some(call)
                 }
@@ -256,12 +300,14 @@ fn expand_impl_body(defs: &Definitions, node: &Node, name: &str) -> TokenStream 
         }
         Data::Private => {
             if node.ident == "LitInt" || node.ident == "LitFloat" {
+                let val = val.ref_tokens();
                 quote! {
-                    write!(formatter, "{}", _val)
+                    write!(formatter, "{}", #val)
                 }
             } else {
+                let val = val.tokens();
                 quote! {
-                    write!(formatter, "{:?}", _val.value())
+                    write!(formatter, "{:?}", #val.value())
                 }
             }
         }
@@ -269,18 +315,30 @@ fn expand_impl_body(defs: &Definitions, node: &Node, name: &str) -> TokenStream 
 }
 
 fn expand_impl(defs: &Definitions, node: &Node) -> TokenStream {
-    if node.ident == "Reserved" {
-        return TokenStream::new();
-    }
-
     let ident = Ident::new(&node.ident, Span::call_site());
-    let body = expand_impl_body(defs, node, &node.ident);
+    let body = expand_impl_body(defs, node, &node.ident, &Owned(quote!(self.value)));
+    let formatter = match &node.data {
+        Data::Enum(variants) if variants.is_empty() => quote!(_formatter),
+        _ => quote!(formatter),
+    };
 
     quote! {
         impl Debug for Lite<syn::#ident> {
-            fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                let _val = &self.value;
+            fn fmt(&self, #formatter: &mut fmt::Formatter) -> fmt::Result {
                 #body
+            }
+        }
+    }
+}
+
+fn expand_token_impl(name: &str, symbol: &str) -> TokenStream {
+    let ident = Ident::new(name, Span::call_site());
+    let repr = format!("Token![{}]", symbol);
+
+    quote! {
+        impl Debug for Lite<syn::token::#ident> {
+            fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str(#repr)
             }
         }
     }
@@ -289,13 +347,22 @@ fn expand_impl(defs: &Definitions, node: &Node) -> TokenStream {
 pub fn generate(defs: &Definitions) -> Result<()> {
     let mut impls = TokenStream::new();
     for node in &defs.types {
-        impls.extend(expand_impl(&defs, node));
+        impls.extend(expand_impl(defs, node));
+    }
+    for (name, symbol) in &defs.tokens {
+        impls.extend(expand_token_impl(name, symbol));
     }
 
     file::write(
-        DEBUG_SRC,
+        TESTS_DEBUG_SRC,
         quote! {
-            use super::{Lite, RefCast};
+            // False positive: https://github.com/rust-lang/rust/issues/78586#issuecomment-1722680482
+            #![allow(repr_transparent_external_private_fields)]
+
+            #![allow(clippy::match_wildcard_for_single_variants)]
+
+            use super::{Lite, Present};
+            use ref_cast::RefCast;
             use std::fmt::{self, Debug, Display};
 
             #impls

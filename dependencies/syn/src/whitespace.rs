@@ -1,4 +1,4 @@
-pub fn skip(mut s: &str) -> &str {
+pub(crate) fn skip(mut s: &str) -> &str {
     'skip: while !s.is_empty() {
         let byte = s.as_bytes()[0];
         if byte == b'/' {
@@ -41,11 +41,11 @@ pub fn skip(mut s: &str) -> &str {
             }
         }
         match byte {
-            b' ' | 0x09..=0x0d => {
+            b' ' | 0x09..=0x0D => {
                 s = &s[1..];
                 continue;
             }
-            b if b <= 0x7f => {}
+            b if b <= 0x7F => {}
             _ => {
                 let ch = s.chars().next().unwrap();
                 if is_whitespace(ch) {

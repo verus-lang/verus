@@ -36,4 +36,22 @@ pub assume_specification<T: Clone, A: Allocator + Clone>[ <Box<T, A> as Clone>::
         call_ensures(T::clone, (&**b,), *res),
 ;
 
+pub assume_specification<T, A: Allocator>[ Rc::<T, A>::try_unwrap ](v: Rc<T, A>) -> (result: Result<
+    T,
+    Rc<T, A>,
+>)
+    ensures
+        match result {
+            Ok(t) => t == v,
+            Err(e) => e == v,
+        },
+;
+
+pub assume_specification<T, A: Allocator>[ Rc::<T, A>::into_inner ](v: Rc<T, A>) -> (result: Option<
+    T,
+>)
+    ensures
+        result matches Some(t) ==> t == v,
+;
+
 } // verus!

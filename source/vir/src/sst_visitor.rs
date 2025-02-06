@@ -2,6 +2,7 @@ use crate::ast::{
     BinaryOpr, GenericBound, GenericBoundX, NullaryOpr, SpannedTyped, Typ, UnaryOpr, VarBinder,
     VarIdent, VirErr,
 };
+use crate::ast_visitor::TypVisitor;
 use crate::def::Spanned;
 use crate::inv_masks::{MaskSetE, MaskSingleton};
 use crate::sst::{
@@ -1042,4 +1043,100 @@ where
 {
     let mut visitor = MapStmPrevVisitor { fs };
     visitor.visit_stm(stm)
+}
+
+struct ExpTypVisitorDfs<'a, Env, FE, FT> {
+    map: &'a mut VisitorScopeMap,
+    env: &'a mut Env,
+    fe: &'a mut FE,
+    ft: &'a mut FT,
+}
+
+impl<'a, T, Env, FE, FT> Visitor<Walk, T, VisitorScopeMap> for ExpTypVisitorDfs<'a, Env, FE, FT>
+where
+    FE: FnMut(&Exp, &mut Env, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
+    FT: FnMut(&Typ, &mut Env, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
+{
+    fn visit_exp(&mut self, exp: &Exp) -> Result<(), T> {
+        match (self.fe)(exp, &mut self.env, &mut self.map) {
+            VisitorControlFlow::Stop(val) => Err(val),
+            VisitorControlFlow::Return => Ok(()),
+            VisitorControlFlow::Recurse => self.visit_exp_rec(exp),
+        }
+    }
+
+    fn visit_typ(&mut self, typ: &Typ) -> Result<(), T> {
+        match (self.ft)(typ, &mut self.env, &mut self.map) {
+            VisitorControlFlow::Stop(val) => Err(val),
+            VisitorControlFlow::Return => Ok(()),
+            VisitorControlFlow::Recurse => self.visit_typ_rec(typ),
+        }
+    }
+
+    fn scoper(&mut self) -> Option<&mut VisitorScopeMap> {
+        Some(&mut self.map)
+    }
+}
+
+impl<'a, T, Env, FE, FT> crate::ast_visitor::TypVisitor<Walk, T>
+    for ExpTypVisitorDfs<'a, Env, FE, FT>
+where
+    FE: FnMut(&Exp, &mut Env, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
+    FT: FnMut(&Typ, &mut Env, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
+{
+    fn visit_typ(&mut self, typ: &Typ) -> Result<(), T> {
+        match (self.ft)(typ, &mut self.env, &mut self.map) {
+            VisitorControlFlow::Stop(val) => Err(val),
+            VisitorControlFlow::Return => Ok(()),
+            VisitorControlFlow::Recurse => self.visit_typ_rec(typ),
+        }
+    }
+}
+
+pub(crate) fn exp_typ_visitor_dfs<T, Env, FE, FT>(
+    exp: &Exp,
+    map: &mut VisitorScopeMap,
+    env: &mut Env,
+    fe: &mut FE,
+    ft: &mut FT,
+) -> VisitorControlFlow<T>
+where
+    FE: FnMut(&Exp, &mut Env, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
+    FT: FnMut(&Typ, &mut Env, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
+{
+    let mut visitor = ExpTypVisitorDfs { map, env, fe, ft };
+    match visitor.visit_exp(exp) {
+        Ok(()) => VisitorControlFlow::Recurse,
+        Err(val) => VisitorControlFlow::Stop(val),
+    }
+}
+
+pub(crate) fn exp_typ_visitor_check<E, Env, FE, FT>(
+    exp: &Exp,
+    map: &mut VisitorScopeMap,
+    env: &mut Env,
+    fe: &mut FE,
+    ft: &mut FT,
+) -> Result<(), E>
+where
+    FE: FnMut(&Exp, &mut Env, &mut VisitorScopeMap) -> Result<(), E>,
+    FT: FnMut(&Typ, &mut Env, &mut VisitorScopeMap) -> Result<(), E>,
+{
+    match exp_typ_visitor_dfs(
+        exp,
+        map,
+        env,
+        &mut |exp, env, map| match fe(exp, env, map) {
+            Ok(()) => VisitorControlFlow::Recurse,
+            Err(e) => VisitorControlFlow::Stop(e),
+        },
+        &mut |exp, env, map| match ft(exp, env, map) {
+            Ok(()) => VisitorControlFlow::Recurse,
+            Err(e) => VisitorControlFlow::Stop(e),
+        },
+    ) {
+        VisitorControlFlow::Recurse => Ok(()),
+        VisitorControlFlow::Return => unreachable!(),
+        VisitorControlFlow::Stop(e) => Err(e),
+    }
 }

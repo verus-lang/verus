@@ -25,7 +25,7 @@ use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
     AngleBracketedGenericArguments, Attribute, Block, Expr, ExprBlock, FnArg, FnArgKind, FnMode,
-    GenericArgument, GenericParam, Generics, Ident, ImplItemMethod, Meta, MetaList, ModeProof,
+    GenericArgument, GenericParam, Generics, Ident, ImplItemFn, Meta, MetaList, ModeProof,
     ModeSpec, Open, Pat, Path, PathArguments, PathSegment, Publish, Signature, Stmt, Type,
     TypePath,
 };
@@ -126,7 +126,7 @@ fn name_with_type_args_turbofish_path(name: &Ident, sm: &SM) -> Path {
             if gen.params.len() > 0 {
                 let args = get_generic_args(&gen.params);
                 PathArguments::AngleBracketed(AngleBracketedGenericArguments {
-                    colon2_token: Some(token::Colon2 { spans: [span, span] }),
+                    colon2_token: Some(token::PathSep { spans: [span, span] }),
                     lt_token: gen.lt_token.expect("expected lt token"),
                     args,
                     gt_token: gen.gt_token.expect("expected gt token"),
@@ -137,7 +137,7 @@ fn name_with_type_args_turbofish_path(name: &Ident, sm: &SM) -> Path {
         }
     };
 
-    let mut segments = Punctuated::<PathSegment, token::Colon2>::new();
+    let mut segments = Punctuated::<PathSegment, token::PathSep>::new();
     segments.push(PathSegment { ident: name.clone(), arguments });
     Path { leading_colon: None, segments }
 }
@@ -239,8 +239,8 @@ pub fn impl_decl_stream_for(
 // We delete the special state machine attributes, since Rust/Verus won't recognize them.
 
 pub fn should_delete_attr(attr: &Attribute) -> bool {
-    match attr.parse_meta() {
-        Ok(Meta::Path(path)) | Ok(Meta::List(MetaList { path, .. })) => {
+    match &attr.meta {
+        Meta::Path(path) | Meta::List(MetaList { path, .. }) => {
             path.is_ident("invariant")
                 || path.is_ident("inductive")
                 || path.is_ident("safety")
@@ -301,6 +301,7 @@ pub fn output_primary_stuff(
     let attrs = &bundle.sm.attrs;
     let code: TokenStream = quote_spanned! { sm.fields_named_ast.span() =>
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+        #[cfg_attr(verus_keep_ghost, verifier::ext_equal)]
         #(#attrs)*
         pub struct State #gen {
             #(#fields),*
@@ -1073,7 +1074,7 @@ fn output_other_fns(
     impl_stream: &mut TokenStream,
     invariants: &Vec<Invariant>,
     lemmas: &Vec<Lemma>,
-    normal_fns: &Vec<ImplItemMethod>,
+    normal_fns: &Vec<ImplItemFn>,
 ) {
     let inv_names = invariants.iter().map(|i| &i.func.sig.ident);
     let conj = if inv_names.len() == 0 {
@@ -1163,7 +1164,7 @@ fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
 /// For 'readonly' transitions, there is no need to prove inductiveness.
 /// We should have already ruled out the existence of such lemmas.
 
-fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
+fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemFn) {
     let trans = get_transition(&bundle.sm.transitions, &l.purpose.transition.to_string())
         .expect("transition");
 
@@ -1183,38 +1184,37 @@ fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
     };
 
     let mut stmts = vec![
-        Stmt::Semi(
+        Stmt::Expr(
             Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::requires(
                     #precondition
                 )
             }),
-            token::Semi { spans: [l.func.span()] },
+            Some(token::Semi { spans: [l.func.span()] }),
         ),
-        Stmt::Semi(
+        Stmt::Expr(
             Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::ensures(
                     post.invariant()
                 )
             }),
-            token::Semi { spans: [l.func.span()] },
+            Some(token::Semi { spans: [l.func.span()] }),
         ),
-        Stmt::Expr(Expr::Block(ExprBlock {
-            attrs: vec![],
-            label: None,
-            block: func.block.clone(),
-        })),
+        Stmt::Expr(
+            Expr::Block(ExprBlock { attrs: vec![], label: None, block: func.block.clone() }),
+            None,
+        ),
     ];
     for inv in &bundle.extras.invariants {
         let inv_ident = &inv.func.sig.ident;
         let inv_name = inv_ident.to_string();
         let lemma_msg_ident = Ident::new(&format!("lemma_msg_{:}", inv_name), inv_ident.span());
         let span = l.func.span();
-        stmts.push(Stmt::Semi(
+        stmts.push(Stmt::Expr(
             Expr::Verbatim(quote_spanned! { span =>
                 Self::#lemma_msg_ident(post)
             }),
-            token::Semi { spans: [l.func.span()] },
+            Some(token::Semi { spans: [l.func.span()] }),
         ));
     }
 

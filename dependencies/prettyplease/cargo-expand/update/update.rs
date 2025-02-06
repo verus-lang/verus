@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use std::ffi::OsStr;
 use std::fs;
 use std::path::Path;
@@ -20,7 +20,14 @@ fn main() -> Result<()> {
         }
 
         let input_contents = fs::read_to_string(&path)?;
-        let syntax_tree = syn::parse_file(&input_contents)?;
+        let syntax_tree = match syn::parse_file(&input_contents) {
+            Ok(syntax_tree) => syntax_tree,
+            Err(err) => {
+                let path = path.canonicalize().unwrap_or(path);
+                let span = err.span().start();
+                bail!("{}:{}:{}\n{}", path.display(), span.line, span.column, err);
+            }
+        };
         let string = prettyplease::unparse(&syntax_tree);
         fs::write(&path, string)?;
     }

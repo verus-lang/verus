@@ -535,7 +535,7 @@ test_verify_one_file! {
         pub struct Y {
             y: int
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected one of")
+    } => Err(err) => assert_vir_error_msg(err, "unexpected token, expected `]`")
 }
 
 test_verify_one_file! {
@@ -552,7 +552,7 @@ test_verify_one_file! {
         #[verifier(external),verifier(external_body)]
         proof fn bar() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected `]`, found `,`")
+    } => Err(err) => assert_vir_error_msg(err, "unexpected token, expected `]`")
 }
 
 test_verify_one_file! {

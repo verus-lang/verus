@@ -43,7 +43,8 @@ pub fn expr_from_tokens(t: TokenStream) -> Expr {
 }
 
 pub fn pat_from_tokens(t: TokenStream) -> Pat {
-    match parse2(t) {
+    use syn_verus::parse::Parser;
+    match Pat::parse_single.parse2(t) {
         Err(_) => panic!("pat_from_tokens should not be called with user input"),
         Ok(p) => p,
     }

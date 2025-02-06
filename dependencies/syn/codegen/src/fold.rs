@@ -1,3 +1,4 @@
+use crate::cfg::{self, DocCfg};
 use crate::{file, full, gen};
 use anyhow::Result;
 use proc_macro2::{Ident, Span, TokenStream};
@@ -5,14 +6,16 @@ use quote::{format_ident, quote};
 use syn::Index;
 use syn_codegen::{Data, Definitions, Features, Node, Type};
 
-const FOLD_SRC: &str = "../src/gen/fold.rs";
+const FOLD_SRC: &str = "src/gen/fold.rs";
 
-fn simple_visit(item: &str, name: &TokenStream) -> TokenStream {
+fn method_name(item: &str) -> Ident {
     let ident = gen::under_name(item);
-    let method = format_ident!("fold_{}", ident);
-    quote! {
-        f.#method(#name)
-    }
+    format_ident!("fold_{}", ident)
+}
+
+fn simple_fold(item: &str, name: &TokenStream) -> TokenStream {
+    let method = method_name(item);
+    quote! { f.#method(#name) }
 }
 
 fn visit(
@@ -29,17 +32,24 @@ fn visit(
             })
         }
         Type::Vec(t) => {
-            let operand = quote!(it);
-            let val = visit(t, features, defs, &operand)?;
-            Some(quote! {
-                FoldHelper::lift(#name, |it| #val)
-            })
+            let Type::Syn(t) = &**t else { unimplemented!() };
+            if t == "Attribute" {
+                Some(quote! {
+                    f.fold_attributes(#name)
+                })
+            } else {
+                let method = method_name(t);
+                Some(quote! {
+                    fold_vec(#name, f, F::#method)
+                })
+            }
         }
         Type::Punctuated(p) => {
-            let operand = quote!(it);
-            let val = visit(&p.element, features, defs, &operand)?;
+            let t = &*p.element;
+            let Type::Syn(t) = t else { unimplemented!() };
+            let method = method_name(t);
             Some(quote! {
-                FoldHelper::lift(#name, |it| #val)
+                crate::punctuated::fold(#name, f, F::#method)
             })
         }
         Type::Option(t) => {
@@ -62,48 +72,30 @@ fn visit(
                 (#code)
             })
         }
-        Type::Token(t) => {
-            let repr = &defs.tokens[t];
-            let is_keyword = repr.chars().next().unwrap().is_alphabetic();
-            let spans = if is_keyword {
-                quote!(span)
-            } else {
-                quote!(spans)
-            };
-            let ty = if repr == "await" {
-                quote!(crate::token::Await)
-            } else {
-                syn::parse_str(&format!("Token![{}]", repr)).unwrap()
-            };
-            Some(quote! {
-                #ty(tokens_helper(f, &#name.#spans))
-            })
-        }
-        Type::Group(t) => {
-            let ty = Ident::new(t, Span::call_site());
-            Some(quote! {
-                #ty(tokens_helper(f, &#name.span))
-            })
-        }
         Type::Syn(t) => {
             fn requires_full(features: &Features) -> bool {
                 features.any.contains("full") && features.any.len() == 1
             }
-            let mut res = simple_visit(t, name);
+            let mut res = simple_fold(t, name);
             let target = defs.types.iter().find(|ty| ty.ident == *t).unwrap();
             if requires_full(&target.features) && !requires_full(features) {
                 res = quote!(full!(#res));
             }
             Some(res)
         }
-        Type::Ext(t) if gen::TERMINAL_TYPES.contains(&&t[..]) => Some(simple_visit(t, name)),
-        Type::Ext(_) | Type::Std(_) => None,
+        Type::Ext(t) if gen::TERMINAL_TYPES.contains(&&t[..]) => Some(simple_fold(t, name)),
+        Type::Ext(_) | Type::Std(_) | Type::Token(_) | Type::Group(_) => None,
     }
 }
 
 fn node(traits: &mut TokenStream, impls: &mut TokenStream, s: &Node, defs: &Definitions) {
     let under_name = gen::under_name(&s.ident);
-    let ty = Ident::new(&s.ident, Span::call_site());
+    let ident = Ident::new(&s.ident, Span::call_site());
+    let ty = if let "Ident" | "Span" = s.ident.as_str() {
+        quote!(proc_macro2::#ident)
+    } else {
+        quote!(crate::#ident)
+    };
     let fold_fn = format_ident!("fold_{}", under_name);
 
     let mut fold_impl = TokenStream::new();
@@ -151,19 +143,9 @@ fn node(traits: &mut TokenStream, impls: &mut TokenStream, s: &Node, defs: &Defi
                 }
             }
 
-            let nonexhaustive = if s.exhaustive {
-                None
-            } else {
-                Some(quote! {
-                    #[cfg(syn_no_non_exhaustive)]
-                    _ => unreachable!(),
-                })
-            };
-
             fold_impl.extend(quote! {
                 match node {
                     #fold_variants
-                    #nonexhaustive
                 }
             });
         }
@@ -171,33 +153,18 @@ fn node(traits: &mut TokenStream, impls: &mut TokenStream, s: &Node, defs: &Defi
             let mut fold_fields = TokenStream::new();
 
             for (field, ty) in fields {
-                let id = Ident::new(&field, Span::call_site());
+                let id = Ident::new(field, Span::call_site());
                 let ref_toks = quote!(node.#id);
 
-                if let Type::Syn(ty) = ty {
-                    if ty == "Reserved" {
-                        fold_fields.extend(quote! {
-                            #id: #ref_toks,
-                        });
-                        continue;
-                    }
-                }
-
-                let fold = visit(&ty, &s.features, defs, &ref_toks).unwrap_or(ref_toks);
+                let fold = visit(ty, &s.features, defs, &ref_toks).unwrap_or(ref_toks);
 
                 fold_fields.extend(quote! {
                     #id: #fold,
                 });
             }
 
-            if !fields.is_empty() {
-                fold_impl.extend(quote! {
-                    #ty {
-                        #fold_fields
-                    }
-                })
-            } else {
-                if ty == "Ident" {
+            if fields.is_empty() {
+                if s.ident == "Ident" {
                     fold_impl.extend(quote! {
                         let mut node = node;
                         let span = f.fold_span(node.span());
@@ -207,10 +174,16 @@ fn node(traits: &mut TokenStream, impls: &mut TokenStream, s: &Node, defs: &Defi
                 fold_impl.extend(quote! {
                     node
                 });
+            } else {
+                fold_impl.extend(quote! {
+                    #ty {
+                        #fold_fields
+                    }
+                });
             }
         }
         Data::Private => {
-            if ty == "Ident" {
+            if s.ident == "Ident" {
                 fold_impl.extend(quote! {
                     let mut node = node;
                     let span = f.fold_span(node.span());
@@ -248,6 +221,16 @@ fn node(traits: &mut TokenStream, impls: &mut TokenStream, s: &Node, defs: &Defi
             #fold_impl
         }
     });
+
+    if s.ident == "Attribute" {
+        let features = cfg::features(&s.features, DocCfg::Ordinary);
+        traits.extend(quote! {
+            #features
+            fn fold_attributes(&mut self, i: Vec<crate::Attribute>) -> Vec<crate::Attribute> {
+                fold_vec(i, self, Self::fold_attribute)
+            }
+        });
+    }
 }
 
 pub fn generate(defs: &Definitions) -> Result<()> {
@@ -258,14 +241,11 @@ pub fn generate(defs: &Definitions) -> Result<()> {
         quote! {
             // Unreachable code is generated sometimes without the full feature.
             #![allow(unreachable_code, unused_variables)]
-            #![allow(clippy::match_wildcard_for_single_variants)]
-
-            #[cfg(any(feature = "full", feature = "derive"))]
-            use crate::gen::helper::fold::*;
-            #[cfg(any(feature = "full", feature = "derive"))]
-            use crate::token::{Brace, Bracket, Group, Paren};
-            use crate::*;
-            use proc_macro2::Span;
+            #![allow(
+                clippy::match_wildcard_for_single_variants,
+                clippy::needless_match,
+                clippy::needless_pass_by_ref_mut,
+            )]
 
             #full_macro
 
@@ -274,13 +254,20 @@ pub fn generate(defs: &Definitions) -> Result<()> {
             /// See the [module documentation] for details.
             ///
             /// [module documentation]: self
-            ///
-            /// *This trait is available only if Syn is built with the `"fold"` feature.*
             pub trait Fold {
                 #traits
             }
 
             #impls
+
+            #[cfg(any(feature = "derive", feature = "full"))]
+            fn fold_vec<T, V, F>(vec: Vec<T>, fold: &mut V, mut f: F) -> Vec<T>
+            where
+                V: ?Sized,
+                F: FnMut(&mut V, T) -> T,
+            {
+                vec.into_iter().map(|it| f(fold, it)).collect()
+            }
         },
     )?;
     Ok(())

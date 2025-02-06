@@ -1,11 +1,12 @@
 verus_git_url = "https://github.com/verus-lang/verus.git"
 verus_revspec = "main"
 verus_features = ["singular"]
+verus_verify_vstd = false
 
 [[project]]
 name = "page-table"
 git_url = "https://github.com/utaal/verified-nrkernel.git"
-revspec = "page-table"
-crate_root = "page-table/main.rs"
-extra_args = ["--rlimit", "60"]
+revspec = "main"
+crate_root = "page-table/src/lib.rs"
+extra_args = ["--crate-type=lib", "--rlimit", "60"]
 

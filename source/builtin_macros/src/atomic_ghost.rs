@@ -44,7 +44,7 @@ impl Parse for AG {
         let _ = parenthesized!(paren_content in input);
 
         let operands: Punctuated<Expr, token::Comma> =
-            paren_content.parse_terminated(Expr::parse)?;
+            paren_content.parse_terminated(Expr::parse, Token![,])?;
         let operands: Vec<Expr> = operands.into_iter().collect();
 
         let _: Token![;] = input.parse()?;

@@ -4,7 +4,7 @@ use std::collections::HashSet as Set;
 use syn::fold::{self, Fold};
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
-use syn::{parse_macro_input, parse_quote, Expr, Ident, ItemFn, Local, Pat, Stmt, Token};
+use syn::{parse_macro_input, parse_quote, BinOp, Expr, Ident, ItemFn, Local, Pat, Stmt, Token};
 
 /// Parses a list of variable names separated by commas.
 ///
@@ -84,7 +84,7 @@ impl Args {
     ///     let VAR = { let VAR = INIT; println!("VAR = {:?}", VAR); VAR };
     fn let_and_print(&mut self, local: Local) -> Stmt {
         let Local { pat, init, .. } = local;
-        let init = self.fold_expr(*init.unwrap().1);
+        let init = self.fold_expr(*init.unwrap().expr);
         let ident = match pat {
             Pat::Ident(ref p) => &p.ident,
             _ => unreachable!(),
@@ -122,11 +122,11 @@ impl Fold for Args {
                     Expr::Assign(fold::fold_expr_assign(self, e))
                 }
             }
-            Expr::AssignOp(e) => {
+            Expr::Binary(e) if is_assign_op(e.op) => {
                 if self.should_print_expr(&e.left) {
                     self.assign_and_print(*e.left, &e.op, *e.right)
                 } else {
-                    Expr::AssignOp(fold::fold_expr_assign_op(self, e))
+                    Expr::Binary(fold::fold_expr_binary(self, e))
                 }
             }
             _ => fold::fold_expr(self, e),
@@ -144,6 +144,22 @@ impl Fold for Args {
             }
             _ => fold::fold_stmt(self, s),
         }
+    }
+}
+
+fn is_assign_op(op: BinOp) -> bool {
+    match op {
+        BinOp::AddAssign(_)
+        | BinOp::SubAssign(_)
+        | BinOp::MulAssign(_)
+        | BinOp::DivAssign(_)
+        | BinOp::RemAssign(_)
+        | BinOp::BitXorAssign(_)
+        | BinOp::BitAndAssign(_)
+        | BinOp::BitOrAssign(_)
+        | BinOp::ShlAssign(_)
+        | BinOp::ShrAssign(_) => true,
+        _ => false,
     }
 }
 
