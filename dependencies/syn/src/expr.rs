@@ -2313,6 +2313,12 @@ pub(crate) mod parsing {
             | Expr::Unsafe(_)
             | Expr::Const(_)
             | Expr::Block(_) => false,
+
+            // verus
+            Expr::Assert(e) => e.body.is_none(),
+            Expr::AssertForall(_) => false,
+            Expr::Unary(e) if matches!(e.op, crate::op::UnOp::Proof(_)) => false,
+
             _ => true,
         }
     }

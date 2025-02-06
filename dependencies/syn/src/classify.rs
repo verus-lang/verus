@@ -34,8 +34,8 @@ pub(crate) fn requires_comma_to_be_match_arm(expr: &Expr) -> bool {
         | Expr::Const(_) => false,
 
         // verus
-        | Expr::Assert(e) => e.body.is_none(),
-        | Expr::AssertForall(_) => false,
+        Expr::Assert(e) => e.body.is_none(),
+        Expr::AssertForall(_) => false,
         Expr::Assume(_)
         | Expr::RevealHide(_)
         | Expr::View(_)
