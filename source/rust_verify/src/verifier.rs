@@ -1953,7 +1953,10 @@ impl Verifier {
             PolyStrategy::Mono => vir::mono::mono_krate_for_module(&krate_sst),
             PolyStrategy::Poly => Default::default(),
         };
-        let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
+        let krate_sst = match poly_strategy {
+            PolyStrategy::Mono => krate_sst,
+            PolyStrategy::Poly => vir::poly::poly_krate_for_module(&mut ctx, &krate_sst),
+        };
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } = self.verify_bucket(
             reporter,
