@@ -1099,6 +1099,56 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] isnt_syntax_pass IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnt(t: ThisOrThat) {
+            match t {
+                ThisOrThat::This(..) => assert(t isnt That),
+                ThisOrThat::That {..} => assert(t isnt This),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] isnt_syntax_valid_fail IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnt(t: ThisOrThat) {
+            match t {
+                ThisOrThat::This(..) => assert(t isnt This), // FAILS
+                ThisOrThat::That {..} => assert(t isnt This),
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] isnt_syntax_invalid IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnt(t: ThisOrThat) {
+            assert(t isnt Unknown);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "no variant `Unknown` for this datatype")
+}
+
+test_verify_one_file! {
+    #[test] isnt_syntax_precedence IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnt(t: ThisOrThat)
+            requires t isnt This,
+        {
+            assert(t isnt This != t isnt That);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] isnt_syntax_implies IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnt(t: ThisOrThat)
+            requires t isnt This,
+        {
+            assert(t isnt This ==> true);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] struct_syntax_with_numeric_field_names verus_code! {
         #[is_variant]
         enum Foo {

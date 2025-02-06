@@ -553,12 +553,12 @@ mod whitespace;
 mod verus;
 pub use crate::verus::{
     Assert, AssertForall, Assume, AssumeSpecification, BigAnd, BigAndExpr, BigOr, BigOrExpr,
-    BroadcastUse, Closed, DataMode, Decreases, Ensures, ExprGetField, ExprHas, ExprIs, ExprMatches,
-    FnMode, Global, GlobalInner, GlobalLayout, GlobalSizeOf, Invariant, InvariantEnsures,
-    InvariantExceptBreak, InvariantNameSet, InvariantNameSetAny, InvariantNameSetList,
-    InvariantNameSetNone, InvariantNameSetSet, ItemBroadcastGroup, LoopSpec, MatchesOpExpr,
-    MatchesOpToken, Mode, ModeExec, ModeGhost, ModeProof, ModeSpec, ModeSpecChecked, ModeTracked,
-    Open, OpenRestricted, Prover, Publish, Recommends, Requires, Returns, RevealHide,
+    BroadcastUse, Closed, DataMode, Decreases, Ensures, ExprGetField, ExprHas, ExprIs, ExprIsnt,
+    ExprMatches, FnMode, Global, GlobalInner, GlobalLayout, GlobalSizeOf, Invariant,
+    InvariantEnsures, InvariantExceptBreak, InvariantNameSet, InvariantNameSetAny,
+    InvariantNameSetList, InvariantNameSetNone, InvariantNameSetSet, ItemBroadcastGroup, LoopSpec,
+    MatchesOpExpr, MatchesOpToken, Mode, ModeExec, ModeGhost, ModeProof, ModeSpec, ModeSpecChecked,
+    ModeTracked, Open, OpenRestricted, Prover, Publish, Recommends, Requires, Returns, RevealHide,
     SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind,
     Specification, TypeFnSpec, View,
 };

@@ -749,16 +749,20 @@ impl Hash for crate::Expr {
                 state.write_u8(47u8);
                 v0.hash(state);
             }
-            crate::Expr::Has(v0) => {
+            crate::Expr::Isnt(v0) => {
                 state.write_u8(48u8);
                 v0.hash(state);
             }
-            crate::Expr::Matches(v0) => {
+            crate::Expr::Has(v0) => {
                 state.write_u8(49u8);
                 v0.hash(state);
             }
-            crate::Expr::GetField(v0) => {
+            crate::Expr::Matches(v0) => {
                 state.write_u8(50u8);
+                v0.hash(state);
+            }
+            crate::Expr::GetField(v0) => {
+                state.write_u8(51u8);
                 v0.hash(state);
             }
             #[cfg(not(feature = "full"))]
@@ -1015,6 +1019,17 @@ impl Hash for crate::ExprInfer {
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::ExprIs {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.base.hash(state);
+        self.variant_ident.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ExprIsnt {
     fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,
