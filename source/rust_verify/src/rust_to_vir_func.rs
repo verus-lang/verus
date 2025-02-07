@@ -1389,18 +1389,9 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
     use rustc_middle::ty::{ConstKind, ScalarInt, ValTree};
     preds.retain(|p: &Clause<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
-            let td = tcx.trait_def(tp.trait_ref.def_id);
-            // Recursively check parent path visibility
-            let mut visible = tcx.visibility(td.def_id).is_visible_locally();
-            let mut def_id = td.def_id;
-            while let Some(parent_def_id) = tcx.opt_parent(def_id) {
-                if !tcx.visibility(parent_def_id).is_visible_locally() {
-                    visible = false;
-                    break;
-                }
-                def_id = parent_def_id;
-            }
-            if !visible {
+            // Skip private trait bounds
+            let path = tcx.def_path_str(tp.trait_ref.def_id);
+            if path == "core::slice::index::private_slice_index::Sealed" {
                 false
             } else if in_trait
                 && trait_ids.contains(&tp.trait_ref.def_id)
