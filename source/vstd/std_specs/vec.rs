@@ -116,6 +116,14 @@ pub assume_specification<T, A: Allocator>[ Vec::<T, A>::append ](
         other@ == Seq::<T>::empty(),
 ;
 
+pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::extend_from_slice ](
+    vec: &mut Vec<T, A>,
+    other: &[T],
+)
+    ensures
+        vec@ == old(vec)@ + other@,
+;
+
 /*
 // TODO find a way to support this
 // This is difficult because of the SliceIndex trait
