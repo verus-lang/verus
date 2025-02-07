@@ -2048,3 +2048,30 @@ pub(crate) fn parse_fn_spec(input: ParseStream) -> Result<TypeFnSpec> {
 
     Ok(fn_spec)
 }
+
+ast_struct! {
+    pub struct LoopSpec {
+        pub invariants: Option<Invariant>,
+        pub invariant_except_breaks: Option<InvariantExceptBreak>,
+        pub invariant_ensures: Option<InvariantEnsures>,
+        pub ensures: Option<Ensures>,
+        pub decreases: Option<Decreases>,
+    }
+}
+
+impl parse::Parse for LoopSpec {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let invariants: Option<Invariant> = input.parse()?;
+        let invariant_except_breaks: Option<InvariantExceptBreak> = input.parse()?;
+        let invariant_ensures: Option<InvariantEnsures> = input.parse()?;
+        let ensures: Option<Ensures> = input.parse()?;
+        let decreases: Option<Decreases> = input.parse()?;
+        Ok(LoopSpec {
+            invariants,
+            invariant_except_breaks,
+            invariant_ensures,
+            ensures,
+            decreases,
+        })
+    }
+}

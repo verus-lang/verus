@@ -207,19 +207,23 @@ pub fn rewrite_verus_spec(
             );
         }
     };
-    let spec_attr =
-        syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
+
     match f {
         AnyFnOrLoop::Fn(mut fun) => {
+            let spec_attr =
+                syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
             // Note: trait default methods appear in this case,
             // since they look syntactically like non-trait functions
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &fun.sig);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
             let _ = fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
             fun.attrs.push(mk_verus_attr_syn(fun.span(), quote! { verus_macro }));
+
             proc_macro::TokenStream::from(fun.to_token_stream())
         }
         AnyFnOrLoop::TraitMethod(mut method) => {
+            let spec_attr =
+                syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
             // Note: default trait methods appear in the AnyFnOrLoop::Fn case, not here
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &method.sig);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
@@ -232,11 +236,27 @@ pub fn rewrite_verus_spec(
             method.to_tokens(&mut new_stream);
             proc_macro::TokenStream::from(new_stream)
         }
-        _ => {
-            let span = spec_attr.span();
-            proc_macro::TokenStream::from(
-                quote_spanned!(span => compile_error!("'verus_spec' is not allowed here");),
-            )
+        AnyFnOrLoop::ForLoop(forloop) => {
+            let spec_attr = syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::LoopSpec);
+            syntax::for_loop_spec_attr(erase, spec_attr, forloop).to_token_stream().into()
+        }
+        AnyFnOrLoop::Loop(mut l) => {
+            let spec_attr = syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::LoopSpec);
+            let spec_stmts = syntax::while_loop_spec_attr(erase, spec_attr);
+            let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
+            if erase.keep() {
+                l.body.stmts.splice(0..0, new_stmts);
+            }
+            l.to_token_stream().into()
+        }
+        AnyFnOrLoop::While(mut l) => {
+            let spec_attr = syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::LoopSpec);
+            let spec_stmts = syntax::while_loop_spec_attr(erase, spec_attr);
+            let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
+            if erase.keep() {
+                l.body.stmts.splice(0..0, new_stmts);
+            }
+            l.to_token_stream().into()
         }
     }
 }

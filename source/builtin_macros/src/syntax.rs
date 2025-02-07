@@ -20,6 +20,7 @@ use syn_verus::visit_mut::{
 };
 use syn_verus::BroadcastUse;
 use syn_verus::ExprBlock;
+use syn_verus::ExprForLoop;
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AssumeSpecification, Attribute, BareFnArg,
     BinOp, Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
@@ -236,6 +237,26 @@ impl Visitor {
                 let prefix = attr.path().segments[0].ident.to_string();
                 prefix != "verus" && prefix != "verifier"
             });
+        }
+    }
+
+    fn visit_loop_spec(&mut self, spec: &mut syn_verus::LoopSpec) {
+        let mut visit_spec = |exprs: &mut syn_verus::Specification| {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+        };
+        if let Some(exprs) = spec.invariants.as_mut() {
+            visit_spec(&mut exprs.exprs);
+        }
+        if let Some(exprs) = spec.invariant_except_breaks.as_mut() {
+            visit_spec(&mut exprs.exprs);
+        }
+        if let Some(exprs) = spec.invariant_ensures.as_mut() {
+            visit_spec(&mut exprs.exprs);
+        }
+        if let Some(exprs) = spec.decreases.as_mut() {
+            visit_spec(&mut exprs.exprs);
         }
     }
 
@@ -3979,6 +4000,70 @@ pub(crate) fn sig_specs_attr(
     };
     let sig_span = sig.span().clone();
     visitor.take_sig_specs(&mut spec, ret_pat, sig.constness.is_some(), sig_span)
+}
+
+pub(crate) fn while_loop_spec_attr(
+    erase_ghost: EraseGhost,
+    spec_attr: syn_verus::LoopSpec,
+) -> Vec<Stmt> {
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 1,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    let mut spec_attr = spec_attr;
+    visitor.visit_loop_spec(&mut spec_attr);
+    let syn_verus::LoopSpec {
+        invariants,
+        invariant_except_breaks,
+        invariant_ensures,
+        ensures,
+        decreases,
+        ..
+    } = spec_attr;
+    let mut stmt = vec![];
+    visitor.add_loop_specs(
+        &mut stmt,
+        invariant_except_breaks,
+        invariants,
+        invariant_ensures,
+        ensures,
+        decreases,
+    );
+    stmt
+}
+
+pub(crate) fn for_loop_spec_attr(
+    erase_ghost: EraseGhost,
+    spec_attr: syn_verus::LoopSpec,
+    forloop: syn::ExprForLoop,
+) -> syn_verus::Expr {
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 1,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    let mut spec_attr = spec_attr;
+    visitor.visit_loop_spec(&mut spec_attr);
+    let syn_verus::LoopSpec { invariants, decreases, .. } = spec_attr;
+    let mut forloop: ExprForLoop =
+        syn_verus::parse2(forloop.to_token_stream().into()).expect("ExprForLoop");
+
+    forloop.invariant = invariants;
+    forloop.decreases = decreases;
+    visitor.desugar_for_loop(forloop)
 }
 
 // Unfortunately, the macro_rules tt tokenizer breaks tokens like &&& and ==> into smaller tokens.
