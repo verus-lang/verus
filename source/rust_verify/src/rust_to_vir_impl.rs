@@ -1,7 +1,7 @@
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, mid_ty_const_to_vir, mid_ty_to_vir, mk_visibility, remove_host_arg,
-    typ_path_and_ident_to_vir_path,
+    def_id_to_vir_path, def_id_to_vir_path_option, mid_ty_const_to_vir, mid_ty_to_vir,
+    mk_visibility, remove_host_arg, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
 use crate::util::err_span;
@@ -472,9 +472,11 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     for c in tcx.crates(()) {
         assert!(*c != rustc_span::def_id::LOCAL_CRATE);
         for trait_id in tcx.traits(*c) {
-            let path = def_id_to_vir_path(tcx, &ctxt.verus_items, *trait_id);
-            if all_traits.contains(&path) {
-                all_trait_ids.push(*trait_id);
+            let path = def_id_to_vir_path_option(tcx, Some(&ctxt.verus_items), *trait_id);
+            if let Some(path) = path {
+                if all_traits.contains(&path) {
+                    all_trait_ids.push(*trait_id);
+                }
             }
         }
     }
