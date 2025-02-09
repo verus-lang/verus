@@ -33,7 +33,7 @@ pub assume_specification<T: Clone, A: Allocator + Clone>[ <Box<T, A> as Clone>::
     b: &Box<T, A>,
 ) -> (res: Box<T, A>)
     ensures
-        call_ensures(T::clone, (&**b,), *res),
+        cloned_or_eq::<T>(**b, *res),
 ;
 
 pub assume_specification<T, A: Allocator>[ Rc::<T, A>::try_unwrap ](v: Rc<T, A>) -> (result: Result<

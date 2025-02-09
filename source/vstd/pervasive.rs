@@ -395,4 +395,16 @@ impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
     }
 }
 
+/// `b` could be the result of calling `a.clone()`
+pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
+    call_ensures(T::clone, (&a,), b)
+}
+
+/// `b` could be the result of calling `a.clone()` or is equal to `a`.
+///
+/// This is useful in places where 'clone' calls might be optimized to copies.
+pub open spec fn cloned_or_eq<T: Clone>(a: T, b: T) -> bool {
+    cloned(a, b) || a == b
+}
+
 } // verus!

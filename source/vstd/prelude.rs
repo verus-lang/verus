@@ -15,7 +15,9 @@ pub use super::set::Set;
 pub use super::view::*;
 
 #[cfg(verus_keep_ghost)]
-pub use super::pervasive::{affirm, arbitrary, proof_from_false, spec_affirm, unreached};
+pub use super::pervasive::{
+    affirm, arbitrary, cloned, cloned_or_eq, proof_from_false, spec_affirm, unreached,
+};
 
 pub use super::array::ArrayAdditionalExecFns;
 pub use super::array::ArrayAdditionalSpecFns;
