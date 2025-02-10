@@ -2775,11 +2775,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
                 OwnerNode::Item(item) => {
-                    if matches!(&item.kind, ItemKind::Impl(_))
-                        && crate_items.is_item_explicitly_external(item.item_id())
-                    {
-                        continue;
-                    }
                     if !matches!(&item.kind, ItemKind::Impl(_))
                         && crate_items.is_item_external(item.item_id())
                     {
@@ -2819,14 +2814,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
                 OwnerNode::Item(item) => {
-                    if matches!(&item.kind, ItemKind::Impl(_))
-                        && crate_items.is_item_explicitly_external(item.item_id())
-                    {
-                        continue;
-                    }
-                    if !matches!(&item.kind, ItemKind::Impl(_))
-                        && crate_items.is_item_external(item.item_id())
-                    {
+                    if crate_items.is_item_external(item.item_id()) {
                         // item is external
                         continue;
                     }

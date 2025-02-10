@@ -94,18 +94,6 @@ impl CrateItems {
         matches!(self.map.get(&item_id.owner_id), Some(VerifOrExternal::External { .. }))
     }
 
-    // TODO we should not be taking into consideration whether an item is
-    // "explicitly" external vs "implicitly" external. Rather, we should be treating these
-    // the same for consistency.
-    // Presently, we make this distinction in lifetime_generate, when determining whether
-    // to emit a trait impl.
-    pub(crate) fn is_item_explicitly_external(&self, item_id: ItemId) -> bool {
-        matches!(
-            self.map.get(&item_id.owner_id),
-            Some(VerifOrExternal::External { explicit: true, .. })
-        )
-    }
-
     pub fn is_impl_item_external(&self, impl_item_id: ImplItemId) -> bool {
         matches!(self.map.get(&impl_item_id.owner_id), Some(VerifOrExternal::External { .. }))
     }
