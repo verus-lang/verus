@@ -283,12 +283,15 @@ This must be doubly recursive on both expressions and statements, hence its
 structure mirrors `StmExpVisitorDfs`.
  */
 struct SpecializationVisitor<'a> {
+    /// Specializations of data types
+    instantiations: Vec<(Ident, Specialization)>,
+    /// Specializations of functions
     invocations: Vec<(Fun, Specialization)>,
     spec_map: &'a SpecMap,
 }
 impl<'a> SpecializationVisitor<'a> {
     fn new(spec_map: &'a SpecMap) -> Self {
-        Self { invocations: vec![], spec_map }
+        Self { instantiations: vec![], invocations: vec![], spec_map }
     }
 }
 impl<'a> Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for SpecializationVisitor<'a> {
