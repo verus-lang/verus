@@ -1327,6 +1327,7 @@ impl Verifier {
                 .cloned()
                 .filter(|d| is_visible_to(&d.x.visibility, module))
                 .collect(),
+            &specializations,
         );
         self.run_commands(
             bucket_id,

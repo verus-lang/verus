@@ -19,6 +19,7 @@ use crate::sst_to_air::{
 };
 use crate::sst_to_air_func::{func_bind, func_bind_trig, func_def_args};
 use crate::util::vec_map;
+use crate::mono::KrateSpecializations;
 use air::ast::{Command, CommandX, Commands, DeclX, Expr, ExprX};
 use air::ast_util::{
     ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
@@ -26,7 +27,7 @@ use air::ast_util::{
 };
 use std::sync::Arc;
 
-fn datatype_to_air(ctx: &Ctx, datatype: &crate::ast::Datatype) -> air::ast::Datatype {
+fn datatype_to_air(ctx: &Ctx, datatype: &crate::ast::Datatype, specs: &KrateSpecializations) -> air::ast::Datatype {
     let mut variants: Vec<air::ast::Variant> = Vec::new();
     for variant in datatype.x.variants.iter() {
         let mut fields: Vec<air::ast::Field> = Vec::new();
@@ -621,7 +622,7 @@ fn datatype_or_fun_to_air_commands(
     }
 }
 
-pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Commands {
+pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes, specs: &KrateSpecializations) -> Commands {
     let source_module = &ctx.module;
     let mut transparent_air_datatypes: Vec<air::ast::Datatype> = Vec::new();
     let mut opaque_sort_commands: Vec<Command> = Vec::new();
@@ -706,7 +707,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
 
         if is_transparent {
             // Encode transparent types as AIR datatypes
-            transparent_air_datatypes.push(datatype_to_air(ctx, datatype));
+            transparent_air_datatypes.push(datatype_to_air(ctx, datatype, specs));
         }
 
         let mut tparams: Vec<Ident> = Vec::new();
