@@ -60,8 +60,8 @@ pub struct PCell<V> {
     ucell: UnsafeCell<MaybeUninit<V>>,
 }
 
-// PCell is always safe to Send/Sync. It's the PointsTo object where Send/Sync matters.
-// (It doesn't matter if you move the bytes to another thread if you can't access them.)
+/// `PCell` is _always_ safe to `Send` or `Sync`. Rather, it is the [`PointsTo`] object where `Send` and `Sync` matter.
+/// (It doesn't matter if you move the bytes to another thread if you can't access them.)
 #[verifier::external]
 unsafe impl<T> Sync for PCell<T> {
 
@@ -72,6 +72,9 @@ unsafe impl<T> Send for PCell<T> {
 
 }
 
+/// Permission object associated with a [`PCell<V>`].
+///
+/// See the documentation of [`PCell<V>`] for more information.
 // PointsTo<V>, on the other hand, needs to inherit both Send and Sync from the V,
 // which it does by default in the given definition.
 // (Note: this depends on the current behavior that #[verifier::spec] fields are still counted for marker traits)
@@ -116,8 +119,10 @@ pub struct CellId {
 }
 
 impl<V> PointsTo<V> {
+    /// The [`CellId`] of the [`PCell`] this permission is associated with.
     pub spec fn id(&self) -> CellId;
 
+    /// The contents of the cell, either unitialized or initialized to some `V`.
     pub spec fn mem_contents(&self) -> MemContents<V>;
 
     #[cfg_attr(not(verus_verify_core), deprecated = "use id() and mem_contents() instead")]
@@ -133,16 +138,19 @@ impl<V> PointsTo<V> {
         }
     }
 
+    /// Is this cell initialized?
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
         self.mem_contents().is_init()
     }
 
+    /// Is this cell uninitialized?
     #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
         self.mem_contents().is_uninit()
     }
 
+    /// Value of the cell (if initialized)
     #[verifier::inline]
     pub open spec fn value(&self) -> V
         recommends
