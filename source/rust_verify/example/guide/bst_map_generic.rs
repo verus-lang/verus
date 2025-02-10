@@ -390,7 +390,7 @@ impl<K: Copy + TotalOrdered, V: Clone> Clone for Node<K, V> {
             self.well_formed() ==> res.well_formed(),
             self.as_map().dom() =~= res.as_map().dom(),
             forall |key| #[trigger] res.as_map().dom().contains(key) ==>
-                cloned_or_eq::<V>(self.as_map()[key], res.as_map()[key])
+                cloned::<V>(self.as_map()[key], res.as_map()[key])
     {
         // TODO(fixme): Assigning V::clone to a variable is a hack needed to work around
         // this issue: https://github.com/verus-lang/verus/issues/1348
@@ -428,7 +428,7 @@ impl<K: Copy + TotalOrdered, V: Clone> Clone for TreeMap<K, V> {
     fn clone(&self) -> (res: Self)
         ensures self@.dom() =~= res@.dom(),
             forall |key| #[trigger] res@.dom().contains(key) ==>
-                cloned_or_eq::<V>(self@[key], res@[key])
+                cloned::<V>(self@[key], res@[key])
 // ANCHOR_END: clone_signature
     {
         proof {

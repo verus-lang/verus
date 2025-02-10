@@ -395,16 +395,22 @@ impl<T> VecAdditionalExecFns<T> for alloc::vec::Vec<T> {
     }
 }
 
-/// `b` could be the result of calling `a.clone()`
-pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
+/// Predicate indicating `b` could be the result of calling `a.clone()`
+///
+/// It is usually recommended to use [`cloned`] instead,
+/// which takes the reflexive closure.
+pub open spec fn strictly_cloned<T: Clone>(a: T, b: T) -> bool {
     call_ensures(T::clone, (&a,), b)
 }
 
-/// `b` could be the result of calling `a.clone()` or is equal to `a`.
+/// Predicate indicating `b` is "a clone" of `a`; i.e., `b` could be the result of
+/// calling `a.clone()` or is equal to `a`.
 ///
-/// This is useful in places where 'clone' calls might be optimized to copies.
-pub open spec fn cloned_or_eq<T: Clone>(a: T, b: T) -> bool {
-    cloned(a, b) || a == b
+/// By always considering a value to be a clone of itself, regardless of the definition
+/// of `T::clone`, this definition is useful in places where 'clone' calls might be
+/// optimized to copies. This is particularly common in the Rust stdlib.
+pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
+    strictly_cloned(a, b) || a == b
 }
 
 } // verus!
