@@ -3470,6 +3470,11 @@ impl Debug for crate::TraitItem {
             crate::TraitItem::Fn(v0) => v0.debug(formatter, "Fn"),
             crate::TraitItem::Type(v0) => v0.debug(formatter, "Type"),
             crate::TraitItem::Macro(v0) => v0.debug(formatter, "Macro"),
+            crate::TraitItem::BroadcastGroup(v0) => {
+                let mut formatter = formatter.debug_tuple("BroadcastGroup");
+                formatter.field(v0);
+                formatter.finish()
+            }
             crate::TraitItem::Verbatim(v0) => {
                 let mut formatter = formatter.debug_tuple("Verbatim");
                 formatter.field(v0);

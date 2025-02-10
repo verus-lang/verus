@@ -2457,6 +2457,10 @@ impl PartialEq for crate::TraitItem {
             (crate::TraitItem::Macro(self0), crate::TraitItem::Macro(other0)) => {
                 self0 == other0
             }
+            (
+                crate::TraitItem::BroadcastGroup(self0),
+                crate::TraitItem::BroadcastGroup(other0),
+            ) => self0 == other0,
             (crate::TraitItem::Verbatim(self0), crate::TraitItem::Verbatim(other0)) => {
                 TokenStreamHelper(self0) == TokenStreamHelper(other0)
             }
