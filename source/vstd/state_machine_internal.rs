@@ -13,6 +13,7 @@ pub struct SyncSendIfSyncSend<T> {
     _sync_send: super::prelude::SyncSendIfSyncSend<T>,
 }
 
+#[cfg_attr(verus_keep_ghost, verifier::verus_macro)]
 impl<T> Clone for SyncSendIfSyncSend<T> {
     #[cfg_attr(verus_keep_ghost, verifier::external_body)]
     fn clone(&self) -> Self {

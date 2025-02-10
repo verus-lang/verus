@@ -112,6 +112,7 @@ and then sending the error messages and spans to the rustc diagnostics for the o
 // In functions executed through the lifetime rustc driver, use `ldbg!` for debug output.
 
 use crate::erase::ErasureHints;
+use crate::external::CrateItems;
 use crate::lifetime_emit::*;
 use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
@@ -271,7 +272,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
     krate: &'tcx Crate<'tcx>,
     emit_state: &mut EmitState,
     erasure_hints: &ErasureHints,
-    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
+    item_to_module_map: &CrateItems,
     vir_crate: &vir::ast::Krate,
 ) -> State {
     let mut gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
@@ -374,7 +375,7 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     verus_items: std::sync::Arc<VerusItems>,
     spans: &SpanContext,
     erasure_hints: &ErasureHints,
-    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
+    item_to_module_map: &CrateItems,
     vir_crate: &vir::ast::Krate,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {

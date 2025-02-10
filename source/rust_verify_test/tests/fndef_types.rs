@@ -1702,7 +1702,7 @@ test_verify_one_file! {
                     forall |a: Self, b: Self| call_ensures(Clone::clone, (&a,), b) ==> a == b,
             { assume(false); }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Foo::clone` is not supported")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::Foo::clone` which is ignored")
 }
 
 test_verify_one_file! {
