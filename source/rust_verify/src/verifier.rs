@@ -16,7 +16,6 @@ use rustc_errors::{Diag, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
-use vir::mono::Specialization;
 
 use vir::messages::{
     message, note, note_bare, warning_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
@@ -34,7 +33,9 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
+use vir::mono::Specialization;
 use vir::mono::PolyStrategy;
+use vir::mono::KrateSpecializations;
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
@@ -1254,7 +1255,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
-        specializations: HashMap<Fun, HashSet<Specialization>>,
+        specializations: KrateSpecializations,
     ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
@@ -1377,7 +1378,7 @@ impl Verifier {
                 continue;
             }
 
-            let Some(specs) = specializations.get(&function.x.name) else {
+            let Some(specs) = specializations.function_spec.get(&function.x.name) else {
                 continue;
             };
             for spec in specs.iter() {
@@ -1950,7 +1951,7 @@ impl Verifier {
             &pruned_krate,
         )?;
         let specializations = match poly_strategy {
-            PolyStrategy::Mono => vir::mono::mono_krate_for_module(&krate_sst),
+            PolyStrategy::Mono => vir::mono::collect_specializations(&krate_sst),
             PolyStrategy::Poly => Default::default(),
         };
         let krate_sst = match poly_strategy {

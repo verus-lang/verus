@@ -10,8 +10,7 @@ use vir::ast_to_sst_func::{mk_fun_ctx, mk_fun_ctx_dec};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::def::{CommandsWithContext, SnapPos};
-use vir::mono::Specialization;
-use vir::mono::{mono_krate_for_module, PolyStrategy};
+use vir::mono::{collect_specializations, PolyStrategy, Specialization, KrateSpecializations};
 use vir::recursion::Node;
 use vir::sst::{FuncCheckSst, FunctionSst};
 
@@ -71,7 +70,7 @@ pub struct OpGenerator<'a> {
 
     func_map: HashMap<Fun, FunctionSst>,
     trait_impl_map: HashMap<Path, TraitImpl>,
-    specializations: HashMap<Fun, HashSet<Specialization>>,
+    specializations: KrateSpecializations,
 
     scc_idx: usize,
 }
@@ -90,7 +89,7 @@ impl<'a> OpGenerator<'a> {
             func_map.insert(function.x.name.clone(), function.clone());
         }
         let specializations = match ctx.global.poly_strategy {
-            PolyStrategy::Mono => mono_krate_for_module(krate),
+            PolyStrategy::Mono => collect_specializations(krate),
             PolyStrategy::Poly => Default::default(),
         };
         let mut trait_impl_map: HashMap<Path, TraitImpl> = HashMap::new();
@@ -194,7 +193,7 @@ impl<'a> OpGenerator<'a> {
         for function in scc_functions.iter() {
             self.ctx.fun = mk_fun_ctx(function, false);
 
-            if let Some(specs) = self.specializations.get(&function.x.name) {
+            if let Some(specs) = self.specializations.function_spec.get(&function.x.name) {
                 for spec in specs.iter() {
                     let decl_commands =
                         vir::sst_to_air_func::func_decl_to_air(self.ctx, function, spec)?;
@@ -224,7 +223,7 @@ impl<'a> OpGenerator<'a> {
             } else {
                 ContextOp::SpecDefinition
             };
-            if let Some(specs) = self.specializations.get(&function.x.name) {
+            if let Some(specs) = self.specializations.function_spec.get(&function.x.name) {
                 for spec in specs.iter() {
                     let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
                         self.ctx,
@@ -311,7 +310,7 @@ impl<'a> OpGenerator<'a> {
 
         
 
-        let specs = self.specializations.get(fun).cloned() // Clone the existing value if found
+        let specs = self.specializations.function_spec.get(fun).cloned() // Clone the existing value if found
         .unwrap_or_else(|| {
             let mut set = HashSet::new();
             set.insert(Specialization::empty());

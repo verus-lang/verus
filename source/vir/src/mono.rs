@@ -317,20 +317,28 @@ pub(crate) fn collect_specializations_from_function(
     visitor.invocations
 }
 
+#[derive(Default)]
+pub struct KrateSpecializations {
+    pub function_spec: HashMap<Fun, HashSet<Specialization>>,
+    pub datatype_spec: HashMap<Ident, HashSet<Specialization>>,
+}
+
+
 /**
 Collect all polymorphic function invocations in a module
  */
-pub fn mono_krate_for_module(krate: &KrateSst) -> HashMap<Fun, HashSet<Specialization>> {
+pub fn collect_specializations(krate: &KrateSst) -> KrateSpecializations {
     let KrateSstX { functions, .. } = &**krate;
 
     let mut to_visit: VecDeque<(Specialization, &FunctionSst)> =
         functions.iter().map(|f| (Default::default(), f)).collect();
-    let mut invocations: HashMap<Fun, HashSet<Specialization>> = HashMap::new();
+    let mut function_spec: HashMap<Fun, HashSet<Specialization>> = HashMap::new();
+    let mut datatype_spec: HashMap<Ident, HashSet<Specialization>> = HashMap::new();
 
     while let Some((caller_spec, caller_sst)) = to_visit.pop_front() {
         let sites = collect_specializations_from_function(&caller_spec, &caller_sst);
         for (callee, callee_spec) in sites.into_iter() {
-            if let Some(fun_specs) = invocations.get(&callee) {
+            if let Some(fun_specs) = function_spec.get(&callee) {
                 if fun_specs.contains(&callee_spec) {
                     continue;
                 }
@@ -342,8 +350,11 @@ pub fn mono_krate_for_module(krate: &KrateSst) -> HashMap<Fun, HashSet<Specializ
                 .unwrap_or_else(|| panic!("Function name not found: {callee}"));
             to_visit.push_back((callee_spec.clone(), callee_sst));
 
-            invocations.entry(callee).or_insert_with(HashSet::new).insert(callee_spec);
+            function_spec.entry(callee).or_insert_with(HashSet::new).insert(callee_spec);
         }
     }
-    invocations
+    KrateSpecializations {
+        function_spec,
+        datatype_spec,
+    }
 }
