@@ -127,7 +127,7 @@ pub assume_specification<T: core::clone::Clone, A: Allocator>[ Vec::<T, A>::exte
             0 <= i < vec@.len() ==> if i < old(vec)@.len() {
                 vec@[i] == old(vec)@[i]
             } else {
-                call_ensures(T::clone, (&other@[i - old(vec)@.len()],), vec@[i])
+                cloned::<T>(other@[i - old(vec)@.len()], vec@[i])
             },
 ;
 
