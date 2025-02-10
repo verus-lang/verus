@@ -611,3 +611,19 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] broadcast_group_should_check_member_is_broadcast_regression_1355 verus_code! {
+        proof fn lemma_foo()
+            ensures true
+        {}
+
+        broadcast group group_foo {
+            lemma_foo,
+        }
+
+        proof fn lemma_bar() {
+            broadcast use group_foo;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "lemma_foo is not a broadcast proof fn")
+}

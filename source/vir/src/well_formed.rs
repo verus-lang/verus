@@ -1396,6 +1396,23 @@ pub fn check_crate(
             }
         }
     }
+
+    for reveal_group in krate.reveal_groups.iter() {
+        for member in reveal_group.x.members.iter() {
+            if let Some(function) = funs.get(member) {
+                if !function.x.attrs.broadcast_forall {
+                    return Err(error(
+                        &reveal_group.span,
+                        format!(
+                            "{} is not a broadcast proof fn",
+                            fun_as_friendly_rust_name(member)
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
     let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone(), unpruned_krate };
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags, no_verify)?;
