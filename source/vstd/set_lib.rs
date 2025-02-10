@@ -69,7 +69,7 @@ impl<A> Set<A> {
     // Helper function to prove termination of function to_seq
     #[via_fn]
     proof fn decreases_proof(self) {
-        lemma_set_properties::<A>();
+        broadcast use group_set_properties;
         if self.len() > 0 {
             let x = self.choose();
             assert(self.contains(x));
@@ -114,7 +114,7 @@ impl<A> Set<A> {
 
     #[via_fn]
     proof fn prove_decrease_min_unique(self, r: spec_fn(A, A) -> bool) {
-        lemma_set_properties::<A>();
+        broadcast use group_set_properties;
         if self.len() > 0 {
             let x = self.choose();
             assert(self.contains(x));
@@ -133,7 +133,7 @@ impl<A> Set<A> {
                 is_minimal(r, min, self) ==> self.find_unique_minimal(r) == min),
         decreases self.len(),
     {
-        lemma_set_properties::<A>();
+        broadcast use group_set_properties;
         if self.len() == 1 {
             let x = choose|x: A| self.contains(x);
             assert(self.remove(x).insert(x) =~= self);
@@ -201,7 +201,7 @@ impl<A> Set<A> {
 
     #[via_fn]
     proof fn prove_decrease_max_unique(self, r: spec_fn(A, A) -> bool) {
-        lemma_set_properties::<A>();
+        broadcast use group_set_properties;
     }
 
     /// Proof of correctness and expected behavior for `Set::find_unique_maximal`.
@@ -215,7 +215,7 @@ impl<A> Set<A> {
                 is_maximal(r, max, self) ==> self.find_unique_maximal(r) == max),
         decreases self.len(),
     {
-        lemma_set_properties::<A>();
+        broadcast use group_set_properties;
         if self.len() == 1 {
             let x = choose|x: A| self.contains(x);
             assert(self.remove(x) =~= Set::<A>::empty());
@@ -301,7 +301,7 @@ impl<A> Set<A> {
         ensures
             self.len() == 1,
     {
-        lemma_set_properties::<A>();
+        broadcast use group_set_properties;
         assert(self.remove(self.choose()) =~= Set::empty());
     }
 
@@ -318,7 +318,7 @@ impl<A> Set<A> {
         if s.len() == 1 {
             assert forall|x: A, y: A| s.contains(x) && s.contains(y) implies x == y by {
                 let x = choose|x: A| s.contains(x);
-                lemma_set_properties::<A>();
+                broadcast use group_set_properties;
                 assert(s.remove(x).len() == 0);
                 assert(s.insert(x) =~= s);
             }
@@ -543,7 +543,7 @@ pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
         s1.union(s2).len() >= s2.len(),
     decreases s2.len(),
 {
-    lemma_set_properties::<A>();
+    broadcast use group_set_properties;
     if s2.len() == 0 {
     } else {
         let y = choose|y: A| s2.contains(y);
@@ -639,7 +639,7 @@ pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
         x =~= y,
     decreases x.len(),
 {
-    lemma_set_properties::<A>();
+    broadcast use group_set_properties;
     if x =~= Set::<A>::empty() {
     } else {
         let e = x.choose();
@@ -661,8 +661,7 @@ pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
         x.len() == y.len(),
     decreases x.len(),
 {
-    lemma_set_properties::<A>();
-    lemma_set_properties::<B>();
+    broadcast use group_set_properties;
     if x.len() != 0 {
         let a = x.choose();
         lemma_map_size(x.remove(a), y.remove(f(a)), f);
@@ -672,26 +671,27 @@ pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the union of sets `a` and `b` and then taking the union of the result with `b`
 /// is the same as taking the union of `a` and `b` once.
-pub proof fn lemma_set_union_again1<A>(a: Set<A>, b: Set<A>)
+pub broadcast proof fn lemma_set_union_again1<A>(a: Set<A>, b: Set<A>)
     ensures
-        a.union(b).union(b) =~= a.union(b),
+        #[trigger] a.union(b).union(b) =~= a.union(b),
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the union of sets `a` and `b` and then taking the union of the result with `a`
 /// is the same as taking the union of `a` and `b` once.
-pub proof fn lemma_set_union_again2<A>(a: Set<A>, b: Set<A>)
+pub broadcast proof fn lemma_set_union_again2<A>(a: Set<A>, b: Set<A>)
     ensures
-        a.union(b).union(a) =~= a.union(b),
+        #[trigger] a.union(b).union(a) =~= a.union(b),
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the intersection of sets `a` and `b` and then taking the intersection of the result with `b`
 /// is the same as taking the intersection of `a` and `b` once.
-pub proof fn lemma_set_intersect_again1<A>(a: Set<A>, b: Set<A>)
+pub broadcast proof fn lemma_set_intersect_again1<A>(a: Set<A>, b: Set<A>)
     ensures
+        #![trigger (a.intersect(b)).intersect(b)]
         (a.intersect(b)).intersect(b) =~= a.intersect(b),
 {
 }
@@ -699,16 +699,18 @@ pub proof fn lemma_set_intersect_again1<A>(a: Set<A>, b: Set<A>)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the intersection of sets `a` and `b` and then taking the intersection of the result with `a`
 /// is the same as taking the intersection of `a` and `b` once.
-pub proof fn lemma_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
+pub broadcast proof fn lemma_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
     ensures
+        #![trigger (a.intersect(b)).intersect(a)]
         (a.intersect(b)).intersect(a) =~= a.intersect(b),
 {
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If set `s2` contains element `a`, then the set difference of `s1` and `s2` does not contain `a`.
-pub proof fn lemma_set_difference2<A>(s1: Set<A>, s2: Set<A>, a: A)
+pub broadcast proof fn lemma_set_difference2<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
+        #![trigger s1.difference(s2).contains(a)]
         s2.contains(a) ==> !s1.difference(s2).contains(a),
 {
 }
@@ -716,8 +718,9 @@ pub proof fn lemma_set_difference2<A>(s1: Set<A>, s2: Set<A>, a: A)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If sets `a` and `b` are disjoint, meaning they have no elements in common, then the set difference
 /// of `a + b` and `b` is equal to `a` and the set difference of `a + b` and `a` is equal to `b`.
-pub proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
+pub broadcast proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
     ensures
+        #![trigger (a + b).difference(a)]  //TODO: this might be too free
         a.disjoint(b) ==> ((a + b).difference(a) =~= b && (a + b).difference(b) =~= a),
 {
 }
@@ -725,12 +728,15 @@ pub proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
 // Dafny encodes the second clause with a single directional, although
 // it should be fine with both directions?
 // This verified lemma used to be an axiom in the Dafny prelude
+// note: maybe excluded from broadcast group since trigger is too free?
+// but the proof in seq_lib requires this lemma
 /// Set `s` has length 0 if and only if it is equal to the empty set. If `s` has length greater than 0,
 /// Then there must exist an element `x` such that `s` contains `x`.
-pub proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
+pub broadcast proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
     requires
         s.finite(),
     ensures
+        #![trigger s.len()]
         (s.len() == 0 <==> s == Set::<A>::empty()) && (s.len() != 0 ==> exists|x: A| s.contains(x)),
 {
     assert(s.len() == 0 ==> s =~= Set::empty()) by {
@@ -753,12 +759,12 @@ pub proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If sets `a` and `b` are disjoint, meaning they share no elements in common, then the length
 /// of the union `a + b` is equal to the sum of the lengths of `a` and `b`.
-pub proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
+pub broadcast proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
     requires
         a.finite(),
         b.finite(),
     ensures
-        a.disjoint(b) ==> (a + b).len() == a.len() + b.len(),
+        a.disjoint(b) ==> #[trigger] (a + b).len() == a.len() + b.len(),
     decreases a.len(),
 {
     if a.len() == 0 {
@@ -776,12 +782,12 @@ pub proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The length of the union between two sets added to the length of the intersection between the
 /// two sets is equal to the sum of the lengths of the two sets.
-pub proof fn lemma_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
+pub broadcast proof fn lemma_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
     requires
         a.finite(),
         b.finite(),
     ensures
-        (a + b).len() + a.intersect(b).len() == a.len() + b.len(),
+        #[trigger] (a + b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len(),
     decreases a.len(),
 {
     if a.len() == 0 {
@@ -808,13 +814,13 @@ pub proof fn lemma_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
 ///
 /// The length of the set difference `A \ B` is equal to the length of `A` minus the length of the
 /// intersection `A ∩ B`.
-pub proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
+pub broadcast proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
     requires
         a.finite(),
         b.finite(),
     ensures
-        (a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a + b).len()) && (
-        a.difference(b).len() == a.len() - a.intersect(b).len()),
+        (#[trigger] a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a
+            + b).len()) && (a.difference(b).len() == a.len() - a.intersect(b).len()),
     decreases a.len(),
 {
     if a.len() == 0 {
@@ -841,6 +847,7 @@ pub proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
 }
 
 /// Properties of sets from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
+#[deprecated = "Use `broadcast use group_set_properties` instead"]
 pub proof fn lemma_set_properties<A>()
     ensures
         forall|a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(b) == a.union(b),  //from lemma_set_union_again1
@@ -849,9 +856,9 @@ pub proof fn lemma_set_properties<A>()
         forall|a: Set<A>, b: Set<A>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b),  //from lemma_set_intersect_again2
         forall|s1: Set<A>, s2: Set<A>, a: A| s2.contains(a) ==> !s1.difference(s2).contains(a),  //from lemma_set_difference2
         forall|a: Set<A>, b: Set<A>|
-            a.disjoint(b) ==> ((#[trigger] (a + b)).difference(a) == b && (a + b).difference(b)
-                == a),  //from lemma_set_disjoint
-        forall|s: Set<A>| #[trigger] s.len() != 0 && s.finite() ==> exists|a: A| s.contains(a),
+            #![trigger (a + b).difference(a)]
+            a.disjoint(b) ==> ((a + b).difference(a) =~= b && (a + b).difference(b) =~= a),  //from lemma_set_disjoint
+        forall|s: Set<A>| #[trigger] s.len() != 0 && s.finite() ==> exists|a: A| s.contains(a),  // half of lemma_set_empty_equivalency_len
         forall|a: Set<A>, b: Set<A>|
             (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] (a + b).len() == a.len()
                 + b.len(),  //from lemma_set_disjoint_lens
@@ -865,47 +872,25 @@ pub proof fn lemma_set_properties<A>()
             ).len() + a.intersect(b).len() == (a + b).len()) && (a.difference(b).len() == a.len()
                 - a.intersect(b).len())),  //from lemma_set_difference_len
 {
-    assert forall|a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(b) == a.union(b) by {
-        lemma_set_union_again1(a, b);
-    }
-    assert forall|a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(a) == a.union(b) by {
-        lemma_set_union_again2(a, b);
-    }
-    assert forall|a: Set<A>, b: Set<A>| #[trigger]
-        (a.intersect(b)).intersect(b) == a.intersect(b) by {
-        lemma_set_intersect_again1(a, b);
-    }
-    assert forall|a: Set<A>, b: Set<A>| #[trigger]
-        (a.intersect(b)).intersect(a) == a.intersect(b) by {
-        lemma_set_intersect_again2(a, b);
-    }
-    assert forall|a: Set<A>, b: Set<A>| a.disjoint(b) implies ((#[trigger] (a + b)).difference(a)
-        == b && (a + b).difference(b) == a) by {
-        lemma_set_disjoint(a, b);
-    }
+    broadcast use group_set_properties;
+
     assert forall|s: Set<A>| #[trigger] s.len() != 0 && s.finite() implies exists|a: A|
         s.contains(a) by {
         assert(s.contains(s.choose()));
     }
-    assert forall|a: Set<A>, b: Set<A>|
-        a.disjoint(b) && b.finite() && a.finite() implies #[trigger] (a + b).len() == a.len()
-        + b.len() by {
-        lemma_set_disjoint_lens(a, b);
-    }
-    assert forall|a: Set<A>, b: Set<A>| a.finite() && b.finite() implies #[trigger] (a + b).len()
-        + #[trigger] a.intersect(b).len() == a.len() + b.len() by {
-        lemma_set_intersect_union_lens(a, b);
-    }
-    assert forall|a: Set<A>, b: Set<A>| (a.finite() && b.finite()) implies #[trigger] a.difference(
-        b,
-    ).len() + b.difference(a).len() + a.intersect(b).len() == (a + b).len() by {
-        lemma_set_difference_len(a, b);
-    }
-    assert forall|a: Set<A>, b: Set<A>| (a.finite() && b.finite()) implies #[trigger] a.difference(
-        b,
-    ).len() == a.len() - a.intersect(b).len() by {
-        lemma_set_difference_len(a, b);
-    }
+}
+
+pub broadcast group group_set_properties {
+    lemma_set_union_again1,
+    lemma_set_union_again2,
+    lemma_set_intersect_again1,
+    lemma_set_intersect_again2,
+    lemma_set_difference2,
+    lemma_set_disjoint,
+    lemma_set_disjoint_lens,
+    lemma_set_intersect_union_lens,
+    lemma_set_difference_len,
+    lemma_set_empty_equivalency_len,
 }
 
 pub broadcast proof fn axiom_is_empty<A>(s: Set<A>)

@@ -197,7 +197,7 @@ impl<K, V> Map<K, V> {
             self.remove_keys(keys).dom().len() == self.dom().len() - keys.len(),
         decreases keys.len(),
     {
-        lemma_set_properties::<K>();
+        broadcast use group_set_properties;
         if keys.len() > 0 {
             let key = keys.choose();
             let val = self[key];
@@ -331,9 +331,9 @@ pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: Map<K, V>, m2: Map<K, V>,
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `Set::new(fk)`.
-pub proof fn lemma_map_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_map_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        Map::<K, V>::new(fk, fv).dom() == Set::<K>::new(|k: K| fk(k)),
+        #[trigger] Map::<K, V>::new(fk, fv).dom() == Set::<K>::new(|k: K| fk(k)),
 {
     assert(Set::new(fk) =~= Set::<K>::new(|k: K| fk(k)));
 }
@@ -342,9 +342,9 @@ pub proof fn lemma_map_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -
 /// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to
 /// the set constructed with `Set::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
 /// the set of all values fv(k) where fk(k) is true.
-pub proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        Map::<K, V>::new(fk, fv).values() == Set::<V>::new(
+        #[trigger] Map::<K, V>::new(fk, fv).values() == Set::<V>::new(
             |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
         ),
 {
@@ -359,6 +359,7 @@ pub proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -
 }
 
 /// Properties of maps from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
+#[deprecated = "Use `broadcast use group_map_properties` instead"]
 pub proof fn lemma_map_properties<K, V>()
     ensures
         forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
@@ -368,16 +369,13 @@ pub proof fn lemma_map_properties<K, V>()
                 |v: V| exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v,
             ),  //from lemma_map_new_values
 {
-    assert forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
-        Map::<K, V>::new(fk, fv).dom() == Set::<K>::new(|k: K| fk(k)) by {
-        lemma_map_new_domain(fk, fv);
-    }
-    assert forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
-        Map::<K, V>::new(fk, fv).values() == Set::<V>::new(
-            |v: V| exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v,
-        ) by {
-        lemma_map_new_values(fk, fv);
-    }
+    broadcast use group_map_properties;
+
+}
+
+pub broadcast group group_map_properties {
+    lemma_map_new_domain,
+    lemma_map_new_values,
 }
 
 pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)

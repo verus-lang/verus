@@ -10,8 +10,6 @@ use super::relations::*;
 use super::seq::*;
 #[allow(unused_imports)]
 use super::set::Set;
-#[cfg(verus_keep_ghost)]
-use super::set_lib::lemma_set_properties;
 
 verus! {
 
@@ -909,8 +907,8 @@ impl<A> Seq<A> {
     {
         broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
         broadcast use group_seq_properties;
+        broadcast use super::set_lib::group_set_properties;
 
-        lemma_set_properties::<A>();
         if self.len() == 0 {
         } else {
             assert(self.drop_last().to_set().insert(self.last()) =~= self.to_set());
@@ -1753,9 +1751,8 @@ pub broadcast proof fn lemma_seq_concat_contains_all_elements<A>(x: Seq<A>, y: S
 /// After pushing an element onto a sequence, the sequence contains that element
 pub broadcast proof fn lemma_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
     ensures
-        (#[trigger] s.push(v).contains(x) <==> v == x || s.contains(x)) && #[trigger] s.push(
-            v,
-        ).contains(v),
+        #![trigger s.push(v).contains(x), s.push(v).contains(v)]
+        (s.push(v).contains(x) <==> v == x || s.contains(x)) && s.push(v).contains(v),
 {
     assert forall|elt: A| #[trigger] s.contains(elt) implies #[trigger] s.push(v).contains(elt) by {
         let index = choose|i: int| 0 <= i < s.len() && s[i] == elt;
@@ -2032,9 +2029,8 @@ pub proof fn lemma_seq_properties<A>()
         forall|x: Seq<A>, y: Seq<A>, elt: A| #[trigger]
             (x + y).contains(elt) <==> x.contains(elt) || y.contains(elt),  //from lemma_seq_concat_contains_all_elements(x, y, elt),
         forall|s: Seq<A>, v: A, x: A|
-            (#[trigger] s.push(v).contains(x) <==> v == x || s.contains(x)) && #[trigger] s.push(
-                v,
-            ).contains(v),  //from lemma_seq_contains_after_push(s, v, x)
+            #![trigger s.push(v).contains(x), s.push(v).contains(v) ]
+            (s.push(v).contains(x) <==> v == x || s.contains(x)) && s.push(v).contains(v),  //from lemma_seq_contains_after_push(s, v, x)
         forall|s: Seq<A>, start: int, stop: int, x: A|
             (0 <= start <= stop <= s.len() && #[trigger] s.subrange(start, stop).contains(x)) <==> (
             exists|i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x),  //from lemma_seq_subrange_elements(s, start, stop, x),
