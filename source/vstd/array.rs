@@ -114,13 +114,14 @@ pub assume_specification<T, const N: usize>[ <[T; N]>::as_slice ](ar: &[T; N]) -
 
 pub spec fn spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T) -> (res: [T; N]);
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T)
     ensures
         #![trigger spec_array_fill_for_copy_type::<T, N>(t)]
+        // intentionally triggering on `spec_array_fill_for_copy_type` only
         forall|i: int|
             0 <= i < N ==> spec_array_fill_for_copy_type::<T, N>(t).view()[i] == t,
 {
+    admit();
 }
 
 // The 'array fill' [t; N] where t is a Copy type

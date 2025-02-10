@@ -333,6 +333,7 @@ struct RunConfiguration {
     verus_verify_vstd: bool,
 
     #[serde(rename = "project")]
+    #[serde(default)]
     projects: Vec<RunConfigurationProject>,
 }
 

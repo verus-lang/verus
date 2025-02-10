@@ -26,14 +26,14 @@ impl RangeAll for Range<int> {
     }
 }
 
-pub broadcast proof fn all_spec_implies(r: Range<int>, p: spec_fn(int) -> bool)
+pub broadcast proof fn all_spec_ensures(r: Range<int>, p: spec_fn(int) -> bool)
     ensures
         #[trigger] r.all_spec(p) ==> (forall|i| r.start <= i < r.end ==> #[trigger] p(i)),
     decreases r.end - r.start,
 {
     if r.start >= r.end {
     } else {
-        all_spec_implies(r.start + 1..r.end, p);
+        all_spec_ensures(r.start + 1..r.end, p);
     }
 }
 
