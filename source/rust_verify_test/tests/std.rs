@@ -466,7 +466,12 @@ test_verify_one_file! {
 
         fn test3<T: Clone>(a: Box<T>) {
             let b = a.clone();
-            assert(call_ensures(T::clone, (&*a,), *b));
+            assert(call_ensures(T::clone, (&*a,), *b) || a == b);
+        }
+
+        fn test3_fails<T: Clone>(a: Box<T>) {
+            let b = a.clone();
+            assert(call_ensures(T::clone, (&*a,), *b)); // FAILS
         }
 
         pub struct X { pub i: u64 }
@@ -486,9 +491,9 @@ test_verify_one_file! {
 
         fn test5(a: Box<X>) {
             let b = a.clone();
-            assert(b == X { i: 5 });
+            assert(b == X { i: 5 } || b == a);
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file! {

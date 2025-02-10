@@ -180,9 +180,7 @@ pub assume_specification<T: Clone, A: Allocator + Clone>[ <Vec<T, A> as Clone>::
 ) -> (res: Vec<T, A>)
     ensures
         res.len() == vec.len(),
-        forall|i|
-            #![all_triggers]
-            0 <= i < vec.len() ==> call_ensures(T::clone, (&vec[i],), res[i]),
+        forall|i| #![all_triggers] 0 <= i < vec.len() ==> cloned::<T>(vec[i], res[i]),
         vec_clone_trigger(*vec, res),
         vec@ =~= res@ ==> vec@ == res@,
 ;
@@ -215,10 +213,7 @@ pub assume_specification<T: Clone, A: Allocator>[ Vec::<T, A>::resize ](
         len > old(vec).len() ==> {
             &&& vec@.len() == len
             &&& vec@.subrange(0, old(vec).len() as int) == old(vec)@
-            &&& forall|i|
-                #![all_triggers]
-                old(vec).len() <= i < len ==> call_ensures(T::clone, (&value,), vec@[i]) || value
-                    == vec@[i]
+            &&& forall|i| #![all_triggers] old(vec).len() <= i < len ==> cloned::<T>(value, vec@[i])
         },
 ;
 
