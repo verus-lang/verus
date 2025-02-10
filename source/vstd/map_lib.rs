@@ -198,6 +198,7 @@ impl<K, V> Map<K, V> {
         decreases keys.len(),
     {
         broadcast use group_set_properties;
+
         if keys.len() > 0 {
             let key = keys.choose();
             let val = self[key];

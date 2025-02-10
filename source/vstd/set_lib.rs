@@ -70,6 +70,7 @@ impl<A> Set<A> {
     #[via_fn]
     proof fn decreases_proof(self) {
         broadcast use group_set_properties;
+
         if self.len() > 0 {
             let x = self.choose();
             assert(self.contains(x));
@@ -115,6 +116,7 @@ impl<A> Set<A> {
     #[via_fn]
     proof fn prove_decrease_min_unique(self, r: spec_fn(A, A) -> bool) {
         broadcast use group_set_properties;
+
         if self.len() > 0 {
             let x = self.choose();
             assert(self.contains(x));
@@ -134,6 +136,7 @@ impl<A> Set<A> {
         decreases self.len(),
     {
         broadcast use group_set_properties;
+
         if self.len() == 1 {
             let x = choose|x: A| self.contains(x);
             assert(self.remove(x).insert(x) =~= self);
@@ -202,6 +205,7 @@ impl<A> Set<A> {
     #[via_fn]
     proof fn prove_decrease_max_unique(self, r: spec_fn(A, A) -> bool) {
         broadcast use group_set_properties;
+
     }
 
     /// Proof of correctness and expected behavior for `Set::find_unique_maximal`.
@@ -216,6 +220,7 @@ impl<A> Set<A> {
         decreases self.len(),
     {
         broadcast use group_set_properties;
+
         if self.len() == 1 {
             let x = choose|x: A| self.contains(x);
             assert(self.remove(x) =~= Set::<A>::empty());
@@ -302,6 +307,7 @@ impl<A> Set<A> {
             self.len() == 1,
     {
         broadcast use group_set_properties;
+
         assert(self.remove(self.choose()) =~= Set::empty());
     }
 
@@ -319,6 +325,7 @@ impl<A> Set<A> {
             assert forall|x: A, y: A| s.contains(x) && s.contains(y) implies x == y by {
                 let x = choose|x: A| s.contains(x);
                 broadcast use group_set_properties;
+
                 assert(s.remove(x).len() == 0);
                 assert(s.insert(x) =~= s);
             }
@@ -544,6 +551,7 @@ pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
     decreases s2.len(),
 {
     broadcast use group_set_properties;
+
     if s2.len() == 0 {
     } else {
         let y = choose|y: A| s2.contains(y);
@@ -640,6 +648,7 @@ pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
     decreases x.len(),
 {
     broadcast use group_set_properties;
+
     if x =~= Set::<A>::empty() {
     } else {
         let e = x.choose();
@@ -662,6 +671,7 @@ pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
     decreases x.len(),
 {
     broadcast use group_set_properties;
+
     if x.len() != 0 {
         let a = x.choose();
         lemma_map_size(x.remove(a), y.remove(f(a)), f);
