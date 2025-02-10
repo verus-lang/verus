@@ -10,6 +10,7 @@ use super::modes::*;
 use super::pervasive::*;
 #[allow(unused_imports)]
 use super::prelude::*;
+pub use super::raw_ptr::MemContents;
 #[allow(unused_imports)]
 use super::set::*;
 #[allow(unused_imports)]
@@ -86,7 +87,7 @@ pub tracked struct PointsTo<V> {
 
 pub ghost struct PointsToData<V> {
     pub pcell: CellId,
-    pub value: Option<V>,
+    pub value: MemContents<V>,
 }
 
 #[doc(hidden)]
@@ -126,23 +127,26 @@ impl<V> PointsTo<V> {
     }
 
     #[verifier::inline]
-    pub open spec fn opt_value(&self) -> Option<V> {
+    pub open spec fn mem_contents(&self) -> MemContents<V> {
         self.view().value
     }
 
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
-        self.view().value.is_some()
+        self.mem_contents().is_init()
     }
 
     #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
-        self.view().value.is_none()
+        self.mem_contents().is_uninit()
     }
 
     #[verifier::inline]
-    pub open spec fn value(&self) -> V {
-        self.view().value.unwrap()
+    pub open spec fn value(&self) -> V
+        recommends
+            self.is_init(),
+    {
+        self.mem_contents().value()
     }
 }
 
@@ -155,7 +159,7 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub const fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
-            pt.1@@ === pcell_opt![ pt.0.id() => Option::None ],
+            pt.1@@ === pcell_opt![ pt.0.id() => MemContents::Uninit ],
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
         (p, Tracked::assume_new())
@@ -165,7 +169,7 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
-            (pt.1@@ === PointsToData { pcell: pt.0.id(), value: Option::Some(v) }),
+            (pt.1@@ === PointsToData { pcell: pt.0.id(), value: MemContents::Init(v) }),
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::new(v)) };
         (p, Tracked::assume_new())
@@ -175,9 +179,9 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
-            old(perm)@ === pcell_opt![ self.id() => Option::None ],
+            old(perm)@ === pcell_opt![ self.id() => MemContents::Uninit ],
         ensures
-            perm@ === pcell_opt![ self.id() => Option::Some(v) ],
+            perm@ === pcell_opt![ self.id() => MemContents::Init(v) ],
         opens_invariants none
         no_unwind
     {
@@ -191,11 +195,11 @@ impl<V> PCell<V> {
     pub fn take(&self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (v: V)
         requires
             self.id() === old(perm)@.pcell,
-            old(perm)@.value.is_Some(),
+            old(perm)@.value.is_init(),
         ensures
             perm@.pcell === old(perm)@.pcell,
-            perm@.value === Option::None,
-            v === old(perm)@.value.get_Some_0(),
+            perm@.value === MemContents::Uninit,
+            v === old(perm)@.value.value(),
         opens_invariants none
         no_unwind
     {
@@ -211,11 +215,11 @@ impl<V> PCell<V> {
     pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm)@.pcell,
-            old(perm)@.value.is_Some(),
+            old(perm)@.value.is_init(),
         ensures
             perm@.pcell === old(perm)@.pcell,
-            perm@.value === Option::Some(in_v),
-            out_v === old(perm)@.value.get_Some_0(),
+            perm@.value === MemContents::Init(in_v),
+            out_v === old(perm)@.value.value(),
         opens_invariants none
         no_unwind
     {
@@ -234,9 +238,9 @@ impl<V> PCell<V> {
     pub fn borrow<'a>(&'a self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
             self.id() === perm@.pcell,
-            perm@.value.is_Some(),
+            perm@.value.is_init(),
         ensures
-            *v === perm@.value.get_Some_0(),
+            *v === perm@.value.value(),
         opens_invariants none
         no_unwind
     {
@@ -249,9 +253,9 @@ impl<V> PCell<V> {
     pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
         requires
             self.id() === perm@.pcell,
-            perm@.value.is_Some(),
+            perm@.value.is_init(),
         ensures
-            v === perm@.value.get_Some_0(),
+            v === perm@.value.value(),
         opens_invariants none
         no_unwind
     {
@@ -262,7 +266,7 @@ impl<V> PCell<V> {
     // however it requires unstable features: const_mut_refs and const_refs_to_cell
     //#[inline(always)]
     //pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
-    //    ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: Option::Some(v) }),
+    //    ensures (pt.1@@ === PointsToData{ pcell: pt.0.id(), value: MemContents::Init(v) }),
     //{
     //    let (p, Tracked(mut t)) = Self::empty();
     //    p.put(Tracked(&mut t), v);
@@ -277,10 +281,10 @@ impl<V: Copy> PCell<V> {
     pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
         requires
             self.id() === old(perm)@.pcell,
-            old(perm)@.value.is_Some(),
+            old(perm)@.value.is_init(),
         ensures
             perm@.pcell === old(perm)@.pcell,
-            perm@.value === Some(in_v),
+            perm@.value === MemContents::Init(in_v),
         opens_invariants none
         no_unwind
     {
@@ -294,8 +298,8 @@ impl<T> InvariantPredicate<(Set<T>, PCell<T>), PointsTo<T>> for InvCellPred {
     closed spec fn inv(k: (Set<T>, PCell<T>), perm: PointsTo<T>) -> bool {
         let (possible_values, pcell) = k;
         {
-            &&& perm@.value.is_Some()
-            &&& possible_values.contains(perm@.value.get_Some_0())
+            &&& perm@.value.is_init()
+            &&& possible_values.contains(perm@.value.value())
             &&& pcell.id() === perm@.pcell
         }
     }

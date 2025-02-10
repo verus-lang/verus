@@ -9,9 +9,9 @@ ghost struct EvenCell { }
 impl InvariantPredicate<CellId, PointsTo<u8>> for EvenCell {
     open spec fn inv(cell_id: CellId, points_to: PointsTo<u8>) -> bool {
         points_to.id() == cell_id
-          && (match points_to.opt_value() {
-              None => false,
-              Some(x) => x % 2 == 0,
+          && (match points_to.mem_contents() {
+              MemContents::Uninit => false,
+              MemContents::Init(x) => x % 2 == 0,
           })
     }
 }
