@@ -1,19 +1,16 @@
+#![allow(deprecated)]
+#![allow(unused_imports)]
+
 use core::cell::UnsafeCell;
 use core::marker;
 use core::{mem, mem::MaybeUninit};
 
-#[allow(unused_imports)]
 use super::invariant::*;
-#[allow(unused_imports)]
 use super::modes::*;
-#[allow(unused_imports)]
 use super::pervasive::*;
-#[allow(unused_imports)]
 use super::prelude::*;
 pub use super::raw_ptr::MemContents;
-#[allow(unused_imports)]
 use super::set::*;
-#[allow(unused_imports)]
 use super::*;
 
 verus! {
@@ -119,16 +116,21 @@ pub struct CellId {
 }
 
 impl<V> PointsTo<V> {
-    pub spec fn view(self) -> PointsToData<V>;
+    pub spec fn id(&self) -> CellId;
 
-    #[verifier::inline]
-    pub open spec fn id(&self) -> CellId {
-        self.view().pcell
+    pub spec fn mem_contents(&self) -> MemContents<V>;
+
+    #[cfg_attr(not(verus_verify_core), deprecated = "use id() and mem_contents() instead")]
+    pub open spec fn view(self) -> PointsToData<V> {
+        PointsToData { pcell: self.id(), value: self.mem_contents() }
     }
 
-    #[verifier::inline]
-    pub open spec fn mem_contents(&self) -> MemContents<V> {
-        self.view().value
+    #[cfg_attr(not(verus_verify_core), deprecated = "use mem_contents() instead")]
+    pub open spec fn opt_value(&self) -> Option<V> {
+        match self.mem_contents() {
+            MemContents::Init(value) => Some(value),
+            MemContents::Uninit => None,
+        }
     }
 
     #[verifier::inline]
