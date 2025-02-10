@@ -413,3 +413,23 @@ test_verify_one_file! {
         const A: usize = unimplemented!();
     } => Err(err) => assert_rust_error_msg(err, "evaluation of constant value failed")
 }
+
+test_verify_one_file! {
+    #[test] allow_external_body_const_regression_1322_1 verus_code! {
+        #[verifier::external]
+        const fn stuff() -> usize { 0 }
+
+        #[verifier(external_body)]
+        const A: usize = stuff();
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] allow_external_body_const_regression_1322_2 verus_code! {
+        #[verifier::external]
+        const fn stuff() -> usize { 0 }
+
+        #[verifier(external_body)]
+        const A: usize ensures 32 <= A <= 52 { stuff() }
+    } => Ok(())
+}

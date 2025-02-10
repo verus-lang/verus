@@ -1,5 +1,6 @@
 use crate::attributes::VerifierAttrs;
 use crate::context::Context;
+use crate::external::CrateItems;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, process_predicate_bounds,
 };
@@ -78,6 +79,7 @@ pub(crate) fn translate_trait<'tcx>(
     trait_items: &'tcx [TraitItemRef],
     trait_vattrs: &VerifierAttrs,
     external_info: &mut ExternalInfo,
+    crate_items: &CrateItems,
 ) -> Result<(), VirErr> {
     let tcx = ctxt.tcx;
     let orig_trait_path = def_id_to_vir_path(tcx, &ctxt.verus_items, trait_def_id);
@@ -202,9 +204,7 @@ pub(crate) fn translate_trait<'tcx>(
             Some(&mut *ctxt.diagnostics.borrow_mut()),
         )?;
 
-        let attrs = tcx.hir().attrs(trait_item.hir_id());
-        let vattrs = ctxt.get_verifier_attrs(attrs)?;
-        if vattrs.external {
+        if crate_items.is_trait_item_external(trait_item_ref.id) {
             return err_span(
                 *span,
                 "a trait item cannot be marked 'external' - perhaps you meant to mark the entire trait external?",
