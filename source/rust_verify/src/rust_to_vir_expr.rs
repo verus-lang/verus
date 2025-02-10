@@ -1430,6 +1430,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         }
                         // a statically resolved function
                         rustc_hir::def::Res::Def(_, def_id) => {
+                            // this is necessary because we seemingly are skipping the deprecation check
+                            // for free functions
+                            tcx.check_stability(def_id, Some(expr.hir_id), expr.span, None);
+
                             let args = args_slice.iter().collect();
                             Some(fn_call_to_vir(
                                 bctx,
