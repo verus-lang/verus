@@ -74,6 +74,7 @@ jobs:
     permissions:
       pages: write
       id-token: write
+    runs-on: ubuntu-latest
     steps:
       - name: deploy to github pages
         id: deployment
