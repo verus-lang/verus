@@ -775,6 +775,7 @@ pub(crate) fn check_item_fn<'tcx>(
                     pattern: new_binding_pat,
                     mode: Some(mode),
                     init: Some(new_init_expr),
+                    els: None,
                 },
             );
             mut_params_redecl.push(redecl);
