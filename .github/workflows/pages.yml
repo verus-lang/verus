@@ -64,7 +64,7 @@ jobs:
           destination: ./_site/verus
 
       - name: upload artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
 
   deploy:
     environment:
