@@ -1582,7 +1582,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             } else {
                 // Try to find the function's body
                 match ctx.fun_ssts.get(fun) {
-                    Some(func) if func.x.axioms.spec_axioms.is_some() => {
+                    Some(func)
+                        if func.x.axioms.spec_axioms.is_some() && func.x.kind.inline_okay() =>
+                    {
                         let memoize = func.x.attrs.memoize;
                         match state.lookup_call(&fun, &new_args, memoize) {
                             Some(prev_result) => {

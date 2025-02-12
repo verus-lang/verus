@@ -215,3 +215,32 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] default_impl_issue1407 verus_code! {
+        trait Tr {
+            #[verifier::inline]
+            spec fn foo(&self) -> bool { true }
+        }
+
+        struct X { }
+
+        impl Tr for X {
+            spec fn foo(&self) -> bool { false }
+        }
+
+        #[verifier::inline]
+        spec fn foo_wrapper_inlined<T: Tr>(t: &T) -> bool {
+            t.foo()
+        }
+
+        proof fn test4() {
+            let x = X { };
+            assert(foo_wrapper_inlined(&x)); // FAILS
+        }
+
+        proof fn test5<T: Tr>(t: &T) {
+            assert(foo_wrapper_inlined(t)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

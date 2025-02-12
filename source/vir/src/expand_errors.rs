@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, BinaryOpr, Dt, FieldOpr, Fun, Ident, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
+    BinaryOp, BinaryOpr, Dt, FieldOpr, Fun, FunctionKind, Ident, Quant, SpannedTyped, Typ, TypX,
+    Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
 };
 use crate::ast_to_sst::get_function_sst;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
@@ -899,6 +899,16 @@ fn can_inline_function(
     let uninterp_err = Err(Some("function is uninterpreted".to_string()));
     let foreign_module_err = Err(None);
     let type_err = Err(Some("not bool type".to_string()));
+
+    match &fun_to_inline.x.kind {
+        FunctionKind::Static | FunctionKind::TraitMethodImpl { .. } => {}
+        FunctionKind::TraitMethodDecl { .. } => {
+            return Err(Some("trait function (note: expand-errors is currently limited in its support for resolving generic trait functions)".to_string()));
+        }
+        FunctionKind::ForeignTraitMethodImpl { .. } => {
+            return Err(Some("Internal error: ForeignTraitMethodImpl".to_string()));
+        }
+    }
 
     let fun_owner = match &ctx.fun {
         Some(f) => get_function_sst(ctx, span, &f.current_fun).unwrap(),

@@ -24,7 +24,10 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
             let (fun, typs) =
                 if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };
             if let Some(func) = fun_ssts.get(fun) {
-                if func.x.attrs.inline && func.x.axioms.spec_axioms.is_some() {
+                if func.x.attrs.inline
+                    && func.x.axioms.spec_axioms.is_some()
+                    && func.x.kind.inline_okay()
+                {
                     let typ_params = &func.x.typ_params;
                     let pars = &func.x.pars;
                     let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;

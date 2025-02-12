@@ -1322,3 +1322,16 @@ pub struct KrateX {
     /// Arch info
     pub arch: Arch,
 }
+
+impl FunctionKind {
+    pub(crate) fn inline_okay(&self) -> bool {
+        match self {
+            FunctionKind::Static | FunctionKind::TraitMethodImpl { .. } => true,
+            // We don't want to do inlining for MethodDecls. If a MethodDecl has a body,
+            // it's a *default* body, so we can't know for sure it hasn't been overridden.
+            FunctionKind::TraitMethodDecl { .. } | FunctionKind::ForeignTraitMethodImpl { .. } => {
+                false
+            }
+        }
+    }
+}
