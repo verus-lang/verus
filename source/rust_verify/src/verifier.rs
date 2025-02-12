@@ -261,6 +261,7 @@ pub struct Verifier {
     /// this is the actual number of threads used for verification. This will be set to the
     /// minimum of the requested threads and the number of buckets to verify
     pub num_threads: usize,
+    pub encountered_error: bool,
     pub encountered_vir_error: bool,
     pub count_verified: u64,
     pub count_errors: u64,
@@ -402,6 +403,7 @@ impl Verifier {
     pub fn new(args: Args) -> Verifier {
         Verifier {
             num_threads: 1,
+            encountered_error: false,
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
@@ -437,6 +439,7 @@ impl Verifier {
     pub fn from_self(&self) -> Verifier {
         Verifier {
             num_threads: 1,
+            encountered_error: self.encountered_error,
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
@@ -2903,6 +2906,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     return;
                 }
                 if let Some(_guar) = compiler.sess.dcx().has_errors() {
+                    self.verifier.encountered_error = true;
                     return;
                 }
                 self.lifetime_start_time = Some(Instant::now());
@@ -2985,7 +2989,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             }
         });
-        if !self.verifier.args.output_json && !self.verifier.encountered_vir_error {
+        if !self.verifier.args.output_json
+            && !self.verifier.encountered_error
+            && !self.verifier.encountered_vir_error
+        {
             println!(
                 "verification results:: {} verified, {} errors{}",
                 self.verifier.count_verified,
