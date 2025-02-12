@@ -230,7 +230,7 @@ pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
 }
 
 // Compute and rewrite-recursive-calls
-pub(crate) fn elaborate_function2<'a, 'b, D: Diagnostics>(
+pub(crate) fn elaborate_function_rewrite_recursive<'a, 'b, D: Diagnostics>(
     ctx: &'a Ctx,
     diagnostics: &'b D,
     fun_ssts: SstMap,
