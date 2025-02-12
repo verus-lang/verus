@@ -735,11 +735,11 @@ pub broadcast proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
 {
 }
 
+// This verified lemma used to be an axiom in the Dafny prelude
 // Dafny encodes the second clause with a single directional, although
 // it should be fine with both directions?
-// This verified lemma used to be an axiom in the Dafny prelude
-// note: maybe excluded from broadcast group since trigger is too free?
-// but the proof in seq_lib requires this lemma
+// REVIEW: excluded from broadcast group if trigger is too free
+//         also not that some proofs in seq_lib requires this lemma
 /// Set `s` has length 0 if and only if it is equal to the empty set. If `s` has length greater than 0,
 /// Then there must exist an element `x` such that `s` contains `x`.
 pub broadcast proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
@@ -900,6 +900,8 @@ pub broadcast group group_set_properties {
     lemma_set_disjoint_lens,
     lemma_set_intersect_union_lens,
     lemma_set_difference_len,
+    // REVIEW: excluded from broadcast group if trigger is too free
+    //         also not that some proofs in seq_lib requires this lemma
     lemma_set_empty_equivalency_len,
 }
 
