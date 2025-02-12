@@ -900,8 +900,8 @@ pub broadcast group group_set_properties {
     lemma_set_disjoint_lens,
     lemma_set_intersect_union_lens,
     lemma_set_difference_len,
-    // REVIEW: excluded from broadcast group if trigger is too free
-    //         also not that some proofs in seq_lib requires this lemma
+    // REVIEW: exclude from broadcast group if trigger is too free
+    //         also note that some proofs in seq_lib requires this lemma
     lemma_set_empty_equivalency_len,
 }
 
