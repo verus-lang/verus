@@ -83,6 +83,7 @@ impl Printer {
                 self.expr_big_op(&expr.exprs.iter().map(|e| &e.expr).collect(), true)
             }
             Expr::Is(expr) => self.expr_is(expr),
+            Expr::Isnt(expr) => self.expr_isnt(expr),
             Expr::Has(expr) => self.expr_has(expr),
             Expr::GetField(expr) => self.expr_get_field(expr),
             Expr::Matches(m) => self.expr_matches(m),
@@ -117,6 +118,13 @@ impl Printer {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.base, FixupContext::NONE);
         self.word(" is ");
+        self.ident(&expr.variant_ident);
+    }
+
+    pub fn expr_isnt(&mut self, expr: &syn_verus::ExprIsnt) {
+        self.outer_attrs(&expr.attrs);
+        self.expr(&expr.base, FixupContext::NONE);
+        self.word(" isnt ");
         self.ident(&expr.variant_ident);
     }
 
