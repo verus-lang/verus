@@ -536,10 +536,6 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         syn_verus::visit::visit_item_macro(self, i);
     }
 
-    fn visit_item_macro2(&mut self, i: &'ast syn_verus::ItemMacro2) {
-        syn_verus::visit::visit_item_macro2(self, i);
-    }
-
     fn visit_item_mod(&mut self, i: &'ast syn_verus::ItemMod) {
         let exit = self.item_attr_enter(&i.attrs);
         if i.content.is_none() {
@@ -619,10 +615,6 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
 
     fn visit_lifetime(&mut self, i: &'ast syn_verus::Lifetime) {
         syn_verus::visit::visit_lifetime(self, i);
-    }
-
-    fn visit_lifetime_def(&mut self, i: &'ast syn_verus::LifetimeDef) {
-        syn_verus::visit::visit_lifetime_def(self, i);
     }
 
     fn visit_lit(&mut self, i: &'ast syn_verus::Lit) {
@@ -865,10 +857,6 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         syn_verus::visit::visit_meta_name_value(self, i);
     }
 
-    fn visit_method_turbofish(&mut self, i: &'ast syn_verus::MethodTurbofish) {
-        syn_verus::visit::visit_method_turbofish(self, i);
-    }
-
     fn visit_mode(&mut self, i: &'ast syn_verus::Mode) {
         syn_verus::visit::visit_mode(self, i);
     }
@@ -897,10 +885,6 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         syn_verus::visit::visit_mode_tracked(self, i);
     }
 
-    fn visit_nested_meta(&mut self, i: &'ast syn_verus::NestedMeta) {
-        syn_verus::visit::visit_nested_meta(self, i);
-    }
-
     fn visit_open(&mut self, i: &'ast syn_verus::Open) {
         syn_verus::visit::visit_open(self, i);
     }
@@ -920,40 +904,12 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         syn_verus::visit::visit_pat(self, i);
     }
 
-    fn visit_pat_box(&mut self, i: &'ast syn_verus::PatBox) {
-        syn_verus::visit::visit_pat_box(self, i);
-    }
-
     fn visit_pat_ident(&mut self, i: &'ast syn_verus::PatIdent) {
         syn_verus::visit::visit_pat_ident(self, i);
     }
 
-    fn visit_pat_lit(&mut self, i: &'ast syn_verus::PatLit) {
-        syn_verus::visit::visit_pat_lit(self, i);
-    }
-
-    fn visit_pat_macro(&mut self, i: &'ast syn_verus::PatMacro) {
-        syn_verus::visit::visit_pat_macro(self, i);
-    }
-
     fn visit_pat_or(&mut self, i: &'ast syn_verus::PatOr) {
         syn_verus::visit::visit_pat_or(self, i);
-    }
-
-    fn visit_pat_path(&mut self, i: &'ast syn_verus::PatPath) {
-        syn_verus::visit::visit_pat_path(self, i);
-    }
-
-    fn visit_pat_range(&mut self, i: &'ast syn_verus::PatRange) {
-        syn_verus::visit::visit_pat_range(self, i);
-    }
-
-    fn visit_pat_reference(&mut self, i: &'ast syn_verus::PatReference) {
-        syn_verus::visit::visit_pat_reference(self, i);
-    }
-
-    fn visit_pat_rest(&mut self, i: &'ast syn_verus::PatRest) {
-        syn_verus::visit::visit_pat_rest(self, i);
     }
 
     fn visit_pat_slice(&mut self, i: &'ast syn_verus::PatSlice) {
@@ -990,10 +946,6 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
 
     fn visit_path_segment(&mut self, i: &'ast syn_verus::PathSegment) {
         syn_verus::visit::visit_path_segment(self, i);
-    }
-
-    fn visit_predicate_eq(&mut self, i: &'ast syn_verus::PredicateEq) {
-        syn_verus::visit::visit_predicate_eq(self, i);
     }
 
     fn visit_predicate_lifetime(&mut self, i: &'ast syn_verus::PredicateLifetime) {
@@ -1081,8 +1033,13 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
                     }
                     return;
                 }
+                // let a = Ghost(...)
                 if let Some(right) = init {
-                    match &*right.1 {
+                    if right.diverge.is_some() {
+                        // the else branch of let
+                        warn("else branch in let currently not supported");
+                    }
+                    match &*right.expr {
                         syn_verus::Expr::Call(call_expr) => {
                             let syn_verus::ExprCall { attrs: _, func, paren_token: _, args: _ } =
                                 &*call_expr;
@@ -1139,7 +1096,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         syn_verus::visit::visit_trait_item_macro(self, i);
     }
 
-    fn visit_trait_item_method(&mut self, i: &'ast syn_verus::TraitItemFn) {
+    fn visit_trait_item_fn(&mut self, i: &'ast syn_verus::TraitItemFn) {
         let exit = self.item_attr_enter(&i.attrs);
         let content_code_kind = i.sig.mode.to_code_kind();
         let code_kind = self.mode_or_trusted(content_code_kind);
@@ -1151,7 +1108,7 @@ impl<'ast, 'f> syn_verus::visit::Visit<'ast> for Visitor<'f> {
         if let Some(default) = &i.default {
             self.visit_block(default);
         }
-        syn_verus::visit::visit_trait_item_method(self, i);
+        syn_verus::visit::visit_trait_item_fn(self, i);
         self.in_body = None;
         exit.exit(self);
     }
@@ -1215,7 +1172,7 @@ impl ItemAttrExit {
 impl<'f> Visitor<'f> {
     fn item_attr_enter(&mut self, attrs: &Vec<Attribute>) -> ItemAttrExit {
         for attr in attrs.iter() {
-            if let Ok(Meta::Path(path)) = attr.parse_meta() {
+            if let Meta::Path(path) = &attr.meta {
                 let mut path_iter = path.segments.iter();
                 match (path_iter.next(), path_iter.next(), path_iter.next()) {
                     (Some(first), Some(second), None)
@@ -1286,7 +1243,7 @@ impl<'f> Visitor<'f> {
                 }
             }
 
-            if attr.path.segments.first().map(|x| x.ident == "doc").unwrap_or(false) {
+            if attr.path().segments.first().map(|x| x.ident == "doc").unwrap_or(false) {
             } else {
                 self.mark(
                     &attr,
@@ -1305,11 +1262,19 @@ impl<'f> Visitor<'f> {
     }
 
     fn fn_code_kind(&self, kind: CodeKind) -> CodeKind {
-        if self.in_state_machine_macro > 0 { kind.join_prefer_left(CodeKind::Spec) } else { kind }
+        if self.in_state_machine_macro > 0 {
+            kind.join_prefer_left(CodeKind::Spec)
+        } else {
+            kind
+        }
     }
 
     fn mode_or_trusted(&self, kind: CodeKind) -> CodeKind {
-        if self.trusted > 0 { CodeKind::Trusted } else { kind }
+        if self.trusted > 0 {
+            CodeKind::Trusted
+        } else {
+            kind
+        }
     }
 
     fn handle_signature(
@@ -1494,8 +1459,8 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
         config: config.clone(),
     };
     for attr in file.attrs.iter() {
-        match attr.parse_meta() {
-            Ok(Meta::Path(path)) => {
+        match &attr.meta {
+            Meta::Path(path) => {
                 let mut path_iter = path.segments.iter();
                 match (path_iter.next(), path_iter.next()) {
                     (Some(first), Some(second))
@@ -1506,35 +1471,42 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
                     _ => {}
                 }
             }
-            Ok(Meta::List(MetaList { path, paren_token: _, nested })) => {
+            Meta::List(MetaList { path, delimiter: _, tokens }) => {
                 let mut path_iter = path.segments.iter();
                 match (path_iter.next(), path_iter.next()) {
                     (Some(first), None) if first.ident == "cfg_attr" => {
-                        let mut nested_iter = nested.iter();
-                        match (nested_iter.next(), nested_iter.next()) {
-                            (
-                                Some(syn_verus::NestedMeta::Meta(Meta::Path(first))),
-                                Some(syn_verus::NestedMeta::Meta(Meta::Path(second))),
-                            ) if first
-                                .segments
-                                .iter()
-                                .next()
-                                .as_ref()
-                                .map(|x| x.ident == "verus_keep_ghost")
-                                .unwrap_or(false) =>
-                            {
-                                let mut path_iter = second.segments.iter();
-                                match (path_iter.next(), path_iter.next()) {
-                                    (Some(first), Some(second))
-                                        if first.ident == "verus" && second.ident == "trusted" =>
-                                    {
-                                        visitor.trusted += 1;
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            _ => {}
-                        }
+                        dbg!(&attr);
+                        // TODO: attr.parse_nested_meta(|meta| {
+                        // TODO:     if !meta.path.is_ident("verus_keep_ghost") {
+                        // TODO:
+                        // TODO:     }
+                        // TODO:     let meta_path_iter = meta.path.segments.iter();
+                        // TODO:     match (nested_iter.next(), nested_iter.next()) {
+                        // TODO:         (
+                        // TODO:             Some(syn_verus::NestedMeta::Meta(Meta::Path(first))),
+                        // TODO:             Some(syn_verus::NestedMeta::Meta(Meta::Path(second))),
+                        // TODO:         ) if first
+                        // TODO:             .segments
+                        // TODO:             .iter()
+                        // TODO:             .next()
+                        // TODO:             .as_ref()
+                        // TODO:             .map(|x| x.ident == "verus_keep_ghost")
+                        // TODO:             .unwrap_or(false) =>
+                        // TODO:         {
+                        // TODO:             let mut path_iter = second.segments.iter();
+                        // TODO:             match (path_iter.next(), path_iter.next()) {
+                        // TODO:                 (Some(first), Some(second))
+                        // TODO:                     if first.ident == "verus" && second.ident == "trusted" =>
+                        // TODO:                 {
+                        // TODO:                     visitor.trusted += 1;
+                        // TODO:                 }
+                        // TODO:                 _ => {}
+                        // TODO:             }
+                        // TODO:         }
+                        // TODO:         _ => {}
+                        // TODO:     }
+                        // TODO:     Ok(())
+                        // TODO: });
                     }
                     _ => (),
                 }
@@ -1673,6 +1645,10 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
         }
     }
     Ok(file_stats)
+}
+
+fn warn(msg: &str) {
+    eprintln!("warning: {}", msg);
 }
 
 fn run(config: Config, deps_path: &std::path::Path) -> Result<(), String> {
