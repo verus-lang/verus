@@ -1378,7 +1378,13 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
     use rustc_middle::ty::{ConstKind, ScalarInt, ValTree};
     preds.retain(|p: &Clause<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
-            if in_trait && trait_ids.contains(&tp.trait_ref.def_id) && tp.trait_ref.args.len() >= 1
+            // Skip private trait bounds
+            let path = tcx.def_path_str(tp.trait_ref.def_id);
+            if path == "core::slice::index::private_slice_index::Sealed" {
+                false
+            } else if in_trait
+                && trait_ids.contains(&tp.trait_ref.def_id)
+                && tp.trait_ref.args.len() >= 1
             {
                 if let GenericArgKind::Type(ty) = tp.trait_ref.args[0].unpack() {
                     match ty.kind() {
