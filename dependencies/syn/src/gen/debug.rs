@@ -729,7 +729,7 @@ impl Debug for crate::Expr {
                 formatter.finish()
             }
             crate::Expr::Is(v0) => v0.debug(formatter, "Is"),
-            crate::Expr::Isnt(v0) => v0.debug(formatter, "Isnt"),
+            crate::Expr::IsNot(v0) => v0.debug(formatter, "IsNot"),
             crate::Expr::Has(v0) => v0.debug(formatter, "Has"),
             crate::Expr::Matches(v0) => v0.debug(formatter, "Matches"),
             crate::Expr::GetField(v0) => v0.debug(formatter, "GetField"),
@@ -1121,17 +1121,18 @@ impl crate::ExprIs {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl Debug for crate::ExprIsnt {
+impl Debug for crate::ExprIsNot {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        self.debug(formatter, "ExprIsnt")
+        self.debug(formatter, "ExprIsNot")
     }
 }
-impl crate::ExprIsnt {
+impl crate::ExprIsNot {
     fn debug(&self, formatter: &mut fmt::Formatter, name: &str) -> fmt::Result {
         let mut formatter = formatter.debug_struct(name);
         formatter.field("attrs", &self.attrs);
         formatter.field("base", &self.base);
-        formatter.field("isnt_token", &self.isnt_token);
+        formatter.field("bang_token", &self.bang_token);
+        formatter.field("is_token", &self.is_token);
         formatter.field("variant_ident", &self.variant_ident);
         formatter.finish()
     }

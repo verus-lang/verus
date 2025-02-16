@@ -749,7 +749,7 @@ impl Hash for crate::Expr {
                 state.write_u8(47u8);
                 v0.hash(state);
             }
-            crate::Expr::Isnt(v0) => {
+            crate::Expr::IsNot(v0) => {
                 state.write_u8(48u8);
                 v0.hash(state);
             }
@@ -1029,7 +1029,7 @@ impl Hash for crate::ExprIs {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
-impl Hash for crate::ExprIsnt {
+impl Hash for crate::ExprIsNot {
     fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,

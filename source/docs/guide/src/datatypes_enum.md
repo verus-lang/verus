@@ -19,7 +19,7 @@ enum a variable contains.
 {{#include ../../../rust_verify/example/guide/datatypes.rs:make_float}}
 ```
 
-The syntax `isnt` is a shorthand for `!(.. is ..)`.
+The syntax `!is` is a shorthand for `!(.. is ..)`.
 
 ## Accessing fields with the arrow operator
 
