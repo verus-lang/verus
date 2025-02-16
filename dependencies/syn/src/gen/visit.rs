@@ -272,8 +272,8 @@ pub trait Visit<'ast> {
     fn visit_expr_is(&mut self, i: &'ast crate::ExprIs) {
         visit_expr_is(self, i);
     }
-    fn visit_expr_isnt(&mut self, i: &'ast crate::ExprIsnt) {
-        visit_expr_isnt(self, i);
+    fn visit_expr_is_not(&mut self, i: &'ast crate::ExprIsNot) {
+        visit_expr_is_not(self, i);
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -1839,8 +1839,8 @@ where
         crate::Expr::Is(_binding_0) => {
             v.visit_expr_is(_binding_0);
         }
-        crate::Expr::Isnt(_binding_0) => {
-            v.visit_expr_isnt(_binding_0);
+        crate::Expr::IsNot(_binding_0) => {
+            v.visit_expr_is_not(_binding_0);
         }
         crate::Expr::Has(_binding_0) => {
             v.visit_expr_has(_binding_0);
@@ -2167,7 +2167,7 @@ where
     skip!(node.is_token);
     v.visit_ident(&*node.variant_ident);
 }
-pub fn visit_expr_isnt<'ast, V>(v: &mut V, node: &'ast crate::ExprIsnt)
+pub fn visit_expr_is_not<'ast, V>(v: &mut V, node: &'ast crate::ExprIsNot)
 where
     V: Visit<'ast> + ?Sized,
 {
@@ -2175,7 +2175,8 @@ where
         v.visit_attribute(it);
     }
     v.visit_expr(&*node.base);
-    skip!(node.isnt_token);
+    skip!(node.bang_token);
+    skip!(node.is_token);
     v.visit_ident(&*node.variant_ident);
 }
 #[cfg(feature = "full")]

@@ -70,7 +70,6 @@ a.struct[title="struct syn::token::Invariant"],
 a.struct[title="struct syn::token::InvariantEnsures"],
 a.struct[title="struct syn::token::InvariantExceptBreak"],
 a.struct[title="struct syn::token::Is"],
-a.struct[title="struct syn::token::Isnt"],
 a.struct[title="struct syn::token::LArrow"],
 a.struct[title="struct syn::token::Layout"],
 a.struct[title="struct syn::token::Le"],
@@ -229,7 +228,6 @@ a.struct[title="struct syn::token::Invariant"]::before,
 a.struct[title="struct syn::token::InvariantEnsures"]::before,
 a.struct[title="struct syn::token::InvariantExceptBreak"]::before,
 a.struct[title="struct syn::token::Is"]::before,
-a.struct[title="struct syn::token::Isnt"]::before,
 a.struct[title="struct syn::token::LArrow"]::before,
 a.struct[title="struct syn::token::Layout"]::before,
 a.struct[title="struct syn::token::Le"]::before,
@@ -603,10 +601,6 @@ a.struct[title="struct syn::token::InvariantExceptBreak"]::before {
 
 a.struct[title="struct syn::token::Is"]::before {
 	content: "Token![is]";
-}
-
-a.struct[title="struct syn::token::Isnt"]::before {
-	content: "Token![isnt]";
 }
 
 a.struct[title="struct syn::token::LArrow"]::before {
@@ -1067,7 +1061,6 @@ a.struct[title="struct syn::token::Implies"]::after,
 a.struct[title="struct syn::token::In"]::after,
 a.struct[title="struct syn::token::Invariant"]::after,
 a.struct[title="struct syn::token::Is"]::after,
-a.struct[title="struct syn::token::Isnt"]::after,
 a.struct[title="struct syn::token::Layout"]::after,
 a.struct[title="struct syn::token::Le"]::after,
 a.struct[title="struct syn::token::Let"]::after,

@@ -56,7 +56,7 @@ impl Dessert {
 fn make_float(bev: Beverage) -> Dessert
     requires bev is Soda
 {
-    assert(bev isnt Coffee);
+    assert(bev !is Coffee);
     Dessert::new(/*...*/)
 }
 // ANCHOR_END: make_float

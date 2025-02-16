@@ -553,7 +553,7 @@ mod whitespace;
 mod verus;
 pub use crate::verus::{
     Assert, AssertForall, Assume, AssumeSpecification, BigAnd, BigAndExpr, BigOr, BigOrExpr,
-    BroadcastUse, Closed, DataMode, Decreases, Ensures, ExprGetField, ExprHas, ExprIs, ExprIsnt,
+    BroadcastUse, Closed, DataMode, Decreases, Ensures, ExprGetField, ExprHas, ExprIs, ExprIsNot,
     ExprMatches, FnMode, Global, GlobalInner, GlobalLayout, GlobalSizeOf, Invariant,
     InvariantEnsures, InvariantExceptBreak, InvariantNameSet, InvariantNameSetAny,
     InvariantNameSetList, InvariantNameSetNone, InvariantNameSetSet, ItemBroadcastGroup, LoopSpec,

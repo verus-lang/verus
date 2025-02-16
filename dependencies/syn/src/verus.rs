@@ -410,10 +410,11 @@ ast_struct! {
 }
 
 ast_struct! {
-    pub struct ExprIsnt {
+    pub struct ExprIsNot {
         pub attrs: Vec<Attribute>,
         pub base: Box<Expr>,
-        pub isnt_token: Token![isnt],
+        pub bang_token: Token![!],
+        pub is_token: Token![is],
         pub variant_ident: Box<Ident>,
     }
 }
@@ -1818,11 +1819,12 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
-    impl ToTokens for ExprIsnt {
+    impl ToTokens for ExprIsNot {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             outer_attrs_to_tokens(&self.attrs, tokens);
             self.base.to_tokens(tokens);
-            self.isnt_token.to_tokens(tokens);
+            self.bang_token.to_tokens(tokens);
+            self.is_token.to_tokens(tokens);
             self.variant_ident.to_tokens(tokens);
         }
     }

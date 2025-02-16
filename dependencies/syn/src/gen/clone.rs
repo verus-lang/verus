@@ -461,7 +461,7 @@ impl Clone for crate::Expr {
             crate::Expr::BigAnd(v0) => crate::Expr::BigAnd(v0.clone()),
             crate::Expr::BigOr(v0) => crate::Expr::BigOr(v0.clone()),
             crate::Expr::Is(v0) => crate::Expr::Is(v0.clone()),
-            crate::Expr::Isnt(v0) => crate::Expr::Isnt(v0.clone()),
+            crate::Expr::IsNot(v0) => crate::Expr::IsNot(v0.clone()),
             crate::Expr::Has(v0) => crate::Expr::Has(v0.clone()),
             crate::Expr::Matches(v0) => crate::Expr::Matches(v0.clone()),
             crate::Expr::GetField(v0) => crate::Expr::GetField(v0.clone()),
@@ -730,12 +730,13 @@ impl Clone for crate::ExprIs {
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
-impl Clone for crate::ExprIsnt {
+impl Clone for crate::ExprIsNot {
     fn clone(&self) -> Self {
-        crate::ExprIsnt {
+        crate::ExprIsNot {
             attrs: self.attrs.clone(),
             base: self.base.clone(),
-            isnt_token: self.isnt_token.clone(),
+            bang_token: self.bang_token.clone(),
+            is_token: self.is_token.clone(),
             variant_ident: self.variant_ident.clone(),
         }
     }

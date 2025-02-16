@@ -554,11 +554,11 @@ proof fn uses_is(t: ThisOrThat) {
     match t {
         ThisOrThat::This(..) => {
             assert(t is This);
-            assert(t isnt That);
+            assert(t !is That);
         },
         ThisOrThat::That { .. } => {
             assert(t is That);
-            assert(t isnt This);
+            assert(t !is This);
         },
     }
 }

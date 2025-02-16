@@ -1883,7 +1883,7 @@ impl Visitor {
             Expr::Index(_)
                 | Expr::View(_)
                 | Expr::Is(_)
-                | Expr::Isnt(_)
+                | Expr::IsNot(_)
                 | Expr::Has(_)
                 | Expr::Matches(_)
                 | Expr::GetField(_)
@@ -1932,11 +1932,12 @@ impl Visitor {
                     quote_spanned_builtin!(builtin, span => #builtin::is_variant(#base, #variant_str)),
                 );
             }
-            Expr::Isnt(isnt_) => {
-                let _isnt_token = isnt_.isnt_token;
-                let span = isnt_.span();
-                let base = isnt_.base;
-                let variant_str = isnt_.variant_ident.to_string();
+            Expr::IsNot(isnot_) => {
+                let _bang_token = isnot_.bang_token;
+                let _is_token = isnot_.is_token;
+                let span = isnot_.span();
+                let base = isnot_.base;
+                let variant_str = isnot_.variant_ident.to_string();
                 *expr = Expr::Verbatim(
                     quote_spanned_builtin!(builtin, span => !(#builtin::is_variant(#base, #variant_str))),
                 );

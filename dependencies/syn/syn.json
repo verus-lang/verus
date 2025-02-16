@@ -1321,9 +1321,9 @@
             "syn": "ExprIs"
           }
         ],
-        "Isnt": [
+        "IsNot": [
           {
-            "syn": "ExprIsnt"
+            "syn": "ExprIsNot"
           }
         ],
         "Has": [
@@ -1991,7 +1991,7 @@
       }
     },
     {
-      "ident": "ExprIsnt",
+      "ident": "ExprIsNot",
       "features": {
         "any": []
       },
@@ -2006,8 +2006,11 @@
             "syn": "Expr"
           }
         },
-        "isnt_token": {
-          "token": "Isnt"
+        "bang_token": {
+          "token": "Not"
+        },
+        "is_token": {
+          "token": "Is"
         },
         "variant_ident": {
           "box": {
@@ -7370,7 +7373,6 @@
     "InvariantEnsures": "invariant_ensures",
     "InvariantExceptBreak": "invariant_except_break",
     "Is": "is",
-    "Isnt": "isnt",
     "LArrow": "<-",
     "Layout": "layout",
     "Le": "<=",

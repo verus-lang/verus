@@ -402,7 +402,7 @@ pub(crate) mod parsing {
                 | Expr::BigAnd(_)
                 | Expr::BigOr(_)
                 | Expr::Is(_)
-                | Expr::Isnt(_)
+                | Expr::IsNot(_)
                 | Expr::Has(_)
                 | Expr::Matches(_)
                 | Expr::GetField(_) => break,

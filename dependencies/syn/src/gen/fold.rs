@@ -282,8 +282,8 @@ pub trait Fold {
     fn fold_expr_is(&mut self, i: crate::ExprIs) -> crate::ExprIs {
         fold_expr_is(self, i)
     }
-    fn fold_expr_isnt(&mut self, i: crate::ExprIsnt) -> crate::ExprIsnt {
-        fold_expr_isnt(self, i)
+    fn fold_expr_is_not(&mut self, i: crate::ExprIsNot) -> crate::ExprIsNot {
+        fold_expr_is_not(self, i)
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -1832,7 +1832,9 @@ where
         }
         crate::Expr::BigOr(_binding_0) => crate::Expr::BigOr(f.fold_big_or(_binding_0)),
         crate::Expr::Is(_binding_0) => crate::Expr::Is(f.fold_expr_is(_binding_0)),
-        crate::Expr::Isnt(_binding_0) => crate::Expr::Isnt(f.fold_expr_isnt(_binding_0)),
+        crate::Expr::IsNot(_binding_0) => {
+            crate::Expr::IsNot(f.fold_expr_is_not(_binding_0))
+        }
         crate::Expr::Has(_binding_0) => crate::Expr::Has(f.fold_expr_has(_binding_0)),
         crate::Expr::Matches(_binding_0) => {
             crate::Expr::Matches(f.fold_expr_matches(_binding_0))
@@ -2123,14 +2125,15 @@ where
         variant_ident: Box::new(f.fold_ident(*node.variant_ident)),
     }
 }
-pub fn fold_expr_isnt<F>(f: &mut F, node: crate::ExprIsnt) -> crate::ExprIsnt
+pub fn fold_expr_is_not<F>(f: &mut F, node: crate::ExprIsNot) -> crate::ExprIsNot
 where
     F: Fold + ?Sized,
 {
-    crate::ExprIsnt {
+    crate::ExprIsNot {
         attrs: f.fold_attributes(node.attrs),
         base: Box::new(f.fold_expr(*node.base)),
-        isnt_token: node.isnt_token,
+        bang_token: node.bang_token,
+        is_token: node.is_token,
         variant_ident: Box::new(f.fold_ident(*node.variant_ident)),
     }
 }
