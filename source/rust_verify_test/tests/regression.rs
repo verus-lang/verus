@@ -249,7 +249,7 @@ test_verify_one_file! {
 
             verus!{
                 mod X {
-                    pub open spec fn foo();
+                    pub spec fn foo();
                 }
 
                 proof fn some_proof_fn() {
@@ -844,7 +844,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] assert_forall_trigger_regression_824 verus_code! {
         use vstd::seq::Seq;
-        pub open spec fn f(x: u32) -> bool;
+        pub spec fn f(x: u32) -> bool;
 
         proof fn test(a: Seq<u32>)
             requires forall |i| #![trigger f(a[i])] f(a[i]),

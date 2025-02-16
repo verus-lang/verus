@@ -1210,10 +1210,7 @@ test_verify_one_file! {
     #[test] for_loop_vec_custom_iterator verus_code! {
         use vstd::prelude::*;
 
-        #[verifier::external_body]
-        pub closed spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V> {
-            core::marker::PhantomData::default()
-        }
+        pub spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V>;
 
         pub struct VecIterCopy<'a, T: 'a> {
             pub vec: &'a Vec<T>,

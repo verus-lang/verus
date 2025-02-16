@@ -3,7 +3,7 @@ use crate::ast::{
     Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
 };
 use crate::ast_to_sst::get_function_sst;
-use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
+use crate::ast_util::{is_transparent_to, is_visible_to, type_is_bool, undecorate_typ};
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -895,7 +895,7 @@ fn can_inline_function(
 ) -> Result<Option<usize>, Option<String>> {
     let opaque_err = Err(Some("function is opaque".to_string()));
     let hidden_err = Err(Some("function is hidden".to_string()));
-    let closed_err = Err(Some("function is closed".to_string()));
+    let closed_err = Err(Some("function is closed (body is not visible here)".to_string()));
     let uninterp_err = Err(Some("function is uninterpreted".to_string()));
     let foreign_module_err = Err(None);
     let type_err = Err(Some("not bool type".to_string()));
@@ -907,6 +907,21 @@ fn can_inline_function(
         }
         FunctionKind::ForeignTraitMethodImpl { .. } => {
             return Err(Some("Internal error: ForeignTraitMethodImpl".to_string()));
+        }
+    }
+
+    let body = match fun_to_inline.x.axioms.spec_axioms.as_ref() {
+        Some(body) => body,
+        None => {
+            return uninterp_err;
+        }
+    };
+
+    if !crate::ast_util::is_visible_to_of_owner(&fun_to_inline.x.owning_module, &ctx.module.x.path)
+    {
+        // if the target inline function is outside this module, track `open` `closed` at module boundaries
+        if !is_visible_to(&fun_to_inline.x.body_visibility, &ctx.module.x.path) {
+            return closed_err;
         }
     }
 
@@ -923,7 +938,8 @@ fn can_inline_function(
         return Err(Some("reached fuel limit for recursion".to_string()));
     }
 
-    let mut fuel = fun_to_inline.x.fuel;
+    let mut fuel =
+        fun_to_inline.x.fuel_opaqueness.get_fuel_for_module(&fun_to_inline.x.name, &ctx.module);
     let mut hidden = false;
 
     let fs_to_hide = &fun_owner.x.attrs.hidden;
@@ -950,29 +966,6 @@ fn can_inline_function(
     } else {
         if fun_to_inline.x.owning_module.is_none() {
             return foreign_module_err;
-        }
-
-        let body = match fun_to_inline.x.axioms.spec_axioms.as_ref() {
-            Some(body) => body,
-            None => {
-                return uninterp_err;
-            }
-        };
-        if !crate::ast_util::is_visible_to_of_owner(
-            &fun_to_inline.x.owning_module,
-            &ctx.module.x.path,
-        ) {
-            // if the target inline function is outside this module, track `open` `closed` at module boundaries
-            match fun_to_inline.x.publish {
-                Some(b) => {
-                    if !b {
-                        return opaque_err;
-                    }
-                }
-                None => {
-                    return closed_err;
-                }
-            };
         }
 
         // Note: this should never happen

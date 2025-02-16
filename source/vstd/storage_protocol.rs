@@ -129,9 +129,9 @@ pub open spec fn set_op<K, V, P: Protocol<K, V>>(s: Set<(P, Map<K, V>)>, t: P) -
 }
 
 impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
-    pub open spec fn value(self) -> P;
+    pub spec fn value(self) -> P;
 
-    pub open spec fn loc(self) -> Loc;
+    pub spec fn loc(self) -> Loc;
 
     #[verifier::external_body]
     pub proof fn alloc(p: P, tracked s: Map<K, V>) -> (tracked out: Self)

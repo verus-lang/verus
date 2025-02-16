@@ -612,9 +612,10 @@ where
         proxy: _,
         kind: _,
         visibility: _,
+        body_visibility: _,
+        fuel_opaqueness: _,
         owning_module: _,
         mode: _,
-        fuel: _,
         typ_params: _,
         typ_bounds: _,
         params,
@@ -630,7 +631,6 @@ where
         mask_spec,
         unwind_spec,
         item_kind: _,
-        publish: _,
         attrs: _,
         body,
         extra_dependencies: _,
@@ -1208,9 +1208,10 @@ where
         proxy,
         kind,
         visibility,
+        body_visibility,
+        fuel_opaqueness,
         owning_module,
         mode,
-        fuel,
         typ_params,
         typ_bounds,
         params,
@@ -1226,7 +1227,6 @@ where
         mask_spec,
         unwind_spec,
         item_kind,
-        publish,
         attrs,
         body,
         extra_dependencies,
@@ -1260,9 +1260,10 @@ where
         }
     };
     let visibility = visibility.clone();
+    let body_visibility = body_visibility.clone();
+    let fuel_opaqueness = fuel_opaqueness.clone();
     let owning_module = owning_module.clone();
     let mode = *mode;
-    let fuel = *fuel;
     let typ_bounds = map_generic_bounds_visitor(typ_bounds, env, ft)?;
     map.push_scope(true);
     let params = map_params_visitor(params, env, ft)?;
@@ -1320,7 +1321,6 @@ where
     let attrs = attrs.clone();
     let extra_dependencies = extra_dependencies.clone();
     let item_kind = *item_kind;
-    let publish = *publish;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
 
@@ -1340,9 +1340,10 @@ where
         proxy,
         kind,
         visibility,
+        body_visibility,
+        fuel_opaqueness,
         owning_module,
         mode,
-        fuel,
         typ_params: typ_params.clone(),
         typ_bounds,
         params,
@@ -1358,7 +1359,6 @@ where
         mask_spec,
         unwind_spec,
         item_kind,
-        publish,
         attrs,
         body,
         extra_dependencies,

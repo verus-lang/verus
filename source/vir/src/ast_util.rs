@@ -1,10 +1,10 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
-    FieldOpr, Fun, FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, HeaderExprX, Ident,
-    InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Param, ParamX, Params,
-    Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg,
-    TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent,
-    Variant, Variants, Visibility,
+    FieldOpr, FuelOpaqueness, Fun, FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX,
+    HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode,
+    Module, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ,
+    TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder,
+    VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -424,10 +424,6 @@ pub fn is_visible_to_or_true(target_visibility: &Visibility, source_module: &Opt
 }
 
 impl Visibility {
-    pub(crate) fn is_private_to(&self, module: &Option<Path>) -> bool {
-        module.is_some() && module == &self.restricted_to
-    }
-
     pub fn is_public(&self) -> bool {
         matches!(self, Visibility { restricted_to: None })
     }
@@ -447,6 +443,24 @@ impl Visibility {
                 let m = std::cmp::min(p1.segments.len(), p2.segments.len());
                 assert!(&p1.segments[..m] == &p2.segments[..m]);
                 if p1.segments.len() < p2.segments.len() { vis2.clone() } else { self.clone() }
+            }
+        }
+    }
+
+    pub fn at_least_as_restrictive_as(&self, vis2: &Visibility) -> bool {
+        match (&self.restricted_to, &vis2.restricted_to) {
+            (_, None) => true,
+            (None, Some(_)) => false,
+            (Some(p1), Some(p2)) => {
+                if p1.krate != p2.krate {
+                    return false;
+                }
+                if p1.segments.len() >= p2.segments.len() {
+                    let m = p2.segments.len();
+                    &p1.segments[..m] == &p2.segments[..m]
+                } else {
+                    false
+                }
             }
         }
     }
@@ -1046,5 +1060,45 @@ impl HeaderExprX {
 impl Default for crate::ast::AutoExtEqual {
     fn default() -> Self {
         crate::ast::AutoExtEqual { assert: true, assert_by: false, ensures: false }
+    }
+}
+
+impl FuelOpaqueness {
+    /// Default fuel for the given function viewed from the given module,
+    /// only accounting for the visibility signifier on the function,
+    /// i.e., NOT accounting for any extra reveals in the module.
+    /// The module-reveals are accounted for in the prune phase and the result
+    /// is saved in the 'fuel_for_this_module' field.
+    pub fn get_default_fuel_for_module_path(&self, module_path: &Path) -> u32 {
+        match self {
+            FuelOpaqueness::Opaque => 0,
+            FuelOpaqueness::Revealed { visibility, fuel } => {
+                if is_visible_to(visibility, module_path) { *fuel } else { 0 }
+            }
+        }
+    }
+
+    /// Default fuel for the given function viewed from the given module,
+    /// accounting for the visibility signifier on the function,
+    /// as well as any extra reveals in the module.
+    pub fn get_fuel_for_module(&self, name: &Fun, module: &Module) -> u32 {
+        let f = self.get_default_fuel_for_module_path(&module.x.path);
+        if f > 0 {
+            return f;
+        }
+        let revealed = if let Some(reveals) = &module.x.reveals {
+            reveals.x.iter().any(|r| r == name)
+        } else {
+            false
+        };
+
+        if revealed {
+            match self {
+                FuelOpaqueness::Opaque => 1,
+                FuelOpaqueness::Revealed { visibility: _, fuel } => *fuel,
+            }
+        } else {
+            f
+        }
     }
 }

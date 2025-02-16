@@ -1,10 +1,10 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX, FieldOpr, Fun,
-    Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, Trait, TypX, UnaryOp, UnaryOpr,
-    UnwindSpec, VirErr, VirErrAs,
+    CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX, FieldOpr,
+    FuelOpaqueness, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, Trait, TypX,
+    UnaryOp, UnaryOpr, UnwindSpec, VirErr, VirErrAs,
 };
 use crate::ast_util::{
-    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to_of_owner, is_visible_to_opt,
+    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to, is_visible_to_opt,
     path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
     undecorate_typ,
 };
@@ -436,8 +436,7 @@ fn check_one_expr(
                     ));
                 }
                 if let Some(my_module) = &function.x.owning_module {
-                    if f.x.publish == None && !is_visible_to_of_owner(&f.x.owning_module, my_module)
-                    {
+                    if !is_visible_to(&f.x.body_visibility, my_module) {
                         return Err(error(
                             &expr.span,
                             format!(
@@ -615,9 +614,8 @@ fn check_function(
             return Err(error(&function.span, "'inline' is only allowed for 'spec' functions"));
         }
         // make sure we don't leak private bodies by inlining
-        if !function.x.visibility.is_private_to(&function.x.owning_module)
-            && function.x.publish != Some(true)
-        {
+        if function.x.visibility != function.x.body_visibility {
+            // TODO error message could be improved
             return Err(error(
                 &function.span,
                 "'inline' is only allowed for private or 'open spec' functions",
@@ -828,24 +826,27 @@ fn check_function(
         }
     }
 
-    if function.x.publish.is_some() && function.x.mode != Mode::Spec {
-        return Err(error(
-            &function.span,
-            "function is marked `open` but it is not a `spec` function",
-        ));
-    }
-
     if function.x.is_main() && function.x.mode != Mode::Exec {
         return Err(error(&function.span, "`main` function should be #[verifier::exec]"));
     }
 
-    if function.x.publish.is_some()
-        && function.x.visibility.is_private_to(&function.x.owning_module)
-    {
+    // These should be true by construction in Rust->VIR; sanity check them here.
+    if !function.x.body_visibility.at_least_as_restrictive_as(&function.x.visibility) {
         return Err(error(
             &function.span,
-            "function is marked `open` but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible",
+            "the function body is more public than the function itself",
         ));
+    }
+    match &function.x.fuel_opaqueness {
+        FuelOpaqueness::Opaque => {}
+        FuelOpaqueness::Revealed { visibility, fuel: _ } => {
+            if !visibility.at_least_as_restrictive_as(&function.x.body_visibility) {
+                return Err(error(
+                    &function.span,
+                    "the function reveal scope is more public the function body",
+                ));
+            }
+        }
     }
 
     for req in function.x.require.iter() {
@@ -964,12 +965,11 @@ fn check_function(
 
     if let Some(body) = &function.x.body {
         // Check that public, non-abstract spec function bodies don't refer to private items:
-        let disallow_private_access = match (&function.x.publish, function.x.mode) {
-            (Some(_), Mode::Spec) => {
-                let msg = "pub open spec function";
-                Some((&function.x.visibility.restricted_to, msg))
-            }
-            _ => None,
+        let disallow_private_access = if function.x.mode == Mode::Spec {
+            let msg = "pub open spec function";
+            Some((&function.x.body_visibility.restricted_to, msg))
+        } else {
+            None
         };
         check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState, diags)?;
     }
@@ -1319,9 +1319,6 @@ pub fn check_crate(
                 &spec_function,
                 &function,
             )?;
-        }
-        if function.x.body.is_none() && function.x.fuel == 0 {
-            return Err(error(&function.span, "opaque has no effect on a function without a body"));
         }
         if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             if function.x.body.is_some() {

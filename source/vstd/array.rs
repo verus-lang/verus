@@ -86,7 +86,7 @@ pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
     admit();
 }
 
-pub open spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
+pub spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
 
 pub broadcast proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
     ensures

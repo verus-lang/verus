@@ -67,7 +67,7 @@ pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
 }
 
 ////// Len (with autospec)
-pub open spec fn spec_slice_len<T>(slice: &[T]) -> usize;
+pub spec fn spec_slice_len<T>(slice: &[T]) -> usize;
 
 // This axiom is slightly better than defining spec_slice_len to just be `slice@.len() as usize`
 // (the axiom also shows that slice@.len() is in-bounds for usize)
