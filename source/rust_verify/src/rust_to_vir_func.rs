@@ -1947,12 +1947,6 @@ fn get_body_visibility_and_fuel(
         // These don't matter for non-spec functions
         Ok((private_vis, FuelOpaqueness::Opaque))
     } else if !has_body {
-        if publish == Some(true) {
-            return err_span(span, "function is marked `open` but it has no body");
-        }
-        if publish == Some(false) {
-            return err_span(span, "function is marked `closed` but it has no body");
-        }
         if opaque || opaque_outside_module {
             return err_span(span, "opaque has no effect on a function without a body");
         }
