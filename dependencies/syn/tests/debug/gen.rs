@@ -6994,6 +6994,11 @@ impl Debug for Lite<syn::token::Is> {
         formatter.write_str("Token![is]")
     }
 }
+impl Debug for Lite<syn::token::IsNot> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![! is]")
+    }
+}
 impl Debug for Lite<syn::token::LArrow> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![<-]")

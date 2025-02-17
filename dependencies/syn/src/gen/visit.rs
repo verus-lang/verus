@@ -2175,8 +2175,7 @@ where
         v.visit_attribute(it);
     }
     v.visit_expr(&*node.base);
-    skip!(node.bang_token);
-    skip!(node.is_token);
+    skip!(node.is_not_token);
     v.visit_ident(&*node.variant_ident);
 }
 #[cfg(feature = "full")]

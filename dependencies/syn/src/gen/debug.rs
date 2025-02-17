@@ -1131,8 +1131,7 @@ impl crate::ExprIsNot {
         let mut formatter = formatter.debug_struct(name);
         formatter.field("attrs", &self.attrs);
         formatter.field("base", &self.base);
-        formatter.field("bang_token", &self.bang_token);
-        formatter.field("is_token", &self.is_token);
+        formatter.field("is_not_token", &self.is_not_token);
         formatter.field("variant_ident", &self.variant_ident);
         formatter.finish()
     }

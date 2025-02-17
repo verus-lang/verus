@@ -25,8 +25,8 @@ use crate::ty::ReturnType;
 use crate::ty::Type;
 use crate::verus::{
     Assert, AssertForall, Assume, BigAnd, BigOr, Decreases, Ensures, ExprGetField, ExprHas, ExprIs,
-    ExprIsNot, ExprMatches, Invariant, InvariantEnsures, InvariantExceptBreak, Requires, RevealHide,
-    View,
+    ExprIsNot, ExprMatches, Invariant, InvariantEnsures, InvariantExceptBreak, Requires,
+    RevealHide, View,
 };
 use proc_macro2::{Span, TokenStream};
 #[cfg(feature = "printing")]
@@ -1474,15 +1474,13 @@ pub(crate) mod parsing {
                     is_token,
                     variant_ident,
                 });
-            } else if Precedence::HasIsMatches >= base && input.peek(Token![!]) && input.peek2(Token![is]) {
-                let bang_token: Token![!] = input.parse()?;
-                let is_token: Token![is] = input.parse()?;
+            } else if Precedence::HasIsMatches >= base && input.peek(Token![isnt]) {
+                let is_not_token: Token![isnt] = input.parse()?;
                 let variant_ident = input.parse()?;
                 lhs = Expr::IsNot(ExprIsNot {
                     attrs: Vec::new(),
                     base: Box::new(lhs),
-                    bang_token,
-                    is_token,
+                    is_not_token,
                     variant_ident,
                 });
             } else if Precedence::HasIsMatches >= base && input.peek(Token![has]) {
@@ -1586,7 +1584,7 @@ pub(crate) mod parsing {
             return Precedence::Assign;
         }
         if input.peek(Token![is])
-            || input.peek(Token![!]) && input.peek2(Token![is])
+            || input.peek(Token![isnt])
             || input.peek(Token![has])
             || input.peek(Token![matches])
         {
@@ -1680,7 +1678,10 @@ pub(crate) mod parsing {
                     expr,
                 }))
             }
-        } else if input.peek(Token![*]) || input.peek(Token![-]) || (input.peek(Token![!]) && !input.peek2(Token![is])) {
+        } else if input.peek(Token![*])
+            || input.peek(Token![-])
+            || (input.peek(Token![!]) && !input.peek2(Token![is]))
+        {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)
         } else if input.peek(Token![proof]) && input.peek2(token::Brace) {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)

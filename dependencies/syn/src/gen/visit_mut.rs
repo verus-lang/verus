@@ -2121,8 +2121,7 @@ where
 {
     v.visit_attributes_mut(&mut node.attrs);
     v.visit_expr_mut(&mut *node.base);
-    skip!(node.bang_token);
-    skip!(node.is_token);
+    skip!(node.is_not_token);
     v.visit_ident_mut(&mut *node.variant_ident);
 }
 #[cfg(feature = "full")]

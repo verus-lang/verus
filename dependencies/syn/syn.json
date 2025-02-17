@@ -2006,11 +2006,8 @@
             "syn": "Expr"
           }
         },
-        "bang_token": {
-          "token": "Not"
-        },
-        "is_token": {
-          "token": "Is"
+        "is_not_token": {
+          "token": "IsNot"
         },
         "variant_ident": {
           "box": {
@@ -7373,6 +7370,7 @@
     "InvariantEnsures": "invariant_ensures",
     "InvariantExceptBreak": "invariant_except_break",
     "Is": "is",
+    "IsNot": "! is",
     "LArrow": "<-",
     "Layout": "layout",
     "Le": "<=",

@@ -2132,8 +2132,7 @@ where
     crate::ExprIsNot {
         attrs: f.fold_attributes(node.attrs),
         base: Box::new(f.fold_expr(*node.base)),
-        bang_token: node.bang_token,
-        is_token: node.is_token,
+        is_not_token: node.is_not_token,
         variant_ident: Box::new(f.fold_ident(*node.variant_ident)),
     }
 }

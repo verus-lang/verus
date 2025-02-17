@@ -413,8 +413,7 @@ ast_struct! {
     pub struct ExprIsNot {
         pub attrs: Vec<Attribute>,
         pub base: Box<Expr>,
-        pub bang_token: Token![!],
-        pub is_token: Token![is],
+        pub is_not_token: Token![isnt],
         pub variant_ident: Box<Ident>,
     }
 }
@@ -1823,8 +1822,7 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             outer_attrs_to_tokens(&self.attrs, tokens);
             self.base.to_tokens(tokens);
-            self.bang_token.to_tokens(tokens);
-            self.is_token.to_tokens(tokens);
+            self.is_not_token.to_tokens(tokens);
             self.variant_ident.to_tokens(tokens);
         }
     }
