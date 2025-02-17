@@ -1803,7 +1803,7 @@ pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_
         let a = l1.last();
         let i = l2.index_of(a);
         let l2r = l2.subrange(i + 1, l2.len() as int).fold_right(f, v);
-        
+
         assert(l1.to_multiset().count(a) > 0);
         l1.drop_last().lemma_fold_right_commute_one(a, f, v);
         l2.subrange(0, i).lemma_fold_right_commute_one(a, f, l2r);
