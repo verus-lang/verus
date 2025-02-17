@@ -1434,8 +1434,7 @@ pub broadcast proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
 /// to_multiset() preserves length
 pub broadcast proof fn to_multiset_len<A>(s: Seq<A>)
     ensures
-        #[trigger s.to_multiset().len()]
-        s.len() == s.to_multiset().len(),
+        s.len() == #[trigger] s.to_multiset().len(),
     decreases s.len(),
 {
     broadcast use super::multiset::group_multiset_axioms;
@@ -1802,10 +1801,11 @@ pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_
 
     if l1.len() > 0 {
         let a = l1.last();
+        assert(l1.to_multiset().count(a) > 0);
+        assert(l1.contains(a));
         let i = l2.index_of(a);
         let l2r = l2.subrange(i + 1, l2.len() as int).fold_right(f, v);
 
-        assert(l1.to_multiset().count(a) > 0);
         l1.drop_last().lemma_fold_right_commute_one(a, f, v);
         l2.subrange(0, i).lemma_fold_right_commute_one(a, f, l2r);
 
@@ -1822,6 +1822,8 @@ pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_
         ));
 
         lemma_fold_right_permutation(l1.drop_last(), l2.remove(i), f, v);
+    } else {
+        assert(l2.to_multiset().len() == 0);
     }
 }
 
