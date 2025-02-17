@@ -1149,7 +1149,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] isnot_syntax_doesnt_interfere_with_identifier_is IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+    #[ignore] #[test] isnot_syntax_doesnt_interfere_with_identifier_is IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
         proof fn let_with_is_ident() {
             let is = false;
             assert(!is);

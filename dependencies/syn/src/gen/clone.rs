@@ -735,8 +735,7 @@ impl Clone for crate::ExprIsNot {
         crate::ExprIsNot {
             attrs: self.attrs.clone(),
             base: self.base.clone(),
-            bang_token: self.bang_token.clone(),
-            is_token: self.is_token.clone(),
+            is_not_token: self.is_not_token.clone(),
             variant_ident: self.variant_ident.clone(),
         }
     }
