@@ -374,7 +374,7 @@ fn get_substs_early<'tcx>(
     let substs = match ty.kind() {
         rustc_middle::ty::FnDef(_, substs) => substs,
         _ => {
-            return err_span(span, "Verus internal error: expected FnDef");
+            crate::internal_err!(span, "expected FnDef")
         }
     };
     if let Some(host_effect_index) = generics.host_effect_index {
@@ -1640,7 +1640,7 @@ pub(crate) fn get_external_def_id<'tcx>(
                 );
             }
             Err(_) => {
-                return err_span(sig.span, "Verus internal error: expected InstanceDef::Item");
+                crate::internal_err!(sig.span, "expected InstanceDef::Item")
             }
         }
     } else {
