@@ -832,19 +832,19 @@ fn check_function(
 
     // These should be true by construction in Rust->VIR; sanity check them here.
     if !function.x.body_visibility.at_least_as_restrictive_as(&function.x.visibility) {
-        return Err(error(
-            &function.span,
-            "the function body is more public than the function itself",
-        ));
+        crate::internal_err!(
+            function.span.clone(),
+            "the function body is more public than the function itself"
+        );
     }
     match &function.x.opaqueness {
         Opaqueness::Opaque => {}
         Opaqueness::Revealed { visibility } => {
             if !visibility.at_least_as_restrictive_as(&function.x.body_visibility) {
-                return Err(error(
-                    &function.span,
-                    "the function reveal scope is more public the function body",
-                ));
+                crate::internal_err!(
+                    function.span.clone(),
+                    "the function reveal scope is more public the function body"
+                );
             }
         }
     }
