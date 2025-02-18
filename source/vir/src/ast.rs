@@ -1053,7 +1053,7 @@ pub enum ItemKind {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode)]
-pub enum FuelOpaqueness {
+pub enum Opaqueness {
     /// Opaque everywhere
     Opaque,
     /// Revealed insided the range given by 'visibility', opaque elsewhere.
@@ -1079,7 +1079,7 @@ pub struct FunctionX {
     /// Controlled by 'open'. (Only applicable to spec functions.)
     pub body_visibility: Visibility,
     /// Controlled by 'opaque/opaque_outside_module'. (Only applicable to spec functions.)
-    pub fuel_opaqueness: FuelOpaqueness,
+    pub opaqueness: Opaqueness,
     /// Owning module
     pub owning_module: Option<Path>,
     /// exec functions are compiled, proof/spec are erased

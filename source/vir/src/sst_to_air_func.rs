@@ -255,7 +255,7 @@ fn func_body_to_air(
 
     // non-recursive:
     //   (axiom (fuel_bool_default fuel%f))
-    let fuel = function.x.fuel_opaqueness.get_fuel_for_module(&function.x.name, &ctx.module);
+    let fuel = function.x.opaqueness.get_fuel_for_module(&function.x.name, &ctx.module);
     if fuel > 0 {
         let axiom_expr = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_fuel)]);
         let fuel_axiom = mk_unnamed_axiom(axiom_expr);

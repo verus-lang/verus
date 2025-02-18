@@ -402,7 +402,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     // TODO: we could try to use the impl visibility and owning module for better pruning:
                     visibility,
                     body_visibility: default_function.x.body_visibility.clone(),
-                    fuel_opaqueness: default_function.x.fuel_opaqueness.clone(),
+                    opaqueness: default_function.x.opaqueness.clone(),
                     owning_module: trait_impl.x.owning_module.clone(),
                     mode: default_function.x.mode,
                     typ_params: trait_impl.x.typ_params.clone(),

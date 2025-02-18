@@ -1,10 +1,10 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
-    FieldOpr, FuelOpaqueness, Fun, FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX,
-    HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode,
-    Module, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ,
-    TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder,
-    VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
+    FieldOpr, Fun, FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, HeaderExprX, Ident,
+    InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Module, Opaqueness,
+    Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration,
+    TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders,
+    VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -1063,7 +1063,7 @@ impl Default for crate::ast::AutoExtEqual {
     }
 }
 
-impl FuelOpaqueness {
+impl Opaqueness {
     /// Default fuel for the given function viewed from the given module,
     /// only accounting for the visibility signifier on the function,
     /// i.e., NOT accounting for any extra reveals in the module.
@@ -1071,9 +1071,13 @@ impl FuelOpaqueness {
     /// is saved in the 'fuel_for_this_module' field.
     pub fn get_default_fuel_for_module_path(&self, module_path: &Path) -> u32 {
         match self {
-            FuelOpaqueness::Opaque => 0,
-            FuelOpaqueness::Revealed { visibility, fuel } => {
-                if is_visible_to(visibility, module_path) { *fuel } else { 0 }
+            Opaqueness::Opaque => 0,
+            Opaqueness::Revealed { visibility, fuel } => {
+                if is_visible_to(visibility, module_path) {
+                    *fuel
+                } else {
+                    0
+                }
             }
         }
     }
@@ -1094,8 +1098,8 @@ impl FuelOpaqueness {
 
         if revealed {
             match self {
-                FuelOpaqueness::Opaque => 1,
-                FuelOpaqueness::Revealed { visibility: _, fuel } => *fuel,
+                Opaqueness::Opaque => 1,
+                Opaqueness::Revealed { visibility: _, fuel } => *fuel,
             }
         } else {
             f

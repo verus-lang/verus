@@ -761,7 +761,7 @@ pub fn function_to_sst(
         body_visibility: function.x.body_visibility.clone(),
         owning_module: function.x.owning_module.clone(),
         mode: function.x.mode,
-        fuel_opaqueness: function.x.fuel_opaqueness.clone(),
+        opaqueness: function.x.opaqueness.clone(),
         typ_params: function.x.typ_params.clone(),
         typ_bounds: function.x.typ_bounds.clone(),
         pars: params_to_pars(&function.x.params, true),

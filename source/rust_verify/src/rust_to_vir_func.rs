@@ -25,8 +25,8 @@ use rustc_trait_selection::traits::ImplSource;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    FuelOpaqueness, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind,
-    KrateX, Mode, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr, Visibility,
+    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, Mode,
+    Opaqueness, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr, Visibility,
 };
 use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
@@ -1055,7 +1055,7 @@ pub(crate) fn check_item_fn<'tcx>(
     // See `fixup_ens_has_return_for_trait_method_impls`.
     let (ensure, ens_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure);
 
-    let (body_visibility, fuel_opaqueness) = get_body_visibility_and_fuel(
+    let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
         sig.span,
         &visibility,
         vattrs.publish,
@@ -1072,7 +1072,7 @@ pub(crate) fn check_item_fn<'tcx>(
         kind,
         visibility,
         body_visibility,
-        fuel_opaqueness,
+        opaqueness,
         owning_module: Some(module_path.clone()),
         mode,
         typ_params,
@@ -1131,7 +1131,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             kind,
             visibility,
             body_visibility,
-            fuel_opaqueness,
+            opaqueness,
             owning_module,
             mode,
             typ_params,
@@ -1228,7 +1228,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             kind,
             visibility,
             body_visibility,
-            fuel_opaqueness,
+            opaqueness,
             owning_module,
             mode,
             typ_params,
@@ -1768,7 +1768,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     let (ensure, ens_has_return) =
         clean_ensures_for_unit_return(&ret, &header.const_static_ensures(&name, is_static));
 
-    let (body_visibility, fuel_opaqueness) = get_body_visibility_and_fuel(
+    let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
         span,
         &visibility,
         vattrs.publish,
@@ -1785,7 +1785,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         kind: FunctionKind::Static,
         visibility,
         body_visibility,
-        fuel_opaqueness,
+        opaqueness,
         owning_module: Some(module_path.clone()),
         mode: func_mode,
         typ_params: Arc::new(vec![]),
@@ -1886,7 +1886,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 
     // No body, so these don't matter
     let body_visibility = visibility.clone();
-    let fuel_opaqueness = FuelOpaqueness::Opaque;
+    let opaqueness = Opaqueness::Opaque;
 
     let func = FunctionX {
         name,
@@ -1894,7 +1894,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         kind: FunctionKind::Static,
         visibility,
         body_visibility,
-        fuel_opaqueness,
+        opaqueness,
         owning_module: None,
         mode,
         typ_params,
@@ -1930,7 +1930,7 @@ fn get_body_visibility_and_fuel(
     mode: Mode,
     my_module: &vir::ast::Path,
     has_body: bool,
-) -> Result<(Visibility, FuelOpaqueness), VirErr> {
+) -> Result<(Visibility, Opaqueness), VirErr> {
     let private_vis = Visibility { restricted_to: Some(my_module.clone()) };
 
     if mode != Mode::Spec {
@@ -1945,14 +1945,14 @@ fn get_body_visibility_and_fuel(
         }
 
         // These don't matter for non-spec functions
-        Ok((private_vis, FuelOpaqueness::Opaque))
+        Ok((private_vis, Opaqueness::Opaque))
     } else if !has_body {
         if opaque || opaque_outside_module {
             return err_span(span, "opaque has no effect on a function without a body");
         }
 
         // These don't matter without a body
-        Ok((private_vis, FuelOpaqueness::Opaque))
+        Ok((private_vis, Opaqueness::Opaque))
     } else {
         if opaque && opaque_outside_module {
             return err_span(span, "function is marked both 'opaque' and 'opaque_outside_module'");
@@ -1968,18 +1968,18 @@ fn get_body_visibility_and_fuel(
         let body_visibility =
             if publish == Some(true) { func_visibility.clone() } else { private_vis.clone() };
 
-        let fuel_opaqueness = if opaque {
-            FuelOpaqueness::Opaque
+        let opaqueness = if opaque {
+            Opaqueness::Opaque
         } else if opaque_outside_module {
-            FuelOpaqueness::Revealed { visibility: private_vis, fuel: 1 }
+            Opaqueness::Revealed { visibility: private_vis, fuel: 1 }
         } else {
-            FuelOpaqueness::Revealed {
+            Opaqueness::Revealed {
                 // Revealed everywhere the module is visible
                 visibility: body_visibility.clone(),
                 fuel: 1,
             }
         };
 
-        Ok((body_visibility, fuel_opaqueness))
+        Ok((body_visibility, opaqueness))
     }
 }

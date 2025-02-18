@@ -317,7 +317,7 @@ pub struct FunctionSstX {
     pub body_visibility: crate::ast::Visibility,
     pub owning_module: Option<Path>,
     pub mode: crate::ast::Mode,
-    pub fuel_opaqueness: crate::ast::FuelOpaqueness,
+    pub opaqueness: crate::ast::Opaqueness,
     pub typ_params: crate::ast::Idents,
     pub typ_bounds: crate::ast::GenericBounds,
     pub pars: Pars,

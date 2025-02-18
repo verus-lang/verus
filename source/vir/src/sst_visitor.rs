@@ -708,7 +708,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     name: f.x.name.clone(),
                     kind: f.x.kind.clone(),
                     body_visibility: f.x.body_visibility.clone(),
-                    fuel_opaqueness: f.x.fuel_opaqueness.clone(),
+                    opaqueness: f.x.opaqueness.clone(),
                     owning_module: f.x.owning_module.clone(),
                     mode: f.x.mode,
                     typ_params: f.x.typ_params.clone(),

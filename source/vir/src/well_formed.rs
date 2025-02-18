@@ -1,7 +1,7 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX, FieldOpr,
-    FuelOpaqueness, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Path, Trait, TypX,
-    UnaryOp, UnaryOpr, UnwindSpec, VirErr, VirErrAs,
+    CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX, FieldOpr, Fun,
+    Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path, Trait, TypX, UnaryOp,
+    UnaryOpr, UnwindSpec, VirErr, VirErrAs,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to, is_visible_to_opt,
@@ -837,9 +837,9 @@ fn check_function(
             "the function body is more public than the function itself",
         ));
     }
-    match &function.x.fuel_opaqueness {
-        FuelOpaqueness::Opaque => {}
-        FuelOpaqueness::Revealed { visibility, fuel: _ } => {
+    match &function.x.opaqueness {
+        Opaqueness::Opaque => {}
+        Opaqueness::Revealed { visibility, fuel: _ } => {
             if !visibility.at_least_as_restrictive_as(&function.x.body_visibility) {
                 return Err(error(
                     &function.span,

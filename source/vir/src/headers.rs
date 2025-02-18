@@ -367,7 +367,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         kind: _,
         visibility: _,
         body_visibility: _,
-        fuel_opaqueness,
+        opaqueness,
         owning_module: _,
         mode: _,
         typ_params,
@@ -438,7 +438,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
             "method specification has a different return from method",
         ));
     }
-    methodx.fuel_opaqueness = fuel_opaqueness;
+    methodx.opaqueness = opaqueness;
     methodx.params = params; // this is important; the correct parameter modes are in spec_method
     methodx.ret = ret;
     methodx.require = require;

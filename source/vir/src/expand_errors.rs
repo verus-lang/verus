@@ -939,7 +939,7 @@ fn can_inline_function(
     }
 
     let mut fuel =
-        fun_to_inline.x.fuel_opaqueness.get_fuel_for_module(&fun_to_inline.x.name, &ctx.module);
+        fun_to_inline.x.opaqueness.get_fuel_for_module(&fun_to_inline.x.name, &ctx.module);
     let mut hidden = false;
 
     let fs_to_hide = &fun_owner.x.attrs.hidden;

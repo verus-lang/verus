@@ -613,7 +613,7 @@ where
         kind: _,
         visibility: _,
         body_visibility: _,
-        fuel_opaqueness: _,
+        opaqueness: _,
         owning_module: _,
         mode: _,
         typ_params: _,
@@ -1209,7 +1209,7 @@ where
         kind,
         visibility,
         body_visibility,
-        fuel_opaqueness,
+        opaqueness,
         owning_module,
         mode,
         typ_params,
@@ -1261,7 +1261,7 @@ where
     };
     let visibility = visibility.clone();
     let body_visibility = body_visibility.clone();
-    let fuel_opaqueness = fuel_opaqueness.clone();
+    let opaqueness = opaqueness.clone();
     let owning_module = owning_module.clone();
     let mode = *mode;
     let typ_bounds = map_generic_bounds_visitor(typ_bounds, env, ft)?;
@@ -1341,7 +1341,7 @@ where
         kind,
         visibility,
         body_visibility,
-        fuel_opaqueness,
+        opaqueness,
         owning_module,
         mode,
         typ_params: typ_params.clone(),

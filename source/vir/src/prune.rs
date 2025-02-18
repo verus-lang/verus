@@ -839,7 +839,7 @@ pub fn prune_krate_for_module_or_krate(
         // (when optimizing for modules, after well-formedness checks)
         let is_vis = is_visible_to(&f.x.visibility, &module);
         let is_open = is_visible_to(&f.x.body_visibility, &module);
-        let is_non_opaque = f.x.fuel_opaqueness.get_default_fuel_for_module_path(module) != 0;
+        let is_non_opaque = f.x.opaqueness.get_default_fuel_for_module_path(module) != 0;
         let is_revealed = is_non_opaque || revealed_functions.contains(&f.x.name);
         let is_spec = f.x.mode == Mode::Spec;
         if is_vis && is_open && is_revealed && is_spec {
