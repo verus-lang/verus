@@ -1052,6 +1052,14 @@ pub enum ItemKind {
     Static,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode)]
+pub enum Opaqueness {
+    /// Opaque everywhere
+    Opaque,
+    /// Revealed insided the range given by 'visibility', opaque elsewhere.
+    Revealed { visibility: Visibility },
+}
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1066,15 +1074,16 @@ pub struct FunctionX {
     pub kind: FunctionKind,
     /// Access control (public/private)
     pub visibility: Visibility,
+    /// Controlled by 'open'. (Only applicable to spec functions.)
+    pub body_visibility: Visibility,
+    /// Controlled by 'opaque/opaque_outside_module'. (Only applicable to spec functions.)
+    pub opaqueness: Opaqueness,
     /// Owning module
     pub owning_module: Option<Path>,
     /// exec functions are compiled, proof/spec are erased
     /// exec/proof functions can have requires/ensures, spec cannot
     /// spec functions can be used in requires/ensures, proof/exec cannot
     pub mode: Mode,
-    /// Default amount of fuel: 0 means opaque, >= 1 means visible
-    /// For recursive functions, fuel determines the number of unfoldings that the SMT solver sees
-    pub fuel: u32,
     /// Type parameters to generic functions
     /// (for trait methods, the trait parameters come first, then the method parameters)
     pub typ_params: Idents,
@@ -1113,10 +1122,6 @@ pub struct FunctionX {
     pub unwind_spec: Option<UnwindSpec>,
     /// Allows the item to be a const declaration or static
     pub item_kind: ItemKind,
-    /// For public spec functions, publish == None means that the body is private
-    /// even though the function is public, the bool indicates false = opaque, true = visible
-    /// the body is public
-    pub publish: Option<bool>,
     /// Various attributes
     pub attrs: FunctionAttrs,
     /// Body of the function (may be None for foreign functions or for external_body functions)

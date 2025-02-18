@@ -24,7 +24,7 @@ pub struct HashSetWithView<Key> where Key: View + Eq + Hash {
 impl<Key> View for HashSetWithView<Key> where Key: View + Eq + Hash {
     type V = Set<<Key as View>::V>;
 
-    closed spec fn view(&self) -> Self::V;
+    spec fn view(&self) -> Self::V;
 }
 
 impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
@@ -58,7 +58,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
         self.m.reserve(additional);
     }
 
-    pub open spec fn spec_len(&self) -> usize;
+    pub spec fn spec_len(&self) -> usize;
 
     #[verifier::external_body]
     #[verifier::when_used_as_spec(spec_len)]
@@ -130,7 +130,7 @@ pub struct StringHashSet {
 impl View for StringHashSet {
     type V = Set<Seq<char>>;
 
-    closed spec fn view(&self) -> Self::V;
+    spec fn view(&self) -> Self::V;
 }
 
 impl StringHashSet {
@@ -158,7 +158,7 @@ impl StringHashSet {
         self.m.reserve(additional);
     }
 
-    pub open spec fn spec_len(&self) -> usize;
+    pub spec fn spec_len(&self) -> usize;
 
     #[verifier::external_body]
     #[verifier::when_used_as_spec(spec_len)]

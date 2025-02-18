@@ -1,6 +1,4 @@
-use crate::attributes::{
-    get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, VerifierAttrs,
-};
+use crate::attributes::{get_mode, get_ret_mode, get_var_mode, VerifierAttrs};
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
@@ -28,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, Mode,
-    ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
+    Opaqueness, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr, Visibility,
 };
 use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
@@ -675,7 +673,6 @@ pub(crate) fn check_item_fn<'tcx>(
         id,
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
-    let fuel = get_fuel(&vattrs);
 
     let params: Vec<(VarIdent, Span, Option<HirId>, bool)> = match body_id {
         CheckItemFnEither::BodyId(body_id) => {
@@ -967,35 +964,32 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         vir_body
     };
-    let publish = {
-        let (publish, open_closed_present) = get_publish(&vattrs);
-        match kind {
-            FunctionKind::TraitMethodImpl { .. } | FunctionKind::TraitMethodDecl { .. }
-                if body.is_some() =>
+    let open_closed_present = vattrs.publish.is_some();
+    match kind {
+        FunctionKind::TraitMethodImpl { .. } | FunctionKind::TraitMethodDecl { .. }
+            if body.is_some() =>
+        {
+            if mode == Mode::Spec
+                && visibility.restricted_to.as_ref() != Some(module_path)
+                && body.is_some()
+                && !open_closed_present
             {
-                if mode == Mode::Spec
-                    && visibility.restricted_to.as_ref() != Some(module_path)
-                    && body.is_some()
-                    && !open_closed_present
-                {
-                    return err_span(
-                        sig.span,
-                        "open/closed is required for implementations of non-private traits",
-                    );
-                }
+                return err_span(
+                    sig.span,
+                    "open/closed is required for implementations of non-private traits",
+                );
             }
-            FunctionKind::TraitMethodDecl { .. } => {
-                if mode == Mode::Spec && open_closed_present && body.is_none() {
-                    return err_span(
-                        sig.span,
-                        "trait function declarations cannot be open or closed, as they don't have a body",
-                    );
-                }
-            }
-            _ => (),
         }
-        publish
-    };
+        FunctionKind::TraitMethodDecl { .. } => {
+            if mode == Mode::Spec && open_closed_present && body.is_none() {
+                return err_span(
+                    sig.span,
+                    "trait function declarations cannot be open or closed, as they don't have a body",
+                );
+            }
+        }
+        _ => (),
+    }
     let autospec = vattrs.autospec.clone().map(|method_name| {
         let this_path =
             crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(ctxt.tcx, id);
@@ -1061,14 +1055,26 @@ pub(crate) fn check_item_fn<'tcx>(
     // See `fixup_ens_has_return_for_trait_method_impls`.
     let (ensure, ens_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure);
 
+    let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
+        sig.span,
+        &visibility,
+        vattrs.publish,
+        vattrs.opaque,
+        vattrs.opaque_outside_module,
+        mode,
+        module_path,
+        body_with_mut_redecls.is_some(),
+    )?;
+
     let mut func = FunctionX {
         name: name.clone(),
         proxy,
         kind,
         visibility,
+        body_visibility,
+        opaqueness,
         owning_module: Some(module_path.clone()),
         mode,
-        fuel,
         typ_params,
         typ_bounds,
         params,
@@ -1084,7 +1090,6 @@ pub(crate) fn check_item_fn<'tcx>(
         mask_spec: header.invariant_mask,
         unwind_spec: header.unwind_spec,
         item_kind: ItemKind::Function,
-        publish,
         attrs: fattrs,
         body: body_with_mut_redecls,
         extra_dependencies: header.extra_dependencies,
@@ -1125,9 +1130,10 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             proxy,
             kind,
             visibility,
+            body_visibility,
+            opaqueness,
             owning_module,
             mode,
-            fuel,
             typ_params,
             mut typ_bounds,
             mut params,
@@ -1143,7 +1149,6 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             mask_spec,
             unwind_spec,
             item_kind,
-            publish,
             attrs,
             body,
             extra_dependencies,
@@ -1222,9 +1227,10 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             proxy,
             kind,
             visibility,
+            body_visibility,
+            opaqueness,
             owning_module,
             mode,
-            fuel,
             typ_params,
             typ_bounds,
             params,
@@ -1240,7 +1246,6 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             mask_spec,
             unwind_spec,
             item_kind,
-            publish,
             attrs,
             body,
             extra_dependencies,
@@ -1695,7 +1700,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         return err_span(span, "`assume_specification` attribute not yet supported for const");
     }
 
-    let fuel = get_fuel(&vattrs);
     let body = find_body(ctxt, body_id);
     let (actual_body_id, actual_body) = if let ExprKind::Block(block, _) = body.value.kind {
         let first_stmt = block.stmts.iter().next();
@@ -1764,14 +1768,26 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     let (ensure, ens_has_return) =
         clean_ensures_for_unit_return(&ret, &header.const_static_ensures(&name, is_static));
 
+    let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
+        span,
+        &visibility,
+        vattrs.publish,
+        vattrs.opaque,
+        vattrs.opaque_outside_module,
+        func_mode,
+        module_path,
+        !vattrs.external_body,
+    )?;
+
     let func = FunctionX {
         name: name.clone(),
         proxy: None,
         kind: FunctionKind::Static,
         visibility,
+        body_visibility,
+        opaqueness,
         owning_module: Some(module_path.clone()),
         mode: func_mode,
-        fuel,
         typ_params: Arc::new(vec![]),
         typ_bounds: Arc::new(vec![]),
         params: Arc::new(vec![]),
@@ -1787,7 +1803,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         mask_spec: None,
         unwind_spec: None,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
-        publish: get_publish(&vattrs).0,
         attrs: fattrs,
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],
@@ -1834,7 +1849,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         id,
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
-    let fuel = get_fuel(&vattrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
 
     assert!(idents.len() == inputs.len());
@@ -1869,13 +1883,19 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         unwrapped_info: None,
     };
     let ret = ctxt.spanned_new(span, ret_param);
+
+    // No body, so these don't matter
+    let body_visibility = visibility.clone();
+    let opaqueness = Opaqueness::Opaque;
+
     let func = FunctionX {
         name,
         proxy: None,
         kind: FunctionKind::Static,
         visibility,
+        body_visibility,
+        opaqueness,
         owning_module: None,
-        fuel,
         mode,
         typ_params,
         typ_bounds,
@@ -1892,7 +1912,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         mask_spec: None,
         unwind_spec: None,
         item_kind: ItemKind::Function,
-        publish: None,
         attrs: Default::default(),
         body: None,
         extra_dependencies: vec![],
@@ -1900,4 +1919,66 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let function = ctxt.spanned_new(span, func);
     vir.functions.push(function);
     Ok(())
+}
+
+fn get_body_visibility_and_fuel(
+    span: Span,
+    func_visibility: &Visibility,
+    publish: Option<bool>,
+    opaque: bool,
+    opaque_outside_module: bool,
+    mode: Mode,
+    my_module: &vir::ast::Path,
+    has_body: bool,
+) -> Result<(Visibility, Opaqueness), VirErr> {
+    let private_vis = Visibility { restricted_to: Some(my_module.clone()) };
+
+    if mode != Mode::Spec {
+        if publish == Some(true) {
+            return err_span(span, "function is marked `open` but it is not a `spec` function");
+        }
+        if publish == Some(false) {
+            return err_span(span, "function is marked `closed` but it is not a `spec` function");
+        }
+        if opaque || opaque_outside_module {
+            return err_span(span, "function is marked `opaque` but it is not a `spec` function");
+        }
+
+        // These don't matter for non-spec functions
+        Ok((private_vis, Opaqueness::Opaque))
+    } else if !has_body {
+        if opaque || opaque_outside_module {
+            return err_span(span, "opaque has no effect on a function without a body");
+        }
+
+        // These don't matter without a body
+        Ok((private_vis, Opaqueness::Opaque))
+    } else {
+        if opaque && opaque_outside_module {
+            return err_span(span, "function is marked both 'opaque' and 'opaque_outside_module'");
+        }
+
+        if publish == Some(true) && func_visibility == &private_vis {
+            return err_span(
+                span,
+                "function is marked `open` but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible",
+            );
+        }
+
+        let body_visibility =
+            if publish == Some(true) { func_visibility.clone() } else { private_vis.clone() };
+
+        let opaqueness = if opaque {
+            Opaqueness::Opaque
+        } else if opaque_outside_module {
+            Opaqueness::Revealed { visibility: private_vis }
+        } else {
+            Opaqueness::Revealed {
+                // Revealed everywhere the module is visible
+                visibility: body_visibility.clone(),
+            }
+        };
+
+        Ok((body_visibility, opaqueness))
+    }
 }

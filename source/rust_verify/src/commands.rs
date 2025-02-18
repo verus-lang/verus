@@ -200,7 +200,7 @@ impl<'a> OpGenerator<'a> {
             let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
                 self.ctx,
                 function,
-                is_visible_to(&function.x.vis_abs, &module),
+                is_visible_to(&function.x.body_visibility, &module),
             )?;
             self.ctx.fun = None;
 

@@ -49,7 +49,7 @@ impl View for DefaultHasher {
     type V = Seq<Seq<u8>>;
 
     #[verifier::external_body]
-    closed spec fn view(&self) -> Seq<Seq<u8>>;
+    spec fn view(&self) -> Seq<Seq<u8>>;
 }
 
 pub trait DefaultHasherAdditionalSpecFns {
@@ -87,7 +87,7 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 // isn't satisfied by having `Key` implement `Hash`, since this trait
 // doesn't mandate determinism.
 #[verifier::external_body]
-pub closed spec fn obeys_key_model<Key: ?Sized>() -> bool;
+pub spec fn obeys_key_model<Key: ?Sized>() -> bool;
 
 // These axioms state that any primitive type, or `Box` thereof,
 // obeys the requirements to be a key in a hash table that
@@ -221,7 +221,7 @@ pub trait ExBuildHasher {
 }
 
 #[verifier::external_body]
-pub closed spec fn builds_valid_hashers<T: ?Sized>() -> bool;
+pub spec fn builds_valid_hashers<T: ?Sized>() -> bool;
 
 // A commonly used type of trait `BuildHasher` is `RandomState`. We
 // model that type here. In particular, we have an axiom that
@@ -371,11 +371,10 @@ impl<Key, Value, S> HashMapAdditionalSpecFns<Key, Value> for HashMap<Key, Value,
 impl<Key, Value, S> View for HashMap<Key, Value, S> {
     type V = Map<Key, Value>;
 
-    #[verifier::external_body]
-    closed spec fn view(&self) -> Map<Key, Value>;
+    spec fn view(&self) -> Map<Key, Value>;
 }
 
-pub open spec fn spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>) -> usize;
+pub spec fn spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>) -> usize;
 
 pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>)
     ensures
@@ -726,11 +725,10 @@ pub struct ExHashSet<Key, S>(HashSet<Key, S>);
 impl<Key, S> View for HashSet<Key, S> {
     type V = Set<Key>;
 
-    #[verifier::external_body]
-    closed spec fn view(&self) -> Set<Key>;
+    spec fn view(&self) -> Set<Key>;
 }
 
-pub open spec fn spec_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> usize;
+pub spec fn spec_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> usize;
 
 pub broadcast proof fn axiom_spec_hash_set_len<Key, S>(m: &HashSet<Key, S>)
     ensures

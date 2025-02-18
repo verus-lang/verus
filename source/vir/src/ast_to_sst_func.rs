@@ -40,15 +40,7 @@ impl FunctionCommon for crate::ast::FunctionX {
     }
 
     fn vis_abs(&self) -> crate::ast::Visibility {
-        let vis = self.visibility.clone();
-        let restricted_to = if self.publish.is_none() {
-            // private to owning_module
-            self.owning_module.clone()
-        } else {
-            // public
-            None
-        };
-        crate::ast::Visibility { restricted_to, ..vis }
+        self.body_visibility.clone()
     }
 
     fn owning_module(&self) -> &Option<Path> {
@@ -70,7 +62,7 @@ impl FunctionCommon for FunctionSstX {
     }
 
     fn vis_abs(&self) -> crate::ast::Visibility {
-        self.vis_abs.clone()
+        self.body_visibility.clone()
     }
 
     fn owning_module(&self) -> &Option<Path> {
@@ -766,17 +758,16 @@ pub fn function_to_sst(
     let functionx = FunctionSstX {
         name: function.x.name.clone(),
         kind: function.x.kind.clone(),
-        vis_abs: function.x.vis_abs(),
+        body_visibility: function.x.body_visibility.clone(),
         owning_module: function.x.owning_module.clone(),
         mode: function.x.mode,
-        fuel: function.x.fuel,
+        opaqueness: function.x.opaqueness.clone(),
         typ_params: function.x.typ_params.clone(),
         typ_bounds: function.x.typ_bounds.clone(),
         pars: params_to_pars(&function.x.params, true),
         ret: param_to_par(&function.x.ret, true),
         ens_has_return: function.x.ens_has_return,
         item_kind: function.x.item_kind,
-        publish: function.x.publish,
         attrs: function.x.attrs.clone(),
         has,
         decl: Arc::new(func_decl_sst),
