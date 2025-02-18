@@ -573,6 +573,12 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "type_invariant" => {
                     v.push(Attr::TypeInvariantFn)
                 }
+                AttrTree::Fun(_, arg, None) if arg == "invalid_trigger_attribute" => {
+                    return err_span(
+                        span,
+                        "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
+                    );
+                }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
             AttrPrefix::Verus(verus_prefix) => match verus_prefix {
