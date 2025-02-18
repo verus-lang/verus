@@ -376,12 +376,6 @@ impl<A> core::fmt::Debug for Tracked<A> {
     }
 }
 
-impl<A> core::default::Default for Tracked<A> {
-    fn default() -> Self {
-        Tracked::assume_new()
-    }
-}
-
 impl<A> Ghost<A> {
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::builtin::Ghost::view"]
