@@ -261,9 +261,7 @@ pub fn verus_verify(
     args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let args = syn::parse_macro_input!(args with syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated);
-    let args = args.into_iter().collect();
-    attr_rewrite::rewrite_verus_attribute(&cfg_erase(), args, input.into()).into()
+    attr_rewrite::rewrite_verus_attribute(&cfg_erase(), args, input)
 }
 
 #[proc_macro_attribute]
