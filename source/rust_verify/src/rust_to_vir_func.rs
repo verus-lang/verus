@@ -1971,12 +1971,11 @@ fn get_body_visibility_and_fuel(
         let opaqueness = if opaque {
             Opaqueness::Opaque
         } else if opaque_outside_module {
-            Opaqueness::Revealed { visibility: private_vis, fuel: 1 }
+            Opaqueness::Revealed { visibility: private_vis }
         } else {
             Opaqueness::Revealed {
                 // Revealed everywhere the module is visible
                 visibility: body_visibility.clone(),
-                fuel: 1,
             }
         };
 

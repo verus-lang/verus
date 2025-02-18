@@ -1057,9 +1057,7 @@ pub enum Opaqueness {
     /// Opaque everywhere
     Opaque,
     /// Revealed insided the range given by 'visibility', opaque elsewhere.
-    /// When revealed, it has the given fuel.
-    /// (For non-recursive functions, fuel should be 1.)
-    Revealed { visibility: Visibility, fuel: u32 },
+    Revealed { visibility: Visibility },
 }
 
 /// Function, including signature and body

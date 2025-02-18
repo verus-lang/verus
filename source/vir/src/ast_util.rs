@@ -1069,12 +1069,16 @@ impl Opaqueness {
     /// i.e., NOT accounting for any extra reveals in the module.
     /// The module-reveals are accounted for in the prune phase and the result
     /// is saved in the 'fuel_for_this_module' field.
+    ///
+    /// This is always 0 or 1, depending on opaqueness; setting the fuel to
+    /// values higher than 1 (for recursive functions) can only be done (at the moment)
+    /// with reveal_with_fuel statements, which are more specific than the module level.
     pub fn get_default_fuel_for_module_path(&self, module_path: &Path) -> u32 {
         match self {
             Opaqueness::Opaque => 0,
-            Opaqueness::Revealed { visibility, fuel } => {
+            Opaqueness::Revealed { visibility } => {
                 if is_visible_to(visibility, module_path) {
-                    *fuel
+                    1
                 } else {
                     0
                 }
@@ -1099,7 +1103,7 @@ impl Opaqueness {
         if revealed {
             match self {
                 Opaqueness::Opaque => 1,
-                Opaqueness::Revealed { visibility: _, fuel } => *fuel,
+                Opaqueness::Revealed { visibility: _ } => 0,
             }
         } else {
             f

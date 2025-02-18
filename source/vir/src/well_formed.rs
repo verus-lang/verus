@@ -839,7 +839,7 @@ fn check_function(
     }
     match &function.x.opaqueness {
         Opaqueness::Opaque => {}
-        Opaqueness::Revealed { visibility, fuel: _ } => {
+        Opaqueness::Revealed { visibility } => {
             if !visibility.at_least_as_restrictive_as(&function.x.body_visibility) {
                 return Err(error(
                     &function.span,
