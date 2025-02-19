@@ -1,3 +1,12 @@
+use super::super::prelude::*;
+use super::super::view::View;
+#[cfg(verus_keep_ghost)]
+use super::div_mod::{
+    lemma_div_is_ordered_by_denominator, lemma_div_plus_one, lemma_fundamental_div_mod,
+    lemma_mod_division_less_than_divisor,
+};
+#[cfg(verus_keep_ghost)]
+use super::mul::{lemma_mul_by_zero_is_zero, lemma_mul_inequality, lemma_mul_is_commutative};
 /// This file defines the `OverflowableU32` and `OverflowableU64`
 /// structs and their associated methods to handle `u32` and `u64`
 /// values that can overflow. Each struct includes a ghost value
@@ -44,17 +53,6 @@
 /// ```
 use builtin::*;
 use builtin_macros::*;
-#[cfg(verus_keep_ghost)]
-use super::div_mod::{
-    lemma_div_is_ordered_by_denominator, lemma_div_plus_one, lemma_fundamental_div_mod,
-    lemma_mod_division_less_than_divisor,
-};
-#[cfg(verus_keep_ghost)]
-use super::mul::{
-    lemma_mul_by_zero_is_zero, lemma_mul_inequality, lemma_mul_is_commutative,
-};
-use super::super::prelude::*;
-use super::super::view::View;
 
 verus! {
 
