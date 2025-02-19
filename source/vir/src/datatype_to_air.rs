@@ -19,7 +19,7 @@ use crate::sst_to_air::{
 };
 use crate::sst_to_air_func::{func_bind, func_bind_trig, func_def_args};
 use crate::util::vec_map;
-use crate::mono::KrateSpecializations;
+use crate::mono::{KrateSpecializations, Specialization};
 use air::ast::{Command, CommandX, Commands, DeclX, Expr, ExprX};
 use air::ast_util::{
     ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
@@ -27,14 +27,18 @@ use air::ast_util::{
 };
 use std::sync::Arc;
 
-fn datatype_to_air(ctx: &Ctx, datatype: &crate::ast::Datatype, specs: &KrateSpecializations) -> air::ast::Datatype {
+fn datatype_to_air(ctx: &Ctx, datatype: &crate::ast::Datatype, specs: &Specialization) -> air::ast::Datatype {
     let mut variants: Vec<air::ast::Variant> = Vec::new();
     for variant in datatype.x.variants.iter() {
         let mut fields: Vec<air::ast::Field> = Vec::new();
-        for field in variant.fields.iter() {
+        for (i, field) in variant.fields.iter().enumerate() {
             let path = encode_dt_as_path(&datatype.x.name);
             let id = variant_field_ident_internal(&path, &variant.name, &field.name, true);
-            fields.push(ident_binder(&id, &typ_to_air(ctx, &field.a.0)));
+            let air_typ = match specs.typs.get(i) {
+                Some(st) => st.to_typ(),
+                None => field.a.0.clone(),
+            };
+            fields.push(ident_binder(&id, &typ_to_air(ctx, &air_typ)));
         }
         let id = variant_ident(&datatype.x.name, &variant.name);
         variants.push(ident_binder(&id, &Arc::new(fields)));
@@ -622,7 +626,7 @@ fn datatype_or_fun_to_air_commands(
     }
 }
 
-pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes, specs: &KrateSpecializations) -> Commands {
+pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes, specializations: &KrateSpecializations) -> Commands {
     let source_module = &ctx.module;
     let mut transparent_air_datatypes: Vec<air::ast::Datatype> = Vec::new();
     let mut opaque_sort_commands: Vec<Command> = Vec::new();
@@ -678,6 +682,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     for monotyp in &ctx.mono_types {
         // Encode concrete instantiations of abstract types as AIR sorts
         let dpath = crate::sst_to_air::monotyp_to_path(monotyp);
+        let _span = tracing::debug_span!("Generating Air for monotyp", path=format!("{dpath:?}"));
         let sort = Arc::new(air::ast::DeclX::Sort(path_to_air_ident(&dpath)));
         opaque_sort_commands.push(Arc::new(CommandX::Global(sort)));
 
@@ -703,12 +708,23 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
 
     for datatype in datatypes.iter() {
         let dt = &datatype.x.name;
-        let _span = tracing::debug_span!("Generating Air for datatype", name=format!("{dt:?}"));
         let is_transparent = is_datatype_transparent(&source_module.x.path, datatype);
+        let specs = specializations.datatype_spec.get(dt);
+        let _span = tracing::debug_span!("Generating Air for datatype",
+                                         dt=format!("{dt:?}"),
+                                         is_transparent,
+                                         n_specs=specs.map(|s| s.len()).unwrap_or(0));
 
         if is_transparent {
             // Encode transparent types as AIR datatypes
-            transparent_air_datatypes.push(datatype_to_air(ctx, datatype, specs));
+            if let Some(specs) = specs {
+                for spec in specs.iter() {
+                    transparent_air_datatypes.push(datatype_to_air(ctx, datatype, spec));
+                }
+            } else {
+                // FIXME: Move this before the if block when we have name mangling
+                transparent_air_datatypes.push(datatype_to_air(ctx, datatype, &Default::default()));
+            }
         }
 
         let mut tparams: Vec<Ident> = Vec::new();
@@ -737,7 +753,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             is_transparent,
             is_transparent && datatype.x.ext_equal,
         );
-    }
+    };
 
     for fun in &ctx.fndef_types {
         let func = ctx.func_map.get(fun).expect("expected fndef function in pruned crate");

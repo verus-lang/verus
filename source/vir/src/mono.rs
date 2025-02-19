@@ -92,7 +92,7 @@ impl SpecTypX {
         typs.iter().map(|t| t.mangle_suffix()).collect::<Vec<_>>().join("_")
     }
 
-    fn to_typ(&self) -> Typ {
+    pub fn to_typ(&self) -> Typ {
         match &self {
             Self::Bool => Arc::new(TypX::Bool),
             Self::Int(range) => Arc::new(TypX::Int(*range)),
