@@ -102,4 +102,13 @@ pub exec fn layout_for_type_is_valid<V>()
 {
 }
 
+pub broadcast proof fn usize_size() 
+    ensures 
+        usize::BITS == #[trigger] size_of::<usize>() * 8,
+{
+    admit();
+}
+
+
+
 } // verus!

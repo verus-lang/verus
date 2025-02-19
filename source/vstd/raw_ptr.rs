@@ -21,6 +21,7 @@ use super::prelude::*;
 // use len_trait::len;
 use core::slice::SliceIndex;
 use core::ops::Index;
+use crate::vstd::slice::spec_slice_len;
 
 verus! {
 
@@ -71,6 +72,10 @@ pub ghost struct Provenance {}
 impl Provenance {
     /// The provenance of the null ptr (or really, "no provenance")
     pub spec fn null() -> Self;
+
+    pub spec fn start_addr(&self) -> usize;
+
+    pub spec fn alloc_len(&self) -> usize;
 }
 
 /// Metadata
@@ -109,7 +114,7 @@ pub ghost struct PtrData {
 //   but we don't know so we have to pretend they're uninitialized)
 #[verifier::external_body]
 #[verifier::accept_recursive_types(T)]
-pub tracked struct PointsTo<T> {
+pub tracked struct PointsTo<T: ?Sized> {
     phantom: core::marker::PhantomData<T>,
     no_copy: NoCopy,
 }
@@ -163,10 +168,10 @@ impl<T> View for PointsTo<T> {
 }
 
 impl<T> PointsTo<T> {
-    #[verifier::inline]
-    pub open spec fn ptr(&self) -> *mut T {
-        self.view().ptr
-    }
+    // #[verifier::inline]
+    // pub open spec fn ptr(&self) -> *mut T {
+    //     self.view().ptr
+    // }
 
     #[verifier::inline]
     pub open spec fn opt_value(&self) -> MemContents<T> {
@@ -215,6 +220,91 @@ impl<T> PointsTo<T> {
     {
         unimplemented!();
     }
+
+    /// Note: If both S and T are non-zero-sized, then this implies the pointers
+    /// have distinct addresses.
+    #[verifier::external_body]
+    pub proof fn is_disjoint<S>(&mut self, other: &PointsTo<S>)
+        ensures
+            *old(self) == *self,
+            self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= self.ptr() as int,
+    {
+        unimplemented!();
+    }
+}
+
+// impl<T> View for PointsTo<[T]> {
+//     type V = PointsToData<T>;
+
+//     spec fn view(&self) -> Self::V {
+//         PointsToData {
+//             ptr: self.ptr(), 
+//             opt_value: self.mem_contents_seq()
+//         }
+//     }
+// }
+
+impl<T: ?Sized> PointsTo<T> {
+    // #[verifier::inline]
+    pub open spec fn ptr(&self) -> *mut T;
+}
+
+
+impl<T> PointsTo<[T]> {
+    // #[verifier::inline]
+    pub open spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
+    // {
+    //     self.view().opt_value
+    // }
+    // TODO: MemContents<Seq<T>> or Seq<MemContents<T>>, have options
+    // don't write opt_value in terms of view
+
+    // #[verifier::inline]
+    // pub open spec fn is_init(&self) -> bool {
+    //     self.mem_contents_seq().is_init()
+    // }
+
+    // #[verifier::inline]
+    // pub open spec fn is_uninit(&self) -> bool {
+    //     self.mem_contents_seq().is_uninit()
+    // }
+
+    // #[verifier::inline]
+    // pub open spec fn value(&self) -> Seq<T> {
+    //     // TODO: figure out how to update
+    //     self.mem_contents_seq().value()
+    // }
+
+    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
+    ///
+    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
+    // See https://doc.rust-lang.org/std/ptr/#safety
+    #[verifier::external_body]
+    pub proof fn is_nonnull(tracked &self)
+        requires
+            size_of::<T>() != 0,
+        ensures
+            self.ptr()@.addr != 0,
+    {
+        unimplemented!();
+    }
+
+    /// "Forgets" about the value stored behind the pointer.
+    /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
+    /// Note that this is a `proof` function, i.e.,
+    /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
+    /// Only the proof-code representation changes.
+    /// 
+    /// TODO: replace w/version that forgets about entry
+    // #[verifier::external_body]
+    // pub proof fn leak_contents(tracked &mut self)
+    //     ensures
+    //         self.ptr() == old(self).ptr(),
+    //         self.is_uninit(),
+    // {
+    //     unimplemented!();
+    // }
 
     /// Note: If both S and T are non-zero-sized, then this implies the pointers
     /// have distinct addresses.
@@ -639,8 +729,16 @@ impl PointsToRaw {
 impl<V> PointsTo<V> {
     #[verifier::external_body]
     pub proof fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
-        requires
-            self.is_uninit(),
+        ensures
+            points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() as int),
+            points_to_raw.provenance() == self.ptr()@.provenance,
+            is_sized::<V>(),
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
+    pub proof fn into_raw_shared(tracked &self) -> (tracked points_to_raw: &PointsToRaw)
         ensures
             points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() as int),
             points_to_raw.provenance() == self.ptr()@.provenance,
@@ -778,43 +876,15 @@ impl<'a, T: ?Sized> Copy for SharedReference<'a, T> {
 }
 
 impl<'a, T> SharedReference<'a, T> {
-    // pub spec fn value(self) -> T;
-
-    // pub spec fn ptr(self) -> *const T;
-
     // #[verifier::external_body]
-    // pub fn new(t: &'a T) -> (s: Self)
+    // proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
     //     ensures
-    //         s.value() == t,
+    //         pt.ptr() == self.ptr(),
+    //         pt.is_init(),
+    //         pt.value() == self.value(),
     // {
-    //     SharedReference(t)
+    //     unimplemented!();
     // }
-
-    // #[verifier::external_body]
-    // pub fn as_ptr(self) -> (ptr: *const T)
-    //     ensures
-    //         ptr == self.ptr(),
-    // {
-    //     &*self.0
-    // }
-
-    // #[verifier::external_body]
-    // fn as_ref(&self) -> (t: &'a T)
-    //     ensures
-    //         t == self.value(),
-    // {
-    //     self.0
-    // }
-
-    #[verifier::external_body]
-    proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
-        ensures
-            pt.ptr() == self.ptr(),
-            pt.is_init(),
-            pt.value() == self.value(),
-    {
-        unimplemented!();
-    }
 }
 
 impl<'a, T: ?Sized> SharedReference<'a, T> {
@@ -830,46 +900,67 @@ impl<'a, T: ?Sized> SharedReference<'a, T> {
         SharedReference(t)
     }
 
-    // #[verifier::external_body]
-    // pub fn as_ptr(&self) -> (ptr: *const T)
-    //     ensures
-    //         ptr == self.ptr(),
-    // {
-    //     &*self.0
-    // }
-
     #[verifier::external_body]
-    const fn as_ref(&self) -> (t: &'a T)
+    const fn as_ref(self) -> (t: &'a T)
         ensures
             t == self.value(),
     {
         self.0
     }
+
+    // #[verifier::external_body]
+    // pub proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
+    //     ensures
+    //         pt.ptr() == self.ptr(),
+    //         pt.is_init(),
+    //         pt.value() == self.value(),
+    // {
+    //     unimplemented!();
+    // }
 }
 
 impl<'a, T> SharedReference<'a, [T]> {
-    // pub spec fn ptr(self) -> *const T;
-
     #[verifier::external_body]
-    pub const fn as_ptr(&self) -> (ptr: *const T)
+    pub const fn as_ptr(self) -> (ptr: *const T)
         ensures
             ptr == self.ptr() as *const T,
     {
         self.0.as_ptr()
     }
 
-    // #[verifier::external_body]
-    // const fn as_ref(&self) -> (t: &'a [T])
-    //     ensures
-    //         t == self.value(),
-    // {
-    //     self.0
-    // }
+    #[verifier::external_body]
+    pub proof fn perm(tracked self) -> tracked &'a PointsTo<T> {
+        unimplemented!()
+    }
 
-    pub const fn len(&self) -> usize
+    pub const fn len(self) -> (output: usize)
+        ensures
+            // output as nat == self.value().view().len()
+            output == spec_slice_len(self.value())
     {
         self.as_ref().len()
     }
+
+    pub fn index(self, idx: usize) -> (out: &'a T)
+        requires 
+            0 <= idx < self.value()@.len()
+        ensures
+            *out == self.value()@.index(idx as int),
+    {
+        &(self.as_ref())[idx]
+        // self.as_ref().index(idx)
+    }
+
+    // #[verifier::external_body]
+    // proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
+    //     ensures
+    //         pt.ptr() == self.ptr(),
+    //         // pt.is_init(),
+    //         pt.value() == self.value(),
+    //     // TODO: figure out what preconditions I want
+    // {
+    //     unimplemented!();
+    // }
 }
 
 impl<'a, T> View for SharedReference<'a, [T]> {
@@ -933,17 +1024,18 @@ where
 //     }
 // }
 
-impl<'a, T, I> Index<I> for SharedReference<'a, T> 
-where
-    T: Index<I> + ?Sized, 
-{
-    type Output = T::Output;
+// impl<'a, T, I> Index<I> for SharedReference<'a, T> 
+// where
+//     T: SliceIndex<I>, 
+//     I: std::slice::SliceIndex<[T]>,
+// {
+//     type Output = T::Output;
 
-    #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::Index::index")]
-    fn index(&self, index: I) -> &T::Output {
-        self.as_ref().index(index)
-    }
-}
+//     #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::Index::index")]
+//     fn index(&self, index: I) -> &T::Output {
+//         self.as_ref().index(&index)
+//     }
+// }
 
 /// Like [`ptr_ref`] but returns a `SharedReference` so it keeps track of the relationship
 /// between the pointers.
