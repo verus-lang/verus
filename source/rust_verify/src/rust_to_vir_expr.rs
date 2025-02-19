@@ -2066,20 +2066,24 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
             mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms)))
         }
-        ExprKind::Loop(block, label, LoopSource::Loop, _span) => {
+        ExprKind::Loop(block, label, LoopSource::Loop, header_span) => {
             let typ = typ_of_node(bctx, block.span, &block.hir_id, false)?;
             let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body)?;
             let label = label.map(|l| l.ident.to_string());
-            mk_expr(ExprX::Loop {
-                loop_isolation: loop_isolation(),
-                is_for_loop: expr_vattrs.for_loop,
-                label,
-                cond: None,
-                body,
-                invs: header.loop_invariants(),
-                decrease: header.decrease,
-            })
+            Ok(bctx.spanned_typed_new(
+                *header_span,
+                &expr_typ()?,
+                ExprX::Loop {
+                    loop_isolation: loop_isolation(),
+                    is_for_loop: expr_vattrs.for_loop,
+                    label,
+                    cond: None,
+                    body,
+                    invs: header.loop_invariants(),
+                    decrease: header.decrease,
+                },
+            ))
         }
         ExprKind::Loop(
             Block {
@@ -2087,7 +2091,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             },
             label,
             LoopSource::While,
-            _span,
+            header_span,
         ) => {
             // rustc desugars a while loop of the form `while cond { body }`
             // to `loop { if cond { body } else { break; } }`
@@ -2130,15 +2134,19 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let mut body = expr_to_vir(bctx, body, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body)?;
             let label = label.map(|l| l.ident.to_string());
-            mk_expr(ExprX::Loop {
-                loop_isolation: loop_isolation(),
-                is_for_loop: false,
-                label,
-                cond,
-                body,
-                invs: header.loop_invariants(),
-                decrease: header.decrease,
-            })
+            Ok(bctx.spanned_typed_new(
+                *header_span,
+                &expr_typ()?,
+                ExprX::Loop {
+                    loop_isolation: loop_isolation(),
+                    is_for_loop: false,
+                    label,
+                    cond,
+                    body,
+                    invs: header.loop_invariants(),
+                    decrease: header.decrease,
+                },
+            ))
         }
         ExprKind::Ret(expr) => {
             let expr = match expr {
