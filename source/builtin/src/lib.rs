@@ -370,6 +370,12 @@ pub struct Tracked<A> {
     phantom: PhantomData<A>,
 }
 
+impl<A> core::fmt::Debug for Tracked<A> {
+    fn fmt(&self, _: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        Ok(())
+    }
+}
+
 impl<A> Ghost<A> {
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::builtin::Ghost::view"]
