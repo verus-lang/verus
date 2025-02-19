@@ -759,6 +759,7 @@ pub fn func_axioms_to_air(
     public_body: bool,
     specialization: &mono::Specialization,
 ) -> Result<(Commands, Vec<CommandsWithContext>), VirErr> {
+    tracing::debug!("Generating Air for {:?}", function.x.name);
     let func_axioms_sst = &function.x.axioms;
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<CommandsWithContext> = Vec::new();
@@ -925,6 +926,7 @@ pub fn func_sst_to_air(
     func_check_sst: &FuncCheckSst,
     spec_map: &mono::SpecMap,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
+    let _span = tracing::debug_span!("func_sst_to_air");
     let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,

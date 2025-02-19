@@ -21,6 +21,9 @@ exclude = [
   "vstd",
 ]
 
+[workspace.dependencies]
+tracing = "^0.1.40"
+
 # do not modify the following two lines
 [workspace.metadata.vargo]
 tag = "workspace"

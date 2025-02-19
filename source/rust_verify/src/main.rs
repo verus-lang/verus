@@ -25,6 +25,8 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn main() {
+    tracing_forest::init();
+
     let mut internal_args = std::env::args();
     let internal_program = internal_args.next().unwrap();
     let build_test_mode = if let Some(first_arg) = internal_args.next() {
