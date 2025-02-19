@@ -22,7 +22,6 @@ specialized, hinders this.
 use crate::ast::Idents;
 use crate::ast::IntRange;
 use crate::ast::Primitive;
-use crate::ast::{Dt, Fun, TypDecoration, TypDecorationArg};
 use crate::def::POLY;
 use crate::def::{path_to_string, Spanned};
 use crate::poly;
@@ -31,7 +30,7 @@ use crate::sst::{Par, ParX};
 use crate::sst_util::{subst_exp, subst_typ};
 use crate::sst_visitor::{self, Visitor};
 use crate::{
-    ast::{Ident, Typ, TypX, Typs},
+    ast::{Dt, Fun, Ident, Typ, TypDecoration, TypDecorationArg, TypX, Typs},
     sst::{FunctionSst, KrateSst},
 };
 use air::ast_util::str_typ;
@@ -179,6 +178,9 @@ impl Specialization {
     pub fn empty() -> Self {
         Self { typs: Arc::new(vec![]) }
     }
+    pub fn from_typs<'a>(typs: &Typs, spec_map: &SpecMap) -> Self {
+        Self { typs: Arc::new(typs_as_spec(typs, spec_map)) }
+    }
     pub fn from_exp<'a>(exp: &'a ExpX, spec_map: &SpecMap) -> Option<(&'a Fun, Self)> {
         let ExpX::Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), typs, _) = exp else {
             return None;
@@ -284,20 +286,52 @@ structure mirrors `StmExpVisitorDfs`.
  */
 struct SpecializationVisitor<'a> {
     /// Specializations of data types
-    instantiations: Vec<(Ident, Specialization)>,
+    invocations: HashMap<Fun, HashSet<Specialization>>,
     /// Specializations of functions
-    invocations: Vec<(Fun, Specialization)>,
+    instantiations: HashMap<Dt, HashSet<Specialization>>,
     spec_map: &'a SpecMap,
 }
 impl<'a> SpecializationVisitor<'a> {
     fn new(spec_map: &'a SpecMap) -> Self {
-        Self { instantiations: vec![], invocations: vec![], spec_map }
+        Self { instantiations: Default::default(), invocations: Default::default(), spec_map }
     }
 }
 impl<'a> Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for SpecializationVisitor<'a> {
+    fn visit_typ(&mut self, typ: &Typ) -> Result<(), ()> {
+        match &**typ {
+            TypX::SpecFn(inners, inner) => {
+                self.visit_typs(&inners);
+                self.visit_typ(&inner);
+            }
+            TypX::AnonymousClosure(inners, inner, _) => {
+                self.visit_typs(&inners);
+                self.visit_typ(&inner);
+            }
+            TypX::FnDef(_, inners, _) => {
+                self.visit_typs(&inners);
+            }
+            TypX::Primitive(_, inners) => {
+                self.visit_typs(&inners);
+            }
+            TypX::Datatype(dt, typ_params, _impl_path) => {
+                self.visit_typs(&typ_params)?;
+                let spec = Specialization::from_typs(&typ_params, self.spec_map);
+                let entry = self.instantiations.entry(dt.clone()).or_default();
+                if entry.insert(spec) {
+                    tracing::debug!("Visiting datatype: {dt:?} @ {typ_params:?}");
+                }
+            }
+            TypX::Boxed(inner) => {
+                self.visit_typ(&inner);
+            }
+            _ => (),
+        }
+        Ok(())
+    }
     fn visit_exp(&mut self, exp: &Exp) -> Result<(), ()> {
         if let Some((fun, spec)) = Specialization::from_exp(&exp.x, self.spec_map) {
-            self.invocations.push((fun.clone(), spec))
+            let entry = self.invocations.entry(fun.clone()).or_default();
+            entry.insert(spec);
         }
         self.visit_exp_rec(exp)
     }
@@ -309,35 +343,44 @@ impl<'a> Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for Specializatio
 pub(crate) fn collect_specializations_from_function(
     spec: &Specialization,
     function: &FunctionSst,
-) -> Vec<(Fun, Specialization)> {
+) -> KrateSpecializations {
     let spec_map = spec.create_spec_map(&function.x.typ_params);
 
     let mut visitor = SpecializationVisitor::new(&spec_map);
     visitor.visit_function(function).unwrap();
-    visitor.invocations
+    KrateSpecializations {
+        function_spec: visitor.invocations,
+        datatype_spec: visitor.instantiations,
+    }
 }
 
 #[derive(Default)]
 pub struct KrateSpecializations {
     pub function_spec: HashMap<Fun, HashSet<Specialization>>,
-    pub datatype_spec: HashMap<Ident, HashSet<Specialization>>,
+    pub datatype_spec: HashMap<Dt, HashSet<Specialization>>,
 }
-
 
 /**
 Collect all polymorphic function invocations in a module
  */
 pub fn collect_specializations(krate: &KrateSst) -> KrateSpecializations {
+    let _span = tracing::debug_span!("collect_specializations");
     let KrateSstX { functions, .. } = &**krate;
 
     let mut to_visit: VecDeque<(Specialization, &FunctionSst)> =
         functions.iter().map(|f| (Default::default(), f)).collect();
     let mut function_spec: HashMap<Fun, HashSet<Specialization>> = HashMap::new();
-    let mut datatype_spec: HashMap<Ident, HashSet<Specialization>> = HashMap::new();
+    let mut datatype_spec: HashMap<Dt, HashSet<Specialization>> = HashMap::new();
 
     while let Some((caller_spec, caller_sst)) = to_visit.pop_front() {
+        tracing::debug!("Visiting {:?}", caller_sst.x.name);
         let sites = collect_specializations_from_function(&caller_spec, &caller_sst);
-        for (callee, callee_spec) in sites.into_iter() {
+        for (callee, callee_spec) in sites
+            .function_spec
+            .into_iter()
+            .map(|(callee, all_specs)| all_specs.into_iter().map(move |spec| (callee.clone(), spec)))
+            .flatten()
+        {
             if let Some(fun_specs) = function_spec.get(&callee) {
                 if fun_specs.contains(&callee_spec) {
                     continue;
@@ -352,9 +395,10 @@ pub fn collect_specializations(krate: &KrateSst) -> KrateSpecializations {
 
             function_spec.entry(callee).or_insert_with(HashSet::new).insert(callee_spec);
         }
+        for (dt, dt_specs) in sites.datatype_spec.into_iter() {
+            let entry = datatype_spec.entry(dt.clone()).or_default();
+            entry.extend(dt_specs);
+        }
     }
-    KrateSpecializations {
-        function_spec,
-        datatype_spec,
-    }
+    KrateSpecializations { function_spec, datatype_spec }
 }

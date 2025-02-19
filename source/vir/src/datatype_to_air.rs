@@ -703,6 +703,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
 
     for datatype in datatypes.iter() {
         let dt = &datatype.x.name;
+        let _span = tracing::debug_span!("Generating Air for datatype", name=format!("{dt:?}"));
         let is_transparent = is_datatype_transparent(&source_module.x.path, datatype);
 
         if is_transparent {
