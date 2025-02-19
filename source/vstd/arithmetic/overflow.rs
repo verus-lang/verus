@@ -1,20 +1,14 @@
-use super::super::prelude::*;
-use super::super::view::View;
-#[cfg(verus_keep_ghost)]
-use super::div_mod::{
-    lemma_div_is_ordered_by_denominator, lemma_div_plus_one, lemma_fundamental_div_mod,
-    lemma_mod_division_less_than_divisor,
-};
-#[cfg(verus_keep_ghost)]
-use super::mul::{lemma_mul_by_zero_is_zero, lemma_mul_inequality, lemma_mul_is_commutative};
 /// This file defines the `OverflowableU32` and `OverflowableU64`
-/// structs and their associated methods to handle `u32` and `u64`
+/// structs and their associated methods. They handle `u32` and `u64`
 /// values that can overflow. Each struct includes a ghost value
-/// representing the true value (not subject to overflow), so that the
-/// `view` function can provide the true value.
+/// representing the true `nat` value (not subject to overflow), so
+/// that the `view` function can provide that true value.
 ///
-/// Here are some examples using `OverflowableU64`. (The type
-/// `OverflowableU32` can be used analogously.)
+/// It's a fully verified library, i.e., it contains no trusted code.
+///
+/// Here are some examples using `OverflowableU64`. (See
+/// `rust_verify/example/overflow.rs` for more examples, including
+/// ones for the analogous `OverflowableU32`.)
 ///
 /// ```
 /// fn test1()
@@ -51,6 +45,15 @@ use super::mul::{lemma_mul_by_zero_is_zero, lemma_mul_inequality, lemma_mul_is_c
 ///     }
 /// }
 /// ```
+use super::super::prelude::*;
+use super::super::view::View;
+#[cfg(verus_keep_ghost)]
+use super::div_mod::{
+    lemma_div_is_ordered_by_denominator, lemma_div_plus_one, lemma_fundamental_div_mod,
+    lemma_mod_division_less_than_divisor,
+};
+#[cfg(verus_keep_ghost)]
+use super::mul::{lemma_mul_by_zero_is_zero, lemma_mul_inequality, lemma_mul_is_commutative};
 use builtin::*;
 use builtin_macros::*;
 
