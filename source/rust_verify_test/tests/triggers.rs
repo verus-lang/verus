@@ -249,6 +249,19 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] test_arith_variables_with_same_names verus_code! {
+        // https://github.com/verus-lang/verus/issues/1447
+        spec fn a(x: int) -> bool;
+
+        proof fn p_() {
+            let ranking_pred = |n: int| a(n);
+            assert forall|n: int| #![trigger a(n)] a(n) by { } // FAILS
+            assert forall|n: int| #![trigger a(-n)] a(-n) by { }
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
 const TRIGGER_ON_LAMBDA_COMMON: &str = verus_code_str! {
     struct S { a: int, }
 
