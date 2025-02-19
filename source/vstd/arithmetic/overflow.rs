@@ -45,17 +45,21 @@
 ///     }
 /// }
 /// ```
+#[allow(unused_imports)]
 use super::super::prelude::*;
+#[allow(unused_imports)]
 use super::super::view::View;
+#[allow(unused_imports)]
 #[cfg(verus_keep_ghost)]
 use super::div_mod::{
     lemma_div_is_ordered_by_denominator, lemma_div_plus_one, lemma_fundamental_div_mod,
     lemma_mod_division_less_than_divisor,
 };
+#[allow(unused_imports)]
 #[cfg(verus_keep_ghost)]
 use super::mul::{lemma_mul_by_zero_is_zero, lemma_mul_inequality, lemma_mul_is_commutative};
-use builtin::*;
-use builtin_macros::*;
+#[allow(unused_imports)]
+use super::*;
 
 verus! {
 
