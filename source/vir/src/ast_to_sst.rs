@@ -9,7 +9,7 @@ use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{types_equal, undecorate_typ, unit_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
-use crate::inv_masks2::MaskSet;
+use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_secondary_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
@@ -2141,7 +2141,7 @@ pub(crate) fn expr_to_stm_opt(
             }
 
             let block_stm = stms_to_one_stm(&expr.span, stms1);
-            stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(ns_exp, block_stm)));
+            stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(block_stm)));
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
         ExprX::Return(e1) => {
@@ -2414,6 +2414,12 @@ fn exec_closure_body_stms(
     let mut typ_inv_vars = vec![];
 
     state.push_scope();
+
+    // Right now there is no way to specify an invariant mask on a closure function
+    // All closure funcs are assumed to have mask set 'full'
+    let mut mask = Some(MaskSet::full(ctx, &body.span));
+    std::mem::swap(&mut state.mask, &mut mask);
+
     for param in params.iter() {
         let uid =
             state.declare_var_stm(&param.name, &param.a, LocalDeclKind::ExecClosureParam, false);
@@ -2465,6 +2471,7 @@ fn exec_closure_body_stms(
         None => { /* never-return case */ }
     }
 
+    std::mem::swap(&mut state.mask, &mut mask);
     state.pop_scope();
 
     Ok((stms, Arc::new(typ_inv_vars)))

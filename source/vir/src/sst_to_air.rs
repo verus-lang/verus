@@ -1,6 +1,6 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, MaskSpec, Mode, Path, PathX, Primitive,
+    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path, PathX, Primitive,
     SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec,
     VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
@@ -13,7 +13,7 @@ use crate::context::Ctx;
 use crate::def::{
     encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name,
     path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when,
-    prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
+    prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
     snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
     unique_local, variant_field_ident, variant_field_ident_internal, variant_ident,
     CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
@@ -22,7 +22,6 @@ use crate::def::{
     STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
     SUFFIX_SNAP_WHILE_END, U_HI,
 };
-use crate::inv_masks::{MaskSet, MaskSingleton};
 use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, typ_is_poly, MonoTyp, MonoTypX};
 use crate::sst::{
@@ -549,24 +548,6 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Air(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
-}
-
-pub fn mask_set_from_spec(spec: &MaskSpec, function_name: &Fun, args: &Vec<Expr>) -> MaskSet {
-    match spec {
-        MaskSpec::InvariantOpens(exprs) => {
-            let mut l = vec![];
-            for (i, e) in exprs.iter().enumerate() {
-                let expr =
-                    ident_apply(&prefix_open_inv(&fun_to_air_ident(function_name), i), &args);
-                l.push(MaskSingleton { expr, span: e.span.clone() });
-            }
-            MaskSet::from_list(l)
-        }
-        MaskSpec::InvariantOpensExcept(exprs) if exprs.len() == 0 => MaskSet::full(),
-        MaskSpec::InvariantOpensExcept(_exprs) => {
-            panic!("custom mask specs are not yet implemented");
-        }
-    }
 }
 
 pub(crate) fn ctor_to_apply<'a>(
@@ -1291,7 +1272,6 @@ struct State {
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
     assign_map: AssignMap, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
-    mask: MaskSet,         // set of invariants that are allowed to be opened
     unwind: UnwindAir,
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
@@ -1653,12 +1633,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 };
                 let e = mk_implies(&e1, &e2);
                 stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
-            }
-
-            let callee_mask_set =
-                mask_set_from_spec(&func.x.mask_spec_or_default(), &func.x.name, &req_args);
-            if !ctx.checking_spec_preconditions() {
-                callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
             }
 
             let typ_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
@@ -2107,16 +2081,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 }
             }
 
-            // Right now there is no way to specify an invariant mask on a closure function
-            // All closure funcs are assumed to have mask set 'full'
-            let mut mask = MaskSet::full();
-            std::mem::swap(&mut state.mask, &mut mask);
             // Right now all closures are assumed to unwind
             let mut unwind = UnwindAir::MayUnwind;
             std::mem::swap(&mut state.unwind, &mut unwind);
 
             let mut body_stmts = stm_to_stmts(ctx, state, body)?;
-            std::mem::swap(&mut state.mask, &mut mask);
             std::mem::swap(&mut state.unwind, &mut unwind);
 
             stmts.append(&mut body_stmts);
@@ -2458,30 +2427,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
             stmts
         }
-        StmX::OpenInvariant(namespace_exp, body_stm) => {
+        StmX::OpenInvariant(body_stm) => {
             let mut stmts = vec![];
 
             // Build the names_expr. Note: In the SST, this should have been assigned
             // to an expression whose value is constant for the entire block.
-            let namespace_expr = exp_to_expr(ctx, namespace_exp, &ExprCtxt::new())?;
-
-            // Assert that the namespace of the inv we are opening is in the mask set
-            if !ctx.checking_spec_preconditions() {
-                state.mask.assert_contains(&namespace_exp.span, &namespace_expr, &mut stmts, None);
-            }
 
             // process the body
-            // first remove the namespace from the mask set so that we cannot re-open
-            // the same invariant inside
-            let mut inner_mask =
-                state.mask.remove_element(namespace_exp.span.clone(), namespace_expr);
             // Disallow unwinding inside the invariant block
             let mut inner_unwind =
                 UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(stm.span.clone()));
-            swap(&mut state.mask, &mut inner_mask);
             swap(&mut state.unwind, &mut inner_unwind);
             stmts.append(&mut stm_to_stmts(ctx, state, body_stm)?);
-            swap(&mut state.mask, &mut inner_mask);
             swap(&mut state.unwind, &mut inner_unwind);
 
             stmts
@@ -2656,7 +2613,7 @@ pub(crate) fn body_stm_to_air(
     is_bit_vector_mode: bool,
     is_nonlinear: bool,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
-    let FuncCheckSst { reqs, post_condition, mask_set, body: stm, local_decls, statics, unwind } =
+    let FuncCheckSst { reqs, post_condition, body: stm, local_decls, statics, unwind } =
         func_check_sst;
 
     if is_bit_vector_mode {
@@ -2727,22 +2684,6 @@ pub(crate) fn body_stm_to_air(
         ens_exprs.push((ens.span.clone(), e));
     }
 
-    let f_mask_singletons =
-        |v: &Vec<MaskSingleton<Exp>>| -> Result<Vec<MaskSingleton<Expr>>, VirErr> {
-            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body);
-            let mut v2: Vec<MaskSingleton<Expr>> = Vec::new();
-            for m in v.iter() {
-                let expr = exp_to_expr(ctx, &m.expr, expr_ctxt)?;
-                v2.push(MaskSingleton { expr, span: m.span.clone() });
-            }
-            Ok(v2)
-        };
-    let mask_air = MaskSet {
-        base: mask_set.base.clone(),
-        plus: f_mask_singletons(&mask_set.plus)?,
-        minus: f_mask_singletons(&mask_set.minus)?,
-    };
-
     let unwind_air = match unwind {
         UnwindSst::MayUnwind => UnwindAir::MayUnwind,
         UnwindSst::NoUnwind => UnwindAir::NoUnwind(ReasonForNoUnwind::Function),
@@ -2774,7 +2715,6 @@ pub(crate) fn body_stm_to_air(
         sids: vec![initial_sid.clone()],
         snap_map: Vec::new(),
         assign_map: indexmap::IndexMap::new(),
-        mask: mask_air,
         unwind: unwind_air,
         post_condition_info: PostConditionInfo {
             dest: post_condition.dest.clone(),

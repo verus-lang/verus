@@ -82,7 +82,6 @@ use crate::ast::{
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::inv_masks::{MaskSetE, MaskSingleton};
 use crate::sst::{
     BndX, CallFun, Dest, Exp, ExpX, Exps, FuncCheckSst, FuncDeclSst, FunctionSst, FunctionSstX,
     InternalFun, KrateSst, KrateSstX, LocalDecl, LocalDeclKind, Par, ParX, Pars, PostConditionSst,
@@ -872,10 +871,9 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 modified_vars: modified_vars.clone(),
             })
         }
-        StmX::OpenInvariant(e, s) => {
-            let e = visit_exp_native(ctx, state, e);
+        StmX::OpenInvariant(s) => {
             let s = visit_stm(ctx, state, s);
-            mk_stm(StmX::OpenInvariant(e, s))
+            mk_stm(StmX::OpenInvariant(s))
         }
         StmX::ClosureInner { body, typ_inv_vars } => {
             state.types.push_scope(true);
@@ -970,27 +968,12 @@ fn visit_func_check_sst(
     poly_ret: &InsertPars,
     ret_typ: &Typ,
 ) -> FuncCheckSst {
-    let FuncCheckSst { reqs, post_condition, mask_set, unwind, body, local_decls, statics } =
+    let FuncCheckSst { reqs, post_condition, unwind, body, local_decls, statics } =
         function;
 
     state.temp_types.clear();
 
     let reqs = visit_exps_native(ctx, state, reqs);
-
-    let f_mask_singletons =
-        |state: &mut State, v: &Vec<MaskSingleton<Exp>>| -> Vec<MaskSingleton<Exp>> {
-            let mut v2: Vec<MaskSingleton<Exp>> = Vec::new();
-            for m in v.iter() {
-                let exp = visit_exp_native(ctx, state, &m.expr);
-                v2.push(MaskSingleton { expr: exp, span: m.span.clone() });
-            }
-            v2
-        };
-    let mask_set = MaskSetE {
-        base: mask_set.base.clone(),
-        plus: f_mask_singletons(state, &mask_set.plus),
-        minus: f_mask_singletons(state, &mask_set.minus),
-    };
 
     let unwind = match &unwind {
         UnwindSst::MayUnwind | UnwindSst::NoUnwind => unwind.clone(),
@@ -1067,7 +1050,6 @@ fn visit_func_check_sst(
     FuncCheckSst {
         reqs,
         post_condition,
-        mask_set: Arc::new(mask_set),
         unwind,
         body,
         local_decls: Arc::new(locals),

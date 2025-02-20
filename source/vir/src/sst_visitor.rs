@@ -4,7 +4,6 @@ use crate::ast::{
 };
 use crate::ast_visitor::TypVisitor;
 use crate::def::Spanned;
-use crate::inv_masks::{MaskSetE, MaskSingleton};
 use crate::sst::{
     Bnd, BndX, Dest, Exp, ExpX, FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst,
     FunctionSst, FunctionSstX, LocalDecl, LocalDeclX, LoopInv, Par, ParX, PostConditionSst, Stm,
@@ -477,10 +476,9 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
                     })
                 })
             }
-            StmX::OpenInvariant(ns_exp, body) => {
-                let ns_exp = self.visit_exp(ns_exp)?;
+            StmX::OpenInvariant(body) => {
                 let body = self.visit_stm(body)?;
-                R::ret(|| stm_new(StmX::OpenInvariant(R::get(ns_exp), R::get(body))))
+                R::ret(|| stm_new(StmX::OpenInvariant(R::get(body))))
             }
             StmX::Block(stms) => {
                 let stms = self.visit_stms(stms)?;
@@ -617,24 +615,6 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         })
     }
 
-    fn visit_mask_singleton(
-        &mut self,
-        mask: &MaskSingleton<Exp>,
-    ) -> Result<R::Ret<MaskSingleton<Exp>>, Err> {
-        let exp = self.visit_exp(&mask.expr)?;
-        R::ret(|| MaskSingleton { expr: R::get(exp), span: mask.span.clone() })
-    }
-
-    fn visit_mask_set(&mut self, mask: &MaskSetE<Exp>) -> Result<R::Ret<MaskSetE<Exp>>, Err> {
-        let plus = R::map_vec(&mask.plus, &mut |m| self.visit_mask_singleton(m))?;
-        let minus = R::map_vec(&mask.minus, &mut |m| self.visit_mask_singleton(m))?;
-        R::ret(|| MaskSetE {
-            base: mask.base.clone(),
-            plus: R::get_vec(plus),
-            minus: R::get_vec(minus),
-        })
-    }
-
     fn visit_unwind(&mut self, unwind: &UnwindSst) -> Result<R::Ret<UnwindSst>, Err> {
         match unwind {
             UnwindSst::MayUnwind | UnwindSst::NoUnwind => R::ret(|| unwind.clone()),
@@ -650,13 +630,11 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let post_condition = self.visit_postcondition(&def.post_condition)?;
         let body = self.visit_stm(&def.body)?;
         let local_decls = R::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
-        let mask_set = self.visit_mask_set(&def.mask_set)?;
         let unwind = self.visit_unwind(&def.unwind)?;
 
         R::ret(|| FuncCheckSst {
             reqs: R::get_vec_a(reqs),
             post_condition: Arc::new(R::get(post_condition)),
-            mask_set: Arc::new(R::get(mask_set)),
             unwind: R::get(unwind),
             body: R::get(body),
             local_decls: R::get_vec_a(local_decls),
