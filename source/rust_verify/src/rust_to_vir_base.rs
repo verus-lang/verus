@@ -35,7 +35,7 @@ thread_local! {
         std::sync::atomic::AtomicBool::new(false);
 }
 
-fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
+pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Option<Path> {
     let multi_crate = MULTI_CRATE.with(|m| m.load(std::sync::atomic::Ordering::Relaxed));
     let krate = if def_path.krate == LOCAL_CRATE && !multi_crate {
         None

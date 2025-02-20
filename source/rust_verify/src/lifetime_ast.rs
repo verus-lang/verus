@@ -216,4 +216,5 @@ pub(crate) struct FunDecl {
     pub(crate) params: Vec<Param>,
     pub(crate) ret: Option<(Option<Span>, Typ)>,
     pub(crate) body: Exp,
+    pub(crate) check_unsized: bool,
 }

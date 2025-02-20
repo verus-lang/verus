@@ -205,6 +205,8 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
 }
 
 const PRELUDE: &str = "\
+#![feature(f128)]
+#![feature(f16)]
 #![feature(negative_impls)]
 #![feature(with_negative_coherence)]
 #![feature(box_patterns)]

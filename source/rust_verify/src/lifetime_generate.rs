@@ -9,8 +9,8 @@ use air::ast_util::str_ident;
 use rustc_ast::{BindingMode, BorrowKind, IsAuto, Mutability};
 use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
-    AssocItemKind, Block, BlockCheckMode, BodyId, Closure, Crate, Expr, ExprKind, FnSig, HirId,
-    Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OpaqueTy,
+    AssocItemKind, BinOpKind, Block, BlockCheckMode, BodyId, Closure, Crate, Expr, ExprKind, FnSig,
+    HirId, Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OpaqueTy,
     OpaqueTyOrigin, OwnerNode, Pat, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem,
     TraitItemKind, TraitItemRef, UnOp,
 };
@@ -1479,9 +1479,26 @@ fn erase_expr<'tcx>(
                 _ => erase_spec_exps(ctxt, state, expr, vec![exp1]),
             }
         }
-        ExprKind::Binary(_op, e1, e2) => {
-            let exp1 = erase_expr(ctxt, state, expect_spec, e1);
-            let exp2 = erase_expr(ctxt, state, expect_spec, e2);
+        ExprKind::Binary(op, e1, e2) => {
+            let mut exp1 = erase_expr(ctxt, state, expect_spec, e1);
+            let mut exp2 = erase_expr(ctxt, state, expect_spec, e2);
+            let use_ref = matches!(
+                op.node,
+                BinOpKind::Eq
+                    | BinOpKind::Ne
+                    | BinOpKind::Gt
+                    | BinOpKind::Ge
+                    | BinOpKind::Lt
+                    | BinOpKind::Le
+            );
+            if use_ref {
+                if let Some(e) = exp1 {
+                    exp1 = Some(Box::new((e.0, ExpX::AddrOf(Mutability::Not, e))))
+                }
+                if let Some(e) = exp2 {
+                    exp2 = Some(Box::new((e.0, ExpX::AddrOf(Mutability::Not, e))))
+                }
+            }
             erase_spec_exps(ctxt, state, expr, vec![exp1, exp2])
         }
         ExprKind::Index(e1, e2, _span) => {
@@ -1792,6 +1809,7 @@ fn erase_const_or_static<'tcx>(
             params: vec![],
             ret: Some((None, return_typ)),
             body: body,
+            check_unsized: true,
         };
         state.fun_decls.push(decl);
         ctxt.types_opt = None;
@@ -2161,6 +2179,7 @@ fn erase_fn_common<'tcx>(
             params,
             ret,
             body: body_exp,
+            check_unsized: id.is_local(),
         };
         state.fun_decls.push(decl);
         ctxt.types_opt = None;
