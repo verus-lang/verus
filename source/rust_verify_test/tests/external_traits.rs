@@ -309,9 +309,6 @@ test_verify_one_file_with_options! {
         }
 
         #[verifier::external_type_specification]
-        pub struct ExOrdering(core::cmp::Ordering);
-
-        #[verifier::external_type_specification]
         #[verifier::external_body]
         #[verifier::reject_recursive_types_in_ground_variants(I)]
         pub struct ExPeekable<I: Iterator>(core::iter::Peekable<I>);
