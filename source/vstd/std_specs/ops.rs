@@ -68,7 +68,7 @@ macro_rules! def_bin_ops_spec {
                 fn $fun(self, rhs: Rhs) -> (ret: Self::Output)
                 where Self: Sized
                 requires $spec_requires(self, rhs),
-                ensures $spec_ensures(self, rhs, ret)
+                ensures $spec_ensures(self, rhs, ret) // Please Impl SpecXXOp before exec operator trait.
                 ;
             }
 

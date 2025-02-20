@@ -488,3 +488,138 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_operator_overload verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+        use vstd::std_specs::cmp::*;
+
+        fn check_sub<Out, T: core::ops::Sub<Output = Out> + core::cmp::PartialOrd>(x: T, y: T) -> (ret: Option<Out>)
+            requires
+                vstd::std_specs::cmp::spec_gt(&x, &y) ==> spec_sub_requires(x, y)
+            ensures
+                ret.is_some() == vstd::std_specs::cmp::spec_gt(&x, &y),
+                ret.is_some() ==> spec_sub_ensures(x, y, ret.unwrap()),
+        {
+            if x > y {
+                assert(spec_gt(&x, &y));
+                Some(x - y)
+            } else {
+                None
+            }
+        }
+
+        fn check_sub_u8(x: u8, y: u8)
+        {
+            let out = check_sub(x, y);
+            assert(out.is_some() ==> (x >= y));
+        }
+
+        #[derive(PartialEq)]
+        struct A(pub usize);
+
+        impl SpecSubOp<A> for A {
+            type Output = usize;
+            open spec fn spec_sub_requires(lhs: A, rhs: A) -> bool {
+                lhs.0 >= 20 && rhs.0 < 10
+            }
+
+            open spec fn spec_sub_ensures(lhs: A, rhs: A, ret: usize) -> bool {
+                ret == lhs.0 - rhs.0 - 10
+            }
+        }
+        impl core::ops::Sub<A> for A {
+            type Output = usize;
+            fn sub(self, rhs: A) -> usize {
+                assert(self.0 >= 20 && rhs.0 <= 10);
+                self.0 - rhs.0 - 10
+            }
+        }
+
+        impl SpecPartialOrdOp<A> for A {
+            open spec fn spec_partial_cmp(&self, rhs: &A) -> Option<core::cmp::Ordering> {
+                if self.0 > 30 && rhs.0 < 9 {
+                    Some(core::cmp::Ordering::Greater)
+                } else {
+                    None
+                }
+            }
+        }
+
+        impl core::cmp::PartialOrd<A> for A {
+            fn partial_cmp(&self, rhs: &A) -> Option<core::cmp::Ordering>{
+                // Why we need this? It is not triggered automatically?
+                proof!{vstd::std_specs::cmp::axiom_partial_cmp(self, rhs);}
+                if self.0 > 30 && rhs.0 < 9 {
+                    Some(core::cmp::Ordering::Greater)
+                } else {
+                    None
+                }
+            }
+        }
+
+        fn check_sub_special()
+        {
+            let a1 = A(30);
+            let a2 = A(9);
+            if a1 > a2 {
+                assert(a1.0 > 30);
+            }
+            let res = a1 - a2;
+            assert(res == 11);
+
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_call_operator_trait_method verus_code! {
+        use core::ops::Sub;
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+        struct A;
+        impl SpecSubOp<A> for A {
+            type Output = A;
+            open spec fn spec_sub_requires(lhs: A, other: A) -> bool {
+                true
+            }
+            open spec fn spec_sub_ensures(lhs: A, other: A, ret: A) -> bool {
+                true
+            }
+        }
+        impl Sub for A {
+            type Output = A;
+            fn sub(self, other: A) -> (ret: A)
+            {
+                proof{
+                    broadcast use axiom_sub;
+                }
+                self
+            }
+        }
+        // If it is a non-primitive type, it would work.
+        fn test(x1: A, x2: A) {
+            let ord2 = x1.sub(x2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_operator_overload_failed_precondition verus_code! {
+        use vstd::prelude::*;
+        use vstd::std_specs::ops::*;
+        use vstd::std_specs::cmp::*;
+        fn check_add<Out, T: core::ops::Sub<Output = Out> + core::cmp::PartialOrd>(x: T, y: T) -> (ret: Option<Out>)
+            ensures
+                vstd::std_specs::cmp::spec_ge(&x, &y) ==> ret.is_some() && spec_sub_ensures(x, y, ret.unwrap()),
+        {
+            if x >= y {
+                Some(x - y) // FAILS
+            } else {
+                None
+            }
+        }
+    } => Err(e) => assert_one_fails(e)
+}
