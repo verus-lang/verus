@@ -1,7 +1,7 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
     Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
-    LoopInvariantKind, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
+    LoopInvariantKind, MaskSpec, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
     UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
 };
@@ -9,6 +9,7 @@ use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{types_equal, undecorate_typ, unit_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
+use crate::inv_masks2::MaskSet;
 use crate::messages::{error, error_with_secondary_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
@@ -74,6 +75,8 @@ pub(crate) struct State<'a> {
     pub statics: IndexSet<Fun>,
     pub assert_id_counter: u64,
     loop_id_counter: u64,
+
+    pub mask: Option<MaskSet>,
 }
 
 #[derive(Clone)]
@@ -120,7 +123,7 @@ macro_rules! unwrap_or_return_never {
 }
 
 impl<'a> State<'a> {
-    pub fn new(diagnostics: &'a impl Diagnostics) -> Self {
+    pub fn new(diagnostics: &'a dyn Diagnostics) -> Self {
         let mut rename_map = ScopeMap::new();
         let mut rename_exp_idents = ScopeMap::new();
         rename_map.push_scope(true);
@@ -141,6 +144,8 @@ impl<'a> State<'a> {
             statics: IndexSet::new(),
             assert_id_counter: 0,
             loop_id_counter: 0,
+
+            mask: None,
         }
     }
 
@@ -678,7 +683,7 @@ pub(crate) fn expr_to_pure_exp_check(
 
 pub(crate) fn expr_to_decls_exp_skip_checks(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &dyn Diagnostics,
     view_as_spec: bool,
     params: &Pars,
     expr: &Expr,
@@ -708,7 +713,7 @@ pub(crate) fn expr_to_bind_decls_exp_skip_checks(
 
 pub(crate) fn expr_to_exp_skip_checks(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &dyn Diagnostics,
     params: &Pars,
     expr: &Expr,
 ) -> Result<Exp, VirErr> {
@@ -826,6 +831,24 @@ fn is_small_exp_or_loc(exp: &Exp) -> bool {
     }
 }
 
+fn mask_set_for_call(ctx: &Ctx, state: &State, function: &Function) -> MaskSet {
+    let mask_spec = function.x.mask_spec_or_default();
+    let mut inv_exps = vec![];
+    match &mask_spec {
+        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+            for e in es.iter() {
+                let pars = crate::ast_to_sst_func::params_to_pre_post_pars(&function.x.params, true);
+                let exp = expr_to_exp_skip_checks(ctx, state.diagnostics, &pars, e).unwrap();
+                inv_exps.push(exp);
+            }
+        }
+    };
+    match &mask_spec {
+        MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(ctx, &inv_exps, &function.span),
+        MaskSpec::InvariantOpensExcept(_exprs) => MaskSet::from_list_complement(ctx, &inv_exps, &function.span),
+    }
+}
+
 fn stm_call(
     ctx: &Ctx,
     state: &mut State,
@@ -863,6 +886,18 @@ fn stm_call(
         dest,
         assert_id: state.next_assert_id(),
     };
+
+    match &state.mask {
+        Some(caller_mask) => {
+            let callee_mask = mask_set_for_call(ctx, state, &fun);
+            match callee_mask.subset_of(ctx, caller_mask, span) {
+                Some(cond) => stms.push(Spanned::new(span.clone(), StmX::Assert(state.next_assert_id(), None, cond))),
+                None => (),
+            }
+        },
+        None => (),
+    }
+
     stms.push(Spanned::new(span.clone(), call));
     Ok(stms_to_one_stm(span, stms))
 }
@@ -2059,15 +2094,27 @@ pub(crate) fn expr_to_stm_opt(
             stms1.push(init_var(&expr.span, &ident, &arb_exp));
             let inner_var = SpannedTyped::new(&expr.span, &inner_typ, ExpX::Var(ident));
 
-            // Assume the invariant
+            // Check that the invariant namespace is not already opened
             let typ_args = get_inv_typ_args(&big_inv_exp.typ);
+            let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
+
+            match state.mask.as_ref().unwrap().contains(ctx, &ns_exp, &inv.span) {
+                Some(cond) => stms1.push(Spanned::new(expr.span.clone(), StmX::Assert(state.next_assert_id(), None, cond))),
+                None => (),
+            }
+
+            let mut inner_mask = Some(state.mask.as_ref().unwrap().remove(ctx, &ns_exp, &inv.span));
+
+            // Assume the invariant
             let main_inv = call_inv(ctx, &inv_tmp_var, &inner_var, &typ_args, *atomicity);
             stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(main_inv.clone())));
 
             // Process the body
 
             state.push_scope();
+            std::mem::swap(&mut state.mask, &mut inner_mask);
             let (body_stms, body_e) = expr_to_stm_opt(ctx, state, body)?;
+            std::mem::swap(&mut state.mask, &mut inner_mask);
             state.pop_scope();
 
             let body_stm = stms_to_one_stm(&expr.span, body_stms);
@@ -2094,7 +2141,6 @@ pub(crate) fn expr_to_stm_opt(
             }
 
             let block_stm = stms_to_one_stm(&expr.span, stms1);
-            let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
             stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(ns_exp, block_stm)));
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
