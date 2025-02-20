@@ -111,12 +111,12 @@ test_verify_one_file! {
 
         proof fn test() {
             let s: Set<nat> = set![9];
-            reveal_with_fuel(Set::fold, 10);
+            broadcast use fold::lemma_fold_insert, fold::lemma_fold_empty;
             assert(s.finite());
             assert(s.len() > 0);
-            assert(s.fold(0, |p: nat, a: nat| p + a) == 9);
+            assert(s.fold(|p: nat, a: nat| p + a, 0) == 9);
 
-            assert(set![].fold(0, |p: nat, a: nat| p + a) == 0);
+            assert(set![].fold(|p: nat, a: nat| p + a, 0) == 0);
         }
     } => Ok(())
 }

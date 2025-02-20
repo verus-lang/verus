@@ -465,7 +465,7 @@ pub tracked struct MultisetToken<Element, Token>
 }
 
 spec fn map_values<K, V>(m: Map<K, V>) -> Multiset<V> {
-    m.dom().fold(Multiset::empty(), |multiset: Multiset<V>, k: K| multiset.insert(m[k]))
+    m.dom().fold(|k: K, multiset: Multiset<V>| multiset.insert(m[k]), Multiset::empty())
 }
 
 proof fn map_values_insert_not_in<K, V>(m: Map<K, V>, k: K, v: V)
@@ -536,6 +536,7 @@ impl<Element, Token> MultisetToken<Element, Token>
             s.multiset() === Multiset::empty(),
     {
         let tracked s = Self { inst: instance_id, m: Map::tracked_empty(), _v: PhantomData, };
+        broadcast use super::set::fold::lemma_fold_empty;
         assert(Self::map_elems(Map::empty()) =~= Map::empty());
         return s;
     }
