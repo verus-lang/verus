@@ -449,3 +449,24 @@ test_verify_one_file! {
         impl T for S { }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_trait_add verus_code! {
+        #[verifier::external_trait_specification]
+        pub trait ExAddBasic<Rhs> {
+            type ExternalTraitSpecificationFor: core::ops::Add<Rhs>;
+            type Output;
+        }
+
+        pub open spec fn spec_add<Lhs, Rhs, Output>(lhs: Lhs, rhs: Rhs) -> Output;
+
+        #[verifier::external_trait_specification]
+        pub trait ExAddMethod<Rhs> {
+            type ExternalTraitSpecificationFor: core::ops::Add<Rhs>;
+            type Output;
+            // Required method
+            fn add(self, rhs: Rhs) -> (ret: Self::Output) where Self: std::marker::Sized
+            returns spec_add::<_, _, Self::Output>(self, rhs);
+        }
+    } => Ok(())
+}

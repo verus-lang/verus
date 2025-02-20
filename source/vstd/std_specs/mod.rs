@@ -6,6 +6,7 @@ pub mod bits;
 pub mod clone;
 pub mod control_flow;
 pub mod core;
+pub mod ops;
 
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash;
