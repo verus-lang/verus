@@ -752,8 +752,15 @@ fn emit_generic_param(param: &GenericParam) -> String {
 fn emit_generic_params(state: &mut EmitState, generics: &Vec<GenericParam>) {
     if generics.len() > 0 {
         state.write("<");
+        let mut params = vec![];
         for gparam in generics.iter() {
-            state.write(emit_generic_param(gparam));
+            let buf = emit_generic_param(gparam);
+            // Avoid rewrite the same generic param.
+            if params.contains(&buf) {
+                continue;
+            }
+            state.write(buf.clone());
+            params.push(buf);
             state.write(", ");
         }
         state.write(">");
