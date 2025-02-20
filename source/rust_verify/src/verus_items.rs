@@ -278,8 +278,19 @@ pub(crate) enum InvariantItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
+pub(crate) enum SetItem {
+    Empty,
+    Full,
+    Contains,
+    SubsetOf,
+    Insert,
+    Remove,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum VstdItem {
     SeqFn(vir::interpreter::SeqFn),
+    SetFn(SetItem),
     Invariant(InvariantItem),
     ExecNonstaticCall,
     ArrayIndexGet,
@@ -478,6 +489,14 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::seq::Seq::index",       VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Index   ), Some(Arc::new("seq::Seq::index"      .to_owned())))),
         ("verus::vstd::seq::Seq::ext_equal",   VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::ExtEqual), Some(Arc::new("seq::Seq::ext_equal"  .to_owned())))),
         ("verus::vstd::seq::Seq::last",        VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Last    ), Some(Arc::new("seq::Seq::last"       .to_owned())))),
+
+        ("verus::vstd::set::Set::empty",     VerusItem::Vstd(VstdItem::SetFn(SetItem::Empty),    Some(Arc::new("set::Set::empty".to_owned())))),
+        ("verus::vstd::set::Set::full",      VerusItem::Vstd(VstdItem::SetFn(SetItem::Full),     Some(Arc::new("set::Set::full".to_owned())))),
+        ("verus::vstd::set::Set::contains",  VerusItem::Vstd(VstdItem::SetFn(SetItem::Contains), Some(Arc::new("set::Set::contains".to_owned())))),
+        ("verus::vstd::set::Set::subset_of", VerusItem::Vstd(VstdItem::SetFn(SetItem::SubsetOf), Some(Arc::new("set::Set::subset_of".to_owned())))),
+        ("verus::vstd::set::Set::insert",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Insert),   Some(Arc::new("set::Set::insert".to_owned())))),
+        ("verus::vstd::set::Set::remove",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Remove),   Some(Arc::new("set::Set::remove".to_owned())))),
+
         ("verus::vstd::invariant::AtomicInvariant::namespace",           VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantNamespace       ), Some(Arc::new("invariant::AtomicInvariant::namespace"          .to_owned())))),
         ("verus::vstd::invariant::AtomicInvariant::inv",                 VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantInv             ), Some(Arc::new("invariant::AtomicInvariant::inv"                .to_owned())))),
         ("verus::vstd::invariant::LocalInvariant::namespace",            VerusItem::Vstd(VstdItem::Invariant(InvariantItem::LocalInvariantNamespace        ), Some(Arc::new("invariant::LocalInvariant::namespace"           .to_owned())))),
