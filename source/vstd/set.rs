@@ -37,17 +37,20 @@ pub struct Set<A> {
 
 impl<A> Set<A> {
     /// The "empty" set.
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::empty"]
     pub spec fn empty() -> Set<A>;
 
     /// Set whose membership is determined by the given boolean predicate.
     pub spec fn new<F: Fn(A) -> bool>(f: F) -> Set<A>;
 
     /// The "full" set, i.e., set containing every element of type `A`.
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::full"]
     pub open spec fn full() -> Set<A> {
         Set::empty().complement()
     }
 
     /// Predicate indicating if the set contains the given element.
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::contains"]
     pub spec fn contains(self, a: A) -> bool;
 
     /// Predicate indicating if the set contains the given element: supports `self has a` syntax.
@@ -57,6 +60,7 @@ impl<A> Set<A> {
     }
 
     /// Returns `true` if the first argument is a subset of the second.
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::subset_of"]
     pub open spec fn subset_of(self, s2: Set<A>) -> bool {
         forall|a: A| self.contains(a) ==> s2.contains(a)
     }
@@ -68,10 +72,12 @@ impl<A> Set<A> {
 
     /// Returns a new set with the given element inserted.
     /// If that element is already in the set, then an identical set is returned.
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::insert"]
     pub spec fn insert(self, a: A) -> Set<A>;
 
     /// Returns a new set with the given element removed.
     /// If that element is already absent from the set, then an identical set is returned.
+    #[rustc_diagnostic_item = "verus::vstd::set::Set::remove"]
     pub spec fn remove(self, a: A) -> Set<A>;
 
     /// Union of two sets.
