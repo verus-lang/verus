@@ -48,7 +48,6 @@ pub mod headers;
 mod heuristics;
 pub mod interpreter;
 mod inv_masks;
-mod inv_masks2;
 pub mod layout;
 mod loop_inference;
 pub mod messages;
