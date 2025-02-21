@@ -1,14 +1,16 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Ident, InequalityOp,
-    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX,
-    Typs, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarBinders, Fun,
+    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, Ident,
+    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Quant, SpannedTyped,
+    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
-use crate::sst::{BndX, CallFun, Exp, ExpX, LocalDeclKind, Stm, Trig, Trigs, UniqueIdent, Exps, InternalFun};
+use crate::sst::{
+    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDeclKind, Stm, Trig, Trigs, UniqueIdent,
+};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -846,7 +848,8 @@ pub(crate) fn sst_call_requires(
     for (typ_param, arg) in func.x.typ_params.iter().zip(typ_args.iter()) {
         typ_substs.insert(typ_param.clone(), arg.clone());
     }
-    let param_typs: Vec<Typ> = func.x.params.iter().map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
+    let param_typs: Vec<Typ> =
+        func.x.params.iter().map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
 
     let tuple_typ = crate::ast_util::mk_tuple_typ(&Arc::new(param_typs));
     let fndef_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), resolved_fun.clone()));
@@ -854,15 +857,14 @@ pub(crate) fn sst_call_requires(
     let fndef_value = SpannedTyped::new(span, &fndef_typ, ExpX::ExecFnByName(fun.clone()));
     let fndef_value = crate::poly::coerce_exp_to_poly(ctx, &fndef_value);
 
-    let req_args: Vec<Exp> = req_args.iter().map(|r|
-        crate::poly::coerce_exp_to_poly(ctx, r)
-    ).collect();
+    let req_args: Vec<Exp> =
+        req_args.iter().map(|r| crate::poly::coerce_exp_to_poly(ctx, r)).collect();
     let args_tuple = sst_tuple(span, &Arc::new(req_args));
     let args_tuple = crate::poly::coerce_exp_to_poly(ctx, &args_tuple);
 
     let expx = ExpX::Call(
         CallFun::InternalFun(InternalFun::ClosureReq),
-        Arc::new(vec![fndef_typ, tuple_typ]), 
+        Arc::new(vec![fndef_typ, tuple_typ]),
         Arc::new(vec![fndef_value, args_tuple]),
     );
     SpannedTyped::new(span, &Arc::new(TypX::Bool), expx)
@@ -883,7 +885,8 @@ pub(crate) fn sst_call_ensures(
     for (typ_param, arg) in func.x.typ_params.iter().zip(typ_args.iter()) {
         typ_substs.insert(typ_param.clone(), arg.clone());
     }
-    let param_typs: Vec<Typ> = func.x.params.iter().map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
+    let param_typs: Vec<Typ> =
+        func.x.params.iter().map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
 
     let tuple_typ = crate::ast_util::mk_tuple_typ(&Arc::new(param_typs));
     let fndef_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), resolved_fun.clone()));
@@ -891,9 +894,8 @@ pub(crate) fn sst_call_ensures(
     let fndef_value = SpannedTyped::new(span, &fndef_typ, ExpX::ExecFnByName(fun.clone()));
     let fndef_value = crate::poly::coerce_exp_to_poly(ctx, &fndef_value);
 
-    let req_args: Vec<Exp> = req_args.iter().map(|r|
-        crate::poly::coerce_exp_to_poly(ctx, r)
-    ).collect();
+    let req_args: Vec<Exp> =
+        req_args.iter().map(|r| crate::poly::coerce_exp_to_poly(ctx, r)).collect();
     let args_tuple = sst_tuple(span, &Arc::new(req_args));
     let args_tuple = crate::poly::coerce_exp_to_poly(ctx, &args_tuple);
 
@@ -907,7 +909,7 @@ pub(crate) fn sst_call_ensures(
 
     let expx = ExpX::Call(
         CallFun::InternalFun(InternalFun::ClosureEns),
-        Arc::new(vec![fndef_typ, tuple_typ]), 
+        Arc::new(vec![fndef_typ, tuple_typ]),
         Arc::new(vec![fndef_value, args_tuple, return_value]),
     );
     SpannedTyped::new(span, &Arc::new(TypX::Bool), expx)

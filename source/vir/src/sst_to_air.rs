@@ -1576,7 +1576,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
                 if emit_generic_conditions {
                     let generic_req_exp = crate::sst_util::sst_call_requires(
-                        ctx, &stm.span, fun, typs, func, &resolved_fun, args);
+                        ctx,
+                        &stm.span,
+                        fun,
+                        typs,
+                        func,
+                        &resolved_fun,
+                        args,
+                    );
                     let generic_req_expr = exp_to_expr(ctx, &generic_req_exp, expr_ctxt)?;
                     e_req = mk_implies(&mk_not(&generic_req_expr), &e_req);
                 }
@@ -1785,13 +1792,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 stmts.push(Arc::new(StmtX::Assume(e_ens)));
             }
             if emit_generic_conditions {
-                let dest_exp = if func.x.ens_has_return {
-                    Some(dest.clone().unwrap().dest)
-                } else {
-                    None
-                };
+                let dest_exp =
+                    if func.x.ens_has_return { Some(dest.clone().unwrap().dest) } else { None };
                 let generic_ens_exp = crate::sst_util::sst_call_ensures(
-                    ctx, &stm.span, fun, typs, func, &resolved_fun, args, dest_exp);
+                    ctx,
+                    &stm.span,
+                    fun,
+                    typs,
+                    func,
+                    &resolved_fun,
+                    args,
+                    dest_exp,
+                );
                 let generic_ens_expr = exp_to_expr(ctx, &generic_ens_exp, expr_ctxt)?;
                 stmts.push(Arc::new(StmtX::Assume(generic_ens_expr)));
             }

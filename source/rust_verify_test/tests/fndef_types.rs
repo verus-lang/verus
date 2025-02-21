@@ -1799,7 +1799,7 @@ test_verify_one_file! {
             let r = foo(x);
             assert(call_ensures(foo, (x,), r));
             assert(false); // FAILS
-        }       
+        }
     } => Err(err) => assert_fails(err, 1)
 }
 
@@ -1820,7 +1820,7 @@ test_verify_one_file! {
             foo(x);
             assert(call_ensures(foo, (x,), ()));
             assert(false); // FAILS
-        }       
+        }
     } => Err(err) => assert_fails(err, 1)
 }
 
