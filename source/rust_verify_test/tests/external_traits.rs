@@ -497,13 +497,14 @@ test_verify_one_file! {
 
         fn check_sub<Out, T: core::ops::Sub<Output = Out> + core::cmp::PartialOrd>(x: T, y: T) -> (ret: Option<Out>)
             requires
+                obeys_comparison_model::<T, T>(),
                 vstd::std_specs::cmp::spec_gt(&x, &y) ==> spec_sub_requires(x, y)
             ensures
                 ret.is_some() == vstd::std_specs::cmp::spec_gt(&x, &y),
                 ret.is_some() ==> spec_sub_ensures(x, y, ret.unwrap()),
         {
             if x > y {
-                assert(spec_gt(&x, &y));
+                assert(obeys_comparison_model::<T, T>() ==> spec_gt(&x, &y));
                 Some(x - y)
             } else {
                 None
@@ -514,6 +515,12 @@ test_verify_one_file! {
         {
             let out = check_sub(x, y);
             assert(out.is_some() ==> (x >= y));
+        }
+
+        impl SpecPartialEqOp<A> for A {
+            open spec fn spec_partial_eq(&self, rhs: &A) -> bool {
+                self.0 == rhs.0
+            }
         }
 
         #[derive(PartialEq)]
@@ -612,7 +619,7 @@ test_verify_one_file! {
         use vstd::std_specs::ops::*;
         use vstd::std_specs::cmp::*;
         fn check_add<Out, T: core::ops::Sub<Output = Out> + core::cmp::PartialOrd>(x: T, y: T) -> (ret: Option<Out>)
-            ensures
+            ensures obeys_comparison_model::<T, T>() ==>
                 vstd::std_specs::cmp::spec_ge(&x, &y) ==> ret.is_some() && spec_sub_ensures(x, y, ret.unwrap()),
         {
             if x >= y {
