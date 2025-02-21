@@ -1,3 +1,4 @@
+// Provide comparison specifications.
 use super::super::prelude::*;
 
 verus! {
@@ -10,6 +11,7 @@ pub struct ExOrdering(Ordering);
 pub broadcast group group_cmp_axioms {
     axiom_partial_eq,
     axiom_partial_cmp,
+    axiom_obey_cmp_model,
 }
 
 //
@@ -23,6 +25,9 @@ pub broadcast group group_cmp_axioms {
 // a >= b if and only if a > b || a == b
 // a != b if and only if !(a == b).
 //
+// By implementing SpecPartialOrdOp + SpecPartialEq, it assumes that the type follow the above cmp model.
+pub open spec fn obeys_comparison_model<Lhs: ?Sized, Rhs: ?Sized>() -> bool;
+
 pub open spec fn spec_partial_cmp<Lhs: ?Sized, Rhs: ?Sized>(lhs: &Lhs, rhs: &Rhs) -> Option<
     Ordering,
 >;
@@ -47,6 +52,17 @@ pub open spec fn spec_le<Lhs: ?Sized, Rhs: ?Sized>(lhs: &Lhs, rhs: &Rhs) -> bool
 #[verifier(inline)]
 pub open spec fn spec_ge<Lhs: ?Sized, Rhs: ?Sized>(lhs: &Lhs, rhs: &Rhs) -> bool {
     spec_gt(lhs, rhs) || spec_partial_eq(lhs, rhs)
+}
+
+// Implement SpecObeyCmpModel for unverified code that obeys the comparison model.
+pub broadcast proof fn axiom_obey_cmp_model<
+    Lhs: SpecPartialOrdOp<Rhs> + SpecPartialEqOp<Rhs>,
+    Rhs,
+>()
+    ensures
+        #[trigger] obeys_comparison_model::<Lhs, Rhs>() == true,
+{
+    admit()
 }
 
 pub trait SpecPartialOrdOp<Rhs> {
@@ -91,27 +107,27 @@ pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
 
     fn partial_cmp(&self, other: &Rhs) -> (ret: Option<Ordering>)
         ensures
-            ret === spec_partial_cmp(self, other),
+            obeys_comparison_model::<Self, Rhs>() ==> ret === spec_partial_cmp(self, other),
     ;
 
     fn lt(&self, other: &Rhs) -> (ret: bool)
         ensures
-            ret == spec_lt(self, other),
+            obeys_comparison_model::<Self, Rhs>() ==> ret == spec_lt(self, other),
     ;
 
     fn le(&self, other: &Rhs) -> (ret: bool)
         ensures
-            ret == spec_le(self, other),
+            obeys_comparison_model::<Self, Rhs>() ==> ret == spec_le(self, other),
     ;
 
     fn gt(&self, other: &Rhs) -> (ret: bool)
         ensures
-            ret == spec_gt(self, other),
+            obeys_comparison_model::<Self, Rhs>() ==> ret == spec_gt(self, other),
     ;
 
     fn ge(&self, other: &Rhs) -> (ret: bool)
         ensures
-            ret == spec_ge(self, other),
+            obeys_comparison_model::<Self, Rhs>() ==> ret == spec_ge(self, other),
     ;
 }
 
