@@ -1775,12 +1775,25 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
                         stmts.push(snapshot);
                     }
+                } else {
+                    crate::messages::internal_error(&stm.span, "ens_has_return but no Dest");
                 }
             }
             if has_ens {
                 let f_ens = prefix_ensures(&fun_to_air_ident(&ens_fun));
                 let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
                 stmts.push(Arc::new(StmtX::Assume(e_ens)));
+            }
+            if emit_generic_conditions {
+                let dest_exp = if func.x.ens_has_return {
+                    Some(dest.clone().unwrap().dest)
+                } else {
+                    None
+                };
+                let generic_ens_exp = crate::sst_util::sst_call_ensures(
+                    ctx, &stm.span, fun, typs, func, &resolved_fun, args, dest_exp);
+                let generic_ens_expr = exp_to_expr(ctx, &generic_ens_exp, expr_ctxt)?;
+                stmts.push(Arc::new(StmtX::Assume(generic_ens_expr)));
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }

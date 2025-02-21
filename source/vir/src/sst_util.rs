@@ -841,7 +841,13 @@ pub(crate) fn sst_call_requires(
     resolved_fun: &Option<Fun>,
     req_args: &Exps,
 ) -> Exp {
-    let param_typs: Vec<Typ> = func.x.params.iter().map(|p| p.x.typ.clone()).collect();
+    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+    assert!(func.x.typ_params.len() == typ_args.len());
+    for (typ_param, arg) in func.x.typ_params.iter().zip(typ_args.iter()) {
+        typ_substs.insert(typ_param.clone(), arg.clone());
+    }
+    let param_typs: Vec<Typ> = func.x.params.iter().map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
+
     let tuple_typ = crate::ast_util::mk_tuple_typ(&Arc::new(param_typs));
     let fndef_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), resolved_fun.clone()));
 
@@ -870,9 +876,15 @@ pub(crate) fn sst_call_ensures(
     func: &crate::ast::Function,
     resolved_fun: &Option<Fun>,
     req_args: &Exps,
-    return_value: &Exp,
+    return_value: Option<Exp>,
 ) -> Exp {
-    let param_typs: Vec<Typ> = func.x.params.iter().map(|p| p.x.typ.clone()).collect();
+    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+    assert!(func.x.typ_params.len() == typ_args.len());
+    for (typ_param, arg) in func.x.typ_params.iter().zip(typ_args.iter()) {
+        typ_substs.insert(typ_param.clone(), arg.clone());
+    }
+    let param_typs: Vec<Typ> = func.x.params.iter().map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
+
     let tuple_typ = crate::ast_util::mk_tuple_typ(&Arc::new(param_typs));
     let fndef_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), resolved_fun.clone()));
 
@@ -885,10 +897,18 @@ pub(crate) fn sst_call_ensures(
     let args_tuple = sst_tuple(span, &Arc::new(req_args));
     let args_tuple = crate::poly::coerce_exp_to_poly(ctx, &args_tuple);
 
+    let return_value = match &return_value {
+        Some(r) => crate::poly::coerce_exp_to_poly(ctx, r),
+        None => {
+            let unit = sst_tuple(span, &Arc::new(vec![]));
+            crate::poly::coerce_exp_to_poly(ctx, &unit)
+        }
+    };
+
     let expx = ExpX::Call(
         CallFun::InternalFun(InternalFun::ClosureEns),
         Arc::new(vec![fndef_typ, tuple_typ]), 
-        Arc::new(vec![fndef_value, args_tuple, return_value.clone()]),
+        Arc::new(vec![fndef_value, args_tuple, return_value]),
     );
     SpannedTyped::new(span, &Arc::new(TypX::Bool), expx)
 }
