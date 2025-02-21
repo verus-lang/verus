@@ -1307,6 +1307,10 @@ fn operator_overload_to_vir<'tcx>(
                 | BinOpKind::Mul
                 | BinOpKind::Div
                 | BinOpKind::Rem
+                | BinOpKind::BitAnd
+                | BinOpKind::BitOr
+                | BinOpKind::Shl
+                | BinOpKind::Shr
                 | BinOpKind::Le
                 | BinOpKind::Ge
                 | BinOpKind::Lt
