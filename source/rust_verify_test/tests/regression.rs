@@ -1348,3 +1348,45 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] verus_macro_in_impl_block_issue1461 ["--external-by-default"] => code! {
+        use vstd::prelude::*;
+
+        verus! {
+        pub struct MyStruct {}
+        }
+
+        impl MyStruct {
+            verus! {
+                proof fn unsound()
+                {
+                    assert(false); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] verus_macro_in_impl_block_issue1461_traits ["--external-by-default"] => code! {
+        use vstd::prelude::*;
+
+        verus! {
+            pub struct MyStruct {}
+
+            trait Tr {
+                fn unsound();
+            }
+        }
+
+        impl Tr for MyStruct {
+            verus! {
+                fn unsound()
+                {
+                    assert(false);
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.")
+}

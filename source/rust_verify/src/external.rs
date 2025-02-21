@@ -135,7 +135,7 @@ pub(crate) fn get_crate_items<'tcx>(ctxt: &Context<'tcx>) -> Result<CrateItems, 
         state: default_state,
         module_path: root_module_path,
         errors: vec![],
-        is_impl_trait: false,
+        in_impl: None,
     };
     let owner = ctxt.tcx.hir_owner_node(rustc_hir::CRATE_OWNER_ID);
     visitor.visit_mod(root_module, owner.span(), rustc_hir::CRATE_HIR_ID);
@@ -171,6 +171,13 @@ enum VerifState {
     External,
 }
 
+// Information about the impl, used when visitings its ImplItems.
+#[derive(Copy, Clone)]
+struct InsideImpl {
+    is_trait: bool,
+    has_any_verus_aware_item: bool,
+}
+
 struct VisitMod<'a, 'tcx> {
     items: Vec<CrateItem>,
     ctxt: &'a Context<'tcx>,
@@ -178,7 +185,7 @@ struct VisitMod<'a, 'tcx> {
 
     state: VerifState,
     module_path: Path,
-    is_impl_trait: bool,
+    in_impl: Option<InsideImpl>,
 }
 
 impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'a, 'tcx> {
@@ -266,10 +273,18 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
             VerifState::External => VerifState::External,
         };
 
+        if matches!(general_item, GeneralItem::ImplItem(_)) && self.in_impl.is_none() {
+            self.errors.push(crate::util::err_span_bare(
+                span,
+                "Verus internal error: expected ImplItem to be child of Impl",
+            ));
+            return;
+        }
+
         // Error if any item of a trait or trait impl is ignored.
 
         if matches!(general_item, GeneralItem::ImplItem(_))
-            && self.is_impl_trait
+            && self.in_impl.as_ref().unwrap().is_trait
             && self.state == VerifState::Verify
             && state_for_this_item == VerifState::External
         {
@@ -288,6 +303,12 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                 "An individual item of a trait cannot be marked external. Perhaps you meant to mark the entire trait external?",
               ));
             return;
+        }
+
+        if matches!(general_item, GeneralItem::ImplItem(_))
+            && state_for_this_item == VerifState::Verify
+        {
+            self.in_impl.as_mut().unwrap().has_any_verus_aware_item = true;
         }
 
         // Append this item to the items
@@ -309,6 +330,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         };
 
         self.items.push(CrateItem { id: general_item.id(), verif });
+        let this_item_idx = self.items.len() - 1;
 
         // Compute the context for any _nested_ items
 
@@ -330,9 +352,10 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
 
         let saved_state = self.state;
         let saved_mod = self.module_path.clone();
-        let saved_is_impl_trait = self.is_impl_trait;
+        let saved_in_impl = self.in_impl;
 
         self.state = state_inside;
+        self.in_impl = None;
 
         match general_item {
             GeneralItem::Item(item) => match item.kind {
@@ -341,7 +364,10 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                         def_id_to_vir_path(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
                 }
                 ItemKind::Impl(impll) => {
-                    self.is_impl_trait = impll.of_trait.is_some();
+                    self.in_impl = Some(InsideImpl {
+                        is_trait: impll.of_trait.is_some(),
+                        has_any_verus_aware_item: false,
+                    });
                 }
                 _ => {}
             },
@@ -355,9 +381,37 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
             GeneralItem::TraitItem(i) => rustc_hir::intravisit::walk_trait_item(self, i),
         }
 
+        if let Some(in_impl) = self.in_impl {
+            if in_impl.has_any_verus_aware_item && state_for_this_item != VerifState::Verify {
+                // Suppose the user writes something like:
+                //
+                // impl X {
+                //     verus!{
+                //          fn foo() { ... }
+                //     }
+                // }
+                //
+                // We need to make sure 'foo' isn't skipped just because the impl block
+                // as a whole isn't marked verify.
+                //
+                // For _normal impls_, we just go ahead and mark the impl as verification-aware.
+                // For _trait impls_, this situation would be too complicated, so we error.
+
+                if in_impl.is_trait {
+                    self.errors.push(crate::util::err_span_bare(
+                        span,
+                        "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.",
+                    ));
+                } else {
+                    self.items[this_item_idx].verif =
+                        VerifOrExternal::VerusAware { module_path: self.module_path.clone() }
+                }
+            }
+        }
+
         self.state = saved_state;
         self.module_path = saved_mod;
-        self.is_impl_trait = saved_is_impl_trait;
+        self.in_impl = saved_in_impl;
     }
 }
 
