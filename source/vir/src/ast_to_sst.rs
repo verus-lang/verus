@@ -1972,6 +1972,9 @@ pub(crate) fn expr_to_stm_opt(
                 check_recommends.extend(rec);
                 decrease1.push(exp);
             }
+            if decrease1.len() == 0 {
+                return Err(error(&expr.span, "loop must have a decreases clause"));
+            }
             if ctx.checking_spec_preconditions() {
                 stms1.splice(0..0, check_recommends);
             }
