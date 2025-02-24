@@ -573,8 +573,8 @@ pub fn func_def_to_sst(
         inv_spec_exps.push(exp.clone());
     }
     let mask_set = match &mask_spec {
-        MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(ctx, &inv_spec_exps, &function.span),
-        MaskSpec::InvariantOpensExcept(_exprs) => MaskSet::from_list_complement(ctx, &inv_spec_exps, &function.span),
+        MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(&inv_spec_exps, &function.span),
+        MaskSpec::InvariantOpensExcept(_exprs) => MaskSet::from_list_complement(&inv_spec_exps, &function.span),
     };
     state.mask = Some(mask_set);
 

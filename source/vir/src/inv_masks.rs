@@ -13,15 +13,16 @@ use std::sync::Arc;
 /// we keep track of whether the mask is empty or full, and elide certain checks in
 /// those cases.
 
-enum Special {
-    Empty,
-    Full,
-    Arbitrary,
-}
+#[derive(Clone)]
+pub enum MaskSet {
+    Empty { span: Span },
+    Full { span: Span },
+    Insert { span: Span, base: Box<MaskSet>, elem: Exp },
+    Remove { span: Span, base: Box<MaskSet>, elem: Exp },
 
-pub struct MaskSet {
-    set: crate::sst::Exp,
-    spec: Special,
+    // Not used at the moment, will be used when we add syntax and support
+    // for specifying an std::Set expression as the mask.
+    // Arbitrary { set: Exp },
 }
 
 fn namespace_set_typs() -> Arc<Vec<Typ>> {
@@ -33,77 +34,83 @@ fn namespace_set_typ(ctx: &Ctx) -> Arc<TypX> {
 }
 
 impl MaskSet {
-    pub fn empty(ctx: &Ctx, span: &Span) -> MaskSet {
-        let empty_fun = CallFun::Fun(crate::def::fn_set_empty_name(&ctx.global.vstd_crate_name), None);
-        let empty_expx = ExpX::Call(empty_fun, namespace_set_typs(), Arc::new(vec![]));
-        let empty_exp = SpannedTyped::new(span, &namespace_set_typ(&ctx), empty_expx);
-
-        MaskSet{
-            set: empty_exp,
-            spec: Special::Empty,
+    pub fn to_exp(self: &Self, ctx: &Ctx) -> Exp {
+        match self {
+            MaskSet::Empty { span } => {
+                let empty_fun = CallFun::Fun(crate::def::fn_set_empty_name(&ctx.global.vstd_crate_name), None);
+                let empty_expx = ExpX::Call(empty_fun, namespace_set_typs(), Arc::new(vec![]));
+                let empty_exp = SpannedTyped::new(&span, &namespace_set_typ(ctx), empty_expx);
+                empty_exp
+            },
+            MaskSet::Full { span } => {
+                let full_fun = CallFun::Fun(crate::def::fn_set_full_name(&ctx.global.vstd_crate_name), None);
+                let full_expx = ExpX::Call(full_fun, namespace_set_typs(), Arc::new(vec![]));
+                let full_exp = SpannedTyped::new(&span, &namespace_set_typ(ctx), full_expx);
+                full_exp
+            },
+            MaskSet::Insert { span, base, elem } => {
+                let insert_fun = CallFun::Fun(crate::def::fn_set_insert_name(&ctx.global.vstd_crate_name), None);
+                let insert_expx = ExpX::Call(insert_fun, namespace_set_typs(), Arc::new(vec![base.to_exp(ctx), elem.clone()]));
+                let insert_exp = SpannedTyped::new(&span, &namespace_set_typ(ctx), insert_expx);
+                insert_exp
+            },
+            MaskSet::Remove { span, base, elem } => {
+                let remove_fun = CallFun::Fun(crate::def::fn_set_remove_name(&ctx.global.vstd_crate_name), None);
+                let remove_expx = ExpX::Call(remove_fun, namespace_set_typs(), Arc::new(vec![base.to_exp(ctx), elem.clone()]));
+                let remove_exp = SpannedTyped::new(&span, &namespace_set_typ(ctx), remove_expx);
+                remove_exp
+            },
+            // MaskSet::Arbitrary { set } => { set.clone() },
         }
     }
 
-    pub fn full(ctx: &Ctx, span: &Span) -> MaskSet {
-        let full_fun = CallFun::Fun(crate::def::fn_set_full_name(&ctx.global.vstd_crate_name), None);
-        let full_expx = ExpX::Call(full_fun, namespace_set_typs(), Arc::new(vec![]));
-        let full_exp = SpannedTyped::new(span, &namespace_set_typ(&ctx), full_expx);
-
-        MaskSet{
-            set: full_exp,
-            spec: Special::Full,
-        }
+    pub fn empty(span: &Span) -> MaskSet {
+        MaskSet::Empty{ span: span.clone() }
     }
 
-    pub fn from_list(ctx: &Ctx, exps: &Vec<Exp>, span: &Span) -> MaskSet {
-        let mut mask = Self::empty(ctx, span);
+    pub fn full(span: &Span) -> MaskSet {
+        MaskSet::Full{ span: span.clone() }
+    }
+
+    pub fn insert(self: &Self, elem: &Exp, span: &Span) -> Self {
+        MaskSet::Insert{ span: span.clone(), base: Box::new(self.clone()), elem: elem.clone() }
+    }
+
+    pub fn remove(self: &Self, elem: &Exp, span: &Span) -> Self {
+        MaskSet::Remove{ span: span.clone(), base: Box::new(self.clone()), elem: elem.clone() }
+    }
+
+    // pub fn arbitrary(exp: &Exp) -> Self {
+    //     MaskSet::Arbitrary{ set: exp.clone() }
+    // }
+
+    pub fn from_list(exps: &Vec<Exp>, span: &Span) -> MaskSet {
+        let mut mask = Self::empty(span);
 
         for e in exps.iter() {
-            mask = mask.insert(ctx, e, span)
+            mask = mask.insert(e, span)
         }
 
         mask
     }
 
-    pub fn from_list_complement(ctx: &Ctx, exps: &Vec<Exp>, span: &Span) -> MaskSet {
-        let mut mask = Self::full(ctx, span);
+    pub fn from_list_complement(exps: &Vec<Exp>, span: &Span) -> MaskSet {
+        let mut mask = Self::full(span);
 
         for e in exps.iter() {
-            mask = mask.remove(ctx, e, span)
+            mask = mask.remove(e, span)
         }
 
         mask
     }
 
-    pub fn insert(self: &Self, ctx: &Ctx, exp: &Exp, span: &Span) -> Self {
-        let insert_fun = CallFun::Fun(crate::def::fn_set_insert_name(&ctx.global.vstd_crate_name), None);
-        let insert_expx = ExpX::Call(insert_fun, namespace_set_typs(), Arc::new(vec![self.set.clone(), exp.clone()]));
-        let insert_exp = SpannedTyped::new(span, &namespace_set_typ(&ctx), insert_expx);
-
-        MaskSet{
-            set: insert_exp,
-            spec: Special::Arbitrary,
-        }
-    }
-
-    pub fn remove(self: &Self, ctx: &Ctx, exp: &Exp, span: &Span) -> Self {
-        let remove_fun = CallFun::Fun(crate::def::fn_set_remove_name(&ctx.global.vstd_crate_name), None);
-        let remove_expx = ExpX::Call(remove_fun, namespace_set_typs(), Arc::new(vec![self.set.clone(), exp.clone()]));
-        let remove_exp = SpannedTyped::new(span, &namespace_set_typ(&ctx), remove_expx);
-
-        MaskSet{
-            set: remove_exp,
-            spec: Special::Arbitrary,
-        }
-    }
-
-    pub fn contains(self: &Self, ctx: &Ctx, exp: &Exp, span: &Span) -> Option<Exp> {
-        match self.spec {
-            Special::Full => None,
+    pub fn contains(self: &Self, ctx: &Ctx, elem: &Exp, span: &Span) -> Option<Exp> {
+        match self {
+            MaskSet::Full { span: _ } => None,
             _ => {
                 let contains_fun = CallFun::Fun(crate::def::fn_set_contains_name(&ctx.global.vstd_crate_name), None);
-                let contains_expx = ExpX::Call(contains_fun, namespace_set_typs(), Arc::new(vec![self.set.clone(), exp.clone()]));
-                let contains_exp = SpannedTyped::new(span, &Arc::new(TypX::Bool), contains_expx);
+                let contains_expx = ExpX::Call(contains_fun, namespace_set_typs(), Arc::new(vec![self.to_exp(ctx), elem.clone()]));
+                let contains_exp = SpannedTyped::new(&span, &Arc::new(TypX::Bool), contains_expx);
 
                 Some(contains_exp)
             },
@@ -111,14 +118,14 @@ impl MaskSet {
     }
 
     pub fn subset_of(self: &Self, ctx: &Ctx, other: &Self, span: &Span) -> Option<Exp> {
-        match self.spec {
-            Special::Empty => None,
-            _ => match other.spec {
-                Special::Full => None,
+        match self {
+            MaskSet::Empty { span: _ } => None,
+            _ => match other {
+                MaskSet::Full { span: _ } => None,
                 _ => {
                     let subset_of_fun = CallFun::Fun(crate::def::fn_set_subset_of_name(&ctx.global.vstd_crate_name), None);
-                    let subset_of_expx = ExpX::Call(subset_of_fun, namespace_set_typs(), Arc::new(vec![self.set.clone(), other.set.clone()]));
-                    let subset_of_exp = SpannedTyped::new(span, &Arc::new(TypX::Bool), subset_of_expx);
+                    let subset_of_expx = ExpX::Call(subset_of_fun, namespace_set_typs(), Arc::new(vec![self.to_exp(ctx), other.to_exp(ctx)]));
+                    let subset_of_exp = SpannedTyped::new(&span, &Arc::new(TypX::Bool), subset_of_expx);
 
                     Some(subset_of_exp)
                 },
