@@ -3,6 +3,7 @@ use vir::{
     ast::{Fun, Krate, Path},
     ast_util::fun_as_friendly_rust_name,
 };
+use vir::mono::PolyStrategy;
 
 // A "bucket" is a group of functions that are processed together
 // with the same pruning context.
@@ -25,6 +26,7 @@ pub enum BucketId {
 #[derive(Clone, Debug)]
 pub struct Bucket {
     pub funs: HashSet<Fun>,
+    pub strategy: PolyStrategy,
 }
 
 impl BucketId {
@@ -90,12 +92,17 @@ pub fn get_buckets(
     modules_to_verify: &Vec<vir::ast::Module>,
 ) -> Vec<(BucketId, Bucket)> {
     let mut map: HashMap<BucketId, Vec<Fun>> = HashMap::new();
+    let mut mono_set: HashSet<BucketId> = Default::default();
     let module_set: HashSet<&Path> = modules_to_verify.iter().map(|m| &m.x.path).collect();
     for func in &krate.functions {
         if let Some(owning_module) = &func.x.owning_module {
             if module_set.contains(owning_module) {
                 let bucket_id = if func.x.attrs.spinoff_prover {
-                    BucketId::Fun(owning_module.clone(), func.x.name.clone())
+                    let id = BucketId::Fun(owning_module.clone(), func.x.name.clone());
+                    if func.x.attrs.mono {
+                       mono_set.insert(id.clone());
+                    }
+                    id 
                 } else {
                     BucketId::Module(owning_module.clone())
                 };
@@ -114,6 +121,9 @@ pub fn get_buckets(
 
     buckets
         .into_iter()
-        .map(|(bucket_id, vec)| (bucket_id, Bucket { funs: vec.into_iter().collect() }))
+        .map(|(bucket_id, vec)| {
+            let strategy = if mono_set.contains(&bucket_id) { PolyStrategy::Mono } else { PolyStrategy::Poly };
+            (bucket_id, Bucket { funs: vec.into_iter().collect(), strategy})
+        })
         .collect()
 }

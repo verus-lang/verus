@@ -970,6 +970,8 @@ pub struct FunctionAttrsX {
     pub nonlinear: bool,
     /// Use a dedicated Z3 process for this single query
     pub spinoff_prover: bool,
+    /// Monomorphize this function 
+    pub mono: bool,
     /// Memoize function call results during interpretation
     pub memoize: bool,
     /// override default rlimit

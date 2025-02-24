@@ -88,7 +88,7 @@ impl<'a> OpGenerator<'a> {
             assert!(!func_map.contains_key(&function.x.name));
             func_map.insert(function.x.name.clone(), function.clone());
         }
-        let specializations = match ctx.global.poly_strategy {
+        let specializations = match bucket.strategy {
             PolyStrategy::Mono => collect_specializations(krate),
             PolyStrategy::Poly => Default::default(),
         };

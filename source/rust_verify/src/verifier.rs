@@ -1375,23 +1375,23 @@ impl Verifier {
             self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
             function_decl_commands.push((commands.clone(), comment.clone()));
 
-            if ctx.global.poly_strategy != PolyStrategy::Mono {
+            if ctx.poly_strategy != PolyStrategy::Mono {
                 continue;
             }
 
-            let Some(specs) = specializations.function_spec.get(&function.x.name) else {
-                continue;
-            };
-            for spec in specs.iter() {
-                if spec.typs.is_empty() {
+                let Some(specs) = specializations.function_spec.get(&function.x.name) else {
                     continue;
+                };
+                for spec in specs.iter() {
+                    if spec.typs.is_empty() {
+                        continue;
+                    }
+                    let commands =
+                        vir::sst_to_air_func::func_name_to_air(ctx, reporter, function, spec)?;
+                    let inner_comment = comment.clone() + &spec.comment();
+                    self.run_commands(bucket_id, reporter, &mut air_context, &commands, &inner_comment);
+                    function_decl_commands.push((commands.clone(), comment.clone()));
                 }
-                let commands =
-                    vir::sst_to_air_func::func_name_to_air(ctx, reporter, function, spec)?;
-                let inner_comment = comment.clone() + &spec.comment();
-                self.run_commands(bucket_id, reporter, &mut air_context, &commands, &inner_comment);
-                function_decl_commands.push((commands.clone(), comment.clone()));
-            }
         }
         ctx.fun = None;
 
@@ -1928,7 +1928,8 @@ impl Verifier {
             .find(|m| &m.x.path == bucket_id.module())
             .expect("module in krate")
             .clone();
-        let poly_strategy = global_ctx.poly_strategy;
+        let bucket = &self.get_bucket(bucket_id);
+        let poly_strategy = bucket.strategy;
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
@@ -1938,20 +1939,21 @@ impl Verifier {
             uses_array,
             fndef_types,
             self.args.debugger,
+            poly_strategy, 
         )?;
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &pruned_krate, &self.args.log_args.vir_log_option);
         }
-
+        let bucket = &self.get_bucket(bucket_id);
         let krate_sst = vir::ast_to_sst_crate::ast_to_sst_krate(
             &mut ctx,
             reporter,
-            &self.get_bucket(bucket_id).funs,
+            &bucket.funs,
             &pruned_krate,
         )?;
-        let specializations = match poly_strategy {
+        let specializations = match bucket.strategy {
             PolyStrategy::Mono => vir::mono::collect_specializations(&krate_sst),
             PolyStrategy::Poly => Default::default(),
         };

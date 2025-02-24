@@ -692,7 +692,7 @@ pub(crate) struct LocalContext {
 impl LocalContext {
     pub fn empty(ctx: &Ctx) -> Self {
         Self {
-            poly_mode: ctx.global.poly_strategy == mono::PolyStrategy::Poly,
+            poly_mode: ctx.poly_strategy == mono::PolyStrategy::Poly,
         }
 
     }
@@ -787,7 +787,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
         ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt, &sub_local_ctx)?,
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x))),
         ExpX::Call(f @ (CallFun::Fun(..) | CallFun::Recursive(_)), typs, args) => {
-            let specialization = match ctx.global.poly_strategy {
+            let specialization = match ctx.poly_strategy {
                 mono::PolyStrategy::Mono => {
                     let (_, spec) = mono::Specialization::from_exp(&exp.x, expr_ctxt.spec_map)
                         .expect("Could not create specialization rom call site");
@@ -843,6 +843,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
             let args = vec_map_result(args, |e| exp_to_expr(ctx, e, expr_ctxt, &sub_local_ctx))?;
             Arc::new(ExprX::ApplyFun(typ_to_air(ctx, &exp.typ), e0, Arc::new(args)))
         }
+        // Constructor for datatypes 
+        // TODO: remove above comment
+        // specialized datatype + variant
         ExpX::Ctor(path, variant, binders) => {
             let (variant, args) = ctor_to_apply(ctx, path, variant, binders);
             let args = args
@@ -998,6 +1001,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
                 }
             }
             UnaryOpr::IsVariant { datatype, variant } => {
+                tracing::debug!("Maybe calling datatype {datatype:?}");
                 let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
                 let name = is_variant_ident(datatype, variant);
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
@@ -1024,6 +1028,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
                 Arc::new(ExprX::Var(name))
             }
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }) => {
+                tracing::debug!("Maybe calling datatypex2 {datatype:?}");
                 let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
                 Arc::new(ExprX::Apply(
                     variant_field_ident(&encode_dt_as_path(datatype), variant, field),

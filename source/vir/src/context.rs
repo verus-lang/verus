@@ -55,7 +55,6 @@ pub struct GlobalCtx {
     pub crate_name: Ident,
     pub vstd_crate_name: Ident,
     pub solver: SmtSolver,
-    pub poly_strategy: PolyStrategy,
 }
 
 // Context for verifying one function
@@ -105,6 +104,7 @@ pub struct Ctx {
     // proof debug purposes
     pub debug: bool,
     pub arch_word_bits: ArchWordBits,
+    pub poly_strategy: PolyStrategy
 }
 
 impl Ctx {
@@ -494,7 +494,6 @@ impl GlobalCtx {
             vstd_crate_name,
             func_call_graph_log,
             solver,
-            poly_strategy: Default::default(),
         })
     }
 
@@ -521,7 +520,6 @@ impl GlobalCtx {
             vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
             solver: self.solver.clone(),
-            poly_strategy: Default::default(),
         }
     }
 
@@ -553,6 +551,7 @@ impl Ctx {
         uses_array: bool,
         fndef_types: Vec<Fun>,
         debug: bool,
+        poly_strategy : PolyStrategy,
     ) -> Result<Self, VirErr> {
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
@@ -613,6 +612,7 @@ impl Ctx {
             string_hashes,
             debug,
             arch_word_bits: krate.arch.word_bits,
+            poly_strategy: poly_strategy,
         })
     }
 

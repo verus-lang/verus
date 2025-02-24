@@ -714,7 +714,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
                                          dt=format!("{dt:?}"),
                                          is_transparent,
                                          n_specs=specs.map(|s| s.len()).unwrap_or(0));
-
+        
         if is_transparent {
             // Encode transparent types as AIR datatypes
             if let Some(specs) = specs {
