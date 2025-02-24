@@ -380,6 +380,37 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if ctxt.assert_by_compute && crate::interpreter::is_sequence_fn(&f).is_some() {
                 reach_seq_funs(ctxt, state);
             }
+            // set operations may be invoked for opens_invariants checks
+            reach_function(
+                ctxt,
+                state,
+                &fn_set_contains_name(&ctxt.vstd_crate_name),
+            );
+            reach_function(
+                ctxt,
+                state,
+                &fn_set_empty_name(&ctxt.vstd_crate_name),
+            );
+            reach_function(
+                ctxt,
+                state,
+                &fn_set_full_name(&ctxt.vstd_crate_name),
+            );
+            reach_function(
+                ctxt,
+                state,
+                &fn_set_insert_name(&ctxt.vstd_crate_name),
+            );
+            reach_function(
+                ctxt,
+                state,
+                &fn_set_remove_name(&ctxt.vstd_crate_name),
+            );
+            reach_function(
+                ctxt,
+                state,
+                &fn_set_subset_of_name(&ctxt.vstd_crate_name),
+            );
             // note: the types in typ_bounds are handled below by map_function_visitor_env
             traverse_generic_bounds(ctxt, state, &function.x.typ_bounds, false);
             let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
@@ -409,36 +440,6 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             ctxt,
                             state,
                             &fn_namespace_name(&ctxt.vstd_crate_name, *atomicity),
-                        );
-                        reach_function(
-                            ctxt,
-                            state,
-                            &fn_set_contains_name(&ctxt.vstd_crate_name),
-                        );
-                        reach_function(
-                            ctxt,
-                            state,
-                            &fn_set_empty_name(&ctxt.vstd_crate_name),
-                        );
-                        reach_function(
-                            ctxt,
-                            state,
-                            &fn_set_full_name(&ctxt.vstd_crate_name),
-                        );
-                        reach_function(
-                            ctxt,
-                            state,
-                            &fn_set_insert_name(&ctxt.vstd_crate_name),
-                        );
-                        reach_function(
-                            ctxt,
-                            state,
-                            &fn_set_remove_name(&ctxt.vstd_crate_name),
-                        );
-                        reach_function(
-                            ctxt,
-                            state,
-                            &fn_set_subset_of_name(&ctxt.vstd_crate_name),
                         );
                     }
                     ExprX::Unary(crate::ast::UnaryOp::InferSpecForLoopIter { .. }, _) => {
