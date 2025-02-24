@@ -130,6 +130,7 @@ fn datatype_or_fun_to_air_commands(
     declare_box: bool,
     add_height: bool,
     add_ext_equal: bool,
+    spec: &Specialization,
 ) {
     use crate::def::QID_EXT_EQUAL;
     let x = air_unique_var("x");
@@ -341,10 +342,16 @@ fn datatype_or_fun_to_air_commands(
                 axiom_commands.push(Arc::new(CommandX::Global(axiom)));
             }
         }
-        for field in variant.fields.iter() {
+        for (i, field) in variant.fields.iter().enumerate() {
             let id = variant_field_ident(dpath, &variant.name, &field.name);
             let internal_id = variant_field_ident_internal(dpath, &variant.name, &field.name, true);
-            let (typ, _, _) = &field.a;
+            let typ = match spec.typs.get(i) {
+                Some(st) => st.to_typ(),
+                None => {
+                    let (typ, _, _) = &field.a;
+                    typ.clone()
+                }
+            };
             let xfield = ident_apply(&id, &vec![x_var.clone()]);
             let xfield_internal = ident_apply(&internal_id, &vec![x_var.clone()]);
             let xfield_unbox = ident_apply(&id, &vec![unbox_x.clone()]);
@@ -358,7 +365,7 @@ fn datatype_or_fun_to_air_commands(
             let decl_field = Arc::new(DeclX::Fun(
                 id.clone(),
                 Arc::new(vec![dtyp.clone()]),
-                typ_to_air(ctx, typ),
+                typ_to_air(ctx, &typ),
             ));
             field_commands.push(Arc::new(CommandX::Global(decl_field)));
             let trigs = vec![xfield.clone()];
@@ -372,7 +379,7 @@ fn datatype_or_fun_to_air_commands(
 
             if let EncodedDtKind::Dt(dt) = &kind {
                 if ctx.datatypes_with_invariant.contains(dt) {
-                    if let Some(inv_f) = typ_invariant(ctx, typ, &xfield_unbox) {
+                    if let Some(inv_f) = typ_invariant(ctx, &typ, &xfield_unbox) {
                         // field invariant axiom:
                         //   forall typs, x. has_type(x, T(typs)) => inv_f(unbox(x).f)
                         // trigger on unbox(x).f, has_type(x, T(typs))
@@ -665,6 +672,7 @@ pub fn datatypes_and_primitives_to_air(
             true,
             false,
             true,
+            &Default::default(),
         );
     }
 
@@ -686,6 +694,7 @@ pub fn datatypes_and_primitives_to_air(
             true,
             false,
             true,
+            &Default::default(),
         );
     }
 
@@ -713,6 +722,7 @@ pub fn datatypes_and_primitives_to_air(
             true,
             false,
             false,
+            &Default::default(),
         );
     }
 
@@ -766,6 +776,7 @@ pub fn datatypes_and_primitives_to_air(
                 is_transparent,
                 is_transparent,
                 is_transparent && datatype.x.ext_equal,
+                &spec,
             );
         }
     }

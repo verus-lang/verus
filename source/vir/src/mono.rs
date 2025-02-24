@@ -415,16 +415,10 @@ pub fn collect_specializations(krate: &KrateSst) -> KrateSpecializations {
                 .unwrap_or_else(|| panic!("Function name not found: {callee}"));
             to_visit.push_back((callee_spec.clone(), callee_sst));
 
-            if callee_spec.is_empty() {
-                continue;
-            }
-
             function_spec.entry(callee).or_insert_with(HashSet::new).insert(callee_spec);
         }
         for (dt, dt_spec) in sites.datatype_spec.into_iter() {
             let entry = datatype_spec.entry(dt.clone()).or_default();
-            if dt_spec.is_empty() {
-                continue;}
             entry.extend(dt_spec);
         }
     }
