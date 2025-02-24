@@ -308,6 +308,8 @@
     clippy::used_underscore_binding,
     clippy::wildcard_imports,
 )]
+// verus
+#![cfg_attr(verus_keep_ghost, feature(proc_macro_diagnostic))]
 
 extern crate self as syn;
 

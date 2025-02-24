@@ -1814,3 +1814,15 @@ test_verify_one_file! {
         }
     } => Err(_e) => todo!() //assert_rust_error_msg(e, todo!())
 }
+
+test_verify_one_file! {
+    #[test] is_syntax_warn_keyword IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_is(t: ThisOrThat) {
+            let is = 12int;
+        }
+    } => Ok(err) => {
+        assert!(err.errors.is_empty());
+        assert!(!err.warnings.is_empty());
+        assert!(err.warnings.iter().find(|w| w.message.contains("`is` and `has` will become reserved keywords")).is_some());
+    }
+}

@@ -75,7 +75,7 @@ mod parsing {
     #[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
     impl Parse for Ident {
         fn parse(input: ParseStream) -> Result<Self> {
-            input.step(|cursor| {
+            let i = input.step(|cursor| {
                 if let Some((ident, rest)) = cursor.ident() {
                     if accept_as_ident(&ident) {
                         Ok((ident, rest))
@@ -88,7 +88,19 @@ mod parsing {
                 } else {
                     Err(cursor.error("expected identifier"))
                 }
-            })
+            });
+            #[cfg(verus_keep_ghost)]
+            if let Ok(i) = &i {
+                if i.to_string() == "is" || i.to_string() == "has" {
+                    proc_macro::Diagnostic::spanned(
+                        vec![i.span().unwrap()],
+                        proc_macro::Level::Warning,
+                        "`is` and `has` will become reserved keywords",
+                    )
+                    .emit();
+                }
+            }
+            i
         }
     }
 
