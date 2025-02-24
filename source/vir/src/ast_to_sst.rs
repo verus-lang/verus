@@ -1,8 +1,8 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
     Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
-    LoopInvariantKind, MaskSpec, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
+    LoopInvariantKind, MaskSpec, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
+    UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
@@ -837,7 +837,8 @@ fn mask_set_for_call(ctx: &Ctx, state: &State, function: &Function) -> MaskSet {
     match &mask_spec {
         MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
             for e in es.iter() {
-                let pars = crate::ast_to_sst_func::params_to_pre_post_pars(&function.x.params, true);
+                let pars =
+                    crate::ast_to_sst_func::params_to_pre_post_pars(&function.x.params, true);
                 let exp = expr_to_exp_skip_checks(ctx, state.diagnostics, &pars, e).unwrap();
                 inv_exps.push((e.span.clone(), exp));
             }
@@ -845,7 +846,9 @@ fn mask_set_for_call(ctx: &Ctx, state: &State, function: &Function) -> MaskSet {
     };
     match &mask_spec {
         MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(&inv_exps, &function.span),
-        MaskSpec::InvariantOpensExcept(_exprs) => MaskSet::from_list_complement(&inv_exps, &function.span),
+        MaskSpec::InvariantOpensExcept(_exprs) => {
+            MaskSet::from_list_complement(&inv_exps, &function.span)
+        }
     }
 }
 
@@ -891,9 +894,12 @@ fn stm_call(
         Some(caller_mask) => {
             let callee_mask = mask_set_for_call(ctx, state, &fun);
             for assertion in callee_mask.subset_of(ctx, caller_mask, span) {
-                stms.push(Spanned::new(span.clone(), StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond)))
+                stms.push(Spanned::new(
+                    span.clone(),
+                    StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                ))
             }
-        },
+        }
         None => (),
     }
 
@@ -2098,7 +2104,10 @@ pub(crate) fn expr_to_stm_opt(
             let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
 
             for assertion in state.mask.as_ref().unwrap().contains(ctx, &ns_exp, &inv.span) {
-                stms1.push(Spanned::new(expr.span.clone(), StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond)))
+                stms1.push(Spanned::new(
+                    expr.span.clone(),
+                    StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                ))
             }
 
             let mut inner_mask = Some(state.mask.as_ref().unwrap().remove(&ns_exp, &inv.span));

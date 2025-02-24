@@ -968,8 +968,7 @@ fn visit_func_check_sst(
     poly_ret: &InsertPars,
     ret_typ: &Typ,
 ) -> FuncCheckSst {
-    let FuncCheckSst { reqs, post_condition, unwind, body, local_decls, statics } =
-        function;
+    let FuncCheckSst { reqs, post_condition, unwind, body, local_decls, statics } = function;
 
     state.temp_types.clear();
 
