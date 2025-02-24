@@ -8,10 +8,11 @@ use crate::context::Ctx;
 use crate::def::{
     encode_dt_as_path, is_variant_ident, prefix_box, prefix_spec_fn_type, prefix_tuple_param,
     prefix_type_id, prefix_unbox, variant_field_ident, variant_field_ident_internal, variant_ident,
-    Spanned, QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
-    QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
+    variant_ident_mangled, Spanned, QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR,
+    QID_CONSTRUCTOR_INNER, QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
 };
 use crate::messages::Span;
+use crate::mono::{KrateSpecializations, Specialization};
 use crate::sst::{Par, ParPurpose, ParX};
 use crate::sst_to_air::{
     datatype_id, dt_to_air_ident, expr_has_type, monotyp_to_path, path_to_air_ident, typ_invariant,
@@ -19,7 +20,6 @@ use crate::sst_to_air::{
 };
 use crate::sst_to_air_func::{func_bind, func_bind_trig, func_def_args};
 use crate::util::vec_map;
-use crate::mono::{KrateSpecializations, Specialization};
 use air::ast::{Command, CommandX, Commands, DeclX, Expr, ExprX};
 use air::ast_util::{
     ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
@@ -27,23 +27,29 @@ use air::ast_util::{
 };
 use std::sync::Arc;
 
-fn datatype_to_air(ctx: &Ctx, datatype: &crate::ast::Datatype, specs: &Specialization) -> air::ast::Datatype {
+fn datatype_to_air(
+    ctx: &Ctx,
+    datatype: &crate::ast::Datatype,
+    spec: &Specialization,
+) -> air::ast::Datatype {
     let mut variants: Vec<air::ast::Variant> = Vec::new();
     for variant in datatype.x.variants.iter() {
         let mut fields: Vec<air::ast::Field> = Vec::new();
         for (i, field) in variant.fields.iter().enumerate() {
-            let path = encode_dt_as_path(&datatype.x.name);
+            let path = spec.mangle_path(&encode_dt_as_path(&datatype.x.name));
             let id = variant_field_ident_internal(&path, &variant.name, &field.name, true);
-            let air_typ = match specs.typs.get(i) {
+            let air_typ = match spec.typs.get(i) {
                 Some(st) => st.to_typ(),
                 None => field.a.0.clone(),
             };
             fields.push(ident_binder(&id, &typ_to_air(ctx, &air_typ)));
         }
-        let id = variant_ident(&datatype.x.name, &variant.name);
+        let dt_path = spec.mangle_path(&encode_dt_as_path(&datatype.x.name));
+        let id = variant_ident_mangled(&dt_path, &variant.name);
         variants.push(ident_binder(&id, &Arc::new(fields)));
     }
-    Arc::new(air::ast::BinderX { name: dt_to_air_ident(&datatype.x.name), a: Arc::new(variants) })
+    let name = spec.dt_to_air_ident(&datatype.x.name);
+    Arc::new(air::ast::BinderX { name, a: Arc::new(variants) })
 }
 
 pub fn is_datatype_transparent(source_module: &Path, datatype: &crate::ast::Datatype) -> bool {
@@ -626,7 +632,11 @@ fn datatype_or_fun_to_air_commands(
     }
 }
 
-pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes, specializations: &KrateSpecializations) -> Commands {
+pub fn datatypes_and_primitives_to_air(
+    ctx: &Ctx,
+    datatypes: &crate::ast::Datatypes,
+    specializations: &KrateSpecializations,
+) -> Commands {
     let source_module = &ctx.module;
     let mut transparent_air_datatypes: Vec<air::ast::Datatype> = Vec::new();
     let mut opaque_sort_commands: Vec<Command> = Vec::new();
@@ -682,7 +692,7 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     for monotyp in &ctx.mono_types {
         // Encode concrete instantiations of abstract types as AIR sorts
         let dpath = crate::sst_to_air::monotyp_to_path(monotyp);
-        let _span = tracing::debug_span!("Generating Air for monotyp", path=format!("{dpath:?}"));
+        let _span = tracing::debug_span!("Generating Air for monotyp", path = format!("{dpath:?}"));
         let sort = Arc::new(air::ast::DeclX::Sort(path_to_air_ident(&dpath)));
         opaque_sort_commands.push(Arc::new(CommandX::Global(sort)));
 
@@ -709,21 +719,22 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
     for datatype in datatypes.iter() {
         let dt = &datatype.x.name;
         let is_transparent = is_datatype_transparent(&source_module.x.path, datatype);
-        let specs = specializations.datatype_spec.get(dt);
-        let _span = tracing::debug_span!("Generating Air for datatype",
-                                         dt=format!("{dt:?}"),
-                                         is_transparent,
-                                         n_specs=specs.map(|s| s.len()).unwrap_or(0));
-        
+        let mut specs: Vec<_> =
+            specializations.datatype_spec.get(dt).iter().map(|s| s.iter()).flatten().collect();
+        let default_spec = Specialization::default();
+        if specs.is_empty() {
+            specs = vec![&default_spec];
+        }
+        let _span = tracing::debug_span!(
+            "Generating Air for datatype",
+            dt = format!("{dt:?}"),
+            is_transparent,
+            n_specs = specs.len(),
+        );
         if is_transparent {
             // Encode transparent types as AIR datatypes
-            if let Some(specs) = specs {
-                for spec in specs.iter() {
-                    transparent_air_datatypes.push(datatype_to_air(ctx, datatype, spec));
-                }
-            } else {
-                // FIXME: Move this before the if block when we have name mangling
-                transparent_air_datatypes.push(datatype_to_air(ctx, datatype, &Default::default()));
+            for spec in specs.iter() {
+                transparent_air_datatypes.push(datatype_to_air(ctx, datatype, spec));
             }
         }
 
@@ -734,26 +745,30 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
 
         let typ_args = Arc::new(vec_map(&tparams, |t| Arc::new(TypX::TypParam(t.clone()))));
         let datatyp = Arc::new(TypX::Datatype(dt.clone(), typ_args.clone(), Arc::new(vec![])));
+        let tparams = Arc::new(tparams);
 
-        datatype_or_fun_to_air_commands(
-            ctx,
-            &mut field_commands,
-            &mut token_commands,
-            &mut box_commands,
-            &mut axiom_commands,
-            &datatype.span,
-            EncodedDtKind::Dt(dt.clone()),
-            &encode_dt_as_path(dt),
-            &str_typ(&dt_to_air_ident(dt)),
-            None,
-            datatyp,
-            &Arc::new(tparams),
-            &datatype.x.variants,
-            is_transparent,
-            is_transparent,
-            is_transparent && datatype.x.ext_equal,
-        );
-    };
+        for spec in specs.iter() {
+            let dpath = spec.mangle_path(&encode_dt_as_path(dt));
+            datatype_or_fun_to_air_commands(
+                ctx,
+                &mut field_commands,
+                &mut token_commands,
+                &mut box_commands,
+                &mut axiom_commands,
+                &datatype.span,
+                EncodedDtKind::Dt(dt.clone()),
+                &dpath,
+                &str_typ(&spec.dt_to_air_ident(dt)),
+                None,
+                datatyp.clone(),
+                &tparams,
+                &datatype.x.variants,
+                is_transparent,
+                is_transparent,
+                is_transparent && datatype.x.ext_equal,
+            );
+        }
+    }
 
     for fun in &ctx.fndef_types {
         let func = ctx.func_map.get(fun).expect("expected fndef function in pruned crate");

@@ -536,7 +536,9 @@ pub fn encode_dt_as_path(dt: &Dt) -> Path {
         Dt::Tuple(arity) => prefix_tuple_type(*arity),
     }
 }
-
+pub fn variant_ident_mangled(path: &Path, variant: &str) -> Ident {
+    Arc::new(format!("{}{}{}", path_to_string(path), VARIANT_SEPARATOR, variant))
+}
 pub fn variant_ident(dt: &Dt, variant: &str) -> Ident {
     let path = encode_dt_as_path(dt);
     Arc::new(format!("{}{}{}", path_to_string(&path), VARIANT_SEPARATOR, variant))

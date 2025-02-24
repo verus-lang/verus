@@ -22,11 +22,14 @@ specialized, hinders this.
 use crate::ast::Idents;
 use crate::ast::IntRange;
 use crate::ast::Primitive;
-use crate::def::POLY;
+use crate::ast::{Path, PathX};
+use crate::def::encode_dt_as_path;
 use crate::def::{path_to_string, Spanned};
 use crate::poly;
 use crate::sst::{CallFun, Exp, ExpX, KrateSstX, Stm};
 use crate::sst::{Par, ParX};
+use crate::sst_to_air::fun_to_air_ident;
+use crate::sst_to_air::path_to_air_ident;
 use crate::sst_util::{subst_exp, subst_typ};
 use crate::sst_visitor::{self, Visitor};
 use crate::{
@@ -70,7 +73,7 @@ impl SpecTypX {
             Self::Int(IntRange::Char) => format!("ic"),
             Self::Datatype(Dt::Path(path), _) => format!("dt{}", path_to_string(&path)),
             Self::Datatype(Dt::Tuple(u), spec_typs) => {
-                let tail = Self::mangle_typs(spec_typs);
+                let tail = Self::mangle_typs(spec_typs).unwrap_or_default();
                 format!("dt{u}_{tail}")
             }
             Self::Decorate(dec, inner) => {
@@ -78,18 +81,21 @@ impl SpecTypX {
                 format!("d1{dec:?}_{inner}")
             }
             Self::Decorate2(dec, inners) => {
-                let inners = Self::mangle_typs(inners);
+                let inners = Self::mangle_typs(inners).unwrap_or_default();
                 format!("d2{dec:?}_{inners}")
             }
             Self::Primitive(p, inners) => {
-                let inners = Self::mangle_typs(inners);
+                let inners = Self::mangle_typs(inners).unwrap_or_default();
                 format!("p{p:?}_{inners}")
             }
             Self::Poly => "poly".to_owned(),
         }
     }
-    fn mangle_typs(typs: &SpecTyps) -> String {
-        typs.iter().map(|t| t.mangle_suffix()).collect::<Vec<_>>().join("_")
+    fn mangle_typs(typs: &SpecTyps) -> Option<String> {
+        if typs.is_empty() {
+            return None;
+        }
+        Some(typs.iter().map(|t| t.mangle_suffix()).collect::<Vec<_>>().join("_"))
     }
 
     pub fn to_typ(&self) -> Typ {
@@ -189,15 +195,27 @@ impl Specialization {
         Some((fun, result))
     }
 
-    fn mangle_path(path: &Dt) -> String {
-        match path {
-            Dt::Path(path) => {
-                path.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("")
-            }
-            Dt::Tuple(i) => i.to_string(),
-        }
+    pub fn mangle_path(&self, path: &Path) -> Path {
+        let Some(suffix) = SpecTypX::mangle_typs(&self.typs) else {
+            return path.clone();
+        };
+        let mut segments = path.segments.as_ref().clone();
+        segments.push(Arc::new(suffix));
+        Arc::new(PathX { krate: path.krate.clone(), segments: Arc::new(segments) })
     }
-
+    pub fn path_to_air_ident(&self, path: &Path) -> Ident {
+        path_to_air_ident(&self.mangle_path(path))
+    }
+    pub fn dt_to_air_ident(&self, dt: &Dt) -> Ident {
+        let path = match dt {
+            Dt::Path(path) => path.clone(),
+            Dt::Tuple(arity) => crate::def::prefix_tuple_type(*arity),
+        };
+        self.path_to_air_ident(&path)
+    }
+    pub fn fun_to_air_ident(&self, fun: &Fun) -> Ident {
+        self.transform_ident(fun_to_air_ident(fun))
+    }
     /**
     Adds a mangled suffix to an identifier based on `SpecTypX`
      */
@@ -205,7 +223,9 @@ impl Specialization {
         if self.typs.is_empty() {
             return ident;
         }
-        let suffix = SpecTypX::mangle_typs(&self.typs);
+        let Some(suffix) = SpecTypX::mangle_typs(&self.typs) else {
+            return ident;
+        };
         Arc::new(ident.as_ref().clone() + &suffix)
     }
 
@@ -378,7 +398,9 @@ pub fn collect_specializations(krate: &KrateSst) -> KrateSpecializations {
         for (callee, callee_spec) in sites
             .function_spec
             .into_iter()
-            .map(|(callee, all_specs)| all_specs.into_iter().map(move |spec| (callee.clone(), spec)))
+            .map(|(callee, all_specs)| {
+                all_specs.into_iter().map(move |spec| (callee.clone(), spec))
+            })
             .flatten()
         {
             if let Some(fun_specs) = function_spec.get(&callee) {
@@ -393,11 +415,17 @@ pub fn collect_specializations(krate: &KrateSst) -> KrateSpecializations {
                 .unwrap_or_else(|| panic!("Function name not found: {callee}"));
             to_visit.push_back((callee_spec.clone(), callee_sst));
 
+            if callee_spec.is_empty() {
+                continue;
+            }
+
             function_spec.entry(callee).or_insert_with(HashSet::new).insert(callee_spec);
         }
-        for (dt, dt_specs) in sites.datatype_spec.into_iter() {
+        for (dt, dt_spec) in sites.datatype_spec.into_iter() {
             let entry = datatype_spec.entry(dt.clone()).or_default();
-            entry.extend(dt_specs);
+            if dt_spec.is_empty() {
+                continue;}
+            entry.extend(dt_spec);
         }
     }
     KrateSpecializations { function_spec, datatype_spec }
