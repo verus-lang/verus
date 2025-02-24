@@ -1818,6 +1818,10 @@ impl Hash for crate::InvariantNameSet {
                 state.write_u8(2u8);
                 v0.hash(state);
             }
+            crate::InvariantNameSet::Set(v0) => {
+                state.write_u8(3u8);
+                v0.hash(state);
+            }
         }
     }
 }
@@ -1843,6 +1847,15 @@ impl Hash for crate::InvariantNameSetNone {
     where
         H: Hasher,
     {}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::InvariantNameSetSet {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.expr.hash(state);
+    }
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

@@ -593,6 +593,12 @@ pub trait Fold {
     ) -> crate::InvariantNameSetNone {
         fold_invariant_name_set_none(self, i)
     }
+    fn fold_invariant_name_set_set(
+        &mut self,
+        i: crate::InvariantNameSetSet,
+    ) -> crate::InvariantNameSetSet {
+        fold_invariant_name_set_set(self, i)
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn fold_item(&mut self, i: crate::Item) -> crate::Item {
@@ -2965,6 +2971,9 @@ where
         crate::InvariantNameSet::List(_binding_0) => {
             crate::InvariantNameSet::List(f.fold_invariant_name_set_list(_binding_0))
         }
+        crate::InvariantNameSet::Set(_binding_0) => {
+            crate::InvariantNameSet::Set(f.fold_invariant_name_set_set(_binding_0))
+        }
     }
 }
 pub fn fold_invariant_name_set_any<F>(
@@ -2999,6 +3008,17 @@ where
 {
     crate::InvariantNameSetNone {
         token: node.token,
+    }
+}
+pub fn fold_invariant_name_set_set<F>(
+    f: &mut F,
+    node: crate::InvariantNameSetSet,
+) -> crate::InvariantNameSetSet
+where
+    F: Fold + ?Sized,
+{
+    crate::InvariantNameSetSet {
+        expr: f.fold_expr(node.expr),
     }
 }
 #[cfg(feature = "full")]

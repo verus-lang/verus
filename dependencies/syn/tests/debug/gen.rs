@@ -3331,6 +3331,11 @@ impl Debug for Lite<syn::InvariantNameSet> {
                 }
                 formatter.finish()
             }
+            syn::InvariantNameSet::Set(_val) => {
+                let mut formatter = formatter.debug_struct("InvariantNameSet::Set");
+                formatter.field("expr", Lite(&_val.expr));
+                formatter.finish()
+            }
         }
     }
 }
@@ -3352,6 +3357,13 @@ impl Debug for Lite<syn::InvariantNameSetList> {
 impl Debug for Lite<syn::InvariantNameSetNone> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("InvariantNameSetNone");
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::InvariantNameSetSet> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("InvariantNameSetSet");
+        formatter.field("expr", Lite(&self.value.expr));
         formatter.finish()
     }
 }
