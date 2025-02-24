@@ -1,4 +1,4 @@
-use crate::messages::{Span};
+use crate::messages::{error, error_with_label, Message, Span};
 use crate::ast::{IntRange, SpannedTyped, Typ, TypX, Dt};
 use crate::context::Ctx;
 use crate::sst::{CallFun, Exp, ExpX};
@@ -23,6 +23,11 @@ pub enum MaskSet {
     // Not used at the moment, will be used when we add syntax and support
     // for specifying an std::Set expression as the mask.
     // Arbitrary { set: Exp },
+}
+
+pub struct Assertion {
+    pub err: Message,
+    pub cond: Exp,
 }
 
 fn namespace_set_typs() -> Arc<Vec<Typ>> {
@@ -104,30 +109,36 @@ impl MaskSet {
         mask
     }
 
-    pub fn contains(self: &Self, ctx: &Ctx, elem: &Exp, span: &Span) -> Option<Exp> {
+    pub fn contains(self: &Self, ctx: &Ctx, elem: &Exp, span: &Span) -> Vec<Assertion> {
         match self {
-            MaskSet::Full { span: _ } => None,
+            MaskSet::Full { span: _ } => vec![],
             _ => {
                 let contains_fun = CallFun::Fun(crate::def::fn_set_contains_name(&ctx.global.vstd_crate_name), None);
                 let contains_expx = ExpX::Call(contains_fun, namespace_set_typs(), Arc::new(vec![self.to_exp(ctx), elem.clone()]));
                 let contains_exp = SpannedTyped::new(&span, &Arc::new(TypX::Bool), contains_expx);
 
-                Some(contains_exp)
+                vec![Assertion{
+                    err: error(span, "possible invariant collision"),
+                    cond: contains_exp,
+                }]
             },
         }
     }
 
-    pub fn subset_of(self: &Self, ctx: &Ctx, other: &Self, span: &Span) -> Option<Exp> {
+    pub fn subset_of(self: &Self, ctx: &Ctx, other: &Self, span: &Span) -> Vec<Assertion> {
         match self {
-            MaskSet::Empty { span: _ } => None,
+            MaskSet::Empty { span: _ } => vec![],
             _ => match other {
-                MaskSet::Full { span: _ } => None,
+                MaskSet::Full { span: _ } => vec![],
                 _ => {
                     let subset_of_fun = CallFun::Fun(crate::def::fn_set_subset_of_name(&ctx.global.vstd_crate_name), None);
                     let subset_of_expx = ExpX::Call(subset_of_fun, namespace_set_typs(), Arc::new(vec![self.to_exp(ctx), other.to_exp(ctx)]));
                     let subset_of_exp = SpannedTyped::new(&span, &Arc::new(TypX::Bool), subset_of_expx);
 
-                    Some(subset_of_exp)
+                    vec![Assertion{
+                        err: error(span, "callee may open invariants that caller cannot"),
+                        cond: subset_of_exp,
+                    }]
                 },
             },
         }
