@@ -23,7 +23,7 @@ pub struct HashMapWithView<Key, Value> where Key: View + Eq + Hash {
 impl<Key, Value> View for HashMapWithView<Key, Value> where Key: View + Eq + Hash {
     type V = Map<<Key as View>::V, Value>;
 
-    closed spec fn view(&self) -> Self::V;
+    spec fn view(&self) -> Self::V;
 }
 
 impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
@@ -57,7 +57,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         self.m.reserve(additional);
     }
 
-    pub open spec fn spec_len(&self) -> usize;
+    pub spec fn spec_len(&self) -> usize;
 
     #[verifier::external_body]
     #[verifier::when_used_as_spec(spec_len)]
@@ -138,7 +138,7 @@ pub struct StringHashMap<Value> {
 impl<Value> View for StringHashMap<Value> {
     type V = Map<Seq<char>, Value>;
 
-    closed spec fn view(&self) -> Self::V;
+    spec fn view(&self) -> Self::V;
 }
 
 impl<Value> StringHashMap<Value> {
@@ -166,7 +166,7 @@ impl<Value> StringHashMap<Value> {
         self.m.reserve(additional);
     }
 
-    pub open spec fn spec_len(&self) -> usize;
+    pub spec fn spec_len(&self) -> usize;
 
     #[verifier::external_body]
     #[verifier::when_used_as_spec(spec_len)]

@@ -57,7 +57,7 @@ pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
 }
 
 ////// Len (with autospec)
-pub open spec fn spec_vec_len<T, A: Allocator>(v: &Vec<T, A>) -> usize;
+pub spec fn spec_vec_len<T, A: Allocator>(v: &Vec<T, A>) -> usize;
 
 // This axiom is slightly better than defining spec_vec_len to just be `v@.len() as usize`
 // (the axiom also shows that v@.len() is in-bounds for usize)

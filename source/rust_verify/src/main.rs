@@ -50,6 +50,9 @@ pub fn main() {
     let total_time_0 = std::time::Instant::now();
 
     let _ = os_setup();
+    vir::util::set_verus_github_bug_report_url(
+        ::rust_verify::consts::VERUS_GITHUB_BUG_REPORT_URL.to_owned(),
+    );
     let logger_handler =
         rustc_session::EarlyDiagCtxt::new(rustc_session::config::ErrorOutputType::default());
     rustc_driver::init_logger(&logger_handler, rustc_log::LoggerConfig::from_env("RUSTVERIFY_LOG"));

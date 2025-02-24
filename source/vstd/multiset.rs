@@ -60,7 +60,7 @@ impl<V> Multiset<V> {
     /// Creates a multiset whose elements are given by the domain of the map `m` and whose
     /// multiplicities are given by the corresponding values of `m[element]`. The map `m`
     /// must be finite, or else this multiset is arbitrary.
-    pub open spec fn from_map(m: Map<V, nat>) -> Self;
+    pub spec fn from_map(m: Map<V, nat>) -> Self;
 
     pub open spec fn from_set(m: Set<V>) -> Self {
         Self::from_map(Map::new(|k| m.contains(k), |v| 1))
@@ -653,7 +653,7 @@ pub proof fn lemma_multiset_properties<V>()
 
 }
 
-broadcast group group_multiset_properties {
+pub broadcast group group_multiset_properties {
     lemma_update_same,
     lemma_update_different,
     lemma_insert_containment,

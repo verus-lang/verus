@@ -509,10 +509,9 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] derive_copy verus_code! {
-        // When an auto-derived impl is produce, it doesn't get the verus_macro attribute.
+        // When an auto-derived impl is produced, it doesn't get the verus_macro attribute.
         // However, this test case does not use --external-by-default, so verus will
-        // process the derived impls anyway. This currently causes verus to fail,
-        // but should probably be fixed.
+        // process the derived impls anyway.
 
         #[derive(Clone, Copy)]
         struct X {
@@ -523,12 +522,12 @@ test_verify_one_file! {
             let a = x;
             let b = x;
         }
-    } => Err(err) => assert_vir_error_msg(err, "let-pattern declaration must have an initializer")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
     #[test] derive_copy_external_by_default ["--external-by-default"] => verus_code! {
-        // When an auto-derived impl is produce, it doesn't get the verus_macro attribute.
+        // When an auto-derived impl is produced, it doesn't get the verus_macro attribute.
         // Since this test case uses --external-by-default, these derived impls do not
         // get processed.
 

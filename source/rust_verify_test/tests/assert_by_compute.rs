@@ -503,7 +503,7 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] shift_regression_928_1 ["vstd"] => verus_code! {
-        pub open spec fn id(x:int) -> int;
+        pub spec fn id(x:int) -> int;
 
         pub proof fn bar() {
             assert(

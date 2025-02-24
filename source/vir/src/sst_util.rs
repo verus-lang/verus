@@ -1,14 +1,16 @@
 use crate::ast::{
-    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Ident, InequalityOp,
-    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Quant, SpannedTyped, Typ, TypX,
-    Typs, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarBinders,
+    ArithOp, BinaryOp, BinaryOpr, BitwiseOp, Constant, CtorPrintStyle, Dt, Fun, Ident,
+    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Quant, SpannedTyped,
+    Typ, TypX, Typs, UnaryOp, UnaryOpr, VarBinder, VarBinderX, VarBinders,
 };
 use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
 use crate::def::{unique_bound, user_local_name, Spanned};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
-use crate::sst::{BndX, CallFun, Exp, ExpX, LocalDeclKind, Stm, Trig, Trigs, UniqueIdent};
+use crate::sst::{
+    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDeclKind, Stm, Trig, Trigs, UniqueIdent,
+};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -811,4 +813,104 @@ pub fn sst_unpack_tuple_style_ctor(expx: &ExpX) -> Option<Vec<Exp>> {
         }
         _ => None,
     }
+}
+
+pub fn sst_tuple(span: &Span, exps: &Exps) -> Exp {
+    let typs = crate::util::vec_map(exps, |e| e.typ.clone());
+    let tup_typ = crate::ast_util::mk_tuple_typ(&Arc::new(typs));
+    SpannedTyped::new(span, &tup_typ, sst_tuple_x(exps))
+}
+
+pub fn sst_tuple_x(exps: &Exps) -> ExpX {
+    let arity = exps.len();
+
+    let mut binders: Vec<crate::ast::Binder<Exp>> = Vec::new();
+    for (i, arg) in exps.iter().enumerate() {
+        let field = crate::def::positional_field_ident(i);
+        binders.push(crate::ast_util::ident_binder(&field, &arg));
+    }
+    let binders = Arc::new(binders);
+
+    ExpX::Ctor(Dt::Tuple(arity), crate::def::prefix_tuple_variant(arity), binders)
+}
+
+pub(crate) fn sst_call_requires(
+    ctx: &crate::context::Ctx,
+    span: &Span,
+    fun: &Fun,
+    typ_args: &Typs,
+    func: &crate::ast::Function,
+    resolved_fun: &Option<Fun>,
+    req_args: &Exps,
+) -> Exp {
+    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+    assert!(func.x.typ_params.len() == typ_args.len());
+    for (typ_param, arg) in func.x.typ_params.iter().zip(typ_args.iter()) {
+        typ_substs.insert(typ_param.clone(), arg.clone());
+    }
+    let param_typs: Vec<Typ> =
+        func.x.params.iter().map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
+
+    let tuple_typ = crate::ast_util::mk_tuple_typ(&Arc::new(param_typs));
+    let fndef_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), resolved_fun.clone()));
+
+    let fndef_value = SpannedTyped::new(span, &fndef_typ, ExpX::ExecFnByName(fun.clone()));
+    let fndef_value = crate::poly::coerce_exp_to_poly(ctx, &fndef_value);
+
+    let req_args: Vec<Exp> =
+        req_args.iter().map(|r| crate::poly::coerce_exp_to_poly(ctx, r)).collect();
+    let args_tuple = sst_tuple(span, &Arc::new(req_args));
+    let args_tuple = crate::poly::coerce_exp_to_poly(ctx, &args_tuple);
+
+    let expx = ExpX::Call(
+        CallFun::InternalFun(InternalFun::ClosureReq),
+        Arc::new(vec![fndef_typ, tuple_typ]),
+        Arc::new(vec![fndef_value, args_tuple]),
+    );
+    SpannedTyped::new(span, &Arc::new(TypX::Bool), expx)
+}
+
+pub(crate) fn sst_call_ensures(
+    ctx: &crate::context::Ctx,
+    span: &Span,
+    fun: &Fun,
+    typ_args: &Typs,
+    func: &crate::ast::Function,
+    resolved_fun: &Option<Fun>,
+    req_args: &Exps,
+    return_value: Option<Exp>,
+) -> Exp {
+    let mut typ_substs: HashMap<Ident, Typ> = HashMap::new();
+    assert!(func.x.typ_params.len() == typ_args.len());
+    for (typ_param, arg) in func.x.typ_params.iter().zip(typ_args.iter()) {
+        typ_substs.insert(typ_param.clone(), arg.clone());
+    }
+    let param_typs: Vec<Typ> =
+        func.x.params.iter().map(|p| subst_typ(&typ_substs, &p.x.typ)).collect();
+
+    let tuple_typ = crate::ast_util::mk_tuple_typ(&Arc::new(param_typs));
+    let fndef_typ = Arc::new(TypX::FnDef(fun.clone(), typ_args.clone(), resolved_fun.clone()));
+
+    let fndef_value = SpannedTyped::new(span, &fndef_typ, ExpX::ExecFnByName(fun.clone()));
+    let fndef_value = crate::poly::coerce_exp_to_poly(ctx, &fndef_value);
+
+    let req_args: Vec<Exp> =
+        req_args.iter().map(|r| crate::poly::coerce_exp_to_poly(ctx, r)).collect();
+    let args_tuple = sst_tuple(span, &Arc::new(req_args));
+    let args_tuple = crate::poly::coerce_exp_to_poly(ctx, &args_tuple);
+
+    let return_value = match &return_value {
+        Some(r) => crate::poly::coerce_exp_to_poly(ctx, r),
+        None => {
+            let unit = sst_tuple(span, &Arc::new(vec![]));
+            crate::poly::coerce_exp_to_poly(ctx, &unit)
+        }
+    };
+
+    let expx = ExpX::Call(
+        CallFun::InternalFun(InternalFun::ClosureEns),
+        Arc::new(vec![fndef_typ, tuple_typ]),
+        Arc::new(vec![fndef_value, args_tuple, return_value]),
+    );
+    SpannedTyped::new(span, &Arc::new(TypX::Bool), expx)
 }

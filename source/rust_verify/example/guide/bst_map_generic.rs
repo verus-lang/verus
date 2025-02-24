@@ -392,13 +392,9 @@ impl<K: Copy + TotalOrdered, V: Clone> Clone for Node<K, V> {
             forall |key| #[trigger] res.as_map().dom().contains(key) ==>
                 cloned::<V>(self.as_map()[key], res.as_map()[key])
     {
-        // TODO(fixme): Assigning V::clone to a variable is a hack needed to work around
-        // this issue: https://github.com/verus-lang/verus/issues/1348
-        let v_clone = V::clone;
-
         let res = Node {
             key: self.key,
-            value: v_clone(&self.value),
+            value: self.value.clone(),
             // Ordinarily, we would use Option<Node>::clone rather than inlining
             // the case statement here; we write it this way to work around
             // this issue: https://github.com/verus-lang/verus/issues/1346

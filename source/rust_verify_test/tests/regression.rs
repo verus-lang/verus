@@ -249,7 +249,7 @@ test_verify_one_file! {
 
             verus!{
                 mod X {
-                    pub open spec fn foo();
+                    pub spec fn foo();
                 }
 
                 proof fn some_proof_fn() {
@@ -844,7 +844,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] assert_forall_trigger_regression_824 verus_code! {
         use vstd::seq::Seq;
-        pub open spec fn f(x: u32) -> bool;
+        pub spec fn f(x: u32) -> bool;
 
         proof fn test(a: Seq<u32>)
             requires forall |i| #![trigger f(a[i])] f(a[i]),
@@ -1347,4 +1347,46 @@ test_verify_one_file! {
             C = 2,
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] verus_macro_in_impl_block_issue1461 ["--external-by-default"] => code! {
+        use vstd::prelude::*;
+
+        verus! {
+        pub struct MyStruct {}
+        }
+
+        impl MyStruct {
+            verus! {
+                proof fn unsound()
+                {
+                    assert(false); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] verus_macro_in_impl_block_issue1461_traits ["--external-by-default"] => code! {
+        use vstd::prelude::*;
+
+        verus! {
+            pub struct MyStruct {}
+
+            trait Tr {
+                fn unsound();
+            }
+        }
+
+        impl Tr for MyStruct {
+            verus! {
+                fn unsound()
+                {
+                    assert(false);
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.")
 }

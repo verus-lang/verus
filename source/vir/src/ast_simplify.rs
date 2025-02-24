@@ -234,6 +234,42 @@ fn pattern_to_exprs_rec(
     }
 }
 
+fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>) {
+    match &pattern.x {
+        PatternX::Wildcard(_) => {}
+        PatternX::Var { name, mutable } | PatternX::Binding { name, mutable, sub_pat: _ } => {
+            let v_patternx = PatternX::Var { name: name.clone(), mutable: *mutable };
+            let v_pattern = SpannedTyped::new(&pattern.span, &pattern.typ, v_patternx);
+            stmts.push(Spanned::new(
+                pattern.span.clone(),
+                StmtX::Decl {
+                    pattern: v_pattern,
+                    mode: Some(Mode::Exec), // mode doesn't matter anymore
+                    init: None,
+                    els: None,
+                },
+            ));
+
+            match &pattern.x {
+                PatternX::Binding { sub_pat, .. } => {
+                    pattern_to_decls_with_no_initializer(sub_pat, stmts);
+                }
+                _ => {}
+            }
+        }
+        PatternX::Constructor(_path, _variant, patterns) => {
+            for binder in patterns.iter() {
+                pattern_to_decls_with_no_initializer(&binder.a, stmts);
+            }
+        }
+        PatternX::Or(pat1, _pat2) => {
+            pattern_to_decls_with_no_initializer(&pat1, stmts);
+        }
+        PatternX::Expr(_) => {}
+        PatternX::Range(_, _) => {}
+    }
+}
+
 fn pattern_has_or(pattern: &Pattern) -> bool {
     match &pattern.x {
         PatternX::Wildcard(_) => false,
@@ -596,7 +632,11 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
     match &stmt.x {
         StmtX::Decl { pattern, mode: _, init: None, els: None } => match &pattern.x {
             PatternX::Var { .. } => Ok(vec![stmt.clone()]),
-            _ => Err(error(&stmt.span, "let-pattern declaration must have an initializer")),
+            _ => {
+                let mut stmts: Vec<Stmt> = Vec::new();
+                pattern_to_decls_with_no_initializer(pattern, &mut stmts);
+                Ok(stmts)
+            }
         },
         StmtX::Decl { pattern, mode: _, init: Some(init), els }
             if !matches!(pattern.x, PatternX::Var { .. }) =>

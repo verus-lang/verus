@@ -565,9 +565,9 @@ pub tracked struct PointsToRaw {
 }
 
 impl PointsToRaw {
-    pub open spec fn provenance(self) -> Provenance;
+    pub spec fn provenance(self) -> Provenance;
 
-    pub open spec fn dom(self) -> Set<int>;
+    pub spec fn dom(self) -> Set<int>;
 
     pub open spec fn is_range(self, start: int, len: int) -> bool {
         super::set_lib::set_int_range(start, start + len) =~= self.dom()

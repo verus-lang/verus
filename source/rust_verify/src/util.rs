@@ -23,6 +23,10 @@ pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirE
     err_span(span, format!("The verifier does not yet support the following Rust feature: {}", msg))
 }
 
+pub(crate) fn internal_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {
+    vir::util::internal_err_span(crate::spans::err_air_span(span), msg)
+}
+
 #[macro_export]
 macro_rules! unsupported_err {
     ($span: expr, $msg: expr) => {{
@@ -32,6 +36,19 @@ macro_rules! unsupported_err {
     ($span: expr, $msg: expr, $info: expr) => {{
         dbg!($info);
         crate::util::unsupported_err_span($span, $msg.to_string())?;
+        unreachable!()
+    }};
+}
+
+#[macro_export]
+macro_rules! internal_err {
+    ($span: expr, $msg: expr) => {{
+        crate::util::internal_err_span($span, $msg.to_string())?;
+        unreachable!()
+    }};
+    ($span: expr, $msg: expr, $info: expr) => {{
+        dbg!($info);
+        crate::util::internal_err_span($span, $msg.to_string())?;
         unreachable!()
     }};
 }

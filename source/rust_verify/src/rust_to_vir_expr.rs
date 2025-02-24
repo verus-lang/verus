@@ -352,10 +352,10 @@ fn get_adt_res<'tcx>(
             let struct_did = match alias_ty.kind() {
                 TyKind::Adt(AdtDef(adt_def_data), _args) => adt_def_data.did,
                 _ => {
-                    return err_span(
+                    crate::internal_err!(
                         span,
-                        "Verus internal error: got unexpected alias type trying to resolve constructor",
-                    );
+                        "got unexpected alias type trying to resolve constructor"
+                    )
                 }
             };
 
@@ -370,10 +370,10 @@ fn get_adt_res<'tcx>(
             let struct_did = match self_ty.kind() {
                 TyKind::Adt(AdtDef(adt_def_data), _args) => adt_def_data.did,
                 _ => {
-                    return err_span(
+                    crate::internal_err!(
                         span,
-                        "Verus internal error: got unexpected Self type trying to resolve constructor",
-                    );
+                        "got unexpected Self type trying to resolve constructor"
+                    )
                 }
             };
 
@@ -384,11 +384,7 @@ fn get_adt_res<'tcx>(
             (struct_did, variant_def, false, adt_def.is_union())
         }
         _ => {
-            println!("res: {:#?}", res);
-            return err_span(
-                span,
-                "Verus internal error: got unexpected Res trying to resolve constructor",
-            );
+            crate::internal_err!(span, "got unexpected Res trying to resolve constructor", res)
         }
     };
 
@@ -516,7 +512,7 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                     *n
                 }
                 _ => {
-                    return err_span(pat.span, "Verus internal error: expected tuple type");
+                    crate::internal_err!(pat.span, "expected tuple type")
                 }
             };
 
@@ -1193,19 +1189,13 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                                 let array_typ = match &*arg_typ {
                                     TypX::Primitive(Primitive::Ptr, typs) => &typs[0],
                                     _ => {
-                                        return err_span(
-                                            expr.span,
-                                            "Verus internal error: expected Primitive::Ptr",
-                                        );
+                                        crate::internal_err!(expr.span, "expected Primitive::Ptr")
                                     }
                                 };
                                 let typ_args = match &*undecorate_typ(array_typ) {
                                     TypX::Primitive(Primitive::Array, typs) => typs.clone(),
                                     _ => {
-                                        return err_span(
-                                            expr.span,
-                                            "Verus internal error: expected array",
-                                        );
+                                        crate::internal_err!(expr.span, "expected array")
                                     }
                                 };
                                 Some((fun, typ_args))
@@ -1232,10 +1222,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                                 let typ_args = match &*undecorate_typ(&arg.typ) {
                                     TypX::Primitive(Primitive::Array, typs) => typs.clone(),
                                     _ => {
-                                        return err_span(
-                                            expr.span,
-                                            "Verus internal error: expected array",
-                                        );
+                                        crate::internal_err!(expr.span, "expected array")
                                     }
                                 };
                                 Some((fun, typ_args))
@@ -1635,10 +1622,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let typ_args = match &*array_vir_typ {
                     TypX::Primitive(Primitive::Array, typs) => typs.clone(),
                     _ => {
-                        return err_span(
-                            expr.span,
-                            "Verus internal error: expected Primitive::Array",
-                        );
+                        crate::internal_err!(expr.span, "expected Primitive::Array")
                     }
                 };
                 let autospec_usage =
@@ -2234,10 +2218,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 TyKind::Ref(_, _, Mutability::Not) => false,
                 TyKind::Ref(_, _, Mutability::Mut) => true,
                 _ => {
-                    return err_span(
-                        expr.span,
-                        "Verus internal error: index operator expected & or &mut",
-                    );
+                    crate::internal_err!(expr.span, "index operator expected & or &mut")
                 }
             };
             if is_index_mut || current_modifier != ExprModifier::REGULAR {

@@ -1725,3 +1725,179 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] generic_conditions_for_normal_call verus_code! {
+        spec fn foo_req(x: u64) -> bool;
+        spec fn foo_ens(x: u64, a: u64) -> bool;
+
+        fn foo(x: u64) -> (a: u64)
+            requires foo_req(x),
+            ensures foo_ens(x, a),
+        {
+            assume(false);
+            20
+        }
+
+        fn test(x: u64) {
+            assume(call_requires(foo, (x,)));
+            let r = foo(x);
+            assert(call_ensures(foo, (x,), r));
+        }
+
+        fn test_fails(x: u64) {
+            assume(call_requires(foo, (x,)));
+            let r = foo(x);
+            assert(call_ensures(foo, (x,), r));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] generic_conditions_for_normal_call_returns_unit verus_code! {
+        spec fn foo_req(x: u64) -> bool;
+        spec fn foo_ens(x: u64, a: u64) -> bool;
+
+        fn foo(x: u64)
+            requires foo_req(x),
+            ensures foo_ens(x, 0),
+        {
+            assume(false);
+        }
+
+        fn test(x: u64) {
+            assume(call_requires(foo, (x,)));
+            foo(x);
+            assert(call_ensures(foo, (x,), ()));
+        }
+
+        fn test_fails(x: u64) {
+            assume(call_requires(foo, (x,)));
+            foo(x);
+            assert(call_ensures(foo, (x,), ()));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] generic_conditions_for_normal_call_no_spec verus_code! {
+        fn foo(x: u64) -> (a: u64) {
+            assume(false);
+            20
+        }
+
+        fn test(x: u64) {
+            assume(call_requires(foo, (x,)));
+            let r = foo(x);
+            assert(call_ensures(foo, (x,), r));
+        }
+
+        fn test_fails(x: u64) {
+            assume(call_requires(foo, (x,)));
+            let r = foo(x);
+            assert(call_ensures(foo, (x,), r));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] generic_conditions_for_normal_call_return_unit_no_spec verus_code! {
+        fn foo(x: u64) {
+            assume(false);
+        }
+
+        fn test(x: u64) {
+            assume(call_requires(foo, (x,)));
+            foo(x);
+            assert(call_ensures(foo, (x,), ()));
+        }
+
+        fn test_fails(x: u64) {
+            assume(call_requires(foo, (x,)));
+            foo(x);
+            assert(call_ensures(foo, (x,), ()));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] generic_conditions_for_normal_call_traits verus_code! {
+        trait Tr : Sized {
+            spec fn foo_req(&self) -> bool;
+            spec fn foo_ens(&self, a: Self) -> bool;
+
+            fn foo(&self) -> (a: Self)
+                requires self.foo_req(),
+                ensures self.foo_ens(a);
+        }
+
+        struct X { u: u64 }
+
+        struct Y { u: u64 }
+
+        impl Tr for X {
+            spec fn foo_req(&self) -> bool;
+            spec fn foo_ens(&self, a: Self) -> bool;
+
+            fn foo(&self) -> Self {
+                assume(false);
+                X { u: 0 }
+            }
+        }
+
+        impl Tr for Y {
+            spec fn foo_req(&self) -> bool;
+            spec fn foo_ens(&self, a: Self) -> bool;
+
+            fn foo(&self) -> (res: Self)
+                ensures res.u == 0
+            {
+                assume(false);
+                Y { u: 0 }
+            }
+        }
+
+        fn test_generic<T: Tr>(x: &T) {
+            assume(call_requires(T::foo, (x,)));
+            let r = x.foo();
+            assert(call_ensures(T::foo, (x,), r));
+        }
+
+        fn test_x(x: &X) {
+            assume(call_requires(X::foo, (x,)));
+            let r = x.foo();
+            assert(call_ensures(X::foo, (x,), r));
+        }
+
+        fn test_y(y: &Y) {
+            assume(call_requires(Y::foo, (y,)));
+            let r = y.foo();
+            assert(call_ensures(Y::foo, (y,), r));
+        }
+
+        fn test_generic_fail<T: Tr>(x: &T) {
+            assume(call_requires(T::foo, (x,)));
+            let r = x.foo();
+            assert(call_ensures(T::foo, (x,), r));
+            assert(false); // FAILS
+        }
+
+        fn test_x_fail(x: &X) {
+            assume(call_requires(X::foo, (x,)));
+            let r = x.foo();
+            assert(call_ensures(X::foo, (x,), r));
+            assert(false); // FAILS
+        }
+
+        fn test_y_fail(y: &Y) {
+            assume(call_requires(Y::foo, (y,)));
+            let r = y.foo();
+            assert(call_ensures(Y::foo, (y,), r));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}

@@ -828,21 +828,6 @@ pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<Stri
     Ok(v)
 }
 
-pub(crate) fn get_fuel(vattrs: &VerifierAttrs) -> u32 {
-    if vattrs.opaque { 0 } else { 1 }
-}
-
-pub(crate) fn get_publish(
-    vattrs: &VerifierAttrs,
-) -> (Option<bool>, /* open/closed present: */ bool) {
-    match (vattrs.publish, vattrs.opaque_outside_module) {
-        (None, _) => (None, false),
-        (Some(false), _) => (None, true),
-        (Some(true), false) => (Some(true), true),
-        (Some(true), true) => (Some(false), true),
-    }
-}
-
 // Only those relevant to classifying an item as external / not external
 // (external_body is relevant because it means anything on the inside of the item should
 // be external)
