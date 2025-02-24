@@ -630,3 +630,14 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_operator_not_implemented verus_code! {
+        struct A;
+        fn test()
+        {
+            let a1 = A;
+            if a1 == a1 {}
+        }
+    } => Err(e) => assert_rust_error_msg(e, "binary operation `==` cannot be applied to type `A`")
+}
