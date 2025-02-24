@@ -844,8 +844,8 @@ fn mask_set_for_call(ctx: &Ctx, state: &State, function: &Function) -> MaskSet {
         }
     };
     match &mask_spec {
-        MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(ctx, &inv_exps, &function.span),
-        MaskSpec::InvariantOpensExcept(_exprs) => MaskSet::from_list_complement(ctx, &inv_exps, &function.span),
+        MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(&inv_exps, &function.span),
+        MaskSpec::InvariantOpensExcept(_exprs) => MaskSet::from_list_complement(&inv_exps, &function.span),
     }
 }
 
@@ -2103,7 +2103,7 @@ pub(crate) fn expr_to_stm_opt(
                 None => (),
             }
 
-            let mut inner_mask = Some(state.mask.as_ref().unwrap().remove(ctx, &ns_exp, &inv.span));
+            let mut inner_mask = Some(state.mask.as_ref().unwrap().remove(&ns_exp, &inv.span));
 
             // Assume the invariant
             let main_inv = call_inv(ctx, &inv_tmp_var, &inner_var, &typ_args, *atomicity);
@@ -2417,7 +2417,7 @@ fn exec_closure_body_stms(
 
     // Right now there is no way to specify an invariant mask on a closure function
     // All closure funcs are assumed to have mask set 'full'
-    let mut mask = Some(MaskSet::full(ctx, &body.span));
+    let mut mask = Some(MaskSet::full(&body.span));
     std::mem::swap(&mut state.mask, &mut mask);
 
     for param in params.iter() {
