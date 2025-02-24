@@ -612,7 +612,7 @@ impl Ctx {
             string_hashes,
             debug,
             arch_word_bits: krate.arch.word_bits,
-            poly_strategy: poly_strategy,
+            poly_strategy: PolyStrategy::default(),
         })
     }
 

@@ -37,9 +37,9 @@ use air::ast_util::str_typ;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
 pub enum PolyStrategy {
-    //#[default]
+    #[default]
     Mono,
     Poly,
 }

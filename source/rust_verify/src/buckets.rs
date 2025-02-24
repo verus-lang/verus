@@ -99,7 +99,9 @@ pub fn get_buckets(
             if module_set.contains(owning_module) {
                 let bucket_id = if func.x.attrs.spinoff_prover {
                     let id = BucketId::Fun(owning_module.clone(), func.x.name.clone());
+                    tracing::debug!{"Function mono? {:?}", func.x.attrs.mono.to_string()}
                     if func.x.attrs.mono {
+                    
                        mono_set.insert(id.clone());
                     }
                     id 
@@ -123,6 +125,7 @@ pub fn get_buckets(
         .into_iter()
         .map(|(bucket_id, vec)| {
             let strategy = if mono_set.contains(&bucket_id) { PolyStrategy::Mono } else { PolyStrategy::Poly };
+            tracing::debug!{"Function mono? {:?}", strategy}
             (bucket_id, Bucket { funs: vec.into_iter().collect(), strategy})
         })
         .collect()
