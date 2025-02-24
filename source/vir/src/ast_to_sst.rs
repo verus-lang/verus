@@ -890,17 +890,19 @@ fn stm_call(
         assert_id: state.next_assert_id(),
     };
 
-    match &state.mask {
-        Some(caller_mask) => {
-            let callee_mask = mask_set_for_call(ctx, state, &fun);
-            for assertion in callee_mask.subset_of(ctx, caller_mask, span) {
-                stms.push(Spanned::new(
-                    span.clone(),
-                    StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
-                ))
+    if !state.checking_recommends(ctx) {
+        match &state.mask {
+            Some(caller_mask) => {
+                let callee_mask = mask_set_for_call(ctx, state, &fun);
+                for assertion in callee_mask.subset_of(ctx, caller_mask, span) {
+                    stms.push(Spanned::new(
+                        span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
             }
+            None => (),
         }
-        None => (),
     }
 
     stms.push(Spanned::new(span.clone(), call));
@@ -2103,11 +2105,13 @@ pub(crate) fn expr_to_stm_opt(
             let typ_args = get_inv_typ_args(&big_inv_exp.typ);
             let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
 
-            for assertion in state.mask.as_ref().unwrap().contains(ctx, &ns_exp, &inv.span) {
-                stms1.push(Spanned::new(
-                    expr.span.clone(),
-                    StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
-                ))
+            if !state.checking_recommends(ctx) {
+                for assertion in state.mask.as_ref().unwrap().contains(ctx, &ns_exp, &inv.span) {
+                    stms1.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
             }
 
             let mut inner_mask = Some(state.mask.as_ref().unwrap().remove(&ns_exp, &inv.span));
