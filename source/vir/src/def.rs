@@ -824,10 +824,7 @@ pub fn fn_namespace_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fu
 pub fn set_type_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
         krate: Some(vstd_crate_name.clone()),
-        segments: Arc::new(vec![
-            Arc::new("set".to_string()),
-            Arc::new("Set".to_string()),
-        ]),
+        segments: Arc::new(vec![Arc::new("set".to_string()), Arc::new("Set".to_string())]),
     })
 }
 

@@ -1,6 +1,6 @@
-use crate::messages::{error_with_label, Message, Span};
-use crate::ast::{BinaryOp, Constant, IntRange, SpannedTyped, Typ, TypX, Dt};
+use crate::ast::{BinaryOp, Constant, Dt, IntRange, SpannedTyped, Typ, TypX};
 use crate::context::Ctx;
+use crate::messages::{error_with_label, Message, Span};
 use crate::sst::{CallFun, Exp, ExpX};
 use std::sync::Arc;
 
@@ -19,7 +19,6 @@ pub enum MaskSet {
     Full { span: Span },
     Insert { span: Span, base: Box<MaskSet>, elem: Exp },
     Remove { span: Span, base: Box<MaskSet>, elem: Exp },
-
     // Not used at the moment, will be used when we add syntax and support
     // for specifying an std::Set expression as the mask.
     // Arbitrary { span: Span, set: Exp },
@@ -35,54 +34,69 @@ fn namespace_set_typs() -> Arc<Vec<Typ>> {
 }
 
 fn namespace_set_typ(ctx: &Ctx) -> Arc<TypX> {
-    Arc::new(TypX::Datatype(Dt::Path(crate::def::set_type_path(&ctx.global.vstd_crate_name)), namespace_set_typs(), Arc::new(vec![])))
+    Arc::new(TypX::Datatype(
+        Dt::Path(crate::def::set_type_path(&ctx.global.vstd_crate_name)),
+        namespace_set_typs(),
+        Arc::new(vec![]),
+    ))
 }
 
 impl MaskSet {
     pub fn to_exp(self: &Self, ctx: &Ctx) -> Exp {
         match self {
             MaskSet::Empty { span } => {
-                let empty_fun = CallFun::Fun(crate::def::fn_set_empty_name(&ctx.global.vstd_crate_name), None);
+                let empty_fun =
+                    CallFun::Fun(crate::def::fn_set_empty_name(&ctx.global.vstd_crate_name), None);
                 let empty_expx = ExpX::Call(empty_fun, namespace_set_typs(), Arc::new(vec![]));
                 let empty_exp = SpannedTyped::new(&span, &namespace_set_typ(ctx), empty_expx);
                 empty_exp
-            },
+            }
             MaskSet::Full { span } => {
-                let full_fun = CallFun::Fun(crate::def::fn_set_full_name(&ctx.global.vstd_crate_name), None);
+                let full_fun =
+                    CallFun::Fun(crate::def::fn_set_full_name(&ctx.global.vstd_crate_name), None);
                 let full_expx = ExpX::Call(full_fun, namespace_set_typs(), Arc::new(vec![]));
                 let full_exp = SpannedTyped::new(&span, &namespace_set_typ(ctx), full_expx);
                 full_exp
-            },
+            }
             MaskSet::Insert { span, base, elem } => {
-                let insert_fun = CallFun::Fun(crate::def::fn_set_insert_name(&ctx.global.vstd_crate_name), None);
-                let insert_expx = ExpX::Call(insert_fun, namespace_set_typs(), Arc::new(vec![base.to_exp(ctx), elem.clone()]));
+                let insert_fun =
+                    CallFun::Fun(crate::def::fn_set_insert_name(&ctx.global.vstd_crate_name), None);
+                let insert_expx = ExpX::Call(
+                    insert_fun,
+                    namespace_set_typs(),
+                    Arc::new(vec![base.to_exp(ctx), elem.clone()]),
+                );
                 let insert_exp = SpannedTyped::new(&span, &namespace_set_typ(ctx), insert_expx);
                 insert_exp
-            },
+            }
             MaskSet::Remove { span, base, elem } => {
-                let remove_fun = CallFun::Fun(crate::def::fn_set_remove_name(&ctx.global.vstd_crate_name), None);
-                let remove_expx = ExpX::Call(remove_fun, namespace_set_typs(), Arc::new(vec![base.to_exp(ctx), elem.clone()]));
+                let remove_fun =
+                    CallFun::Fun(crate::def::fn_set_remove_name(&ctx.global.vstd_crate_name), None);
+                let remove_expx = ExpX::Call(
+                    remove_fun,
+                    namespace_set_typs(),
+                    Arc::new(vec![base.to_exp(ctx), elem.clone()]),
+                );
                 let remove_exp = SpannedTyped::new(&span, &namespace_set_typ(ctx), remove_expx);
                 remove_exp
-            },
-            // MaskSet::Arbitrary { span: _, set } => { set.clone() },
+            } // MaskSet::Arbitrary { span: _, set } => { set.clone() },
         }
     }
 
     pub fn empty(span: &Span) -> MaskSet {
-        MaskSet::Empty{ span: span.clone() }
+        MaskSet::Empty { span: span.clone() }
     }
 
     pub fn full(span: &Span) -> MaskSet {
-        MaskSet::Full{ span: span.clone() }
+        MaskSet::Full { span: span.clone() }
     }
 
     pub fn insert(self: &Self, elem: &Exp, span: &Span) -> Self {
-        MaskSet::Insert{ span: span.clone(), base: Box::new(self.clone()), elem: elem.clone() }
+        MaskSet::Insert { span: span.clone(), base: Box::new(self.clone()), elem: elem.clone() }
     }
 
     pub fn remove(self: &Self, elem: &Exp, span: &Span) -> Self {
-        MaskSet::Remove{ span: span.clone(), base: Box::new(self.clone()), elem: elem.clone() }
+        MaskSet::Remove { span: span.clone(), base: Box::new(self.clone()), elem: elem.clone() }
     }
 
     // pub fn arbitrary(span: &Span, exp: &Exp) -> Self {
@@ -109,7 +123,13 @@ impl MaskSet {
         mask
     }
 
-    fn contains_internal(self: &Self, ctx: &Ctx, elem: &Exp, span: &Span, call_span: Option<&Span>) -> Vec<Assertion> {
+    fn contains_internal(
+        self: &Self,
+        ctx: &Ctx,
+        elem: &Exp,
+        span: &Span,
+        call_span: Option<&Span>,
+    ) -> Vec<Assertion> {
         match self {
             MaskSet::Full { span: _ } => vec![],
             MaskSet::Remove { span: removed_span, base, elem: removed } => {
@@ -118,35 +138,50 @@ impl MaskSet {
                 let neq_expx = ExpX::Binary(BinaryOp::Ne, removed.clone(), elem.clone());
                 let neq_exp = SpannedTyped::new(&span, &Arc::new(TypX::Bool), neq_expx);
 
-                let mut err = error_with_label(removed_span, "possible invariant collision", "this invariant").primary_label(span, "might be the same as this invariant");
+                let mut err = error_with_label(
+                    removed_span,
+                    "possible invariant collision",
+                    "this invariant",
+                )
+                .primary_label(span, "might be the same as this invariant");
                 match call_span {
-                    None => {},
+                    None => {}
                     Some(call_span) => {
                         err = err.primary_label(call_span, "at this call-site");
-                    },
+                    }
                 }
 
-                asserts.push(Assertion{
-                    err: err,
-                    cond: neq_exp,
-                });
+                asserts.push(Assertion { err: err, cond: neq_exp });
                 asserts
-            },
+            }
             _ => {
-                let contains_fun = CallFun::Fun(crate::def::fn_set_contains_name(&ctx.global.vstd_crate_name), None);
-                let contains_expx = ExpX::Call(contains_fun, namespace_set_typs(), Arc::new(vec![self.to_exp(ctx), elem.clone()]));
+                let contains_fun = CallFun::Fun(
+                    crate::def::fn_set_contains_name(&ctx.global.vstd_crate_name),
+                    None,
+                );
+                let contains_expx = ExpX::Call(
+                    contains_fun,
+                    namespace_set_typs(),
+                    Arc::new(vec![self.to_exp(ctx), elem.clone()]),
+                );
                 let contains_exp = SpannedTyped::new(&span, &Arc::new(TypX::Bool), contains_expx);
 
                 let err = match call_span {
-                    None => error_with_label(span, "cannot show invariant namespace is in the mask given by the function signature", "invariant opened here"),
-                    Some(call_span) => error_with_label(span, "cannot show this invariant namespace is allowed to be opened", "function might open this invariant namespace").primary_label(call_span, "might not be allowed at this call-site"),
+                    None => error_with_label(
+                        span,
+                        "cannot show invariant namespace is in the mask given by the function signature",
+                        "invariant opened here",
+                    ),
+                    Some(call_span) => error_with_label(
+                        span,
+                        "cannot show this invariant namespace is allowed to be opened",
+                        "function might open this invariant namespace",
+                    )
+                    .primary_label(call_span, "might not be allowed at this call-site"),
                 };
 
-                vec![Assertion{
-                    err: err,
-                    cond: contains_exp,
-                }]
-            },
+                vec![Assertion { err: err, cond: contains_exp }]
+            }
         }
     }
 
@@ -159,42 +194,71 @@ impl MaskSet {
             MaskSet::Empty { span: _ } => vec![],
             MaskSet::Insert { span: inserted_span, base, elem: inserted } => {
                 let mut asserts = base.subset_of(ctx, other, call_span);
-                asserts.append(&mut other.contains_internal(ctx, inserted, inserted_span, Some(call_span)));
+                asserts.append(&mut other.contains_internal(
+                    ctx,
+                    inserted,
+                    inserted_span,
+                    Some(call_span),
+                ));
                 asserts
-            },
+            }
             _ => match other {
                 MaskSet::Full { span: _ } => vec![],
                 MaskSet::Remove { span: removed_span, base, elem: removed } => {
                     let mut asserts = self.subset_of(ctx, base, call_span);
 
-                    let mut removed_not_in_other = SpannedTyped::new(removed_span, &Arc::new(TypX::Bool), ExpX::Const(Constant::Bool(false)));
-                    for assertion in other.contains_internal(ctx, removed, removed_span, Some(call_span)) {
-                        removed_not_in_other = SpannedTyped::new(removed_span, &Arc::new(TypX::Bool), ExpX::Binary(BinaryOp::Or, removed_not_in_other, assertion.cond));
+                    let mut removed_not_in_other = SpannedTyped::new(
+                        removed_span,
+                        &Arc::new(TypX::Bool),
+                        ExpX::Const(Constant::Bool(false)),
+                    );
+                    for assertion in
+                        other.contains_internal(ctx, removed, removed_span, Some(call_span))
+                    {
+                        removed_not_in_other = SpannedTyped::new(
+                            removed_span,
+                            &Arc::new(TypX::Bool),
+                            ExpX::Binary(BinaryOp::Or, removed_not_in_other, assertion.cond),
+                        );
                     }
-                    asserts.push(Assertion{
-                        err: error_with_label(removed_span, "callee may open invariants disallowed at call-site", "invariant opened here").primary_label(call_span, "might be opened again in this call"),
+                    asserts.push(Assertion {
+                        err: error_with_label(
+                            removed_span,
+                            "callee may open invariants disallowed at call-site",
+                            "invariant opened here",
+                        )
+                        .primary_label(call_span, "might be opened again in this call"),
                         cond: removed_not_in_other,
                     });
                     asserts
-                },
+                }
                 _ => {
-                    let subset_of_fun = CallFun::Fun(crate::def::fn_set_subset_of_name(&ctx.global.vstd_crate_name), None);
-                    let subset_of_expx = ExpX::Call(subset_of_fun, namespace_set_typs(), Arc::new(vec![self.to_exp(ctx), other.to_exp(ctx)]));
-                    let subset_of_exp = SpannedTyped::new(&call_span, &Arc::new(TypX::Bool), subset_of_expx);
+                    let subset_of_fun = CallFun::Fun(
+                        crate::def::fn_set_subset_of_name(&ctx.global.vstd_crate_name),
+                        None,
+                    );
+                    let subset_of_expx = ExpX::Call(
+                        subset_of_fun,
+                        namespace_set_typs(),
+                        Arc::new(vec![self.to_exp(ctx), other.to_exp(ctx)]),
+                    );
+                    let subset_of_exp =
+                        SpannedTyped::new(&call_span, &Arc::new(TypX::Bool), subset_of_expx);
 
-                    let mut err = error_with_label(call_span, "callee may open invariants that caller cannot", "at this call-site");
+                    let mut err = error_with_label(
+                        call_span,
+                        "callee may open invariants that caller cannot",
+                        "at this call-site",
+                    );
                     match self {
                         MaskSet::Full { span: full_span } => {
                             err = err.primary_label(full_span, "callee may open any invariant");
-                        },
-                        _ => {},
+                        }
+                        _ => {}
                     }
 
-                    vec![Assertion{
-                        err: err,
-                        cond: subset_of_exp,
-                    }]
-                },
+                    vec![Assertion { err: err, cond: subset_of_exp }]
+                }
             },
         }
     }
