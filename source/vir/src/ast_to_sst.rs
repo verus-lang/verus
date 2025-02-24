@@ -839,7 +839,7 @@ fn mask_set_for_call(ctx: &Ctx, state: &State, function: &Function) -> MaskSet {
             for e in es.iter() {
                 let pars = crate::ast_to_sst_func::params_to_pre_post_pars(&function.x.params, true);
                 let exp = expr_to_exp_skip_checks(ctx, state.diagnostics, &pars, e).unwrap();
-                inv_exps.push(exp);
+                inv_exps.push((e.span.clone(), exp));
             }
         }
     };
