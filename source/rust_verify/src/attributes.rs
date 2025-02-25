@@ -979,6 +979,21 @@ pub(crate) fn get_verifier_attrs(
     attrs: &[Attribute],
     diagnostics: Option<&mut Vec<VirErrAs>>,
 ) -> Result<VerifierAttrs, VirErr> {
+    get_verifier_attrs_maybe_check(attrs, diagnostics, true)
+}
+
+pub(crate) fn get_verifier_attrs_no_check(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<VerifierAttrs, VirErr> {
+    get_verifier_attrs_maybe_check(attrs, diagnostics, false)
+}
+
+pub(crate) fn get_verifier_attrs_maybe_check(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+    do_check: bool,
+) -> Result<VerifierAttrs, VirErr> {
     let mut vs = VerifierAttrs {
         verus_macro: false,
         external_body: false,
@@ -1096,8 +1111,10 @@ pub(crate) fn get_verifier_attrs(
             _ => {}
         }
     }
-    if let Some((rustc_attr, span)) = unsupported_rustc_attr {
-        return err_span(span, format!("The attribute `{rustc_attr:}` is not supported"));
+    if do_check {
+        if let Some((rustc_attr, span)) = unsupported_rustc_attr {
+            return err_span(span, format!("The attribute `{rustc_attr:}` is not supported"));
+        }
     }
     Ok(vs)
 }
