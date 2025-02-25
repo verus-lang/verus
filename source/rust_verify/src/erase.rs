@@ -14,7 +14,6 @@ pub enum CompilableOperator {
     ArcNew,
     BoxNew,
     SmartPtrClone { is_method: bool },
-    NewStrLit,
     GhostExec,
     TrackedNew,
     TrackedExec,
@@ -22,6 +21,7 @@ pub enum CompilableOperator {
     TrackedGet,
     TrackedBorrow,
     TrackedBorrowMut,
+    UseTypeInvariant,
 }
 
 /// Information about each call in the AST (each ExprKind::Call).

@@ -1,11 +1,12 @@
 verus_git_url = "https://github.com/verus-lang/verus.git"
-verus_refspec = "main"
+verus_revspec = "main"
 verus_features = ["singular"]
+verus_verify_vstd = true
 
 [[project]]
 name = "memory-allocator"
 git_url = "https://github.com/verus-lang/verified-memory-allocator.git"
-refspec = "main"
+revspec = "main"
 crate_root = "verus-mimalloc/lib.rs"
 extra_args = [
     "--extern", "libc=build/liblibc.rlib",
@@ -14,7 +15,7 @@ extra_args = [
 prepare_script = """
 pushd test_libc
 cargo clean
-cargo +1.76.0 build --release
+cargo +1.82.0 build --release
 popd
 LIBC_RLIB_NAME=$(find ./test_libc/target/release/deps/ -name 'liblibc-*.rlib')
 mkdir -p build
@@ -24,30 +25,35 @@ cp $LIBC_RLIB_NAME build/liblibc.rlib
 [[project]]
 name = "page-table"
 git_url = "https://github.com/utaal/verified-nrkernel.git"
-refspec = "page-table"
-crate_root = "page-table/main.rs"
-extra_args = ["--rlimit", "60"]
+revspec = "main"
+crate_root = "page-table/src/lib.rs"
+extra_args = ["--crate-type=lib", "--rlimit", "60", "--cfg", "feature=\"impl\""]
 
 [[project]]
 name = "verified-storage"
 git_url = "https://github.com/microsoft/verified-storage.git"
-refspec = "main"
+revspec = "main"
 crate_root = "storage_node/src/lib.rs"
 extra_args = [
     "-L", "dependency=deps_hack/target/debug/deps",
     "--extern=deps_hack=deps_hack/target/debug/libdeps_hack.rlib",
 ]
 prepare_script = """
-DEBIAN_FRONTEND=noninteractive apt-get install -y libpmem1 libpmemlog1 libpmem-dev libpmemlog-dev llvm-dev clang libclang-dev # verified-storage
+DEBIAN_FRONTEND=noninteractive apt-get update; apt-get install -y libpmem1 libpmemlog1 libpmem-dev libpmemlog-dev llvm-dev clang libclang-dev # verified-storage
+
+cd pmsafe
+cargo clean
+cargo build 
+cd ..
 
 cd deps_hack
 cargo clean
-cargo +1.76.0 build
+cargo build
 """
 
 [[project]]
 name = "node-replication"
-git_url = "https://github.com/achreto/verified-node-replication.git"
-refspec = "main"
+git_url = "https://github.com/verus-lang/verified-node-replication.git"
+revspec = "main"
 crate_root = "verified-node-replication/src/lib.rs"
 extra_args = ["--crate-type=dylib"]

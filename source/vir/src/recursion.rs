@@ -1,24 +1,21 @@
 use crate::ast::{
-    AutospecUsage, CallTarget, CallTargetKind, Constant, ExprX, Fun, Function, FunctionKind,
+    AutospecUsage, CallTarget, CallTargetKind, Constant, Dt, ExprX, Fun, Function, FunctionKind,
     GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VarBinder,
     VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
+use crate::ast_to_sst_func::params_to_pars;
+use crate::ast_util::undecorate_typ;
 use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
 use crate::context::Ctx;
 use crate::def::{
-    decrease_at_entry, rename_rec_param, unique_bound, unique_local, CommandsWithContext, Spanned,
-    FUEL_PARAM, FUEL_TYPE,
+    decrease_at_entry, rename_rec_param, unique_bound, unique_local, Spanned, FUEL_PARAM, FUEL_TYPE,
 };
-use crate::func_to_air::{params_to_pars, SstMap};
-use crate::inv_masks::MaskSet;
 use crate::messages::{error, Span};
 use crate::scc::Graph;
-use crate::sst::PostConditionKind;
-use crate::sst::PostConditionSst;
 use crate::sst::{
-    BndX, CallFun, Dest, Exp, ExpX, Exps, FunctionSst, InternalFun, LocalDecl, LocalDeclX, Stm,
-    StmX, UniqueIdent,
+    BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclX, Stm, StmX,
+    UniqueIdent,
 };
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use crate::util::vec_map_result;
@@ -30,9 +27,10 @@ use std::sync::Arc;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Node {
     Fun(Fun),
-    Datatype(Path),
+    Datatype(Dt),
     Trait(Path),
     TraitImpl(ImplPath),
+    TraitReqEns(ImplPath, bool),
     ModuleReveal(Path),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
@@ -42,7 +40,7 @@ pub enum Node {
 #[derive(Clone)]
 struct Ctxt<'a> {
     recursive_function_name: Fun,
-    num_decreases: usize,
+    num_decreases: Option<usize>,
     scc_rep: Node,
     ctx: &'a Ctx,
 }
@@ -74,35 +72,20 @@ fn is_recursive_call(ctxt: &Ctxt, target: &Fun, resolved_method: &Option<(Fun, T
 }
 
 pub fn height_is_int(typ: &Typ) -> bool {
-    match &*crate::ast_util::undecorate_typ(typ) {
+    match &*undecorate_typ(typ) {
         TypX::Int(_) => true,
         _ => false,
     }
 }
 
-fn height_typ(ctx: &Ctx, exp: &Exp) -> Typ {
-    if height_is_int(&exp.typ) {
-        Arc::new(TypX::Int(IntRange::Int))
-    } else {
-        if crate::poly::typ_is_poly(ctx, &exp.typ) {
-            exp.typ.clone()
-        } else {
-            Arc::new(TypX::Boxed(exp.typ.clone()))
-        }
-    }
+fn height_typ(_ctx: &Ctx, exp: &Exp) -> Typ {
+    if height_is_int(&exp.typ) { Arc::new(TypX::Int(IntRange::Int)) } else { exp.typ.clone() }
 }
 
-fn exp_for_decrease(ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
-    match &*crate::ast_util::undecorate_typ(&exp.typ) {
+fn exp_for_decrease(_ctx: &Ctx, exp: &Exp) -> Result<Exp, VirErr> {
+    match &*undecorate_typ(&exp.typ) {
         TypX::Int(_) => Ok(exp.clone()),
-        TypX::Datatype(..) => Ok(if crate::poly::typ_is_poly(ctx, &exp.typ) {
-            exp.clone()
-        } else {
-            let op = UnaryOpr::Box(exp.typ.clone());
-            let argx = ExpX::UnaryOpr(op, exp.clone());
-            let typ = Arc::new(TypX::Boxed(exp.typ.clone()));
-            SpannedTyped::new(&exp.span, &typ, argx)
-        }),
+        TypX::Datatype(..) => Ok(exp.clone()),
         _ => Err(error(
             &exp.span,
             format!(
@@ -151,7 +134,6 @@ pub(crate) fn check_decrease(
 fn check_decrease_call(
     ctxt: &Ctxt,
     diagnostics: &impl Diagnostics,
-    fun_ssts: &SstMap,
     span: &Span,
     target: &Fun,
     resolved_method: &Option<(Fun, Typs)>,
@@ -191,7 +173,6 @@ fn check_decrease_call(
         let decreases_exp = expr_to_exp_skip_checks(
             ctxt.ctx,
             diagnostics,
-            fun_ssts,
             &params_to_pars(&function.x.params, true),
             expr,
         )?;
@@ -202,7 +183,13 @@ fn check_decrease_call(
         );
         decreases_exps.push(SpannedTyped::new(&span, &dec_exp.typ, e_decx));
     }
-    check_decrease(ctxt.ctx, span, None, &decreases_exps, ctxt.num_decreases)
+    check_decrease(
+        ctxt.ctx,
+        span,
+        None,
+        &decreases_exps,
+        ctxt.num_decreases.expect("num_decreases"),
+    )
 }
 
 pub(crate) fn fun_is_recursive(ctx: &Ctx, function: &Function) -> bool {
@@ -224,14 +211,14 @@ pub(crate) fn mk_decreases_at_entry(
         let decl = Arc::new(LocalDeclX {
             ident: unique_local(&decrease_at_entry(loop_id, i)),
             typ: typ.clone(),
-            mutable: false,
+            kind: crate::sst::LocalDeclKind::Decreases,
         });
         let uniq_ident = unique_local(&decrease_at_entry(loop_id, i));
         let stm_assign = Spanned::new(
             span.clone(),
             StmX::Assign {
                 lhs: Dest {
-                    dest: crate::ast_to_sst::var_loc_exp(&span, &typ, uniq_ident),
+                    dest: SpannedTyped::new(&span, &typ, ExpX::VarLoc(uniq_ident)),
                     is_init: true,
                 },
                 rhs: exp_for_decrease(ctx, exp)?,
@@ -243,27 +230,22 @@ pub(crate) fn mk_decreases_at_entry(
     Ok((decls, stm_assigns))
 }
 
-/// fuel param:
-/// `None` for normal case (the usual 'fuel' param)
-/// `Some(fuel)` means use a constant fuel
 pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
-    function: &Function,
+    function: &crate::sst::FunctionSst,
     body: &Exp,
-    fuel: Option<usize>,
-) -> Result<(bool, Exp, crate::recursion::Node), VirErr> {
+) -> Result<(Exp, crate::recursion::Node), VirErr> {
     let caller_node = Node::Fun(function.x.name.clone());
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&caller_node);
-    if !fun_is_recursive(ctx, function) {
-        return Ok((false, body.clone(), scc_rep));
+    if !function.x.has.is_recursive {
+        return Ok((body.clone(), scc_rep));
     }
-    let num_decreases = function.x.decrease.len();
-    if num_decreases == 0 {
+    if !function.x.has.has_decrease {
         return Err(error(&function.span, "recursive function must have a decreases clause"));
     }
     let ctxt = Ctxt {
         recursive_function_name: function.x.name.clone(),
-        num_decreases,
+        num_decreases: None,
         scc_rep: scc_rep.clone(),
         ctx,
     };
@@ -282,10 +264,7 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
                 && ctx.func_map[&resolve(x, typs, resolved_method).0].x.body.is_some() =>
         {
             let mut args = (**args).clone();
-            let varx = match fuel {
-                None => ExpX::Var(unique_local(&&air_unique_var(FUEL_PARAM))),
-                Some(f) => ExpX::FuelConst(f),
-            };
+            let varx = ExpX::Var(unique_local(&air_unique_var(FUEL_PARAM)));
             let var_typ = Arc::new(TypX::Air(str_typ(FUEL_TYPE)));
             args.push(SpannedTyped::new(&exp.span, &var_typ, varx));
             let (name, ts) = resolve(x, typs, resolved_method);
@@ -295,70 +274,24 @@ pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
         _ => exp.clone(),
     });
 
-    Ok((true, body, scc_rep))
+    Ok((body, scc_rep))
 }
 
-pub(crate) fn check_termination_commands(
-    ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
-    fun_ssts: &SstMap,
-    function: &Function,
-    mut local_decls: Vec<LocalDecl>,
-    proof_body: Stm,
-    body: &Stm,
-    uses_decreases_by: bool,
-) -> Result<Vec<CommandsWithContext>, VirErr> {
-    if !fun_is_recursive(ctx, function) {
-        return Ok(vec![]);
-    }
-
-    let (ctxt, decreases_exps, stm) =
-        check_termination(ctx, diagnostics, fun_ssts, function, body)?;
-
-    let (mut decls, mut stm_assigns) =
-        mk_decreases_at_entry(&ctxt.ctx, &body.span, None, &decreases_exps)?;
-    stm_assigns.push(proof_body);
-    stm_assigns.push(stm.clone());
-    let stm_block = Spanned::new(body.span.clone(), StmX::Block(Arc::new(stm_assigns)));
-
-    // TODO: If we decide to support debugging decreases failures, we should plumb _snap_map
-    // up to the VIR model
-    local_decls.append(&mut decls);
-    let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
-        ctx,
-        &function.span,
-        &function.x.typ_params,
-        &function.x.params,
-        &FunctionSst {
-            post_condition: PostConditionSst {
-                dest: None,
-                kind: if uses_decreases_by {
-                    PostConditionKind::DecreasesBy
-                } else {
-                    PostConditionKind::DecreasesImplicitLemma
-                },
-                ens_exps: vec![],
-                ens_spec_precondition_stms: vec![],
-            },
-            body: stm_block,
-            local_decls,
-            statics: vec![],
-            reqs: Arc::new(vec![]),
-            mask_set: MaskSet::empty(),
-        },
-        &vec![],
-        false,
-        false,
-        false,
-    )?;
-
-    Ok(commands)
+pub(crate) fn rewrite_rec_call_with_fuel_const(body: &Exp, fuel: usize) -> Exp {
+    map_exp_visitor(&body, &mut |exp| match &exp.x {
+        ExpX::Call(CallFun::Recursive(r), typs, args) => {
+            let mut args = (**args).clone();
+            let arg_fuel = args.last_mut().expect("args.last");
+            *arg_fuel = arg_fuel.new_x(ExpX::FuelConst(fuel));
+            exp.new_x(ExpX::Call(CallFun::Recursive(r.clone()), typs.clone(), Arc::new(args)))
+        }
+        _ => exp.clone(),
+    })
 }
 
 fn check_termination<'a>(
     ctx: &'a Ctx,
     diagnostics: &impl Diagnostics,
-    fun_ssts: &SstMap,
     function: &Function,
     body: &Stm,
 ) -> Result<(Ctxt<'a>, Vec<Exp>, Stm), VirErr> {
@@ -369,34 +302,25 @@ fn check_termination<'a>(
 
     // use expr_to_exp_skip_checks here because checks in decreases done by func_def_to_air
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp_skip_checks(
-            ctx,
-            diagnostics,
-            fun_ssts,
-            &params_to_pars(&function.x.params, true),
-            e,
-        )
+        expr_to_exp_skip_checks(ctx, diagnostics, &params_to_pars(&function.x.params, true), e)
     })?;
     let scc_rep = ctx.global.func_call_graph.get_scc_rep(&Node::Fun(function.x.name.clone()));
-    let ctxt =
-        Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
+    let ctxt = Ctxt {
+        recursive_function_name: function.x.name.clone(),
+        num_decreases: Some(num_decreases),
+        scc_rep,
+        ctx,
+    };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
         StmX::Call { fun, resolved_method, args, dest, .. }
             if is_recursive_call(&ctxt, fun, resolved_method) =>
         {
-            let check = check_decrease_call(
-                &ctxt,
-                diagnostics,
-                fun_ssts,
-                &s.span,
-                fun,
-                resolved_method,
-                args,
-            )?;
+            let check =
+                check_decrease_call(&ctxt, diagnostics, &s.span, fun, resolved_method, args)?;
             let error = error(&s.span, "could not prove termination");
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(None, Some(error), check));
 
-            let mut stms = vec![stm_assert];
+            let mut stms = vec![stm_assert, s.clone()];
             // REVIEW: when we support spec-ensures, we will need an assume here to get the ensures
             // of the recursive call just after it was proven to terminate
             // This is instead an interim fix for incompleteness in recommends checking, due to
@@ -420,7 +344,6 @@ fn check_termination<'a>(
                     stms.push(has_typ_assume);
                 }
             }
-            stms.push(s.clone());
             let stm_block = Spanned::new(s.span.clone(), StmX::Block(Arc::new(stms)));
             Ok(stm_block)
         }
@@ -443,19 +366,21 @@ fn check_termination<'a>(
 pub(crate) fn check_termination_stm(
     ctx: &Ctx,
     diagnostics: &impl Diagnostics,
-    fun_ssts: &SstMap,
     function: &Function,
+    proof_body: Option<Stm>,
     body: &Stm,
 ) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
     if !fun_is_recursive(ctx, &function) {
         return Ok((vec![], body.clone()));
     }
 
-    let (ctxt, decreases_exps, stm) =
-        check_termination(ctx, diagnostics, fun_ssts, function, body)?;
+    let (ctxt, decreases_exps, stm) = check_termination(ctx, diagnostics, function, body)?;
 
     let (decls, mut stm_assigns) =
         mk_decreases_at_entry(&ctxt.ctx, &stm.span, None, &decreases_exps)?;
+    if let Some(proof_body) = proof_body {
+        stm_assigns.push(proof_body);
+    }
     stm_assigns.push(stm.clone());
     let stm_block = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stm_assigns)));
     Ok((decls, stm_block))
@@ -473,22 +398,38 @@ pub(crate) fn expand_call_graph(
     let f_node = Node::Fun(function.x.name.clone());
 
     // Add T --> f if T declares method f
-    if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
+    if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
         // T --> f
         call_graph.add_edge(Node::Trait(trait_path.clone()), f_node.clone());
     }
 
     // Add D: T --> f and f --> T where f is one of D's methods that implements T
+    // Also add ReqEns(D: T, true) --> f --> ReqEns(D: T, false) to make T's requires/ensures
+    // as concrete as possible
     if let FunctionKind::TraitMethodImpl { trait_path, impl_path, .. } = function.x.kind.clone() {
         let t_node = Node::Trait(trait_path.clone());
         let impl_node = Node::TraitImpl(ImplPath::TraitImplPath(impl_path.clone()));
+        let req_ens_node_t = Node::TraitReqEns(ImplPath::TraitImplPath(impl_path.clone()), true);
+        let req_ens_node_f = Node::TraitReqEns(ImplPath::TraitImplPath(impl_path.clone()), false);
         call_graph.add_edge(impl_node, f_node.clone());
         call_graph.add_edge(f_node.clone(), t_node);
+        // There's a special case for requires/ensures of f, because these requires/ensures
+        // appear in the trait T, not in the implementation D: T.
+        // If we didn't extra edges for this case, the calls in requires/ensures
+        // might end up uninterpreted in the SMT encoding (which would be sound, but incomplete):
+        call_graph.add_edge(f_node.clone(), req_ens_node_f);
+        if function.x.mode == crate::ast::Mode::Spec {
+            // req_ens_node_t represents the spec functions defined by D: T;
+            // these spec functions may be useful for proving requires and ensures
+            // of other functions f' who depend on D: T:
+            // f' --> TraitReqEns(D': T' for f', false) --> TraitReqEns(D: T for f, true) --> f
+            call_graph.add_edge(req_ens_node_t, f_node.clone());
+        }
     }
 
     // Add f --> T for any function f with "where ...: T(...)"
     for bound in function.x.typ_bounds.iter() {
-        if let FunctionKind::TraitMethodDecl { trait_path } = &function.x.kind {
+        if let FunctionKind::TraitMethodDecl { trait_path, has_default: _ } = &function.x.kind {
             if crate::recursive_types::suppress_bound_in_trait_decl(
                 &trait_path,
                 &function.x.typ_params,
@@ -592,6 +533,26 @@ pub(crate) fn expand_call_graph(
                 }
             }
             ExprX::StaticVar(fun) => call_graph.add_edge(f_node.clone(), Node::Fun(fun.clone())),
+            ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: _, expr: _, fun } => {
+                call_graph.add_edge(f_node.clone(), Node::Fun(fun.clone()));
+
+                let typ = undecorate_typ(&expr.typ);
+                let impl_paths = match &*typ {
+                    TypX::Datatype(_, _, impl_paths) => impl_paths,
+                    _ => panic!("expected datatype"),
+                };
+                for impl_path in impl_paths.iter() {
+                    let expr_node = crate::recursive_types::new_span_info_node(
+                        span_infos,
+                        expr.span.clone(),
+                        ": constructor of datatype with some type arguments, which may depend on \
+                            other trait implementations to satisfy trait bounds"
+                            .to_string(),
+                    );
+                    call_graph.add_edge(f_node.clone(), expr_node.clone());
+                    call_graph.add_edge(expr_node.clone(), Node::TraitImpl(impl_path.clone()));
+                }
+            }
             _ => {}
         }
         Ok(())

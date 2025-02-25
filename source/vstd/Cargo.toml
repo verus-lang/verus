@@ -15,12 +15,22 @@ path = "vstd.rs"
 [dependencies]
 builtin_macros = { path = "../builtin_macros" }
 builtin = { path = "../builtin" }
+state_machines_macros = { path = "../state_machines_macros" }
 
 [features]
 default = ["std"]
 std = ["alloc"]
 alloc = []
+allocator = []
+strict_provenance_atomic_ptr = []
 
 [package.metadata.verus]
 verify = true
 is-vstd = true
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [
+  'cfg(verus_keep_ghost)',
+  'cfg(verus_verify_core)',
+  'cfg(verus_keep_ghost_body)',
+] }

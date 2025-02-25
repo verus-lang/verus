@@ -2,13 +2,13 @@
 name = "trace-var"
 version = "0.0.0"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
-edition = "2018"
+edition = "2021"
 publish = false
 
 [lib]
 proc-macro = true
 
 [dependencies]
-proc-macro2 = { version = "1.0", features = ["nightly"] }
-quote = "1.0"
-syn = { path = "../../../", features = ["full", "fold"] }
+proc-macro2 = { version = "1", features = ["nightly"] }
+quote = "1"
+syn = { path = "../../../", features = ["fold", "full"] }

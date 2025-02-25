@@ -24,7 +24,7 @@ impl VecSet {
     {
         self.vt.push(v);
         proof {
-            vstd::seq_lib::lemma_seq_properties::<u64>();
+            broadcast use vstd::seq_lib::group_seq_properties;
         }
         assert(self.vt@ =~= old(self).vt@ + seq![v]);
     }

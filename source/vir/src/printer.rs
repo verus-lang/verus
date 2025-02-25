@@ -224,13 +224,17 @@ impl ToDebugSNode for num_bigint::BigInt {
 
 impl ToDebugSNode for air::ast::TypX {
     fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
-        use air::ast::TypX::*;
+        use air::ast::TypX;
         match self {
-            Bool => Node::Atom("Bool".to_string()),
-            Int => Node::Atom("Int".to_string()),
-            Lambda => Node::Atom("Lambda".to_string()),
-            Named(ident) => Node::List(vec![Node::Atom("Named".to_string()), ident.to_node(opts)]),
-            BitVec(size) => Node::List(vec![Node::Atom("BitVec".to_string()), size.to_node(opts)]),
+            TypX::Bool => Node::Atom("Bool".to_string()),
+            TypX::Int => Node::Atom("Int".to_string()),
+            TypX::Fun => Node::Atom("Fun".to_string()),
+            TypX::Named(ident) => {
+                Node::List(vec![Node::Atom("Named".to_string()), ident.to_node(opts)])
+            }
+            TypX::BitVec(size) => {
+                Node::List(vec![Node::Atom("BitVec".to_string()), size.to_node(opts)])
+            }
         }
     }
 }

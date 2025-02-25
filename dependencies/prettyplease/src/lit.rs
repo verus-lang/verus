@@ -1,18 +1,21 @@
 use crate::algorithm::Printer;
 use proc_macro2::Literal;
-use syn_verus::{Lit, LitBool, LitByte, LitByteStr, LitChar, LitFloat, LitInt, LitStr};
+use syn_verus::{Lit, LitBool, LitByte, LitByteStr, LitCStr, LitChar, LitFloat, LitInt, LitStr};
 
 impl Printer {
     pub fn lit(&mut self, lit: &Lit) {
         match lit {
+            #![cfg_attr(all(test, exhaustive), deny(non_exhaustive_omitted_patterns))]
             Lit::Str(lit) => self.lit_str(lit),
             Lit::ByteStr(lit) => self.lit_byte_str(lit),
+            Lit::CStr(lit) => self.lit_c_str(lit),
             Lit::Byte(lit) => self.lit_byte(lit),
             Lit::Char(lit) => self.lit_char(lit),
             Lit::Int(lit) => self.lit_int(lit),
             Lit::Float(lit) => self.lit_float(lit),
             Lit::Bool(lit) => self.lit_bool(lit),
             Lit::Verbatim(lit) => self.lit_verbatim(lit),
+            _ => unimplemented!("unknown Lit"),
         }
     }
 
@@ -21,6 +24,10 @@ impl Printer {
     }
 
     fn lit_byte_str(&mut self, lit: &LitByteStr) {
+        self.word(lit.token().to_string());
+    }
+
+    fn lit_c_str(&mut self, lit: &LitCStr) {
         self.word(lit.token().to_string());
     }
 

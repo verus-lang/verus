@@ -582,7 +582,7 @@ test_verify_one_file_with_options! {
             {
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::some_exec_fn` with mode exec")
 }
 
 test_verify_one_file_with_options! {
@@ -597,7 +597,7 @@ test_verify_one_file_with_options! {
             {
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode exec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::some_exec_fn` with mode exec")
 }
 
 test_verify_one_file_with_options! {
@@ -611,7 +611,7 @@ test_verify_one_file_with_options! {
                 some_spec_fn()
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::some_spec_fn` with mode spec")
 }
 
 test_verify_one_file_with_options! {
@@ -625,7 +625,7 @@ test_verify_one_file_with_options! {
                 return some_spec_fn();
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `test_crate::some_spec_fn` with mode spec")
 }
 
 test_verify_one_file_with_options! {
@@ -771,7 +771,7 @@ test_verify_one_file_with_options! {
                 y
             };
         }
-    } => Err(err) => assert_vir_error_msg(err, "a mutable reference is expected here")
+    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file_with_options! {
@@ -1233,7 +1233,7 @@ test_verify_one_file! {
         fn stuff() {
             let f = |x: X| { };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
 }
 
 test_verify_one_file! {
@@ -1244,7 +1244,7 @@ test_verify_one_file! {
         fn stuff() {
             let f = || -> X { loop { } };
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use type marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
 }
 
 test_verify_one_file_with_options! {

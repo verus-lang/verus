@@ -4,7 +4,7 @@ prettyplease::unparse
 [<img alt="github" src="https://img.shields.io/badge/github-dtolnay/prettyplease-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/dtolnay/prettyplease)
 [<img alt="crates.io" src="https://img.shields.io/crates/v/prettyplease.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/prettyplease)
 [<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-prettyplease-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/prettyplease)
-[<img alt="build status" src="https://img.shields.io/github/workflow/status/dtolnay/prettyplease/CI/master?style=for-the-badge" height="20">](https://github.com/dtolnay/prettyplease/actions?query=branch%3Amaster)
+[<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/dtolnay/prettyplease/ci.yml?branch=master&style=for-the-badge" height="20">](https://github.com/dtolnay/prettyplease/actions?query=branch%3Amaster)
 
 A minimal `syn` syntax tree pretty-printer.
 
@@ -48,16 +48,16 @@ pretty-printer built into rustc, and rustfmt. The sections below go into more
 detail comparing the output of each of these libraries.
 
 | | prettyplease | rustc | rustfmt |
-| --- | --- | --- | --- |
-| non-pathological behavior on big or generated code | ✔️ | ❌ | ❌ |
-| idiomatic modern formatting ("locally indistinguishable from rustfmt") | ✔️ | ❌ | ✔️ |
+|:---|:---:|:---:|:---:|
+| non-pathological behavior on big or generated code | 💚 | ❌ | ❌ |
+| idiomatic modern formatting ("locally indistinguishable from rustfmt") | 💚 | ❌ | 💚 |
 | throughput | 60 MB/s | 39 MB/s | 2.8 MB/s |
 | number of dependencies | 3 | 72 | 66 |
 | compile time including dependencies | 2.4 sec | 23.1 sec | 29.8 sec |
-| buildable using a stable Rust compiler | ✔️ | ❌ | ❌ |
-| published to crates.io | ✔️ | ❌ | ❌ |
-| extensively configurable output | ❌ | ❌ | ✔️ |
-| intended to accommodate hand-maintained source code | ❌ | ❌ | ✔️ |
+| buildable using a stable Rust compiler | 💚 | ❌ | ❌ |
+| published to crates.io | 💚 | ❌ | ❌ |
+| extensively configurable output | ❌ | ❌ | 💚 |
+| intended to accommodate hand-maintained source code | ❌ | ❌ | 💚 |
 
 <br>
 
@@ -167,8 +167,8 @@ from rustfmt-formatted code.
 
 ```rust
 // [dependencies]
-// prettyplease = "0.1"
-// syn = { version = "1", default-features = false, features = ["full", "parsing"] }
+// prettyplease = "0.2"
+// syn = { version = "2", default-features = false, features = ["full", "parsing"] }
 
 const INPUT: &str = stringify! {
     use crate::{
@@ -261,8 +261,8 @@ well-formatted Rust code that is locally indistinguishable from rustfmt's style.
 The reason is that in the paper, the complete non-whitespace contents are
 assumed to be independent of linebreak decisions, with Scan and Print being only
 in control of the whitespace (spaces and line breaks). In Rust as idiomatically
-formattted by rustfmt, that is not the case. Trailing commas are one example;
-the punctuation is only known *after* the broken vs non-broken status of the
+formatted by rustfmt, that is not the case. Trailing commas are one example; the
+punctuation is only known *after* the broken vs non-broken status of the
 surrounding group is known:
 
 ```rust

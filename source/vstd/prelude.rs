@@ -14,12 +14,8 @@ pub use super::set::set;
 pub use super::set::Set;
 pub use super::view::*;
 
-pub use super::string::StrSlice;
-#[cfg(feature = "alloc")]
-pub use super::string::String;
-
 #[cfg(verus_keep_ghost)]
-pub use super::pervasive::{affirm, arbitrary, proof_from_false, spec_affirm, unreached};
+pub use super::pervasive::{affirm, arbitrary, cloned, proof_from_false, spec_affirm, unreached};
 
 pub use super::array::ArrayAdditionalExecFns;
 pub use super::array::ArrayAdditionalSpecFns;
@@ -37,3 +33,25 @@ pub use super::std_specs::vec::VecAdditionalSpecFns;
 
 #[cfg(feature = "alloc")]
 pub use super::pervasive::VecAdditionalExecFns;
+
+pub use super::string::StrSliceExecFns;
+#[cfg(feature = "alloc")]
+pub use super::string::StringExecFns;
+#[cfg(feature = "alloc")]
+pub use super::string::StringExecFnsIsAscii;
+
+#[cfg(verus_keep_ghost)]
+pub use super::tokens::CountToken;
+#[cfg(verus_keep_ghost)]
+pub use super::tokens::ElementToken;
+#[cfg(verus_keep_ghost)]
+pub use super::tokens::KeyValueToken;
+#[cfg(verus_keep_ghost)]
+pub use super::tokens::MonotonicCountToken;
+#[cfg(verus_keep_ghost)]
+pub use super::tokens::SimpleToken;
+#[cfg(verus_keep_ghost)]
+pub use super::tokens::ValueToken;
+
+#[cfg(verus_keep_ghost)]
+pub use super::tokens::InstanceId;

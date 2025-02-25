@@ -69,25 +69,23 @@ pub open spec fn align_of_as_usize<V>() -> usize
     align_of::<V>() as usize
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(size_of_as_usize)]
-pub fn ex_size_of<V>() -> (u: usize)
+pub assume_specification<V>[ core::mem::size_of::<V> ]() -> (u: usize)
     ensures
         is_sized::<V>(),
         u as nat == size_of::<V>(),
-{
-    core::mem::size_of::<V>()
-}
+    opens_invariants none
+    no_unwind
+;
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(align_of_as_usize)]
-pub fn ex_align_of<V>() -> (u: usize)
+pub assume_specification<V>[ core::mem::align_of::<V> ]() -> (u: usize)
     ensures
         is_sized::<V>(),
         u as nat == align_of::<V>(),
-{
-    core::mem::align_of::<V>()
-}
+    opens_invariants none
+    no_unwind
+;
 
 // This is marked as exec, again, in order to force `V` to be a real exec type.
 // Of course, it's still a no-op.
@@ -99,6 +97,8 @@ pub exec fn layout_for_type_is_valid<V>()
         is_sized::<V>(),
         size_of::<V>() as usize as nat == size_of::<V>(),
         align_of::<V>() as usize as nat == align_of::<V>(),
+    opens_invariants none
+    no_unwind
 {
 }
 

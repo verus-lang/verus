@@ -45,6 +45,14 @@ pub fn ensures<A>(_a: A) {
     unimplemented!();
 }
 
+// Can only appear at beginning of function body
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::returns"]
+#[verifier::proof]
+pub fn returns<A>(_a: A) {
+    unimplemented!();
+}
+
 // Can only appear at beginning of spec function body
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::recommends"]
@@ -143,11 +151,23 @@ pub fn opens_invariants_except<A>(_a: A) {
 }
 
 #[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::builtin::reveal_hide"]
+#[rustc_diagnostic_item = "verus::builtin::no_unwind"]
 #[verifier::proof]
-pub fn reveal_hide_(_f: fn(), _n: u32) {
+pub fn no_unwind() {
     unimplemented!();
 }
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::no_unwind_when"]
+#[verifier::proof]
+pub fn no_unwind_when(_b: bool) {
+    unimplemented!();
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::reveal_hide"]
+#[verifier::proof]
+pub const fn reveal_hide_(_f: fn(), _n: u32) {}
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::reveal_hide_internal_path"]
@@ -237,7 +257,7 @@ pub fn ext_equal_deep<A>(_: A, _: A) -> bool {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::old"]
 #[verifier::spec]
-pub fn old<A>(_: A) -> A {
+pub fn old<A: ?Sized>(_: &mut A) -> &mut A {
     unimplemented!();
 }
 
@@ -325,6 +345,13 @@ pub fn assert_bit_vector(_: bool) {
     unimplemented!();
 }
 
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::use_type_invariant"]
+#[verifier::proof]
+pub fn use_type_invariant<A>(_a: A) {
+    unimplemented!();
+}
+
 //
 // Ghost, Tracked
 //
@@ -348,14 +375,15 @@ impl<A> Ghost<A> {
     #[rustc_diagnostic_item = "verus::builtin::Ghost::view"]
     #[verifier::spec]
     pub fn view(self) -> A {
-        unimplemented!()
+        unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::builtin::Ghost::new"]
     #[verifier::spec]
     #[verifier::external_body]
-    pub fn new(_a: A) -> Ghost<A> {
+    pub const fn new(_a: A) -> Ghost<A> {
+        core::mem::forget(_a);
         Ghost { phantom: PhantomData }
     }
 
@@ -382,7 +410,10 @@ impl<A> Ghost<A> {
     #[verifier::spec]
     #[verifier::external_body]
     pub fn borrow(&self) -> &A {
-        unimplemented!()
+        #[allow(deref_nullptr)]
+        unsafe {
+            &*(0 as *const A)
+        }
     }
 
     // note that because we return #[verifier::spec], not #[verifier::exec], we do not implement the BorrowMut trait
@@ -391,7 +422,10 @@ impl<A> Ghost<A> {
     #[verifier::proof]
     #[verifier::external]
     pub fn borrow_mut(#[verifier::proof] &mut self) -> &mut A {
-        unimplemented!()
+        #[allow(deref_nullptr)]
+        unsafe {
+            &mut *(0 as *mut A)
+        }
     }
 }
 
@@ -400,14 +434,15 @@ impl<A> Tracked<A> {
     #[rustc_diagnostic_item = "verus::builtin::Tracked::view"]
     #[verifier::spec]
     pub fn view(self) -> A {
-        unimplemented!()
+        unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
     #[cfg(verus_keep_ghost)]
     #[rustc_diagnostic_item = "verus::builtin::Tracked::new"]
     #[verifier::proof]
     #[verifier::external_body]
-    pub fn new(#[verifier::proof] _a: A) -> Tracked<A> {
+    pub const fn new(#[verifier::proof] _a: A) -> Tracked<A> {
+        core::mem::forget(_a);
         Tracked { phantom: PhantomData }
     }
 
@@ -430,8 +465,8 @@ impl<A> Tracked<A> {
     #[verifier::proof]
     #[verifier::external_body]
     #[verifier::returns(proof)]
-    pub fn get(#[verifier::proof] self) -> A {
-        unimplemented!()
+    pub const fn get(#[verifier::proof] self) -> A {
+        unsafe { core::mem::MaybeUninit::uninit().assume_init() }
     }
 
     // note that because we return #[verifier::proof], not #[verifier::exec], we do not implement the Borrow trait
@@ -441,7 +476,10 @@ impl<A> Tracked<A> {
     #[verifier::external_body]
     #[verifier::returns(proof)]
     pub fn borrow(#[verifier::proof] &self) -> &A {
-        unimplemented!()
+        #[allow(deref_nullptr)]
+        unsafe {
+            &*(0 as *const A)
+        }
     }
 
     // note that because we return #[verifier::proof], not #[verifier::exec], we do not implement the BorrowMut trait
@@ -451,7 +489,10 @@ impl<A> Tracked<A> {
     #[verifier::external_body]
     #[verifier::returns(proof)]
     pub fn borrow_mut(#[verifier::proof] &mut self) -> &mut A {
-        unimplemented!()
+        #[allow(deref_nullptr)]
+        unsafe {
+            &mut *(0 as *mut A)
+        }
     }
 }
 
@@ -478,14 +519,16 @@ impl<A: Copy> Copy for Tracked<A> {}
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::ghost_exec"]
 #[verifier::external_body]
-pub fn ghost_exec<A>(#[verifier::spec] _a: A) -> Ghost<A> {
+pub const fn ghost_exec<A>(#[verifier::spec] _a: A) -> Ghost<A> {
+    core::mem::forget(_a);
     Ghost::assume_new()
 }
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::tracked_exec"]
 #[verifier::external_body]
-pub fn tracked_exec<A>(#[verifier::proof] _a: A) -> Tracked<A> {
+pub const fn tracked_exec<A>(#[verifier::proof] _a: A) -> Tracked<A> {
+    core::mem::forget(_a);
     Tracked::assume_new()
 }
 
@@ -503,6 +546,7 @@ pub fn tracked_exec_borrow<'a, A>(#[verifier::proof] _a: &'a A) -> &'a Tracked<A
 
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::int")]
 #[allow(non_camel_case_types)]
+#[derive(Clone, Copy)]
 pub struct int;
 
 // TODO: we should eventually be able to remove this and other int/nat ops,
@@ -571,6 +615,7 @@ impl core::cmp::Ord for int {
 
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::nat")]
 #[allow(non_camel_case_types)]
+#[derive(Clone, Copy)]
 pub struct nat;
 
 impl core::ops::Add for nat {
@@ -664,6 +709,7 @@ pub struct NoCopy {}
 impl !Copy for NoCopy {}
 
 #[cfg(verus_keep_ghost)]
+#[derive(Clone, Copy)]
 struct NoSyncSend {}
 #[cfg(verus_keep_ghost)]
 impl !Sync for NoSyncSend {}
@@ -672,6 +718,7 @@ impl !Send for NoSyncSend {}
 
 // TODO: remove this when !Sync, !Send are supported by stable Rust
 #[cfg(not(verus_keep_ghost))]
+#[derive(Clone, Copy)]
 struct NoSyncSend {
     _no_send_sync: core::marker::PhantomData<*const ()>,
 }
@@ -686,6 +733,14 @@ pub struct SyncSendIfSyncSend<T> {
 
 unsafe impl<T: Sync + Send> Sync for SyncSendIfSyncSend<T> {}
 unsafe impl<T: Sync + Send> Send for SyncSendIfSyncSend<T> {}
+
+impl<T> Clone for SyncSendIfSyncSend<T> {
+    fn clone(&self) -> Self {
+        unimplemented!();
+    }
+}
+
+impl<T> Copy for SyncSendIfSyncSend<T> {}
 
 // Used by Invariant lib
 
@@ -746,34 +801,89 @@ impl<T> AlwaysSyncSend<T> {
 // in an arithmetic operation.
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::Integer")]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
-pub unsafe trait Integer {}
-unsafe impl Integer for u8 {}
-unsafe impl Integer for u16 {}
-unsafe impl Integer for u32 {}
-unsafe impl Integer for u64 {}
-unsafe impl Integer for u128 {}
-unsafe impl Integer for usize {}
-unsafe impl Integer for i8 {}
-unsafe impl Integer for i16 {}
-unsafe impl Integer for i32 {}
-unsafe impl Integer for i64 {}
-unsafe impl Integer for i128 {}
-unsafe impl Integer for isize {}
-unsafe impl Integer for int {}
-unsafe impl Integer for nat {}
-unsafe impl Integer for char {}
+pub unsafe trait Integer: Copy {
+    const CONST_DEFAULT: Self;
+}
+unsafe impl Integer for u8 {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for u16 {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for u32 {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for u64 {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for u128 {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for usize {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for i8 {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for i16 {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for i32 {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for i64 {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for i128 {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for isize {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = 0;
+}
+unsafe impl Integer for int {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = int;
+}
+unsafe impl Integer for nat {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = nat;
+}
+unsafe impl Integer for char {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = ' ';
+}
+
+pub unsafe trait Boolean: Copy {
+    const CONST_DEFAULT: Self;
+}
+unsafe impl Boolean for bool {
+    #[cfg_attr(verus_keep_ghost, verifier::external)]
+    const CONST_DEFAULT: Self = false;
+}
 
 // spec literals of the form "33", which could have any Integer type
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::spec_literal_integer"]
 #[allow(non_camel_case_types)]
 #[verifier::spec]
-pub fn spec_literal_integer<
+pub const fn spec_literal_integer<
     hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat: Integer,
 >(
     _s: &str,
 ) -> hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat {
-    unimplemented!()
+    hint_please_add_suffix_on_literal_like_100u32_or_100int_or_100nat::CONST_DEFAULT
 }
 
 // spec literals of the form "33int",
@@ -781,48 +891,48 @@ pub fn spec_literal_integer<
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::spec_literal_int"]
 #[verifier::spec]
-pub fn spec_literal_int(_s: &str) -> int {
-    unimplemented!()
+pub const fn spec_literal_int(_s: &str) -> int {
+    int
 }
 
 // spec literals of the form "33nat"
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::spec_literal_nat"]
 #[verifier::spec]
-pub fn spec_literal_nat(_s: &str) -> nat {
-    unimplemented!()
+pub const fn spec_literal_nat(_s: &str) -> nat {
+    nat
 }
 
 // Fixed-width add
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::add"]
 #[verifier::spec]
-pub fn add<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
-    unimplemented!()
+pub const fn add<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
+    IntegerType::CONST_DEFAULT
 }
 
 // Fixed-width sub
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::sub"]
 #[verifier::spec]
-pub fn sub<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
-    unimplemented!()
+pub const fn sub<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
+    IntegerType::CONST_DEFAULT
 }
 
 // Fixed-width mul
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::mul"]
 #[verifier::spec]
-pub fn mul<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
-    unimplemented!()
+pub const fn mul<IntegerType: Integer>(_left: IntegerType, _right: IntegerType) -> IntegerType {
+    IntegerType::CONST_DEFAULT
 }
 
 // represent "expr as typ", including converting to and from int and nat
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::spec_cast_integer"]
 #[verifier::spec]
-pub fn spec_cast_integer<From: Integer, To: Integer>(_from: From) -> To {
-    unimplemented!()
+pub const fn spec_cast_integer<From: Copy, To: Integer>(_from: From) -> To {
+    To::CONST_DEFAULT
 }
 
 #[cfg(verus_keep_ghost)]
@@ -1181,12 +1291,12 @@ impl_binary_op_rhs!(SpecBitXor, spec_bitxor, Self, Self, [
     isize i8 i16 i32 i64 i128
 ]);
 
-impl_binary_op_rhs!(SpecShl, spec_shl, Self, Self, [
+impl_binary_op!(SpecShl, spec_shl, Self, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
 
-impl_binary_op_rhs!(SpecShr, spec_shr, Self, Self, [
+impl_binary_op!(SpecShr, spec_shr, Self, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
@@ -1370,13 +1480,18 @@ pub fn infer_spec_for_loop_iter<A>(_: A, _print_hint: bool) -> Option<A> {
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::global_size_of"]
 #[verifier::spec]
-pub const fn global_size_of<T>(_bytes: usize) {
-    unimplemented!()
-}
+pub const fn global_size_of<T>(_bytes: usize) {}
 
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::inline_air_stmt"]
 #[verifier::proof]
 pub fn inline_air_stmt(_s: &str) {
+    unimplemented!()
+}
+
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::array_index"]
+#[verifier::spec]
+pub fn array_index<T, const N: usize>(_a: [T; N], _i: int) -> T {
     unimplemented!()
 }

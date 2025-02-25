@@ -503,7 +503,7 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] shift_regression_928_1 ["vstd"] => verus_code! {
-        pub open spec fn id(x:int) -> int;
+        pub spec fn id(x:int) -> int;
 
         pub proof fn bar() {
             assert(
@@ -554,4 +554,193 @@ test_verify_one_file! {
             assert(('\u{3b1}' as u8) == '\u{3b1}') by(compute); // FAILS
         }
     } => Err(err) => assert_fails(err, 5)
+}
+
+test_verify_one_file! {
+    #[test] array_literals verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: [u32; 3] = [31, 32, 33];
+
+        proof fn mytest() {
+            assert([41u32, 42][1] == 42) by (compute_only);
+            assert(MyArray[1] == 32) by (compute_only);
+            let x = 0;
+            assert(MyArray[x] == 31) by (compute);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] array_incompletely_resolved verus_code! {
+        use vstd::prelude::*;
+
+        const MyArray: [u32; 3] = [1, 2, 3];
+
+        proof fn test() {
+            let x:int = 0;
+            assert(MyArray[x] == 2) by (compute_only);     // FAILS
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] range_all_simple verus_code! {
+        use vstd::prelude::*;
+        use core::ops::Range;
+        use vstd::compute::*;
+
+        proof fn test() {
+            assert({
+                let r = 2..4int;
+                let prop = |v: int| (v as u64) & 0xf000 == 0;
+                r.all_spec(prop)
+            }) by (compute_only);
+            let r = 2..4int;
+            let prop = |v: int| (v as u64) & 0xf000 == 0;
+            assert(prop(3));
+            assert(3u64 & 0xf000 == 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] range_all_complex verus_code! {
+        use vstd::prelude::*;
+        use core::ops::Range;
+        use vstd::compute::*;
+        use vstd::std_specs::bits::u64_leading_zeros;
+        global size_of usize == 8;
+
+        pub const BIN_HUGE: u64 = 73;
+
+        pub open spec fn valid_bin_idx(bin_idx: int) -> bool {
+            1 <= bin_idx <= BIN_HUGE
+        }
+
+        pub open spec fn pow2(i: int) -> nat
+            decreases i
+        {
+            if i <= 0 {
+                1
+            } else {
+                pow2(i - 1) * 2
+            }
+        }
+
+        pub open spec fn smallest_bin_fitting_size(size: int) -> int {
+            let bytes_per_word = (usize::BITS / 8) as int;
+            let wsize = (size + bytes_per_word - 1) / bytes_per_word;
+            if wsize <= 1 {
+                1
+            } else if wsize <= 8 {
+                wsize
+            } else if wsize > 524288 {
+                BIN_HUGE as int
+            } else {
+                let w = (wsize - 1) as u64;
+                //let lz = w.leading_zeros();
+                let lz = u64_leading_zeros(w);
+                let b = (usize::BITS - 1 - lz) as u8;
+                let shifted = (w >> (b - 2) as u64) as u8;
+                let bin_idx = ((b * 4) + (shifted & 0x03)) - 3;
+                bin_idx
+            }
+        }
+
+        spec fn property_bounds_for_smallest_bitting_size(size:int) -> bool
+        {
+            valid_bin_idx(smallest_bin_fitting_size(size))
+        }
+
+        pub proof fn bounds_for_smallest_bin_fitting_size_alt(size: int)
+            requires 0 <= size <= 10,
+            ensures
+                valid_bin_idx(smallest_bin_fitting_size(size)),
+        {
+            assert({let r = 0..11int;
+                    r.all_spec(|v| property_bounds_for_smallest_bitting_size(v))
+                    }) by (compute);
+            let prop = |v| property_bounds_for_smallest_bitting_size(v);
+            assert(prop(size));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] default_impl_1_issue1406 verus_code! {
+        trait Tr {
+            spec fn foo(&self) -> bool { true }
+        }
+
+        struct X { }
+
+        impl Tr for X {
+            spec fn foo(&self) -> bool { false }
+        }
+
+        spec fn foo_wrapper<T: Tr>(t: &T) -> bool {
+            t.foo()
+        }
+
+        proof fn test2() {
+            let x = X { };
+            assert(foo_wrapper(&x)) by(compute); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] default_impl_2_issue1406 verus_code! {
+        trait Tr {
+            spec fn foo(&self) -> bool { true }
+        }
+
+        spec fn foo_wrapper<T: Tr>(t: &T) -> bool {
+            t.foo()
+        }
+
+        proof fn test3<T: Tr>(t: &T) {
+            assert(foo_wrapper(t)) by(compute); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] default_impl_compute_only_1_issue1406 verus_code! {
+        trait Tr {
+            spec fn foo(&self) -> bool { true }
+        }
+
+        struct X { }
+
+        impl Tr for X {
+            spec fn foo(&self) -> bool { false }
+        }
+
+        spec fn foo_wrapper<T: Tr>(t: &T) -> bool {
+            t.foo()
+        }
+
+        proof fn test2() {
+            let x = X { };
+            assert(foo_wrapper(&x)) by(compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] default_impl_compute_only_2_issue1406 verus_code! {
+        trait Tr {
+            spec fn foo(&self) -> bool { true }
+        }
+
+        spec fn foo_wrapper<T: Tr>(t: &T) -> bool {
+            t.foo()
+        }
+
+        proof fn test3<T: Tr>(t: &T) {
+            assert(foo_wrapper(t)) by(compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
 }

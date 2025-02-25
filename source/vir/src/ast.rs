@@ -28,7 +28,7 @@ pub type Idents = Arc<Vec<Ident>>;
 
 /// A fully-qualified name, such as a module name, function name, or datatype name
 pub type Path = Arc<PathX>;
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PathX {
     pub krate: Option<Ident>, // None for local crate
     pub segments: Idents,
@@ -72,6 +72,8 @@ pub enum VarIdentDisambiguate {
     VirSubst(u64),
     VirTemp(u64),
     ExpandErrorsDecl(u64),
+    BitVectorToAirDecl(u64),
+    UserDefinedTypeInvariantPass(u64),
 }
 
 /// A local variable name, possibly renamed for disambiguation
@@ -88,7 +90,7 @@ pub struct VarBinderX<A: Clone> {
 
 /// Static function identifier
 pub type Fun = Arc<FunX>;
-#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FunX {
     /// Path of function
     pub path: Path,
@@ -201,7 +203,16 @@ pub enum TypDecoration {
 pub enum Primitive {
     Array,
     Slice,
+    /// StrSlice type. Currently the vstd StrSlice struct is "seen" as this type
+    /// despite the fact that it is in fact a datatype
+    StrSlice,
     Ptr, // Mut ptr, unless Const decoration is applied
+    Global,
+}
+
+#[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone)]
+pub struct TypDecorationArg {
+    pub allocator_typ: Typ,
 }
 
 /// Rust type, but without Box, Rc, Arc, etc.
@@ -214,11 +225,8 @@ pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
     Int(IntRange),
-    /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
-    Tuple(Typs),
-    /// `FnSpec` type (TODO rename from 'Lambda' to just 'FnSpec')
-    /// (t1, ..., tn) -> t0.
-    Lambda(Typs, Typ),
+    /// `spec_fn` type (t1, ..., tn) -> t0.
+    SpecFn(Typs, Typ),
     /// Executable function types (with a requires and ensures)
     AnonymousClosure(Typs, Typ, usize),
     /// Corresponds to Rust's FnDef type
@@ -230,15 +238,12 @@ pub enum TypX {
     /// FnDef axioms to introduce.
     FnDef(Fun, Typs, Option<Fun>),
     /// Datatype (concrete or abstract) applied to type arguments
-    Datatype(Path, Typs, ImplPaths),
-    /// StrSlice type. Currently the vstd StrSlice struct is "seen" as this type
-    /// despite the fact that it is in fact a datatype
-    StrSlice,
+    Datatype(Dt, Typs, ImplPaths),
     /// Other primitive type (applied to type arguments)
     Primitive(Primitive, Typs),
     /// Wrap type with extra information relevant to Rust but usually irrelevant to SMT encoding
     /// (though needed sometimes to encode trait resolution)
-    Decorate(TypDecoration, Typ),
+    Decorate(TypDecoration, Option<TypDecorationArg>, Typ),
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
     Boxed(Typ),
     /// Type parameter (inherently SMT-boxed, and cannot be unboxed)
@@ -305,7 +310,14 @@ pub enum UnaryOp {
     /// boolean not
     Not,
     /// bitwise not
-    BitNot,
+    /// Semantics:
+    ///   Flip every bit in the infinite binary representation of
+    ///   (equivalently, compute -x-1)
+    ///   Then, if the bitwidth argument is non-None, clip to the given bitwidth
+    /// Note that:
+    ///  1. A bitwise 'not' on a SIGNED integer can be encoded as BitNot(None)
+    ///  2. A bitwise 'not' on an UNSIGNED integer of width w can be encoded as BitNot(Some(w))
+    BitNot(Option<IntegerTypeBitwidth>),
     /// Mark an expression as a member of an SMT quantifier trigger group.
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
     Trigger(TriggerAnnotation),
@@ -316,6 +328,9 @@ pub enum UnaryOp {
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
+    /// Internal consistency check to make sure sst_elaborate gets called
+    /// (appears only briefly in SST before sst_elaborate is called)
+    MustBeElaborated,
     /// We don't give users direct access to the "height" function and Height types.
     /// However, it's useful to be able to trigger on the "height" function
     /// when using HeightCompare.  We manage this by having triggers.rs convert
@@ -348,9 +363,11 @@ pub enum VariantCheck {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, ToDebugSNode)]
 pub struct FieldOpr {
-    pub datatype: Path,
+    pub datatype: Dt,
     pub variant: Ident,
     pub field: Ident,
+    /// Does this come from a get_variant_field / get_union_field builtin?
+    /// (This is relevant for mode-checking.)
     pub get_variant: bool,
     pub check: VariantCheck,
 }
@@ -375,9 +392,7 @@ pub enum UnaryOpr {
     /// (should only be used when sst_to_air::typ_invariant returns Some(_))
     HasType(Typ),
     /// Test whether expression is a particular variant of a datatype
-    IsVariant { datatype: Path, variant: Ident },
-    /// Read .0, .1, etc. from tuple (Note: ast_simplify replaces this with Field)
-    TupleField { tuple_arity: usize, field: usize },
+    IsVariant { datatype: Dt, variant: Ident },
     /// Read field from variant of datatype
     Field(FieldOpr),
     /// Bounded integer bounds. The argument is the arch word bits (16, 32, etc.)
@@ -406,14 +421,27 @@ pub enum ArithOp {
     EuclideanMod,
 }
 
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
+pub enum IntegerTypeBitwidth {
+    Width(u32),
+    ArchWordSize,
+}
+
 /// Bitwise operation
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
 pub enum BitwiseOp {
     BitXor,
     BitAnd,
     BitOr,
-    Shr,
-    Shl,
+    // Shift right. The bitwidth argument is only needed to do a bounds-check;
+    // the actual result, when computed on unbounded integers, is independent
+    // of the bitwidth.
+    Shr(IntegerTypeBitwidth),
+    // Shift left up to w bits, ignoring everything to the left of w.
+    // To interpret the result as an unbounded int,
+    // either zero-extend or sign-extend, depending on the bool argument.
+    // (True = sign-extend, False = zero-extend)
+    Shl(IntegerTypeBitwidth, bool),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -466,6 +494,8 @@ pub enum BinaryOp {
     Bitwise(BitwiseOp, Mode),
     /// Used only for handling builtin::strslice_get_char
     StrGetChar,
+    /// Used only for handling builtin::array_index
+    ArrayIndex,
 }
 
 /// More complex binary operations (requires Clone rather than Copy)
@@ -504,6 +534,8 @@ pub enum HeaderExprX {
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
     Ensures(Option<(VarIdent, Typ)>, Exprs),
+    /// Returns clause
+    Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
     /// Checking of recommends is disabled by default.
     Recommends(Exprs),
@@ -527,6 +559,10 @@ pub enum HeaderExprX {
     /// `extra_dependency(f)` means that recursion-checking should act as if the current
     /// function calls `f`
     ExtraDependency(Fun),
+    /// This function will not unwind
+    NoUnwind,
+    /// This function will not unwind if the given condition holds (function of arguments)
+    NoUnwindWhen(Expr),
 }
 
 /// Primitive constant values
@@ -573,12 +609,10 @@ pub enum PatternX {
         mutable: bool,
         sub_pat: Pattern,
     },
-    /// Note: ast_simplify replaces this with Constructor
-    Tuple(Patterns),
     /// Match constructor of datatype Path, variant Ident
     /// For tuple-style variants, the fields are named "_0", "_1", etc.
     /// Fields can appear **in any order** even for tuple variants.
-    Constructor(Path, Ident, Binders<Pattern>),
+    Constructor(Dt, Ident, Binders<Pattern>),
     Or(Pattern, Pattern),
     /// Matches something equal to the value of this expr
     /// This only supports literals and consts, so we don't need to worry
@@ -728,13 +762,11 @@ pub enum ExprX {
     Loc(Expr),
     /// Call to a function passing some expression arguments
     Call(CallTarget, Exprs),
-    /// Note: ast_simplify replaces this with Ctor
-    Tuple(Exprs),
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
     /// For tuple-style variants, the fields are named "_0", "_1", etc.
     /// Fields can appear **in any order** even for tuple variants.
-    Ctor(Path, Ident, Binders<Expr>, Option<Expr>),
+    Ctor(Dt, Ident, Binders<Expr>, Option<Expr>),
     /// Primitive 0-argument operation
     NullaryOpr(NullaryOpr),
     /// Primitive unary operation
@@ -773,6 +805,7 @@ pub enum ExprX {
     WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
     /// init_not_mut = true ==> a delayed initialization of a non-mutable variable
+    /// the lhs is assumed to be a memory location, thus it's not wrapped in Loc
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr, op: Option<BinaryOp> },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32, bool),
@@ -784,6 +817,9 @@ pub enum ExprX {
     Header(HeaderExpr),
     /// Assert or assume
     AssertAssume { is_assume: bool, expr: Expr },
+    /// Assert or assume user-defined type invariant for `expr` and return `expr`
+    /// These are added in user_defined_type_invariants.rs
+    AssertAssumeUserDefinedTypeInvariant { is_assume: bool, expr: Expr, fun: Fun },
     /// Assert-forall or assert-by statement
     AssertBy { vars: VarBinders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// `assert_by` with a dedicated prover option (nonlinear_arith, bit_vector)
@@ -820,6 +856,8 @@ pub enum ExprX {
     Block(Stmts, Option<Expr>),
     /// Inline AIR statement
     AirStmt(Arc<String>),
+    /// never-to-any conversion
+    NeverToAny(Expr),
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -833,7 +871,7 @@ pub enum StmtX {
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
     /// (The mode is only allowed to be None for one special case; see modes.rs)
-    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Expr> },
+    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Expr>, els: Option<Expr> },
 }
 
 /// Function parameter
@@ -889,6 +927,14 @@ pub enum AcceptRecursiveType {
 /// Each type parameter is (name: Ident, GenericBound, AcceptRecursiveType)
 pub type TypPositives = Arc<Vec<(Ident, AcceptRecursiveType)>>;
 
+/// When verifying a function, specify where we auto-promote == to =~=.
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq)]
+pub struct AutoExtEqual {
+    pub assert: bool,
+    pub assert_by: bool,
+    pub ensures: bool,
+}
+
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Default, Clone)]
 pub struct FunctionAttrsX {
@@ -900,8 +946,12 @@ pub struct FunctionAttrsX {
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
     pub broadcast_forall: bool,
+    /// Only create global axioms; don't declare req/ens functions (set by prune.rs)
+    pub broadcast_forall_only: bool,
     /// In triggers_auto, don't use this function as a trigger
     pub no_auto_trigger: bool,
+    /// Specify which places we auto-promote == to =~= when verifying this function
+    pub auto_ext_equal: AutoExtEqual,
     /// Custom error message to display when a pre-condition fails
     pub custom_req_err: Option<String>,
     /// When used in a ghost context, redirect to a specified spec function
@@ -932,6 +982,8 @@ pub struct FunctionAttrsX {
     pub prophecy_dependent: bool,
     /// broadcast proof from size_of global
     pub size_of_broadcast_proof: bool,
+    /// is type invariant
+    pub is_type_invariant_fn: bool,
 }
 
 /// Function specification of its invariant mask
@@ -941,12 +993,21 @@ pub enum MaskSpec {
     InvariantOpensExcept(Exprs),
 }
 
+/// Function specification of its invariant mask
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
+pub enum UnwindSpec {
+    NoUnwind,
+    NoUnwindWhen(Expr),
+    MayUnwind,
+}
+
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone)]
 pub enum FunctionKind {
     Static,
     /// Method declaration inside a trait
     TraitMethodDecl {
         trait_path: Path,
+        has_default: bool,
     },
     /// Method implementation inside an impl, implementing a trait method for a trait for a type
     TraitMethodImpl {
@@ -967,77 +1028,6 @@ pub enum FunctionKind {
         trait_path: Path,
         trait_typ_args: Typs,
     },
-}
-
-/// Function, including signature and body
-pub type Function = Arc<Spanned<FunctionX>>;
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[to_node_impl]
-pub struct FunctionX {
-    /// Name of function
-    pub name: Fun,
-    /// Proxy used to declare the spec of this function
-    /// (e.g., some function marked `external_fn_specification`)
-    pub proxy: Option<Spanned<Path>>,
-    /// Kind (translation to AIR is different for each different kind)
-    pub kind: FunctionKind,
-    /// Access control (public/private)
-    pub visibility: Visibility,
-    /// Owning module
-    pub owning_module: Option<Path>,
-    /// exec functions are compiled, proof/spec are erased
-    /// exec/proof functions can have requires/ensures, spec cannot
-    /// spec functions can be used in requires/ensures, proof/exec cannot
-    pub mode: Mode,
-    /// Default amount of fuel: 0 means opaque, >= 1 means visible
-    /// For recursive functions, fuel determines the number of unfoldings that the SMT solver sees
-    pub fuel: u32,
-    /// Type parameters to generic functions
-    /// (for trait methods, the trait parameters come first, then the method parameters)
-    pub typ_params: Idents,
-    /// Type bounds of generic functions
-    pub typ_bounds: GenericBounds,
-    /// Function parameters
-    pub params: Params,
-    /// Return value (unit return type is treated specially; see FunctionX::has_return in ast_util)
-    pub ret: Param,
-    /// Preconditions (requires for proof/exec functions, recommends for spec functions)
-    pub require: Exprs,
-    /// Postconditions (proof/exec functions only)
-    pub ensure: Exprs,
-    /// Decreases clause to ensure recursive function termination
-    /// decrease.len() == 0 means no decreases clause
-    /// decrease.len() >= 1 means list of expressions, interpreted in lexicographic order
-    pub decrease: Exprs,
-    /// If Expr is true for the arguments to the function,
-    /// the function is defined according to the function body and the decreases clauses must hold.
-    /// If Expr is false, the function is uninterpreted, the body and decreases clauses are ignored.
-    pub decrease_when: Option<Expr>,
-    /// Prove termination with a separate proof function
-    pub decrease_by: Option<Fun>,
-    /// For broadcast_forall functions, poly sets this to Some((params, reqs ==> enss))
-    /// where params and reqs ==> enss use coerce_typ_to_poly rather than coerce_typ_to_native
-    pub broadcast_forall: Option<(Params, Expr)>,
-    /// Axioms (similar to broadcast axioms) for the FnDef type corresponding to
-    /// this function, if one is generated for this particular function.
-    /// Similar to 'external_spec' in the ExecClosure node, this is filled
-    /// in during ast_simplify.
-    pub fndef_axioms: Option<Exprs>,
-    /// MaskSpec that specifies what invariants the function is allowed to open
-    pub mask_spec: Option<MaskSpec>,
-    /// Allows the item to be a const declaration or static
-    pub item_kind: ItemKind,
-    /// For public spec functions, publish == None means that the body is private
-    /// even though the function is public, the bool indicates false = opaque, true = visible
-    /// the body is public
-    pub publish: Option<bool>,
-    /// Various attributes
-    pub attrs: FunctionAttrs,
-    /// Body of the function (may be None for foreign functions or for external_body functions)
-    pub body: Option<Expr>,
-    /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
-    /// Useful only for trusted fns.
-    pub extra_dependencies: Vec<Fun>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode, Copy)]
@@ -1062,6 +1052,85 @@ pub enum ItemKind {
     Static,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode)]
+pub enum Opaqueness {
+    /// Opaque everywhere
+    Opaque,
+    /// Revealed insided the range given by 'visibility', opaque elsewhere.
+    Revealed { visibility: Visibility },
+}
+
+/// Function, including signature and body
+pub type Function = Arc<Spanned<FunctionX>>;
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[to_node_impl]
+pub struct FunctionX {
+    /// Name of function
+    pub name: Fun,
+    /// Proxy used to declare the spec of this function
+    /// (e.g., some function marked `external_fn_specification`/`assume_specification`)
+    pub proxy: Option<Spanned<Path>>,
+    /// Kind (translation to AIR is different for each different kind)
+    pub kind: FunctionKind,
+    /// Access control (public/private)
+    pub visibility: Visibility,
+    /// Controlled by 'open'. (Only applicable to spec functions.)
+    pub body_visibility: Visibility,
+    /// Controlled by 'opaque/opaque_outside_module'. (Only applicable to spec functions.)
+    pub opaqueness: Opaqueness,
+    /// Owning module
+    pub owning_module: Option<Path>,
+    /// exec functions are compiled, proof/spec are erased
+    /// exec/proof functions can have requires/ensures, spec cannot
+    /// spec functions can be used in requires/ensures, proof/exec cannot
+    pub mode: Mode,
+    /// Type parameters to generic functions
+    /// (for trait methods, the trait parameters come first, then the method parameters)
+    pub typ_params: Idents,
+    /// Type bounds of generic functions
+    pub typ_bounds: GenericBounds,
+    /// Function parameters
+    pub params: Params,
+    /// Return value
+    pub ret: Param,
+    /// Can the ensures clause reference the 'ret' param (must be true for non-unit types)
+    pub ens_has_return: bool,
+    /// Preconditions (requires for proof/exec functions, recommends for spec functions)
+    pub require: Exprs,
+    /// Postconditions (proof/exec functions only)
+    pub ensure: Exprs,
+    /// Expression in the 'returns' clause
+    pub returns: Option<Expr>,
+    /// Decreases clause to ensure recursive function termination
+    /// decrease.len() == 0 means no decreases clause
+    /// decrease.len() >= 1 means list of expressions, interpreted in lexicographic order
+    pub decrease: Exprs,
+    /// If Expr is true for the arguments to the function,
+    /// the function is defined according to the function body and the decreases clauses must hold.
+    /// If Expr is false, the function is uninterpreted, the body and decreases clauses are ignored.
+    pub decrease_when: Option<Expr>,
+    /// Prove termination with a separate proof function
+    pub decrease_by: Option<Fun>,
+    /// Axioms (similar to broadcast axioms) for the FnDef type corresponding to
+    /// this function, if one is generated for this particular function.
+    /// Similar to 'external_spec' in the ExecClosure node, this is filled
+    /// in during ast_simplify.
+    pub fndef_axioms: Option<Exprs>,
+    /// MaskSpec that specifies what invariants the function is allowed to open
+    pub mask_spec: Option<MaskSpec>,
+    /// UnwindSpec that specifies if the function is allowed to unwind
+    pub unwind_spec: Option<UnwindSpec>,
+    /// Allows the item to be a const declaration or static
+    pub item_kind: ItemKind,
+    /// Various attributes
+    pub attrs: FunctionAttrs,
+    /// Body of the function (may be None for foreign functions or for external_body functions)
+    pub body: Option<Expr>,
+    /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
+    /// Useful only for trusted fns.
+    pub extra_dependencies: Vec<Fun>,
+}
+
 pub type RevealGroup = Arc<Spanned<RevealGroupX>>;
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct RevealGroupX {
@@ -1073,10 +1142,6 @@ pub struct RevealGroupX {
     pub visibility: Visibility,
     /// Owning module
     pub owning_module: Option<Path>,
-    /// If true, then prune away group unless either the module that contains the group is used.
-    /// (Without this, importing vstd would recursively reach and encode all the
-    /// broadcast_forall declarations in all of vstd, defeating much of the purpose of prune.rs.)
-    pub prune_unless_this_module_is_used: bool,
     /// If Some(crate_name), this group is revealed by default for crates that import crate_name.
     /// No more than one such group is allowed in each crate.
     pub broadcast_use_by_default_when_this_crate_is_imported: Option<Ident>,
@@ -1114,10 +1179,19 @@ pub enum DatatypeTransparency {
     WhenVisible(Visibility),
 }
 
+/// After ast_simplify, all the tuples are added to the Krate, so we can uniformly
+/// use Dt as a key. Prior to ast_simplify you need to use Paths as keys and handle
+/// tuples separately.
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Dt {
+    Path(Path),
+    Tuple(usize),
+}
+
 /// struct or enum
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub struct DatatypeX {
-    pub path: Path,
+    pub name: Dt,
     /// Similar to FunctionX proxy field.
     /// If this datatype is declared via a proxy (a type labeled external_type_specification)
     /// then this points to the proxy.
@@ -1134,6 +1208,7 @@ pub struct DatatypeX {
     pub mode: Mode,
     /// Generate ext_equal lemmas for datatype
     pub ext_equal: bool,
+    pub user_defined_invariant_fn: Option<Fun>,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;
@@ -1180,6 +1255,8 @@ pub struct TraitImplX {
     pub trait_typ_args: Typs,
     pub trait_typ_arg_impls: Arc<Spanned<ImplPaths>>,
     pub owning_module: Option<Path>,
+    // Not declared directly to Verus, but imported based on related traits and types:
+    pub auto_imported: bool,
 }
 
 #[derive(Clone, Debug, Hash, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
@@ -1249,4 +1326,17 @@ pub struct KrateX {
     pub path_as_rust_names: Vec<(Path, String)>,
     /// Arch info
     pub arch: Arch,
+}
+
+impl FunctionKind {
+    pub(crate) fn inline_okay(&self) -> bool {
+        match self {
+            FunctionKind::Static | FunctionKind::TraitMethodImpl { .. } => true,
+            // We don't want to do inlining for MethodDecls. If a MethodDecl has a body,
+            // it's a *default* body, so we can't know for sure it hasn't been overridden.
+            FunctionKind::TraitMethodDecl { .. } | FunctionKind::ForeignTraitMethodImpl { .. } => {
+                false
+            }
+        }
+    }
 }

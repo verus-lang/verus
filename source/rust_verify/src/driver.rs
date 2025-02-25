@@ -1,4 +1,5 @@
 use crate::config::Vstd;
+use crate::externs::VerusExterns;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
 use rustc_errors::ErrorGuaranteed;
 use std::time::{Duration, Instant};
@@ -90,7 +91,7 @@ pub struct CompilerCallbacksEraseMacro {
 }
 
 impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
-    fn after_crate_root_parsing<'tcx>(
+    fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
@@ -196,70 +197,6 @@ pub fn find_verusroot() -> Option<VerusRoot> {
         })
 }
 
-#[cfg(target_os = "macos")]
-mod lib_exe_names {
-    pub const LIB_PRE: &str = "lib";
-    pub const LIB_DL: &str = "dylib";
-}
-
-#[cfg(target_os = "linux")]
-mod lib_exe_names {
-    pub const LIB_PRE: &str = "lib";
-    pub const LIB_DL: &str = "so";
-}
-
-#[cfg(target_os = "windows")]
-mod lib_exe_names {
-    pub const LIB_PRE: &str = "";
-    pub const LIB_DL: &str = "dll";
-}
-
-use lib_exe_names::{LIB_DL, LIB_PRE};
-
-#[derive(Debug)]
-pub struct VerusExterns<'a> {
-    path: &'a std::path::PathBuf,
-    has_vstd: bool,
-    has_builtin: bool,
-}
-
-impl<'a> VerusExterns<'a> {
-    pub fn to_args(&self) -> impl Iterator<Item = String> {
-        let mut args = vec![
-            format!("--extern"),
-            format!(
-                "builtin_macros={}",
-                self.path.join(format!("{LIB_PRE}builtin_macros.{LIB_DL}")).to_str().unwrap()
-            ),
-            format!("--extern"),
-            format!(
-                "state_machines_macros={}",
-                self.path
-                    .join(format!("{LIB_PRE}state_machines_macros.{LIB_DL}"))
-                    .to_str()
-                    .unwrap()
-            ),
-            format!("-L"),
-            format!("dependency={}", self.path.to_str().unwrap()),
-        ];
-        if self.has_builtin {
-            args.push(format!("--extern"));
-            args.push(format!(
-                "builtin={}",
-                self.path.join(format!("libbuiltin.rlib")).to_str().unwrap()
-            ));
-        }
-        if self.has_vstd {
-            args.push(format!("--extern"));
-            args.push(format!(
-                "vstd={}",
-                self.path.join(format!("libvstd.rlib")).to_str().unwrap()
-            ));
-        }
-        args.into_iter()
-    }
-}
-
 pub fn run<F>(
     verifier: Verifier,
     mut rustc_args: Vec<String>,
@@ -278,10 +215,11 @@ where
         rustc_args.push(format!("--edition"));
         rustc_args.push(format!("2021"));
     }
-    if !build_test_mode {
+    // TODO simplify
+    let verus_externs = if !build_test_mode {
         if let Some(VerusRoot { path: verusroot, in_vargo }) = verus_root {
             let externs = VerusExterns {
-                path: &verusroot,
+                verus_root: verusroot.clone(),
                 has_vstd: verifier.args.vstd == Vstd::Imported,
                 has_builtin: verifier.args.vstd != Vstd::IsCore,
             };
@@ -289,8 +227,13 @@ where
             if in_vargo && !std::env::var("VERUS_Z3_PATH").is_ok() {
                 panic!("we are in vargo, but VERUS_Z3_PATH is not set; this is a bug");
             }
+            if !in_vargo { Some(externs) } else { None }
+        } else {
+            None
         }
-    }
+    } else {
+        None
+    };
 
     let time0 = Instant::now();
     let mut rustc_args_verify = rustc_args.clone();
@@ -308,6 +251,7 @@ where
         lifetime_end_time: None,
         rustc_args: rustc_args.clone(),
         file_loader: Some(Box::new(file_loader.clone())),
+        verus_externs,
     };
     let status = run_compiler(
         rustc_args_verify.clone(),
@@ -324,18 +268,6 @@ where
         lifetime_end_time,
         ..
     } = verifier_callbacks;
-    if !verifier.args.output_json && !verifier.encountered_vir_error {
-        println!(
-            "verification results:: {} verified, {} errors{}",
-            verifier.count_verified,
-            verifier.count_errors,
-            if !is_verifying_entire_crate(&verifier) {
-                " (partial verification with `--verify-*`)"
-            } else {
-                ""
-            }
-        );
-    }
     let time1 = Instant::now();
     let time_lifetime = match (lifetime_start_time, lifetime_end_time) {
         (Some(t1), Some(t2)) => t2 - t1,

@@ -67,7 +67,9 @@ pub(crate) fn export_crate(
         for func in kratex.functions.iter_mut() {
             let mut functionx = func.x.clone();
             functionx.decrease_by = None;
-            if functionx.mode != Mode::Spec || functionx.publish.is_none() {
+            if (functionx.mode != Mode::Spec || !functionx.body_visibility.is_public())
+                && !matches!(&functionx.kind, vir::ast::FunctionKind::TraitMethodDecl { .. })
+            {
                 functionx.body = None;
             }
             *func = func.new_x(functionx);

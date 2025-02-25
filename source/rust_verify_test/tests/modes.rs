@@ -155,7 +155,7 @@ test_verify_one_file! {
         fn test(s: Ghost<S>) -> bool {
             s@.get_j()
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::S::get_j` with mode spec")
 }
 
 test_verify_one_file! {
@@ -172,7 +172,7 @@ test_verify_one_file! {
         fn test(s: &Ghost<S>) -> bool {
             s@.get_j()
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::S::get_j` with mode spec")
 }
 
 test_verify_one_file! {
@@ -189,7 +189,7 @@ test_verify_one_file! {
         fn test(s: Ghost<&S>) -> bool {
             s@.get_j()
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::S::get_j` with mode spec")
 }
 
 test_verify_one_file! {
@@ -1469,6 +1469,19 @@ test_verify_one_file! {
         fn test(Tracked(x): Tracked<X>) {
             let tracked X { y: yy, z: zz } = x;
             assert(zz == zz);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] empty_tuple_ghost verus_code! {
+        spec fn f() -> () { () }
+
+        fn test() {
+            let x = Ghost(());
+            let y = Tracked(());
+            assert(f() == ());
+            assert(x@ == ());
         }
     } => Ok(())
 }

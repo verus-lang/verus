@@ -60,12 +60,7 @@ impl<V> Multiset<V> {
     /// Creates a multiset whose elements are given by the domain of the map `m` and whose
     /// multiplicities are given by the corresponding values of `m[element]`. The map `m`
     /// must be finite, or else this multiset is arbitrary.
-    pub open spec fn from_map(m: Map<V, nat>) -> Self;
-
-    #[cfg_attr(not(verus_verify_core), deprecated = "use from_map instead")]
-    pub open spec fn new(m: Map<V, nat>) -> Self {
-        Self::from_map(m)
-    }
+    pub spec fn from_map(m: Map<V, nat>) -> Self;
 
     pub open spec fn from_set(m: Set<V>) -> Self {
         Self::from_map(Map::new(|k| m.contains(k), |v| 1))
@@ -123,28 +118,8 @@ impl<V> Multiset<V> {
     }
 
     #[verifier::inline]
-    #[cfg_attr(not(verus_verify_core), deprecated = "use m1.subset_of(m2) or m1 <= m2 instead")]
-    pub open spec fn le(self, m2: Self) -> bool {
-        self.subset_of(m2)
-    }
-
-    #[verifier::inline]
     pub open spec fn spec_le(self, m2: Self) -> bool {
         self.subset_of(m2)
-    }
-
-    /// DEPRECATED: use =~= or =~~= instead.
-    /// Returns true if the two multisets are pointwise equal, i.e.,
-    /// for every value `v: V`, the counts are the same in each multiset.
-    /// This is equivalent to the multisets actually being equal
-    /// by [`axiom_multiset_ext_equal`].
-    ///
-    /// To prove that two maps are equal via extensionality, it may be easier
-    /// to use the general-purpose `=~=` or `=~~=` or
-    /// to use the [`assert_multisets_equal!`] macro, rather than using `ext_equal` directly.
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    pub open spec fn ext_equal(self, m2: Self) -> bool {
-        self =~= m2
     }
 
     // TODO define this in terms of a more general constructor?
@@ -163,6 +138,12 @@ impl<V> Multiset<V> {
     /// Predicate indicating if the multiset contains the given value.
     pub open spec fn contains(self, v: V) -> bool {
         self.count(v) > 0
+    }
+
+    /// Predicate indicating if the set contains the given element: supports `self has a` syntax.
+    #[verifier::inline]
+    pub open spec fn spec_has(self, v: V) -> bool {
+        self.contains(v)
     }
 
     /// Returns a multiset containing the lower count of a given element
@@ -203,7 +184,7 @@ impl<V> Multiset<V> {
 /// The empty multiset maps every element to multiplicity 0
 pub broadcast proof fn axiom_multiset_empty<V>(v: V)
     ensures
-        Multiset::empty().count(v) == 0,
+        #[trigger] Multiset::empty().count(v) == 0,
 {
     admit();
 }
@@ -212,10 +193,10 @@ pub broadcast proof fn axiom_multiset_empty<V>(v: V)
 /// A multiset is equivalent to the empty multiset if and only if it has length 0.
 /// If the multiset has length greater than 0, then there exists some element in the
 /// multiset that has a count greater than 0.
-pub proof fn lemma_multiset_empty_len<V>(m: Multiset<V>)
+pub broadcast proof fn lemma_multiset_empty_len<V>(m: Multiset<V>)
     ensures
-        (m.len() == 0 <==> m =~= Multiset::empty()) && (m.len() > 0 ==> exists|v: V|
-            0 < m.count(v)),
+        (#[trigger] m.len() == 0 <==> m =~= Multiset::empty()) && (#[trigger] m.len() > 0
+            ==> exists|v: V| 0 < m.count(v)),
 {
     admit();
 }
@@ -240,7 +221,7 @@ pub broadcast proof fn axiom_multiset_new_not_contained<V>(m: Map<V, nat>, v: V)
         m.dom().finite(),
         !m.dom().contains(v),
     ensures
-        Multiset::from_map(m).count(v) == 0,
+        #[trigger] Multiset::from_map(m).count(v) == 0,
 {
     admit();
 }
@@ -259,7 +240,7 @@ pub broadcast proof fn axiom_multiset_singleton<V>(v: V)
 /// any value other than `v` to 0
 pub broadcast proof fn axiom_multiset_singleton_different<V>(v: V, w: V)
     ensures
-        v != w ==> Multiset::singleton(v).count(w) == 0,
+        v != w ==> #[trigger] Multiset::singleton(v).count(w) == 0,
 {
     admit();
 }
@@ -269,7 +250,7 @@ pub broadcast proof fn axiom_multiset_singleton_different<V>(v: V, w: V)
 /// counts of `v` in `m1` and `m2` individually.
 pub broadcast proof fn axiom_multiset_add<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
     ensures
-        m1.add(m2).count(v) == m1.count(v) + m2.count(v),
+        #[trigger] m1.add(m2).count(v) == m1.count(v) + m2.count(v),
 {
     admit();
 }
@@ -280,7 +261,7 @@ pub broadcast proof fn axiom_multiset_add<V>(m1: Multiset<V>, m2: Multiset<V>, v
 /// cannot be negative.
 pub broadcast proof fn axiom_multiset_sub<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
     ensures
-        m1.sub(m2).count(v) == if m1.count(v) >= m2.count(v) {
+        #[trigger] m1.sub(m2).count(v) == if m1.count(v) >= m2.count(v) {
             m1.count(v) - m2.count(v)
         } else {
             0
@@ -386,7 +367,6 @@ pub broadcast proof fn axiom_multiset_always_finite<V>(m: Multiset<V>)
     admit();
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_multiset_axioms {
     axiom_multiset_empty,
     axiom_multiset_contained,
@@ -410,9 +390,9 @@ pub broadcast group group_multiset_axioms {
 // Lemmas about `update`
 /// The multiset resulting from updating a value `v` in a multiset `m` to multiplicity `mult` will
 /// have a count of `mult` for `v`.
-pub proof fn lemma_update_same<V>(m: Multiset<V>, v: V, mult: nat)
+pub broadcast proof fn lemma_update_same<V>(m: Multiset<V>, v: V, mult: nat)
     ensures
-        m.update(v, mult).count(v) == mult,
+        #[trigger] m.update(v, mult).count(v) == mult,
 {
     broadcast use group_set_axioms, group_map_axioms, group_multiset_axioms;
 
@@ -430,11 +410,11 @@ pub proof fn lemma_update_same<V>(m: Multiset<V>, v: V, mult: nat)
 
 /// The multiset resulting from updating a value `v1` in a multiset `m` to multiplicity `mult` will
 /// not change the multiplicities of any other values in `m`.
-pub proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: nat, v2: V)
+pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: nat, v2: V)
     requires
         v1 != v2,
     ensures
-        m.update(v1, mult).count(v2) == m.count(v2),
+        #[trigger] m.update(v1, mult).count(v2) == m.count(v2),
 {
     broadcast use group_set_axioms, group_map_axioms, group_multiset_axioms;
 
@@ -455,9 +435,9 @@ pub proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: nat, v2: V)
 /// If you insert element x into multiset m, then element y maps
 /// to a count greater than 0 if and only if x==y or y already
 /// mapped to a count greater than 0 before the insertion of x.
-pub proof fn lemma_insert_containment<V>(m: Multiset<V>, x: V, y: V)
+pub broadcast proof fn lemma_insert_containment<V>(m: Multiset<V>, x: V, y: V)
     ensures
-        0 < m.insert(x).count(y) <==> x == y || 0 < m.count(y),
+        0 < #[trigger] m.insert(x).count(y) <==> x == y || 0 < m.count(y),
 {
     broadcast use group_multiset_axioms;
 
@@ -465,9 +445,9 @@ pub proof fn lemma_insert_containment<V>(m: Multiset<V>, x: V, y: V)
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Inserting an element `x` into multiset `m` will increase the count of `x` in `m` by 1.
-pub proof fn lemma_insert_increases_count_by_1<V>(m: Multiset<V>, x: V)
+pub broadcast proof fn lemma_insert_increases_count_by_1<V>(m: Multiset<V>, x: V)
     ensures
-        m.insert(x).count(x) == m.count(x) + 1,
+        #[trigger] m.insert(x).count(x) == m.count(x) + 1,
 {
     broadcast use group_multiset_axioms;
 
@@ -477,9 +457,9 @@ pub proof fn lemma_insert_increases_count_by_1<V>(m: Multiset<V>, x: V)
 /// If multiset `m` maps element `y` to a multiplicity greater than 0, then inserting any element `x`
 /// into `m` will not cause `y` to map to a multiplicity of 0. This is a way of saying that inserting `x`
 /// will not cause any counts to decrease, because it accounts both for when x == y and when x != y.
-pub proof fn lemma_insert_non_decreasing<V>(m: Multiset<V>, x: V, y: V)
+pub broadcast proof fn lemma_insert_non_decreasing<V>(m: Multiset<V>, x: V, y: V)
     ensures
-        0 < m.count(y) ==> 0 < m.insert(x).count(y),
+        0 < m.count(y) ==> 0 < #[trigger] m.insert(x).count(y),
 {
     broadcast use group_multiset_axioms;
 
@@ -487,9 +467,9 @@ pub proof fn lemma_insert_non_decreasing<V>(m: Multiset<V>, x: V, y: V)
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Inserting an element `x` into a multiset `m` will not change the count of any other element `y` in `m`.
-pub proof fn lemma_insert_other_elements_unchanged<V>(m: Multiset<V>, x: V, y: V)
+pub broadcast proof fn lemma_insert_other_elements_unchanged<V>(m: Multiset<V>, x: V, y: V)
     ensures
-        x != y ==> m.count(y) == m.insert(x).count(y),
+        x != y ==> m.count(y) == #[trigger] m.insert(x).count(y),
 {
     broadcast use group_multiset_axioms;
 
@@ -497,9 +477,9 @@ pub proof fn lemma_insert_other_elements_unchanged<V>(m: Multiset<V>, x: V, y: V
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Inserting an element `x` into a multiset `m` will increase the length of `m` by 1.
-pub proof fn lemma_insert_len<V>(m: Multiset<V>, x: V)
+pub broadcast proof fn lemma_insert_len<V>(m: Multiset<V>, x: V)
     ensures
-        m.insert(x).len() == m.len() + 1,
+        #[trigger] m.insert(x).len() == m.len() + 1,
 {
     broadcast use group_multiset_axioms;
 
@@ -509,9 +489,9 @@ pub proof fn lemma_insert_len<V>(m: Multiset<V>, x: V)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The multiplicity of an element `x` in the intersection of multisets `a` and `b` will be the minimum
 /// count of `x` in either `a` or `b`.
-pub proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
+pub broadcast proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
     ensures
-        a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int),
+        #[trigger] a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int),
 {
     broadcast use group_set_axioms, group_map_axioms, group_multiset_axioms;
 
@@ -525,9 +505,9 @@ pub proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the intersection of multisets `a` and `b` and then taking the resulting multiset's intersection
 /// with `b` again is the same as just taking the intersection of `a` and `b` once.
-pub proof fn lemma_left_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
+pub broadcast proof fn lemma_left_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
     ensures
-        a.intersection_with(b).intersection_with(b) =~= a.intersection_with(b),
+        #[trigger] a.intersection_with(b).intersection_with(b) =~= a.intersection_with(b),
 {
     broadcast use group_multiset_axioms;
 
@@ -551,9 +531,9 @@ pub proof fn lemma_left_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// Taking the intersection of multiset `a` with the result of taking the intersection of `a` and `b`
 /// is the same as just taking the intersection of `a` and `b` once.
-pub proof fn lemma_right_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
+pub broadcast proof fn lemma_right_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
     ensures
-        a.intersection_with(a.intersection_with(b)) =~= a.intersection_with(b),
+        #[trigger] a.intersection_with(a.intersection_with(b)) =~= a.intersection_with(b),
 {
     broadcast use group_multiset_axioms;
 
@@ -578,9 +558,9 @@ pub proof fn lemma_right_pseudo_idempotence<V>(a: Multiset<V>, b: Multiset<V>)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The multiplicity of an element `x` in the difference of multisets `a` and `b` will be
 /// equal to the difference of the counts of `x` in `a` and `b`, or 0 if this difference is negative.
-pub proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
+pub broadcast proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
     ensures
-        a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)),
+        #[trigger] a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)),
 {
     broadcast use group_set_axioms, group_map_axioms, group_multiset_axioms;
 
@@ -591,8 +571,9 @@ pub proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>, x: V)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If the multiplicity of element `x` is less in multiset `a` than in multiset `b`, then the multiplicity
 /// of `x` in the difference of `a` and `b` will be 0.
-pub proof fn lemma_difference_bottoms_out<V>(a: Multiset<V>, b: Multiset<V>, x: V)
+pub broadcast proof fn lemma_difference_bottoms_out<V>(a: Multiset<V>, b: Multiset<V>, x: V)
     ensures
+        #![trigger a.count(x), b.count(x), a.difference_with(b)]
         a.count(x) <= b.count(x) ==> a.difference_with(b).count(x) == 0,
 {
     broadcast use group_multiset_axioms;
@@ -640,6 +621,7 @@ macro_rules! assert_multisets_equal_internal {
 }
 
 /// Properties of multisets from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
+#[deprecated = "Use `broadcast use group_multiset_properties` instead" ]
 pub proof fn lemma_multiset_properties<V>()
     ensures
         forall|m: Multiset<V>, v: V, mult: nat| #[trigger] m.update(v, mult).count(v) == mult,  //from lemma_update_same
@@ -667,34 +649,23 @@ pub proof fn lemma_multiset_properties<V>()
             a.count(x) <= #[trigger] b.count(x) ==> (#[trigger] a.difference_with(b)).count(x)
                 == 0,  //from lemma_difference_bottoms_out
 {
-    broadcast use group_multiset_axioms;
+    broadcast use group_multiset_axioms, group_multiset_properties;
 
-    assert forall|m: Multiset<V>, v: V, mult: nat| #[trigger]
-        m.update(v, mult).count(v) == mult by {
-        lemma_update_same(m, v, mult);
-    }
-    assert forall|m: Multiset<V>, v1: V, mult: nat, v2: V| v1 != v2 implies #[trigger] m.update(
-        v1,
-        mult,
-    ).count(v2) == m.count(v2) by {
-        lemma_update_different(m, v1, mult, v2);
-    }
-    assert forall|a: Multiset<V>, b: Multiset<V>, x: V| #[trigger]
-        a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int) by {
-        lemma_intersection_count(a, b, x);
-    }
-    assert forall|a: Multiset<V>, b: Multiset<V>| #[trigger]
-        a.intersection_with(b).intersection_with(b) == a.intersection_with(b) by {
-        lemma_left_pseudo_idempotence(a, b);
-    }
-    assert forall|a: Multiset<V>, b: Multiset<V>| #[trigger]
-        a.intersection_with(a.intersection_with(b)) == a.intersection_with(b) by {
-        lemma_right_pseudo_idempotence(a, b);
-    }
-    assert forall|a: Multiset<V>, b: Multiset<V>, x: V| #[trigger]
-        a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)) by {
-        lemma_difference_count(a, b, x);
-    }
+}
+
+pub broadcast group group_multiset_properties {
+    lemma_update_same,
+    lemma_update_different,
+    lemma_insert_containment,
+    lemma_insert_increases_count_by_1,
+    lemma_insert_non_decreasing,
+    lemma_insert_other_elements_unchanged,
+    lemma_insert_len,
+    lemma_intersection_count,
+    lemma_left_pseudo_idempotence,
+    lemma_right_pseudo_idempotence,
+    lemma_difference_count,
+    lemma_difference_bottoms_out,
 }
 
 #[doc(hidden)]

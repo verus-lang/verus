@@ -22,7 +22,7 @@ test_verify_one_file! {
         fn ex_foo() {
             X::foo()
         }
-    } => Err(err) => assert_vir_error_msg(err, "using external_fn_specification for this function requires you to specify all other functions for the same trait impl, but the method `bar` is missing")
+    } => Err(err) => assert_vir_error_msg(err, "using assume_specification for this function requires you to specify all other functions for the same trait impl, but the method `bar` is missing")
 }
 
 test_verify_one_file! {
@@ -54,7 +54,7 @@ test_verify_one_file! {
         fn ex_bar() {
             X::bar()
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate external_fn_specification for this method")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate assume_specification for this method")
 }
 
 test_verify_one_file! {
@@ -274,15 +274,15 @@ test_verify_one_file! {
         impl T for u32 {
             fn f(&self, q: &Self, b: bool) -> (r: usize) {
                 assert(b);
-                6
-            } // FAILS
+                6 // FAILS
+            }
             type X = u16;
         }
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] test_trait4 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_trait4 ["--disable-internal-test-mode"] => verus_code! {
         #[verifier::external_trait_specification]
         pub trait ExIntoIterator {
             type ExternalTraitSpecificationFor: core::iter::IntoIterator;
@@ -342,6 +342,60 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_trait5 verus_code! {
+        #[verifier::external]
+        trait T {
+            type X;
+            fn f() -> Self::X;
+        }
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            type X;
+
+            fn f() -> Self::X;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_auto_import verus_code! {
+        #[verifier::external]
+        trait T {}
+
+        #[verifier::external]
+        impl T for bool {}
+
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+        }
+
+        trait U {
+            type X: T;
+        }
+
+        impl U for u8 {
+            type X = S;
+        }
+
+        impl U for u16 {
+            type X = [S; 3];
+        }
+
+        struct S;
+
+        #[verifier::external]
+        impl T for S where bool: T {}
+
+        #[verifier::external]
+        impl<A: T, const N: usize> T for [A; N] {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_trait_defaults verus_code! {
         #[verifier::external]
         trait T {
@@ -368,4 +422,30 @@ test_verify_one_file! {
             <u8 as T>::d(99); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_default_external_body_issue1307 verus_code! {
+        #[verifier::external]
+        fn some_external_fn() { }
+
+        trait T {
+            #[verifier(external_body)]
+            fn f1() -> (ret: bool)
+                ensures
+                    !ret
+            {
+                some_external_fn();
+                false
+            }
+
+            fn f2() -> bool {
+                Self::f1()
+            }
+        }
+
+        struct S;
+
+        impl T for S { }
+    } => Ok(())
 }

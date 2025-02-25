@@ -66,6 +66,7 @@ pub struct MessageX {
     pub spans: Vec<Span>,          // "primary" spans
     pub labels: Vec<MessageLabel>, // additional spans, with string annotations
     pub help: Option<String>,
+    pub fancy_note: Option<String>, // allows terminal-colored output
 }
 
 pub type Message = Arc<MessageX>;
@@ -96,6 +97,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
             spans: Vec::new(),
             labels: Vec::new(),
             help: None,
+            fancy_note: None,
         })
     }
 
@@ -115,6 +117,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
             spans: Vec::new(),
             labels: Vec::new(),
             help: None,
+            fancy_note: None,
         })
     }
 
@@ -125,6 +128,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
             labels: Vec::new(),
             spans: Vec::new(),
             help: None,
+            fancy_note: None,
         })
     }
 
@@ -187,6 +191,7 @@ impl air::messages::MessageInterface for VirMessageInterface {
                     .cloned()
                     .collect(),
                 help: None,
+                fancy_note: None,
             })
         }
     }
@@ -202,12 +207,20 @@ pub fn message<S: Into<String>>(level: MessageLevel, note: S, span: &Span) -> Me
         spans: vec![span.clone()],
         labels: Vec::new(),
         help: None,
+        fancy_note: None,
     })
 }
 
 /// Bare message without any span
 pub fn message_bare<S: Into<String>>(level: MessageLevel, note: S) -> Message {
-    Arc::new(MessageX { level, note: note.into(), spans: vec![], labels: Vec::new(), help: None })
+    Arc::new(MessageX {
+        level,
+        note: note.into(),
+        spans: vec![],
+        labels: Vec::new(),
+        help: None,
+        fancy_note: None,
+    })
 }
 
 /// Message with a span to be highlighted with ^^^^^^, and a label for that span
@@ -223,6 +236,23 @@ pub fn message_with_label<S: Into<String>, T: Into<String>>(
         spans: vec![span.clone()],
         labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
         help: None,
+        fancy_note: None,
+    })
+}
+
+pub fn message_with_secondary_label<S: Into<String>, T: Into<String>>(
+    level: MessageLevel,
+    note: S,
+    span: &Span,
+    label: T,
+) -> Message {
+    Arc::new(MessageX {
+        level,
+        note: note.into(),
+        spans: vec![],
+        labels: vec![MessageLabel { span: span.clone(), note: label.into() }],
+        help: None,
+        fancy_note: None,
     })
 }
 
@@ -274,6 +304,14 @@ pub fn error_with_label<S: Into<String>, T: Into<String>>(
     message_with_label(MessageLevel::Error, note, span, label)
 }
 
+pub fn error_with_secondary_label<S: Into<String>, T: Into<String>>(
+    span: &Span,
+    note: S,
+    label: T,
+) -> Message {
+    message_with_secondary_label(MessageLevel::Error, note, span, label)
+}
+
 // Add additional stuff with the "builders" below.
 
 impl MessageX {
@@ -306,14 +344,35 @@ impl MessageX {
         Arc::new(e)
     }
 
+    pub fn ensure_primary_label(&self) -> Message {
+        let mut e = self.clone();
+        if e.spans.len() == 0 && e.labels.len() > 0 {
+            e.spans.push(e.labels[0].span.clone());
+        }
+        Arc::new(e)
+    }
+
     pub fn help(&self, help: impl Into<String>) -> Message {
-        let MessageX { level, note, spans, labels, help: _ } = &self;
+        let MessageX { level, note, spans, labels, help: _, fancy_note } = &self;
         Arc::new(MessageX {
             level: *level,
             note: note.clone(),
             spans: spans.clone(),
             labels: labels.clone(),
             help: Some(help.into()),
+            fancy_note: fancy_note.clone(),
+        })
+    }
+
+    pub fn fancy_note(&self, fancy_note: impl Into<String>) -> Message {
+        let MessageX { level, note, spans, labels, help, fancy_note: _ } = &self;
+        Arc::new(MessageX {
+            level: *level,
+            note: note.clone(),
+            spans: spans.clone(),
+            labels: labels.clone(),
+            help: help.clone(),
+            fancy_note: Some(fancy_note.into()),
         })
     }
 }

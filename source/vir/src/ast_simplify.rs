@@ -8,10 +8,10 @@ use crate::ast::VarBinders;
 use crate::ast::VarIdent;
 use crate::ast::{
     AssocTypeImpl, AutospecUsage, BinaryOp, Binder, BuiltinSpecFun, CallTarget, ChainedOp,
-    Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX, Exprs, Field,
-    FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange, ItemKind, Krate, KrateX,
-    Mode, MultiOp, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ, TypX,
-    UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
+    Constant, CtorPrintStyle, Datatype, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
+    Field, FieldOpr, Fun, Function, FunctionKind, Ident, InequalityOp, IntRange, ItemKind, Krate,
+    KrateX, Mode, MultiOp, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, Typ,
+    TypX, UnaryOp, UnaryOpr, Variant, VariantCheck, VirErr, Visibility,
 };
 use crate::ast_util::int_range_from_type;
 use crate::ast_util::is_integer_type;
@@ -25,8 +25,8 @@ use crate::def::is_dummy_param_name;
 use crate::def::{
     positional_field_ident, prefix_tuple_param, prefix_tuple_variant, user_local_name, Spanned,
 };
-use crate::messages::error;
 use crate::messages::Span;
+use crate::messages::{error, internal_error};
 use crate::sst_util::subst_typ_for_datatype;
 use crate::util::vec_map_result;
 use air::ast_util::ident_binder;
@@ -40,7 +40,7 @@ struct State {
     // Rename parameters to simplify their names
     rename_vars: HashMap<VarIdent, VarIdent>,
     // Name of a datatype to represent each tuple arity
-    tuple_typs: HashMap<usize, Path>,
+    tuple_typs: HashSet<usize>,
     // Name of a datatype to represent each tuple arity
     closure_typs: HashMap<usize, Path>,
     // Functions for which the corresponding FnDef type is used
@@ -52,7 +52,7 @@ impl State {
         State {
             next_var: 0,
             rename_vars: HashMap::new(),
-            tuple_typs: HashMap::new(),
+            tuple_typs: HashSet::new(),
             closure_typs: HashMap::new(),
             fndef_typs: HashSet::new(),
         }
@@ -68,11 +68,9 @@ impl State {
         crate::def::simplify_temp_var(self.next_var)
     }
 
-    fn tuple_type_name(&mut self, arity: usize) -> Path {
-        if !self.tuple_typs.contains_key(&arity) {
-            self.tuple_typs.insert(arity, crate::def::prefix_tuple_type(arity));
-        }
-        self.tuple_typs[&arity].clone()
+    fn tuple_type_name(&mut self, arity: usize) -> Dt {
+        self.tuple_typs.insert(arity);
+        Dt::Tuple(arity)
     }
 
     fn closure_type_name(&mut self, id: usize) -> Path {
@@ -92,7 +90,7 @@ fn is_small_expr(expr: &Expr) -> bool {
     match &expr.x {
         ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(..) => true,
         ExprX::Unary(UnaryOp::Not | UnaryOp::Clip { .. }, e) => is_small_expr(e),
-        ExprX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_expr(e),
+        ExprX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), _) => panic!("unexpected box"),
         ExprX::Loc(_) => panic!("expr is a location"),
         _ => false,
     }
@@ -104,7 +102,7 @@ fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
     let name = temp.clone();
     let patternx = PatternX::Var { name, mutable: false };
     let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
-    let decl = StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(expr.clone()) };
+    let decl = StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(expr.clone()), els: None };
     let temp_decl = Spanned::new(expr.span.clone(), decl);
     (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(temp)))
 }
@@ -141,7 +139,8 @@ fn pattern_to_exprs(
         let patternx = PatternX::Var { name, mutable };
         let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
         // Mode doesn't matter at this stage; arbitrarily set it to 'exec'
-        let decl = StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(expr.clone()) };
+        let decl =
+            StmtX::Decl { pattern, mode: Some(Mode::Exec), init: Some(expr.clone()), els: None };
         decls.push(Spanned::new(expr.span.clone(), decl));
     }
 
@@ -174,27 +173,6 @@ fn pattern_to_exprs_rec(
             let pattern_test = pattern_to_exprs_rec(ctx, state, expr, sub_pat, decls)?;
             decls.push(PatternBoundDecl { name: x.clone(), mutable: *mutable, expr: expr.clone() });
             Ok(pattern_test)
-        }
-        PatternX::Tuple(patterns) => {
-            let arity = patterns.len();
-            let path = state.tuple_type_name(arity);
-            let variant = prefix_tuple_variant(arity);
-            let mut test =
-                SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true)));
-            for (i, pat) in patterns.iter().enumerate() {
-                let field_op = UnaryOpr::Field(FieldOpr {
-                    datatype: path.clone(),
-                    variant: variant.clone(),
-                    field: positional_field_ident(i),
-                    get_variant: false,
-                    check: VariantCheck::None,
-                });
-                let field_exp = pattern_field_expr(&pattern.span, expr, &pat.typ, field_op);
-                let pattern_test = pattern_to_exprs_rec(ctx, state, &field_exp, pat, decls)?;
-                let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
-                test = SpannedTyped::new(&pattern.span, &t_bool, and);
-            }
-            Ok(test)
         }
         PatternX::Constructor(path, variant, patterns) => {
             let is_variant_opr =
@@ -253,6 +231,61 @@ fn pattern_to_exprs_rec(
             }
             Ok(conjoin(&pattern.span, &v))
         }
+    }
+}
+
+fn pattern_to_decls_with_no_initializer(pattern: &Pattern, stmts: &mut Vec<Stmt>) {
+    match &pattern.x {
+        PatternX::Wildcard(_) => {}
+        PatternX::Var { name, mutable } | PatternX::Binding { name, mutable, sub_pat: _ } => {
+            let v_patternx = PatternX::Var { name: name.clone(), mutable: *mutable };
+            let v_pattern = SpannedTyped::new(&pattern.span, &pattern.typ, v_patternx);
+            stmts.push(Spanned::new(
+                pattern.span.clone(),
+                StmtX::Decl {
+                    pattern: v_pattern,
+                    mode: Some(Mode::Exec), // mode doesn't matter anymore
+                    init: None,
+                    els: None,
+                },
+            ));
+
+            match &pattern.x {
+                PatternX::Binding { sub_pat, .. } => {
+                    pattern_to_decls_with_no_initializer(sub_pat, stmts);
+                }
+                _ => {}
+            }
+        }
+        PatternX::Constructor(_path, _variant, patterns) => {
+            for binder in patterns.iter() {
+                pattern_to_decls_with_no_initializer(&binder.a, stmts);
+            }
+        }
+        PatternX::Or(pat1, _pat2) => {
+            pattern_to_decls_with_no_initializer(&pat1, stmts);
+        }
+        PatternX::Expr(_) => {}
+        PatternX::Range(_, _) => {}
+    }
+}
+
+fn pattern_has_or(pattern: &Pattern) -> bool {
+    match &pattern.x {
+        PatternX::Wildcard(_) => false,
+        PatternX::Var { name: _, mutable: _ } => false,
+        PatternX::Binding { name: _, mutable: _, sub_pat } => pattern_has_or(sub_pat),
+        PatternX::Constructor(_path, _variant, patterns) => {
+            for binder in patterns.iter() {
+                if pattern_has_or(&binder.a) {
+                    return true;
+                }
+            }
+            false
+        }
+        PatternX::Or(_pat1, _pat2) => true,
+        PatternX::Expr(_e) => false,
+        PatternX::Range(_lower, _upper) => false,
     }
 }
 
@@ -347,20 +380,7 @@ fn simplify_one_expr(
             );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Tuple(args) => {
-            let arity = args.len();
-            let datatype = state.tuple_type_name(arity);
-            let variant = prefix_tuple_variant(arity);
-            let mut binders: Vec<Binder<Expr>> = Vec::new();
-            for (i, arg) in args.iter().enumerate() {
-                let field = positional_field_ident(i);
-                binders.push(ident_binder(&field, &arg));
-            }
-            let binders = Arc::new(binders);
-            let exprx = ExprX::Ctor(datatype, variant, binders, None);
-            Ok(SpannedTyped::new(&expr.span, &expr.typ, exprx))
-        }
-        ExprX::Ctor(path, variant, partial_binders, Some(update)) => {
+        ExprX::Ctor(name, variant, partial_binders, Some(update)) => {
             let (temp_decl, update) = small_or_temp(state, update);
             let mut decls: Vec<Stmt> = Vec::new();
             let mut binders: Vec<Binder<Expr>> = Vec::new();
@@ -378,6 +398,17 @@ fn simplify_one_expr(
                 }
                 decls.extend(temp_decl.into_iter());
             }
+
+            let path = match name {
+                Dt::Path(p) => p,
+                Dt::Tuple(_) => {
+                    return Err(internal_error(
+                        &expr.span,
+                        "ExprX::Ctor with update and tuple type",
+                    ));
+                }
+            };
+
             let (typ_positives, variants) = &ctx.datatypes[path];
             assert_eq!(variants.len(), 1);
             let fields = &variants[0].fields;
@@ -387,7 +418,7 @@ fn simplify_one_expr(
             for field in fields.iter() {
                 if binders.iter().find(|b| b.name == field.name).is_none() {
                     let op = UnaryOpr::Field(FieldOpr {
-                        datatype: path.clone(),
+                        datatype: name.clone(),
                         variant: variant.clone(),
                         field: field.name.clone(),
                         get_variant: false,
@@ -399,7 +430,7 @@ fn simplify_one_expr(
                     binders.push(ident_binder(&field.name, &field_exp));
                 }
             }
-            let ctorx = ExprX::Ctor(path.clone(), variant.clone(), Arc::new(binders), None);
+            let ctorx = ExprX::Ctor(name.clone(), variant.clone(), Arc::new(binders), None);
             let ctor = SpannedTyped::new(&expr.span, &expr.typ, ctorx);
             if decls.len() == 0 {
                 Ok(ctor)
@@ -409,9 +440,6 @@ fn simplify_one_expr(
             }
         }
         ExprX::Unary(UnaryOp::CoerceMode { .. }, expr0) => Ok(expr0.clone()),
-        ExprX::UnaryOpr(UnaryOpr::TupleField { tuple_arity, field }, expr0) => {
-            Ok(tuple_get_field_expr(state, &expr.span, &expr.typ, expr0, *tuple_arity, *field))
-        }
         ExprX::Multi(MultiOp::Chained(ops), args) => {
             assert!(args.len() == ops.len() + 1);
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -461,6 +489,13 @@ fn simplify_one_expr(
                 let test = match &arm.x.guard.x {
                     ExprX::Const(Constant::Bool(true)) => test_pattern,
                     _ => {
+                        if pattern_has_or(&arm.x.pattern) {
+                            return Err(error(
+                                &arm.x.pattern.span,
+                                "Not supported: pattern containing both an or-pattern (|) and an if-guard",
+                            ));
+                        }
+
                         let guard = arm.x.guard.clone();
                         let test_exp = ExprX::Binary(BinaryOp::And, test_pattern, guard);
                         let test = SpannedTyped::new(&arm.x.pattern.span, &t_bool, test_exp);
@@ -579,6 +614,7 @@ fn tuple_get_field_expr(
     field: usize,
 ) -> Expr {
     let datatype = state.tuple_type_name(tuple_arity);
+
     let variant = prefix_tuple_variant(tuple_arity);
     let field = positional_field_ident(field);
     let op = UnaryOpr::Field(FieldOpr {
@@ -594,17 +630,31 @@ fn tuple_get_field_expr(
 
 fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<Vec<Stmt>, VirErr> {
     match &stmt.x {
-        StmtX::Decl { pattern, mode: _, init: None } => match &pattern.x {
+        StmtX::Decl { pattern, mode: _, init: None, els: None } => match &pattern.x {
             PatternX::Var { .. } => Ok(vec![stmt.clone()]),
-            _ => Err(error(&stmt.span, "let-pattern declaration must have an initializer")),
+            _ => {
+                let mut stmts: Vec<Stmt> = Vec::new();
+                pattern_to_decls_with_no_initializer(pattern, &mut stmts);
+                Ok(stmts)
+            }
         },
-        StmtX::Decl { pattern, mode: _, init: Some(init) }
+        StmtX::Decl { pattern, mode: _, init: Some(init), els }
             if !matches!(pattern.x, PatternX::Var { .. }) =>
         {
             let mut decls: Vec<Stmt> = Vec::new();
             let (temp_decl, init) = small_or_temp(state, init);
             decls.extend(temp_decl.into_iter());
-            let _ = pattern_to_exprs(ctx, state, &init, &pattern, &mut decls)?;
+            let mut decls2: Vec<Stmt> = Vec::new();
+            let pattern_check = pattern_to_exprs(ctx, state, &init, &pattern, &mut decls2)?;
+            if let Some(els) = &els {
+                let e = ExprX::Unary(UnaryOp::Not, pattern_check.clone());
+                let check = SpannedTyped::new(&pattern_check.span, &pattern_check.typ, e);
+                let ifx = ExprX::If(check.clone(), els.clone(), Some(init.clone()));
+                let init = SpannedTyped::new(&els.span, &init.typ, ifx);
+                let (temp_decl, _) = temp_expr(state, &init);
+                decls.push(temp_decl);
+            }
+            decls.extend(decls2);
             Ok(decls)
         }
         _ => Ok(vec![stmt.clone()]),
@@ -613,12 +663,12 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
 
 fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<Typ, VirErr> {
     match &**typ {
-        TypX::Tuple(typs) => {
-            let path = state.tuple_type_name(typs.len());
-            Ok(Arc::new(TypX::Datatype(path, typs.clone(), Arc::new(vec![]))))
+        TypX::Datatype(Dt::Tuple(i), ..) => {
+            state.tuple_type_name(*i);
+            Ok(typ.clone())
         }
         TypX::AnonymousClosure(_typs, _typ, id) => {
-            let path = state.closure_type_name(*id);
+            let path = Dt::Path(state.closure_type_name(*id));
             Ok(Arc::new(TypX::Datatype(path, Arc::new(vec![]), Arc::new(vec![]))))
         }
         TypX::FnDef(fun, _typs, resolved) => {
@@ -733,7 +783,8 @@ fn exec_closure_spec_requires(
         let patternx = PatternX::Var { name: p.name.clone(), mutable: false };
         let pattern = SpannedTyped::new(span, &p.a, patternx);
         let tuple_field = tuple_get_field_expr(state, span, &p.a, &tuple_var, params.len(), i);
-        let decl = StmtX::Decl { pattern, mode: Some(Mode::Spec), init: Some(tuple_field) };
+        let decl =
+            StmtX::Decl { pattern, mode: Some(Mode::Spec), init: Some(tuple_field), els: None };
         decls.push(Spanned::new(span.clone(), decl));
     }
 
@@ -793,7 +844,8 @@ fn exec_closure_spec_ensures(
         let patternx = PatternX::Var { name: p.name.clone(), mutable: false };
         let pattern = SpannedTyped::new(span, &p.a, patternx);
         let tuple_field = tuple_get_field_expr(state, span, &p.a, &tuple_var, params.len(), i);
-        let decl = StmtX::Decl { pattern, mode: Some(Mode::Spec), init: Some(tuple_field) };
+        let decl =
+            StmtX::Decl { pattern, mode: Some(Mode::Spec), init: Some(tuple_field), els: None };
         decls.push(Spanned::new(span.clone(), decl));
     }
 
@@ -936,6 +988,24 @@ fn simplify_function(
 ) -> Result<Function, VirErr> {
     state.reset_for_function();
     let mut functionx = function.x.clone();
+
+    if let Some(r) = functionx.returns.clone() {
+        functionx.returns = None;
+
+        if functionx.ens_has_return {
+            let var = SpannedTyped::new(
+                &r.span,
+                &functionx.ret.x.typ,
+                ExprX::Var(functionx.ret.x.name.clone()),
+            );
+            let eq = mk_eq(&r.span, &var, &r);
+            Arc::make_mut(&mut functionx.ensure).push(eq);
+        } else {
+            // For a unit return type, any returns clause is tautological so we
+            // can just skip appending to the postconditions.
+        }
+    }
+
     let local =
         LocalCtxt { span: function.span.clone(), typ_params: (*functionx.typ_params).clone() };
 
@@ -1014,6 +1084,7 @@ fn simplify_function(
     );
     functionx.ret =
         functionx.ret.new_x(crate::ast::ParamX { name: ret_name, ..functionx.ret.x.clone() });
+
     Ok(Spanned::new(function.span.clone(), functionx))
 }
 
@@ -1099,14 +1170,14 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     } = &**krate;
     let mut state = State::new();
 
-    // Pre-emptively add this because unit values might be added later.
+    // Always add this because unit values might be added later, after ast_simplify.
     state.tuple_type_name(0);
 
     let mut datatypes = vec_map_result(&datatypes, |d| simplify_datatype(&mut state, d))?;
     ctx.datatypes = Arc::new(
         datatypes
             .iter()
-            .map(|d| (d.x.path.clone(), (d.x.typ_params.clone(), d.x.variants.clone())))
+            .map(|d| (d.x.name.expect_path(), (d.x.typ_params.clone(), d.x.variants.clone())))
             .collect(),
     );
     let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
@@ -1124,9 +1195,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
 
     // Add a generic datatype to represent each tuple arity
     // Iterate in sorted order to get consistent output
-    let mut tuples: Vec<_> = state.tuple_typs.into_iter().collect();
-    tuples.sort_by_key(|kv| kv.0);
-    for (arity, path) in tuples {
+    let mut tuples: Vec<usize> = state.tuple_typs.into_iter().collect();
+    tuples.sort();
+    for arity in tuples {
         let visibility = Visibility { restricted_to: None };
         let transparency = DatatypeTransparency::WhenVisible(visibility.clone());
         let acc = crate::ast::AcceptRecursiveType::RejectInGround;
@@ -1145,7 +1216,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         };
         let variants = Arc::new(vec![variant]);
         let datatypex = DatatypeX {
-            path,
+            name: Dt::Tuple(arity),
             proxy: None,
             visibility,
             owning_module: None,
@@ -1155,6 +1226,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             variants,
             mode: Mode::Exec,
             ext_equal: arity > 0,
+            user_defined_invariant_fn: None,
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }
@@ -1196,7 +1268,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let variants = Arc::new(vec![]);
 
         let datatypex = DatatypeX {
-            path,
+            name: Dt::Path(path),
             proxy: None,
             visibility,
             owning_module: None,
@@ -1206,6 +1278,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             variants,
             mode: Mode::Exec,
             ext_equal: false,
+            user_defined_invariant_fn: None,
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }
@@ -1234,6 +1307,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.rlimit,
         ctx.interpreter_log.clone(),
         ctx.func_call_graph_log.clone(),
+        ctx.solver.clone(),
         true,
     )?;
     Ok(krate)

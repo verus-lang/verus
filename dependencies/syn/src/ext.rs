@@ -1,10 +1,9 @@
 //! Extension traits to provide parsing methods on foreign types.
-//!
-//! *This module is available only if Syn is built with the `"parsing"` feature.*
 
 use crate::buffer::Cursor;
+use crate::error::Result;
+use crate::parse::ParseStream;
 use crate::parse::Peek;
-use crate::parse::{ParseStream, Result};
 use crate::sealed::lookahead;
 use crate::token::CustomToken;
 use proc_macro2::Ident;
@@ -13,8 +12,6 @@ use proc_macro2::Ident;
 ///
 /// This trait is sealed and cannot be implemented for types outside of Syn. It
 /// is implemented only for `proc_macro2::Ident`.
-///
-/// *This trait is available only if Syn is built with the `"parsing"` feature.*
 pub trait IdentExt: Sized + private::Sealed {
     /// Parses any identifier including keywords.
     ///
@@ -96,8 +93,8 @@ impl IdentExt for Ident {
 
     fn unraw(&self) -> Ident {
         let string = self.to_string();
-        if string.starts_with("r#") {
-            Ident::new(&string[2..], self.span())
+        if let Some(string) = string.strip_prefix("r#") {
+            Ident::new(string, self.span())
         } else {
             self.clone()
         }

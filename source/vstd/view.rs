@@ -97,6 +97,43 @@ impl<A: DeepView> DeepView for alloc::sync::Arc<A> {
     }
 }
 
+// Note: the view for Vec is declared here, not in std_specs/vec.rs,
+// because "pub mod std_specs" is marked #[cfg(verus_keep_ghost)]
+// and we want to keep the View impl regardless of verus_keep_ghost.
+#[cfg(all(feature = "alloc", any(verus_keep_ghost, feature = "allocator")))]
+impl<T, A: core::alloc::Allocator> View for alloc::vec::Vec<T, A> {
+    type V = Seq<T>;
+
+    spec fn view(&self) -> Seq<T>;
+}
+
+#[cfg(all(feature = "alloc", any(verus_keep_ghost, feature = "allocator")))]
+impl<T: DeepView, A: core::alloc::Allocator> DeepView for alloc::vec::Vec<T, A> {
+    type V = Seq<T::V>;
+
+    open spec fn deep_view(&self) -> Seq<T::V> {
+        let v = self.view();
+        Seq::new(v.len(), |i: int| v[i].deep_view())
+    }
+}
+
+#[cfg(all(feature = "alloc", not(verus_keep_ghost), not(feature = "allocator")))]
+impl<T> View for alloc::vec::Vec<T> {
+    type V = Seq<T>;
+
+    spec fn view(&self) -> Seq<T>;
+}
+
+#[cfg(all(feature = "alloc", not(verus_keep_ghost), not(feature = "allocator")))]
+impl<T: DeepView> DeepView for alloc::vec::Vec<T> {
+    type V = Seq<T::V>;
+
+    open spec fn deep_view(&self) -> Seq<T::V> {
+        let v = self.view();
+        Seq::new(v.len(), |i: int| v[i].deep_view())
+    }
+}
+
 macro_rules! declare_identity_view {
     ($t:ty) => {
         #[cfg_attr(verus_keep_ghost, verifier::verify)]
@@ -154,6 +191,8 @@ declare_identity_view!(i64);
 declare_identity_view!(i128);
 
 declare_identity_view!(isize);
+
+declare_identity_view!(char);
 
 macro_rules! declare_tuple_view {
     ([$($n:tt)*], [$($a:ident)*]) => {

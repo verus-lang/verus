@@ -1,10 +1,10 @@
 [package]
-name = "example"
+name = "lazy-static-example"
 version = "0.0.0"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
-edition = "2018"
+edition = "2021"
 publish = false
 
 [dependencies]
 lazy_static = { path = "../lazy-static" }
-regex = "0.2"
+regex = "1"

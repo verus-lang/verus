@@ -25,7 +25,7 @@ use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
     AngleBracketedGenericArguments, Attribute, Block, Expr, ExprBlock, FnArg, FnArgKind, FnMode,
-    GenericArgument, GenericParam, Generics, Ident, ImplItemMethod, Meta, MetaList, ModeProof,
+    GenericArgument, GenericParam, Generics, Ident, ImplItemFn, Meta, MetaList, ModeProof,
     ModeSpec, Open, Pat, Path, PathArguments, PathSegment, Publish, Signature, Stmt, Type,
     TypePath,
 };
@@ -54,10 +54,23 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
 
     let sm_name = &bundle.sm.name;
 
+    let mut use_traits = TokenStream::new();
+    if concurrent {
+        use_traits = quote_vstd! { vstd =>
+            use #vstd::tokens::ValueToken;
+            use #vstd::tokens::KeyValueToken;
+            use #vstd::tokens::CountToken;
+            use #vstd::tokens::MonotonicCountToken;
+            use #vstd::tokens::ElementToken;
+            use #vstd::tokens::SimpleToken;
+        };
+    }
+
     let final_code = quote! {
         #[allow(unused_parens)]
         pub mod #sm_name {
             use super::*;
+            #use_traits
 
             #root_stream
 
@@ -113,7 +126,7 @@ fn name_with_type_args_turbofish_path(name: &Ident, sm: &SM) -> Path {
             if gen.params.len() > 0 {
                 let args = get_generic_args(&gen.params);
                 PathArguments::AngleBracketed(AngleBracketedGenericArguments {
-                    colon2_token: Some(token::Colon2 { spans: [span, span] }),
+                    colon2_token: Some(token::PathSep { spans: [span, span] }),
                     lt_token: gen.lt_token.expect("expected lt token"),
                     args,
                     gt_token: gen.gt_token.expect("expected gt token"),
@@ -124,7 +137,7 @@ fn name_with_type_args_turbofish_path(name: &Ident, sm: &SM) -> Path {
         }
     };
 
-    let mut segments = Punctuated::<PathSegment, token::Colon2>::new();
+    let mut segments = Punctuated::<PathSegment, token::PathSep>::new();
     segments.push(PathSegment { ident: name.clone(), arguments });
     Path { leading_colon: None, segments }
 }
@@ -167,6 +180,22 @@ fn generic_components_for_fn(generics: &Option<Generics>) -> (TokenStream, Token
     }
 }
 
+pub fn generics_for_decl(generics: &Option<Generics>) -> (TokenStream, TokenStream) {
+    match generics {
+        None => (TokenStream::new(), TokenStream::new()),
+        Some(gen) => {
+            if gen.params.len() > 0 {
+                let params = &gen.params;
+                let where_clause = &gen.where_clause;
+                (quote! { <#params> }, quote! { #where_clause })
+            } else {
+                let where_clause = &gen.where_clause;
+                (TokenStream::new(), quote! { #where_clause })
+            }
+        }
+    }
+}
+
 pub fn impl_decl_stream(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
     match generics {
         None => {
@@ -185,11 +214,33 @@ pub fn impl_decl_stream(self_ty: &Type, generics: &Option<Generics>) -> TokenStr
     }
 }
 
+pub fn impl_decl_stream_for(
+    self_ty: &Type,
+    generics: &Option<Generics>,
+    for_trait: TokenStream,
+) -> TokenStream {
+    match generics {
+        None => {
+            quote! { #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))] impl #for_trait for #self_ty }
+        }
+        Some(gen) => {
+            if gen.params.len() > 0 {
+                let params = &gen.params;
+                let where_clause = &gen.where_clause;
+                quote! { #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))] impl<#params> #for_trait for #self_ty #where_clause }
+            } else {
+                let where_clause = &gen.where_clause;
+                quote! { #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))] impl #for_trait for #self_ty #where_clause }
+            }
+        }
+    }
+}
+
 // We delete the special state machine attributes, since Rust/Verus won't recognize them.
 
 pub fn should_delete_attr(attr: &Attribute) -> bool {
-    match attr.parse_meta() {
-        Ok(Meta::Path(path)) | Ok(Meta::List(MetaList { path, .. })) => {
+    match &attr.meta {
+        Meta::Path(path) | Meta::List(MetaList { path, .. }) => {
             path.is_ident("invariant")
                 || path.is_ident("inductive")
                 || path.is_ident("safety")
@@ -250,6 +301,7 @@ pub fn output_primary_stuff(
     let attrs = &bundle.sm.attrs;
     let code: TokenStream = quote_spanned! { sm.fields_named_ast.span() =>
         #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
+        #[cfg_attr(verus_keep_ghost, verifier::ext_equal)]
         #(#attrs)*
         pub struct State #gen {
             #(#fields),*
@@ -375,12 +427,12 @@ pub fn output_primary_stuff(
                 Some(b) => quote! { #b },
                 None => TokenStream::new(),
             };
-            impl_stream.extend(quote! {
+            impl_stream.extend(quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::proof]
                 pub fn #name(#params) {
-                    builtin::assume_(pre.invariant());
+                    #vstd::prelude::assume_(pre.invariant());
                     ::builtin_macros::verus_proof_expr!({
                         #b
                     })
@@ -460,16 +512,16 @@ fn output_take_step_fns(
                 crate::concurrency_tokens::get_extra_deps(bundle, trans, safety_condition_lemmas);
 
             //let step_args = just_args(&trans.params);
-            stream.extend(quote! {
+            stream.extend(quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::external_body] /* vattr */
                 #[verifier::proof]
                 pub fn #tr_name#gen1(#params) -> #super_self_ty #gen2 {
-                    ::builtin::requires(
+                    #vstd::prelude::requires(
                         super::State::#tr_name_enabled(#args) && pre.invariant()
                     );
-                    ::builtin::ensures(|post: #super_self_ty|
+                    #vstd::prelude::ensures(|post: #super_self_ty|
                         super::State::#tr_name_strong(#args2) && post.invariant()
                     );
                     #extra_deps
@@ -500,16 +552,16 @@ fn output_take_step_fns(
             let extra_deps =
                 crate::concurrency_tokens::get_extra_deps(bundle, trans, safety_condition_lemmas);
 
-            stream.extend(quote! {
+            stream.extend(quote_vstd! { vstd =>
                 #[cfg(verus_keep_ghost_body)]
                 #[verus::internal(verus_macro)]
                 #[verifier::external_body] /* vattr */
                 #[verifier::proof]
                 pub fn #tr_name#gen1(#params) -> #super_self_ty #gen2 {
-                    ::builtin::requires(
+                    #vstd::prelude::requires(
                         #super_self_ty_turbo::#tr_name_enabled(#args)
                     );
-                    ::builtin::ensures(|post: #super_self_ty|
+                    #vstd::prelude::ensures(|post: #super_self_ty|
                         super::State::#tr_name(#args2) && post.invariant()
                     );
                     #extra_deps
@@ -609,7 +661,7 @@ fn output_step_datatype(
         .collect();
 
     if is_init {
-        impl_stream.extend(quote! {
+        impl_stream.extend(quote_vstd! { vstd =>
             #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
             #[verus::internal(open)] /* vattr */
@@ -629,7 +681,7 @@ fn output_step_datatype(
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn init(post: #self_ty, #label_param) -> ::core::primitive::bool {
-                ::builtin::exists(|step: #step_ty| Self::init_by(post, #label_arg step))
+                #vstd::prelude::exists(|step: #step_ty| Self::init_by(post, #label_arg step))
             }
         });
     } else {
@@ -653,7 +705,7 @@ fn output_step_datatype(
             })
             .collect();
 
-        impl_stream.extend(quote!{
+        impl_stream.extend(quote_vstd!{ vstd =>
             #[cfg(verus_keep_ghost_body)]
             #[verifier::opaque] /* vattr */
             #[verus::internal(open)] /* vattr */
@@ -672,7 +724,7 @@ fn output_step_datatype(
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
-                ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
+                #vstd::prelude::exists(|step: #step_ty| Self::next_by(pre, post, #label_arg step))
             }
 
             #[cfg(verus_keep_ghost_body)]
@@ -693,7 +745,7 @@ fn output_step_datatype(
             #[verus::internal(verus_macro)]
             #[verifier::spec]
             pub fn next_strong(pre: #self_ty, post: #self_ty, #label_param) -> ::core::primitive::bool {
-                ::builtin::exists(|step: #step_ty| Self::next_strong_by(pre, post, #label_arg step))
+                #vstd::prelude::exists(|step: #step_ty| Self::next_strong_by(pre, post, #label_arg step))
             }
         });
     }
@@ -717,19 +769,14 @@ fn output_step_datatype(
                 let args = post_args(&trans.params);
 
                 //let step_args = just_args(&trans.params);
-                show_stream.extend(quote! {
+                show_stream.extend(quote_vstd! { vstd =>
                     #[cfg(verus_keep_ghost_body)]
                     #[verus::internal(verus_macro)]
                     #[verifier::external_body] /* vattr */
                     #[verifier::proof]
                     pub fn #tr_name#gen1(#params) #gen2 {
-                        ::builtin::requires(super::State::#tr_name(#args));
-                        ::builtin::ensures(super::State::init(post #label_arg));
-
-                        //::builtin::reveal(super::State::init);
-                        //::builtin::reveal(super::State::init_by);
-                        //builtin::assert_(super::State::init_by(post,
-                        //    super::Init::#tr_name(#step_args)));
+                        #vstd::prelude::requires(super::State::#tr_name(#args));
+                        #vstd::prelude::ensures(super::State::init(post #label_arg));
                     }
 
                     // #[cfg(verus_macro_erase_ghost)]
@@ -739,19 +786,14 @@ fn output_step_datatype(
                 let params = pre_post_assoc_params(&super_self_ty, &trans.params);
                 let args = pre_post_args(&trans.params);
                 //let step_args = just_args(&trans.params);
-                show_stream.extend(quote! {
+                show_stream.extend(quote_vstd! { vstd =>
                     #[cfg(verus_keep_ghost_body)]
                     #[verus::internal(verus_macro)]
                     #[verifier::external_body] /* vattr */
                     #[verifier::proof]
                     pub fn #tr_name#gen1(#params) #gen2 {
-                        ::builtin::requires(super::State::#tr_name(#args));
-                        ::builtin::ensures(super::State::next(pre, post #label_arg));
-
-                        //::builtin::reveal(super::State::next);
-                        //::builtin::reveal(super::State::next_by);
-                        //builtin::assert_(super::State::next_by(pre, post,
-                        //    super::Step::#tr_name(#step_args)));
+                        #vstd::prelude::requires(super::State::#tr_name(#args));
+                        #vstd::prelude::ensures(super::State::next(pre, post #label_arg));
                     }
 
                     // #[cfg(verus_macro_erase_ghost)]
@@ -1008,18 +1050,18 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
             Type::Verbatim(quote_spanned! { span => ::core::option::Option<#ty> })
         }
         ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
-            Type::Verbatim(quote_spanned! { span => ::vstd::set::Set<#ty> })
+            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::set::Set<#ty> })
         }
         ShardableType::Map(key, val)
         | ShardableType::PersistentMap(key, val)
         | ShardableType::StorageMap(key, val) => {
-            Type::Verbatim(quote_spanned! { span => ::vstd::map::Map<#key, #val> })
+            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::map::Map<#key, #val> })
         }
         ShardableType::Multiset(ty) => {
-            Type::Verbatim(quote_spanned! { span => ::vstd::multiset::Multiset<#ty> })
+            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::multiset::Multiset<#ty> })
         }
         ShardableType::Count | ShardableType::PersistentCount => {
-            Type::Verbatim(quote_spanned! { span => ::builtin::nat })
+            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::prelude::nat })
         }
         ShardableType::Bool | ShardableType::PersistentBool => {
             Type::Verbatim(quote_spanned! { span => ::core::primitive::bool })
@@ -1032,7 +1074,7 @@ fn output_other_fns(
     impl_stream: &mut TokenStream,
     invariants: &Vec<Invariant>,
     lemmas: &Vec<Lemma>,
-    normal_fns: &Vec<ImplItemMethod>,
+    normal_fns: &Vec<ImplItemFn>,
 ) {
     let inv_names = invariants.iter().map(|i| &i.func.sig.ident);
     let conj = if inv_names.len() == 0 {
@@ -1065,15 +1107,15 @@ fn output_other_fns(
         let error_msg = format!("could not show invariant `{:}` on the `post` state", inv_name);
         let lemma_msg_ident = Ident::new(&format!("lemma_msg_{:}", inv_name), inv_ident.span());
         let self_ty = get_self_ty(&bundle.sm);
-        impl_stream.extend(quote! {
+        impl_stream.extend(quote_vstd! { vstd =>
             #[cfg(verus_keep_ghost_body)]
             #[verifier::custom_req_err(#error_msg)] /* vattr */
             #[verifier::external_body] /* vattr */
             #[verus::internal(verus_macro)]
             #[verifier::proof]
             fn #lemma_msg_ident(s: #self_ty) {
-                ::builtin::requires(s.#inv_ident());
-                ::builtin::ensures(s.#inv_ident());
+                #vstd::prelude::requires(s.#inv_ident());
+                #vstd::prelude::ensures(s.#inv_ident());
             }
         });
     }
@@ -1122,7 +1164,7 @@ fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
 /// For 'readonly' transitions, there is no need to prove inductiveness.
 /// We should have already ruled out the existence of such lemmas.
 
-fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
+fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemFn) {
     let trans = get_transition(&bundle.sm.transitions, &l.purpose.transition.to_string())
         .expect("transition");
 
@@ -1142,38 +1184,37 @@ fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
     };
 
     let mut stmts = vec![
-        Stmt::Semi(
-            Expr::Verbatim(quote! {
-                ::builtin::requires(
+        Stmt::Expr(
+            Expr::Verbatim(quote_vstd! { vstd =>
+                #vstd::prelude::requires(
                     #precondition
                 )
             }),
-            token::Semi { spans: [l.func.span()] },
+            Some(token::Semi { spans: [l.func.span()] }),
         ),
-        Stmt::Semi(
-            Expr::Verbatim(quote! {
-                ::builtin::ensures(
+        Stmt::Expr(
+            Expr::Verbatim(quote_vstd! { vstd =>
+                #vstd::prelude::ensures(
                     post.invariant()
                 )
             }),
-            token::Semi { spans: [l.func.span()] },
+            Some(token::Semi { spans: [l.func.span()] }),
         ),
-        Stmt::Expr(Expr::Block(ExprBlock {
-            attrs: vec![],
-            label: None,
-            block: func.block.clone(),
-        })),
+        Stmt::Expr(
+            Expr::Block(ExprBlock { attrs: vec![], label: None, block: func.block.clone() }),
+            None,
+        ),
     ];
     for inv in &bundle.extras.invariants {
         let inv_ident = &inv.func.sig.ident;
         let inv_name = inv_ident.to_string();
         let lemma_msg_ident = Ident::new(&format!("lemma_msg_{:}", inv_name), inv_ident.span());
         let span = l.func.span();
-        stmts.push(Stmt::Semi(
+        stmts.push(Stmt::Expr(
             Expr::Verbatim(quote_spanned! { span =>
                 Self::#lemma_msg_ident(post)
             }),
-            token::Semi { spans: [l.func.span()] },
+            Some(token::Semi { spans: [l.func.span()] }),
         ));
     }
 

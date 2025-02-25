@@ -6,7 +6,6 @@ use vstd::map::*;
 use vstd::modes::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
-use vstd::ptr::*;
 use vstd::seq::*;
 use vstd::{pervasive::*, prelude::*, *};
 
@@ -158,9 +157,9 @@ fn compute_eq<T>(a: &T, b: &T) -> (res: bool)
 
 impl<T> Interner<T> {
     spec fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
-        &&& self.inst@ === inst
-        &&& self.auth@@.instance === inst
-        &&& self.auth@@.value === self.store@
+        &&& self.inst@ == inst
+        &&& self.auth@.instance_id() == inst.id()
+        &&& self.auth@.value() === self.store@
     }
 
     fn new() -> (x: (Self, Tracked<InternSystem::Instance<T>>))
@@ -230,13 +229,13 @@ impl<T> Interner<T> {
 
 impl<T> Interned<T> {
     spec fn wf(&self, inst: InternSystem::Instance<T>) -> bool {
-        &&& self.frag@@.instance === inst
+        &&& self.frag@.instance_id() == inst.id()
         &&& inst === self.inst@
-        &&& self.id as int == self.frag@@.key
+        &&& self.id as int == self.frag@.key()
     }
 
     spec fn view(&self) -> T {
-        self.frag@@.value
+        self.frag@.value()
     }
 
     fn clone(&self, Ghost(inst): Ghost<InternSystem::Instance<T>>) -> (s: Self)
@@ -260,10 +259,10 @@ impl<T> Interned<T> {
     {
         proof {
             self.inst.borrow().compute_equality(
-                self.frag@@.key,
-                self.frag@@.value,
-                other.frag@@.key,
-                other.frag@@.value,
+                self.frag@.key(),
+                self.frag@.value(),
+                other.frag@.key(),
+                other.frag@.value(),
                 self.frag.borrow(),
                 other.frag.borrow(),
             );

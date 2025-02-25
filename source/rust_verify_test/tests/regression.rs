@@ -249,7 +249,7 @@ test_verify_one_file! {
 
             verus!{
                 mod X {
-                    pub open spec fn foo();
+                    pub spec fn foo();
                 }
 
                 proof fn some_proof_fn() {
@@ -278,7 +278,7 @@ test_verify_one_file! {
             let lock = opt_lock.get_SomeX_0();   // This line triggers panic
             true
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function with mode spec")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::OptionX::get_SomeX_0` with mode spec")
 }
 
 test_verify_one_file! {
@@ -535,7 +535,7 @@ test_verify_one_file! {
         pub struct Y {
             y: int
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected one of")
+    } => Err(err) => assert_vir_error_msg(err, "unexpected token, expected `]`")
 }
 
 test_verify_one_file! {
@@ -552,7 +552,7 @@ test_verify_one_file! {
         #[verifier(external),verifier(external_body)]
         proof fn bar() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected `]`, found `,`")
+    } => Err(err) => assert_vir_error_msg(err, "unexpected token, expected `]`")
 }
 
 test_verify_one_file! {
@@ -638,7 +638,7 @@ test_verify_one_file! {
         proof fn test(mymap: Map<nat, nat>)
             requires !mymap.dom().finite() {
 
-            let m = Multiset::new(mymap);
+            let m = Multiset::from_map(mymap);
             assert(m.dom().finite());
 
             assert(!m.dom().finite()); // FAILS
@@ -653,7 +653,7 @@ test_verify_one_file! {
         proof fn test(mymap: Map<nat, nat>)
             requires !mymap.dom().finite() {
 
-            let m = Multiset::new(mymap);
+            let m = Multiset::from_map(mymap);
             assert(m.dom().finite());
 
             assert(m.dom() =~= mymap.dom()); // FAILS
@@ -669,8 +669,8 @@ test_verify_one_file! {
         use vstd::seq::*;
         proof fn test(s2: Seq<char>, s1: Seq<char>)
             requires
-                (s1 + new_strlit("-ab")@ == s2 + new_strlit("-cde")@) ||
-                (s1 + new_strlit("-cde")@ == s2 + new_strlit("-cde")@),
+                (s1 + ("-ab")@ == s2 + ("-cde")@) ||
+                (s1 + ("-cde")@ == s2 + ("-cde")@),
         {
             assert(
                 (s1.len() + 3 == s2.len() + 4) ||
@@ -678,28 +678,28 @@ test_verify_one_file! {
             ) by {
                 reveal_strlit("-cde");
                 reveal_strlit("-ab");
-                assert((s1 + new_strlit("-ab")@).len() == s1.len() + new_strlit("-ab")@.len() == s1.len() + 3);
-                assert((s1 + new_strlit("-cde")@).len() == s1.len() + new_strlit("-cde")@.len() == s1.len() + 4);
-                assert((s2 + new_strlit("-cde")@).len() == s2.len() + new_strlit("-cde")@.len() == s2.len() + 4);
+                assert((s1 + ("-ab")@).len() == s1.len() + ("-ab")@.len() == s1.len() + 3);
+                assert((s1 + ("-cde")@).len() == s1.len() + ("-cde")@.len() == s1.len() + 4);
+                assert((s2 + ("-cde")@).len() == s2.len() + ("-cde")@.len() == s2.len() + 4);
             };
 
-            assert(s1 + new_strlit("-ab")@ != s2 + new_strlit("-cde")@) by {
-                let str1 = s1 + new_strlit("-ab")@;
-                let str2 = s2 + new_strlit("-cde")@;
+            assert(s1 + ("-ab")@ != s2 + ("-cde")@) by {
+                let str1 = s1 + ("-ab")@;
+                let str2 = s2 + ("-cde")@;
                 assert(str1.len() == s1.len() + 3) by {
                     reveal_strlit("-ab");
-                    assert(str1.len() == (s1 + new_strlit("-ab")@).len() == s1.len() + new_strlit("-ab")@.len() == s1.len() + 3);
+                    assert(str1.len() == (s1 + ("-ab")@).len() == s1.len() + ("-ab")@.len() == s1.len() + 3);
                 };
                 assert(str2.len() == s2.len() + 4) by {
                     reveal_strlit("-cde");
-                    assert(str2.len() == (s2 + new_strlit("-cde")@).len() == s2.len() + new_strlit("-cde")@.len() == s2.len() + 4);
+                    assert(str2.len() == (s2 + ("-cde")@).len() == s2.len() + ("-cde")@.len() == s2.len() + 4);
                 };
                 if str2.len() == str1.len() {
                     assert(s1.len() + 3 == s2.len() + 4);
-                    assert(s1 + new_strlit("-ab")@ == s2 + new_strlit("-cde")@); // from the requires
+                    assert(s1 + ("-ab")@ == s2 + ("-cde")@); // from the requires
 
-                    assert(str1 == s2 + new_strlit("-cde")@);
-                    assert(str1 == s1 + new_strlit("-ab")@);
+                    assert(str1 == s2 + ("-cde")@);
+                    assert(str1 == s1 + ("-ab")@);
 
                     reveal_strlit("-ab");
                     reveal_strlit("-cde");
@@ -844,7 +844,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] assert_forall_trigger_regression_824 verus_code! {
         use vstd::seq::Seq;
-        pub open spec fn f(x: u32) -> bool;
+        pub spec fn f(x: u32) -> bool;
 
         proof fn test(a: Seq<u32>)
             requires forall |i| #![trigger f(a[i])] f(a[i]),
@@ -884,6 +884,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] use_import_is_not_supported_in_traits_or_impls verus_code! {
         use state_machines_macros::state_machine;
+        use vstd::*;
 
         state_machine!{ MachineWithProof {
         fields {
@@ -1261,4 +1262,131 @@ test_verify_one_file! {
         fn rawr() {
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] arithmetic_trigger_choose_issue923 verus_code! {
+        proof fn foo(a: nat, b: nat) {
+            let i = choose|i: nat| a == #[trigger] (b * i);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] slice_of_tuple_issue1259 verus_code! {
+        use vstd::*;
+        pub fn run(val: &[(u32, u32)]) -> u64
+            requires
+                val.len() > 0,
+        {
+            val[0].0 as u64 + val[0].1 as u64
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] external_body_trait_item_issue1134 verus_code! {
+        trait Serializable : Sized {
+            fn serialized_len() -> (out: u64);
+
+            #[verifier::external_body]
+            fn as_bytes(&self)
+            {
+                let ptr = self as *const Self as *const u8;
+                let slice = unsafe {
+                    std::slice::from_raw_parts(ptr, Self::serialized_len() as usize)
+                };
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] hide_not_at_start_of_body_issue1365 verus_code! {
+        spec fn foo() -> bool { true }
+
+        proof fn bar() {
+            assume(true);
+            hide(foo);
+        }
+    } => Err(e) => assert_vir_error_msg(e, "This kind of statement should go at the beginning of the function body")
+}
+
+test_verify_one_file! {
+    #[test] reveal_trait_method_of_prim_ty verus_code! {
+        trait Foo {
+            spec fn do_something() -> nat;
+        }
+
+        impl Foo for u64 {
+            #[verifier::opaque]
+            spec fn do_something() -> nat { 0 }
+        }
+
+        fn test() {
+            reveal(u64::do_something);
+        }
+    } => Err(e) => assert_vir_error_msg(e, "use the universal function call syntax to disambiguate")
+}
+
+test_verify_one_file_with_options! {
+    #[test] const_in_array_types_regression_1334 ["vstd"] => verus_code! {
+        const TEST: usize = 4;
+
+        pub fn get_array() -> [u8; TEST] {
+            return [0; TEST]
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] fieldless_enum_regression_1339 verus_code! {
+        enum FieldLess {
+            A = 0,
+            B = 1,
+            C = 2,
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] verus_macro_in_impl_block_issue1461 ["--external-by-default"] => code! {
+        use vstd::prelude::*;
+
+        verus! {
+        pub struct MyStruct {}
+        }
+
+        impl MyStruct {
+            verus! {
+                proof fn unsound()
+                {
+                    assert(false); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file_with_options! {
+    #[test] verus_macro_in_impl_block_issue1461_traits ["--external-by-default"] => code! {
+        use vstd::prelude::*;
+
+        verus! {
+            pub struct MyStruct {}
+
+            trait Tr {
+                fn unsound();
+            }
+        }
+
+        impl Tr for MyStruct {
+            verus! {
+                fn unsound()
+                {
+                    assert(false);
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.")
 }

@@ -19,7 +19,7 @@ pub struct BreakToken {
     pub offset: isize,
     pub blank_space: usize,
     pub pre_break: Option<char>,
-    pub post_break: Option<char>,
+    pub post_break: &'static str,
     pub no_break: Option<char>,
     pub if_nonempty: bool,
     pub never_break: bool,
@@ -211,9 +211,18 @@ impl Printer {
         self.scan_end();
     }
 
+    pub fn ends_with(&self, ch: char) -> bool {
+        for i in self.buf.index_range().rev() {
+            if let Token::String(token) = &self.buf[i].token {
+                return token.ends_with(ch);
+            }
+        }
+        self.out.ends_with(ch)
+    }
+
     fn check_stream(&mut self) {
         while self.right_total - self.left_total > self.space {
-            if *self.scan_stack.front().unwrap() == self.buf.index_of_first() {
+            if *self.scan_stack.front().unwrap() == self.buf.index_range().start {
                 self.scan_stack.pop_front().unwrap();
                 self.buf.first_mut().size = SIZE_INFINITY;
             }
@@ -293,8 +302,7 @@ impl Printer {
                 self.out
                     .extend(token.offset.to_string().chars().map(|ch| match ch {
                         '0'..='9' => ['₀', '₁', '₂', '₃', '₄', '₅', '₆', '₇', '₈', '₉']
-                            [(ch as u8 - b'0') as usize]
-                            as char,
+                            [(ch as u8 - b'0') as usize],
                         '-' => '₋',
                         _ => unreachable!(),
                     }));
@@ -354,10 +362,10 @@ impl Printer {
             let indent = self.indent as isize + token.offset;
             self.pending_indentation = usize::try_from(indent).unwrap();
             self.space = cmp::max(MARGIN - indent, MIN_SPACE);
-            if let Some(post_break) = token.post_break {
+            if !token.post_break.is_empty() {
                 self.print_indent();
-                self.out.push(post_break);
-                self.space -= post_break.len_utf8() as isize;
+                self.out.push_str(token.post_break);
+                self.space -= token.post_break.len() as isize;
             }
         }
     }

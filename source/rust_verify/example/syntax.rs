@@ -1,4 +1,5 @@
 #![allow(unused_imports)]
+
 use builtin::*;
 use builtin_macros::*;
 use vstd::{modes::*, prelude::*, seq::*, *};
@@ -572,19 +573,15 @@ proof fn uses_arrow_matches_2(t: ThisOrThat)
     assert(t is That && t->v == 3);
 }
 
-#[verifier::external_body]
-struct Collection {}
-
-impl Collection {
-    pub spec fn spec_has(&self, v: nat) -> bool;
-}
-
-proof fn uses_spec_has(c: Collection)
+proof fn uses_spec_has(s: Set<int>, ms: vstd::multiset::Multiset<int>)
     requires
-        c has 3,
+        s has 3,
+        ms has 4,
 {
-    assert(c has 3);
-    assert(c has 3 == c has 3);
+    assert(s has 3);
+    assert(s has 3 == s has 3);
+    assert(ms has 4);
+    assert(ms has 4 == ms has 4);
 }
 
 } // verus!

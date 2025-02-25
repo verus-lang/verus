@@ -1,45 +1,93 @@
-# Integers: Nonlinear Arithmetic and Bit Manipulation
+# Integers: Nonlinear Arithmetic
 
-Some properties about integers are very difficult (or expensive) to reason about fully automatically.
-To tackle these properties, Verus offers several dedicated proof strategies.
+Generally speaking, Verus's default solver (Z3) is excellent at handling _linear_ integer arithmetic.
+Linear arithmetic captures equalities, inequalities, addition, subtraction, and multiplication and division by _constants_.
+This means it's great at handling expressions like `4 * x + 3 * y - z <= 20`. However, it is less capable
+when _nonlinear_ expressions are involved, like `x * y` (when neither `x` nor `y` can be substituted for a constant)
+or `x / y` (when `y` cannot be substituted for a constant).
 
-One such property is **nonlinear arithmetic**,
-which involves equations that multiply, divide, or take the remainder of integer variables 
-(e.g., `x * (y * z) == (x * y) * z`).  As discussed earlier in this guide, determining the truth of such formulas
-is undecideable in general, meaning that general-purpose SMT solvers like Z3 can only make a best-effort attempt
-to solve them.  These attempts rely on heuristics that can be unpredictable.  Hence, by default, Verus 
-disables Z3's nonlinear arithmetic heuristics.  When you need to prove such properties, Verus offers the two dedicated
-proof strategies described below.  First, the `integer_ring` feature can reliably prove a limited subset of nonlinear properties.  For properties
-outside that subset, Verus offers a way to invoke Z3's nonlinear heuristics in a way that will hopefully provide
-better reliability.
+That means many common axioms are inaccessible in the default mode, including but not limited to:
 
-## 1. Proving General Properties with Z3 
-To prove a nonlinear formula that cannot be solved using `integer_ring` feature,
-you can selectively turn on Z3's nonlinear reasoning heuristics.
-As described below, you can do this either inline in the midst of a larger
-function, or in a dedicated proof function.
+ * `x * y == y * x`
+ * `x * (y * z) == (x * y) * z`
+ * `x * (a + b) == x * a + x * b`
+ * `0 <= x <= y && 0 <= z <= w ==> x * z <= y * w`
+
+The reason for this limitation is that Verus _intentionally_ disables theories of nonlinear arithmetic in its default prover mode.
+
+However, it is possible to **opt-in** to nonlinear reasoning by invoking a specialized prover mode.
+There are two prover modes related to nonlinear arithmetic.
+
+ * `nonlinear_arith` - Enable Z3's nonlinear theory of arithmetic.
+ * `integer_ring` - Enable a decidable, equational theory of rings.
+
+The first is general purpose, but unfortunately somewhat unpredicable. (This is why it is turned off by default.)
+The second implements a decidable procedure for a specific class of problems.
+Invoking either prover mode requires an understanding of how to _minimize prover context_.
+We describe each of these modes in more detail below.
+
+If neither mode works for your proof, you can also manually invoke a lemma from
+Verus's [arithmetic library](https://verus-lang.github.io/verus/verusdoc/vstd/arithmetic/index.html),
+which supplies a large collection of verified facts about how nonlinear operations behave.
+For example, the inaccessible properties listed above can be proven by invoking
+
+* `lemma_mul_is_commutative`
+* `lemma_mul_is_associative`
+* `lemma_mul_is_distributive_add`
+* `lemma_mul_upper_bound`
+
+respectively.  If your proof involves using multiple such lemmas, you may want to use a
+[structured proof](calc.md) to make the proof more readable and easier to maintain.
+
+## 1. Invoking a specialized solver: `nonlinear_arith`
+
+A specialized solver is invoked with the `by` keyword, which can be applied to either
+an `assert` statement or a `proof fn`. 
+
+Here, we'll see how it works using the `nonlinear_arith` solver,
+which enables [Z3's theory of nonlinear arithmetic for integers](https://microsoft.github.io/z3guide/docs/theories/Arithmetic/#non-linear-arithmetic).
 
 ### Inline Proofs with `assert(...) by(nonlinear_arith)`
 To prove a nonlinear property in the midst of a larger function,
 you can write `assert(...) by(nonlinear_arith)`.  This creates
 a separate Z3 query just to prove the asserted property,
 and for this query, Z3 runs with its nonlinear heuristics enabled.
-The query does not include ambient facts (e.g., knowledge that stems
-from the surrounding function's `requires` clause
-or from preceding variable assignments) other than each variable's type invariants
-(e.g., the fact that a `nat` is non-negative).  To include additional
-context in the query, you can specify it in a `requires` clause for the `assert`,
-as shown below.
+The query does NOT include ambient facts (e.g., knowledge that stems
+from the surrounding function's `requires` clause or from preceding variable assignments)
+other than that which is:
+
+ * inferred from a variable's type (e.g., the allowed ranges of a `u64` or `nat`), or
+ * supplied explicitly.
+
+To supply context explicitly, you can use a `requires` clause, a shown below:
+
 ```rust
 {{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bound_checking}}
 ```
 
-### Modular Proofs with `proof fn ... by(nonlinear_arith)`
-You can also use `by(nonlinear_arith)` in a proof function's signature. By including `by(nonlinear_arith)`, the query for this function runs with nonlinear arithmetic reasoning enabled.
+Let's go through this example, one step at a time:
 
+ * Verus uses its _normal solver_ to prove that assert's "requires" clause, that `x <= 10 && y <= 10`. This follows from the precondition of the function.
+ * Verus uses Z3's _nonlinear solver_ to prove `x <= 10 && y <= 10 ==> x * y <= 100`. This would not be possible with the normal solver, but it is possible for the nonlinear solver.
+ * The fact `x * y <= 100` is now provided in the proof context for later asserts.
+ * Verus uses its _normal solver_ to prove that `x * y <= 1000`, which follows from
+    `x * y <= 100`.
 
+Furthermore, if you use a `by` clause, as in `assert ... by(nonlinear_arith) by { ... }`, then everything in the `by` clause will opt-in to the nonlinear solver.
 
-## 2. Proving Ring-based Properties with Singular
+### Reusable proofs with `proof fn ... by(nonlinear_arith)`
+
+You can also use `by(nonlinear_arith)` in a proof function's signature. By including `by(nonlinear_arith)`, the query for this function runs with nonlinear arithmetic reasoning enabled. For example:
+
+```rust
+{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bound_checking_func}}
+```
+
+When a specialized solver is invoked on a `proof fn` like this, it is used to prove the
+lemma. When the lemma is then invoked from elsewhere, Verus (as usual) proves that the
+precondition is met; for this it uses its normal solver.
+
+## 2. Proving Ring-based Properties: `integer_ring`
 
 While general nonlinear formulas cannot be solved consistently, certain
 sub-classes of nonlinear formulas can be.  For example, nonlinear formulas that
@@ -48,8 +96,10 @@ divisor `n`).  As a simple example, we might like to show that `a % n == b % n
 ==> (a * c) % n == (b * c) % n`.
 
 Verus offers a deterministic proof strategy to discharge such obligations.
-As shown below, to use this strategy, you must state the desired property
-as a proof function annotated with `by(integer_ring)`.
+The strategy is called `integer_ring`.
+
+[_Note_: at present, it is only possible to invoke `integer_ring` using the
+`proof fn ... by(integer_ring)` style; inline asserts are not supported.]
 
 
 Verus will then discharge the proof obligation using a dedicated algebra solver
@@ -60,25 +110,7 @@ for properties that are true for all
 specifically on properties of the integers may not be solved successfully.
 
 Using this proof technique requires a bit of additional configuration of your Verus installation.
-
-### Setup
-
-1. Install Singular
-    - To use Singular's standard library, you need more than just the Singular executable binary. 
-      Hence, when possible, we strongly recommend using your system's package manager.  Here are 
-      some suggested steps for different platforms.
-        - Mac: `brew install Singular` and set the `VERUS_SINGULAR_PATH` environment variable when running Verus. (e.g. `VERUS_SINGULAR_PATH=/usr/local/bin/Singular`). For more options, see Singular's [OS X installation guide](https://www.singular.uni-kl.de/index.php/singular-download/install-os-x.html). 
-
-        - Debian-based Linux: `apt-get install singular` and set the `VERUS_SINGULAR_PATH` environment variable when running Verus. (e.g. `VERUS_SINGULAR_PATH=/usr/bin/Singular`). For more options, see Singular's [Linux installation guide](https://www.singular.uni-kl.de/index.php/singular-download/install-linuxunix.html).
-
-        - Windows: See Singular's [Windows installation guide](https://www.singular.uni-kl.de/index.php/singular-download/install-windows.html).
-
-2. Compiling Verus with Singular Support
-    - The `integer_ring` functionality is conditionally compiled when the `singular` feature is set.
-      To add this feature, add the `--features singular` flag when you invoke `vargo build` to compile Verus.
-
-
-
+See [installing and setting up Singular](./install-singular.md).
 
 ### Details/Limitations
 - This can be used only with **int** parameters.
@@ -91,7 +123,7 @@ To understand what `integer_ring` can or cannot do, it is important to understan
 handles the modulus operator, `%`. Since `integer_ring` does not understand inequalities,
 it cannot perform reasoning that requires that `0 <= (a % b) < b`.
 As a result, Singular's results might be confusing if you think of `%` primarily
-as the programming language operator.
+as the operator you're familiar with from programming.
 
 For example, suppose you use `a % b == x` as a precondition.
 Encoded in Singular, this will become `a % b == x % b`, or in more traditional "mathematical"
@@ -109,6 +141,8 @@ Let's look at a specific example to understand the limitation.
 ```rust
 proof fn foo(a: int, b: int, c: int, d: int, x: int, y: int) by(integer_ring)
     requires
+        a == c,
+        b == d,
         a % b == x,
         c % d == y
     ensures
@@ -119,12 +153,15 @@ proof fn foo(a: int, b: int, c: int, d: int, x: int, y: int) by(integer_ring)
 
 This theorem statement appears to be trivial, and indeed, Verus would solve it easily
 using its default proof strategy. 
-However, `integer_ring` will not solve it. On failure, Verus prints information about
-the Singular query, which we can inspect to understand why (this is cleaned up a bit):
+However, `integer_ring` will not solve it.
+We can inspect the Singular query to understand why:
+(See [here](#examining-the-encoding) for how to log these.)
 
 ```
 ring ring_R=integer, (a, b, c, d, x, y, tmp_0, tmp_1, tmp_2), dp;
     ideal ideal_I =
+      a - c,
+      b - d,
       (a - (b * tmp_0)) - x,
       (c - (d * tmp_1)) - y;
     ideal ideal_G = groebner(ideal_I);
@@ -273,5 +310,5 @@ pub proof fn multiple_offsed_mod_gt_0(a: nat, b: nat, c: nat) by (nonlinear_arit
 More `integer_ring` examples can be found in [this folder](https://github.com/verus-lang/verus/tree/main/source/rust_verify/example/integer_ring), and this [testcase file](https://github.com/verus-lang/verus/blob/main/source/rust_verify_test/tests/integer_ring.rs).
 
 ### Examining the encoding
-Singular queries will be logged to the directory specified with `--log-dir` (which defaults to `.verus-log`) in a separate file with a `.singular` suffix. You can directly run Singular on this file. For example, `Singular .verus-log/root.singular --q`. 
-The output is `0` when Singular successsfully verifies the query.
+
+Singular queries will be logged to the directory specified with `--log-dir` (which defaults to `.verus-log`) in a the `.air` file for the module containing the file.

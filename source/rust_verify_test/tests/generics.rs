@@ -53,6 +53,56 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_decorated_datatype_encodings verus_code! {
+        // https://github.com/verus-lang/verus/issues/758
+        mod m {
+            pub(crate) struct Seq<A>(A);
+        }
+        use crate::m::*;
+        struct S;
+        spec fn f<B>(s: Seq<&S>) -> Seq<B>;
+        proof fn test(x: Seq<&S>) {
+            let b = f::<S>(x);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_generic_primitive_has_type verus_code! {
+        // https://github.com/verus-lang/verus/issues/1221
+        use vstd::prelude::*;
+
+        struct Node { }
+
+        struct Data<T: 'static> {
+            x: int,
+            y: &'static [T],
+        }
+
+        #[verifier::accept_recursive_types(T)]
+        #[verifier::external_body]
+        struct Obj<T> { t: T }
+
+        impl<T> Obj<T> {
+            spec fn view(&self) -> Data<T>;
+        }
+
+        fn test(x: &mut Obj<Node>)
+            ensures x@.y@.len() == old(x)@.y@.len(),
+        {
+        }
+
+        fn test2(x: Obj<Node>) {
+            let ghost j = x@.y;
+            let mut x2 = x;
+            test(&mut x2);
+            let ghost h = x2@.y;
+            assert(j@.len() == h@.len());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] const_generics_int_ranges verus_code! {
         proof fn test<const N : u8>() {
             assert (0 <= N);
@@ -74,9 +124,6 @@ test_verify_one_file! {
     #[test] const_generics_broadcast verus_code! {
         pub open spec fn stuff(t: int) -> bool { true }
 
-        // This incorrectly errors about missing triggers, but what we really want here is to
-        // make sure is that the assert fails.
-
         #[verifier::external_body]
         pub broadcast proof fn broadcaster<const X: u8>()
             ensures #[trigger] stuff(X as int) ==> 0 <= X < 255
@@ -85,7 +132,7 @@ test_verify_one_file! {
 
         fn moo(z: u16) {
             assert(stuff(z as int));
-            assert(z < 255);
+            assert(z < 255); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "trigger does not cover variable X")
+    } => Err(e) => assert_one_fails(e)
 }

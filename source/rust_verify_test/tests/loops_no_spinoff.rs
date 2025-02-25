@@ -1238,10 +1238,7 @@ test_verify_one_file! {
     #[test] for_loop_vec_custom_iterator verus_code! {
         use vstd::prelude::*;
 
-        #[verifier::external_body]
-        pub closed spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V> {
-            core::marker::PhantomData::default()
-        }
+        pub spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V>;
 
         pub struct VecIterCopy<'a, T: 'a> {
             pub vec: &'a Vec<T>,
@@ -1361,4 +1358,57 @@ test_verify_one_file! {
             b
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] loop_continue_no_break_spinoff verus_code! {
+        fn test() {
+            let mut i = 0;
+            #[verifier::loop_isolation(false)]
+            while i < 5
+                invariant i <= 5
+            {
+                continue;
+            }
+            assert(i == 5);
+        }
+
+        fn test_fail_beginning() {
+            let mut x = 0;
+            let mut i = 0;
+            #[verifier::loop_isolation(false)]
+            while i < 5
+                invariant x == 1 // FAILS
+            {
+                x = 1;
+                continue;
+            }
+        }
+
+        fn test_fail_at_continue() {
+            let mut x = 2;
+            let mut i = 0;
+            #[verifier::loop_isolation(false)]
+            while i < 5
+                invariant x == 2
+            {
+                x = 1;
+                continue; // FAILS
+            }
+        }
+
+        fn test_fail_at_end_after_continue(b: bool) {
+            let mut x = 2;
+            let mut i = 0;
+            #[verifier::loop_isolation(false)]
+            while i < 5
+                invariant x == 2 // FAILS
+            {
+                if b {
+                    continue;
+                }
+                x = 1;
+            }
+        }
+    } => Err(err) => assert_fails(err, 3)
 }

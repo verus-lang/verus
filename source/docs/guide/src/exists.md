@@ -80,5 +80,3 @@ In this example, the SMT solver can prove
 because the expression `less_than(3, 7)` matches the
 automatically chosen trigger `less_than(i, j)` when `i = 3` and `j = 7`,
 so that `i = 3, j = 7` serves as a witness.
-
-TODO: `(x, y)` should not require the type annotation `: (int, int)`

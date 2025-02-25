@@ -13,10 +13,10 @@
 use crate::ast::{AssocTypeImpl, AssocTypeImplX, Trait};
 use crate::context::Ctx;
 use crate::def::QID_ASSOC_TYPE_IMPL;
-use crate::func_to_air::func_bind_trig;
 use crate::sst_to_air::typ_to_ids;
+use crate::sst_to_air_func::func_bind_trig;
 use air::ast::{Command, CommandX, Commands, DeclX, Expr};
-use air::ast_util::{ident_apply, mk_bind_expr, mk_eq, str_typ};
+use air::ast_util::{ident_apply, mk_bind_expr, mk_eq, mk_unnamed_axiom, str_typ};
 use std::sync::Arc;
 
 pub fn assoc_type_decls_to_air(_ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
@@ -64,6 +64,9 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
         // Example:
         //   impl<A> T<u8, u16> for S<A> { type X = bool; }
         //   forall A. T/X(decoration, S<A>, u8, u16) == bool
+        let (trait_typ_args, holes) = crate::traits::hide_projections(trait_typ_args);
+        let (typ_params, eqs) = crate::sst_to_air_func::hide_projections_air(typ_params, holes);
+        let eqs = air::ast_util::mk_and(&eqs);
         let mut push_command = |decoration: bool, index: usize| {
             let projector = crate::def::projection(decoration, trait_path, name);
             let mut args: Vec<Expr> = Vec::new();
@@ -82,8 +85,9 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
                 &vec![projection],
                 false,
             );
-            let forall = mk_bind_expr(&bind, &eq);
-            commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Axiom(forall)))));
+            let imply = air::ast_util::mk_implies(&eqs, &eq);
+            let forall = mk_bind_expr(&bind, &imply);
+            commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));
         };
         if crate::context::DECORATE {
             push_command(true, 0);

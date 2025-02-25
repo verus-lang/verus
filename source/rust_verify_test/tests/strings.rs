@@ -9,7 +9,7 @@ test_verify_one_file! {
     use vstd::string::*;
 
     fn str_is_ascii_passes() {
-        let x = new_strlit("Hello World");
+        let x = ("Hello World");
         proof {
             reveal_strlit("Hello World");
         }
@@ -22,7 +22,7 @@ test_verify_one_file! {
     #[test] test_fails_is_ascii verus_code! {
         use vstd::string::*;
         fn str_is_ascii_fails() {
-            let x = new_strlit("à");
+            let x = ("à");
             proof {
                 reveal_strlit("à");
             }
@@ -35,7 +35,7 @@ test_verify_one_file! {
     #[test] test_pass_get_char verus_code! {
         use vstd::string::*;
         fn get_char() {
-            let x = new_strlit("hello world");
+            let x = ("hello world");
             proof {
                 reveal_strlit("hello world");
             }
@@ -50,7 +50,7 @@ test_verify_one_file! {
     #[test] test_fail_get_char verus_code! {
         use vstd::string::*;
         fn get_char_fails() {
-            let x = new_strlit("hello world");
+            let x = ("hello world");
             let val = x.get_char(0); // FAILS
             assert(val === 'h'); // FAILS
         }
@@ -62,7 +62,7 @@ test_verify_one_file! {
         use vstd::string::*;
 
         pub fn len_passes() {
-            let x = new_strlit("abcdef");
+            let x = ("abcdef");
             proof {
                 reveal_strlit("abcdef");
             }
@@ -76,7 +76,7 @@ test_verify_one_file! {
         use vstd::string::*;
 
         pub fn len_fails() {
-            let x = new_strlit("abcdef");
+            let x = ("abcdef");
             proof {
                 reveal_strlit("abcdef");
             }
@@ -88,23 +88,23 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_passes_substring verus_code! {
         use vstd::string::*;
-        fn test_substring_passes<'a>() -> (ret: StrSlice<'a>)
+        fn test_substring_passes<'a>() -> (ret: &'a str)
             ensures
-                ret@.subrange(0,5) =~= new_strlit("Hello")@
+                ret@.subrange(0,5) =~= ("Hello")@
         {
             proof {
                 reveal_strlit("Hello");
                 reveal_strlit("Hello World");
             }
-            new_strlit("Hello World")
+            ("Hello World")
 
         }
 
-        fn test_substring_passes2<'a>() -> (ret: StrSlice<'a>)
+        fn test_substring_passes2<'a>() -> (ret: &'a str)
             ensures
-                ret@.subrange(0,5) =~= new_strlit("Hello")@
+                ret@.subrange(0,5) =~= ("Hello")@
         {
-            let x = new_strlit("Hello World");
+            let x = ("Hello World");
 
             proof {
                 reveal_strlit("Hello");
@@ -119,15 +119,15 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_fails_substring verus_code! {
         use vstd::string::*;
-        fn test_substring_fails<'a>() -> (ret: StrSlice<'a>)
+        fn test_substring_fails<'a>() -> (ret: &'a str)
             ensures
-                ret@.subrange(0,5) =~= new_strlit("Hello")@ // FAILS
+                ret@.subrange(0,5) =~= ("Hello")@ // FAILS
         {
             proof {
                 reveal_strlit("Hello");
                 reveal_strlit("Gello World");
             }
-            new_strlit("Gello World")
+            ("Gello World")
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -137,13 +137,13 @@ test_verify_one_file! {
         use vstd::string::*;
 
         fn test_multi_passes() {
-            let a = new_strlit("a");
-            let a_clone = new_strlit("a");
-            let b = new_strlit("b");
-            let c = new_strlit("c");
-            let abc = new_strlit("abc");
-            let cba = new_strlit("cba");
-            let abc_clone = new_strlit("abc");
+            let a = ("a");
+            let a_clone = ("a");
+            let b = ("b");
+            let c = ("c");
+            let abc = ("abc");
+            let cba = ("cba");
+            let abc_clone = ("abc");
 
             proof {
                 reveal_strlit("a");
@@ -177,9 +177,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_fails_multi verus_code! {
         use vstd::string::*;
-        const x: StrSlice<'static> = new_strlit("Hello World");
-        const y: StrSlice<'static> = new_strlit("Gello World");
-        const z: StrSlice<'static> = new_strlit("Insert string here");
+        const x: &'static str = "Hello World";
+        const y: &'static str = "Gello World";
+        const z: &'static str = "Insert string here";
 
         fn test_multi_fails1() {
             assert(x@.len() === 11); // FAILS
@@ -193,13 +193,6 @@ test_verify_one_file! {
             assert(x === y); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
-}
-
-test_verify_one_file! {
-    #[test] test_new_strlit_invalid verus_code! {
-        use vstd::string::*;
-        const x: StrSlice<'static> = new_strlit(12);
-    } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {
@@ -228,11 +221,11 @@ test_verify_one_file! {
     #[test] test_string_1_pass verus_code! {
         use vstd::string::*;
         fn test() {
-            let a = String::from_str(new_strlit("A"));
+            let a = String::from_str(("A"));
             proof {
                 reveal_strlit("A");
             }
-            assert(a@ === new_strlit("A")@);
+            assert(a@ === ("A")@);
             assert(a.is_ascii());
         }
     } => Ok(())
@@ -242,11 +235,11 @@ test_verify_one_file! {
     #[test] test_string_1_fail verus_code! {
         use vstd::string::*;
         fn test() {
-            let a = String::from_str(new_strlit("A"));
+            let a = String::from_str(("A"));
             proof {
                 reveal_strlit("A");
             }
-            assert(a@ === new_strlit("B")@); // FAILS
+            assert(a@ === ("B")@); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -254,8 +247,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_strlit_neq verus_code! {
         use vstd::string::*;
-        const x: StrSlice<'static> = new_strlit("Hello World");
-        const y: StrSlice<'static> = new_strlit("Gello World");
+        const x: &'static str = "Hello World";
+        const y: &'static str = "Gello World";
         fn test() {
             assert(x !== y);
         }
@@ -265,8 +258,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_strlit_neq_soundness verus_code! {
         use vstd::string::*;
-        const x: StrSlice<'static> = new_strlit("Hello World");
-        const y: StrSlice<'static> = new_strlit("Gello World");
+        const x: &'static str = "Hello World";
+        const y: &'static str = "Gello World";
         fn test() {
             assert(x !== y);
             assert(false); // FAILS
@@ -315,7 +308,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("abcd");
             }
-            new_strlit("abcd").unicode_len()
+            ("abcd").unicode_len()
         }
     } => Ok(())
 }
@@ -324,7 +317,7 @@ test_verify_one_file! {
     #[test] test_get_unicode_passes verus_code! {
         use vstd::string::*;
         fn test_get_unicode_passes() {
-            let x = new_strlit("Hello");
+            let x = ("Hello");
             proof {
                 reveal_strlit("Hello");
             }
@@ -332,7 +325,7 @@ test_verify_one_file! {
             assert(x0 == 'H');
         }
         fn test_get_unicode_non_ascii_passes() {
-            let emoji_with_str = new_strlit("💩");
+            let emoji_with_str = ("💩");
             proof {
                 reveal_strlit("💩");
             }
@@ -340,7 +333,7 @@ test_verify_one_file! {
             assert(p == '💩');
         }
         fn test_get_unicode_non_ascii_passes1() {
-            let emoji_with_str = new_strlit("abcdef💩");
+            let emoji_with_str = ("abcdef💩");
             proof {
                 reveal_strlit("abcdef💩");
             }
@@ -359,14 +352,14 @@ test_verify_one_file! {
                 reveal_strlit("012");
                 reveal_strlit("34💩");
             }
-            let x = new_strlit("01234💩");
+            let x = ("01234💩");
             assert(x@.len() == 6);
 
             let x0 = x.substring_char(0,3);
-            assert(x0@ =~= new_strlit("012")@);
+            assert(x0@ =~= ("012")@);
 
             let x1 = x.substring_char(3,6);
-            assert(x1@ =~= new_strlit("34💩")@);
+            assert(x1@ =~= ("34💩")@);
 
         }
     } => Ok(())
@@ -376,7 +369,7 @@ test_verify_one_file! {
     #[test] test_unicode_mixed_chars verus_code! {
         use vstd::string::*;
         proof fn test() {
-            let a = new_strlit("è ❤️");
+            let a = ("è ❤️");
             reveal_strlit("è ❤️");
             assert(a@[0] === 'è');
         }
@@ -387,7 +380,7 @@ test_verify_one_file! {
     #[test] test_string_2_pass verus_code! {
         use vstd::string::*;
         fn test() {
-            let a = String::from_str(new_strlit("ABC"));
+            let a = String::from_str(("ABC"));
             proof {
                 reveal_strlit("ABC");
             }
@@ -395,7 +388,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("B");
             }
-            assert(b@ =~= new_strlit("B")@);
+            assert(b@ =~= ("B")@);
         }
     } => Ok(())
 }
@@ -404,7 +397,7 @@ test_verify_one_file! {
     #[test] test_string_2_fail verus_code! {
         use vstd::string::*;
         fn test() {
-            let a = String::from_str(new_strlit("ABC"));
+            let a = String::from_str(("ABC"));
             proof {
                 reveal_strlit("ABC");
             }
@@ -413,8 +406,8 @@ test_verify_one_file! {
                 reveal_strlit("B");
                 reveal_strlit("C");
             }
-            assert(b@ =~= new_strlit("C")@);
-            assert(b@ === new_strlit("B")@); // FAILS
+            assert(b@ =~= ("C")@);
+            assert(b@ === ("B")@); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -423,7 +416,7 @@ test_verify_one_file! {
     #[test] test_string_is_ascii_roundtrip verus_code! {
         use vstd::string::*;
         fn test() {
-            let a = new_strlit("ABC");
+            let a = ("ABC");
             let b = a.to_string();
             let c = b.as_str();
             proof {
@@ -444,7 +437,7 @@ test_verify_one_file! {
             proof {
                 reveal_strlit("Hello World");
             }
-            let x = new_strlit("Hello World");
+            let x = ("Hello World");
 
             let x0 = x.get_ascii(0);
             assert(x0 === 72);
@@ -460,7 +453,7 @@ test_verify_one_file! {
                 reveal_strlit("Hèllo World");
             }
 
-            let y = new_strlit("Hèllo World");
+            let y = ("Hèllo World");
             let y0 = y.get_ascii(0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
@@ -504,7 +497,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_strslice_get verus_code! {
         use vstd::string::*;
-        fn test_strslice_get_passes<'a>(x: StrSlice<'a>) -> (ret: u8)
+        fn test_strslice_get_passes<'a>(x: &'a str) -> (ret: u8)
             requires
                 x.is_ascii(),
                 x@.len() > 10
@@ -520,14 +513,14 @@ test_verify_one_file! {
         use vstd::view::*;
         use vstd::string::*;
         use vstd::prelude::*;
-        fn test_strslice_as_bytes<'a>(x: StrSlice<'a>) -> (ret: Vec<u8>)
+        fn test_strslice_as_bytes<'a>(x: &'a str) -> (ret: Vec<u8>)
             requires
                 x.is_ascii(),
                 x@.len() > 10
             ensures
                 ret@.len() > 10
         {
-            x.as_bytes()
+            x.as_bytes_vec()
         }
     } => Ok(())
 }
@@ -538,7 +531,7 @@ test_verify_one_file! {
         use vstd::string::*;
         use vstd::prelude::*;
 
-        fn test_strslice_as_bytes_fails<'a>(x: StrSlice<'a>) -> (ret: Vec<u8>)
+        fn test_strslice_as_bytes_fails<'a>(x: &'a str) -> (ret: Vec<u8>)
             requires
                 x@.len() > 10
             ensures
@@ -557,7 +550,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn foo() -> (ret: String)
-            ensures ret@ === new_strlit("hello world")@
+            ensures ret@ === ("hello world")@
         {
             proof {
                 reveal_strlit("hello world");
@@ -565,9 +558,9 @@ test_verify_one_file! {
                 reveal_strlit("world");
             }
 
-            let mut s = new_strlit("hello ").to_string();
-            s.append(new_strlit("world"));
-            assert(s@ =~= new_strlit("hello world")@);
+            let mut s = ("hello ").to_string();
+            s.append(("world"));
+            assert(s@ =~= ("hello world")@);
             s
         }
 
@@ -581,7 +574,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn foo() -> (ret: String)
-            ensures ret@ !== new_strlit("hello worlds")@
+            ensures ret@ !== ("hello worlds")@
         {
             proof {
                 reveal_strlit("hello worlds");
@@ -589,9 +582,9 @@ test_verify_one_file! {
                 reveal_strlit("world");
             }
 
-            let mut s = new_strlit("hello ").to_string();
-            s.append(new_strlit("world"));
-            assert(s@ !~= new_strlit("hello worlds")@);
+            let mut s = ("hello ").to_string();
+            s.append(("world"));
+            assert(s@ !~= ("hello worlds")@);
             s
         }
 
@@ -605,7 +598,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn foo() -> (ret: String)
-            ensures ret@ === new_strlit("hello world")@
+            ensures ret@ === ("hello world")@
         {
             proof {
                 reveal_strlit("hello world");
@@ -613,9 +606,9 @@ test_verify_one_file! {
                 reveal_strlit("world");
             }
 
-            let s1 = new_strlit("hello ").to_string();
-            let s = s1.concat(new_strlit("world"));
-            assert(s@ =~= new_strlit("hello world")@);
+            let s1 = ("hello ").to_string();
+            let s = s1.concat(("world"));
+            assert(s@ =~= ("hello world")@);
             s
         }
 
@@ -629,7 +622,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         fn foo() -> (ret: String)
-            ensures ret@ !== new_strlit("hello worlds")@
+            ensures ret@ !== ("hello worlds")@
         {
             proof {
                 reveal_strlit("hello worlds");
@@ -637,9 +630,9 @@ test_verify_one_file! {
                 reveal_strlit("world");
             }
 
-            let s1 = new_strlit("hello ").to_string();
-            let s = s1.concat(new_strlit("world"));
-            assert(s@ !~= new_strlit("hello worlds")@);
+            let s1 = ("hello ").to_string();
+            let s = s1.concat(("world"));
+            assert(s@ !~= ("hello worlds")@);
             s
         }
 
@@ -782,4 +775,24 @@ test_verify_one_file! {
             assert(x ==> c >= 0xDEEE);
         }
     } => Err(err) => assert_fails(err, 19)
+}
+
+test_verify_one_file! {
+    #[test] test_reveal_empty_string_issue1240 verus_code! {
+        use vstd::*;
+        use vstd::string::*;
+
+        pub fn test() {
+            proof { reveal_strlit(""); }
+            let mut res = String::from_str("");
+            assert(res@ =~= seq![]);
+        }
+
+        pub fn test2() {
+            proof { reveal_strlit(""); }
+            let mut res = String::from_str("");
+            assert(res@ =~= seq![]);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

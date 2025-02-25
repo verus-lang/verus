@@ -15,13 +15,13 @@ fn ty_to_stable_string_partial<'tcx>(
         TyKind::Int(t) => format!("{}", t.name_str()),
         TyKind::Uint(t) => format!("{}", t.name_str()),
         TyKind::Float(t) => format!("{}", t.name_str()),
-        TyKind::RawPtr(ref tm) => format!(
+        TyKind::RawPtr(ref ty, ref tm) => format!(
             "*{} {}",
-            match tm.mutbl {
+            match tm {
                 rustc_ast::Mutability::Mut => "mut",
                 rustc_ast::Mutability::Not => "const",
             },
-            ty_to_stable_string_partial(tcx, &tm.ty)?,
+            ty_to_stable_string_partial(tcx, ty)?,
         ),
         TyKind::Ref(_r, ty, mutbl) => format!(
             "&{} {}",
@@ -94,6 +94,7 @@ pub(crate) enum SpecItem {
     Requires,
     Recommends,
     Ensures,
+    Returns,
     InvariantExceptBreak,
     Invariant,
     Decreases,
@@ -104,6 +105,8 @@ pub(crate) enum SpecItem {
     OpensInvariantsAny,
     OpensInvariants,
     OpensInvariantsExcept,
+    NoUnwind,
+    NoUnwindWhen,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -129,6 +132,7 @@ pub(crate) enum ExprItem {
     GetVariantField,
     GetUnionField,
     IsVariant,
+    ArrayIndex,
     StrSliceLen,
     StrSliceGetChar,
     StrSliceIsAscii,
@@ -147,7 +151,6 @@ pub(crate) enum ExprItem {
 pub(crate) enum CompilableOprItem {
     Implies,
     // SmartPtrNew,
-    NewStrLit,
     GhostExec,
     GhostNew,
     TrackedNew,
@@ -276,17 +279,16 @@ pub(crate) enum InvariantItem {
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum VstdItem {
-    StrSlice,
     SeqFn(vir::interpreter::SeqFn),
     Invariant(InvariantItem),
     ExecNonstaticCall,
-    ArrayIndex,
     ArrayIndexGet,
     ArrayAsSlice,
     ArrayFillForCopyTypes,
     SliceIndexGet,
     CastPtrToThinPtr,
     CastArrayPtrToSlicePtr,
+    CastPtrToUsize,
     VecIndex,
 }
 
@@ -331,6 +333,7 @@ pub(crate) enum VerusItem {
     UnaryOp(UnaryOpItem),
     Chained(ChainedItem),
     Assert(AssertItem),
+    UseTypeInvariant,
     WithTriggers,
     OpenInvariantBlock(OpenInvariantBlockItem),
     Vstd(VstdItem, Option<Ident>),
@@ -350,6 +353,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::requires",                VerusItem::Spec(SpecItem::Requires)),
         ("verus::builtin::recommends",              VerusItem::Spec(SpecItem::Recommends)),
         ("verus::builtin::ensures",                 VerusItem::Spec(SpecItem::Ensures)),
+        ("verus::builtin::returns",                 VerusItem::Spec(SpecItem::Returns)),
         ("verus::builtin::invariant_except_break",  VerusItem::Spec(SpecItem::InvariantExceptBreak)),
         ("verus::builtin::invariant",               VerusItem::Spec(SpecItem::Invariant)),
         ("verus::builtin::decreases",               VerusItem::Spec(SpecItem::Decreases)),
@@ -360,6 +364,9 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::opens_invariants_any",    VerusItem::Spec(SpecItem::OpensInvariantsAny)),
         ("verus::builtin::opens_invariants",        VerusItem::Spec(SpecItem::OpensInvariants)),
         ("verus::builtin::opens_invariants_except", VerusItem::Spec(SpecItem::OpensInvariantsExcept)),
+
+        ("verus::builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),
+        ("verus::builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),
 
         ("verus::builtin::forall",                  VerusItem::Quant(QuantItem::Forall)),
         ("verus::builtin::exists",                  VerusItem::Quant(QuantItem::Exists)),
@@ -376,6 +383,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::get_variant_field",       VerusItem::Expr(ExprItem::GetVariantField)),
         ("verus::builtin::get_union_field",         VerusItem::Expr(ExprItem::GetUnionField)),
         ("verus::builtin::is_variant",              VerusItem::Expr(ExprItem::IsVariant)),
+        ("verus::builtin::array_index",             VerusItem::Expr(ExprItem::ArrayIndex)),
         ("verus::builtin::strslice_len",            VerusItem::Expr(ExprItem::StrSliceLen)),
         ("verus::builtin::strslice_get_char",       VerusItem::Expr(ExprItem::StrSliceGetChar)),
         ("verus::builtin::strslice_is_ascii",       VerusItem::Expr(ExprItem::StrSliceIsAscii)),
@@ -391,8 +399,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
 
         ("verus::builtin::imply",                   VerusItem::CompilableOpr(CompilableOprItem::Implies)),
         // TODO ("verus::builtin::smartptr_new",    VerusItem::CompilableOpr(CompilableOprItem::SmartPtrNew)),
-        // TODO: replace with builtin:
-        ("verus::vstd::string::new_strlit",    VerusItem::CompilableOpr(CompilableOprItem::NewStrLit)),
         ("verus::builtin::ghost_exec",              VerusItem::CompilableOpr(CompilableOprItem::GhostExec)),
         ("verus::builtin::Ghost::new",              VerusItem::CompilableOpr(CompilableOprItem::GhostNew)),
         ("verus::builtin::Tracked::new",            VerusItem::CompilableOpr(CompilableOprItem::TrackedNew)),
@@ -444,6 +450,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::assert_bitvector_by",     VerusItem::Assert(AssertItem::AssertBitvectorBy)),
         ("verus::builtin::assert_forall_by",        VerusItem::Assert(AssertItem::AssertForallBy)),
         ("verus::builtin::assert_bit_vector",       VerusItem::Assert(AssertItem::AssertBitVector)),
+        ("verus::builtin::use_type_invariant",      VerusItem::UseTypeInvariant),
 
         ("verus::builtin::with_triggers",           VerusItem::WithTriggers),
 
@@ -461,7 +468,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::open_local_invariant_begin",  VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenLocalInvariantBegin)),
         ("verus::vstd::invariant::open_invariant_end",          VerusItem::OpenInvariantBlock(OpenInvariantBlockItem::OpenInvariantEnd)),
 
-        ("verus::vstd::string::StrSlice",      VerusItem::Vstd(VstdItem::StrSlice, None)),
         ("verus::vstd::seq::Seq::empty",       VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Empty   ), Some(Arc::new("seq::Seq::empty"      .to_owned())))),
         ("verus::vstd::seq::Seq::new",         VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::New     ), Some(Arc::new("seq::Seq::new"        .to_owned())))),
         ("verus::vstd::seq::Seq::push",        VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Push    ), Some(Arc::new("seq::Seq::push"       .to_owned())))),
@@ -482,13 +488,13 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
-        ("verus::vstd::array::array_index", VerusItem::Vstd(VstdItem::ArrayIndex, Some(Arc::new("array::array_index".to_owned())))),
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),
         ("verus::vstd::array::array_as_slice", VerusItem::Vstd(VstdItem::ArrayAsSlice, Some(Arc::new("array::array_as_slice".to_owned())))),
         ("verus::vstd::array::array_fill_for_copy_types", VerusItem::Vstd(VstdItem::ArrayFillForCopyTypes, Some(Arc::new("array::array_fill_for_copy_types".to_owned())))),
         ("verus::vstd::slice::slice_index_get", VerusItem::Vstd(VstdItem::SliceIndexGet, Some(Arc::new("slice::slice_index_get".to_owned())))),
         ("verus::vstd::raw_ptr::cast_ptr_to_thin_ptr", VerusItem::Vstd(VstdItem::CastPtrToThinPtr, Some(Arc::new("raw_ptr::cast_ptr_to_thin_ptr".to_owned())))),
         ("verus::vstd::raw_ptr::cast_array_ptr_to_slice_ptr", VerusItem::Vstd(VstdItem::CastArrayPtrToSlicePtr, Some(Arc::new("raw_ptr::cast_array_ptr_to_slice_ptr".to_owned())))),
+        ("verus::vstd::raw_ptr::cast_ptr_to_usize", VerusItem::Vstd(VstdItem::CastPtrToUsize, Some(Arc::new("raw_ptr::cast_ptr_to_usize".to_owned())))),
             // SeqFn(vir::interpreter::SeqFn::Last    ))),
 
         ("verus::builtin::Structural",              VerusItem::Marker(MarkerItem::Structural)),
@@ -570,7 +576,9 @@ pub(crate) enum RustItem {
     FnOnce,
     FnMut,
     Drop,
-    StructuralEq,
+    Sized,
+    Copy,
+    Clone,
     StructuralPartialEq,
     Eq,
     PartialEq,
@@ -579,14 +587,18 @@ pub(crate) enum RustItem {
     BoxNew,
     ArcNew,
     RcNew,
-    Clone,
+    CloneClone,
     CloneFrom,
     IntIntrinsic(RustIntIntrinsicItem),
     AllocGlobal,
+    Allocator,
     TryTraitBranch,
     ResidualTraitFromResidual,
     IntoIterFn,
+    ManuallyDrop,
+    PhantomData,
     Destruct,
+    SliceSealed,
 }
 
 pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<RustItem> {
@@ -609,9 +621,6 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     if tcx.lang_items().drop_trait() == Some(def_id) {
         return Some(RustItem::Drop);
     }
-    if tcx.lang_items().structural_teq_trait() == Some(def_id) {
-        return Some(RustItem::StructuralEq);
-    }
     if tcx.lang_items().structural_peq_trait() == Some(def_id) {
         return Some(RustItem::StructuralPartialEq);
     }
@@ -627,13 +636,25 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     if tcx.lang_items().into_iter_fn() == Some(def_id) {
         return Some(RustItem::IntoIterFn);
     }
+    if tcx.lang_items().manually_drop() == Some(def_id) {
+        return Some(RustItem::ManuallyDrop);
+    }
+    if tcx.lang_items().phantom_data() == Some(def_id) {
+        return Some(RustItem::PhantomData);
+    }
     if tcx.lang_items().destruct_trait() == Some(def_id) {
         return Some(RustItem::Destruct);
     }
-
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);
     let rust_path = rust_path.as_ref().map(|x| x.as_str());
+    get_rust_item_str(rust_path)
+}
 
+pub(crate) fn get_rust_item_path(rust_path: &vir::ast::Path) -> Option<RustItem> {
+    get_rust_item_str(Some(&vir::ast_util::path_as_friendly_rust_name(rust_path)))
+}
+
+pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     // We could use rust's diagnostic_items for these, but they are only defined when cfg(not(test))
     // and they may get changed without us noticing, so we are using paths instead
     if rust_path == Some("core::cmp::Eq") {
@@ -656,8 +677,17 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
         return Some(RustItem::RcNew);
     }
 
-    if rust_path == Some("core::clone::Clone::clone") {
+    if rust_path == Some("core::marker::Sized") {
+        return Some(RustItem::Sized);
+    }
+    if rust_path == Some("core::marker::Copy") {
+        return Some(RustItem::Copy);
+    }
+    if rust_path == Some("core::clone::Clone") {
         return Some(RustItem::Clone);
+    }
+    if rust_path == Some("core::clone::Clone::clone") {
+        return Some(RustItem::CloneClone);
     }
     if rust_path == Some("core::clone::Clone::clone_from") {
         return Some(RustItem::CloneFrom);
@@ -665,6 +695,12 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
 
     if rust_path == Some("alloc::alloc::Global") {
         return Some(RustItem::AllocGlobal);
+    }
+    if rust_path == Some("core::alloc::Allocator") {
+        return Some(RustItem::Allocator);
+    }
+    if rust_path == Some("core::slice::index::private_slice_index::Sealed") {
+        return Some(RustItem::SliceSealed);
     }
 
     if let Some(rust_path) = rust_path {

@@ -94,7 +94,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_literal_out_of_range verus_code! {
         const C: u8 = 256 - 1;
-    } => Err(err) => assert_vir_error_msg(err, "integer literal out of range")
+    } => Err(err) => assert_rust_error_msg(err, "evaluation of constant value failed")
 }
 
 test_verify_one_file! {
@@ -200,7 +200,7 @@ test_verify_one_file! {
 
             let z = x << y; // FAILS
         }
-    } => Err(e) => assert_vir_error_msg(e, "argument bit-width does not match")
+    } => Err(e) => assert_fails(e, 1)
 }
 
 test_verify_one_file! {
@@ -213,7 +213,7 @@ test_verify_one_file! {
 
             let z = x << y; // FAILS
         }
-    } => Err(e) => assert_vir_error_msg(e, "argument bit-width does not match")
+    } => Err(e) => assert_fails(e, 1)
 }
 
 test_verify_one_file! {
@@ -300,7 +300,7 @@ test_verify_one_file! {
         fn test() {
             assert(1i8 >> (-1i8) == 0i8) by(bit_vector); // FAILS
         }
-    } => Err(e) => assert_vir_error_msg(e, "signed integer is not supported for bit-vector reasoning")
+    } => Err(e) => assert_vir_error_msg(e, "bit-shift with possibly negative shift")
 }
 
 test_verify_one_file! {

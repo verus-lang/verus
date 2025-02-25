@@ -8,6 +8,8 @@ use std::sync::{Arc, Mutex};
 use vir::ast::{SpannedTyped, Typ};
 use vir::def::Spanned;
 
+use crate::externs::VerusExterns;
+
 pub(crate) fn to_raw_span(span: Span) -> vir::messages::RawSpan {
     Arc::new(span.data())
 }
@@ -72,10 +74,12 @@ impl SpanContextX {
         local_crate: StableCrateId,
         source_map: &SourceMap,
         original_crate_files: HashMap<u64, HashMap<Vec<u8>, FileStartEndPos>>,
+        verus_externs: Option<&VerusExterns>,
     ) -> SpanContext {
         let mut imported_crates = HashMap::new();
         let mut local_files = HashMap::new();
         let mut remaining_crate_files = original_crate_files.clone();
+        let path_mappings = verus_externs.map(|x| x.to_path_mappings());
 
         for source_file in source_map.files().iter() {
             match *source_file.external_src.borrow() {
@@ -100,7 +104,46 @@ impl SpanContextX {
                         original_crate_files.get(&imported_crate).and_then(|x| x.get(&hash))
                     {
                         remaining_crate_files.get_mut(&imported_crate).unwrap().remove(&hash);
-                        let info = ExternSourceInfo::Loaded { start_pos, end_pos };
+                        let info = if let FileName::Real(real_file_name) = &source_file.name {
+                            // Ideally we'd change this into Remapped, but I don't know how to do that
+                            if let (Some(path_mappings), RealFileName::LocalPath(local_file_name)) =
+                                (&path_mappings, real_file_name)
+                            {
+                                let mut found_match = None;
+                                for (name, epath) in path_mappings.iter() {
+                                    // search for source/<name> in local_file_path.components()
+                                    let mut found = 0;
+                                    let mut components = local_file_name.components();
+                                    while let Some(c) = components.next() {
+                                        if found == 0 {
+                                            if c.as_os_str().to_str().unwrap() == "source" {
+                                                found += 1;
+                                            }
+                                        } else if found == 1 {
+                                            if c.as_os_str().to_str().unwrap() == name {
+                                                found += 1;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    let rest = components.as_path().to_path_buf();
+                                    if found == 2 {
+                                        found_match = Some((name, epath, rest));
+                                        break;
+                                    }
+                                }
+                                if let Some((_, base_path, file)) = found_match {
+                                    let filename = base_path.join(file);
+                                    ExternSourceInfo::Delayed { filename, hash }
+                                } else {
+                                    ExternSourceInfo::Loaded { start_pos, end_pos }
+                                }
+                            } else {
+                                ExternSourceInfo::Loaded { start_pos, end_pos }
+                            }
+                        } else {
+                            ExternSourceInfo::Loaded { start_pos, end_pos }
+                        };
                         let file = ExternSourceFile {
                             original_start_pos: BytePos(original.start_pos),
                             original_end_pos: BytePos(original.end_pos),
@@ -168,9 +211,8 @@ impl SpanContextX {
         pos: BytePos,
         source_map: Option<&SourceMap>,
     ) -> Option<(BytePos, BytePos, BytePos, BytePos)> {
-        let ExternSourceFile { original_start_pos, original_end_pos, info } = self
-            .pos_to_extern_source_file(imported_crate, pos)
-            .expect("span source file not found");
+        let ExternSourceFile { original_start_pos, original_end_pos, info } =
+            self.pos_to_extern_source_file(imported_crate, pos)?;
         if let Some(source_map) = source_map {
             // If rustc didn't originally load the file into the source_map,
             // we can try to request that it load the file on demand.

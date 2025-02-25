@@ -74,13 +74,6 @@ impl<K, V> Map<K, V> {
         self.submap_of(m2)
     }
 
-    /// Deprecated synonym for `submap_of`
-    #[verifier::inline]
-    #[cfg_attr(not(verus_verify_core), deprecated = "use m1.submap_of(m2) or m1 <= m2 instead")]
-    pub open spec fn le(self, m2: Self) -> bool {
-        self.submap_of(m2)
-    }
-
     /// Gives the union of two maps, defined as:
     ///  * The domain is the union of the two input maps.
     ///  * For a given key in _both_ input maps, it maps to the same value that it maps to in the _right_ map (`m2`).
@@ -204,7 +197,8 @@ impl<K, V> Map<K, V> {
             self.remove_keys(keys).dom().len() == self.dom().len() - keys.len(),
         decreases keys.len(),
     {
-        lemma_set_properties::<K>();
+        broadcast use group_set_properties;
+
         if keys.len() > 0 {
             let key = keys.choose();
             let val = self[key];
@@ -253,14 +247,57 @@ impl Map<int, int> {
 }
 
 // Proven lemmas
+pub broadcast proof fn lemma_union_insert_left<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K, v: V)
+    requires
+        !m2.contains_key(k),
+    ensures
+        #[trigger] m1.insert(k, v).union_prefer_right(m2) == m1.union_prefer_right(m2).insert(k, v),
+{
+    assert(m1.insert(k, v).union_prefer_right(m2) =~= m1.union_prefer_right(m2).insert(k, v));
+}
+
+pub broadcast proof fn lemma_union_insert_right<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K, v: V)
+    ensures
+        #[trigger] m1.union_prefer_right(m2.insert(k, v)) == m1.union_prefer_right(m2).insert(k, v),
+{
+    assert(m1.union_prefer_right(m2.insert(k, v)) =~= m1.union_prefer_right(m2).insert(k, v));
+}
+
+pub broadcast proof fn lemma_union_remove_left<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K)
+    requires
+        m1.contains_key(k),
+        !m2.contains_key(k),
+    ensures
+        #[trigger] m1.union_prefer_right(m2).remove(k) == m1.remove(k).union_prefer_right(m2),
+{
+    assert(m1.remove(k).union_prefer_right(m2) =~= m1.union_prefer_right(m2).remove(k));
+}
+
+pub broadcast proof fn lemma_union_remove_right<K, V>(m1: Map<K, V>, m2: Map<K, V>, k: K)
+    requires
+        !m1.contains_key(k),
+        m2.contains_key(k),
+    ensures
+        #[trigger] m1.union_prefer_right(m2).remove(k) == m1.union_prefer_right(m2.remove(k)),
+{
+    assert(m1.union_prefer_right(m2.remove(k)) =~= m1.union_prefer_right(m2).remove(k));
+}
+
+pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
+    ensures
+        #[trigger] m1.union_prefer_right(m2).dom() == m1.dom().union(m2.dom()),
+{
+    assert(m1.dom().union(m2.dom()) =~= m1.union_prefer_right(m2).dom());
+}
+
 /// The size of the union of two disjoint maps is equal to the sum of the sizes of the individual maps
-pub proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K, V>)
+pub broadcast proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     requires
         m1.dom().disjoint(m2.dom()),
         m1.dom().finite(),
         m2.dom().finite(),
     ensures
-        m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
+        #[trigger] m1.union_prefer_right(m2).dom().len() == m1.dom().len() + m2.dom().len(),
 {
     let u = m1.union_prefer_right(m2);
     assert(u.dom() =~= m1.dom() + m2.dom());  //proves u.dom() is finite
@@ -270,11 +307,34 @@ pub proof fn lemma_disjoint_union_size<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     }
 }
 
+pub broadcast group group_map_union {
+    lemma_union_dom,
+    lemma_union_remove_left,
+    lemma_union_remove_right,
+    lemma_union_insert_left,
+    lemma_union_insert_right,
+    lemma_disjoint_union_size,
+}
+
+/// submap_of (<=) is transitive.
+pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: Map<K, V>, m2: Map<K, V>, m3: Map<K, V>)
+    requires
+        #[trigger] m1.submap_of(m2),
+        #[trigger] m2.submap_of(m3),
+    ensures
+        m1.submap_of(m3),
+{
+    assert forall|k| m1.dom().contains(k) implies #[trigger] m3.dom().contains(k) && m1[k]
+        == m3[k] by {
+        assert(m2.dom().contains(k));
+    }
+}
+
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `Set::new(fk)`.
-pub proof fn lemma_map_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_map_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        Map::<K, V>::new(fk, fv).dom() == Set::<K>::new(|k: K| fk(k)),
+        #[trigger] Map::<K, V>::new(fk, fv).dom() == Set::<K>::new(|k: K| fk(k)),
 {
     assert(Set::new(fk) =~= Set::<K>::new(|k: K| fk(k)));
 }
@@ -283,9 +343,9 @@ pub proof fn lemma_map_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -
 /// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to
 /// the set constructed with `Set::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
 /// the set of all values fv(k) where fk(k) is true.
-pub proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        Map::<K, V>::new(fk, fv).values() == Set::<V>::new(
+        #[trigger] Map::<K, V>::new(fk, fv).values() == Set::<V>::new(
             |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
         ),
 {
@@ -300,6 +360,7 @@ pub proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -
 }
 
 /// Properties of maps from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
+#[deprecated = "Use `broadcast use group_map_properties` instead"]
 pub proof fn lemma_map_properties<K, V>()
     ensures
         forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
@@ -309,16 +370,13 @@ pub proof fn lemma_map_properties<K, V>()
                 |v: V| exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v,
             ),  //from lemma_map_new_values
 {
-    assert forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
-        Map::<K, V>::new(fk, fv).dom() == Set::<K>::new(|k: K| fk(k)) by {
-        lemma_map_new_domain(fk, fv);
-    }
-    assert forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
-        Map::<K, V>::new(fk, fv).values() == Set::<V>::new(
-            |v: V| exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v,
-        ) by {
-        lemma_map_new_values(fk, fv);
-    }
+    broadcast use group_map_properties;
+
+}
+
+pub broadcast group group_map_properties {
+    lemma_map_new_domain,
+    lemma_map_new_values,
 }
 
 pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)

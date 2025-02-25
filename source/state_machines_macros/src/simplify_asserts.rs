@@ -1,6 +1,6 @@
 use crate::ast::SimplStmt;
 use crate::safety_conditions::has_any_assert_simpl;
-use quote::{quote, quote_spanned};
+use quote::quote;
 use syn_verus::{Expr, Ident, Type};
 
 /// Returns an equivalent SimplStmt sequence that has no 'assert' statements in it.
@@ -66,8 +66,8 @@ fn simplify_asserts_stmt(sop: &SimplStmt, assert_ident: &Ident) -> SimplStmt {
 
         SimplStmt::Require(span, expr) => SimplStmt::Require(
             *span,
-            Expr::Verbatim(quote_spanned!(*span => {
-                ::builtin::imply(
+            Expr::Verbatim(quote_spanned_vstd!(vstd, *span => {
+                #vstd::prelude::imply(
                     #assert_ident,
                     #expr
                 )
@@ -75,8 +75,8 @@ fn simplify_asserts_stmt(sop: &SimplStmt, assert_ident: &Ident) -> SimplStmt {
         ),
         SimplStmt::PostCondition(span, expr, reason) => SimplStmt::PostCondition(
             *span,
-            Expr::Verbatim(quote_spanned!(*span => {
-                ::builtin::imply(
+            Expr::Verbatim(quote_spanned_vstd!(vstd, *span => {
+                #vstd::prelude::imply(
                     #assert_ident,
                     #expr
                 )
