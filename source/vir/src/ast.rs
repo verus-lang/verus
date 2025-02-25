@@ -1321,6 +1321,8 @@ pub struct KrateX {
     pub path_as_rust_names: Vec<(Path, String)>,
     /// Arch info
     pub arch: Arch,
+    /// Allows non-termination
+    pub may_not_terminate: bool,
 }
 
 impl FunctionKind {

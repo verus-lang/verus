@@ -726,6 +726,7 @@ pub fn prune_krate_for_module_or_krate(
             external_types: _no_pruning_of_external_types,
             path_as_rust_names: _no_pruning_of_past_as_rust_names,
             arch: _no_pruning_of_arch,
+            may_not_terminate: _may_not_terminate,
         } = &**current_crate;
         for f in functions {
             reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
@@ -1094,6 +1095,7 @@ pub fn prune_krate_for_module_or_krate(
         external_types: krate.external_types.clone(),
         path_as_rust_names: krate.path_as_rust_names.clone(),
         arch: krate.arch.clone(),
+        may_not_terminate: krate.may_not_terminate.clone(),
     };
     let mut spec_fn_types: Vec<usize> = state.spec_fn_types.into_iter().collect();
     spec_fn_types.sort();

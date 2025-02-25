@@ -38,6 +38,7 @@ pub fn check_krate_simplified(krate: &Krate) {
         external_types: _,
         path_as_rust_names: _,
         arch: _,
+        may_not_terminate: _,
     } = &**krate;
 
     for function in functions {
@@ -157,6 +158,7 @@ pub fn check_krate(krate: &Krate) {
         external_types: _,
         path_as_rust_names: _,
         arch: _,
+        may_not_terminate: _,
     } = &**krate;
 
     for function in functions {

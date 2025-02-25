@@ -68,6 +68,7 @@ pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
         external_types,
         path_as_rust_names,
         arch,
+        may_not_terminate,
     } = &**krate;
 
     let mut func_map: HashMap<Fun, Function> = HashMap::new();
@@ -94,6 +95,7 @@ pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
         arch: arch.clone(),
+        may_not_terminate: may_not_terminate.clone(),
     });
 
     Ok(krate)

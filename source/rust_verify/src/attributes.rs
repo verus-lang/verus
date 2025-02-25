@@ -322,6 +322,12 @@ pub(crate) enum Attr {
     TypeInvariantFn,
 }
 
+#[derive(Debug, PartialEq)]
+pub(crate) enum CrateAttr {
+    // Allow may_not_terminate
+    AllowMayNotTerminate,
+}
+
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
     let i = match attr_tree {
         AttrTree::Fun(_, name, None) => match name.parse::<u64>() {
@@ -334,6 +340,27 @@ fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
         Some(i) => Ok(i),
         None => err_span(span, format!("expected integer constant, found {:?}", &attr_tree)),
     }
+}
+
+pub(crate) fn parse_crate_attrs(
+    attrs: &[Attribute],
+    _diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<Vec<CrateAttr>, VirErr> {
+    let mut crate_attrs = Vec::new();
+    for (prefix, span, attr) in attrs_to_trees(attrs)? {
+        match prefix {
+            AttrPrefix::Verifier => match &attr {
+                AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
+                    if name == "allow" && arg == "may_not_terminate" =>
+                {
+                    crate_attrs.push(CrateAttr::AllowMayNotTerminate);
+                }
+                _ => return err_span(span, "unrecognized verifier attribute"),
+            },
+            _ => {}
+        }
+    }
+    Ok(crate_attrs)
 }
 
 pub(crate) fn parse_attrs(

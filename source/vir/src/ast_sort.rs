@@ -29,6 +29,7 @@ pub fn sort_krate(krate: &Krate) -> Krate {
         external_types,
         path_as_rust_names,
         arch,
+        may_not_terminate,
     } = &**krate;
     let mut functions = functions.clone();
     let mut datatypes = datatypes.clone();
@@ -68,5 +69,6 @@ pub fn sort_krate(krate: &Krate) -> Krate {
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
         arch: arch.clone(),
+        may_not_terminate: may_not_terminate.clone(),
     })
 }

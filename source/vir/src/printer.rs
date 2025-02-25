@@ -362,6 +362,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
         external_types,
         path_as_rust_names: _,
         arch,
+        may_not_terminate,
     } = &**vir_crate;
     for datatype in datatypes.iter() {
         if opts.no_span {
@@ -417,5 +418,8 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     }
     let arch_nodes = nodes!(arch_word_bits {arch.word_bits.to_node(opts)});
     writeln!(&mut write, "{}\n", nw.node_to_string(&arch_nodes))
+        .expect("cannot write to vir write");
+    let may_not_terminate_node = nodes!(may_not_terminate {may_not_terminate.to_node(opts)});
+    writeln!(&mut write, "{}\n", nw.node_to_string(&may_not_terminate_node))
         .expect("cannot write to vir write");
 }
