@@ -1463,7 +1463,7 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
                     _ => {}
                 }
             }
-            Meta::List(MetaList { path, delimiter: _, tokens }) => {
+            Meta::List(MetaList { path, delimiter: _, tokens: _ }) => {
                 let mut path_iter = path.segments.iter();
                 match (path_iter.next(), path_iter.next()) {
                     (Some(first), None) if first.ident == "cfg_attr" => {
