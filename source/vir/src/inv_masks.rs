@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Constant, Dt, IntRange, SpannedTyped, Typ, TypX};
+use crate::ast::{BinaryOp, Constant, Dt, IntRange, SpannedTyped, Typ, TypX, Typs};
 use crate::context::Ctx;
 use crate::messages::{error_with_label, Message, Span};
 use crate::sst::{CallFun, Exp, ExpX};
@@ -29,11 +29,11 @@ pub struct Assertion {
     pub cond: Exp,
 }
 
-fn namespace_set_typs() -> Arc<Vec<Typ>> {
+fn namespace_set_typs() -> Typs {
     Arc::new(vec![Arc::new(TypX::Int(IntRange::Int))])
 }
 
-fn namespace_set_typ(ctx: &Ctx) -> Arc<TypX> {
+fn namespace_set_typ(ctx: &Ctx) -> Typ {
     Arc::new(TypX::Datatype(
         Dt::Path(crate::def::set_type_path(&ctx.global.vstd_crate_name)),
         namespace_set_typs(),
