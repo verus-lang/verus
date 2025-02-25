@@ -560,7 +560,7 @@ pub use crate::verus::{
     ModeExec, ModeGhost, ModeProof, ModeSpec, ModeSpecChecked, ModeTracked, Open, OpenRestricted,
     Prover, Publish, Recommends, Requires, Returns, RevealHide, SignatureDecreases,
     SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind, Specification,
-    TypeFnSpec, View,
+    TypeFnSpec, View, Uninterp
 };
 
 #[rustfmt::skip] // https://github.com/rust-lang/rustfmt/issues/6176

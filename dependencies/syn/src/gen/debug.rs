@@ -3186,6 +3186,11 @@ impl Debug for crate::Publish {
                 formatter.field(v0);
                 formatter.finish()
             }
+            crate::Publish::Uninterp(v0) => {
+                let mut formatter = formatter.debug_tuple("Uninterp");
+                formatter.field(v0);
+                formatter.finish()
+            }
             crate::Publish::Default => formatter.write_str("Default"),
         }
     }
@@ -3922,6 +3927,14 @@ impl Debug for crate::UnOp {
                 formatter.finish()
             }
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::Uninterp {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Uninterp");
+        formatter.field("token", &self.token);
+        formatter.finish()
     }
 }
 #[cfg(feature = "full")]
