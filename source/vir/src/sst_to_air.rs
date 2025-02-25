@@ -1547,6 +1547,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
         StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest, assert_id } => {
+            // When we emit the VCs for a call to `f`, we might also want these to include
+            // the generic conditions
+            // `call_requires(f, (args...))` and `call_ensures(f, (args...), ret)`
+            // We don't want to do this all the time though --- only when the generic
+            // FnDef types exist post-pruning.
+            let emit_generic_conditions = ctx.fndef_types.contains(fun);
+            let resolved_fun = resolved_method.clone().map(|r| r.0);
+
             assert!(split.is_none());
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[fun];
@@ -1564,13 +1572,29 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
 
-                let e_req = Arc::new(ExprX::Apply(f_req, req_args.clone()));
+                let mut e_req = Arc::new(ExprX::Apply(f_req, req_args.clone()));
+
+                if emit_generic_conditions {
+                    let generic_req_exp = crate::sst_util::sst_call_requires(
+                        ctx,
+                        &stm.span,
+                        fun,
+                        typs,
+                        func,
+                        &resolved_fun,
+                        args,
+                    );
+                    let generic_req_expr = exp_to_expr(ctx, &generic_req_exp, expr_ctxt)?;
+                    e_req = mk_implies(&mk_not(&generic_req_expr), &e_req);
+                }
+
                 let description =
                     match (ctx.checking_spec_preconditions(), &func.x.attrs.custom_req_err) {
                         (true, None) => "recommendation not met".to_string(),
                         (_, None) => crate::def::PRECONDITION_FAILURE.to_string(),
                         (_, Some(s)) => s.clone(),
                     };
+
                 let error = error(&stm.span, description);
                 let filter = Some(fun_to_air_ident(&func.x.name));
                 stmts.push(Arc::new(StmtX::Assert(assert_id.clone(), error, filter, e_req)));
@@ -1758,12 +1782,30 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                         let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
                         stmts.push(snapshot);
                     }
+                } else {
+                    crate::messages::internal_error(&stm.span, "ens_has_return but no Dest");
                 }
             }
             if has_ens {
                 let f_ens = prefix_ensures(&fun_to_air_ident(&ens_fun));
                 let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
                 stmts.push(Arc::new(StmtX::Assume(e_ens)));
+            }
+            if emit_generic_conditions {
+                let dest_exp =
+                    if func.x.ens_has_return { Some(dest.clone().unwrap().dest) } else { None };
+                let generic_ens_exp = crate::sst_util::sst_call_ensures(
+                    ctx,
+                    &stm.span,
+                    fun,
+                    typs,
+                    func,
+                    &resolved_fun,
+                    args,
+                    dest_exp,
+                );
+                let generic_ens_expr = exp_to_expr(ctx, &generic_ens_exp, expr_ctxt)?;
+                stmts.push(Arc::new(StmtX::Assume(generic_ens_expr)));
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }

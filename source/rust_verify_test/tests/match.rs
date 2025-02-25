@@ -1218,3 +1218,67 @@ test_verify_one_file! {
     //} => Err(err) => assert_one_fails(err)
     } => Err(err) => assert_vir_error_msg(err, "Not supported: pattern containing both an or-pattern (|) and an if-guard")
 }
+
+test_verify_one_file! {
+    #[test] pattern_with_no_initializer verus_code! {
+        struct X { u: u32 }
+
+        struct B { b: bool, x: u32 }
+        struct B2 { b: B }
+
+        fn test1() {
+            let _: X;
+
+            let (_, _): (X, X);
+            let (mut a, mut b): (X, X);
+
+            a = X { u: 20 };
+            b = X { u: 23 };
+
+            let X { u: mut ur }: X;
+            ur = 20;
+            assert(ur == 20);
+        }
+
+        fn test2() {
+            let _: X;
+
+            let X { u: mut ur }: X;
+            ur = 20;
+            assert(false); // FAILS
+        }
+
+        fn test3() {
+            let _: X;
+
+            let (_, _): (X, X);
+            let (a, b): (X, X);
+
+            assert(false); // FAILS
+        }
+
+        fn test4() {
+            let B { b: true | false, x: mut y }: B;
+
+            y = 5;
+            assert(y == 5);
+
+            let B2 { b: B { b: true, x: mut x } | B { b: false, x: mut x } }: B2;
+            x = 5;
+            assert(x == 5);
+        }
+
+        fn test5() {
+            let B { b: true | false, x: mut y }: B;
+
+            y = 5;
+            assert(y == 5);
+
+            let B2 { b: B { b: true, x: mut x } | B { b: false, x: mut x } }: B2;
+            x = 5;
+            assert(x == 5);
+
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
