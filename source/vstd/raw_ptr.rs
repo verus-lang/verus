@@ -22,6 +22,7 @@ use super::prelude::*;
 use core::slice::SliceIndex;
 use core::ops::Index;
 use crate::vstd::slice::spec_slice_len;
+use crate::vstd::seq::*;
 
 verus! {
 
@@ -257,7 +258,8 @@ impl<T> PointsTo<[T]> {
     // {
     //     self.view().opt_value
     // }
-    // TODO: MemContents<Seq<T>> or Seq<MemContents<T>>, have options
+    // TODO-E: MemContents<Seq<T>> or Seq<MemContents<T>>, have options
+    // Q: What is the conceptual difference between these two, in terms of how I'd model it?
     // don't write opt_value in terms of view
 
     // #[verifier::inline]
@@ -271,10 +273,9 @@ impl<T> PointsTo<[T]> {
     // }
 
     // #[verifier::inline]
-    // pub open spec fn value(&self) -> Seq<T> {
-    //     // TODO: figure out how to update
-    //     self.mem_contents_seq().value()
-    // }
+    pub open spec fn value(&self) -> Seq<T> {
+        Seq::new(self.mem_contents_seq().len(), |i| self.mem_contents_seq().index(i).value())
+    }
 
     /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
     ///
@@ -296,7 +297,8 @@ impl<T> PointsTo<[T]> {
     /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
     /// Only the proof-code representation changes.
     /// 
-    /// TODO: replace w/version that forgets about entry
+    /// TODO-E: replace w/version that forgets about entry
+    /// Q: What does this mean?
     // #[verifier::external_body]
     // pub proof fn leak_contents(tracked &mut self)
     //     ensures
@@ -957,7 +959,7 @@ impl<'a, T> SharedReference<'a, [T]> {
     //         pt.ptr() == self.ptr(),
     //         // pt.is_init(),
     //         pt.value() == self.value(),
-    //     // TODO: figure out what preconditions I want
+    //     // TODO-E: figure out what preconditions I want, should go along with verifying add_verus
     // {
     //     unimplemented!();
     // }
