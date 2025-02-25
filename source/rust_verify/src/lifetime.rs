@@ -258,6 +258,10 @@ fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V
 fn open_local_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V) { panic!(); }
 fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) { panic!() }
 fn index<'a, V, Idx, Output>(v: &'a V, index: Idx) -> &'a Output { panic!() }
+trait IndexSet{
+fn index_set<Idx, V>(&mut self, index: Idx, val: V) { panic!() }
+}
+impl<A:?Sized> IndexSet for A {}
 struct C<const N: usize, A: ?Sized>(Box<A>);
 struct Arr<A: ?Sized, const N: usize>(Box<A>);
 fn use_type_invariant<A>(a: A) -> A { a }

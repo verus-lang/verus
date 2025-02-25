@@ -24,6 +24,17 @@ impl<T: DeepView> DeepView for [T] {
     }
 }
 
+// Trusted spec for index_set
+impl<T> super::std_specs::core::IndexSetTrustedSpec<usize> for [T] {
+    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
+        0 <= index < self@.len()
+    }
+
+    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
+        new_container@ == self@.update(index as int, val)
+    }
+}
+
 pub trait SliceAdditionalSpecFns<T>: View<V = Seq<T>> {
     spec fn spec_index(&self, i: int) -> T
         recommends

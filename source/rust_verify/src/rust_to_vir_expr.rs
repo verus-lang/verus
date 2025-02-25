@@ -2461,6 +2461,51 @@ fn expr_assign_to_vir_innermost<'tcx>(
         Some(op) => Some(binopkind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?),
         None => None,
     };
+    match &lhs.kind {
+        ExprKind::Index(tgt_expr, idx_expr, _span) => {
+            let tgt_modifier = is_expr_typ_mut_ref(
+                bctx.types.expr_ty_adjusted(&tgt_expr),
+                ExprModifier::ADDR_OF_MUT,
+            )?;
+            let tgt_vir = expr_to_vir(bctx, tgt_expr, tgt_modifier)?;
+            let idx_vir = expr_to_vir(bctx, idx_expr, ExprModifier::REGULAR)?;
+            let mut rhs_vir = expr_to_vir(bctx, rhs, modifier)?;
+            let fun = vir::fun!["vstd" => "std_specs", "core", "index_set"];
+            let typ_args = Some(Arc::new(vec![
+                undecorate_typ(&tgt_vir.typ),
+                idx_vir.typ.clone(),
+                rhs_vir.typ.clone(),
+            ]));
+            let tgt_vir =
+                bctx.spanned_typed_new(tgt_expr.span, &tgt_vir.typ.clone(), ExprX::Loc(tgt_vir));
+            let call_target = CallTarget::Fun(
+                vir::ast::CallTargetKind::Static,
+                fun,
+                typ_args.unwrap(),
+                Arc::new(vec![]),
+                AutospecUsage::Final,
+            );
+
+            if let Some(op) = op {
+                let lhs_vir = expr_to_vir(bctx, lhs, modifier)?;
+                let rhs_ty = &rhs_vir.typ.clone();
+                rhs_vir =
+                    bctx.spanned_typed_new(rhs.span, &rhs_ty, ExprX::Binary(op, lhs_vir, rhs_vir));
+            }
+
+            let args = Arc::new(vec![tgt_vir, idx_vir, rhs_vir]);
+            let index_set = bctx.spanned_typed_new(
+                lhs.span,
+                &mk_tuple_typ(&Arc::new(vec![])),
+                ExprX::Call(call_target, args),
+            );
+            //lhs is not recorded and so explicitly add it here.
+            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+            erasure_info.direct_var_modes.push((lhs.hir_id, Mode::Exec));
+            return Ok(index_set);
+        }
+        _ => {}
+    }
     let init_not_mut = init_not_mut(bctx, lhs)?;
     mk_expr(ExprX::Assign {
         init_not_mut,

@@ -95,6 +95,16 @@ pub broadcast proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
     admit();
 }
 
+impl<T, const N: usize> super::std_specs::core::IndexSetTrustedSpec<usize> for [T; N] {
+    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
+        0 <= index < N
+    }
+
+    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
+        new_container@ === self@.update(index as int, val)
+    }
+}
+
 // Referenced by Verus' internal encoding for array -> slice coercion
 #[doc(hidden)]
 #[verifier::external_body]

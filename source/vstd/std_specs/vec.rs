@@ -241,6 +241,16 @@ pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
     admit();
 }
 
+impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
+    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
+        0 <= index < self.len()
+    }
+
+    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
+        new_container@ === self@.update(index as int, val)
+    }
+}
+
 pub broadcast group group_vec_axioms {
     axiom_spec_len,
     axiom_vec_index_decreases,

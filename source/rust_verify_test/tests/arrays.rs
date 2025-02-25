@@ -4,6 +4,57 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] test_array_set_assign_op verus_code! {
+        use vstd::prelude::*;
+        use vstd::array::*;
+
+        fn test(ar: &mut [u8; 20])
+        requires
+            old(ar)[0] == 2
+        ensures
+            ar[0] == 3,
+        {
+            ar[0] += 1;
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_array_set verus_code! {
+        use vstd::prelude::*;
+        use vstd::array::*;
+
+        fn test(ar: &mut [u8; 20])
+        ensures
+            ar[0] == 1,
+        {
+            ar[0] = 1;
+        }
+
+        fn test2()
+        {
+            let mut ar2 = [0u8; 20];
+            ar2[21] = 1; // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_array_set_wrong_type verus_code! {
+        use vstd::prelude::*;
+        use vstd::array::*;
+
+        fn test(ar: &mut [u8; 20])
+        ensures
+            ar[0] == 1,
+        {
+            ar[0] = 1u64;
+        }
+    } => Err(e) => assert_rust_error_msg(e, "mismatched types")
+}
+
+test_verify_one_file! {
     #[test] test1 verus_code! {
         use vstd::prelude::*;
         use vstd::array::*;
@@ -33,7 +84,7 @@ test_verify_one_file! {
 
         fn test6(ar: [u8; 20]) {
             let mut ar = ar;
-            ar.set(7, 50);
+            ar[7] = 50;
             assert(ar[7] == 50);
         }
 
@@ -54,14 +105,14 @@ test_verify_one_file! {
 
         fn test9(s: &mut S) {
             let mut ar = s.ar;
-            ar.set(0, 42);
+            ar[0] = 42;
             assert(ar[0] == 42);
         }
 
         fn test10() {
             let mut ar = [0, 0];
             assert(ar[0] == 0);
-            ar.set(0, 42);
+            ar[0] = 42;
             assert(ar[0] == 42);
             assert(ar[1] == 0);
         }

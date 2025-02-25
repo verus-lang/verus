@@ -3,6 +3,18 @@ use super::super::prelude::*;
 verus! {
 
 #[verifier::external_trait_specification]
+pub trait ExIndex<Idx> where Idx: ?Sized {
+    type Output: ?Sized;
+
+    type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExIndexMut<Idx>: core::ops::Index<Idx> where Idx: ?Sized {
+    type ExternalTraitSpecificationFor: core::ops::IndexMut<Idx>;
+}
+
+#[verifier::external_trait_specification]
 pub trait ExInteger: Copy {
     type ExternalTraitSpecificationFor: Integer;
 }
@@ -144,5 +156,35 @@ pub assume_specification[ core::intrinsics::unlikely ](b: bool) -> (c: bool)
 #[verifier::external_body]
 #[verifier::reject_recursive_types_in_ground_variants(V)]
 pub struct ExManuallyDrop<V: ?Sized>(core::mem::ManuallyDrop<V>);
+
+pub trait IndexSetTrustedSpec<Idx>: core::ops::IndexMut<Idx> {
+    spec fn spec_index_set_requires(&self, index: Idx) -> bool;
+
+    spec fn spec_index_set_ensures(
+        &self,
+        new_container: &Self,
+        index: Idx,
+        val: Self::Output,
+    ) -> bool where Self::Output: Sized;
+}
+
+// Use index_set to replace IndexMut in assign-operator.
+// Mutable reference is not supported in return and so we cannot use IndexMut.
+// Users must provide IndexSetTrustedSpec to use it.
+// It could be replaced after mutable reference is fully supported
+// Avoid call it explicitly.
+#[verifier(external_body)]
+pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
+    T: ?Sized + core::ops::IndexMut<Idx> + core::ops::Index<Idx, Output = E> + IndexSetTrustedSpec<
+        Idx,
+    >,
+
+    requires
+        old(container).spec_index_set_requires(index),
+    ensures
+        old(container).spec_index_set_ensures(container, index, val),
+{
+    container[index] = val;
+}
 
 } // verus!
