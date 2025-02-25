@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt::skip)]
-
 use super::map::Map;
 #[allow(unused_imports)]
 use super::pervasive::*;

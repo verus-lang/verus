@@ -17,8 +17,6 @@
    verification is highly unstable!
 */
 // may be try to use singular?
-#![cfg_attr(rustfmt, rustfmt::skip)]
-
 #[allow(unused_imports)]
 use super::super::super::prelude::*;
 

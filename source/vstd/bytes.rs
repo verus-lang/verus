@@ -1,6 +1,5 @@
 //! Conversions to/from bytes
 #![allow(unused_imports)]
-#![cfg_attr(rustfmt, rustfmt::skip)]
 
 use super::pervasive::*;
 use super::prelude::*;

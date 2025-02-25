@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt::skip)]
-
 pub mod atomic;
 pub mod bits;
 pub mod clone;

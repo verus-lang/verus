@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt::skip)]
-
 #[allow(unused_imports)]
 use super::multiset::Multiset;
 #[allow(unused_imports)]

@@ -11,8 +11,6 @@
 //! *  Modifications and Extensions: Copyright by the contributors to the Dafny Project
 //! *  SPDX-License-Identifier: MIT
 //! *******************************************************************************/
-#![cfg_attr(rustfmt, rustfmt::skip)]
-
 #[allow(unused_imports)]
 use super::super::prelude::*;
 

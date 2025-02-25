@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt::skip)]
-
 //! Properties of bitwise operators.
 use super::prelude::*;
 

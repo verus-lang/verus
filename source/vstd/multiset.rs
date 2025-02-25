@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt::skip)]
-
 use core::marker;
 
 #[allow(unused_imports)]

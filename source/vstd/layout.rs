@@ -1,5 +1,4 @@
 #![allow(unused_imports)]
-#![cfg_attr(rustfmt, rustfmt::skip)]
 
 use super::prelude::*;
 

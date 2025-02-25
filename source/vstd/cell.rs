@@ -1,5 +1,3 @@
-#![cfg_attr(rustfmt, rustfmt::skip)]
-
 use core::cell::UnsafeCell;
 use core::marker;
 use core::{mem, mem::MaybeUninit};
