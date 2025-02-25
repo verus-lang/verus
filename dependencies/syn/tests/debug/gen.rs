@@ -5110,6 +5110,13 @@ impl Debug for Lite<syn::Publish> {
                 formatter.write_str(")")?;
                 Ok(())
             }
+            syn::Publish::Uninterp(_val) => {
+                formatter.write_str("Publish::Uninterp")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
             syn::Publish::Default => formatter.write_str("Publish::Default"),
         }
     }
@@ -6403,6 +6410,12 @@ impl Debug for Lite<syn::UnOp> {
         }
     }
 }
+impl Debug for Lite<syn::Uninterp> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Uninterp");
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::UseGlob> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("UseGlob");
@@ -7315,6 +7328,11 @@ impl Debug for Lite<syn::token::Typeof> {
 impl Debug for Lite<syn::token::Underscore> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![_]")
+    }
+}
+impl Debug for Lite<syn::token::Uninterp> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![uninterp]")
     }
 }
 impl Debug for Lite<syn::token::Union> {

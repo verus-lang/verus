@@ -1165,6 +1165,9 @@ pub trait Fold {
     fn fold_un_op(&mut self, i: crate::UnOp) -> crate::UnOp {
         fold_un_op(self, i)
     }
+    fn fold_uninterp(&mut self, i: crate::Uninterp) -> crate::Uninterp {
+        fold_uninterp(self, i)
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn fold_use_glob(&mut self, i: crate::UseGlob) -> crate::UseGlob {
@@ -4022,6 +4025,9 @@ where
         crate::Publish::OpenRestricted(_binding_0) => {
             crate::Publish::OpenRestricted(f.fold_open_restricted(_binding_0))
         }
+        crate::Publish::Uninterp(_binding_0) => {
+            crate::Publish::Uninterp(f.fold_uninterp(_binding_0))
+        }
         crate::Publish::Default => crate::Publish::Default,
     }
 }
@@ -4693,6 +4699,14 @@ where
         crate::UnOp::Forall(_binding_0) => crate::UnOp::Forall(_binding_0),
         crate::UnOp::Exists(_binding_0) => crate::UnOp::Exists(_binding_0),
         crate::UnOp::Choose(_binding_0) => crate::UnOp::Choose(_binding_0),
+    }
+}
+pub fn fold_uninterp<F>(f: &mut F, node: crate::Uninterp) -> crate::Uninterp
+where
+    F: Fold + ?Sized,
+{
+    crate::Uninterp {
+        token: node.token,
     }
 }
 #[cfg(feature = "full")]
