@@ -7,6 +7,7 @@ ast_enum_of_structs! {
         Closed(Closed),
         Open(Open),
         OpenRestricted(OpenRestricted),
+        Uninterp(Uninterp),
         Default,
     }
 }
@@ -29,6 +30,12 @@ ast_struct! {
         pub paren_token: token::Paren,
         pub in_token: Option<Token![in]>,
         pub path: Box<Path>,
+    }
+}
+
+ast_struct! {
+    pub struct Uninterp {
+        pub token: Token![uninterp],
     }
 }
 
@@ -510,6 +517,9 @@ pub mod parsing {
                 } else {
                     Ok(Publish::Open(Open { token }))
                 }
+            } else if input.peek(Token![uninterp]) {
+                let token = input.parse::<Token![uninterp]>()?;
+                Ok(Publish::Uninterp(Uninterp { token }))
             } else {
                 Ok(Publish::Default)
             }
@@ -1427,6 +1437,12 @@ mod printing {
                 self.in_token.to_tokens(tokens);
                 self.path.to_tokens(tokens);
             });
+        }
+    }
+
+    impl ToTokens for Uninterp {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
         }
     }
 

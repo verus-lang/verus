@@ -141,6 +141,7 @@ a.struct[title="struct syn::token::Try"],
 a.struct[title="struct syn::token::Type"],
 a.struct[title="struct syn::token::Typeof"],
 a.struct[title="struct syn::token::Underscore"],
+a.struct[title="struct syn::token::Uninterp"],
 a.struct[title="struct syn::token::Union"],
 a.struct[title="struct syn::token::Unsafe"],
 a.struct[title="struct syn::token::Unsized"],
@@ -299,6 +300,7 @@ a.struct[title="struct syn::token::Try"]::before,
 a.struct[title="struct syn::token::Type"]::before,
 a.struct[title="struct syn::token::Typeof"]::before,
 a.struct[title="struct syn::token::Underscore"]::before,
+a.struct[title="struct syn::token::Uninterp"]::before,
 a.struct[title="struct syn::token::Union"]::before,
 a.struct[title="struct syn::token::Unsafe"]::before,
 a.struct[title="struct syn::token::Unsized"]::before,
@@ -888,6 +890,10 @@ a.struct[title="struct syn::token::Underscore"]::before {
 	font-size: calc(100% * 10 / 9);
 }
 
+a.struct[title="struct syn::token::Uninterp"]::before {
+	content: "Token![uninterp]";
+}
+
 a.struct[title="struct syn::token::Union"]::before {
 	content: "Token![union]";
 }
@@ -1094,6 +1100,7 @@ a.struct[title="struct syn::token::Trait"]::after,
 a.struct[title="struct syn::token::Try"]::after,
 a.struct[title="struct syn::token::Type"]::after,
 a.struct[title="struct syn::token::Typeof"]::after,
+a.struct[title="struct syn::token::Uninterp"]::after,
 a.struct[title="struct syn::token::Union"]::after,
 a.struct[title="struct syn::token::Unsafe"]::after,
 a.struct[title="struct syn::token::Unsized"]::after,

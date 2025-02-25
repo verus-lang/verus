@@ -1776,6 +1776,16 @@ impl PartialEq for crate::LocalInit {
         self.expr == other.expr && self.diverge == other.diverge
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::LoopSpec {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::LoopSpec {
+    fn eq(&self, other: &Self) -> bool {
+        self.iter_name == other.iter_name && self.invariants == other.invariants
+            && self.invariant_except_breaks == other.invariant_except_breaks
+            && self.ensures == other.ensures && self.decreases == other.decreases
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Eq for crate::Macro {}
@@ -2216,6 +2226,9 @@ impl PartialEq for crate::Publish {
                 crate::Publish::OpenRestricted(self0),
                 crate::Publish::OpenRestricted(other0),
             ) => self0 == other0,
+            (crate::Publish::Uninterp(self0), crate::Publish::Uninterp(other0)) => {
+                self0 == other0
+            }
             (crate::Publish::Default, crate::Publish::Default) => true,
             _ => false,
         }
@@ -2771,6 +2784,14 @@ impl PartialEq for crate::UnOp {
             (crate::UnOp::Choose(_), crate::UnOp::Choose(_)) => true,
             _ => false,
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::Uninterp {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::Uninterp {
+    fn eq(&self, _other: &Self) -> bool {
+        true
     }
 }
 #[cfg(feature = "full")]
