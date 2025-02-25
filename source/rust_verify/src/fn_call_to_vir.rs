@@ -389,6 +389,13 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let header = Arc::new(HeaderExprX::InvariantOpensExcept(Arc::new(Vec::new())));
                 mk_expr(ExprX::Header(header))
             }
+            SpecItem::OpensInvariantsSet => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                let header = Arc::new(HeaderExprX::InvariantOpensSet(arg));
+                mk_expr(ExprX::Header(header))
+            }
             SpecItem::Ensures => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected ensures", &args);

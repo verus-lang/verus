@@ -552,6 +552,8 @@ pub enum HeaderExprX {
     InvariantOpens(Exprs),
     /// The function might open any BUT the following invariants
     InvariantOpensExcept(Exprs),
+    /// The function might open the following invariants, specified as a set
+    InvariantOpensSet(Expr),
     /// Make a function f opaque (definition hidden) within the current function body.
     /// (The current function body can later reveal f in specific parts of the current function body if desired.)
     Hide(Fun),
@@ -984,6 +986,7 @@ pub struct FunctionAttrsX {
 pub enum MaskSpec {
     InvariantOpens(Exprs),
     InvariantOpensExcept(Exprs),
+    InvariantOpensSet(Expr),
 }
 
 /// Function specification of its invariant mask

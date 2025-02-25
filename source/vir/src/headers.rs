@@ -171,6 +171,18 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         }
                         invariant_mask = Some(MaskSpec::InvariantOpensExcept(es.clone()));
                     }
+                    HeaderExprX::InvariantOpensSet(e) => {
+                        match invariant_mask {
+                            None => {}
+                            _ => {
+                                return Err(error(
+                                    &stmt.span,
+                                    "only one invariant mask spec allowed",
+                                ));
+                            }
+                        }
+                        invariant_mask = Some(MaskSpec::InvariantOpensSet(e.clone()));
+                    }
                     HeaderExprX::NoUnwind | HeaderExprX::NoUnwindWhen(_) => {
                         match unwind_spec {
                             None => {}

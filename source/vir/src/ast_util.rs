@@ -994,6 +994,7 @@ impl MaskSpec {
         match self {
             MaskSpec::InvariantOpens(exprs) => exprs.clone(),
             MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
+            MaskSpec::InvariantOpensSet(e) => Arc::new(vec![e.clone()]),
         }
     }
 }
@@ -1079,6 +1080,7 @@ impl HeaderExprX {
             | HeaderExprX::DecreasesBy(_)
             | HeaderExprX::InvariantOpens(_)
             | HeaderExprX::InvariantOpensExcept(_)
+            | HeaderExprX::InvariantOpensSet(_)
             | HeaderExprX::Hide(_)
             | HeaderExprX::ExtraDependency(_)
             | HeaderExprX::NoUnwind

@@ -26,7 +26,7 @@ use syn_verus::{
     BinOp, Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
     ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArg, FnArgKind, FnMode, Global, Ident,
     ImplItem, ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
-    InvariantNameSetList, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
+    InvariantNameSetList, InvariantNameSetSet, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
     ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
     ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path, Publish, Recommends, Requires,
     ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec,
@@ -450,6 +450,15 @@ impl Visitor {
                             quote_spanned_builtin!(builtin, bracket_token.span.join() => #builtin::opens_invariants([#exprs])),
                         ),
                         Some(Semi { spans: [bracket_token.span.close()] }),
+                    ));
+                }
+                InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
+                    self.visit_expr_mut(&mut expr);
+                    spec_stmts.push(Stmt::Expr(
+                        Expr::Verbatim(
+                            quote_spanned_builtin!(builtin, expr.span() => #builtin::opens_invariants_set(#expr)),
+                        ),
+                        Some(Semi { spans: [expr.span()] }),
                     ));
                 }
             }

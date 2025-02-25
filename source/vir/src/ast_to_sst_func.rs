@@ -314,6 +314,11 @@ pub fn func_decl_to_sst(
                 inv_masks.push(Arc::new(inv_mask));
             }
         }
+        Some(MaskSpec::InvariantOpensSet(e)) => {
+            let (_pars, inv_mask) =
+                req_ens_to_sst(ctx, diagnostics, function, &vec![e.clone()], true)?;
+            inv_masks.push(Arc::new(inv_mask));
+        }
     }
 
     let unwind_condition = match &function.x.unwind_spec {
@@ -555,6 +560,7 @@ pub fn func_def_to_sst(
     let mask_spec = req_ens_function.x.mask_spec_or_default();
     let inv_spec_exprs = match &mask_spec {
         MaskSpec::InvariantOpens(exprs) | MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
+        MaskSpec::InvariantOpensSet(e) => Arc::new(vec![e.clone()]),
     };
     let mut inv_spec_exps = vec![];
     for e in inv_spec_exprs.iter() {
@@ -576,6 +582,9 @@ pub fn func_def_to_sst(
         MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(&inv_spec_exps, &function.span),
         MaskSpec::InvariantOpensExcept(_exprs) => {
             MaskSet::from_list_complement(&inv_spec_exps, &function.span)
+        }
+        MaskSpec::InvariantOpensSet(_expr) => {
+            MaskSet::arbitrary(&inv_spec_exps[0])
         }
     };
     state.mask = Some(mask_set);

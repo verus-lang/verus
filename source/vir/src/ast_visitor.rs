@@ -672,6 +672,9 @@ where
                 expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
             }
         }
+        Some(MaskSpec::InvariantOpensSet(e)) => {
+            expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf))
+        }
     }
     match unwind_spec {
         None => {}
@@ -1308,6 +1311,11 @@ where
             Some(MaskSpec::InvariantOpensExcept(Arc::new(vec_map_result(es, |e| {
                 map_expr_visitor_env(e, map, env, fe, fs, ft)
             })?)))
+        }
+        Some(MaskSpec::InvariantOpensSet(e)) => {
+            Some(MaskSpec::InvariantOpensSet(
+                map_expr_visitor_env(e, map, env, fe, fs, ft)?
+            ))
         }
     };
     let unwind_spec = match unwind_spec {

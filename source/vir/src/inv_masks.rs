@@ -19,6 +19,7 @@ pub enum MaskSet {
     Full { span: Span },
     Insert { base: Box<MaskSet>, elem: Exp },
     Remove { base: Box<MaskSet>, elem: Exp },
+    Arbitrary { set: Exp },
 }
 
 pub struct Assertion {
@@ -26,15 +27,15 @@ pub struct Assertion {
     pub cond: Exp,
 }
 
-fn namespace_id_typ() -> Typ {
+pub fn namespace_id_typ() -> Typ {
     Arc::new(TypX::Int(IntRange::Int))
 }
 
-fn namespace_set_typs() -> Typs {
+pub fn namespace_set_typs() -> Typs {
     Arc::new(vec![namespace_id_typ()])
 }
 
-fn namespace_set_typ(ctx: &Ctx) -> Typ {
+pub fn namespace_set_typ(ctx: &Ctx) -> Typ {
     Arc::new(TypX::Datatype(
         Dt::Path(crate::def::set_type_path(&ctx.global.vstd_crate_name)),
         namespace_set_typs(),
@@ -82,7 +83,10 @@ impl MaskSet {
                 let remove_exp =
                     SpannedTyped::new(&elem.span, &namespace_set_typ(ctx), remove_expx);
                 remove_exp
-            } // MaskSet::Arbitrary { span: _, set } => { set.clone() },
+            }
+            MaskSet::Arbitrary { set } => {
+                set.clone()
+            }
         }
     }
 
@@ -102,9 +106,9 @@ impl MaskSet {
         MaskSet::Remove { base: Box::new(self.clone()), elem: elem.clone() }
     }
 
-    // pub fn arbitrary(span: &Span, exp: &Exp) -> Self {
-    //     MaskSet::Arbitrary{ span: span.clone(), set: exp.clone() }
-    // }
+    pub fn arbitrary(exp: &Exp) -> Self {
+        MaskSet::Arbitrary{ set: exp.clone() }
+    }
 
     pub fn from_list(exps: &Vec<Exp>, span: &Span) -> MaskSet {
         let mut mask = Self::empty(span);

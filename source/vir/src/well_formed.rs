@@ -902,6 +902,18 @@ fn check_function(
                 )?;
             }
         }
+        Some(MaskSpec::InvariantOpensSet(expr)) => {
+            let msg = "'opens_invariants' clause of public function";
+            let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+            check_expr(
+                ctxt,
+                function,
+                expr,
+                disallow_private_access,
+                Place::PreState("opens_invariants clause"),
+                diags,
+            )?
+        }
     }
     match &function.x.unwind_spec {
         None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}

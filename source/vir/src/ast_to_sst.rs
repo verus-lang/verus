@@ -850,7 +850,17 @@ fn mask_set_for_call(fun: &Function, typs: &Typs, args: Arc<Vec<Exp>>) -> MaskSe
                 MaskSpec::InvariantOpensExcept(..) => {
                     MaskSet::from_list_complement(&inv_exps, &fun.span)
                 }
+                MaskSpec::InvariantOpensSet(..) => panic!()
             }
+        }
+        MaskSpec::InvariantOpensSet(e) => {
+            let expx = ExpX::Call(
+                CallFun::InternalFun(InternalFun::OpenInvariantMask(fun.x.name.clone(), 0)),
+                typs.clone(),
+                args.clone(),
+            );
+            let exp = SpannedTyped::new(&e.span, &e.typ, expx);
+            MaskSet::arbitrary(&exp)
         }
     }
 }
