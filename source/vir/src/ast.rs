@@ -10,7 +10,6 @@ use crate::messages::{Message, Span};
 pub use air::ast::{Binder, Binders};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
 use std::sync::Arc;
 use vir_macros::{to_node_impl, ToDebugSNode};
 
@@ -583,12 +582,6 @@ pub struct SpannedTyped<X> {
     pub span: Span,
     pub typ: Typ,
     pub x: X,
-}
-
-impl<X: Display> Display for SpannedTyped<X> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.x)
-    }
 }
 
 /// Patterns for match expressions
@@ -1280,21 +1273,6 @@ pub enum ArchWordBits {
     Exactly(u32),
 }
 
-impl ArchWordBits {
-    pub fn min_bits(&self) -> u32 {
-        match self {
-            ArchWordBits::Either32Or64 => 32,
-            ArchWordBits::Exactly(v) => *v,
-        }
-    }
-    pub fn num_bits(&self) -> Option<u32> {
-        match self {
-            ArchWordBits::Either32Or64 => None,
-            ArchWordBits::Exactly(v) => Some(*v),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Arch {
     pub word_bits: ArchWordBits,
@@ -1326,17 +1304,4 @@ pub struct KrateX {
     pub path_as_rust_names: Vec<(Path, String)>,
     /// Arch info
     pub arch: Arch,
-}
-
-impl FunctionKind {
-    pub(crate) fn inline_okay(&self) -> bool {
-        match self {
-            FunctionKind::Static | FunctionKind::TraitMethodImpl { .. } => true,
-            // We don't want to do inlining for MethodDecls. If a MethodDecl has a body,
-            // it's a *default* body, so we can't know for sure it hasn't been overridden.
-            FunctionKind::TraitMethodDecl { .. } | FunctionKind::ForeignTraitMethodImpl { .. } => {
-                false
-            }
-        }
-    }
 }
