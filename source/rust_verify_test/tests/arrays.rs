@@ -4,6 +4,48 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] test_unable_to_add_set_spec verus_code! {
+        use vstd::prelude::*;
+        use vstd::array::*;
+
+        struct A([u8; 4]);
+
+        impl core::ops::Index<u8> for A {
+            type Output = u8;
+            fn index(&self, idx: u8) -> &u8 {
+                &self.0[0]
+            }
+        }
+
+        impl core::ops::IndexMut<u8> for A {
+            fn index_mut(&mut self, idx: u8) -> &mut u8 {
+                &mut self.0[0]
+            }
+        }
+
+        impl vstd::std_specs::core::IndexSetTrustedSpec<u8> for A {
+            open spec fn spec_index_set_requires(&self, index: u8) -> bool {
+                true
+            }
+
+            open spec fn spec_index_set_ensures(&self, new_container: &Self, index: u8, val: u8) -> bool {
+                new_container.0@ == self.0@.update(index as int, val)
+            }
+        }
+
+        fn test(ar: &mut [u8; 20])
+        requires
+            old(ar)[0] == 2
+        ensures
+            ar[0] == 3,
+        {
+            ar[0] += 1;
+        }
+
+    } => Err(e) => assert_rust_error_msg(e, "the trait bound `A: vstd::std_specs::core::IndexSetTrustedSpecSeal` is not satisfied")
+}
+
+test_verify_one_file! {
     #[test] test_array_set_assign_op verus_code! {
         use vstd::prelude::*;
         use vstd::array::*;
