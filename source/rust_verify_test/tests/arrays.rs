@@ -42,7 +42,10 @@ test_verify_one_file! {
             ar[0] += 1;
         }
 
-    } => Err(e) => assert_rust_error_msg(e, "the trait bound `A: vstd::std_specs::core::IndexSetTrustedSpecSeal` is not satisfied")
+    } => Err(e) => {
+        assert!(e.errors[0].rendered.contains("`IndexSetTrustedSpec` is a \"sealed trait\""));
+        assert_rust_error_msg(e, "the trait bound `A: vstd::std_specs::core::TrustedSpecSealed` is not satisfied");
+    }
 }
 
 test_verify_one_file! {

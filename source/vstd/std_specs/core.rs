@@ -158,12 +158,12 @@ pub assume_specification[ core::intrinsics::unlikely ](b: bool) -> (c: bool)
 pub struct ExManuallyDrop<V: ?Sized>(core::mem::ManuallyDrop<V>);
 
 // A private seal trait to prevent a trait from being implemented outside of vstd.
-trait IndexSetTrustedSpecSeal {
+pub(crate) trait TrustedSpecSealed {
 
 }
 
 #[allow(private_bounds)]
-pub trait IndexSetTrustedSpec<Idx>: core::ops::IndexMut<Idx> + IndexSetTrustedSpecSeal {
+pub trait IndexSetTrustedSpec<Idx>: core::ops::IndexMut<Idx> + TrustedSpecSealed {
     spec fn spec_index_set_requires(&self, index: Idx) -> bool;
 
     spec fn spec_index_set_ensures(
@@ -193,7 +193,7 @@ pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
     container[index] = val;
 }
 
-impl<T, const N: usize> IndexSetTrustedSpecSeal for [T; N] {
+impl<T, const N: usize> TrustedSpecSealed for [T; N] {
 
 }
 
@@ -207,7 +207,7 @@ impl<T, const N: usize> IndexSetTrustedSpec<usize> for [T; N] {
     }
 }
 
-impl<T> IndexSetTrustedSpecSeal for [T] {
+impl<T> TrustedSpecSealed for [T] {
 
 }
 
@@ -219,11 +219,6 @@ impl<T> IndexSetTrustedSpec<usize> for [T] {
     open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
         new_container@ == self@.update(index as int, val)
     }
-}
-
-#[cfg(feature = "alloc")]
-impl<T, A: core::alloc::Allocator> IndexSetTrustedSpecSeal for Vec<T, A> {
-
 }
 
 } // verus!
