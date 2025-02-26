@@ -304,3 +304,4 @@ checked_uint_gen!(u16, CheckedU16);
 checked_uint_gen!(u32, CheckedU32);
 checked_uint_gen!(u64, CheckedU64);
 checked_uint_gen!(u128, CheckedU128);
+checked_uint_gen!(usize, CheckedUsize);
