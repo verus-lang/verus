@@ -748,11 +748,7 @@ pub(crate) fn stms_to_one_stm(span: &Span, stms: Vec<Stm>) -> Stm {
 }
 
 pub(crate) fn stms_to_one_stm_opt(span: &Span, stms: Vec<Stm>) -> Option<Stm> {
-    if stms.len() == 0 {
-        None
-    } else {
-        Some(stms_to_one_stm(span, stms))
-    }
+    if stms.len() == 0 { None } else { Some(stms_to_one_stm(span, stms)) }
 }
 
 /// Convert the expression to a Stm, and assert the post-conditions for
