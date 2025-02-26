@@ -621,7 +621,7 @@ macro_rules! assert_multisets_equal_internal {
 }
 
 /// Properties of multisets from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-#[deprecated = "Use `broadcast use group_multiset_properties` instead" ]
+#[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_multiset_properties` instead") ]
 pub proof fn lemma_multiset_properties<V>()
     ensures
         forall|m: Multiset<V>, v: V, mult: nat| #[trigger] m.update(v, mult).count(v) == mult,  //from lemma_update_same

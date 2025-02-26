@@ -857,7 +857,7 @@ pub broadcast proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
 }
 
 /// Properties of sets from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-#[deprecated = "Use `broadcast use group_set_properties` instead"]
+#[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_set_properties` instead")]
 pub proof fn lemma_set_properties<A>()
     ensures
         forall|a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(b) == a.union(b),  //from lemma_set_union_again1

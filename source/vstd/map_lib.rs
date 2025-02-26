@@ -360,7 +360,7 @@ pub broadcast proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: sp
 }
 
 /// Properties of maps from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
-#[deprecated = "Use `broadcast use group_map_properties` instead"]
+#[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_map_properties` instead")]
 pub proof fn lemma_map_properties<K, V>()
     ensures
         forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]

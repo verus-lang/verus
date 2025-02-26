@@ -162,11 +162,12 @@ impl<T: ?Sized> View for *const T {
     }
 }
 
-impl<T> View for PointsTo<T> {
-    type V = PointsToData<T>;
+// impl<T> View for PointsTo<T> {
+//     type V = PointsToData<T>;
 
-    spec fn view(&self) -> Self::V;
-}
+//     spec fn view(&self) -> Self::V;
+//     // TODO-E: Either implement this function so it's tied to ptr() or get rid of it and fix all the errors
+// }
 
 impl<T> PointsTo<T> {
     // #[verifier::inline]
@@ -174,10 +175,11 @@ impl<T> PointsTo<T> {
     //     self.view().ptr
     // }
 
-    #[verifier::inline]
-    pub open spec fn opt_value(&self) -> MemContents<T> {
-        self.view().opt_value
-    }
+    // #[verifier::inline]
+    pub open spec fn opt_value(&self) -> MemContents<T>;
+    // {
+    //     self.view().opt_value
+    // }
 
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
@@ -203,7 +205,7 @@ impl<T> PointsTo<T> {
         requires
             size_of::<T>() != 0,
         ensures
-            self@.ptr@.addr != 0,
+            self.ptr()@.addr != 0,
     {
         unimplemented!();
     }
@@ -260,6 +262,8 @@ impl<T> PointsTo<[T]> {
     // }
     // TODO-E: MemContents<Seq<T>> or Seq<MemContents<T>>, have options
     // Q: What is the conceptual difference between these two, in terms of how I'd model it?
+    // A: MemContents<T> - either have T or uninit, Seq<MemContent<T>> - every entry can be init or uninit, independently
+    // MemContents<Seq<T>> - entire sequence is init or uninit. Weird bc don't actually have sequence in memory, but not sufficient
     // don't write opt_value in terms of view
 
     // #[verifier::inline]
@@ -297,7 +301,9 @@ impl<T> PointsTo<[T]> {
     /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
     /// Only the proof-code representation changes.
     /// 
-    /// TODO-E: replace w/version that forgets about entry
+    /// TODO-E: replace w/version that forgets about entry - entry in sequence, by index
+    /// ie add index param
+    /// skip unless i need it
     /// Q: What does this mean?
     // #[verifier::external_body]
     // pub proof fn leak_contents(tracked &mut self)

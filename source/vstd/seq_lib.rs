@@ -186,7 +186,8 @@ impl<A> Seq<A> {
     }
 
     // deprecated since the triggers inside of 2 of the conjuncts are blocked
-    #[deprecated = "Use `broadcast use group_filter_ensures` instead" ]
+    #[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_filter_ensures` instead" )]
+    
     pub proof fn filter_lemma(self, pred: spec_fn(A) -> bool)
         ensures
     // we don't keep anything bad
@@ -2021,7 +2022,7 @@ pub broadcast proof fn lemma_seq_skip_of_skip<A>(s: Seq<A>, m: int, n: int)
 
 /// Properties of sequences from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
 // TODO: seems like this warning doesn't come up?
-#[deprecated = "Use `broadcast use group_seq_properties` instead"]
+#[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_seq_properties` instead")]
 pub proof fn lemma_seq_properties<A>()
     ensures
         forall|s: Seq<A>, x: A|
