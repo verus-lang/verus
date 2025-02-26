@@ -127,7 +127,7 @@ fn datatype_or_fun_to_air_commands(
     datatyp: Typ,
     tparams: &Idents,
     variants: &Variants,
-    declare_box: bool,
+    mut declare_box: bool,
     add_height: bool,
     add_ext_equal: bool,
     spec: &Specialization,
@@ -136,6 +136,11 @@ fn datatype_or_fun_to_air_commands(
     let x = air_unique_var("x");
     let x_var = ident_var(&x.lower());
     let apolytyp = str_typ(crate::def::POLY);
+
+    // NOTE: Short-circuit
+    if !spec.is_empty() {
+        declare_box = false;
+    }
 
     if dtyp_id.is_none() {
         // datatype TYPE identifiers

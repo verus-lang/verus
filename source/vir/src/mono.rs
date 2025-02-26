@@ -187,7 +187,7 @@ impl Specialization {
     pub fn from_typs<'a>(typs: &Typs, spec_map: &SpecMap) -> Self {
         Self { typs: Arc::new(typs_as_spec(typs, spec_map)) }
     }
-    pub fn from_exp<'a>(exp: &'a ExpX, spec_map: &SpecMap) -> Option<(&'a Fun, Self)> {
+    pub fn from_function_call<'a>(exp: &'a ExpX, spec_map: &SpecMap) -> Option<(&'a Fun, Self)> {
         let ExpX::Call(CallFun::Fun(fun, _) | CallFun::Recursive(fun), typs, _) = exp else {
             return None;
         };
@@ -349,7 +349,7 @@ impl<'a> Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for Specializatio
         Ok(())
     }
     fn visit_exp(&mut self, exp: &Exp) -> Result<(), ()> {
-        if let Some((fun, spec)) = Specialization::from_exp(&exp.x, self.spec_map) {
+        if let Some((fun, spec)) = Specialization::from_function_call(&exp.x, self.spec_map) {
             let entry = self.invocations.entry(fun.clone()).or_default();
             entry.insert(spec);
         }

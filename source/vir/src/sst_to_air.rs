@@ -789,7 +789,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
         ExpX::Call(f @ (CallFun::Fun(..) | CallFun::Recursive(_)), typs, args) => {
             let specialization = match ctx.poly_strategy {
                 mono::PolyStrategy::Mono => {
-                    let (_, spec) = mono::Specialization::from_exp(&exp.x, expr_ctxt.spec_map)
+                    let (_, spec) = mono::Specialization::from_function_call(&exp.x, expr_ctxt.spec_map)
                         .expect("Could not create specialization rom call site");
                     spec
                 }
