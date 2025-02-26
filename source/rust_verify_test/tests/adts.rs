@@ -1099,6 +1099,65 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] isnot_syntax_pass IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnot(t: ThisOrThat) {
+            match t {
+                ThisOrThat::This(..) => assert(t !is That),
+                ThisOrThat::That {..} => assert(t !is This),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] isnot_syntax_valid_fail IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnot(t: ThisOrThat) {
+            match t {
+                ThisOrThat::This(..) => assert(t !is This), // FAILS
+                ThisOrThat::That {..} => assert(t !is This),
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] isnot_syntax_invalid IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnot(t: ThisOrThat) {
+            assert(t !is Unknown);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "no variant `Unknown` for this datatype")
+}
+
+test_verify_one_file! {
+    #[test] isnot_syntax_precedence IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnot(t: ThisOrThat)
+            requires t !is This,
+        {
+            assert(t !is This != t !is That);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] isnot_syntax_implies IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnot(t: ThisOrThat)
+            requires t !is This,
+        {
+            assert(t !is This ==> true);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] isnot_syntax_doesnt_interfere_with_identifier_is IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn let_with_is_ident() {
+            let is = false;
+            assert(!is);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] struct_syntax_with_numeric_field_names verus_code! {
         #[is_variant]
         enum Foo {

@@ -1659,6 +1659,15 @@ impl Debug for Lite<syn::Expr> {
                 formatter.field("variant_ident", Lite(&_val.variant_ident));
                 formatter.finish()
             }
+            syn::Expr::IsNot(_val) => {
+                let mut formatter = formatter.debug_struct("Expr::IsNot");
+                if !_val.attrs.is_empty() {
+                    formatter.field("attrs", Lite(&_val.attrs));
+                }
+                formatter.field("base", Lite(&_val.base));
+                formatter.field("variant_ident", Lite(&_val.variant_ident));
+                formatter.finish()
+            }
             syn::Expr::Has(_val) => {
                 let mut formatter = formatter.debug_struct("Expr::Has");
                 if !_val.attrs.is_empty() {
@@ -2109,6 +2118,17 @@ impl Debug for Lite<syn::ExprInfer> {
 impl Debug for Lite<syn::ExprIs> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("ExprIs");
+        if !self.value.attrs.is_empty() {
+            formatter.field("attrs", Lite(&self.value.attrs));
+        }
+        formatter.field("base", Lite(&self.value.base));
+        formatter.field("variant_ident", Lite(&self.value.variant_ident));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ExprIsNot> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ExprIsNot");
         if !self.value.attrs.is_empty() {
             formatter.field("attrs", Lite(&self.value.attrs));
         }
@@ -6960,6 +6980,11 @@ impl Debug for Lite<syn::token::InvariantExceptBreak> {
 impl Debug for Lite<syn::token::Is> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![is]")
+    }
+}
+impl Debug for Lite<syn::token::IsNot> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![! is]")
     }
 }
 impl Debug for Lite<syn::token::LArrow> {

@@ -1321,6 +1321,11 @@
             "syn": "ExprIs"
           }
         ],
+        "IsNot": [
+          {
+            "syn": "ExprIsNot"
+          }
+        ],
         "Has": [
           {
             "syn": "ExprHas"
@@ -1977,6 +1982,32 @@
         },
         "is_token": {
           "token": "Is"
+        },
+        "variant_ident": {
+          "box": {
+            "proc_macro2": "Ident"
+          }
+        }
+      }
+    },
+    {
+      "ident": "ExprIsNot",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "base": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "is_not_token": {
+          "token": "IsNot"
         },
         "variant_ident": {
           "box": {
@@ -7323,6 +7354,7 @@
     "InvariantEnsures": "invariant_ensures",
     "InvariantExceptBreak": "invariant_except_break",
     "Is": "is",
+    "IsNot": "! is",
     "LArrow": "<-",
     "Layout": "layout",
     "Le": "<=",
