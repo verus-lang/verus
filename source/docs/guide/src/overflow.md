@@ -23,7 +23,7 @@ that the bounds prevent overflow:
 {{#include ../../../rust_verify/example/guide/overflow.rs:compute_sum_limited}}
 ```
 
-Another way to deal with overflow is to explicitly check for overflow at
+Another way to deal with overflow is to explicitly check for it at
 runtime. For this, one can use operations from the Rust standard library
 like `checked_add` and `checked_mul`. These operations return an `Option`,
 with the value `None` indicating that an overflow would have resulted.
