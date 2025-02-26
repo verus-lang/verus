@@ -693,6 +693,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] opens_invariants_trait_method_impl5 verus_code! {
+        use vstd::prelude::*;
+
         proof fn open_me(x: int)
             opens_invariants [x]
         { }
