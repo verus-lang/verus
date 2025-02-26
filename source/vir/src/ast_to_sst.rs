@@ -15,7 +15,9 @@ use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
-use crate::sst_util::{sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value, subst_exp};
+use crate::sst_util::{
+    sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value, subst_exp,
+};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::vec_map_result;
 use crate::visitor::VisitorControlFlow;
@@ -746,7 +748,11 @@ pub(crate) fn stms_to_one_stm(span: &Span, stms: Vec<Stm>) -> Stm {
 }
 
 pub(crate) fn stms_to_one_stm_opt(span: &Span, stms: Vec<Stm>) -> Option<Stm> {
-    if stms.len() == 0 { None } else { Some(stms_to_one_stm(span, stms)) }
+    if stms.len() == 0 {
+        None
+    } else {
+        Some(stms_to_one_stm(span, stms))
+    }
 }
 
 /// Convert the expression to a Stm, and assert the post-conditions for
@@ -831,7 +837,13 @@ fn is_small_exp_or_loc(exp: &Exp) -> bool {
     }
 }
 
-fn mask_set_for_call(ctx: &Ctx, state: &State, function: &Function, typs: &Typs, args: &Vec<Exp>) -> MaskSet {
+fn mask_set_for_call(
+    ctx: &Ctx,
+    state: &State,
+    function: &Function,
+    typs: &Typs,
+    args: &Vec<Exp>,
+) -> MaskSet {
     let (trait_typ_substs, req_ens_function) =
         if let FunctionKind::TraitMethodImpl { method, trait_path, trait_typ_args, .. } =
             &function.x.kind
@@ -879,14 +891,14 @@ fn mask_set_for_call(ctx: &Ctx, state: &State, function: &Function, typs: &Typs,
             let mut inv_exps = vec![];
             for e in es.iter() {
                 inv_exps.push((e.span.clone(), expr_to_exp(e)));
-            };
+            }
             MaskSet::from_list(&inv_exps, &req_ens_function.span)
         }
         MaskSpec::InvariantOpensExcept(es) => {
             let mut inv_exps = vec![];
             for e in es.iter() {
                 inv_exps.push((e.span.clone(), expr_to_exp(e)));
-            };
+            }
             MaskSet::from_list_complement(&inv_exps, &req_ens_function.span)
         }
     }
