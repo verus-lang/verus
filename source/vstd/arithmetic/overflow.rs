@@ -211,10 +211,12 @@ macro_rules! checked_uint_gen {
                         use_type_invariant(self);
                         use_type_invariant(v2);
                     }
-                    let i: Ghost<nat> = Ghost((self@ + v2@) as nat);
-                    match (self.v, v2.v) {
-                        (Some(n1), Some(n2)) => Self{ i, v: n1.checked_add(n2) },
-                        _ => Self{ i, v: None },
+                    match v2.v {
+                        Some(n) => self.add(n),
+                        None => {
+                            let i: Ghost<nat> = Ghost((self@ + v2@) as nat);
+                            Self{ i, v: None }
+                        }
                     }
                 }
 
@@ -264,43 +266,32 @@ macro_rules! checked_uint_gen {
                         use_type_invariant(v2);
                     }
                     let i: Ghost<nat> = Ghost((self@ * v2@) as nat);
-                    match (self.v, v2.v) {
-                        (Some(n1), Some(n2)) => Self{ i, v: n1.checked_mul(n2) },
-                        (Some(n1), None) => {
-                            if n1 == 0 {
-                                assert(i@ == 0) by {
-                                    lemma_mul_by_zero_is_zero(v2@ as int);
-                                }
-                                Self{ i, v: Some(0) }
-                            }
-                            else {
-                                assert(self@ * v2@ >= 1 * v2@ == v2@) by {
-                                    lemma_mul_inequality(1, self@ as int, v2@ as int);
-                                }
-                                Self{ i, v: None }
-                            }
-                        },
-                        (None, Some(n2)) => {
-                            if n2 == 0 {
-                                assert(i@ == 0) by {
-                                    lemma_mul_by_zero_is_zero(self@ as int);
-                                }
-                                Self{ i, v: Some(0) }
-                            }
-                            else {
-                                assert(self@ * n2 >= self@ * 1 == self@) by {
-                                    lemma_mul_inequality(1, n2 as int, self@ as int);
-                                    lemma_mul_is_commutative(self@ as int, n2 as int);
-                                }
-                                Self{ i, v: None }
+                    match v2.v {
+                        Some(n) => self.mul(n),
+                        None => {
+                            match self.v {
+                                Some(n1) => {
+                                    if n1 == 0 {
+                                        assert(i@ == 0) by {
+                                            lemma_mul_by_zero_is_zero(v2@ as int);
+                                        }
+                                        Self{ i, v: Some(0) }
+                                    }
+                                    else {
+                                        assert(self@ * v2@ >= 1 * v2@ == v2@) by {
+                                            lemma_mul_inequality(1, self@ as int, v2@ as int);
+                                        }
+                                        Self{ i, v: None }
+                                    }
+                                },
+                                None => {
+                                    assert(self@ * v2@ > $uty::MAX) by {
+                                        lemma_mul_inequality(1, self@ as int, v2@ as int);
+                                    }
+                                    Self{ i, v: None }
+                                },
                             }
                         }
-                        (None, None) => {
-                            assert(self@ * v2@ > $uty::MAX) by {
-                                lemma_mul_inequality(1, self@ as int, v2@ as int);
-                            }
-                            Self{ i, v: None }
-                        },
                     }
                 }
             }
