@@ -16,15 +16,15 @@ use crate::def::{
     prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
     snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
     unique_local, variant_field_ident, variant_field_ident_internal, variant_ident,
-    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
-    SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
-    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END, U_HI,
+    variant_ident_mangled, CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos,
+    SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM,
+    FUEL_TYPE, I_HI, I_LO, POLY, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII,
+    STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::inv_masks::{MaskSet, MaskSingleton};
 use crate::messages::{error, error_with_label, Span};
-use crate::mono;
+use crate::mono::{self, Specialization};
 use crate::poly::{typ_as_mono, typ_is_poly, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
@@ -592,9 +592,11 @@ pub(crate) fn ctor_to_apply<'a>(
     dt: &Dt,
     variant: &Ident,
     binders: &'a Binders<Exp>,
+    spec: &Specialization,
 ) -> (Ident, impl Iterator<Item = &'a Arc<BinderX<Exp>>>) {
     let fields = &get_variant(&ctx.datatype_map[dt].x.variants, variant).fields;
-    let variant = variant_ident(dt, &variant);
+    let dt_path = spec.mangle_path(&encode_dt_as_path(dt));
+    let variant = variant_ident_mangled(&dt_path, &variant);
     let field_exps = fields.iter().map(move |f| get_field(binders, &f.name));
     (variant, field_exps)
 }
@@ -691,10 +693,7 @@ pub(crate) struct LocalContext {
 }
 impl LocalContext {
     pub fn empty(ctx: &Ctx) -> Self {
-        Self {
-            poly_mode: ctx.poly_strategy == mono::PolyStrategy::Poly,
-        }
-
+        Self { poly_mode: ctx.poly_strategy == mono::PolyStrategy::Poly }
     }
 }
 
@@ -767,7 +766,12 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
     Some(Arc::new(qid))
 }
 
-pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx: &LocalContext) -> Result<Expr, VirErr> {
+pub(crate) fn exp_to_expr(
+    ctx: &Ctx,
+    exp: &Exp,
+    expr_ctxt: &ExprCtxt,
+    local_ctx: &LocalContext,
+) -> Result<Expr, VirErr> {
     let sub_local_ctx = LocalContext::empty(ctx);
     let result = match &exp.x {
         ExpX::Const(c) => {
@@ -789,8 +793,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
         ExpX::Call(f @ (CallFun::Fun(..) | CallFun::Recursive(_)), typs, args) => {
             let specialization = match ctx.poly_strategy {
                 mono::PolyStrategy::Mono => {
-                    let (_, spec) = mono::Specialization::from_function_call(&exp.x, expr_ctxt.spec_map)
-                        .expect("Could not create specialization rom call site");
+                    let (_, spec) =
+                        mono::Specialization::from_function_call(&exp.x, expr_ctxt.spec_map)
+                            .expect("Could not create specialization rom call site");
                     spec
                 }
                 mono::PolyStrategy::Poly => mono::Specialization::empty(),
@@ -803,9 +808,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
             let name = suffix_global_id(&fun_to_air_ident(&x_name));
             let name = specialization.transform_ident(name);
             let mut exprs: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
-            let arg_local_ctx = LocalContext {
-                poly_mode: specialization.is_empty(),
-            };
+            let arg_local_ctx = LocalContext { poly_mode: specialization.is_empty() };
             for arg in args.iter() {
                 exprs.push(exp_to_expr(ctx, arg, expr_ctxt, &arg_local_ctx)?);
             }
@@ -843,11 +846,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
             let args = vec_map_result(args, |e| exp_to_expr(ctx, e, expr_ctxt, &sub_local_ctx))?;
             Arc::new(ExprX::ApplyFun(typ_to_air(ctx, &exp.typ), e0, Arc::new(args)))
         }
-        // Constructor for datatypes 
+        // Constructor for datatypes
         // TODO: remove above comment
         // specialized datatype + variant
         ExpX::Ctor(path, variant, binders) => {
-            let (variant, args) = ctor_to_apply(ctx, path, variant, binders);
+            let dt_spec = Specialization::from_datatype(&exp.typ, &expr_ctxt.spec_map)
+                .expect("Must be a datatype");
+            let (variant, args) = ctor_to_apply(ctx, path, variant, binders, &dt_spec);
             let args = args
                 .map(|b| exp_to_expr(ctx, &b.a, expr_ctxt, &sub_local_ctx))
                 .collect::<Result<Vec<_>, VirErr>>()?;
@@ -944,11 +949,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
                     return Ok(Arc::new(bit_expr));
                 }
             }
-            UnaryOp::HeightTrigger => {
-                str_apply(crate::def::HEIGHT, &vec![exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?])
-            }
+            UnaryOp::HeightTrigger => str_apply(
+                crate::def::HEIGHT,
+                &vec![exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?],
+            ),
             UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?,
-            UnaryOp::Clip { range: IntRange::Int, .. } => exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?,
+            UnaryOp::Clip { range: IntRange::Int, .. } => {
+                exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?
+            }
             UnaryOp::Clip { range, .. } => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
                 let f_name = match range {
@@ -1029,9 +1037,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
             }
             UnaryOpr::Field(FieldOpr { datatype, variant, field, get_variant: _, check: _ }) => {
                 tracing::debug!("Maybe calling datatypex2 {datatype:?}");
+                let dt_spec = Specialization::from_datatype(&exp.typ, expr_ctxt.spec_map)
+                    .expect("UnaryOpr::Field expects a datatype");
                 let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
                 Arc::new(ExprX::Apply(
-                    variant_field_ident(&encode_dt_as_path(datatype), variant, field),
+                    variant_field_ident(
+                        &dt_spec.mangle_path(&encode_dt_as_path(datatype)),
+                        variant,
+                        field,
+                    ),
                     Arc::new(vec![expr]),
                 ))
             }
@@ -1247,7 +1261,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
                     }
                 }
                 let triggers = vec_map_result(&*trigs, |trig| {
-                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt, &sub_local_ctx)).map(|v| Arc::new(v))
+                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt, &sub_local_ctx))
+                        .map(|v| Arc::new(v))
                 })?;
                 let qid = new_user_qid(ctx, &exp);
                 air::ast_util::mk_quantifier(quant.quant, &bs, &triggers, qid, &expr)
@@ -1258,7 +1273,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
                     Arc::new(BinderX { name: b.name.lower(), a: typ_to_air(ctx, &b.a) })
                 });
                 let triggers = vec_map_result(&*trigs, |trig| {
-                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt, &sub_local_ctx)).map(|v| Arc::new(v))
+                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt, &sub_local_ctx))
+                        .map(|v| Arc::new(v))
                 })?;
                 let qid = (triggers.len() > 0).then(|| ()).and_then(|_| new_user_qid(ctx, &exp));
                 let lambda = air::ast_util::mk_lambda(&binders, &triggers, qid, &expr);
@@ -1282,7 +1298,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt, local_ctx:
                 let typ = &e.typ;
                 let typ_inv = typ_invariant(ctx, typ, &body_expr);
                 let triggers = vec_map_result(&*trigs, |trig| {
-                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt, &sub_local_ctx)).map(|v| Arc::new(v))
+                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt, &sub_local_ctx))
+                        .map(|v| Arc::new(v))
                 })?;
                 let binders = Arc::new(bs);
                 let qid = new_user_qid(ctx, &exp);
@@ -2490,7 +2507,8 @@ fn stm_to_stmts(
 
             // Build the names_expr. Note: In the SST, this should have been assigned
             // to an expression whose value is constant for the entire block.
-            let namespace_expr = exp_to_expr(ctx, namespace_exp, &ExprCtxt::new(spec_map), &local_ctx)?;
+            let namespace_expr =
+                exp_to_expr(ctx, namespace_exp, &ExprCtxt::new(spec_map), &local_ctx)?;
 
             // Assert that the namespace of the inv we are opening is in the mask set
             if !ctx.checking_spec_preconditions() {
@@ -2759,7 +2777,7 @@ pub(crate) fn body_stm_to_air(
     let f_mask_singletons =
         |v: &Vec<MaskSingleton<Exp>>| -> Result<Vec<MaskSingleton<Expr>>, VirErr> {
             let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body, spec_map);
-        let local_ctx = &LocalContext::empty(ctx);
+            let local_ctx = &LocalContext::empty(ctx);
             let mut v2: Vec<MaskSingleton<Expr>> = Vec::new();
             for m in v.iter() {
                 let expr = exp_to_expr(ctx, &m.expr, expr_ctxt, &local_ctx)?;
@@ -2778,7 +2796,7 @@ pub(crate) fn body_stm_to_air(
         UnwindSst::NoUnwind => UnwindAir::NoUnwind(ReasonForNoUnwind::Function),
         UnwindSst::NoUnwindWhen(exp) => {
             let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body, spec_map);
-        let local_ctx = LocalContext::empty(ctx);
+            let local_ctx = LocalContext::empty(ctx);
             let e = exp_to_expr(ctx, &exp, expr_ctxt, &local_ctx)?;
             UnwindAir::NoUnwindWhen(e)
         }

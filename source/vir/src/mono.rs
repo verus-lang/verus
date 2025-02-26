@@ -23,7 +23,6 @@ use crate::ast::Idents;
 use crate::ast::IntRange;
 use crate::ast::Primitive;
 use crate::ast::{Path, PathX};
-use crate::def::encode_dt_as_path;
 use crate::def::{path_to_string, Spanned};
 use crate::poly;
 use crate::sst::{CallFun, Exp, ExpX, KrateSstX, Stm};
@@ -193,6 +192,12 @@ impl Specialization {
         };
         let result = Self { typs: Arc::new(typs_as_spec(typs, spec_map)) };
         Some((fun, result))
+    }
+    pub fn from_datatype(t: &TypX, spec_map: &SpecMap) -> Option<Self> {
+        let TypX::Datatype(_, typs, _) = t else {
+            return None;
+        };
+        Some(Self::from_typs(typs, spec_map))
     }
 
     pub fn mangle_path(&self, path: &Path) -> Path {
