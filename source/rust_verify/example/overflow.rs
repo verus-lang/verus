@@ -1,4 +1,4 @@
-// examples of using `OverflowingU32` and `OverflowingU64`
+// examples of using `CheckedU32` and `CheckedU64`
 use vstd::prelude::*;
 use vstd::arithmetic::overflow::*;
 
@@ -26,7 +26,7 @@ fn checked_u64_calculations(a: u64, b: u64, c: u64, d: u64) -> (result: Option<u
 {
     let a_times_b = CheckedU64::new(a).mul(b);
     let c_times_d = CheckedU64::new(c).mul(d);
-    let sum_of_products = a_times_b.add_checked_u64(&c_times_d);
+    let sum_of_products = a_times_b.add_checked(&c_times_d);
     if sum_of_products.is_overflowed() {
         assert(a * b + c * d > u64::MAX);
         None
@@ -60,7 +60,7 @@ fn checked_u32_calculations(a: u32, b: u32, c: u32, d: u32, e: u32) -> (result: 
 {
     let a_times_b = CheckedU32::new(a).mul(b);
     let c_times_d = CheckedU32::new(c).mul(d);
-    let sum_of_products = a_times_b.add_checked_u32(&c_times_d);
+    let sum_of_products = a_times_b.add_checked(&c_times_d);
     let f = sum_of_products.add(e);
     f.to_option()
 }
