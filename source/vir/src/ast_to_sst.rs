@@ -1,20 +1,23 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
-    LoopInvariantKind, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
+    Constant, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Ident, IntRange, InvAtomicity,
+    LoopInvariantKind, MaskSpec, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
+    UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{types_equal, undecorate_typ, unit_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
+use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_secondary_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
-use crate::sst_util::{sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value};
+use crate::sst_util::{
+    sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value, subst_exp,
+};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::vec_map_result;
 use crate::visitor::VisitorControlFlow;
@@ -74,6 +77,8 @@ pub(crate) struct State<'a> {
     pub statics: IndexSet<Fun>,
     pub assert_id_counter: u64,
     loop_id_counter: u64,
+
+    pub mask: Option<MaskSet>,
 }
 
 #[derive(Clone)]
@@ -120,7 +125,7 @@ macro_rules! unwrap_or_return_never {
 }
 
 impl<'a> State<'a> {
-    pub fn new(diagnostics: &'a impl Diagnostics) -> Self {
+    pub fn new(diagnostics: &'a dyn Diagnostics) -> Self {
         let mut rename_map = ScopeMap::new();
         let mut rename_exp_idents = ScopeMap::new();
         rename_map.push_scope(true);
@@ -141,6 +146,8 @@ impl<'a> State<'a> {
             statics: IndexSet::new(),
             assert_id_counter: 0,
             loop_id_counter: 0,
+
+            mask: None,
         }
     }
 
@@ -678,7 +685,7 @@ pub(crate) fn expr_to_pure_exp_check(
 
 pub(crate) fn expr_to_decls_exp_skip_checks(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &dyn Diagnostics,
     view_as_spec: bool,
     params: &Pars,
     expr: &Expr,
@@ -708,7 +715,7 @@ pub(crate) fn expr_to_bind_decls_exp_skip_checks(
 
 pub(crate) fn expr_to_exp_skip_checks(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &dyn Diagnostics,
     params: &Pars,
     expr: &Expr,
 ) -> Result<Exp, VirErr> {
@@ -826,6 +833,73 @@ fn is_small_exp_or_loc(exp: &Exp) -> bool {
     }
 }
 
+fn mask_set_for_call(
+    ctx: &Ctx,
+    state: &State,
+    function: &Function,
+    typs: &Typs,
+    args: &Vec<Exp>,
+) -> MaskSet {
+    let (trait_typ_substs, req_ens_function) =
+        if let FunctionKind::TraitMethodImpl { method, trait_path, trait_typ_args, .. } =
+            &function.x.kind
+        {
+            // Inherit opens_invariants from trait method declaration
+            let tr = &ctx.trait_map[trait_path];
+            let mut typ_params = vec![crate::def::trait_self_type_param()];
+            for (x, _) in tr.x.typ_params.iter() {
+                typ_params.push(x.clone());
+            }
+            let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
+            assert!(typ_params.len() == trait_typ_args.len());
+            for (x, t) in typ_params.iter().zip(trait_typ_args.iter()) {
+                trait_typ_substs.insert(x.clone(), t.clone());
+            }
+            (trait_typ_substs, &ctx.func_map[method])
+        } else {
+            (HashMap::new(), function)
+        };
+
+    let mut typ_substs = trait_typ_substs;
+    assert!(req_ens_function.x.typ_params.len() == typs.len());
+    for (n, typ_param) in req_ens_function.x.typ_params.iter().enumerate() {
+        let typ = &typs[n];
+        typ_substs.insert(typ_param.clone(), typ.clone());
+    }
+
+    let pars = crate::ast_to_sst_func::params_to_pars(&req_ens_function.x.params, true);
+    assert!(req_ens_function.x.params.len() == args.len());
+    let mut param_substs = HashMap::<VarIdent, Exp>::new();
+    for (n, param) in req_ens_function.x.params.iter().enumerate() {
+        let arg = state.finalize_exp(ctx, &args[n]).unwrap();
+        param_substs.insert(param.x.name.clone(), arg);
+    }
+    let expr_to_exp = |e| {
+        let exp = expr_to_exp_skip_checks(ctx, state.diagnostics, &pars, e).unwrap();
+        let exp = state.finalize_exp(ctx, &exp).unwrap();
+        let exp = subst_exp(&typ_substs, &param_substs, &exp);
+        exp
+    };
+
+    let mask_spec = req_ens_function.x.mask_spec_or_default();
+    match &mask_spec {
+        MaskSpec::InvariantOpens(es) => {
+            let mut inv_exps = vec![];
+            for e in es.iter() {
+                inv_exps.push((e.span.clone(), expr_to_exp(e)));
+            }
+            MaskSet::from_list(&inv_exps, &req_ens_function.span)
+        }
+        MaskSpec::InvariantOpensExcept(es) => {
+            let mut inv_exps = vec![];
+            for e in es.iter() {
+                inv_exps.push((e.span.clone(), expr_to_exp(e)));
+            }
+            MaskSet::from_list_complement(&inv_exps, &req_ens_function.span)
+        }
+    }
+}
+
 fn stm_call(
     ctx: &Ctx,
     state: &mut State,
@@ -853,6 +927,22 @@ fn stm_call(
             stms.push(init_var(&arg.span, &temp_id, arg));
         }
     }
+
+    if !state.checking_recommends(ctx) {
+        match &state.mask {
+            Some(caller_mask) => {
+                let callee_mask = mask_set_for_call(ctx, state, &fun, &typs, &small_args);
+                for assertion in callee_mask.subset_of(ctx, caller_mask, span) {
+                    stms.push(Spanned::new(
+                        span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
+            }
+            None => (),
+        }
+    }
+
     let call = StmX::Call {
         fun: name,
         resolved_method,
@@ -863,6 +953,7 @@ fn stm_call(
         dest,
         assert_id: state.next_assert_id(),
     };
+
     stms.push(Spanned::new(span.clone(), call));
     Ok(stms_to_one_stm(span, stms))
 }
@@ -2059,15 +2150,31 @@ pub(crate) fn expr_to_stm_opt(
             stms1.push(init_var(&expr.span, &ident, &arb_exp));
             let inner_var = SpannedTyped::new(&expr.span, &inner_typ, ExpX::Var(ident));
 
-            // Assume the invariant
+            // Check that the invariant namespace is not already opened
             let typ_args = get_inv_typ_args(&big_inv_exp.typ);
+            let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
+
+            if !state.checking_recommends(ctx) {
+                for assertion in state.mask.as_ref().unwrap().contains(ctx, &ns_exp, &inv.span) {
+                    stms1.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
+            }
+
+            let mut inner_mask = Some(state.mask.as_ref().unwrap().remove(&ns_exp, &inv.span));
+
+            // Assume the invariant
             let main_inv = call_inv(ctx, &inv_tmp_var, &inner_var, &typ_args, *atomicity);
             stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(main_inv.clone())));
 
             // Process the body
 
             state.push_scope();
+            std::mem::swap(&mut state.mask, &mut inner_mask);
             let (body_stms, body_e) = expr_to_stm_opt(ctx, state, body)?;
+            std::mem::swap(&mut state.mask, &mut inner_mask);
             state.pop_scope();
 
             let body_stm = stms_to_one_stm(&expr.span, body_stms);
@@ -2094,8 +2201,7 @@ pub(crate) fn expr_to_stm_opt(
             }
 
             let block_stm = stms_to_one_stm(&expr.span, stms1);
-            let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
-            stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(ns_exp, block_stm)));
+            stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(block_stm)));
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
         ExprX::Return(e1) => {
@@ -2368,6 +2474,12 @@ fn exec_closure_body_stms(
     let mut typ_inv_vars = vec![];
 
     state.push_scope();
+
+    // Right now there is no way to specify an invariant mask on a closure function
+    // All closure funcs are assumed to have mask set 'full'
+    let mut mask = Some(MaskSet::full(&body.span));
+    std::mem::swap(&mut state.mask, &mut mask);
+
     for param in params.iter() {
         let uid =
             state.declare_var_stm(&param.name, &param.a, LocalDeclKind::ExecClosureParam, false);
@@ -2419,6 +2531,7 @@ fn exec_closure_body_stms(
         None => { /* never-return case */ }
     }
 
+    std::mem::swap(&mut state.mask, &mut mask);
     state.pop_scope();
 
     Ok((stms, Arc::new(typ_inv_vars)))
