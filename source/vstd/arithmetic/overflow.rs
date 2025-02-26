@@ -14,12 +14,12 @@
 /// fn test1()
 /// {
 ///     let w = CheckedU64::new(0xFFFFFFFFFFFFFFFF);
-///     let x = w.add(1);
+///     let x = w.add_value(1);
 ///     assert(x.is_overflowed());
 ///     assert(x.view() == 0x10000000000000000);
 ///
 ///     let y = CheckedU64::new(0x8000000000000000);
-///     let z = y.mul(2);
+///     let z = y.mul_value(2);
 ///     assert(z.is_overflowed());
 ///     assert(z.view() == 0x10000000000000000);
 /// }
@@ -31,8 +31,8 @@
 ///             None => a * b + c * d > u64::MAX,
 ///         }
 /// {
-///     let a_times_b = CheckedU64::new(a).mul(b);
-///     let c_times_d = CheckedU64::new(c).mul(d);
+///     let a_times_b = CheckedU64::new(a).mul_value(b);
+///     let c_times_d = CheckedU64::new(c).mul_value(d);
 ///     let sum_of_products = a_times_b.add_checked(&c_times_d);
 ///     if sum_of_products.is_overflowed() {
 ///         assert(a * b + c * d > u64::MAX);
@@ -184,7 +184,7 @@ macro_rules! checked_uint_gen {
                 /// the internal representation and the provided
                 /// value.
                 #[inline]
-                pub exec fn add(&self, v2: $uty) -> (result: Self)
+                pub exec fn add_value(&self, v2: $uty) -> (result: Self)
                     ensures
                         result@ == self@ + v2,
                 {
@@ -212,7 +212,7 @@ macro_rules! checked_uint_gen {
                         use_type_invariant(v2);
                     }
                     match v2.v {
-                        Some(n) => self.add(n),
+                        Some(n) => self.add_value(n),
                         None => {
                             let i: Ghost<nat> = Ghost((self@ + v2@) as nat);
                             Self{ i, v: None }
@@ -225,7 +225,7 @@ macro_rules! checked_uint_gen {
                 /// product of the internal representation and the
                 /// provided value.
                 #[inline]
-                pub exec fn mul(&self, v2: $uty) -> (result: Self)
+                pub exec fn mul_value(&self, v2: $uty) -> (result: Self)
                     ensures
                         result@ == self@ as int * v2 as int,
                 {
@@ -267,7 +267,7 @@ macro_rules! checked_uint_gen {
                     }
                     let i: Ghost<nat> = Ghost((self@ * v2@) as nat);
                     match v2.v {
-                        Some(n) => self.mul(n),
+                        Some(n) => self.mul_value(n),
                         None => {
                             match self.v {
                                 Some(n1) => {
