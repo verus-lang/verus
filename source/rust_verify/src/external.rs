@@ -256,7 +256,8 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
             VerifState::Default => {
                 if eattrs.external {
                     VerifState::External
-                } else if opts_in_to_verus(&eattrs) {
+                } else if opts_in_to_verus(&eattrs)
+                    || opts_in_by_automatic_derive(&self.ctxt, &general_item, &attrs) {
                     VerifState::Verify
                 } else {
                     VerifState::Default
@@ -550,6 +551,75 @@ impl<'a> GeneralItem<'a> {
                 TraitItemKind::Fn(..) => true,
                 _ => false,
             },
+        }
+    }
+}
+
+fn opts_in_by_automatic_derive<'tcx>(
+    ctxt: &Context<'tcx>,
+    general_item: &GeneralItem<'tcx>,
+    attrs: &[rustc_ast::Attribute],
+    diagnostics: &mut Vec<VirErrAs>,
+) -> bool {
+    fn warn_unknown(diagnostics: &mut Vec<VirErrAs>) {
+        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+            span,
+            format!("Verus doesn't known how to handle this automatically derived item; ignoring it"),
+        )));
+    }
+
+    if !crate::is_automatically_derived(attrs) {
+        return false;
+    }
+
+    match general_item {
+        GeneralItem::Item(item) => match &item.kind {
+            ItemKind::Impl(impll) => {
+                let def_id = match impll.self_ty.kind {
+                    rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => path.res.def_id(),
+                    _ => {
+                        warn_unknown(diagnostics);
+                        return false;
+                    }
+                };
+                if let Some(local_def_id) = def_id.as_local() {
+                    let hir_id = ctxt.tcx.local_def_id_to_hir_id(local_def_id);
+                    let attrs = ctxt.tcx.hir().attrs(hir_id);
+                    let eattrs = match ctxt.get_external_attrs(attrs) {
+                        Ok(eattrs) => eattrs,
+                        Err(_) => {
+                            warn_unknown(diagnostics);
+                            return false;
+                        }
+                    };
+
+                    if opts_in_to_verus(&eattrs) {
+                        let action = crate::automatic_derive::get_action();
+                        match action {
+                            AutomaticDeriveAction::Special(_) | AutomaticDeriveAction::VerifyAsIs => true,
+                            AutomaticDeriveAction::Ignore(warning) => {
+                                if let Some(warning) = warning {
+                                    diagnostics.push(warning);
+                                }
+                                false
+                            }
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    warn_unknown(diagnostics);
+                    false
+                }
+            }
+            _ => {
+                warn_unknown(diagnostics);
+                false
+            }
+        }
+        _ => {
+            warn_unknown(diagnostics);
+            false
         }
     }
 }
