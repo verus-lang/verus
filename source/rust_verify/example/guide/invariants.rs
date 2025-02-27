@@ -130,6 +130,64 @@ fn fib_impl(n: u64) -> (result: u64)
 }
 // ANCHOR_END: fib_final
 
+// ANCHOR: fib_checked
+fn fib_checked(n: u64) -> (result: u64)
+    requires
+        fib(n as nat) <= u64::MAX
+    ensures
+        result == fib(n as nat),
+{
+    if n == 0 {
+        return 0;
+    }
+    let mut prev: CheckedU64 = CheckedU64::new(0);
+    let mut cur: CheckedU64 = CheckedU64::new(1);
+    let mut i: u64 = 1;
+    while i < n
+        invariant
+            0 < i <= n,
+            fib(n as nat) <= u64::MAX,
+            cur@ == fib(i as nat),
+            prev@ == fib((i - 1) as nat),
+    {
+        i = i + 1;
+        let new_cur = cur.add_checked(&prev);
+        prev = cur;
+        cur = new_cur;
+    }
+    cur.unwrap()
+}
+// ANCHOR_END: fib_checked
+
+// ANCHOR: fib_checked_no_precondition
+fn fib_checked_no_precondition(n: u64) -> (result: Option<u64>)
+    ensures
+        match result {
+            Some(x) => x == fib(n as nat),
+            None => fib(n as nat) > u64::MAX,
+        },
+{
+    if n == 0 {
+        return Some(0);
+    }
+    let mut prev: CheckedU64 = CheckedU64::new(0);
+    let mut cur: CheckedU64 = CheckedU64::new(1);
+    let mut i: u64 = 1;
+    while i < n
+        invariant
+            0 < i <= n,
+            cur@ == fib(i as nat),
+            prev@ == fib((i - 1) as nat),
+    {
+        i = i + 1;
+        let new_cur = cur.add_checked(&prev);
+        prev = cur;
+        cur = new_cur;
+    }
+    cur.to_option()
+}
+// ANCHOR_END: fib_checked_no_precondition
+
 // ANCHOR: bank_spec
 spec fn always_non_negative(s: Seq<i64>) -> bool
 {
