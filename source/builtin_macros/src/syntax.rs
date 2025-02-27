@@ -252,7 +252,7 @@ impl Visitor {
         if let Some(exprs) = spec.invariant_except_breaks.as_mut() {
             visit_spec(&mut exprs.exprs);
         }
-        if let Some(exprs) = spec.invariant_ensures.as_mut() {
+        if let Some(exprs) = spec.ensures.as_mut() {
             visit_spec(&mut exprs.exprs);
         }
         if let Some(exprs) = spec.decreases.as_mut() {
@@ -4019,20 +4019,14 @@ pub(crate) fn while_loop_spec_attr(
     };
     let mut spec_attr = spec_attr;
     visitor.visit_loop_spec(&mut spec_attr);
-    let syn_verus::LoopSpec {
-        invariants,
-        invariant_except_breaks,
-        invariant_ensures,
-        ensures,
-        decreases,
-        ..
-    } = spec_attr;
+    let syn_verus::LoopSpec { invariants, invariant_except_breaks, ensures, decreases, .. } =
+        spec_attr;
     let mut stmt = vec![];
     visitor.add_loop_specs(
         &mut stmt,
         invariant_except_breaks,
         invariants,
-        invariant_ensures,
+        None,
         ensures,
         decreases,
     );
@@ -4057,13 +4051,27 @@ pub(crate) fn for_loop_spec_attr(
     };
     let mut spec_attr = spec_attr;
     visitor.visit_loop_spec(&mut spec_attr);
-    let syn_verus::LoopSpec { invariants, decreases, .. } = spec_attr;
-    let mut forloop: ExprForLoop =
-        syn_verus::parse2(forloop.to_token_stream().into()).expect("ExprForLoop");
-
-    forloop.invariant = invariants;
-    forloop.decreases = decreases;
-    visitor.desugar_for_loop(forloop)
+    let syn_verus::LoopSpec { iter_name, invariants: invariant, decreases, .. } = spec_attr;
+    let syn::ExprForLoop { attrs, label, for_token, pat, in_token, expr, body, .. } = forloop;
+    let verus_forloop = ExprForLoop {
+        attrs: attrs.into_iter().map(|a| parse_quote_spanned! {a.span() => #a}).collect(),
+        label: label.map(|l| syn_verus::Label {
+            name: syn_verus::Lifetime::new(l.name.ident.to_string().as_str(), l.name.span()),
+            colon_token: Token![:](l.colon_token.span),
+        }),
+        for_token: Token![for](for_token.span),
+        pat: Box::new(Pat::Verbatim(quote_spanned! {pat.span() => #pat})),
+        in_token: Token![in](in_token.span),
+        expr_name: iter_name.map(|(name, token)| Box::new((name, Token![:](token.span())))),
+        expr: Box::new(Expr::Verbatim(quote_spanned! {expr.span() => #expr})),
+        invariant,
+        decreases,
+        body: Block {
+            brace_token: Brace(body.brace_token.span),
+            stmts: vec![Stmt::Expr(Expr::Verbatim(quote_spanned! {body.span() => #body}), None)],
+        },
+    };
+    visitor.desugar_for_loop(verus_forloop)
 }
 
 // Unfortunately, the macro_rules tt tokenizer breaks tokens like &&& and ==> into smaller tokens.

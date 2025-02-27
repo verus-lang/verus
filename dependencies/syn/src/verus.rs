@@ -2051,9 +2051,9 @@ pub(crate) fn parse_fn_spec(input: ParseStream) -> Result<TypeFnSpec> {
 
 ast_struct! {
     pub struct LoopSpec {
+        pub iter_name: Option<(Ident, Token![=>])>,
         pub invariants: Option<Invariant>,
         pub invariant_except_breaks: Option<InvariantExceptBreak>,
-        pub invariant_ensures: Option<InvariantEnsures>,
         pub ensures: Option<Ensures>,
         pub decreases: Option<Decreases>,
     }
@@ -2061,15 +2061,22 @@ ast_struct! {
 
 impl parse::Parse for LoopSpec {
     fn parse(input: ParseStream) -> Result<Self> {
+        let iter_name = if input.peek2(Token![=>]) {
+            let pat = input.parse()?;
+            let token = input.parse()?;
+            Some((pat, token))
+        } else {
+            None
+        };
+
         let invariants: Option<Invariant> = input.parse()?;
         let invariant_except_breaks: Option<InvariantExceptBreak> = input.parse()?;
-        let invariant_ensures: Option<InvariantEnsures> = input.parse()?;
         let ensures: Option<Ensures> = input.parse()?;
         let decreases: Option<Decreases> = input.parse()?;
         Ok(LoopSpec {
+            iter_name,
             invariants,
             invariant_except_breaks,
-            invariant_ensures,
             ensures,
             decreases,
         })
