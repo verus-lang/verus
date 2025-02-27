@@ -45,6 +45,8 @@ pub fn check_krate_simplified(krate: &Krate) {
             require, ensure, decrease, body, typ_bounds, params, ret, mask_spec, ..
         } = &function.x;
 
+        // TODO(alex) check that if body_visibility is Uninterpreted, then body is None
+
         let mask_exprs = match mask_spec {
             Some(MaskSpec::InvariantOpens(_span, es)) => es.clone(),
             Some(MaskSpec::InvariantOpensExcept(_span, es)) => es.clone(),

@@ -1,10 +1,10 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
-    FieldOpr, Fun, FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, HeaderExprX, Ident,
-    InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Module, Opaqueness,
-    Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration,
-    TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders,
-    VarIdent, Variant, Variants, Visibility,
+    ArchWordBits, BinaryOp, BodyVisibility, Constant, DatatypeTransparency, DatatypeX, Dt, Expr,
+    ExprX, Exprs, FieldOpr, Fun, FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX,
+    HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode,
+    Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation,
+    Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder,
+    VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -409,6 +409,15 @@ pub fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bo
     is_visible_to_of_owner(&target_visibility.restricted_to, source_module)
 }
 
+pub fn is_body_visible_to(target_visibility: &BodyVisibility, source_module: &Path) -> bool {
+    match &target_visibility {
+        BodyVisibility::Uninterpreted => false,
+        BodyVisibility::Visibility(visibility) => {
+            is_visible_to_of_owner(&visibility.restricted_to, source_module)
+        }
+    }
+}
+
 pub fn is_transparent_to(transparency: &DatatypeTransparency, source_module: &Path) -> bool {
     match transparency {
         DatatypeTransparency::Never => false,
@@ -473,6 +482,16 @@ impl Visibility {
                 }
             }
         }
+    }
+}
+
+impl BodyVisibility {
+    pub fn is_public(&self) -> bool {
+        matches!(self, BodyVisibility::Visibility(Visibility { restricted_to: None }))
+    }
+
+    pub fn public() -> Self {
+        BodyVisibility::Visibility(Visibility { restricted_to: None })
     }
 }
 

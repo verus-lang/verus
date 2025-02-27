@@ -1,15 +1,16 @@
 use crate::ast::{
-    CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX, FieldOpr, Fun,
-    Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path, Trait, TypX, UnaryOp,
-    UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
+    BodyVisibility, CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX,
+    FieldOpr, Fun, Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path, Trait,
+    TypX, UnaryOp, UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
-    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to, is_visible_to_opt,
+    dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_body_visible_to, is_visible_to_opt,
     path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
     undecorate_typ,
 };
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
+use crate::internal_err;
 use crate::messages::{error, error_with_label, Message, Span};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -514,7 +515,7 @@ fn check_one_expr(
                     ));
                 }
                 if let Some(my_module) = &function.x.owning_module {
-                    if !is_visible_to(&f.x.body_visibility, my_module) {
+                    if !is_body_visible_to(&f.x.body_visibility, my_module) {
                         return Err(error(
                             &expr.span,
                             format!(
@@ -595,6 +596,9 @@ fn check_function(
     diags: &mut Vec<VirErrAs>,
     _no_verify: bool,
 ) -> Result<(), VirErr> {
+    // TODO(alex) check that if this is a spec fn impl for a trait impl,
+    // the trait fn definition being implemented is _not_ marked as `uninterp`
+
     if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
         if function.x.require.len() > 0 {
             return Err(error(
@@ -692,7 +696,7 @@ fn check_function(
             return Err(error(&function.span, "'inline' is only allowed for 'spec' functions"));
         }
         // make sure we don't leak private bodies by inlining
-        if function.x.visibility != function.x.body_visibility {
+        if BodyVisibility::Visibility(function.x.visibility.clone()) != function.x.body_visibility {
             // TODO error message could be improved
             return Err(error(
                 &function.span,
@@ -909,20 +913,22 @@ fn check_function(
     }
 
     // These should be true by construction in Rust->VIR; sanity check them here.
-    if !function.x.body_visibility.at_least_as_restrictive_as(&function.x.visibility) {
-        crate::internal_err!(
-            function.span.clone(),
-            "the function body is more public than the function itself"
-        );
-    }
-    match &function.x.opaqueness {
-        Opaqueness::Opaque => {}
-        Opaqueness::Revealed { visibility } => {
-            if !visibility.at_least_as_restrictive_as(&function.x.body_visibility) {
-                crate::internal_err!(
-                    function.span.clone(),
-                    "the function reveal scope is more public the function body"
-                );
+    if let crate::ast::BodyVisibility::Visibility(vis) = &function.x.body_visibility {
+        if !vis.at_least_as_restrictive_as(&function.x.visibility) {
+            crate::internal_err!(
+                function.span.clone(),
+                "the function body is more public than the function itself"
+            );
+        }
+        match &function.x.opaqueness {
+            Opaqueness::Opaque => {}
+            Opaqueness::Revealed { visibility } => {
+                if !visibility.at_least_as_restrictive_as(vis) {
+                    crate::internal_err!(
+                        function.span.clone(),
+                        "the function reveal scope is more public the function body"
+                    );
+                }
             }
         }
     }
@@ -1054,10 +1060,13 @@ fn check_function(
     }
 
     if let Some(body) = &function.x.body {
+        let BodyVisibility::Visibility(body_visibility) = &function.x.body_visibility else {
+            internal_err!(function.span.clone(), "an uninterpreted function cannot have a body");
+        };
         // Check that public, non-abstract spec function bodies don't refer to private items:
         let disallow_private_access = if function.x.mode == Mode::Spec {
             let msg = "pub open spec function";
-            Some((&function.x.body_visibility, msg))
+            Some((body_visibility, msg))
         } else {
             None
         };

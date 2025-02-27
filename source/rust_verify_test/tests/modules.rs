@@ -251,12 +251,24 @@ test_verify_one_file! {
     #[test] uninterp_spec_body_trait_impl_fail verus_code! {
         trait T {
             uninterp spec fn bar(&self) -> bool;
+
+            #[verifier::external_body]
+            proof fn a(&self)
+                ensures self.bar()
+            {
+            }
         }
 
         impl T for bool {
-            spec fn bar(&self) -> bool {
+            spec fn bar(&self) -> bool { // this should be rejected
                 *self
             }
+        }
+
+        proof fn a() {
+            let t = false;
+            t.a();
+            assert(t.bar());
         }
     } => Err(err) => { todo!() }
 }

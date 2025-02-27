@@ -8,7 +8,7 @@ use crate::ast_to_sst::{
     expr_to_one_stm_with_post, expr_to_pure_exp_check, expr_to_pure_exp_skip_checks,
     expr_to_stm_opt, expr_to_stm_or_error, stms_to_one_stm, State,
 };
-use crate::ast_util::unit_typ;
+use crate::ast_util::{is_body_visible_to, unit_typ};
 use crate::ast_visitor;
 use crate::context::{Ctx, FunctionCtx};
 use crate::def::{unique_local, Spanned};
@@ -28,7 +28,6 @@ pub type SstMap = Arc<HashMap<Fun, FunctionSst>>;
 
 pub trait FunctionCommon {
     fn name(&self) -> &Fun;
-    fn vis_abs(&self) -> crate::ast::Visibility;
     fn owning_module(&self) -> &Option<Path>;
     fn mode(&self) -> crate::ast::Mode;
     fn attrs(&self) -> &crate::ast::FunctionAttrs;
@@ -37,10 +36,6 @@ pub trait FunctionCommon {
 impl FunctionCommon for crate::ast::FunctionX {
     fn name(&self) -> &Fun {
         &self.name
-    }
-
-    fn vis_abs(&self) -> crate::ast::Visibility {
-        self.body_visibility.clone()
     }
 
     fn owning_module(&self) -> &Option<Path> {
@@ -59,10 +54,6 @@ impl FunctionCommon for crate::ast::FunctionX {
 impl FunctionCommon for FunctionSstX {
     fn name(&self) -> &Fun {
         &self.name
-    }
-
-    fn vis_abs(&self) -> crate::ast::Visibility {
-        self.body_visibility.clone()
     }
 
     fn owning_module(&self) -> &Option<Path> {
@@ -725,7 +716,7 @@ pub fn function_to_sst(
         ctx,
         diagnostics,
         function,
-        crate::ast_util::is_visible_to(&function.x.vis_abs(), &module),
+        is_body_visible_to(&function.x.body_visibility, &module),
         verifying_owning_bucket,
     )?;
     ctx.fun = None;
