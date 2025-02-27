@@ -756,6 +756,28 @@ impl<V> PointsTo<V> {
     }
 }
 
+impl<V> PointsTo<[V]> {
+    #[verifier::external_body]
+    pub proof fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
+        ensures
+            points_to_raw.is_range(self.ptr().addr() as int, (size_of::<V>() as int)*self.value().len()),
+            points_to_raw.provenance() == self.ptr()@.provenance,
+            is_sized::<V>(),
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
+    pub proof fn into_raw_shared(tracked &self) -> (tracked points_to_raw: &PointsToRaw)
+        ensures
+            points_to_raw.is_range(self.ptr().addr() as int, (size_of::<V>() as int)*self.value().len()),
+            points_to_raw.provenance() == self.ptr()@.provenance,
+            is_sized::<V>(),
+    {
+        unimplemented!();
+    }
+}
+
 // Allocation and deallocation via the global allocator
 /// Permission to perform a deallocation with the global allocator
 #[verifier::external_body]
@@ -936,11 +958,6 @@ impl<'a, T> SharedReference<'a, [T]> {
         self.0.as_ptr()
     }
 
-    #[verifier::external_body]
-    pub proof fn perm(tracked self) -> tracked &'a PointsTo<T> {
-        unimplemented!()
-    }
-
     pub const fn len(self) -> (output: usize)
         ensures
             // output as nat == self.value().view().len()
@@ -959,16 +976,16 @@ impl<'a, T> SharedReference<'a, [T]> {
         // self.as_ref().index(idx)
     }
 
-    // #[verifier::external_body]
-    // proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
-    //     ensures
-    //         pt.ptr() == self.ptr(),
-    //         // pt.is_init(),
-    //         pt.value() == self.value(),
-    //     // TODO-E: figure out what preconditions I want, should go along with verifying add_verus
-    // {
-    //     unimplemented!();
-    // }
+    #[verifier::external_body]
+    pub proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[T]>)
+        ensures
+            pt.ptr() == self.ptr(),
+            // pt.is_init(),
+            pt.value() == self.value()@,
+        // TODO-E: move preconditions to run_utf8_validation() here?
+    {
+        unimplemented!();
+    }
 }
 
 impl<'a, T> View for SharedReference<'a, [T]> {
