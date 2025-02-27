@@ -45,7 +45,7 @@ previous section about [Devising loop invariants](invariants.md). If we use
 `CheckedU64`, as in the following example, we don't need to invoke
 `lemma_fib_is_monotonic` to prove that the result can't overflow:
 ```rust
-{{#include ../../../rust_verify/example/guide/overflow.rs:fib_checked}}
+{{#include ../../../rust_verify/example/guide/invariants.rs:fib_checked}}
 ```
 There is a small cost in performance and memory footprint, since the
 checked versions consist of a runtime `Option<u64>` instead of a `u64`, but
@@ -53,5 +53,5 @@ in return the code is simpler. Another advantage is that we can remove the
 precondition mandating that the result must fit in a `u64`, and correctly
 handle the possibility of overflow:
 ```rust
-{{#include ../../../rust_verify/example/guide/overflow.rs:fib_checked_no_precondition}}
+{{#include ../../../rust_verify/example/guide/invariants.rs:fib_checked_no_precondition}}
 ```
