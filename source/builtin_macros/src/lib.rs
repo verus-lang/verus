@@ -269,12 +269,7 @@ pub fn verus_spec(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let erase = cfg_erase();
-    if erase.keep() {
-        attr_rewrite::rewrite_verus_spec(erase, attr.into(), input.into()).into()
-    } else {
-        input
-    }
+    attr_rewrite::rewrite_verus_spec(cfg_erase(), attr.into(), input.into()).into()
 }
 
 /// Add a verus proof block.
@@ -297,4 +292,5 @@ pub fn proof_decl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         proc_macro::TokenStream::new()
     }
 }
+
 /*** End of verus small macro definition for executable items ***/
