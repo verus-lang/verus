@@ -1256,7 +1256,7 @@ impl Visitor {
                                     broadcast proof fn #lemma_ident()
                                         ensures
                                             #[trigger] #vstd::layout::size_of::<#type_>() == #size_lit,
-                                            ::vstd::layout::is_sized::<#type_>(),
+                                            #vstd::layout::is_sized::<#type_>(),
                                             #ensures_align
                                     {
                                     }
