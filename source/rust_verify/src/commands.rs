@@ -7,8 +7,8 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use vir::ast::{Fun, FunctionKind, ImplPath, ItemKind, Mode, Path, TraitImpl, VirErr};
 use vir::ast_to_sst_func::{mk_fun_ctx, mk_fun_ctx_dec};
-use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
+use vir::ast_util::{fun_as_friendly_rust_name, is_body_visible_to};
 use vir::def::{CommandsWithContext, SnapPos};
 use vir::recursion::Node;
 use vir::sst::{FuncCheckSst, FunctionSst};
@@ -200,7 +200,7 @@ impl<'a> OpGenerator<'a> {
             let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
                 self.ctx,
                 function,
-                is_visible_to(&function.x.body_visibility, &module),
+                is_body_visible_to(&function.x.body_visibility, &module),
             )?;
             self.ctx.fun = None;
 

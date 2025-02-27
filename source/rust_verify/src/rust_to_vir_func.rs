@@ -25,8 +25,9 @@ use rustc_trait_selection::traits::ImplSource;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, Mode,
-    Opaqueness, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr, Visibility,
+    BodyVisibility, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind,
+    KrateX, Mode, Opaqueness, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
+    Visibility,
 };
 use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
@@ -1886,7 +1887,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let ret = ctxt.spanned_new(span, ret_param);
 
     // No body, so these don't matter
-    let body_visibility = visibility.clone();
+    let body_visibility = vir::ast::BodyVisibility::Visibility(visibility.clone());
     let opaqueness = Opaqueness::Opaque;
 
     let func = FunctionX {
@@ -1931,7 +1932,7 @@ fn get_body_visibility_and_fuel(
     mode: Mode,
     my_module: &vir::ast::Path,
     has_body: bool,
-) -> Result<(Visibility, Opaqueness), VirErr> {
+) -> Result<(BodyVisibility, Opaqueness), VirErr> {
     let private_vis = Visibility { restricted_to: Some(my_module.clone()) };
 
     if mode != Mode::Spec {
