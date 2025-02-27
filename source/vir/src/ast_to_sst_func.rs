@@ -482,7 +482,6 @@ pub fn func_def_to_sst(
     diagnostics: &impl air::messages::Diagnostics,
     function: &Function,
 ) -> Result<FuncCheckSst, VirErr> {
-    dbg!(&function.x.name);
     let body = match &function.x.body {
         Some(body) => body,
         _ => {
@@ -715,8 +714,6 @@ pub fn function_to_sst(
 ) -> Result<FunctionSst, VirErr> {
     let module = ctx.module_path();
     let is_recursive = crate::recursion::fun_is_recursive(ctx, function);
-
-    dbg!(&function.x.name, is_recursive);
 
     let verifying_owning_bucket = bucket_funs.contains(&function.x.name);
     ctx.fun = mk_fun_ctx(&function, false);

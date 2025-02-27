@@ -16,3 +16,13 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
+
+test_verify_one_file_with_options! {
+    #[test] nontermination_allowed_with_attribute ["may_not_terminate"] => verus_code! {
+        fn a(i: u64) -> (r: u64)
+            ensures false
+        {
+            loop {}
+        }
+    } => Ok(())
+}

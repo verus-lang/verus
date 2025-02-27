@@ -377,7 +377,7 @@ pub fn run_verus(
 }
 
 #[allow(dead_code)]
-pub const USE_PRELUDE: &str = crate::common::code_str! {
+pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     // If we're using the pre-macro-expanded vstd lib, then it might have
     // some macro-internal stuff in it, and rustc needs this option in order to accept it.
     #![feature(fmt_internals)]
@@ -391,26 +391,42 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
     #![feature(const_refs_to_static)]
     #![feature(never_type)]
     #![feature(core_intrinsics)]
+};
 
+#[allow(dead_code)]
+pub const USE_PRELUDE: &str = crate::common::code_str! {
     use builtin::*;
     use builtin_macros::*;
 };
 
 #[allow(dead_code)]
 pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<TestErr, TestErr> {
-    let o: Vec<&str>;
-    let (no_prelude, options) = if options.contains(&"no-auto-import-builtin") {
-        o = options.iter().filter(|opt| **opt != "no-auto-import-builtin").map(|x| *x).collect();
-        (true, &o[..])
-    } else {
-        (false, options)
-    };
+    let mut options: Vec<_> = options.into_iter().map(|x| *x).collect();
+    let mut no_prelude = false;
+    let mut may_not_terminate = false;
+    options.retain(|x| {
+        if *x == "may_not_terminate" {
+            may_not_terminate = true;
+            false
+        } else if *x == "no-auto-import-builtin" {
+            no_prelude = true;
+            false
+        } else {
+            true
+        }
+    });
 
     let vstd = code.contains("vstd::") || options.contains(&"vstd");
-    let code = if no_prelude { code } else { format!("{}\n{}", USE_PRELUDE, code.as_str()) };
+    let code = if no_prelude {
+        code
+    } else {
+        let may_not_terminate_str =
+            if may_not_terminate { "#![verifier::allow(may_not_terminate)]\n" } else { "" };
+        format!("{}{}{}\n{}", FEATURE_PRELUDE, may_not_terminate_str, USE_PRELUDE, code.as_str())
+    };
 
     let files = vec![("test.rs".to_string(), code)];
-    verify_files_vstd_all_diags(name, files, "test.rs".to_string(), vstd, options)
+    verify_files_vstd_all_diags(name, files, "test.rs".to_string(), vstd, &options[..])
 }
 
 #[macro_export]
