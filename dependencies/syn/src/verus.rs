@@ -234,6 +234,23 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct WithSpecOnExpr {
+        pub with: Token![with],
+        pub inputs: Punctuated<Expr, Token![,]>,
+        pub outputs: Option<(Token![=>], Pat)>,
+        pub follows: Option<(Token![|=], Pat)>,
+    }
+}
+
+ast_struct! {
+    pub struct WithSpecOnFn {
+        pub with: Token![with],
+        pub inputs: Punctuated<FnArg , Token![,]>,
+        pub outputs: Option<(Token![->], Punctuated<PatType, Token![,]>)>,
+    }
+}
+
+ast_struct! {
     pub struct SignatureSpec {
         // When adding Verus fields here, update erase_spec_fields:
         pub prover: Option<Prover>,
@@ -244,6 +261,7 @@ ast_struct! {
         pub decreases: Option<SignatureDecreases>,
         pub invariants: Option<SignatureInvariants>,
         pub unwind: Option<SignatureUnwind>,
+        pub with: Option<WithSpecOnFn>,
     }
 }
 
@@ -1021,6 +1039,7 @@ pub mod parsing {
     impl Parse for SignatureSpec {
         fn parse(input: ParseStream) -> Result<Self> {
             let prover: Option<Prover> = input.parse()?;
+            let with: Option<WithSpecOnFn> = input.parse()?;
             let requires: Option<Requires> = input.parse()?;
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
@@ -1038,6 +1057,7 @@ pub mod parsing {
                 decreases,
                 invariants,
                 unwind,
+                with,
             })
         }
     }
@@ -2156,6 +2176,89 @@ impl parse::Parse for LoopSpec {
             invariant_except_breaks,
             ensures,
             decreases,
+        })
+    }
+}
+
+#[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+impl parse::Parse for Option<WithSpecOnFn> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        if input.peek(Token![with]) {
+            input.parse().map(Some)
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+#[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+impl parse::Parse for WithSpecOnFn {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let with = input.parse()?;
+        let mut inputs = Punctuated::new();
+        while !input.peek(Token![->]) {
+            let expr = input.parse()?;
+            inputs.push(expr);
+            if !input.peek(Token![,]) {
+                break;
+            }
+            let _comma: Token![,] = input.parse()?;
+        }
+        let outputs = if input.peek(Token![->]) {
+            let token = input.parse()?;
+            let mut outs = Punctuated::new();
+            loop {
+                let expr = input.parse()?;
+                outs.push(expr);
+                if !input.peek(Token![,]) {
+                    break;
+                }
+                let _comma: Token![,] = input.parse()?;
+            }
+            Some((token, outs))
+        } else {
+            None
+        };
+        Ok(WithSpecOnFn {
+            with,
+            inputs,
+            outputs,
+        })
+    }
+}
+
+#[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+impl parse::Parse for WithSpecOnExpr {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let with = input.parse()?;
+        let mut inputs = Punctuated::new();
+        while !input.peek(Token![=>]) && !input.peek(Token![|=]) {
+            let expr = input.parse()?;
+            inputs.push(expr);
+            if !input.peek(Token![,]) {
+                break;
+            }
+            let _comma: Token![,] = input.parse()?;
+        }
+        let outputs = if input.peek(Token![=>]) {
+            let token = input.parse()?;
+            let outs = Pat::parse_single(&input)?;
+            Some((token, outs))
+        } else {
+            None
+        };
+        let follows = if input.peek(Token![|=]) {
+            let token = input.parse()?;
+            let outs = Pat::parse_single(&input)?;
+            Some((token, outs))
+        } else {
+            None
+        };
+        Ok(WithSpecOnExpr {
+            with,
+            inputs,
+            outputs,
+            follows,
         })
     }
 }
