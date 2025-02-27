@@ -12,7 +12,7 @@ fn compute_sum_fails(x: u64, y: u64) -> (result: u64)
     ensures
         result == x + y,
 {
-    x + y
+    x + y  // error: possible arithmetic underflow/overflow
 }
 // ANCHOR_END: compute_sum_fails
 */
