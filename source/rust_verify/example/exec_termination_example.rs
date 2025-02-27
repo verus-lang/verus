@@ -70,15 +70,16 @@ verus! {
     }
 
     // check across modules fail
-    mod M1 {
-        use builtin::*;
-        pub(crate) fn f1(i: u64) -> u64 { crate::M2::f2(i - 1) }
-    }
+    // TODO move to tests
+    // mod M1 {
+    //     use builtin::*;
+    //     pub(crate) fn f1(i: u64) -> u64 { crate::M2::f2(i - 1) }
+    // }
 
-    mod M2 {
-        use builtin::*;
-        pub(crate) fn f2(i: u64) -> u64 { crate::M1::f1(i - 1) }
-    }
+    // mod M2 {
+    //     use builtin::*;
+    //     pub(crate) fn f2(i: u64) -> u64 { crate::M1::f1(i - 1) }
+    // }
 
     // basic while loop
     fn exec_basic_while_loop() {
@@ -248,15 +249,20 @@ verus! {
     }
 
     // basic recursive expression + basic while loop // TODO: think of while / recursive function tests...
-    /* fn exec_basic_recursive_stmt_basic_while_loop_fail(i: u64)
-        decreases i 
+    #[verifier::loop_isolation(false)]
+    fn exec_basic_recursive_stmt_basic_while_loop_fail(mut i: u64)
+        requires i <= 10,
+        decreases i,
     {
+        let ghost initial_i = i;
         while 0 < i && i <= 10
-            invariant 0 <= i && i <= 10
-            decreases 10 - i
+            invariant
+                0 <= i <= 10,
+                i <= initial_i,
+            decreases i,
         {
             exec_basic_recursive_stmt_basic_while_loop_fail(i - 1);
+            i -= 1;
         }
-        exec_basic_recursive_stmt_basic_while_loop_fail(i - 1);
-    } */
+    }
 }

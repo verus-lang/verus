@@ -350,6 +350,7 @@ pub(crate) fn parse_crate_attrs(
     for (prefix, span, attr) in attrs_to_trees(attrs)? {
         match prefix {
             AttrPrefix::Verifier => match &attr {
+                // matches #![verifier::allow(may_not_terminate)]
                 AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
                     if name == "allow" && arg == "may_not_terminate" =>
                 {
