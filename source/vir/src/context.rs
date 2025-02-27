@@ -55,6 +55,7 @@ pub struct GlobalCtx {
     pub crate_name: Ident,
     pub vstd_crate_name: Ident,
     pub solver: SmtSolver,
+    pub(crate) may_not_terminate: bool,
 }
 
 // Context for verifying one function
@@ -473,6 +474,7 @@ impl GlobalCtx {
 
         let datatype_graph = crate::recursive_types::build_datatype_graph(krate, &mut span_infos);
         let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
+        let may_not_terminate = krate.may_not_terminate;
 
         Ok(GlobalCtx {
             chosen_triggers,
@@ -492,6 +494,7 @@ impl GlobalCtx {
             vstd_crate_name,
             func_call_graph_log,
             solver,
+            may_not_terminate,
         })
     }
 
@@ -518,6 +521,7 @@ impl GlobalCtx {
             vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
             solver: self.solver.clone(),
+            may_not_terminate: self.may_not_terminate,
         }
     }
 
