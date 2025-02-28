@@ -2,13 +2,13 @@
 /// `std::collections::VecDeque`.
 use super::super::prelude::*;
 
+use alloc::collections::vec_deque::Iter;
+use alloc::collections::vec_deque::VecDeque;
 use core::alloc::Allocator;
 use core::clone::Clone;
+use core::ops::Index;
 use core::option::Option;
 use core::option::Option::None;
-use std::collections::vec_deque::Iter;
-use std::collections::VecDeque;
-use std::ops::Index;
 
 verus! {
 

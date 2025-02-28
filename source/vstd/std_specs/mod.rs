@@ -15,7 +15,7 @@ pub mod result;
 #[cfg(feature = "alloc")]
 pub mod vec;
 
-#[cfg(all(feature = "alloc", feature = "std"))]
+#[cfg(feature = "alloc")]
 pub mod vecdeque;
 
 #[cfg(feature = "alloc")]
