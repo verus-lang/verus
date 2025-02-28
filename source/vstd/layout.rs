@@ -164,7 +164,8 @@ pub broadcast proof fn layout_of_references_and_pointers_for_sized_types<T: Size
     requires
         is_sized::<T>(),
     ensures
-        #![all_triggers]
+        #![trigger size_of::<*mut T>()]
+        #![trigger align_of::<*mut T>()]
         size_of::<*mut T>() == size_of::<usize>(),
         align_of::<*mut T>() == align_of::<usize>(),
 ;
