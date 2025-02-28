@@ -48,26 +48,17 @@ fn vec_deque_test()
     v1.push_back(10);
     v1.push_back(11);
     assert(v1@ == seq![10u32, 11u32]);
-    for x in it: v1.iter()
-        invariant
-            it.elements == seq![10u32, 11u32],
-    {
-    }
 
-    /*
     let mut i: usize = 0;
-    for x in v1.iter()
+    for x in it: v1.iter()
         invariant
             i == it.pos,
             it.elements == seq![10u32, 11u32],
-            v1@ == seq![10u32, 11u32],
-            i + it@.len() == v1@.len(),
     {
         assert(x > 9);
         assert(x < 12);
         i = i + 1;
     }
-    */
 }
 
 } // verus!

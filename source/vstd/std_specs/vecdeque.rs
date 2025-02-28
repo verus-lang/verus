@@ -341,18 +341,25 @@ impl<'a, T> View for IterGhostIterator<'a, T> {
     }
 }
 
+pub open spec fn spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>) -> (r: Iter<'a, T>);
+
+pub broadcast proof fn axiom_spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>)
+    ensures
+        (#[trigger] spec_iter(v))@ == (0int, v@),
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_iter)]
 pub assume_specification<'a, T, A: Allocator>[ VecDeque::<T, A>::iter ](v: &'a VecDeque<T, A>) -> (r: Iter<'a, T>)
     ensures
-        ({
-            let (index, s) = r@;
-            &&& index == 0
-            &&& s == v@
-        }),
+        r@ == (0int, v@),
 ;
 
 pub broadcast group group_vec_dequeue_axioms {
     axiom_spec_len,
     axiom_vec_dequeue_index_decreases,
+    axiom_spec_iter,
 }
 
 } // verus!
