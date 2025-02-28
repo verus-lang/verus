@@ -1678,10 +1678,7 @@ pub(crate) mod parsing {
                     expr,
                 }))
             }
-        } else if input.peek(Token![*])
-            || input.peek(Token![-])
-            || (input.peek(Token![!]) && !input.peek2(Token![is]))
-        {
+        } else if input.peek(Token![*]) || input.peek(Token![-]) || input.peek(Token![!]) {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)
         } else if input.peek(Token![proof]) && input.peek2(token::Brace) {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)

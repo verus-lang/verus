@@ -1149,12 +1149,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] isnot_syntax_doesnt_interfere_with_identifier_is IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
-        proof fn let_with_is_ident() {
+    #[test] isnot_syntax_is_has_soft_keyword IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn let_with_is_has_ident() {
+            // `is` and `has` should be soft keywords, so we can still use them as identifiers
             let is = false;
             assert(!is);
+            let has = false;
+            assert(!has);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] isnot_syntax_no_space IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnot(t: ThisOrThat)
+            requires t !is This,
+        {
+            assert(t ! is This);
+        }
+    } => Err(err)
 }
 
 test_verify_one_file! {
