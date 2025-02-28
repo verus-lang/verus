@@ -258,12 +258,20 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         // Compute the VerifState of this particular item based on its context
         // and its attributes.
 
+        let my_eattrs = eattrs;
+
+        let auto_derive_eattrs = get_attributes_for_automatic_derive(&self.ctxt, &general_item, &attrs, span);
+        let eattrs = if let Some(auto_derive_eattrs) = auto_derive_eattrs {
+            auto_derive_eattrs
+        } else {
+            my_eattrs
+        };
+
         let state_for_this_item = match self.state {
             VerifState::Default => {
                 if eattrs.external {
                     VerifState::External
-                } else if opts_in_to_verus(&eattrs)
-                    || opts_in_by_automatic_derive(&self.ctxt, &general_item, &attrs, span) {
+                } else if opts_in_to_verus(&eattrs) {
                     VerifState::Verify
                 } else {
                     VerifState::Default
@@ -340,7 +348,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
 
         // Compute the context for any _nested_ items
 
-        let state_inside = if eattrs.external_body {
+        let state_inside = if my_eattrs.external_body {
             if !general_item.may_have_external_body() {
                 self.errors.push(crate::util::err_span_bare(
                     span,
@@ -569,12 +577,12 @@ impl<'a> GeneralItem<'a> {
 /// the *type* has the verus_macro attribute.
 ///
 /// Different traits are handled on a case-by-case basis; see automatic_derive.rs
-fn opts_in_by_automatic_derive<'tcx>(
+fn get_attributes_for_automatic_derive<'tcx>(
     ctxt: &Context<'tcx>,
     general_item: &GeneralItem<'tcx>,
     attrs: &[rustc_ast::Attribute],
     span: Span,
-) -> bool {
+) -> Option<ExternalAttrs> {
     let warn_unknown = || {
         let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
         diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
@@ -584,31 +592,31 @@ fn opts_in_by_automatic_derive<'tcx>(
     };
 
     if !crate::automatic_derive::is_automatically_derived(attrs) {
-        return false;
+        return None;
     }
 
     match general_item {
         GeneralItem::Item(item) => match &item.kind {
             ItemKind::Impl(impll) => {
                 if impll.of_trait.is_none() {
-                    return false;
+                    return None;
                 }
 
                 let type_def_id = match impll.self_ty.kind {
                     rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => path.res.def_id(),
                     _ => {
                         warn_unknown();
-                        return false;
+                        return None;
                     }
                 };
                 if let Some(type_local_def_id) = type_def_id.as_local() {
                     let type_hir_id = ctxt.tcx.local_def_id_to_hir_id(type_local_def_id);
                     let type_attrs = ctxt.tcx.hir().attrs(type_hir_id);
-                    let type_eattrs = match ctxt.get_external_attrs(type_attrs) {
+                    let mut type_eattrs = match ctxt.get_external_attrs(type_attrs) {
                         Ok(eattrs) => eattrs,
                         Err(_) => {
                             warn_unknown();
-                            return false;
+                            return None;
                         }
                     };
 
@@ -617,27 +625,30 @@ fn opts_in_by_automatic_derive<'tcx>(
                         let rust_item = get_rust_item(ctxt.tcx, trait_def_id);
                         let action = crate::automatic_derive::get_action(rust_item);
                         match action {
-                            AutomaticDeriveAction::Special(_) | AutomaticDeriveAction::VerifyAsIs => true,
-                            AutomaticDeriveAction::Ignore=> {
-                                false
+                            AutomaticDeriveAction::Special(_) | AutomaticDeriveAction::VerifyAsIs => {
+                                Some(type_eattrs)
+                            }
+                            AutomaticDeriveAction::Ignore => {
+                                type_eattrs.external = true;
+                                Some(type_eattrs)
                             }
                         }
                     } else {
-                        false
+                        None
                     }
                 } else {
                     warn_unknown();
-                    false
+                    None
                 }
             }
             _ => {
                 warn_unknown();
-                false
+                None
             }
         }
         _ => {
             warn_unknown();
-            false
+            None
         }
     }
 }

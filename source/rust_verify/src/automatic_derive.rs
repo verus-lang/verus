@@ -9,7 +9,7 @@ use rustc_hir::HirId;
 #[derive(Clone, Copy, Debug)]
 pub enum SpecialTrait {
     Clone,
-    PartialEq,
+    //PartialEq,
 }
 
 /// What to do for a given automatically-derived trait impl
@@ -23,7 +23,7 @@ pub enum AutomaticDeriveAction {
 
 pub fn get_action(rust_item: Option<RustItem>) -> AutomaticDeriveAction {
     match rust_item {
-        Some(RustItem::PartialEq) => AutomaticDeriveAction::Special(SpecialTrait::PartialEq),
+        Some(RustItem::PartialEq) => AutomaticDeriveAction::Ignore,
         Some(RustItem::Clone) => AutomaticDeriveAction::Special(SpecialTrait::Clone),
 
         Some(RustItem::Eq) | Some(RustItem::Copy) => AutomaticDeriveAction::VerifyAsIs,
@@ -62,11 +62,6 @@ pub fn modify_derived_item<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId
         SpecialTrait::Clone => {
             if &*function.name.path.last_segment() == "clone" {
                 return clone_add_post_condition(ctxt, span, hir_id, function);
-            }
-        }
-        SpecialTrait::PartialEq => {
-            if &*function.name.path.last_segment() == "eq" {
-                return eq_add_post_condition(ctxt, span, hir_id, function);
             }
         }
     }
@@ -137,18 +132,6 @@ fn clone_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirI
         warn_unsupported();
     }
 
-    Ok(())
-}
-
-fn eq_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, _hir_id: HirId, _function: &mut FunctionX) -> Result<(), VirErr> {
-    let warn = |msg: &str| {
-        let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
-        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
-            span,
-            msg.to_string(),
-        )));
-    };
-    warn("Verus does not (yet) support autoderive PartialEq impl; continuing, but without adding a specification for the derived PartialEq impl");
     Ok(())
 }
 
