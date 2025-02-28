@@ -13,17 +13,17 @@ use rustc_span::Span;
 use crate::fluent_generated as fluent;
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unconditional_recursion)]
+#[diag(mir_build_verus_unconditional_recursion)]
 #[help]
 pub(crate) struct UnconditionalRecursion {
     #[label]
     pub(crate) span: Span,
-    #[label(mir_build_unconditional_recursion_call_site_label)]
+    #[label(mir_build_verus_unconditional_recursion_call_site_label)]
     pub(crate) call_sites: Vec<Span>,
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_call_to_deprecated_safe_fn_requires_unsafe)]
+#[diag(mir_build_verus_call_to_deprecated_safe_fn_requires_unsafe)]
 pub(crate) struct CallToDeprecatedSafeFnRequiresUnsafe {
     #[label]
     pub(crate) span: Span,
@@ -34,7 +34,7 @@ pub(crate) struct CallToDeprecatedSafeFnRequiresUnsafe {
 }
 
 #[derive(Subdiagnostic)]
-#[multipart_suggestion(mir_build_suggestion, applicability = "machine-applicable")]
+#[multipart_suggestion(mir_build_verus_suggestion, applicability = "machine-applicable")]
 pub(crate) struct CallToDeprecatedSafeFnRequiresUnsafeSub {
     pub(crate) start_of_line_suggestion: String,
     #[suggestion_part(code = "{start_of_line_suggestion}")]
@@ -46,7 +46,7 @@ pub(crate) struct CallToDeprecatedSafeFnRequiresUnsafeSub {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unsafe_op_in_unsafe_fn_call_to_unsafe_fn_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_unsafe_op_in_unsafe_fn_call_to_unsafe_fn_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct UnsafeOpInUnsafeFnCallToUnsafeFunctionRequiresUnsafe {
     #[label]
@@ -57,7 +57,7 @@ pub(crate) struct UnsafeOpInUnsafeFnCallToUnsafeFunctionRequiresUnsafe {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unsafe_op_in_unsafe_fn_call_to_unsafe_fn_requires_unsafe_nameless, code = E0133)]
+#[diag(mir_build_verus_unsafe_op_in_unsafe_fn_call_to_unsafe_fn_requires_unsafe_nameless, code = E0133)]
 #[note]
 pub(crate) struct UnsafeOpInUnsafeFnCallToUnsafeFunctionRequiresUnsafeNameless {
     #[label]
@@ -67,7 +67,7 @@ pub(crate) struct UnsafeOpInUnsafeFnCallToUnsafeFunctionRequiresUnsafeNameless {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unsafe_op_in_unsafe_fn_inline_assembly_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_unsafe_op_in_unsafe_fn_inline_assembly_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct UnsafeOpInUnsafeFnUseOfInlineAssemblyRequiresUnsafe {
     #[label]
@@ -77,7 +77,7 @@ pub(crate) struct UnsafeOpInUnsafeFnUseOfInlineAssemblyRequiresUnsafe {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unsafe_op_in_unsafe_fn_initializing_type_with_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_unsafe_op_in_unsafe_fn_initializing_type_with_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct UnsafeOpInUnsafeFnInitializingTypeWithRequiresUnsafe {
     #[label]
@@ -87,7 +87,7 @@ pub(crate) struct UnsafeOpInUnsafeFnInitializingTypeWithRequiresUnsafe {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unsafe_op_in_unsafe_fn_initializing_type_with_target_feature_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_unsafe_op_in_unsafe_fn_initializing_type_with_target_feature_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct UnsafeOpInUnsafeFnInitializingTypeWithTargetFeatureRequiresUnsafe {
     #[label]
@@ -97,7 +97,7 @@ pub(crate) struct UnsafeOpInUnsafeFnInitializingTypeWithTargetFeatureRequiresUns
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unsafe_op_in_unsafe_fn_mutable_static_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_unsafe_op_in_unsafe_fn_mutable_static_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct UnsafeOpInUnsafeFnUseOfMutableStaticRequiresUnsafe {
     #[label]
@@ -107,7 +107,7 @@ pub(crate) struct UnsafeOpInUnsafeFnUseOfMutableStaticRequiresUnsafe {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unsafe_op_in_unsafe_fn_extern_static_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_unsafe_op_in_unsafe_fn_extern_static_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct UnsafeOpInUnsafeFnUseOfExternStaticRequiresUnsafe {
     #[label]
@@ -117,7 +117,7 @@ pub(crate) struct UnsafeOpInUnsafeFnUseOfExternStaticRequiresUnsafe {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unsafe_op_in_unsafe_fn_deref_raw_pointer_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_unsafe_op_in_unsafe_fn_deref_raw_pointer_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct UnsafeOpInUnsafeFnDerefOfRawPointerRequiresUnsafe {
     #[label]
@@ -127,7 +127,7 @@ pub(crate) struct UnsafeOpInUnsafeFnDerefOfRawPointerRequiresUnsafe {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unsafe_op_in_unsafe_fn_union_field_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_unsafe_op_in_unsafe_fn_union_field_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct UnsafeOpInUnsafeFnAccessToUnionFieldRequiresUnsafe {
     #[label]
@@ -138,7 +138,7 @@ pub(crate) struct UnsafeOpInUnsafeFnAccessToUnionFieldRequiresUnsafe {
 
 #[derive(LintDiagnostic)]
 #[diag(
-    mir_build_unsafe_op_in_unsafe_fn_mutation_of_layout_constrained_field_requires_unsafe,
+    mir_build_verus_unsafe_op_in_unsafe_fn_mutation_of_layout_constrained_field_requires_unsafe,
     code = E0133
 )]
 #[note]
@@ -151,7 +151,7 @@ pub(crate) struct UnsafeOpInUnsafeFnMutationOfLayoutConstrainedFieldRequiresUnsa
 
 #[derive(LintDiagnostic)]
 #[diag(
-    mir_build_unsafe_op_in_unsafe_fn_borrow_of_layout_constrained_field_requires_unsafe,
+    mir_build_verus_unsafe_op_in_unsafe_fn_borrow_of_layout_constrained_field_requires_unsafe,
     code = E0133,
 )]
 pub(crate) struct UnsafeOpInUnsafeFnBorrowOfLayoutConstrainedFieldRequiresUnsafe {
@@ -162,7 +162,7 @@ pub(crate) struct UnsafeOpInUnsafeFnBorrowOfLayoutConstrainedFieldRequiresUnsafe
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unsafe_op_in_unsafe_fn_call_to_fn_with_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_unsafe_op_in_unsafe_fn_call_to_fn_with_requires_unsafe, code = E0133)]
 #[help]
 pub(crate) struct UnsafeOpInUnsafeFnCallToFunctionWithRequiresUnsafe {
     #[label]
@@ -179,7 +179,7 @@ pub(crate) struct UnsafeOpInUnsafeFnCallToFunctionWithRequiresUnsafe {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_call_to_unsafe_fn_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_call_to_unsafe_fn_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct CallToUnsafeFunctionRequiresUnsafe {
     #[primary_span]
@@ -191,7 +191,7 @@ pub(crate) struct CallToUnsafeFunctionRequiresUnsafe {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_call_to_unsafe_fn_requires_unsafe_nameless, code = E0133)]
+#[diag(mir_build_verus_call_to_unsafe_fn_requires_unsafe_nameless, code = E0133)]
 #[note]
 pub(crate) struct CallToUnsafeFunctionRequiresUnsafeNameless {
     #[primary_span]
@@ -202,7 +202,7 @@ pub(crate) struct CallToUnsafeFunctionRequiresUnsafeNameless {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_call_to_unsafe_fn_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
+#[diag(mir_build_verus_call_to_unsafe_fn_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
 #[note]
 pub(crate) struct CallToUnsafeFunctionRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
     #[primary_span]
@@ -215,7 +215,7 @@ pub(crate) struct CallToUnsafeFunctionRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
 
 #[derive(Diagnostic)]
 #[diag(
-    mir_build_call_to_unsafe_fn_requires_unsafe_nameless_unsafe_op_in_unsafe_fn_allowed,
+    mir_build_verus_call_to_unsafe_fn_requires_unsafe_nameless_unsafe_op_in_unsafe_fn_allowed,
     code = E0133
 )]
 #[note]
@@ -228,7 +228,7 @@ pub(crate) struct CallToUnsafeFunctionRequiresUnsafeNamelessUnsafeOpInUnsafeFnAl
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_inline_assembly_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_inline_assembly_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct UseOfInlineAssemblyRequiresUnsafe {
     #[primary_span]
@@ -239,7 +239,7 @@ pub(crate) struct UseOfInlineAssemblyRequiresUnsafe {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_inline_assembly_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
+#[diag(mir_build_verus_inline_assembly_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
 #[note]
 pub(crate) struct UseOfInlineAssemblyRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
     #[primary_span]
@@ -250,7 +250,7 @@ pub(crate) struct UseOfInlineAssemblyRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_initializing_type_with_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_initializing_type_with_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct InitializingTypeWithRequiresUnsafe {
     #[primary_span]
@@ -261,7 +261,7 @@ pub(crate) struct InitializingTypeWithRequiresUnsafe {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_initializing_type_with_target_feature_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_initializing_type_with_target_feature_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct InitializingTypeWithTargetFeatureRequiresUnsafe {
     #[primary_span]
@@ -273,7 +273,7 @@ pub(crate) struct InitializingTypeWithTargetFeatureRequiresUnsafe {
 
 #[derive(Diagnostic)]
 #[diag(
-    mir_build_initializing_type_with_requires_unsafe_unsafe_op_in_unsafe_fn_allowed,
+    mir_build_verus_initializing_type_with_requires_unsafe_unsafe_op_in_unsafe_fn_allowed,
     code = E0133
 )]
 #[note]
@@ -287,7 +287,7 @@ pub(crate) struct InitializingTypeWithRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
 
 #[derive(Diagnostic)]
 #[diag(
-    mir_build_initializing_type_with_target_feature_requires_unsafe_unsafe_op_in_unsafe_fn_allowed,
+    mir_build_verus_initializing_type_with_target_feature_requires_unsafe_unsafe_op_in_unsafe_fn_allowed,
     code = E0133
 )]
 #[note]
@@ -300,7 +300,7 @@ pub(crate) struct InitializingTypeWithTargetFeatureRequiresUnsafeUnsafeOpInUnsaf
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_mutable_static_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_mutable_static_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct UseOfMutableStaticRequiresUnsafe {
     #[primary_span]
@@ -311,7 +311,7 @@ pub(crate) struct UseOfMutableStaticRequiresUnsafe {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_mutable_static_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
+#[diag(mir_build_verus_mutable_static_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
 #[note]
 pub(crate) struct UseOfMutableStaticRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
     #[primary_span]
@@ -322,7 +322,7 @@ pub(crate) struct UseOfMutableStaticRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_extern_static_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_extern_static_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct UseOfExternStaticRequiresUnsafe {
     #[primary_span]
@@ -333,7 +333,7 @@ pub(crate) struct UseOfExternStaticRequiresUnsafe {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_extern_static_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
+#[diag(mir_build_verus_extern_static_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
 #[note]
 pub(crate) struct UseOfExternStaticRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
     #[primary_span]
@@ -344,7 +344,7 @@ pub(crate) struct UseOfExternStaticRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_deref_raw_pointer_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_deref_raw_pointer_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct DerefOfRawPointerRequiresUnsafe {
     #[primary_span]
@@ -355,7 +355,7 @@ pub(crate) struct DerefOfRawPointerRequiresUnsafe {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_deref_raw_pointer_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
+#[diag(mir_build_verus_deref_raw_pointer_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
 #[note]
 pub(crate) struct DerefOfRawPointerRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
     #[primary_span]
@@ -366,7 +366,7 @@ pub(crate) struct DerefOfRawPointerRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_union_field_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_union_field_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct AccessToUnionFieldRequiresUnsafe {
     #[primary_span]
@@ -377,7 +377,7 @@ pub(crate) struct AccessToUnionFieldRequiresUnsafe {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_union_field_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
+#[diag(mir_build_verus_union_field_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
 #[note]
 pub(crate) struct AccessToUnionFieldRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
     #[primary_span]
@@ -388,7 +388,7 @@ pub(crate) struct AccessToUnionFieldRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_mutation_of_layout_constrained_field_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_mutation_of_layout_constrained_field_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct MutationOfLayoutConstrainedFieldRequiresUnsafe {
     #[primary_span]
@@ -400,7 +400,7 @@ pub(crate) struct MutationOfLayoutConstrainedFieldRequiresUnsafe {
 
 #[derive(Diagnostic)]
 #[diag(
-    mir_build_mutation_of_layout_constrained_field_requires_unsafe_unsafe_op_in_unsafe_fn_allowed,
+    mir_build_verus_mutation_of_layout_constrained_field_requires_unsafe_unsafe_op_in_unsafe_fn_allowed,
     code = E0133
 )]
 #[note]
@@ -413,7 +413,7 @@ pub(crate) struct MutationOfLayoutConstrainedFieldRequiresUnsafeUnsafeOpInUnsafe
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_borrow_of_layout_constrained_field_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_borrow_of_layout_constrained_field_requires_unsafe, code = E0133)]
 #[note]
 pub(crate) struct BorrowOfLayoutConstrainedFieldRequiresUnsafe {
     #[primary_span]
@@ -425,7 +425,7 @@ pub(crate) struct BorrowOfLayoutConstrainedFieldRequiresUnsafe {
 
 #[derive(Diagnostic)]
 #[diag(
-    mir_build_borrow_of_layout_constrained_field_requires_unsafe_unsafe_op_in_unsafe_fn_allowed,
+    mir_build_verus_borrow_of_layout_constrained_field_requires_unsafe_unsafe_op_in_unsafe_fn_allowed,
     code = E0133
 )]
 #[note]
@@ -438,7 +438,7 @@ pub(crate) struct BorrowOfLayoutConstrainedFieldRequiresUnsafeUnsafeOpInUnsafeFn
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_call_to_fn_with_requires_unsafe, code = E0133)]
+#[diag(mir_build_verus_call_to_fn_with_requires_unsafe, code = E0133)]
 #[help]
 pub(crate) struct CallToFunctionWithRequiresUnsafe {
     #[primary_span]
@@ -456,7 +456,7 @@ pub(crate) struct CallToFunctionWithRequiresUnsafe {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_call_to_fn_with_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
+#[diag(mir_build_verus_call_to_fn_with_requires_unsafe_unsafe_op_in_unsafe_fn_allowed, code = E0133)]
 #[help]
 pub(crate) struct CallToFunctionWithRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
     #[primary_span]
@@ -474,7 +474,7 @@ pub(crate) struct CallToFunctionWithRequiresUnsafeUnsafeOpInUnsafeFnAllowed {
 }
 
 #[derive(Subdiagnostic)]
-#[label(mir_build_unsafe_not_inherited)]
+#[label(mir_build_verus_unsafe_not_inherited)]
 pub(crate) struct UnsafeNotInheritedNote {
     #[primary_span]
     pub(crate) span: Span,
@@ -491,11 +491,11 @@ impl Subdiagnostic for UnsafeNotInheritedLintNote {
         diag: &mut Diag<'_, G>,
         _f: &F,
     ) {
-        diag.span_note(self.signature_span, fluent::mir_build_unsafe_fn_safe_body);
+        diag.span_note(self.signature_span, fluent::mir_build_verus_unsafe_fn_safe_body);
         let body_start = self.body_span.shrink_to_lo();
         let body_end = self.body_span.shrink_to_hi();
         diag.tool_only_multipart_suggestion(
-            fluent::mir_build_wrap_suggestion,
+            fluent::mir_build_verus_wrap_suggestion,
             vec![(body_start, "{ unsafe ".into()), (body_end, "}".into())],
             Applicability::MachineApplicable,
         );
@@ -503,7 +503,7 @@ impl Subdiagnostic for UnsafeNotInheritedLintNote {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unused_unsafe)]
+#[diag(mir_build_verus_unused_unsafe)]
 pub(crate) struct UnusedUnsafe {
     #[label]
     pub(crate) span: Span,
@@ -513,7 +513,7 @@ pub(crate) struct UnusedUnsafe {
 
 #[derive(Subdiagnostic)]
 pub(crate) enum UnusedUnsafeEnclosing {
-    #[label(mir_build_unused_unsafe_enclosing_block_label)]
+    #[label(mir_build_verus_unused_unsafe_enclosing_block_label)]
     Block {
         #[primary_span]
         span: Span,
@@ -530,7 +530,7 @@ pub(crate) struct NonExhaustivePatternsTypeNotEmpty<'p, 'tcx, 'm> {
 impl<'a, G: EmissionGuarantee> Diagnostic<'a, G> for NonExhaustivePatternsTypeNotEmpty<'_, '_, '_> {
     fn into_diag(self, dcx: DiagCtxtHandle<'a>, level: Level) -> Diag<'a, G> {
         let mut diag =
-            Diag::new(dcx, level, fluent::mir_build_non_exhaustive_patterns_type_not_empty);
+            Diag::new(dcx, level, fluent::mir_build_verus_non_exhaustive_patterns_type_not_empty);
         diag.span(self.scrut_span);
         diag.code(E0004);
         let peeled_ty = self.ty.peel_refs();
@@ -551,20 +551,20 @@ impl<'a, G: EmissionGuarantee> Diagnostic<'a, G> for NonExhaustivePatternsTypeNo
             let mut span: MultiSpan = def_span.into();
             span.push_span_label(def_span, "");
 
-            diag.span_note(span, fluent::mir_build_def_note);
+            diag.span_note(span, fluent::mir_build_verus_def_note);
         }
 
         let is_variant_list_non_exhaustive = matches!(self.ty.kind(),
             ty::Adt(def, _) if def.is_variant_list_non_exhaustive() && !def.did().is_local());
         if is_variant_list_non_exhaustive {
-            diag.note(fluent::mir_build_non_exhaustive_type_note);
+            diag.note(fluent::mir_build_verus_non_exhaustive_type_note);
         } else {
-            diag.note(fluent::mir_build_type_note);
+            diag.note(fluent::mir_build_verus_type_note);
         }
 
         if let ty::Ref(_, sub_ty, _) = self.ty.kind() {
             if !sub_ty.is_inhabited_from(self.cx.tcx, self.cx.module, self.cx.param_env) {
-                diag.note(fluent::mir_build_reference_note);
+                diag.note(fluent::mir_build_verus_reference_note);
             }
         }
 
@@ -579,12 +579,12 @@ impl<'a, G: EmissionGuarantee> Diagnostic<'a, G> for NonExhaustivePatternsTypeNo
             };
             diag.span_suggestion_verbose(
                 braces_span,
-                fluent::mir_build_suggestion,
+                fluent::mir_build_verus_suggestion,
                 format!(" {{{indentation}{more}_ => todo!(),{indentation}}}"),
                 Applicability::HasPlaceholders,
             );
         } else {
-            diag.help(fluent::mir_build_help);
+            diag.help(fluent::mir_build_verus_help);
         }
 
         diag
@@ -592,75 +592,75 @@ impl<'a, G: EmissionGuarantee> Diagnostic<'a, G> for NonExhaustivePatternsTypeNo
 }
 
 #[derive(Subdiagnostic)]
-#[note(mir_build_non_exhaustive_match_all_arms_guarded)]
+#[note(mir_build_verus_non_exhaustive_match_all_arms_guarded)]
 pub(crate) struct NonExhaustiveMatchAllArmsGuarded;
 
 #[derive(Diagnostic)]
-#[diag(mir_build_static_in_pattern, code = E0158)]
+#[diag(mir_build_verus_static_in_pattern, code = E0158)]
 pub(crate) struct StaticInPattern {
     #[primary_span]
     pub(crate) span: Span,
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_const_param_in_pattern, code = E0158)]
+#[diag(mir_build_verus_const_param_in_pattern, code = E0158)]
 pub(crate) struct ConstParamInPattern {
     #[primary_span]
     pub(crate) span: Span,
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_non_const_path, code = E0080)]
+#[diag(mir_build_verus_non_const_path, code = E0080)]
 pub(crate) struct NonConstPath {
     #[primary_span]
     pub(crate) span: Span,
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_unreachable_pattern)]
+#[diag(mir_build_verus_unreachable_pattern)]
 pub(crate) struct UnreachablePattern<'tcx> {
     #[label]
     pub(crate) span: Option<Span>,
-    #[label(mir_build_unreachable_matches_no_values)]
+    #[label(mir_build_verus_unreachable_matches_no_values)]
     pub(crate) matches_no_values: Option<Span>,
     pub(crate) matches_no_values_ty: Ty<'tcx>,
-    #[note(mir_build_unreachable_uninhabited_note)]
+    #[note(mir_build_verus_unreachable_uninhabited_note)]
     pub(crate) uninhabited_note: Option<()>,
-    #[label(mir_build_unreachable_covered_by_catchall)]
+    #[label(mir_build_verus_unreachable_covered_by_catchall)]
     pub(crate) covered_by_catchall: Option<Span>,
-    #[label(mir_build_unreachable_covered_by_one)]
+    #[label(mir_build_verus_unreachable_covered_by_one)]
     pub(crate) covered_by_one: Option<Span>,
-    #[note(mir_build_unreachable_covered_by_many)]
+    #[note(mir_build_verus_unreachable_covered_by_many)]
     pub(crate) covered_by_many: Option<MultiSpan>,
     pub(crate) covered_by_many_n_more_count: usize,
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_const_pattern_depends_on_generic_parameter, code = E0158)]
+#[diag(mir_build_verus_const_pattern_depends_on_generic_parameter, code = E0158)]
 pub(crate) struct ConstPatternDependsOnGenericParameter {
     #[primary_span]
     pub(crate) span: Span,
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_could_not_eval_const_pattern)]
+#[diag(mir_build_verus_could_not_eval_const_pattern)]
 pub(crate) struct CouldNotEvalConstPattern {
     #[primary_span]
     pub(crate) span: Span,
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_lower_range_bound_must_be_less_than_or_equal_to_upper, code = E0030)]
+#[diag(mir_build_verus_lower_range_bound_must_be_less_than_or_equal_to_upper, code = E0030)]
 pub(crate) struct LowerRangeBoundMustBeLessThanOrEqualToUpper {
     #[primary_span]
     #[label]
     pub(crate) span: Span,
-    #[note(mir_build_teach_note)]
+    #[note(mir_build_verus_teach_note)]
     pub(crate) teach: bool,
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_literal_in_range_out_of_bounds)]
+#[diag(mir_build_verus_literal_in_range_out_of_bounds)]
 pub(crate) struct LiteralOutOfRange<'tcx> {
     #[primary_span]
     #[label]
@@ -671,14 +671,14 @@ pub(crate) struct LiteralOutOfRange<'tcx> {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_lower_range_bound_must_be_less_than_upper, code = E0579)]
+#[diag(mir_build_verus_lower_range_bound_must_be_less_than_upper, code = E0579)]
 pub(crate) struct LowerRangeBoundMustBeLessThanUpper {
     #[primary_span]
     pub(crate) span: Span,
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_leading_irrefutable_let_patterns)]
+#[diag(mir_build_verus_leading_irrefutable_let_patterns)]
 #[note]
 #[help]
 pub(crate) struct LeadingIrrefutableLetPatterns {
@@ -686,7 +686,7 @@ pub(crate) struct LeadingIrrefutableLetPatterns {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_trailing_irrefutable_let_patterns)]
+#[diag(mir_build_verus_trailing_irrefutable_let_patterns)]
 #[note]
 #[help]
 pub(crate) struct TrailingIrrefutableLetPatterns {
@@ -694,7 +694,7 @@ pub(crate) struct TrailingIrrefutableLetPatterns {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_bindings_with_variant_name, code = E0170)]
+#[diag(mir_build_verus_bindings_with_variant_name, code = E0170)]
 pub(crate) struct BindingsWithVariantName {
     #[suggestion(code = "{ty_path}::{name}", applicability = "machine-applicable")]
     pub(crate) suggestion: Option<Span>,
@@ -703,7 +703,7 @@ pub(crate) struct BindingsWithVariantName {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_irrefutable_let_patterns_if_let)]
+#[diag(mir_build_verus_irrefutable_let_patterns_if_let)]
 #[note]
 #[help]
 pub(crate) struct IrrefutableLetPatternsIfLet {
@@ -711,7 +711,7 @@ pub(crate) struct IrrefutableLetPatternsIfLet {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_irrefutable_let_patterns_if_let_guard)]
+#[diag(mir_build_verus_irrefutable_let_patterns_if_let_guard)]
 #[note]
 #[help]
 pub(crate) struct IrrefutableLetPatternsIfLetGuard {
@@ -719,7 +719,7 @@ pub(crate) struct IrrefutableLetPatternsIfLetGuard {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_irrefutable_let_patterns_let_else)]
+#[diag(mir_build_verus_irrefutable_let_patterns_let_else)]
 #[note]
 #[help]
 pub(crate) struct IrrefutableLetPatternsLetElse {
@@ -727,7 +727,7 @@ pub(crate) struct IrrefutableLetPatternsLetElse {
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_irrefutable_let_patterns_while_let)]
+#[diag(mir_build_verus_irrefutable_let_patterns_while_let)]
 #[note]
 #[help]
 pub(crate) struct IrrefutableLetPatternsWhileLet {
@@ -735,13 +735,13 @@ pub(crate) struct IrrefutableLetPatternsWhileLet {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_borrow_of_moved_value)]
+#[diag(mir_build_verus_borrow_of_moved_value)]
 pub(crate) struct BorrowOfMovedValue<'tcx> {
     #[primary_span]
     #[label]
-    #[label(mir_build_occurs_because_label)]
+    #[label(mir_build_verus_occurs_because_label)]
     pub(crate) binding_span: Span,
-    #[label(mir_build_value_borrowed_label)]
+    #[label(mir_build_verus_value_borrowed_label)]
     pub(crate) conflicts_ref: Vec<Span>,
     pub(crate) name: Symbol,
     pub(crate) ty: Ty<'tcx>,
@@ -750,7 +750,7 @@ pub(crate) struct BorrowOfMovedValue<'tcx> {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_multiple_mut_borrows)]
+#[diag(mir_build_verus_multiple_mut_borrows)]
 pub(crate) struct MultipleMutBorrows {
     #[primary_span]
     pub(crate) span: Span,
@@ -759,7 +759,7 @@ pub(crate) struct MultipleMutBorrows {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_already_borrowed)]
+#[diag(mir_build_verus_already_borrowed)]
 pub(crate) struct AlreadyBorrowed {
     #[primary_span]
     pub(crate) span: Span,
@@ -768,7 +768,7 @@ pub(crate) struct AlreadyBorrowed {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_already_mut_borrowed)]
+#[diag(mir_build_verus_already_mut_borrowed)]
 pub(crate) struct AlreadyMutBorrowed {
     #[primary_span]
     pub(crate) span: Span,
@@ -777,7 +777,7 @@ pub(crate) struct AlreadyMutBorrowed {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_moved_while_borrowed)]
+#[diag(mir_build_verus_moved_while_borrowed)]
 pub(crate) struct MovedWhileBorrowed {
     #[primary_span]
     pub(crate) span: Span,
@@ -787,19 +787,19 @@ pub(crate) struct MovedWhileBorrowed {
 
 #[derive(Subdiagnostic)]
 pub(crate) enum Conflict {
-    #[label(mir_build_mutable_borrow)]
+    #[label(mir_build_verus_mutable_borrow)]
     Mut {
         #[primary_span]
         span: Span,
         name: Symbol,
     },
-    #[label(mir_build_borrow)]
+    #[label(mir_build_verus_borrow)]
     Ref {
         #[primary_span]
         span: Span,
         name: Symbol,
     },
-    #[label(mir_build_moved)]
+    #[label(mir_build_verus_moved)]
     Moved {
         #[primary_span]
         span: Span,
@@ -808,16 +808,16 @@ pub(crate) enum Conflict {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_union_pattern)]
+#[diag(mir_build_verus_union_pattern)]
 pub(crate) struct UnionPattern {
     #[primary_span]
     pub(crate) span: Span,
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_type_not_structural)]
-#[note(mir_build_type_not_structural_tip)]
-#[note(mir_build_type_not_structural_more_info)]
+#[diag(mir_build_verus_type_not_structural)]
+#[note(mir_build_verus_type_not_structural_tip)]
+#[note(mir_build_verus_type_not_structural_more_info)]
 pub(crate) struct TypeNotStructural<'tcx> {
     #[primary_span]
     pub(crate) span: Span,
@@ -825,7 +825,7 @@ pub(crate) struct TypeNotStructural<'tcx> {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_non_partial_eq_match)]
+#[diag(mir_build_verus_non_partial_eq_match)]
 pub(crate) struct TypeNotPartialEq<'tcx> {
     #[primary_span]
     pub(crate) span: Span,
@@ -833,7 +833,7 @@ pub(crate) struct TypeNotPartialEq<'tcx> {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_invalid_pattern)]
+#[diag(mir_build_verus_invalid_pattern)]
 pub(crate) struct InvalidPattern<'tcx> {
     #[primary_span]
     pub(crate) span: Span,
@@ -841,7 +841,7 @@ pub(crate) struct InvalidPattern<'tcx> {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_unsized_pattern)]
+#[diag(mir_build_verus_unsized_pattern)]
 pub(crate) struct UnsizedPattern<'tcx> {
     #[primary_span]
     pub(crate) span: Span,
@@ -849,7 +849,7 @@ pub(crate) struct UnsizedPattern<'tcx> {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_nan_pattern)]
+#[diag(mir_build_verus_nan_pattern)]
 #[note]
 #[help]
 pub(crate) struct NaNPattern {
@@ -858,14 +858,14 @@ pub(crate) struct NaNPattern {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_pointer_pattern)]
+#[diag(mir_build_verus_pointer_pattern)]
 pub(crate) struct PointerPattern {
     #[primary_span]
     pub(crate) span: Span,
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_non_empty_never_pattern)]
+#[diag(mir_build_verus_non_empty_never_pattern)]
 #[note]
 pub(crate) struct NonEmptyNeverPattern<'tcx> {
     #[primary_span]
@@ -875,7 +875,7 @@ pub(crate) struct NonEmptyNeverPattern<'tcx> {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_exceeds_mcdc_condition_limit)]
+#[diag(mir_build_verus_exceeds_mcdc_condition_limit)]
 pub(crate) struct MCDCExceedsConditionLimit {
     #[primary_span]
     pub(crate) span: Span,
@@ -884,7 +884,7 @@ pub(crate) struct MCDCExceedsConditionLimit {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_pattern_not_covered, code = E0005)]
+#[diag(mir_build_verus_pattern_not_covered, code = E0005)]
 pub(crate) struct PatternNotCovered<'s, 'tcx> {
     #[primary_span]
     pub(crate) span: Span,
@@ -897,9 +897,9 @@ pub(crate) struct PatternNotCovered<'s, 'tcx> {
     pub(crate) interpreted_as_const: Option<InterpretedAsConst>,
     #[subdiagnostic]
     pub(crate) adt_defined_here: Option<AdtDefinedHere<'tcx>>,
-    #[note(mir_build_privately_uninhabited)]
+    #[note(mir_build_verus_privately_uninhabited)]
     pub(crate) witness_1_is_privately_uninhabited: bool,
-    #[note(mir_build_pattern_ty)]
+    #[note(mir_build_verus_pattern_ty)]
     pub(crate) _p: (),
     pub(crate) pattern_ty: Ty<'tcx>,
     #[subdiagnostic]
@@ -909,8 +909,8 @@ pub(crate) struct PatternNotCovered<'s, 'tcx> {
 }
 
 #[derive(Subdiagnostic)]
-#[note(mir_build_inform_irrefutable)]
-#[note(mir_build_more_information)]
+#[note(mir_build_verus_inform_irrefutable)]
+#[note(mir_build_verus_more_information)]
 pub(crate) struct Inform;
 
 pub(crate) struct AdtDefinedHere<'tcx> {
@@ -933,20 +933,20 @@ impl<'tcx> Subdiagnostic for AdtDefinedHere<'tcx> {
         let mut spans = MultiSpan::from(self.adt_def_span);
 
         for Variant { span } in self.variants {
-            spans.push_span_label(span, fluent::mir_build_variant_defined_here);
+            spans.push_span_label(span, fluent::mir_build_verus_variant_defined_here);
         }
 
-        diag.span_note(spans, fluent::mir_build_adt_defined_here);
+        diag.span_note(spans, fluent::mir_build_verus_adt_defined_here);
     }
 }
 
 #[derive(Subdiagnostic)]
 #[suggestion(
-    mir_build_interpreted_as_const,
+    mir_build_verus_interpreted_as_const,
     code = "{variable}_var",
     applicability = "maybe-incorrect"
 )]
-#[label(mir_build_confused)]
+#[label(mir_build_verus_confused)]
 pub(crate) struct InterpretedAsConst {
     #[primary_span]
     pub(crate) span: Span,
@@ -955,7 +955,7 @@ pub(crate) struct InterpretedAsConst {
 
 #[derive(Subdiagnostic)]
 pub(crate) enum SuggestLet {
-    #[multipart_suggestion(mir_build_suggest_if_let, applicability = "has-placeholders")]
+    #[multipart_suggestion(mir_build_verus_suggest_if_let, applicability = "has-placeholders")]
     If {
         #[suggestion_part(code = "if ")]
         start_span: Span,
@@ -964,7 +964,7 @@ pub(crate) enum SuggestLet {
         count: usize,
     },
     #[suggestion(
-        mir_build_suggest_let_else,
+        mir_build_verus_suggest_let_else,
         code = " else {{ todo!() }}",
         applicability = "has-placeholders"
     )]
@@ -978,7 +978,7 @@ pub(crate) enum SuggestLet {
 #[derive(Subdiagnostic)]
 pub(crate) enum MiscPatternSuggestion {
     #[suggestion(
-        mir_build_suggest_attempted_int_lit,
+        mir_build_verus_suggest_attempted_int_lit,
         code = "_",
         applicability = "maybe-incorrect"
     )]
@@ -989,7 +989,7 @@ pub(crate) enum MiscPatternSuggestion {
 }
 
 #[derive(Diagnostic)]
-#[diag(mir_build_rustc_box_attribute_error)]
+#[diag(mir_build_verus_rustc_box_attribute_error)]
 pub(crate) struct RustcBoxAttributeError {
     #[primary_span]
     pub(crate) span: Span,
@@ -999,16 +999,16 @@ pub(crate) struct RustcBoxAttributeError {
 
 #[derive(Subdiagnostic)]
 pub(crate) enum RustcBoxAttrReason {
-    #[note(mir_build_attributes)]
+    #[note(mir_build_verus_attributes)]
     Attributes,
-    #[note(mir_build_not_box)]
+    #[note(mir_build_verus_not_box)]
     NotBoxNew,
-    #[note(mir_build_missing_box)]
+    #[note(mir_build_verus_missing_box)]
     MissingBox,
 }
 
 #[derive(LintDiagnostic)]
-#[diag(mir_build_rust_2024_incompatible_pat)]
+#[diag(mir_build_verus_rust_2024_incompatible_pat)]
 pub(crate) struct Rust2024IncompatiblePat {
     #[subdiagnostic]
     pub(crate) sugg: Rust2024IncompatiblePatSugg,

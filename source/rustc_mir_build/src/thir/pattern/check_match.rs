@@ -959,20 +959,20 @@ fn report_unreachable_pattern<'p, 'tcx>(
             for p in iter.by_ref().take(CAP_COVERED_BY_MANY) {
                 multispan.push_span_label(
                     p.data().span,
-                    fluent::mir_build_unreachable_matches_same_values,
+                    fluent::mir_build_verus_unreachable_matches_same_values,
                 );
             }
             let remain = iter.count();
             if remain == 0 {
                 multispan.push_span_label(
                     pat_span,
-                    fluent::mir_build_unreachable_making_this_unreachable,
+                    fluent::mir_build_verus_unreachable_making_this_unreachable,
                 );
             } else {
                 lint.covered_by_many_n_more_count = remain;
                 multispan.push_span_label(
                     pat_span,
-                    fluent::mir_build_unreachable_making_this_unreachable_n_more,
+                    fluent::mir_build_verus_unreachable_making_this_unreachable_n_more,
                 );
             }
             lint.covered_by_many = Some(multispan);
