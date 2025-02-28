@@ -1,11 +1,13 @@
 # The "global" directive
 
-By default, Verus has no access to [layout information](https://doc.rust-lang.org/reference/type-layout.html), such as the size
+In most cases, Verus has no access to [layout information](https://doc.rust-lang.org/reference/type-layout.html), such as the size
 ([`std::mem::size_of::<T>()`](https://doc.rust-lang.org/std/mem/fn.size_of.html))
 or alignment ([`std::mem::align_of::<T>()`](https://doc.rust-lang.org/std/mem/fn.align_of.html))
 of a struct.
 Such information is often unstable (i.e., it may vary between versions of Rust)
 or may be platform-dependent (such as the size of `usize`).
+Though vstd does provide some [axioms for stable, platform-independent layout information](https://verus-lang.github.io/verus/verusdoc/vstd/layout/index.html),
+(e.g., for primitives and pointer types), in most cases you will need to deal with types that have unstable layouts.
 
 This information can be provided to Verus as needed using the `global` directive.
 

@@ -417,3 +417,60 @@ test_verify_one_file_with_options! {
         global layout S<u32> is size == 8, align == 4;
     } => Ok(())
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_layouts_for_primitives ["vstd"] => verus_code! {
+        proof fn test() {
+            assert(size_of::<bool>() == 1);
+            assert(size_of::<char>() == 4);
+            assert(size_of::<i8>() == 1);
+            assert(size_of::<u8>() == 1);
+            assert(size_of::<i16>() == 2);
+            assert(size_of::<u16>() == 2);
+            assert(size_of::<i32>() == 4);
+            assert(size_of::<u32>() == 4);
+            assert(size_of::<i64>() == 8);
+            assert(size_of::<u64>() == 8);
+            assert(size_of::<i128>() == 16);
+            assert(size_of::<u128>() == 16);
+
+            assert(size_of::<()>() == 0);
+            assert(align_of::<()>() == 1);
+        }
+
+        proof fn test_alignment_unspecified() {
+            // alignments are platform-specific
+            assert(align_of::<u32>() == 4); // FAILS
+        }
+
+        proof fn test_ptr_layout<T>()
+            requires vstd::layout::is_sized::<T>()
+        {
+            assert(size_of::<*mut T>() == size_of::<*const T>());
+            assert(size_of::<*mut T>() == size_of::<&T>());
+            assert(align_of::<*mut T>() == align_of::<*const T>());
+            assert(align_of::<*mut T>() == align_of::<&T>());
+
+            assert(size_of::<*mut T>() == size_of::<usize>());
+            assert(align_of::<*mut T>() == align_of::<usize>());
+        }
+
+        proof fn test_ptr_layout_unsized<T: ?Sized>() {
+            assert(size_of::<*mut T>() == size_of::<*const T>());
+            assert(size_of::<*mut T>() == size_of::<&T>());
+            assert(align_of::<*mut T>() == align_of::<*const T>());
+            assert(align_of::<*mut T>() == align_of::<&T>());
+
+            assert(size_of::<*mut T>() == size_of::<usize>()); // FAILS
+        }
+
+        proof fn test_ptr_layout_unsized_2<T: ?Sized>() {
+            assert(size_of::<*mut T>() == size_of::<*const T>());
+            assert(size_of::<*mut T>() == size_of::<&T>());
+            assert(align_of::<*mut T>() == align_of::<*const T>());
+            assert(align_of::<*mut T>() == align_of::<&T>());
+
+            assert(align_of::<*mut T>() == align_of::<usize>()); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
