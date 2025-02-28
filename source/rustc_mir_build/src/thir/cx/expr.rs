@@ -258,7 +258,29 @@ impl<'tcx> Cx<'tcx> {
             }
 
             hir::ExprKind::Call(fun, ref args) => {
-                if self.typeck_results().is_method_call(expr) {
+                let fake = match &fun.kind {
+                    hir::ExprKind::Path(qpath) => {
+                        let res = self.typeck_results().qpath_res(&qpath, fun.hir_id);
+                        match res {
+                            hir::def::Res::Def(_, def_id) => {
+                                let f_name = tcx.def_path_str(def_id);
+                                if f_name == "builtin::assert_" {
+                                    Some(ExprKind::Tuple {
+                                        fields: Box::new([]),
+                                    })
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None
+                        }
+                    }
+                    _ => None
+                };
+
+                if fake.is_some() {
+                    fake.unwrap()
+                } else if self.typeck_results().is_method_call(expr) {
                     // The callee is something implementing Fn, FnMut, or FnOnce.
                     // Find the actual method implementation being called and
                     // build the appropriate UFCS call expression with the

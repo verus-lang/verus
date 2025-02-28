@@ -2816,25 +2816,34 @@ fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
-        config.override_queries = Some(|_session, providers| {
-            providers.hir_crate = hir_crate;
+        if !self.verifier.args.new_lifetime {
+            config.override_queries = Some(|_session, providers| {
+                providers.hir_crate = hir_crate;
 
-            // Hooking mir_const_qualif solves constness issue in function body,
-            // but const-eval will still do check-const when evaluating const
-            // value. Thus const_header_wrapper is still needed.
-            providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
-            // Prevent the borrow checker from running, as we will run our own lifetime analysis.
-            // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
-            // by const evaluation through the mir interpreter.
-            providers.mir_borrowck = |tcx, _local_def_id| {
-                tcx.arena.alloc(rustc_middle::mir::BorrowCheckResult {
-                    concrete_opaque_types: rustc_data_structures::fx::FxIndexMap::default(),
-                    closure_requirements: None,
-                    used_mut_upvars: smallvec::SmallVec::new(),
-                    tainted_by_errors: None,
-                })
-            };
-        });
+                // Hooking mir_const_qualif solves constness issue in function body,
+                // but const-eval will still do check-const when evaluating const
+                // value. Thus const_header_wrapper is still needed.
+                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+
+                // Prevent the borrow checker from running, as we will run our own lifetime analysis.
+                // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
+                // by const evaluation through the mir interpreter.
+                providers.mir_borrowck = |tcx, _local_def_id| {
+                    tcx.arena.alloc(rustc_middle::mir::BorrowCheckResult {
+                        concrete_opaque_types: rustc_data_structures::fx::FxIndexMap::default(),
+                        closure_requirements: None,
+                        used_mut_upvars: smallvec::SmallVec::new(),
+                        tainted_by_errors: None,
+                    })
+                };
+            });
+        } else {
+            config.override_queries = Some(|_session, providers| {
+                providers.hir_crate = hir_crate;
+                providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
+                rustc_mir_build_verus::verus_provide(providers);
+            });
+        }
     }
 
     fn after_expansion<'tcx>(
@@ -3004,6 +3013,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             );
         }
-        rustc_driver::Compilation::Stop
+        if self.verifier.args.new_lifetime {
+            rustc_driver::Compilation::Continue
+        } else {
+            rustc_driver::Compilation::Stop
+        }
     }
 }

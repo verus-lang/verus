@@ -41,6 +41,10 @@ use rustc_middle::util::Providers;
 
 rustc_fluent_macro::fluent_messages! { "../messages.ftl" }
 
+pub fn verus_provide(providers: &mut Providers) {
+    providers.thir_body = thir::cx::thir_body;
+}
+
 pub fn provide(providers: &mut Providers) {
     providers.check_match = thir::pattern::check_match;
     providers.lit_to_const = thir::constant::lit_to_const;
