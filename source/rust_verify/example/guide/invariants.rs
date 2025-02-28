@@ -188,7 +188,6 @@ fn fib_checked_no_precondition(n: u64) -> (result: Option<u64>)
 }
 // ANCHOR_END: fib_checked_no_precondition
 
-
 // ANCHOR: bank_spec
 spec fn always_non_negative(s: Seq<i64>) -> bool
 {
