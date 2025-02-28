@@ -30,10 +30,9 @@
 ///
 /// Example:
 /// - Refer to `example/syntax_attr.rs`.
-use core::convert::TryFrom;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use syn::{parse2, spanned::Spanned, Ident, Item};
+use syn::{parse2, spanned::Spanned, Item};
 
 use crate::{
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
@@ -41,122 +40,6 @@ use crate::{
     syntax::mk_verus_attr_syn,
     EraseGhost,
 };
-
-#[derive(Debug)]
-pub enum SpecAttributeKind {
-    Requires,
-    Ensures,
-    Decreases,
-    Invariant,
-    InvariantExceptBreak,
-}
-
-struct SpecAttributeApply {
-    pub on_function: bool,
-    pub on_loop: bool,
-}
-
-type SpecAttrWithArgs = (SpecAttributeKind, TokenStream);
-
-impl SpecAttributeKind {
-    fn applies_to(&self) -> SpecAttributeApply {
-        let (on_function, on_loop) = match self {
-            SpecAttributeKind::Requires => (true, false),
-            SpecAttributeKind::Ensures => (true, true),
-            SpecAttributeKind::Decreases => (true, true),
-            SpecAttributeKind::Invariant => (false, true),
-            SpecAttributeKind::InvariantExceptBreak => (false, true),
-        };
-        SpecAttributeApply { on_function, on_loop }
-    }
-
-    fn applies_to_function(&self) -> bool {
-        self.applies_to().on_function
-    }
-
-    fn applies_to_loop(&self) -> bool {
-        self.applies_to().on_loop
-    }
-}
-
-impl TryFrom<String> for SpecAttributeKind {
-    type Error = String;
-
-    fn try_from(name: String) -> Result<Self, Self::Error> {
-        match name.as_str() {
-            "requires" => Ok(SpecAttributeKind::Requires),
-            "ensures" => Ok(SpecAttributeKind::Ensures),
-            "decreases" => Ok(SpecAttributeKind::Decreases),
-            "invariant" => Ok(SpecAttributeKind::Invariant),
-            _ => Err(name),
-        }
-    }
-}
-
-// Add brackets for requires, invariant.
-// Add brackets for ensures if it could not be parsed as a syn_verus::Expr.
-fn insert_brackets(attr_type: &SpecAttributeKind, tokens: TokenStream) -> TokenStream {
-    // Parse the TokenStream into a Syn Expression
-    match attr_type {
-        SpecAttributeKind::Ensures => {
-            // if the tokens are not valid verus expr, it might need a bracket.
-            syn_verus::parse2::<syn_verus::Expr>(tokens.clone())
-                .map_or(quote! {[#tokens]}, |e| quote! {#e})
-        }
-        SpecAttributeKind::Decreases => tokens,
-        _ => {
-            quote! {[#tokens]}
-        }
-    }
-}
-
-fn expand_verus_attribute(
-    erase: EraseGhost,
-    verus_attrs: Vec<SpecAttrWithArgs>,
-    any_with_attr_block: &mut dyn AnyAttrBlock,
-    function_or_loop: bool,
-) {
-    if !erase.keep() {
-        return;
-    }
-    // rewrite based on different spec attributes
-    for (attr_kind, attr_tokens) in verus_attrs {
-        if function_or_loop {
-            assert!(attr_kind.applies_to_function());
-        }
-        if !function_or_loop {
-            assert!(attr_kind.applies_to_loop());
-        }
-        match attr_kind {
-            SpecAttributeKind::Invariant => {
-                insert_spec_call(any_with_attr_block, "invariant", attr_tokens)
-            }
-            SpecAttributeKind::Decreases => {
-                insert_spec_call(any_with_attr_block, "decreases", attr_tokens)
-            }
-            SpecAttributeKind::Ensures => {
-                insert_spec_call(any_with_attr_block, "ensures", attr_tokens)
-            }
-            SpecAttributeKind::Requires => {
-                insert_spec_call(any_with_attr_block, "requires", attr_tokens)
-            }
-            SpecAttributeKind::InvariantExceptBreak => {
-                insert_spec_call(any_with_attr_block, "invariant_except_break", attr_tokens)
-            }
-        }
-    }
-}
-
-fn insert_spec_call(any_fn: &mut dyn AnyAttrBlock, call: &str, verus_expr: TokenStream) {
-    let fname = Ident::new(call, verus_expr.span());
-    let tokens: TokenStream =
-        syntax::rewrite_expr(EraseGhost::Keep, true, verus_expr.into()).into();
-    any_fn.block_mut().unwrap().stmts.insert(
-        0,
-        parse2(quote! { #[verus::internal(const_header_wrapper)]||{::builtin::#fname(#tokens);};})
-            .unwrap(),
-    );
-}
 
 pub fn rewrite_verus_attribute(
     erase: &EraseGhost,
@@ -203,23 +86,27 @@ pub fn rewrite_verus_spec(
             // (In the normal case, this results in a redundant extra error message after
             // the normal Rust syntax error, but it's a reasonable looking error message.)
             return proc_macro::TokenStream::from(
-                quote_spanned!(err.span() => compile_error!("syntax error in function");),
+                quote_spanned!(err.span() => compile_error!("Misuse of #[verus_spec]");),
             );
         }
     };
-    let spec_attr =
-        syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
+
     match f {
         AnyFnOrLoop::Fn(mut fun) => {
+            let spec_attr =
+                syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
             // Note: trait default methods appear in this case,
             // since they look syntactically like non-trait functions
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &fun.sig);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
             let _ = fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
             fun.attrs.push(mk_verus_attr_syn(fun.span(), quote! { verus_macro }));
+
             proc_macro::TokenStream::from(fun.to_token_stream())
         }
         AnyFnOrLoop::TraitMethod(mut method) => {
+            let spec_attr =
+                syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
             // Note: default trait methods appear in the AnyFnOrLoop::Fn case, not here
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &method.sig);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
@@ -232,41 +119,28 @@ pub fn rewrite_verus_spec(
             method.to_tokens(&mut new_stream);
             proc_macro::TokenStream::from(new_stream)
         }
-        _ => {
-            let span = spec_attr.span();
-            proc_macro::TokenStream::from(
-                quote_spanned!(span => compile_error!("'verus_spec' is not allowed here");),
-            )
+        AnyFnOrLoop::ForLoop(forloop) => {
+            let spec_attr = syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::LoopSpec);
+            syntax::for_loop_spec_attr(erase, spec_attr, forloop).to_token_stream().into()
         }
-    }
-}
-
-pub fn rewrite(
-    erase: EraseGhost,
-    outer_attr: SpecAttributeKind,
-    outer_attr_tokens: TokenStream,
-    input: TokenStream,
-) -> Result<TokenStream, syn::Error> {
-    let span = outer_attr_tokens.span();
-    let outer_attr_tokens = insert_brackets(&outer_attr, outer_attr_tokens);
-    let verus_attrs = vec![(outer_attr, outer_attr_tokens)];
-    let f = parse2::<AnyFnOrLoop>(input)?;
-    match f {
         AnyFnOrLoop::Loop(mut l) => {
-            expand_verus_attribute(erase, verus_attrs, &mut l, false);
-            Ok(quote_spanned! {l.span()=>#l})
-        }
-        AnyFnOrLoop::ForLoop(mut l) => {
-            expand_verus_attribute(erase, verus_attrs, &mut l, false);
-            Ok(quote_spanned! {l.span()=>#l})
+            let spec_attr = syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::LoopSpec);
+            let spec_stmts = syntax::while_loop_spec_attr(erase, spec_attr);
+            let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
+            if erase.keep() {
+                l.body.stmts.splice(0..0, new_stmts);
+            }
+            l.to_token_stream().into()
         }
         AnyFnOrLoop::While(mut l) => {
-            expand_verus_attribute(erase, verus_attrs, &mut l, false);
-            Ok(quote_spanned! {l.span()=>#l})
+            let spec_attr = syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::LoopSpec);
+            let spec_stmts = syntax::while_loop_spec_attr(erase, spec_attr);
+            let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
+            if erase.keep() {
+                l.body.stmts.splice(0..0, new_stmts);
+            }
+            l.to_token_stream().into()
         }
-        AnyFnOrLoop::Fn(_) | AnyFnOrLoop::TraitMethod(_) => Ok(
-            quote_spanned!(span => compile_error!("'verus_spec' attribute expected on function");),
-        ),
     }
 }
 
