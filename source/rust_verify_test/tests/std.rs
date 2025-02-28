@@ -124,6 +124,9 @@ test_verify_one_file! {
             requires old(v).len() > 0,
         {
             let a = v[0];
+            v[0] = a;
+            let mut v2: Vec<u8> = vec![0];
+            v2[0] = a;
             assert(a == v.view().index(0));
         }
     } => Ok(())
