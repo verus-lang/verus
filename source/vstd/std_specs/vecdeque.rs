@@ -6,8 +6,8 @@ use core::alloc::Allocator;
 use core::clone::Clone;
 use core::option::Option;
 use core::option::Option::None;
-use std::collections::VecDeque;
 use std::collections::vec_deque::Iter;
+use std::collections::VecDeque;
 use std::ops::Index;
 
 verus! {
@@ -257,8 +257,9 @@ impl<'a, T: 'a> IterAdditionalSpecFns<'a, T> for Iter<'a, T> {
     spec fn view(self: &Iter<'a, T>) -> (int, Seq<T>);
 }
 
-pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T>) -> (r:
-    Option<&'a T>)
+pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T>) -> (r: Option<
+    &'a T,
+>)
     ensures
         ({
             let (old_index, old_seq) = old(elements)@;
@@ -341,6 +342,12 @@ impl<'a, T> View for IterGhostIterator<'a, T> {
     }
 }
 
+// To allow reasoning about the ghost iterator when the executable
+// function `iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: v.iter() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
+// the executable `iter` method and define that spec function here.
 pub open spec fn spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>) -> (r: Iter<'a, T>);
 
 pub broadcast proof fn axiom_spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>)
@@ -351,7 +358,9 @@ pub broadcast proof fn axiom_spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A
 }
 
 #[verifier::when_used_as_spec(spec_iter)]
-pub assume_specification<'a, T, A: Allocator>[ VecDeque::<T, A>::iter ](v: &'a VecDeque<T, A>) -> (r: Iter<'a, T>)
+pub assume_specification<'a, T, A: Allocator>[ VecDeque::<T, A>::iter ](
+    v: &'a VecDeque<T, A>,
+) -> (r: Iter<'a, T>)
     ensures
         r@ == (0int, v@),
 ;
