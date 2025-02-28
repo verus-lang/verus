@@ -1,17 +1,27 @@
+use vir::ast::{VirErrAs, FunctionX, VirErr, ExprX, BinaryOp, Mode};
+use std::sync::Arc;
+use rustc_span::Span;
+use crate::verus_items::RustItem;
+use crate::context::Context;
+use rustc_hir::HirId;
+
 /// Traits with special handling
-enum SpecialTrait {
+#[derive(Clone, Copy, Debug)]
+pub enum SpecialTrait {
     Clone,
     PartialEq,
 }
 
 /// What to do for a given automatically-derived trait impl
-enum AutomaticDeriveAction {
+#[derive(Debug)]
+pub enum AutomaticDeriveAction {
     Special(SpecialTrait),
     VerifyAsIs,
-    Ignore(Option<VirErrAs>),
+    /// Ignore, optionally providing a warning
+    Ignore,
 }
 
-pub fn get_action(rust_item: Option<RustItem>) {
+pub fn get_action(rust_item: Option<RustItem>) -> AutomaticDeriveAction {
     match rust_item {
         Some(RustItem::PartialEq) => AutomaticDeriveAction::Special(SpecialTrait::PartialEq),
         Some(RustItem::Clone) => AutomaticDeriveAction::Special(SpecialTrait::Clone),
@@ -21,12 +31,13 @@ pub fn get_action(rust_item: Option<RustItem>) {
         Some(RustItem::Hash)
         | Some(RustItem::Default)
         | Some(RustItem::Debug)
-        => AutomaticDeriveAction::Ignore(None),
+        | Some(RustItem::Ord)
+        | Some(RustItem::PartialOrd)
+        => AutomaticDeriveAction::Ignore,
 
-        Some(_) => {
-            AutomaticDeriveAction::Ignore()
+        Some(_) | None => {
+            AutomaticDeriveAction::VerifyAsIs
         }
-        None => AutomaticDeriveAction::VerifyAsIs,
     }
 }
 
@@ -43,4 +54,96 @@ pub fn is_automatically_derived(attrs: &[rustc_ast::Attribute]) -> bool {
         }
     }
     false
+}
+
+pub fn modify_derived_item<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, action: &AutomaticDeriveAction, function: &mut FunctionX) -> Result<(), VirErr> {
+    let AutomaticDeriveAction::Special(special) = action else { return Ok(()); };
+    match special {
+        SpecialTrait::Clone => {
+            if &*function.name.path.last_segment() == "clone" {
+                return clone_add_post_condition(ctxt, span, hir_id, function);
+            }
+        }
+        SpecialTrait::PartialEq => {
+            if &*function.name.path.last_segment() == "eq" {
+                return eq_add_post_condition(ctxt, span, hir_id, function);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn clone_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, functionx: &mut FunctionX) -> Result<(), VirErr> {
+    let warn = || {
+        let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
+        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+            span,
+            format!("autoderive Clone impl does not take the form Verus expects; continuing, but without adding a specification for the derived Clone impl"),
+        )));
+    };
+
+    let Some(body) = &functionx.body else { return Ok(()); };
+
+    let uses_copy;
+    let self_id;
+    let self_typ;
+
+    match &body.x {
+        ExprX::Block(_stmts, Some(last_expr)) => {
+            match &last_expr.x {
+                ExprX::Var(id) if &*id.0 == "self" => {
+                    uses_copy = true;
+                    self_id = id.clone();
+                    self_typ = last_expr.typ.clone();
+                }
+                _ => {
+                    warn();
+                    return Ok(());
+                }
+            }
+        }
+        _ => {
+            warn();
+            return Ok(());
+        }
+    }
+
+    if functionx.ensure.len() != 0 {
+        warn();
+        return Ok(());
+    }
+
+    if uses_copy {
+        // Add `ensures ret == self`
+        let self_var = ctxt.spans.spanned_typed_new(
+            span,
+            &self_typ,
+            ExprX::Var(self_id.clone())
+        );
+        let ret_var = ctxt.spans.spanned_typed_new(
+            span,
+            &self_var.typ,
+            ExprX::Var(functionx.ret.x.name.clone())
+        );
+        let eq_expr = ctxt.spans.spanned_typed_new(
+            span,
+            &vir::ast_util::bool_typ(),
+            ExprX::Binary(BinaryOp::Eq(Mode::Spec), ret_var.clone(), self_var.clone())
+        );
+
+        let mut erasure_info = ctxt.erasure_info.borrow_mut();
+        erasure_info.hir_vir_ids.push((hir_id, self_var.span.id));
+        erasure_info.hir_vir_ids.push((hir_id, ret_var.span.id));
+        erasure_info.hir_vir_ids.push((hir_id, eq_expr.span.id));
+
+        functionx.ensure = Arc::new(vec![eq_expr]);
+    } else {
+        todo!();
+    }
+
+    Ok(())
+}
+
+fn eq_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, function: &mut FunctionX) -> Result<(), VirErr> {
+    todo!();
 }

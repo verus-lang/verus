@@ -31,6 +31,7 @@ use vir::ast::{
 use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 use vir::sst_util::subst_typ;
+use crate::automatic_derive::AutomaticDeriveAction;
 
 pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
     // turn a::b::c into a::b::method_name
@@ -578,6 +579,7 @@ pub(crate) fn check_item_fn<'tcx>(
     external_trait: Option<DefId>,
     external_fn_specification_via_external_trait: Option<DefId>,
     external_info: &mut ExternalInfo,
+    autoderive_action: Option<&AutomaticDeriveAction>,
 ) -> Result<Option<Fun>, VirErr> {
     let this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
 
@@ -782,17 +784,17 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let n_params = vir_params.len();
 
-    let (vir_body, header) = match body_id {
+    let (vir_body, header, body_hir_id) = match body_id {
         CheckItemFnEither::BodyId(body_id) => {
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
             let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
             let header = vir::headers::read_header(&mut vir_body)?;
-            (Some(vir_body), header)
+            (Some(vir_body), header, Some(body.value.hir_id))
         }
         CheckItemFnEither::ParamNames(_params) => {
             let header = vir::headers::read_header_block(&mut vec![])?;
-            (None, header)
+            (None, header, None)
         }
     };
 
@@ -1097,6 +1099,11 @@ pub(crate) fn check_item_fn<'tcx>(
 
     if vattrs.external_fn_specification {
         func = fix_external_fn_specification_trait_method_decl_typs(sig.span, func)?;
+    }
+    if let Some(action) = autoderive_action {
+        if let Some(body_hir_id) = body_hir_id {
+            crate::automatic_derive::modify_derived_item(ctxt, sig.span, body_hir_id, action, &mut func)?;
+        }
     }
     let function = ctxt.spanned_new(sig.span, func);
     let function = if let Some((from_path, to_path)) = &external_trait_from_to {
