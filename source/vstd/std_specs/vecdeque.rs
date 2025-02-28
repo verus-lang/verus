@@ -171,7 +171,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::remove ](
                 &&& v@ == old(v)@.remove(i as int)
             },
             None => {
-                &&& old(v)@.len() < i
+                &&& old(v)@.len() <= i
                 &&& v@ == old(v)@
             },
         },
