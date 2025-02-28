@@ -73,6 +73,37 @@ pub fn rewrite_verus_attribute(
     }
 }
 
+use syn::visit_mut::VisitMut;
+
+struct PanicReplacer;
+
+impl VisitMut for PanicReplacer {
+    fn visit_macro_mut(&mut self, mac: &mut syn::Macro) {
+        if let Some(x) = mac.path.segments.first_mut() {
+            let ident = x.ident.to_string();
+            if ident == "panic" {
+                // The builtin panic macro could not be supported due to
+                // the use of panic_fmt takes Argument and Argument is created via Arguments::new_v1
+                // with a private struct rt::Argument.
+                // Directly replacing panic macro is the simpliest solution.
+                // Build the full path: std::prelude::vpanic
+                let mut segments = syn::punctuated::Punctuated::new();
+                segments.push(syn::Ident::new("vstd", x.span()).into());
+                segments.push(syn::Ident::new("vpanic", x.span()).into());
+                mac.path = syn::Path { leading_colon: None, segments };
+            }
+        }
+        syn::visit_mut::visit_macro_mut(self, mac);
+    }
+}
+
+pub fn replace_block(erase: EraseGhost, fblock: &mut syn::Block) {
+    let mut replacer = PanicReplacer;
+    if erase.keep() {
+        replacer.visit_block_mut(fblock);
+    }
+}
+
 pub fn rewrite_verus_spec(
     erase: EraseGhost,
     outer_attr_tokens: proc_macro::TokenStream,
@@ -97,6 +128,7 @@ pub fn rewrite_verus_spec(
                 syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
             // Note: trait default methods appear in this case,
             // since they look syntactically like non-trait functions
+            replace_block(erase, fun.block_mut().unwrap());
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &fun.sig);
             let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
             let _ = fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
