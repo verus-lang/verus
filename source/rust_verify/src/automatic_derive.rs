@@ -74,13 +74,15 @@ pub fn modify_derived_item<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId
 }
 
 fn clone_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, functionx: &mut FunctionX) -> Result<(), VirErr> {
-    let warn = || {
+    let warn = |msg: &str| {
         let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
         diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
             span,
-            format!("autoderive Clone impl does not take the form Verus expects; continuing, but without adding a specification for the derived Clone impl"),
+            msg.to_string(),
         )));
     };
+    let warn_unexpected = || warn("autoderive Clone impl does not take the form Verus expects; continuing, but without adding a specification for the derived Clone impl");
+    let warn_unsupported = || warn("Verus does not (yet) support autoderive Clone impl when the clone is not a copy; continuing, but without adding a specification for the derived Clone impl");
 
     let Some(body) = &functionx.body else { return Ok(()); };
 
@@ -92,27 +94,32 @@ fn clone_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirI
             match &last_expr.x {
                 ExprX::Var(id) if &*id.0 == "self" => {
                     uses_copy = true;
-                    self_var = last_expr.clone();
+                    self_var = Some(last_expr.clone());
+                }
+                ExprX::Ctor { .. } => {
+                    uses_copy = false;
+                    self_var = None;
                 }
                 _ => {
-                    warn();
+                    warn_unexpected();
                     return Ok(());
                 }
             }
         }
         _ => {
-            warn();
+            warn_unexpected();
             return Ok(());
         }
     }
 
     if functionx.ensure.len() != 0 {
-        warn();
+        warn_unexpected();
         return Ok(());
     }
 
     if uses_copy {
         // Add `ensures ret == self`
+        let self_var = self_var.unwrap();
         let ret_var = SpannedTyped::new(
             &self_var.span,
             &self_var.typ,
@@ -127,14 +134,22 @@ fn clone_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirI
         let eq_expr = cleanup_span_ids(ctxt, span, hir_id, &eq_expr);
         functionx.ensure = Arc::new(vec![eq_expr]);
     } else {
-        todo!();
+        warn_unsupported();
     }
 
     Ok(())
 }
 
-fn eq_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, function: &mut FunctionX) -> Result<(), VirErr> {
-    todo!();
+fn eq_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, _hir_id: HirId, _function: &mut FunctionX) -> Result<(), VirErr> {
+    let warn = |msg: &str| {
+        let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
+        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+            span,
+            msg.to_string(),
+        )));
+    };
+    warn("Verus does not (yet) support autoderive PartialEq impl; continuing, but without adding a specification for the derived PartialEq impl");
+    Ok(())
 }
 
 // TODO better place for this
