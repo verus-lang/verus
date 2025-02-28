@@ -831,7 +831,7 @@ pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<Stri
 // Only those relevant to classifying an item as external / not external
 // (external_body is relevant because it means anything on the inside of the item should
 // be external)
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct ExternalAttrs {
     pub(crate) external: bool,
     pub(crate) external_body: bool,

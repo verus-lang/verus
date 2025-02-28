@@ -1,3 +1,4 @@
+use crate::automatic_derive::is_automatically_derived;
 use crate::context::Context;
 use crate::external::CrateItems;
 use crate::rust_to_vir_base::{
@@ -220,6 +221,7 @@ pub(crate) fn translate_impl<'tcx>(
     module_path: Path,
     external_info: &mut ExternalInfo,
     crate_items: &CrateItems,
+    attrs: &[rustc_ast::Attribute],
 ) -> Result<(), VirErr> {
     let impl_def_id = item.owner_id.to_def_id();
     let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
@@ -339,6 +341,14 @@ pub(crate) fn translate_impl<'tcx>(
         None
     };
 
+    let autoderive_action = if impll.of_trait.is_some() && is_automatically_derived(attrs) {
+        let trait_def_id = impll.of_trait.unwrap().path.res.def_id();
+        let rust_item = crate::verus_items::get_rust_item(ctxt.tcx, trait_def_id);
+        Some(crate::automatic_derive::get_action(rust_item))
+    } else {
+        None
+    };
+
     for impl_item_ref in impll.items {
         let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
         let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
@@ -393,6 +403,7 @@ pub(crate) fn translate_impl<'tcx>(
                             None,
                             None,
                             external_info,
+                            autoderive_action.as_ref(),
                         )?;
                     }
                     _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_ref),
