@@ -7,7 +7,6 @@
     feature(proc_macro_diagnostic)
 )]
 
-use attr_rewrite::SpecAttributeKind;
 #[cfg(verus_keep_ghost)]
 use std::sync::OnceLock;
 use synstructure::{decl_attribute, decl_derive};
@@ -275,71 +274,6 @@ pub fn verus_spec(
     let erase = cfg_erase();
     if erase.keep() {
         attr_rewrite::rewrite_verus_spec(erase, attr.into(), input.into()).into()
-    } else {
-        input
-    }
-}
-
-// The attribute should work together with verus_verify attribute.
-#[proc_macro_attribute]
-pub fn ensures(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let erase = cfg_erase();
-    if erase.keep() {
-        attr_rewrite::rewrite(erase, SpecAttributeKind::Ensures, attr.into(), input.into())
-            .expect("Misuse of #[ensures()].")
-            .into()
-    } else {
-        input
-    }
-}
-
-// The attribute should work together with verus_verify attribute.
-#[proc_macro_attribute]
-pub fn decreases(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let erase = cfg_erase();
-    if erase.keep() {
-        attr_rewrite::rewrite(erase, SpecAttributeKind::Decreases, attr.into(), input.into())
-            .expect("Misuse of #[decreases()].")
-            .into()
-    } else {
-        input
-    }
-}
-
-// The attribute should work together with verus_verify attribute.
-#[proc_macro_attribute]
-pub fn invariant(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let erase = cfg_erase();
-    if erase.keep() {
-        attr_rewrite::rewrite(erase, SpecAttributeKind::Invariant, attr.into(), input.into())
-            .expect("Misuse of #[invariant()]")
-            .into()
-    } else {
-        input
-    }
-}
-
-// The attribute should work together with verus_verify attribute.
-#[proc_macro_attribute]
-pub fn invariant_except_break(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let erase = cfg_erase();
-    if erase.keep() {
-        let kind = SpecAttributeKind::InvariantExceptBreak;
-        attr_rewrite::rewrite(erase, kind, attr.into(), input.into())
-            .expect("Misuse of #[invariant_except_break()]")
-            .into()
     } else {
         input
     }

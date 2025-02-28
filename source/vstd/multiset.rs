@@ -653,7 +653,7 @@ pub proof fn lemma_multiset_properties<V>()
 
 }
 
-broadcast group group_multiset_properties {
+pub broadcast group group_multiset_properties {
     lemma_update_same,
     lemma_update_different,
     lemma_insert_containment,
