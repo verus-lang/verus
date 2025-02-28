@@ -1,4 +1,4 @@
-use vir::ast::{VirErrAs, FunctionX, VirErr, ExprX, BinaryOp, Mode};
+use vir::ast::{VirErrAs, FunctionX, VirErr, ExprX, BinaryOp, Mode, SpannedTyped, Expr};
 use std::sync::Arc;
 use rustc_span::Span;
 use crate::verus_items::RustItem;
@@ -85,16 +85,14 @@ fn clone_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirI
     let Some(body) = &functionx.body else { return Ok(()); };
 
     let uses_copy;
-    let self_id;
-    let self_typ;
+    let self_var;
 
     match &body.x {
         ExprX::Block(_stmts, Some(last_expr)) => {
             match &last_expr.x {
                 ExprX::Var(id) if &*id.0 == "self" => {
                     uses_copy = true;
-                    self_id = id.clone();
-                    self_typ = last_expr.typ.clone();
+                    self_var = last_expr.clone();
                 }
                 _ => {
                     warn();
@@ -115,27 +113,18 @@ fn clone_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirI
 
     if uses_copy {
         // Add `ensures ret == self`
-        let self_var = ctxt.spans.spanned_typed_new(
-            span,
-            &self_typ,
-            ExprX::Var(self_id.clone())
-        );
-        let ret_var = ctxt.spans.spanned_typed_new(
-            span,
+        let ret_var = SpannedTyped::new(
+            &self_var.span,
             &self_var.typ,
             ExprX::Var(functionx.ret.x.name.clone())
         );
-        let eq_expr = ctxt.spans.spanned_typed_new(
-            span,
+        let eq_expr = SpannedTyped::new(
+            &self_var.span,
             &vir::ast_util::bool_typ(),
             ExprX::Binary(BinaryOp::Eq(Mode::Spec), ret_var.clone(), self_var.clone())
         );
 
-        let mut erasure_info = ctxt.erasure_info.borrow_mut();
-        erasure_info.hir_vir_ids.push((hir_id, self_var.span.id));
-        erasure_info.hir_vir_ids.push((hir_id, ret_var.span.id));
-        erasure_info.hir_vir_ids.push((hir_id, eq_expr.span.id));
-
+        let eq_expr = cleanup_span_ids(ctxt, span, hir_id, &eq_expr);
         functionx.ensure = Arc::new(vec![eq_expr]);
     } else {
         todo!();
@@ -146,4 +135,14 @@ fn clone_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirI
 
 fn eq_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, function: &mut FunctionX) -> Result<(), VirErr> {
     todo!();
+}
+
+// TODO better place for this
+fn cleanup_span_ids<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, expr: &Expr) -> Expr {
+    vir::ast_visitor::map_expr_visitor(expr, &|e: &Expr| {
+        let e = ctxt.spans.spanned_typed_new(span, &e.typ, e.x.clone());
+        let mut erasure_info = ctxt.erasure_info.borrow_mut();
+        erasure_info.hir_vir_ids.push((hir_id, e.span.id));
+        Ok(e)
+    }).unwrap()
 }

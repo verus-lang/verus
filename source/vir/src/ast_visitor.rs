@@ -1082,7 +1082,7 @@ where
     fe(env, map, &expr)
 }
 
-pub(crate) fn map_expr_visitor<FE>(expr: &Expr, fe: &FE) -> Result<Expr, VirErr>
+pub fn map_expr_visitor<FE>(expr: &Expr, fe: &FE) -> Result<Expr, VirErr>
 where
     FE: Fn(&Expr) -> Result<Expr, VirErr>,
 {

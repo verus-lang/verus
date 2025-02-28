@@ -348,7 +348,6 @@ pub(crate) fn translate_impl<'tcx>(
     } else {
         None
     };
-    dbg!(&autoderive_action);
 
     for impl_item_ref in impll.items {
         let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
