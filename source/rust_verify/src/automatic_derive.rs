@@ -1,9 +1,9 @@
-use vir::ast::{VirErrAs, FunctionX, VirErr, ExprX, BinaryOp, Mode, SpannedTyped, Expr};
-use std::sync::Arc;
-use rustc_span::Span;
-use crate::verus_items::RustItem;
 use crate::context::Context;
+use crate::verus_items::RustItem;
 use rustc_hir::HirId;
+use rustc_span::Span;
+use std::sync::Arc;
+use vir::ast::{BinaryOp, Expr, ExprX, FunctionX, Mode, SpannedTyped, VirErr, VirErrAs};
 
 /// Traits with special handling
 #[derive(Clone, Copy, Debug)]
@@ -32,12 +32,9 @@ pub fn get_action(rust_item: Option<RustItem>) -> AutomaticDeriveAction {
         | Some(RustItem::Default)
         | Some(RustItem::Debug)
         | Some(RustItem::Ord)
-        | Some(RustItem::PartialOrd)
-        => AutomaticDeriveAction::Ignore,
+        | Some(RustItem::PartialOrd) => AutomaticDeriveAction::Ignore,
 
-        Some(_) | None => {
-            AutomaticDeriveAction::VerifyAsIs
-        }
+        Some(_) | None => AutomaticDeriveAction::VerifyAsIs,
     }
 }
 
@@ -45,19 +42,29 @@ pub fn is_automatically_derived(attrs: &[rustc_ast::Attribute]) -> bool {
     for attr in attrs.iter() {
         match &attr.kind {
             rustc_ast::AttrKind::Normal(item) => match &item.item.path.segments[..] {
-                [segment] => if segment.ident.as_str() == "automatically_derived" {
-                    return true;
+                [segment] => {
+                    if segment.ident.as_str() == "automatically_derived" {
+                        return true;
+                    }
                 }
-                _ => { }
-            }
-            _ => { }
+                _ => {}
+            },
+            _ => {}
         }
     }
     false
 }
 
-pub fn modify_derived_item<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, action: &AutomaticDeriveAction, function: &mut FunctionX) -> Result<(), VirErr> {
-    let AutomaticDeriveAction::Special(special) = action else { return Ok(()); };
+pub fn modify_derived_item<'tcx>(
+    ctxt: &Context<'tcx>,
+    span: Span,
+    hir_id: HirId,
+    action: &AutomaticDeriveAction,
+    function: &mut FunctionX,
+) -> Result<(), VirErr> {
+    let AutomaticDeriveAction::Special(special) = action else {
+        return Ok(());
+    };
     match special {
         SpecialTrait::Clone => {
             if &*function.name.path.last_segment() == "clone" {
@@ -68,39 +75,49 @@ pub fn modify_derived_item<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId
     Ok(())
 }
 
-fn clone_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, functionx: &mut FunctionX) -> Result<(), VirErr> {
+fn clone_add_post_condition<'tcx>(
+    ctxt: &Context<'tcx>,
+    span: Span,
+    hir_id: HirId,
+    functionx: &mut FunctionX,
+) -> Result<(), VirErr> {
     let warn = |msg: &str| {
         let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
-        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
-            span,
-            msg.to_string(),
-        )));
+        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(span, msg.to_string())));
     };
-    let warn_unexpected = || warn("autoderive Clone impl does not take the form Verus expects; continuing, but without adding a specification for the derived Clone impl");
-    let warn_unsupported = || warn("Verus does not (yet) support autoderive Clone impl when the clone is not a copy; continuing, but without adding a specification for the derived Clone impl");
+    let warn_unexpected = || {
+        warn(
+            "autoderive Clone impl does not take the form Verus expects; continuing, but without adding a specification for the derived Clone impl",
+        )
+    };
+    let warn_unsupported = || {
+        warn(
+            "Verus does not (yet) support autoderive Clone impl when the clone is not a copy; continuing, but without adding a specification for the derived Clone impl",
+        )
+    };
 
-    let Some(body) = &functionx.body else { return Ok(()); };
+    let Some(body) = &functionx.body else {
+        return Ok(());
+    };
 
     let uses_copy;
     let self_var;
 
     match &body.x {
-        ExprX::Block(_stmts, Some(last_expr)) => {
-            match &last_expr.x {
-                ExprX::Var(id) if &*id.0 == "self" => {
-                    uses_copy = true;
-                    self_var = Some(last_expr.clone());
-                }
-                ExprX::Ctor { .. } => {
-                    uses_copy = false;
-                    self_var = None;
-                }
-                _ => {
-                    warn_unexpected();
-                    return Ok(());
-                }
+        ExprX::Block(_stmts, Some(last_expr)) => match &last_expr.x {
+            ExprX::Var(id) if &*id.0 == "self" => {
+                uses_copy = true;
+                self_var = Some(last_expr.clone());
             }
-        }
+            ExprX::Ctor { .. } => {
+                uses_copy = false;
+                self_var = None;
+            }
+            _ => {
+                warn_unexpected();
+                return Ok(());
+            }
+        },
         _ => {
             warn_unexpected();
             return Ok(());
@@ -118,12 +135,12 @@ fn clone_add_post_condition<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirI
         let ret_var = SpannedTyped::new(
             &self_var.span,
             &self_var.typ,
-            ExprX::Var(functionx.ret.x.name.clone())
+            ExprX::Var(functionx.ret.x.name.clone()),
         );
         let eq_expr = SpannedTyped::new(
             &self_var.span,
             &vir::ast_util::bool_typ(),
-            ExprX::Binary(BinaryOp::Eq(Mode::Spec), ret_var.clone(), self_var.clone())
+            ExprX::Binary(BinaryOp::Eq(Mode::Spec), ret_var.clone(), self_var.clone()),
         );
 
         let eq_expr = cleanup_span_ids(ctxt, span, hir_id, &eq_expr);
@@ -142,5 +159,6 @@ fn cleanup_span_ids<'tcx>(ctxt: &Context<'tcx>, span: Span, hir_id: HirId, expr:
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.hir_vir_ids.push((hir_id, e.span.id));
         Ok(e)
-    }).unwrap()
+    })
+    .unwrap()
 }

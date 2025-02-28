@@ -1,3 +1,4 @@
+use crate::automatic_derive::is_automatically_derived;
 use crate::context::Context;
 use crate::external::CrateItems;
 use crate::rust_to_vir_base::{
@@ -19,7 +20,6 @@ use vir::ast::{
     AssocTypeImpl, AssocTypeImplX, Dt, Fun, FunX, Function, FunctionKind, Ident, ImplPath, Krate,
     KrateX, Path, Trait, TraitImpl, Typ, Typs, VirErr,
 };
-use crate::automatic_derive::{is_automatically_derived};
 
 // Used to collect all needed external trait implementations
 pub(crate) struct ExternalInfo {

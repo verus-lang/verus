@@ -27,7 +27,7 @@ Here are some odd cases to watch out for:
 
  * For trait decls and trait impls, we disallow #[verifier::external] on individual
    TraitItems or ImplItems.
- 
+
  * Autoderive traits need to be handled specially.
 
 To implement this traversal, we use some rustc visitor machinery to do the recursive
@@ -37,9 +37,11 @@ then it's nested items can be marked VerusAware, but if it's External, this this
 */
 
 use crate::attributes::ExternalAttrs;
+use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::Context;
 use crate::rust_to_vir_base::{def_id_to_vir_path, def_id_to_vir_path_option};
 use crate::rustc_hir::intravisit::*;
+use crate::verus_items::get_rust_item;
 use rustc_hir::{
     ForeignItem, ForeignItemId, HirId, ImplItem, ImplItemId, ImplItemKind, Item, ItemId, ItemKind,
     OwnerId, TraitItem, TraitItemId, TraitItemKind,
@@ -47,8 +49,6 @@ use rustc_hir::{
 use rustc_span::Span;
 use std::collections::HashMap;
 use vir::ast::{Path, VirErr, VirErrAs};
-use crate::automatic_derive::AutomaticDeriveAction;
-use crate::verus_items::get_rust_item;
 
 /// Main exported type of this module.
 /// Contains all item-things and their categorizations
@@ -245,14 +245,14 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         let def_id = owner_id.to_def_id();
 
         {
-        emit_errors_warnings_for_ignored_attrs(
-            self.ctxt,
-            self.state,
-            &eattrs,
-            &mut *self.ctxt.diagnostics.borrow_mut(),
-            &mut self.errors,
-            span,
-        );
+            emit_errors_warnings_for_ignored_attrs(
+                self.ctxt,
+                self.state,
+                &eattrs,
+                &mut *self.ctxt.diagnostics.borrow_mut(),
+                &mut self.errors,
+                span,
+            );
         }
 
         // Compute the VerifState of this particular item based on its context
@@ -260,7 +260,8 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
 
         let my_eattrs = eattrs;
 
-        let auto_derive_eattrs = get_attributes_for_automatic_derive(&self.ctxt, &general_item, &attrs, span);
+        let auto_derive_eattrs =
+            get_attributes_for_automatic_derive(&self.ctxt, &general_item, &attrs, span);
         let eattrs = if let Some(auto_derive_eattrs) = auto_derive_eattrs {
             auto_derive_eattrs
         } else {
@@ -587,7 +588,9 @@ fn get_attributes_for_automatic_derive<'tcx>(
         let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
         diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
             span,
-            format!("Verus doesn't known how to handle this automatically derived item; ignoring it"),
+            format!(
+                "Verus doesn't known how to handle this automatically derived item; ignoring it"
+            ),
         )));
     };
 
@@ -603,7 +606,9 @@ fn get_attributes_for_automatic_derive<'tcx>(
                 }
 
                 let type_def_id = match impll.self_ty.kind {
-                    rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => path.res.def_id(),
+                    rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => {
+                        path.res.def_id()
+                    }
                     _ => {
                         warn_unknown();
                         return None;
@@ -625,9 +630,8 @@ fn get_attributes_for_automatic_derive<'tcx>(
                         let rust_item = get_rust_item(ctxt.tcx, trait_def_id);
                         let action = crate::automatic_derive::get_action(rust_item);
                         match action {
-                            AutomaticDeriveAction::Special(_) | AutomaticDeriveAction::VerifyAsIs => {
-                                Some(type_eattrs)
-                            }
+                            AutomaticDeriveAction::Special(_)
+                            | AutomaticDeriveAction::VerifyAsIs => Some(type_eattrs),
                             AutomaticDeriveAction::Ignore => {
                                 type_eattrs.external = true;
                                 Some(type_eattrs)
@@ -645,7 +649,7 @@ fn get_attributes_for_automatic_derive<'tcx>(
                 warn_unknown();
                 None
             }
-        }
+        },
         _ => {
             warn_unknown();
             None

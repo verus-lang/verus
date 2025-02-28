@@ -1,4 +1,5 @@
 use crate::attributes::{get_mode, get_ret_mode, get_var_mode, VerifierAttrs};
+use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
@@ -31,7 +32,6 @@ use vir::ast::{
 use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 use vir::sst_util::subst_typ;
-use crate::automatic_derive::AutomaticDeriveAction;
 
 pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::ast::Path {
     // turn a::b::c into a::b::method_name
@@ -1102,7 +1102,13 @@ pub(crate) fn check_item_fn<'tcx>(
     }
     if let Some(action) = autoderive_action {
         if let Some(body_hir_id) = body_hir_id {
-            crate::automatic_derive::modify_derived_item(ctxt, sig.span, body_hir_id, action, &mut func)?;
+            crate::automatic_derive::modify_derived_item(
+                ctxt,
+                sig.span,
+                body_hir_id,
+                action,
+                &mut func,
+            )?;
         }
     }
     let function = ctxt.spanned_new(sig.span, func);
