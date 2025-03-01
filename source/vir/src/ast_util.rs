@@ -75,6 +75,12 @@ impl fmt::Display for Mode {
     }
 }
 
+impl<X: fmt::Display> fmt::Display for SpannedTyped<X> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.x)
+    }
+}
+
 pub fn type_is_bool(typ: &Typ) -> bool {
     matches!(&**typ, TypX::Bool)
 }
@@ -905,6 +911,34 @@ impl<A: Clone> VarBinderX<A> {
         f: impl FnOnce(&A) -> Result<B, E>,
     ) -> Result<VarBinder<B>, E> {
         Ok(Arc::new(VarBinderX { name: self.name.clone(), a: f(&self.a)? }))
+    }
+}
+
+impl FunctionKind {
+    pub(crate) fn inline_okay(&self) -> bool {
+        match self {
+            FunctionKind::Static | FunctionKind::TraitMethodImpl { .. } => true,
+            // We don't want to do inlining for MethodDecls. If a MethodDecl has a body,
+            // it's a *default* body, so we can't know for sure it hasn't been overridden.
+            FunctionKind::TraitMethodDecl { .. } | FunctionKind::ForeignTraitMethodImpl { .. } => {
+                false
+            }
+        }
+    }
+}
+
+impl ArchWordBits {
+    pub fn min_bits(&self) -> u32 {
+        match self {
+            ArchWordBits::Either32Or64 => 32,
+            ArchWordBits::Exactly(v) => *v,
+        }
+    }
+    pub fn num_bits(&self) -> Option<u32> {
+        match self {
+            ArchWordBits::Either32Or64 => None,
+            ArchWordBits::Exactly(v) => Some(*v),
+        }
     }
 }
 

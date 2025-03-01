@@ -536,6 +536,7 @@ impl<Element, Token> MultisetToken<Element, Token>
             s.multiset() === Multiset::empty(),
     {
         let tracked s = Self { inst: instance_id, m: Map::tracked_empty(), _v: PhantomData, };
+        broadcast use super::set::fold::lemma_fold_empty;
         assert(Self::map_elems(Map::empty()) =~= Map::empty());
         return s;
     }

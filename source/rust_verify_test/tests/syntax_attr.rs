@@ -4,11 +4,14 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] verus_verify_basic_while code! {
-        #[verus_verify]
+    #[test] verus_verify_basic_while  code! {
+        #[verus_spec]
         fn test1() {
             let mut i = 0;
-            #[invariant(i <= 10)]
+            #[verus_spec(
+                invariant
+                    i <= 10
+            )]
             while i < 10
             {
                 i = i + 1;
@@ -20,27 +23,79 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] verus_verify_basic_loop code! {
-        #[verus_verify]
+        #[verus_spec]
         fn test1() {
             let mut i = 0;
-            #[invariant(i <= 10)]
-            #[invariant_except_break(i <= 9)]
-            #[ensures(i == 10)]
+            let mut ret = 0;
+            #[verus_spec(
+                invariant i <= 10,
+                invariant_except_break i <= 9,
+                ensures i == 10, ret == 10
+            )]
             loop
             {
                 i = i + 1;
                 if (i == 10) {
+                    ret = i;
                     break;
                 }
             }
-            proof!{assert(i == 10);}
+            proof!{assert(ret == 10);}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] verus_verify_basic_for_loop_verus_spec  code! {
+        use vstd::prelude::*;
+        #[verus_spec(v =>
+            ensures
+                v.len() == n,
+                forall|i: int| 0 <= i < n ==> v[i] == i
+        )]
+        fn test_for_loop(n: u32) -> Vec<u32>
+        {
+            let mut v: Vec<u32> = Vec::new();
+            #[verus_spec(
+                invariant
+                    v@ =~= Seq::new(i as nat, |k| k as u32),
+            )]
+            for i in 0..n
+            {
+                v.push(i);
+            }
+            v
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] verus_verify_for_loop_verus_spec_naming_iter  code! {
+        use vstd::prelude::*;
+        #[verus_spec(v =>
+            ensures
+                v.len() == n,
+                forall|i: int| 0 <= i < n ==> v[i] == 0
+        )]
+        fn test(n: u32) -> Vec<u32>
+        {
+            let mut v: Vec<u32> = Vec::new();
+            #[verus_spec(iter =>
+                invariant
+                    v@ =~= Seq::new(iter.cur as nat, |k| 0u32),
+            )]
+            for _ in 0..n
+            {
+                v.push(0);
+            }
+            v
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] verus_verify_basic_while_fail1 code! {
-        #[verus_verify]
+        #[verus_spec]
         fn test1() {
             let mut i = 0;
             while i < 10 {
@@ -56,7 +111,10 @@ test_verify_one_file! {
         #[verus_verify]
         fn test1() {
             let mut i = 0;
-            #[invariant(i <= 10, false)]
+            #[verus_spec(
+                invariant
+                    i <= 10, false
+            )]
             while i < 10 {
                 i = i + 1;
             }
@@ -65,11 +123,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] verus_verify_bad_loop_spec code! {
-        #[verus_verify]
-        #[invariant(true)]
+    #[test] verus_verify_invariant_on_func code! {
+        #[verus_spec(
+            invariant true
+        )]
         fn test1() {}
-    } => Err(err) => assert_any_vir_error_msg(err, "'verus_spec' attribute expected")
+    } => Err(err) => assert_any_vir_error_msg(err, "unexpected token")
 }
 
 test_verify_one_file! {
@@ -100,10 +159,13 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_bad_macro_attributes_in_trait code!{
         trait SomeTrait {
-            #[ensures(true)]
+            #[verus_spec(
+                ensures
+                    true
+            )]
             type T;
         }
-    } => Err(err) => assert_custom_attr_error_msg(err, "Misuse of #[ensures()]")
+    } => Err(err) => assert_any_vir_error_msg(err, "Misuse of #[verus_spec]")
 }
 
 test_verify_one_file! {

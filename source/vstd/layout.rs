@@ -102,4 +102,79 @@ pub exec fn layout_for_type_is_valid<V>()
 {
 }
 
+/// Size of primitives ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.primitive)).
+///
+/// Note that alignment may be platform specific; if you need to use alignment, use
+/// [Verus's global directive](https://verus-lang.github.io/verus/guide/reference-global.html).
+#[verifier::external_body]
+pub broadcast proof fn layout_of_primitives()
+    ensures
+        #![trigger size_of::<bool>()]
+        #![trigger size_of::<char>()]
+        #![trigger size_of::<u8>()]
+        #![trigger size_of::<i8>()]
+        #![trigger size_of::<u16>()]
+        #![trigger size_of::<i16>()]
+        #![trigger size_of::<u32>()]
+        #![trigger size_of::<i32>()]
+        #![trigger size_of::<u64>()]
+        #![trigger size_of::<i64>()]
+        #![trigger size_of::<usize>()]
+        #![trigger size_of::<isize>()]
+        size_of::<bool>() == 1,
+        size_of::<char>() == 4,
+        size_of::<u8>() == size_of::<i8>() == 1,
+        size_of::<u16>() == size_of::<i16>() == 2,
+        size_of::<u32>() == size_of::<i32>() == 4,
+        size_of::<u64>() == size_of::<i64>() == 8,
+        size_of::<u128>() == size_of::<i128>() == 16,
+        size_of::<usize>() == size_of::<isize>(),
+        size_of::<usize>() * 8 == usize::BITS,
+{
+}
+
+/// Size and alignment of the unit tuple ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.tuple.unit)).
+#[verifier::external_body]
+pub broadcast proof fn layout_of_unit_tuple()
+    ensures
+        #![trigger size_of::<()>()]
+        #![trigger align_of::<()>()]
+        size_of::<()>() == 0,
+        align_of::<()>() == 1,
+;
+
+/// Pointers and references have the same layout. Mutability of the pointer or reference does not change the layout. ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer.intro).)
+#[verifier::external_body]
+pub broadcast proof fn layout_of_references_and_pointers<T: ?Sized>()
+    ensures
+        #![trigger size_of::<*mut T>()]
+        #![trigger size_of::<*const T>()]
+        #![trigger size_of::<&T>()]
+        #![trigger align_of::<*mut T>()]
+        #![trigger align_of::<*const T>()]
+        #![trigger align_of::<&T>()]
+        size_of::<*mut T>() == size_of::<*const T>() == size_of::<&T>(),
+        align_of::<*mut T>() == align_of::<*const T>() == align_of::<&T>(),
+;
+
+/// Pointers to sized types have the same size and alignment as usize
+/// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer.intro)).
+#[verifier::external_body]
+pub broadcast proof fn layout_of_references_and_pointers_for_sized_types<T: Sized>()
+    requires
+        is_sized::<T>(),
+    ensures
+        #![trigger size_of::<*mut T>()]
+        #![trigger align_of::<*mut T>()]
+        size_of::<*mut T>() == size_of::<usize>(),
+        align_of::<*mut T>() == align_of::<usize>(),
+;
+
+pub broadcast group group_layout_axioms {
+    layout_of_primitives,
+    layout_of_unit_tuple,
+    layout_of_references_and_pointers,
+    layout_of_references_and_pointers_for_sized_types,
+}
+
 } // verus!
