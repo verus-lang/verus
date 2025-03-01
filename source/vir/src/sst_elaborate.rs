@@ -171,14 +171,12 @@ impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
         let body = self.visit_stm(&def.body)?;
         let local_decls =
             Rewrite::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
-        let mask_set = self.visit_mask_set(&def.mask_set)?;
         let unwind = self.visit_unwind(&def.unwind)?;
         let is_native = self.is_native.take().expect("is_native");
 
         let mut def = FuncCheckSst {
             reqs: Arc::new(reqs),
             post_condition: Arc::new(post_condition),
-            mask_set: Arc::new(mask_set),
             unwind,
             body,
             local_decls: Arc::new(local_decls),
