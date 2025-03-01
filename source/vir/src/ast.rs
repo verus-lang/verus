@@ -549,9 +549,9 @@ pub enum HeaderExprX {
     /// Proof function to prove termination for recursive functions
     DecreasesBy(Fun),
     /// The function might open the following invariants
-    InvariantOpens(Exprs),
+    InvariantOpens(Span, Exprs),
     /// The function might open any BUT the following invariants
-    InvariantOpensExcept(Exprs),
+    InvariantOpensExcept(Span, Exprs),
     /// The function might open the following invariants, specified as a set
     InvariantOpensSet(Expr),
     /// Make a function f opaque (definition hidden) within the current function body.
@@ -984,8 +984,8 @@ pub struct FunctionAttrsX {
 /// Function specification of its invariant mask
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum MaskSpec {
-    InvariantOpens(Exprs),
-    InvariantOpensExcept(Exprs),
+    InvariantOpens(Span, Exprs),
+    InvariantOpensExcept(Span, Exprs),
     InvariantOpensSet(Expr),
 }
 

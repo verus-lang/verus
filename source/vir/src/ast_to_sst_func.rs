@@ -307,7 +307,7 @@ pub fn func_decl_to_sst(
     let mut inv_masks: Vec<Exps> = Vec::new();
     match &function.x.mask_spec {
         None => {}
-        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
+        Some(MaskSpec::InvariantOpens(_span, es) | MaskSpec::InvariantOpensExcept(_span, es)) => {
             for e in es.iter() {
                 let (_pars, inv_mask) =
                     req_ens_to_sst(ctx, diagnostics, function, &vec![e.clone()], true)?;
@@ -557,9 +557,9 @@ pub fn func_def_to_sst(
         }
     }
 
-    let mask_spec = req_ens_function.x.mask_spec_or_default();
+    let mask_spec = req_ens_function.x.mask_spec_or_default(&req_ens_function.span);
     let inv_spec_exprs = match &mask_spec {
-        MaskSpec::InvariantOpens(exprs) | MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
+        MaskSpec::InvariantOpens(_span, exprs) | MaskSpec::InvariantOpensExcept(_span, exprs) => exprs.clone(),
         MaskSpec::InvariantOpensSet(e) => Arc::new(vec![e.clone()]),
     };
     let mut inv_spec_exps = vec![];
@@ -579,9 +579,9 @@ pub fn func_def_to_sst(
         inv_spec_exps.push(exp.clone());
     }
     let mask_set = match &mask_spec {
-        MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(&inv_spec_exps, &function.span),
-        MaskSpec::InvariantOpensExcept(_exprs) => {
-            MaskSet::from_list_complement(&inv_spec_exps, &function.span)
+        MaskSpec::InvariantOpens(span, _exprs) => MaskSet::from_list(&inv_spec_exps, &span),
+        MaskSpec::InvariantOpensExcept(span, _exprs) => {
+            MaskSet::from_list_complement(&inv_spec_exps, &span)
         }
         MaskSpec::InvariantOpensSet(_expr) => {
             MaskSet::arbitrary(&inv_spec_exps[0])

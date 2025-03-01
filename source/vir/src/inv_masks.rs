@@ -237,25 +237,25 @@ impl MaskSet {
                         crate::def::fn_set_subset_of_name(&ctx.global.vstd_crate_name),
                         None,
                     );
+                    let self_exp = self.to_exp(ctx);
+                    let other_exp = other.to_exp(ctx);
                     let subset_of_expx = ExpX::Call(
                         subset_of_fun,
                         namespace_set_typs(),
-                        Arc::new(vec![self.to_exp(ctx), other.to_exp(ctx)]),
+                        Arc::new(vec![self_exp.clone(), other_exp.clone()]),
                     );
                     let subset_of_exp =
                         SpannedTyped::new(&call_span, &Arc::new(TypX::Bool), subset_of_expx);
 
-                    let mut err = error_with_label(
+                    let err = error_with_label(
                         call_span,
                         "callee may open invariants that caller cannot",
                         "at this call-site",
+                    ).primary_label(
+                        &self_exp.span, "invariants opened by callee"
+                    ).primary_label(
+                        &other_exp.span, "invariants opened by caller"
                     );
-                    match self {
-                        MaskSet::Full { span: full_span } => {
-                            err = err.primary_label(full_span, "callee may open any invariant");
-                        }
-                        _ => {}
-                    }
 
                     vec![Assertion { err: err, cond: subset_of_exp }]
                 }

@@ -597,7 +597,7 @@ impl FunctionX {
         **self.name.path.segments.last().expect("last segment") == "main"
     }
 
-    pub fn mask_spec_or_default(&self) -> MaskSpec {
+    pub fn mask_spec_or_default(&self, span: &Span) -> MaskSpec {
         if matches!(self.kind, FunctionKind::TraitMethodImpl { .. }) {
             // Always get the mask spec from the trait method decl
             panic!("mask_spec_or_default should not be called for TraitMethodImpl");
@@ -607,10 +607,10 @@ impl FunctionX {
             None => {
                 if self.mode == Mode::Exec {
                     // default to 'all'
-                    MaskSpec::InvariantOpensExcept(Arc::new(vec![]))
+                    MaskSpec::InvariantOpensExcept(span.clone(), Arc::new(vec![]))
                 } else {
                     // default to 'none'
-                    MaskSpec::InvariantOpens(Arc::new(vec![]))
+                    MaskSpec::InvariantOpens(span.clone(), Arc::new(vec![]))
                 }
             }
             Some(mask_spec) => mask_spec.clone(),
@@ -992,8 +992,8 @@ impl LowerUniqueVar for Arc<Vec<VarIdent>> {
 impl MaskSpec {
     pub fn exprs(&self) -> Exprs {
         match self {
-            MaskSpec::InvariantOpens(exprs) => exprs.clone(),
-            MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
+            MaskSpec::InvariantOpens(_span, exprs) => exprs.clone(),
+            MaskSpec::InvariantOpensExcept(_span, exprs) => exprs.clone(),
             MaskSpec::InvariantOpensSet(e) => Arc::new(vec![e.clone()]),
         }
     }
@@ -1078,8 +1078,8 @@ impl HeaderExprX {
             | HeaderExprX::Recommends(_)
             | HeaderExprX::DecreasesWhen(_)
             | HeaderExprX::DecreasesBy(_)
-            | HeaderExprX::InvariantOpens(_)
-            | HeaderExprX::InvariantOpensExcept(_)
+            | HeaderExprX::InvariantOpens(_, _)
+            | HeaderExprX::InvariantOpensExcept(_, _)
             | HeaderExprX::InvariantOpensSet(_)
             | HeaderExprX::Hide(_)
             | HeaderExprX::ExtraDependency(_)

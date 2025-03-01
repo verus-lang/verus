@@ -832,9 +832,9 @@ fn is_small_exp_or_loc(exp: &Exp) -> bool {
 }
 
 fn mask_set_for_call(fun: &Function, typs: &Typs, args: Arc<Vec<Exp>>) -> MaskSet {
-    let mask_spec = fun.x.mask_spec_or_default();
+    let mask_spec = fun.x.mask_spec_or_default(&fun.span);
     match &mask_spec {
-        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+        MaskSpec::InvariantOpens(span, es) | MaskSpec::InvariantOpensExcept(span, es) => {
             let mut inv_exps = vec![];
             for (i, e) in es.iter().enumerate() {
                 let expx = ExpX::Call(
@@ -846,9 +846,9 @@ fn mask_set_for_call(fun: &Function, typs: &Typs, args: Arc<Vec<Exp>>) -> MaskSe
                 inv_exps.push(exp);
             }
             match &mask_spec {
-                MaskSpec::InvariantOpens(..) => MaskSet::from_list(&inv_exps, &fun.span),
+                MaskSpec::InvariantOpens(..) => MaskSet::from_list(&inv_exps, span),
                 MaskSpec::InvariantOpensExcept(..) => {
-                    MaskSet::from_list_complement(&inv_exps, &fun.span)
+                    MaskSet::from_list_complement(&inv_exps, span)
                 }
                 MaskSpec::InvariantOpensSet(..) => panic!()
             }
