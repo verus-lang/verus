@@ -444,6 +444,21 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 let typ = return_typ(ctx, function, is_trait, &exp.typ);
                 mk_exp_typ(&typ, ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(args)))
             }
+            CallFun::InternalFun(InternalFun::OpenInvariantMask(name, _i)) => {
+                let function = &ctx.func_sst_map[name].x;
+                let is_spec = function.mode == Mode::Spec;
+                let is_trait = !matches!(function.kind, FunctionKind::Static);
+                let mut args: Vec<Exp> = Vec::new();
+                for (par, arg) in function.pars.iter().zip(exps.iter()) {
+                    let arg = if is_spec || is_trait || typ_is_poly(ctx, &par.x.typ) {
+                        visit_exp_poly(ctx, state, arg)
+                    } else {
+                        visit_exp_native(ctx, state, arg)
+                    };
+                    args.push(arg);
+                }
+                mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(args)))
+            }
             CallFun::InternalFun(InternalFun::ClosureReq | InternalFun::ClosureEns) => {
                 let exps = visit_exps_poly(ctx, state, exps);
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), exps))

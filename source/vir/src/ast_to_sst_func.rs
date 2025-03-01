@@ -570,7 +570,7 @@ pub fn func_def_to_sst(
         };
 
         let exp = state.finalize_exp(ctx, &exp)?;
-        inv_spec_exps.push((e.span.clone(), exp.clone()));
+        inv_spec_exps.push(exp.clone());
     }
     let mask_set = match &mask_spec {
         MaskSpec::InvariantOpens(_exprs) => MaskSet::from_list(&inv_spec_exps, &function.span),
