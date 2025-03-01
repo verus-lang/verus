@@ -70,7 +70,8 @@ impl MaskSet {
                     namespace_set_typs(),
                     Arc::new(vec![base.to_exp(ctx), elem.clone()]),
                 );
-                let insert_exp = SpannedTyped::new(&elem.span, &namespace_set_typ(ctx), insert_expx);
+                let insert_exp =
+                    SpannedTyped::new(&elem.span, &namespace_set_typ(ctx), insert_expx);
                 insert_exp
             }
             MaskSet::Remove { base, elem } => {
@@ -81,7 +82,8 @@ impl MaskSet {
                     namespace_set_typs(),
                     Arc::new(vec![base.to_exp(ctx), elem.clone()]),
                 );
-                let remove_exp = SpannedTyped::new(&elem.span, &namespace_set_typ(ctx), remove_expx);
+                let remove_exp =
+                    SpannedTyped::new(&elem.span, &namespace_set_typ(ctx), remove_expx);
                 remove_exp
             } // MaskSet::Arbitrary { span: _, set } => { set.clone() },
         }
@@ -167,7 +169,8 @@ impl MaskSet {
                     namespace_set_typs(),
                     Arc::new(vec![self.to_exp(ctx), elem.clone()]),
                 );
-                let contains_exp = SpannedTyped::new(&elem.span, &Arc::new(TypX::Bool), contains_expx);
+                let contains_exp =
+                    SpannedTyped::new(&elem.span, &Arc::new(TypX::Bool), contains_expx);
 
                 let err = match call_span {
                     None => error_with_label(
@@ -197,11 +200,7 @@ impl MaskSet {
             MaskSet::Empty { span: _ } => vec![],
             MaskSet::Insert { base, elem: inserted } => {
                 let mut asserts = base.subset_of(ctx, other, call_span);
-                asserts.append(&mut other.contains_internal(
-                    ctx,
-                    inserted,
-                    Some(call_span),
-                ));
+                asserts.append(&mut other.contains_internal(ctx, inserted, Some(call_span)));
                 asserts
             }
             _ => match other {
@@ -214,9 +213,7 @@ impl MaskSet {
                         &Arc::new(TypX::Bool),
                         ExpX::Const(Constant::Bool(false)),
                     );
-                    for assertion in
-                        other.contains_internal(ctx, removed, Some(call_span))
-                    {
+                    for assertion in other.contains_internal(ctx, removed, Some(call_span)) {
                         removed_not_in_other = SpannedTyped::new(
                             &removed.span,
                             &Arc::new(TypX::Bool),
