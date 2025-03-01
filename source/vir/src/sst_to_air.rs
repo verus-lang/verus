@@ -13,11 +13,11 @@ use crate::context::Ctx;
 use crate::def::{
     encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name,
     path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when,
-    prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox, snapshot_ident,
-    static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids, unique_local,
-    variant_field_ident, variant_field_ident_internal, variant_ident, CommandsWithContext,
-    CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
+    prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
+    snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
+    unique_local, variant_field_ident, variant_field_ident_internal, variant_ident,
+    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
+    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
     SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
     STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
     SUFFIX_SNAP_WHILE_END, U_HI,
@@ -744,6 +744,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             ident_apply(&name, &exprs)
         }
+        ExpX::Call(CallFun::InternalFun(InternalFun::OpenInvariantMask(f, i)), typs, args) => {
+            let mut exprs: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
+            for arg in args.iter() {
+                exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
+            }
+            ident_apply(&prefix_open_inv(&fun_to_air_ident(f), *i), &exprs)
+        }
         ExpX::Call(CallFun::InternalFun(func), typs, args) => {
             // These functions are special-cased to not take a decoration argument for
             // the first type parameter.
@@ -767,6 +774,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     InternalFun::CheckDecreaseHeight => {
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)
                     }
+                    InternalFun::OpenInvariantMask(..) => panic!(),
                 },
                 Arc::new(exprs),
             ))

@@ -17,11 +17,11 @@ use std::sync::Arc;
 pub enum MaskSet {
     Empty { span: Span },
     Full { span: Span },
-    Insert { span: Span, base: Box<MaskSet>, elem: Exp },
-    Remove { span: Span, base: Box<MaskSet>, elem: Exp },
+    Insert { base: Box<MaskSet>, elem: Exp },
+    Remove { base: Box<MaskSet>, elem: Exp },
     // Not used at the moment, will be used when we add syntax and support
     // for specifying an std::Set expression as the mask.
-    // Arbitrary { span: Span, set: Exp },
+    // Arbitrary { set: Exp },
 }
 
 pub struct Assertion {
@@ -29,8 +29,12 @@ pub struct Assertion {
     pub cond: Exp,
 }
 
+fn namespace_id_typ() -> Typ {
+    Arc::new(TypX::Int(IntRange::Int))
+}
+
 fn namespace_set_typs() -> Typs {
-    Arc::new(vec![Arc::new(TypX::Int(IntRange::Int))])
+    Arc::new(vec![namespace_id_typ()])
 }
 
 fn namespace_set_typ(ctx: &Ctx) -> Typ {
@@ -58,7 +62,7 @@ impl MaskSet {
                 let full_exp = SpannedTyped::new(&span, &namespace_set_typ(ctx), full_expx);
                 full_exp
             }
-            MaskSet::Insert { span, base, elem } => {
+            MaskSet::Insert { base, elem } => {
                 let insert_fun =
                     CallFun::Fun(crate::def::fn_set_insert_name(&ctx.global.vstd_crate_name), None);
                 let insert_expx = ExpX::Call(
@@ -66,10 +70,10 @@ impl MaskSet {
                     namespace_set_typs(),
                     Arc::new(vec![base.to_exp(ctx), elem.clone()]),
                 );
-                let insert_exp = SpannedTyped::new(&span, &namespace_set_typ(ctx), insert_expx);
+                let insert_exp = SpannedTyped::new(&elem.span, &namespace_set_typ(ctx), insert_expx);
                 insert_exp
             }
-            MaskSet::Remove { span, base, elem } => {
+            MaskSet::Remove { base, elem } => {
                 let remove_fun =
                     CallFun::Fun(crate::def::fn_set_remove_name(&ctx.global.vstd_crate_name), None);
                 let remove_expx = ExpX::Call(
@@ -77,7 +81,7 @@ impl MaskSet {
                     namespace_set_typs(),
                     Arc::new(vec![base.to_exp(ctx), elem.clone()]),
                 );
-                let remove_exp = SpannedTyped::new(&span, &namespace_set_typ(ctx), remove_expx);
+                let remove_exp = SpannedTyped::new(&elem.span, &namespace_set_typ(ctx), remove_expx);
                 remove_exp
             } // MaskSet::Arbitrary { span: _, set } => { set.clone() },
         }
@@ -91,33 +95,33 @@ impl MaskSet {
         MaskSet::Full { span: span.clone() }
     }
 
-    pub fn insert(self: &Self, elem: &Exp, span: &Span) -> Self {
-        MaskSet::Insert { span: span.clone(), base: Box::new(self.clone()), elem: elem.clone() }
+    pub fn insert(self: &Self, elem: &Exp) -> Self {
+        MaskSet::Insert { base: Box::new(self.clone()), elem: elem.clone() }
     }
 
-    pub fn remove(self: &Self, elem: &Exp, span: &Span) -> Self {
-        MaskSet::Remove { span: span.clone(), base: Box::new(self.clone()), elem: elem.clone() }
+    pub fn remove(self: &Self, elem: &Exp) -> Self {
+        MaskSet::Remove { base: Box::new(self.clone()), elem: elem.clone() }
     }
 
     // pub fn arbitrary(span: &Span, exp: &Exp) -> Self {
     //     MaskSet::Arbitrary{ span: span.clone(), set: exp.clone() }
     // }
 
-    pub fn from_list(exps: &Vec<(Span, Exp)>, span: &Span) -> MaskSet {
+    pub fn from_list(exps: &Vec<Exp>, span: &Span) -> MaskSet {
         let mut mask = Self::empty(span);
 
-        for (espan, e) in exps.iter() {
-            mask = mask.insert(e, espan)
+        for e in exps.iter() {
+            mask = mask.insert(e)
         }
 
         mask
     }
 
-    pub fn from_list_complement(exps: &Vec<(Span, Exp)>, span: &Span) -> MaskSet {
+    pub fn from_list_complement(exps: &Vec<Exp>, span: &Span) -> MaskSet {
         let mut mask = Self::full(span);
 
-        for (espan, e) in exps.iter() {
-            mask = mask.remove(e, espan)
+        for e in exps.iter() {
+            mask = mask.remove(e)
         }
 
         mask
@@ -127,23 +131,22 @@ impl MaskSet {
         self: &Self,
         ctx: &Ctx,
         elem: &Exp,
-        span: &Span,
         call_span: Option<&Span>,
     ) -> Vec<Assertion> {
         match self {
             MaskSet::Full { span: _ } => vec![],
-            MaskSet::Remove { span: removed_span, base, elem: removed } => {
-                let mut asserts = base.contains_internal(ctx, elem, span, call_span);
+            MaskSet::Remove { base, elem: removed } => {
+                let mut asserts = base.contains_internal(ctx, elem, call_span);
 
                 let neq_expx = ExpX::Binary(BinaryOp::Ne, removed.clone(), elem.clone());
-                let neq_exp = SpannedTyped::new(&span, &Arc::new(TypX::Bool), neq_expx);
+                let neq_exp = SpannedTyped::new(&elem.span, &Arc::new(TypX::Bool), neq_expx);
 
                 let mut err = error_with_label(
-                    removed_span,
+                    &removed.span,
                     "possible invariant collision",
                     "this invariant",
                 )
-                .primary_label(span, "might be the same as this invariant");
+                .primary_label(&elem.span, "might be the same as this invariant");
                 match call_span {
                     None => {}
                     Some(call_span) => {
@@ -164,16 +167,16 @@ impl MaskSet {
                     namespace_set_typs(),
                     Arc::new(vec![self.to_exp(ctx), elem.clone()]),
                 );
-                let contains_exp = SpannedTyped::new(&span, &Arc::new(TypX::Bool), contains_expx);
+                let contains_exp = SpannedTyped::new(&elem.span, &Arc::new(TypX::Bool), contains_expx);
 
                 let err = match call_span {
                     None => error_with_label(
-                        span,
+                        &elem.span,
                         "cannot show invariant namespace is in the mask given by the function signature",
                         "invariant opened here",
                     ),
                     Some(call_span) => error_with_label(
-                        span,
+                        &elem.span,
                         "cannot show this invariant namespace is allowed to be opened",
                         "function might open this invariant namespace",
                     )
@@ -185,45 +188,44 @@ impl MaskSet {
         }
     }
 
-    pub fn contains(self: &Self, ctx: &Ctx, elem: &Exp, span: &Span) -> Vec<Assertion> {
-        self.contains_internal(ctx, elem, span, None)
+    pub fn contains(self: &Self, ctx: &Ctx, elem: &Exp) -> Vec<Assertion> {
+        self.contains_internal(ctx, elem, None)
     }
 
     pub fn subset_of(self: &Self, ctx: &Ctx, other: &Self, call_span: &Span) -> Vec<Assertion> {
         match self {
             MaskSet::Empty { span: _ } => vec![],
-            MaskSet::Insert { span: inserted_span, base, elem: inserted } => {
+            MaskSet::Insert { base, elem: inserted } => {
                 let mut asserts = base.subset_of(ctx, other, call_span);
                 asserts.append(&mut other.contains_internal(
                     ctx,
                     inserted,
-                    inserted_span,
                     Some(call_span),
                 ));
                 asserts
             }
             _ => match other {
                 MaskSet::Full { span: _ } => vec![],
-                MaskSet::Remove { span: removed_span, base, elem: removed } => {
+                MaskSet::Remove { base, elem: removed } => {
                     let mut asserts = self.subset_of(ctx, base, call_span);
 
                     let mut removed_not_in_other = SpannedTyped::new(
-                        removed_span,
+                        &removed.span,
                         &Arc::new(TypX::Bool),
                         ExpX::Const(Constant::Bool(false)),
                     );
                     for assertion in
-                        other.contains_internal(ctx, removed, removed_span, Some(call_span))
+                        other.contains_internal(ctx, removed, Some(call_span))
                     {
                         removed_not_in_other = SpannedTyped::new(
-                            removed_span,
+                            &removed.span,
                             &Arc::new(TypX::Bool),
                             ExpX::Binary(BinaryOp::Or, removed_not_in_other, assertion.cond),
                         );
                     }
                     asserts.push(Assertion {
                         err: error_with_label(
-                            removed_span,
+                            &removed.span,
                             "callee may open invariants disallowed at call-site",
                             "invariant opened here",
                         )

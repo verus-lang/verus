@@ -51,6 +51,7 @@ pub enum InternalFun {
     ClosureEns,
     CheckDecreaseInt,
     CheckDecreaseHeight,
+    OpenInvariantMask(Fun, usize),
 }
 
 #[derive(Debug, Clone, Hash)]

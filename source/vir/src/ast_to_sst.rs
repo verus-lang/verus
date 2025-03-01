@@ -1,6 +1,6 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
-    Constant, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Ident, IntRange, InvAtomicity,
+    Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
     LoopInvariantKind, MaskSpec, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
     UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
@@ -16,7 +16,7 @@ use crate::sst::{
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{
-    sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value, subst_exp,
+    sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value,
 };
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::vec_map_result;
@@ -834,68 +834,27 @@ fn is_small_exp_or_loc(exp: &Exp) -> bool {
 }
 
 fn mask_set_for_call(
-    ctx: &Ctx,
-    state: &State,
-    function: &Function,
+    fun: &Function,
     typs: &Typs,
-    args: &Vec<Exp>,
+    args: Arc<Vec<Exp>>,
 ) -> MaskSet {
-    let (trait_typ_substs, req_ens_function) =
-        if let FunctionKind::TraitMethodImpl { method, trait_path, trait_typ_args, .. } =
-            &function.x.kind
-        {
-            // Inherit opens_invariants from trait method declaration
-            let tr = &ctx.trait_map[trait_path];
-            let mut typ_params = vec![crate::def::trait_self_type_param()];
-            for (x, _) in tr.x.typ_params.iter() {
-                typ_params.push(x.clone());
-            }
-            let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
-            assert!(typ_params.len() == trait_typ_args.len());
-            for (x, t) in typ_params.iter().zip(trait_typ_args.iter()) {
-                trait_typ_substs.insert(x.clone(), t.clone());
-            }
-            (trait_typ_substs, &ctx.func_map[method])
-        } else {
-            (HashMap::new(), function)
-        };
-
-    let mut typ_substs = trait_typ_substs;
-    assert!(req_ens_function.x.typ_params.len() == typs.len());
-    for (n, typ_param) in req_ens_function.x.typ_params.iter().enumerate() {
-        let typ = &typs[n];
-        typ_substs.insert(typ_param.clone(), typ.clone());
-    }
-
-    let pars = crate::ast_to_sst_func::params_to_pars(&req_ens_function.x.params, true);
-    assert!(req_ens_function.x.params.len() == args.len());
-    let mut param_substs = HashMap::<VarIdent, Exp>::new();
-    for (n, param) in req_ens_function.x.params.iter().enumerate() {
-        let arg = state.finalize_exp(ctx, &args[n]).unwrap();
-        param_substs.insert(param.x.name.clone(), arg);
-    }
-    let expr_to_exp = |e| {
-        let exp = expr_to_exp_skip_checks(ctx, state.diagnostics, &pars, e).unwrap();
-        let exp = state.finalize_exp(ctx, &exp).unwrap();
-        let exp = subst_exp(&typ_substs, &param_substs, &exp);
-        exp
-    };
-
-    let mask_spec = req_ens_function.x.mask_spec_or_default();
+    let mask_spec = fun.x.mask_spec_or_default();
     match &mask_spec {
-        MaskSpec::InvariantOpens(es) => {
+        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
             let mut inv_exps = vec![];
-            for e in es.iter() {
-                inv_exps.push((e.span.clone(), expr_to_exp(e)));
+            for (i, e) in es.iter().enumerate() {
+                let expx = ExpX::Call(CallFun::InternalFun(InternalFun::OpenInvariantMask(fun.x.name.clone(), i)), typs.clone(), args.clone());
+                let exp = SpannedTyped::new(&e.span, &e.typ, expx);
+                inv_exps.push(exp);
             }
-            MaskSet::from_list(&inv_exps, &req_ens_function.span)
-        }
-        MaskSpec::InvariantOpensExcept(es) => {
-            let mut inv_exps = vec![];
-            for e in es.iter() {
-                inv_exps.push((e.span.clone(), expr_to_exp(e)));
+            match &mask_spec {
+                MaskSpec::InvariantOpens(..) => {
+                    MaskSet::from_list(&inv_exps, &fun.span)
+                }
+                MaskSpec::InvariantOpensExcept(..) => {
+                    MaskSet::from_list_complement(&inv_exps, &fun.span)
+                }
             }
-            MaskSet::from_list_complement(&inv_exps, &req_ens_function.span)
         }
     }
 }
@@ -928,10 +887,11 @@ fn stm_call(
         }
     }
 
+    let small_args = Arc::new(small_args);
     if !state.checking_recommends(ctx) {
         match &state.mask {
             Some(caller_mask) => {
-                let callee_mask = mask_set_for_call(ctx, state, &fun, &typs, &small_args);
+                let callee_mask = mask_set_for_call(&fun, &typs, small_args.clone());
                 for assertion in callee_mask.subset_of(ctx, caller_mask, span) {
                     stms.push(Spanned::new(
                         span.clone(),
@@ -948,7 +908,7 @@ fn stm_call(
         resolved_method,
         mode: fun.x.mode,
         typ_args: typs,
-        args: Arc::new(small_args),
+        args: small_args,
         split: None,
         dest,
         assert_id: state.next_assert_id(),
@@ -2155,7 +2115,7 @@ pub(crate) fn expr_to_stm_opt(
             let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
 
             if !state.checking_recommends(ctx) {
-                for assertion in state.mask.as_ref().unwrap().contains(ctx, &ns_exp, &inv.span) {
+                for assertion in state.mask.as_ref().unwrap().contains(ctx, &ns_exp) {
                     stms1.push(Spanned::new(
                         expr.span.clone(),
                         StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
@@ -2163,7 +2123,7 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
 
-            let mut inner_mask = Some(state.mask.as_ref().unwrap().remove(&ns_exp, &inv.span));
+            let mut inner_mask = Some(state.mask.as_ref().unwrap().remove(&ns_exp));
 
             // Assume the invariant
             let main_inv = call_inv(ctx, &inv_tmp_var, &inner_var, &typ_args, *atomicity);
