@@ -35,322 +35,312 @@ use dep_tracker::{DepTracker, DepTrackerConfigCallback};
 
 const BUG_REPORT_URL: &str = "https://github.com/verus-lang/verus/issues/new";
 
-pub fn main() {
+pub fn handle_cargo_verus() {
     let early_dcx = EarlyDiagCtxt::new(ErrorOutputType::default());
-
     rustc_driver::init_rustc_env_logger(&early_dcx);
+    exit(rustc_driver::catch_with_exit_code(move || {
+        handle_cargo_verus_body(early_dcx)
+    }));
+}
 
-    let using_internal_features = if false {
-        rustc_driver::install_ice_hook(BUG_REPORT_URL, |handler| {
-            // FIXME: this macro calls unwrap internally but is called in a panicking context!  It's not
-            // as simple as moving the call from the hook to main, because `install_ice_hook` doesn't
-            // accept a generic closure.
-            let version_info = rustc_tools_util::get_version_info!();
-            handler.note(format!("Verus version: {version_info}"));
-        })
-    } else {
-        Arc::new(AtomicBool::new(false))
+pub fn handle_cargo_verus_body(early_dcx: EarlyDiagCtxt) -> Result<(), ErrorGuaranteed> {
+    let mut orig_args = env::args().collect::<Vec<_>>();
+
+    if orig_args.get(1).map(String::as_str) == Some(verifier::LIFETIME_DRIVER_ARG) {
+        orig_args.remove(1);
+        let mut buffer = String::new();
+        std::io::stdin().read_to_string(&mut buffer).unwrap_or_else(|err| {
+            early_dcx.early_error(format!("failed to read stdin: {err:?}"))
+        });
+        verifier::lifetime_rustc_driver(&orig_args, buffer);
+        return Ok(());
+    }
+
+    // Make "verus-driver --rustc" work like a subcommand that passes further args to "rustc"
+    // for example `verus-driver --rustc --version` will print the rustc version that verus-driver
+    // uses
+    if let Some(pos) = orig_args.iter().position(|arg| arg == "--rustc") {
+        orig_args.remove(pos);
+        orig_args[0] = "rustc".to_string();
+        return RunCompiler::new(&orig_args, &mut DefaultCallbacks).run();
+    }
+
+    if args_contains_long_or_short(orig_args.iter(), Some("help"), Some('h'))
+        || args_contains_long_or_short(orig_args.iter(), Some("version"), Some('V'))
+    {
+        return RunCompiler::new(&orig_args, &mut DefaultCallbacks).run();
+    }
+
+    // Setting RUSTC_WRAPPER causes Cargo to pass 'rustc' as the first argument.
+    // We're invoking the compiler programmatically, so we ignore this.
+    let wrapper_mode =
+        orig_args.get(1).map(Path::new).and_then(Path::file_stem) == Some("rustc".as_ref());
+
+    if wrapper_mode {
+        // we still want to be able to invoke it normally though
+        orig_args.remove(1);
+    }
+
+    let this_invocation_is_cargo_probing =
+        orig_args.windows(2).any(|window| window[0] == "--crate-name" && window[1] == "___");
+
+    if this_invocation_is_cargo_probing {
+        return RunCompiler::new(&orig_args, &mut DefaultCallbacks).run();
+    }
+
+    let mut dep_tracker = DepTracker::default();
+
+    // During development track the `verus-driver` executable so that cargo will re-run verus
+    // whenever it is rebuilt
+    if cfg!(debug_assertions) {
+        if let Ok(current_exe) = env::current_exe() {
+            dep_tracker.mark_file(current_exe);
+        }
+    }
+
+    let via_cargo = dep_tracker.compare_env("__VERUS_DRIVER_VIA_CARGO__", "1");
+
+    let package_id = if via_cargo { get_package_id_from_env(&mut dep_tracker) } else { None };
+
+    if via_cargo {
+        let verify_crate = if let Some(package_id) = &package_id {
+            let verify_package =
+                dep_tracker.compare_env(&format!("__VERUS_DRIVER_VERIFY_{package_id}"), "1");
+
+            let is_build_script = dep_tracker
+                .get_env("CARGO_CRATE_NAME")
+                .map(|name| name.starts_with("build_script_"))
+                .unwrap_or(false);
+
+            verify_package && !is_build_script
+        } else {
+            false
+        };
+
+        if !verify_crate {
+            if let Some(package_id) = &package_id {
+                let is_builtin = dep_tracker
+                    .compare_env(&format!("__VERUS_DRIVER_IS_BUILTIN_{package_id}"), "1");
+                let is_builtin_macros = dep_tracker.compare_env(
+                    &format!("__VERUS_DRIVER_IS_BUILTIN_MACROS_{package_id}"),
+                    "1",
+                );
+
+                if is_builtin || is_builtin_macros {
+                    set_rustc_bootstrap();
+                    extend_rustc_args_for_builtin_and_builtin_macros(&mut orig_args);
+                }
+            }
+
+            return RunCompiler::new(
+                &orig_args,
+                &mut ConfigCallbackWrapper::new(
+                    &mut DepTrackerConfigCallback::new(Arc::new(dep_tracker)),
+                    &mut DefaultCallbacks,
+                ),
+            )
+            .set_using_internal_features(using_internal_features.clone())
+            .run();
+        }
+    }
+
+    let mut all_args = orig_args.clone();
+
+    if via_cargo {
+        if let Some(package_id) = &package_id {
+            if let Some(val) = dep_tracker.get_env("__VERUS_DRIVER_ARGS__") {
+                all_args.extend(unpack_verus_driver_args_for_env(&val));
+            }
+            if let Some(val) =
+                dep_tracker.get_env(&format!("__VERUS_DRIVER_ARGS_FOR_{package_id}"))
+            {
+                all_args.extend(unpack_verus_driver_args_for_env(&val));
+            }
+        }
+    }
+
+    let mut verus_driver_inner_args = vec![];
+    extract_inner_args("--verus-driver-arg", &mut all_args, |inner_arg| {
+        verus_driver_inner_args.push(inner_arg)
+    });
+
+    let mut verus_inner_args = vec![];
+    extract_inner_args("--verus-arg", &mut all_args, |inner_arg| {
+        verus_inner_args.push(inner_arg)
+    });
+
+    let orig_rustc_args = all_args;
+
+    // HACK: clap expects exe in first arg
+    verus_driver_inner_args.insert(0, "verus-driver-inner".to_owned());
+
+    let parsed_verus_driver_inner_args =
+        VerusDriverInnerArgs::try_parse_from(&verus_driver_inner_args).unwrap_or_else(|err| {
+            early_dcx.early_error(format!(
+            "failed to parse verus driver inner args from {verus_driver_inner_args:?}: {err}"
+        ))
+        });
+
+    if parsed_verus_driver_inner_args.help {
+        display_help();
+        return Ok(());
+    }
+
+    if parsed_verus_driver_inner_args.version {
+        let version_info = rustc_tools_util::get_version_info!();
+        println!("{version_info}");
+        return Ok(());
+    }
+
+    let orig_rustc_opts = probe_config(&orig_rustc_args, |config| config.opts.clone())
+        .unwrap_or_else(|_| early_dcx.early_error("failed to parse rustc args"));
+
+    let mut rustc_args = orig_rustc_args;
+
+    if via_cargo {
+        let is_primary_package = dep_tracker.get_env("CARGO_PRIMARY_PACKAGE").is_some();
+
+        let compile = if is_primary_package {
+            parsed_verus_driver_inner_args.compile_when_primary_package
+        } else {
+            parsed_verus_driver_inner_args.compile_when_not_primary_package
+        };
+
+        if compile {
+            verus_inner_args.push("--compile".to_owned());
+        }
+    }
+
+    let mut import_deps_if_present = parsed_verus_driver_inner_args
+        .import_dep_if_present
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+
+    let mut externs = BTreeMap::<String, Vec<PathBuf>>::new();
+
+    for (key, entry) in orig_rustc_opts.externs.iter() {
+        if let Some(files) = entry.files() {
+            assert!(
+                externs
+                    .insert(
+                        key.clone(),
+                        files.map(|path| path.canonicalized()).cloned().collect()
+                    )
+                    .is_none()
+            );
+        }
+    }
+
+    if let Some(verus_sysroot) = parsed_verus_driver_inner_args
+        .verus_sysroot
+        .or_else(|| dep_tracker.get_env("VERUS_SYSROOT"))
+    {
+        let mut add_extern = |key: &str, pattern: String| {
+            let path = {
+                let report_missing_or_corrupt = || {
+                    early_dcx
+                        .early_error("verus sysroot appears to be either missing or corrupt");
+                };
+                let mut paths = glob::glob(pattern.as_str()).unwrap();
+                let path = paths
+                    .next()
+                    .unwrap_or_else(|| {
+                        report_missing_or_corrupt();
+                        unreachable!()
+                    })
+                    .unwrap_or_else(|err| {
+                        early_dcx
+                            .early_error(format!("failed to traverse verus sysroot: {err:?}"))
+                    });
+                if paths.next().is_some() {
+                    report_missing_or_corrupt();
+                }
+                path
+            };
+            rustc_args.push(format!("--extern={key}={}", path.display()));
+            assert!(externs.insert(key.to_owned(), vec![path]).is_none());
+        };
+
+        let host_lib_dir = format!("{verus_sysroot}/lib/rustlib/lib");
+        let target_lib_dir =
+            format!("{verus_sysroot}/lib/rustlib/{}/lib", orig_rustc_opts.target_triple);
+
+        add_extern("builtin_macros", format!("{host_lib_dir}/libbuiltin_macros-*.so"));
+        add_extern("builtin", format!("{target_lib_dir}/libbuiltin-*.rlib"));
+        add_extern("vstd", format!("{target_lib_dir}/libvstd-*.rlib"));
+
+        rustc_args.push(format!("-Ldependency={host_lib_dir}"));
+        rustc_args.push(format!("-Ldependency={target_lib_dir}"));
+
+        import_deps_if_present.insert("vstd".to_owned());
+    }
+
+    for (key, paths) in &externs {
+        if import_deps_if_present.remove(key) {
+            let mut found = false;
+            for path in paths {
+                let vir_path = path.with_extension("vir");
+                if vir_path.exists() {
+                    verus_inner_args.push(format!("--import={key}={}", vir_path.display()));
+                    dep_tracker.mark_file(vir_path);
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                early_dcx.early_error(format!("could not find .vir file for '{key}'"));
+            }
+        }
+    }
+
+    let vir_path = {
+        // TODO
+        // This is a very inefficient way of determining the .vir output path. One good solution
+        // would be integrating the function of the --export into the callbacks in a way where
+        // we can grab .output_filenames() sometime when it's convenient.
+
+        let crate_meta_path =
+            probe_after_crate_root_parsing(&rustc_args, |_compiler, queries| {
+                queries.global_ctxt().unwrap().enter(move |tcx| {
+                    tcx.output_filenames(())
+                        .output_path(rustc_session::config::OutputType::Metadata)
+                })
+            })
+            .unwrap();
+
+        crate_meta_path.with_extension("vir")
     };
 
-    exit(rustc_driver::catch_with_exit_code(move || {
-        let mut orig_args = env::args().collect::<Vec<_>>();
+    verus_inner_args.extend(["--export".to_owned(), format!("{}", vir_path.display())]);
 
-        if orig_args.get(1).map(String::as_str) == Some(verifier::LIFETIME_DRIVER_ARG) {
-            orig_args.remove(1);
-            let mut buffer = String::new();
-            std::io::stdin().read_to_string(&mut buffer).unwrap_or_else(|err| {
-                early_dcx.early_error(format!("failed to read stdin: {err:?}"))
-            });
-            verifier::lifetime_rustc_driver(&orig_args, buffer);
-            return Ok(());
-        }
+    // Track env vars used by Verus
+    dep_tracker.get_env("VERUS_Z3_PATH");
+    dep_tracker.get_env("VERUS_SINGULAR_PATH");
 
-        // Make "verus-driver --rustc" work like a subcommand that passes further args to "rustc"
-        // for example `verus-driver --rustc --version` will print the rustc version that verus-driver
-        // uses
-        if let Some(pos) = orig_args.iter().position(|arg| arg == "--rustc") {
-            orig_args.remove(pos);
-            orig_args[0] = "rustc".to_string();
-            return RunCompiler::new(&orig_args, &mut DefaultCallbacks).run();
-        }
+    set_rustc_bootstrap();
 
-        if args_contains_long_or_short(orig_args.iter(), Some("help"), Some('h'))
-            || args_contains_long_or_short(orig_args.iter(), Some("version"), Some('V'))
-        {
-            return RunCompiler::new(&orig_args, &mut DefaultCallbacks).run();
-        }
+    let mut dep_tracker_config_callback = DepTrackerConfigCallback::new(Arc::new(dep_tracker));
 
-        // Setting RUSTC_WRAPPER causes Cargo to pass 'rustc' as the first argument.
-        // We're invoking the compiler programmatically, so we ignore this.
-        let wrapper_mode =
-            orig_args.get(1).map(Path::new).and_then(Path::file_stem) == Some("rustc".as_ref());
+    let mk_file_loader = || rustc_span::source_map::RealFileLoader;
 
-        if wrapper_mode {
-            // we still want to be able to invoke it normally though
-            orig_args.remove(1);
-        }
+    let compiler_runner = for<'a, 'b> |args: &'a [String],
+                                        callbacks: &'b mut (dyn Callbacks + Send)|
+                    -> Result<(), ErrorGuaranteed> {
+        let mut wrapped_callbacks =
+            ConfigCallbackWrapper::new(&mut dep_tracker_config_callback, callbacks);
+        RunCompiler::new(args, &mut wrapped_callbacks)
+            .set_using_internal_features(using_internal_features.clone())
+            .run()
+    };
 
-        let this_invocation_is_cargo_probing =
-            orig_args.windows(2).any(|window| window[0] == "--crate-name" && window[1] == "___");
-
-        if this_invocation_is_cargo_probing {
-            return RunCompiler::new(&orig_args, &mut DefaultCallbacks).run();
-        }
-
-        let mut dep_tracker = DepTracker::default();
-
-        // During development track the `verus-driver` executable so that cargo will re-run verus
-        // whenever it is rebuilt
-        if cfg!(debug_assertions) {
-            if let Ok(current_exe) = env::current_exe() {
-                dep_tracker.mark_file(current_exe);
-            }
-        }
-
-        let via_cargo = dep_tracker.compare_env("__VERUS_DRIVER_VIA_CARGO__", "1");
-
-        let package_id = if via_cargo { get_package_id_from_env(&mut dep_tracker) } else { None };
-
-        if via_cargo {
-            let verify_crate = if let Some(package_id) = &package_id {
-                let verify_package =
-                    dep_tracker.compare_env(&format!("__VERUS_DRIVER_VERIFY_{package_id}"), "1");
-
-                let is_build_script = dep_tracker
-                    .get_env("CARGO_CRATE_NAME")
-                    .map(|name| name.starts_with("build_script_"))
-                    .unwrap_or(false);
-
-                verify_package && !is_build_script
-            } else {
-                false
-            };
-
-            if !verify_crate {
-                if let Some(package_id) = &package_id {
-                    let is_builtin = dep_tracker
-                        .compare_env(&format!("__VERUS_DRIVER_IS_BUILTIN_{package_id}"), "1");
-                    let is_builtin_macros = dep_tracker.compare_env(
-                        &format!("__VERUS_DRIVER_IS_BUILTIN_MACROS_{package_id}"),
-                        "1",
-                    );
-
-                    if is_builtin || is_builtin_macros {
-                        set_rustc_bootstrap();
-                        extend_rustc_args_for_builtin_and_builtin_macros(&mut orig_args);
-                    }
-                }
-
-                return RunCompiler::new(
-                    &orig_args,
-                    &mut ConfigCallbackWrapper::new(
-                        &mut DepTrackerConfigCallback::new(Arc::new(dep_tracker)),
-                        &mut DefaultCallbacks,
-                    ),
-                )
-                .set_using_internal_features(using_internal_features.clone())
-                .run();
-            }
-        }
-
-        let mut all_args = orig_args.clone();
-
-        if via_cargo {
-            if let Some(package_id) = &package_id {
-                if let Some(val) = dep_tracker.get_env("__VERUS_DRIVER_ARGS__") {
-                    all_args.extend(unpack_verus_driver_args_for_env(&val));
-                }
-                if let Some(val) =
-                    dep_tracker.get_env(&format!("__VERUS_DRIVER_ARGS_FOR_{package_id}"))
-                {
-                    all_args.extend(unpack_verus_driver_args_for_env(&val));
-                }
-            }
-        }
-
-        let mut verus_driver_inner_args = vec![];
-        extract_inner_args("--verus-driver-arg", &mut all_args, |inner_arg| {
-            verus_driver_inner_args.push(inner_arg)
-        });
-
-        let mut verus_inner_args = vec![];
-        extract_inner_args("--verus-arg", &mut all_args, |inner_arg| {
-            verus_inner_args.push(inner_arg)
-        });
-
-        let orig_rustc_args = all_args;
-
-        // HACK: clap expects exe in first arg
-        verus_driver_inner_args.insert(0, "verus-driver-inner".to_owned());
-
-        let parsed_verus_driver_inner_args =
-            VerusDriverInnerArgs::try_parse_from(&verus_driver_inner_args).unwrap_or_else(|err| {
-                early_dcx.early_error(format!(
-                "failed to parse verus driver inner args from {verus_driver_inner_args:?}: {err}"
-            ))
-            });
-
-        if parsed_verus_driver_inner_args.help {
-            display_help();
-            return Ok(());
-        }
-
-        if parsed_verus_driver_inner_args.version {
-            let version_info = rustc_tools_util::get_version_info!();
-            println!("{version_info}");
-            return Ok(());
-        }
-
-        let orig_rustc_opts = probe_config(&orig_rustc_args, |config| config.opts.clone())
-            .unwrap_or_else(|_| early_dcx.early_error("failed to parse rustc args"));
-
-        let mut rustc_args = orig_rustc_args;
-
-        if via_cargo {
-            let is_primary_package = dep_tracker.get_env("CARGO_PRIMARY_PACKAGE").is_some();
-
-            let compile = if is_primary_package {
-                parsed_verus_driver_inner_args.compile_when_primary_package
-            } else {
-                parsed_verus_driver_inner_args.compile_when_not_primary_package
-            };
-
-            if compile {
-                verus_inner_args.push("--compile".to_owned());
-            }
-        }
-
-        let mut import_deps_if_present = parsed_verus_driver_inner_args
-            .import_dep_if_present
-            .iter()
-            .cloned()
-            .collect::<BTreeSet<_>>();
-
-        let mut externs = BTreeMap::<String, Vec<PathBuf>>::new();
-
-        for (key, entry) in orig_rustc_opts.externs.iter() {
-            if let Some(files) = entry.files() {
-                assert!(
-                    externs
-                        .insert(
-                            key.clone(),
-                            files.map(|path| path.canonicalized()).cloned().collect()
-                        )
-                        .is_none()
-                );
-            }
-        }
-
-        if let Some(verus_sysroot) = parsed_verus_driver_inner_args
-            .verus_sysroot
-            .or_else(|| dep_tracker.get_env("VERUS_SYSROOT"))
-        {
-            let mut add_extern = |key: &str, pattern: String| {
-                let path = {
-                    let report_missing_or_corrupt = || {
-                        early_dcx
-                            .early_error("verus sysroot appears to be either missing or corrupt");
-                    };
-                    let mut paths = glob::glob(pattern.as_str()).unwrap();
-                    let path = paths
-                        .next()
-                        .unwrap_or_else(|| {
-                            report_missing_or_corrupt();
-                            unreachable!()
-                        })
-                        .unwrap_or_else(|err| {
-                            early_dcx
-                                .early_error(format!("failed to traverse verus sysroot: {err:?}"))
-                        });
-                    if paths.next().is_some() {
-                        report_missing_or_corrupt();
-                    }
-                    path
-                };
-                rustc_args.push(format!("--extern={key}={}", path.display()));
-                assert!(externs.insert(key.to_owned(), vec![path]).is_none());
-            };
-
-            let host_lib_dir = format!("{verus_sysroot}/lib/rustlib/lib");
-            let target_lib_dir =
-                format!("{verus_sysroot}/lib/rustlib/{}/lib", orig_rustc_opts.target_triple);
-
-            add_extern("builtin_macros", format!("{host_lib_dir}/libbuiltin_macros-*.so"));
-            add_extern("builtin", format!("{target_lib_dir}/libbuiltin-*.rlib"));
-            add_extern("vstd", format!("{target_lib_dir}/libvstd-*.rlib"));
-
-            rustc_args.push(format!("-Ldependency={host_lib_dir}"));
-            rustc_args.push(format!("-Ldependency={target_lib_dir}"));
-
-            import_deps_if_present.insert("vstd".to_owned());
-        }
-
-        for (key, paths) in &externs {
-            if import_deps_if_present.remove(key) {
-                let mut found = false;
-                for path in paths {
-                    let vir_path = path.with_extension("vir");
-                    if vir_path.exists() {
-                        verus_inner_args.push(format!("--import={key}={}", vir_path.display()));
-                        dep_tracker.mark_file(vir_path);
-                        found = true;
-                        break;
-                    }
-                }
-                if !found {
-                    early_dcx.early_error(format!("could not find .vir file for '{key}'"));
-                }
-            }
-        }
-
-        let vir_path = {
-            // TODO
-            // This is a very inefficient way of determining the .vir output path. One good solution
-            // would be integrating the function of the --export into the callbacks in a way where
-            // we can grab .output_filenames() sometime when it's convenient.
-
-            let crate_meta_path =
-                probe_after_crate_root_parsing(&rustc_args, |_compiler, queries| {
-                    queries.global_ctxt().unwrap().enter(move |tcx| {
-                        tcx.output_filenames(())
-                            .output_path(rustc_session::config::OutputType::Metadata)
-                    })
-                })
-                .unwrap();
-
-            crate_meta_path.with_extension("vir")
-        };
-
-        verus_inner_args.extend(["--export".to_owned(), format!("{}", vir_path.display())]);
-
-        // Track env vars used by Verus
-        dep_tracker.get_env("VERUS_Z3_PATH");
-        dep_tracker.get_env("VERUS_SINGULAR_PATH");
-
-        set_rustc_bootstrap();
-
-        let mut dep_tracker_config_callback = DepTrackerConfigCallback::new(Arc::new(dep_tracker));
-
-        let mk_file_loader = || rustc_span::source_map::RealFileLoader;
-
-        let compiler_runner = for<'a, 'b> |args: &'a [String],
-                                           callbacks: &'b mut (dyn Callbacks + Send)|
-                     -> Result<(), ErrorGuaranteed> {
-            let mut wrapped_callbacks =
-                ConfigCallbackWrapper::new(&mut dep_tracker_config_callback, callbacks);
-            RunCompiler::new(args, &mut wrapped_callbacks)
-                .set_using_internal_features(using_internal_features.clone())
-                .run()
-        };
-
-        verifier::run(
-            &early_dcx,
-            verus_inner_args.into_iter(),
-            &rustc_args,
-            mk_file_loader,
-            compiler_runner,
-        )
-    }))
+    verifier::run(
+        &early_dcx,
+        verus_inner_args.into_iter(),
+        &rustc_args,
+        mk_file_loader,
+        compiler_runner,
+    )
 }
 
 fn get_package_id_from_env(dep_tracker: &mut DepTracker) -> Option<String> {
