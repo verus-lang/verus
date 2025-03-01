@@ -284,4 +284,23 @@ pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     attr_rewrite::proof_rewrite(cfg_erase(), input.into()).into()
 }
 
+#[proc_macro_attribute]
+pub fn verus_io(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    attr_rewrite::verus_io(&cfg_erase(), attr, input)
+        .expect("Misuse of #[verus_io()]. Must used on ExprCall")
+}
+
+#[proc_macro]
+pub fn verus_extra_stmts(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let erase = cfg_erase();
+    if erase.keep() {
+        syntax::rewrite_stmt(cfg_erase(), false, input.into())
+    } else {
+        proc_macro::TokenStream::new()
+    }
+}
+
 /*** End of verus small macro definition for executable items ***/

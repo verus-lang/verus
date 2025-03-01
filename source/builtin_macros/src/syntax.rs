@@ -220,6 +220,65 @@ macro_rules! parse_quote_spanned_vstd {
     }
 }
 
+pub(crate) fn rewrite_exe_pat(pat: &mut Pat) -> (Vec<Stmt>, Vec<Stmt>) {
+    let mut visit_pat = ExecGhostPatVisitor {
+        inside_ghost: 0,
+        tracked: None,
+        ghost: None,
+        x_decls: Vec::new(),
+        x_assigns: Vec::new(),
+    };
+
+    visit_pat.visit_pat_mut(pat);
+    let ExecGhostPatVisitor { x_decls, x_assigns, .. } = visit_pat;
+    return (x_decls, x_assigns);
+}
+
+fn take_sig_with_arg(erase_ghost: &EraseGhost, arg: &mut FnArg) -> Vec<Stmt> {
+    // Check for Ghost(x) or Tracked(x) argument
+    let mut unwrap_ghost_tracked = Vec::new();
+    if let FnArgKind::Typed(PatType { pat, .. }) = &mut arg.kind {
+        let pat = &mut **pat;
+        let mut tracked_wrapper = false;
+        let mut wrapped_pat_id = None;
+        if let Pat::TupleStruct(tup) = &*pat {
+            let ghost_wrapper = path_is_ident(&tup.path, "Ghost");
+            tracked_wrapper = path_is_ident(&tup.path, "Tracked");
+            if ghost_wrapper || tracked_wrapper || tup.elems.len() == 1 {
+                if let Pat::Ident(id) = &tup.elems[0] {
+                    wrapped_pat_id = Some(id.clone());
+                }
+            }
+        }
+        if let Some(mut wrapped_pat_id) = wrapped_pat_id {
+            // Change
+            //   fn f(x: Tracked<T>) {
+            // to
+            //   fn f(verus_tmp_x: Tracked<T>) {
+            //       #[verus::internal(header_unwrap_parameter)] let t;
+            //       #[verifier::proof_block] { t = verus_tmp_x.get() };
+            let span = pat.span();
+            let x = wrapped_pat_id.ident;
+            let tmp_id =
+                Ident::new(&format!("verus_tmp_{x}"), Span::mixed_site().located_at(pat.span()));
+            wrapped_pat_id.ident = tmp_id.clone();
+            *pat = Pat::Ident(wrapped_pat_id);
+            if erase_ghost.keep() {
+                unwrap_ghost_tracked.push(stmt_with_semi!(
+                    span => #[verus::internal(header_unwrap_parameter)] let #x));
+                if tracked_wrapper {
+                    unwrap_ghost_tracked.push(stmt_with_semi!(
+                        span => #[verifier::proof_block] { #x = #tmp_id.get() }));
+                } else {
+                    unwrap_ghost_tracked.push(stmt_with_semi!(
+                        span => #[verifier::proof_block] { #x = #tmp_id.view() }));
+                }
+            }
+        }
+    }
+    unwrap_ghost_tracked
+}
+
 impl Visitor {
     fn take_ghost<T: Default>(&self, dest: &mut T) -> T {
         take_ghost(self.erase_ghost, dest)
@@ -515,47 +574,7 @@ impl Visitor {
             }
 
             // Check for Ghost(x) or Tracked(x) argument
-            if let FnArgKind::Typed(PatType { pat, .. }) = &mut arg.kind {
-                let pat = &mut **pat;
-                let mut tracked_wrapper = false;
-                let mut wrapped_pat_id = None;
-                if let Pat::TupleStruct(tup) = &*pat {
-                    let ghost_wrapper = path_is_ident(&tup.path, "Ghost");
-                    tracked_wrapper = path_is_ident(&tup.path, "Tracked");
-                    if ghost_wrapper || tracked_wrapper || tup.elems.len() == 1 {
-                        if let Pat::Ident(id) = &tup.elems[0] {
-                            wrapped_pat_id = Some(id.clone());
-                        }
-                    }
-                }
-                if let Some(mut wrapped_pat_id) = wrapped_pat_id {
-                    // Change
-                    //   fn f(x: Tracked<T>) {
-                    // to
-                    //   fn f(verus_tmp_x: Tracked<T>) {
-                    //       #[verus::internal(header_unwrap_parameter)] let t;
-                    //       #[verifier::proof_block] { t = verus_tmp_x.get() };
-                    let span = pat.span();
-                    let x = wrapped_pat_id.ident;
-                    let tmp_id = Ident::new(
-                        &format!("verus_tmp_{x}"),
-                        Span::mixed_site().located_at(pat.span()),
-                    );
-                    wrapped_pat_id.ident = tmp_id.clone();
-                    *pat = Pat::Ident(wrapped_pat_id);
-                    if self.erase_ghost.keep() {
-                        unwrap_ghost_tracked.push(stmt_with_semi!(
-                            span => #[verus::internal(header_unwrap_parameter)] let #x));
-                        if tracked_wrapper {
-                            unwrap_ghost_tracked.push(stmt_with_semi!(
-                                span => #[verifier::proof_block] { #x = #tmp_id.get() }));
-                        } else {
-                            unwrap_ghost_tracked.push(stmt_with_semi!(
-                                span => #[verifier::proof_block] { #x = #tmp_id.view() }));
-                        }
-                    }
-                }
-            }
+            unwrap_ghost_tracked.extend(take_sig_with_arg(&self.erase_ghost, arg));
 
             arg.tracked = None;
         }
@@ -1379,6 +1398,7 @@ impl Visitor {
                 decreases: None,
                 invariants: invariants,
                 unwind: unwind,
+                with: None,
             },
         };
 
@@ -3962,6 +3982,61 @@ pub(crate) fn rewrite_expr(
     proc_macro::TokenStream::from(new_stream)
 }
 
+struct Stmts(Vec<Stmt>);
+
+impl Parse for Stmts {
+    fn parse(input: ParseStream) -> syn_verus::Result<Self> {
+        let mut stmts = Vec::new();
+        while !input.is_empty() {
+            stmts.push(input.parse()?);
+        }
+        Ok(Stmts(stmts))
+    }
+}
+
+impl ToTokens for Stmts {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        for stmt in &self.0 {
+            stmt.to_tokens(tokens);
+        }
+    }
+}
+
+pub(crate) fn rewrite_stmt(
+    erase_ghost: EraseGhost,
+    inside_const: bool,
+    stream: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let stream = rejoin_tokens(stream);
+    let s: Stmts = parse_macro_input!(stream as Stmts);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 0,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: inside_const,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    let mut stmts = Vec::new();
+    let Stmts(old_stmts) = s;
+    for mut ss in old_stmts {
+        let (skip, extra_stmts) = visitor.visit_stmt_extend(&mut ss);
+        if !skip {
+            stmts.push(ss);
+        }
+        stmts.extend(extra_stmts);
+    }
+    for ss in &mut stmts {
+        visitor.visit_stmt_mut(ss);
+    }
+    Stmts(stmts).to_tokens(&mut new_stream);
+    proc_macro::TokenStream::from(new_stream)
+}
+
 pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, expr: &mut Expr) {
     let mut visitor = Visitor {
         erase_ghost,
@@ -3977,12 +4052,52 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
     visitor.visit_expr_mut(expr);
 }
 
+fn take_sig_with_spec(
+    erase_ghost: EraseGhost,
+    with: syn_verus::FnWithSpec,
+    sig: &mut syn::Signature,
+) -> Vec<Stmt> {
+    let syn_verus::FnWithSpec { mut inputs, outputs, .. } = with;
+    let mut spec_stmts = vec![];
+    // ret.0 is executable returns.
+    // ret.1 is the tracked/ghost returns.
+    if inputs.len() > 0 {
+        for arg in inputs.iter_mut() {
+            spec_stmts.extend(take_sig_with_arg(&erase_ghost, arg));
+            sig.inputs.push(syn::parse_quote_spanned! { arg.span() => #arg })
+        }
+    }
+    if let Some((token, extra_ret)) = outputs {
+        if extra_ret.len() > 0 {
+            let extra_ret_typs: Vec<_> = extra_ret.iter().map(|pt| pt.ty.clone()).collect();
+            match &mut sig.output {
+                syn::ReturnType::Default => {
+                    let ty = syn::parse_quote_spanned!(
+                        sig.output.span() => (() #(,#extra_ret_typs)*)
+                    );
+                    sig.output = syn::ReturnType::Type(syn::Token![->](token.span()), ty);
+                }
+                syn::ReturnType::Type(_, ty) => {
+                    *ty = syn::parse_quote_spanned!(
+                        ty.span() => (#ty #(,#extra_ret_typs)*)
+                    );
+                }
+            }
+        }
+    };
+    spec_stmts
+}
 pub(crate) fn sig_specs_attr(
     erase_ghost: EraseGhost,
     spec_attr: SignatureSpecAttr,
-    sig: &syn::Signature,
+    sig: &mut syn::Signature,
 ) -> Vec<Stmt> {
     let SignatureSpecAttr { ret_pat, mut spec } = spec_attr;
+    let mut spec_stmts = vec![];
+    if let Some(with) = spec.with {
+        spec_stmts.extend(take_sig_with_spec(erase_ghost, with, sig));
+    }
+    spec.with = None;
     let ret_pat = match (ret_pat, &sig.output) {
         (Some((pat, _)), syn::ReturnType::Type(_, ty)) => Some((pat, ty.clone())),
         _ => None,
@@ -3999,7 +4114,13 @@ pub(crate) fn sig_specs_attr(
         rustdoc: env_rustdoc(),
     };
     let sig_span = sig.span().clone();
-    visitor.take_sig_specs(&mut spec, ret_pat, sig.constness.is_some(), sig_span)
+    spec_stmts.extend(visitor.take_sig_specs(
+        &mut spec,
+        ret_pat,
+        sig.constness.is_some(),
+        sig_span,
+    ));
+    spec_stmts
 }
 
 pub(crate) fn while_loop_spec_attr(
