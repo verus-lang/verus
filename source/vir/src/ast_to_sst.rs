@@ -15,9 +15,7 @@ use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,
 };
-use crate::sst_util::{
-    sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value,
-};
+use crate::sst_util::{sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::vec_map_result;
 use crate::visitor::VisitorControlFlow;
@@ -833,24 +831,22 @@ fn is_small_exp_or_loc(exp: &Exp) -> bool {
     }
 }
 
-fn mask_set_for_call(
-    fun: &Function,
-    typs: &Typs,
-    args: Arc<Vec<Exp>>,
-) -> MaskSet {
+fn mask_set_for_call(fun: &Function, typs: &Typs, args: Arc<Vec<Exp>>) -> MaskSet {
     let mask_spec = fun.x.mask_spec_or_default();
     match &mask_spec {
         MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
             let mut inv_exps = vec![];
             for (i, e) in es.iter().enumerate() {
-                let expx = ExpX::Call(CallFun::InternalFun(InternalFun::OpenInvariantMask(fun.x.name.clone(), i)), typs.clone(), args.clone());
+                let expx = ExpX::Call(
+                    CallFun::InternalFun(InternalFun::OpenInvariantMask(fun.x.name.clone(), i)),
+                    typs.clone(),
+                    args.clone(),
+                );
                 let exp = SpannedTyped::new(&e.span, &e.typ, expx);
                 inv_exps.push(exp);
             }
             match &mask_spec {
-                MaskSpec::InvariantOpens(..) => {
-                    MaskSet::from_list(&inv_exps, &fun.span)
-                }
+                MaskSpec::InvariantOpens(..) => MaskSet::from_list(&inv_exps, &fun.span),
                 MaskSpec::InvariantOpensExcept(..) => {
                     MaskSet::from_list_complement(&inv_exps, &fun.span)
                 }
