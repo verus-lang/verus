@@ -356,6 +356,7 @@ fn mk_package_id(
     version: impl AsRef<str>,
     manifest_path: impl AsRef<str>,
 ) -> String {
+    // TODO: share code with rust_verify's version of this code
     let manifest_path_hash = {
         let mut hasher = Sha256::new();
         hasher.update(manifest_path.as_ref().as_bytes());

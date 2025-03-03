@@ -170,7 +170,7 @@ macro_rules! ldbg {
 }
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
-pub fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
+pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
     queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
         let hir = tcx.hir();
         let krate = hir.krate();
@@ -307,6 +307,9 @@ fn emit_check_tracked_lifetimes<'tcx>(
 struct LifetimeCallbacks {}
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
+    // note: we do not need to to call into config here,
+    // because all config is handled in the other Callbacks
+
     fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,

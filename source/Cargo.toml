@@ -9,20 +9,17 @@ members = [
   "vir_macros",
   "rust_verify",
   "verus",
-  "verus-driver",
-  "verus-sysroot-dummy",
   "rust_verify_test",
   "rust_verify_test_macros",
   "state_machines_macros",
   "verusdoc",
-  "vstd",
   "vstd_build",
   "tools/internals_interface",
   "tools/line_count",
   "tools/qi-graph",
-  "cargo-verus-illustration/doubly-linked-xor",
-  "cargo-verus-illustration/doubly-linked-xor-test",
-  "cargo-verus-illustration/doubly-linked-xor-test-using-verus-sysroot",
+]
+exclude = [
+  "vstd",
 ]
 
 # do not modify the following two lines

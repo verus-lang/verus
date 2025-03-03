@@ -6,6 +6,9 @@ extern crate rustc_driver;
 extern crate rustc_log;
 extern crate rustc_session;
 
+// TODO: share these with cargo-verus
+const VERUS_DRIVER_VIA_CARGO: &str = "__VERUS_DRIVER_VIA_CARGO__";
+
 #[cfg(target_family = "windows")]
 fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
     // Configure Windows to kill the child SMT process if the parent is killed
@@ -27,7 +30,7 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
 pub fn main() {
     let mut internal_args = std::env::args();
     let internal_program = internal_args.next().unwrap();
-    let build_test_mode = if let Some(first_arg) = internal_args.next() {
+    let (build_test_mode, via_cargo) = if let Some(first_arg) = internal_args.next() {
         match first_arg.as_str() {
             rust_verify::lifetime::LIFETIME_DRIVER_ARG => {
                 let mut internal_args: Vec<_> = internal_args.collect();
@@ -38,11 +41,15 @@ pub fn main() {
                 rust_verify::lifetime::lifetime_rustc_driver(&internal_args[..], buffer);
                 return;
             }
-            "--internal-test-mode" => true,
-            _ => false,
+            "rustc" => {
+                // Setting RUSTC_WRAPPER causes Cargo to pass 'rustc' as the first argument.
+                (false, true)
+            }
+            "--internal-test-mode" => (true, false),
+            _ => (false, false),
         }
     } else {
-        false
+        (false, false)
     };
 
     let build_info = verus_build_info();
@@ -57,7 +64,7 @@ pub fn main() {
         rustc_session::EarlyDiagCtxt::new(rustc_session::config::ErrorOutputType::default());
     rustc_driver::init_logger(&logger_handler, rustc_log::LoggerConfig::from_env("RUSTVERIFY_LOG"));
 
-    let mut args = if build_test_mode { internal_args } else { std::env::args() };
+    let mut args = if build_test_mode || via_cargo { internal_args } else { std::env::args() };
     let program = if build_test_mode { internal_program } else { args.next().unwrap() };
 
     let mut vstd = None;
@@ -72,7 +79,28 @@ pub fn main() {
         None
     };
 
-    let (our_args, rustc_args) = rust_verify::config::parse_args_with_imports(&program, args, vstd);
+    let (our_args, mut rustc_args) =
+        rust_verify::config::parse_args_with_imports(&program, args, vstd);
+
+    let mut dep_tracker = rust_verify::cargo_verus_dep_tracker::DepTracker::init();
+    if dep_tracker.compare_env(VERUS_DRIVER_VIA_CARGO, "1") != via_cargo {
+        let _ = logger_handler.early_err("Error: VERUS_DRIVER_VIA_CARGO must be 1 if and only if 'rustc' is the first argument to verus");
+        std::process::exit(1);
+    }
+
+    if via_cargo
+        && rust_verify::cargo_verus::is_direct_cargo_call_to_rustc(
+            &mut rustc_args,
+            &mut dep_tracker,
+        )
+    {
+        match rust_verify::driver::run_rustc_compiler_directly(&rustc_args) {
+            Ok(()) => return,
+            Err(_) => {
+                std::process::exit(1);
+            }
+        }
+    }
 
     if our_args.version {
         if our_args.output_json {
@@ -85,6 +113,9 @@ pub fn main() {
         }
         return;
     }
+
+    let via_cargo_compile =
+        via_cargo && rust_verify::cargo_verus::is_compile(&our_args, &mut dep_tracker);
 
     if !build_test_mode {
         match build_info.profile {
@@ -101,7 +132,8 @@ pub fn main() {
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
 
     let file_loader = rust_verify::file_loader::RealFileLoader;
-    let verifier = rust_verify::verifier::Verifier::new(our_args);
+    let verifier =
+        rust_verify::verifier::Verifier::new(our_args, via_cargo, via_cargo_compile, dep_tracker);
 
     let (verifier, stats, status) =
         rust_verify::driver::run(verifier, rustc_args, verus_root, file_loader, build_test_mode);

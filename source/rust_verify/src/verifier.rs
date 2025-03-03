@@ -289,6 +289,13 @@ pub struct Verifier {
     /// smt runtimes for each function per bucket
     pub func_times: HashMap<BucketId, HashMap<Fun, FunctionSmtStats>>,
 
+    via_cargo: bool,
+    // Some(DepTracker) if via_cargo, None otherwise
+    // In both cases, is set to None when VerifierCallbacksEraseMacro.config finishes with it
+    dep_tracker: Option<crate::cargo_verus_dep_tracker::DepTracker>,
+    export_vir_path_via_cargo: Option<std::path::PathBuf>,
+    pub(crate) compile: bool,
+
     // If we've already created the log directory, this is the path to it:
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     created_solver_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
@@ -400,7 +407,14 @@ struct VerifyBucketOut {
 }
 
 impl Verifier {
-    pub fn new(args: Args) -> Verifier {
+    pub fn new(
+        args: Args,
+        via_cargo: bool,
+        via_cargo_compile: bool,
+        dep_tracker: crate::cargo_verus_dep_tracker::DepTracker,
+    ) -> Verifier {
+        let compile = args.compile || via_cargo_compile;
+
         Verifier {
             num_threads: 1,
             encountered_error: false,
@@ -421,6 +435,11 @@ impl Verifier {
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
 
+            via_cargo,
+            dep_tracker: if via_cargo { Some(dep_tracker) } else { None },
+            export_vir_path_via_cargo: None,
+            compile,
+
             created_log_dir: Arc::new(std::sync::Mutex::new(None)),
             created_solver_log_dir: Arc::new(std::sync::Mutex::new(None)),
             vir_crate: None,
@@ -437,6 +456,9 @@ impl Verifier {
     }
 
     pub fn from_self(&self) -> Verifier {
+        // Note: if we needed to share dep_tracker, we could clone it or Arc it
+        assert!(self.dep_tracker.is_none());
+
         Verifier {
             num_threads: 1,
             encountered_error: self.encountered_error,
@@ -456,6 +478,12 @@ impl Verifier {
             time_vir_rust_to_vir: Duration::new(0, 0),
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
+
+            via_cargo: self.via_cargo,
+            dep_tracker: None,
+            export_vir_path_via_cargo: self.export_vir_path_via_cargo.clone(),
+            compile: self.compile,
+
             created_log_dir: self.created_log_dir.clone(),
             created_solver_log_dir: self.created_solver_log_dir.clone(),
             vir_crate: self.vir_crate.clone(),
@@ -2623,7 +2651,10 @@ impl Verifier {
             crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
         });
-        let multi_crate = self.args.export.is_some() || import_len > 0 || self.args.use_crate_name;
+        let multi_crate = self.args.export.is_some()
+            || import_len > 0
+            || self.args.use_crate_name
+            || self.via_cargo;
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
@@ -2683,8 +2714,13 @@ impl Verifier {
 
         Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
 
-        crate::import_export::export_crate(&self.args, crate_metadata, current_vir_crate.clone())
-            .map_err(map_err_diagnostics)?;
+        crate::import_export::export_crate(
+            &self.args,
+            &self.export_vir_path_via_cargo,
+            crate_metadata,
+            current_vir_crate.clone(),
+        )
+        .map_err(map_err_diagnostics)?;
 
         if self.args.log_all || self.args.log_args.log_vir {
             let mut file = self
@@ -2783,19 +2819,20 @@ fn delete_dir_if_exists_and_is_dir(dir: &std::path::PathBuf) -> Result<(), VirEr
 }
 
 // TODO: move the callbacks into a different file, like driver.rs
-pub struct VerifierCallbacksEraseMacro {
-    pub verifier: Verifier,
+pub(crate) struct VerifierCallbacksEraseMacro {
+    pub(crate) verifier: Verifier,
     /// start time of the rustc compilation
-    pub rust_start_time: Instant,
+    pub(crate) rust_start_time: Instant,
     /// time when entered the `after_expansion` callback
-    pub rust_end_time: Option<Instant>,
+    pub(crate) rust_end_time: Option<Instant>,
     /// start time of lifetime analysys
-    pub lifetime_start_time: Option<Instant>,
+    pub(crate) lifetime_start_time: Option<Instant>,
     /// end time of lifetime analysys
-    pub lifetime_end_time: Option<Instant>,
-    pub rustc_args: Vec<String>,
-    pub file_loader: Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
-    pub verus_externs: Option<VerusExterns>,
+    pub(crate) lifetime_end_time: Option<Instant>,
+    pub(crate) rustc_args: Vec<String>,
+    pub(crate) file_loader:
+        Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
+    pub(crate) verus_externs: Option<VerusExterns>,
 }
 
 pub(crate) static BODY_HIR_ID_TO_REVEAL_PATH_RES: std::sync::RwLock<
@@ -2815,6 +2852,25 @@ fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        if let Some(mut dep_tracker) = self.verifier.dep_tracker.take() {
+            let import_dep_if_present = &self.verifier.args.import_dep_if_present;
+            let import_deps_if_present: HashSet<String> =
+                import_dep_if_present.iter().cloned().collect();
+            let success = crate::cargo_verus::handle_externs(
+                &config.opts.externs,
+                import_deps_if_present,
+                &mut dep_tracker,
+            );
+            match success {
+                Ok(()) => {}
+                Err(err) => {
+                    eprintln!("Error: {}", err);
+                    std::process::exit(1);
+                }
+            }
+            dep_tracker.config_install(config);
+        }
+
         config.override_queries = Some(|_session, providers| {
             providers.hir_crate = hir_crate;
 
@@ -2850,6 +2906,15 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
+            if self.verifier.via_cargo {
+                let crate_meta_path = tcx
+                    .output_filenames(())
+                    .path(rustc_session::config::OutputType::Metadata);
+                if let rustc_session::config::OutFileName::Real(path) = crate_meta_path {
+                    self.verifier.export_vir_path_via_cargo = Some(path.with_extension("vir"));
+                }
+            }
+
             rustc_interface::passes::write_dep_info(tcx);
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
 

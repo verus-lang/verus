@@ -4,6 +4,13 @@ use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
 use rustc_errors::ErrorGuaranteed;
 use std::time::{Duration, Instant};
 
+struct DefaultCallbacks;
+impl rustc_driver::Callbacks for DefaultCallbacks {}
+
+pub fn run_rustc_compiler_directly(rustc_args: &Vec<String>) -> Result<(), ErrorGuaranteed> {
+    rustc_driver::RunCompiler::new(&rustc_args, &mut DefaultCallbacks).run()
+}
+
 fn mk_compiler<'a, 'b>(
     rustc_args: &'a [String],
     verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
@@ -86,7 +93,7 @@ In the long run, we'd like to move to a model where rustc only runs once on the 
 This would avoid the complex interleaving above and avoid needing to use lifetime.rs
 for all functions (it would only be needed for functions with tracked data in proof code).
 */
-pub struct CompilerCallbacksEraseMacro {
+struct CompilerCallbacksEraseMacro {
     pub do_compile: bool,
 }
 
@@ -292,13 +299,13 @@ where
         );
     }
 
-    let compile_status = if !verifier.args.compile && verifier.args.no_lifetime {
+    let compile_status = if !verifier.compile && verifier.args.no_lifetime {
         Ok(())
     } else {
         run_with_erase_macro_compile(
             rustc_args,
             Box::new(file_loader),
-            verifier.args.compile,
+            verifier.compile,
             verifier.args.vstd,
         )
     };
