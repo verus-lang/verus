@@ -10,6 +10,8 @@ verus! {
 
 
     // Proof demonstrating polymorphic symbolic reasoning
+    #[verifier::spinoff_prover]
+    #[verifier::mono]
     proof fn proof1() {
         assert(spec0((3int, 4int)) == 4int);        // 3 + 3 = 6    // 1.5 + 1.5 = 3.0
 
