@@ -41,13 +41,13 @@ impl<K, V> Map<K, V> {
 
     /// Gives a `Map<K, V>` whose domain contains every key, and maps each key
     /// to the value given by `fv`.
-    pub open spec fn total(fv: impl Fn(K) -> V) -> Map<K, V> {
+    pub open spec fn total(fv: spec_fn(K) -> V) -> Map<K, V> {
         Set::full().mk_map(fv)
     }
 
     /// Gives a `Map<K, V>` whose domain is given by the boolean predicate on keys `fk`,
     /// and maps each key to the value given by `fv`.
-    pub open spec fn new(fk: impl Fn(K) -> bool, fv: impl Fn(K) -> V) -> Map<K, V> {
+    pub open spec fn new(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V) -> Map<K, V> {
         Set::new(fk).mk_map(fv)
     }
 

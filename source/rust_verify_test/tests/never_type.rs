@@ -69,3 +69,36 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_spec_never_caught1 verus_code! {
+        spec fn make_never() -> !;
+        proof fn test() {
+            let x: ! = make_never();
+            let y: ! = make_never();
+            assert(x == y);
+            let tracked z = x; // FAILS
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_vir_error_msg(e, "never-to-any coercion is not allowed in spec mode")
+}
+
+test_verify_one_file! {
+    #[test] test_spec_never_caught2 verus_code! {
+        spec fn make_never() -> !;
+        proof fn test() {
+            let x: ! = make_never();
+            let y: ! = make_never();
+            let tracked t: ! = true; // FAILS
+        }
+    } => Err(e) => assert_rust_error_msg(e, "mismatched types")
+}
+
+test_verify_one_file! {
+    #[test] test_spec_never_caught3 verus_code! {
+        spec fn make_never() -> !;
+        fn test_exec() -> ! {
+            let ghost x = make_never();
+        }
+    } => Err(e) => assert_vir_error_msg(e, "never-to-any coercion is not allowed in spec mode")
+}

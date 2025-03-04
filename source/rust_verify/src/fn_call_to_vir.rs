@@ -196,9 +196,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         let param_env = tcx.param_env(bctx.fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
         let inst = Instance::try_resolve(tcx, param_env, f, normalized_substs);
-        let Ok(inst) = inst else {
-            return err_span(expr.span, "Verus internal error: Instance::resolve");
-        };
+        let Ok(inst) = inst else { crate::internal_err!(expr.span, "Instance::resolve") };
         match inst {
             Some(Instance { def: rustc_middle::ty::InstanceKind::Item(did), args }) => {
                 let typs = mk_typ_args(bctx, args, did, expr.span)?;
@@ -1399,7 +1397,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                         }
                     }
                 }
-                _ => unreachable!("internal error"),
+                _ => {
+                    crate::internal_err!(expr.span, "unexpected verus item")
+                }
             };
 
             let e = mk_expr(ExprX::Binary(vop, lhs, rhs))?;

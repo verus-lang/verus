@@ -10,7 +10,6 @@ use crate::messages::{Message, Span};
 pub use air::ast::{Binder, Binders};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
 use std::sync::Arc;
 use vir_macros::{to_node_impl, ToDebugSNode};
 
@@ -585,12 +584,6 @@ pub struct SpannedTyped<X> {
     pub x: X,
 }
 
-impl<X: Display> Display for SpannedTyped<X> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.x)
-    }
-}
-
 /// Patterns for match expressions
 pub type Pattern = Arc<SpannedTyped<PatternX>>;
 pub type Patterns = Arc<Vec<Pattern>>;
@@ -1052,6 +1045,14 @@ pub enum ItemKind {
     Static,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode)]
+pub enum Opaqueness {
+    /// Opaque everywhere
+    Opaque,
+    /// Revealed insided the range given by 'visibility', opaque elsewhere.
+    Revealed { visibility: Visibility },
+}
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1066,15 +1067,16 @@ pub struct FunctionX {
     pub kind: FunctionKind,
     /// Access control (public/private)
     pub visibility: Visibility,
+    /// Controlled by 'open'. (Only applicable to spec functions.)
+    pub body_visibility: Visibility,
+    /// Controlled by 'opaque/opaque_outside_module'. (Only applicable to spec functions.)
+    pub opaqueness: Opaqueness,
     /// Owning module
     pub owning_module: Option<Path>,
     /// exec functions are compiled, proof/spec are erased
     /// exec/proof functions can have requires/ensures, spec cannot
     /// spec functions can be used in requires/ensures, proof/exec cannot
     pub mode: Mode,
-    /// Default amount of fuel: 0 means opaque, >= 1 means visible
-    /// For recursive functions, fuel determines the number of unfoldings that the SMT solver sees
-    pub fuel: u32,
     /// Type parameters to generic functions
     /// (for trait methods, the trait parameters come first, then the method parameters)
     pub typ_params: Idents,
@@ -1113,10 +1115,6 @@ pub struct FunctionX {
     pub unwind_spec: Option<UnwindSpec>,
     /// Allows the item to be a const declaration or static
     pub item_kind: ItemKind,
-    /// For public spec functions, publish == None means that the body is private
-    /// even though the function is public, the bool indicates false = opaque, true = visible
-    /// the body is public
-    pub publish: Option<bool>,
     /// Various attributes
     pub attrs: FunctionAttrs,
     /// Body of the function (may be None for foreign functions or for external_body functions)
@@ -1275,21 +1273,6 @@ pub enum ArchWordBits {
     Exactly(u32),
 }
 
-impl ArchWordBits {
-    pub fn min_bits(&self) -> u32 {
-        match self {
-            ArchWordBits::Either32Or64 => 32,
-            ArchWordBits::Exactly(v) => *v,
-        }
-    }
-    pub fn num_bits(&self) -> Option<u32> {
-        match self {
-            ArchWordBits::Either32Or64 => None,
-            ArchWordBits::Exactly(v) => Some(*v),
-        }
-    }
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Arch {
     pub word_bits: ArchWordBits,
@@ -1323,17 +1306,4 @@ pub struct KrateX {
     pub arch: Arch,
     /// Allows non-termination
     pub may_not_terminate: bool,
-}
-
-impl FunctionKind {
-    pub(crate) fn inline_okay(&self) -> bool {
-        match self {
-            FunctionKind::Static | FunctionKind::TraitMethodImpl { .. } => true,
-            // We don't want to do inlining for MethodDecls. If a MethodDecl has a body,
-            // it's a *default* body, so we can't know for sure it hasn't been overridden.
-            FunctionKind::TraitMethodDecl { .. } | FunctionKind::ForeignTraitMethodImpl { .. } => {
-                false
-            }
-        }
-    }
 }

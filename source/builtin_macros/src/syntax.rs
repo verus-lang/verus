@@ -20,6 +20,7 @@ use syn_verus::visit_mut::{
 };
 use syn_verus::BroadcastUse;
 use syn_verus::ExprBlock;
+use syn_verus::ExprForLoop;
 use syn_verus::{
     braced, bracketed, parenthesized, parse_macro_input, AssumeSpecification, Attribute, BareFnArg,
     BinOp, Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
@@ -236,6 +237,26 @@ impl Visitor {
                 let prefix = attr.path().segments[0].ident.to_string();
                 prefix != "verus" && prefix != "verifier"
             });
+        }
+    }
+
+    fn visit_loop_spec(&mut self, spec: &mut syn_verus::LoopSpec) {
+        let mut visit_spec = |exprs: &mut syn_verus::Specification| {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+        };
+        if let Some(exprs) = spec.invariants.as_mut() {
+            visit_spec(&mut exprs.exprs);
+        }
+        if let Some(exprs) = spec.invariant_except_breaks.as_mut() {
+            visit_spec(&mut exprs.exprs);
+        }
+        if let Some(exprs) = spec.ensures.as_mut() {
+            visit_spec(&mut exprs.exprs);
+        }
+        if let Some(exprs) = spec.decreases.as_mut() {
+            visit_spec(&mut exprs.exprs);
         }
     }
 
@@ -1256,7 +1277,7 @@ impl Visitor {
                                     broadcast proof fn #lemma_ident()
                                         ensures
                                             #[trigger] #vstd::layout::size_of::<#type_>() == #size_lit,
-                                            ::vstd::layout::is_sized::<#type_>(),
+                                            #vstd::layout::is_sized::<#type_>(),
                                             #ensures_align
                                     {
                                     }
@@ -3161,10 +3182,47 @@ impl VisitMut for Visitor {
     }
 
     fn visit_attribute_mut(&mut self, attr: &mut Attribute) {
+        fn path_verifier(
+            span: Span,
+        ) -> Punctuated<syn_verus::PathSegment, syn_verus::token::PathSep> {
+            let mut path_segments = Punctuated::new();
+            path_segments.push(syn_verus::PathSegment {
+                ident: Ident::new("verifier", span),
+                arguments: syn_verus::PathArguments::None,
+            });
+            path_segments
+        }
+        fn invalid_attribute(span: Span, trigger: bool) -> Attribute {
+            let mut path_segments = path_verifier(span);
+            path_segments.push(syn_verus::PathSegment {
+                ident: if trigger {
+                    Ident::new("invalid_trigger_attribute", span)
+                } else {
+                    Ident::new("invalid_attribute", span)
+                },
+                arguments: syn_verus::PathArguments::None,
+            });
+            let path = Path { leading_colon: None, segments: path_segments };
+            Attribute {
+                pound_token: token::Pound { spans: [span] },
+                style: syn_verus::AttrStyle::Outer,
+                bracket_token: token::Bracket { span: into_spans(span) },
+                meta: syn_verus::Meta::Path(path),
+            }
+        }
         if let syn_verus::AttrStyle::Outer = attr.style {
             match &attr.path().segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
                 [attr_name] if attr_name.to_string() == "trigger" => {
-                    *attr = mk_verus_attr(attr.span(), quote! { trigger });
+                    let mut valid = true;
+                    if let syn_verus::Meta::List(list) = &attr.meta {
+                        if !list.tokens.is_empty() {
+                            *attr = invalid_attribute(attr.span(), true);
+                            valid = false;
+                        }
+                    }
+                    if valid {
+                        *attr = mk_verus_attr(attr.span(), quote! { trigger });
+                    }
                 }
                 [attr_name] if attr_name.to_string() == "via_fn" => {
                     *attr = mk_verus_attr(attr.span(), quote! { via });
@@ -3174,34 +3232,9 @@ impl VisitMut for Visitor {
                     let Ok(parsed) = attr.parse_args_with(
                         Punctuated::<syn_verus::Meta, Token![,]>::parse_terminated,
                     ) else {
-                        *attr = invalid_attribute(span);
+                        *attr = invalid_attribute(span, false);
                         return;
                     };
-                    fn path_verifier(
-                        span: Span,
-                    ) -> Punctuated<syn_verus::PathSegment, syn_verus::token::PathSep>
-                    {
-                        let mut path_segments = Punctuated::new();
-                        path_segments.push(syn_verus::PathSegment {
-                            ident: Ident::new("verifier", span),
-                            arguments: syn_verus::PathArguments::None,
-                        });
-                        path_segments
-                    }
-                    fn invalid_attribute(span: Span) -> Attribute {
-                        let mut path_segments = path_verifier(span);
-                        path_segments.push(syn_verus::PathSegment {
-                            ident: Ident::new("invalid_attribute", span),
-                            arguments: syn_verus::PathArguments::None,
-                        });
-                        let path = Path { leading_colon: None, segments: path_segments };
-                        Attribute {
-                            pound_token: token::Pound { spans: [span] },
-                            style: syn_verus::AttrStyle::Outer,
-                            bracket_token: token::Bracket { span: into_spans(span) },
-                            meta: syn_verus::Meta::Path(path),
-                        }
-                    }
                     match parsed {
                         meta_list if meta_list.len() == 1 => {
                             let (second_segment, nested) = match &meta_list[0] {
@@ -3211,7 +3244,7 @@ impl VisitMut for Visitor {
                                 }
                                 syn_verus::Meta::Path(meta_path) => (&meta_path.segments[0], None),
                                 _ => {
-                                    *attr = invalid_attribute(span);
+                                    *attr = invalid_attribute(span, false);
                                     return;
                                 }
                             };
@@ -3237,7 +3270,7 @@ impl VisitMut for Visitor {
                             };
                         }
                         _ => {
-                            *attr = invalid_attribute(span);
+                            *attr = invalid_attribute(span, false);
                             return;
                         }
                     }
@@ -3979,6 +4012,78 @@ pub(crate) fn sig_specs_attr(
     };
     let sig_span = sig.span().clone();
     visitor.take_sig_specs(&mut spec, ret_pat, sig.constness.is_some(), sig_span)
+}
+
+pub(crate) fn while_loop_spec_attr(
+    erase_ghost: EraseGhost,
+    spec_attr: syn_verus::LoopSpec,
+) -> Vec<Stmt> {
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 1,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    let mut spec_attr = spec_attr;
+    visitor.visit_loop_spec(&mut spec_attr);
+    let syn_verus::LoopSpec { invariants, invariant_except_breaks, ensures, decreases, .. } =
+        spec_attr;
+    let mut stmt = vec![];
+    visitor.add_loop_specs(
+        &mut stmt,
+        invariant_except_breaks,
+        invariants,
+        None,
+        ensures,
+        decreases,
+    );
+    stmt
+}
+
+pub(crate) fn for_loop_spec_attr(
+    erase_ghost: EraseGhost,
+    spec_attr: syn_verus::LoopSpec,
+    forloop: syn::ExprForLoop,
+) -> syn_verus::Expr {
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 1,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    let mut spec_attr = spec_attr;
+    visitor.visit_loop_spec(&mut spec_attr);
+    let syn_verus::LoopSpec { iter_name, invariants: invariant, decreases, .. } = spec_attr;
+    let syn::ExprForLoop { attrs, label, for_token, pat, in_token, expr, body, .. } = forloop;
+    let verus_forloop = ExprForLoop {
+        attrs: attrs.into_iter().map(|a| parse_quote_spanned! {a.span() => #a}).collect(),
+        label: label.map(|l| syn_verus::Label {
+            name: syn_verus::Lifetime::new(l.name.ident.to_string().as_str(), l.name.span()),
+            colon_token: Token![:](l.colon_token.span),
+        }),
+        for_token: Token![for](for_token.span),
+        pat: Box::new(Pat::Verbatim(quote_spanned! {pat.span() => #pat})),
+        in_token: Token![in](in_token.span),
+        expr_name: iter_name.map(|(name, token)| Box::new((name, Token![:](token.span())))),
+        expr: Box::new(Expr::Verbatim(quote_spanned! {expr.span() => #expr})),
+        invariant,
+        decreases,
+        body: Block {
+            brace_token: Brace(body.brace_token.span),
+            stmts: vec![Stmt::Expr(Expr::Verbatim(quote_spanned! {body.span() => #body}), None)],
+        },
+    };
+    visitor.desugar_for_loop(verus_forloop)
 }
 
 // Unfortunately, the macro_rules tt tokenizer breaks tokens like &&& and ==> into smaller tokens.

@@ -601,6 +601,12 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "type_invariant" => {
                     v.push(Attr::TypeInvariantFn)
                 }
+                AttrTree::Fun(_, arg, None) if arg == "invalid_trigger_attribute" => {
+                    return err_span(
+                        span,
+                        "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
+                    );
+                }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
             AttrPrefix::Verus(verus_prefix) => match verus_prefix {
@@ -856,21 +862,6 @@ pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<Stri
     Ok(v)
 }
 
-pub(crate) fn get_fuel(vattrs: &VerifierAttrs) -> u32 {
-    if vattrs.opaque { 0 } else { 1 }
-}
-
-pub(crate) fn get_publish(
-    vattrs: &VerifierAttrs,
-) -> (Option<bool>, /* open/closed present: */ bool) {
-    match (vattrs.publish, vattrs.opaque_outside_module) {
-        (None, _) => (None, false),
-        (Some(false), _) => (None, true),
-        (Some(true), false) => (Some(true), true),
-        (Some(true), true) => (Some(false), true),
-    }
-}
-
 // Only those relevant to classifying an item as external / not external
 // (external_body is relevant because it means anything on the inside of the item should
 // be external)
@@ -1022,6 +1013,21 @@ pub(crate) fn get_verifier_attrs(
     attrs: &[Attribute],
     diagnostics: Option<&mut Vec<VirErrAs>>,
 ) -> Result<VerifierAttrs, VirErr> {
+    get_verifier_attrs_maybe_check(attrs, diagnostics, true)
+}
+
+pub(crate) fn get_verifier_attrs_no_check(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<VerifierAttrs, VirErr> {
+    get_verifier_attrs_maybe_check(attrs, diagnostics, false)
+}
+
+pub(crate) fn get_verifier_attrs_maybe_check(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+    do_check: bool,
+) -> Result<VerifierAttrs, VirErr> {
     let mut vs = VerifierAttrs {
         verus_macro: false,
         external_body: false,
@@ -1139,8 +1145,10 @@ pub(crate) fn get_verifier_attrs(
             _ => {}
         }
     }
-    if let Some((rustc_attr, span)) = unsupported_rustc_attr {
-        return err_span(span, format!("The attribute `{rustc_attr:}` is not supported"));
+    if do_check {
+        if let Some((rustc_attr, span)) = unsupported_rustc_attr {
+            return err_span(span, format!("The attribute `{rustc_attr:}` is not supported"));
+        }
     }
     Ok(vs)
 }

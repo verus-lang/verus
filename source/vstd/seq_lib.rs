@@ -10,8 +10,6 @@ use super::relations::*;
 use super::seq::*;
 #[allow(unused_imports)]
 use super::set::Set;
-#[cfg(verus_keep_ghost)]
-use super::set_lib::lemma_set_properties;
 
 verus! {
 
@@ -909,8 +907,8 @@ impl<A> Seq<A> {
     {
         broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
         broadcast use group_seq_properties;
+        broadcast use super::set_lib::group_set_properties;
 
-        lemma_set_properties::<A>();
         if self.len() == 0 {
         } else {
             assert(self.drop_last().to_set().insert(self.last()) =~= self.to_set());
@@ -1436,8 +1434,7 @@ pub broadcast proof fn to_multiset_remove<A>(s: Seq<A>, i: int)
 /// to_multiset() preserves length
 pub broadcast proof fn to_multiset_len<A>(s: Seq<A>)
     ensures
-        #[trigger s.to_multiset().len()]
-        s.len() == s.to_multiset().len(),
+        s.len() == #[trigger] s.to_multiset().len(),
     decreases s.len(),
 {
     broadcast use super::multiset::group_multiset_axioms;
@@ -1824,6 +1821,8 @@ pub proof fn lemma_fold_right_permutation<A, B>(l1: Seq<A>, l2: Seq<A>, f: spec_
         ));
 
         lemma_fold_right_permutation(l1.drop_last(), l2.remove(i), f, v);
+    } else {
+        assert(l2.to_multiset().len() == 0);
     }
 }
 

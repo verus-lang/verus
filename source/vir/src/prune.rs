@@ -7,7 +7,7 @@ use crate::ast::{
     Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt,
     Trait, TraitX, Typ, TypX,
 };
-use crate::ast_util::{is_visible_to, is_visible_to_of_owner, is_visible_to_or_true};
+use crate::ast_util::{is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{fn_inv_name, fn_namespace_name, Spanned};
@@ -830,31 +830,21 @@ pub fn prune_krate_for_module_or_krate(
             }
             continue;
         }
+        let module = module.as_ref().unwrap();
+
         // Remove body if any of the following are true:
         // - function is not visible
         // - function is abstract
         // - function is opaque and not revealed
         // - function is exec or proof
         // (when optimizing for modules, after well-formedness checks)
-        let vis = f.x.visibility.clone();
-        let is_vis = is_visible_to_or_true(&vis, &module);
-        let within_module = if let Some(module) = &module {
-            is_visible_to_of_owner(&f.x.owning_module, module)
-        } else {
-            true
-        };
-        let is_non_opaque =
-            if within_module { f.x.fuel > 0 } else { f.x.fuel > 0 && f.x.publish == Some(true) };
+        let is_vis = is_visible_to(&f.x.visibility, &module);
+        let is_open = is_visible_to(&f.x.body_visibility, &module);
+        let is_non_opaque = f.x.opaqueness.get_default_fuel_for_module_path(module) != 0;
         let is_revealed = is_non_opaque || revealed_functions.contains(&f.x.name);
         let is_spec = f.x.mode == Mode::Spec;
-        if is_vis && is_revealed && is_spec {
-            if !within_module && f.x.publish == Some(false) {
-                let mut function = f.x.clone();
-                function.fuel = 0;
-                functions.push(Spanned::new(f.span.clone(), function));
-            } else {
-                functions.push(f.clone());
-            }
+        if is_vis && is_open && is_revealed && is_spec {
+            functions.push(f.clone());
         } else if f.x.body.is_none() {
             functions.push(f.clone());
         } else {
