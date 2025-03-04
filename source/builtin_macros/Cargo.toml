@@ -16,3 +16,6 @@ prettyplease_verus = { path="../../dependencies/prettyplease" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(verus_keep_ghost)'] }
+
+[features]
+vpanic = []

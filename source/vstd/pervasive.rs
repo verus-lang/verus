@@ -412,3 +412,31 @@ pub open spec fn cloned<T: Clone>(a: T, b: T) -> bool {
 }
 
 } // verus!
+
+verus! {
+
+#[verifier(external_body)]
+pub fn call_vpanic(_out: &[&str]) -> ! {
+    unimplemented!()
+}
+
+#[verifier(external_body)]
+pub fn vpanic_fmt<T: core::fmt::Debug>(_v: &T) -> &str {
+    unimplemented!()
+}
+
+} // verus!
+#[macro_export]
+macro_rules! vpanic {
+    // Case: Format string with arguments
+    ($fmt:expr $(,$val:expr)*) => {
+        vstd::pervasive::call_vpanic(
+            &[$(
+                vstd::pervasive::vpanic_fmt(&$val),
+            )*]
+        );
+    };
+    () => {
+        vstd::pervasive::call_vpanic([]);
+    };
+}
