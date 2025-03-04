@@ -596,10 +596,7 @@ fn check_function(
     diags: &mut Vec<VirErrAs>,
     _no_verify: bool,
 ) -> Result<(), VirErr> {
-    // TODO(alex) check that if this is a spec fn impl for a trait impl,
-    // the trait fn definition being implemented is _not_ marked as `uninterp`
-
-    if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
+    if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
         if function.x.require.len() > 0 {
             return Err(error(
                 &function.span,
@@ -617,6 +614,18 @@ fn check_function(
                 &function.span,
                 "trait method implementation cannot declare an unwind specification; this can only be inherited from the trait declaration",
             ));
+        }
+
+        let orig_decl = ctxt.funs.get(method).ok_or_else(|| {
+            error(&function.span, "implementing a trait method that doesn't exist")
+        })?;
+
+        if matches!(orig_decl.x.body_visibility, BodyVisibility::Uninterpreted) {
+            return Err(error(
+                &function.span,
+                "trait method implementation cannot be marked as `uninterp`",
+            )
+            .secondary_span(&orig_decl.span));
         }
     }
 

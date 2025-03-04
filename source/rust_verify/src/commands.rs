@@ -7,7 +7,6 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 use vir::ast::{Fun, FunctionKind, ImplPath, ItemKind, Mode, Path, TraitImpl, VirErr};
 use vir::ast_to_sst_func::{mk_fun_ctx, mk_fun_ctx_dec};
-use vir::ast_util::is_visible_to;
 use vir::ast_util::{fun_as_friendly_rust_name, is_body_visible_to};
 use vir::def::{CommandsWithContext, SnapPos};
 use vir::recursion::Node;

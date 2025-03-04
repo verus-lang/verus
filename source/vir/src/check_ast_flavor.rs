@@ -42,10 +42,21 @@ pub fn check_krate_simplified(krate: &Krate) {
 
     for function in functions {
         let FunctionX {
-            require, ensure, decrease, body, typ_bounds, params, ret, mask_spec, ..
+            require,
+            ensure,
+            decrease,
+            body,
+            typ_bounds,
+            params,
+            ret,
+            mask_spec,
+            body_visibility,
+            ..
         } = &function.x;
 
-        // TODO(alex) check that if body_visibility is Uninterpreted, then body is None
+        if let crate::ast::BodyVisibility::Uninterpreted = body_visibility {
+            assert!(body.is_none());
+        }
 
         let mask_exprs = match mask_spec {
             Some(MaskSpec::InvariantOpens(_span, es)) => es.clone(),

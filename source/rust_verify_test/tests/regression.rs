@@ -582,7 +582,7 @@ test_verify_one_file! {
         pub open fn test() -> bool {
             1int > 0int
         }
-    } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open` or `closed`")
+    } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open`, `closed`, or `uninterp`")
 }
 
 test_verify_one_file! {
