@@ -28,7 +28,8 @@ jobs:
       - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
-          rustup install
+          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //'`
+          rustup install $TOOLCHAIN
           . ../tools/activate
           vargo fmt -- --check
       - name: check cargo fmt for vargo
@@ -59,7 +60,8 @@ jobs:
       - name: build and test
         working-directory: ./source
         run: |
-          rustup install
+          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //'`
+          rustup install $TOOLCHAIN
           . ../tools/activate
           vargo clean
 
@@ -151,7 +153,8 @@ jobs:
       - name: build and test
         working-directory: ./source
         run: |
-          rustup install
+          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //'`
+          rustup install $TOOLCHAIN
           . ../tools/activate
           vargo clean
           vargo build
@@ -233,7 +236,8 @@ jobs:
       - name: build and test
         working-directory: ./source
         run: |
-          rustup install
+          $TOOLCHAIN = Get-Content ../rust-toolchain.toml | Where-Object { $_ -match '^channel' } | ForEach-Object { $_ -replace 'channel = ', '' }
+          rustup install $TOOLCHAIN
           . ../tools/activate
           vargo clean
           vargo build
