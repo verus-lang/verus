@@ -22,14 +22,15 @@ jobs:
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
+      - name: setup rust toolchain
+        run: |
+          rustup toolchain install
       - name: setup verusfmt
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
       - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
-          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //' | sed 's/"//g'`
-          rustup install $TOOLCHAIN
           . ../tools/activate
           vargo fmt -- --check
       - name: check cargo fmt for vargo
@@ -53,6 +54,9 @@ jobs:
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
+      - name: setup rust toolchain
+        run: |
+          rustup toolchain install
       - name: download singular
         if: matrix.features == 'singular'
         run: |
@@ -60,8 +64,6 @@ jobs:
       - name: build and test
         working-directory: ./source
         run: |
-          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //' | sed 's/"//g'`
-          rustup install $TOOLCHAIN
           . ../tools/activate
           vargo clean
 
@@ -150,11 +152,12 @@ jobs:
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
+      - name: setup rust toolchain
+        run: |
+          rustup toolchain install
       - name: build and test
         working-directory: ./source
         run: |
-          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //' | sed 's/"//g'`
-          rustup install $TOOLCHAIN
           . ../tools/activate
           vargo clean
           vargo build
@@ -198,11 +201,12 @@ jobs:
           .\rustup-init.exe -y --default-host=x86_64-pc-windows-msvc --default-toolchain=none
           del rustup-init.exe
         shell: powershell
+      - name: setup rust toolchain
+        run: |
+          rustup toolchain install
       - name: build verus release
         working-directory: .\source
         run: |
-          $TOOLCHAIN = Get-Content ../rust-toolchain.toml | Where-Object { $_ -match '^channel' } | ForEach-Object { $_ -replace 'channel = ', '' } | ForEach-Object { $_ -replace '"', '' }
-          rustup install $TOOLCHAIN
           ../tools/activate.ps1
           $env:VERUS_Z3_PATH = "$(Get-Location)\z3.exe"; vargo build --release
           # TODO: (currently fails misteriously) $env:VERUS_Z3_PATH = "$(Get-Location)/z3.exe"; ./target-verus/release/verus.exe --version --output-json > ./target-verus/release/version.json
@@ -234,11 +238,12 @@ jobs:
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
+      - name: setup rust toolchain
+        run: |
+          rustup toolchain install
       - name: build and test
         working-directory: ./source
         run: |
-          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //' | sed 's/"//g'`
-          rustup install $TOOLCHAIN
           . ../tools/activate
           vargo clean
           vargo build
