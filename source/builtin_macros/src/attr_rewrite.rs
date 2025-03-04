@@ -75,9 +75,11 @@ pub fn rewrite_verus_attribute(
 
 use syn::visit_mut::VisitMut;
 
-struct PanicReplacer;
+struct ExecReplacer;
 
-impl VisitMut for PanicReplacer {
+impl VisitMut for ExecReplacer {
+    // Enable the hack only when needed
+    #[cfg(feature = "vpanic")]
     fn visit_macro_mut(&mut self, mac: &mut syn::Macro) {
         if let Some(x) = mac.path.segments.first_mut() {
             let ident = x.ident.to_string();
@@ -97,8 +99,14 @@ impl VisitMut for PanicReplacer {
     }
 }
 
+// We need to replace some macros/attributes.
+// For example, panic, println, fmt macro is hard to support in verus.
+// We can replace them to enable the support.
+// TODO: when tracked/ghost is supported, we need to clear verus-related
+// attributes for expression so that unverfied `cargo build` does not need to
+// enable unstable feature for macro.
 pub fn replace_block(erase: EraseGhost, fblock: &mut syn::Block) {
-    let mut replacer = PanicReplacer;
+    let mut replacer = ExecReplacer;
     if erase.keep() {
         replacer.visit_block_mut(fblock);
     }

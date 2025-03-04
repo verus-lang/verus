@@ -274,37 +274,3 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
-
-test_verify_one_file! {
-    #[test] test_panic code!{
-        use vstd::prelude::*;
-        #[verus_spec(
-            requires !b
-        )]
-        fn f(b: bool) -> u8
-        {
-            0
-        }
-        #[verus_spec(ret =>
-            ensures
-                !ret
-        )]
-        fn g(b: bool) -> bool {
-            if b {
-                panic!("{}", b);
-            }
-            b
-        }
-
-        #[verus_spec(ret =>
-            ensures
-                !ret
-        )]
-        fn h(b: bool) -> bool {
-            if b {
-                panic!("{}", f(b)); // FAILS
-            }
-            b
-        }
-    } => Err(e) => assert_one_fails(e)
-}
