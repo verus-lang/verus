@@ -2461,6 +2461,8 @@ fn expr_assign_to_vir_innermost<'tcx>(
         Some(op) => Some(binopkind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?),
         None => None,
     };
+
+    // NOTE: A temparary solution for index_mut until mutable reference support lands.
     match &lhs.kind {
         ExprKind::Index(tgt_expr, idx_expr, _span) => {
             let tgt_modifier = is_expr_typ_mut_ref(

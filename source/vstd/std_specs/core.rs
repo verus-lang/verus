@@ -174,8 +174,8 @@ pub trait IndexSetTrustedSpec<Idx>: core::ops::IndexMut<Idx> + TrustedSpecSealed
     ) -> bool where Self::Output: Sized;
 }
 
+// TODO(uutaal): Do not need index_set once mutable reference support lands.
 // Use index_set to replace IndexMut in assign-operator.
-// Mutable reference is not supported in return and so we cannot use IndexMut.
 // Users must provide IndexSetTrustedSpec to use it.
 // It could be replaced after mutable reference is fully supported
 // Avoid call it explicitly.
