@@ -35,7 +35,7 @@ If you run the verifier binary manually, set `VERUS_Z3_PATH` to `source/z3` or `
 ## Step 2: Ensure you have a recent rustup installed
 
 If you don't have it yet, obtain rustup from https://rustup.rs.
-We have only tested recent versions (1.25.2); older versions of rustup may behave in way our build
+We have only tested recent versions (1.28.0); older versions of rustup may behave in way our build
 process does not expect.
 
 ## Step 3: Build Verus
@@ -56,7 +56,10 @@ If you do not have the necessary rust toolchain installed, you will get a messag
 error: toolchain '1.82.0-aarch64-unknown-linux-gnu' is not installed
 help: run `rustup toolchain install 1.82.0-aarch64-unknown-linux-gnu` to install it
 ```
-Run the command suggested by rustup, or just `rustup install`, to install it.
+
+Do not run the command as indicated.
+Run `rustup toolchain install` so that rustup installs the toolchain according to the requirements of the project
+(specified in `rust-toolchain.toml` at the project root).
 
 This command builds (or re-builds) `vargo`, our cargo wrapper, and adds it to the `PATH` for the current shell.
 
