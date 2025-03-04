@@ -582,6 +582,11 @@ pub(crate) enum RustItem {
     StructuralPartialEq,
     Eq,
     PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Default,
+    Debug,
     Rc,
     Arc,
     BoxNew,
@@ -645,6 +650,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     if tcx.lang_items().destruct_trait() == Some(def_id) {
         return Some(RustItem::Destruct);
     }
+    if tcx.lang_items().partial_ord_trait() == Some(def_id) {
+        return Some(RustItem::PartialOrd);
+    }
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);
     let rust_path = rust_path.as_ref().map(|x| x.as_str());
     get_rust_item_str(rust_path)
@@ -701,6 +709,18 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("core::slice::index::private_slice_index::Sealed") {
         return Some(RustItem::SliceSealed);
+    }
+    if rust_path == Some("core::fmt::Debug") {
+        return Some(RustItem::Debug);
+    }
+    if rust_path == Some("core::hash::Hash") {
+        return Some(RustItem::Hash);
+    }
+    if rust_path == Some("core::default::Default") {
+        return Some(RustItem::Default);
+    }
+    if rust_path == Some("core::cmp::Ord") {
+        return Some(RustItem::Ord);
     }
 
     if let Some(rust_path) = rust_path {

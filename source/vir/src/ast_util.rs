@@ -85,6 +85,10 @@ pub fn type_is_bool(typ: &Typ) -> bool {
     matches!(&**typ, TypX::Bool)
 }
 
+pub fn bool_typ() -> Typ {
+    Arc::new(TypX::Bool)
+}
+
 // ImplPaths is ignored in types_equal
 pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (&**typ1, &**typ2) {

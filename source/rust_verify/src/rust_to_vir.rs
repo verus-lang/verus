@@ -196,6 +196,7 @@ fn check_item<'tcx>(
                 None,
                 None,
                 external_info,
+                None,
             )?;
         }
         ItemKind::Use { .. } => {}
@@ -273,6 +274,7 @@ fn check_item<'tcx>(
                 module_path.clone(),
                 external_info,
                 crate_items,
+                attrs,
             )?;
         }
         ItemKind::Const(_ty, generics, body_id) => {
