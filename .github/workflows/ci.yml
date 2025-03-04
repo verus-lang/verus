@@ -22,23 +22,25 @@ jobs:
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
-      # add once ci picks up rustup 1.28
       - name: setup rust toolchain
         run: |
+          . "$HOME/.cargo/env"
           which rustup
-      #     rustup --version
-      #     rustup toolchain install
+          rustup --version
+          rustup toolchain install
       - name: setup verusfmt
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
       - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
+          . "$HOME/.cargo/env"
           . ../tools/activate
           vargo fmt -- --check
       - name: check cargo fmt for vargo
         working-directory: ./tools/vargo
         run: |
+          . "$HOME/.cargo/env"
           cargo fmt -- --check
 
   test-and-release-macos:
@@ -57,12 +59,12 @@ jobs:
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
-      # add once ci picks up rustup 1.28
       - name: setup rust toolchain
         run: |
+          . "$HOME/.cargo/env"
           which rustup
-      #     rustup --version
-      #     rustup toolchain install
+          rustup --version
+          rustup toolchain install
       - name: download singular
         if: matrix.features == 'singular'
         run: |
@@ -70,6 +72,7 @@ jobs:
       - name: build and test
         working-directory: ./source
         run: |
+          . "$HOME/.cargo/env"
           . ../tools/activate
           vargo clean
 
@@ -115,6 +118,7 @@ jobs:
         if: matrix.features == ''
         working-directory: ./source
         run: |
+          . "$HOME/.cargo/env"
           . ../tools/activate
           vargo clean
           vargo build --release
@@ -137,6 +141,7 @@ jobs:
         if: matrix.features == ''
         working-directory: ./source
         run: |
+          . "$HOME/.cargo/env"
           ./tools/docs.sh
       - name: upload verusdoc artifact
         uses: actions/upload-artifact@v4
