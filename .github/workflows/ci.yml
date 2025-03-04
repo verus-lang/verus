@@ -22,10 +22,12 @@ jobs:
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
+      # add once ci picks up rustup 1.28
       - name: setup rust toolchain
         run: |
-          rustup --version
-          rustup toolchain install
+          which rustup
+      #     rustup --version
+      #     rustup toolchain install
       - name: setup verusfmt
         run: |
           curl --proto '=https' --tlsv1.2 -LsSf https://github.com/verus-lang/verusfmt/releases/latest/download/verusfmt-installer.sh | sh
@@ -55,10 +57,12 @@ jobs:
       - name: setup rust
         run: |
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
+      # add once ci picks up rustup 1.28
       - name: setup rust toolchain
         run: |
-          rustup --version
-          rustup toolchain install
+          which rustup
+      #     rustup --version
+      #     rustup toolchain install
       - name: download singular
         if: matrix.features == 'singular'
         run: |
