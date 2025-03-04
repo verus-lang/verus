@@ -138,9 +138,9 @@ fn datatype_or_fun_to_air_commands(
     let apolytyp = str_typ(crate::def::POLY);
 
     // NOTE: Short-circuit
-    if !spec.is_empty() {
-        declare_box = false;
-    }
+    //if !spec.is_empty() {
+    //    declare_box = false;
+    //}
 
     if dtyp_id.is_none() {
         // datatype TYPE identifiers
@@ -257,6 +257,7 @@ fn datatype_or_fun_to_air_commands(
         // trigger on has_type(box(mk_fun(x)), FUN(typ1...typn, tret))
         let inner_trigs = vec![has_app.clone()];
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_CONSTRUCTOR_INNER);
+        tracing::trace!("Constructor axiom {name}");
         let inner_bind = func_bind_trig(
             ctx,
             name,
@@ -289,6 +290,7 @@ fn datatype_or_fun_to_air_commands(
         pre.insert(0, has_box.clone());
         let trigs = vec![app.clone(), has_box.clone()];
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_APPLY);
+        tracing::trace!("Apply axiom {name}");
         let aparams = Arc::new(params.clone());
         let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, false);
         let imply = mk_implies(&mk_and(&pre), &has_app);
@@ -308,6 +310,7 @@ fn datatype_or_fun_to_air_commands(
         let trigs = vec![height_app, has_box.clone()];
         let name =
             format!("{}_{}", path_as_friendly_rust_name(dpath), crate::def::QID_HEIGHT_APPLY);
+        tracing::trace!("Height axiom {name}");
         let bind = func_bind_trig(ctx, name, tparams, &aparams, &trigs, false);
         let imply = mk_implies(&mk_and(&pre), &height_lt);
         let forall = mk_bind_expr(&bind, &imply);
@@ -340,6 +343,7 @@ fn datatype_or_fun_to_air_commands(
                     }
                 }
                 let name = format!("{}_{}", &variant_ident(&dt, &variant.name), QID_CONSTRUCTOR);
+                tracing::trace!("Ctor axiom {name}");
                 let bind = func_bind(ctx, name, tparams, &params, &has_ctor, false);
                 let imply = mk_implies(&mk_and(&pre), &has_ctor);
                 let forall = mk_bind_expr(&bind, &imply);
@@ -375,6 +379,7 @@ fn datatype_or_fun_to_air_commands(
             field_commands.push(Arc::new(CommandX::Global(decl_field)));
             let trigs = vec![xfield.clone()];
             let name = format!("{}_{}", id, QID_ACCESSOR);
+            tracing::trace!("Wrapper axiom {name}");
             let bind =
                 func_bind_trig(ctx, name, &Arc::new(vec![]), &x_params(&datatyp), &trigs, false);
             let eq = mk_eq(&xfield, &xfield_internal);
@@ -390,6 +395,7 @@ fn datatype_or_fun_to_air_commands(
                         // trigger on unbox(x).f, has_type(x, T(typs))
                         let trigs = vec![xfield_unbox.clone(), has.clone()];
                         let name = format!("{}_{}", id, QID_INVARIANT);
+                        tracing::trace!("Field Invariant axiom {name}");
                         let bind =
                             func_bind_trig(ctx, name, tparams, &x_params(&vpolytyp), &trigs, false);
                         let imply = mk_implies(&has, &inv_f);

@@ -198,6 +198,9 @@ fn func_body_to_air(
     func_body_sst: &crate::sst::FuncSpecBodySst,
     specialization: &mono::Specialization,
 ) -> Result<(), VirErr> {
+    let span = tracing::trace_span!("func_body_to_air");
+    span.enter();
+    tracing::trace!("Function {:?}, specialization: {:?}", function.x.name, specialization);
     let crate::sst::FuncSpecBodySst { decrease_when, termination_check, body_exp } = func_body_sst;
     let new_body_exp = specialization.transform_exp(&function.x.typ_params, body_exp);
     let pars = &function.x.pars;
@@ -310,6 +313,7 @@ fn func_body_to_air(
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
     let body_expr =
         exp_to_expr(&ctx, &new_body_exp, &ExprCtxt::new(&spec_map), &LocalContext::empty(ctx))?;
+    tracing::trace!("Body expr: {body_expr:?}");
     let def_body = if !function.x.has.is_recursive {
         body_expr
     } else {

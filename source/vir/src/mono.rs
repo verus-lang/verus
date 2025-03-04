@@ -427,5 +427,6 @@ pub fn collect_specializations(krate: &KrateSst) -> KrateSpecializations {
             entry.extend(dt_spec);
         }
     }
+    tracing::trace!("Generating specs: {function_spec:?}");
     KrateSpecializations { function_spec, datatype_spec }
 }

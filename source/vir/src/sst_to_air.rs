@@ -856,6 +856,7 @@ pub(crate) fn exp_to_expr(
             let args = args
                 .map(|b| exp_to_expr(ctx, &b.a, expr_ctxt, &sub_local_ctx))
                 .collect::<Result<Vec<_>, VirErr>>()?;
+            tracing::trace!("Generating ExpX::Ctor call to {variant}");
             Arc::new(ExprX::Apply(variant, Arc::new(args)))
         }
         ExpX::ExecFnByName(_fun) => {
@@ -1009,9 +1010,9 @@ pub(crate) fn exp_to_expr(
                 }
             }
             UnaryOpr::IsVariant { datatype, variant } => {
-                tracing::debug!("Maybe calling datatype {datatype:?}");
                 let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
                 let name = is_variant_ident(datatype, variant);
+                tracing::trace!("Generating UnaryOpr::IsVariant of {datatype:?}: {name:?}");
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
             }
             UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMin, _) => {
@@ -1040,12 +1041,14 @@ pub(crate) fn exp_to_expr(
                 let dt_spec = Specialization::from_datatype(&exp.typ, expr_ctxt.spec_map)
                     .expect("UnaryOpr::Field expects a datatype");
                 let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
-                Arc::new(ExprX::Apply(
-                    variant_field_ident(
+                let field_ident = variant_field_ident(
                         &dt_spec.mangle_path(&encode_dt_as_path(datatype)),
                         variant,
                         field,
-                    ),
+                    );
+                tracing::trace!("Generating UnaryOpr::Field {field_ident}");
+                Arc::new(ExprX::Apply(
+                    field_ident,
                     Arc::new(vec![expr]),
                 ))
             }
