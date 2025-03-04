@@ -5592,6 +5592,11 @@
             "syn": "OpenRestricted"
           }
         ],
+        "Uninterp": [
+          {
+            "syn": "Uninterp"
+          }
+        ],
         "Default": []
       }
     },
@@ -6943,6 +6948,17 @@
       "exhaustive": false
     },
     {
+      "ident": "Uninterp",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Uninterp"
+        }
+      }
+    },
+    {
       "ident": "UseGlob",
       "features": {
         "any": [
@@ -7394,6 +7410,7 @@
     "Type": "type",
     "Typeof": "typeof",
     "Underscore": "_",
+    "Uninterp": "uninterp",
     "Union": "union",
     "Unsafe": "unsafe",
     "Unsized": "unsized",

@@ -2237,6 +2237,7 @@ impl Clone for crate::Publish {
             crate::Publish::OpenRestricted(v0) => {
                 crate::Publish::OpenRestricted(v0.clone())
             }
+            crate::Publish::Uninterp(v0) => crate::Publish::Uninterp(v0.clone()),
             crate::Publish::Default => crate::Publish::Default,
         }
     }
@@ -2768,6 +2769,14 @@ impl Copy for crate::UnOp {}
 impl Clone for crate::UnOp {
     fn clone(&self) -> Self {
         *self
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::Uninterp {
+    fn clone(&self) -> Self {
+        crate::Uninterp {
+            token: self.token.clone(),
+        }
     }
 }
 #[cfg(feature = "full")]
