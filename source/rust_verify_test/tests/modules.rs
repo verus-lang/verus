@@ -270,5 +270,16 @@ test_verify_one_file! {
             t.a();
             assert(t.bar());
         }
-    } => Err(err) => { todo!() }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot be marked as `uninterp`")
 }
+
+// test_verify_one_file! {
+//     // TODO reject this code?
+//     #[test] closed_spec_trait_fail verus_code! {
+//         trait T {
+//             closed spec fn bar(&self) -> bool {
+//                 true
+//             }
+//         }
+//     } => Err(err) => todo!()
+// }
