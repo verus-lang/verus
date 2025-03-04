@@ -28,7 +28,7 @@ jobs:
       - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
-          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //'`
+          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //' | sed 's/"//g'`
           rustup install $TOOLCHAIN
           . ../tools/activate
           vargo fmt -- --check
@@ -60,7 +60,7 @@ jobs:
       - name: build and test
         working-directory: ./source
         run: |
-          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //'`
+          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //' | sed 's/"//g'`
           rustup install $TOOLCHAIN
           . ../tools/activate
           vargo clean
@@ -153,7 +153,7 @@ jobs:
       - name: build and test
         working-directory: ./source
         run: |
-          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //'`
+          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //' | sed 's/"//g'`
           rustup install $TOOLCHAIN
           . ../tools/activate
           vargo clean
@@ -201,7 +201,7 @@ jobs:
       - name: build verus release
         working-directory: .\source
         run: |
-          $TOOLCHAIN = Get-Content ../rust-toolchain.toml | Where-Object { $_ -match '^channel' } | ForEach-Object { $_ -replace 'channel = ', '' }
+          $TOOLCHAIN = Get-Content ../rust-toolchain.toml | Where-Object { $_ -match '^channel' } | ForEach-Object { $_ -replace 'channel = ', '' } | ForEach-Object { $_ -replace '"', '' }
           rustup install $TOOLCHAIN
           ../tools/activate.ps1
           $env:VERUS_Z3_PATH = "$(Get-Location)\z3.exe"; vargo build --release
@@ -237,7 +237,7 @@ jobs:
       - name: build and test
         working-directory: ./source
         run: |
-          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //'`
+          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //' | sed 's/"//g'`
           rustup install $TOOLCHAIN
           . ../tools/activate
           vargo clean
