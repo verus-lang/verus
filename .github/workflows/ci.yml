@@ -24,6 +24,7 @@ jobs:
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
       - name: setup rust toolchain
         run: |
+          rustup --version
           rustup toolchain install
       - name: setup verusfmt
         run: |
@@ -56,6 +57,7 @@ jobs:
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
       - name: setup rust toolchain
         run: |
+          rustup --version
           rustup toolchain install
       - name: download singular
         if: matrix.features == 'singular'
@@ -154,6 +156,7 @@ jobs:
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
       - name: setup rust toolchain
         run: |
+          rustup --version
           rustup toolchain install
       - name: build and test
         working-directory: ./source
@@ -203,6 +206,7 @@ jobs:
         shell: powershell
       - name: setup rust toolchain
         run: |
+          rustup --version
           rustup toolchain install
       - name: build verus release
         working-directory: .\source
@@ -240,6 +244,7 @@ jobs:
           curl --proto '=https' --tlsv1.2 --retry 10 --retry-connrefused -fsSL "https://sh.rustup.rs" | sh -s -- --default-toolchain none -y
       - name: setup rust toolchain
         run: |
+          rustup --version
           rustup toolchain install
       - name: build and test
         working-directory: ./source
