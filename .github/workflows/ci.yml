@@ -28,6 +28,7 @@ jobs:
       - name: check rustfmt/verusfmt
         working-directory: ./source
         run: |
+          rustup toolchain install
           . ../tools/activate
           vargo fmt -- --check
       - name: check cargo fmt for vargo
@@ -58,6 +59,7 @@ jobs:
       - name: build and test
         working-directory: ./source
         run: |
+          rustup toolchain install
           . ../tools/activate
           vargo clean
 
@@ -149,6 +151,7 @@ jobs:
       - name: build and test
         working-directory: ./source
         run: |
+          rustup toolchain install
           . ../tools/activate
           vargo clean
           vargo build
@@ -195,6 +198,7 @@ jobs:
       - name: build verus release
         working-directory: .\source
         run: |
+          rustup toolchain install
           ../tools/activate.ps1
           $env:VERUS_Z3_PATH = "$(Get-Location)\z3.exe"; vargo build --release
           # TODO: (currently fails misteriously) $env:VERUS_Z3_PATH = "$(Get-Location)/z3.exe"; ./target-verus/release/verus.exe --version --output-json > ./target-verus/release/version.json
@@ -229,6 +233,7 @@ jobs:
       - name: build and test
         working-directory: ./source
         run: |
+          rustup toolchain install
           . ../tools/activate
           vargo clean
           vargo build

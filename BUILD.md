@@ -51,6 +51,13 @@ source ../tools/activate.fish  # for fish
 ..\tools\activate.ps1          # for Windows (Power Shell)
 ```
 
+If you do not have the necessary rust toolchain installed, you will get a message like:
+```
+error: toolchain '1.82.0-aarch64-unknown-linux-gnu' is not installed
+help: run `rustup toolchain install 1.82.0-aarch64-unknown-linux-gnu` to install it
+```
+Run the command suggested by rustup to install it.
+
 This command builds (or re-builds) `vargo`, our cargo wrapper, and adds it to the `PATH` for the current shell.
 
 Now, simply run,
