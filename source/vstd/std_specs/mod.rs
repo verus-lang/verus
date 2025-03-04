@@ -16,6 +16,9 @@ pub mod result;
 pub mod vec;
 
 #[cfg(feature = "alloc")]
+pub mod vecdeque;
+
+#[cfg(feature = "alloc")]
 pub mod smart_ptrs;
 
 // This struct is a hack that exists purely to create
