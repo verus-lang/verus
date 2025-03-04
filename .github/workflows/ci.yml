@@ -201,7 +201,8 @@ jobs:
       - name: build verus release
         working-directory: .\source
         run: |
-          rustup install
+          $TOOLCHAIN = Get-Content ../rust-toolchain.toml | Where-Object { $_ -match '^channel' } | ForEach-Object { $_ -replace 'channel = ', '' }
+          rustup install $TOOLCHAIN
           ../tools/activate.ps1
           $env:VERUS_Z3_PATH = "$(Get-Location)\z3.exe"; vargo build --release
           # TODO: (currently fails misteriously) $env:VERUS_Z3_PATH = "$(Get-Location)/z3.exe"; ./target-verus/release/verus.exe --version --output-json > ./target-verus/release/version.json
@@ -236,7 +237,7 @@ jobs:
       - name: build and test
         working-directory: ./source
         run: |
-          $TOOLCHAIN = Get-Content ../rust-toolchain.toml | Where-Object { $_ -match '^channel' } | ForEach-Object { $_ -replace 'channel = ', '' }
+          TOOLCHAIN=`cat ../rust-toolchain.toml | grep '^channel' | sed 's/channel = //'`
           rustup install $TOOLCHAIN
           . ../tools/activate
           vargo clean
