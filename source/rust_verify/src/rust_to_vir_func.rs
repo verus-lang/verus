@@ -1947,14 +1947,14 @@ fn get_body_visibility_and_fuel(
         }
 
         // These don't matter for non-spec functions
-        Ok((private_vis, Opaqueness::Opaque))
+        Ok((BodyVisibility::Visibility(private_vis), Opaqueness::Opaque))
     } else if !has_body {
         if opaque || opaque_outside_module {
             return err_span(span, "opaque has no effect on a function without a body");
         }
 
         // These don't matter without a body
-        Ok((private_vis, Opaqueness::Opaque))
+        Ok((BodyVisibility::Visibility(private_vis), Opaqueness::Opaque))
     } else {
         // mode == Mode::Spec && has_body
         if publish == Some(AttrPublish::Uninterp) {
@@ -1989,6 +1989,6 @@ fn get_body_visibility_and_fuel(
             }
         };
 
-        Ok((body_visibility, opaqueness))
+        Ok((BodyVisibility::Visibility(body_visibility), opaqueness))
     }
 }
