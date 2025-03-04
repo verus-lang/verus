@@ -716,6 +716,8 @@ pub fn datatypes_and_primitives_to_air(
         let sort = Arc::new(air::ast::DeclX::Sort(path_to_air_ident(&dpath)));
         opaque_sort_commands.push(Arc::new(CommandX::Global(sort)));
 
+        tracing::trace!("Monotype: {monotyp:?}");
+
         datatype_or_fun_to_air_commands(
             ctx,
             &mut field_commands,

@@ -135,7 +135,7 @@ pub fn get_buckets(
                     }
                 }
                 None => {
-                    Bucket { funs: vec.into_iter().collect(), strategy: PolyStrategy::Poly}
+                    Bucket { funs: vec.into_iter().collect(), strategy: PolyStrategy::default()}
                 }
             };
             (bucket_id, bucket)

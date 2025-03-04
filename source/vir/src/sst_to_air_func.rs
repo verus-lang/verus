@@ -200,7 +200,7 @@ fn func_body_to_air(
 ) -> Result<(), VirErr> {
     let span = tracing::trace_span!("func_body_to_air");
     span.enter();
-    tracing::trace!("Function {:?}, specialization: {:?}", function.x.name, specialization);
+    tracing::trace!("func_body_to_air: Function {:?}, specialization: {:?}", function.x.name, specialization);
     let crate::sst::FuncSpecBodySst { decrease_when, termination_check, body_exp } = func_body_sst;
     let new_body_exp = specialization.transform_exp(&function.x.typ_params, body_exp);
     let pars = &function.x.pars;

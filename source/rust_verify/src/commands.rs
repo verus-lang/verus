@@ -10,7 +10,7 @@ use vir::ast_to_sst_func::{mk_fun_ctx, mk_fun_ctx_dec};
 use vir::ast_util::fun_as_friendly_rust_name;
 use vir::ast_util::is_visible_to;
 use vir::def::{CommandsWithContext, SnapPos};
-use vir::mono::{collect_specializations, PolyStrategy, Specialization, KrateSpecializations};
+use vir::mono::{collect_specializations, KrateSpecializations, PolyStrategy, Specialization};
 use vir::recursion::Node;
 use vir::sst::{FuncCheckSst, FunctionSst};
 
@@ -193,23 +193,16 @@ impl<'a> OpGenerator<'a> {
         for function in scc_functions.iter() {
             self.ctx.fun = mk_fun_ctx(function, false);
 
-            if let Some(specs) = self.specializations.function_spec.get(&function.x.name) {
-                for spec in specs.iter() {
-                    let decl_commands =
-                        vir::sst_to_air_func::func_decl_to_air(self.ctx, function, spec)?;
-                    self.ctx.fun = None;
-                    pre_ops.push(Op::context(
-                        ContextOp::ReqEns,
-                        decl_commands,
-                        Some(function.clone()),
-                    ));
-                }
-            } else {
-                let decl_commands = vir::sst_to_air_func::func_decl_to_air(
-                    self.ctx,
-                    function,
-                    &Specialization::empty(),
-                )?;
+            let default_spec = Specialization::default();
+            let specs: Vec<_> = match self.specializations.function_spec.get(&function.x.name) {
+                Some(s) => s.iter().collect(),
+                None => vec![&default_spec],
+            }
+            .into();
+            tracing::debug!("Generating specializations {specs:?} for function {:?}", function.x.name);
+            for spec in specs.iter() {
+                let decl_commands =
+                    vir::sst_to_air_func::func_decl_to_air(self.ctx, function, spec)?;
                 self.ctx.fun = None;
                 pre_ops.push(Op::context(ContextOp::ReqEns, decl_commands, Some(function.clone())));
             }
@@ -308,14 +301,16 @@ impl<'a> OpGenerator<'a> {
             return Ok(vec![]);
         };
 
-        
-
-        let specs = self.specializations.function_spec.get(fun).cloned() // Clone the existing value if found
-        .unwrap_or_else(|| {
-            let mut set = HashSet::new();
-            set.insert(Specialization::empty());
-            set // Return the dynamically created set
-        });
+        let specs = self
+            .specializations
+            .function_spec
+            .get(fun)
+            .cloned() // Clone the existing value if found
+            .unwrap_or_else(|| {
+                let mut set = HashSet::new();
+                set.insert(Specialization::empty());
+                set // Return the dynamically created set
+            });
 
         let results: Vec<_> = specs
             .iter()
