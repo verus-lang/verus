@@ -20,6 +20,8 @@ members = [
 ]
 exclude = [
   "vstd",
+  "example/cargo-verus/library",
+  "example/cargo-verus/test",
 ]
 
 # do not modify the following two lines

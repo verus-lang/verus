@@ -10,19 +10,28 @@
 
 use std::collections::BTreeMap;
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::str;
 
 use anyhow::{anyhow, bail, Context, Result};
 use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
-use semver::{Version, VersionReq};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
+pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
+pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
+pub const VERUS_DRIVER_ARGS_SEP: &str = "__VERUS_DRIVER_ARGS_SEP__";
+pub const VERUS_DRIVER_IS_BUILTIN: &str = " __VERUS_DRIVER_IS_BUILTIN_";
+pub const VERUS_DRIVER_IS_BUILTIN_MACROS: &str = " __VERUS_DRIVER_IS_BUILTIN_MACROS_";
+pub const VERUS_DRIVER_VERIFY: &str = "__VERUS_DRIVER_VERIFY_";
+pub const VERUS_DRIVER_VIA_CARGO: &str = "__VERUS_DRIVER_VIA_CARGO__";
+
+/*
 fn verus_driver_version_req() -> VersionReq {
     VersionReq::parse("=0.1.0").unwrap()
 }
+*/
 
 pub fn main() -> Result<ExitCode> {
     // Choose offset into args according to whether we are being run as `cargo-verus` or `cargo verus`.
@@ -116,12 +125,10 @@ impl VerusCmd {
             cargo_args.push(arg.clone());
         }
 
-        common_verus_driver_args
-            .push("--verus-driver-arg=--compile-when-not-primary-package".to_owned());
+        common_verus_driver_args.push("--compile-when-not-primary-package".to_owned());
 
         if !just_verify {
-            common_verus_driver_args
-                .push("--verus-driver-arg=--compile-when-primary-package".to_owned());
+            common_verus_driver_args.push("--compile-when-primary-package".to_owned());
         }
 
         common_verus_driver_args.extend(args_iter.cloned());
@@ -148,9 +155,9 @@ impl VerusCmd {
 
         cmd.arg(self.cargo_subcommand.to_arg().to_owned()).args(&self.cargo_args);
 
-        cmd.env("RUSTC_WRAPPER", checked_verus_driver_path()?);
+        cmd.env("RUSTC_WRAPPER", verus_driver_path());
 
-        cmd.env("__VERUS_DRIVER_VIA_CARGO__", "1");
+        cmd.env(VERUS_DRIVER_VIA_CARGO, "1");
 
         // See https://github.com/rust-lang/cargo/blob/94aa7fb1321545bbe922a87cb11f5f4559e3be63/src/cargo/core/compiler/fingerprint/mod.rs#L71
         cmd.env("__CARGO_DEFAULT_LIB_METADATA", "verus");
@@ -159,7 +166,7 @@ impl VerusCmd {
             pack_verus_driver_args_for_env(self.common_verus_driver_args.iter());
 
         if !common_verus_driver_args.is_empty() {
-            cmd.env("__VERUS_DRIVER_ARGS__", common_verus_driver_args);
+            cmd.env(VERUS_DRIVER_ARGS, common_verus_driver_args);
         }
 
         let metadata = self.metadata()?;
@@ -179,42 +186,40 @@ impl VerusCmd {
             // changes.
 
             if verus_metadata.is_builtin {
-                cmd.env(format!("__VERUS_DRIVER_IS_BUILTIN_{package_id}"), "1");
+                cmd.env(format!("{VERUS_DRIVER_IS_BUILTIN}{package_id}"), "1");
             }
 
             if verus_metadata.is_builtin_macros {
-                cmd.env(format!("__VERUS_DRIVER_IS_BUILTIN_MACROS_{package_id}"), "1");
+                cmd.env(format!("{VERUS_DRIVER_IS_BUILTIN_MACROS}{package_id}"), "1");
             }
 
             if verus_metadata.verify {
-                cmd.env(format!("__VERUS_DRIVER_VERIFY_{package_id}"), "1");
+                cmd.env(format!("{VERUS_DRIVER_VERIFY}{package_id}"), "1");
 
                 let mut verus_driver_args_for_package = vec![];
 
                 if verus_metadata.is_core {
-                    verus_driver_args_for_package.push("--verus-arg=--is-core".to_owned());
+                    verus_driver_args_for_package.push("--is-core".to_owned());
                 }
 
                 if verus_metadata.is_vstd {
-                    verus_driver_args_for_package.push("--verus-arg=--is-vstd".to_owned());
+                    verus_driver_args_for_package.push("--is-vstd".to_owned());
                 }
 
                 if verus_metadata.no_vstd {
-                    verus_driver_args_for_package.push("--verus-arg=--no-vstd".to_owned());
+                    verus_driver_args_for_package.push("--no-vstd".to_owned());
                 }
 
                 for dep in entry.deps() {
                     if metadata_index.get(&dep.pkg).verus_metadata().verify {
-                        verus_driver_args_for_package.push(format!(
-                            "--verus-driver-arg=--import-dep-if-present={}",
-                            dep.name
-                        ));
+                        verus_driver_args_for_package
+                            .push(format!("--import-dep-if-present={}", dep.name));
                     }
                 }
 
                 if !verus_driver_args_for_package.is_empty() {
                     cmd.env(
-                        format!("__VERUS_DRIVER_ARGS_FOR_{package_id}"),
+                        format!("{VERUS_DRIVER_ARGS_FOR}{package_id}"),
                         pack_verus_driver_args_for_env(verus_driver_args_for_package.iter()),
                     );
                 }
@@ -366,24 +371,24 @@ fn mk_package_id(
 }
 
 fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -> String {
-    args.map(|arg| ["__VERUS_DRIVER_ARGS_SEP__".to_owned(), arg.as_ref().to_owned()])
-        .flatten()
-        .collect()
+    args.map(|arg| [VERUS_DRIVER_ARGS_SEP.to_owned(), arg.as_ref().to_owned()]).flatten().collect()
 }
 
+/*
 fn checked_verus_driver_path() -> Result<PathBuf> {
     let path = unchecked_verus_driver_path();
     let version = get_verus_driver_version(&path)?;
     let version_req = verus_driver_version_req();
     if !version_req.matches(&version) {
-        bail!("verus-driver version {version} must match {version_req}");
+        bail!("verus version {version} must match {version_req}");
     }
     Ok(path)
 }
+*/
 
-fn unchecked_verus_driver_path() -> PathBuf {
+fn verus_driver_path() -> PathBuf {
     let mut path =
-        env::current_exe().expect("current executable path invalid").with_file_name("verus-driver");
+        env::current_exe().expect("current executable path invalid").with_file_name("verus");
 
     if cfg!(windows) {
         path.set_extension("exe");
@@ -392,9 +397,10 @@ fn unchecked_verus_driver_path() -> PathBuf {
     path
 }
 
+/*
 fn get_verus_driver_version(path: &Path) -> Result<Version> {
     let mut cmd = Command::new(path);
-    cmd.arg("--verus-driver-arg=--version");
+    cmd.arg("--version");
     let output =
         cmd.output().with_context(|| format!("Failed to read output of command {cmd:?}"))?;
     if !output.status.success() {
@@ -419,6 +425,7 @@ fn parse_verus_driver_version_output(stdout: &str) -> Option<Version> {
     let version = Version::parse(parts.next()?).ok()?;
     Some(version)
 }
+*/
 
 #[must_use]
 pub fn help_message() -> &'static str {
@@ -432,6 +439,6 @@ OPTIONS are passed to 'cargo build' (default) or 'cargo check' (when --check is 
     -h, --help               Print this message
     -V, --version            Print version info and exit
 
-ARGS are passed to 'verus-driver'.
+ARGS are passed to 'verus'.
 "
 }

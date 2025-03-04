@@ -7,8 +7,13 @@ use sha2::{Digest, Sha256};
 use crate::cargo_verus_dep_tracker::DepTracker;
 use crate::config::Args;
 
-// TODO: share these with cargo-verus
-const VERUS_DRIVER_VERIFY: &str = "__VERUS_DRIVER_VERIFY_";
+pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
+pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
+pub const VERUS_DRIVER_ARGS_SEP: &str = "__VERUS_DRIVER_ARGS_SEP__";
+pub const VERUS_DRIVER_IS_BUILTIN: &str = " __VERUS_DRIVER_IS_BUILTIN_";
+pub const VERUS_DRIVER_IS_BUILTIN_MACROS: &str = " __VERUS_DRIVER_IS_BUILTIN_MACROS_";
+pub const VERUS_DRIVER_VERIFY: &str = "__VERUS_DRIVER_VERIFY_";
+pub const VERUS_DRIVER_VIA_CARGO: &str = "__VERUS_DRIVER_VIA_CARGO__";
 
 fn is_cargo_probling(rustc_args: &Vec<String>) -> bool {
     rustc_args.windows(2).any(|window| window[0] == "--crate-name" && window[1] == "___")
@@ -21,11 +26,27 @@ fn is_build_script(dep_tracker: &mut DepTracker) -> bool {
         .unwrap_or(false)
 }
 
-fn is_non_verus_crate(rustc_args: &mut Vec<String>, dep_tracker: &mut DepTracker) -> bool {
+// returns true if this is a direct call to rustc, false if it's a package to verify
+pub fn extend_args_and_check_is_direct_rustc_call(
+    rustc_args: &mut Vec<String>,
+    dep_tracker: &mut DepTracker,
+) -> bool {
+    if is_cargo_probling(rustc_args) {
+        return true;
+    }
+    if is_build_script(dep_tracker) {
+        return true;
+    }
     let package_id = get_package_id_from_env(dep_tracker);
     let verus_crate = if let Some(package_id) = &package_id {
         let verify_package =
             dep_tracker.compare_env(&format!("{VERUS_DRIVER_VERIFY}{package_id}"), "1");
+        if let Some(val) = dep_tracker.get_env(VERUS_DRIVER_ARGS) {
+            rustc_args.extend(unpack_verus_driver_args_for_env(&val));
+        }
+        if let Some(val) = dep_tracker.get_env(&format!("{VERUS_DRIVER_ARGS_FOR}{package_id}")) {
+            rustc_args.extend(unpack_verus_driver_args_for_env(&val));
+        }
         verify_package
     } else {
         false
@@ -33,9 +54,9 @@ fn is_non_verus_crate(rustc_args: &mut Vec<String>, dep_tracker: &mut DepTracker
     if !verus_crate {
         if let Some(package_id) = &package_id {
             let is_builtin =
-                dep_tracker.compare_env(&format!("__VERUS_DRIVER_IS_BUILTIN_{package_id}"), "1");
+                dep_tracker.compare_env(&format!("{VERUS_DRIVER_IS_BUILTIN}{package_id}"), "1");
             let is_builtin_macros = dep_tracker
-                .compare_env(&format!("__VERUS_DRIVER_IS_BUILTIN_MACROS_{package_id}"), "1");
+                .compare_env(&format!("{VERUS_DRIVER_IS_BUILTIN_MACROS}{package_id}"), "1");
 
             if is_builtin || is_builtin_macros {
                 set_rustc_bootstrap();
@@ -44,15 +65,6 @@ fn is_non_verus_crate(rustc_args: &mut Vec<String>, dep_tracker: &mut DepTracker
         }
     }
     !verus_crate
-}
-
-pub fn is_direct_cargo_call_to_rustc(
-    rustc_args: &mut Vec<String>,
-    dep_tracker: &mut DepTracker,
-) -> bool {
-    is_cargo_probling(rustc_args)
-        || is_build_script(dep_tracker)
-        || is_non_verus_crate(rustc_args, dep_tracker)
 }
 
 pub fn is_compile(args: &Args, dep_tracker: &mut DepTracker) -> bool {
@@ -113,7 +125,7 @@ fn get_package_id_from_env(dep_tracker: &mut DepTracker) -> Option<String> {
     }
 }
 
-fn mk_package_id(
+pub fn mk_package_id(
     name: impl AsRef<str>,
     version: impl AsRef<str>,
     manifest_path: impl AsRef<str>,
@@ -124,6 +136,10 @@ fn mk_package_id(
         hex::encode(hasher.finalize())
     };
     format!("{}-{}-{}", name.as_ref(), version.as_ref(), &manifest_path_hash[..12])
+}
+
+fn unpack_verus_driver_args_for_env(val: &str) -> Vec<String> {
+    val.split(VERUS_DRIVER_ARGS_SEP).skip(1).map(ToOwned::to_owned).collect()
 }
 
 fn extend_rustc_args_for_builtin_and_builtin_macros(args: &mut Vec<String>) {
