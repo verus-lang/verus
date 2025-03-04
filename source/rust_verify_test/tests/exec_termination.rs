@@ -82,7 +82,7 @@ test_verify_one_file! {
         fn a() {
             let mut i = 0;
             while i < 10 // FAIL
-                invariant i <= 10 
+                invariant i <= 10
             {
                 i = i + 1;
             }
@@ -96,10 +96,10 @@ test_verify_one_file! {
             let mut i = 0;
             let mut j = 0;
             while i < 10
-                invariant 
-                    i <= 10, 
+                invariant
+                    i <= 10,
                     j <= 5
-                decreases 
+                decreases
                     10 - i,
                 {
                     i = i + 1;
@@ -120,7 +120,7 @@ test_verify_one_file! {
             loop
                 invariant_except_break i <= 9
                 invariant 0 <= i <= 10
-                ensures 1 <= i 
+                ensures 1 <= i
                 decreases 10 - i
             {
                 i = i + 1;
@@ -139,7 +139,7 @@ test_verify_one_file! {
             loop // FAIL
                 invariant_except_break i <= 9
                 invariant 0 <= i <= 10
-                ensures 1 <= i 
+                ensures 1 <= i
             {
                 i = i + 1;
                 if i == 10 {
@@ -212,7 +212,7 @@ test_verify_one_file_with_options! {
         fn a() {
             let ghost mut a: int = 5;
             loop
-                invariant a > 0 
+                invariant a > 0
             {
                 proof {
                     a = a + 1;
@@ -230,8 +230,8 @@ test_verify_one_file! {
             decreases i,
         {
             let ghost initial_i = i;
-            while 0 < i && i <= 10 
-                invariant 
+            while 0 < i && i <= 10
+                invariant
                     0 <= i <= 10,
                     i <= initial_i,
                 decreases i,
