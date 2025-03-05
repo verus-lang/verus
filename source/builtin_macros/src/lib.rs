@@ -271,26 +271,12 @@ pub fn verus_spec(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let erase = cfg_erase();
-    if erase.keep() {
-        attr_rewrite::rewrite_verus_spec(erase, attr.into(), input.into()).into()
-    } else {
-        input
-    }
+    attr_rewrite::rewrite_verus_spec(cfg_erase(), attr.into(), input.into()).into()
 }
 
 #[proc_macro]
 pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     attr_rewrite::proof_rewrite(cfg_erase(), input.into()).into()
-}
-
-#[proc_macro_attribute]
-pub fn verus_io(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    attr_rewrite::verus_io(&cfg_erase(), attr, input)
-        .expect("Misuse of #[verus_io()]. Must used on ExprCall")
 }
 
 #[proc_macro]

@@ -294,7 +294,7 @@ test_verify_one_file! {
             proof!{
                 *y = x;
             }
-            #[verus_io(with @Ghost(x))]
+            #[verus_spec(with |= Ghost(x))]
             x
         }
 
@@ -303,15 +303,15 @@ test_verify_one_file! {
             verus_extra_stmts!{
                 let tracked mut y = 0u32;
             }
-            {#[verus_io(with Tracked(&mut y), Ghost(0) => _)]
+            {#[verus_spec(with Tracked(&mut y), Ghost(0) => _)]
             test_mut_tracked(1);
             };
 
-            if x < 100 && #[verus_io(with Tracked(&mut y), Ghost(0) => _)]test_mut_tracked(x) == 0 {
+            if x < 100 && #[verus_spec(with Tracked(&mut y), Ghost(0) => _)]test_mut_tracked(x) == 0 {
                 return;
             }
 
-            #[verus_io(with Tracked(&mut y), Ghost(0) => Ghost(z))]
+            #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))]
             let _ = test_mut_tracked(1);
 
             proof!{
@@ -348,13 +348,13 @@ test_verify_one_file! {
             proof!{
                 *y = x;
             }
-            #[verus_io(with @Ghost(x))]
+            #[verus_spec(with |= Ghost(x))]
             x
         }
 
         #[verifier::external]
         fn external_call_with_dummy(x: u32) -> u32 {
-            #[verus_io(with Tracked::assume_new(), Ghost::assume_new() => _)]
+            #[verus_spec(with Tracked::assume_new(), Ghost::assume_new() => _)]
             test_mut_tracked(0)
         }
 
@@ -377,7 +377,7 @@ test_verify_one_file! {
             proof!{
                 *y = x;
             }
-            #[verus_io(with @Ghost(x))]
+            #[verus_spec(with |= Ghost(x))]
             x
         }
 
@@ -397,7 +397,7 @@ test_verify_one_file! {
             with
                 Tracked(y): Tracked<&mut u32>,
                 Ghost(w): Ghost<u32>,
-                -> z: Ghost<u32>
+                ->  z: Ghost<u32>
             requires
                 x < 100,
                 *old(y) < 100,
@@ -410,7 +410,7 @@ test_verify_one_file! {
             proof!{
                 *y = x;
             }
-            #[verus_io(with @Ghost(x))]
+            #[verus_spec(with |= Ghost(x))]
             x
         }
 
@@ -420,7 +420,7 @@ test_verify_one_file! {
                 let ghost mut z = 0u32;
                 let tracked mut y = 0u32;
             }
-            if #[verus_io(with Tracked(&mut y), Ghost(0) => Ghost(z))] test_mut_tracked(1) == 0 {
+            if #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))] test_mut_tracked(1) == 0 {
                 proof!{
                     assert(z == 1);
                 }

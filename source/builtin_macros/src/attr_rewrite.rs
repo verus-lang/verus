@@ -12,7 +12,7 @@
 ///   developers should call the corresponding macros at the beginning of the loop
 /// - To use proof block, add proof!{...} inside function body.
 /// - To Add tracked/ghost in signature, use #[verus_spec(with ...)] in function definition.
-///   To pass and get tracked/ghost from function call, use #[verus_io(with ...)] in
+///   To pass and get tracked/ghost from function call, use #[verus_spec(with ...)] in
 ///   call expr or local statement. Unverified code does not need to change arguments or outputs.
 ///
 /// Rationale:
@@ -36,6 +36,7 @@
 /// - Refer to `example/syntax_attr.rs`.
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
+use syn::visit_mut::VisitMut;
 use syn::{parse2, spanned::Spanned, Expr, Item};
 
 use crate::{
@@ -46,6 +47,59 @@ use crate::{
 };
 
 pub const VERIFIED: &str = "_VERUS_VERIFIED";
+
+enum VerusIOTarget {
+    Local(syn::Local),
+    Expr(syn::Expr),
+}
+enum VerusSpecTarget {
+    IOTarget(VerusIOTarget),
+    FnOrLoop(AnyFnOrLoop),
+}
+
+impl syn::parse::Parse for VerusSpecTarget {
+    fn parse(input: syn::parse::ParseStream) -> syn::parse::Result<VerusSpecTarget> {
+        use syn::parse::discouraged::Speculative;
+        let fork = input.fork();
+        if let Ok(fn_or_loop) = fork.parse() {
+            input.advance_to(&fork);
+            return Ok(VerusSpecTarget::FnOrLoop(fn_or_loop));
+        }
+        let fork = input.fork();
+        if let Ok(stmt) = fork.parse() {
+            if let syn::Stmt::Local(local) = stmt {
+                input.advance_to(&fork);
+                return Ok(VerusSpecTarget::IOTarget(VerusIOTarget::Local(local)));
+            }
+        }
+
+        let expr: Expr = input.parse()?;
+        return Ok(VerusSpecTarget::IOTarget(VerusIOTarget::Expr(expr)));
+    }
+}
+
+struct ExecReplacer {
+    erase: EraseGhost,
+}
+impl VisitMut for ExecReplacer {
+    fn visit_attribute_mut(&mut self, node: &mut syn::Attribute) {
+        if self.erase.keep() {
+            return;
+        }
+        if let Some(last) = node.path().segments.last() {
+            if last.ident == "verus_spec" {
+                *node = syn::parse_quote! {
+                    #[doc = r"verus_spec is applied only in verification mode"]
+                }
+            }
+        }
+    }
+}
+
+pub fn replace_block(erase: EraseGhost, fblock: &mut syn::Block) {
+    let mut replacer = ExecReplacer { erase };
+    replacer.visit_block_mut(fblock);
+}
 
 pub fn rewrite_verus_attribute(
     erase: &EraseGhost,
@@ -84,7 +138,10 @@ pub fn rewrite_verus_spec(
     outer_attr_tokens: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let f = match syn::parse::<AnyFnOrLoop>(input) {
+    if !erase.keep() {
+        return input;
+    }
+    let mut f = match syn::parse::<VerusSpecTarget>(input) {
         Ok(f) => f,
         Err(err) => {
             // Make sure at least one error is reported, just in case Rust parses the function
@@ -97,6 +154,29 @@ pub fn rewrite_verus_spec(
         }
     };
 
+    // Erase verus_spec attributes in function body if not in verification.
+    match &mut f {
+        VerusSpecTarget::FnOrLoop(AnyFnOrLoop::Fn(fun)) => {
+            replace_block(erase, fun.block_mut().unwrap());
+        }
+        _ => {}
+    }
+
+    match f {
+        VerusSpecTarget::FnOrLoop(f) => {
+            rewrite_verus_spec_on_fun_or_loop(erase, outer_attr_tokens, f)
+        }
+        VerusSpecTarget::IOTarget(i) => {
+            rewrite_verus_spec_on_expr_local(erase, outer_attr_tokens, i)
+        }
+    }
+}
+
+pub fn rewrite_verus_spec_on_fun_or_loop(
+    erase: EraseGhost,
+    outer_attr_tokens: proc_macro::TokenStream,
+    f: AnyFnOrLoop,
+) -> proc_macro::TokenStream {
     match f {
         AnyFnOrLoop::Fn(mut fun) => {
             // Note: trait default methods appear in this case,
@@ -188,58 +268,12 @@ pub fn proof_rewrite(erase: EraseGhost, input: TokenStream) -> proc_macro::Token
     }
 }
 
-enum VerusIOTarget {
-    Local(syn::Local),
-    Expr(syn::Expr),
-}
-
-impl syn::parse::Parse for VerusIOTarget {
-    fn parse(input: syn::parse::ParseStream) -> syn::parse::Result<VerusIOTarget> {
-        use syn::parse::discouraged::Speculative;
-        let fork = input.fork();
-        if let Ok(stmt) = fork.parse() {
-            if let syn::Stmt::Local(local) = stmt {
-                input.advance_to(&fork);
-                return Ok(VerusIOTarget::Local(local));
-            }
-        }
-
-        let expr: Expr = input.parse().expect("Need stmt local or expr");
-        return Ok(VerusIOTarget::Expr(expr));
-    }
-}
-
-fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> syn::ItemFn {
-    let mut unverified_fun = fun.clone();
-    let stmts = vec![
-        syn::Stmt::Expr(
-            syn::Expr::Verbatim(
-                quote_spanned_builtin!(builtin, span => #builtin::requires([false])),
-            ),
-            Some(syn::token::Semi { spans: [span] }),
-        ),
-        syn::Stmt::Expr(
-            syn::Expr::Verbatim(quote_spanned! {span => unimplemented!()}),
-            Some(syn::token::Semi { spans: [span] }),
-        ),
-    ];
-    unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
-    if let Some(block) = unverified_fun.block_mut() {
-        block.stmts.clear();
-        block.stmts.extend(stmts);
-    }
-    // change name to verified_{fname}
-    let x = &fun.sig.ident;
-    fun.sig.ident = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
-    unverified_fun
-}
-
-/// The `verus_io(with)` annotation can be applied to either a local statement or an expression.
+/// The `verus_spec(with)` annotation can be applied to either a local statement or an expression.
 ///
 /// - When applied to an expression (`expr`), the trailing semicolon (`;`) is ignored due to limitations of the procedure macro.
 ///   To include the semicolon, developers must use the following syntax:
 ///   ```rust
-///   {#[verus_io] expr};
+///   {#[verus_spec(with ..)] expr};
 ///   ```
 ///
 /// - When used with an expression, developers must explicitly declare the returned ghost or tracked patterns.
@@ -247,7 +281,7 @@ fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> sy
 ///
 /// Example:
 /// ```rust
-/// if #[verus_io(with Tracked(arg1), Ghost(arg2) => Tracked(out) @ Tracked(extra))]
+/// if #[verus_io(with Tracked(arg1), Ghost(arg2) -> Tracked(out) |= Tracked(extra))]
 /// call(arg0) == something {
 /// }
 /// ```
@@ -264,7 +298,7 @@ fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> sy
 ///
 /// Example:
 /// ```rust
-/// #[verus_io(with Tracked(arg1), Ghost(arg2) => Tracked(out) @ Tracked(extra))]
+/// #[verus_spec(with Tracked(arg1), Ghost(arg2) -> Tracked(out) |= Tracked(extra))]
 /// let out0 = call(arg0);
 /// ```
 /// This will be transformed to:
@@ -276,20 +310,15 @@ fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> sy
 ///     (tmp, Tracked(extra))  // Returning the transformed values.
 /// };
 /// ```
-pub(crate) fn verus_io(
-    erase: &EraseGhost,
+fn rewrite_verus_spec_on_expr_local(
+    erase: EraseGhost,
     attr_input: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> Result<proc_macro::TokenStream, syn::Error> {
-    if !erase.keep() {
-        return Ok(input);
-    }
-    let mut target = syn::parse::<VerusIOTarget>(input).expect("failed to parse Stmt verusio");
-    let call_with_spec = syn_verus::parse::<syn_verus::CallWithSpec>(attr_input)
-        .expect("failed to parse CallWithSpec");
-    let tokens = match &mut target {
-        VerusIOTarget::Local(local) => {
-            let syn::Local { init, .. } = local;
+    io_target: VerusIOTarget,
+) -> proc_macro::TokenStream {
+    let call_with_spec = syn_verus::parse_macro_input!(attr_input as syn_verus::CallWithSpec);
+    let tokens = match io_target {
+        VerusIOTarget::Local(mut local) => {
+            let syn::Local { init, .. } = &mut local;
             if let Some(syn::LocalInit { expr, .. }) = init {
                 let x_declares = rewrite_with_expr(erase, expr, call_with_spec);
                 quote! {
@@ -302,17 +331,17 @@ pub(crate) fn verus_io(
                 ))
             }
         }
-        VerusIOTarget::Expr(e) => {
-            rewrite_with_expr(erase, e, call_with_spec);
-            e.into_token_stream().into()
+        VerusIOTarget::Expr(mut e) => {
+            rewrite_with_expr(erase, &mut e, call_with_spec);
+            e.into_token_stream()
         }
     };
-    Ok(tokens.into())
+    tokens.into()
 }
 
 // Return some pre-statements
 fn rewrite_with_expr(
-    erase: &EraseGhost,
+    erase: EraseGhost,
     expr: &mut Expr,
     call_with_spec: syn_verus::CallWithSpec,
 ) -> Vec<syn_verus::Stmt> {
@@ -378,4 +407,32 @@ fn rewrite_with_expr(
         *expr = Expr::Verbatim(quote_spanned!(expr.span() => (#expr, #follow)));
     }
     x_declares
+}
+
+// Create a copy of function with unverified function signature without a
+// function body, to enable seamless use of unverified call to the function in
+// verification.
+fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> syn::ItemFn {
+    let mut unverified_fun = fun.clone();
+    let stmts = vec![
+        syn::Stmt::Expr(
+            syn::Expr::Verbatim(
+                quote_spanned_builtin!(builtin, span => #builtin::requires([false])),
+            ),
+            Some(syn::token::Semi { spans: [span] }),
+        ),
+        syn::Stmt::Expr(
+            syn::Expr::Verbatim(quote_spanned! {span => unimplemented!()}),
+            Some(syn::token::Semi { spans: [span] }),
+        ),
+    ];
+    unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
+    if let Some(block) = unverified_fun.block_mut() {
+        block.stmts.clear();
+        block.stmts.extend(stmts);
+    }
+    // change name to verified_{fname}
+    let x = &fun.sig.ident;
+    fun.sig.ident = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
+    unverified_fun
 }

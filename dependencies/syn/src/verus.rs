@@ -224,8 +224,7 @@ ast_struct! {
         pub with: Token![with],
         pub inputs: Punctuated<Expr, Token![,]>,
         pub outputs: Option<(Token![=>], Pat)>,
-        pub follows: Option<(Token![@], Pat)>,
-
+        pub follows: Option<(Token![|=], Pat)>,
     }
 }
 
@@ -2155,7 +2154,7 @@ impl parse::Parse for CallWithSpec {
     fn parse(input: ParseStream) -> Result<Self> {
         let with = input.parse()?;
         let mut inputs = Punctuated::new();
-        while !input.peek(Token![=>]) && !input.peek(Token![@]) {
+        while !input.peek(Token![=>]) && !input.peek(Token![|=]) {
             let expr = input.parse()?;
             inputs.push(expr);
             if !input.peek(Token![,]) {
@@ -2170,7 +2169,7 @@ impl parse::Parse for CallWithSpec {
         } else {
             None
         };
-        let follows = if input.peek(Token![@]) {
+        let follows = if input.peek(Token![|=]) {
             let token = input.parse()?;
             let outs = Pat::parse_single(&input)?;
             Some((token, outs))
