@@ -114,6 +114,21 @@ enum EncodedDtKind {
     Array,
 }
 
+#[tracing::instrument(skip(
+    ctx,
+    field_commands,
+    token_commands,
+    box_commands,
+    axiom_commands,
+    span,
+    kind,
+    dtyp,
+    dtyp_id,
+    datatyp,
+    tparams,
+    variants,
+    spec
+))]
 fn datatype_or_fun_to_air_commands(
     ctx: &Ctx,
     field_commands: &mut Vec<Command>,
@@ -728,7 +743,6 @@ pub fn datatypes_and_primitives_to_air(
     for monotyp in &ctx.mono_types {
         // Encode concrete instantiations of abstract types as AIR sorts
         let dpath = crate::sst_to_air::monotyp_to_path(monotyp);
-        let _span = tracing::debug_span!("Generating Air for monotyp", path = format!("{dpath:?}"));
         let sort = Arc::new(air::ast::DeclX::Sort(path_to_air_ident(&dpath)));
         opaque_sort_commands.push(Arc::new(CommandX::Global(sort)));
 
@@ -764,12 +778,6 @@ pub fn datatypes_and_primitives_to_air(
         if specs.is_empty() {
             specs = vec![&default_spec];
         }
-        let _span = tracing::debug_span!(
-            "Generating Air for datatype",
-            dt = format!("{dt:?}"),
-            is_transparent,
-            n_specs = specs.len(),
-        );
         if is_transparent {
             // Encode transparent types as AIR datatypes
             for spec in specs.iter() {

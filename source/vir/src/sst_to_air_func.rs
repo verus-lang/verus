@@ -190,6 +190,7 @@ pub(crate) fn broadcast_forall_group_axioms(
     }
 }
 
+#[tracing::instrument(skip_all)]
 fn func_body_to_air(
     ctx: &Ctx,
     decl_commands: &mut Vec<Command>,
@@ -198,8 +199,6 @@ fn func_body_to_air(
     func_body_sst: &crate::sst::FuncSpecBodySst,
     specialization: &mono::Specialization,
 ) -> Result<(), VirErr> {
-    let span = tracing::trace_span!("func_body_to_air");
-    span.enter();
     tracing::trace!("func_body_to_air: Function {:?}, specialization: {:?}", function.x.name, specialization);
     let crate::sst::FuncSpecBodySst { decrease_when, termination_check, body_exp } = func_body_sst;
     let new_body_exp = specialization.transform_exp(&function.x.typ_params, body_exp);
@@ -924,13 +923,13 @@ pub fn func_axioms_to_air(
     Ok((Arc::new(decl_commands), check_commands))
 }
 
+#[tracing::instrument(skip_all)]
 pub fn func_sst_to_air(
     ctx: &Ctx,
     function: &FunctionSst,
     func_check_sst: &FuncCheckSst,
     spec_map: &mono::SpecMap,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
-    let _span = tracing::debug_span!("func_sst_to_air");
     let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.span,

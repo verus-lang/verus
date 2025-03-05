@@ -388,8 +388,8 @@ pub struct KrateSpecializations {
 /**
 Collect all polymorphic function invocations in a module
  */
+#[tracing::instrument(skip_all)]
 pub fn collect_specializations(krate: &KrateSst) -> KrateSpecializations {
-    let _span = tracing::debug_span!("collect_specializations");
     let KrateSstX { functions, .. } = &**krate;
 
     let mut to_visit: VecDeque<(Specialization, &FunctionSst)> =
