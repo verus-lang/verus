@@ -760,6 +760,6 @@ test_verify_one_file! {
         {
             assert(hello::<B, A>()) by(compute); // FAILS
             assert(B::foo());
-        }        
+        }
     } => Err(err) => assert_fails(err, 1)
 }
