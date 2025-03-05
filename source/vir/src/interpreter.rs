@@ -6,7 +6,7 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Dt, Fun, FunX, Idents,
+    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Dt, Fun, FunX, Ident, Idents,
     InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
     SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
@@ -15,6 +15,7 @@ use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::context::GlobalCtx;
 use crate::messages::{error, warning, Message, Span, ToAny};
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent};
+use crate::sst_util::subst_exp;
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
@@ -35,7 +36,7 @@ use std::thread;
 const RLIMIT_MULTIPLIER: u64 = 400_000;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
-type TypeEnv = ScopeMap<Arc<String>, Typ>;
+type TypeEnv = ScopeMap<Ident, Typ>;
 
 /// `Exps` that support `Hash` and `Eq`. Intended to never leave this module.
 struct ExpsKey {
@@ -1559,7 +1560,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(CallFun::Fun(fun, resolved_method), typs, args) => {
-            dbg!(&exp.x);
             let (fun, typs) = match resolved_method {
                 None => (fun, typs),
                 Some((f, ts)) => (f, ts),
@@ -1589,7 +1589,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     Some(func)
                         if func.x.axioms.spec_axioms.is_some() && func.x.kind.inline_okay() =>
                     {
-                        dbg!(&func.x);
                         let memoize = func.x.attrs.memoize;
                         match state.lookup_call(&fun, &new_args, memoize) {
                             Some(prev_result) => {
@@ -1623,6 +1622,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                         state.env.insert(formal_id, value).unwrap();
                                     }
                                 }
+                                let body = subst_exp(state.type_env.map(), state.env.map(), body);
                                 let result = eval_expr_internal(ctx, state, &body);
                                 state.env.pop_scope();
                                 state.type_env.pop_scope();
