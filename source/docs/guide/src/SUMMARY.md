@@ -96,6 +96,7 @@
 
 - [Interacting with unverified code]()
   - [Calling unverified code from verified code](./calling-unverified-from-verified.md)
+  - [Calling verified code from unverified code](./calling-verified-from-unverified.md)
 
 - [Understanding the guarantees of a verified program](./guarantees.md)
   - [Assumptions and trusted components](./tcb.md)
