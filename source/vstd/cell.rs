@@ -87,6 +87,7 @@ pub tracked struct PointsTo<V> {
 
 pub ghost struct PointsToData<V> {
     pub pcell: CellId,
+    #[cfg_attr(not(verus_verify_core), deprecated = "use `pcell_points!`, or `mem_contents()` instead")]
     pub value: Option<V>,
 }
 
@@ -157,7 +158,6 @@ impl<V> PointsTo<V> {
     /// The contents of the cell, either unitialized or initialized to some `V`.
     pub spec fn mem_contents(&self) -> MemContents<V>;
 
-    #[cfg_attr(not(verus_verify_core), deprecated = "use id() and mem_contents() instead")]
     pub open spec fn view(self) -> PointsToData<V> {
         PointsToData { pcell: self.id(), value: option_from_mem_contents(self.mem_contents()) }
     }
