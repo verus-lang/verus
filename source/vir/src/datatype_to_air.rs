@@ -6,10 +6,11 @@ use crate::ast_util::{
 };
 use crate::context::Ctx;
 use crate::def::{
-    encode_dt_as_path, is_variant_ident, prefix_box, prefix_spec_fn_type, prefix_tuple_param,
-    prefix_type_id, prefix_unbox, variant_field_ident, variant_field_ident_internal, variant_ident,
-    variant_ident_mangled, Spanned, QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR,
-    QID_CONSTRUCTOR_INNER, QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
+    encode_dt_as_path, is_variant_ident, path_to_string, prefix_box, prefix_spec_fn_type,
+    prefix_tuple_param, prefix_type_id, prefix_unbox, variant_field_ident,
+    variant_field_ident_internal, variant_ident, variant_ident_mangled, Spanned, QID_ACCESSOR,
+    QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER, QID_HAS_TYPE_ALWAYS,
+    QID_INVARIANT, QID_UNBOX_AXIOM,
 };
 use crate::messages::Span;
 use crate::mono::{KrateSpecializations, Specialization};
@@ -138,9 +139,9 @@ fn datatype_or_fun_to_air_commands(
     let apolytyp = str_typ(crate::def::POLY);
 
     // NOTE: Short-circuit
-    //if !spec.is_empty() {
-    //    declare_box = false;
-    //}
+    if !spec.is_empty() {
+        declare_box = false;
+    }
 
     if dtyp_id.is_none() {
         // datatype TYPE identifiers
@@ -187,10 +188,16 @@ fn datatype_or_fun_to_air_commands(
     let x_param = |typ: &Typ| var_param(x.clone(), typ);
     let x_params = |typ: &Typ| Arc::new(vec![x_param(typ)]);
     let typ_args = Arc::new(vec_map(&tparams, |t| Arc::new(TypX::TypParam(t.clone()))));
-    let box_x = ident_apply(&prefix_box(dpath), &vec![x_var.clone()]);
-    let unbox_x = ident_apply(&prefix_unbox(dpath), &vec![x_var.clone()]);
-    let box_unbox_x = ident_apply(&prefix_box(dpath), &vec![unbox_x.clone()]);
-    let unbox_box_x = ident_apply(&prefix_unbox(dpath), &vec![box_x.clone()]);
+    let (head_box, head_unbox) = if declare_box {
+        (prefix_box(dpath), prefix_unbox(dpath))
+    } else {
+        let common = Arc::new(path_to_string(dpath));
+        (common.clone(), common)
+    };
+    let box_x = ident_apply(&head_box, &vec![x_var.clone()]);
+    let unbox_x = ident_apply(&head_unbox, &vec![x_var.clone()]);
+    let box_unbox_x = ident_apply(&head_box, &vec![unbox_x.clone()]);
+    let unbox_box_x = ident_apply(&head_unbox, &vec![box_x.clone()]);
     let id = match dtyp_id {
         Some(DTypId::Expr(e)) => e,
         Some(DTypId::Primitive(p)) => crate::sst_to_air::primitive_id(&p, &typ_args),
@@ -271,7 +278,7 @@ fn datatype_or_fun_to_air_commands(
         let inner_imply = mk_implies(&inner_pre, &has_app);
         let inner_forall = mk_bind_expr(&inner_bind, &inner_imply);
         let mk_fun = str_apply(crate::def::MK_FUN, &vec![x_var.clone()]);
-        let box_mk_fun = ident_apply(&prefix_box(dpath), &vec![mk_fun]);
+        let box_mk_fun = ident_apply(&head_box, &vec![mk_fun]);
         let has_box_mk_fun = expr_has_type(&box_mk_fun, &id);
         let trigs = vec![has_box_mk_fun.clone()];
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_CONSTRUCTOR);
@@ -330,7 +337,7 @@ fn datatype_or_fun_to_air_commands(
                 let params = Arc::new(params);
                 let ctor_args = func_def_args(&Arc::new(vec![]), &params);
                 let ctor = ident_apply(&variant_ident(&dt, &variant.name), &ctor_args);
-                let box_ctor = ident_apply(&prefix_box(dpath), &vec![ctor]);
+                let box_ctor = ident_apply(&head_box, &vec![ctor]);
                 let has_ctor = expr_has_type(&box_ctor, &datatype_id(dpath, &typ_args));
                 let mut pre: Vec<Expr> = Vec::new();
                 for field in variant.fields.iter() {
@@ -650,6 +657,7 @@ fn datatype_or_fun_to_air_commands(
     }
 }
 
+#[tracing::instrument(skip_all)]
 pub fn datatypes_and_primitives_to_air(
     ctx: &Ctx,
     datatypes: &crate::ast::Datatypes,
@@ -771,6 +779,7 @@ pub fn datatypes_and_primitives_to_air(
         let tparams = Arc::new(tparams);
 
         for spec in specs.iter() {
+            tracing::trace!("Generating datatype spec: {spec:?}");
             let dpath = spec.mangle_path(&encode_dt_as_path(dt));
             datatype_or_fun_to_air_commands(
                 ctx,
