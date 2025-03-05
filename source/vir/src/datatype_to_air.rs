@@ -342,7 +342,8 @@ fn datatype_or_fun_to_air_commands(
                 let params = vec_map(&*variant.fields, |f| field_to_par(span, f));
                 let params = Arc::new(params);
                 let ctor_args = func_def_args(&Arc::new(vec![]), &params);
-                let ctor = ident_apply(&variant_ident(&dt, &variant.name), &ctor_args);
+                let dt_path = spec.mangle_path(&encode_dt_as_path(&dt));
+                let ctor = ident_apply(&variant_ident_mangled(&dt_path, &variant.name), &ctor_args);
                 let box_ctor = if declare_box { ident_apply(&head_box, &vec![ctor]) } else { ctor };
                 let has_ctor = expr_has_type(&box_ctor, &datatype_id(dpath, &typ_args));
                 tracing::trace!("has_ctor={has_ctor:?}");
