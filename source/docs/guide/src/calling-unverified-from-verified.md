@@ -1,6 +1,6 @@
 # Calling unverified code from verified code
 
-It's often that we only verify part of a system, which means that we need
+Often we only verify part of a system, which means that we need
 verified code to call unverified code. To do this, we need to make Verus
 aware of the unverified code, and we need to tell Verus what it should
 **assume without proof**.
