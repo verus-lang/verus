@@ -657,8 +657,8 @@ pub fn parse_args_with_imports(
         },
         profile_all: {
             if matches.opt_present(OPT_PROFILE_ALL) {
-                if !matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("Must pass --verify-module when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
+                if !(matches.opt_present(OPT_VERIFY_MODULE) || matches.opt_present(OPT_VERIFY_ROOT)) {
+                    error("Must pass --verify-module or --verify-root when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
                 }
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --profile-all are mutually exclusive".to_string())
