@@ -102,6 +102,8 @@ pub fn get_buckets(
                     let id = BucketId::Fun(owning_module.clone(), func.x.name.clone());
                     tracing::debug!{"Function mono? {:?}", func.x.attrs.mono.to_string()}
                     if func.x.attrs.mono {
+                        // do not do this, nothing goes into the bucket, this should be in the krate
+                        
                        mono_map.insert(id.clone(), func.x.extra_dependencies.clone());
                     }
                     tracing::trace!("Monomorphizing {:?}", func.x.name);

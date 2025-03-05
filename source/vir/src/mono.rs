@@ -379,7 +379,7 @@ pub(crate) fn collect_specializations_from_function(
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct KrateSpecializations {
     pub function_spec: HashMap<Fun, HashSet<Specialization>>,
     pub datatype_spec: HashMap<Dt, HashSet<Specialization>>,

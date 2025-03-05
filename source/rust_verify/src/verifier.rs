@@ -1892,6 +1892,7 @@ impl Verifier {
         })
     }
 
+    #[tracing::instrument(skip(self, reporter, krate, source_map, global_ctx))]
     fn verify_bucket_outer(
         &mut self,
         reporter: &impl Diagnostics,
@@ -1954,9 +1955,14 @@ impl Verifier {
             &pruned_krate,
         )?;
         let specializations = match bucket.strategy {
-            PolyStrategy::Mono => vir::mono::collect_specializations(&krate_sst),
+            // krate_sst should have everything! 
+            PolyStrategy::Mono => { 
+                tracing::trace!("We are mono");
+                vir::mono::collect_specializations(&krate_sst)}
             PolyStrategy::Poly => Default::default(),
         };
+        tracing::trace!("Specializations {specializations:?}");
+
         let krate_sst = match poly_strategy {
             PolyStrategy::Mono => krate_sst,
             PolyStrategy::Poly => vir::poly::poly_krate_for_module(&mut ctx, &krate_sst),
