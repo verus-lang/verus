@@ -2374,6 +2374,18 @@ impl Clone for crate::SignatureInvariants {
         }
     }
 }
+
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::FnWithSpec {
+    fn clone(&self) -> Self {
+        crate::FnWithSpec {
+            with: self.with.clone(),
+            inputs: self.inputs.clone(),
+            outputs: self.outputs.clone(),
+        }
+    }
+}
+
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::SignatureSpec {
     fn clone(&self) -> Self {
@@ -2386,6 +2398,7 @@ impl Clone for crate::SignatureSpec {
             decreases: self.decreases.clone(),
             invariants: self.invariants.clone(),
             unwind: self.unwind.clone(),
+            with: self.with.clone(),
         }
     }
 }
