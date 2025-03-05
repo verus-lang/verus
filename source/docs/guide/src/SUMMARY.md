@@ -95,7 +95,7 @@
   - [Full source for the examples](./container_bst_all_source.md)
 
 - [Interacting with unverified code]()
-  - [Calling unverified code from verified code](./calling-unverified-from-unverified.md)
+  - [Calling unverified code from verified code](./calling-unverified-from-verified.md)
 
 - [Understanding the guarantees of a verified program](./guarantees.md)
   - [Assumptions and trusted components](./tcb.md)
