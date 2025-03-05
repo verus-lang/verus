@@ -1622,7 +1622,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                         state.env.insert(formal_id, value).unwrap();
                                     }
                                 }
-                                let body = subst_exp(state.type_env.map(), state.env.map(), body);
+                                // Proactively apply the type environment to the body.
+                                // We don't do this for the variable environment, since
+                                // the body might locally shadow some of the parameter names.
+                                let empty_substs = HashMap::new();
+                                let body = subst_exp(state.type_env.map(), &empty_substs, body);
                                 let result = eval_expr_internal(ctx, state, &body);
                                 state.env.pop_scope();
                                 state.type_env.pop_scope();
