@@ -154,6 +154,7 @@ fn datatype_or_fun_to_air_commands(
             Arc::new(args),
             str_typ(crate::def::TYPE),
         ));
+        tracing::debug!("Head id: {decl_type_id:?}");
         token_commands.push(Arc::new(CommandX::Global(decl_type_id)));
     }
 
@@ -194,10 +195,15 @@ fn datatype_or_fun_to_air_commands(
         let common = Arc::new(path_to_string(dpath));
         (common.clone(), common)
     };
-    let box_x = ident_apply(&head_box, &vec![x_var.clone()]);
-    let unbox_x = ident_apply(&head_unbox, &vec![x_var.clone()]);
-    let box_unbox_x = ident_apply(&head_box, &vec![unbox_x.clone()]);
-    let unbox_box_x = ident_apply(&head_unbox, &vec![box_x.clone()]);
+    let (box_x, unbox_x, box_unbox_x, unbox_box_x) = if declare_box {
+        let box_x = ident_apply(&head_box, &vec![x_var.clone()]);
+        let unbox_x = ident_apply(&head_unbox, &vec![x_var.clone()]);
+        let box_unbox_x = ident_apply(&head_box, &vec![unbox_x.clone()]);
+        let unbox_box_x = ident_apply(&head_unbox, &vec![box_x.clone()]);
+        (box_x, unbox_x, box_unbox_x, unbox_box_x)
+    } else {
+        (x_var.clone(), x_var.clone(), x_var.clone(), x_var.clone())
+    };
     let id = match dtyp_id {
         Some(DTypId::Expr(e)) => e,
         Some(DTypId::Primitive(p)) => crate::sst_to_air::primitive_id(&p, &typ_args),
@@ -278,7 +284,7 @@ fn datatype_or_fun_to_air_commands(
         let inner_imply = mk_implies(&inner_pre, &has_app);
         let inner_forall = mk_bind_expr(&inner_bind, &inner_imply);
         let mk_fun = str_apply(crate::def::MK_FUN, &vec![x_var.clone()]);
-        let box_mk_fun = ident_apply(&head_box, &vec![mk_fun]);
+        let box_mk_fun = if declare_box { ident_apply(&head_box, &vec![mk_fun]) } else { mk_fun };
         let has_box_mk_fun = expr_has_type(&box_mk_fun, &id);
         let trigs = vec![has_box_mk_fun.clone()];
         let name = format!("{}_{}", path_as_friendly_rust_name(dpath), QID_CONSTRUCTOR);
@@ -337,8 +343,9 @@ fn datatype_or_fun_to_air_commands(
                 let params = Arc::new(params);
                 let ctor_args = func_def_args(&Arc::new(vec![]), &params);
                 let ctor = ident_apply(&variant_ident(&dt, &variant.name), &ctor_args);
-                let box_ctor = ident_apply(&head_box, &vec![ctor]);
+                let box_ctor = if declare_box { ident_apply(&head_box, &vec![ctor]) } else { ctor };
                 let has_ctor = expr_has_type(&box_ctor, &datatype_id(dpath, &typ_args));
+                tracing::trace!("has_ctor={has_ctor:?}");
                 let mut pre: Vec<Expr> = Vec::new();
                 for field in variant.fields.iter() {
                     let (typ, _, _) = &field.a;
@@ -789,7 +796,7 @@ pub fn datatypes_and_primitives_to_air(
                 &mut axiom_commands,
                 &datatype.span,
                 EncodedDtKind::Dt(dt.clone()),
-                &dpath,
+                &spec.mangle_path(&dpath),
                 &str_typ(&spec.dt_to_air_ident(dt)),
                 None,
                 datatyp.clone(),
