@@ -35,6 +35,7 @@ use std::thread;
 const RLIMIT_MULTIPLIER: u64 = 400_000;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
+type TypeEnv = ScopeMap<Arc<String>, Typ>;
 
 /// `Exps` that support `Hash` and `Eq`. Intended to never leave this module.
 struct ExpsKey {
@@ -99,6 +100,8 @@ struct State {
     depth: usize,
     /// Symbol table mapping bound variables to their values
     env: Env,
+    /// Symbol table mapping bound type arguments to their types
+    type_env: TypeEnv,
     /// Number of iterations computed thus far
     iterations: u64,
     /// Log to write out extra info
@@ -1556,6 +1559,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(CallFun::Fun(fun, resolved_method), typs, args) => {
+            dbg!(&exp.x);
             let (fun, typs) = match resolved_method {
                 None => (fun, typs),
                 Some((f, ts)) => (f, ts),
@@ -1585,6 +1589,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     Some(func)
                         if func.x.axioms.spec_axioms.is_some() && func.x.kind.inline_okay() =>
                     {
+                        dbg!(&func.x);
                         let memoize = func.x.attrs.memoize;
                         match state.lookup_call(&fun, &new_args, memoize) {
                             Some(prev_result) => {
@@ -1597,12 +1602,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
                                 state.cache_misses += 1;
                                 state.env.push_scope(true);
+                                state.type_env.push_scope(true);
                                 for (formal, actual) in pars.iter().zip(new_args.iter()) {
                                     let formal_id = formal.x.name.clone();
                                     state.env.insert(formal_id, actual.clone()).unwrap();
                                 }
-                                // Account for const generics by adding, e.g., { N => 7 } to the environment
                                 for (formal, actual) in typ_params.iter().zip(typs.iter()) {
+                                    state.type_env.insert(formal.clone(), actual.clone()).unwrap();
+                                    // Account for const generics by adding, e.g., { N => 7 } to the environment
                                     if let TypX::ConstInt(c) = &**actual {
                                         let formal_id = VarIdent(
                                             formal.clone(),
@@ -1618,6 +1625,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 }
                                 let result = eval_expr_internal(ctx, state, &body);
                                 state.env.pop_scope();
+                                state.type_env.pop_scope();
                                 state.insert_call(fun, &new_args, &result.clone()?, memoize);
                                 result
                             }
@@ -1836,12 +1844,14 @@ fn eval_expr_launch(
     log: &mut Option<File>,
 ) -> Result<(Exp, Vec<Message>), VirErr> {
     let env = ScopeMap::new();
+    let type_env = ScopeMap::new();
     let cache = HashMap::new();
     let logging = log.is_some();
     let msgs = Vec::new();
     let mut state = State {
         depth: 0,
         env,
+        type_env,
         iterations: 1,
         msgs,
         log: log.take(),
