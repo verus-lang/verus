@@ -14,17 +14,17 @@ fn main() {
     let (pcell, Tracked(mut perm)) = PCell::<u64>::empty();
 
     // Initially, cell is unitialized, and the `perm` token
-    // represents that as the value `None`.
+    // represents that as the value `MemContents::Uninit`.
     // The meaning of the permission token is given by its _view_, here `perm@`.
     //
-    // The expression `pcell_opt![ pcell.id() => Option::None ]` can be read as roughly,
-    // "the cell with value pcell.id() has value None".
-    assert(perm@ === pcell_opt![ pcell.id() => Option::None ]);
+    // The expression `pcell_opt![ pcell.id() => MemContents::Uninit ]` can be read as roughly,
+    // "the cell with value pcell.id() is uninitialized".
+    assert(perm@ === pcell_points![ pcell.id() => MemContents::Uninit ]);
 
     // The above could also be written by accessing the fields of the
     // `PointsToData` struct:
-    assert(perm@.pcell === pcell.id());
-    assert(perm@.value === Option::None);
+    assert(perm.id() === pcell.id());
+    assert(perm.mem_contents() === MemContents::Uninit);
 
     // We can write a value to the pcell (thus initializing it).
     // This only requires an `&` reference to the PCell, but it does
@@ -32,14 +32,14 @@ fn main() {
     pcell.put(Tracked(&mut perm), 5);
 
     // Having written the value, this is reflected in the token:
-    assert(perm@ === pcell_opt![ pcell.id() => Option::Some(5) ]);
+    assert(perm@ === pcell_points![ pcell.id() => MemContents::Init(5) ]);
 
     // We can take the value back out:
     let x = pcell.take(Tracked(&mut perm));
 
     // Which leaves it uninitialized again:
     assert(x == 5);
-    assert(perm@ === pcell_opt![ pcell.id() => Option::None ]);
+    assert(perm@ === pcell_points![ pcell.id() => MemContents::Uninit ]);
 }
 // ANCHOR_END: example
 
