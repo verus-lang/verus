@@ -102,3 +102,41 @@ It should have exactly this form, with the parentheses and semicolon. The `ExSom
 anywhere else.
 
 This declaration makes Verus aware of the type `SomeStruct` and all its fields (and for an enum, all its variants). If you don't want Verus to be aware of the fields/variants, you can also mark it `#[verifier::external_body]`.
+
+## Adding specifications for external traits
+
+Similar to the examples above, suppose there is an external trait `T`:
+```rust
+#[verifier::external]
+trait T {
+    fn f(&self, q: &Self, b: bool) -> usize;
+    type X;
+}
+```
+You can add a specification to `T` as follows:
+```rust
+#[verifier::external_trait_specification]
+trait ExT {
+    type ExternalTraitSpecificationFor: T;
+
+    fn f(&self, q: &Self, b: bool) -> (r: usize)
+        requires
+            b,
+        ensures 
+            r > 7,
+        ;
+    type X;
+}
+```
+Here, the specially named associated type `ExternalTraitSpecificationFor` specifies which trait is being specified.  With this specification in place, verified code can use the trait `T` and the members `f` and `X` of `T`, and any uses of `T::f` will be verified based on the specification provided by `ExT::f`.  For example:
+```rust
+        fn test<A: T>(a: &A) {
+            let i = a.f(a, true);
+            assert(i > 7);
+            let i = a.f(a, false); // Precondition fails
+        }
+```
+
+The external trait specification is not required to include all members of the trait.  Members that are not included are not accessible to verified code.
+
+**WARNING:** Be very cautious when adding specifications to trait functions in this manner!  All reachable and unreachable implementations of the trait are assumed to uphold the trait specifications. For example, if you verify a crate with `pub fn test<A: T>(...)`, we assume that whatever type instantiates `A` will uphold the specification for `T`, even if this type comes from an unverified crate that hasn't been written yet. In other words, this is a contract on both current and future unverified code that must be satisfied to correctly link unverified code with verified code.
