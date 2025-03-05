@@ -165,7 +165,7 @@ tokenized_state_machine!{FifoQueue<T> {
             self.storage.dom().contains(i)
 
             // Permission must be for the correct cell:
-            && self.storage.index(i)@.pcell === self.backing_cells.index(i as int)
+            && self.storage.index(i).id() === self.backing_cells.index(i as int)
 
             && if self.in_active_range(i) {
                 // The cell is full
@@ -240,7 +240,7 @@ tokenized_state_machine!{FifoQueue<T> {
             //  (i) is for the cell at index `tail` (the IDs match)
             //  (ii) the permission indicates that the cell is empty
             assert(
-                perm@.pcell === pre.backing_cells.index(tail as int)
+                perm.id() === pre.backing_cells.index(tail as int)
                 && perm.is_uninit()
             ) by {
                 assert(!pre.in_active_range(tail));
@@ -277,8 +277,8 @@ tokenized_state_machine!{FifoQueue<T> {
             // checked in satisfies its requirements. It has to be associated
             // with the correct cell, and it has to be full.
 
-            require(perm@.pcell === pre.backing_cells.index(tail as int)
-              && perm@.value.is_init());
+            require(perm.id() === pre.backing_cells.index(tail as int)
+              && perm.is_init());
 
             // Perform our updates. Update the tail to the computed value,
             // both the shared version and the producer's local copy.
@@ -317,10 +317,10 @@ tokenized_state_machine!{FifoQueue<T> {
                 assert(pre.valid_storage_at_idx(head));
             };
 
-            assert(perm@.pcell === pre.backing_cells.index(head as int)) by {
+            assert(perm.id() === pre.backing_cells.index(head as int)) by {
                 assert(pre.valid_storage_at_idx(head));
             };
-            assert(perm@.value.is_init()) by {
+            assert(perm.is_init()) by {
                 assert(pre.in_active_range(head));
                 assert(pre.valid_storage_at_idx(head));
             };
@@ -338,7 +338,7 @@ tokenized_state_machine!{FifoQueue<T> {
             update consumer = ConsumerState::Idle(next_head);
             update head = next_head;
 
-            require(perm@.pcell === pre.backing_cells.index(head as int)
+            require(perm.id() === pre.backing_cells.index(head as int)
               && perm.is_uninit());
             deposit storage += [head => perm] by { assert(pre.valid_storage_at_idx(head)); };
         }
@@ -352,7 +352,7 @@ tokenized_state_machine!{FifoQueue<T> {
             assert(post.storage.dom().contains(i));
             /*
             assert(
-                post.storage.index(i)@.pcell ===
+                post.storage.index(i).id() ===
                 post.backing_cells.index(i)
             );
             assert(if post.in_active_range(i) {
@@ -397,7 +397,7 @@ tokenized_state_machine!{FifoQueue<T> {
             } else {
                 assert(post.storage.dom().contains(i));
                 assert(
-                    post.storage.index(i)@.pcell ===
+                    post.storage.index(i).id() ===
                     post.backing_cells.index(i)
                 );
                 assert(if post.in_active_range(i) {
@@ -421,7 +421,7 @@ tokenized_state_machine!{FifoQueue<T> {
         let head = pre.consumer.get_Consuming_0();
         assert(post.storage.dom().contains(head));
         assert(
-                post.storage.index(head)@.pcell ===
+                post.storage.index(head).id() ===
                 post.backing_cells.index(head as int)
             );
         assert(if post.in_active_range(head) {
@@ -541,7 +541,7 @@ pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
                 #![trigger( backing_cells_vec@.index(j as int) )]
                 #![trigger( perms.index(j) )]
                 0 <= j && j < backing_cells_vec.len() as int ==> perms.dom().contains(j)
-                    && backing_cells_vec@.index(j as int).id() === perms.index(j)@.pcell
+                    && backing_cells_vec@.index(j as int).id() === perms.index(j).id()
                     && perms.index(j).is_uninit(),
     {
         let ghost i = backing_cells_vec.len();
@@ -551,7 +551,7 @@ pub fn new_queue<T>(len: usize) -> (pc: (Producer<T>, Consumer<T>))
             perms.tracked_insert(i as nat, cell_perm.get());
         }
         assert(perms.dom().contains(i as nat));
-        assert(backing_cells_vec@.index(i as int).id() === perms.index(i as nat)@.pcell);
+        assert(backing_cells_vec@.index(i as int).id() === perms.index(i as nat).id());
         assert(perms.index(i as nat).is_uninit());
     }
     // Vector for ids

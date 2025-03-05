@@ -87,7 +87,15 @@ pub tracked struct PointsTo<V> {
 
 pub ghost struct PointsToData<V> {
     pub pcell: CellId,
-    pub value: MemContents<V>,
+    pub value: Option<V>,
+}
+
+#[doc(hidden)]
+pub open spec fn option_from_mem_contents<V>(val: MemContents<V>) -> Option<V> {
+    match val {
+        MemContents::Init(v) => Some(v),
+        MemContents::Uninit => None,
+    }
 }
 
 #[doc(hidden)]
@@ -101,6 +109,7 @@ macro_rules! pcell_opt_internal {
     };
 }
 
+#[cfg_attr(not(verus_verify_core), deprecated = "use pcell_points! instead")]
 #[macro_export]
 macro_rules! pcell_opt {
     [$($tail:tt)*] => {
@@ -112,6 +121,29 @@ macro_rules! pcell_opt {
 
 pub use pcell_opt_internal;
 pub use pcell_opt;
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! pcell_points_internal {
+    [$pcell:expr => $val:expr] => {
+        $crate::vstd::cell::PointsToData {
+            pcell: $pcell,
+            value: $crate::vstd::cell::option_from_mem_contents($val),
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! pcell_points {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_proof_macro_exprs!(
+            $crate::vstd::cell::pcell_points_internal!($($tail)*)
+        )
+    }
+}
+
+pub use pcell_points_internal;
+pub use pcell_points;
 
 #[verifier::external_body]
 pub struct CellId {
@@ -127,7 +159,7 @@ impl<V> PointsTo<V> {
 
     #[cfg_attr(not(verus_verify_core), deprecated = "use id() and mem_contents() instead")]
     pub open spec fn view(self) -> PointsToData<V> {
-        PointsToData { pcell: self.id(), value: self.mem_contents() }
+        PointsToData { pcell: self.id(), value: option_from_mem_contents(self.mem_contents()) }
     }
 
     #[cfg_attr(not(verus_verify_core), deprecated = "use mem_contents() instead")]
@@ -169,7 +201,7 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub const fn empty() -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
-            pt.1@@ === pcell_opt![ pt.0.id() => MemContents::Uninit ],
+            pt.1@@ === pcell_points![ pt.0.id() => MemContents::Uninit ],
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
         (p, Tracked::assume_new())
@@ -179,7 +211,7 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub const fn new(v: V) -> (pt: (PCell<V>, Tracked<PointsTo<V>>))
         ensures
-            (pt.1@@ === PointsToData { pcell: pt.0.id(), value: MemContents::Init(v) }),
+            pt.1@@ === pcell_points! [ pt.0.id() => MemContents::Init(v) ],
     {
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::new(v)) };
         (p, Tracked::assume_new())
@@ -189,9 +221,9 @@ impl<V> PCell<V> {
     #[verifier::external_body]
     pub fn put(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, v: V)
         requires
-            old(perm)@ === pcell_opt![ self.id() => MemContents::Uninit ],
+            old(perm)@ === pcell_points![ self.id() => MemContents::Uninit ],
         ensures
-            perm@ === pcell_opt![ self.id() => MemContents::Init(v) ],
+            perm@ === pcell_points![ self.id() => MemContents::Init(v) ],
         opens_invariants none
         no_unwind
     {
@@ -205,11 +237,11 @@ impl<V> PCell<V> {
     pub fn take(&self, Tracked(perm): Tracked<&mut PointsTo<V>>) -> (v: V)
         requires
             self.id() === old(perm)@.pcell,
-            old(perm)@.value.is_init(),
+            old(perm).is_init(),
         ensures
-            perm@.pcell === old(perm)@.pcell,
-            perm@.value === MemContents::Uninit,
-            v === old(perm)@.value.value(),
+            perm.id() === old(perm)@.pcell,
+            perm.mem_contents() === MemContents::Uninit,
+            v === old(perm).value(),
         opens_invariants none
         no_unwind
     {
@@ -225,11 +257,11 @@ impl<V> PCell<V> {
     pub fn replace(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V) -> (out_v: V)
         requires
             self.id() === old(perm)@.pcell,
-            old(perm)@.value.is_init(),
+            old(perm).is_init(),
         ensures
-            perm@.pcell === old(perm)@.pcell,
-            perm@.value === MemContents::Init(in_v),
-            out_v === old(perm)@.value.value(),
+            perm.id() === old(perm)@.pcell,
+            perm.mem_contents() === MemContents::Init(in_v),
+            out_v === old(perm).value(),
         opens_invariants none
         no_unwind
     {
@@ -248,9 +280,9 @@ impl<V> PCell<V> {
     pub fn borrow<'a>(&'a self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
             self.id() === perm@.pcell,
-            perm@.value.is_init(),
+            perm.is_init(),
         ensures
-            *v === perm@.value.value(),
+            *v === perm.value(),
         opens_invariants none
         no_unwind
     {
@@ -263,9 +295,9 @@ impl<V> PCell<V> {
     pub fn into_inner(self, Tracked(perm): Tracked<PointsTo<V>>) -> (v: V)
         requires
             self.id() === perm@.pcell,
-            perm@.value.is_init(),
+            perm.is_init(),
         ensures
-            v === perm@.value.value(),
+            v === perm.value(),
         opens_invariants none
         no_unwind
     {
@@ -291,10 +323,10 @@ impl<V: Copy> PCell<V> {
     pub fn write(&self, Tracked(perm): Tracked<&mut PointsTo<V>>, in_v: V)
         requires
             self.id() === old(perm)@.pcell,
-            old(perm)@.value.is_init(),
+            old(perm).is_init(),
         ensures
-            perm@.pcell === old(perm)@.pcell,
-            perm@.value === MemContents::Init(in_v),
+            perm.id() === old(perm)@.pcell,
+            perm.mem_contents() === MemContents::Init(in_v),
         opens_invariants none
         no_unwind
     {
@@ -308,8 +340,8 @@ impl<T> InvariantPredicate<(Set<T>, PCell<T>), PointsTo<T>> for InvCellPred {
     closed spec fn inv(k: (Set<T>, PCell<T>), perm: PointsTo<T>) -> bool {
         let (possible_values, pcell) = k;
         {
-            &&& perm@.value.is_init()
-            &&& possible_values.contains(perm@.value.value())
+            &&& perm.is_init()
+            &&& possible_values.contains(perm.value())
             &&& pcell.id() === perm@.pcell
         }
     }
