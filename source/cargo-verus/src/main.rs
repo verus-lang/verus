@@ -151,6 +151,7 @@ impl VerusCmd {
     }
 
     fn into_std_cmd(self) -> Result<Command> {
+        // TODO: use the "+ ... toolchain" argument?
         let mut cmd = Command::new(env::var("CARGO").unwrap_or("cargo".into()));
 
         cmd.arg(self.cargo_subcommand.to_arg().to_owned()).args(&self.cargo_args);

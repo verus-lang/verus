@@ -41,11 +41,14 @@ pub fn extend_args_and_check_is_direct_rustc_call(
     let verus_crate = if let Some(package_id) = &package_id {
         let verify_package =
             dep_tracker.compare_env(&format!("{VERUS_DRIVER_VERIFY}{package_id}"), "1");
-        if let Some(val) = dep_tracker.get_env(VERUS_DRIVER_ARGS) {
-            rustc_args.extend(unpack_verus_driver_args_for_env(&val));
-        }
-        if let Some(val) = dep_tracker.get_env(&format!("{VERUS_DRIVER_ARGS_FOR}{package_id}")) {
-            rustc_args.extend(unpack_verus_driver_args_for_env(&val));
+        if verify_package {
+            if let Some(val) = dep_tracker.get_env(VERUS_DRIVER_ARGS) {
+                rustc_args.extend(unpack_verus_driver_args_for_env(&val));
+            }
+            if let Some(val) = dep_tracker.get_env(&format!("{VERUS_DRIVER_ARGS_FOR}{package_id}"))
+            {
+                rustc_args.extend(unpack_verus_driver_args_for_env(&val));
+            }
         }
         verify_package
     } else {
@@ -81,7 +84,7 @@ pub(crate) fn handle_externs(
     externs: &rustc_session::config::Externs,
     mut import_deps_if_present: HashSet<String>,
     dep_tracker: &mut DepTracker,
-) -> Result<(), String> {
+) -> Result<Vec<(String, String)>, String> {
     let mut extern_map = BTreeMap::<String, Vec<PathBuf>>::new();
 
     for (key, entry) in externs.iter() {
@@ -109,7 +112,7 @@ pub(crate) fn handle_externs(
             }
         }
     }
-    Ok(())
+    Ok(imports)
 }
 
 fn get_package_id_from_env(dep_tracker: &mut DepTracker) -> Option<String> {
@@ -118,9 +121,11 @@ fn get_package_id_from_env(dep_tracker: &mut DepTracker) -> Option<String> {
         dep_tracker.get_env("CARGO_PKG_VERSION"),
         dep_tracker.get_env("CARGO_MANIFEST_DIR"),
     ) {
-        (Some(name), Some(version), Some(manifest_dir)) => {
-            Some(mk_package_id(name, version, format!("{manifest_dir}/Cargo.toml")))
-        }
+        (Some(name), Some(version), Some(manifest_dir)) => Some(mk_package_id(
+            name,
+            version,
+            format!("{}{}Cargo.toml", manifest_dir, std::path::MAIN_SEPARATOR),
+        )),
         _ => None,
     }
 }

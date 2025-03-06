@@ -27,6 +27,8 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
 pub fn main() {
     let mut dep_tracker = rust_verify::cargo_verus_dep_tracker::DepTracker::init();
     let via_cargo = dep_tracker.compare_env(rust_verify::cargo_verus::VERUS_DRIVER_VIA_CARGO, "1");
+    // For now, builtin, vstd, etc. must be rebuilt for each via_cargo crate:
+    let via_cargo_rebuild_verus_libs = via_cargo;
 
     let mut internal_args = std::env::args();
     let internal_program = internal_args.next().unwrap();
@@ -70,10 +72,11 @@ pub fn main() {
     }
 
     let mut args = if build_test_mode || via_cargo { internal_args } else { std::env::args() };
-    let program = if build_test_mode { internal_program } else { args.next().unwrap() };
+    let program =
+        if build_test_mode || via_cargo { internal_program } else { args.next().unwrap() };
 
     let mut vstd = None;
-    let verus_root = if !build_test_mode {
+    let verus_root = if !(build_test_mode || via_cargo_rebuild_verus_libs) {
         let verus_root = rust_verify::driver::find_verusroot();
         if let Some(rust_verify::driver::VerusRoot { path: verusroot, .. }) = &verus_root {
             let vstd_path = verusroot.join("vstd.vir").to_str().unwrap().to_string();
@@ -84,22 +87,25 @@ pub fn main() {
         None
     };
 
-    let (our_args, mut rustc_args) =
-        rust_verify::config::parse_args_with_imports(&program, args, vstd);
-
+    let mut args: Vec<String> = args.collect();
     let is_direct_rustc_call = via_cargo
         && rust_verify::cargo_verus::extend_args_and_check_is_direct_rustc_call(
-            &mut rustc_args,
+            &mut args,
             &mut dep_tracker,
         );
+
     if is_direct_rustc_call {
-        match rust_verify::driver::run_rustc_compiler_directly(&rustc_args) {
+        args.insert(0, program);
+        match rust_verify::driver::run_rustc_compiler_directly(&args) {
             Ok(()) => return,
             Err(_) => {
                 std::process::exit(1);
             }
         }
     }
+
+    let (our_args, rustc_args) =
+        rust_verify::config::parse_args_with_imports(&program, args.into_iter(), vstd);
 
     if our_args.version {
         if our_args.output_json {
@@ -134,8 +140,13 @@ pub fn main() {
     let verifier =
         rust_verify::verifier::Verifier::new(our_args, via_cargo, via_cargo_compile, dep_tracker);
 
-    let (verifier, stats, status) =
-        rust_verify::driver::run(verifier, rustc_args, verus_root, file_loader, build_test_mode);
+    let (verifier, stats, status) = rust_verify::driver::run(
+        verifier,
+        rustc_args,
+        verus_root,
+        file_loader,
+        build_test_mode || via_cargo_rebuild_verus_libs,
+    );
 
     let total_time_1 = std::time::Instant::now();
     let total_time = total_time_1 - total_time_0;

@@ -293,6 +293,7 @@ pub struct Verifier {
     // Some(DepTracker) if via_cargo, None otherwise
     // In both cases, is set to None when VerifierCallbacksEraseMacro.config finishes with it
     dep_tracker: Option<crate::cargo_verus_dep_tracker::DepTracker>,
+    import_virs_via_cargo: Option<Vec<(String, String)>>,
     export_vir_path_via_cargo: Option<std::path::PathBuf>,
     pub(crate) compile: bool,
 
@@ -437,6 +438,7 @@ impl Verifier {
 
             via_cargo,
             dep_tracker: if via_cargo { Some(dep_tracker) } else { None },
+            import_virs_via_cargo: None,
             export_vir_path_via_cargo: None,
             compile,
 
@@ -481,6 +483,7 @@ impl Verifier {
 
             via_cargo: self.via_cargo,
             dep_tracker: None,
+            import_virs_via_cargo: self.import_virs_via_cargo.clone(),
             export_vir_path_via_cargo: self.export_vir_path_via_cargo.clone(),
             compile: self.compile,
 
@@ -2862,7 +2865,9 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 &mut dep_tracker,
             );
             match success {
-                Ok(()) => {}
+                Ok(imports) => {
+                    self.verifier.import_virs_via_cargo = Some(imports);
+                }
                 Err(err) => {
                     eprintln!("Error: {}", err);
                     std::process::exit(1);
@@ -2919,7 +2924,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
 
             let time_import0 = Instant::now();
-            let imported = match crate::import_export::import_crates(&self.verifier.args) {
+            let imported = match crate::import_export::import_crates(
+                &self.verifier.args,
+                self.verifier.import_virs_via_cargo.clone().unwrap_or_default(),
+            ) {
                 Ok(imported) => imported,
                 Err(err) => {
                     assert!(err.spans.len() == 0);

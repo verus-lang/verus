@@ -218,7 +218,7 @@ where
         + Send
         + Sync,
 {
-    if !rustc_args.contains(&"--edition".to_string()) {
+    if !rustc_args.iter().any(|a| a.starts_with("--edition")) {
         rustc_args.push(format!("--edition"));
         rustc_args.push(format!("2021"));
     }

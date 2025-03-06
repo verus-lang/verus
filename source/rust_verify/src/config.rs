@@ -204,10 +204,6 @@ pub fn enable_default_features_and_verus_attr(
     rustc_args.push("-Zcrate-attr=register_tool(verusfmt)".to_string());
 }
 
-pub const OPT_COMPILE_WHEN_PRIMARY: &str = "compile-when-primary-package";
-pub const OPT_COMPILE_WHEN_NOT_PRIMARY: &str = "compile-when-not-primary-package";
-pub const OPT_IMPORT_DEP_IF_PRESENT: &str = "import-dep-if-present";
-
 pub fn parse_args_with_imports(
     program: &String,
     args: impl Iterator<Item = String>,
@@ -340,6 +336,9 @@ pub fn parse_args_with_imports(
         #[cfg(feature = "axiom-usage-info")]
         (EXTENDED_AXIOM_USAGE_INFO, "Print usage info for broadcasted axioms, lemmas, and groups"),
     ];
+    const OPT_COMPILE_WHEN_PRIMARY: &str = "compile-when-primary-package";
+    const OPT_COMPILE_WHEN_NOT_PRIMARY: &str = "compile-when-not-primary-package";
+    const OPT_IMPORT_DEP_IF_PRESENT: &str = "import-dep-if-present";
 
     let default_num_threads: usize = std::thread::available_parallelism()
         .map(|x| std::cmp::max(usize::from(x) - 1, 1))
