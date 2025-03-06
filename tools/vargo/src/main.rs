@@ -1133,6 +1133,7 @@ fn run() -> Result<(), String> {
                 "state_machines_macros",
                 "vstd_build",
                 "verus",
+                "cargo-verus",
             ];
 
             let build_vstd = {
@@ -1197,6 +1198,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                 format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
                 format!("rust_verify{}", EXE),
                 format!("verus{}", EXE),
+                format!("cargo-verus{}", EXE),
             ]
             .into_iter()
             {
