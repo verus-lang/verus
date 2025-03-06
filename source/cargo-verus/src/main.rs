@@ -40,7 +40,7 @@ pub fn main() -> Result<ExitCode> {
     let args =
         env::args().skip(1 + if run_as_cargo_subcommand { 1 } else { 0 }).collect::<Vec<_>>();
 
-    if args.iter().any(|a| a == "--help" || a == "-h") {
+    if args.len() == 0 || args.iter().any(|a| a == "--help" || a == "-h") {
         show_help();
         return Ok(ExitCode::SUCCESS);
     }
@@ -63,7 +63,7 @@ fn show_version() {
 }
 
 fn process(args: &[String]) -> Result<ExitCode> {
-    let cmd = VerusCmd::new(args);
+    let cmd = VerusCmd::new(args)?;
 
     let mut cmd = cmd.into_std_cmd()?;
 
@@ -99,29 +99,25 @@ impl CargoSubcommand {
 }
 
 impl VerusCmd {
-    fn new(args: &[String]) -> Self {
-        let mut cargo_subcommand = CargoSubcommand::Build;
+    fn new(args: &[String]) -> Result<Self> {
         let mut cargo_args = vec![];
         let mut common_verus_driver_args: Vec<String> = vec![];
 
-        let mut just_verify = false;
-
         let mut args_iter = args.iter();
+
+        let command = args_iter.next().expect("main() ensures > 0 args");
+        let (cargo_subcommand, just_verify) = match command.as_str() {
+            "check" => (CargoSubcommand::Check, true),
+            "verify" => (CargoSubcommand::Build, true),
+            "build" => (CargoSubcommand::Build, false),
+            cmd => bail!("Expected command `check`, `verify`, or `build`, found `{cmd}`"),
+        };
 
         while let Some(arg) = args_iter.next() {
             match arg.as_str() {
-                "--check" => {
-                    cargo_subcommand = CargoSubcommand::Check;
-                    continue;
-                }
-                "--just-verify" => {
-                    just_verify = true;
-                    continue;
-                }
                 "--" => break,
                 _ => {}
             }
-
             cargo_args.push(arg.clone());
         }
 
@@ -133,7 +129,7 @@ impl VerusCmd {
 
         common_verus_driver_args.extend(args_iter.cloned());
 
-        Self { cargo_subcommand, cargo_args, common_verus_driver_args }
+        Ok(Self { cargo_subcommand, cargo_args, common_verus_driver_args })
     }
 
     fn metadata(&self) -> Result<Metadata> {
@@ -432,13 +428,16 @@ fn parse_verus_driver_version_output(stdout: &str) -> Option<Version> {
 pub fn help_message() -> &'static str {
     "\
 Usage:
-    cargo verus [OPTIONS] [--] [<ARGS>...]
+    cargo verus <COMMAND> [OPTIONS] [--] [<ARGS>...]
 
-OPTIONS are passed to 'cargo build' (default) or 'cargo check' (when --check is specified), except the following, which are handled specially:
-    --check                  Selects the 'cargo check' subcommand
-    --just-verify            Skip compilation for primary package(s)
+OPTIONS are passed to 'cargo build' or 'cargo check', except the following, which are handled specially:
     -h, --help               Print this message
     -V, --version            Print version info and exit
+
+Commands:
+    verify    Verify the current crate with 'cargo build'
+    build     Verify and build the current crate with 'cargo build'
+    check     Runs the 'cargo check' subcommand
 
 ARGS are passed to 'verus'.
 "

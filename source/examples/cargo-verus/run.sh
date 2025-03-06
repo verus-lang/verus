@@ -6,13 +6,16 @@
 
 # verify an example without codegen (like cargo check) and without applying rustc (like rust_verify
 # without --compile)
-cargo verus --check --just-verify --manifest-path test/Cargo.toml -p test
+cargo verus check --manifest-path test/Cargo.toml -p test
 
 # verify an example without codegen (like cargo check)
-cargo verus --just-verify --manifest-path test/Cargo.toml -p test
+cargo verus verify --manifest-path test/Cargo.toml -p test
 
 # build and verify an example with codegen (like cargo build)
-cargo verus --manifest-path test/Cargo.toml -p test
+cargo verus build --manifest-path test/Cargo.toml -p test
+
+# clean with regular cargo
+cargo clean --manifest-path test/Cargo.toml
 
 # this time with an argument for verus
-cargo verus --manifest-path test/Cargo.toml -p test -- --verus-arg=--rlimit=60
+cargo verus build --manifest-path test/Cargo.toml -p test -- --rlimit=60
