@@ -141,8 +141,8 @@ impl<S> GhostStuff<S> {
     pub open spec fn wf(self, inst: RefCounter::Instance<MemPerms<S>>, cell: PCell<u64>) -> bool {
         &&& self.rc_perm@.pcell == cell.id()
         &&& self.rc_token.instance_id() == inst.id()
-        &&& self.rc_perm@.value.is_Some()
-        &&& self.rc_perm@.value.get_Some_0() as nat == self.rc_token.value()
+        &&& self.rc_perm.is_init()
+        &&& self.rc_perm.value() as nat == self.rc_token.value()
     }
 }
 
