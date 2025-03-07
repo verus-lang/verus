@@ -54,8 +54,51 @@ use rustc_target::abi::FIRST_VARIANT;
 use rustc_trait_selection::infer::InferCtxtExt;
 use tracing::{debug, instrument};
 
-use super::FnCtxt;
 use crate::expr_use_visitor as euv;
+
+struct FnCtxt<'a, 'tcx> {
+    ph: std::marker::PhantomData<&'a ()>,
+    tcx: TyCtxt<'tcx>,
+}
+
+impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
+    pub(crate) fn new(
+        root_ctxt: &'a FnCtxt<'a, 'tcx>,
+        param_env: rustc_middle::ty::ParamEnv<'tcx>,
+        body_id: LocalDefId,
+    ) -> FnCtxt<'a, 'tcx> {
+        todo!()
+    }
+
+    pub(crate) fn node_ty(&self, hir_id: HirId) -> Ty<'tcx> {
+        todo!()
+    }
+
+    pub(crate) fn closure_kind(&self, closure_ty: Ty<'tcx>) -> Option<rustc_middle::ty::ClosureKind> {
+        todo!()
+    }
+}
+
+impl<'a, 'tcx> euv::TypeInformationCtxt<'tcx> for FnCtxt<'a, 'tcx> {
+    type TypeckResults<'b> = TypeckResults<'tcx>;
+
+    type Error = ();
+
+    // Required methods
+    fn typeck_results(&self) -> Self::TypeckResults<'_> { todo!(); }
+    fn resolve_vars_if_possible<T: rustc_middle::ty::TypeFoldable<TyCtxt<'tcx>>>(&self, t: T) -> T { todo!(); }
+    fn try_structurally_resolve_type(
+        &self,
+        span: Span,
+        ty: Ty<'tcx>,
+    ) -> Ty<'tcx> { todo!(); }
+    fn report_error(&self, span: Span, msg: impl ToString) -> Self::Error { todo!(); }
+    fn error_reported_in_ty(&self, ty: Ty<'tcx>) -> Result<(), Self::Error> { todo!(); }
+    fn tainted_by_errors(&self) -> Result<(), Self::Error> { todo!(); }
+    fn type_is_copy_modulo_regions(&self, ty: Ty<'tcx>) -> bool { todo!(); }
+    fn body_owner_def_id(&self) -> LocalDefId { todo!(); }
+    fn tcx(&self) -> TyCtxt<'tcx> { todo!(); }
+}
 
 /// Describe the relationship between the paths of two places
 /// eg:
@@ -79,7 +122,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
         InferBorrowKindVisitor { fcx: self }.visit_body(body);
 
         // it's our job to process these.
-        assert!(self.deferred_call_resolutions.borrow().is_empty());
+        //assert!(self.deferred_call_resolutions.borrow().is_empty());
     }
 }
 
@@ -347,7 +390,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
 
         let before_feature_tys = self.final_upvar_tys(closure_def_id);
 
-        if infer_kind {
+        /*if infer_kind {
             // Unify the (as yet unbound) type variable in the closure
             // args with the kind we inferred.
             let closure_kind_ty = match args {
@@ -374,7 +417,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     .closure_kind_origins_mut()
                     .insert(closure_hir_id, origin);
             }
-        }
+        }*/
 
         // For coroutine-closures, we additionally must compute the
         // `coroutine_captures_by_ref_ty` type, which is used to generate the by-ref
@@ -456,7 +499,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             // We only do this if `infer_kind`, because if we have constrained
             // the kind from closure signature inference, the kind inferred
             // for the inner coroutine may actually be more restrictive.
-            if infer_kind {
+            /*if infer_kind {
                 let ty::Coroutine(_, coroutine_args) =
                     *self.typeck_results.borrow().expr_ty(body.value).kind()
                 else {
@@ -467,7 +510,7 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
                     coroutine_args.as_coroutine().kind_ty(),
                     Ty::from_coroutine_closure_kind(self.tcx, closure_kind),
                 );
-            }
+            }*/
         }
 
         self.log_closure_min_capture_info(closure_def_id, span);
@@ -521,12 +564,14 @@ impl<'a, 'tcx> FnCtxt<'a, 'tcx> {
             );
         }
 
+        /*
         // If we are also inferred the closure kind here,
         // process any deferred resolutions.
         let deferred_call_resolutions = self.remove_deferred_call_resolutions(closure_def_id);
         for deferred_call_resolution in deferred_call_resolutions {
             deferred_call_resolution.resolve(self);
         }
+        */
     }
 
     /// Determines whether the body of the coroutine uses its upvars in a way that

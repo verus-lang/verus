@@ -30,6 +30,7 @@ extern crate rustc_arena;
 extern crate rustc_fluent_macro;
 extern crate rustc_apfloat;
 extern crate either;
+extern crate rustc_hir_typeck;
 
 mod build;
 mod check_unsafety;
@@ -37,6 +38,8 @@ mod errors;
 pub mod lints;
 mod thir;
 pub mod verus;
+pub mod upvar;
+pub mod expr_use_visitor;
 
 use rustc_middle::util::Providers;
 
