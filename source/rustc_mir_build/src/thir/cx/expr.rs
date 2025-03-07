@@ -564,6 +564,10 @@ impl<'tcx> Cx<'tcx> {
                     .closure_captures(def_id)
                     .iter()
                     .zip_eq(args.upvar_tys())
+                    .filter(|(captured_place, ty)| {
+                        crate::verus::should_keep_upvar(self, def_id, captured_place, ty)
+                    }).collect::<Vec<_>>();
+                let upvars = upvars.into_iter()
                     .map(|(captured_place, ty)| {
                         let upvars = self.capture_upvar(expr, captured_place, ty);
                         self.thir.exprs.push(upvars)
@@ -582,13 +586,13 @@ impl<'tcx> Cx<'tcx> {
                     None => Vec::new(),
                 };
 
-                ExprKind::Closure(Box::new(ClosureExpr {
+                ExprKind::Closure(Box::new(crate::verus::fix_closure(self, ClosureExpr {
                     closure_id: def_id,
                     args,
                     upvars,
                     movability,
                     fake_reads,
-                }))
+                })))
             }
 
             hir::ExprKind::Path(ref qpath) => {
