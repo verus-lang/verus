@@ -36,6 +36,7 @@ pub mod config;
 #[path = "../../../tools/common/consts.rs"]
 pub mod consts;
 
+mod automatic_derive;
 pub mod context;
 pub mod debugger;
 pub mod def;
