@@ -52,15 +52,15 @@ pub(crate) fn thir_body(
     Ok((tcx.alloc_steal_thir(cx.thir), expr))
 }
 
-struct Cx<'tcx> {
-    tcx: TyCtxt<'tcx>,
-    thir: Thir<'tcx>,
+pub(crate) struct Cx<'tcx> {
+    pub(crate) tcx: TyCtxt<'tcx>,
+    pub(crate) thir: Thir<'tcx>,
 
     param_env: ty::ParamEnv<'tcx>,
 
-    region_scope_tree: &'tcx region::ScopeTree,
-    typeck_results: &'tcx ty::TypeckResults<'tcx>,
-    rvalue_scopes: &'tcx RvalueScopes,
+    pub(crate) region_scope_tree: &'tcx region::ScopeTree,
+    pub(crate) typeck_results: &'tcx ty::TypeckResults<'tcx>,
+    pub(crate) rvalue_scopes: &'tcx RvalueScopes,
 
     /// False to indicate that adjustments should not be applied. Only used for `custom_mir`
     apply_adjustments: bool,

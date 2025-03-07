@@ -36,6 +36,7 @@ mod check_unsafety;
 mod errors;
 pub mod lints;
 mod thir;
+pub mod verus;
 
 use rustc_middle::util::Providers;
 
