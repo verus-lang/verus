@@ -124,7 +124,6 @@ enum EncodedDtKind {
     kind,
     dtyp,
     dtyp_id,
-    datatyp,
     tparams,
     variants,
     spec
@@ -349,7 +348,7 @@ fn datatype_or_fun_to_air_commands(
     // constructor and field axioms
     for variant in variants.iter() {
         if let EncodedDtKind::Dt(dt) = &kind {
-            if ctx.datatypes_with_invariant.contains(dt) {
+            if declare_box && ctx.datatypes_with_invariant.contains(dt) {
                 // constructor invariant axiom:
                 //   forall typs, arg1 ... argn.
                 //     inv1 && ... && invn => has_type(box(ctor(arg1 ... argn)), T(typs))
@@ -406,15 +405,16 @@ fn datatype_or_fun_to_air_commands(
                 Arc::new(vec![dtyp.clone()]),
                 typ_to_air(ctx, &typ),
             ));
+            tracing::trace!("decl_field axiom: {decl_field:?}");
             field_commands.push(Arc::new(CommandX::Global(decl_field)));
             let trigs = vec![xfield.clone()];
             let name = format!("{}_{}", id, QID_ACCESSOR);
-            tracing::trace!("Wrapper axiom {name}");
             let bind =
                 func_bind_trig(ctx, name, &Arc::new(vec![]), &x_params(&datatyp), &trigs, false);
             let eq = mk_eq(&xfield, &xfield_internal);
             let forall = mk_bind_expr(&bind, &eq);
             let axiom = mk_unnamed_axiom(forall);
+            tracing::trace!("field accessor axiom ({datatyp:?}): {axiom:?}");
             axiom_commands.push(Arc::new(CommandX::Global(axiom)));
 
             if let EncodedDtKind::Dt(dt) = &kind {
@@ -796,6 +796,12 @@ pub fn datatypes_and_primitives_to_air(
 
         for spec in specs.iter() {
             tracing::trace!("Generating datatype spec: {spec:?}");
+
+            let datatyp = Arc::new(TypX::Datatype(
+                dt.clone(),
+                Arc::new(spec.typs.iter().map(|st| st.to_typ()).collect::<Vec<_>>()),
+                Arc::new(vec![]),
+            ));
             let dpath = spec.mangle_path(&encode_dt_as_path(dt));
             datatype_or_fun_to_air_commands(
                 ctx,
@@ -805,10 +811,10 @@ pub fn datatypes_and_primitives_to_air(
                 &mut axiom_commands,
                 &datatype.span,
                 EncodedDtKind::Dt(dt.clone()),
-                &spec.mangle_path(&dpath),
+                &dpath,
                 &str_typ(&spec.dt_to_air_ident(dt)),
                 None,
-                datatyp.clone(),
+                datatyp,
                 &tparams,
                 &datatype.x.variants,
                 is_transparent,
