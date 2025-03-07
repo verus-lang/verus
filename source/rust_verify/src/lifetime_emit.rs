@@ -533,11 +533,20 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             state.write(")");
         }
         ExpX::Assign(e1, e2) => {
-            state.write("(");
-            emit_exp(state, e1);
-            state.write(") = (");
-            emit_exp(state, e2);
-            state.write(")");
+            if let ExpX::Index(_, _, _, tgt_expr, idx_expr) = &e1.as_ref().1 {
+                emit_exp(state, tgt_expr);
+                state.write(".index_set(");
+                emit_exp(state, idx_expr);
+                state.write(",");
+                emit_exp(state, e2);
+                state.write(")");
+            } else {
+                state.write("(");
+                emit_exp(state, e1);
+                state.write(") = (");
+                emit_exp(state, e2);
+                state.write(")");
+            };
         }
         ExpX::Field(e, field) => {
             state.write("(");

@@ -2461,6 +2461,64 @@ fn expr_assign_to_vir_innermost<'tcx>(
         Some(op) => Some(binopkind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?),
         None => None,
     };
+
+    // NOTE: A temparary solution for index_mut until mutable reference support lands.
+    if let ExprKind::Index(tgt_expr, idx_expr, _span) = &lhs.kind {
+        if bctx.in_ghost {
+            unsupported_err!(lhs.span, "index_mut in spec/proof", lhs);
+        }
+        let tgt_modifier =
+            is_expr_typ_mut_ref(bctx.types.expr_ty_adjusted(&tgt_expr), ExprModifier::ADDR_OF_MUT)?;
+        let tgt_vir = expr_to_vir(bctx, tgt_expr, tgt_modifier)?;
+        let idx_vir = expr_to_vir(bctx, idx_expr, ExprModifier::REGULAR)?;
+
+        let mut rhs_vir = expr_to_vir(bctx, rhs, modifier)?;
+        let fun = vir::fun!["vstd" => "std_specs", "core", "index_set"];
+        let typ_args = Some(Arc::new(vec![
+            undecorate_typ(&tgt_vir.typ),
+            idx_vir.typ.clone(),
+            rhs_vir.typ.clone(),
+        ]));
+        let tgt_vir =
+            bctx.spanned_typed_new(tgt_expr.span, &tgt_vir.typ.clone(), ExprX::Loc(tgt_vir));
+        let call_target = CallTarget::Fun(
+            vir::ast::CallTargetKind::Static,
+            fun,
+            typ_args.unwrap(),
+            Arc::new(vec![]),
+            AutospecUsage::Final,
+        );
+        if let Some(op) = op {
+            // Evaluate tgt and idx twice may have side effects.
+            unsupported_err_unless!(
+                !tgt_expr.can_have_side_effects() && !idx_expr.can_have_side_effects(),
+                lhs.span,
+                "assign op to index_mut with tgt/idx that could have side effects",
+                lhs
+            );
+            unsupported_err_unless!(
+                is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)?,
+                lhs.span,
+                "assign op to index_mut for non smt arithmetic types",
+                lhs
+            );
+            let lhs_vir = expr_to_vir(bctx, lhs, ExprModifier::REGULAR)?;
+            let rhs_ty = &rhs_vir.typ.clone();
+            rhs_vir =
+                bctx.spanned_typed_new(rhs.span, &rhs_ty, ExprX::Binary(op, lhs_vir, rhs_vir));
+        }
+
+        let args = Arc::new(vec![tgt_vir, idx_vir, rhs_vir]);
+        let index_set = bctx.spanned_typed_new(
+            lhs.span,
+            &mk_tuple_typ(&Arc::new(vec![])),
+            ExprX::Call(call_target, args),
+        );
+        // lhs is not recorded and so explicitly add it here.
+        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+        erasure_info.direct_var_modes.push((lhs.hir_id, Mode::Exec));
+        return Ok(index_set);
+    }
     let init_not_mut = init_not_mut(bctx, lhs)?;
     mk_expr(ExprX::Assign {
         init_not_mut,
