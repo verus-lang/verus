@@ -7,6 +7,7 @@ use rustc_hir::def_id::DefId;
 use rustc_middle::ty::GenericArg;
 use rustc_middle::ty::TyKind;
 use std::sync::{RwLock, Arc};
+use rustc_middle::ty::Ty;
 
 #[derive(Debug)]
 pub enum VarErasure {
@@ -54,8 +55,19 @@ pub(crate) fn handle_var<'tcx>(
         return None;
     }
 
-    let typ = GenericArg::from(cx.typeck_results.expr_ty(expr));
-    let args = cx.tcx.mk_args(&[typ]);
+    let ty = cx.typeck_results.expr_ty(expr);
+    Some(erased_ghost_value(cx, &erasure_ctxt, expr, ty))
+}
+
+/// Produce an expression `builtin::erased_ghost_value::<T>()`
+fn erased_ghost_value<'tcx>(
+    cx: &mut Cx<'tcx>,
+    erasure_ctxt: &VerusErasureCtxt,
+    expr: &'tcx hir::Expr<'tcx>,
+    ty: Ty<'tcx>,
+) -> ExprKind<'tcx> {
+    let arg = GenericArg::from(ty);
+    let args = cx.tcx.mk_args(&[arg]);
     let fn_def_id = erasure_ctxt.erased_ghost_value_fn_def_id;
     let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
 
@@ -72,11 +84,11 @@ pub(crate) fn handle_var<'tcx>(
         kind: fun_expr_kind,
     };
 
-    Some(ExprKind::Call {
+    ExprKind::Call {
         ty: fn_ty,
         fun: cx.thir.exprs.push(fun_expr),
         args: Box::new([]),
         from_hir_call: false,
         fn_span: expr.span,
-    })
+    }
 }
