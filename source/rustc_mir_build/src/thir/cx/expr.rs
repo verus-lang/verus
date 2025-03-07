@@ -559,9 +559,12 @@ impl<'tcx> Cx<'tcx> {
                 };
                 let def_id = def_id.expect_local();
 
-                let upvars = self
+                let (closure_captures, fake_reads) = crate::verus::get_upvars(self, expr, def_id);
+
+                let upvars = /*self
                     .tcx
-                    .closure_captures(def_id)
+                    .closure_captures(def_id)*/
+                    closure_captures
                     .iter()
                     .zip_eq(args.upvar_tys())
                     .filter(|(captured_place, ty)| {
@@ -575,16 +578,13 @@ impl<'tcx> Cx<'tcx> {
                     .collect();
 
                 // Convert the closure fake reads, if any, from hir `Place` to ExprRef
-                let fake_reads = match self.typeck_results.closure_fake_reads.get(&def_id) {
-                    Some(fake_reads) => fake_reads
+                let fake_reads = fake_reads
                         .iter()
                         .map(|(place, cause, hir_id)| {
                             let expr = self.convert_captured_hir_place(expr, place.clone());
                             (self.thir.exprs.push(expr), *cause, *hir_id)
                         })
-                        .collect(),
-                    None => Vec::new(),
-                };
+                        .collect();
 
                 ExprKind::Closure(Box::new(crate::verus::fix_closure(self, ClosureExpr {
                     closure_id: def_id,

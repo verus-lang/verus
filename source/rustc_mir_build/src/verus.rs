@@ -103,7 +103,7 @@ pub(crate) fn should_keep_upvar<'tcx>(
 ) -> bool {
     let (closure_body, _expr_id) = cx.tcx.thir_body(closure_def_id).unwrap();
     let closure_body_thir = closure_body.borrow();
-    dbg!(&closure_body_thir);
+    //dbg!(&closure_body_thir);
     /*
     for expr in closure_body_thir.exprs.iter() {
         if expr_matches_place(&expr, &captured_place.place) {
@@ -111,7 +111,8 @@ pub(crate) fn should_keep_upvar<'tcx>(
         }
     }*/
 
-    false
+    //false
+    true
 }
 
 /*
@@ -157,11 +158,13 @@ pub(crate) fn fix_closure<'tcx>(
     for cf in self.typeck_results.closure_min_captures_flattened(def_id) {
         dbg!(&cf);
     }
-    dbg!(&upvars);
-    dbg!(&fake_reads);*/
+    */
+    //dbg!(&cx.thir.exprs);
+    //dbg!(&upvars);
+    //dbg!(&fake_reads);
 
-    let (closure_body, _expr_id) = cx.tcx.thir_body(closure_id).unwrap();
-    let closure_body = closure_body.borrow();
+    //let (closure_body, _expr_id) = cx.tcx.thir_body(closure_id).unwrap();
+    //let closure_body = closure_body.borrow();
     //dbg!(closure_body);
 
     /*
@@ -171,5 +174,28 @@ pub(crate) fn fix_closure<'tcx>(
 
     let filtered_upvars = upvars.iter().filter(|upv| is_upvar_actually_used(upv, closure_body)*/
 
-    ClosureExpr { closure_id, args, upvars, movability, fake_reads: vec![] }
+    ClosureExpr { closure_id, args, upvars, movability, fake_reads }
+}
+
+pub(crate) fn get_upvars<'tcx>(
+    cx: &mut Cx<'tcx>,
+    closure_expr: ClosureExpr<'tcx>,
+    closure_def_id: LocalDefId,
+) {
+    let mut fn_ctxt = crate::upvar::FnCtxt {
+        ph: std::marker::PhantomData,
+        tcx: cx.tcx,
+        param_env: cx.param_env,
+        closure_def_id,
+        typeck_results: cx.typeck_results,
+        fake_reads: vec![],
+        closure_min_captures: Some(Default::default()),
+    };
+
+    let hir::ExprKind::Closure(hir::Closure { body: body_id, capture_clause, .. }) = &closure_expr.kind else {
+        unreachable!()
+    };
+
+    fn_ctxt.analyze_closure(closure_def_id, closure_expr.span, body_id, body, capture_clause);
+    (self.closure_min_captures.unwrap(), self.fake_reads)
 }

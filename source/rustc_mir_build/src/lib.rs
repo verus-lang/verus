@@ -3,12 +3,15 @@
 // tidy-alphabetical-start
 #![allow(rustc::diagnostic_outside_of_impl)]
 #![allow(rustc::untranslatable_diagnostic)]
+#![allow(dead_code)]
+#![allow(noop_method_call)]
 #![feature(assert_matches)]
 #![feature(box_patterns)]
 #![feature(if_let_guard)]
 #![feature(let_chains)]
 #![feature(try_blocks)]
 #![feature(rustc_private)]
+#![feature(never_type)]
 #![warn(unreachable_pub)]
 // tidy-alphabetical-end
 
