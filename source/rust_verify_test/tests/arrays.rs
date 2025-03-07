@@ -53,13 +53,16 @@ test_verify_one_file! {
         use vstd::prelude::*;
         use vstd::array::*;
 
-        fn test(ar: &mut [u8; 20])
+        fn test(ar: &mut [usize; 20])
         requires
-            old(ar)[0] == 2
+            old(ar)[0] == 1,
+            old(ar)[2] == 2,
         ensures
-            ar[0] == 3,
+            ar[0] == 2,
+            ar[2] == 3,
         {
             ar[0] += 1;
+            ar[ar[0]] += 1;
         }
 
     } => Ok(())

@@ -2489,7 +2489,7 @@ fn expr_assign_to_vir_innermost<'tcx>(
             AutospecUsage::Final,
         );
         if let Some(op) = op {
-            // Evaluate tgt and idx twice may have side effects if tgt or idx is not a var/const.
+            // Evaluate tgt and idx twice may have side effects.
             unsupported_err_unless!(
                 !tgt_expr.can_have_side_effects() && !idx_expr.can_have_side_effects(),
                 lhs.span,
