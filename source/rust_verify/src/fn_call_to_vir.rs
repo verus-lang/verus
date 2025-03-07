@@ -1446,6 +1446,14 @@ fn verus_item_to_vir<'tcx, 'a>(
                 Arc::new(vir_args),
             ));
         }
+        VerusItem::ErasedGhostValue => {
+            return err_span(
+                expr.span,
+                format!(
+                    "erased_ghost_value should not appear in user code"
+                ),
+            );
+        }
         VerusItem::Vstd(_, _)
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)

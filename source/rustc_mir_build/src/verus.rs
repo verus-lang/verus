@@ -6,27 +6,38 @@ use crate::thir::cx::Cx;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty::GenericArg;
 use rustc_middle::ty::TyKind;
+use std::sync::{RwLock, Arc};
 
-pub enum VarErase {
+pub enum VarErasure {
     Erase,
     Keep,
 }
 
-pub enum CallErase {
+pub enum CallErasure {
     Keep,
     EraseAll,
     EraseCallButNotArgs,
 }
 
-pub struct VerusCtxt {
+pub struct VerusErasureCtxt {
     // For a given var (decl or use), should we erase it?
-    pub vars: HashMap<HirId, VarErase>,
-    pub calls: HashMap<HirId, CallErase>,
-    pub arbitrary_fn_def_id: DefId,
+    pub vars: HashMap<HirId, VarErasure>,
+    pub calls: HashMap<HirId, CallErasure>,
+    pub erased_ghost_value_fn_def_id: DefId,
 }
 
-fn with_verus_ctxt<R>(_f: impl FnOnce(&VerusCtxt) -> R) -> R {
-    todo!();
+static VERUS_ERASURE_CTXT: RwLock<Option<Arc<VerusErasureCtxt>>> = RwLock::new(None);
+
+pub fn set_verus_erasure_ctxt(erasure_ctxt: Arc<VerusErasureCtxt>) {
+    let v: &mut Option<Arc<VerusErasureCtxt>> = &mut VERUS_ERASURE_CTXT.write().unwrap();
+    if v.is_some() {
+        panic!("VerusErasureCtxt has already been set");
+    }
+    *v = Some(erasure_ctxt);
+}
+
+fn get_verus_erasure_ctxt() -> Arc<VerusErasureCtxt> {
+    VERUS_ERASURE_CTXT.read().unwrap().as_ref().expect("Expected VerusErasureCtxt for THIR modification pass").clone()
 }
 
 pub(crate) fn handle_var<'tcx>(
@@ -34,37 +45,37 @@ pub(crate) fn handle_var<'tcx>(
     expr: &'tcx hir::Expr<'tcx>,
     var_hir_id: HirId
 ) -> Option<ExprKind<'tcx>> {
-    with_verus_ctxt(|verus_ctxt| {
-        if matches!(verus_ctxt.vars[&var_hir_id], VarErase::Keep) {
-            return None;
-        }
+    let erasure_ctxt = get_verus_erasure_ctxt();
 
-        let typ = GenericArg::from(cx.typeck_results.expr_ty(expr));
-        let args = cx.tcx.mk_args(&[typ]);
-        let fn_def_id = verus_ctxt.arbitrary_fn_def_id;
-        let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
+    if matches!(erasure_ctxt.vars.get(&var_hir_id), None | Some(VarErasure::Keep)) {
+        return None;
+    }
 
-        let fun_expr_kind = ExprKind::NamedConst {
-            def_id: fn_def_id,
-            args,
-            user_ty: None,
-        };
-        let temp_lifetime = cx
-            .rvalue_scopes
-            .temporary_scope(cx.region_scope_tree, expr.hir_id.local_id);
-        let fun_expr = Expr {
-            temp_lifetime,
-            ty: fn_ty,
-            span: expr.span,
-            kind: fun_expr_kind,
-        };
+    let typ = GenericArg::from(cx.typeck_results.expr_ty(expr));
+    let args = cx.tcx.mk_args(&[typ]);
+    let fn_def_id = erasure_ctxt.erased_ghost_value_fn_def_id;
+    let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
 
-        Some(ExprKind::Call {
-            ty: fn_ty,
-            fun: cx.thir.exprs.push(fun_expr),
-            args: Box::new([]),
-            from_hir_call: false,
-            fn_span: expr.span,
-        })
+    let fun_expr_kind = ExprKind::NamedConst {
+        def_id: fn_def_id,
+        args,
+        user_ty: None,
+    };
+    let temp_lifetime = cx
+        .rvalue_scopes
+        .temporary_scope(cx.region_scope_tree, expr.hir_id.local_id);
+    let fun_expr = Expr {
+        temp_lifetime,
+        ty: fn_ty,
+        span: expr.span,
+        kind: fun_expr_kind,
+    };
+
+    Some(ExprKind::Call {
+        ty: fn_ty,
+        fun: cx.thir.exprs.push(fun_expr),
+        args: Box::new([]),
+        from_hir_call: false,
+        fn_span: expr.span,
     })
 }

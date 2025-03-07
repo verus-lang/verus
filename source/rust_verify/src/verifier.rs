@@ -270,6 +270,7 @@ pub struct Verifier {
     pub args: Args,
     pub user_filter: Option<UserFilter>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
+    pub(crate) verus_items: Option<Arc<VerusItems>>,
 
     /// total real time to verify all activated buckets of the crate, including real time for
     /// the parallel bucket verification
@@ -411,6 +412,7 @@ impl Verifier {
             args,
             user_filter: None,
             erasure_hints: None,
+            verus_items: None,
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
             time_hir: Duration::new(0, 0),
@@ -447,6 +449,7 @@ impl Verifier {
             args: self.args.clone(),
             user_filter: self.user_filter.clone(),
             erasure_hints: self.erasure_hints.clone(),
+            verus_items: self.verus_items.clone(),
 
             time_verify_crate: Duration::new(0, 0),
             time_verify_crate_sequential: Duration::new(0, 0),
@@ -2878,6 +2881,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             self.verifier.time_import = time_import1 - time_import0;
             let verus_items =
                 Arc::new(crate::verus_items::from_diagnostic_items(&tcx.all_diagnostic_items(())));
+            self.verifier.verus_items = Some(verus_items.clone());
             let spans = SpanContextX::new(
                 tcx,
                 tcx.stable_crate_id(LOCAL_CRATE),
@@ -3013,7 +3017,11 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             );
         }
-        if self.verifier.args.new_lifetime {
+        if self.verifier.args.new_lifetime && !self.verifier.args.no_lifetime {
+            crate::erase::setup_verus_ctxt_for_thir_erasure(
+                &self.verifier.verus_items.as_ref().unwrap(),
+                self.verifier.erasure_hints.as_ref().unwrap(),
+            );
             rustc_driver::Compilation::Continue
         } else {
             rustc_driver::Compilation::Stop
