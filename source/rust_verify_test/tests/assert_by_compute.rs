@@ -668,7 +668,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] default_impl_1_issue1406 verus_code! {
+    #[test] default_impl_1_issue1406 verus_code! {
         trait Tr {
             spec fn foo(&self) -> bool { true }
         }
@@ -743,4 +743,23 @@ test_verify_one_file! {
             assert(foo_wrapper(t)) by(compute_only);
         }
     } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] type_args_issue1446 verus_code! {
+        trait Tr {
+            spec fn foo() -> bool;
+        }
+
+        spec fn hello<A: Tr, B: Tr>() -> bool {
+            A::foo()
+        }
+
+        proof fn test<A: Tr, B: Tr>()
+            requires A::foo(),
+        {
+            assert(hello::<B, A>()) by(compute); // FAILS
+            assert(B::foo());
+        }
+    } => Err(err) => assert_fails(err, 1)
 }
