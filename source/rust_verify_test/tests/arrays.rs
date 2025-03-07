@@ -66,6 +66,58 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_array_set_assign_op_with_idx_side_effect verus_code! {
+        use vstd::prelude::*;
+        use vstd::array::*;
+        fn potential_side_effect(i: &mut usize) -> (ret: usize)
+        requires
+            *old(i) < 10,
+        ensures
+            ret == old(i),
+            *i == *old(i) + 1,
+        {
+            let oldi = *i;
+            *i = *i + 1;
+            oldi
+        }
+
+        fn test(ar: &mut [usize; 20])
+        requires
+            old(ar)[0] < 10,
+        ensures
+            ar[0] == old(ar)[0] + 1,
+            ar[1] == 1,
+        {
+            let mut i = 0usize;
+            ar[potential_side_effect(&mut i)] += 1;
+            ar[potential_side_effect(&mut i)] = 1;
+        }
+
+    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: assign op to index_mut with tgt/idx that could have side effects")
+}
+
+test_verify_one_file! {
+    #[test] test_array_set_assign_customized_op verus_code! {
+        use vstd::prelude::*;
+        use vstd::array::*;
+
+        #[derive(Clone, Copy)]
+        struct A(u8);
+
+        impl core::ops::AddAssign<u8> for A {
+            fn add_assign(&mut self, rhs: u8) {
+            }
+        }
+
+        fn test(ar: &mut [A; 20])
+        {
+            ar[0] += 1;
+        }
+
+    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature: assign op to index_mut for non smt arithmetic types")
+}
+
+test_verify_one_file! {
     #[test] test_array_set verus_code! {
         use vstd::prelude::*;
         use vstd::array::*;
