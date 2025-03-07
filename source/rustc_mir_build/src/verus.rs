@@ -8,17 +8,20 @@ use rustc_middle::ty::GenericArg;
 use rustc_middle::ty::TyKind;
 use std::sync::{RwLock, Arc};
 
+#[derive(Debug)]
 pub enum VarErasure {
     Erase,
     Keep,
 }
 
+#[derive(Debug)]
 pub enum CallErasure {
     Keep,
     EraseAll,
     EraseCallButNotArgs,
 }
 
+#[derive(Debug)]
 pub struct VerusErasureCtxt {
     // For a given var (decl or use), should we erase it?
     pub vars: HashMap<HirId, VarErasure>,
@@ -47,7 +50,7 @@ pub(crate) fn handle_var<'tcx>(
 ) -> Option<ExprKind<'tcx>> {
     let erasure_ctxt = get_verus_erasure_ctxt();
 
-    if matches!(erasure_ctxt.vars.get(&var_hir_id), None | Some(VarErasure::Keep)) {
+    if matches!(erasure_ctxt.vars.get(&expr.hir_id), None | Some(VarErasure::Keep)) {
         return None;
     }
 
@@ -56,9 +59,7 @@ pub(crate) fn handle_var<'tcx>(
     let fn_def_id = erasure_ctxt.erased_ghost_value_fn_def_id;
     let fn_ty = cx.tcx.mk_ty_from_kind(TyKind::FnDef(fn_def_id, args));
 
-    let fun_expr_kind = ExprKind::NamedConst {
-        def_id: fn_def_id,
-        args,
+    let fun_expr_kind = ExprKind::ZstLiteral {
         user_ty: None,
     };
     let temp_lifetime = cx

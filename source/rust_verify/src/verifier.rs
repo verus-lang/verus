@@ -2562,11 +2562,13 @@ impl Verifier {
         }
 
         let hir = tcx.hir();
-        hir.par_body_owners(|def_id| tcx.ensure().check_match(def_id));
-        tcx.ensure().check_private_in_public(());
-        hir.par_for_each_module(|module| {
-            tcx.ensure().check_mod_privacy(module);
-        });
+        if !self.args.new_lifetime {
+            hir.par_body_owners(|def_id| tcx.ensure().check_match(def_id));
+            tcx.ensure().check_private_in_public(());
+            hir.par_for_each_module(|module| {
+                tcx.ensure().check_mod_privacy(module);
+            });
+        }
 
         self.air_no_span = {
             let no_span = hir
@@ -2923,7 +2925,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     return;
                 }
                 self.lifetime_start_time = Some(Instant::now());
-                let status = if self.verifier.args.no_lifetime {
+                let status = if self.verifier.args.no_lifetime && !self.verifier.args.new_lifetime {
                     Ok(vec![])
                 } else {
                     let log_lifetime =
@@ -3016,13 +3018,15 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     ""
                 }
             );
-        }
-        if self.verifier.args.new_lifetime && !self.verifier.args.no_lifetime {
-            crate::erase::setup_verus_ctxt_for_thir_erasure(
-                &self.verifier.verus_items.as_ref().unwrap(),
-                self.verifier.erasure_hints.as_ref().unwrap(),
-            );
-            rustc_driver::Compilation::Continue
+            if self.verifier.args.new_lifetime && !self.verifier.args.no_lifetime {
+                crate::erase::setup_verus_ctxt_for_thir_erasure(
+                    &self.verifier.verus_items.as_ref().unwrap(),
+                    self.verifier.erasure_hints.as_ref().unwrap(),
+                );
+                rustc_driver::Compilation::Continue
+            } else {
+                rustc_driver::Compilation::Stop
+            }
         } else {
             rustc_driver::Compilation::Stop
         }
