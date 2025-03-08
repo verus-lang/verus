@@ -821,6 +821,91 @@ pub fn fn_namespace_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fu
     })
 }
 
+pub fn set_type_path(vstd_crate_name: &Ident) -> Path {
+    Arc::new(PathX {
+        krate: Some(vstd_crate_name.clone()),
+        segments: Arc::new(vec![Arc::new("set".to_string()), Arc::new("Set".to_string())]),
+    })
+}
+
+pub fn fn_set_empty_name(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("set".to_string()),
+                Arc::new("Set".to_string()),
+                Arc::new("empty".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_set_full_name(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("set".to_string()),
+                Arc::new("Set".to_string()),
+                Arc::new("full".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_set_subset_of_name(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("set".to_string()),
+                Arc::new("Set".to_string()),
+                Arc::new("subset_of".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_set_insert_name(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("set".to_string()),
+                Arc::new("Set".to_string()),
+                Arc::new("insert".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_set_remove_name(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("set".to_string()),
+                Arc::new("Set".to_string()),
+                Arc::new("remove".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_set_contains_name(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("set".to_string()),
+                Arc::new("Set".to_string()),
+                Arc::new("contains".to_string()),
+            ]),
+        }),
+    })
+}
+
 pub fn strslice_module_path(vstd_crate_name: &Ident) -> Path {
     Arc::new(PathX {
         krate: Some(vstd_crate_name.clone()),
