@@ -91,8 +91,6 @@ fn main() {
         format!("builtin_macros={lib_builtin_macros_path}"),
         "--extern".to_string(),
         format!("state_machines_macros={lib_state_machines_macros_path}"),
-        "--cfg".to_string(),
-        "erasure_macro_todo".to_string(),
         "--crate-type=lib".to_string(),
         "--export".to_string(),
         verus_target_path.join(VSTD_VIR).to_str().unwrap().to_string(),

@@ -109,6 +109,9 @@ pub struct ArgsX {
     pub solver: SmtSolver,
     #[cfg(feature = "axiom-usage-info")]
     pub axiom_usage_info: bool,
+    pub compile_when_primary_package: bool,
+    pub compile_when_not_primary_package: bool,
+    pub import_dep_if_present: Vec<String>,
 }
 
 impl ArgsX {
@@ -153,6 +156,9 @@ impl ArgsX {
             solver: Default::default(),
             #[cfg(feature = "axiom-usage-info")]
             axiom_usage_info: Default::default(),
+            compile_when_primary_package: false,
+            compile_when_not_primary_package: false,
+            import_dep_if_present: Default::default(),
         }
     }
 }
@@ -330,6 +336,9 @@ pub fn parse_args_with_imports(
         #[cfg(feature = "axiom-usage-info")]
         (EXTENDED_AXIOM_USAGE_INFO, "Print usage info for broadcasted axioms, lemmas, and groups"),
     ];
+    const OPT_COMPILE_WHEN_PRIMARY: &str = "compile-when-primary-package";
+    const OPT_COMPILE_WHEN_NOT_PRIMARY: &str = "compile-when-not-primary-package";
+    const OPT_IMPORT_DEP_IF_PRESENT: &str = "import-dep-if-present";
 
     let default_num_threads: usize = std::thread::available_parallelism()
         .map(|x| std::cmp::max(usize::from(x) - 1, 1))
@@ -465,6 +474,23 @@ pub fn parse_args_with_imports(
         "OPTION[=VALUE]",
     );
 
+    opts.optflag(
+        "",
+        OPT_COMPILE_WHEN_PRIMARY,
+        "When running under 'cargo verus', compile primary package(s)",
+    );
+    opts.optflag(
+        "",
+        OPT_COMPILE_WHEN_NOT_PRIMARY,
+        "When running under 'cargo verus', compile non-primary package(s)",
+    );
+    opts.optmulti(
+        "",
+        OPT_IMPORT_DEP_IF_PRESENT,
+        "When running under 'cargo verus', import .vir file for dependency",
+        "DEPENDENCY_NAME",
+    );
+
     let print_usage = || {
         let brief = format!("Usage: {} INPUT [options]", program);
         eprint!("{}", opts.usage(&brief));
@@ -480,10 +506,6 @@ pub fn parse_args_with_imports(
             if m.opt_present("h") {
                 print_usage();
                 std::process::exit(0);
-            }
-            if m.free.len() == 0 && !m.opt_present("version") {
-                print_usage();
-                std::process::exit(-1);
             }
             unmatched.insert(0, program.clone());
             (m, unmatched)
@@ -691,6 +713,9 @@ pub fn parse_args_with_imports(
         solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         #[cfg(feature = "axiom-usage-info")]
         axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
+        compile_when_primary_package: matches.opt_present(OPT_COMPILE_WHEN_PRIMARY),
+        compile_when_not_primary_package: matches.opt_present(OPT_COMPILE_WHEN_NOT_PRIMARY),
+        import_dep_if_present: matches.opt_strs(OPT_IMPORT_DEP_IF_PRESENT),
     };
 
     (Arc::new(args), unmatched)

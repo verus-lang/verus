@@ -1,0 +1,13 @@
+[package]
+name = "test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { path = "../../../vstd" }
+builtin = { path = "../../../builtin" }
+builtin_macros = { path = "../../../builtin_macros" }
+library = { path = "../library", features = ["explicit-verus-deps"] }
+
+[package.metadata.verus]
+verify = true
