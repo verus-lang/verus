@@ -48,7 +48,7 @@ test_verify_one_file! {
             let v2 = Thing { v: true };
             assert_(v1 == v2);
         }
-    } => Err(err) => assert_vir_error_msg(err, "==/!= for non smt equality types")
+    } => Err(err) => assert_vir_error_msg(err, "`core::cmp::PartialEq::eq` is not supported")
 }
 
 test_verify_one_file! {
