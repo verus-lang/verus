@@ -1407,3 +1407,46 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "`std::rc::Rc<u32>` cannot be sent between threads safely")
 }
+
+test_verify_one_file! {
+    #[test] tracked_consume_nested verus_code! {
+        tracked struct X { }
+
+        proof fn consume_x(tracked x: X) { }
+
+        fn test() {
+            let tracked x = X { };
+
+            let clos = move || {
+                let clos2 = move || {
+                    let tracked y = x;
+                    proof { consume_x(y); }
+                };
+            };
+
+            proof { consume_x(x); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "use of moved value: `x`")
+}
+
+test_verify_one_file! {
+    #[test] tracked_consume_ghost verus_code! {
+        tracked struct X { }
+
+        proof fn consume_x(tracked x: X) { }
+
+        proof fn ghost_x(x: X) { }
+
+        fn test() {
+            let tracked x = X { };
+
+            let clos = move || {
+                let clos2 = move || {
+                    proof { ghost_x(x); }
+                };
+            };
+
+            proof { consume_x(x); }
+        }
+    } => Ok(())
+}
