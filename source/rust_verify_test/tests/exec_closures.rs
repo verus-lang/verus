@@ -1381,3 +1381,29 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "Verus does not support implementing this trait")
 }
+
+test_verify_one_file! {
+    #[test] tracked_variables_captured_by_closures_send verus_code! {
+        tracked struct X {
+            rc: std::rc::Rc<u32>,
+        }
+
+        #[verifier::external_body]
+        proof fn get_x() -> (tracked x: X) {
+            unimplemented!();
+        }
+
+        fn require_send<T: Send>(t: T) { }
+
+        fn test() {
+            let tracked x = get_x();
+
+            let clos = move || {
+                let tracked y = x;
+                ()
+            };
+
+            require_send(clos);
+        }
+    } => Err(err) => assert_rust_error_msg(err, "`std::rc::Rc<u32>` cannot be sent between threads safely")
+}
