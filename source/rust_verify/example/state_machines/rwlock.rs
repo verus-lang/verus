@@ -3,7 +3,6 @@ use builtin::*;
 use vstd::cell::*;
 use vstd::multiset::*;
 use vstd::prelude::*;
-use vstd::ptr::*;
 use vstd::{pervasive::*, *};
 
 use state_machines_macros::tokenized_state_machine;

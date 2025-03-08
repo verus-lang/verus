@@ -1,6 +1,6 @@
 use std::mem;
 
-pub use heapsize_derive::*;
+pub use heapsize_derive::HeapSize;
 
 pub trait HeapSize {
     /// Total number of bytes of heap memory owned by `self`.

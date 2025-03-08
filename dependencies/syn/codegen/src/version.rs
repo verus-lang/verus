@@ -1,23 +1,19 @@
-use anyhow::Result;
+use crate::workspace_path;
+use anyhow::{Context as _, Result};
 use semver::Version;
-use serde::Deserialize;
 use std::fs;
-use std::path::Path;
+use toml::Table;
 
 pub fn get() -> Result<Version> {
-    let codegen_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let syn_cargo_toml = codegen_root.join("../Cargo.toml");
-    let manifest = fs::read_to_string(syn_cargo_toml)?;
-    let parsed: Manifest = toml::from_str(&manifest)?;
-    Ok(parsed.package.version)
-}
-
-#[derive(Debug, Deserialize)]
-struct Manifest {
-    package: Package,
-}
-
-#[derive(Debug, Deserialize)]
-struct Package {
-    version: Version,
+    let syn_cargo_toml = workspace_path::get("Cargo.toml");
+    let content = fs::read_to_string(syn_cargo_toml)?;
+    let manifest: Table = toml::from_str(&content)?;
+    manifest
+        .get("package")
+        .context("[package] not found in Cargo.toml")?
+        .get("version")
+        .and_then(toml::Value::as_str)
+        .context("package version not found in Cargo.toml")?
+        .parse()
+        .context("failed to parse package version")
 }

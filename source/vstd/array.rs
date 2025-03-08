@@ -6,10 +6,16 @@ use super::view::*;
 
 verus! {
 
+pub open spec fn array_view<T, const N: usize>(a: [T; N]) -> Seq<T> {
+    Seq::new(N as nat, |i: int| array_index(a, i))
+}
+
 impl<T, const N: usize> View for [T; N] {
     type V = Seq<T>;
 
-    spec fn view(&self) -> Seq<T>;
+    open spec fn view(&self) -> Seq<T> {
+        array_view(*self)
+    }
 }
 
 impl<T: DeepView, const N: usize> DeepView for [T; N] {
@@ -38,6 +44,16 @@ impl<T, const N: usize> ArrayAdditionalSpecFns<T> for [T; N] {
     open spec fn spec_index(&self, i: int) -> T {
         self.view().index(i)
     }
+}
+
+// Automatically introduce a[0], ..., a[N - 1] into SMT context
+pub broadcast proof fn lemma_array_index<T, const N: usize>(a: [T; N], i: int)
+    requires
+        0 <= i < N,
+    ensures
+        #![trigger array_index(a, i)]
+        a[i] == array_view(a)[i],
+{
 }
 
 impl<T, const N: usize> ArrayAdditionalExecFns<T> for [T; N] {
@@ -70,14 +86,7 @@ pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
     admit();
 }
 
-// Referenced by Verus' internal encoding for array literals
-#[doc(hidden)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::array::array_index")]
-pub open spec fn array_index<T, const N: usize>(ar: &[T; N], i: int) -> T {
-    ar.view().index(i)
-}
-
-pub open spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
+pub spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
 
 pub broadcast proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
     ensures
@@ -98,23 +107,21 @@ pub fn array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
     ar
 }
 
-#[verifier::external_fn_specification]
-pub fn ex_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T])
+pub assume_specification<T, const N: usize>[ <[T; N]>::as_slice ](ar: &[T; N]) -> (out: &[T])
     ensures
         ar@ == out@,
-{
-    ar.as_slice()
-}
+;
 
 pub spec fn spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T) -> (res: [T; N]);
 
-#[verifier::external_body]
 pub broadcast proof fn axiom_spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T)
     ensures
         #![trigger spec_array_fill_for_copy_type::<T, N>(t)]
+        // intentionally triggering on `spec_array_fill_for_copy_type` only
         forall|i: int|
             0 <= i < N ==> spec_array_fill_for_copy_type::<T, N>(t).view()[i] == t,
 {
+    admit();
 }
 
 // The 'array fill' [t; N] where t is a Copy type
@@ -130,9 +137,9 @@ pub fn array_fill_for_copy_types<T: Copy, const N: usize>(t: T) -> (res: [T; N])
     [t;N]
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_array_axioms {
     array_len_matches_n,
+    lemma_array_index,
     axiom_spec_array_as_slice,
     axiom_spec_array_fill_for_copy_type,
 }

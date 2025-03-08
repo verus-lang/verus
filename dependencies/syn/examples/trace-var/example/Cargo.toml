@@ -1,8 +1,8 @@
 [package]
-name = "example"
+name = "trace-var-example"
 version = "0.0.0"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
-edition = "2018"
+edition = "2021"
 publish = false
 
 [dependencies]

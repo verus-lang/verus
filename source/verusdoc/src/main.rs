@@ -20,6 +20,7 @@ pub enum ParamMode {
 pub struct DocSigInfo {
     pub fn_mode: String,
     pub ret_mode: ParamMode,
+    pub ret_name: String,
     pub param_modes: Vec<ParamMode>,
     pub broadcast: bool,
 }
@@ -28,6 +29,7 @@ enum VerusDocAttr {
     ModeInfo(DocSigInfo),
     Specification(String, NodeRef),
     BroadcastGroup,
+    AssumeSpecification,
 }
 
 // Types of spec clauses we handle.
@@ -58,6 +60,8 @@ fn process_file(path: &Path) {
     }
 
     let document = kuchiki::parse_html().one(html);
+
+    let opt_trait_info = get_opt_trait_info(path, &document);
 
     // Rustdoc generates HTML for an ImplItem that looks like this:
     //
@@ -114,7 +118,7 @@ fn process_file(path: &Path) {
 
         // Now add content based on the data we just collected.
 
-        update_docblock(&docblock_elem, &attrs);
+        update_docblock(&docblock_elem, &attrs, &opt_trait_info);
     }
 
     document.serialize_to_file(path).expect("serialize_to_file");
@@ -158,7 +162,7 @@ fn interpret_as_verusdoc_attribute(node: &NodeRef) -> Option<VerusDocAttr> {
     } else if attr_name == "broadcast_group" {
         Some(VerusDocAttr::BroadcastGroup)
     } else {
-        panic!("unrecognized attr_name: '{:}'", attr_name);
+        Some(VerusDocAttr::AssumeSpecification)
     }
 }
 
@@ -209,6 +213,19 @@ fn mk_sig_keyword_node(spec_name: &str) -> NodeRef {
     nr
 }
 
+/// <span class="verus-ret-name">{spec name}</span>
+
+fn mk_ret_name_node(spec_name: &str) -> NodeRef {
+    let t = NodeRef::new_text(spec_name);
+
+    let qual_name = QualName::new(None, ns!(html), local_name!("span"));
+    let nr = NodeRef::new_element(qual_name, vec![]);
+    set_class_attribute(&nr, "verus-ret-name");
+    nr.append(t);
+
+    nr
+}
+
 /// <div class="verus-spec"></div>
 
 fn mk_spec_node() -> NodeRef {
@@ -225,7 +242,11 @@ fn set_class_attribute(nr: &NodeRef, value: &str) {
     attr_ref.insert(local_name!("class"), value.to_string());
 }
 
-fn update_docblock(docblock_elem: &NodeRef, attrs: &Vec<VerusDocAttr>) {
+fn update_docblock(
+    docblock_elem: &NodeRef,
+    attrs: &Vec<VerusDocAttr>,
+    opt_trait_info: &Option<TraitInfo>,
+) {
     let mut elems: Vec<NodeRef> = vec![];
 
     // Add code that looks like
@@ -278,11 +299,15 @@ fn update_docblock(docblock_elem: &NodeRef, attrs: &Vec<VerusDocAttr>) {
     for attr in attrs.iter() {
         match attr {
             VerusDocAttr::ModeInfo(doc_mode_info) => {
-                update_sig_info(docblock_elem, UpdateSigMode::DocSigInfo(doc_mode_info));
+                update_sig_info(
+                    docblock_elem,
+                    UpdateSigMode::DocSigInfo(doc_mode_info),
+                    opt_trait_info,
+                );
                 break;
             }
             VerusDocAttr::BroadcastGroup => {
-                update_sig_info(docblock_elem, UpdateSigMode::BroadcastGroup);
+                update_sig_info(docblock_elem, UpdateSigMode::BroadcastGroup, opt_trait_info);
                 break;
             }
             _ => {}
@@ -295,7 +320,34 @@ enum UpdateSigMode<'a> {
     BroadcastGroup,
 }
 
-fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
+struct TraitInfo {
+    node: NodeRef,
+}
+
+fn update_sig_info(
+    docblock_elem: &NodeRef,
+    info: UpdateSigMode<'_>,
+    opt_trait_info: &Option<TraitInfo>,
+) {
+    let Some((node, full_text, fn_idx)) = get_node_to_modify(docblock_elem) else {
+        return;
+    };
+
+    do_splices_for_info(&node, &full_text, fn_idx, &info);
+
+    if let Some(trait_info) = opt_trait_info {
+        if matches!(info, UpdateSigMode::DocSigInfo(..)) {
+            if let Some(fn_name) = get_fn_name(&full_text, fn_idx) {
+                let text = trait_info.node.text_contents();
+                if let Some(fn_idx) = get_fn_idx_in_trait(&trait_info.node, fn_name) {
+                    do_splices_for_info(&trait_info.node, &text, fn_idx, &info);
+                }
+            }
+        }
+    }
+}
+
+fn do_splices_for_info(node: &NodeRef, full_text: &str, fn_idx: usize, info: &UpdateSigMode<'_>) {
     // The signature is a dom tree with special formatting for syntax highlighting and such.
     // We first collect it as pure text, to get a string like
     //    pub fn foo<...>(...) -> ...
@@ -303,6 +355,82 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
     // collected all in the 'splices' vec.
     // Then we add the content.
 
+    let mut splices: Vec<(usize, usize, String, bool)> = vec![];
+
+    match info {
+        UpdateSigMode::DocSigInfo(info) => {
+            // TODO: separate these if possible
+            let broadcast = if info.broadcast { "broadcast ".to_owned() } else { "".to_owned() };
+            let fn_mode = format!("{:} ", info.fn_mode);
+            splices.push((fn_idx, 0, broadcast + &fn_mode, true));
+
+            let arg0_idx = get_arg0_idx(&full_text, fn_idx);
+
+            let mut arg_idx = arg0_idx;
+
+            for i in 0..info.param_modes.len() {
+                match info.param_modes[i] {
+                    ParamMode::Default => {}
+                    ParamMode::Tracked => {
+                        splices.push((arg_idx, 0, "tracked ".to_string(), true));
+                    }
+                }
+
+                let name = get_arg_name(&full_text, arg_idx);
+                if name.starts_with("verus_tmp_") {
+                    let is_tracked = full_text[arg_idx + name.len() + 2..].starts_with("Tracked");
+                    let is_ghost = full_text[arg_idx + name.len() + 2..].starts_with("Ghost");
+                    if is_tracked {
+                        splices.push((arg_idx, 0, "Tracked".to_string(), true));
+                        splices.push((arg_idx, 10, "(".to_string(), false));
+                        splices.push((arg_idx + name.len(), 0, ")".to_string(), false));
+                    } else if is_ghost {
+                        splices.push((arg_idx, 0, "Ghost".to_string(), true));
+                        splices.push((arg_idx, 10, "(".to_string(), false));
+                        splices.push((arg_idx + name.len(), 0, ")".to_string(), false));
+                    }
+                }
+
+                arg_idx = next_comma_or_rparen(&full_text, arg_idx);
+
+                // skip of the comma and space
+                arg_idx += 2;
+            }
+
+            match info.ret_mode {
+                ParamMode::Default => {}
+                ParamMode::Tracked => {
+                    let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
+                    let type_idx = arrow_idx + 3;
+                    splices.push((type_idx, 0, "tracked ".to_string(), true));
+                }
+            };
+
+            if info.ret_name.len() > 0 {
+                let string_to_insert = format!("{:} : ", info.ret_name);
+                let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
+                let type_idx = arrow_idx + 3;
+                splices.push((type_idx, 0, string_to_insert, false));
+            }
+        }
+        UpdateSigMode::BroadcastGroup => {
+            splices.push((fn_idx, 0, "broadcast group ".to_owned(), true));
+        }
+    }
+
+    // Reverse order since inserting text should invalidate later indices
+    for (idx, cut_len, s, is_kw) in splices.into_iter().rev() {
+        if cut_len > 0 {
+            do_text_cut(&node, idx, cut_len);
+        }
+
+        let mut idx = idx;
+        let new_node = if is_kw { mk_sig_keyword_node(&s) } else { mk_ret_name_node(&s) };
+        do_text_splice(&node, &new_node, &mut idx, true);
+    }
+}
+
+fn get_node_to_modify(docblock_elem: &NodeRef) -> Option<(NodeRef, String, usize)> {
     let mut summary = docblock_elem.previous_sibling().unwrap();
 
     if summary.text_contents() == "Expand description" {
@@ -328,63 +456,71 @@ fn update_sig_info(docblock_elem: &NodeRef, info: UpdateSigMode<'_>) {
     }
 
     let full_text = summary.text_contents();
-
-    let mut splices: Vec<(usize, String)> = vec![];
-
     let fn_idx = if let Some(fn_idx) = full_text.find("fn") {
         fn_idx
     } else {
-        return;
+        return None;
     };
 
-    match info {
-        UpdateSigMode::DocSigInfo(info) => {
-            // TODO: separate these if possible
-            let broadcast = if info.broadcast { "broadcast ".to_owned() } else { "".to_owned() };
-            let fn_mode = format!("{:} ", info.fn_mode);
-            splices.push((fn_idx, broadcast + &fn_mode));
+    Some((summary, full_text, fn_idx))
+}
 
-            let arg0_idx = get_arg0_idx(&full_text, fn_idx);
-
-            let mut arg_idx = arg0_idx;
-
-            for i in 0..info.param_modes.len() {
-                match info.param_modes[i] {
-                    ParamMode::Default => {}
-                    ParamMode::Tracked => {
-                        splices.push((arg_idx, "tracked ".to_string()));
-                    }
-                }
-
-                arg_idx = next_comma_or_rparen(&full_text, arg_idx);
-
-                // skip of the comma and space
-                arg_idx += 2;
-            }
-
-            match info.ret_mode {
-                ParamMode::Default => {}
-                ParamMode::Tracked => {
-                    let arrow_idx = full_text[arg_idx..].find("->").unwrap() + arg_idx;
-                    let type_idx = arrow_idx + 3;
-                    splices.push((type_idx, "tracked ".to_string()));
-                }
-            }
-        }
-        UpdateSigMode::BroadcastGroup => {
-            splices.push((fn_idx, "broadcast group ".to_owned()));
-        }
+fn get_arg_name(t: &str, idx: usize) -> &str {
+    let b = t.as_bytes();
+    let mut i = idx;
+    while i < b.len() && b[i] != b':' {
+        i += 1;
     }
+    &t[idx..i]
+}
 
-    // Reverse order since inserting text should invalidate later indices
-    for (idx, s) in splices.into_iter().rev() {
-        let mut idx = idx;
-        let new_node = mk_sig_keyword_node(&s);
-        do_text_splice(&summary, &new_node, &mut idx, true);
+/// traverse a dom tree, counting characters, to delete the specified text
+fn do_text_cut(elem: &NodeRef, idx: usize, cut_len: usize) -> (usize, usize) {
+    match elem.as_text() {
+        Some(text_ref) => {
+            let t: &mut String = &mut text_ref.borrow_mut();
+
+            if idx < t.len() {
+                let a = if idx + cut_len <= t.len() {
+                    *t = t[0..idx].to_string() + &t[idx + cut_len..];
+                    (0, 0)
+                } else {
+                    *t = t[0..idx].to_string();
+                    (0, idx + cut_len - t.len())
+                };
+
+                if t.len() == 0 {
+                    elem.detach();
+                }
+
+                a
+            } else {
+                (idx - t.len(), cut_len)
+            }
+        }
+        None => {
+            let mut child_opt = elem.first_child();
+            let mut idx = idx;
+            let mut cut_len = cut_len;
+            while let Some(c) = child_opt {
+                let next_child_opt = c.next_sibling();
+
+                let (idx0, cut_len0) = do_text_cut(&c, idx, cut_len);
+                idx = idx0;
+                cut_len = cut_len0;
+                if cut_len == 0 {
+                    break;
+                }
+
+                child_opt = next_child_opt;
+            }
+
+            (idx, cut_len)
+        }
     }
 }
 
-// traverse a dom tree, counting characters, to insert the given node at the right spot
+/// traverse a dom tree, counting characters, to insert the given node at the right spot
 fn do_text_splice(elem: &NodeRef, inserted: &NodeRef, idx: &mut usize, root: bool) -> bool {
     match elem.as_text() {
         Some(text_ref) => {
@@ -423,7 +559,7 @@ fn do_text_splice(elem: &NodeRef, inserted: &NodeRef, idx: &mut usize, root: boo
                 child_opt = c.next_sibling();
 
                 if *idx == 0 && (child_opt.is_some() || root) {
-                    c.append(inserted.clone());
+                    c.insert_after(inserted.clone());
                     return true;
                 }
             }
@@ -469,6 +605,54 @@ fn next_comma_or_rparen(s: &str, i: usize) -> usize {
 
         i += 1;
     }
+}
+
+fn get_opt_trait_info(path: &Path, document: &NodeRef) -> Option<TraitInfo> {
+    let filename = path.file_name().unwrap();
+    if filename.to_string_lossy().starts_with("trait.") {
+        let nodes: Vec<_> = document.select(".item-decl").expect("code selector").collect();
+        if nodes.len() == 1 { Some(TraitInfo { node: nodes[0].as_node().clone() }) } else { None }
+    } else {
+        None
+    }
+}
+
+/// Given string and index of 'fn some_name', returns 'some_name'
+fn get_fn_name(full_text: &str, fn_idx: usize) -> Option<&str> {
+    let idx = fn_idx + 3;
+    let suff = &full_text[idx..];
+    let m = match (suff.find("<"), suff.find("(")) {
+        (None, None) => {
+            return None;
+        }
+        (Some(x), None) => x,
+        (None, Some(x)) => x,
+        (Some(y), Some(x)) => std::cmp::min(y, x),
+    };
+    Some(&suff[..m])
+}
+
+fn get_fn_idx_in_trait(node: &NodeRef, fn_name: &str) -> Option<usize> {
+    let possible_prefixes = [
+        "// Required methods\n    ",
+        "// Required method\n    ",
+        "// Provided methods\n    ",
+        "// Provided method\n    ",
+        ";\n    ",
+    ];
+    let text = node.text_contents();
+    for pref in possible_prefixes.iter() {
+        let s = pref.to_string() + "fn " + fn_name;
+        if let Some(idx) = text.find(s.as_str()) {
+            let nextc = idx + pref.len() + 3 + fn_name.len();
+            if nextc < text.len()
+                && (text.as_bytes()[nextc] == b'<' || text.as_bytes()[nextc] == b'(')
+            {
+                return Some(idx + pref.len());
+            }
+        }
+    }
+    None
 }
 
 fn write_css(dir_path: &Path) {

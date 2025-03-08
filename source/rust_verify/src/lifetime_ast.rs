@@ -109,7 +109,7 @@ pub(crate) type Stm = Box<(Span, StmX)>;
 #[derive(Debug, Clone)]
 pub(crate) enum StmX {
     Expr(Exp),
-    Let(Pattern, Typ, Option<Exp>),
+    Let(Pattern, Typ, Option<Exp>, Option<Exp>), // (pat, typ, init_expr, else_block)
 }
 
 #[derive(Debug)]
@@ -175,18 +175,20 @@ pub(crate) struct TraitDecl {
 
 #[derive(Debug)]
 pub(crate) struct TraitImpl {
+    pub(crate) span: Option<Span>,
     pub(crate) self_typ: Typ,
     pub(crate) generic_params: Vec<GenericParam>,
     pub(crate) generic_bounds: Vec<GenericBound>,
     // use Datatype(Id, Vec<Typ>) to represent (trait_path, trait_typ_args)
     pub(crate) trait_as_datatype: Typ,
+    pub(crate) trait_polarity: rustc_middle::ty::ImplPolarity,
     pub(crate) assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)>,
 }
 
 #[derive(Debug)]
 pub(crate) struct DatatypeDecl {
     pub(crate) name: Id,
-    pub(crate) span: Span,
+    pub(crate) span: Option<Span>,
     // Does the type implement the Copy trait? (e.g. impl<A: Copy> Copy for S<A> {})
     // If so, for each GenericParam A say whether clone and copy require A: Clone and A: Copy
     pub(crate) implements_copy: Option<Vec<bool>>,

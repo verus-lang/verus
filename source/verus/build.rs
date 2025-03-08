@@ -4,6 +4,7 @@ fn main() {
     let output = match std::process::Command::new("rustup")
         .arg("show")
         .arg("active-toolchain")
+        .env_remove("RUSTUP_TOOLCHAIN")
         .stderr(std::process::Stdio::inherit())
         .output()
         .map_err(|x| format!("could not execute rustup ({})", x))
@@ -15,7 +16,7 @@ fn main() {
         panic!("rustup failed");
     }
     let active_toolchain_re =
-        Regex::new(r"^(([A-Za-z0-9.-]+)-[A-Za-z0-9_]+-[A-Za-z0-9]+-[A-Za-z0-9-]+)").unwrap();
+        Regex::new(r"^(([A-Za-z0-9.-]+)-(?:aarch64|x86_64)-[A-Za-z0-9]+-[A-Za-z0-9-]+)").unwrap();
     let stdout = match std::str::from_utf8(&output.stdout)
         .map_err(|_| format!("rustup output is invalid utf8"))
     {
@@ -37,7 +38,7 @@ fn main() {
         toolchain
     } else {
         panic!(
-            "unexpected output from `rustup show active-toolchain`\nexpected a toolchain override\ngot: {stdout}"
+            "unexpected output from `rustup show active-toolchain`\nexpected a valid toolchain\ngot: {stdout}"
         );
     };
 

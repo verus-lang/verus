@@ -44,7 +44,6 @@ tokenized_state_machine!(
         transition!{
             tr_inc_a() {
                 require(!pre.inc_a);
-                assert(pre.counter <= 2);
                 update counter = pre.counter + 1;
                 update inc_a = true;
             }
@@ -53,9 +52,14 @@ tokenized_state_machine!(
         transition!{
             tr_inc_b() {
                 require(!pre.inc_b);
-                assert(pre.counter <= 2);
                 update counter = pre.counter + 1;
                 update inc_b = true;
+            }
+        }
+
+        property!{
+            increment_will_not_overflow_u32() {
+                assert 0 <= pre.counter < 0xffff_ffff;
             }
         }
 
@@ -99,8 +103,8 @@ struct_with_invariants!{
         // the same value as the atomic (`v`).
         // Furthermore, the ghost token should have the appropriate `instance`.
         invariant on atomic with (instance) is (v: u32, g: X::counter) {
-            g@.instance == instance@
-            && g@.value == v as int
+            g.instance_id() == instance@.id()
+            && g.value() == v as int
         }
     }
 }
@@ -128,7 +132,7 @@ fn main() {
     let join_handle1 = spawn(
         (move || -> (new_token: Tracked<X::inc_a>)
             ensures
-                new_token@@.instance == instance && new_token@@.value == true,
+                new_token@.instance_id() == instance.id() && new_token@.value() == true,
             {
                 // `inc_a_token` is moved into the closure
                 let tracked mut token = inc_a_token;
@@ -136,6 +140,7 @@ fn main() {
                 let _ =
                     atomic_with_ghost!(&globals.atomic => fetch_add(1);
                         ghost c => {
+                            globals.instance.borrow().increment_will_not_overflow_u32(&c);
                             globals.instance.borrow().tr_inc_a(&mut c, &mut token); // atomic increment
                         }
                     );
@@ -148,7 +153,7 @@ fn main() {
     let join_handle2 = spawn(
         (move || -> (new_token: Tracked<X::inc_b>)
             ensures
-                new_token@@.instance == instance && new_token@@.value == true,
+                new_token@.instance_id() == instance.id() && new_token@.value() == true,
             {
                 // `inc_b_token` is moved into the closure
                 let tracked mut token = inc_b_token;
@@ -156,6 +161,7 @@ fn main() {
                 let _ =
                     atomic_with_ghost!(&globals.atomic => fetch_add(1);
                         ghost c => {
+                            globals.instance.borrow().increment_will_not_overflow_u32(&mut c);
                             globals.instance.borrow().tr_inc_b(&mut c, &mut token); // atomic increment
                         }
                     );

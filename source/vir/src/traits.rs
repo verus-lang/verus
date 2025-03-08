@@ -10,7 +10,7 @@ use crate::def::Spanned;
 use crate::messages::{error, warning, Span, ToAny};
 use crate::sst_to_air::typ_to_ids;
 use air::ast::{Command, CommandX, Commands, DeclX};
-use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, str_typ};
+use air::ast_util::{ident_apply, mk_bind_expr, mk_implies, mk_unnamed_axiom, str_typ};
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -138,6 +138,12 @@ pub fn demote_external_traits(
                         return Err(error(
                             &function.span,
                             "the implementation for Drop must be marked opens_invariants none",
+                        ));
+                    }
+                    if !matches!(&function.x.unwind_spec, Some(crate::ast::UnwindSpec::NoUnwind)) {
+                        return Err(error(
+                            &function.span,
+                            "the implementation for Drop must be marked no_unwind",
                         ));
                     }
                 }
@@ -323,10 +329,8 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
         default_methods.insert(tr.x.name.clone(), Vec::new());
     }
     for f in &krate.functions {
-        if let FunctionKind::TraitMethodDecl { trait_path } = &f.x.kind {
-            if f.x.body.is_some() {
-                default_methods.get_mut(trait_path).expect("trait_path").push(f);
-            }
+        if let FunctionKind::TraitMethodDecl { trait_path, has_default: true } = &f.x.kind {
+            default_methods.get_mut(trait_path).expect("trait_path").push(f);
         }
         if let FunctionKind::TraitMethodImpl { impl_path, method, .. } = &f.x.kind {
             let p = (impl_path, method);
@@ -346,7 +350,7 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
             if !method_impls.contains(&(impl_path, method)) {
                 // Create a shell Function for trait_impl, with these purposes:
                 // - used as a recursion::Node::Fun in the call graph
-                // - for spec functions, used by func_to_air to create a definition axiom
+                // - for spec functions, used by sst_to_air_func to create a definition axiom
                 let inherit_kind = FunctionKind::TraitMethodImpl {
                     method: default_function.x.name.clone(),
                     impl_path: impl_path.clone(),
@@ -397,23 +401,25 @@ pub fn inherit_default_bodies(krate: &Krate) -> Result<Krate, VirErr> {
                     kind: inherit_kind,
                     // TODO: we could try to use the impl visibility and owning module for better pruning:
                     visibility,
+                    body_visibility: default_function.x.body_visibility.clone(),
+                    opaqueness: default_function.x.opaqueness.clone(),
                     owning_module: trait_impl.x.owning_module.clone(),
                     mode: default_function.x.mode,
-                    fuel: 1,
                     typ_params: trait_impl.x.typ_params.clone(),
                     typ_bounds: trait_impl.x.typ_bounds.clone(),
                     params,
                     ret,
+                    ens_has_return: default_function.x.ens_has_return,
                     require: Arc::new(vec![]),
                     ensure: Arc::new(vec![]),
+                    returns: None,
                     decrease: Arc::new(vec![]),
                     decrease_when: None,
                     decrease_by: None,
-                    broadcast_forall: None,
                     fndef_axioms: None,
                     mask_spec: None,
+                    unwind_spec: None,
                     item_kind: default_function.x.item_kind,
-                    publish: default_function.x.publish,
                     attrs: Arc::new(crate::ast::FunctionAttrsX::default()),
                     body: None,
                     extra_dependencies: vec![],
@@ -659,7 +665,7 @@ pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<
     bound_exprs
 }
 
-pub fn traits_to_air(_ctx: &Ctx, krate: &Krate) -> Commands {
+pub fn traits_to_air(_ctx: &Ctx, krate: &crate::sst::KrateSst) -> Commands {
     // Axioms about broadcast_forall and spec functions need justification
     // for any trait bounds.
     let mut commands: Vec<Command> = Vec::new();
@@ -705,7 +711,7 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
                 crate::def::QID_TRAIT_TYPE_BOUNDS
             );
             let trigs = vec![tr_bound.clone()];
-            let bind = crate::func_to_air::func_bind_trig(
+            let bind = crate::sst_to_air_func::func_bind_trig(
                 ctx,
                 qname,
                 &Arc::new(typ_params),
@@ -715,11 +721,44 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
             );
             let imply = air::ast_util::mk_implies(&tr_bound, &air::ast_util::mk_and(&typ_bounds));
             let forall = mk_bind_expr(&bind, &imply);
-            let axiom = Arc::new(DeclX::Axiom(forall));
+            let axiom = Arc::new(DeclX::Axiom(air::ast::Axiom { named: None, expr: forall }));
             commands.push(Arc::new(CommandX::Global(axiom)));
         }
     }
     Arc::new(commands)
+}
+
+// Consider a trait impl like:
+//   impl<A, B: T> U<A, B, B::X> for S { ... }
+// This is an impl for U<S, A, B, B::X>.
+// Naively, we might generate axioms triggered on U<S, A, B, B::X>.
+// However, such a trigger could fail to match U<t0, t1, t2, t3>
+// if t3 didn't have exactly the form B::X.
+// So it's better to use a trigger that hides the B::X behind a fresh "hole" type parameter H0:
+//   U<S, A, B, H0>
+// with a restriction inside the axiom that H0 = B::X.
+// This function returns a new type with projections replace by holes,
+// along with a vector of H = typ equations.
+pub(crate) fn hide_projections(typs: &Typs) -> (Typs, Vec<(Ident, Typ)>) {
+    use crate::ast_visitor::{Rewrite, TypVisitor};
+    struct ProjVisitor {
+        holes: Vec<(Ident, Typ)>,
+    }
+    impl TypVisitor<Rewrite, ()> for ProjVisitor {
+        fn visit_typ(&mut self, typ: &Typ) -> Result<Typ, ()> {
+            match &**typ {
+                TypX::Projection { .. } => {
+                    let x = crate::def::proj_param(self.holes.len());
+                    self.holes.push((x.clone(), typ.clone()));
+                    Ok(Arc::new(TypX::TypParam(x)))
+                }
+                _ => self.visit_typ_rec(typ),
+            }
+        }
+    }
+    let mut visitor = ProjVisitor { holes: Vec::new() };
+    let typs = visitor.visit_typs(typs).expect("hide_projections");
+    (Arc::new(typs), visitor.holes)
 }
 
 pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
@@ -731,8 +770,10 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     //   impl<A: T1> T2<Set<A>> for S<Seq<A>>
     // -->
     //   forall A. tr_bound%T1(A) ==> tr_bound%T2(S<Seq<A>>, Set<A>)
+    let (trait_typ_args, holes) = crate::traits::hide_projections(&imp.x.trait_typ_args);
+    let (typ_params, eqs) = crate::sst_to_air_func::hide_projections_air(&imp.x.typ_params, holes);
     let tr_bound =
-        if let Some(tr_bound) = trait_bound_to_air(ctx, &imp.x.trait_path, &imp.x.trait_typ_args) {
+        if let Some(tr_bound) = trait_bound_to_air(ctx, &imp.x.trait_path, &trait_typ_args) {
             tr_bound
         } else {
             return Arc::new(vec![]);
@@ -740,18 +781,19 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     let name =
         format!("{}_{}", path_as_friendly_rust_name(&imp.x.impl_path), crate::def::QID_TRAIT_IMPL);
     let trigs = vec![tr_bound.clone()];
-    let bind = crate::func_to_air::func_bind_trig(
+    let bind = crate::sst_to_air_func::func_bind_trig(
         ctx,
         name,
-        &imp.x.typ_params,
+        &typ_params,
         &Arc::new(vec![]),
         &trigs,
         false,
     );
-    let req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
+    let mut req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
+    req_bounds.extend(eqs);
     let imply = mk_implies(&air::ast_util::mk_and(&req_bounds), &tr_bound);
     let forall = mk_bind_expr(&bind, &imply);
-    let axiom = Arc::new(DeclX::Axiom(forall));
+    let axiom = mk_unnamed_axiom(forall);
     Arc::new(vec![Arc::new(CommandX::Global(axiom))])
 }
 
@@ -874,4 +916,44 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
     kratex.traits = traits;
     kratex.trait_impls = trait_impls;
     Ok(Arc::new(kratex))
+}
+
+/// For trait method impls, the 'ens_has_return' should be inherited from the method decl
+pub fn fixup_ens_has_return_for_trait_method_impls(krate: Krate) -> Result<Krate, VirErr> {
+    let mut krate = krate;
+    let kratex = &mut Arc::make_mut(&mut krate);
+    let mut fun_map = HashMap::<Fun, Function>::new();
+    for function in kratex.functions.iter() {
+        if matches!(function.x.kind, FunctionKind::TraitMethodDecl { .. }) {
+            fun_map.insert(function.x.name.clone(), function.clone());
+        }
+    }
+    for function in kratex.functions.iter_mut() {
+        if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
+            let method = method.clone();
+            if !function.x.ens_has_return {
+                match fun_map.get(&method) {
+                    None => {}
+                    Some(f) if f.x.ens_has_return => {
+                        let functionx = &mut Arc::make_mut(&mut *function).x;
+                        functionx.ens_has_return = true;
+                    }
+                    Some(_) => {}
+                }
+            }
+            if function.x.returns.is_some() {
+                match fun_map.get(&method) {
+                    None => {}
+                    Some(f) if f.x.returns.is_some() => {
+                        return Err(error(
+                            &function.span,
+                            "a `returns` clause cannot be declared on both a trait method impl and its declaration",
+                        ).secondary_span(&f.span));
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
+    }
+    Ok(krate)
 }

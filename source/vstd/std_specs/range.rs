@@ -27,13 +27,11 @@ pub trait StepSpec where Self: Sized {
 
 pub spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
 
-#[verifier::external_fn_specification]
-pub fn ex_range_next<A: core::iter::Step>(range: &mut Range<A>) -> (r: Option<A>)
+pub assume_specification<A: core::iter::Step>[ Range::<A>::next ](range: &mut Range<A>) -> (r:
+    Option<A>)
     ensures
         (*range, r) == spec_range_next(*old(range)),
-{
-    range.next()
-}
+;
 
 pub struct RangeGhostIterator<A> {
     pub start: A,
@@ -68,7 +66,6 @@ impl<
         &&& self.cur.spec_is_lt(self.end) || self.cur
             == self.end
         // TODO (not important): use new "matches ==>" syntax here
-
         &&& if let Some(init) = init {
             &&& init.start == init.cur
             &&& init.start == self.start
@@ -182,7 +179,6 @@ step_specs!(isize, axiom_spec_range_next_isize);
 
 verus! {
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_range_axioms {
     axiom_spec_range_next_u8,
     axiom_spec_range_next_u16,

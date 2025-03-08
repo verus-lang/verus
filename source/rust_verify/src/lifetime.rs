@@ -112,6 +112,7 @@ and then sending the error messages and spans to the rustc diagnostics for the o
 // In functions executed through the lifetime rustc driver, use `ldbg!` for debug output.
 
 use crate::erase::ErasureHints;
+use crate::external::CrateItems;
 use crate::lifetime_emit::*;
 use crate::lifetime_generate::*;
 use crate::spans::SpanContext;
@@ -173,6 +174,10 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
     queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
         let hir = tcx.hir();
         let krate = hir.krate();
+        rustc_hir_analysis::check_crate(tcx);
+        if tcx.dcx().err_count() != 0 {
+            return;
+        }
         for owner in &krate.owners {
             if let MaybeOwner::Owner(owner) = owner {
                 match owner.node() {
@@ -200,6 +205,8 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
 }
 
 const PRELUDE: &str = "\
+#![feature(negative_impls)]
+#![feature(with_negative_coherence)]
 #![feature(box_patterns)]
 #![feature(ptr_metadata)]
 #![feature(never_type)]
@@ -251,18 +258,28 @@ fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V
 fn open_local_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V) { panic!(); }
 fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) { panic!() }
 fn index<'a, V, Idx, Output>(v: &'a V, index: Idx) -> &'a Output { panic!() }
+trait IndexSet{
+fn index_set<Idx, V>(&mut self, index: Idx, val: V) { panic!() }
+}
+impl<A:?Sized> IndexSet for A {}
+struct C<const N: usize, A: ?Sized>(Box<A>);
+struct Arr<A: ?Sized, const N: usize>(Box<A>);
+fn use_type_invariant<A>(a: A) -> A { a }
+fn main() {}
 ";
 
 fn emit_check_tracked_lifetimes<'tcx>(
     cmd_line_args: crate::config::Args,
     tcx: TyCtxt<'tcx>,
     verus_items: std::sync::Arc<VerusItems>,
+    spans: &SpanContext,
     krate: &'tcx Crate<'tcx>,
     emit_state: &mut EmitState,
     erasure_hints: &ErasureHints,
-    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
+    item_to_module_map: &CrateItems,
+    vir_crate: &vir::ast::Krate,
 ) -> State {
-    let gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
+    let mut gen_state = crate::lifetime_generate::gen_check_tracked_lifetimes(
         cmd_line_args,
         tcx,
         verus_items,
@@ -270,6 +287,8 @@ fn emit_check_tracked_lifetimes<'tcx>(
         erasure_hints,
         item_to_module_map,
     );
+    crate::trait_conflicts::gen_check_trait_impl_conflicts(spans, vir_crate, &mut gen_state);
+
     for line in PRELUDE.split('\n') {
         emit_state.writeln(line.replace("\r", ""));
     }
@@ -292,7 +311,7 @@ fn emit_check_tracked_lifetimes<'tcx>(
 struct LifetimeCallbacks {}
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
-    fn after_crate_root_parsing<'tcx>(
+    fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
@@ -360,7 +379,8 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     verus_items: std::sync::Arc<VerusItems>,
     spans: &SpanContext,
     erasure_hints: &ErasureHints,
-    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
+    item_to_module_map: &CrateItems,
+    vir_crate: &vir::ast::Krate,
     lifetime_log_file: Option<File>,
 ) -> Result<Vec<Message>, VirErr> {
     let krate = tcx.hir().krate();
@@ -369,10 +389,12 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
         cmd_line_args,
         tcx,
         verus_items,
+        spans,
         krate,
         &mut emit_state,
         erasure_hints,
         item_to_module_map,
+        vir_crate,
     );
     let mut rust_code: String = String::new();
     for line in &emit_state.lines {

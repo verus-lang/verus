@@ -320,7 +320,7 @@ spec fn less_than(x: int, y: int) -> bool {
 
 proof fn test_choose_succeeds2() {
     assert(less_than(3, 7));  // promote i = 3, i = 7 as a witness
-    let (x, y): (int, int) = choose|i: int, j: int| less_than(i, j);
+    let (x, y) = choose|i: int, j: int| less_than(i, j);
     assert(x < y);
 }
 // ANCHOR_END: test_choose_succeeds2

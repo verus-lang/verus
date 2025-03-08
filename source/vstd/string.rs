@@ -18,40 +18,22 @@ impl View for str {
 
 pub spec fn str_slice_is_ascii(s: &str) -> bool;
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(str_slice_is_ascii)]
-pub fn ex_str_slice_is_ascii(s: &str) -> (b: bool)
+pub assume_specification[ str::is_ascii ](s: &str) -> (b: bool)
     ensures
         b == str_slice_is_ascii(s),
-{
-    s.is_ascii()
-}
-
-#[deprecated = "Use `&str` instead"]
-pub type StrSlice<'a> = &'a str;
+;
 
 pub open spec fn new_strlit_spec(s: &str) -> &str {
     s
 }
 
-#[deprecated = "new_strlit is no longer necessary"]
-#[verifier::when_used_as_spec(new_strlit_spec)]
-pub fn new_strlit(s: &str) -> (t: &str)
-    ensures
-        t == s,
-{
-    s
-}
-
 #[cfg(feature = "alloc")]
-#[verifier::external_fn_specification]
-pub fn ex_str_to_string(s: &str) -> (res: String)
+pub assume_specification[ str::to_string ](s: &str) -> (res: String)
     ensures
         s@ == res@,
         s.is_ascii() == res.is_ascii(),
-{
-    s.to_string()
-}
+;
 
 #[verifier::external]
 pub trait StrSliceExecFns {
@@ -67,12 +49,6 @@ pub trait StrSliceExecFns {
 
     #[cfg(feature = "alloc")]
     fn as_bytes_vec(&self) -> alloc::vec::Vec<u8>;
-
-    #[deprecated = "from_rust_str is no longer necessary"]
-    fn from_rust_str<'a>(&'a self) -> &'a str;
-
-    #[deprecated = "into_rust_str is no longer necessary"]
-    fn into_rust_str<'a>(&'a self) -> &'a str;
 }
 
 impl StrSliceExecFns for str {
@@ -174,14 +150,6 @@ impl StrSliceExecFns for str {
         }
         v
     }
-
-    fn from_rust_str<'a>(&'a self) -> &'a str {
-        self
-    }
-
-    fn into_rust_str<'a>(&'a self) -> &'a str {
-        self
-    }
 }
 
 pub broadcast proof fn axiom_str_literal_is_ascii<'a>(s: &'a str)
@@ -205,7 +173,6 @@ pub broadcast proof fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
     admit();
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_string_axioms {
     axiom_str_literal_is_ascii,
     axiom_str_literal_len,
@@ -228,42 +195,30 @@ pub struct ExString(String);
 pub spec fn string_is_ascii(s: &String) -> bool;
 
 #[cfg(feature = "alloc")]
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(string_is_ascii)]
-pub fn ex_string_is_ascii(s: &String) -> (b: bool)
+pub assume_specification[ String::is_ascii ](s: &String) -> (b: bool)
     ensures
         b == string_is_ascii(s),
-{
-    s.is_ascii()
-}
+;
 
 #[cfg(feature = "alloc")]
-#[verifier::external_fn_specification]
-pub fn ex_string_as_str<'a>(s: &'a String) -> (res: &'a str)
+pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
     ensures
         res@ == s@,
         s.is_ascii() == res.is_ascii(),
-{
-    s.as_str()
-}
+;
 
 #[cfg(feature = "alloc")]
-#[verifier::external_fn_specification]
-pub fn ex_string_clone(s: &String) -> (res: String)
+pub assume_specification[ <String as Clone>::clone ](s: &String) -> (res: String)
     ensures
         res == s,
-{
-    s.clone()
-}
+;
 
 #[cfg(feature = "alloc")]
-#[verifier::external_fn_specification]
-pub fn ex_string_eq(s: &String, other: &String) -> (res: bool)
+pub assume_specification[ <String as PartialEq>::eq ](s: &String, other: &String) -> (res: bool)
     ensures
         res == (s@ == other@),
-{
-    s.eq(other)
-}
+;
 
 #[cfg(feature = "alloc")]
 #[verifier::external]
@@ -288,15 +243,6 @@ pub trait StringExecFns: Sized {
     fn append<'a, 'b>(&'a mut self, other: &'b str);
 
     fn concat<'b>(self, other: &'b str) -> String;
-
-    #[deprecated = "from_rust_string is no longer necessary"]
-    fn from_rust_string(self) -> String;
-
-    #[deprecated = "into_rust_string is no longer necessary"]
-    fn into_rust_string(self) -> String;
-
-    #[deprecated = "as_rust_string_ref is no longer necessary"]
-    fn as_rust_string_ref(&self) -> &String;
 }
 
 #[cfg(feature = "alloc")]
@@ -326,18 +272,6 @@ impl StringExecFns for String {
             ret.is_ascii() == self.is_ascii() && other.is_ascii(),
     {
         self + other
-    }
-
-    fn from_rust_string(self) -> String {
-        self
-    }
-
-    fn into_rust_string(self) -> String {
-        self
-    }
-
-    fn as_rust_string_ref(&self) -> &String {
-        self
     }
 }
 

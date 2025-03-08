@@ -1,6 +1,6 @@
 use crate::ast::{
     Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind,
-    LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwrapParameter, VarIdent, VirErr,
+    LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent, VirErr,
 };
 use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
@@ -17,12 +17,14 @@ pub struct Header {
     pub recommend: Exprs,
     pub ensure_id_typ: Option<(VarIdent, Typ)>,
     pub ensure: Exprs,
+    pub returns: Option<Expr>,
     pub invariant_except_break: Exprs,
     pub invariant: Exprs,
     pub decrease: Exprs,
     pub decrease_when: Option<Expr>,
     pub decrease_by: Option<Fun>,
     pub invariant_mask: Option<MaskSpec>,
+    pub unwind_spec: Option<UnwindSpec>,
     pub extra_dependencies: Vec<Fun>,
 }
 
@@ -32,6 +34,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
+    let mut returns: Option<Expr> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant_except_break: Option<Exprs> = None;
     let mut invariant: Option<Exprs> = None;
@@ -39,12 +42,13 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut decrease_when: Option<Expr> = None;
     let mut decrease_by: Option<Fun> = None;
     let mut invariant_mask: Option<MaskSpec> = None;
+    let mut unwind_spec: Option<UnwindSpec> = None;
     let mut n = 0;
     let mut unwrap_parameter_allowed = true;
     for stmt in block.iter() {
         let mut is_unwrap_parameter = false;
         match &stmt.x {
-            StmtX::Expr(expr) => match &expr.x {
+            StmtX::Expr(expr) => match &peel(expr).x {
                 ExprX::Header(header) => match &**header {
                     HeaderExprX::UnwrapParameter(unwrap) => {
                         if !unwrap_parameter_allowed {
@@ -85,6 +89,12 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             ));
                         }
                         ensure = Some((id_typ.clone(), es.clone()));
+                    }
+                    HeaderExprX::Returns(e) => {
+                        if returns.is_some() {
+                            return Err(error(&stmt.span, "only one call to returns allowed"));
+                        }
+                        returns = Some(e.clone());
                     }
                     HeaderExprX::InvariantExceptBreak(es) => {
                         if invariant_except_break.is_some() {
@@ -161,6 +171,21 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         }
                         invariant_mask = Some(MaskSpec::InvariantOpensExcept(es.clone()));
                     }
+                    HeaderExprX::NoUnwind | HeaderExprX::NoUnwindWhen(_) => {
+                        match unwind_spec {
+                            None => {}
+                            _ => {
+                                return Err(error(&stmt.span, "only one unwind spec allowed"));
+                            }
+                        }
+                        unwind_spec = match &**header {
+                            HeaderExprX::NoUnwind => Some(UnwindSpec::NoUnwind),
+                            HeaderExprX::NoUnwindWhen(expr) => {
+                                Some(UnwindSpec::NoUnwindWhen(expr.clone()))
+                            }
+                            _ => unreachable!(),
+                        };
+                    }
                 },
                 _ => break,
             },
@@ -189,24 +214,88 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         recommend,
         ensure_id_typ,
         ensure,
+        returns,
         invariant_except_break,
         invariant,
         decrease,
         decrease_when,
         decrease_by,
         invariant_mask,
+        unwind_spec,
         extra_dependencies,
     })
 }
 
 pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
+    let body = peel_mut(body);
+
+    #[derive(Clone, Copy)]
+    enum NestedHeaderBlock {
+        No,
+        Yes,
+        Unknown,
+        Conflict,
+    }
+
+    impl NestedHeaderBlock {
+        fn join(&mut self, other: NestedHeaderBlock) {
+            match (*self, other) {
+                (NestedHeaderBlock::No, NestedHeaderBlock::No) => {}
+                (NestedHeaderBlock::Yes, NestedHeaderBlock::Yes) => {}
+                (_, NestedHeaderBlock::Unknown) => panic!("unexpected join with unknown"),
+                (NestedHeaderBlock::Unknown, _) => *self = other,
+                _ => *self = NestedHeaderBlock::Conflict,
+            }
+        }
+    }
+
     match &body.x {
         ExprX::Block(stmts, expr) => {
             let mut expr = expr.clone();
-            let mut block: Vec<Stmt> = (**stmts).clone();
+            let mut block = Vec::new();
+            for stmt in (**stmts).iter() {
+                let mut nested_header_block = NestedHeaderBlock::Unknown;
+                if let StmtX::Expr(e) = &stmt.x {
+                    if let ExprX::Block(b, e) = &e.x {
+                        for s in b.iter() {
+                            if let StmtX::Expr(e) = &s.x {
+                                if let ExprX::Header(_h) = &e.x {
+                                    block.push(s.clone());
+                                    nested_header_block = NestedHeaderBlock::Yes;
+                                } else {
+                                    nested_header_block.join(NestedHeaderBlock::No);
+                                }
+                            } else {
+                                nested_header_block.join(NestedHeaderBlock::No);
+                            }
+                        }
+                        if let Some(e) = &e {
+                            if let ExprX::Header(_h) = &e.x {
+                                nested_header_block = NestedHeaderBlock::Conflict;
+                            }
+                        }
+                    } else {
+                        nested_header_block.join(NestedHeaderBlock::No);
+                    }
+                } else {
+                    nested_header_block.join(NestedHeaderBlock::No);
+                }
+                match nested_header_block {
+                    NestedHeaderBlock::No | NestedHeaderBlock::Unknown => {
+                        block.push(stmt.clone());
+                    }
+                    NestedHeaderBlock::Yes => {}
+                    NestedHeaderBlock::Conflict => {
+                        return Err(error(
+                            &stmt.span,
+                            "internal error: invalid nested header block",
+                        ));
+                    }
+                }
+            }
             let mut header = read_header_block(&mut block)?;
             if let Some(e) = &expr {
-                if let ExprX::Header(h) = &e.x {
+                if let ExprX::Header(h) = &peel(e).x {
                     if let HeaderExprX::NoMethodBody = **h {
                         if block.len() != 0 {
                             return Err(error(
@@ -277,23 +366,25 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         proxy: _,
         kind: _,
         visibility: _,
+        body_visibility: _,
+        opaqueness,
         owning_module: _,
         mode: _,
-        fuel,
         typ_params,
         typ_bounds,
         params,
         ret,
+        ens_has_return: _,
         require,
         ensure,
+        returns,
         decrease,
         decrease_when,
         decrease_by,
-        broadcast_forall: _,
         fndef_axioms: _,
         mask_spec,
+        unwind_spec,
         item_kind: _,
-        publish: _,
         attrs: _,
         body: _,
         extra_dependencies,
@@ -347,15 +438,17 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
             "method specification has a different return from method",
         ));
     }
-    methodx.fuel = fuel;
+    methodx.opaqueness = opaqueness;
     methodx.params = params; // this is important; the correct parameter modes are in spec_method
     methodx.ret = ret;
     methodx.require = require;
     methodx.ensure = ensure;
+    methodx.returns = returns;
     methodx.decrease = decrease;
     methodx.decrease_when = decrease_when;
     methodx.decrease_by = decrease_by;
     methodx.mask_spec = mask_spec;
+    methodx.unwind_spec = unwind_spec;
     methodx.extra_dependencies = extra_dependencies;
     assert!(methodx.body.is_none());
     Ok(crate::def::Spanned::new(method.span.clone(), methodx))
@@ -391,4 +484,21 @@ pub fn make_trait_decls(methods: Vec<Function>) -> Result<Vec<Function>, VirErr>
         return Err(error(&extra_spec.span, "no matching method found for method specification"));
     }
     Ok(decls)
+}
+
+fn peel(expr: &Expr) -> &Expr {
+    match &expr.x {
+        ExprX::NeverToAny(e) => e,
+        _ => expr,
+    }
+}
+
+fn peel_mut(expr: &mut Expr) -> &mut Expr {
+    match &expr.x {
+        ExprX::NeverToAny(_) => match &mut Arc::make_mut(expr).x {
+            ExprX::NeverToAny(e) => e,
+            _ => unreachable!(),
+        },
+        _ => expr,
+    }
 }

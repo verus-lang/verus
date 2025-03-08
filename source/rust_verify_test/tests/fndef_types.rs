@@ -325,7 +325,7 @@ test_verify_one_file! {
         spec fn test() -> bool {
             call_requires(foo, ())
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::foo` which is ignored")
 }
 
 test_verify_one_file! {
@@ -1386,4 +1386,518 @@ test_verify_one_file! {
             let t: &X = f(&x); // FAILS
         }
     } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] unit_struct_as_fn_not_supported verus_code! {
+        struct A();
+
+        fn test()
+        {
+            let a = A;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "using a datatype constructor as a function value")
+}
+
+test_verify_one_file! {
+    #[test] unit_struct_as_fn_not_supported_self_ctor verus_code! {
+        struct A();
+
+        impl A {
+            fn test()
+            {
+                let a = Self;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "using a datatype constructor as a function value")
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_returns_clause ["vstd"] => verus_code! {
+        fn llama(x: u8) -> bool
+            requires x == 4 || x == 7,
+            returns (x == 4)
+        {
+            x == 4
+        }
+
+        fn test() {
+            let t = llama;
+
+            let b = t(4);
+            assert(b);
+
+            let b = t(7);
+            assert(!b);
+
+            assert(forall |x| (x == 4 || x == 7) ==> call_requires(llama, (x,)));
+            assert(forall |x, y| call_ensures(llama, (x,), y) ==> x == 4 ==> y);
+            assert(forall |x, y| call_ensures(llama, (x,), y) ==> x == 7 ==> !y);
+        }
+
+        fn test2() {
+            let t = llama;
+
+            let b = t(4);
+            assert(!b);     // FAILS
+        }
+
+        fn test3() {
+            let t = llama;
+
+            t(12); // FAILS
+        }
+
+        fn test4() {
+            assert(forall |x| (x == 5) ==> call_requires(llama, (x,))); // FAILS
+        }
+
+        fn test5() {
+            assert(forall |x, y| call_ensures(llama, (x,), y) ==> x == 4 ==> !y); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_returns_clause2 ["vstd"] => verus_code! {
+        fn llama(x: u8) -> (b: bool)
+            requires x == 4 || x == 7 || x == 9,
+            ensures x == 4 || x == 7
+            returns (x == 4)
+        {
+            if x == 9 {
+                loop { }
+            }
+            x == 4
+        }
+
+        fn test() {
+            let t = llama;
+
+            let b = t(4);
+            assert(b);
+
+            let b = t(7);
+            assert(!b);
+
+            assert(forall |x| (x == 4 || x == 7) ==> call_requires(llama, (x,)));
+            assert(forall |x, y| call_ensures(llama, (x,), y) ==>
+                (x == 4 || x == 7) && (y == (x == 4)));
+        }
+
+        fn test2() {
+            let t = llama;
+
+            let b = t(4);
+            assert(!b);     // FAILS
+        }
+
+        fn test3() {
+            let t = llama;
+
+            t(12); // FAILS
+        }
+
+        fn test4() {
+            assert(forall |x| (x == 5) ==> call_requires(llama, (x,))); // FAILS
+        }
+
+        fn test5() {
+            let t = llama;
+
+            let b = t(9);
+            assert(false);
+        }
+
+        fn test6() {
+            let t = llama;
+
+            let b = t(7);
+            assert(b); // FAILS
+        }
+
+        fn test7() {
+            let t = llama;
+
+            let b = t(7);
+            assert(!b);
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file_with_options! {
+    #[test] call_ensures_return_clause_on_trait_method_decl ["vstd"] => verus_code! {
+        trait Tr : Sized {
+            spec fn ens(&self, i: u8, s: &Self) -> bool;
+            spec fn ret(&self, i: u8) -> Self;
+
+            fn test(&self, i: u8) -> (s: Self)
+                ensures self.ens(i, &s),
+                returns self.ret(i);
+        }
+
+        // ok
+
+        struct X { j: u8 }
+
+        impl Tr for X {
+            spec fn ens(&self, i: u8, s: &Self) -> bool { self.j + i < 250 }
+            spec fn ret(&self, i: u8) -> Self {
+                X {
+                    j: (self.j + i) as u8
+                }
+            }
+
+            fn test(&self, i: u8) -> (s: Self)
+                ensures !(20 <= i < 30),
+            {
+                if self.j as u64 + i as u64 >= 250 || (20 <= i && i < 30) {
+                    loop { }
+                }
+                X { j: self.j + i }
+            }
+        }
+
+        // generic
+
+        fn test1<T: Tr>(t: T, i: u8, r: T) {
+            assert(call_ensures(T::test, (&t, i), r) ==>
+                t.ens(i, &r) && r == t.ret(i));
+        }
+
+        fn test1_fail<T: Tr>(t: T, i: u8, r: T) {
+            assert(t.ens(i, &r) && r == t.ret(i) ==>
+                call_ensures(T::test, (&t, i), r)); // FAILS
+        }
+
+        // specific
+
+        fn test2(x: X, i: u8, r: X) {
+            assert(call_ensures(X::test, (&x, i), r) ==>
+                x.j + i < 250 && r == (X { j: (x.j + i) as u8 }) && !(20 <= i < 30));
+        }
+
+        fn test2_fail(x: X, i: u8, r: X) {
+            assert(x.j + i < 250 && r == (X { j: (x.j + i) as u8 }) && !(20 <= i < 30)
+                ==> call_ensures(X::test, (&x, i), r)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file_with_options! {
+    #[test] call_ensures_return_clause_on_trait_method_impl ["vstd"] => verus_code! {
+        trait Tr : Sized {
+            spec fn ens(&self, i: u8, s: &Self) -> bool;
+
+            fn test(&self, i: u8) -> (s: Self)
+                ensures self.ens(i, &s);
+        }
+
+        // ok
+
+        struct X { j: u8 }
+
+        impl Tr for X {
+            spec fn ens(&self, i: u8, s: &Self) -> bool { self.j + i < 250 }
+
+            fn test(&self, i: u8) -> (s: Self)
+                ensures !(20 <= i < 30),
+                returns (X { j: (self.j + i) as u8 }),
+            {
+                if self.j as u64 + i as u64 >= 250 || (20 <= i && i < 30) {
+                    loop { }
+                }
+                X { j: self.j + i }
+            }
+        }
+
+        // specific
+
+        fn test2(x: X, i: u8, r: X) {
+            assert(call_ensures(X::test, (&x, i), r) ==>
+                x.j + i < 250 && r == (X { j: (x.j + i) as u8 }) && !(20 <= i < 30));
+        }
+
+        fn test2_fail(x: X, i: u8, r: X) {
+            assert(x.j + i < 250 && r == (X { j: (x.j + i) as u8 }) && !(20 <= i < 30)
+                ==> call_ensures(X::test, (&x, i), r)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] call_ensures_returns_on_default_method_impl verus_code! {
+        trait Tr : Sized {
+            fn test(&self, i: u8) -> (s: &Self)
+                ensures 20 <= i < 30,
+                returns
+                    self
+            {
+                if !(20 <= i && i < 30) { loop { } }
+                self
+            }
+        }
+
+        struct X { }
+        impl Tr for X { }
+
+        struct Y { }
+        impl Tr for Y {
+            fn test(&self, i: u8) -> (s: &Self)
+                ensures 15 <= i < 25,
+            {
+                if !(20 <= i && i < 25) { loop { } }
+                self
+            }
+        }
+
+        // Generic
+
+        fn test_generic<T: Tr>(t: T, i: u8, r: T) {
+            assert(call_ensures(T::test, (&t, i), &r) ==> 20 <= i < 30 && r == t);
+        }
+
+        fn test_generic_fails<T: Tr>(t: T, i: u8, r: T) {
+            assert(call_ensures(T::test, (&t, i), &r) <== 20 <= i < 30 && r == t); // FAILS
+        }
+
+        // Specific
+
+        fn test_x(t: X, i: u8, r: X) {
+            assert(call_ensures(X::test, (&t, i), &r) ==> 20 <= i < 30 && r == t);
+        }
+
+        fn test_x_fails(t: X, i: u8, r: X) {
+            assert(call_ensures(X::test, (&t, i), &r) <== 20 <= i < 30 && r == t); // FAILS
+        }
+
+        fn test_y(t: Y, i: u8, r: Y) {
+            assert(call_ensures(Y::test, (&t, i), &r) ==> 20 <= i < 35 && r == t);
+        }
+
+        fn test_y_fails(t: Y, i: u8, r: Y) {
+            assert(call_ensures(Y::test, (&t, i), &r) <== 20 <= i < 35 && r == t); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] unrecognized_trait_impl_issue1332 verus_code! {
+        use vstd::prelude::*;
+
+        pub struct Foo {
+            val: u64,
+        }
+
+        #[verifier::external]
+        impl Clone for Foo {
+            fn clone(&self) -> Foo {
+                Foo { val: self.val }
+            }
+        }
+
+        impl Foo {
+            proof fn lemma_clone()
+                ensures
+                    forall |a: Self, b: Self| call_ensures(Clone::clone, (&a,), b) ==> a == b,
+            { assume(false); }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `test_crate::Foo::clone` which is ignored")
+}
+
+test_verify_one_file! {
+    #[test] clone_assign_type_param_trait_function_to_variable verus_code! {
+        use vstd::*;
+
+        pub struct X<T> {
+            pub t: T,
+        }
+
+        impl<T: Clone> Clone for X<T> {
+            fn clone(&self) -> (s: Self)
+                ensures
+                    call_ensures(T::clone, (&self.t,), s.t)
+            {
+                let t_clone = T::clone;
+                let new_t = t_clone(&self.t);
+                X { t: new_t }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] generic_conditions_for_normal_call verus_code! {
+        spec fn foo_req(x: u64) -> bool;
+        spec fn foo_ens(x: u64, a: u64) -> bool;
+
+        fn foo(x: u64) -> (a: u64)
+            requires foo_req(x),
+            ensures foo_ens(x, a),
+        {
+            assume(false);
+            20
+        }
+
+        fn test(x: u64) {
+            assume(call_requires(foo, (x,)));
+            let r = foo(x);
+            assert(call_ensures(foo, (x,), r));
+        }
+
+        fn test_fails(x: u64) {
+            assume(call_requires(foo, (x,)));
+            let r = foo(x);
+            assert(call_ensures(foo, (x,), r));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] generic_conditions_for_normal_call_returns_unit verus_code! {
+        spec fn foo_req(x: u64) -> bool;
+        spec fn foo_ens(x: u64, a: u64) -> bool;
+
+        fn foo(x: u64)
+            requires foo_req(x),
+            ensures foo_ens(x, 0),
+        {
+            assume(false);
+        }
+
+        fn test(x: u64) {
+            assume(call_requires(foo, (x,)));
+            foo(x);
+            assert(call_ensures(foo, (x,), ()));
+        }
+
+        fn test_fails(x: u64) {
+            assume(call_requires(foo, (x,)));
+            foo(x);
+            assert(call_ensures(foo, (x,), ()));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] generic_conditions_for_normal_call_no_spec verus_code! {
+        fn foo(x: u64) -> (a: u64) {
+            assume(false);
+            20
+        }
+
+        fn test(x: u64) {
+            assume(call_requires(foo, (x,)));
+            let r = foo(x);
+            assert(call_ensures(foo, (x,), r));
+        }
+
+        fn test_fails(x: u64) {
+            assume(call_requires(foo, (x,)));
+            let r = foo(x);
+            assert(call_ensures(foo, (x,), r));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] generic_conditions_for_normal_call_return_unit_no_spec verus_code! {
+        fn foo(x: u64) {
+            assume(false);
+        }
+
+        fn test(x: u64) {
+            assume(call_requires(foo, (x,)));
+            foo(x);
+            assert(call_ensures(foo, (x,), ()));
+        }
+
+        fn test_fails(x: u64) {
+            assume(call_requires(foo, (x,)));
+            foo(x);
+            assert(call_ensures(foo, (x,), ()));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] generic_conditions_for_normal_call_traits verus_code! {
+        trait Tr : Sized {
+            spec fn foo_req(&self) -> bool;
+            spec fn foo_ens(&self, a: Self) -> bool;
+
+            fn foo(&self) -> (a: Self)
+                requires self.foo_req(),
+                ensures self.foo_ens(a);
+        }
+
+        struct X { u: u64 }
+
+        struct Y { u: u64 }
+
+        impl Tr for X {
+            spec fn foo_req(&self) -> bool;
+            spec fn foo_ens(&self, a: Self) -> bool;
+
+            fn foo(&self) -> Self {
+                assume(false);
+                X { u: 0 }
+            }
+        }
+
+        impl Tr for Y {
+            spec fn foo_req(&self) -> bool;
+            spec fn foo_ens(&self, a: Self) -> bool;
+
+            fn foo(&self) -> (res: Self)
+                ensures res.u == 0
+            {
+                assume(false);
+                Y { u: 0 }
+            }
+        }
+
+        fn test_generic<T: Tr>(x: &T) {
+            assume(call_requires(T::foo, (x,)));
+            let r = x.foo();
+            assert(call_ensures(T::foo, (x,), r));
+        }
+
+        fn test_x(x: &X) {
+            assume(call_requires(X::foo, (x,)));
+            let r = x.foo();
+            assert(call_ensures(X::foo, (x,), r));
+        }
+
+        fn test_y(y: &Y) {
+            assume(call_requires(Y::foo, (y,)));
+            let r = y.foo();
+            assert(call_ensures(Y::foo, (y,), r));
+        }
+
+        fn test_generic_fail<T: Tr>(x: &T) {
+            assume(call_requires(T::foo, (x,)));
+            let r = x.foo();
+            assert(call_ensures(T::foo, (x,), r));
+            assert(false); // FAILS
+        }
+
+        fn test_x_fail(x: &X) {
+            assume(call_requires(X::foo, (x,)));
+            let r = x.foo();
+            assert(call_ensures(X::foo, (x,), r));
+            assert(false); // FAILS
+        }
+
+        fn test_y_fail(y: &Y) {
+            assume(call_requires(Y::foo, (y,)));
+            let r = y.foo();
+            assert(call_ensures(Y::foo, (y,), r));
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }

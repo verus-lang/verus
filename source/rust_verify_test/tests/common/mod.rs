@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_span;
@@ -270,7 +272,7 @@ pub fn run_verus(
     let mut verus_args = Vec::new();
     let mut external_by_default = false;
     let mut is_core = false;
-    verus_args.push("--internal-test-mode".to_string());
+    let mut use_internal_test_mode = true;
 
     for option in options.iter() {
         if *option == "--expand-errors" {
@@ -293,9 +295,14 @@ pub fn run_verus(
         } else if *option == "--is-core" {
             verus_args.push("--is-core".to_string());
             is_core = true;
+        } else if *option == "--disable-internal-test-mode" {
+            use_internal_test_mode = false;
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
+    }
+    if use_internal_test_mode {
+        verus_args.insert(0, "--internal-test-mode".to_string());
     }
     if !external_by_default {
         verus_args.push("--no-external-by-default".to_string());
@@ -328,7 +335,7 @@ pub fn run_verus(
     verus_args.push(entry_file.to_str().unwrap().to_string());
     verus_args.append(&mut vec!["--cfg".to_string(), "erasure_macro_todo".to_string()]);
 
-    if import_vstd && !is_core {
+    if import_vstd && !is_core && use_internal_test_mode {
         let lib_vstd_vir_path = verus_target_path.join("vstd.vir");
         let lib_vstd_vir_path = lib_vstd_vir_path.to_str().unwrap();
         let lib_vstd_path = verus_target_path.join("libvstd.rlib");
@@ -377,8 +384,13 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
 
     #![allow(unused_imports)]
     #![allow(unused_macros)]
-    #![feature(exclusive_range_pattern)]
+    #![allow(deprecated)]
     #![feature(strict_provenance)]
+    #![feature(allocator_api)]
+    #![feature(proc_macro_hygiene)]
+    #![feature(const_refs_to_static)]
+    #![feature(never_type)]
+    #![feature(core_intrinsics)]
 
     use builtin::*;
     use builtin_macros::*;
@@ -518,6 +530,14 @@ pub fn assert_any_vir_error_msg(err: TestErr, expected_msg: &str) {
 }
 
 #[allow(dead_code)]
+pub fn assert_custom_attr_error_msg(err: TestErr, expected_msg: &str) {
+    assert!(
+        err.errors.iter().any(|x| x.message.contains("custom attribute panicked")
+            && x.rendered.contains(expected_msg))
+    );
+}
+
+#[allow(dead_code)]
 pub fn assert_rust_error_msg(err: TestErr, expected_msg: &str) {
     assert_eq!(err.errors.len(), 1);
     let error_re = regex::Regex::new(r"^E[0-9]{4}$").unwrap();
@@ -543,4 +563,53 @@ pub fn assert_spans_contain(err: &Diagnostic, needle: &str) {
             .find(|s| s.label.is_some() && s.label.as_ref().unwrap().contains(needle))
             .is_some()
     );
+}
+
+#[allow(dead_code)]
+pub fn assert_fails_bv(err: TestErr, fail32: bool, fail64: bool) {
+    assert_eq!(err.errors.len(), (if fail32 { 1 } else { 0 }) + (if fail64 { 1 } else { 0 }));
+    if fail32 {
+        assert!(err.errors[0].message.contains("with arch-size set to 32 bits"));
+    }
+    if fail64 {
+        let i = err.errors.len() - 1;
+        assert!(err.errors[i].message.contains("with arch-size set to 64 bits"));
+    }
+}
+
+#[allow(dead_code)]
+pub fn assert_fails_bv_32bit(err: TestErr) {
+    assert_fails_bv(err, true, false);
+}
+
+#[allow(dead_code)]
+pub fn assert_fails_bv_64bit(err: TestErr) {
+    assert_fails_bv(err, false, true);
+}
+
+#[allow(dead_code)]
+pub fn assert_fails_bv_32bit_64bit(err: TestErr) {
+    assert_fails_bv(err, true, true);
+}
+
+pub fn typ_inv_relevant_error_span(err: &Vec<DiagnosticSpan>) -> &DiagnosticSpan {
+    err.iter()
+        .filter(|e| e.label != Some("type invariant declared here".to_string()))
+        .next()
+        .expect("span")
+}
+
+#[allow(dead_code)]
+pub fn assert_fails_type_invariant_error(err: TestErr, count: usize) {
+    assert_eq!(err.errors.len(), count);
+    for c in 0..count {
+        assert!(err.errors[c].message.contains("may fail to meet its declared type invariant"));
+        assert!(
+            typ_inv_relevant_error_span(&err.errors[c].spans)
+                .text
+                .iter()
+                .find(|x| x.text.contains("FAILS"))
+                .is_some()
+        );
+    }
 }

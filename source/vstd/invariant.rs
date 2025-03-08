@@ -272,12 +272,12 @@ pub struct OpenInvariantCredit {}
 
 // It's intentional that `create_open_invariant_credit` uses `exec` mode. This prevents
 // creation of an infinite number of credits to open invariants infinitely often.
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::invariant::create_open_invariant_credit"]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::invariant::create_open_invariant_credit")]
 #[verifier::external_body]
 #[inline(always)]
 pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
     opens_invariants none
+    no_unwind
 {
     Tracked::<OpenInvariantCredit>::assume_new()
 }
@@ -289,12 +289,15 @@ pub fn create_open_invariant_credit() -> Tracked<OpenInvariantCredit>
 pub proof fn spend_open_invariant_credit_in_proof(tracked credit: OpenInvariantCredit) {
 }
 
-#[cfg(verus_keep_ghost)]
-#[rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit"]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::invariant::spend_open_invariant_credit")]
 #[doc(hidden)]
 #[inline(always)]
-pub fn spend_open_invariant_credit(credit: Tracked<OpenInvariantCredit>)
+pub fn spend_open_invariant_credit(
+    #[allow(unused_variables)]
+    credit: Tracked<OpenInvariantCredit>,
+)
     opens_invariants none
+    no_unwind
 {
     proof {
         spend_open_invariant_credit_in_proof(credit.get());
@@ -377,7 +380,7 @@ pub fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) {
 /// `#[verifier::atomic)]`; however, this is not useful for very much other than defining
 /// wrappers around the existing atomic operations from [`PAtomic`](crate::atomic).
 /// Note that reading and writing through a [`PCell`](crate::cell::PCell)
-/// or a [`PPtr`](crate::ptr::PPtr) are _not_ atomic operations.
+/// or a [`PPtr`](crate::simple_pptr::PPtr) are _not_ atomic operations.
 ///
 /// **Note:** Rather than using `open_atomic_invariant!` directly, we generally recommend
 /// using the [`atomic_ghost` APIs](crate::atomic_ghost).
@@ -506,9 +509,9 @@ pub use open_atomic_invariant_internal;
 /// ```
 /// error: possible invariant collision
 ///   |
-///   |   open_atomic_invariant!(&inv => id1 => {
+///   |   open_local_invariant!(&inv => id1 => {
 ///   |                           ^ this invariant
-///   |       open_atomic_invariant!(&inv => id2 => {
+///   |       open_local_invariant!(&inv => id2 => {
 ///   |                               ^ might be the same as this invariant
 ///   ...
 ///   |       }
@@ -526,11 +529,7 @@ pub use open_atomic_invariant_internal;
 /// boundaries, every `proof` and `exec` function has, as part of its specification,
 /// the set of invariant namespaces that it might open.
 ///
-/// UNDER CONSTRUCTION: right now the forms of these specifications are somewhat limited
-/// and we expect to expand them.
-///
-/// The invariant set of a function can be specified by putting either
-/// `opens_invariants none` or `opens_invariants any` in the function signature.
+/// The invariant set of a function can be specified via the [`opens_invariants` clause](https://verus-lang.github.io/verus/guide/reference-opens-invariants.html).
 /// The default for an `exec`-mode function is to open any, while the default
 /// for a `proof`-mode function is to open none.
 ///

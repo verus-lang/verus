@@ -1210,10 +1210,7 @@ test_verify_one_file! {
     #[test] for_loop_vec_custom_iterator verus_code! {
         use vstd::prelude::*;
 
-        #[verifier::external_body]
-        pub closed spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V> {
-            core::marker::PhantomData::default()
-        }
+        pub spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V>;
 
         pub struct VecIterCopy<'a, T: 'a> {
             pub vec: &'a Vec<T>,
@@ -1332,4 +1329,116 @@ test_verify_one_file! {
             b
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] loop_invariant_except_break_nonlinear verus_code! {
+        fn integer_square_root(n: u32) -> (result: u32)
+            requires
+                n >= 1,
+            ensures
+                1 <= result <= n,
+                1 <= result * result <= n,
+                n < (result + 1) * (result + 1),
+        {
+            let mut result: u32 = 1;
+            loop
+                invariant_except_break
+                    1 <= result <= n,
+                    1 <= result * result <= n,
+                    n != 1 ==> (1 <= result < n),
+                ensures
+                    1 <= result - 1 <= n,
+                    1 <= (result - 1) * (result - 1) <= n,
+                    n < result * result,
+
+            {
+                if result == 1 {
+                } else {
+                    assert(1 <= result < (result * result) <= u32::MAX) by (nonlinear_arith)
+                        requires
+                            1 < result <= n <= u32::MAX,
+                            1 <= result * result <= n,
+                    { }
+                }
+                result += 1;
+                if result >= 3 {
+                    assert(1 <= result < (result * result) <= u64::MAX) by (nonlinear_arith)
+                        requires
+                            3 <= result <= n,
+                    { }
+                } else {
+                    assert(1 <= result <= (result * result) <= u64::MAX) by (nonlinear_arith)
+                        requires 1 <= result < 3,
+                    { }
+                }
+                if result as u64 * result as u64 > n as u64 {
+                    break;
+                }
+            }
+            result - 1
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] loop_continue_no_break verus_code! {
+        fn test() {
+            let mut i = 0;
+            while i < 5
+                invariant i <= 5
+            {
+                continue;
+            }
+            assert(i == 5);
+        }
+
+        fn test_fail_beginning() {
+            let mut x = 0;
+            let mut i = 7;
+            while i < 5
+                invariant x == 1 // FAILS
+            {
+                x = 1;
+                continue;
+            }
+        }
+
+        fn test_fail_at_continue() {
+            let mut x = 2;
+            let mut i = 7;
+            while i < 5
+                invariant x == 2
+            {
+                x = 1;
+                continue; // FAILS
+            }
+        }
+
+        fn test_fail_at_end_after_continue(b: bool) {
+            let mut x = 2;
+            let mut i = 7;
+            while i < 5
+                invariant x == 2 // FAILS
+            {
+                if b {
+                    continue;
+                }
+                x = 1;
+            }
+        }
+
+        fn test_fail_at_end_after_continue_except_break(b: bool) {
+            let mut x = 2;
+            let mut i = 7;
+            loop
+                invariant_except_break x == 2 // FAILS
+            {
+                if b {
+                    continue;
+                }
+                x = 1;
+            }
+        }
+    } => Err(err) => assert_fails(err, 4)
 }

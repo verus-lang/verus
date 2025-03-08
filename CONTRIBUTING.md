@@ -16,6 +16,10 @@ To record an execution run, simply add `--record` to the verus command that trig
 
 If you want to aid us in debugging (or are unable to share your full recording, which includes the full crate for us to be able to reproduce your issue), you can attempt to minimize the issue before recording it.  For automatic minimization of a crate or file (producing a smaller file that triggers the same error), see [source/tools/minimizers/README.md](./source/tools/minimizers/README.md) for more details.
 
+## Building Verus from Source
+
+**See [BUILD.md](BUILD.md) for how to build Verus from source.**
+
 ## Editing the source code of Verus
 
 Before committing any changes to the source code,
@@ -161,7 +165,7 @@ run, from the project root:
 
 ```
 cd source/vstd
-../target-verus/release/verus --crate-type=lib --no-vstd vstd.rs
+../target-verus/release/verus --crate-type=lib --is-vstd vstd.rs
 ```
 
 ### Common Conventions

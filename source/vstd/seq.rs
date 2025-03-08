@@ -97,22 +97,6 @@ impl<A> Seq<A> {
             0 <= i < self.len(),
     ;
 
-    /// DEPRECATED: use =~= or =~~= instead.
-    /// Returns `true` if the two sequences are pointwise equal, i.e.,
-    /// they have the same length and the corresponding values are equal
-    /// at each index. This is equivalent to the sequences being actually equal
-    /// by [`axiom_seq_ext_equal`].
-    ///
-    /// To prove that two sequences are equal via extensionality, it may be easier
-    /// to use the general-purpose `=~=` or `=~~=` or
-    /// to use the [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro,
-    /// rather than using `.ext_equal` directly.
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    #[rustc_diagnostic_item = "verus::vstd::seq::Seq::ext_equal"]
-    pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
-        self =~= s2
-    }
-
     /// Returns a sequence for the given subrange.
     ///
     /// ## Example
@@ -192,6 +176,35 @@ pub broadcast proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
     admit();
 }
 
+pub proof fn axiom_seq_len_decreases<A>(s1: Seq<A>, s2: Seq<A>)
+    requires
+        s2.len() < s1.len(),
+        forall|i2: int|
+            0 <= i2 < s2.len() && #[trigger] trigger(s2[i2]) ==> exists|i1: int|
+                0 <= i1 < s1.len() && s1[i1] == s2[i2],
+    ensures
+        decreases_to!(s1 => s2),
+{
+    admit();
+}
+
+pub broadcast proof fn axiom_seq_subrange_decreases<A>(s: Seq<A>, i: int, j: int)
+    requires
+        0 <= i <= j <= s.len(),
+        s.subrange(i, j).len() < s.len(),
+    ensures
+        #[trigger] (decreases_to!(s => s.subrange(i, j))),
+{
+    broadcast use axiom_seq_subrange_len, axiom_seq_subrange_index;
+
+    let s2 = s.subrange(i, j);
+    assert forall|i2: int| 0 <= i2 < s2.len() && #[trigger] trigger(s2[i2]) implies exists|i1: int|
+        0 <= i1 < s.len() && s[i1] == s2[i2] by {
+        assert(s[i + i2] == s2[i2]);
+    }
+    axiom_seq_len_decreases(s, s2);
+}
+
 pub broadcast proof fn axiom_seq_empty<A>()
     ensures
         #[trigger] Seq::<A>::empty().len() == 0,
@@ -210,7 +223,7 @@ pub broadcast proof fn axiom_seq_new_index<A>(len: nat, f: spec_fn(int) -> A, i:
     requires
         0 <= i < len,
     ensures
-        Seq::new(len, f)[i] == f(i),
+        #[trigger] Seq::new(len, f)[i] == f(i),
 {
     admit();
 }
@@ -235,7 +248,7 @@ pub broadcast proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int
     requires
         0 <= i < s.len(),
     ensures
-        s.push(a)[i] == s[i],
+        #[trigger] s.push(a)[i] == s[i],
 {
     admit();
 }
@@ -264,7 +277,7 @@ pub broadcast proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int
         0 <= i2 < s.len(),
         i1 != i2,
     ensures
-        s.update(i2, a)[i1] == s[i1],
+        #[trigger] s.update(i2, a)[i1] == s[i1],
 {
     admit();
 }
@@ -303,7 +316,7 @@ pub broadcast proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i:
         0 <= j <= k <= s.len(),
         0 <= i < k - j,
     ensures
-        s.subrange(j, k)[i] == s[i + j],
+        #[trigger] s.subrange(j, k)[i] == s[i + j],
 {
     admit();
 }
@@ -319,7 +332,7 @@ pub broadcast proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         0 <= i < s1.len(),
     ensures
-        s1.add(s2)[i] == s1[i],
+        #[trigger] s1.add(s2)[i] == s1[i],
 {
     admit();
 }
@@ -328,14 +341,14 @@ pub broadcast proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         s1.len() <= i < s1.len() + s2.len(),
     ensures
-        s1.add(s2)[i] == s2[i - s1.len()],
+        #[trigger] s1.add(s2)[i] == s2[i - s1.len()],
 {
     admit();
 }
 
-#[cfg_attr(verus_keep_ghost, verifier::prune_unless_this_module_is_used)]
 pub broadcast group group_seq_axioms {
     axiom_seq_index_decreases,
+    axiom_seq_subrange_decreases,
     axiom_seq_empty,
     axiom_seq_new_len,
     axiom_seq_new_index,
@@ -358,9 +371,15 @@ pub broadcast group group_seq_axioms {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! seq_internal {
-    [$($elem:expr),* $(,)?] => {
+    [] => {
         $crate::vstd::seq::Seq::empty()
-            $(.push($elem))*
+    };
+    [$elem:expr] => {
+        $crate::vstd::seq::Seq::empty()
+            .push($elem)
+    };
+    [$($elem:expr),* $(,)?] => {
+        <_ as $crate::vstd::view::View>::view(&[$($elem),*])
     };
     [$elem:expr; $n:expr] => {
         $crate::vstd::seq::Seq::new(

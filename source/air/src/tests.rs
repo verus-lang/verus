@@ -1,5 +1,5 @@
 use crate::ast::CommandX;
-use crate::context::ValidityResult;
+use crate::context::{SmtSolver, ValidityResult};
 use crate::messages::Reporter;
 #[allow(unused_imports)]
 use crate::parser::Parser;
@@ -12,7 +12,8 @@ use sise::Node;
 fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {
     let message_interface = std::sync::Arc::new(crate::messages::AirMessageInterface {});
     let reporter = Reporter {};
-    let mut air_context = crate::context::Context::new(message_interface.clone());
+    // TODO: Support testing with cvc5 too
+    let mut air_context = crate::context::Context::new(message_interface.clone(), SmtSolver::Z3);
     air_context.set_z3_param("air_recommended_options", "true");
     match Parser::new(message_interface.clone()).nodes_to_commands(&nodes) {
         Ok(commands) => {
@@ -28,7 +29,7 @@ fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Nod
                     (_, true, _, ValidityResult::TypeError(s)) => {
                         panic!("type error: {}", s);
                     }
-                    (_, _, true, ValidityResult::Valid) => {}
+                    (_, _, true, ValidityResult::Valid(..)) => {} // REVIEW: test unsat_core output
                     (_, _, false, ValidityResult::Invalid(..)) => {}
                     (CommandX::CheckValid(_), _, _, res) => {
                         panic!("unexpected result {:?}", res);
@@ -1423,6 +1424,130 @@ fn no_break3() {
 }
 
 #[test]
+fn yes_array1() {
+    yes!(
+        (check-valid
+            (assert (=
+                20
+                (apply Int
+                    (array 10 20 30)
+                    1
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn untyped_array1() {
+    untyped!(
+        (check-valid
+            (assert (=
+                10
+                (apply Int
+                    (array 10 true 30)
+                    1
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn no_array1() {
+    no!(
+        (check-valid
+            (assert (=
+                10
+                (apply Int
+                    (array 10 20 30)
+                    2
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn yes_array2() {
+    yes!(
+        (check-valid
+            (assert (=
+                6
+                (apply Int
+                    (apply Fun
+                        (lambda ((x Int) (y Int))
+                            (array 10 20 (+ x y 1))
+                        )
+                        2
+                        3
+                    )
+                    2
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn no_array2() {
+    no!(
+        (check-valid
+            (assert (=
+                5
+                (apply Int
+                    (apply Fun
+                        (lambda ((x Int) (y Int))
+                            (array 10 20 (+ x y 1))
+                        )
+                        2
+                        3
+                    )
+                    2
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn yes_array3() {
+    yes!(
+        (check-valid
+            (assert
+                (=
+                    (array (+ (- 10 (+ 2 2)) 5))
+                    (array (+ (- 10 4) 5))
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn no_array3() {
+    no!(
+        (check-valid
+            (assert
+                (=
+                    (array (+ (- 10 (+ 2 3)) 5))
+                    (array (+ (- 10 4) 5))
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_empty_array() {
+    yes!(
+        (check-valid
+            (assert (= (array) (array)))
+        )
+    )
+}
+
+#[test]
 fn yes_lambda1() {
     yes!(
         (check-valid
@@ -1974,6 +2099,153 @@ fn no_partial_order() {
             (axiom ((_ partial-order 77) c1 c2))
             (axiom ((_ partial-order 76) c2 c3))
             (assert ((_ partial-order 77) c1 c3))
+        )
+    )
+}
+
+#[test]
+fn datatype_field_update_pass() {
+    yes!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field A_A_u) a 3))
+                (assert (= (A_A_u a) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn datatype_field_update_ill_typed() {
+    untyped!(
+        (declare-datatypes ((X 0)) (((X_X (X_X_u Int)))))
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (check-valid
+            (declare-var a A)
+            (declare-const x X)
+            (block
+                (assign a ((_ update-field A_A_u) a x))
+                (assert (= (A_A_u a) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn datatype_field_update2() {
+    no!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field A_A_u) a 3))
+                (assert (= (A_A_u a) 4))
+            )
+        )
+    )
+}
+
+#[test]
+fn datatype_field_update3() {
+    yes!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int) (A_A_v Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field A_A_u) a 3))
+                (assert (= (A_A_u a) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn datatype_field_update4() {
+    no!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int) (A_A_v Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field A_A_u) a 3))
+                (assert (= (A_A_u a) 4))
+            )
+        )
+    )
+}
+
+#[test]
+fn nested_datatype_field_update_pass() {
+    yes!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (declare-datatypes ((B 0)) (((B_B (B_B_a A)))))
+        (check-valid
+            (declare-var b B)
+            (block
+                (assign b ((_ update-field B_B_a) b ((_ update-field A_A_u) (B_B_a b) 3)))
+                (assert (= (A_A_u (B_B_a b)) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn nested_datatype_field_update_pass2() {
+    yes!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int) (A_A_v Int)))))
+        (declare-datatypes ((B 0)) (((B_B (B_B_a1 A) (B_B_a2 A)))))
+        (check-valid
+            (declare-var b B)
+            (block
+                (assign b ((_ update-field B_B_a1) b ((_ update-field A_A_u) (B_B_a1 b) 3)))
+                (assert (= (A_A_u (B_B_a1 b)) 3))
+            )
+        )
+    )
+}
+
+#[test]
+fn nested_datatype_field_update_fail() {
+    no!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (declare-datatypes ((B 0)) (((B_B (B_B_a A)))))
+        (check-valid
+            (declare-var b B)
+            (block
+                (assign b ((_ update-field B_B_a) b ((_ update-field A_A_u) (B_B_a b) 3)))
+                (assert (= (A_A_u (B_B_a b)) 4))
+            )
+        )
+    )
+}
+
+#[test]
+fn accessor_identifying_1() {
+    untyped!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (declare-fun f (A) Int )
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field f) a 3))
+                (assert (= (A_A_u a) 4))
+            )
+        )
+    )
+}
+
+#[test]
+fn accessor_identifying_2() {
+    untyped!(
+        (declare-datatypes ((A 0)) (((A_A (A_A_u Int)))))
+        (declare-datatypes ((B 0)) (((B_B (B_B_u Int)))))
+        (check-valid
+            (declare-var a A)
+            (block
+                (assign a ((_ update-field B_B_u) a 3))
+                (assert (= (A_A_u a) 4))
+            )
         )
     )
 }

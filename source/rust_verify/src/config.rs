@@ -1,3 +1,4 @@
+use air::context::SmtSolver;
 use getopts::Options;
 use std::{collections::HashSet, sync::Arc};
 use vir::printer::ToDebugSNodeOpts as VirLogOption;
@@ -9,7 +10,9 @@ pub enum ShowTriggers {
     Silent,
     Selective,
     Module,
+    AllModules,
     Verbose,
+    VerboseAllModules,
 }
 impl Default for ShowTriggers {
     fn default() -> Self {
@@ -27,6 +30,7 @@ pub const INTERPRETER_FILE_SUFFIX: &str = ".interp";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
 pub const AIR_FINAL_FILE_SUFFIX: &str = "-final.air";
 pub const SMT_FILE_SUFFIX: &str = ".smt2";
+pub const SMT_TRANSCRIPT_FILE_SUFFIX: &str = ".smt_transcript";
 pub const PROFILE_FILE_SUFFIX: &str = ".profile";
 pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
@@ -46,6 +50,7 @@ pub struct LogArgs {
     pub log_air_initial: bool,
     pub log_air_final: bool,
     pub log_smt: bool,
+    pub log_smt_transcript: bool,
     pub log_triggers: bool,
     pub log_call_graph: bool,
 }
@@ -101,6 +106,9 @@ pub struct ArgsX {
     pub trace: bool,
     pub report_long_running: bool,
     pub use_crate_name: bool,
+    pub solver: SmtSolver,
+    #[cfg(feature = "axiom-usage-info")]
+    pub axiom_usage_info: bool,
 }
 
 impl ArgsX {
@@ -142,6 +150,9 @@ impl ArgsX {
             trace: Default::default(),
             report_long_running: Default::default(),
             use_crate_name: Default::default(),
+            solver: Default::default(),
+            #[cfg(feature = "axiom-usage-info")]
+            axiom_usage_info: Default::default(),
         }
     }
 }
@@ -225,6 +236,7 @@ pub fn parse_args_with_imports(
     const LOG_AIR: &str = "air";
     const LOG_AIR_FINAL: &str = "air-final";
     const LOG_SMT: &str = "smt";
+    const LOG_SMT_TRANSCRIPT: &str = "smt-transcript";
     const LOG_TRIGGERS: &str = "triggers";
     const LOG_CALL_GRAPH: &str = "call-graph";
 
@@ -241,14 +253,37 @@ pub fn parse_args_with_imports(
         (LOG_AIR, "Log AIR queries in initial form"),
         (LOG_AIR_FINAL, "Log AIR queries in final form"),
         (LOG_SMT, "Log SMT queries"),
+        (LOG_SMT_TRANSCRIPT, "Log complete SMT transcript"),
         (LOG_TRIGGERS, "Log automatically chosen triggers"),
         (LOG_CALL_GRAPH, "Log the call graph"),
     ];
 
-    const OPT_TRIGGERS_SILENT: &str = "triggers-silent";
-    const OPT_TRIGGERS_SELECTIVE: &str = "triggers-selective";
     const OPT_TRIGGERS: &str = "triggers";
-    const OPT_TRIGGERS_VERBOSE: &str = "triggers-verbose";
+    const OPT_TRIGGERS_MODE: &str = "triggers-mode";
+
+    const TRIGGERS_MODE_SILENT: &str = "silent";
+    const TRIGGERS_MODE_SELECTIVE: &str = "selective";
+    const TRIGGERS_MODE_ALL_MODULES: &str = "all-modules";
+    const TRIGGERS_MODE_VERBOSE: &str = "verbose";
+    const TRIGGERS_MODE_VERBOSE_ALL_MODULES: &str = "verbose-all-modules";
+
+    const TRIGGERS_MODE_ITEMS: &[(&str, &str)] = &[
+        (TRIGGERS_MODE_SILENT, "Do not show automatically chosen triggers"),
+        (
+            TRIGGERS_MODE_SELECTIVE,
+            "Show automatically chosen triggers for some potentially ambiguous cases in verified modules (this is the default behavior)",
+        ),
+        (
+            TRIGGERS_MODE_ALL_MODULES,
+            "Show all automatically chosen triggers for verified modules and imported definitions from other modules",
+        ),
+        (TRIGGERS_MODE_VERBOSE, "Show all triggers (manually or auto) for verified modules"),
+        (
+            TRIGGERS_MODE_VERBOSE_ALL_MODULES,
+            "Show all triggers (manually or automatically chosen) for verified modules and imported definitions from other modules",
+        ),
+    ];
+
     const OPT_PROFILE: &str = "profile";
     const OPT_PROFILE_ALL: &str = "profile-all";
     const OPT_COMPILE: &str = "compile";
@@ -265,8 +300,11 @@ pub fn parse_args_with_imports(
     const EXTENDED_SPINOFF_ALL: &str = "spinoff-all";
     const EXTENDED_CAPTURE_PROFILES: &str = "capture-profiles";
     const EXTENDED_USE_INTERNAL_PROFILER: &str = "use-internal-profiler";
+    const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
+    #[cfg(feature = "axiom-usage-info")]
+    const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -283,11 +321,14 @@ pub fn parse_args_with_imports(
             EXTENDED_USE_INTERNAL_PROFILER,
             "Use an internal profiler that shows internal quantifier instantiations",
         ),
+        (EXTENDED_CVC5, "Use the cvc5 SMT solver, rather than the default (Z3)"),
         (EXTENDED_ALLOW_INLINE_AIR, "Allow the POTENTIALLY UNSOUND use of inline_air_stmt"),
         (
             EXTENDED_USE_CRATE_NAME,
             "Use the crate name in paths (useful when verifying vstd without --export)",
         ),
+        #[cfg(feature = "axiom-usage-info")]
+        (EXTENDED_AXIOM_USAGE_INFO, "Print usage info for broadcasted axioms, lemmas, and groups"),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -368,10 +409,20 @@ pub fn parse_args_with_imports(
         "OPTION=VALUE",
     );
 
-    opts.optflag("", OPT_TRIGGERS_SILENT, "Do not show automatically chosen triggers");
-    opts.optflag("", OPT_TRIGGERS_SELECTIVE, "Show automatically chosen triggers for some potentially ambiguous cases in verified modules (this is the default behavior)");
     opts.optflag("", OPT_TRIGGERS, "Show all automatically chosen triggers for verified modules");
-    opts.optflag("", OPT_TRIGGERS_VERBOSE, "Show all automatically chosen triggers for verified modules and imported definitions from other modules");
+    opts.optopt(
+        "",
+        OPT_TRIGGERS_MODE,
+        {
+            let mut s = "Display triggers:\n".to_owned();
+            for (f, d) in TRIGGERS_MODE_ITEMS {
+                s += format!("--{} {} : {}\n", OPT_TRIGGERS_MODE, *f, d).as_str();
+            }
+            s
+        }
+        .as_str(),
+        &TRIGGERS_MODE_ITEMS.iter().map(|(x, _)| x.to_owned()).collect::<Vec<_>>().join("|"),
+    );
     opts.optflag(
         "",
         OPT_PROFILE,
@@ -421,7 +472,6 @@ pub fn parse_args_with_imports(
 
     let error = |msg: String| -> ! {
         eprintln!("Error: {}", msg);
-        print_usage();
         std::process::exit(-1)
     };
 
@@ -573,17 +623,24 @@ pub fn parse_args_with_imports(
             log_air_initial: log.get(LOG_AIR).is_some(),
             log_air_final: log.get(LOG_AIR_FINAL).is_some(),
             log_smt: log.get(LOG_SMT).is_some(),
+            log_smt_transcript: log.get(LOG_SMT_TRANSCRIPT).is_some(),
             log_triggers: log.get(LOG_TRIGGERS).is_some(),
             log_call_graph: log.get(LOG_CALL_GRAPH).is_some(),
         },
-        show_triggers: if matches.opt_present(OPT_TRIGGERS_VERBOSE) {
-            ShowTriggers::Verbose
-        } else if matches.opt_present(OPT_TRIGGERS) {
+        show_triggers: if matches.opt_present(OPT_TRIGGERS) {
+            if matches.opt_present(OPT_TRIGGERS_MODE) {
+                error("--triggers and --triggers-mode are mutually exclusive".to_owned())
+            }
             ShowTriggers::Module
-        } else if matches.opt_present(OPT_TRIGGERS_SELECTIVE) {
-            ShowTriggers::Selective
-        } else if matches.opt_present(OPT_TRIGGERS_SILENT) {
-            ShowTriggers::Silent
+        } else if let Some(triggers_mode) = matches.opt_str(OPT_TRIGGERS_MODE) {
+            match triggers_mode.as_str() {
+                TRIGGERS_MODE_ALL_MODULES => ShowTriggers::AllModules,
+                TRIGGERS_MODE_SELECTIVE => ShowTriggers::Selective,
+                TRIGGERS_MODE_SILENT => ShowTriggers::Silent,
+                TRIGGERS_MODE_VERBOSE_ALL_MODULES => ShowTriggers::VerboseAllModules,
+                TRIGGERS_MODE_VERBOSE => ShowTriggers::Verbose,
+                _ => error(format!("invalid --triggers-mode {triggers_mode}")),
+            }
         } else {
             ShowTriggers::default()
         },
@@ -601,7 +658,7 @@ pub fn parse_args_with_imports(
         profile_all: {
             if matches.opt_present(OPT_PROFILE_ALL) {
                 if !matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("Must pass --verify-module when using profile-all. To capture a full project's profile, consider --capture-profiles".to_string())
+                    error("Must pass --verify-module when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
                 }
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --profile-all are mutually exclusive".to_string())
@@ -630,6 +687,9 @@ pub fn parse_args_with_imports(
         trace: matches.opt_present(OPT_TRACE),
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
         use_crate_name: extended.get(EXTENDED_USE_CRATE_NAME).is_some(),
+        solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
+        #[cfg(feature = "axiom-usage-info")]
+        axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
     };
 
     (Arc::new(args), unmatched)

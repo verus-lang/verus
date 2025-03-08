@@ -83,7 +83,8 @@ struct Ctxt {
 }
 
 fn parse_params(input: ParseStream) -> parse::Result<Vec<TransitionParam>> {
-    let args: Punctuated<(Ident, Type), token::Comma> = input.parse_terminated(parse_arg_typed)?;
+    let args: Punctuated<(Ident, Type), token::Comma> =
+        input.parse_terminated(parse_arg_typed, Token![,])?;
     let mut v = Vec::new();
     for (ident, ty) in args.into_iter() {
         v.push(TransitionParam { name: ident, ty });
@@ -208,7 +209,7 @@ fn parse_transition_block(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<
         let mut new_stmts = parse_transition_stmt(ctxt, &content)?;
         stmts.append(&mut new_stmts);
     }
-    Ok(stmts_or_lets_to_block(brace_token.span, stmts))
+    Ok(stmts_or_lets_to_block(brace_token.span.join(), stmts))
 }
 
 fn stmts_or_lets_to_block(span: Span, tstmts: Vec<StmtOrLet>) -> TransitionStmt {
@@ -382,7 +383,7 @@ fn parse_monoid_elt(
         let _: Token![=>] = content.parse()?;
         if content.peek(Token![let]) {
             let _: Token![let] = content.parse()?;
-            let pat: Pat = content.parse()?;
+            let pat: Pat = Pat::parse_single(&content)?;
             Ok((MonoidElt::SingletonKV(key, None), Some(pat)))
         } else {
             let val: Expr = content.parse()?;
@@ -394,7 +395,7 @@ fn parse_monoid_elt(
         let _ = parenthesized!(content in input);
         if content.peek(Token![let]) {
             let _: Token![let] = content.parse()?;
-            let pat: Pat = content.parse()?;
+            let pat: Pat = Pat::parse_single(&content)?;
             Ok((MonoidElt::OptionSome(None), Some(pat)))
         } else {
             let e: Expr = content.parse()?;
@@ -474,7 +475,7 @@ fn parse_let(
         return Err(input.error("'require birds_eye let' is not allowed because 'require' statements should not be in the scope of a `birds_eye` let-binding; preconditions of an exchange cannot depend on such bindings"));
     }
 
-    let pat: Pat = input.parse()?;
+    let pat: Pat = Pat::parse_single(input)?;
 
     match &pat {
         Pat::Ident(PatIdent { ident, .. }) => {
@@ -543,16 +544,16 @@ fn parse_let(
                 let pat_tup;
 
                 if ids.len() > 1 {
-                    match_select = expr_from_tokens(quote_spanned! { stmt_span =>
-                        match #tmp_ident { #pat => (#(#ids),*) , _ => ::vstd::pervasive::arbitrary() }
+                    match_select = expr_from_tokens(quote_spanned_vstd! { vstd, stmt_span =>
+                        match #tmp_ident { #pat => (#(#ids),*) , _ => #vstd::pervasive::arbitrary() }
                     });
                     pat_tup = pat_from_tokens(quote_spanned! { stmt_span =>
                         (#(#ids),*)
                     });
                 } else {
                     let id = &ids[0];
-                    match_select = expr_from_tokens(quote_spanned! { stmt_span =>
-                        match #tmp_ident { #pat => #id , _ => ::vstd::pervasive::arbitrary() }
+                    match_select = expr_from_tokens(quote_spanned_vstd! { vstd, stmt_span =>
+                        match #tmp_ident { #pat => #id , _ => #vstd::pervasive::arbitrary() }
                     });
                     pat_tup = pat_from_tokens(quote_spanned! { stmt_span =>
                         #id
@@ -666,7 +667,7 @@ fn parse_match(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<TransitionS
         stmts.push(stmt);
     }
 
-    let span = match_token.span.join(brace_token.span).unwrap_or(match_token.span);
+    let span = match_token.span.join(brace_token.span.join()).unwrap_or(match_token.span);
 
     Ok(TransitionStmt::Split(span, SplitKind::Match(expr, arms), stmts))
 }
@@ -705,7 +706,7 @@ fn multi_pat_with_leading_vert(input: ParseStream) -> parse::Result<Pat> {
 }
 
 fn multi_pat_impl(input: ParseStream, leading_vert: Option<Token![|]>) -> parse::Result<Pat> {
-    let mut pat: Pat = input.parse()?;
+    let mut pat: Pat = Pat::parse_single(input)?;
     if leading_vert.is_some()
         || input.peek(Token![|]) && !input.peek(Token![||]) && !input.peek(Token![|=])
     {
@@ -714,7 +715,7 @@ fn multi_pat_impl(input: ParseStream, leading_vert: Option<Token![|]>) -> parse:
         while input.peek(Token![|]) && !input.peek(Token![||]) && !input.peek(Token![|=]) {
             let punct = input.parse()?;
             cases.push_punct(punct);
-            let pat: Pat = input.parse()?;
+            let pat: Pat = Pat::parse_single(input)?;
             cases.push_value(pat);
         }
         pat = Pat::Or(PatOr { attrs: Vec::new(), leading_vert, cases });

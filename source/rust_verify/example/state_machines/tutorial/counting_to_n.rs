@@ -98,8 +98,8 @@ struct_with_invariants!{
 
     spec fn wf(&self) -> bool {
         invariant on atomic with (instance) is (v: u32, g: X::counter) {
-            g@.instance == instance@
-            && g@.value == v as int
+            g.instance_id() == instance@.id()
+            && g.value() == v as int
         }
 
         predicate {
@@ -130,29 +130,26 @@ fn do_count(num_threads: u32) {
         invariant
             0 <= i,
             i <= num_threads,
-            unstamped_tokens@.count + i as int == num_threads as int,
-            unstamped_tokens@.instance === instance,
+            unstamped_tokens.count() + i == num_threads,
+            unstamped_tokens.instance_id() == instance.id(),
             join_handles@.len() == i as int,
             forall|j: int, ret|
-                0 <= j && j < i ==> join_handles@.index(j).predicate(ret) ==> ret@@.instance
-                    === instance && ret@@.count == 1,
+                0 <= j && j < i ==> join_handles@.index(j).predicate(ret) ==>
+                    ret@.instance_id() == instance.id()
+                    && ret@.count() == 1,
             (*global_arc).wf(),
             (*global_arc).instance@ === instance,
     {
         let tracked unstamped_token;
         proof {
-            let tracked (Tracked(unstamped_token0), Tracked(rest)) = unstamped_tokens.split(
-                1 as nat,
-            );
-            unstamped_tokens = rest;
-            unstamped_token = unstamped_token0;
+            unstamped_token = unstamped_tokens.split(1 as nat);
         }
         let global_arc = global_arc.clone();
         let join_handle = spawn(
             (move || -> (new_token: Tracked<X::stamped_tickets>)
                 ensures
-                    new_token@@.instance == instance,
-                    new_token@@.count == 1nat,
+                    new_token@.instance_id() == instance.id(),
+                    new_token@.count() == 1,
                 {
                     let tracked unstamped_token = unstamped_token;
                     let globals = &*global_arc;
@@ -182,13 +179,14 @@ fn do_count(num_threads: u32) {
         invariant
             0 <= i,
             i <= num_threads,
-            stamped_tokens@.count == i as int,
-            stamped_tokens@.instance === instance,
+            stamped_tokens.count() == i,
+            stamped_tokens.instance_id() == instance.id(),
             join_handles@.len() as int + i as int == num_threads,
             forall|j: int, ret|
-                0 <= j && j < join_handles@.len() ==> #[trigger] join_handles@.index(j).predicate(
-                    ret,
-                ) ==> ret@@.instance === instance && ret@@.count == 1,
+                0 <= j && j < join_handles@.len() ==>
+                    #[trigger] join_handles@.index(j).predicate(ret) ==>
+                        ret@.instance_id() == instance.id()
+                        && ret@.count() == 1,
             (*global_arc).wf(),
             (*global_arc).instance@ === instance,
     {
@@ -196,7 +194,7 @@ fn do_count(num_threads: u32) {
         match join_handle.join() {
             Result::Ok(token) => {
                 proof {
-                    stamped_tokens = stamped_tokens.join(token.get());
+                    stamped_tokens.join(token.get());
                 }
             },
             _ => {

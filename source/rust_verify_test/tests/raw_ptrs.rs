@@ -181,6 +181,46 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] pointer_cast_to_ints verus_code! {
+        use vstd::prelude::*;
+        use vstd::raw_ptr::*;
+
+        proof fn test<T>(x: *mut T) {
+            assert(x@.addr == x as int);
+            assert(x@.addr == x as nat);
+            assert(x@.addr == x as usize);
+            assert(x@.addr as u16 == x as u16);
+        }
+
+        proof fn test_fails<T>(x: *mut T) {
+            assert(x@.addr == x as u16); // FAILS
+        }
+
+        proof fn test_fails2<T>(x: *mut T) {
+            assert(x@.addr == x as isize); // FAILS
+        }
+
+        fn exec_test<T>(x: *mut T) {
+            let x1 = x as usize;
+            assert(x@.addr == x1);
+
+            let x2 = x as u16;
+            assert(x@.addr as u16 == x2);
+        }
+
+        fn exec_test_fails<T>(x: *mut T) {
+            let x1 = x as u16;
+            assert(x@.addr == x1); // FAILS
+        }
+
+        fn exec_test_fails2<T>(x: *mut T) {
+            let x1 = x as isize;
+            assert(x@.addr == x1); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
     #[test] pointer_exec_eq_is_not_spec_eq verus_code! {
         fn test_const_eq(x: *const u8, y: *const u8) {
             if x == y {
@@ -232,7 +272,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] not_supported_ptr_to_int_cast verus_code! {
+    #[test] not_supported_int_to_ptr_cast verus_code! {
         fn test(x: usize) {
             let y = x as *mut u8;
         }
@@ -240,9 +280,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] not_supported_int_to_ptr_cast verus_code! {
-        fn test(x: *mut u8) {
-            let y = x as usize;
+    #[test] not_supported_deref_ptr verus_code! {
+        pub fn run(x: *mut u8) {
+            unsafe { let y = *x; }
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus does not support this cast")
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dereferencing a raw pointer")
 }

@@ -7,7 +7,6 @@ use proc_macro2::{
 #[cfg(feature = "printing")]
 use quote::ToTokens;
 use std::fmt::{self, Debug, Display};
-use std::iter::FromIterator;
 use std::slice;
 use std::vec;
 
@@ -34,17 +33,33 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// # extern crate proc_macro;
 /// #
 /// use proc_macro::TokenStream;
-/// use syn::{parse_macro_input, AttributeArgs, ItemFn};
+/// use syn::parse::{Parse, ParseStream, Result};
+/// use syn::{parse_macro_input, ItemFn};
 ///
 /// # const IGNORE: &str = stringify! {
 /// #[proc_macro_attribute]
 /// # };
 /// pub fn my_attr(args: TokenStream, input: TokenStream) -> TokenStream {
-///     let args = parse_macro_input!(args as AttributeArgs);
+///     let args = parse_macro_input!(args as MyAttrArgs);
 ///     let input = parse_macro_input!(input as ItemFn);
 ///
 ///     /* ... */
 ///     # TokenStream::new()
+/// }
+///
+/// struct MyAttrArgs {
+///     # _k: [(); { stringify! {
+///     ...
+///     # }; 0 }]
+/// }
+///
+/// impl Parse for MyAttrArgs {
+///     fn parse(input: ParseStream) -> Result<Self> {
+///         # stringify! {
+///         ...
+///         # };
+///         # unimplemented!()
+///     }
 /// }
 /// ```
 ///
@@ -89,12 +104,19 @@ pub struct Error {
 struct ErrorMessage {
     // Span is implemented as an index into a thread-local interner to keep the
     // size small. It is not safe to access from a different thread. We want
-    // errors to be Send and Sync to play nicely with the Failure crate, so pin
-    // the span we're given to its original thread and assume it is
-    // Span::call_site if accessed from any other thread.
-    start_span: ThreadBound<Span>,
-    end_span: ThreadBound<Span>,
+    // errors to be Send and Sync to play nicely with ecosystem crates for error
+    // handling, so pin the span we're given to its original thread and assume
+    // it is Span::call_site if accessed from any other thread.
+    span: ThreadBound<SpanRange>,
     message: String,
+}
+
+// Cannot use std::ops::Range<Span> because that does not implement Copy,
+// whereas ThreadBound<T> requires a Copy impl as a way to ensure no Drop impls
+// are involved.
+struct SpanRange {
+    start: Span,
+    end: Span,
 }
 
 #[cfg(test)]
@@ -134,12 +156,18 @@ impl Error {
     /// }
     /// ```
     pub fn new<T: Display>(span: Span, message: T) -> Self {
-        Error {
-            messages: vec![ErrorMessage {
-                start_span: ThreadBound::new(span),
-                end_span: ThreadBound::new(span),
-                message: message.to_string(),
-            }],
+        return new(span, message.to_string());
+
+        fn new(span: Span, message: String) -> Error {
+            Error {
+                messages: vec![ErrorMessage {
+                    span: ThreadBound::new(SpanRange {
+                        start: span,
+                        end: span,
+                    }),
+                    message,
+                }],
+            }
         }
     }
 
@@ -157,16 +185,20 @@ impl Error {
     /// When in doubt it's recommended to stick to `Error::new` (or
     /// `ParseStream::error`)!
     #[cfg(feature = "printing")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "printing")))]
     pub fn new_spanned<T: ToTokens, U: Display>(tokens: T, message: U) -> Self {
-        let mut iter = tokens.into_token_stream().into_iter();
-        let start = iter.next().map_or_else(Span::call_site, |t| t.span());
-        let end = iter.last().map_or(start, |t| t.span());
-        Error {
-            messages: vec![ErrorMessage {
-                start_span: ThreadBound::new(start),
-                end_span: ThreadBound::new(end),
-                message: message.to_string(),
-            }],
+        return new_spanned(tokens.into_token_stream(), message.to_string());
+
+        fn new_spanned(tokens: TokenStream, message: String) -> Error {
+            let mut iter = tokens.into_iter();
+            let start = iter.next().map_or_else(Span::call_site, |t| t.span());
+            let end = iter.last().map_or(start, |t| t.span());
+            Error {
+                messages: vec![ErrorMessage {
+                    span: ThreadBound::new(SpanRange { start, end }),
+                    message,
+                }],
+            }
         }
     }
 
@@ -176,11 +208,7 @@ impl Error {
     /// if called from a different thread than the one on which the `Error` was
     /// originally created.
     pub fn span(&self) -> Span {
-        let start = match self.messages[0].start_span.get() {
-            Some(span) => *span,
-            None => return Span::call_site(),
-        };
-        let end = match self.messages[0].end_span.get() {
+        let SpanRange { start, end } = match self.messages[0].span.get() {
             Some(span) => *span,
             None => return Span::call_site(),
         };
@@ -246,15 +274,34 @@ impl Error {
 
 impl ErrorMessage {
     fn to_compile_error(&self) -> TokenStream {
-        let start = self
-            .start_span
-            .get()
-            .cloned()
-            .unwrap_or_else(Span::call_site);
-        let end = self.end_span.get().cloned().unwrap_or_else(Span::call_site);
+        let (start, end) = match self.span.get() {
+            Some(range) => (range.start, range.end),
+            None => (Span::call_site(), Span::call_site()),
+        };
 
-        // compile_error!($message)
-        TokenStream::from_iter(vec![
+        // ::core::compile_error!($message)
+        TokenStream::from_iter([
+            TokenTree::Punct({
+                let mut punct = Punct::new(':', Spacing::Joint);
+                punct.set_span(start);
+                punct
+            }),
+            TokenTree::Punct({
+                let mut punct = Punct::new(':', Spacing::Alone);
+                punct.set_span(start);
+                punct
+            }),
+            TokenTree::Ident(Ident::new("core", start)),
+            TokenTree::Punct({
+                let mut punct = Punct::new(':', Spacing::Joint);
+                punct.set_span(start);
+                punct
+            }),
+            TokenTree::Punct({
+                let mut punct = Punct::new(':', Spacing::Alone);
+                punct.set_span(start);
+                punct
+            }),
             TokenTree::Ident(Ident::new("compile_error", start)),
             TokenTree::Punct({
                 let mut punct = Punct::new('!', Spacing::Alone);
@@ -263,7 +310,7 @@ impl ErrorMessage {
             }),
             TokenTree::Group({
                 let mut group = Group::new(Delimiter::Brace, {
-                    TokenStream::from_iter(vec![TokenTree::Literal({
+                    TokenStream::from_iter([TokenTree::Literal({
                         let mut string = Literal::string(&self.message);
                         string.set_span(end);
                         string
@@ -277,7 +324,7 @@ impl ErrorMessage {
 }
 
 #[cfg(feature = "parsing")]
-pub fn new_at<T: Display>(scope: Span, cursor: Cursor, message: T) -> Error {
+pub(crate) fn new_at<T: Display>(scope: Span, cursor: Cursor, message: T) -> Error {
     if cursor.eof() {
         Error::new(scope, format!("unexpected end of input, {}", message))
     } else {
@@ -287,13 +334,16 @@ pub fn new_at<T: Display>(scope: Span, cursor: Cursor, message: T) -> Error {
 }
 
 #[cfg(all(feature = "parsing", any(feature = "full", feature = "derive")))]
-pub fn new2<T: Display>(start: Span, end: Span, message: T) -> Error {
-    Error {
-        messages: vec![ErrorMessage {
-            start_span: ThreadBound::new(start),
-            end_span: ThreadBound::new(end),
-            message: message.to_string(),
-        }],
+pub(crate) fn new2<T: Display>(start: Span, end: Span, message: T) -> Error {
+    return new2(start, end, message.to_string());
+
+    fn new2(start: Span, end: Span, message: String) -> Error {
+        Error {
+            messages: vec![ErrorMessage {
+                span: ThreadBound::new(SpanRange { start, end }),
+                message,
+            }],
+        }
     }
 }
 
@@ -335,25 +385,26 @@ impl Clone for Error {
 
 impl Clone for ErrorMessage {
     fn clone(&self) -> Self {
-        let start = self
-            .start_span
-            .get()
-            .cloned()
-            .unwrap_or_else(Span::call_site);
-        let end = self.end_span.get().cloned().unwrap_or_else(Span::call_site);
         ErrorMessage {
-            start_span: ThreadBound::new(start),
-            end_span: ThreadBound::new(end),
+            span: self.span,
             message: self.message.clone(),
         }
     }
 }
 
+impl Clone for SpanRange {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl Copy for SpanRange {}
+
 impl std::error::Error for Error {}
 
 impl From<LexError> for Error {
     fn from(err: LexError) -> Self {
-        Error::new(err.span(), "lex error")
+        Error::new(err.span(), err)
     }
 }
 

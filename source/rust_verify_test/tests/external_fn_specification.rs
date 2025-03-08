@@ -165,17 +165,7 @@ test_verify_one_file! {
         fn test() {
             negate_bool_requires_ensures(false, 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external_fn_specification` directly; call `crate::negate_bool` instead")
-}
-
-test_verify_one_file! {
-    #[test] test_call_proxy2 verus_code! {
-        fn test() {
-            let x: u8 = 5;
-            let y: u8 = 7;
-            vstd::std_specs::core::ex_swap(&mut x, &mut y);
-        }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external_fn_specification` directly; call `core::mem::swap` instead")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::negate_bool_requires_ensures` which is an artificial function for `assume_specification`; call `crate::negate_bool` instead")
 }
 
 test_verify_one_file! {
@@ -186,7 +176,7 @@ test_verify_one_file! {
         fn test() {
             some_external_fn();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::some_external_fn` which is ignored")
 }
 
 test_verify_one_file! {
@@ -199,7 +189,7 @@ test_verify_one_file! {
         fn test() {
             stuff();
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external`")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::stuff` which is ignored")
 }
 
 // If you wrongly try to apply a mode
@@ -216,7 +206,7 @@ test_verify_one_file! {
         {
             negate_bool(b, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "a function marked `external_fn_specification` cannot be marked `spec`")
+    } => Err(err) => assert_vir_error_msg(err, "an `assume_specification` declaration cannot be marked `spec`")
 }
 
 test_verify_one_file! {
@@ -231,7 +221,7 @@ test_verify_one_file! {
         {
             negate_bool(b, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "a function marked `external_fn_specification` cannot be marked `proof`")
+    } => Err(err) => assert_vir_error_msg(err, "an `assume_specification` declaration cannot be marked `proof`")
 }
 
 // test visibility stuff
@@ -323,7 +313,7 @@ test_verify_one_file! {
         pub fn negate_bool(b: bool, x: u8) -> bool {
             !b
         }
-    } => Err(err) => assert_vir_error_msg(err, "a function marked `external_fn_specification` must be visible to the function it provides a spec for")
+    } => Err(err) => assert_vir_error_msg(err, "an `assume_specification` declaration must be at least as visible as the function it provides a spec for")
 }
 
 test_verify_one_file! {
@@ -334,7 +324,7 @@ test_verify_one_file! {
         {
             std::mem::swap(a, b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "a function marked `external_fn_specification` must be visible to the function it provides a spec for")
+    } => Err(err) => assert_vir_error_msg(err, "an `assume_specification` declaration must be at least as visible as the function it provides a spec for")
 }
 
 // Test the attribute in weird places
@@ -375,7 +365,7 @@ test_verify_one_file! {
             #[verifier(external_fn_specification)]
             fn foo();
         }
-    } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` attribute not supported here")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` declaration not supported here")
 }
 
 test_verify_one_file! {
@@ -390,7 +380,7 @@ test_verify_one_file! {
             #[verifier(external_fn_specification)]
             fn foo() { }
         }
-    } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` attribute not supported here")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` declaration not supported here")
 }
 
 test_verify_one_file! {
@@ -401,7 +391,7 @@ test_verify_one_file! {
             #[verifier(external_fn_specification)]
             fn stuff(&self) { }
         }
-    } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` attribute not supported here")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` declaration not supported here")
 }
 
 test_verify_one_file! {
@@ -412,7 +402,7 @@ test_verify_one_file! {
             #[verifier(external_fn_specification)]
             fn stuff() { }
         }
-    } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` attribute not supported here")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` declaration not supported here")
 }
 
 test_verify_one_file! {
@@ -421,7 +411,7 @@ test_verify_one_file! {
             #[verifier(external_fn_specification)]
             fn stuff();
         }
-    } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` attribute not supported here")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification not supported here")
 }
 
 // Mismatched type signatures
@@ -438,7 +428,7 @@ test_verify_one_file! {
         {
             x(b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
 }
 
 test_verify_one_file! {
@@ -453,7 +443,7 @@ test_verify_one_file! {
         {
             x(false)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
 }
 
 test_verify_one_file! {
@@ -468,7 +458,7 @@ test_verify_one_file! {
         {
             x(b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
 }
 
 test_verify_one_file! {
@@ -482,7 +472,7 @@ test_verify_one_file! {
         {
             x(t, s)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
 }
 
 test_verify_one_file! {
@@ -496,7 +486,7 @@ test_verify_one_file! {
         fn y<'a, 'b>(u: &'b u8, v: &'a u8) -> &'a u8 {
             x(v, u)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification requires function type signature to match")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification requires function type signature to match")
 }
 
 test_verify_one_file! {
@@ -506,7 +496,7 @@ test_verify_one_file! {
         {
             core::mem::swap(a, b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -520,7 +510,7 @@ test_verify_one_file! {
         {
             sw(a, b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -540,7 +530,7 @@ test_verify_one_file! {
         {
             x::<Stuff>()
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -594,7 +584,7 @@ test_verify_one_file! {
         {
             f1(y, x)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
 }
 
 test_verify_one_file! {
@@ -610,7 +600,7 @@ test_verify_one_file! {
         {
             f1::<S, T>()
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
 }
 
 // Lifetime checking
@@ -657,7 +647,7 @@ test_verify_one_file! {
         fn ex_f<T: Tr>() {
             T::f()
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification not supported for unresolved trait functions")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification not supported for unresolved trait functions")
 }
 
 // Other
@@ -671,7 +661,7 @@ test_verify_one_file! {
         {
             std::mem::swap(a, b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "a function cannot be marked both `external_fn_specification` and `external`")
+    } => Err(err) => assert_vir_error_msg(err, "an `assume_specification` declaration cannot be marked `external`")
 }
 
 test_verify_one_file! {
@@ -683,7 +673,7 @@ test_verify_one_file! {
         {
             std::mem::swap(a, b)
         }
-    } => Err(err) => assert_vir_error_msg(err, "a function cannot be marked both `external_fn_specification` and `external_body`")
+    } => Err(err) => assert_vir_error_msg(err, "an `assume_specification` declaration cannot be marked `external_body`")
 }
 
 test_verify_one_file! {
@@ -692,7 +682,7 @@ test_verify_one_file! {
         pub fn x() {
             admit()
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot apply `external_fn_specification` to Verus builtin functions")
+    } => Err(err) => assert_vir_error_msg(err, "cannot apply `assume_specification` to Verus builtin functions")
 }
 
 // Associated functions
@@ -778,7 +768,7 @@ test_verify_one_file! {
         {
             X::<T>::new(a)
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
 }
 
 // Methods
@@ -868,7 +858,7 @@ test_verify_one_file! {
         {
             x.swap()
         }
-    } => Err(err) => assert_vir_error_msg(err, "external_fn_specification trait bound mismatch")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
 }
 
 // when_used_as_spec
@@ -949,7 +939,7 @@ test_verify_one_file! {
             let a = exec_foo(true);
             assert(a == false);
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot call function marked `external_fn_specification` directly")
+    } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::exec_foo` which is an artificial function for `assume_specification`; call `crate::foo` instead")
 }
 
 test_verify_one_file! {
@@ -1285,7 +1275,7 @@ test_verify_one_file! {
         impl Tr for X {
             fn foo(&self) { }
         }
-    } => Err(err) => assert_vir_error_msg(err, "X::foo` is not supported") // TODO could have clearer error msg
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::foo` which is ignored")
 }
 
 test_verify_one_file! {
@@ -1310,4 +1300,73 @@ test_verify_one_file! {
             fn foo(&self) { }
         }
     } => Err(err) => assert_vir_error_msg(err, "an item in a trait impl cannot be marked 'external'")
+}
+
+test_verify_one_file! {
+    #[test] test_returns_clause verus_code! {
+        #[verifier(external)]
+        fn negate_bool(b: bool, x: u8) -> bool {
+            !b
+        }
+
+        #[verifier(external_fn_specification)]
+        fn negate_bool_requires_ensures(b: bool, x: u8) -> bool
+            requires x != 0,
+            returns !b
+        {
+            negate_bool(b, x)
+        }
+
+        fn test1() {
+            let ret_b = negate_bool(true, 1);
+            assert(ret_b == false);
+        }
+
+        fn test2() {
+            let ret_b = negate_bool(true, 0); // FAILS
+        }
+
+        fn test3() {
+            let ret_b = negate_bool(true, 1);
+            assert(ret_b == true); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] provided_trait_method verus_code! {
+        pub trait Tr {
+            fn foo(&self) -> bool { true }
+        }
+
+        pub struct X { }
+
+        impl Tr for X {
+        }
+
+        verus!{
+            #[verifier(external_type_specification)]
+            pub struct ExX(X);
+
+            #[verifier(external_fn_specification)]
+            pub fn ex_X_foo(p: &X) -> bool {
+                p.foo()
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification for a provided trait method")
+}
+
+test_verify_one_file! {
+    #[test] module_external code! {
+        #[verifier::external]
+        mod moo {
+            #[verifier::verify]
+            fn stuff() {
+                builtin::assert_(false);
+            }
+        }
+    } => Ok(err) => {
+        assert!(err.warnings.len() == 2);
+        assert!(err.warnings[0].message.contains("#[verifier::verify] has no effect because item is already marked external"));
+    }
 }

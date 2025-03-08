@@ -445,7 +445,7 @@ test_verify_one_file! {
         pub open spec fn plus_three<T: Integer>(t: T) -> int {
             t as u64 + 3
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types and `char` to integer types")
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types, `char`, and pointer types to integer types")
 }
 
 test_verify_one_file! {
@@ -493,6 +493,24 @@ test_verify_one_file! {
             assert(A == B);
             assert(M == N);
             assert(X == Y);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] nat_int_cast_in_exec_code verus_code! {
+        fn test(u: u64) {
+            let x = u as nat;
+        }
+    } => Err(err) => assert_vir_error_msg(err, "types 'nat' and 'int' can only be used in ghost code")
+}
+
+test_verify_one_file! {
+    #[test] test_bool_to_int verus_code! {
+        fn test1() {
+            assert(true as usize == 1);
+            assert(false as usize == 0);
+            assert(false as int == 0);
         }
     } => Ok(())
 }

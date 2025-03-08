@@ -4,6 +4,7 @@ use super::prelude::*;
 verus! {
 
 broadcast use super::set::group_set_axioms, super::map::group_map_axioms;
+
 /// Interface for "storage protocol" ghost state.
 /// This is an extension-slash-variant on the more well-known concept
 /// of "PCM" ghost state, which we also have an interface for [here](crate::pcm::Resource).
@@ -25,7 +26,6 @@ broadcast use super::set::group_set_axioms, super::map::group_map_axioms;
 /// For applications, I generally advise using the
 /// [`tokenized_state_machine!` system](https://verus-lang.github.io/verus/state_machines/),
 /// rather than using this interface directly.
-
 #[verifier::external_body]
 #[verifier::accept_recursive_types(K)]
 #[verifier::accept_recursive_types(P)]
@@ -129,9 +129,9 @@ pub open spec fn set_op<K, V, P: Protocol<K, V>>(s: Set<(P, Map<K, V>)>, t: P) -
 }
 
 impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
-    pub open spec fn value(self) -> P;
+    pub spec fn value(self) -> P;
 
-    pub open spec fn loc(self) -> Loc;
+    pub spec fn loc(self) -> Loc;
 
     #[verifier::external_body]
     pub proof fn alloc(p: P, tracked s: Map<K, V>) -> (tracked out: Self)

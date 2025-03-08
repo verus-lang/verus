@@ -188,3 +188,59 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] inline_poly_assoc_type verus_code! {
+        // https://github.com/verus-lang/verus/issues/1303
+        use vstd::prelude::*;
+        pub type SpecBytes = Seq<u8>;
+        pub type Bytes<'a> = &'a [u8];
+
+        pub enum SpecMsg {
+           M0(SpecBytes),
+        }
+
+        pub enum Msg<'a> {
+           M0(Bytes<'a>),
+        }
+
+        impl View for Msg<'_> {
+           type V = SpecMsg;
+
+           open spec fn view(&self) -> Self::V {
+               match self {
+                   Msg::M0(m) => SpecMsg::M0(m@),
+               }
+           }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] default_impl_issue1407 verus_code! {
+        trait Tr {
+            #[verifier::inline]
+            spec fn foo(&self) -> bool { true }
+        }
+
+        struct X { }
+
+        impl Tr for X {
+            spec fn foo(&self) -> bool { false }
+        }
+
+        #[verifier::inline]
+        spec fn foo_wrapper_inlined<T: Tr>(t: &T) -> bool {
+            t.foo()
+        }
+
+        proof fn test4() {
+            let x = X { };
+            assert(foo_wrapper_inlined(&x)); // FAILS
+        }
+
+        proof fn test5<T: Tr>(t: &T) {
+            assert(foo_wrapper_inlined(t)); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

@@ -55,10 +55,23 @@ impl<'tcx> ContextX<'tcx> {
         &self,
         attrs: &[Attribute],
     ) -> Result<crate::attributes::VerifierAttrs, vir::ast::VirErr> {
-        crate::attributes::get_verifier_attrs(
+        crate::attributes::get_verifier_attrs(attrs, Some(&mut *self.diagnostics.borrow_mut()))
+    }
+
+    pub(crate) fn get_verifier_attrs_no_check(
+        &self,
+        attrs: &[Attribute],
+    ) -> Result<crate::attributes::VerifierAttrs, vir::ast::VirErr> {
+        crate::attributes::get_verifier_attrs_no_check(
             attrs,
             Some(&mut *self.diagnostics.borrow_mut()),
-            Some(&self.cmd_line_args),
         )
+    }
+
+    pub(crate) fn get_external_attrs(
+        &self,
+        attrs: &[Attribute],
+    ) -> Result<crate::attributes::ExternalAttrs, vir::ast::VirErr> {
+        crate::attributes::get_external_attrs(attrs, Some(&mut *self.diagnostics.borrow_mut()))
     }
 }

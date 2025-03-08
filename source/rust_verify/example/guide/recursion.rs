@@ -2,6 +2,7 @@
 use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
+use vstd::prelude::*;
 
 verus! {
 
@@ -288,6 +289,30 @@ fn loop_triangle_break(n: u32) -> (sum: u32)
 }
 // ANCHOR_END: loop_break
 
+// ANCHOR: for_loop
+fn for_loop_triangle(n: u32) -> (sum: u32)
+    requires
+        triangle(n as nat) < 0x1_0000_0000,
+    ensures
+        sum == triangle(n as nat),
+{
+    let mut sum: u32 = 0;
+
+    for idx in iter: 0..n
+        invariant
+            sum == triangle(idx as nat),
+            triangle(n as nat) < 0x1_0000_0000,
+    {
+        assert(sum + idx + 1 < 0x1_0000_0000) by {
+            triangle_is_monotonic((idx + 1) as nat, n as nat);
+        }
+        sum = sum + idx + 1;
+    }
+    sum
+}
+// ANCHOR_END: for_loop
+    
+
 // ANCHOR: ackermann
 spec fn ackermann(m: nat, n: nat) -> nat
     decreases m, n,
@@ -430,6 +455,36 @@ fn test_odd() {
 }
 // ANCHOR_END: even2
 }
+
+// ANCHOR: example_decreases_to
+proof fn example_decreases_to(s: Seq<int>)
+    requires s.len() == 5
+{
+    assert(decreases_to!(8int => 4int));
+
+    // fails: can't decrease to negative number
+    // assert(decreases_to!(8 => -2));
+
+    // Comma-separated elements are treated lexicographically:
+    assert(decreases_to!(12int, 8int, 1int => 12int, 4int, 50000int));
+
+    // Datatypes decrease-to their fields:
+    let x = Some(8int);
+    assert(decreases_to!(x => x->0));
+
+    let y = (true, false);
+    assert(decreases_to!(y => y.0));
+
+    // fails: tuples are not treated lexicographically
+    // assert(decreases_to!((20, 9) => (11, 15)));
+
+    // sequence decreases-to an element of the sequence
+    assert(decreases_to!(s => s[2]));
+
+    // sequence decreases-to a subrange of the sequence
+    assert(decreases_to!(s => s.subrange(1, 3)));
+}
+// ANCHOR_END: example_decreases_to
 
 fn main() {
 }

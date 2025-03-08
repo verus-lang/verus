@@ -75,5 +75,3 @@ even if their code otherwise has bugs.
 In Verus, there is no staggered notion of correctness. If the program verifies, then it is
 memory safe, and it will execute according to all its specifications.
 If the program fails to verify, then all bets are off.
-
-(TODO remark on implications for calling Verus code from ordinary rust code)

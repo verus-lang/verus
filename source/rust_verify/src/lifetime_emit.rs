@@ -262,6 +262,12 @@ impl EmitState {
         }
     }
 
+    pub(crate) fn begin_span_opt(&mut self, span: Option<Span>) {
+        if let Some(span) = span {
+            self.begin_span(span);
+        }
+    }
+
     pub(crate) fn end_span(&mut self, span: Span) {
         let line = self.lines.last_mut().expect("write buffer");
         let column = line.text.len();
@@ -270,6 +276,11 @@ impl EmitState {
         }
     }
 
+    pub(crate) fn end_span_opt(&mut self, span: Option<Span>) {
+        if let Some(span) = span {
+            self.end_span(span);
+        }
+    }
     pub(crate) fn write_spanned<S: Into<String>>(&mut self, str: S, span: Span) {
         let s = str.into();
         let line = self.lines.last_mut().expect("write buffer");
@@ -522,11 +533,20 @@ pub(crate) fn emit_exp(state: &mut EmitState, exp: &Exp) {
             state.write(")");
         }
         ExpX::Assign(e1, e2) => {
-            state.write("(");
-            emit_exp(state, e1);
-            state.write(") = (");
-            emit_exp(state, e2);
-            state.write(")");
+            if let ExpX::Index(_, _, _, tgt_expr, idx_expr) = &e1.as_ref().1 {
+                emit_exp(state, tgt_expr);
+                state.write(".index_set(");
+                emit_exp(state, idx_expr);
+                state.write(",");
+                emit_exp(state, e2);
+                state.write(")");
+            } else {
+                state.write("(");
+                emit_exp(state, e1);
+                state.write(") = (");
+                emit_exp(state, e2);
+                state.write(")");
+            };
         }
         ExpX::Field(e, field) => {
             state.write("(");
@@ -703,14 +723,21 @@ pub(crate) fn emit_stm(state: &mut EmitState, stm: &Stm) {
             emit_exp(state, exp);
             state.write(";");
         }
-        StmX::Let(pat, typ, init) => {
+        StmX::Let(pat, typ, init, els) => {
             state.write("let ");
             emit_pattern(state, pat);
-            state.write(": ");
-            state.write(typ.to_string());
+            if els.is_none() {
+                state.write(": ");
+                state.write(typ.to_string());
+            }
             if let Some(init) = init {
                 state.write(" = ");
                 emit_exp(state, init);
+            }
+            if let Some(els) = els {
+                state.write(" else {");
+                emit_exp(state, els);
+                state.write("}");
             }
             state.write(";");
         }
@@ -798,7 +825,7 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
 }
 
 // Return (bare bounds ": U", where bounds "where ...")
-fn simplify_assoc_typ_bounds(
+pub(crate) fn simplify_assoc_typ_bounds(
     trait_name: &Id,
     assoc_name: &Id,
     bounds: Vec<GenericBound>,
@@ -1010,13 +1037,12 @@ pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
 pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
     state.newdecl();
     state.newline();
-    state.begin_span(d.span);
+    state.begin_span_opt(d.span);
     let d_keyword = match &*d.datatype {
         Datatype::Struct(..) => "struct ",
         Datatype::Enum(..) => "enum ",
         Datatype::Union(..) => "union ",
     };
-    state.newline();
     state.write(d_keyword);
     state.write(&d.name.to_string());
     emit_generic_params(state, &d.generic_params);
@@ -1049,7 +1075,7 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
             state.write("}");
         }
     }
-    state.end_span(d.span);
+    state.end_span_opt(d.span);
     if let Some(copy_bounds) = &d.implements_copy {
         let clone_body = "{ fn clone(&self) -> Self { panic!() } }";
         emit_copy_clone(state, d, copy_bounds, &Bound::Clone, "Clone", clone_body);
@@ -1058,12 +1084,24 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
 }
 
 pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
-    let TraitImpl { trait_as_datatype, self_typ, generic_params, generic_bounds, assoc_typs } = t;
+    let TraitImpl {
+        span,
+        trait_as_datatype,
+        self_typ,
+        generic_params,
+        generic_bounds,
+        assoc_typs,
+        trait_polarity,
+    } = t;
     state.newdecl();
     state.newline();
+    state.begin_span_opt(*span);
     state.write("impl");
     emit_generic_params(state, &generic_params);
     state.write(" ");
+    if trait_polarity == &rustc_middle::ty::ImplPolarity::Negative {
+        state.write("!");
+    }
     state.write(&trait_as_datatype.to_string());
     state.write(" for ");
     state.write(&self_typ.to_string());
@@ -1081,4 +1119,5 @@ pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
     }
     state.newline_unindent();
     state.write("}");
+    state.end_span_opt(*span);
 }

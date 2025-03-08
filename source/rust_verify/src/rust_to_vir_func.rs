@@ -1,34 +1,34 @@
-use crate::attributes::{
-    get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, VerifierAttrs,
-};
+use crate::attributes::{get_mode, get_ret_mode, get_var_mode, VerifierAttrs};
 use crate::context::{BodyCtxt, Context};
-use crate::rust_to_vir::ExternalInfo;
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
     check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
-use crate::util::{err_span, err_span_bare, unsupported_err_span};
+use crate::rust_to_vir_impl::ExternalInfo;
+use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
     Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HirId, MaybeOwner, Param,
-    Unsafety,
+    Safety,
 };
 use rustc_middle::ty::{
-    BoundRegion, BoundRegionKind, BoundVar, Clause, GenericArgKind, GenericArgsRef, Region, TyCtxt,
+    AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
+    GenericArgsRef, Region, TraitRef, TyCtxt, TyKind,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
+use rustc_trait_selection::traits::ImplSource;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, Mode,
-    ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
+    Opaqueness, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr, Visibility,
 };
-use vir::ast_util::air_unique_var;
+use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
 use vir::sst_util::subst_typ;
 
@@ -65,7 +65,16 @@ pub(crate) fn body_to_vir<'tcx>(
         external_body,
         in_ghost: mode != Mode::Exec,
     };
-    expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)
+    let e = expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)?;
+
+    if external_body {
+        match &e.x {
+            vir::ast::ExprX::NeverToAny(e) => Ok(e.clone()),
+            _ => Ok(e),
+        }
+    } else {
+        Ok(e)
+    }
 }
 
 fn check_fn_decl<'tcx>(
@@ -82,8 +91,8 @@ fn check_fn_decl<'tcx>(
     match implicit_self {
         rustc_hir::ImplicitSelfKind::None => {}
         rustc_hir::ImplicitSelfKind::Imm => {}
-        rustc_hir::ImplicitSelfKind::ImmRef => {}
-        rustc_hir::ImplicitSelfKind::MutRef => {}
+        rustc_hir::ImplicitSelfKind::RefImm => {}
+        rustc_hir::ImplicitSelfKind::RefMut => {}
         rustc_hir::ImplicitSelfKind::Mut => unsupported_err!(span, "mut self"),
     }
     match output {
@@ -149,8 +158,8 @@ fn compare_external_sig<'tcx>(
     use rustc_middle::ty::FnSig;
     // Ignore abi for the sake of comparison
     // Useful for rust-intrinsics
-    let FnSig { inputs_and_output: io1, c_variadic: c1, unsafety: u1, abi: _ } = sig1;
-    let FnSig { inputs_and_output: io2, c_variadic: c2, unsafety: u2, abi: _ } = sig2;
+    let FnSig { inputs_and_output: io1, c_variadic: c1, safety: s1, abi: _ } = sig1;
+    let FnSig { inputs_and_output: io2, c_variadic: c2, safety: s2, abi: _ } = sig2;
     if io1.len() != io2.len() {
         return Ok(false);
     }
@@ -167,7 +176,7 @@ fn compare_external_sig<'tcx>(
             return Ok(false);
         }
     }
-    Ok(c1 == c2 && u1 == u2)
+    Ok(c1 == c2 && s1 == s2)
 }
 
 pub(crate) fn handle_external_fn<'tcx>(
@@ -190,27 +199,19 @@ pub(crate) fn handle_external_fn<'tcx>(
     if mode != Mode::Exec {
         return err_span(
             sig.span,
-            format!("a function marked `external_fn_specification` cannot be marked `{mode:}`",),
+            format!("an `assume_specification` declaration cannot be marked `{mode:}`"),
         );
     }
 
-    if vattrs.external {
-        return err_span(
-            sig.span,
-            format!("a function cannot be marked both `external_fn_specification` and `external`",),
-        );
-    }
     if vattrs.external_body {
         return err_span(
             sig.span,
-            format!(
-                "a function cannot be marked both `external_fn_specification` and `external_body`",
-            ),
+            format!("an `assume_specification` declaration cannot be marked `external_body`"),
         );
     }
 
     if self_generics.is_some() && external_fn_specification_via_external_trait.is_none() {
-        return err_span(sig.span, "`external_fn_specification` attribute not supported here");
+        return err_span(sig.span, "`assume_specification` declaration not supported here");
     }
 
     let (external_id, kind) =
@@ -222,7 +223,7 @@ pub(crate) fn handle_external_fn<'tcx>(
                 _ => {
                     return err_span(
                         sig.span,
-                        "external_fn_specification not supported for trait functions",
+                        "assume_specification not supported for trait functions",
                     );
                 }
             };
@@ -236,7 +237,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     {
         return err_span(
             sig.span,
-            "cannot apply `external_fn_specification` to Verus builtin functions",
+            "cannot apply `assume_specification` to Verus builtin functions",
         );
     }
 
@@ -281,7 +282,7 @@ pub(crate) fn handle_external_fn<'tcx>(
         return err_span(
             sig.span,
             format!(
-                "external_fn_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
+                "assume_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
             ),
         );
     };
@@ -307,7 +308,7 @@ pub(crate) fn handle_external_fn<'tcx>(
         return err_span(
             sig.span,
             format!(
-                "external_fn_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
+                "assume_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
             ),
         );
     }
@@ -337,8 +338,8 @@ pub(crate) fn handle_external_fn<'tcx>(
     if !preds_match {
         let err = err_span_bare(
             sig.span,
-            "external_fn_specification trait bound mismatch")
-            .help(format!("external_fn_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
+            "assume_specification trait bound mismatch")
+            .help(format!("assume_specification requires function type signatures to match exactly, ignoring any Destruct trait bounds\n\
           but the proxy function's trait bounds are:\n{}\nthe external function's trait bounds are:\n{}",
           proxy_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n"),
           external_preds.iter().map(|x| format!("  - {}", x.to_string())).collect::<Vec<_>>().join("\n")));
@@ -349,7 +350,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     if !vir::ast_util::is_visible_to_opt(&visibility, &external_item_visibility.restricted_to) {
         return err_span(
             sig.span,
-            "a function marked `external_fn_specification` must be visible to the function it provides a spec for",
+            "an `assume_specification` declaration must be at least as visible as the function it provides a spec for (try writing `pub assume_specification ...`)",
         );
     }
 
@@ -371,7 +372,7 @@ fn get_substs_early<'tcx>(
     let substs = match ty.kind() {
         rustc_middle::ty::FnDef(_, substs) => substs,
         _ => {
-            return err_span(span, "Verus internal error: expected FnDef");
+            crate::internal_err!(span, "expected FnDef")
         }
     };
     if let Some(host_effect_index) = generics.host_effect_index {
@@ -500,7 +501,6 @@ fn create_reveal_group<'tcx>(
                 name: name.clone(),
                 visibility,
                 owning_module: Some(module_path.clone()),
-                prune_unless_this_module_is_used: vattrs.prune_unless_this_module_is_used,
                 broadcast_use_by_default_when_this_crate_is_imported,
                 members: Arc::new(members),
             };
@@ -515,7 +515,9 @@ fn create_reveal_group<'tcx>(
     err_span(span, "reveal_group must have body")
 }
 
-fn make_attributes(
+fn make_attributes<'tcx>(
+    ctxt: &Context<'tcx>,
+    def_id: DefId,
     vattrs: &crate::attributes::VerifierAttrs,
     uses_ghost_blocks: bool,
     hidden: Arc<Vec<Fun>>,
@@ -538,6 +540,8 @@ fn make_attributes(
         custom_req_err,
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
+        broadcast_forall_only: false,
+        auto_ext_equal: crate::attributes::get_auto_ext_equal_walk_parents(ctxt.tcx, def_id),
         bit_vector: vattrs.bit_vector,
         autospec,
         atomic: vattrs.atomic,
@@ -552,6 +556,7 @@ fn make_attributes(
         print_as_method,
         prophecy_dependent: vattrs.prophecy_dependent,
         size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
+        is_type_invariant_fn: vattrs.type_invariant_fn,
     };
     Ok(Arc::new(fattrs))
 }
@@ -596,7 +601,7 @@ pub(crate) fn check_item_fn<'tcx>(
         if is_verus_spec {
             return err_span(
                 sig.span,
-                "`external_fn_specification` attribute not supported with VERUS_SPEC",
+                "assume_specification attribute not supported with VERUS_SPEC",
             );
         }
 
@@ -626,12 +631,6 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let name = Arc::new(FunX { path: path.clone() });
 
-    if vattrs.is_external(&ctxt.cmd_line_args) {
-        let mut erasure_info = ctxt.erasure_info.borrow_mut();
-        erasure_info.external_functions.push(name);
-        return Ok(None);
-    }
-
     let self_typ_params = if let Some((cg, impl_def_id)) = self_generics {
         Some(check_generics_bounds_no_polarity(
             ctxt.tcx,
@@ -652,11 +651,16 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let ret_typ_mode = match sig {
         FnSig {
-            header: FnHeader { unsafety, constness: _, asyncness: _, abi: _ },
+            header: FnHeader { safety, constness: _, asyncness: _, abi: _ },
             decl,
             span: _,
         } => {
-            unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
+            if mode != Mode::Exec && safety == &Safety::Unsafe {
+                return err_span(
+                    sig.span,
+                    format!("'unsafe' only makes sense on exec-mode functions"),
+                );
+            }
             check_fn_decl(sig.span, ctxt, id, decl, attrs, mode, fn_sig.output().skip_binder())?
         }
     };
@@ -669,51 +673,24 @@ pub(crate) fn check_item_fn<'tcx>(
         id,
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
-    let fuel = get_fuel(&vattrs);
 
-    let (vir_body, header, params): (_, _, Vec<(VarIdent, Span, Option<HirId>, bool)>) =
-        match body_id {
-            CheckItemFnEither::BodyId(body_id) => {
-                let body = find_body(ctxt, body_id);
-                let Body { params, value: _, coroutine_kind } = body;
-                match coroutine_kind {
-                    None => {}
-                    _ => {
-                        unsupported_err!(sig.span, "coroutine_kind", coroutine_kind);
-                    }
-                }
-                let mut ps = Vec::new();
-                for Param { hir_id, pat, ty_span: _, span } in params.iter() {
-                    let (is_mut_var, name) = pat_to_mut_var(pat)?;
-                    // is_mut_var: means a parameter is like `mut x: X`
-                    // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
-                    ps.push((name, *span, Some(*hir_id), is_mut_var));
-                }
-                let external_body = vattrs.external_body || vattrs.external_fn_specification;
-                let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
-                let header = vir::headers::read_header(&mut vir_body)?;
-                (Some(vir_body), header, ps)
+    let params: Vec<(VarIdent, Span, Option<HirId>, bool)> = match body_id {
+        CheckItemFnEither::BodyId(body_id) => {
+            let body = find_body(ctxt, body_id);
+            let Body { params, value: _ } = body;
+            let mut ps = Vec::new();
+            for Param { hir_id, pat, ty_span: _, span } in params.iter() {
+                let (is_mut_var, name) = pat_to_mut_var(pat)?;
+                // is_mut_var: means a parameter is like `mut x: X`
+                // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
+                ps.push((name, *span, Some(*hir_id), is_mut_var));
             }
-            CheckItemFnEither::ParamNames(params) => {
-                let params =
-                    params.iter().map(|p| (no_body_param_to_var(p), p.span, None, false)).collect();
-                let header = vir::headers::read_header_block(&mut vec![])?;
-                (None, header, params)
-            }
-        };
-    if vattrs.reveal_group {
-        create_reveal_group(
-            ctxt,
-            reveal_groups,
-            &name,
-            visibility,
-            module_path,
-            &vattrs,
-            &vir_body,
-            sig.span,
-        )?;
-        return Ok(None);
-    }
+            ps
+        }
+        CheckItemFnEither::ParamNames(params) => {
+            params.iter().map(|p| (no_body_param_to_var(p), p.span, None, false)).collect()
+        }
+    };
 
     let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
     let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
@@ -730,10 +707,7 @@ pub(crate) fn check_item_fn<'tcx>(
         };
         let is_ref_mut = is_mut_ty(ctxt, *input);
         if is_ref_mut.is_some() && mode == Mode::Spec {
-            return err_span(
-                span,
-                format!("&mut argument not allowed for #[verifier::spec] functions"),
-            );
+            return err_span(span, format!("&mut parameter not allowed for spec functions"));
         }
 
         let typ = {
@@ -746,7 +720,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 false,
             )?;
             if let Some((_, decoration)) = is_ref_mut.and_then(|(_, w)| w) {
-                Arc::new(TypX::Decorate(decoration, typ))
+                Arc::new(TypX::Decorate(decoration, None, typ))
             } else {
                 typ
             }
@@ -798,6 +772,7 @@ pub(crate) fn check_item_fn<'tcx>(
                     pattern: new_binding_pat,
                     mode: Some(mode),
                     init: Some(new_init_expr),
+                    els: None,
                 },
             );
             mut_params_redecl.push(redecl);
@@ -806,6 +781,34 @@ pub(crate) fn check_item_fn<'tcx>(
     }
 
     let n_params = vir_params.len();
+
+    let (vir_body, header) = match body_id {
+        CheckItemFnEither::BodyId(body_id) => {
+            let body = find_body(ctxt, body_id);
+            let external_body = vattrs.external_body || vattrs.external_fn_specification;
+            let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
+            let header = vir::headers::read_header(&mut vir_body)?;
+            (Some(vir_body), header)
+        }
+        CheckItemFnEither::ParamNames(_params) => {
+            let header = vir::headers::read_header_block(&mut vec![])?;
+            (None, header)
+        }
+    };
+
+    if vattrs.reveal_group {
+        create_reveal_group(
+            ctxt,
+            reveal_groups,
+            &name,
+            visibility,
+            module_path,
+            &vattrs,
+            &vir_body,
+            sig.span,
+        )?;
+        return Ok(None);
+    }
 
     match (&kind, header.no_method_body, is_verus_spec, vir_body.is_some()) {
         (FunctionKind::TraitMethodDecl { .. }, false, false, _) => {}
@@ -836,11 +839,14 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         return err_span(sig.span, "spec functions cannot have requires/ensures");
     }
+    if mode == Mode::Spec && header.returns.is_some() {
+        return err_span(sig.span, "spec functions cannot have `returns` clause");
+    }
     if mode != Mode::Spec && header.recommend.len() > 0 {
         return err_span(sig.span, "non-spec functions cannot have recommends");
     }
     if mode != Mode::Exec && vattrs.external_fn_specification {
-        return err_span(sig.span, "external_fn_specification should be 'exec'");
+        return err_span(sig.span, "assume_specification should be 'exec'");
     }
     if header.ensure.len() > 0 {
         match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
@@ -913,9 +919,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let params: vir::ast::Params = Arc::new(vir_params.into_iter().map(|(p, _)| p).collect());
 
     let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode) {
-        (None, None) => {
-            (air_unique_var(RETURN_VALUE), Arc::new(TypX::Tuple(Arc::new(vec![]))), mode)
-        }
+        (None, None) => (air_unique_var(RETURN_VALUE), unit_typ(), mode),
         (None, Some((typ, mode))) => (air_unique_var(RETURN_VALUE), typ, mode),
         (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
@@ -960,35 +964,32 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         vir_body
     };
-    let publish = {
-        let (publish, open_closed_present) = get_publish(&vattrs);
-        match kind {
-            FunctionKind::TraitMethodImpl { .. } | FunctionKind::TraitMethodDecl { .. }
-                if body.is_some() =>
+    let open_closed_present = vattrs.publish.is_some();
+    match kind {
+        FunctionKind::TraitMethodImpl { .. } | FunctionKind::TraitMethodDecl { .. }
+            if body.is_some() =>
+        {
+            if mode == Mode::Spec
+                && visibility.restricted_to.as_ref() != Some(module_path)
+                && body.is_some()
+                && !open_closed_present
             {
-                if mode == Mode::Spec
-                    && visibility.restricted_to.as_ref() != Some(module_path)
-                    && body.is_some()
-                    && !open_closed_present
-                {
-                    return err_span(
-                        sig.span,
-                        "open/closed is required for implementations of non-private traits",
-                    );
-                }
+                return err_span(
+                    sig.span,
+                    "open/closed is required for implementations of non-private traits",
+                );
             }
-            FunctionKind::TraitMethodDecl { .. } => {
-                if mode == Mode::Spec && open_closed_present && body.is_none() {
-                    return err_span(
-                        sig.span,
-                        "trait function declarations cannot be open or closed, as they don't have a body",
-                    );
-                }
-            }
-            _ => (),
         }
-        publish
-    };
+        FunctionKind::TraitMethodDecl { .. } => {
+            if mode == Mode::Spec && open_closed_present && body.is_none() {
+                return err_span(
+                    sig.span,
+                    "trait function declarations cannot be open or closed, as they don't have a body",
+                );
+            }
+        }
+        _ => (),
+    }
     let autospec = vattrs.autospec.clone().map(|method_name| {
         let this_path =
             crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(ctxt.tcx, id);
@@ -1002,7 +1003,14 @@ pub(crate) fn check_item_fn<'tcx>(
             "#[verifier::spinoff_prover] is implied for assert by nonlinear_arith",
         );
     }
+
+    if vattrs.type_invariant_fn {
+        check_generics_for_invariant_fn(ctxt.tcx, id, self_generics, generics, sig.span)?;
+    }
+
     let fattrs = make_attributes(
+        ctxt,
+        id,
         &vattrs,
         vattrs.verus_macro,
         Arc::new(header.hidden),
@@ -1041,28 +1049,47 @@ pub(crate) fn check_item_fn<'tcx>(
             )
         })
     };
+
+    // Note: ens_has_return isn't final; it may need to be changed later to make
+    // sure it's in sync for trait method impls and trait method decls.
+    // See `fixup_ens_has_return_for_trait_method_impls`.
+    let (ensure, ens_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure);
+
+    let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
+        sig.span,
+        &visibility,
+        vattrs.publish,
+        vattrs.opaque,
+        vattrs.opaque_outside_module,
+        mode,
+        module_path,
+        body_with_mut_redecls.is_some(),
+    )?;
+
     let mut func = FunctionX {
         name: name.clone(),
         proxy,
         kind,
         visibility,
+        body_visibility,
+        opaqueness,
         owning_module: Some(module_path.clone()),
         mode,
-        fuel,
         typ_params,
         typ_bounds,
         params,
         ret,
+        ens_has_return,
         require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
-        ensure: header.ensure,
+        returns: header.returns,
+        ensure: ensure,
         decrease: header.decrease,
         decrease_when: header.decrease_when,
         decrease_by: header.decrease_by,
-        broadcast_forall: None,
         fndef_axioms: None,
         mask_spec: header.invariant_mask,
+        unwind_spec: header.unwind_spec,
         item_kind: ItemKind::Function,
-        publish,
         attrs: fattrs,
         body: body_with_mut_redecls,
         extra_dependencies: header.extra_dependencies,
@@ -1103,23 +1130,25 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             proxy,
             kind,
             visibility,
+            body_visibility,
+            opaqueness,
             owning_module,
             mode,
-            fuel,
             typ_params,
             mut typ_bounds,
             mut params,
             mut ret,
+            ens_has_return,
             require,
             ensure,
+            returns,
             decrease,
             decrease_when,
             decrease_by,
-            broadcast_forall,
             fndef_axioms,
             mask_spec,
+            unwind_spec,
             item_kind,
-            publish,
             attrs,
             body,
             extra_dependencies,
@@ -1184,11 +1213,13 @@ fn fix_external_fn_specification_trait_method_decl_typs(
 
         unsupported_err_unless!(require.len() == 0, span, "requires clauses");
         unsupported_err_unless!(ensure.len() == 0, span, "ensures clauses");
+        unsupported_err_unless!(returns.is_some(), span, "returns clauses");
         unsupported_err_unless!(decrease.len() == 0, span, "decreases clauses");
         unsupported_err_unless!(decrease_when.is_none(), span, "decreases_when clauses");
         unsupported_err_unless!(decrease_by.is_none(), span, "decreases_by clauses");
-        unsupported_err_unless!(broadcast_forall.is_none(), span, "broadcast_forall");
+        unsupported_err_unless!(!attrs.broadcast_forall, span, "broadcast_forall");
         unsupported_err_unless!(matches!(mask_spec, None), span, "opens_invariants");
+        unsupported_err_unless!(matches!(unwind_spec, None), span, "unwind");
         unsupported_err_unless!(body.is_none(), span, "opens_invariants");
 
         Ok(FunctionX {
@@ -1196,29 +1227,112 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             proxy,
             kind,
             visibility,
+            body_visibility,
+            opaqueness,
             owning_module,
             mode,
-            fuel,
             typ_params,
             typ_bounds,
             params,
             ret,
+            ens_has_return,
             require,
             ensure,
+            returns,
             decrease,
             decrease_when,
             decrease_by,
-            broadcast_forall,
             fndef_axioms,
             mask_spec,
+            unwind_spec,
             item_kind,
-            publish,
             attrs,
             body,
             extra_dependencies,
         })
     } else {
         Ok(func)
+    }
+}
+
+fn check_generics_for_invariant_fn<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    id: DefId,
+    self_generics: Option<(&'tcx Generics, DefId)>,
+    generics: &'tcx Generics<'tcx>,
+    span: Span,
+) -> Result<(), VirErr> {
+    let fn_sig = tcx.fn_sig(id);
+    let fn_sig = fn_sig.skip_binder();
+    let inputs = fn_sig.inputs().skip_binder();
+
+    if inputs.len() != 1 {
+        return err_span(span, "#[verifier::type_invariant]: expected 1 parameter");
+    }
+    if tcx.trait_of_item(id).is_some() {
+        return err_span(span, "#[verifier::type_invariant] function cannot be a trait function");
+    }
+
+    let ty = crate::rust_to_vir_base::ty_remove_references(&inputs[0]);
+
+    match ty.kind() {
+        TyKind::Adt(AdtDef(adt_def_data), substs) => {
+            let adt_def = tcx.adt_def(adt_def_data.did);
+            if adt_def.is_union() {
+                return err_span(
+                    span,
+                    "not supported: #[verifier::type_invariant] for union types",
+                );
+            }
+            assert!(adt_def.is_struct() || adt_def.is_enum());
+            crate::rust_to_vir_base::check_item_external_generics(
+                self_generics,
+                generics,
+                true,
+                substs,
+                false,
+                span,
+            )?;
+
+            let datatype_predicates = adt_def.predicates(tcx);
+            let func_predicates = tcx.predicates_of(id);
+            let preds1 = datatype_predicates.instantiate(tcx, substs).predicates;
+            let preds2 = func_predicates.instantiate(tcx, substs).predicates;
+            // The 'outlives' predicates don't always line up; I don't know why.
+            // But they don't matter for the purpose of this check, so filter them out here.
+            let preds1 = preds1
+                .into_iter()
+                .filter(|p| {
+                    !matches!(
+                        p.kind().skip_binder(),
+                        ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..)
+                    )
+                })
+                .collect();
+            let preds2 = preds2
+                .into_iter()
+                .filter(|p| {
+                    !matches!(
+                        p.kind().skip_binder(),
+                        ClauseKind::RegionOutlives(..) | ClauseKind::TypeOutlives(..)
+                    )
+                })
+                .collect();
+            let preds_match = crate::rust_to_vir_func::predicates_match(tcx, &preds1, &preds2);
+            if !preds_match {
+                println!("datatype_predicates: {:#?}", preds1);
+                println!("func_predicates: {:#?}", preds2);
+                return err_span(span, "#[verifier::type_invariant]: trait bounds should match");
+            }
+
+            Ok(())
+        }
+        _ => {
+            return err_span(
+                span,
+                "type_invariant: expected parameter to be a datatype declared in this crate",
+            );
+        }
     }
 }
 
@@ -1288,14 +1402,23 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
                     true
                 }
             } else {
+                use crate::verus_items::RustItem;
                 let rust_item = crate::verus_items::get_rust_item(tcx, tp.trait_ref.def_id);
-                rust_item != Some(crate::verus_items::RustItem::Destruct)
+                match rust_item {
+                    Some(RustItem::Destruct) => false, // https://github.com/verus-lang/verus/pull/726
+                    Some(RustItem::SliceSealed) => false, // https://github.com/verus-lang/verus/pull/1434
+                    _ => true,
+                }
             }
         }
-        rustc_middle::ty::ClauseKind::<'tcx>::ConstArgHasType(cnst, ty) => {
-            match (cnst.kind(), ty.kind()) {
-                (ConstKind::Value(ValTree::Leaf(ScalarInt::TRUE)), ty::TyKind::Bool) => false,
-                _ => true,
+        rustc_middle::ty::ClauseKind::<'tcx>::ConstArgHasType(cnst, _ty) => {
+            if let ConstKind::Value(ty, ValTree::Leaf(ScalarInt::TRUE)) = cnst.kind() {
+                match ty.kind() {
+                    TyKind::Bool => false,
+                    _ => true,
+                }
+            } else {
+                false
             }
         }
         _ => true,
@@ -1399,7 +1522,7 @@ pub(crate) fn get_external_def_id<'tcx>(
     let err = || {
         err_span(
             sig.span,
-            format!("external_fn_specification encoding error: body should end in call expression"),
+            format!("assume_specification encoding error: body should end in call expression"),
         )
     };
 
@@ -1437,6 +1560,8 @@ pub(crate) fn get_external_def_id<'tcx>(
             }
         },
         ExprKind::MethodCall(_name_and_generics, _receiver, _other_args, _fn_span) => {
+            // TODO maybe deprecate this; it isn't used with the new
+            // 'assume_specification' style
             let def_id =
                 types.type_dependent_def_id(expr.hir_id).expect("def id of the method definition");
             (def_id, expr.hir_id)
@@ -1453,16 +1578,44 @@ pub(crate) fn get_external_def_id<'tcx>(
         let node_substs = types.node_args(hir_id);
         let param_env = tcx.param_env(proxy_fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let inst =
-            rustc_middle::ty::Instance::resolve(tcx, param_env, external_id, normalized_substs);
-        let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
-        if let Ok(Some(inst)) = inst {
-            if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
-                let impl_def_id = tcx.impl_of_method(did).expect("impl_of_method");
+        let trait_ref = TraitRef::new(tcx, trait_def_id, normalized_substs);
+        let candidate = tcx.codegen_select_candidate((param_env, trait_ref));
+
+        match candidate {
+            Ok(ImplSource::UserDefined(u)) => {
+                let impl_def_id = u.impl_def_id;
                 let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
 
+                let inst = rustc_middle::ty::Instance::try_resolve(
+                    tcx,
+                    param_env,
+                    external_id,
+                    normalized_substs,
+                );
+                let Ok(Some(inst)) = inst else {
+                    return err_span(
+                        sig.span,
+                        "Verus Internal Error: handling assume_specification, resolve failed",
+                    );
+                };
+                let rustc_middle::ty::InstanceKind::Item(did) = inst.def else {
+                    return err_span(
+                        sig.span,
+                        "Verus Internal Error: handling assume_specification, resolve failed",
+                    );
+                };
+
+                let is_default = tcx.impl_of_method(did).is_none();
+                unsupported_err_unless!(
+                    !is_default,
+                    sig.span,
+                    "assume_specification for a provided trait method"
+                );
+
+                let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
+
                 let mut types: Vec<Typ> = Vec::new();
-                for ty in trait_ref.instantiate(tcx, inst.args).args.types() {
+                for ty in trait_ref.instantiate(tcx, u.args).args.types() {
                     types.push(mid_ty_to_vir(tcx, &verus_items, did, sig.span, &ty, false)?);
                 }
 
@@ -1475,21 +1628,25 @@ pub(crate) fn get_external_def_id<'tcx>(
                     trait_typ_args: Arc::new(types),
                 };
                 return Ok((did, kind));
-            } else {
-                return err_span(sig.span, "Verus internal error: expected InstanceDef::Item");
             }
-        } else {
-            // This is the actual, generic trait method.
-            // Be conservative with this feature for now.
-            // let rust_item = crate::verus_items::get_rust_item(tcx, external_id);
-            // if rust_item == Some(crate::verus_items::RustItem::Clone) {
-            //     return Ok((external_id, FunctionKind::TraitMethodDecl { trait_path }));
-            // }
-
-            return err_span(
-                sig.span,
-                "external_fn_specification not supported for unresolved trait functions",
-            );
+            Ok(ImplSource::Builtin(b, _)) => {
+                return err_span(
+                    sig.span,
+                    format!(
+                        "Verus assume_specification does not support ImplSource::Builtin '{:?}'",
+                        b
+                    ),
+                );
+            }
+            Ok(ImplSource::Param(_)) => {
+                return err_span(
+                    sig.span,
+                    "assume_specification not supported for unresolved trait functions",
+                );
+            }
+            Err(_) => {
+                crate::internal_err!(sig.span, "expected InstanceDef::Item")
+            }
         }
     } else {
         Ok((external_id, FunctionKind::Static))
@@ -1540,18 +1697,44 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
     if vattrs.external_fn_specification {
-        return err_span(span, "`external_fn_specification` attribute not yet supported for const");
+        return err_span(span, "`assume_specification` attribute not yet supported for const");
     }
 
-    let fuel = get_fuel(&vattrs);
     let body = find_body(ctxt, body_id);
-    let mut vir_body = body_to_vir(ctxt, id, body_id, body, body_mode, vattrs.external_body)?;
+    let (actual_body_id, actual_body) = if let ExprKind::Block(block, _) = body.value.kind {
+        let first_stmt = block.stmts.iter().next();
+        if let Some(rustc_hir::StmtKind::Item(item)) = first_stmt.map(|stmt| &stmt.kind) {
+            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+            let vattrs = ctxt.get_verifier_attrs(attrs)?;
+            if vattrs.internal_const_body {
+                let body_id = ctxt
+                    .tcx
+                    .hir_node_by_def_id(item.owner_id.def_id)
+                    .body_id()
+                    .expect("failed to get body_id");
+                let body = find_body(ctxt, &body_id);
+                Some((body_id, body))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    }
+    .unwrap_or((*body_id, body));
+    let mut vir_body =
+        body_to_vir(ctxt, id, &actual_body_id, actual_body, body_mode, vattrs.external_body)?;
     let header = vir::headers::read_header(&mut vir_body)?;
     if header.require.len() + header.recommend.len() > 0 {
         return err_span(span, "consts cannot have requires/recommends");
     }
     if ret_mode == Mode::Spec && header.ensure.len() > 0 {
-        return err_span(span, "spec functions cannot have ensures");
+        return err_span(span, "spec consts cannot have ensures");
+    }
+    if header.returns.is_some() {
+        return err_span(span, "consts cannot have `returns` clause");
     }
 
     let ret_name = air_unique_var(RETURN_VALUE);
@@ -1570,6 +1753,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         Arc::new(FunX { path })
     });
     let fattrs = make_attributes(
+        ctxt,
+        id,
         &vattrs,
         false,
         Arc::new(vec![]),
@@ -1580,28 +1765,44 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         span,
     )?;
 
+    let (ensure, ens_has_return) =
+        clean_ensures_for_unit_return(&ret, &header.const_static_ensures(&name, is_static));
+
+    let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
+        span,
+        &visibility,
+        vattrs.publish,
+        vattrs.opaque,
+        vattrs.opaque_outside_module,
+        func_mode,
+        module_path,
+        !vattrs.external_body,
+    )?;
+
     let func = FunctionX {
         name: name.clone(),
         proxy: None,
         kind: FunctionKind::Static,
         visibility,
+        body_visibility,
+        opaqueness,
         owning_module: Some(module_path.clone()),
         mode: func_mode,
-        fuel,
         typ_params: Arc::new(vec![]),
         typ_bounds: Arc::new(vec![]),
         params: Arc::new(vec![]),
         ret,
+        ens_has_return,
         require: Arc::new(vec![]),
-        ensure: header.const_static_ensures(&name, is_static),
+        ensure,
+        returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
-        broadcast_forall: None,
         fndef_axioms: None,
         mask_spec: None,
+        unwind_spec: None,
         item_kind: if is_static { ItemKind::Static } else { ItemKind::Const },
-        publish: get_publish(&vattrs).0,
         attrs: fattrs,
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],
@@ -1628,12 +1829,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let name = Arc::new(FunX { path });
 
     if vattrs.external_fn_specification {
-        return err_span(span, "`external_fn_specification` attribute not supported here");
-    }
-    if vattrs.is_external(&ctxt.cmd_line_args) {
-        let mut erasure_info = ctxt.erasure_info.borrow_mut();
-        erasure_info.external_functions.push(name);
-        return Ok(());
+        return err_span(span, "assume_specification not supported here");
     }
 
     let mode = get_mode(Mode::Exec, attrs);
@@ -1653,7 +1849,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         id,
         Some(&mut *ctxt.diagnostics.borrow_mut()),
     )?;
-    let fuel = get_fuel(&vattrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
 
     assert!(idents.len() == inputs.len());
@@ -1676,9 +1871,9 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         vir_params.push(vir_param);
     }
     let params = Arc::new(vir_params);
-    let (ret_typ, ret_mode) = match ret_typ_mode {
-        None => (Arc::new(TypX::Tuple(Arc::new(vec![]))), mode),
-        Some((typ, mode)) => (typ, mode),
+    let (ret_typ, ret_mode, ens_has_return) = match ret_typ_mode {
+        None => (unit_typ(), mode, false),
+        Some((typ, mode)) => (typ, mode, true),
     };
     let ret_param = ParamX {
         name: air_unique_var(RETURN_VALUE),
@@ -1688,28 +1883,35 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         unwrapped_info: None,
     };
     let ret = ctxt.spanned_new(span, ret_param);
+
+    // No body, so these don't matter
+    let body_visibility = visibility.clone();
+    let opaqueness = Opaqueness::Opaque;
+
     let func = FunctionX {
         name,
         proxy: None,
         kind: FunctionKind::Static,
         visibility,
+        body_visibility,
+        opaqueness,
         owning_module: None,
-        fuel,
         mode,
         typ_params,
         typ_bounds,
         params,
         ret,
+        ens_has_return,
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
+        returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
-        broadcast_forall: None,
         fndef_axioms: None,
         mask_spec: None,
+        unwind_spec: None,
         item_kind: ItemKind::Function,
-        publish: None,
         attrs: Default::default(),
         body: None,
         extra_dependencies: vec![],
@@ -1717,4 +1919,66 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let function = ctxt.spanned_new(span, func);
     vir.functions.push(function);
     Ok(())
+}
+
+fn get_body_visibility_and_fuel(
+    span: Span,
+    func_visibility: &Visibility,
+    publish: Option<bool>,
+    opaque: bool,
+    opaque_outside_module: bool,
+    mode: Mode,
+    my_module: &vir::ast::Path,
+    has_body: bool,
+) -> Result<(Visibility, Opaqueness), VirErr> {
+    let private_vis = Visibility { restricted_to: Some(my_module.clone()) };
+
+    if mode != Mode::Spec {
+        if publish == Some(true) {
+            return err_span(span, "function is marked `open` but it is not a `spec` function");
+        }
+        if publish == Some(false) {
+            return err_span(span, "function is marked `closed` but it is not a `spec` function");
+        }
+        if opaque || opaque_outside_module {
+            return err_span(span, "function is marked `opaque` but it is not a `spec` function");
+        }
+
+        // These don't matter for non-spec functions
+        Ok((private_vis, Opaqueness::Opaque))
+    } else if !has_body {
+        if opaque || opaque_outside_module {
+            return err_span(span, "opaque has no effect on a function without a body");
+        }
+
+        // These don't matter without a body
+        Ok((private_vis, Opaqueness::Opaque))
+    } else {
+        if opaque && opaque_outside_module {
+            return err_span(span, "function is marked both 'opaque' and 'opaque_outside_module'");
+        }
+
+        if publish == Some(true) && func_visibility == &private_vis {
+            return err_span(
+                span,
+                "function is marked `open` but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible",
+            );
+        }
+
+        let body_visibility =
+            if publish == Some(true) { func_visibility.clone() } else { private_vis.clone() };
+
+        let opaqueness = if opaque {
+            Opaqueness::Opaque
+        } else if opaque_outside_module {
+            Opaqueness::Revealed { visibility: private_vis }
+        } else {
+            Opaqueness::Revealed {
+                // Revealed everywhere the module is visible
+                visibility: body_visibility.clone(),
+            }
+        };
+
+        Ok((body_visibility, opaqueness))
+    }
 }

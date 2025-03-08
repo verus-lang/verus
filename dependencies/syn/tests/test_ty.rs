@@ -1,10 +1,12 @@
+#![allow(clippy::needless_lifetimes, clippy::uninlined_format_args)]
+
 #[macro_use]
 mod macros;
 
 use proc_macro2::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree};
-use quote::quote;
-use std::iter::FromIterator;
-use syn::Type;
+use quote::{quote, ToTokens as _};
+use syn::punctuated::Punctuated;
+use syn::{parse_quote, token, Token, Type, TypeTuple};
 
 #[test]
 fn test_mut_self() {
@@ -19,14 +21,14 @@ fn test_mut_self() {
 #[test]
 fn test_macro_variable_type() {
     // mimics the token stream corresponding to `$ty<T>`
-    let tokens = TokenStream::from_iter(vec![
+    let tokens = TokenStream::from_iter([
         TokenTree::Group(Group::new(Delimiter::None, quote! { ty })),
         TokenTree::Punct(Punct::new('<', Spacing::Alone)),
         TokenTree::Ident(Ident::new("T", Span::call_site())),
         TokenTree::Punct(Punct::new('>', Spacing::Alone)),
     ]);
 
-    snapshot!(tokens as Type, @r###"
+    snapshot!(tokens as Type, @r#"
     Type::Path {
         path: Path {
             segments: [
@@ -34,12 +36,11 @@ fn test_macro_variable_type() {
                     ident: "ty",
                     arguments: PathArguments::AngleBracketed {
                         args: [
-                            Type(Type::Path {
+                            GenericArgument::Type(Type::Path {
                                 path: Path {
                                     segments: [
                                         PathSegment {
                                             ident: "T",
-                                            arguments: None,
                                         },
                                     ],
                                 },
@@ -50,10 +51,10 @@ fn test_macro_variable_type() {
             ],
         },
     }
-    "###);
+    "#);
 
     // mimics the token stream corresponding to `$ty::<T>`
-    let tokens = TokenStream::from_iter(vec![
+    let tokens = TokenStream::from_iter([
         TokenTree::Group(Group::new(Delimiter::None, quote! { ty })),
         TokenTree::Punct(Punct::new(':', Spacing::Joint)),
         TokenTree::Punct(Punct::new(':', Spacing::Alone)),
@@ -62,7 +63,7 @@ fn test_macro_variable_type() {
         TokenTree::Punct(Punct::new('>', Spacing::Alone)),
     ]);
 
-    snapshot!(tokens as Type, @r###"
+    snapshot!(tokens as Type, @r#"
     Type::Path {
         path: Path {
             segments: [
@@ -71,12 +72,11 @@ fn test_macro_variable_type() {
                     arguments: PathArguments::AngleBracketed {
                         colon2_token: Some,
                         args: [
-                            Type(Type::Path {
+                            GenericArgument::Type(Type::Path {
                                 path: Path {
                                     segments: [
                                         PathSegment {
                                             ident: "T",
-                                            arguments: None,
                                         },
                                     ],
                                 },
@@ -87,20 +87,20 @@ fn test_macro_variable_type() {
             ],
         },
     }
-    "###);
+    "#);
 }
 
 #[test]
 fn test_group_angle_brackets() {
     // mimics the token stream corresponding to `Option<$ty>`
-    let tokens = TokenStream::from_iter(vec![
+    let tokens = TokenStream::from_iter([
         TokenTree::Ident(Ident::new("Option", Span::call_site())),
         TokenTree::Punct(Punct::new('<', Spacing::Alone)),
         TokenTree::Group(Group::new(Delimiter::None, quote! { Vec<u8> })),
         TokenTree::Punct(Punct::new('>', Spacing::Alone)),
     ]);
 
-    snapshot!(tokens as Type, @r###"
+    snapshot!(tokens as Type, @r#"
     Type::Path {
         path: Path {
             segments: [
@@ -108,7 +108,7 @@ fn test_group_angle_brackets() {
                     ident: "Option",
                     arguments: PathArguments::AngleBracketed {
                         args: [
-                            Type(Type::Group {
+                            GenericArgument::Type(Type::Group {
                                 elem: Type::Path {
                                     path: Path {
                                         segments: [
@@ -116,12 +116,11 @@ fn test_group_angle_brackets() {
                                                 ident: "Vec",
                                                 arguments: PathArguments::AngleBracketed {
                                                     args: [
-                                                        Type(Type::Path {
+                                                        GenericArgument::Type(Type::Path {
                                                             path: Path {
                                                                 segments: [
                                                                     PathSegment {
                                                                         ident: "u8",
-                                                                        arguments: None,
                                                                     },
                                                                 ],
                                                             },
@@ -139,20 +138,20 @@ fn test_group_angle_brackets() {
             ],
         },
     }
-    "###);
+    "#);
 }
 
 #[test]
 fn test_group_colons() {
     // mimics the token stream corresponding to `$ty::Item`
-    let tokens = TokenStream::from_iter(vec![
+    let tokens = TokenStream::from_iter([
         TokenTree::Group(Group::new(Delimiter::None, quote! { Vec<u8> })),
         TokenTree::Punct(Punct::new(':', Spacing::Joint)),
         TokenTree::Punct(Punct::new(':', Spacing::Alone)),
         TokenTree::Ident(Ident::new("Item", Span::call_site())),
     ]);
 
-    snapshot!(tokens as Type, @r###"
+    snapshot!(tokens as Type, @r#"
     Type::Path {
         path: Path {
             segments: [
@@ -160,12 +159,11 @@ fn test_group_colons() {
                     ident: "Vec",
                     arguments: PathArguments::AngleBracketed {
                         args: [
-                            Type(Type::Path {
+                            GenericArgument::Type(Type::Path {
                                 path: Path {
                                     segments: [
                                         PathSegment {
                                             ident: "u8",
-                                            arguments: None,
                                         },
                                     ],
                                 },
@@ -173,23 +171,23 @@ fn test_group_colons() {
                         ],
                     },
                 },
+                Token![::],
                 PathSegment {
                     ident: "Item",
-                    arguments: None,
                 },
             ],
         },
     }
-    "###);
+    "#);
 
-    let tokens = TokenStream::from_iter(vec![
+    let tokens = TokenStream::from_iter([
         TokenTree::Group(Group::new(Delimiter::None, quote! { [T] })),
         TokenTree::Punct(Punct::new(':', Spacing::Joint)),
         TokenTree::Punct(Punct::new(':', Spacing::Alone)),
         TokenTree::Ident(Ident::new("Element", Span::call_site())),
     ]);
 
-    snapshot!(tokens as Type, @r###"
+    snapshot!(tokens as Type, @r#"
     Type::Path {
         qself: Some(QSelf {
             ty: Type::Slice {
@@ -198,7 +196,6 @@ fn test_group_colons() {
                         segments: [
                             PathSegment {
                                 ident: "T",
-                                arguments: None,
                             },
                         ],
                     },
@@ -211,30 +208,28 @@ fn test_group_colons() {
             segments: [
                 PathSegment {
                     ident: "Element",
-                    arguments: None,
                 },
             ],
         },
     }
-    "###);
+    "#);
 }
 
 #[test]
 fn test_trait_object() {
     let tokens = quote!(dyn for<'a> Trait<'a> + 'static);
-    snapshot!(tokens as Type, @r###"
+    snapshot!(tokens as Type, @r#"
     Type::TraitObject {
         dyn_token: Some,
         bounds: [
-            Trait(TraitBound {
-                modifier: None,
+            TypeParamBound::Trait(TraitBound {
                 lifetimes: Some(BoundLifetimes {
                     lifetimes: [
-                        LifetimeDef {
+                        GenericParam::Lifetime(LifetimeParam {
                             lifetime: Lifetime {
                                 ident: "a",
                             },
-                        },
+                        }),
                     ],
                 }),
                 path: Path {
@@ -243,7 +238,7 @@ fn test_trait_object() {
                             ident: "Trait",
                             arguments: PathArguments::AngleBracketed {
                                 args: [
-                                    Lifetime(Lifetime {
+                                    GenericArgument::Lifetime(Lifetime {
                                         ident: "a",
                                     }),
                                 ],
@@ -252,35 +247,35 @@ fn test_trait_object() {
                     ],
                 },
             }),
-            Lifetime(Lifetime {
+            Token![+],
+            TypeParamBound::Lifetime {
                 ident: "static",
-            }),
+            },
         ],
     }
-    "###);
+    "#);
 
     let tokens = quote!(dyn 'a + Trait);
-    snapshot!(tokens as Type, @r###"
+    snapshot!(tokens as Type, @r#"
     Type::TraitObject {
         dyn_token: Some,
         bounds: [
-            Lifetime(Lifetime {
+            TypeParamBound::Lifetime {
                 ident: "a",
-            }),
-            Trait(TraitBound {
-                modifier: None,
+            },
+            Token![+],
+            TypeParamBound::Trait(TraitBound {
                 path: Path {
                     segments: [
                         PathSegment {
                             ident: "Trait",
-                            arguments: None,
                         },
                     ],
                 },
             }),
         ],
     }
-    "###);
+    "#);
 
     // None of the following are valid Rust types.
     syn::parse_str::<Type>("for<'a> dyn Trait<'a>").unwrap_err();
@@ -291,62 +286,180 @@ fn test_trait_object() {
 fn test_trailing_plus() {
     #[rustfmt::skip]
     let tokens = quote!(impl Trait +);
-    snapshot!(tokens as Type, @r###"
+    snapshot!(tokens as Type, @r#"
     Type::ImplTrait {
         bounds: [
-            Trait(TraitBound {
-                modifier: None,
+            TypeParamBound::Trait(TraitBound {
                 path: Path {
                     segments: [
                         PathSegment {
                             ident: "Trait",
-                            arguments: None,
                         },
                     ],
                 },
             }),
+            Token![+],
         ],
     }
-    "###);
+    "#);
 
     #[rustfmt::skip]
     let tokens = quote!(dyn Trait +);
-    snapshot!(tokens as Type, @r###"
+    snapshot!(tokens as Type, @r#"
     Type::TraitObject {
         dyn_token: Some,
         bounds: [
-            Trait(TraitBound {
-                modifier: None,
+            TypeParamBound::Trait(TraitBound {
                 path: Path {
                     segments: [
                         PathSegment {
                             ident: "Trait",
-                            arguments: None,
                         },
                     ],
                 },
             }),
+            Token![+],
         ],
     }
-    "###);
+    "#);
 
     #[rustfmt::skip]
     let tokens = quote!(Trait +);
-    snapshot!(tokens as Type, @r###"
+    snapshot!(tokens as Type, @r#"
     Type::TraitObject {
         bounds: [
-            Trait(TraitBound {
-                modifier: None,
+            TypeParamBound::Trait(TraitBound {
                 path: Path {
                     segments: [
                         PathSegment {
                             ident: "Trait",
-                            arguments: None,
                         },
                     ],
                 },
             }),
+            Token![+],
         ],
     }
-    "###);
+    "#);
+}
+
+#[test]
+fn test_tuple_comma() {
+    let mut expr = TypeTuple {
+        paren_token: token::Paren::default(),
+        elems: Punctuated::new(),
+    };
+    snapshot!(expr.to_token_stream() as Type, @"Type::Tuple");
+
+    expr.elems.push_value(parse_quote!(_));
+    // Must not parse to Type::Paren
+    snapshot!(expr.to_token_stream() as Type, @r#"
+    Type::Tuple {
+        elems: [
+            Type::Infer,
+            Token![,],
+        ],
+    }
+    "#);
+
+    expr.elems.push_punct(<Token![,]>::default());
+    snapshot!(expr.to_token_stream() as Type, @r#"
+    Type::Tuple {
+        elems: [
+            Type::Infer,
+            Token![,],
+        ],
+    }
+    "#);
+
+    expr.elems.push_value(parse_quote!(_));
+    snapshot!(expr.to_token_stream() as Type, @r#"
+    Type::Tuple {
+        elems: [
+            Type::Infer,
+            Token![,],
+            Type::Infer,
+        ],
+    }
+    "#);
+
+    expr.elems.push_punct(<Token![,]>::default());
+    snapshot!(expr.to_token_stream() as Type, @r#"
+    Type::Tuple {
+        elems: [
+            Type::Infer,
+            Token![,],
+            Type::Infer,
+            Token![,],
+        ],
+    }
+    "#);
+}
+
+#[test]
+fn test_impl_trait_use() {
+    let tokens = quote! {
+        impl Sized + use<'_, 'a, A, Test>
+    };
+
+    snapshot!(tokens as Type, @r#"
+    Type::ImplTrait {
+        bounds: [
+            TypeParamBound::Trait(TraitBound {
+                path: Path {
+                    segments: [
+                        PathSegment {
+                            ident: "Sized",
+                        },
+                    ],
+                },
+            }),
+            Token![+],
+            TypeParamBound::PreciseCapture(PreciseCapture {
+                params: [
+                    CapturedParam::Lifetime(Lifetime {
+                        ident: "_",
+                    }),
+                    Token![,],
+                    CapturedParam::Lifetime(Lifetime {
+                        ident: "a",
+                    }),
+                    Token![,],
+                    CapturedParam::Ident("A"),
+                    Token![,],
+                    CapturedParam::Ident("Test"),
+                ],
+            }),
+        ],
+    }
+    "#);
+
+    let trailing = quote! {
+        impl Sized + use<'_,>
+    };
+
+    snapshot!(trailing as Type, @r#"
+    Type::ImplTrait {
+        bounds: [
+            TypeParamBound::Trait(TraitBound {
+                path: Path {
+                    segments: [
+                        PathSegment {
+                            ident: "Sized",
+                        },
+                    ],
+                },
+            }),
+            Token![+],
+            TypeParamBound::PreciseCapture(PreciseCapture {
+                params: [
+                    CapturedParam::Lifetime(Lifetime {
+                        ident: "_",
+                    }),
+                    Token![,],
+                ],
+            }),
+        ],
+    }
+    "#);
 }

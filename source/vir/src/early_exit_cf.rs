@@ -59,7 +59,6 @@ fn expr_get_early_exits_rec(
             | ExprX::Call(CallTarget::Fun(..), _)
             | ExprX::Call(CallTarget::FnSpec(..), _)
             | ExprX::Call(CallTarget::BuiltinSpecFun(..), _)
-            | ExprX::Tuple(..)
             | ExprX::ArrayLiteral(..)
             | ExprX::Ctor(..)
             | ExprX::NullaryOpr(..)
@@ -72,6 +71,7 @@ fn expr_get_early_exits_rec(
             | ExprX::If(..)
             | ExprX::Match(..)
             | ExprX::Ghost { .. }
+            | ExprX::NeverToAny { .. }
             | ExprX::Block(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
@@ -83,6 +83,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Fuel(..)
             | ExprX::Header(..)
             | ExprX::AssertAssume { .. }
+            | ExprX::AssertAssumeUserDefinedTypeInvariant { .. }
             | ExprX::AssertBy { .. }
             | ExprX::RevealString(_)
             | ExprX::AirStmt(_) => VisitorControlFlow::Return,

@@ -1,7 +1,7 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
-    Decls, Expr, ExprX, Exprs, Ident, MultiOp, Qid, Quant, QueryX, Relation, Stmt, StmtX, Stmts,
-    Trigger, Triggers, Typ, TypX, UnaryOp,
+    Axiom, BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl,
+    DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Qid, Quant, QueryX, Relation, Stmt, StmtX,
+    Stmts, Trigger, Triggers, Typ, TypX, UnaryOp,
 };
 use crate::def::mk_skolem_id;
 use crate::messages::ArcDynMessageLabel;
@@ -61,6 +61,15 @@ fn relation_binary_op(n1: &Node, n2: &Node) -> Option<BinaryOp> {
             } else {
                 None
             }
+        }
+        _ => None,
+    }
+}
+
+fn field_update_binary_op(n1: &Node, n2: &Node) -> Option<BinaryOp> {
+    match (n1, n2) {
+        (Node::Atom(s1), Node::Atom(s2)) if s1.as_str() == "update-field" => {
+            Some(BinaryOp::FieldUpdate(Arc::new(s2.clone())))
         }
         _ => None,
     }
@@ -223,6 +232,10 @@ impl Parser {
                         let args = self.nodes_to_exprs(&nodes[3..])?;
                         return Ok(Arc::new(ExprX::ApplyFun(typ, f, args)));
                     }
+                    Node::Atom(s) if s.to_string() == "array" && nodes.len() >= 1 => {
+                        let args = self.nodes_to_exprs(&nodes[1..])?;
+                        return Ok(Arc::new(ExprX::Array(args)));
+                    }
                     _ => {}
                 }
                 let args = self.nodes_to_exprs(&nodes[1..])?;
@@ -241,6 +254,26 @@ impl Parser {
                                     _ => None,
                                 }
                             }
+                            _ => None,
+                        }
+                    }
+                    Node::List(nodes)
+                        if nodes.len() == 3
+                            && nodes[0] == Node::Atom("_".to_string())
+                            && (nodes[1] == Node::Atom("zero_extend".to_string())
+                                || nodes[1] == Node::Atom("sign_extend".to_string())) =>
+                    {
+                        match &nodes[2] {
+                            Node::Atom(s2) => match s2.parse::<u32>() {
+                                Ok(n) => {
+                                    if nodes[1] == Node::Atom("zero_extend".to_string()) {
+                                        Some(UnaryOp::BitZeroExtend(n))
+                                    } else {
+                                        Some(UnaryOp::BitSignExtend(n))
+                                    }
+                                }
+                                _ => None,
+                            },
                             _ => None,
                         }
                     }
@@ -276,6 +309,13 @@ impl Parser {
                             && relation_binary_op(&nodes[1], &nodes[2]).is_some() =>
                     {
                         relation_binary_op(&nodes[1], &nodes[2])
+                    }
+                    Node::List(nodes)
+                        if nodes.len() == 3
+                            && nodes[0] == Node::Atom("_".to_string())
+                            && field_update_binary_op(&nodes[1], &nodes[2]).is_some() =>
+                    {
+                        field_update_binary_op(&nodes[1], &nodes[2])
                     }
                     _ => None,
                 };
@@ -442,6 +482,28 @@ impl Parser {
             (None, Some(_)) => Err(format!("skolemid must be accompanied by a qid")),
             (None, None) => Ok((Arc::new(triggers), qid)),
         }
+    }
+
+    fn nodes_to_named(&self, nodes: &[Node]) -> Result<Option<Ident>, String> {
+        let mut named = None;
+        let mut consume_named = false;
+
+        for node in nodes {
+            match node {
+                Node::Atom(s) if s.to_string() == ":named" => {
+                    consume_named = true;
+                }
+                Node::Atom(s) if consume_named && named.is_none() => {
+                    named = Some(Arc::new(s.clone()));
+                    consume_named = false;
+                }
+                _ => {
+                    return Err(format!("expected :named; found {}", node_to_string(node)));
+                }
+            }
+        }
+
+        Ok(named)
     }
 
     fn node_to_quant_or_lambda_expr(
@@ -621,9 +683,19 @@ impl Parser {
                     let typ = self.node_to_typ(t)?;
                     Ok(Arc::new(DeclX::Var(Arc::new(x.clone()), typ)))
                 }
-                [Node::Atom(s), e] if s.to_string() == "axiom" => {
+                [Node::Atom(s), axiom_node] if s.to_string() == "axiom" => {
+                    let (e, named) = match &axiom_node {
+                        Node::List(nodes) if nodes.len() >= 2 => match &nodes[0] {
+                            Node::Atom(s) if s.to_string() == "!" => {
+                                let named = self.nodes_to_named(&nodes[2..])?;
+                                (&nodes[1], named)
+                            }
+                            _ => (axiom_node, None),
+                        },
+                        _ => (axiom_node, None),
+                    };
                     let expr = self.node_to_expr(e)?;
-                    Ok(Arc::new(DeclX::Axiom(expr)))
+                    Ok(Arc::new(DeclX::Axiom(Axiom { named, expr })))
                 }
                 _ => Err(format!("expected declaration, found: {}", node_to_string(node))),
             },

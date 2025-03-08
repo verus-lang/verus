@@ -74,7 +74,22 @@ test_verify_one_file! {
         {
             foo_generic(x);
         }
-    } => Err(err) => assert_fails(err, 4)
+
+        fn test_set(x: &mut [u64])
+            requires old(x).len() == 3
+        {
+            x.set(0, 5);
+            x.set(1, 20);
+            assert(x[0] == 5);
+            assert(x[1] == 20);
+            assert(false); // FAILS
+        }
+
+        fn test_set3(x: &mut [u64])
+        {
+            x.set(0, 5); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 6)
 }
 
 test_verify_one_file! {

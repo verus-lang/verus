@@ -228,7 +228,8 @@ fn parse_arm(input: ParseStream) -> parse::Result<Arm> {
 
     let param_stream;
     let _ = parenthesized!(param_stream in input);
-    let params: Punctuated<Ident, token::Comma> = param_stream.parse_terminated(Ident::parse)?;
+    let params: Punctuated<Ident, token::Comma> =
+        param_stream.parse_terminated(Ident::parse, Token![,])?;
 
     let _: Token![=>] = input.parse()?;
     let block: ExprBlock = input.parse()?;
@@ -246,12 +247,12 @@ macro_rules! case_on_next {
     {$pre:expr, $post:expr, $name:path => {
         $( $sname:ident ($($p:ident),*) => $b:block )*
     }} => {
-        ::builtin::reveal($name::State::next);
-        match ::builtin::choose(|step: $name::Step| $name::State::next_by($pre, $post, step)) {
+        #vstd::prelude::reveal($name::State::next);
+        match #vstd::prelude::choose(|step: $name::Step| $name::State::next_by($pre, $post, step)) {
             $(
                 $name::Step::$sname($($p),*) => {
-                    ::builtin::assert_by($name::State::add($pre, $post, $($p),*), {
-                        ::builtin::reveal($name::State::next_by);
+                    #vstd::prelude::assert_by($name::State::add($pre, $post, $($p),*), {
+                        #vstd::prelude::reveal($name::State::next_by);
                     });
                     $b
                 }
