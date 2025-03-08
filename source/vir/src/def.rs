@@ -434,16 +434,6 @@ pub fn prefix_tuple_param(i: usize) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TUPLE_PARAM, i))
 }
 
-pub fn is_tuple(path: &Path, variant: &Ident) -> bool {
-    let it = path.krate.is_none()
-        && path.segments.len() == 1
-        && path.segments[0].starts_with(PREFIX_TUPLE_TYPE);
-    if it {
-        assert!(variant.starts_with(PREFIX_TUPLE_TYPE));
-    }
-    it
-}
-
 pub fn prefix_spec_fn_type(i: usize) -> Path {
     let ident = Arc::new(format!("{}{}", PREFIX_SPEC_FN_TYPE, i));
     Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })

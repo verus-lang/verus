@@ -43,6 +43,8 @@ enum App {
     Call(Fun),
     // datatype constructor: (Path, Variant)
     Ctor(Dt, Ident),
+    Tuple,
+    ClosureSpec,
     // u64 is an id, assigned via a simple counter
     Other(u64),
     VarAt(UniqueIdent, VarAt),
@@ -90,6 +92,12 @@ impl std::fmt::Debug for TermX {
                     }
                 }
                 write!(f, ")")
+            }
+            TermX::App(App::Tuple, _) => {
+                write!(f, "Tuple")
+            }
+            TermX::App(App::ClosureSpec, _) => {
+                write!(f, "ClosureSpec")
             }
             TermX::App(App::Other(_), _) => {
                 write!(f, "_")
@@ -146,6 +154,8 @@ REVIEW: these heuristics are experimental -- are they useful in practice?  Can t
 struct Score {
     // number of bitwise operators
     num_operators: u64,
+    // number of special operations (currently, InternalFun::ClosureReq/ClosureEns)
+    num_special: u64,
     // 0 means term has function calls
     // 1 means term has no function calls (only constructors, fields, operators)
     no_calls: u64,
@@ -157,8 +167,8 @@ struct Score {
 
 impl Score {
     // lower score is better (lexicographically ordered)
-    fn lex(&self) -> (u64, u64, u64, u64) {
-        (self.num_operators, self.no_calls, self.depth, self.size)
+    fn lex(&self) -> (u64, u64, u64, u64, u64) {
+        (self.num_operators, self.num_special, self.no_calls, self.depth, self.size)
     }
 }
 
@@ -168,6 +178,7 @@ struct Ctxt {
     // terms with App
     all_terms: HashMap<Term, Span>,
     // terms with App and without Other
+    // (note: tuple terms are excluded from pure_terms, but a pure_term may have tuples inside)
     // The usize is used to sort the terms in the triggers for better stability
     pure_terms: HashMap<Term, (Exp, usize)>,
     // all_terms, indexed by head App
@@ -245,6 +256,14 @@ fn count_bit_operators(term: &Term) -> u64 {
     }
 }
 
+fn count_special(term: &Term) -> u64 {
+    match &**term {
+        TermX::App(App::ClosureSpec, args) => 1 + args.iter().map(count_special).sum::<u64>(),
+        TermX::App(_, args) => args.iter().map(count_special).sum::<u64>(),
+        TermX::Var(..) => 0,
+    }
+}
+
 fn count_calls(term: &Term) -> u64 {
     match &**term {
         TermX::App(App::Call(_), args) => 1 + args.iter().map(count_calls).sum::<u64>(),
@@ -255,7 +274,13 @@ fn count_calls(term: &Term) -> u64 {
 
 fn make_score(term: &Term, depth: u64) -> Score {
     let no_calls = if count_calls(term) == 0 { 1 } else { 0 };
-    Score { num_operators: count_bit_operators(term), no_calls, depth, size: term_size(term) }
+    Score {
+        num_operators: count_bit_operators(term),
+        num_special: count_special(term),
+        no_calls,
+        depth,
+        size: term_size(term),
+    }
 }
 
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
@@ -280,6 +305,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         }
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, typs, args) => {
+            use crate::sst::InternalFun;
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
                 args.iter().map(|e| gather_terms(ctxt, ctx, e, depth + 1)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
@@ -304,6 +330,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     _ => (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms)))),
                 },
                 CallFun::Recursive(_) => panic!("internal error: CheckTermination"),
+                CallFun::InternalFun(InternalFun::ClosureReq | InternalFun::ClosureEns) => {
+                    (is_pure, Arc::new(TermX::App(App::ClosureSpec, Arc::new(all_terms))))
+                }
                 CallFun::InternalFun(_) => {
                     (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
                 }
@@ -323,10 +352,12 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
                 args.map(|e| gather_terms(ctxt, ctx, &e.a, depth + 1)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
-            if crate::def::is_tuple(path, &variant) {
-                (false, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
-            } else {
-                (is_pure, Arc::new(TermX::App(App::Ctor(path.clone(), variant), Arc::new(terms))))
+            match path {
+                Dt::Path(_) => (
+                    is_pure,
+                    Arc::new(TermX::App(App::Ctor(path.clone(), variant), Arc::new(terms))),
+                ),
+                Dt::Tuple(_) => (is_pure, Arc::new(TermX::App(App::Tuple, Arc::new(terms)))),
             }
         }
         ExpX::NullaryOpr(_) => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![])))),
@@ -446,6 +477,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
     if let TermX::Var(..) = *term {
         return (is_pure, term);
     }
+    if let TermX::App(App::Tuple, _) = *term {
+        return (is_pure, term);
+    }
     if !ctxt.all_terms.contains_key(&term) {
         ctxt.all_terms.insert(term.clone(), exp.span.clone());
         if let TermX::App(app, _) = &*term {
@@ -532,10 +566,11 @@ struct State {
 }
 
 fn trigger_score(ctxt: &Ctxt, trigger: &Trigger) -> Score {
-    let mut total = Score { num_operators: 0, no_calls: 0, depth: 0, size: 0 };
+    let mut total = Score { num_operators: 0, num_special: 0, no_calls: 0, depth: 0, size: 0 };
     for (t, _) in trigger.iter() {
         let score = &ctxt.pure_best_scores[t];
         total.num_operators += score.num_operators;
+        total.num_special += score.num_special;
         total.no_calls += score.no_calls;
         total.depth += score.depth;
         total.size += score.size;
