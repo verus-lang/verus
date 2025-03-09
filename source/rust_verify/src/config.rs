@@ -367,7 +367,11 @@ pub fn parse_args_with_imports(
         OPT_NO_AUTO_RECOMMENDS_CHECK,
         "Do not automatically check recommends after verification failures",
     );
-    opts.optflag("", OPT_NO_CHEATING, "Do not allow assume, admit, verifier::external_body, and assume_specification");
+    opts.optflag(
+        "",
+        OPT_NO_CHEATING,
+        "Do not allow assume, admit, verifier::external_body, and assume_specification",
+    );
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
     opts.optflag("", OPT_OUTPUT_JSON, "Emit verification results and timing as json");
