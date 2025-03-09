@@ -3,7 +3,7 @@ use crate::ast::{
     Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
 };
 use crate::ast_to_sst::get_function_sst;
-use crate::ast_util::{is_transparent_to, is_visible_to, type_is_bool, undecorate_typ};
+use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::messages::Span;
@@ -895,7 +895,8 @@ fn can_inline_function(
 ) -> Result<Option<usize>, Option<String>> {
     let opaque_err = Err(Some("function is opaque".to_string()));
     let hidden_err = Err(Some("function is hidden".to_string()));
-    let closed_err = Err(Some("function is closed (body is not visible here)".to_string()));
+    let closed_err =
+        Err(Some("function is closed or uninterpreted (body is not visible here)".to_string()));
     let uninterp_err = Err(Some("function is uninterpreted".to_string()));
     let foreign_module_err = Err(None);
     let type_err = Err(Some("not bool type".to_string()));
@@ -920,7 +921,10 @@ fn can_inline_function(
     if !crate::ast_util::is_visible_to_of_owner(&fun_to_inline.x.owning_module, &ctx.module.x.path)
     {
         // if the target inline function is outside this module, track `open` `closed` at module boundaries
-        if !is_visible_to(&fun_to_inline.x.body_visibility, &ctx.module.x.path) {
+        if !crate::ast_util::is_body_visible_to(
+            &fun_to_inline.x.body_visibility,
+            &ctx.module.x.path,
+        ) {
             return closed_err;
         }
     }

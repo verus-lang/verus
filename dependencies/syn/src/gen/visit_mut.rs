@@ -1064,6 +1064,9 @@ pub trait VisitMut {
     fn visit_un_op_mut(&mut self, i: &mut crate::UnOp) {
         visit_un_op_mut(self, i);
     }
+    fn visit_uninterp_mut(&mut self, i: &mut crate::Uninterp) {
+        visit_uninterp_mut(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_use_glob_mut(&mut self, i: &mut crate::UseGlob) {
@@ -3904,6 +3907,9 @@ where
         crate::Publish::OpenRestricted(_binding_0) => {
             v.visit_open_restricted_mut(_binding_0);
         }
+        crate::Publish::Uninterp(_binding_0) => {
+            v.visit_uninterp_mut(_binding_0);
+        }
         crate::Publish::Default => {}
     }
 }
@@ -4581,6 +4587,12 @@ where
             skip!(_binding_0);
         }
     }
+}
+pub fn visit_uninterp_mut<V>(v: &mut V, node: &mut crate::Uninterp)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
