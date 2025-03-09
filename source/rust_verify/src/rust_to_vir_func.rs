@@ -595,6 +595,15 @@ pub(crate) fn check_item_fn<'tcx>(
         None
     };
 
+    if ctxt.cmd_line_args.no_cheating {
+        if vattrs.external_body {
+            return err_span(sig.span, "external_body not allowed with --no-cheating");
+        }
+        if vattrs.external_fn_specification {
+            return err_span(sig.span, "assume_specification not allowed with --no-cheating");
+        }
+    }
+
     let (path, proxy, visibility, kind, has_self_param) = if vattrs.external_fn_specification
         || external_fn_specification_via_external_trait.is_some()
     {

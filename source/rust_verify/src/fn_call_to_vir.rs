@@ -461,11 +461,17 @@ fn verus_item_to_vir<'tcx, 'a>(
                     &Arc::new(TypX::Bool),
                     ExprX::Const(Constant::Bool(false)),
                 );
+                if bctx.ctxt.cmd_line_args.no_cheating {
+                    return err_span(expr.span, "admit is not allowed with --no-cheating");
+                }
                 mk_expr(ExprX::AssertAssume { is_assume: true, expr: f })
             }
             SpecItem::Assume => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                if bctx.ctxt.cmd_line_args.no_cheating {
+                    return err_span(expr.span, "assume is not allowed with --no-cheating");
+                }
                 mk_expr(ExprX::AssertAssume { is_assume: true, expr: arg })
             }
         },
