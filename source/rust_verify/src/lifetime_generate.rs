@@ -15,8 +15,7 @@ use rustc_hir::{
     TraitItemKind, TraitItemRef, UnOp,
 };
 use rustc_middle::ty::{
-    AdtDef, BoundRegionKind, BoundVariableKind, ClauseKind, Const, GenericArgKind,
-    GenericParamDefKind, RegionKind, TermKind, Ty, TyCtxt, TyKind, TypeckResults, VariantDef,
+    AdtDef, BoundRegionKind, BoundVariableKind, ClauseKind, Const, GenericArgKind, GenericParamDefKind, RegionKind, TermKind, Ty, TyCtxt, TyKind, TypeckResults, TypingEnv, VariantDef
 };
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::kw;
@@ -921,7 +920,8 @@ fn erase_call<'tcx>(
             let node_substs = node_substs;
             let mut fn_def_id = fn_def_id.expect("call id");
 
-            let param_env = ctxt.tcx.param_env(state.enclosing_fun_id.expect("enclosing_fun_id"));
+            // TODO(1.85.0) let param_env = ctxt.tcx.param_env(state.enclosing_fun_id.expect("enclosing_fun_id"));
+            let typing_env = TypingEnv::post_analysis(tcx, state.enclosing_fun_id.expect("enclosing_fun_id"));
 
             let rust_item = crate::verus_items::get_rust_item(ctxt.tcx, fn_def_id);
             let mut node_substs = crate::fn_call_to_vir::fix_node_substs(
@@ -2974,6 +2974,9 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             origin: OpaqueTyOrigin::AsyncFn(_),
                             in_trait: _,
                             lifetime_mapping: _,
+                            hir_id: _,
+                            def_id: _,
+                            span: _,
                         }) => {
                             continue;
                         }

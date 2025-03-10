@@ -12,7 +12,6 @@ use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, SmtSolver, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
-use measureme::rustc;
 use rustc_errors::{Diag, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
@@ -3104,25 +3103,25 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                                 self.verifier.args.vstd,
                             );
                             if compile_status.is_err() {
-                                return;
+                                return rustc_driver::Compilation::Stop;
                             }
                             for msg in &msgs {
                                 reporter.report(&msg.clone().to_any());
                             }
                             reporter.report(&note_bare("This error was found in Verus pass: ownership checking of tracked code").to_any());
-                            return;
+                            return rustc_driver::Compilation::Stop;
                         }
                     }
                     Err(err) => {
                         reporter.report_as(&err.to_any(), MessageLevel::Error);
                         self.verifier.encountered_vir_error = true;
-                        return;
+                        return rustc_driver::Compilation::Stop;
                     }
                 }
             }
 
             if let Some(_guar) = compiler.sess.dcx().has_errors() {
-                return;
+                return rustc_driver::Compilation::Stop;
             }
 
             match self.verifier.verify_crate(compiler, &spans) {
