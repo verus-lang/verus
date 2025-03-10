@@ -9,11 +9,37 @@ your verification work may be undermined.
 
 Ideally, you should aim to have no preconditions on your external API;
 if you don't make any assumptions about your caller, you'll never be disappointed!
-If your API does have important preconditions, you might consider adding
+You can check if your verified crate meets these requirements by using the flag `-V check-safe-api`.
+Specifically, this flag will check if your crate is unconditionally safe to be used from
+any unverified code that does not use `unsafe`.
+
+### Tips for eliminating preconditions
+
+If your API _does_ have important preconditions, you might consider adding
 a wrapper around it that has no preconditions, dynamically checks that the
 necessary preconditions hold, and then calls an internal version of your API.
-Verus will check that your dynamic checks suffice to establish the necessary
-preconditions.
+Verus will, of course, check that your dynamic checks suffice to establish the necessary
+preconditions. You can then mark the inner function—the one with the preconditions—as `unsafe`.
+This will prevent the client from calling it without declaring its intent to bypass the checks.
+
+For example:
+
+```rust
+pub unsafe fn index_unchecked<T>(vec: &Vec<T>, i: usize) -> &T
+    requires i < vec.len()
+{
+    /* ... */
+}
+
+pub fn index<T>(vec: &Vec<T>, i: usize) -> Option<&T>
+{
+    if i < vec.len() {
+        Some(index_unchecked(vec, i))
+    } else {
+        None
+    }
+}
+```
 
 If your API involves passing state back and forth between your code and your caller,
 then you can consider defining a public struct with private fields that contain your
