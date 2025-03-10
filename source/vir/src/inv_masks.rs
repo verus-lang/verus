@@ -19,9 +19,6 @@ pub enum MaskSet {
     Full { span: Span },
     Insert { base: Box<MaskSet>, elem: Exp },
     Remove { base: Box<MaskSet>, elem: Exp },
-    // Not used at the moment, will be used when we add syntax and support
-    // for specifying an std::Set expression as the mask.
-    // Arbitrary { set: Exp },
 }
 
 pub struct Assertion {
