@@ -391,10 +391,7 @@ fn check_one_expr(
         }
         ExprX::AssertAssume { is_assume, .. } => {
             if no_cheating && *is_assume {
-                return Err(error(
-                    &expr.span,
-                    "assume/admit not allowed with --no-cheating",
-                ));
+                return Err(error(&expr.span, "assume/admit not allowed with --no-cheating"));
             }
         }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
@@ -876,7 +873,15 @@ fn check_function(
     for ens in function.x.ensure.iter() {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState, diags, no_cheating)?;
+        check_expr(
+            ctxt,
+            function,
+            ens,
+            disallow_private_access,
+            Place::BodyOrPostState,
+            diags,
+            no_cheating,
+        )?;
     }
     if let Some(r) = &function.x.returns {
         if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
@@ -896,7 +901,15 @@ fn check_function(
 
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(ctxt, function, r, disallow_private_access, Place::PreState("returns"), diags, no_cheating)?;
+        check_expr(
+            ctxt,
+            function,
+            r,
+            disallow_private_access,
+            Place::PreState("returns"),
+            diags,
+            no_cheating,
+        )?;
     }
     match &function.x.mask_spec {
         None => {}
@@ -987,7 +1000,15 @@ fn check_function(
         } else {
             None
         };
-        check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState, diags, no_cheating)?;
+        check_expr(
+            ctxt,
+            function,
+            body,
+            disallow_private_access,
+            Place::BodyOrPostState,
+            diags,
+            no_cheating,
+        )?;
     }
 
     if function.x.attrs.is_type_invariant_fn {
