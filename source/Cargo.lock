@@ -1891,7 +1891,7 @@ checksum = "c8af7666ab7b6390ab78131fb5b0fce11d6b7a6951602017c35fa82800708971"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.25",
+ "syn 2.0.100",
 ]
 
 [[package]]
@@ -2192,7 +2192,7 @@ name = "vir-macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
- "syn 2.0.25",
+ "syn 2.0.100",
  "synstructure 0.13.1",
 ]
 
