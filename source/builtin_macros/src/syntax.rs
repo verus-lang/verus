@@ -1587,6 +1587,7 @@ impl Visitor {
     fn visit_trait_items_prefilter(&mut self, items: &mut Vec<TraitItem>) {
         if self.rustdoc {
             for trait_item in items.iter_mut() {
+                let span = trait_item.span().clone();
                 match trait_item {
                     TraitItem::Fn(trait_item_method) => {
                         crate::rustdoc::process_trait_item_method(trait_item_method);
@@ -1602,6 +1603,7 @@ impl Visitor {
                     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
+                TraitItem::BroadcastGroup(_) => false,
                 _ => true,
             });
         }
@@ -1612,6 +1614,7 @@ impl Visitor {
                 TraitItem::Fn(ref mut fun) => {
                     split_trait_method(&mut spec_items, fun, erase_ghost);
                 }
+                TraitItem::BroadcastGroup(item_broadcast_group) => {}
                 _ => {}
             }
         }
@@ -3645,6 +3648,17 @@ impl VisitMut for Visitor {
     fn visit_item_trait_mut(&mut self, tr: &mut ItemTrait) {
         tr.attrs.push(mk_verus_attr(tr.span(), quote! { verus_macro }));
         self.visit_trait_items_prefilter(&mut tr.items);
+        for trait_item in &mut tr.items {
+            let span = trait_item.span();
+            match trait_item {
+                TraitItem::BroadcastGroup(item_broadcast_group) => {
+                    *trait_item = TraitItem::Verbatim(
+                        self.handle_broadcast_group(item_broadcast_group, span),
+                    );
+                }
+                _ => (),
+            }
+        }
         self.filter_attrs(&mut tr.attrs);
         syn_verus::visit_mut::visit_item_trait_mut(self, tr);
     }

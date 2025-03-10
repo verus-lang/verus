@@ -3124,8 +3124,12 @@ impl Hash for crate::TraitItem {
                 state.write_u8(3u8);
                 v0.hash(state);
             }
-            crate::TraitItem::Verbatim(v0) => {
+            crate::TraitItem::BroadcastGroup(v0) => {
                 state.write_u8(4u8);
+                v0.hash(state);
+            }
+            crate::TraitItem::Verbatim(v0) => {
+                state.write_u8(5u8);
                 TokenStreamHelper(v0).hash(state);
             }
         }
