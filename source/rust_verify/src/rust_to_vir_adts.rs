@@ -8,7 +8,7 @@ use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::err_span;
 use air::ast_util::str_ident;
-use rustc_ast::Attribute;
+use rustc_hir::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
 use rustc_middle::ty::{AdtDef, GenericArgKind, GenericArgsRef, TyKind};
 use rustc_span::Span;
