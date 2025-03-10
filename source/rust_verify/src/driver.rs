@@ -1,21 +1,21 @@
 use crate::config::Vstd;
 use crate::externs::VerusExterns;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
-use rustc_errors::ErrorGuaranteed;
 use std::time::{Duration, Instant};
+use rustc_errors::ErrorGuaranteed;
 
 struct DefaultCallbacks;
 impl rustc_driver::Callbacks for DefaultCallbacks {}
 
-pub fn run_rustc_compiler_directly(rustc_args: &Vec<String>) -> Result<(), ErrorGuaranteed> {
+pub fn run_rustc_compiler_directly(rustc_args: &Vec<String>) -> () {
     rustc_driver::RunCompiler::new(&rustc_args, &mut DefaultCallbacks).run()
 }
 
-fn mk_compiler<'a, 'b>(
+fn mk_compiler<'a>(
     rustc_args: &'a [String],
-    verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
+    verifier: &'a mut (dyn rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-) -> rustc_driver::RunCompiler<'a, 'b> {
+) -> rustc_driver::RunCompiler<'a> {
     let mut compiler = rustc_driver::RunCompiler::new(rustc_args, verifier);
     compiler.set_file_loader(Some(file_loader));
     compiler
@@ -36,7 +36,7 @@ fn run_compiler<'a, 'b>(
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         mk_compiler(&rustc_args, verifier, file_loader).run()
     }));
-    result.map_err(|_| ()).and_then(|r| r.map_err(|_| ()))
+    result.map_err(|_| ())
 }
 
 pub fn is_verifying_entire_crate(verifier: &Verifier) -> bool {
@@ -104,10 +104,10 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
     fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
+        tcx: rustc_middle::ty::TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         if !self.do_compile {
-            crate::lifetime::check(queries);
+            crate::lifetime::check(tcx);
             rustc_driver::Compilation::Stop
         } else {
             rustc_driver::Compilation::Continue
