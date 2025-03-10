@@ -58,6 +58,7 @@ pub mod printer;
 pub mod prune;
 pub mod recursion;
 pub mod recursive_types;
+pub mod safe_api;
 mod scc;
 pub mod sst;
 mod sst_elaborate;

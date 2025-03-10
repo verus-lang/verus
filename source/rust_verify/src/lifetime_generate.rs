@@ -2903,7 +2903,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         }
                         ItemKind::Trait(
                             IsAuto::No,
-                            Safety::Safe,
+                            Safety::Safe | Safety::Unsafe,
                             _trait_generics,
                             _bounds,
                             trait_items,
