@@ -22,7 +22,7 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
-use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, TyKind};
+use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, TyKind, TypingEnv};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -196,9 +196,10 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let target_kind = if tcx.trait_of_item(f).is_none() {
         vir::ast::CallTargetKind::Static
     } else {
-        let param_env = tcx.param_env(bctx.fun_id);
-        let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let inst = Instance::try_resolve(tcx, param_env, f, normalized_substs);
+        // TODO(1.85.0) let param_env = tcx.param_env(bctx.fun_id);
+        let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+        let normalized_substs = tcx.normalize_erasing_regions(typing_env, node_substs);
+        let inst = Instance::try_resolve(tcx, typing_env, f, normalized_substs);
         let Ok(inst) = inst else { crate::internal_err!(expr.span, "Instance::resolve") };
         match inst {
             Some(Instance { def: rustc_middle::ty::InstanceKind::Item(did), args }) => {
@@ -1073,7 +1074,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let integer_trait_def_id = bctx.ctxt.verus_items.name_to_id
                     [&VerusItem::BuiltinTrait(verus_items::BuiltinTraitItem::Integer)];
                 let ty = bctx.types.node_type(args[0].hir_id);
-                let infcx = rustc_infer::infer::TyCtxtInferExt::infer_ctxt(tcx).build();
+                let infcx = rustc_infer::infer::TyCtxtInferExt::infer_ctxt(tcx).build(
+                    rustc_type_ir::TypingMode::PostAnalysis
+                );
                 matches!(&*source_vir.typ, TypX::TypParam(_))
                     && infcx
                         .type_implements_trait(
