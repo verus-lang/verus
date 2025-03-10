@@ -559,7 +559,9 @@ pub fn func_def_to_sst(
 
     let mask_spec = req_ens_function.x.mask_spec_or_default(&req_ens_function.span);
     let inv_spec_exprs = match &mask_spec {
-        MaskSpec::InvariantOpens(_span, exprs) | MaskSpec::InvariantOpensExcept(_span, exprs) => exprs.clone(),
+        MaskSpec::InvariantOpens(_span, exprs) | MaskSpec::InvariantOpensExcept(_span, exprs) => {
+            exprs.clone()
+        }
         MaskSpec::InvariantOpensSet(e) => Arc::new(vec![e.clone()]),
     };
     let mut inv_spec_exps = vec![];
@@ -583,9 +585,7 @@ pub fn func_def_to_sst(
         MaskSpec::InvariantOpensExcept(span, _exprs) => {
             MaskSet::from_list_complement(&inv_spec_exps, &span)
         }
-        MaskSpec::InvariantOpensSet(_expr) => {
-            MaskSet::arbitrary(&inv_spec_exps[0])
-        }
+        MaskSpec::InvariantOpensSet(_expr) => MaskSet::arbitrary(&inv_spec_exps[0]),
     };
     state.mask = Some(mask_set);
 

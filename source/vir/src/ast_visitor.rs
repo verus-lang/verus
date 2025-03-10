@@ -1302,20 +1302,16 @@ where
 
     let mask_spec = match mask_spec {
         None => None,
-        Some(MaskSpec::InvariantOpens(span, es)) => {
-            Some(MaskSpec::InvariantOpens(span.clone(), Arc::new(vec_map_result(es, |e| {
-                map_expr_visitor_env(e, map, env, fe, fs, ft)
-            })?)))
-        }
-        Some(MaskSpec::InvariantOpensExcept(span, es)) => {
-            Some(MaskSpec::InvariantOpensExcept(span.clone(), Arc::new(vec_map_result(es, |e| {
-                map_expr_visitor_env(e, map, env, fe, fs, ft)
-            })?)))
-        }
+        Some(MaskSpec::InvariantOpens(span, es)) => Some(MaskSpec::InvariantOpens(
+            span.clone(),
+            Arc::new(vec_map_result(es, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?),
+        )),
+        Some(MaskSpec::InvariantOpensExcept(span, es)) => Some(MaskSpec::InvariantOpensExcept(
+            span.clone(),
+            Arc::new(vec_map_result(es, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?),
+        )),
         Some(MaskSpec::InvariantOpensSet(e)) => {
-            Some(MaskSpec::InvariantOpensSet(
-                map_expr_visitor_env(e, map, env, fe, fs, ft)?
-            ))
+            Some(MaskSpec::InvariantOpensSet(map_expr_visitor_env(e, map, env, fe, fs, ft)?))
         }
     };
     let unwind_spec = match unwind_spec {

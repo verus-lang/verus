@@ -169,7 +169,8 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                                 ));
                             }
                         }
-                        invariant_mask = Some(MaskSpec::InvariantOpensExcept(span.clone(), es.clone()));
+                        invariant_mask =
+                            Some(MaskSpec::InvariantOpensExcept(span.clone(), es.clone()));
                     }
                     HeaderExprX::InvariantOpensSet(e) => {
                         match invariant_mask {

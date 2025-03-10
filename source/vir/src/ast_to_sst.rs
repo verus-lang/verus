@@ -850,7 +850,7 @@ fn mask_set_for_call(fun: &Function, typs: &Typs, args: Arc<Vec<Exp>>) -> MaskSe
                 MaskSpec::InvariantOpensExcept(..) => {
                     MaskSet::from_list_complement(&inv_exps, span)
                 }
-                MaskSpec::InvariantOpensSet(..) => panic!()
+                MaskSpec::InvariantOpensSet(..) => panic!(),
             }
         }
         MaskSpec::InvariantOpensSet(e) => {

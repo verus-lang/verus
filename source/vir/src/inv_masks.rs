@@ -84,9 +84,7 @@ impl MaskSet {
                     SpannedTyped::new(&elem.span, &namespace_set_typ(ctx), remove_expx);
                 remove_exp
             }
-            MaskSet::Arbitrary { set } => {
-                set.clone()
-            }
+            MaskSet::Arbitrary { set } => set.clone(),
         }
     }
 
@@ -107,7 +105,7 @@ impl MaskSet {
     }
 
     pub fn arbitrary(exp: &Exp) -> Self {
-        MaskSet::Arbitrary{ set: exp.clone() }
+        MaskSet::Arbitrary { set: exp.clone() }
     }
 
     pub fn from_list(exps: &Vec<Exp>, span: &Span) -> MaskSet {
@@ -251,11 +249,9 @@ impl MaskSet {
                         call_span,
                         "callee may open invariants that caller cannot",
                         "at this call-site",
-                    ).primary_label(
-                        &self_exp.span, "invariants opened by callee"
-                    ).primary_label(
-                        &other_exp.span, "invariants opened by caller"
-                    );
+                    )
+                    .primary_label(&self_exp.span, "invariants opened by callee")
+                    .primary_label(&other_exp.span, "invariants opened by caller");
 
                     vec![Assertion { err: err, cond: subset_of_exp }]
                 }

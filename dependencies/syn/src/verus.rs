@@ -866,9 +866,7 @@ pub mod parsing {
     impl Parse for InvariantNameSetSet {
         fn parse(input: ParseStream) -> Result<Self> {
             let expr = Expr::parse_without_eager_brace(input)?;
-            Ok(InvariantNameSetSet {
-                expr,
-            })
+            Ok(InvariantNameSetSet { expr })
         }
     }
 
