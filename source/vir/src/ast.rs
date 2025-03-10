@@ -982,6 +982,8 @@ pub struct FunctionAttrsX {
     /// Marked with external_body or external_fn_specification
     /// TODO: might be duplicate with https://github.com/verus-lang/verus/pull/1473
     pub is_external_body: bool,
+    /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
+    pub is_unsafe: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1224,6 +1226,7 @@ pub struct TraitX {
     pub assoc_typs: Arc<Vec<Ident>>,
     pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
+    pub is_unsafe: bool,
 }
 
 /// impl<typ_params> trait_name<trait_typ_args[1..]> for trait_typ_args[0] { type name = typ; }
