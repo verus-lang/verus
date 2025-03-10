@@ -840,6 +840,7 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
                     assoc_typs,
                     assoc_typs_bounds,
                     mut methods,
+                    is_unsafe,
                 } = prev.x.clone();
                 assert!(name == t.x.name);
                 if visibility != t.x.visibility {
@@ -891,6 +892,7 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
                     assoc_typs,
                     assoc_typs_bounds,
                     methods,
+                    is_unsafe,
                 };
                 traits[*index] = prev.new_x(prevx);
             } else {
