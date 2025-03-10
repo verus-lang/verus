@@ -170,8 +170,7 @@ macro_rules! ldbg {
 }
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
-pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
-    queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
+pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>) {
         let hir = tcx.hir();
         let krate = hir.krate();
         rustc_hir_analysis::check_crate(tcx);
@@ -201,7 +200,6 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
                 }
             }
         }
-    });
 }
 
 const PROOF_FN_ONCE: u8 = 1;
