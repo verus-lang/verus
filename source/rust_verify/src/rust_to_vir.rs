@@ -317,11 +317,11 @@ fn check_item<'tcx>(
             return Ok(());
         }
         ItemKind::OpaqueTy(OpaqueTy {
-            generics: _,
             bounds: _,
-            origin: OpaqueTyOrigin::AsyncFn(_),
-            in_trait: _,
-            lifetime_mapping: _,
+            origin: OpaqueTyOrigin::AsyncFn { .. },
+            hir_id,
+            def_id,
+            span,
         }) => {
             return Ok(());
         }
