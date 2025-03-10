@@ -5,17 +5,8 @@ use vstd::*;
 
 verus! {
 
+#[derive(PartialEq, Eq)]
 struct Thing {}
-
-impl std::cmp::PartialEq<Thing> for Thing {
-    fn eq(&self, _: &Thing) -> bool {
-        todo!()
-    }
-}
-
-impl std::cmp::Eq for Thing {
-
-}
 
 #[derive(PartialEq, Eq)]
 struct Car {

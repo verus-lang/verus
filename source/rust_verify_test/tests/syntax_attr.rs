@@ -168,8 +168,8 @@ test_verify_one_file! {
     } => Err(err) => assert_any_vir_error_msg(err, "Misuse of #[verus_spec]")
 }
 
-test_verify_one_file! {
-    #[test] test_no_verus_verify_attributes_in_trait_impl code!{
+test_verify_one_file_with_options! {
+    #[test] test_no_verus_verify_attributes_in_trait_impl ["--no-external-by-default"] => code!{
         struct Abc<T> {
             t: T,
         }
@@ -193,6 +193,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_failed_ensures_macro_attributes code!{
+        #[verus_verify]
         trait SomeTrait {
             #[verus_spec(ret =>
                 requires true
@@ -201,6 +202,7 @@ test_verify_one_file! {
             fn f(&self) -> bool;
         }
 
+        #[verus_verify]
         impl SomeTrait for bool {
             fn f(&self) -> bool {
                 *self
@@ -211,6 +213,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_default_fn_use_macro_attributes code!{
+        #[verus_verify]
         struct Abc<T> {
             t: T,
         }
@@ -240,6 +243,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_default_failed_fn_use_macro_attributes code!{
+        #[verus_verify]
         struct Abc<T> {
             t: T,
         }

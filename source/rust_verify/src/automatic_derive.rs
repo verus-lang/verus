@@ -23,10 +23,10 @@ pub enum AutomaticDeriveAction {
 
 pub fn get_action(rust_item: Option<RustItem>) -> AutomaticDeriveAction {
     match rust_item {
-        Some(RustItem::PartialEq) => AutomaticDeriveAction::Ignore,
+        Some(RustItem::PartialEq | RustItem::Eq) => AutomaticDeriveAction::Ignore,
         Some(RustItem::Clone) => AutomaticDeriveAction::Special(SpecialTrait::Clone),
 
-        Some(RustItem::Eq) | Some(RustItem::Copy) => AutomaticDeriveAction::VerifyAsIs,
+        Some(RustItem::Copy) => AutomaticDeriveAction::VerifyAsIs,
 
         Some(RustItem::Hash)
         | Some(RustItem::Default)

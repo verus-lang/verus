@@ -20,7 +20,7 @@ pub fn derive_structural(mut s: synstructure::Structure) -> proc_macro2::TokenSt
 
     s.gen_impl(quote_spanned_builtin! { builtin, s.ast().span() =>
         #[automatically_derived]
-        gen impl #builtin::Structural for @Self {
+        gen unsafe impl #builtin::Structural for @Self {
             #[inline]
             #[doc(hidden)]
             fn assert_receiver_is_structural(&self) -> () {
