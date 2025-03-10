@@ -12,6 +12,7 @@ use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, SmtSolver, ValidityResult};
 use air::messages::{ArcDynMessage, Diagnostics as _};
 use air::profiler::Profiler;
+use measureme::rustc;
 use rustc_errors::{Diag, EmissionGuarantee};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
@@ -2278,13 +2279,11 @@ impl Verifier {
                         // if it is the active bucket, mark it as done, and reset the active bucket
                         if let Some(m) = active_bucket {
                             if m == id {
-                                assert!(
-                                    messages
-                                        .get_mut(id)
-                                        .expect("message id out of range")
-                                        .1
-                                        .is_empty()
-                                );
+                                assert!(messages
+                                    .get_mut(id)
+                                    .expect("message id out of range")
+                                    .1
+                                    .is_empty());
                                 active_bucket = None;
                             }
                         }
@@ -2973,7 +2972,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn after_expansion<'tcx>(
         &mut self,
         compiler: &Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
+        tcx: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         self.rust_end_time = Some(Instant::now());
 
@@ -2984,7 +2983,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
 
         self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
-        let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
+        let _result = queries.gctxt.enter(|tcx| {
             if self.verifier.via_cargo_args.is_some() {
                 let crate_meta_path = tcx
                     .output_filenames(())
@@ -3008,7 +3007,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     assert!(err.level == MessageLevel::Error);
                     compiler.sess.dcx().err(err.note.clone());
                     self.verifier.encountered_vir_error = true;
-                    return;
+                    return rustc_driver::Compilation::Stop;
                 }
             };
             let time_import1 = Instant::now();
@@ -3049,11 +3048,11 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                             }
                         }
                     }
-                    return;
+                    return rustc_driver::Compilation::Stop;
                 }
                 if let Some(_guar) = compiler.sess.dcx().has_errors() {
                     self.verifier.encountered_error = true;
-                    return;
+                    return rustc_driver::Compilation::Stop;
                 }
                 self.lifetime_start_time = Some(Instant::now());
                 let status = if self.verifier.args.no_lifetime {
@@ -3069,7 +3068,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                             Err(err) => {
                                 reporter.report_as(&err.to_any(), MessageLevel::Error);
                                 self.verifier.encountered_vir_error = true;
-                                return;
+                                return rustc_driver::Compilation::Stop;
                             }
                             Ok(file) => Some(file),
                         }
@@ -3136,7 +3135,6 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     self.verifier.encountered_vir_error = true;
                 }
             }
-        });
         if !self.verifier.args.output_json
             && !self.verifier.encountered_error
             && !self.verifier.encountered_vir_error
@@ -3153,5 +3151,6 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             );
         }
         rustc_driver::Compilation::Stop
+    });
     }
 }

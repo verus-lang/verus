@@ -978,7 +978,7 @@ fn erase_call<'tcx>(
                                 Adjust, AutoBorrow, AutoBorrowMutability,
                             };
                             match adjust.kind {
-                                Adjust::Borrow(AutoBorrow::Ref(_, m)) => {
+                                Adjust::Borrow(AutoBorrow::Ref(m)) => {
                                     let m = match m {
                                         AutoBorrowMutability::Not => Mutability::Not,
                                         AutoBorrowMutability::Mut { .. } => Mutability::Mut,
