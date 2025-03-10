@@ -557,6 +557,7 @@ fn make_attributes<'tcx>(
         prophecy_dependent: vattrs.prophecy_dependent,
         size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
         is_type_invariant_fn: vattrs.type_invariant_fn,
+        is_external_body: vattrs.external_body,
     };
     Ok(Arc::new(fattrs))
 }
@@ -594,15 +595,6 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         None
     };
-
-    if ctxt.cmd_line_args.no_cheating {
-        if vattrs.external_body {
-            return err_span(sig.span, "external_body not allowed with --no-cheating");
-        }
-        if vattrs.external_fn_specification {
-            return err_span(sig.span, "assume_specification not allowed with --no-cheating");
-        }
-    }
 
     let (path, proxy, visibility, kind, has_self_param) = if vattrs.external_fn_specification
         || external_fn_specification_via_external_trait.is_some()

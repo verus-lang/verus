@@ -72,8 +72,25 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test_no_cheating_assume_spec ["--no-cheating"] => verus_code! {
-        pub assume_specification<T, U> [Option::<(T, U)>::unzip](a: Option<(T, U)>) -> (r: (Option<T>, Option<U>))
-            ensures false // FAILS
+        use vstd::prelude::*;
+        pub assume_specification<T, U> [Option::<(T, U)>::unzip](a: Option<(T, U)>) // FAILS
+            -> (r: (Option<T>, Option<U>))
+            ensures false
         ;
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_no_cheating_via_fn ["--no-cheating"] => verus_code! {
+        spec fn up(i: int) -> int
+            decreases i via no_good
+        {
+            up(i + 1)
+        }
+
+        #[verifier::external_body]
+        #[via_fn]
+        proof fn no_good(i: int) // FAILS
+        {}
     } => Err(e) => assert_one_fails(e)
 }

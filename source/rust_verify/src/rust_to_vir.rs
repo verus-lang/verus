@@ -64,15 +64,6 @@ fn check_item<'tcx>(
         }
     }
 
-    if ctxt.cmd_line_args.no_cheating {
-        if vattrs.external_body {
-            return err_span(item.span, "external_body not allowed with --no-cheating");
-        }
-        if vattrs.external_fn_specification {
-            return err_span(item.span, "assume_specification not allowed with --no-cheating");
-        }
-    }
-
     let visibility = || mk_visibility(ctxt, item.owner_id.to_def_id());
 
     let mut handle_const_or_static = |body_id: &rustc_hir::BodyId| {
