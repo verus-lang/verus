@@ -273,6 +273,7 @@ pub(crate) fn translate_trait<'tcx>(
                     ex_trait_id_for,
                     ex_item_id_for,
                     external_info,
+                    None,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);
