@@ -244,7 +244,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] lifetime_union ["--disable-internal-test-mode", "--external-by-default"] => verus_code! {
+    #[test] lifetime_union ["--disable-internal-test-mode"] => verus_code! {
         use core::mem::ManuallyDrop;
         struct X { }
         struct Y { }
@@ -264,7 +264,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] lifetime_union2 ["--disable-internal-test-mode", "--external-by-default"] => verus_code! {
+    #[test] lifetime_union2 ["--disable-internal-test-mode"] => verus_code! {
         use vstd::*;
         use core::mem::ManuallyDrop;
         struct X { }

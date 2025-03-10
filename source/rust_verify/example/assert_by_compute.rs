@@ -74,7 +74,6 @@ mod verititan_example {
 mod recursive_data_structures {
     use super::*;
 
-    #[derive(Structural, PartialEq, Eq)]
     enum List<T> {
         Nil,
         Cons(T, Box<List<T>>),
@@ -141,7 +140,7 @@ mod recursive_data_structures {
         )
     }
 
-    fn compute_list() {
+    proof fn compute_list() {
         assert(len(ex1()) == 5) by (compute_only);
         assert(len(append(ex1(), 6)) == 6) by (compute_only);
         assert(equal(reverse(ex1()), ex1_rev())) by (compute_only);

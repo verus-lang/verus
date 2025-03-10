@@ -359,7 +359,6 @@ const DIRECTIONS_SHARED_CODE: &str = verus_code_str! {
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
 
-    #[derive(PartialEq, Eq, Structural)]
     pub enum Direction {
         North,
         East,
@@ -472,16 +471,12 @@ const LUNCH_SHARED_CODE: &str = verus_code_str! {
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
 
-    #[derive(PartialEq, Eq, Structural)]
     pub enum Meat { Salami, Ham }
 
-    #[derive(PartialEq, Eq, Structural)]
     pub enum Cheese { Provolone, Swiss, Cheddar, Jack }
 
-    #[derive(PartialEq, Eq, Structural)]
     pub enum Veggie { Olive, Onion, Pepper }
 
-    #[derive(PartialEq, Eq, Structural)]
     pub enum Order {
         Sandwich { meat: Meat, cheese: Cheese },
         Pizza { meat: Meat, veggie: Veggie },

@@ -52,6 +52,7 @@ use vir::ast::{Path, VirErr, VirErrAs};
 
 /// Main exported type of this module.
 /// Contains all item-things and their categorizations
+#[derive(Debug)]
 pub struct CrateItems {
     /// Vector of all crate items
     pub items: Vec<CrateItem>,
@@ -383,6 +384,17 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                         is_trait: impll.of_trait.is_some(),
                         has_any_verus_aware_item: false,
                     });
+                }
+                ItemKind::Const(_ty, _generics, _body_id) => {
+                    let path = def_id_to_vir_path(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
+                    if path
+                        .segments
+                        .iter()
+                        .find(|s| s.starts_with("_DERIVE_builtin_Structural_FOR_"))
+                        .is_some()
+                    {
+                        self.state = VerifState::Verify;
+                    }
                 }
                 _ => {}
             },
