@@ -1,14 +1,13 @@
 use crate::config::Vstd;
 use crate::externs::VerusExterns;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
-use rustc_errors::ErrorGuaranteed;
 use std::time::{Duration, Instant};
 
-fn mk_compiler<'a, 'b>(
+fn mk_compiler<'a>(
     rustc_args: &'a [String],
-    verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
+    verifier: &'a mut (dyn rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-) -> rustc_driver::RunCompiler<'a, 'b> {
+) -> rustc_driver::RunCompiler<'a> {
     let mut compiler = rustc_driver::RunCompiler::new(rustc_args, verifier);
     compiler.set_file_loader(Some(file_loader));
     compiler
@@ -20,13 +19,15 @@ fn run_compiler<'a, 'b>(
     erase_ghost: bool,
     verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-) -> Result<(), ErrorGuaranteed> {
+) -> Result<(), ()> {
     crate::config::enable_default_features_and_verus_attr(
         &mut rustc_args,
         syntax_macro,
         erase_ghost,
     );
-    mk_compiler(&rustc_args, verifier, file_loader).run()
+    let compiler = mk_compiler(&rustc_args, verifier, file_loader);
+    compiler.run();
+    todo!()
 }
 
 pub fn is_verifying_entire_crate(verifier: &Verifier) -> bool {
@@ -94,10 +95,10 @@ impl rustc_driver::Callbacks for CompilerCallbacksEraseMacro {
     fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
+        tcx: rustc_middle::ty::TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         if !self.do_compile {
-            crate::lifetime::check(queries);
+            crate::lifetime::check(tcx);
             rustc_driver::Compilation::Stop
         } else {
             rustc_driver::Compilation::Continue
@@ -123,7 +124,7 @@ pub(crate) fn run_with_erase_macro_compile(
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
     compile: bool,
     vstd: Vstd,
-) -> Result<(), ErrorGuaranteed> {
+) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
     rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     if vstd == Vstd::IsCore {
