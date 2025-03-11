@@ -27,12 +27,6 @@ pub const VERUS_DRIVER_IS_BUILTIN_MACROS: &str = " __VERUS_DRIVER_IS_BUILTIN_MAC
 pub const VERUS_DRIVER_VERIFY: &str = "__VERUS_DRIVER_VERIFY_";
 pub const VERUS_DRIVER_VIA_CARGO: &str = "__VERUS_DRIVER_VIA_CARGO__";
 
-/*
-fn verus_driver_version_req() -> VersionReq {
-    VersionReq::parse("=0.1.0").unwrap()
-}
-*/
-
 pub fn main() -> Result<ExitCode> {
     // Choose offset into args according to whether we are being run as `cargo-verus` or `cargo verus`.
     // (See https://doc.rust-lang.org/cargo/reference/external-tools.html#custom-subcommands)
@@ -371,18 +365,6 @@ fn pack_verus_driver_args_for_env(args: impl Iterator<Item = impl AsRef<str>>) -
     args.map(|arg| [VERUS_DRIVER_ARGS_SEP.to_owned(), arg.as_ref().to_owned()]).flatten().collect()
 }
 
-/*
-fn checked_verus_driver_path() -> Result<PathBuf> {
-    let path = unchecked_verus_driver_path();
-    let version = get_verus_driver_version(&path)?;
-    let version_req = verus_driver_version_req();
-    if !version_req.matches(&version) {
-        bail!("verus version {version} must match {version_req}");
-    }
-    Ok(path)
-}
-*/
-
 fn verus_driver_path() -> PathBuf {
     let mut path =
         env::current_exe().expect("current executable path invalid").with_file_name("verus");
@@ -393,36 +375,6 @@ fn verus_driver_path() -> PathBuf {
 
     path
 }
-
-/*
-fn get_verus_driver_version(path: &Path) -> Result<Version> {
-    let mut cmd = Command::new(path);
-    cmd.arg("--version");
-    let output =
-        cmd.output().with_context(|| format!("Failed to read output of command {cmd:?}"))?;
-    if !output.status.success() {
-        bail!(
-            "Command {cmd:?} failed with {}\nstdout: {:?}\nstderr: {:?}",
-            output.status,
-            str::from_utf8(&output.stdout),
-            str::from_utf8(&output.stderr),
-        );
-    }
-    let stdout = str::from_utf8(&output.stdout)
-        .with_context(|| format!("Command {cmd:?} did not produce valid utf-8"))?;
-    parse_verus_driver_version_output(stdout)
-        .ok_or_else(|| anyhow!("Command {cmd:?} did not produce valid output: {:?}", stdout))
-}
-
-fn parse_verus_driver_version_output(stdout: &str) -> Option<Version> {
-    let mut parts = stdout.split_whitespace();
-    if parts.next()? != "verus-driver" {
-        return None;
-    }
-    let version = Version::parse(parts.next()?).ok()?;
-    Some(version)
-}
-*/
 
 #[must_use]
 pub fn help_message() -> &'static str {
