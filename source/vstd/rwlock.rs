@@ -532,7 +532,8 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
             ({
                 let val = ret.0;
                 let write_handle = ret.1;
-                &&write_handle.rwlock() == *self && self.inv(val)
+                &&& write_handle.rwlock() == *self
+                &&& self.inv(val)
             }),
     {
         proof {
