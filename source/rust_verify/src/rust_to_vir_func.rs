@@ -157,10 +157,10 @@ fn compare_external_sig<'tcx>(
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
 ) -> Result<bool, VirErr> {
     use rustc_middle::ty::FnSig;
-    // Ignore abi for the sake of comparison
+    // Ignore abi and safety for the sake of comparison
     // Useful for rust-intrinsics
-    let FnSig { inputs_and_output: io1, c_variadic: c1, safety: s1, abi: _ } = sig1;
-    let FnSig { inputs_and_output: io2, c_variadic: c2, safety: s2, abi: _ } = sig2;
+    let FnSig { inputs_and_output: io1, c_variadic: c1, safety: _, abi: _ } = sig1;
+    let FnSig { inputs_and_output: io2, c_variadic: c2, safety: _, abi: _ } = sig2;
     if io1.len() != io2.len() {
         return Ok(false);
     }
@@ -177,7 +177,7 @@ fn compare_external_sig<'tcx>(
             return Ok(false);
         }
     }
-    Ok(c1 == c2 && s1 == s2)
+    Ok(c1 == c2)
 }
 
 pub(crate) fn handle_external_fn<'tcx>(
@@ -309,7 +309,7 @@ pub(crate) fn handle_external_fn<'tcx>(
         return err_span(
             sig.span,
             format!(
-                "assume_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
+                "assume_specification requires function type signature to match exactly (got `{poly_sig1:#?}` and `{poly_sig2:#?}`)"
             ),
         );
     }
@@ -1539,7 +1539,7 @@ pub(crate) fn get_external_def_id<'tcx>(
         )
     };
 
-    // Get the 'body' of this function (skipping over header if necessary)
+    // Get the 'body' of this function (skipping over header and unsafe-block if necessary)
     let expr = match &body.value.kind {
         ExprKind::Block(block_body, _) => match &block_body.expr {
             Some(body_value) => body_value,
@@ -1548,6 +1548,15 @@ pub(crate) fn get_external_def_id<'tcx>(
             }
         },
         _ => &body.value,
+    };
+    let expr = match &expr.kind {
+        ExprKind::Block(block_body, _) => match &block_body.expr {
+            Some(body_value) => body_value,
+            None => {
+                return err();
+            }
+        },
+        _ => &expr,
     };
 
     let types = body_id_to_types(tcx, body_id);
