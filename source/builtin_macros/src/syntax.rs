@@ -1359,7 +1359,7 @@ impl Visitor {
             publish: Publish::Default,
             constness: None,
             asyncness: None,
-            unsafety: None,
+            unsafety: Some(token::Unsafe { span }),
             abi: None,
             broadcast: None,
             mode: FnMode::Default,
@@ -1456,8 +1456,10 @@ impl Visitor {
 
         let callee =
             syn_verus::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
+        // We wrap the function call in an 'unsafe' block, since the user might be applying
+        // a specification to an unsafe function.
         let e = Expr::Verbatim(quote! {
-            #callee(#(#args),*)
+            unsafe { #callee(#(#args),*) }
         });
         stmts.push(Stmt::Expr(e, None));
 
