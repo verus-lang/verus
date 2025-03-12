@@ -333,7 +333,6 @@ pub fn run_verus(
     verus_args.extend(extra_args.into_iter());
 
     verus_args.push(entry_file.to_str().unwrap().to_string());
-    verus_args.append(&mut vec!["--cfg".to_string(), "erasure_macro_todo".to_string()]);
 
     if import_vstd && !is_core && use_internal_test_mode {
         let lib_vstd_vir_path = verus_target_path.join("vstd.vir");

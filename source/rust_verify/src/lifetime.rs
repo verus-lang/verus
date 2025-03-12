@@ -311,6 +311,9 @@ fn emit_check_tracked_lifetimes<'tcx>(
 struct LifetimeCallbacks {}
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
+    // note: we do not need to to call into config here,
+    // because all config is handled in the other Callbacks
+
     fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
@@ -407,6 +410,8 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     let rustc_args = vec![LIFETIME_DRIVER_ARG, LifetimeFileLoader::FILENAME, "--error-format=json"];
 
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        // avoid warning about jobserver fd
+        .env_remove("CARGO_MAKEFLAGS")
         .args(&rustc_args[..])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

@@ -6,7 +6,7 @@
 [package]
 name = "vstd"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
 
 [lib]
 name = "vstd"
@@ -25,6 +25,10 @@ allocator = []
 strict_provenance_atomic_ptr = []
 allow_panic = [] # code is allowed to panic.
 
+
+[package.metadata.verus]
+verify = true
+is-vstd = true
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
