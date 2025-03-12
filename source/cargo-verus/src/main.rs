@@ -115,10 +115,16 @@ impl VerusCmd {
             cargo_args.push(arg.clone());
         }
 
-        common_verus_driver_args.push("--compile-when-not-primary-package".to_owned());
+        common_verus_driver_args.extend_from_slice(&[
+            "--VIA-CARGO".to_owned(),
+            "compile-when-not-primary-package".to_owned(),
+        ]);
 
         if !just_verify {
-            common_verus_driver_args.push("--compile-when-primary-package".to_owned());
+            common_verus_driver_args.extend_from_slice(&[
+                "--VIA-CARGO".to_owned(),
+                "compile-when-primary-package".to_owned(),
+            ]);
         }
 
         common_verus_driver_args.extend(args_iter.cloned());
@@ -203,8 +209,10 @@ impl VerusCmd {
 
                 for dep in entry.deps() {
                     if metadata_index.get(&dep.pkg).verus_metadata().verify {
-                        verus_driver_args_for_package
-                            .push(format!("--import-dep-if-present={}", dep.name));
+                        verus_driver_args_for_package.extend_from_slice(&[
+                            "--VIA-CARGO".to_owned(),
+                            format!("import-dep-if-present={}", dep.name),
+                        ]);
                     }
                 }
 

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use sha2::{Digest, Sha256};
 
 use crate::cargo_verus_dep_tracker::DepTracker;
-use crate::config::Args;
+use crate::config::CargoVerusArgs;
 
 pub const VERUS_DRIVER_ARGS: &str = " __VERUS_DRIVER_ARGS__";
 pub const VERUS_DRIVER_ARGS_FOR: &str = " __VERUS_DRIVER_ARGS_FOR_";
@@ -70,13 +70,13 @@ pub fn extend_args_and_check_is_direct_rustc_call(
     !verus_crate
 }
 
-pub fn is_compile(args: &Args, dep_tracker: &mut DepTracker) -> bool {
+pub fn is_compile(cargo_args: &CargoVerusArgs, dep_tracker: &mut DepTracker) -> bool {
     let is_primary_package = dep_tracker.get_env("CARGO_PRIMARY_PACKAGE").is_some();
 
     if is_primary_package {
-        args.compile_when_primary_package
+        cargo_args.compile_when_primary_package
     } else {
-        args.compile_when_not_primary_package
+        cargo_args.compile_when_not_primary_package
     }
 }
 

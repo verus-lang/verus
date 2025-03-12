@@ -109,9 +109,6 @@ pub struct ArgsX {
     pub solver: SmtSolver,
     #[cfg(feature = "axiom-usage-info")]
     pub axiom_usage_info: bool,
-    pub compile_when_primary_package: bool,
-    pub compile_when_not_primary_package: bool,
-    pub import_dep_if_present: Vec<String>,
 }
 
 impl ArgsX {
@@ -156,6 +153,21 @@ impl ArgsX {
             solver: Default::default(),
             #[cfg(feature = "axiom-usage-info")]
             axiom_usage_info: Default::default(),
+        }
+    }
+}
+
+pub type Args = Arc<ArgsX>;
+
+pub struct CargoVerusArgsX {
+    pub compile_when_primary_package: bool,
+    pub compile_when_not_primary_package: bool,
+    pub import_dep_if_present: Vec<String>,
+}
+
+impl CargoVerusArgsX {
+    pub fn new() -> Self {
+        Self {
             compile_when_primary_package: false,
             compile_when_not_primary_package: false,
             import_dep_if_present: Default::default(),
@@ -163,7 +175,7 @@ impl ArgsX {
     }
 }
 
-pub type Args = Arc<ArgsX>;
+pub type CargoVerusArgs = Arc<CargoVerusArgsX>;
 
 pub fn enable_default_features_and_verus_attr(
     rustc_args: &mut Vec<String>,
@@ -202,6 +214,67 @@ pub fn enable_default_features_and_verus_attr(
     rustc_args.push("-Zcrate-attr=register_tool(verus)".to_string());
     rustc_args.push("-Zcrate-attr=register_tool(verifier)".to_string());
     rustc_args.push("-Zcrate-attr=register_tool(verusfmt)".to_string());
+}
+
+fn error(msg: String) -> ! {
+    eprintln!("Error: {}", msg);
+    std::process::exit(-1)
+}
+
+fn parse_opts_or_pairs(strs: Vec<String>) -> std::collections::HashMap<String, Option<String>> {
+    let mut parsed: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
+    for o in strs {
+        let oo: Vec<_> = o.split("=").collect();
+        match &oo[..] {
+            [opt] => parsed.insert((*opt).to_owned(), None),
+            [key, val] => parsed.insert((*key).to_owned(), Some((*val).to_owned())),
+            _ => {
+                error(format!("invalid parsed option -V {}", o));
+            }
+        };
+    }
+    parsed
+}
+
+pub fn parse_cargo_args(_program: &String, args: &mut Vec<String>) -> CargoVerusArgs {
+    let mut cargo_verus_args = CargoVerusArgsX::new();
+
+    const CARGO_OPT_COMPILE_WHEN_PRIMARY: &str = "compile-when-primary-package";
+    const CARGO_OPT_COMPILE_WHEN_NOT_PRIMARY: &str = "compile-when-not-primary-package";
+    const CARGO_OPT_IMPORT_DEP_IF_PRESENT: &str = "import-dep-if-present";
+
+    let mut next_is_via_cargo = false;
+    args.retain(|arg| {
+        if arg == "--VIA-CARGO" {
+            next_is_via_cargo = true;
+            false
+        } else if next_is_via_cargo {
+            if arg == CARGO_OPT_COMPILE_WHEN_PRIMARY {
+                cargo_verus_args.compile_when_primary_package = true;
+            } else if arg == CARGO_OPT_COMPILE_WHEN_NOT_PRIMARY {
+                cargo_verus_args.compile_when_not_primary_package = true;
+            } else if arg.starts_with(CARGO_OPT_IMPORT_DEP_IF_PRESENT) {
+                let oo: Vec<_> = arg.split("=").collect();
+                if let [_, val] = &oo[..] {
+                    cargo_verus_args.import_dep_if_present.push(val.to_string());
+                } else {
+                    error(format!(
+                        "expected --VIA-CARGO {}=DEP_NAME",
+                        CARGO_OPT_IMPORT_DEP_IF_PRESENT
+                    ));
+                }
+            } else {
+                error(format!("unexpected --VIA-CARGO {}", arg));
+            }
+            next_is_via_cargo = false;
+            false
+        } else {
+            true
+        }
+    });
+
+    Arc::new(cargo_verus_args)
 }
 
 pub fn parse_args_with_imports(
@@ -336,9 +409,6 @@ pub fn parse_args_with_imports(
         #[cfg(feature = "axiom-usage-info")]
         (EXTENDED_AXIOM_USAGE_INFO, "Print usage info for broadcasted axioms, lemmas, and groups"),
     ];
-    const OPT_COMPILE_WHEN_PRIMARY: &str = "compile-when-primary-package";
-    const OPT_COMPILE_WHEN_NOT_PRIMARY: &str = "compile-when-not-primary-package";
-    const OPT_IMPORT_DEP_IF_PRESENT: &str = "import-dep-if-present";
 
     let default_num_threads: usize = std::thread::available_parallelism()
         .map(|x| std::cmp::max(usize::from(x) - 1, 1))
@@ -474,31 +544,9 @@ pub fn parse_args_with_imports(
         "OPTION[=VALUE]",
     );
 
-    opts.optflag(
-        "",
-        OPT_COMPILE_WHEN_PRIMARY,
-        "When running under 'cargo verus', compile primary package(s)",
-    );
-    opts.optflag(
-        "",
-        OPT_COMPILE_WHEN_NOT_PRIMARY,
-        "When running under 'cargo verus', compile non-primary package(s)",
-    );
-    opts.optmulti(
-        "",
-        OPT_IMPORT_DEP_IF_PRESENT,
-        "When running under 'cargo verus', import .vir file for dependency",
-        "DEPENDENCY_NAME",
-    );
-
     let print_usage = || {
         let brief = format!("Usage: {} INPUT [options]", program);
         eprint!("{}", opts.usage(&brief));
-    };
-
-    let error = |msg: String| -> ! {
-        eprintln!("Error: {}", msg);
-        std::process::exit(-1)
     };
 
     let (matches, unmatched) = match opts.parse_partial(args) {
@@ -545,22 +593,6 @@ pub fn parse_args_with_imports(
             import.push(vstd_import);
         }
     }
-
-    let parse_opts_or_pairs = |strs: Vec<String>| {
-        let mut parsed: std::collections::HashMap<String, Option<String>> =
-            std::collections::HashMap::new();
-        for o in strs {
-            let oo: Vec<_> = o.split("=").collect();
-            match &oo[..] {
-                [opt] => parsed.insert((*opt).to_owned(), None),
-                [key, val] => parsed.insert((*key).to_owned(), Some((*val).to_owned())),
-                _ => {
-                    error(format!("invalid parsed option -V {}", o));
-                }
-            };
-        }
-        parsed
-    };
 
     let log = parse_opts_or_pairs(matches.opt_strs(OPT_LOG_MULTI));
 
@@ -712,9 +744,6 @@ pub fn parse_args_with_imports(
         solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         #[cfg(feature = "axiom-usage-info")]
         axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
-        compile_when_primary_package: matches.opt_present(OPT_COMPILE_WHEN_PRIMARY),
-        compile_when_not_primary_package: matches.opt_present(OPT_COMPILE_WHEN_NOT_PRIMARY),
-        import_dep_if_present: matches.opt_strs(OPT_IMPORT_DEP_IF_PRESENT),
     };
 
     (Arc::new(args), unmatched)

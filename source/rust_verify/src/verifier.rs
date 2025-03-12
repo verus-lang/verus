@@ -1,5 +1,5 @@
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
-use crate::config::{Args, ShowTriggers};
+use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::externs::VerusExterns;
@@ -289,8 +289,8 @@ pub struct Verifier {
     /// smt runtimes for each function per bucket
     pub func_times: HashMap<BucketId, HashMap<Fun, FunctionSmtStats>>,
 
-    via_cargo: bool,
-    // Some(DepTracker) if via_cargo, None otherwise
+    pub via_cargo_args: Option<CargoVerusArgs>,
+    // Some(DepTracker) if via_cargo_args.is_some(), None otherwise
     // In both cases, is set to None when VerifierCallbacksEraseMacro.config finishes with it
     dep_tracker: Option<crate::cargo_verus_dep_tracker::DepTracker>,
     import_virs_via_cargo: Option<Vec<(String, String)>>,
@@ -410,7 +410,7 @@ struct VerifyBucketOut {
 impl Verifier {
     pub fn new(
         args: Args,
-        via_cargo: bool,
+        via_cargo_args: Option<CargoVerusArgs>,
         via_cargo_compile: bool,
         dep_tracker: crate::cargo_verus_dep_tracker::DepTracker,
     ) -> Verifier {
@@ -436,8 +436,8 @@ impl Verifier {
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
 
-            via_cargo,
-            dep_tracker: if via_cargo { Some(dep_tracker) } else { None },
+            dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
+            via_cargo_args,
             import_virs_via_cargo: None,
             export_vir_path_via_cargo: None,
             compile,
@@ -481,7 +481,7 @@ impl Verifier {
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
 
-            via_cargo: self.via_cargo,
+            via_cargo_args: self.via_cargo_args.clone(),
             dep_tracker: None,
             import_virs_via_cargo: self.import_virs_via_cargo.clone(),
             export_vir_path_via_cargo: self.export_vir_path_via_cargo.clone(),
@@ -2657,7 +2657,7 @@ impl Verifier {
         let multi_crate = self.args.export.is_some()
             || import_len > 0
             || self.args.use_crate_name
-            || self.via_cargo;
+            || self.via_cargo_args.is_some();
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
@@ -2856,7 +2856,12 @@ fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         if let Some(mut dep_tracker) = self.verifier.dep_tracker.take() {
-            let import_dep_if_present = &self.verifier.args.import_dep_if_present;
+            let import_dep_if_present = &self
+                .verifier
+                .via_cargo_args
+                .as_ref()
+                .expect("dep_tracker is present, so via_cargo_args must be Some")
+                .import_dep_if_present;
             let import_deps_if_present: HashSet<String> =
                 import_dep_if_present.iter().cloned().collect();
             let success = crate::cargo_verus::handle_externs(
@@ -2911,7 +2916,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
-            if self.verifier.via_cargo {
+            if self.verifier.via_cargo_args.is_some() {
                 let crate_meta_path = tcx
                     .output_filenames(())
                     .path(rustc_session::config::OutputType::Metadata);

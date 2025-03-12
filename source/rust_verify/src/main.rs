@@ -104,6 +104,8 @@ pub fn main() {
         }
     }
 
+    let via_cargo = via_cargo.then(|| rust_verify::config::parse_cargo_args(&program, &mut args));
+
     let (our_args, rustc_args) =
         rust_verify::config::parse_args_with_imports(&program, args.into_iter(), vstd);
 
@@ -119,8 +121,10 @@ pub fn main() {
         return;
     }
 
-    let via_cargo_compile =
-        via_cargo && rust_verify::cargo_verus::is_compile(&our_args, &mut dep_tracker);
+    let via_cargo_compile = via_cargo
+        .as_ref()
+        .map(|args| rust_verify::cargo_verus::is_compile(args, &mut dep_tracker))
+        .unwrap_or(false);
 
     if !build_test_mode {
         match build_info.profile {
