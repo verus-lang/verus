@@ -100,8 +100,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_1 code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_1 ["--no-external-by-default"] => code! {
         trait T1 {
             fn f(&self) {
                 no_method_body()
@@ -110,8 +110,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_3 code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_3 ["--no-external-by-default"] => code! {
         trait T1 {
             fn f(&self) {
                 no_method_body(); // no semicolon allowed
@@ -120,8 +120,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_4 code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_4 ["--no-external-by-default"] => code! {
         trait T1 {
             fn f(&self) {
                 let b = true;
@@ -131,8 +131,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "no statements are allowed before no_method_body()")
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_5 code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_5 ["--no-external-by-default"] => code! {
         trait T1 {
             fn f(&self) {
                 no_method_body();
@@ -142,16 +142,16 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "no_method_body() must be a method's final expression, with no semicolon")
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_6 code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_6 ["--no-external-by-default"] => code! {
         fn f() {
             no_method_body() // can't appear in static function
         }
     } => Err(err) => assert_vir_error_msg(err, "no_method_body can only appear in trait method declarations")
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_7 code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_7 ["--no-external-by-default"] => code! {
         trait T1 {
             fn f(&self) {
                 no_method_body()
@@ -181,16 +181,16 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare requires")
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_10 code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_10 ["--no-external-by-default"] => code! {
         trait T1 {
             fn VERUS_SPEC__f(&self) { no_method_body() }
         }
     } => Err(err) => assert_vir_error_msg(err, "no matching method found for method specification")
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_11 code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_11 ["--no-external-by-default"] => code! {
         trait T1 {
             fn VERUS_SPEC__f(&self) { }
             fn f(&self);
@@ -198,8 +198,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "trait method declaration body must end with call to no_method_body()")
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_12 code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_12 ["--no-external-by-default"] => code! {
         trait T1 {
             fn VERUS_SPEC__f(&self, x: bool) { no_method_body() }
             fn f(&self);
@@ -207,8 +207,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "method specification has different number of parameters from method")
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_13 code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_13 ["--no-external-by-default"] => code! {
         trait T1 {
             fn VERUS_SPEC__f(&self, x: bool) { no_method_body() }
             fn f(&self, x: u16);
@@ -216,8 +216,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "method specification has different parameters from method")
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_14 code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_14 ["--no-external-by-default"] => code! {
         trait T1 {
             fn VERUS_SPEC__f(&self, x: bool) -> bool { no_method_body() }
             fn f(&self, x: bool) -> u16;
@@ -225,8 +225,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "method specification has a different return from method")
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_15_todo code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_15_todo ["--no-external-by-default"] => code! {
         trait T1 {
             fn VERUS_SPEC__f<A>(&self, x: A) -> bool { no_method_body() }
             fn f<B>(&self, x: B) -> bool; // error: A and B have different names

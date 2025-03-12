@@ -55,8 +55,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_ill_formed_7 code! {
+test_verify_one_file_with_options! {
+    #[test] test_ill_formed_7 ["--no-external-by-default"] => code! {
         mod M1 {
             pub trait T1 {
                 fn f(&self) {

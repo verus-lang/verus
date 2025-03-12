@@ -15,12 +15,6 @@ verus! {
 #[verifier::reject_recursive_types(A)]
 pub struct ExVec<T, A: Allocator>(Vec<T, A>);
 
-// this is a bit of a hack; verus treats Global specially already,
-// but putting this here helps Verus pick up all the trait impls for Global
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExGlobal(alloc::alloc::Global);
-
 pub trait VecAdditionalSpecFns<T>: View<V = Seq<T>> {
     spec fn spec_index(&self, i: int) -> T
         recommends
@@ -239,6 +233,20 @@ pub broadcast proof fn axiom_vec_index_decreases<A>(v: Vec<A>, i: int)
         #[trigger] (decreases_to!(v => v[i])),
 {
     admit();
+}
+
+impl<T, A: Allocator> super::core::TrustedSpecSealed for Vec<T, A> {
+
+}
+
+impl<T, A: Allocator> super::core::IndexSetTrustedSpec<usize> for Vec<T, A> {
+    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
+        0 <= index < self.len()
+    }
+
+    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
+        new_container@ === self@.update(index as int, val)
+    }
 }
 
 pub broadcast group group_vec_axioms {

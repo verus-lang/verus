@@ -82,7 +82,6 @@ use crate::ast::{
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::inv_masks::{MaskSetE, MaskSingleton};
 use crate::sst::{
     BndX, CallFun, Dest, Exp, ExpX, Exps, FuncCheckSst, FuncDeclSst, FunctionSst, FunctionSstX,
     InternalFun, KrateSst, KrateSstX, LocalDecl, LocalDeclKind, Par, ParX, Pars, PostConditionSst,
@@ -444,6 +443,21 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 };
                 let typ = return_typ(ctx, function, is_trait, &exp.typ);
                 mk_exp_typ(&typ, ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(args)))
+            }
+            CallFun::InternalFun(InternalFun::OpenInvariantMask(name, _i)) => {
+                let function = &ctx.func_sst_map[name].x;
+                let is_spec = function.mode == Mode::Spec;
+                let is_trait = !matches!(function.kind, FunctionKind::Static);
+                let mut args: Vec<Exp> = Vec::new();
+                for (par, arg) in function.pars.iter().zip(exps.iter()) {
+                    let arg = if is_spec || is_trait || typ_is_poly(ctx, &par.x.typ) {
+                        visit_exp_poly(ctx, state, arg)
+                    } else {
+                        visit_exp_native(ctx, state, arg)
+                    };
+                    args.push(arg);
+                }
+                mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(args)))
             }
             CallFun::InternalFun(InternalFun::ClosureReq | InternalFun::ClosureEns) => {
                 let exps = visit_exps_poly(ctx, state, exps);
@@ -872,10 +886,9 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 modified_vars: modified_vars.clone(),
             })
         }
-        StmX::OpenInvariant(e, s) => {
-            let e = visit_exp_native(ctx, state, e);
+        StmX::OpenInvariant(s) => {
             let s = visit_stm(ctx, state, s);
-            mk_stm(StmX::OpenInvariant(e, s))
+            mk_stm(StmX::OpenInvariant(s))
         }
         StmX::ClosureInner { body, typ_inv_vars } => {
             state.types.push_scope(true);
@@ -970,27 +983,11 @@ fn visit_func_check_sst(
     poly_ret: &InsertPars,
     ret_typ: &Typ,
 ) -> FuncCheckSst {
-    let FuncCheckSst { reqs, post_condition, mask_set, unwind, body, local_decls, statics } =
-        function;
+    let FuncCheckSst { reqs, post_condition, unwind, body, local_decls, statics } = function;
 
     state.temp_types.clear();
 
     let reqs = visit_exps_native(ctx, state, reqs);
-
-    let f_mask_singletons =
-        |state: &mut State, v: &Vec<MaskSingleton<Exp>>| -> Vec<MaskSingleton<Exp>> {
-            let mut v2: Vec<MaskSingleton<Exp>> = Vec::new();
-            for m in v.iter() {
-                let exp = visit_exp_native(ctx, state, &m.expr);
-                v2.push(MaskSingleton { expr: exp, span: m.span.clone() });
-            }
-            v2
-        };
-    let mask_set = MaskSetE {
-        base: mask_set.base.clone(),
-        plus: f_mask_singletons(state, &mask_set.plus),
-        minus: f_mask_singletons(state, &mask_set.minus),
-    };
 
     let unwind = match &unwind {
         UnwindSst::MayUnwind | UnwindSst::NoUnwind => unwind.clone(),
@@ -1067,7 +1064,6 @@ fn visit_func_check_sst(
     FuncCheckSst {
         reqs,
         post_condition,
-        mask_set: Arc::new(mask_set),
         unwind,
         body,
         local_decls: Arc::new(locals),

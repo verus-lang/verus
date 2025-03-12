@@ -278,8 +278,19 @@ pub(crate) enum InvariantItem {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
+pub(crate) enum SetItem {
+    Empty,
+    Full,
+    Contains,
+    SubsetOf,
+    Insert,
+    Remove,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub(crate) enum VstdItem {
     SeqFn(vir::interpreter::SeqFn),
+    SetFn(SetItem),
     Invariant(InvariantItem),
     ExecNonstaticCall,
     ArrayIndexGet,
@@ -478,6 +489,14 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::seq::Seq::index",       VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Index   ), Some(Arc::new("seq::Seq::index"      .to_owned())))),
         ("verus::vstd::seq::Seq::ext_equal",   VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::ExtEqual), Some(Arc::new("seq::Seq::ext_equal"  .to_owned())))),
         ("verus::vstd::seq::Seq::last",        VerusItem::Vstd(VstdItem::SeqFn(vir::interpreter::SeqFn::Last    ), Some(Arc::new("seq::Seq::last"       .to_owned())))),
+
+        ("verus::vstd::set::Set::empty",     VerusItem::Vstd(VstdItem::SetFn(SetItem::Empty),    Some(Arc::new("set::Set::empty".to_owned())))),
+        ("verus::vstd::set::Set::full",      VerusItem::Vstd(VstdItem::SetFn(SetItem::Full),     Some(Arc::new("set::Set::full".to_owned())))),
+        ("verus::vstd::set::Set::contains",  VerusItem::Vstd(VstdItem::SetFn(SetItem::Contains), Some(Arc::new("set::Set::contains".to_owned())))),
+        ("verus::vstd::set::Set::subset_of", VerusItem::Vstd(VstdItem::SetFn(SetItem::SubsetOf), Some(Arc::new("set::Set::subset_of".to_owned())))),
+        ("verus::vstd::set::Set::insert",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Insert),   Some(Arc::new("set::Set::insert".to_owned())))),
+        ("verus::vstd::set::Set::remove",    VerusItem::Vstd(VstdItem::SetFn(SetItem::Remove),   Some(Arc::new("set::Set::remove".to_owned())))),
+
         ("verus::vstd::invariant::AtomicInvariant::namespace",           VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantNamespace       ), Some(Arc::new("invariant::AtomicInvariant::namespace"          .to_owned())))),
         ("verus::vstd::invariant::AtomicInvariant::inv",                 VerusItem::Vstd(VstdItem::Invariant(InvariantItem::AtomicInvariantInv             ), Some(Arc::new("invariant::AtomicInvariant::inv"                .to_owned())))),
         ("verus::vstd::invariant::LocalInvariant::namespace",            VerusItem::Vstd(VstdItem::Invariant(InvariantItem::LocalInvariantNamespace        ), Some(Arc::new("invariant::LocalInvariant::namespace"           .to_owned())))),
@@ -582,6 +601,11 @@ pub(crate) enum RustItem {
     StructuralPartialEq,
     Eq,
     PartialEq,
+    Ord,
+    PartialOrd,
+    Hash,
+    Default,
+    Debug,
     Rc,
     Arc,
     BoxNew,
@@ -645,6 +669,9 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     if tcx.lang_items().destruct_trait() == Some(def_id) {
         return Some(RustItem::Destruct);
     }
+    if tcx.lang_items().partial_ord_trait() == Some(def_id) {
+        return Some(RustItem::PartialOrd);
+    }
     let rust_path = def_id_to_stable_rust_path(tcx, def_id);
     let rust_path = rust_path.as_ref().map(|x| x.as_str());
     get_rust_item_str(rust_path)
@@ -701,6 +728,18 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
     }
     if rust_path == Some("core::slice::index::private_slice_index::Sealed") {
         return Some(RustItem::SliceSealed);
+    }
+    if rust_path == Some("core::fmt::Debug") {
+        return Some(RustItem::Debug);
+    }
+    if rust_path == Some("core::hash::Hash") {
+        return Some(RustItem::Hash);
+    }
+    if rust_path == Some("core::default::Default") {
+        return Some(RustItem::Default);
+    }
+    if rust_path == Some("core::cmp::Ord") {
+        return Some(RustItem::Ord);
     }
 
     if let Some(rust_path) = rust_path {

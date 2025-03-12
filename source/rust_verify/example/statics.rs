@@ -6,6 +6,7 @@ use vstd::atomic_ghost::*;
 use vstd::cell::*;
 use vstd::prelude::*;
 use vstd::*;
+use vstd::raw_ptr::MemContents;
 
 use std::sync::atomic::*;
 
@@ -39,18 +40,16 @@ struct_with_invariants!{
             match g {
                 GhostState::Uninitialized(points_to) => {
                     v == 0
-                      && points_to@.pcell == cell.id()
-                      && points_to@.value.is_some()
-                      && points_to@.value.unwrap().is_none()
+                      && points_to.id() == cell.id()
+                      && (points_to.mem_contents() === MemContents::Init(None))
                 }
                 GhostState::Initializing => {
                     v == 1
                 }
                 GhostState::Initialized(points_to) => {
                     v == 2
-                      && points_to@.pcell == cell.id()
-                      && points_to@.value.is_some()
-                      && points_to@.value.unwrap().is_some()
+                      && points_to.id() == cell.id()
+                      && (points_to.mem_contents() matches MemContents::Init(Some(_)))
                 }
             }
         }

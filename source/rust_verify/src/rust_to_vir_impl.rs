@@ -1,3 +1,4 @@
+use crate::automatic_derive::is_automatically_derived;
 use crate::context::Context;
 use crate::external::CrateItems;
 use crate::rust_to_vir_base::{
@@ -220,6 +221,7 @@ pub(crate) fn translate_impl<'tcx>(
     module_path: Path,
     external_info: &mut ExternalInfo,
     crate_items: &CrateItems,
+    attrs: &[rustc_ast::Attribute],
 ) -> Result<(), VirErr> {
     let impl_def_id = item.owner_id.to_def_id();
     let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
@@ -240,21 +242,6 @@ pub(crate) fn translate_impl<'tcx>(
         }
 
         let verus_item = ctxt.verus_items.id_to_name.get(&trait_def_id);
-
-        /* sealed, `unsafe` */
-        {
-            let trait_attrs = ctxt.tcx.get_attrs_unchecked(trait_def_id);
-            let sealed = crate::attributes::is_sealed(
-                trait_attrs,
-                Some(&mut *ctxt.diagnostics.borrow_mut()),
-            )?;
-
-            if sealed {
-                return err_span(item.span, "cannot implement `sealed` trait");
-            } else if impll.safety != Safety::Safe {
-                return err_span(item.span, "the verifier does not support `unsafe` here");
-            }
-        }
 
         let ignore = if let Some(VerusItem::Marker(MarkerItem::Structural)) = verus_item {
             let ty = {
@@ -290,11 +277,6 @@ pub(crate) fn translate_impl<'tcx>(
                 ty
             );
             true
-        } else if let Some(RustItem::StructuralPartialEq | RustItem::PartialEq | RustItem::Eq) =
-            rust_item
-        {
-            // TODO SOUNDNESS additional checks of the implementation
-            true
         } else {
             false
         };
@@ -317,6 +299,19 @@ pub(crate) fn translate_impl<'tcx>(
                 }
             }
             return Ok(());
+        } else {
+            /* sealed, `unsafe` */
+            let trait_attrs = ctxt.tcx.get_attrs_unchecked(trait_def_id);
+            let sealed = crate::attributes::is_sealed(
+                trait_attrs,
+                Some(&mut *ctxt.diagnostics.borrow_mut()),
+            )?;
+
+            if sealed {
+                return err_span(item.span, "cannot implement `sealed` trait");
+            } else if impll.safety != Safety::Safe {
+                return err_span(item.span, "the verifier does not support `unsafe` here");
+            }
         }
     }
 
@@ -335,6 +330,14 @@ pub(crate) fn translate_impl<'tcx>(
         )?;
         vir.trait_impls.push(trait_impl);
         Some((trait_path, types))
+    } else {
+        None
+    };
+
+    let autoderive_action = if impll.of_trait.is_some() && is_automatically_derived(attrs) {
+        let trait_def_id = impll.of_trait.unwrap().path.res.def_id();
+        let rust_item = crate::verus_items::get_rust_item(ctxt.tcx, trait_def_id);
+        Some(crate::automatic_derive::get_action(rust_item))
     } else {
         None
     };
@@ -393,6 +396,7 @@ pub(crate) fn translate_impl<'tcx>(
                             None,
                             None,
                             external_info,
+                            autoderive_action.as_ref(),
                         )?;
                     }
                     _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_ref),

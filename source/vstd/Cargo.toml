@@ -23,6 +23,8 @@ std = ["alloc"]
 alloc = []
 allocator = []
 strict_provenance_atomic_ptr = []
+allow_panic = [] # code is allowed to panic.
+
 
 [package.metadata.verus]
 verify = true
