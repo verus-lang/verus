@@ -291,14 +291,14 @@ trait T {
 
 #[verus_spec(ret =>
     with
-        Tracked(y): Tracked<&mut u32>, Ghost(w): Ghost<u32> -> z: Ghost<u32>
+        Tracked(y): Tracked<&mut u32>, Ghost(w): Ghost<u64> -> z: Ghost<u32>
     requires
         x < 100,
         *old(y) < 100,
     ensures
         *y == x,
-        ret.0 == x,
-        ret.1 == x,
+        ret == x,
+        z == x,
 )]
 fn test_mut_tracked(x: u32) -> u32 {
     proof!{

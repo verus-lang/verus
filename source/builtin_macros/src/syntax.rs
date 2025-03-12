@@ -323,6 +323,7 @@ impl Visitor {
         &mut self,
         spec: &mut SignatureSpec,
         ret_pat: Option<(Pat, TType)>,
+        final_ret_pat: Option<Pat>, // Some(pat) if different from ret_pat,
         is_const: bool,
         span: Span,
     ) -> Vec<Stmt> {
@@ -417,6 +418,13 @@ impl Visitor {
                 };
                 if cont {
                     if let Some((p, ty)) = ret_pat {
+                        if let Some(final_ret_pat) = final_ret_pat {
+                            for expr in exprs.exprs.iter_mut() {
+                                *expr = Expr::Verbatim(
+                                    quote_spanned! {token.span => {let #final_ret_pat = #p; #expr}},
+                                )
+                            }
+                        }
                         spec_stmts.push(Stmt::Expr(
                             Expr::Verbatim(
                                 quote_spanned_builtin!(builtin, token.span => #builtin::ensures(|#p: #ty| [#exprs])),
@@ -683,7 +691,7 @@ impl Visitor {
 
         let sig_span = sig.span().clone();
         let spec_stmts =
-            self.take_sig_specs(&mut sig.spec, ret_pat, sig.constness.is_some(), sig_span);
+            self.take_sig_specs(&mut sig.spec, ret_pat, None, sig.constness.is_some(), sig_span);
         if !self.erase_ghost.erase() {
             stmts.extend(spec_stmts);
         }
@@ -4068,31 +4076,50 @@ fn take_sig_with_spec(
     erase_ghost: EraseGhost,
     with: syn_verus::WithSpecOnFn,
     sig: &mut syn::Signature,
+    ret_pat: &mut Option<Pat>,
 ) -> Vec<Stmt> {
     let syn_verus::WithSpecOnFn { mut inputs, outputs, .. } = with;
     let mut spec_stmts = vec![];
-    // ret.0 is executable returns.
-    // ret.1 is the tracked/ghost returns.
     if inputs.len() > 0 {
         for arg in inputs.iter_mut() {
             spec_stmts.extend(take_sig_with_arg(&erase_ghost, arg));
             sig.inputs.push(syn::parse_quote_spanned! { arg.span() => #arg })
         }
     }
+    // ret.0 is executable returns.
+    // ret.1.. is the tracked/ghost returns.
     if let Some((token, extra_ret)) = outputs {
         if extra_ret.len() > 0 {
+            let span = extra_ret.span();
             let extra_ret_typs: Vec<_> = extra_ret.iter().map(|pt| pt.ty.clone()).collect();
+            let mut elems = Punctuated::new();
+            if let Some(pat) = ret_pat {
+                elems.push(pat.clone());
+            } else {
+                elems.push(Pat::Wild(syn_verus::PatWild {
+                    attrs: vec![],
+                    underscore_token: Token![_](span),
+                }));
+            }
+            for pt in extra_ret {
+                elems.push(pt.pat.as_ref().clone());
+            }
+            *ret_pat = Some(Pat::Tuple(syn_verus::PatTuple {
+                attrs: vec![],
+                paren_token: Paren::default(),
+                elems,
+            }));
             match &mut sig.output {
                 syn::ReturnType::Default => {
-                    let ty = syn::parse_quote_spanned!(
+                    let ty = syn::Type::Verbatim(quote_spanned!(
                         sig.output.span() => (() #(,#extra_ret_typs)*)
-                    );
-                    sig.output = syn::ReturnType::Type(syn::Token![->](token.span()), ty);
+                    ));
+                    sig.output = syn::ReturnType::Type(syn::Token![->](token.span()), Box::new(ty));
                 }
                 syn::ReturnType::Type(_, ty) => {
-                    *ty = syn::parse_quote_spanned!(
+                    **ty = syn::Type::Verbatim(quote_spanned!(
                         ty.span() => (#ty #(,#extra_ret_typs)*)
-                    );
+                    ));
                 }
             }
         }
@@ -4106,12 +4133,25 @@ pub(crate) fn sig_specs_attr(
 ) -> Vec<Stmt> {
     let SignatureSpecAttr { ret_pat, mut spec } = spec_attr;
     let mut spec_stmts = vec![];
+    let ret_pat = ret_pat.map(|v| v.0);
+    let mut final_ret_pat = ret_pat.clone();
+    // If the provided ret_pat is not ident (e.g., A { a, b }),
+    // we need to replace it with ident pat.
+    // ensure_expr1 to
+    // {let A{a, b} = _tmp_ret; ensure_expr1}
     if let Some(with) = spec.with {
-        spec_stmts.extend(take_sig_with_spec(erase_ghost, with, sig));
+        spec_stmts.extend(take_sig_with_spec(erase_ghost, with, sig, &mut final_ret_pat));
     }
     spec.with = None;
     let ret_pat = match (ret_pat, &sig.output) {
-        (Some((pat, _)), syn::ReturnType::Type(_, ty)) => Some((pat, ty.clone())),
+        (Some(pat), syn::ReturnType::Type(_, ty)) => {
+            let pat = if !matches!(pat, Pat::Ident(_)) {
+                Pat::Verbatim(quote_spanned! {pat.span() => __verus_tmp_ret})
+            } else {
+                pat
+            };
+            Some((pat, ty.clone()))
+        }
         _ => None,
     };
     let mut visitor = Visitor {
@@ -4129,6 +4169,7 @@ pub(crate) fn sig_specs_attr(
     spec_stmts.extend(visitor.take_sig_specs(
         &mut spec,
         ret_pat,
+        final_ret_pat,
         sig.constness.is_some(),
         sig_span,
     ));

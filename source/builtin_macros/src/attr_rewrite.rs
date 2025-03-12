@@ -373,7 +373,8 @@ fn rewrite_verus_spec_on_expr_local(
     tokens.into()
 }
 
-// Return some pre-statements
+// Expand `with extra_in => extra_out` on a method call expr.
+// Return some pre-statements that needs to be declared before the expr.
 fn rewrite_with_expr(
     erase: EraseGhost,
     expr: &mut Expr,

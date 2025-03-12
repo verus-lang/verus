@@ -291,8 +291,8 @@ test_verify_one_file! {
                 *old(y) < 100,
             ensures
                 *y == x,
-                ret.0 == x,
-                ret.1@ == x,
+                ret == x,
+                z@ == x,
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
@@ -407,8 +407,8 @@ test_verify_one_file! {
                 *old(y) < 100,
             ensures
                 *y == x,
-                ret.0 == x,
-                ret.1@ == x,
+                ret == x,
+                z@ == x,
         )]
         fn test_mut_tracked(x: u32) -> u32 {
             proof!{
