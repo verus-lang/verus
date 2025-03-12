@@ -1366,23 +1366,27 @@ fn lang_item_for_op(
     Ok(ret)
 }
 
-/// Attempts to replace an operator with the corresponding trait method call,
-/// applying a conservative approach.
-///
-/// Returns `None` if operator overloading is not applied.
-/// Operator overloading is skipped in the following cases:
-/// 1. The expression kind is not `Binary`, `Unary`, or a supported operator.
-/// 2. Both the lhs and rhs are primitive types that already have built-in
-///    operator support. This ensures consistent error reporting for integer
-///    overflow/underflow.
-fn try_overload_operator_to_vir<'tcx>(
+/// Return None if we do not want to overload the operator.
+/// We do not replace operators for some primitive types so that we still see
+/// consistent errors for integer overflow/underflow.
+fn operator_overload_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
     current_modifier: ExprModifier,
 ) -> Result<Option<vir::ast::Expr>, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let span = expr.span;
-    let (fun, typ_args, args) = if let ExprKind::Binary(op, lhs, rhs) = expr.kind {
+    let mut is_assign = false;
+    let bexpr = if let ExprKind::Binary(op, lhs, rhs) = expr.kind {
+        Some((op, lhs, rhs))
+    } else if let ExprKind::AssignOp(op, lhs, rhs) = expr.kind {
+        // This should work, except for lacking external specifications
+        is_assign = true;
+        Some((op, lhs, rhs))
+    } else {
+        None
+    };
+    let (fun, typ_args, args) = if let Some((op, lhs, rhs)) = bexpr {
         let do_replace = match op.node {
             BinOpKind::Eq | BinOpKind::Ne => {
                 !is_smt_equality(bctx, expr.span, &lhs.hir_id, &rhs.hir_id)?
@@ -1403,10 +1407,9 @@ fn try_overload_operator_to_vir<'tcx>(
             _ => false,
         };
         if !do_replace {
-            // bop is for primitive types and do not use trait method.
             return Ok(None);
         }
-        let (fun_sym, Some(trait_ref)) = lang_item_for_op(tcx, Some((op, false)), None, span)?
+        let (fun_sym, Some(trait_ref)) = lang_item_for_op(tcx, Some((op, is_assign)), None, span)?
         else {
             crate::internal_err!(span, "operator needs an accessible trait");
         };
@@ -1425,7 +1428,6 @@ fn try_overload_operator_to_vir<'tcx>(
         let ty = bctx.types.expr_ty_adjusted(arg);
         match ty.kind() {
             TyKind::Adt(_, _) | TyKind::Uint(_) | TyKind::Int(_) | TyKind::Bool => {
-                // uop does not need to be transformed to trait method.
                 return Ok(None);
             }
             _ => {}
@@ -1906,10 +1908,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     }
                     TyKind::Bool => UnaryOp::Not,
                     _ => {
-                        if let Some(overloaded) =
-                            try_overload_operator_to_vir(bctx, expr, modifier)?
-                        {
-                            return Ok(overloaded);
+                        let ret = operator_overload_to_vir(bctx, expr, modifier)?;
+                        if ret.is_some() {
+                            return Ok(ret.unwrap());
                         }
                         panic!("Internal error on UnOp::Not translation");
                     }
@@ -1979,13 +1980,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
         },
         ExprKind::Binary(op, lhs, rhs) => {
-            // If !is_smt_arith.
-            if let Some(overloaded) = try_overload_operator_to_vir(bctx, expr, modifier)? {
-                return Ok(overloaded);
-            }
-            // If lhs and rhs is_smt_arith.
             let vlhs = expr_to_vir(bctx, lhs, modifier)?;
             let vrhs = expr_to_vir(bctx, rhs, modifier)?;
+            let ret = operator_overload_to_vir(bctx, expr, modifier)?;
+            if ret.is_some() {
+                return Ok(ret.unwrap());
+            }
             let mode_for_ghostness = if bctx.in_ghost { Mode::Spec } else { Mode::Exec };
             let vop = binopkind_to_binaryop(bctx, op, tc, lhs, rhs, mode_for_ghostness)?;
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs))?;
@@ -2693,17 +2693,6 @@ fn expr_assign_to_vir_innermost<'tcx>(
         erasure_info.direct_var_modes.push((lhs.hir_id, Mode::Exec));
         return Ok(index_set);
     }
-
-    // TODO: Custom `AssignOp` with op (e.g., `AddAssign`, `SubAssign`, etc.)
-    // may exhibit different behaviors.
-    // A correct approach for handling custom `AssignOp` is to translate it
-    // into the corresponding trait method using `try_overload_operator_to_vir
-    unsupported_err_unless!(
-        op.is_none() || is_smt_arith(bctx, lhs.span, rhs.span, &lhs.hir_id, &rhs.hir_id)?,
-        lhs.span,
-        "assign op for non smt arithmetic types",
-        lhs
-    );
     let init_not_mut = init_not_mut(bctx, lhs)?;
     mk_expr(ExprX::Assign {
         init_not_mut,

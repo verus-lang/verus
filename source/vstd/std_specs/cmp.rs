@@ -14,18 +14,14 @@ pub broadcast group group_cmp_axioms {
     axiom_obey_cmp_model,
 }
 
-//
-// https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html
-// The methods of this trait must be consistent with each other and with those of PartialEq.
-// The following conditions must hold:
-// a == b if and only if partial_cmp(a, b) == Some(Equal).
-// a < b if and only if partial_cmp(a, b) == Some(Less)
-// a > b if and only if partial_cmp(a, b) == Some(Greater)
-// a <= b if and only if a < b || a == b
-// a >= b if and only if a > b || a == b
-// a != b if and only if !(a == b).
-//
-// By implementing SpecPartialOrdOp + SpecPartialEq, it assumes that the type follow the above cmp model.
+/// https://doc.rust-lang.org/std/cmp/trait.PartialOrd.html
+/// https://doc.rust-lang.org/std/cmp/trait.Ord.html
+/// https://doc.rust-lang.org/std/cmp/trait.PartialEq.html
+///
+/// By implementing SpecPartialOrdOp + SpecPartialEq, it requires that the type
+/// must have consistent PartialEq, PartialOrd, and Ord.
+///
+/// Rust safe implementation should obeys_comparison_model to avoid undefined behaviors.
 pub open spec fn obeys_comparison_model<Lhs: ?Sized, Rhs: ?Sized>() -> bool;
 
 pub open spec fn spec_partial_cmp<Lhs: ?Sized, Rhs: ?Sized>(lhs: &Lhs, rhs: &Rhs) -> Option<
@@ -46,12 +42,12 @@ pub open spec fn spec_gt<Lhs: ?Sized, Rhs: ?Sized>(lhs: &Lhs, rhs: &Rhs) -> bool
 
 #[verifier(inline)]
 pub open spec fn spec_le<Lhs: ?Sized, Rhs: ?Sized>(lhs: &Lhs, rhs: &Rhs) -> bool {
-    spec_lt(lhs, rhs) || spec_partial_eq(lhs, rhs)
+    matches!(spec_partial_cmp(lhs, rhs), Some(Ordering::Less) | Some(Ordering::Equal))
 }
 
 #[verifier(inline)]
 pub open spec fn spec_ge<Lhs: ?Sized, Rhs: ?Sized>(lhs: &Lhs, rhs: &Rhs) -> bool {
-    spec_gt(lhs, rhs) || spec_partial_eq(lhs, rhs)
+    matches!(spec_partial_cmp(lhs, rhs), Some(Ordering::Greater) | Some(Ordering::Equal))
 }
 
 // Implement SpecObeyCmpModel for unverified code that obeys the comparison model.
@@ -65,8 +61,13 @@ pub broadcast proof fn axiom_obey_cmp_model<
     admit()
 }
 
-pub trait SpecPartialOrdOp<Rhs> {
+pub trait SpecPartialOrdOp<Rhs>: SpecPartialEqOp<Rhs> {
     spec fn spec_partial_cmp(&self, rhs: &Rhs) -> Option<Ordering>;
+
+    proof fn lemma_cmp_eq_no_logic_err(&self, rhs: &Rhs)
+        ensures
+            self.spec_partial_eq(rhs) <==> (self.spec_partial_cmp(rhs) == Some(Ordering::Equal)),
+    ;
 }
 
 pub broadcast proof fn axiom_partial_cmp<Lhs: SpecPartialOrdOp<Rhs>, Rhs>(lhs: &Lhs, rhs: &Rhs)
@@ -131,6 +132,30 @@ pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
     ;
 }
 
+#[verifier::external_trait_specification]
+pub trait ExOrd: Eq + PartialOrd {
+    type ExternalTraitSpecificationFor: Ord;
+
+    fn cmp(&self, other: &Self) -> (ret: Ordering)
+        requires
+            obeys_comparison_model::<Self, Self>() ==> spec_partial_cmp(self, other).is_some(),
+        ensures
+            obeys_comparison_model::<Self, Self>() ==> spec_partial_cmp(self, other) == Some(ret),
+    ;
+
+    fn min(self, other: Self) -> (ret: Self) where Self: Sized
+        ensures
+            obeys_comparison_model::<Self, Self>() ==> (spec_lt(&self, &other) ==> ret == self),
+            obeys_comparison_model::<Self, Self>() ==> (!spec_lt(&self, &other) ==> ret == other),
+    ;
+
+    fn max(self, other: Self) -> (ret: Self) where Self: Sized
+        ensures
+            obeys_comparison_model::<Self, Self>() ==> (!spec_lt(&self, &other) ==> ret == self),
+            obeys_comparison_model::<Self, Self>() ==> (spec_lt(&self, &other) ==> ret == other),
+    ;
+}
+
 } // verus!
 macro_rules! spec_cmp {
     ($($ty: ty)*) => {
@@ -146,7 +171,13 @@ macro_rules! spec_cmp {
                         Some(Ordering::Equal)
                     }
                 }
+                proof fn lemma_cmp_eq_no_logic_err(&self, rhs: &$ty) {}
             }
+
+            pub assume_specification[ $ty::partial_cmp ](a: &$ty, b: &$ty) -> (ret: Option<Ordering>)
+            ensures
+                ret == spec_partial_cmp(a, b),
+            ;
         )*
     }
     };
@@ -163,6 +194,11 @@ macro_rules! def_partial_eq_for {
                         *self == *rhs
                     }
                 }
+
+                pub assume_specification[ <$ty as PartialEq>::eq ](a: &$ty, b: &$ty) -> (ret: bool)
+                ensures
+                    ret == spec_partial_eq(a, b),
+                ;
             )*
         }
     };

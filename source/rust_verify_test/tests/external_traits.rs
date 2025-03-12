@@ -548,18 +548,21 @@ test_verify_one_file! {
             open spec fn spec_partial_cmp(&self, rhs: &A) -> Option<core::cmp::Ordering> {
                 if self.0 > 30 && rhs.0 < 9 {
                     Some(core::cmp::Ordering::Greater)
+                } else if self.0 == rhs.0 {
+                    Some(core::cmp::Ordering::Equal)
                 } else {
                     None
                 }
             }
+            proof fn lemma_cmp_eq_no_logic_err(&self, rhs: &A) {}
         }
 
         impl core::cmp::PartialOrd<A> for A {
             fn partial_cmp(&self, rhs: &A) -> Option<core::cmp::Ordering>{
-                // Why we need this? It is not triggered automatically?
-                proof!{vstd::std_specs::cmp::axiom_partial_cmp(self, rhs);}
                 if self.0 > 30 && rhs.0 < 9 {
                     Some(core::cmp::Ordering::Greater)
+                } else if self.0 == rhs.0  {
+                    Some(core::cmp::Ordering::Equal)
                 } else {
                     None
                 }
