@@ -47,6 +47,84 @@ pub fn main() -> Result<ExitCode> {
     process(&args)
 }
 
+fn new_project(args: &[String]) -> Result<()> {
+    let mut args_iter = args.iter();
+    assert_eq!(args_iter.next(), Some(&"new".into()));
+    let template_type =
+        args_iter.next().ok_or_else(|| anyhow!("Expected `--bin NAME` or `--lib NAME`"))?;
+    let name = args_iter.next().ok_or_else(|| anyhow!("Expected `--bin NAME` or `--lib NAME`"))?;
+
+    let (src_rs, src_rs_data) = match template_type.as_str() {
+        "--bin" => (
+            "main.rs",
+            r#"
+use vstd::prelude::*;
+
+verus! {
+
+fn main() {
+    assert(1 == 0 + 1);
+}
+
+} // verus!
+"#,
+        ),
+        "--lib" => (
+            "lib.rs",
+            r#"
+use vstd::prelude::*;
+
+verus! {
+
+fn foo() {
+    assert(1 == 0 + 1);
+}
+
+} // verus!
+"#,
+        ),
+        _ => bail!("Expected `--bin` or `--lib`, found `{}`", template_type),
+    };
+
+    let gitignore_data = "/target";
+    let cargo_toml_data = r#"
+[package]
+name = "NAME"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { git = "https://github.com/verus-lang/verus" }
+builtin = { git = "https://github.com/verus-lang/verus" }
+builtin_macros = { git = "https://github.com/verus-lang/verus" }
+
+[package.metadata.verus]
+verify = true
+"#
+    .replace("NAME", name);
+
+    let project_dir = PathBuf::from(name);
+    if project_dir.exists() {
+        bail!("Directory `{}` already exists", name);
+    }
+
+    std::fs::create_dir(&project_dir)?;
+    std::fs::create_dir(project_dir.join("src"))?;
+    std::fs::write(project_dir.join(".gitignore"), gitignore_data.trim_start())?;
+    std::fs::write(project_dir.join("Cargo.toml"), cargo_toml_data.trim_start())?;
+    std::fs::write(project_dir.join("src").join(src_rs), src_rs_data.trim_start())?;
+    let git_init = Command::new("git")
+        .current_dir(project_dir)
+        .arg("init")
+        .stdout(std::process::Stdio::null())
+        .status()?;
+    assert!(git_init.success());
+
+    println!("Created new Verus project at {name}");
+
+    Ok(())
+}
+
 fn show_help() {
     println!("{}", help_message());
 }
@@ -58,6 +136,10 @@ fn show_version() {
 
 fn process(args: &[String]) -> Result<ExitCode> {
     let cmd = VerusCmd::new(args)?;
+
+    if let CargoSubcommand::Nop = cmd.cargo_subcommand {
+        return Ok(ExitCode::SUCCESS);
+    }
 
     let mut cmd = cmd.into_std_cmd()?;
 
@@ -81,6 +163,8 @@ struct VerusCmd {
 enum CargoSubcommand {
     Build,
     Check,
+    /// Handled separately, no specific cargo subcommand needed
+    Nop,
 }
 
 impl CargoSubcommand {
@@ -88,11 +172,18 @@ impl CargoSubcommand {
         match self {
             Self::Build => "build",
             Self::Check => "check",
+            Self::Nop => unreachable!(),
         }
     }
 }
 
 impl VerusCmd {
+    const NOP: Self = Self {
+        cargo_subcommand: CargoSubcommand::Nop,
+        cargo_args: vec![],
+        common_verus_driver_args: vec![],
+    };
+
     fn new(args: &[String]) -> Result<Self> {
         let mut cargo_args = vec![];
         let mut common_verus_driver_args: Vec<String> = vec![];
@@ -104,7 +195,11 @@ impl VerusCmd {
             "check" => (CargoSubcommand::Check, true),
             "verify" => (CargoSubcommand::Build, true),
             "build" => (CargoSubcommand::Build, false),
-            cmd => bail!("Expected command `check`, `verify`, or `build`, found `{cmd}`"),
+            "new" => {
+                new_project(args)?;
+                return Ok(Self::NOP);
+            }
+            cmd => bail!("Expected command `new`, `check`, `verify`, or `build`, found `{cmd}`"),
         };
 
         while let Some(arg) = args_iter.next() {
@@ -395,6 +490,7 @@ OPTIONS are passed to 'cargo build' or 'cargo check', except the following, whic
     -V, --version            Print version info and exit
 
 Commands:
+    new       Create a new Verus project
     verify    Verify the current crate with 'cargo build'
     build     Verify and build the current crate with 'cargo build'
     check     Runs the 'cargo check' subcommand
