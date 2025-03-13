@@ -1349,8 +1349,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file_with_options! {
-    #[test] verus_macro_in_impl_block_issue1461 ["--external-by-default"] => code! {
+test_verify_one_file! {
+    #[test] verus_macro_in_impl_block_issue1461 code! {
         use vstd::prelude::*;
 
         verus! {
@@ -1368,8 +1368,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file_with_options! {
-    #[test] verus_macro_in_impl_block_issue1461_traits ["--external-by-default"] => code! {
+test_verify_one_file! {
+    #[test] verus_macro_in_impl_block_issue1461_traits code! {
         use vstd::prelude::*;
 
         verus! {
@@ -1389,4 +1389,23 @@ test_verify_one_file_with_options! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.")
+}
+
+test_verify_one_file! {
+    #[test] impl_of_partialeq_ignored_regression_1466 verus_code!(
+        use vstd::prelude::*;
+        use core::cmp::PartialEq;
+        struct A(pub u8);
+        impl core::cmp::PartialEq<A> for A {
+            fn eq(&self, other: &A) -> (r: bool)
+            ensures
+                self.0 != other.0
+            {
+                proof{
+                    assert(false); // FAILS
+                }
+                self.0 == other.0
+            }
+        }
+    ) => Err(err) => assert_one_fails(err)
 }

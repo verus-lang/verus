@@ -501,10 +501,9 @@ fn run() -> Result<(), String> {
         if !output.status.success() {
             return Err(format!("rustup failed"));
         }
-        let active_toolchain_re = Regex::new(
-            r"^(([A-Za-z0-9.-]+)-(?:aarch64|x86_64)-[A-Za-z0-9]+-[A-Za-z0-9-]+) \(overridden by '(.*)'\)"
-        )
-        .unwrap();
+        let active_toolchain_re =
+            Regex::new(r"^(([A-Za-z0-9.-]+)-(?:aarch64|x86_64)-[A-Za-z0-9]+-[A-Za-z0-9-]+)")
+                .unwrap();
         let stdout = std::str::from_utf8(&output.stdout)
             .map_err(|_| format!("rustup output is invalid utf8"))?;
         let mut captures = active_toolchain_re.captures_iter(&stdout);
@@ -516,7 +515,7 @@ fn run() -> Result<(), String> {
             }
             Some(toolchain)
         } else {
-            return Err(format!("unexpected output from `rustup show active-toolchain`\nexpected a toolchain override\ngot: {stdout}"));
+            return Err(format!("unexpected output from `rustup show active-toolchain`\nexpected a valid toolchain\ngot: {stdout}"));
         }
     } else {
         None
@@ -1140,6 +1139,7 @@ fn run() -> Result<(), String> {
                 "state_machines_macros",
                 "vstd_build",
                 "verus",
+                "cargo-verus",
             ];
 
             let build_vstd = {
@@ -1204,6 +1204,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                 format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
                 format!("rust_verify{}", EXE),
                 format!("verus{}", EXE),
+                format!("cargo-verus{}", EXE),
             ]
             .into_iter()
             {

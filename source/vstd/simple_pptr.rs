@@ -227,7 +227,6 @@ impl<V> PointsTo<V> {
         self.points_to.ptr().addr()
     }
 
-    // TODO make this a user-defined type invariant
     #[verifier::type_invariant]
     closed spec fn wf(self) -> bool {
         &&& self.points_to.ptr()@.metadata == Metadata::Thin

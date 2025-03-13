@@ -564,7 +564,7 @@ test_verify_one_file! {
             let b = m.contains(&s2);
             assert(!b);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* Clone warnings */ }
 }
 
 test_verify_one_file! {

@@ -159,6 +159,24 @@ impl ArgsX {
 
 pub type Args = Arc<ArgsX>;
 
+pub struct CargoVerusArgsX {
+    pub compile_when_primary_package: bool,
+    pub compile_when_not_primary_package: bool,
+    pub import_dep_if_present: Vec<String>,
+}
+
+impl CargoVerusArgsX {
+    pub fn new() -> Self {
+        Self {
+            compile_when_primary_package: false,
+            compile_when_not_primary_package: false,
+            import_dep_if_present: Default::default(),
+        }
+    }
+}
+
+pub type CargoVerusArgs = Arc<CargoVerusArgsX>;
+
 pub fn enable_default_features_and_verus_attr(
     rustc_args: &mut Vec<String>,
     syntax_macro: bool,
@@ -196,6 +214,67 @@ pub fn enable_default_features_and_verus_attr(
     rustc_args.push("-Zcrate-attr=register_tool(verus)".to_string());
     rustc_args.push("-Zcrate-attr=register_tool(verifier)".to_string());
     rustc_args.push("-Zcrate-attr=register_tool(verusfmt)".to_string());
+}
+
+fn error(msg: String) -> ! {
+    eprintln!("Error: {}", msg);
+    std::process::exit(-1)
+}
+
+fn parse_opts_or_pairs(strs: Vec<String>) -> std::collections::HashMap<String, Option<String>> {
+    let mut parsed: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
+    for o in strs {
+        let oo: Vec<_> = o.split("=").collect();
+        match &oo[..] {
+            [opt] => parsed.insert((*opt).to_owned(), None),
+            [key, val] => parsed.insert((*key).to_owned(), Some((*val).to_owned())),
+            _ => {
+                error(format!("invalid parsed option -V {}", o));
+            }
+        };
+    }
+    parsed
+}
+
+pub fn parse_cargo_args(_program: &String, args: &mut Vec<String>) -> CargoVerusArgs {
+    let mut cargo_verus_args = CargoVerusArgsX::new();
+
+    const CARGO_OPT_COMPILE_WHEN_PRIMARY: &str = "compile-when-primary-package";
+    const CARGO_OPT_COMPILE_WHEN_NOT_PRIMARY: &str = "compile-when-not-primary-package";
+    const CARGO_OPT_IMPORT_DEP_IF_PRESENT: &str = "import-dep-if-present";
+
+    let mut next_is_via_cargo = false;
+    args.retain(|arg| {
+        if arg == "--VIA-CARGO" {
+            next_is_via_cargo = true;
+            false
+        } else if next_is_via_cargo {
+            if arg == CARGO_OPT_COMPILE_WHEN_PRIMARY {
+                cargo_verus_args.compile_when_primary_package = true;
+            } else if arg == CARGO_OPT_COMPILE_WHEN_NOT_PRIMARY {
+                cargo_verus_args.compile_when_not_primary_package = true;
+            } else if arg.starts_with(CARGO_OPT_IMPORT_DEP_IF_PRESENT) {
+                let oo: Vec<_> = arg.split("=").collect();
+                if let [_, val] = &oo[..] {
+                    cargo_verus_args.import_dep_if_present.push(val.to_string());
+                } else {
+                    error(format!(
+                        "expected --VIA-CARGO {}=DEP_NAME",
+                        CARGO_OPT_IMPORT_DEP_IF_PRESENT
+                    ));
+                }
+            } else {
+                error(format!("unexpected --VIA-CARGO {}", arg));
+            }
+            next_is_via_cargo = false;
+            false
+        } else {
+            true
+        }
+    });
+
+    Arc::new(cargo_verus_args)
 }
 
 pub fn parse_args_with_imports(
@@ -470,20 +549,11 @@ pub fn parse_args_with_imports(
         eprint!("{}", opts.usage(&brief));
     };
 
-    let error = |msg: String| -> ! {
-        eprintln!("Error: {}", msg);
-        std::process::exit(-1)
-    };
-
     let (matches, unmatched) = match opts.parse_partial(args) {
         Ok((m, mut unmatched)) => {
             if m.opt_present("h") {
                 print_usage();
                 std::process::exit(0);
-            }
-            if m.free.len() == 0 && !m.opt_present("version") {
-                print_usage();
-                std::process::exit(-1);
             }
             unmatched.insert(0, program.clone());
             (m, unmatched)
@@ -523,22 +593,6 @@ pub fn parse_args_with_imports(
             import.push(vstd_import);
         }
     }
-
-    let parse_opts_or_pairs = |strs: Vec<String>| {
-        let mut parsed: std::collections::HashMap<String, Option<String>> =
-            std::collections::HashMap::new();
-        for o in strs {
-            let oo: Vec<_> = o.split("=").collect();
-            match &oo[..] {
-                [opt] => parsed.insert((*opt).to_owned(), None),
-                [key, val] => parsed.insert((*key).to_owned(), Some((*val).to_owned())),
-                _ => {
-                    error(format!("invalid parsed option -V {}", o));
-                }
-            };
-        }
-        parsed
-    };
 
     let log = parse_opts_or_pairs(matches.opt_strs(OPT_LOG_MULTI));
 
@@ -657,8 +711,9 @@ pub fn parse_args_with_imports(
         },
         profile_all: {
             if matches.opt_present(OPT_PROFILE_ALL) {
-                if !matches.opt_present(OPT_VERIFY_MODULE) {
-                    error("Must pass --verify-module when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
+                if !(matches.opt_present(OPT_VERIFY_MODULE) || matches.opt_present(OPT_VERIFY_ROOT))
+                {
+                    error("Must pass --verify-module or --verify-root when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
                 }
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --profile-all are mutually exclusive".to_string())

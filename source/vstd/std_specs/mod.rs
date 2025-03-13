@@ -1,3 +1,6 @@
+#[cfg(feature = "alloc")]
+pub mod alloc;
+
 pub mod atomic;
 pub mod bits;
 pub mod clone;
@@ -14,6 +17,9 @@ pub mod result;
 
 #[cfg(feature = "alloc")]
 pub mod vec;
+
+#[cfg(feature = "alloc")]
+pub mod vecdeque;
 
 #[cfg(feature = "alloc")]
 pub mod smart_ptrs;

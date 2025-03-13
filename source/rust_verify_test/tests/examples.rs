@@ -42,7 +42,7 @@ fn run_example_for_file(file_path: &str) {
 
     let mut mode = Mode::ExpectSuccess;
 
-    let mut options = vec!["--external-by-default"];
+    let mut options = vec![];
 
     if let ["//", "rust_verify/tests/example.rs", command, ..] = &first_line_elements[..] {
         match *command {

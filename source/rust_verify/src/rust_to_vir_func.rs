@@ -1,4 +1,5 @@
 use crate::attributes::{get_mode, get_ret_mode, get_var_mode, VerifierAttrs};
+use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
@@ -156,10 +157,10 @@ fn compare_external_sig<'tcx>(
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
 ) -> Result<bool, VirErr> {
     use rustc_middle::ty::FnSig;
-    // Ignore abi for the sake of comparison
+    // Ignore abi and safety for the sake of comparison
     // Useful for rust-intrinsics
-    let FnSig { inputs_and_output: io1, c_variadic: c1, safety: s1, abi: _ } = sig1;
-    let FnSig { inputs_and_output: io2, c_variadic: c2, safety: s2, abi: _ } = sig2;
+    let FnSig { inputs_and_output: io1, c_variadic: c1, safety: _, abi: _ } = sig1;
+    let FnSig { inputs_and_output: io2, c_variadic: c2, safety: _, abi: _ } = sig2;
     if io1.len() != io2.len() {
         return Ok(false);
     }
@@ -176,7 +177,7 @@ fn compare_external_sig<'tcx>(
             return Ok(false);
         }
     }
-    Ok(c1 == c2 && s1 == s2)
+    Ok(c1 == c2)
 }
 
 pub(crate) fn handle_external_fn<'tcx>(
@@ -308,7 +309,7 @@ pub(crate) fn handle_external_fn<'tcx>(
         return err_span(
             sig.span,
             format!(
-                "assume_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
+                "assume_specification requires function type signature to match exactly (got `{poly_sig1:#?}` and `{poly_sig2:#?}`)"
             ),
         );
     }
@@ -578,6 +579,7 @@ pub(crate) fn check_item_fn<'tcx>(
     external_trait: Option<DefId>,
     external_fn_specification_via_external_trait: Option<DefId>,
     external_info: &mut ExternalInfo,
+    autoderive_action: Option<&AutomaticDeriveAction>,
 ) -> Result<Option<Fun>, VirErr> {
     let this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
 
@@ -782,17 +784,17 @@ pub(crate) fn check_item_fn<'tcx>(
 
     let n_params = vir_params.len();
 
-    let (vir_body, header) = match body_id {
+    let (vir_body, header, body_hir_id) = match body_id {
         CheckItemFnEither::BodyId(body_id) => {
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
             let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
             let header = vir::headers::read_header(&mut vir_body)?;
-            (Some(vir_body), header)
+            (Some(vir_body), header, Some(body.value.hir_id))
         }
         CheckItemFnEither::ParamNames(_params) => {
             let header = vir::headers::read_header_block(&mut vec![])?;
-            (None, header)
+            (None, header, None)
         }
     };
 
@@ -1097,6 +1099,17 @@ pub(crate) fn check_item_fn<'tcx>(
 
     if vattrs.external_fn_specification {
         func = fix_external_fn_specification_trait_method_decl_typs(sig.span, func)?;
+    }
+    if let Some(action) = autoderive_action {
+        if let Some(body_hir_id) = body_hir_id {
+            crate::automatic_derive::modify_derived_item(
+                ctxt,
+                sig.span,
+                body_hir_id,
+                action,
+                &mut func,
+            )?;
+        }
     }
     let function = ctxt.spanned_new(sig.span, func);
     let function = if let Some((from_path, to_path)) = &external_trait_from_to {
@@ -1526,7 +1539,7 @@ pub(crate) fn get_external_def_id<'tcx>(
         )
     };
 
-    // Get the 'body' of this function (skipping over header if necessary)
+    // Get the 'body' of this function (skipping over header and unsafe-block if necessary)
     let expr = match &body.value.kind {
         ExprKind::Block(block_body, _) => match &block_body.expr {
             Some(body_value) => body_value,
@@ -1535,6 +1548,15 @@ pub(crate) fn get_external_def_id<'tcx>(
             }
         },
         _ => &body.value,
+    };
+    let expr = match &expr.kind {
+        ExprKind::Block(block_body, _) => match &block_body.expr {
+            Some(body_value) => body_value,
+            None => {
+                return err();
+            }
+        },
+        _ => &expr,
     };
 
     let types = body_id_to_types(tcx, body_id);

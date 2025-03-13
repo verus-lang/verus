@@ -1359,7 +1359,7 @@ impl Visitor {
             publish: Publish::Default,
             constness: None,
             asyncness: None,
-            unsafety: None,
+            unsafety: Some(token::Unsafe { span }),
             abi: None,
             broadcast: None,
             mode: FnMode::Default,
@@ -1456,8 +1456,10 @@ impl Visitor {
 
         let callee =
             syn_verus::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
+        // We wrap the function call in an 'unsafe' block, since the user might be applying
+        // a specification to an unsafe function.
         let e = Expr::Verbatim(quote! {
-            #callee(#(#args),*)
+            unsafe { #callee(#(#args),*) }
         });
         stmts.push(Stmt::Expr(e, None));
 
@@ -3182,10 +3184,47 @@ impl VisitMut for Visitor {
     }
 
     fn visit_attribute_mut(&mut self, attr: &mut Attribute) {
+        fn path_verifier(
+            span: Span,
+        ) -> Punctuated<syn_verus::PathSegment, syn_verus::token::PathSep> {
+            let mut path_segments = Punctuated::new();
+            path_segments.push(syn_verus::PathSegment {
+                ident: Ident::new("verifier", span),
+                arguments: syn_verus::PathArguments::None,
+            });
+            path_segments
+        }
+        fn invalid_attribute(span: Span, trigger: bool) -> Attribute {
+            let mut path_segments = path_verifier(span);
+            path_segments.push(syn_verus::PathSegment {
+                ident: if trigger {
+                    Ident::new("invalid_trigger_attribute", span)
+                } else {
+                    Ident::new("invalid_attribute", span)
+                },
+                arguments: syn_verus::PathArguments::None,
+            });
+            let path = Path { leading_colon: None, segments: path_segments };
+            Attribute {
+                pound_token: token::Pound { spans: [span] },
+                style: syn_verus::AttrStyle::Outer,
+                bracket_token: token::Bracket { span: into_spans(span) },
+                meta: syn_verus::Meta::Path(path),
+            }
+        }
         if let syn_verus::AttrStyle::Outer = attr.style {
             match &attr.path().segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
                 [attr_name] if attr_name.to_string() == "trigger" => {
-                    *attr = mk_verus_attr(attr.span(), quote! { trigger });
+                    let mut valid = true;
+                    if let syn_verus::Meta::List(list) = &attr.meta {
+                        if !list.tokens.is_empty() {
+                            *attr = invalid_attribute(attr.span(), true);
+                            valid = false;
+                        }
+                    }
+                    if valid {
+                        *attr = mk_verus_attr(attr.span(), quote! { trigger });
+                    }
                 }
                 [attr_name] if attr_name.to_string() == "via_fn" => {
                     *attr = mk_verus_attr(attr.span(), quote! { via });
@@ -3195,34 +3234,9 @@ impl VisitMut for Visitor {
                     let Ok(parsed) = attr.parse_args_with(
                         Punctuated::<syn_verus::Meta, Token![,]>::parse_terminated,
                     ) else {
-                        *attr = invalid_attribute(span);
+                        *attr = invalid_attribute(span, false);
                         return;
                     };
-                    fn path_verifier(
-                        span: Span,
-                    ) -> Punctuated<syn_verus::PathSegment, syn_verus::token::PathSep>
-                    {
-                        let mut path_segments = Punctuated::new();
-                        path_segments.push(syn_verus::PathSegment {
-                            ident: Ident::new("verifier", span),
-                            arguments: syn_verus::PathArguments::None,
-                        });
-                        path_segments
-                    }
-                    fn invalid_attribute(span: Span) -> Attribute {
-                        let mut path_segments = path_verifier(span);
-                        path_segments.push(syn_verus::PathSegment {
-                            ident: Ident::new("invalid_attribute", span),
-                            arguments: syn_verus::PathArguments::None,
-                        });
-                        let path = Path { leading_colon: None, segments: path_segments };
-                        Attribute {
-                            pound_token: token::Pound { spans: [span] },
-                            style: syn_verus::AttrStyle::Outer,
-                            bracket_token: token::Bracket { span: into_spans(span) },
-                            meta: syn_verus::Meta::Path(path),
-                        }
-                    }
                     match parsed {
                         meta_list if meta_list.len() == 1 => {
                             let (second_segment, nested) = match &meta_list[0] {
@@ -3232,7 +3246,7 @@ impl VisitMut for Visitor {
                                 }
                                 syn_verus::Meta::Path(meta_path) => (&meta_path.segments[0], None),
                                 _ => {
-                                    *attr = invalid_attribute(span);
+                                    *attr = invalid_attribute(span, false);
                                     return;
                                 }
                             };
@@ -3258,7 +3272,7 @@ impl VisitMut for Visitor {
                             };
                         }
                         _ => {
-                            *attr = invalid_attribute(span);
+                            *attr = invalid_attribute(span, false);
                             return;
                         }
                     }
