@@ -823,11 +823,9 @@ pub mod parsing {
             } else if input.peek(token::Bracket) {
                 let list = input.parse()?;
                 InvariantNameSet::List(list)
-            } else if input.peek(token::Brace) {
+            } else {
                 let set = input.parse()?;
                 InvariantNameSet::Set(set)
-            } else {
-                return Err(input.error("invariant clause expected `any` or `none` or list or set"));
             };
             Ok(set)
         }
