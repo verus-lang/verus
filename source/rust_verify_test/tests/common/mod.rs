@@ -287,6 +287,8 @@ pub fn run_verus(
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
+        } else if *option == "--no-cheating" {
+            verus_args.push("--no-cheating".to_string());
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {

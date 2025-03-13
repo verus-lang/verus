@@ -558,6 +558,7 @@ fn make_attributes<'tcx>(
         prophecy_dependent: vattrs.prophecy_dependent,
         size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
         is_type_invariant_fn: vattrs.type_invariant_fn,
+        is_external_body: vattrs.external_body,
     };
     Ok(Arc::new(fattrs))
 }
