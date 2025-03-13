@@ -75,15 +75,13 @@ impl<A> Set<A> {
         recommends
             total_ordering(r),
             self.len() > 0,
-            self.finite(),
         decreases self.len(),
         when self.finite()
-        via Self::prove_decrease_min_unique
     {
         if self.len() <= 1 {
             self.choose()
         } else {
-            let x = choose|x: A| self.contains(x);
+            let x = self.choose();
             let min = self.remove(x).find_unique_minimal(r);
             if r(min, x) {
                 min
@@ -93,14 +91,36 @@ impl<A> Set<A> {
         }
     }
 
-    #[via_fn]
-    proof fn prove_decrease_min_unique(self, r: spec_fn(A, A) -> bool) {
-        broadcast use group_set_properties;
+    /// Proof function equivalent to `find_unique_minimal`.
+    proof fn find_unique_minimal_proof(self, r: spec_fn(A, A) -> bool) -> (unique_min: A)
+        requires
+            total_ordering(r),
+            self.finite(),
+            self.len() > 0,
+        ensures
+            unique_min == self.find_unique_minimal(r),
+            self.contains(self.find_unique_minimal(r)),
+            forall|x: A| #[trigger] self.contains(x) ==> r(unique_min, x),
+        decreases self.len(),
+    {
+        if self.len() <= 1 {
+            let unique_min = self.choose();
+            assert(self =~= set![unique_min]) by {
+                assert(self.remove(unique_min) =~= Set::empty());
+            };
 
-        if self.len() > 0 {
+            unique_min
+        } else {
             let x = self.choose();
             assert(self.contains(x));
-            assert(self.remove(x).len() < self.len());
+
+            let min = self.remove(x).find_unique_minimal_proof(r);
+
+            if r(min, x) {
+                min
+            } else {
+                x
+            }
         }
     }
 
@@ -111,52 +131,11 @@ impl<A> Set<A> {
             self.len() > 0,
             total_ordering(r),
         ensures
-            is_minimal(r, self.find_unique_minimal(r), self) && (forall|min: A|
-                is_minimal(r, min, self) ==> self.find_unique_minimal(r) == min),
+            self.contains(self.find_unique_minimal(r)),
+            forall|x: A| #[trigger] self.contains(x) ==> r(self.find_unique_minimal(r), x),
         decreases self.len(),
     {
-        broadcast use group_set_properties;
-
-        if self.len() == 1 {
-            let x = choose|x: A| self.contains(x);
-            assert(self.remove(x).insert(x) =~= self);
-            assert(is_minimal(r, self.find_unique_minimal(r), self));
-        } else {
-            let x = choose|x: A| self.contains(x);
-            self.remove(x).find_unique_minimal_ensures(r);
-            assert(is_minimal(r, self.remove(x).find_unique_minimal(r), self.remove(x)));
-            let y = self.remove(x).find_unique_minimal(r);
-            let min_updated = self.find_unique_minimal(r);
-            assert(!r(y, x) ==> min_updated == x);
-            assert(forall|elt: A|
-                self.remove(x).contains(elt) && #[trigger] r(elt, y) ==> #[trigger] r(y, elt));
-            assert forall|elt: A|
-                self.contains(elt) && #[trigger] r(elt, min_updated) implies #[trigger] r(
-                min_updated,
-                elt,
-            ) by {
-                assert(r(min_updated, x) || r(min_updated, y));
-                if min_updated == y {  // Case where the new min is the old min
-                    assert(is_minimal(r, self.find_unique_minimal(r), self));
-                } else {  //Case where the new min is the newest element
-                    assert(self.remove(x).contains(elt) || elt == x);
-                    assert(min_updated == x);
-                    assert(r(x, y) || r(y, x));
-                    assert(!r(x, y) || !r(y, x));
-                    assert(!(min_updated == y) ==> !r(y, x));
-                    assert(r(x, y));
-                    if (self.remove(x).contains(elt)) {
-                        assert(r(elt, y) && r(y, elt) ==> elt == y);
-                    } else {
-                    }
-                }
-            }
-            assert forall|min_poss: A|
-                is_minimal(r, min_poss, self) implies self.find_unique_minimal(r) == min_poss by {
-                assert(is_minimal(r, min_poss, self.remove(x)) || x == min_poss);
-                assert(r(min_poss, self.find_unique_minimal(r)));
-            }
-        }
+        let unique_min_proof = self.find_unique_minimal_proof(r);
     }
 
     /// Any totally-ordered set contains a unique maximal (equivalently, greatest) element.
@@ -167,12 +146,11 @@ impl<A> Set<A> {
             self.len() > 0,
         decreases self.len(),
         when self.finite()
-        via Self::prove_decrease_max_unique
     {
         if self.len() <= 1 {
             self.choose()
         } else {
-            let x = choose|x: A| self.contains(x);
+            let x = self.choose();
             let max = self.remove(x).find_unique_maximal(r);
             if r(x, max) {
                 max
@@ -182,10 +160,38 @@ impl<A> Set<A> {
         }
     }
 
-    #[via_fn]
-    proof fn prove_decrease_max_unique(self, r: spec_fn(A, A) -> bool) {
-        broadcast use group_set_properties;
+    /// Proof function equivalent to `find_unique_maximal`.
+    proof fn find_unique_maximal_proof(self, r: spec_fn(A, A) -> bool) -> (unique_max: A)
+        requires
+            total_ordering(r),
+            self.finite(),
+            self.len() > 0,
+        ensures
+            unique_max == self.find_unique_maximal(r),
+            self.contains(self.find_unique_maximal(r)),
+            forall|x: A| #[trigger] self.contains(x) ==> r(x, unique_max),
+        decreases self.len(),
+    {
+        if self.len() <= 1 {
+            let unique_max = self.choose();
+            assert(self =~= set![unique_max]) by {
+                assert(self.remove(unique_max) =~= Set::empty());
+            };
 
+            unique_max
+        } else {
+            let x = self.choose();
+            assert(self.contains(x));
+
+            let max = self.remove(x).find_unique_maximal_proof(r);
+
+            if r(x, max) {
+                max
+            } else {
+                assert(r(max, x));
+                x
+            }
+        }
     }
 
     /// Proof of correctness and expected behavior for `Set::find_unique_maximal`.
@@ -195,58 +201,11 @@ impl<A> Set<A> {
             self.len() > 0,
             total_ordering(r),
         ensures
-            is_maximal(r, self.find_unique_maximal(r), self) && (forall|max: A|
-                is_maximal(r, max, self) ==> self.find_unique_maximal(r) == max),
+            self.contains(self.find_unique_maximal(r)),
+            forall|x: A| #[trigger] self.contains(x) ==> r(x, self.find_unique_maximal(r)),
         decreases self.len(),
     {
-        broadcast use group_set_properties;
-
-        if self.len() == 1 {
-            let x = choose|x: A| self.contains(x);
-            assert(self.remove(x) =~= Set::<A>::empty());
-            assert(self.contains(self.find_unique_maximal(r)));
-        } else {
-            let x = choose|x: A| self.contains(x);
-            self.remove(x).find_unique_maximal_ensures(r);
-            assert(is_maximal(r, self.remove(x).find_unique_maximal(r), self.remove(x)));
-            assert(self.remove(x).insert(x) =~= self);
-            let y = self.remove(x).find_unique_maximal(r);
-            let max_updated = self.find_unique_maximal(r);
-            assert(max_updated == x || max_updated == y);
-            assert(!r(x, y) ==> max_updated == x);
-            assert forall|elt: A|
-                self.contains(elt) && #[trigger] r(max_updated, elt) implies #[trigger] r(
-                elt,
-                max_updated,
-            ) by {
-                assert(r(x, max_updated) || r(y, max_updated));
-                if max_updated == y {  // Case where the new max is the old max
-                    assert(r(elt, max_updated));
-                    assert(r(x, max_updated));
-                    assert(is_maximal(r, self.find_unique_maximal(r), self));
-                } else {  //Case where the new max is the newest element
-                    assert(self.remove(x).contains(elt) || elt == x);
-                    assert(max_updated == x);
-                    assert(r(x, y) || r(y, x));
-                    assert(!r(x, y) || !r(y, x));
-                    assert(!(max_updated == y) ==> !r(x, y));
-                    assert(r(y, x));
-                    if (self.remove(x).contains(elt)) {
-                        assert(r(y, elt) ==> r(elt, y));
-                        assert(r(y, elt) && r(elt, y) ==> elt == y);
-                        assert(r(elt, x));
-                        assert(r(elt, max_updated))
-                    } else {
-                    }
-                }
-            }
-            assert forall|max_poss: A|
-                is_maximal(r, max_poss, self) implies self.find_unique_maximal(r) == max_poss by {
-                assert(is_maximal(r, max_poss, self.remove(x)) || x == max_poss);
-                assert(r(max_poss, self.find_unique_maximal(r)));
-                assert(r(self.find_unique_maximal(r), max_poss));
-            }
-        }
+        let unique_max_proof = self.find_unique_maximal_proof(r);
     }
 
     /// Converts a set into a multiset where each element from the set has
