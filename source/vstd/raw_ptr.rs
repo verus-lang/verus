@@ -253,6 +253,8 @@ impl<T: ?Sized> PointsTo<T> {
     pub open spec fn ptr(&self) -> *mut T;
 }
 
+// TODO: make spec constant/function (uninterpreted) representing endian-ness, similar to size_of()
+
 
 impl<T> PointsTo<[T]> {
     // #[verifier::inline]
@@ -291,6 +293,18 @@ impl<T> PointsTo<[T]> {
             size_of::<T>() != 0,
         ensures
             self.ptr()@.addr != 0,
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
+    pub proof fn ptr_bounds(tracked &self)
+        // TODO: do I need this requires?
+        requires
+            size_of::<T>() != 0, 
+        ensures
+            self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
+            self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len() >= self.ptr()@.addr + self.value().len() * size_of::<T>(), 
     {
         unimplemented!();
     }
@@ -722,7 +736,7 @@ impl PointsToRaw {
     pub proof fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
             is_sized::<V>(),
-            start as int % align_of::<V>() as int == 0,
+            start as int % align_of::<V>() as int == 0, //TODO: revisit here
             self.is_range(start as int, size_of::<V>() as int),
         ensures
             points_to.ptr() == ptr_mut_from_data::<V>(
@@ -958,9 +972,27 @@ impl<'a, T> SharedReference<'a, [T]> {
         self.0.as_ptr()
     }
 
+    // pub const fn from_ptr(ptr: *const T, len: int) -> (s: Self)
+    //     requires
+    //         ptr as nat % size_of::<T>() == 0,
+    //         ptr@.provenance.alloc_len() == len * size_of::<T>(),
+    // {
+    //     SharedReference(&*ptr as &[T])
+    // }
+
+    // pub const fn cast_shared_ref<U>(self) -> (output: SharedReference<'a, [U]>)
+    //     requires 
+    //         size_of::<T>() % size_of::<U>() == 0,
+    //     ensures 
+    //         self.as_ptr()@.provenance == output.as_ptr()@.provenance,
+    //         self.as_ptr()@.addr == output.as_ptr()@.addr,
+    // {
+    //     SharedReference(self.as_ref() as &[U])
+    // }
+
     pub const fn len(self) -> (output: usize)
         ensures
-            // output as nat == self.value().view().len()
+            // output == self.value().view().len()
             output == spec_slice_len(self.value())
     {
         self.as_ref().len()
@@ -992,6 +1024,13 @@ impl<'a, T> View for SharedReference<'a, [T]> {
     type V = Seq<T>;
 
     spec fn view(&self) -> Seq<T>;
+}
+
+#[verifier::external_body]
+pub broadcast proof fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedReference<'a, [T]>)
+    ensures
+        shared_ref.value()@ == #[trigger] shared_ref@,
+{
 }
 
 // impl<'a, T> Index<usize> for SharedReference<'a, [T]> 
