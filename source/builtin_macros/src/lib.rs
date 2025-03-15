@@ -271,17 +271,25 @@ pub fn verus_spec(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let erase = cfg_erase();
-    if erase.keep() {
-        attr_rewrite::rewrite_verus_spec(erase, attr.into(), input.into()).into()
-    } else {
-        input
-    }
+    attr_rewrite::rewrite_verus_spec(cfg_erase(), attr.into(), input.into()).into()
 }
 
 #[proc_macro]
 pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     attr_rewrite::proof_rewrite(cfg_erase(), input.into()).into()
+}
+
+/// verus_extra_stmts add extra stmts into executable code that are used only
+/// for verification.
+/// For example, declare a ghost/tracked variable.
+#[proc_macro]
+pub fn verus_extra_stmts(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let erase = cfg_erase();
+    if erase.keep() {
+        syntax::rewrite_stmt(cfg_erase(), false, input.into())
+    } else {
+        proc_macro::TokenStream::new()
+    }
 }
 
 /*** End of verus small macro definition for executable items ***/
