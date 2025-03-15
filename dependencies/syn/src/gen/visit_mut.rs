@@ -558,6 +558,9 @@ pub trait VisitMut {
     ) {
         visit_invariant_name_set_none_mut(self, i);
     }
+    fn visit_invariant_name_set_set_mut(&mut self, i: &mut crate::InvariantNameSetSet) {
+        visit_invariant_name_set_set_mut(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_item_mut(&mut self, i: &mut crate::Item) {
@@ -2883,6 +2886,9 @@ where
         crate::InvariantNameSet::List(_binding_0) => {
             v.visit_invariant_name_set_list_mut(_binding_0);
         }
+        crate::InvariantNameSet::Set(_binding_0) => {
+            v.visit_invariant_name_set_set_mut(_binding_0);
+        }
     }
 }
 pub fn visit_invariant_name_set_any_mut<V>(
@@ -2915,6 +2921,15 @@ where
     V: VisitMut + ?Sized,
 {
     skip!(node.token);
+}
+pub fn visit_invariant_name_set_set_mut<V>(
+    v: &mut V,
+    node: &mut crate::InvariantNameSetSet,
+)
+where
+    V: VisitMut + ?Sized,
+{
+    v.visit_expr_mut(&mut node.expr);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]

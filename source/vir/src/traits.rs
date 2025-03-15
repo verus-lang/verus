@@ -133,7 +133,7 @@ pub fn demote_external_traits(
                             "requires are not allowed on the implementation for Drop",
                         ));
                     }
-                    if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(es)) if es.len() == 0)
+                    if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(_span, es)) if es.len() == 0)
                     {
                         return Err(error(
                             &function.span,

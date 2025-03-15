@@ -150,6 +150,14 @@ pub fn opens_invariants_except<A>(_a: A) {
     unimplemented!();
 }
 
+// Can only appear at beginning of function body
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::opens_invariants_set"]
+#[verifier::proof]
+pub fn opens_invariants_set<A>(_a: A) {
+    unimplemented!();
+}
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::no_unwind"]
 #[verifier::proof]

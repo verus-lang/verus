@@ -3552,6 +3552,11 @@
           {
             "syn": "InvariantNameSetList"
           }
+        ],
+        "Set": [
+          {
+            "syn": "InvariantNameSetSet"
+          }
         ]
       }
     },
@@ -3593,6 +3598,17 @@
       "fields": {
         "token": {
           "token": "InvNone"
+        }
+      }
+    },
+    {
+      "ident": "InvariantNameSetSet",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "expr": {
+          "syn": "Expr"
         }
       }
     },

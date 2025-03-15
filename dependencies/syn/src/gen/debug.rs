@@ -2068,6 +2068,7 @@ impl Debug for crate::InvariantNameSet {
             crate::InvariantNameSet::Any(v0) => v0.debug(formatter, "Any"),
             crate::InvariantNameSet::None(v0) => v0.debug(formatter, "None"),
             crate::InvariantNameSet::List(v0) => v0.debug(formatter, "List"),
+            crate::InvariantNameSet::Set(v0) => v0.debug(formatter, "Set"),
         }
     }
 }
@@ -2108,6 +2109,19 @@ impl crate::InvariantNameSetNone {
     fn debug(&self, formatter: &mut fmt::Formatter, name: &str) -> fmt::Result {
         let mut formatter = formatter.debug_struct(name);
         formatter.field("token", &self.token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::InvariantNameSetSet {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        self.debug(formatter, "InvariantNameSetSet")
+    }
+}
+impl crate::InvariantNameSetSet {
+    fn debug(&self, formatter: &mut fmt::Formatter, name: &str) -> fmt::Result {
+        let mut formatter = formatter.debug_struct(name);
+        formatter.field("expr", &self.expr);
         formatter.finish()
     }
 }

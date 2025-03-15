@@ -1414,6 +1414,7 @@ impl Clone for crate::InvariantNameSet {
             crate::InvariantNameSet::List(v0) => {
                 crate::InvariantNameSet::List(v0.clone())
             }
+            crate::InvariantNameSet::Set(v0) => crate::InvariantNameSet::Set(v0.clone()),
         }
     }
 }
@@ -1439,6 +1440,14 @@ impl Clone for crate::InvariantNameSetNone {
     fn clone(&self) -> Self {
         crate::InvariantNameSetNone {
             token: self.token.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::InvariantNameSetSet {
+    fn clone(&self) -> Self {
+        crate::InvariantNameSetSet {
+            expr: self.expr.clone(),
         }
     }
 }

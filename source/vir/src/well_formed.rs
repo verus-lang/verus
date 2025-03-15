@@ -888,7 +888,7 @@ fn check_function(
     }
     match &function.x.mask_spec {
         None => {}
-        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
+        Some(MaskSpec::InvariantOpens(_span, es) | MaskSpec::InvariantOpensExcept(_span, es)) => {
             for expr in es.iter() {
                 let msg = "'opens_invariants' clause of public function";
                 let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
@@ -901,6 +901,18 @@ fn check_function(
                     diags,
                 )?;
             }
+        }
+        Some(MaskSpec::InvariantOpensSet(expr)) => {
+            let msg = "'opens_invariants' clause of public function";
+            let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+            check_expr(
+                ctxt,
+                function,
+                expr,
+                disallow_private_access,
+                Place::PreState("opens_invariants clause"),
+                diags,
+            )?
         }
     }
     match &function.x.unwind_spec {
