@@ -224,6 +224,15 @@ impl<T> PointsTo<T> {
     {
         unimplemented!();
     }
+
+    proof fn is_same(tracked &self, tracked other: &Self)
+        requires
+            self.ptr() as int == other.ptr() as int,
+        ensures
+            self == other,
+    {
+        admit()
+    }
 }
 
 impl<T> MemContents<T> {
