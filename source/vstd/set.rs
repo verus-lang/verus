@@ -900,7 +900,8 @@ pub broadcast proof fn axiom_set_subset_finite<A>(s: Set<A>, sub: Set<A>)
         s.finite(),
         sub.subset_of(s),
     ensures
-        #![trigger sub.subset_of(s)] sub.finite(),
+        #![trigger sub.subset_of(s)]
+        sub.finite(),
 {
 }
 
