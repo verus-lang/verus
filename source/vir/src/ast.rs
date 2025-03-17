@@ -978,6 +978,7 @@ pub struct FunctionAttrsX {
     /// is type invariant
     pub is_type_invariant_fn: bool,
     /// Marked with external_body or external_fn_specification
+    /// TODO: might be duplicate with https://github.com/verus-lang/verus/pull/1473
     pub is_external_body: bool,
 }
 

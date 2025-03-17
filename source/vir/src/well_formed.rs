@@ -22,6 +22,7 @@ struct Ctxt {
     pub(crate) dts: HashMap<Path, Datatype>,
     pub(crate) krate: Krate,
     unpruned_krate: Krate,
+    no_cheating: bool,
 }
 
 #[warn(unused_must_use)]
@@ -184,7 +185,6 @@ fn check_one_expr(
     disallow_private_access: Option<(&Option<Path>, &str)>,
     place: Place,
     diags: &mut Vec<VirErrAs>,
-    no_cheating: bool,
 ) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::Var(x) => {
@@ -390,7 +390,7 @@ fn check_one_expr(
             }?;
         }
         ExprX::AssertAssume { is_assume, .. } => {
-            if no_cheating && *is_assume {
+            if ctxt.no_cheating && *is_assume {
                 return Err(error(&expr.span, "assume/admit not allowed with --no-cheating"));
             }
         }
@@ -511,10 +511,9 @@ fn check_expr(
     disallow_private_access: Option<(&Option<Path>, &str)>,
     place: Place,
     diags: &mut Vec<VirErrAs>,
-    no_cheating: bool,
 ) -> Result<(), VirErr> {
     crate::ast_visitor::expr_visitor_check(expr, &mut |_scope_map, expr| {
-        check_one_expr(ctxt, function, expr, disallow_private_access, place, diags, no_cheating)
+        check_one_expr(ctxt, function, expr, disallow_private_access, place, diags)
     })
 }
 
@@ -523,7 +522,6 @@ fn check_function(
     function: &Function,
     diags: &mut Vec<VirErrAs>,
     _no_verify: bool,
-    no_cheating: bool,
 ) -> Result<(), VirErr> {
     if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
         if function.x.require.len() > 0 {
@@ -867,21 +865,12 @@ fn check_function(
             disallow_private_access,
             Place::PreState("requires"),
             diags,
-            no_cheating,
         )?;
     }
     for ens in function.x.ensure.iter() {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(
-            ctxt,
-            function,
-            ens,
-            disallow_private_access,
-            Place::BodyOrPostState,
-            diags,
-            no_cheating,
-        )?;
+        check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState, diags)?;
     }
     if let Some(r) = &function.x.returns {
         if !types_equal(&undecorate_typ(&r.typ), &undecorate_typ(&function.x.ret.x.typ)) {
@@ -901,15 +890,7 @@ fn check_function(
 
         let msg = "'requires' clause of public function";
         let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
-        check_expr(
-            ctxt,
-            function,
-            r,
-            disallow_private_access,
-            Place::PreState("returns"),
-            diags,
-            no_cheating,
-        )?;
+        check_expr(ctxt, function, r, disallow_private_access, Place::PreState("returns"), diags)?;
     }
     match &function.x.mask_spec {
         None => {}
@@ -924,7 +905,6 @@ fn check_function(
                     disallow_private_access,
                     Place::PreState("opens_invariants clause"),
                     diags,
-                    no_cheating,
                 )?;
             }
         }
@@ -941,7 +921,6 @@ fn check_function(
                 disallow_private_access,
                 Place::PreState("opens_invariants clause"),
                 diags,
-                no_cheating,
             )?;
         }
     }
@@ -955,7 +934,6 @@ fn check_function(
             disallow_private_access,
             Place::PreState("decreases clause"),
             diags,
-            no_cheating,
         )?;
     }
     if let Some(expr) = &function.x.decrease_when {
@@ -980,7 +958,6 @@ fn check_function(
             disallow_private_access,
             Place::PreState("when clause"),
             diags,
-            no_cheating,
         )?;
     }
 
@@ -1000,15 +977,7 @@ fn check_function(
         } else {
             None
         };
-        check_expr(
-            ctxt,
-            function,
-            body,
-            disallow_private_access,
-            Place::BodyOrPostState,
-            diags,
-            no_cheating,
-        )?;
+        check_expr(ctxt, function, body, disallow_private_access, Place::BodyOrPostState, diags)?;
     }
 
     if function.x.attrs.is_type_invariant_fn {
@@ -1046,7 +1015,7 @@ fn check_function(
         }
     }
 
-    if no_cheating && (function.x.attrs.is_external_body || function.x.proxy.is_some()) {
+    if ctxt.no_cheating && (function.x.attrs.is_external_body || function.x.proxy.is_some()) {
         return Err(error(
             &function.span,
             "external_body/assume_specification not allowed with --no-cheating",
@@ -1455,9 +1424,9 @@ pub fn check_crate(
         }
     }
 
-    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone(), unpruned_krate };
+    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone(), unpruned_krate, no_cheating };
     for function in krate.functions.iter() {
-        check_function(&ctxt, function, diags, no_verify, no_cheating)?;
+        check_function(&ctxt, function, diags, no_verify)?;
     }
     for dt in krate.datatypes.iter() {
         check_datatype(&ctxt, dt)?;
