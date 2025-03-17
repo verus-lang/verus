@@ -19,6 +19,7 @@ pub enum MaskSet {
     Full { span: Span },
     Insert { base: Box<MaskSet>, elem: Exp },
     Remove { base: Box<MaskSet>, elem: Exp },
+    Arbitrary { set: Exp },
 }
 
 pub struct Assertion {
@@ -26,15 +27,15 @@ pub struct Assertion {
     pub cond: Exp,
 }
 
-fn namespace_id_typ() -> Typ {
+pub fn namespace_id_typ() -> Typ {
     Arc::new(TypX::Int(IntRange::Int))
 }
 
-fn namespace_set_typs() -> Typs {
+pub fn namespace_set_typs() -> Typs {
     Arc::new(vec![namespace_id_typ()])
 }
 
-fn namespace_set_typ(ctx: &Ctx) -> Typ {
+pub fn namespace_set_typ(ctx: &Ctx) -> Typ {
     Arc::new(TypX::Datatype(
         Dt::Path(crate::def::set_type_path(&ctx.global.vstd_crate_name)),
         namespace_set_typs(),
@@ -82,7 +83,8 @@ impl MaskSet {
                 let remove_exp =
                     SpannedTyped::new(&elem.span, &namespace_set_typ(ctx), remove_expx);
                 remove_exp
-            } // MaskSet::Arbitrary { span: _, set } => { set.clone() },
+            }
+            MaskSet::Arbitrary { set } => set.clone(),
         }
     }
 
@@ -102,9 +104,9 @@ impl MaskSet {
         MaskSet::Remove { base: Box::new(self.clone()), elem: elem.clone() }
     }
 
-    // pub fn arbitrary(span: &Span, exp: &Exp) -> Self {
-    //     MaskSet::Arbitrary{ span: span.clone(), set: exp.clone() }
-    // }
+    pub fn arbitrary(exp: &Exp) -> Self {
+        MaskSet::Arbitrary { set: exp.clone() }
+    }
 
     pub fn from_list(exps: &Vec<Exp>, span: &Span) -> MaskSet {
         let mut mask = Self::empty(span);
@@ -233,25 +235,23 @@ impl MaskSet {
                         crate::def::fn_set_subset_of_name(&ctx.global.vstd_crate_name),
                         None,
                     );
+                    let self_exp = self.to_exp(ctx);
+                    let other_exp = other.to_exp(ctx);
                     let subset_of_expx = ExpX::Call(
                         subset_of_fun,
                         namespace_set_typs(),
-                        Arc::new(vec![self.to_exp(ctx), other.to_exp(ctx)]),
+                        Arc::new(vec![self_exp.clone(), other_exp.clone()]),
                     );
                     let subset_of_exp =
                         SpannedTyped::new(&call_span, &Arc::new(TypX::Bool), subset_of_expx);
 
-                    let mut err = error_with_label(
+                    let err = error_with_label(
                         call_span,
                         "callee may open invariants that caller cannot",
                         "at this call-site",
-                    );
-                    match self {
-                        MaskSet::Full { span: full_span } => {
-                            err = err.primary_label(full_span, "callee may open any invariant");
-                        }
-                        _ => {}
-                    }
+                    )
+                    .primary_label(&self_exp.span, "invariants opened by callee")
+                    .primary_label(&other_exp.span, "invariants opened by caller");
 
                     vec![Assertion { err: err, cond: subset_of_exp }]
                 }

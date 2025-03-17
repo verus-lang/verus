@@ -197,6 +197,7 @@ ast_enum_of_structs! {
         Any(InvariantNameSetAny),
         None(InvariantNameSetNone),
         List(InvariantNameSetList),
+        Set(InvariantNameSetSet),
     }
 }
 
@@ -216,6 +217,12 @@ ast_struct! {
     pub struct InvariantNameSetList {
         pub bracket_token: token::Bracket,
         pub exprs: Punctuated<Expr, Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct InvariantNameSetSet {
+        pub expr: Expr,
     }
 }
 
@@ -817,7 +824,8 @@ pub mod parsing {
                 let list = input.parse()?;
                 InvariantNameSet::List(list)
             } else {
-                return Err(input.error("invariant clause expected `any` or `none`"));
+                let set = input.parse()?;
+                InvariantNameSet::Set(set)
             };
             Ok(set)
         }
@@ -849,6 +857,14 @@ pub mod parsing {
                 bracket_token,
                 exprs,
             })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantNameSetSet {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let expr = Expr::parse_without_eager_brace(input)?;
+            Ok(InvariantNameSetSet { expr })
         }
     }
 
@@ -1594,6 +1610,13 @@ mod printing {
             self.bracket_token.surround(tokens, |tokens| {
                 self.exprs.to_tokens(tokens);
             });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InvariantNameSetSet {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.expr.to_tokens(tokens);
         }
     }
 
