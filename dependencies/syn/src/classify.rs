@@ -93,6 +93,10 @@ pub(crate) fn trailing_unparameterized_path(mut ty: &Type) -> bool {
                 ReturnType::Default => return false,
                 ReturnType::Type(_, _, _, ret) => ty = ret,
             },
+            Type::FnProof(t) => match &t.output {
+                ReturnType::Default => return false,
+                ReturnType::Type(_, _, _, ret) => ty = ret,
+            },
             Type::ImplTrait(t) => match last_type_in_bounds(&t.bounds) {
                 ControlFlow::Break(trailing_path) => return trailing_path,
                 ControlFlow::Continue(t) => ty = t,
@@ -325,6 +329,10 @@ pub(crate) fn expr_trailing_brace(mut expr: &Expr) -> bool {
                     ReturnType::Type(_, _, _, ret) => ty = ret,
                 },
                 Type::FnSpec(t) => match &t.output {
+                    ReturnType::Default => return false,
+                    ReturnType::Type(_, _, _, ret) => ty = ret,
+                },
+                Type::FnProof(t) => match &t.output {
                     ReturnType::Default => return false,
                     ReturnType::Type(_, _, _, ret) => ty = ret,
                 },

@@ -211,6 +211,9 @@ const PRELUDE: &str = "\
 #![feature(ptr_metadata)]
 #![feature(never_type)]
 #![feature(allocator_api)]
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
+#![feature(tuple_trait)]
 #![allow(non_camel_case_types)]
 #![allow(unused_imports)]
 #![allow(unused_variables)]
@@ -224,6 +227,7 @@ const PRELUDE: &str = "\
 #![allow(unused_mut)]
 #![allow(unused_labels)]
 use std::marker::PhantomData;
+use std::marker::Tuple;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::alloc::Allocator;
@@ -265,6 +269,46 @@ impl<A:?Sized> IndexSet for A {}
 struct C<const N: usize, A: ?Sized>(Box<A>);
 struct Arr<A: ?Sized, const N: usize>(Box<A>);
 fn use_type_invariant<A>(a: A) -> A { a }
+
+struct FnProof<'a, P, M, N, A, O>(PhantomData<P>, PhantomData<M>, PhantomData<N>, PhantomData<&'a dyn Fn<A, Output = O>>);
+struct FnProofOptions<B, C, D, E, G>(B, C, D, E, G);
+struct FN_Cpy {}
+struct FN_ {}
+struct FN_Once {}
+struct FN_Mut {}
+struct FN_Fn {}
+trait ProofFnCopy {}
+trait ProofFnOnce {}
+trait ProofFnMut: ProofFnOnce {}
+trait ProofFn: ProofFnMut {}
+trait ConfirmCopy<F> {}
+trait ConfirmUsage<A, O, F> {}
+impl<B, C, E, G> ProofFnCopy for FnProofOptions<B, C, FN_Cpy, E, G> {}
+impl<B, C, D, E, G> ProofFnOnce for FnProofOptions<B, C, D, E, G> {}
+impl<C, D, E, G> ProofFnMut for FnProofOptions<FN_Mut, C, D, E, G> {}
+impl<C, D, E, G> ProofFnMut for FnProofOptions<FN_Fn, C, D, E, G> {}
+impl<C, D, E, G> ProofFn for FnProofOptions<FN_Fn, C, D, E, G> {}
+impl<'a, P: ProofFnCopy, M, N, A, O> Clone for FnProof<'a, P, M, N, A, O> { fn clone(&self) -> Self { panic!() } }
+impl<'a, P: ProofFnCopy, M, N, A, O> Copy for FnProof<'a, P, M, N, A, O> {}
+impl<'a, P: ProofFnOnce, M, N, A: Tuple, O> FnOnce<A> for FnProof<'a, P, M, N, A, O> {
+    type Output = O;
+    extern \"rust-call\" fn call_once(self, _: A) -> <Self as FnOnce<A>>::Output { panic!() }
+}
+impl<'a, P: ProofFnMut, M, N, A: Tuple, O> FnMut<A> for FnProof<'a, P, M, N, A, O> {
+    extern \"rust-call\" fn call_mut(&mut self, _: A) -> <Self as FnOnce<A>>::Output { panic!() }
+}
+impl<'a, P: ProofFn, M, N, A: Tuple, O> Fn<A> for FnProof<'a, P, M, N, A, O> {
+    extern \"rust-call\" fn call(&self, _: A) -> <Self as FnOnce<A>>::Output { panic!() }
+}
+impl<F: Copy> ConfirmCopy<F> for FN_Cpy {}
+impl<F> ConfirmCopy<F> for FN_ {}
+impl<A: Tuple, O, F: FnOnce<A, Output = O>> ConfirmUsage<A, O, F> for FN_Once {}
+impl<A: Tuple, O, F: FnMut<A, Output = O>> ConfirmUsage<A, O, F> for FN_Mut {}
+impl<A: Tuple, O, F: Fn<A, Output = O>> ConfirmUsage<A, O, F> for FN_Fn {}
+pub fn closure_to_fn_proof<'a, C, D, E, G, M, N, A, O, F: 'a>(_f: F) -> FnProof<'a, FnProofOptions<C, FN_, D, E, G>, M, N, A, O>
+where C: ConfirmUsage<A, O, F>, D: ConfirmCopy<F>, M: Tuple, A: Tuple,
+{ panic!() }
+
 fn main() {}
 ";
 

@@ -124,6 +124,9 @@ pub trait Visit<'ast> {
     fn visit_closed(&mut self, i: &'ast crate::Closed) {
         visit_closed(self, i);
     }
+    fn visit_closure_arg(&mut self, i: &'ast crate::ClosureArg) {
+        visit_closure_arg(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_const_param(&mut self, i: &'ast crate::ConstParam) {
@@ -433,6 +436,12 @@ pub trait Visit<'ast> {
     fn visit_fn_mode(&mut self, i: &'ast crate::FnMode) {
         visit_fn_mode(self, i);
     }
+    fn visit_fn_proof_arg(&mut self, i: &'ast crate::FnProofArg) {
+        visit_fn_proof_arg(self, i);
+    }
+    fn visit_fn_proof_options(&mut self, i: &'ast crate::FnProofOptions) {
+        visit_fn_proof_options(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_foreign_item(&mut self, i: &'ast crate::ForeignItem) {
@@ -676,6 +685,9 @@ pub trait Visit<'ast> {
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_local_init(&mut self, i: &'ast crate::LocalInit) {
         visit_local_init(self, i);
+    }
+    fn visit_loop_spec(&mut self, i: &'ast crate::LoopSpec) {
+        visit_loop_spec(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -971,6 +983,9 @@ pub trait Visit<'ast> {
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_type_bare_fn(&mut self, i: &'ast crate::TypeBareFn) {
         visit_type_bare_fn(self, i);
+    }
+    fn visit_type_fn_proof(&mut self, i: &'ast crate::TypeFnProof) {
+        visit_type_fn_proof(self, i);
     }
     fn visit_type_fn_spec(&mut self, i: &'ast crate::TypeFnSpec) {
         visit_type_fn_spec(self, i);
@@ -1549,6 +1564,13 @@ where
 {
     skip!(node.token);
 }
+pub fn visit_closure_arg<'ast, V>(v: &mut V, node: &'ast crate::ClosureArg)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.tracked_token);
+    full!(v.visit_pat(& node.pat));
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
 pub fn visit_const_param<'ast, V>(v: &mut V, node: &'ast crate::ConstParam)
@@ -1987,10 +2009,14 @@ where
     skip!(node.movability);
     skip!(node.asyncness);
     skip!(node.capture);
+    skip!(node.proof_fn);
+    if let Some(it) = &node.options {
+        v.visit_fn_proof_options(it);
+    }
     skip!(node.or1_token);
     for el in Punctuated::pairs(&node.inputs) {
         let it = el.value();
-        v.visit_pat(it);
+        v.visit_closure_arg(it);
     }
     skip!(node.or2_token);
     v.visit_return_type(&node.output);
@@ -2654,6 +2680,23 @@ where
             v.visit_mode_exec(_binding_0);
         }
         crate::FnMode::Default => {}
+    }
+}
+pub fn visit_fn_proof_arg<'ast, V>(v: &mut V, node: &'ast crate::FnProofArg)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.tracked_token);
+    v.visit_bare_fn_arg(&node.arg);
+}
+pub fn visit_fn_proof_options<'ast, V>(v: &mut V, node: &'ast crate::FnProofOptions)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.bracket_token);
+    for el in Punctuated::pairs(&node.options) {
+        let it = el.value();
+        v.visit_path_segment(it);
     }
 }
 #[cfg(feature = "full")]
@@ -3557,6 +3600,27 @@ where
     if let Some(it) = &node.diverge {
         skip!((it).0);
         v.visit_expr(&*(it).1);
+    }
+}
+pub fn visit_loop_spec<'ast, V>(v: &mut V, node: &'ast crate::LoopSpec)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    if let Some(it) = &node.iter_name {
+        v.visit_ident(&(it).0);
+        skip!((it).1);
+    }
+    if let Some(it) = &node.invariants {
+        v.visit_invariant(it);
+    }
+    if let Some(it) = &node.invariant_except_breaks {
+        v.visit_invariant_except_break(it);
+    }
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
+    if let Some(it) = &node.decreases {
+        v.visit_decreases(it);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -4548,6 +4612,9 @@ where
         crate::Type::FnSpec(_binding_0) => {
             v.visit_type_fn_spec(_binding_0);
         }
+        crate::Type::FnProof(_binding_0) => {
+            v.visit_type_fn_proof(_binding_0);
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -4582,6 +4649,24 @@ where
     }
     if let Some(it) = &node.variadic {
         v.visit_bare_variadic(it);
+    }
+    v.visit_return_type(&node.output);
+}
+pub fn visit_type_fn_proof<'ast, V>(v: &mut V, node: &'ast crate::TypeFnProof)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.proof_fn_token);
+    if let Some(it) = &node.generics {
+        v.visit_angle_bracketed_generic_arguments(it);
+    }
+    if let Some(it) = &node.options {
+        v.visit_fn_proof_options(it);
+    }
+    skip!(node.paren_token);
+    for el in Punctuated::pairs(&node.inputs) {
+        let it = el.value();
+        v.visit_fn_proof_arg(it);
     }
     v.visit_return_type(&node.output);
 }

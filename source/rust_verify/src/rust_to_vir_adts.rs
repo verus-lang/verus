@@ -522,7 +522,11 @@ pub(crate) fn check_item_external<'tcx>(
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, external_def_id);
     let name = path.segments.last().expect("unexpected struct path");
 
-    if path.krate == Some(Arc::new("builtin".to_string())) {
+    let is_builtin_external = matches!(
+        ctxt.verus_items.id_to_name.get(&external_def_id),
+        Some(crate::verus_items::VerusItem::External(_))
+    );
+    if !is_builtin_external && path.krate == Some(Arc::new("builtin".to_string())) {
         return err_span(span, "cannot apply `external_type_specification` to Verus builtin types");
     }
 

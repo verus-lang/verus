@@ -354,6 +354,27 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct ClosureArg {
+        pub tracked_token: Option<Token![tracked]>,
+        pub pat: Pat,
+    }
+}
+
+ast_struct! {
+    pub struct FnProofArg {
+        pub tracked_token: Option<Token![tracked]>,
+        pub arg: BareFnArg,
+    }
+}
+
+ast_struct! {
+    pub struct FnProofOptions {
+        pub bracket_token: token::Bracket,
+        pub options: Punctuated<PathSegment, Token![,]>,
+    }
+}
+
+ast_struct! {
     /// A FnSpec type: `FnSpec(usize) -> bool`.
     /// Parsed similarly to TypeBareFn
     pub struct TypeFnSpec {
@@ -361,6 +382,20 @@ ast_struct! {
         pub spec_fn_token: Option<Token![SpecFn]>,
         pub paren_token: token::Paren,
         pub inputs: Punctuated<BareFnArg, Token![,]>,
+        pub output: ReturnType,
+    }
+}
+
+ast_struct! {
+    /// A proof_fn type:
+    ///   `proof_fn<'a, F>[ReqEns<R>, Copy, Send, Sync](tracked usize) -> tracked bool`
+    /// Parsed similarly to TypeBareFn
+    pub struct TypeFnProof {
+        pub proof_fn_token: Token![proof_fn],
+        pub generics: Option<AngleBracketedGenericArguments>,
+        pub options: Option<FnProofOptions>,
+        pub paren_token: token::Paren,
+        pub inputs: Punctuated<FnProofArg, Token![,]>,
         pub output: ReturnType,
     }
 }
@@ -1382,6 +1417,30 @@ pub mod parsing {
             }
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for FnProofOptions {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let content;
+            let bracket_token = bracketed!(content in input);
+            let options = content.parse_terminated(PathSegment::parse, Token![,])?;
+            Ok(FnProofOptions {
+                bracket_token,
+                options,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<FnProofOptions> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(token::Bracket) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
 }
 
 #[cfg(feature = "printing")]
@@ -1744,10 +1803,48 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ClosureArg {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.tracked_token.to_tokens(tokens);
+            self.pat.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for FnProofArg {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.tracked_token.to_tokens(tokens);
+            self.arg.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for FnProofOptions {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.bracket_token.surround(tokens, |tokens| {
+                self.options.to_tokens(tokens);
+            });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for TypeFnSpec {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.fn_spec_token.to_tokens(tokens);
             self.spec_fn_token.to_tokens(tokens);
+            self.paren_token.surround(tokens, |tokens| {
+                self.inputs.to_tokens(tokens);
+            });
+            self.output.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for TypeFnProof {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.proof_fn_token.to_tokens(tokens);
+            self.generics.to_tokens(tokens);
+            self.options.to_tokens(tokens);
             self.paren_token.surround(tokens, |tokens| {
                 self.inputs.to_tokens(tokens);
             });
@@ -2047,6 +2144,48 @@ pub(crate) fn parse_fn_spec(input: ParseStream) -> Result<TypeFnSpec> {
     };
 
     Ok(fn_spec)
+}
+
+pub(crate) fn parse_fn_proof(input: ParseStream) -> Result<TypeFnProof> {
+    let args;
+    let proof_fn_token = input.parse()?;
+    let generics = if input.peek(Token![<]) {
+        Some(input.parse()?)
+    } else {
+        None
+    };
+    let fn_proof = TypeFnProof {
+        proof_fn_token,
+        generics,
+        options: input.parse()?,
+        paren_token: parenthesized!(args in input),
+        inputs: {
+            let mut inputs = Punctuated::new();
+
+            while !args.is_empty() {
+                let attrs = args.call(Attribute::parse_outer)?;
+
+                let tracked_token = args.parse()?;
+                let arg = crate::ty::parsing::parse_bare_fn_arg(&args, false)?;
+                inputs.push_value(FnProofArg {
+                    tracked_token,
+                    arg: BareFnArg { attrs, ..arg },
+                });
+
+                if args.is_empty() {
+                    break;
+                }
+
+                let comma = args.parse()?;
+                inputs.push_punct(comma);
+            }
+
+            inputs
+        },
+        output: input.call(ReturnType::without_plus)?,
+    };
+
+    Ok(fn_proof)
 }
 
 ast_struct! {

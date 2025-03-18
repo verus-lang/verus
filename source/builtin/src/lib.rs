@@ -1386,6 +1386,277 @@ pub fn call_ensures<Args: core::marker::Tuple, F: FnOnce<Args>>(
     unimplemented!();
 }
 
+// Support for proof_fn
+
+/// FnProof is the type of proof closures; the syntax proof_fn is used to wrap FnProof
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FnProof")]
+pub struct FnProof<'a, Options, ArgModes, OutMode, Args, Output> {
+    _no_sync_send: NoSyncSend,
+    _lifetime: PhantomData<&'a dyn Fn<Args, Output = Output>>,
+    _options: PhantomData<Options>,
+    _arg_modes: PhantomData<ArgModes>,
+    _out_mode: PhantomData<OutMode>,
+}
+
+#[doc(hidden)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FnProofOptions")]
+pub struct FnProofOptions<Usage, ReqEns, Cpy, Snd, Syn> {
+    _usage: PhantomData<Usage>,
+    _req_ens: PhantomData<ReqEns>,
+    _copy: PhantomData<Cpy>,
+    _send: PhantomData<Snd>,
+    _sync: PhantomData<Syn>,
+}
+
+// Note: the names FN_Once, FN_, etc. are kept short;
+// otherwise, Rust will create a "*.long-type-*" file whenever there is a type error involving
+// FnProof<...> that doesn't fit into a short enough string.
+// REVIEW: if this problem happens again, we might consider using boolean or integer constants
+// instead of named datatypes.
+
+#[doc(hidden)]
+#[allow(non_camel_case_types)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_Once")]
+pub struct FN_Once;
+
+#[doc(hidden)]
+#[allow(non_camel_case_types)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_Mut")]
+pub struct FN_Mut;
+
+#[doc(hidden)]
+#[allow(non_camel_case_types)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_Fn")]
+pub struct FN_Fn;
+
+#[doc(hidden)]
+#[allow(non_camel_case_types)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_RE")]
+pub struct FN_RE<R>(PhantomData<R>);
+
+#[doc(hidden)]
+#[allow(non_camel_case_types)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_Cpy")]
+pub struct FN_Cpy;
+
+#[doc(hidden)]
+#[allow(non_camel_case_types)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_Snd")]
+pub struct FN_Snd;
+
+#[doc(hidden)]
+#[allow(non_camel_case_types)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_Syn")]
+pub struct FN_Syn;
+
+// tracked
+#[doc(hidden)]
+#[allow(non_camel_case_types)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_T")]
+pub struct FN_T;
+
+// not tracked, not copy, not send, not sync
+#[doc(hidden)]
+#[allow(non_camel_case_types)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_")]
+pub struct FN_;
+
+mod private {
+    // To enforce sound rules for proof_fn traits, we limit the possible impls of the traits
+    #[doc(hidden)]
+    #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::private::Sealed")]
+    pub trait Sealed {}
+}
+
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnOnce")]
+pub trait ProofFnOnce: private::Sealed {}
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnMut")]
+pub trait ProofFnMut: ProofFnOnce {}
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFn")]
+pub trait ProofFn: ProofFnMut {}
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnCopy")]
+pub trait ProofFnCopy: private::Sealed {}
+pub trait ProofFnSend: private::Sealed {}
+pub trait ProofFnSync: private::Sealed {}
+
+// We define ProofFnReqEns<R> as a wrapper around a trait with an associated type,
+// because the broadcast lemma for ProofFnReqEns needs an associated type to trigger properly
+// (it can't be directly generic over ReqEns)
+#[doc(hidden)]
+pub trait ProofFnReqEnsAssoc: private::Sealed {
+    type ReqEns;
+}
+pub trait ProofFnReqEns<R>: ProofFnReqEnsAssoc<ReqEns = R> {}
+
+pub trait ProofFnReqEnsDef<Args, Output> {
+    #[verifier::spec]
+    #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnReqEnsDef::req")]
+    fn req(_args: Args) -> bool;
+
+    #[verifier::spec]
+    #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnReqEnsDef::ens")]
+    fn ens(_args: Args, _output: Output) -> bool;
+}
+
+impl<Usage, ReqEns, Cpy, Snd, Syn> private::Sealed
+    for FnProofOptions<Usage, ReqEns, Cpy, Snd, Syn>
+{
+}
+impl<Usage, ReqEns, Cpy, Snd, Syn> ProofFnOnce for FnProofOptions<Usage, ReqEns, Cpy, Snd, Syn> {}
+impl<ReqEns, Cpy, Snd, Syn> ProofFnMut for FnProofOptions<FN_Mut, ReqEns, Cpy, Snd, Syn> {}
+impl<ReqEns, Cpy, Snd, Syn> ProofFnMut for FnProofOptions<FN_Fn, ReqEns, Cpy, Snd, Syn> {}
+impl<ReqEns, Cpy, Snd, Syn> ProofFn for FnProofOptions<FN_Fn, ReqEns, Cpy, Snd, Syn> {}
+impl<Usage, R, Cpy, Snd, Syn> ProofFnReqEnsAssoc
+    for FnProofOptions<Usage, FN_RE<R>, Cpy, Snd, Syn>
+{
+    type ReqEns = R;
+}
+impl<Usage, R, Cpy, Snd, Syn> ProofFnReqEns<R> for FnProofOptions<Usage, FN_RE<R>, Cpy, Snd, Syn> {}
+impl<Usage, ReqEns, Snd, Syn> ProofFnCopy for FnProofOptions<Usage, ReqEns, FN_Cpy, Snd, Syn> {}
+impl<Usage, ReqEns, Cpy, Syn> ProofFnSend for FnProofOptions<Usage, ReqEns, Cpy, FN_Snd, Syn> {}
+impl<Usage, ReqEns, Cpy, Snd> ProofFnSync for FnProofOptions<Usage, ReqEns, Cpy, Snd, FN_Syn> {}
+
+#[cfg(verus_keep_ghost)]
+impl<'a, Options: ProofFnOnce, ArgModes, OutMode, Args: core::marker::Tuple, Output> FnOnce<Args>
+    for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
+{
+    type Output = Output;
+    extern "rust-call" fn call_once(self, _: Args) -> <Self as FnOnce<Args>>::Output {
+        unimplemented!()
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+impl<'a, Options: ProofFnMut, ArgModes, OutMode, Args: core::marker::Tuple, Output> FnMut<Args>
+    for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
+{
+    extern "rust-call" fn call_mut(&mut self, _: Args) -> <Self as FnOnce<Args>>::Output {
+        unimplemented!()
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+impl<'a, Options: ProofFn, ArgModes, OutMode, Args: core::marker::Tuple, Output> Fn<Args>
+    for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
+{
+    extern "rust-call" fn call(&self, _: Args) -> <Self as FnOnce<Args>>::Output {
+        unimplemented!()
+    }
+}
+
+impl<'a, Options: ProofFnCopy, ArgModes, OutMode, Args, Output> Clone
+    for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
+{
+    fn clone(&self) -> Self {
+        unimplemented!()
+    }
+}
+
+impl<'a, Options: ProofFnCopy, ArgModes, OutMode, Args, Output> Copy
+    for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
+{
+}
+
+unsafe impl<'a, Options: ProofFnSend, ArgModes, OutMode, Args, Output> Send
+    for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
+{
+}
+
+unsafe impl<'a, Options: ProofFnSync, ArgModes, OutMode, Args, Output> Sync
+    for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
+{
+}
+
+#[cfg(verus_keep_ghost)]
+impl private::Sealed for FN_Once {}
+#[cfg(verus_keep_ghost)]
+impl private::Sealed for FN_Mut {}
+#[cfg(verus_keep_ghost)]
+impl private::Sealed for FN_Fn {}
+#[cfg(verus_keep_ghost)]
+impl<R> private::Sealed for FN_RE<R> {}
+#[cfg(verus_keep_ghost)]
+impl private::Sealed for FN_Cpy {}
+#[cfg(verus_keep_ghost)]
+impl private::Sealed for FN_Snd {}
+#[cfg(verus_keep_ghost)]
+impl private::Sealed for FN_Syn {}
+#[cfg(verus_keep_ghost)]
+impl private::Sealed for FN_T {}
+#[cfg(verus_keep_ghost)]
+impl private::Sealed for FN_ {}
+
+#[doc(hidden)]
+#[cfg(verus_keep_ghost)]
+pub trait ConfirmUsage<Args, Output, F>: private::Sealed {}
+#[cfg(verus_keep_ghost)]
+impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output = Output>>
+    ConfirmUsage<Args, Output, F> for FN_Once
+{
+}
+#[cfg(verus_keep_ghost)]
+impl<Args: core::marker::Tuple, Output, F: FnMut<Args, Output = Output>>
+    ConfirmUsage<Args, Output, F> for FN_Mut
+{
+}
+#[cfg(verus_keep_ghost)]
+impl<Args: core::marker::Tuple, Output, F: Fn<Args, Output = Output>> ConfirmUsage<Args, Output, F>
+    for FN_Fn
+{
+}
+
+#[doc(hidden)]
+#[cfg(verus_keep_ghost)]
+pub trait ConfirmCopy<F>: private::Sealed {}
+#[cfg(verus_keep_ghost)]
+impl<F: Copy> ConfirmCopy<F> for FN_Cpy {}
+#[cfg(verus_keep_ghost)]
+impl<F> ConfirmCopy<F> for FN_ {}
+
+#[doc(hidden)]
+#[cfg(verus_keep_ghost)]
+pub trait ConfirmSend<F>: private::Sealed {}
+#[cfg(verus_keep_ghost)]
+impl<F: Send> ConfirmSend<F> for FN_Snd {}
+#[cfg(verus_keep_ghost)]
+impl<F> ConfirmSend<F> for FN_ {}
+
+#[doc(hidden)]
+#[cfg(verus_keep_ghost)]
+pub trait ConfirmSync<F>: private::Sealed {}
+#[cfg(verus_keep_ghost)]
+impl<F: Sync> ConfirmSync<F> for FN_Syn {}
+#[cfg(verus_keep_ghost)]
+impl<F> ConfirmSync<F> for FN_ {}
+
+#[doc(hidden)]
+#[cfg(verus_keep_ghost)]
+pub trait ConfirmTracked: private::Sealed {}
+#[cfg(verus_keep_ghost)]
+impl ConfirmTracked for FN_T {}
+#[cfg(verus_keep_ghost)]
+impl ConfirmTracked for FN_ {}
+
+// Note: Rust can check the well-formedness of all the type arguments except ArgModes;
+// we check ArgModes in the conversion to VIR
+#[doc(hidden)]
+#[cfg(verus_keep_ghost)]
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::closure_to_fn_proof")]
+pub fn closure_to_fn_proof<'a, Usage, Cpy, Snd, Syn, ArgModes, OutMode, Args, Output, F: 'a>(
+    _f: F,
+) -> FnProof<'a, FnProofOptions<Usage, FN_, Cpy, Snd, Syn>, ArgModes, OutMode, Args, Output>
+where
+    Usage: ConfirmUsage<Args, Output, F>,
+    Cpy: ConfirmCopy<F>,
+    Snd: ConfirmSend<F>,
+    Syn: ConfirmSync<F>,
+    ArgModes: core::marker::Tuple,
+    OutMode: ConfirmTracked,
+    Args: core::marker::Tuple,
+{
+    unimplemented!()
+}
+
 // Intrinsics defined in the AIR prelude related to word-sizes and bounded ints
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::unsigned_max"]

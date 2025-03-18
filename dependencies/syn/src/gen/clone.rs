@@ -270,6 +270,15 @@ impl Clone for crate::Closed {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::ClosureArg {
+    fn clone(&self) -> Self {
+        crate::ClosureArg {
+            tracked_token: self.tracked_token.clone(),
+            pat: self.pat.clone(),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::ConstParam {
@@ -586,6 +595,8 @@ impl Clone for crate::ExprClosure {
             movability: self.movability.clone(),
             asyncness: self.asyncness.clone(),
             capture: self.capture.clone(),
+            proof_fn: self.proof_fn.clone(),
+            options: self.options.clone(),
             or1_token: self.or1_token.clone(),
             inputs: self.inputs.clone(),
             or2_token: self.or2_token.clone(),
@@ -1119,6 +1130,24 @@ impl Clone for crate::FnMode {
             crate::FnMode::Proof(v0) => crate::FnMode::Proof(v0.clone()),
             crate::FnMode::Exec(v0) => crate::FnMode::Exec(v0.clone()),
             crate::FnMode::Default => crate::FnMode::Default,
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::FnProofArg {
+    fn clone(&self) -> Self {
+        crate::FnProofArg {
+            tracked_token: self.tracked_token.clone(),
+            arg: self.arg.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::FnProofOptions {
+    fn clone(&self) -> Self {
+        crate::FnProofOptions {
+            bracket_token: self.bracket_token.clone(),
+            options: self.options.clone(),
         }
     }
 }
@@ -1796,6 +1825,18 @@ impl Clone for crate::LocalInit {
             eq_token: self.eq_token.clone(),
             expr: self.expr.clone(),
             diverge: self.diverge.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::LoopSpec {
+    fn clone(&self) -> Self {
+        crate::LoopSpec {
+            iter_name: self.iter_name.clone(),
+            invariants: self.invariants.clone(),
+            invariant_except_breaks: self.invariant_except_breaks.clone(),
+            ensures: self.ensures.clone(),
+            decreases: self.decreases.clone(),
         }
     }
 }
@@ -2561,6 +2602,7 @@ impl Clone for crate::Type {
             crate::Type::Tuple(v0) => crate::Type::Tuple(v0.clone()),
             crate::Type::Verbatim(v0) => crate::Type::Verbatim(v0.clone()),
             crate::Type::FnSpec(v0) => crate::Type::FnSpec(v0.clone()),
+            crate::Type::FnProof(v0) => crate::Type::FnProof(v0.clone()),
         }
     }
 }
@@ -2588,6 +2630,19 @@ impl Clone for crate::TypeBareFn {
             paren_token: self.paren_token.clone(),
             inputs: self.inputs.clone(),
             variadic: self.variadic.clone(),
+            output: self.output.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::TypeFnProof {
+    fn clone(&self) -> Self {
+        crate::TypeFnProof {
+            proof_fn_token: self.proof_fn_token.clone(),
+            generics: self.generics.clone(),
+            options: self.options.clone(),
+            paren_token: self.paren_token.clone(),
+            inputs: self.inputs.clone(),
             output: self.output.clone(),
         }
     }

@@ -832,6 +832,22 @@
       }
     },
     {
+      "ident": "ClosureArg",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "tracked_token": {
+          "option": {
+            "token": "Tracked"
+          }
+        },
+        "pat": {
+          "syn": "Pat"
+        }
+      }
+    },
+    {
       "ident": "ConstParam",
       "features": {
         "any": [
@@ -1625,13 +1641,23 @@
             "token": "Move"
           }
         },
+        "proof_fn": {
+          "option": {
+            "token": "ProofFn"
+          }
+        },
+        "options": {
+          "option": {
+            "syn": "FnProofOptions"
+          }
+        },
         "or1_token": {
           "token": "Or"
         },
         "inputs": {
           "punctuated": {
             "element": {
-              "syn": "Pat"
+              "syn": "ClosureArg"
             },
             "punct": "Comma"
           }
@@ -2908,6 +2934,41 @@
           }
         ],
         "Default": []
+      }
+    },
+    {
+      "ident": "FnProofArg",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "tracked_token": {
+          "option": {
+            "token": "Tracked"
+          }
+        },
+        "arg": {
+          "syn": "BareFnArg"
+        }
+      }
+    },
+    {
+      "ident": "FnProofOptions",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "bracket_token": {
+          "group": "Bracket"
+        },
+        "options": {
+          "punctuated": {
+            "element": {
+              "syn": "PathSegment"
+            },
+            "punct": "Comma"
+          }
+        }
       }
     },
     {
@@ -4650,6 +4711,46 @@
                 }
               }
             ]
+          }
+        }
+      }
+    },
+    {
+      "ident": "LoopSpec",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "iter_name": {
+          "option": {
+            "tuple": [
+              {
+                "proc_macro2": "Ident"
+              },
+              {
+                "token": "FatArrow"
+              }
+            ]
+          }
+        },
+        "invariants": {
+          "option": {
+            "syn": "Invariant"
+          }
+        },
+        "invariant_except_breaks": {
+          "option": {
+            "syn": "InvariantExceptBreak"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "Decreases"
           }
         }
       }
@@ -6468,6 +6569,11 @@
           {
             "syn": "TypeFnSpec"
           }
+        ],
+        "FnProof": [
+          {
+            "syn": "TypeFnProof"
+          }
         ]
       },
       "exhaustive": false
@@ -6538,6 +6644,41 @@
         "variadic": {
           "option": {
             "syn": "BareVariadic"
+          }
+        },
+        "output": {
+          "syn": "ReturnType"
+        }
+      }
+    },
+    {
+      "ident": "TypeFnProof",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "proof_fn_token": {
+          "token": "ProofFn"
+        },
+        "generics": {
+          "option": {
+            "syn": "AngleBracketedGenericArguments"
+          }
+        },
+        "options": {
+          "option": {
+            "syn": "FnProofOptions"
+          }
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "inputs": {
+          "punctuated": {
+            "element": {
+              "syn": "FnProofArg"
+            },
+            "punct": "Comma"
           }
         },
         "output": {
@@ -7355,6 +7496,7 @@
     "Pound": "#",
     "Priv": "priv",
     "Proof": "proof",
+    "ProofFn": "proof_fn",
     "Pub": "pub",
     "Question": "?",
     "RArrow": "->",

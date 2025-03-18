@@ -820,6 +820,16 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
             buf += " -> ";
             buf += &ret.to_string();
         }
+        Bound::ProofFn(kind) => {
+            buf += match kind {
+                ClosureKind::Fn => "ProofFn",
+                ClosureKind::FnMut => "ProofFnMut",
+                ClosureKind::FnOnce => "ProofFnOnce",
+            };
+        }
+        Bound::ProofFnCopy => {
+            buf += "ProofFnCopy";
+        }
     }
     buf
 }

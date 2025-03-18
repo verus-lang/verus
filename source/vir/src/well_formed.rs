@@ -209,6 +209,7 @@ fn check_one_expr(
             let f = check_path_and_get_function(ctxt, x, disallow_private_access, &expr.span)?;
             match kind {
                 CallTargetKind::Static => {}
+                CallTargetKind::ProofFn(..) => {}
                 CallTargetKind::Dynamic => {}
                 CallTargetKind::DynamicResolved { resolved: resolved_fun, .. } => {
                     check_path_and_get_function(
@@ -399,13 +400,13 @@ fn check_one_expr(
             }
             _ => {}
         },
-        ExprX::ExecClosure { params, ret, .. } => {
+        ExprX::NonSpecClosure { params, ret, proof_fn_modes, .. } => {
             for p in params.iter() {
                 check_typ(ctxt, &p.a, &expr.span)?;
             }
             check_typ(ctxt, &ret.a, &expr.span)?;
 
-            crate::closures::check_closure_well_formed(expr)?;
+            crate::closures::check_closure_well_formed(expr, proof_fn_modes.is_some())?;
         }
         ExprX::Fuel(f, fuel, is_broadcast_use) => {
             if ctxt.reveal_groups.contains(f) && *fuel == 1 {

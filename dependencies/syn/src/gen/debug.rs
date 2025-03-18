@@ -473,6 +473,15 @@ impl Debug for crate::Closed {
         formatter.finish()
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::ClosureArg {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ClosureArg");
+        formatter.field("tracked_token", &self.tracked_token);
+        formatter.field("pat", &self.pat);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::ConstParam {
@@ -914,6 +923,8 @@ impl crate::ExprClosure {
         formatter.field("movability", &self.movability);
         formatter.field("asyncness", &self.asyncness);
         formatter.field("capture", &self.capture);
+        formatter.field("proof_fn", &self.proof_fn);
+        formatter.field("options", &self.options);
         formatter.field("or1_token", &self.or1_token);
         formatter.field("inputs", &self.inputs);
         formatter.field("or2_token", &self.or2_token);
@@ -1682,6 +1693,24 @@ impl Debug for crate::FnMode {
             }
             crate::FnMode::Default => formatter.write_str("Default"),
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::FnProofArg {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("FnProofArg");
+        formatter.field("tracked_token", &self.tracked_token);
+        formatter.field("arg", &self.arg);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::FnProofOptions {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("FnProofOptions");
+        formatter.field("bracket_token", &self.bracket_token);
+        formatter.field("options", &self.options);
+        formatter.finish()
     }
 }
 #[cfg(feature = "full")]
@@ -2591,6 +2620,18 @@ impl Debug for crate::LocalInit {
         formatter.field("eq_token", &self.eq_token);
         formatter.field("expr", &self.expr);
         formatter.field("diverge", &self.diverge);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::LoopSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("LoopSpec");
+        formatter.field("iter_name", &self.iter_name);
+        formatter.field("invariants", &self.invariants);
+        formatter.field("invariant_except_breaks", &self.invariant_except_breaks);
+        formatter.field("ensures", &self.ensures);
+        formatter.field("decreases", &self.decreases);
         formatter.finish()
     }
 }
@@ -3585,6 +3626,7 @@ impl Debug for crate::Type {
                 formatter.finish()
             }
             crate::Type::FnSpec(v0) => v0.debug(formatter, "FnSpec"),
+            crate::Type::FnProof(v0) => v0.debug(formatter, "FnProof"),
         }
     }
 }
@@ -3624,6 +3666,24 @@ impl crate::TypeBareFn {
         formatter.field("paren_token", &self.paren_token);
         formatter.field("inputs", &self.inputs);
         formatter.field("variadic", &self.variadic);
+        formatter.field("output", &self.output);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::TypeFnProof {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        self.debug(formatter, "TypeFnProof")
+    }
+}
+impl crate::TypeFnProof {
+    fn debug(&self, formatter: &mut fmt::Formatter, name: &str) -> fmt::Result {
+        let mut formatter = formatter.debug_struct(name);
+        formatter.field("proof_fn_token", &self.proof_fn_token);
+        formatter.field("generics", &self.generics);
+        formatter.field("options", &self.options);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("inputs", &self.inputs);
         formatter.field("output", &self.output);
         formatter.finish()
     }

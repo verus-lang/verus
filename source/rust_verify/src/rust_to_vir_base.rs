@@ -24,8 +24,8 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Path, PathX, Primitive,
-    Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
+    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, Path, PathX,
+    Primitive, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -1302,6 +1302,67 @@ pub(crate) fn is_smt_arith<'tcx>(
         (TypX::Bool, TypX::Bool) => Ok(true),
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
         _ => Ok(false),
+    }
+}
+
+fn get_proof_fn_one_mode<'tcx>(
+    ctxt: &Context<'tcx>,
+    span: Span,
+    ty: &rustc_middle::ty::Ty<'tcx>,
+) -> Result<Mode, VirErr> {
+    if let TyKind::Adt(AdtDef(adt_def_data), _args) = &ty.kind() {
+        let verus_item = ctxt.verus_items.id_to_name.get(&adt_def_data.did);
+        match verus_item {
+            Some(VerusItem::External(crate::verus_items::ExternalItem::FN_)) => {
+                return Ok(Mode::Spec);
+            }
+            Some(VerusItem::External(crate::verus_items::ExternalItem::FN_T)) => {
+                return Ok(Mode::Proof);
+            }
+            _ => {}
+        }
+    }
+    err_span(span, "could not read mode annotations from proof_fn type")
+}
+
+pub(crate) fn try_get_proof_fn_modes<'tcx>(
+    ctxt: &Context<'tcx>,
+    span: Span,
+    fun_ty: &rustc_middle::ty::Ty<'tcx>,
+) -> Result<Option<(Vec<Mode>, Mode)>, VirErr> {
+    match &fun_ty.kind() {
+        TyKind::Ref(_, t, _) => try_get_proof_fn_modes(ctxt, span, t),
+        TyKind::Adt(AdtDef(adt_def_data), args) => {
+            let verus_item = ctxt.verus_items.id_to_name.get(&adt_def_data.did);
+            if verus_item == Some(&VerusItem::External(crate::verus_items::ExternalItem::FnProof)) {
+                assert!(args.len() == 6);
+                let arg_mode_tuple = &args[2];
+                let ret_mode_typ = &args[3];
+                let ret_mode =
+                    if let rustc_middle::ty::GenericArgKind::Type(ty) = ret_mode_typ.unpack() {
+                        get_proof_fn_one_mode(ctxt, span, &ty)?
+                    } else {
+                        panic!("unexpected FnProof argument")
+                    };
+                let arg_modes =
+                    if let rustc_middle::ty::GenericArgKind::Type(ty) = arg_mode_tuple.unpack() {
+                        if let TyKind::Tuple(_) = ty.kind() {
+                            let mut modes: Vec<Mode> = Vec::new();
+                            for t in ty.tuple_fields().iter() {
+                                modes.push(get_proof_fn_one_mode(ctxt, span, &t)?);
+                            }
+                            modes
+                        } else {
+                            panic!("unexpected FnProof argument")
+                        }
+                    } else {
+                        panic!("unexpected FnProof argument")
+                    };
+                return Ok(Some((arg_modes, ret_mode)));
+            }
+            Ok(None)
+        }
+        _ => Ok(None),
     }
 }
 

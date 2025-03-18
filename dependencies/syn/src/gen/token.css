@@ -102,6 +102,7 @@ a.struct[title="struct syn::token::PlusEq"],
 a.struct[title="struct syn::token::Pound"],
 a.struct[title="struct syn::token::Priv"],
 a.struct[title="struct syn::token::Proof"],
+a.struct[title="struct syn::token::ProofFn"],
 a.struct[title="struct syn::token::Pub"],
 a.struct[title="struct syn::token::Question"],
 a.struct[title="struct syn::token::RArrow"],
@@ -260,6 +261,7 @@ a.struct[title="struct syn::token::PlusEq"]::before,
 a.struct[title="struct syn::token::Pound"]::before,
 a.struct[title="struct syn::token::Priv"]::before,
 a.struct[title="struct syn::token::Proof"]::before,
+a.struct[title="struct syn::token::ProofFn"]::before,
 a.struct[title="struct syn::token::Pub"]::before,
 a.struct[title="struct syn::token::Question"]::before,
 a.struct[title="struct syn::token::RArrow"]::before,
@@ -731,6 +733,10 @@ a.struct[title="struct syn::token::Proof"]::before {
 	content: "Token![proof]";
 }
 
+a.struct[title="struct syn::token::ProofFn"]::before {
+	content: "Token![proof_fn]";
+}
+
 a.struct[title="struct syn::token::Pub"]::before {
 	content: "Token![pub]";
 }
@@ -1111,6 +1117,7 @@ a.struct[title="struct syn::token::AssumeSpecification"]::after,
 a.struct[title="struct syn::token::InvariantEnsures"]::after,
 a.struct[title="struct syn::token::NoUnwind"]::after,
 a.struct[title="struct syn::token::OpensInvariants"]::after,
+a.struct[title="struct syn::token::ProofFn"]::after,
 a.struct[title="struct syn::token::SizeOf"]::after {
 	content: ".........";
 }
