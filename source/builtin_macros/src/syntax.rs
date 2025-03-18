@@ -722,6 +722,8 @@ impl Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         let mut unwrap_ghost_tracked: Vec<Stmt> = Vec::new();
 
+        let has_body = semi_token.is_none();
+
         // attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
         if self.erase_ghost.keep() {
             attrs.push(mk_verus_attr(sig.fn_token.span, quote! { verus_macro }));
@@ -794,6 +796,27 @@ impl Visitor {
             stmts.push(stmt_with_semi!(
                 broadcast_span =>
                 compile_error!("only `proof` functions can be marked `broadcast`")
+            ));
+        }
+
+        if !is_trait && matches!(sig.mode, FnMode::Proof(_)) && !has_body {
+            stmts.push(stmt_with_semi!(
+                sig.mode.span() =>
+                compile_error!("a `proof` function must have a body (if you intentionally want to omit the body, use the `axiom` keyword)")
+            ));
+        }
+
+        if matches!(sig.mode, FnMode::ProofAxiom(_)) && has_body && !self.erase_ghost.erase() {
+            stmts.push(stmt_with_semi!(
+                sig.mode.span() =>
+                compile_error!("an `axiom` should not have a body")
+            ));
+        }
+
+        if is_trait && matches!(sig.mode, FnMode::ProofAxiom(_)) {
+            stmts.push(stmt_with_semi!(
+                sig.mode.span() =>
+                compile_error!("`axiom` keyword unexpected in trait declarations")
             ));
         }
 

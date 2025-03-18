@@ -1498,3 +1498,19 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode proof")
 }
+
+test_verify_one_file! {
+    #[test] axiom_with_body verus_code! {
+        axiom fn foo()
+            ensures true
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "an 'axiom' fn should have no body")
+}
+        
+test_verify_one_file! {
+    #[test] nonaxiom_without_body verus_code! {
+        proof fn foo()
+            ensures false;
+    } => Err(err) => assert_vir_error_msg(err, "an 'axiom' fn should have no body")
+}

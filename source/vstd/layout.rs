@@ -121,8 +121,7 @@ pub broadcast proof fn layout_of_primitives()
 }
 
 /// Size and alignment of the unit tuple ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.tuple.unit)).
-#[verifier::external_body]
-pub broadcast proof fn layout_of_unit_tuple()
+pub broadcast axiom fn layout_of_unit_tuple()
     ensures
         #![trigger size_of::<()>()]
         #![trigger align_of::<()>()]
@@ -131,8 +130,7 @@ pub broadcast proof fn layout_of_unit_tuple()
 ;
 
 /// Pointers and references have the same layout. Mutability of the pointer or reference does not change the layout. ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer.intro).)
-#[verifier::external_body]
-pub broadcast proof fn layout_of_references_and_pointers<T: ?Sized>()
+pub broadcast axiom fn layout_of_references_and_pointers<T: ?Sized>()
     ensures
         #![trigger size_of::<*mut T>()]
         #![trigger size_of::<*const T>()]
@@ -146,8 +144,7 @@ pub broadcast proof fn layout_of_references_and_pointers<T: ?Sized>()
 
 /// Pointers to sized types have the same size and alignment as usize
 /// ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.pointer.intro)).
-#[verifier::external_body]
-pub broadcast proof fn layout_of_references_and_pointers_for_sized_types<T: Sized>()
+pub broadcast axiom fn layout_of_references_and_pointers_for_sized_types<T: Sized>()
     ensures
         #![trigger size_of::<*mut T>()]
         #![trigger align_of::<*mut T>()]
