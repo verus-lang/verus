@@ -295,18 +295,19 @@ impl<V> PointsTo<V> {
     /// Guarantees that two distinct `PointsTo<V>` objects point to disjoint ranges of memory.
     /// If both S and V are non-zero-sized, then this also implies the pointers
     /// have distinct addresses.
-    pub proof fn is_disjoint<S>(&mut self, other: &PointsTo<S>)
+    pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
         ensures
             *old(self) == *self,
             self.addr() + size_of::<V>() <= other.addr() || other.addr() + size_of::<S>()
                 <= self.addr(),
     {
+        use_type_invariant(&*self);
         self.points_to.is_disjoint(&other.points_to);
     }
 
     /// Guarantees that two distinct, non-ZST `PointsTo<V>` objects point to different
     /// addresses. This is a corollary of [`PointsTo::is_disjoint`].
-    pub proof fn is_distinct<S>(&mut self, other: &PointsTo<S>)
+    pub proof fn is_distinct<S>(tracked &mut self, tracked other: &PointsTo<S>)
         requires
             size_of::<V>() != 0,
             size_of::<S>() != 0,
@@ -314,6 +315,7 @@ impl<V> PointsTo<V> {
             *old(self) == *self,
             self.addr() != other.addr(),
     {
+        use_type_invariant(&*self);
         self.points_to.is_disjoint(&other.points_to);
     }
 }
