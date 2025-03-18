@@ -637,6 +637,11 @@ fn get_attributes_for_automatic_derive<'tcx>(
                         }
                     };
 
+                    if type_eattrs.external_auto_derives {
+                        type_eattrs.external = true;
+                        return Some(type_eattrs);
+                    }
+
                     if opts_in_to_verus(&type_eattrs) {
                         let trait_def_id = impll.of_trait.unwrap().path.res.def_id();
                         let rust_item = get_rust_item(ctxt.tcx, trait_def_id);

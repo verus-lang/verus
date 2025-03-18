@@ -291,6 +291,8 @@ pub(crate) enum Attr {
     // In order to apply a specification to a trait externally
     // (the string is the name of the associated type pointing to the specified trait)
     ExternalTraitSpecification(String),
+    // Any auto-derives for this type should be treated external
+    ExternalAutoDerives,
     // Marks a variable that's spec or ghost mode in exec code
     UnwrappedBinding,
     // Marks the auxiliary function constructed by reveal/hide
@@ -557,6 +559,9 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, arg, None) if arg == "external_type_specification" => {
                     v.push(Attr::ExternalTypeSpecification)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "external_derive" => {
+                    v.push(Attr::ExternalAutoDerives)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "external_trait_specification" => v.push(
                     Attr::ExternalTraitSpecification("ExternalTraitSpecificationFor".to_string()),
@@ -850,6 +855,7 @@ pub(crate) struct ExternalAttrs {
     pub(crate) size_of_global: bool,
     pub(crate) any_other_verus_specific_attribute: bool,
     pub(crate) internal_get_field_many_variants: bool,
+    pub(crate) external_auto_derives: bool,
 }
 
 #[derive(Debug)]
@@ -956,6 +962,7 @@ pub(crate) fn get_external_attrs(
         size_of_global: false,
         any_other_verus_specific_attribute: false,
         internal_get_field_many_variants: false,
+        external_auto_derives: false,
     };
 
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -971,6 +978,7 @@ pub(crate) fn get_external_attrs(
             Attr::SizeOfGlobal => es.size_of_global = true,
             Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
             Attr::Trusted => {}
+            Attr::ExternalAutoDerives => es.external_auto_derives = true,
             Attr::UnsupportedRustcAttr(..) => {}
             _ => {
                 es.any_other_verus_specific_attribute = true;
