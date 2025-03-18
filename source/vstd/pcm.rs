@@ -169,7 +169,6 @@ impl<P: PCM> Resource<P> {
         unimplemented!();
     }
 
-    #[verifier::external_body]
     pub proof fn join_shared_to_target<'a>(
         tracked &'a self,
         tracked other: &'a Self,
@@ -182,7 +181,9 @@ impl<P: PCM> Resource<P> {
             out.loc() == self.loc(),
             out.value() == target,
     {
-        self.join_shared(other).weaken(target)
+        let tracked j = self.join_shared(other);
+        j.validate();
+        j.weaken(target)
     }
 
     #[verifier::external_body]
