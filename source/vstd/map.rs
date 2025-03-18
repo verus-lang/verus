@@ -108,46 +108,29 @@ impl<K, V> Map<K, V> {
         self.dom().len()
     }
 
-    #[verifier::external_body]
-    pub proof fn tracked_empty() -> (tracked out_v: Self)
+    pub axiom fn tracked_empty() -> (tracked out_v: Self)
         ensures
-            out_v == Map::<K, V>::empty(),
-    {
-        unimplemented!();
-    }
+            out_v == Map::<K, V>::empty();
 
-    #[verifier::external_body]
-    pub proof fn tracked_insert(tracked &mut self, key: K, tracked value: V)
+    pub axiom fn tracked_insert(tracked &mut self, key: K, tracked value: V)
         ensures
-            *self == Map::insert(*old(self), key, value),
-    {
-        unimplemented!();
-    }
+            *self == Map::insert(*old(self), key, value);
 
     /// todo fill in documentation
-    #[verifier::external_body]
-    pub proof fn tracked_remove(tracked &mut self, key: K) -> (tracked v: V)
+    pub axiom fn tracked_remove(tracked &mut self, key: K) -> (tracked v: V)
         requires
             old(self).dom().contains(key),
         ensures
             *self == Map::remove(*old(self), key),
-            v == old(self)[key],
-    {
-        unimplemented!();
-    }
+            v == old(self)[key];
 
-    #[verifier::external_body]
-    pub proof fn tracked_borrow(tracked &self, key: K) -> (tracked v: &V)
+    pub axiom fn tracked_borrow(tracked &self, key: K) -> (tracked v: &V)
         requires
             self.dom().contains(key),
         ensures
-            *v === self.index(key),
-    {
-        unimplemented!();
-    }
+            *v === self.index(key);
 
-    #[verifier::external_body]
-    pub proof fn tracked_map_keys<J>(
+    pub axiom fn tracked_map_keys<J>(
         tracked old_map: Map<K, V>,
         key_map: Map<J, K>,
     ) -> (tracked new_map: Map<J, V>)
@@ -164,13 +147,9 @@ impl<K, V> Map<K, V> {
             forall|j|
                 key_map.dom().contains(j) ==> new_map.dom().contains(j) && #[trigger] new_map.index(
                     j,
-                ) == old_map.index(key_map.index(j)),
-    {
-        unimplemented!();
-    }
+                ) == old_map.index(key_map.index(j));
 
-    #[verifier::external_body]
-    pub proof fn tracked_remove_keys(tracked &mut self, keys: Set<K>) -> (tracked out_map: Map<
+    pub axiom fn tracked_remove_keys(tracked &mut self, keys: Set<K>) -> (tracked out_map: Map<
         K,
         V,
     >)
@@ -178,18 +157,11 @@ impl<K, V> Map<K, V> {
             keys.subset_of(old(self).dom()),
         ensures
             self == old(self).remove_keys(keys),
-            out_map == old(self).restrict(keys),
-    {
-        unimplemented!();
-    }
+            out_map == old(self).restrict(keys);
 
-    #[verifier::external_body]
-    pub proof fn tracked_union_prefer_right(tracked &mut self, right: Self)
+    pub axiom fn tracked_union_prefer_right(tracked &mut self, right: Self)
         ensures
-            *self == old(self).union_prefer_right(right),
-    {
-        unimplemented!();
-    }
+            *self == old(self).union_prefer_right(right);
 }
 
 // Trusted axioms

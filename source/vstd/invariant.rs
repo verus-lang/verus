@@ -197,28 +197,20 @@ macro_rules! declare_invariant_impl {
             ///` with constant `k`. initial stored (tracked) value `v`,
             /// and in the namespace `ns`.
 
-            #[verifier::external_body]
-            pub proof fn new(k: K, tracked v: V, ns: int) -> (tracked i: $invariant<K, V, Pred>)
+            pub axiom fn new(k: K, tracked v: V, ns: int) -> (tracked i: $invariant<K, V, Pred>)
                 requires
                     Pred::inv(k, v),
                 ensures
                     i.constant() == k,
-                    i.namespace() == ns,
-            {
-                unimplemented!();
-            }
+                    i.namespace() == ns;
 
             /// Destroys the `
             #[doc = stringify!($invariant)]
             ///`, returning the tracked value contained within.
 
-            #[verifier::external_body]
-            pub proof fn into_inner(#[verifier::proof] self) -> (tracked v: V)
+            pub axiom fn into_inner(#[verifier::proof] self) -> (tracked v: V)
                 ensures self.inv(v),
-                opens_invariants [ self.namespace() ]
-            {
-                unimplemented!();
-            }
+                opens_invariants [ self.namespace() ];
         }
 
         }

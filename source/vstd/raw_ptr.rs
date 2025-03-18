@@ -189,41 +189,29 @@ impl<T> PointsTo<T> {
     ///
     // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
     // See https://doc.rust-lang.org/std/ptr/#safety
-    #[verifier::external_body]
-    pub proof fn is_nonnull(tracked &self)
+    pub axiom fn is_nonnull(tracked &self)
         requires
             size_of::<T>() != 0,
         ensures
-            self@.ptr@.addr != 0,
-    {
-        unimplemented!();
-    }
+            self@.ptr@.addr != 0;
 
     /// "Forgets" about the value stored behind the pointer.
     /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
     /// Note that this is a `proof` function, i.e.,
     /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
     /// Only the proof-code representation changes.
-    #[verifier::external_body]
-    pub proof fn leak_contents(tracked &mut self)
+    pub axiom fn leak_contents(tracked &mut self)
         ensures
             self.ptr() == old(self).ptr(),
-            self.is_uninit(),
-    {
-        unimplemented!();
-    }
+            self.is_uninit();
 
     /// Note: If both S and T are non-zero-sized, then this implies the pointers
     /// have distinct addresses.
-    #[verifier::external_body]
-    pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
+    pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
         ensures
             *old(self) == *self,
             self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= self.ptr() as int,
-    {
-        unimplemented!();
-    }
+                + size_of::<S>() <= self.ptr() as int;
 }
 
 impl<T> MemContents<T> {
@@ -253,12 +241,9 @@ pub open spec fn ptr_from_data<T: ?Sized>(data: PtrData) -> *const T {
     ptr_mut_from_data(data) as *const T
 }
 
-#[verifier::external_body]
-pub broadcast proof fn axiom_ptr_mut_from_data<T: ?Sized>(data: PtrData)
+pub broadcast axiom fn axiom_ptr_mut_from_data<T: ?Sized>(data: PtrData)
     ensures
-        (#[trigger] ptr_mut_from_data::<T>(data))@ == data,
-{
-}
+        (#[trigger] ptr_mut_from_data::<T>(data))@ == data;
 
 // Equiv to ptr_mut_from_data, but named differently to avoid trigger issues
 // Only use for ptrs_mut_eq
@@ -266,12 +251,9 @@ pub broadcast proof fn axiom_ptr_mut_from_data<T: ?Sized>(data: PtrData)
 pub uninterp spec fn view_reverse_for_eq<T: ?Sized>(data: PtrData) -> *mut T;
 
 /// Implies that `a@ == b@ ==> a == b`.
-#[verifier::external_body]
-pub broadcast proof fn ptrs_mut_eq<T: ?Sized>(a: *mut T)
+pub broadcast axiom fn ptrs_mut_eq<T: ?Sized>(a: *mut T)
     ensures
-        view_reverse_for_eq::<T>(#[trigger] a@) == a,
-{
-}
+        view_reverse_for_eq::<T>(#[trigger] a@) == a;
 
 //////////////////////////////////////
 // Null ptrs
@@ -512,13 +494,9 @@ impl IsExposed {
 
     pub uninterp spec fn provenance(self) -> Provenance;
 
-    #[verifier::external_body]
-    pub proof fn null() -> (tracked exp: IsExposed)
+    pub axiom fn null() -> (tracked exp: IsExposed)
         ensures
-            exp.provenance() == Provenance::null(),
-    {
-        unimplemented!()
-    }
+            exp.provenance() == Provenance::null();
 }
 
 /// Perform a provenance expose operation.
@@ -577,38 +555,26 @@ impl PointsToRaw {
         super::set_lib::set_int_range(start, start + len) <= self.dom()
     }
 
-    #[verifier::external_body]
-    pub proof fn empty(provenance: Provenance) -> (tracked points_to_raw: Self)
+    pub axiom fn empty(provenance: Provenance) -> (tracked points_to_raw: Self)
         ensures
             points_to_raw.dom() == Set::<int>::empty(),
-            points_to_raw.provenance() == provenance,
-    {
-        unimplemented!();
-    }
+            points_to_raw.provenance() == provenance;
 
-    #[verifier::external_body]
-    pub proof fn split(tracked self, range: Set<int>) -> (tracked res: (Self, Self))
+    pub axiom fn split(tracked self, range: Set<int>) -> (tracked res: (Self, Self))
         requires
             range.subset_of(self.dom()),
         ensures
             res.0.provenance() == self.provenance(),
             res.1.provenance() == self.provenance(),
             res.0.dom() == range,
-            res.1.dom() == self.dom().difference(range),
-    {
-        unimplemented!();
-    }
+            res.1.dom() == self.dom().difference(range);
 
-    #[verifier::external_body]
-    pub proof fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
+    pub axiom fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
         requires
             self.provenance() == other.provenance(),
         ensures
             joined.provenance() == self.provenance(),
-            joined.dom() == self.dom() + other.dom(),
-    {
-        unimplemented!();
-    }
+            joined.dom() == self.dom() + other.dom();
 
     // In combination with PointsToRaw::empty(),
     // This lets us create a PointsTo for a ZST for _any_ pointer (any address and provenance).
@@ -616,8 +582,7 @@ impl PointsToRaw {
     // Admittedly, this does violate 'strict provenance';
     // https://doc.rust-lang.org/std/ptr/#using-strict-provenance)
     // but that's ok. It is still allowed in Rust's more permissive semantics.
-    #[verifier::external_body]
-    pub proof fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
+    pub axiom fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
             start as int % align_of::<V>() as int == 0,
             self.is_range(start as int, size_of::<V>() as int),
@@ -625,23 +590,16 @@ impl PointsToRaw {
             points_to.ptr() == ptr_mut_from_data::<V>(
                 PtrData { addr: start, provenance: self.provenance(), metadata: Metadata::Thin },
             ),
-            points_to.is_uninit(),
-    {
-        unimplemented!();
-    }
+            points_to.is_uninit();
 }
 
 impl<V> PointsTo<V> {
-    #[verifier::external_body]
-    pub proof fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
+    pub axiom fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
         requires
             self.is_uninit(),
         ensures
             points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() as int),
-            points_to_raw.provenance() == self.ptr()@.provenance,
-    {
-        unimplemented!();
-    }
+            points_to_raw.provenance() == self.ptr()@.provenance;
 }
 
 // Allocation and deallocation via the global allocator
@@ -797,15 +755,11 @@ impl<'a, T> SharedReference<'a, T> {
         &*self.0
     }
 
-    #[verifier::external_body]
-    proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
+    axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
         ensures
             pt.ptr() == self.ptr(),
             pt.is_init(),
-            pt.value() == self.value(),
-    {
-        unimplemented!();
-    }
+            pt.value() == self.value();
 }
 
 /// Like [`ptr_ref`] but returns a `SharedReference` so it keeps track of the relationship
