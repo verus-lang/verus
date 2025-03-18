@@ -391,13 +391,15 @@ impl<V> PPtr<V> {
     ///
     /// This consumes `perm`, since it will no longer be safe to access
     /// that memory location.
-    #[verifier::external_body]
     pub fn free(self, Tracked(perm): Tracked<PointsTo<V>>)
         requires
             perm.pptr() == self,
             perm.is_uninit(),
         opens_invariants none
     {
+        proof {
+            use_type_invariant(&perm);
+        }
         if core::mem::size_of::<V>() != 0 {
             let ptr: *mut u8 = with_exposed_provenance(self.0, Tracked(perm.exposed));
             let tracked PointsTo { points_to, dealloc: dea, exposed } = perm;
@@ -506,7 +508,6 @@ impl<V> PPtr<V> {
 
     /// Given a shared borrow of the `PointsTo<V>`, obtain a shared borrow of `V`.
     #[inline(always)]
-    #[verifier::external_body]
     pub fn borrow<'a>(self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
             perm.pptr() == self,
