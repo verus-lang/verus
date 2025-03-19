@@ -38,7 +38,6 @@ pub(crate) fn func_bind_trig(
     params: &Pars,
     trig_exprs: &Vec<Expr>,
     add_fuel: bool,
-    spec: &Specialization,
 ) -> Bind {
     let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
     for typ_param in typ_params.iter() {
@@ -46,15 +45,25 @@ pub(crate) fn func_bind_trig(
             binders.push(ident_binder(&x.lower(), &str_typ(t)));
         }
     }
-    tracing::trace!("Generating binding: {typ_params:?} to {spec:?}");
     for param in params.iter() {
         let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
             prefix_pre_var(&param.x.name.lower())
         } else {
             param.x.name.lower()
         };
-        let typ = spec.transform_typ(typ_params, &param.x.typ);
-        binders.push(ident_binder(&name, &typ_to_air(ctx, &typ)));
+        let typ = if ctx.poly_strategy == mono::PolyStrategy::Mono {
+            if let TypX::Datatype(dt, typ_params, _impl_path) = &*param.x.typ {
+                let spec = Specialization::from_typs(&typ_params, &Default::default());
+                air::ast_util::ident_typ(&crate::sst_to_air::path_to_air_ident(
+                    &spec.mangle_path(&crate::def::encode_dt_as_path(dt)),
+                ))
+            } else {
+                typ_to_air(ctx, &param.x.typ)
+            }
+        } else {
+            typ_to_air(ctx, &param.x.typ)
+        };
+        binders.push(ident_binder(&name, &typ));
     }
     if add_fuel {
         binders.push(ident_binder(&str_ident(FUEL_PARAM), &str_typ(FUEL_TYPE)));
@@ -73,9 +82,8 @@ pub(crate) fn func_bind(
     params: &Pars,
     trig_expr: &Expr,
     add_fuel: bool,
-    spec: &Specialization,
 ) -> Bind {
-    func_bind_trig(ctx, name, typ_params, params, &vec![trig_expr.clone()], add_fuel, spec)
+    func_bind_trig(ctx, name, typ_params, params, &vec![trig_expr.clone()], add_fuel)
 }
 
 // arguments for function call f(typ_args, params)
@@ -107,13 +115,12 @@ fn func_def_quant(
     params: &Pars,
     pre: &Vec<Expr>,
     body: Expr,
-    spec: &Specialization,
 ) -> Result<Expr, VirErr> {
     let f_args = func_def_typs_args(typ_args, params);
     let f_app = string_apply(name, &Arc::new(f_args));
     let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
     let f_imply = mk_implies(&mk_and(pre), &f_eq);
-    Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false, spec), &f_imply))
+    Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false), &f_imply))
 }
 
 pub(crate) fn hide_projections_air(
@@ -204,7 +211,11 @@ fn func_body_to_air(
     func_body_sst: &crate::sst::FuncSpecBodySst,
     specialization: &mono::Specialization,
 ) -> Result<(), VirErr> {
-    tracing::trace!("func_body_to_air: Function {:?}, specialization: {:?}", function.x.name, specialization);
+    tracing::trace!(
+        "func_body_to_air: Function {:?}, specialization: {:?}",
+        function.x.name,
+        specialization
+    );
     let crate::sst::FuncSpecBodySst { decrease_when, termination_check, body_exp } = func_body_sst;
     let new_body_exp = specialization.transform_exp(&function.x.typ_params, body_exp);
     let pars = &function.x.pars;
@@ -353,9 +364,9 @@ fn func_body_to_air(
         let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
         let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
         let bind_zero =
-            func_bind(ctx, name_zero, &function.x.typ_params, &new_pars, &rec_f_fuel, true, specialization);
+            func_bind(ctx, name_zero, &function.x.typ_params, &new_pars, &rec_f_fuel, true);
         let bind_body =
-            func_bind(ctx, name_body, &function.x.typ_params, &new_pars, &rec_f_succ, true, specialization);
+            func_bind(ctx, name_body, &function.x.typ_params, &new_pars, &rec_f_succ, true);
         let implies_body = mk_implies(&mk_and(&def_reqs), &eq_body);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &implies_body);
@@ -377,7 +388,6 @@ fn func_body_to_air(
         &new_pars,
         &def_reqs,
         def_body,
-        specialization,
     )?;
     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
     let def_axiom = mk_unnamed_axiom(mk_implies(&fuel_bool, &e_forall));
@@ -443,7 +453,7 @@ fn req_ens_to_air(
             exprs.push(loc_expr);
         }
         let body = mk_and(&exprs);
-        let e_forall = func_def_quant(ctx, &name, &typ_params, &typ_args, &params, &vec![], body, &Specialization::default())?;
+        let e_forall = func_def_quant(ctx, &name, &typ_params, &typ_args, &params, &vec![], body)?;
         let req_ens_axiom = mk_unnamed_axiom(e_forall);
         commands.push(Arc::new(CommandX::Global(req_ens_axiom)));
         Ok(true)
@@ -824,7 +834,6 @@ pub fn func_axioms_to_air(
                         &function.x.pars,
                         &pre,
                         body,
-                        specialization,
                     )?;
                     let def_axiom = mk_unnamed_axiom(e_forall);
                     decl_commands.push(Arc::new(CommandX::Global(def_axiom)));
@@ -868,7 +877,7 @@ pub fn func_axioms_to_air(
                 let name = format!("{}_pre_post", name);
                 let e_forall = mk_bind_expr(
                     // TODO: CHANGE TYP PARAMS HERE
-                    &func_bind(ctx, name, &function.x.typ_params, &new_pars, &f_app, false, specialization),
+                    &func_bind(ctx, name, &function.x.typ_params, &new_pars, &f_app, false),
                     &mk_implies(&mk_and(&f_pre), &post),
                 );
                 let inv_axiom = mk_unnamed_axiom(e_forall);
