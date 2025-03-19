@@ -84,6 +84,7 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
                 &Arc::new(vec![]),
                 &vec![projection],
                 false,
+                &Default::default(),
             );
             let imply = air::ast_util::mk_implies(&eqs, &eq);
             let forall = mk_bind_expr(&bind, &imply);

@@ -260,7 +260,7 @@ impl Specialization {
             return typ.clone();
         }
         let mut trait_typ_substs: HashMap<Ident, Typ> = HashMap::new();
-        assert!(typ_params.len() == self.typs.len());
+        assert!(typ_params.is_empty() || typ_params.len() == self.typs.len());
         for (x, t) in typ_params.iter().zip(self.typs.iter()) {
             trait_typ_substs.insert(x.clone(), t.to_typ());
         }
