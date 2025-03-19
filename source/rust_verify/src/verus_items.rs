@@ -681,6 +681,7 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     get_rust_item_str(rust_path)
 }
 
+#[allow(dead_code)]
 pub(crate) fn get_rust_item_path(rust_path: &vir::ast::Path) -> Option<RustItem> {
     get_rust_item_str(Some(&vir::ast_util::path_as_friendly_rust_name(rust_path)))
 }
