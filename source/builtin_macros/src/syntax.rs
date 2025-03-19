@@ -1885,6 +1885,7 @@ impl Visitor {
                 | Expr::Is(_)
                 | Expr::IsNot(_)
                 | Expr::Has(_)
+                | Expr::HasNot(_)
                 | Expr::Matches(_)
                 | Expr::GetField(_)
         ) {
@@ -1948,6 +1949,14 @@ impl Visitor {
                 let has_call = quote_spanned!(has_token.span => .spec_has(#rhs));
                 let lhs = has.lhs;
                 *expr = Expr::Verbatim(quote_spanned!(span => (#lhs#has_call)));
+            }
+            Expr::HasNot(hasnot) => {
+                let has_not_token = hasnot.has_not_token;
+                let span = hasnot.span();
+                let rhs = hasnot.rhs;
+                let has_call = quote_spanned!(has_not_token.span => .spec_has(#rhs));
+                let lhs = hasnot.lhs;
+                *expr = Expr::Verbatim(quote_spanned!(span => !(#lhs#has_call)));
             }
             Expr::Matches(matches) => {
                 let span = matches.span();
@@ -4142,6 +4151,16 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
                 if adjacent(s1, s2) {
                     tokens[i] =
                         TokenTree::Ident(proc_macro::Ident::new("isnt", s1.join(s2).unwrap()));
+                    tokens.remove(i + 1);
+                    i += 1;
+                    till -= 1;
+                    continue;
+                }
+            }
+            (Some(('!', Alone, s1)), Some(("has", s2))) => {
+                if adjacent(s1, s2) {
+                    tokens[i] =
+                        TokenTree::Ident(proc_macro::Ident::new("hasnt", s1.join(s2).unwrap()));
                     tokens.remove(i + 1);
                     i += 1;
                     till -= 1;

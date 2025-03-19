@@ -1677,6 +1677,15 @@ impl Debug for Lite<syn::Expr> {
                 formatter.field("rhs", Lite(&_val.rhs));
                 formatter.finish()
             }
+            syn::Expr::HasNot(_val) => {
+                let mut formatter = formatter.debug_struct("Expr::HasNot");
+                if !_val.attrs.is_empty() {
+                    formatter.field("attrs", Lite(&_val.attrs));
+                }
+                formatter.field("lhs", Lite(&_val.lhs));
+                formatter.field("rhs", Lite(&_val.rhs));
+                formatter.finish()
+            }
             syn::Expr::Matches(_val) => {
                 let mut formatter = formatter.debug_struct("Expr::Matches");
                 if !_val.attrs.is_empty() {
@@ -2062,6 +2071,17 @@ impl Debug for Lite<syn::ExprGroup> {
 impl Debug for Lite<syn::ExprHas> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("ExprHas");
+        if !self.value.attrs.is_empty() {
+            formatter.field("attrs", Lite(&self.value.attrs));
+        }
+        formatter.field("lhs", Lite(&self.value.lhs));
+        formatter.field("rhs", Lite(&self.value.rhs));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ExprHasNot> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ExprHasNot");
         if !self.value.attrs.is_empty() {
             formatter.field("attrs", Lite(&self.value.attrs));
         }
@@ -6934,6 +6954,11 @@ impl Debug for Lite<syn::token::Has> {
         formatter.write_str("Token![has]")
     }
 }
+impl Debug for Lite<syn::token::HasNot> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![hasnt]")
+    }
+}
 impl Debug for Lite<syn::token::Hide> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![hide]")
@@ -6996,7 +7021,7 @@ impl Debug for Lite<syn::token::Is> {
 }
 impl Debug for Lite<syn::token::IsNot> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str("Token![! is]")
+        formatter.write_str("Token![isnt]")
     }
 }
 impl Debug for Lite<syn::token::LArrow> {

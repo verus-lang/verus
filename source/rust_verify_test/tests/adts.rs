@@ -1167,7 +1167,47 @@ test_verify_one_file! {
         {
             assert(t ! is This);
         }
-    } => Err(err)
+    } => Err(_)
+}
+
+const HAS_SYNTAX_COMMON: &'static str = verus_code_str! {
+    pub struct Foo {
+        pub n: nat,
+    }
+
+    impl Foo {
+        pub open spec fn spec_has(self, k: nat) -> bool {
+            k <= self.n
+        }
+    }
+};
+
+test_verify_one_file! {
+    #[test] has_syntax_works HAS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn has_syntax() {
+            let foo = Foo { n: 42 };
+            assert(foo has 7);
+            assert(foo !has 45);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] hasnot_syntax_no_space HAS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn has_syntax() {
+            let foo = Foo { n: 42 };
+            assert(foo ! has 45);
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] hasnot_syntax_precedence HAS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn has_syntax() {
+            let foo = Foo { n: 42 };
+            assert(foo !has 45 <==> foo !has 43);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

@@ -731,6 +731,7 @@ impl Debug for crate::Expr {
             crate::Expr::Is(v0) => v0.debug(formatter, "Is"),
             crate::Expr::IsNot(v0) => v0.debug(formatter, "IsNot"),
             crate::Expr::Has(v0) => v0.debug(formatter, "Has"),
+            crate::Expr::HasNot(v0) => v0.debug(formatter, "HasNot"),
             crate::Expr::Matches(v0) => v0.debug(formatter, "Matches"),
             crate::Expr::GetField(v0) => v0.debug(formatter, "GetField"),
             #[cfg(not(feature = "full"))]
@@ -1047,6 +1048,22 @@ impl crate::ExprHas {
         formatter.field("attrs", &self.attrs);
         formatter.field("lhs", &self.lhs);
         formatter.field("has_token", &self.has_token);
+        formatter.field("rhs", &self.rhs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::ExprHasNot {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        self.debug(formatter, "ExprHasNot")
+    }
+}
+impl crate::ExprHasNot {
+    fn debug(&self, formatter: &mut fmt::Formatter, name: &str) -> fmt::Result {
+        let mut formatter = formatter.debug_struct(name);
+        formatter.field("attrs", &self.attrs);
+        formatter.field("lhs", &self.lhs);
+        formatter.field("has_not_token", &self.has_not_token);
         formatter.field("rhs", &self.rhs);
         formatter.finish()
     }

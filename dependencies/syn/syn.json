@@ -1331,6 +1331,11 @@
             "syn": "ExprHas"
           }
         ],
+        "HasNot": [
+          {
+            "syn": "ExprHasNot"
+          }
+        ],
         "Matches": [
           {
             "syn": "ExprMatches"
@@ -1869,6 +1874,32 @@
         },
         "has_token": {
           "token": "Has"
+        },
+        "rhs": {
+          "box": {
+            "syn": "Expr"
+          }
+        }
+      }
+    },
+    {
+      "ident": "ExprHasNot",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "lhs": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "has_not_token": {
+          "token": "HasNot"
         },
         "rhs": {
           "box": {
@@ -7358,6 +7389,7 @@
     "Global": "global",
     "Gt": ">",
     "Has": "has",
+    "HasNot": "hasnt",
     "Hide": "hide",
     "If": "if",
     "Impl": "impl",
@@ -7370,7 +7402,7 @@
     "InvariantEnsures": "invariant_ensures",
     "InvariantExceptBreak": "invariant_except_break",
     "Is": "is",
-    "IsNot": "! is",
+    "IsNot": "isnt",
     "LArrow": "<-",
     "Layout": "layout",
     "Le": "<=",

@@ -463,6 +463,7 @@ impl Clone for crate::Expr {
             crate::Expr::Is(v0) => crate::Expr::Is(v0.clone()),
             crate::Expr::IsNot(v0) => crate::Expr::IsNot(v0.clone()),
             crate::Expr::Has(v0) => crate::Expr::Has(v0.clone()),
+            crate::Expr::HasNot(v0) => crate::Expr::HasNot(v0.clone()),
             crate::Expr::Matches(v0) => crate::Expr::Matches(v0.clone()),
             crate::Expr::GetField(v0) => crate::Expr::GetField(v0.clone()),
             #[cfg(not(feature = "full"))]
@@ -679,6 +680,17 @@ impl Clone for crate::ExprHas {
             attrs: self.attrs.clone(),
             lhs: self.lhs.clone(),
             has_token: self.has_token.clone(),
+            rhs: self.rhs.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::ExprHasNot {
+    fn clone(&self) -> Self {
+        crate::ExprHasNot {
+            attrs: self.attrs.clone(),
+            lhs: self.lhs.clone(),
+            has_not_token: self.has_not_token.clone(),
             rhs: self.rhs.clone(),
         }
     }

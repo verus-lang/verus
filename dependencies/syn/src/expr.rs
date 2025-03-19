@@ -24,9 +24,9 @@ use crate::token;
 use crate::ty::ReturnType;
 use crate::ty::Type;
 use crate::verus::{
-    Assert, AssertForall, Assume, BigAnd, BigOr, Decreases, Ensures, ExprGetField, ExprHas, ExprIs,
-    ExprIsNot, ExprMatches, Invariant, InvariantEnsures, InvariantExceptBreak, Requires,
-    RevealHide, View,
+    Assert, AssertForall, Assume, BigAnd, BigOr, Decreases, Ensures, ExprGetField, ExprHas,
+    ExprHasNot, ExprIs, ExprIsNot, ExprMatches, Invariant, InvariantEnsures, InvariantExceptBreak,
+    Requires, RevealHide, View,
 };
 use proc_macro2::{Span, TokenStream};
 #[cfg(feature = "printing")]
@@ -262,6 +262,7 @@ ast_enum_of_structs! {
         Is(ExprIs),
         IsNot(ExprIsNot),
         Has(ExprHas),
+        HasNot(ExprHasNot),
         Matches(ExprMatches),
         GetField(ExprGetField),
 
@@ -1006,6 +1007,7 @@ impl Expr {
             | Expr::Is(ExprIs { attrs, .. })
             | Expr::IsNot(ExprIsNot { attrs, .. })
             | Expr::Has(ExprHas { attrs, .. })
+            | Expr::HasNot(ExprHasNot { attrs, .. })
             | Expr::GetField(ExprGetField { attrs, .. })
             | Expr::Matches(ExprMatches { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
@@ -1259,7 +1261,9 @@ pub(crate) mod parsing {
     #[cfg(feature = "full")]
     use crate::ty::ReturnType;
     use crate::verbatim;
-    use crate::verus::{Ensures, ExprGetField, ExprHas, ExprIs, ExprIsNot, Requires, View};
+    use crate::verus::{
+        Ensures, ExprGetField, ExprHas, ExprHasNot, ExprIs, ExprIsNot, Requires, View,
+    };
     #[cfg(feature = "full")]
     use proc_macro2::TokenStream;
     use std::mem;
@@ -1492,6 +1496,15 @@ pub(crate) mod parsing {
                     has_token,
                     rhs: Box::new(rhs),
                 });
+            } else if Precedence::HasIsMatches >= base && input.peek(Token![hasnt]) {
+                let has_not_token: Token![hasnt] = input.parse()?;
+                let rhs = unary_expr(input, allow_struct)?;
+                lhs = Expr::HasNot(ExprHasNot {
+                    attrs: Vec::new(),
+                    lhs: Box::new(lhs),
+                    has_not_token,
+                    rhs: Box::new(rhs),
+                });
             } else if Precedence::HasIsMatches >= base && input.peek(Token![matches]) {
                 lhs = crate::verus::parse_matches(input, lhs, allow_struct, false)?;
             } else {
@@ -1586,6 +1599,7 @@ pub(crate) mod parsing {
         if input.peek(Token![is])
             || input.peek(Token![isnt])
             || input.peek(Token![has])
+            || input.peek(Token![hasnt])
             || input.peek(Token![matches])
         {
             Precedence::HasIsMatches
@@ -1678,7 +1692,7 @@ pub(crate) mod parsing {
                     expr,
                 }))
             }
-        } else if input.peek(Token![*]) || input.peek(Token![-]) || input.peek(Token![!]) {
+        } else if input.peek(Token![*]) || input.peek(Token![!]) || input.peek(Token![-]) {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)
         } else if input.peek(Token![proof]) && input.peek2(token::Brace) {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)
@@ -2113,6 +2127,7 @@ pub(crate) mod parsing {
             && input.peek(Token![!])
             && !input.peek(Token![!=])
             && !input.peek2(Token![is])
+            && !input.peek2(Token![has])
             && path.is_mod_style()
         {
             let bang_token: Token![!] = input.parse()?;
@@ -3520,6 +3535,7 @@ pub(crate) mod printing {
             Expr::BigAnd(e) => e.to_tokens(tokens),
             Expr::BigOr(e) => e.to_tokens(tokens),
             Expr::Has(e) => e.to_tokens(tokens),
+            Expr::HasNot(e) => e.to_tokens(tokens),
             Expr::Is(e) => e.to_tokens(tokens),
             Expr::IsNot(e) => e.to_tokens(tokens),
             Expr::Matches(e) => e.to_tokens(tokens),

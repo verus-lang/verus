@@ -494,6 +494,7 @@ impl PartialEq for crate::Expr {
             (crate::Expr::Is(self0), crate::Expr::Is(other0)) => self0 == other0,
             (crate::Expr::IsNot(self0), crate::Expr::IsNot(other0)) => self0 == other0,
             (crate::Expr::Has(self0), crate::Expr::Has(other0)) => self0 == other0,
+            (crate::Expr::HasNot(self0), crate::Expr::HasNot(other0)) => self0 == other0,
             (crate::Expr::Matches(self0), crate::Expr::Matches(other0)) => {
                 self0 == other0
             }
@@ -679,6 +680,14 @@ impl PartialEq for crate::ExprGroup {
 impl Eq for crate::ExprHas {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::ExprHas {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.lhs == other.lhs && self.rhs == other.rhs
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::ExprHasNot {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::ExprHasNot {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.lhs == other.lhs && self.rhs == other.rhs
     }

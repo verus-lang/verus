@@ -254,6 +254,9 @@ pub trait Visit<'ast> {
     fn visit_expr_has(&mut self, i: &'ast crate::ExprHas) {
         visit_expr_has(self, i);
     }
+    fn visit_expr_has_not(&mut self, i: &'ast crate::ExprHasNot) {
+        visit_expr_has_not(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_expr_if(&mut self, i: &'ast crate::ExprIf) {
@@ -1845,6 +1848,9 @@ where
         crate::Expr::Has(_binding_0) => {
             v.visit_expr_has(_binding_0);
         }
+        crate::Expr::HasNot(_binding_0) => {
+            v.visit_expr_has_not(_binding_0);
+        }
         crate::Expr::Matches(_binding_0) => {
             v.visit_expr_matches(_binding_0);
         }
@@ -2113,6 +2119,17 @@ where
     }
     v.visit_expr(&*node.lhs);
     skip!(node.has_token);
+    v.visit_expr(&*node.rhs);
+}
+pub fn visit_expr_has_not<'ast, V>(v: &mut V, node: &'ast crate::ExprHasNot)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.lhs);
+    skip!(node.has_not_token);
     v.visit_expr(&*node.rhs);
 }
 #[cfg(feature = "full")]

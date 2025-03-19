@@ -427,6 +427,15 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    pub struct ExprHasNot {
+        pub attrs: Vec<Attribute>,
+        pub lhs: Box<Expr>,
+        pub has_not_token: Token![hasnt],
+        pub rhs: Box<Expr>,
+    }
+}
+
 ast_enum! {
     pub enum MatchesOpToken {
         Implies(Token![==>]),
@@ -1833,6 +1842,16 @@ mod printing {
             outer_attrs_to_tokens(&self.attrs, tokens);
             self.lhs.to_tokens(tokens);
             self.has_token.to_tokens(tokens);
+            self.rhs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprHasNot {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.lhs.to_tokens(tokens);
+            self.has_not_token.to_tokens(tokens);
             self.rhs.to_tokens(tokens);
         }
     }

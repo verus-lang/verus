@@ -262,6 +262,9 @@ pub trait VisitMut {
     fn visit_expr_has_mut(&mut self, i: &mut crate::ExprHas) {
         visit_expr_has_mut(self, i);
     }
+    fn visit_expr_has_not_mut(&mut self, i: &mut crate::ExprHasNot) {
+        visit_expr_has_not_mut(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_expr_if_mut(&mut self, i: &mut crate::ExprIf) {
@@ -1837,6 +1840,9 @@ where
         crate::Expr::Has(_binding_0) => {
             v.visit_expr_has_mut(_binding_0);
         }
+        crate::Expr::HasNot(_binding_0) => {
+            v.visit_expr_has_not_mut(_binding_0);
+        }
         crate::Expr::Matches(_binding_0) => {
             v.visit_expr_matches_mut(_binding_0);
         }
@@ -2069,6 +2075,15 @@ where
     v.visit_attributes_mut(&mut node.attrs);
     v.visit_expr_mut(&mut *node.lhs);
     skip!(node.has_token);
+    v.visit_expr_mut(&mut *node.rhs);
+}
+pub fn visit_expr_has_not_mut<V>(v: &mut V, node: &mut crate::ExprHasNot)
+where
+    V: VisitMut + ?Sized,
+{
+    v.visit_attributes_mut(&mut node.attrs);
+    v.visit_expr_mut(&mut *node.lhs);
+    skip!(node.has_not_token);
     v.visit_expr_mut(&mut *node.rhs);
 }
 #[cfg(feature = "full")]

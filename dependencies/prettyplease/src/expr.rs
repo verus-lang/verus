@@ -85,6 +85,7 @@ impl Printer {
             Expr::Is(expr) => self.expr_is(expr),
             Expr::IsNot(expr) => self.expr_isnot(expr),
             Expr::Has(expr) => self.expr_has(expr),
+            Expr::HasNot(expr) => self.expr_hasnot(expr),
             Expr::GetField(expr) => self.expr_get_field(expr),
             Expr::Matches(m) => self.expr_matches(m),
 
@@ -132,6 +133,13 @@ impl Printer {
         self.outer_attrs(&expr.attrs);
         self.expr(&expr.lhs, FixupContext::NONE);
         self.word(" has ");
+        self.expr(&expr.rhs, FixupContext::NONE);
+    }
+
+    pub fn expr_hasnot(&mut self, expr: &syn_verus::ExprHasNot) {
+        self.outer_attrs(&expr.attrs);
+        self.expr(&expr.lhs, FixupContext::NONE);
+        self.word(" !has ");
         self.expr(&expr.rhs, FixupContext::NONE);
     }
 

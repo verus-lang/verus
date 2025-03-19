@@ -779,7 +779,7 @@ define_keywords! {
     "any"         pub struct InvAny
     "none"        pub struct InvNone
     "has"         pub struct Has
-    "!has"        pub struct HasNot
+    "hasnt"       pub struct HasNot
     "global"      pub struct Global
     "size_of"     pub struct SizeOf
     "layout"      pub struct Layout
@@ -1062,6 +1062,7 @@ macro_rules! Token {
     [is]          => { $crate::token::Is };
     [isnt]        => { $crate::token::IsNot };
     [has]         => { $crate::token::Has };
+    [hasnt]       => { $crate::token::HasNot };
     [global]      => { $crate::token::Global };
     [size_of]     => { $crate::token::SizeOf };
     [layout]      => { $crate::token::Layout };

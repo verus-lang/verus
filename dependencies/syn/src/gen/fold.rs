@@ -264,6 +264,9 @@ pub trait Fold {
     fn fold_expr_has(&mut self, i: crate::ExprHas) -> crate::ExprHas {
         fold_expr_has(self, i)
     }
+    fn fold_expr_has_not(&mut self, i: crate::ExprHasNot) -> crate::ExprHasNot {
+        fold_expr_has_not(self, i)
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn fold_expr_if(&mut self, i: crate::ExprIf) -> crate::ExprIf {
@@ -1836,6 +1839,9 @@ where
             crate::Expr::IsNot(f.fold_expr_is_not(_binding_0))
         }
         crate::Expr::Has(_binding_0) => crate::Expr::Has(f.fold_expr_has(_binding_0)),
+        crate::Expr::HasNot(_binding_0) => {
+            crate::Expr::HasNot(f.fold_expr_has_not(_binding_0))
+        }
         crate::Expr::Matches(_binding_0) => {
             crate::Expr::Matches(f.fold_expr_matches(_binding_0))
         }
@@ -2072,6 +2078,17 @@ where
         attrs: f.fold_attributes(node.attrs),
         lhs: Box::new(f.fold_expr(*node.lhs)),
         has_token: node.has_token,
+        rhs: Box::new(f.fold_expr(*node.rhs)),
+    }
+}
+pub fn fold_expr_has_not<F>(f: &mut F, node: crate::ExprHasNot) -> crate::ExprHasNot
+where
+    F: Fold + ?Sized,
+{
+    crate::ExprHasNot {
+        attrs: f.fold_attributes(node.attrs),
+        lhs: Box::new(f.fold_expr(*node.lhs)),
+        has_not_token: node.has_not_token,
         rhs: Box::new(f.fold_expr(*node.rhs)),
     }
 }

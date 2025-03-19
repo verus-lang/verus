@@ -404,6 +404,7 @@ pub(crate) mod parsing {
                 | Expr::Is(_)
                 | Expr::IsNot(_)
                 | Expr::Has(_)
+                | Expr::HasNot(_)
                 | Expr::Matches(_)
                 | Expr::GetField(_) => break,
             };
