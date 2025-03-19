@@ -254,7 +254,11 @@ pub fn krate_to_string(krate: &Ident) -> String {
 
 pub fn path_to_string(path: &Path) -> String {
     let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;
-    if let Some(krate) = &path.krate { krate_to_string(krate) + KRATE_SEPARATOR + &s } else { s }
+    if let Some(krate) = &path.krate {
+        krate_to_string(krate) + KRATE_SEPARATOR + &s
+    } else {
+        s
+    }
 }
 
 pub fn fun_to_string(fun: &Fun) -> String {
@@ -373,7 +377,11 @@ pub(crate) fn suffix_typ_param_ids_types(ident: &Ident) -> Vec<(VarIdent, &'stat
 }
 
 pub(crate) fn types() -> Vec<&'static str> {
-    if crate::context::DECORATE { vec![DECORATION, TYPE] } else { vec![TYPE] }
+    if crate::context::DECORATE {
+        vec![DECORATION, TYPE]
+    } else {
+        vec![TYPE]
+    }
 }
 
 pub fn rename_rec_param(ident: &VarIdent, n: usize) -> VarIdent {
@@ -544,6 +552,11 @@ pub fn variant_ident(dt: &Dt, variant: &str) -> Ident {
     Arc::new(format!("{}{}{}", path_to_string(&path), VARIANT_SEPARATOR, variant))
 }
 
+pub fn is_variant_ident_mangled(datatype: &Dt, variant: &str, spec: &crate::mono::Specialization) -> Ident {
+    let dt_path = spec.mangle_path(&encode_dt_as_path(&datatype));
+    let id = variant_ident_mangled(&dt_path, &variant);
+    Arc::new(format!("is-{}", id))
+}
 pub fn is_variant_ident(datatype: &Dt, variant: &str) -> Ident {
     Arc::new(format!("is-{}", variant_ident(datatype, variant)))
 }

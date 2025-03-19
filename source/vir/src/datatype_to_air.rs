@@ -6,7 +6,7 @@ use crate::ast_util::{
 };
 use crate::context::Ctx;
 use crate::def::{
-    encode_dt_as_path, is_variant_ident, path_to_string, prefix_box, prefix_spec_fn_type,
+    encode_dt_as_path, is_variant_ident_mangled, path_to_string, prefix_box, prefix_spec_fn_type,
     prefix_tuple_param, prefix_type_id, prefix_unbox, variant_field_ident,
     variant_field_ident_internal, variant_ident, variant_ident_mangled, Spanned, QID_ACCESSOR,
     QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER, QID_HAS_TYPE_ALWAYS,
@@ -549,7 +549,7 @@ fn datatype_or_fun_to_air_commands(
                 let nodes = crate::prelude::datatype_height_axioms(
                     dpath,
                     &field_box_path,
-                    &is_variant_ident(my_dt, &*variant.name),
+                    &is_variant_ident_mangled(my_dt, &*variant.name, spec),
                     &variant_field_ident(dpath, &variant.name, &field.name),
                     recursive_function_field,
                 );
@@ -605,7 +605,7 @@ fn datatype_or_fun_to_air_commands(
             //   - ext_eq(deep, typk, x.fk, y.fk)
             let mut pre: Vec<Expr> = vec![has_x.clone(), has_y.clone()];
             if variants.len() > 1 {
-                let vid = is_variant_ident(my_dt, &*variant.name);
+                let vid = is_variant_ident_mangled(my_dt, &*variant.name, spec);
                 pre.push(ident_apply(&vid, &vec![unbox_x.clone()]));
                 pre.push(ident_apply(&vid, &vec![unbox_y.clone()]));
             }
@@ -819,9 +819,10 @@ pub fn datatypes_and_primitives_to_air(
                 datatyp,
                 &tparams,
                 &datatype.x.variants,
-                is_transparent,
-                is_transparent,
-                is_transparent && datatype.x.ext_equal,
+                // FIXME: Find out if you can generate the height and extensionality axioms for mono types
+                spec.is_empty() && is_transparent,
+                spec.is_empty() && is_transparent,
+                spec.is_empty() && is_transparent && datatype.x.ext_equal,
                 &spec,
             );
         }
