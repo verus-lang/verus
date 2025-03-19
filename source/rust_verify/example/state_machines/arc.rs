@@ -125,14 +125,14 @@ tokenized_state_machine!(RefCounter<Perm> {
     fn dec_to_zero_inductive(pre: Self, post: Self, x: Perm) { }
 });
 
-struct InnerArc<S> {
+pub struct InnerArc<S> {
     pub rc_cell: PAtomicU64,
     pub s: S,
 }
 
-type MemPerms<S> = simple_pptr::PointsTo<InnerArc<S>>;
+pub type MemPerms<S> = simple_pptr::PointsTo<InnerArc<S>>;
 
-tracked struct GhostStuff<S> {
+pub tracked struct GhostStuff<S> {
     pub tracked rc_perm: PermissionU64,
     pub tracked rc_token: RefCounter::counter<MemPerms<S>>,
 }

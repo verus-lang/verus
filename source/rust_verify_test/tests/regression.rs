@@ -1395,7 +1395,7 @@ test_verify_one_file! {
     #[test] impl_of_partialeq_ignored_regression_1466 verus_code!(
         use vstd::prelude::*;
         use core::cmp::PartialEq;
-        struct A(pub u8);
+        pub struct A(pub u8);
         impl core::cmp::PartialEq<A> for A {
             fn eq(&self, other: &A) -> (r: bool)
             ensures

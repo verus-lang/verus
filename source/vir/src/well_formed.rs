@@ -1,17 +1,16 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX, FieldOpr, Fun,
     Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path, Trait, TypX, UnaryOp,
-    UnaryOpr, UnwindSpec, VirErr, VirErrAs,
+    UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to, is_visible_to_opt,
     path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
     undecorate_typ,
 };
-use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
-use crate::messages::{error, Message};
+use crate::messages::{error, error_with_label, Message, Span};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -177,6 +176,123 @@ fn check_path_and_get_function<'a>(
     Ok(f)
 }
 
+fn check_datatype_access(
+    ctxt: &Ctxt,
+    path: &Path,
+    disallow_private_access: Option<(&Option<Path>, &str)>,
+    my_module: &Option<Path>,
+    span: &Span,
+    access_type: &str,
+) -> Result<(), VirErr> {
+    let dt = check_path_and_get_datatype(ctxt, path, span)?;
+    match &dt.x.transparency {
+        DatatypeTransparency::Never => {
+            // This can only happen if the datatype is 'external_body'
+            return Err(error_with_label(
+                span,
+                format!("disallowed: {:} for an opaque datatype", access_type),
+                format!("this {:} is disallowed", access_type),
+            )
+            .secondary_label(
+                &dt.span,
+                "Verus treats this datatype as 'opaque' because it is marked 'external_body'",
+            ));
+        }
+        DatatypeTransparency::WhenVisible(vis) => {
+            let required_vis = if let Some((required_vis, _reason)) = disallow_private_access {
+                Visibility { restricted_to: required_vis.clone() }
+            } else {
+                if my_module.is_none() {
+                    return Ok(());
+                }
+                Visibility { restricted_to: my_module.clone() }
+            };
+
+            // Is the datatype *name* visible throughout the entire required area?
+            if !required_vis.at_least_as_restrictive_as(&dt.x.visibility) {
+                let visibility_module = dt.x.visibility.restricted_to.clone().unwrap();
+                let mut er = error_with_label(
+                    span,
+                    format!("disallowed: {:} for a non-visible datatype", access_type),
+                    format!("this {:} is disallowed because of non-visibility", access_type),
+                )
+                .secondary_label(
+                    &dt.span,
+                    format!(
+                        "this datatype is only visible to `{:}`",
+                        path_as_friendly_rust_name(&visibility_module)
+                    ),
+                );
+
+                if let Some((_source_module, reason)) = disallow_private_access {
+                    let required_vis_str = match &required_vis.restricted_to {
+                        None => "everywhere".to_string(),
+                        Some(module) if module.segments.len() == 0 => format!(
+                            "everywhere in the crate `{:}`",
+                            path_as_friendly_rust_name(module)
+                        ),
+                        Some(module) => format!(
+                            "everywhere in the module `{:}`",
+                            path_as_friendly_rust_name(module)
+                        ),
+                    };
+                    er = er.help(
+                        format!("note that because this is a {:}, this {:} must be well-formed {:}, which is wider than `{:}`",
+                            reason,
+                            access_type,
+                            required_vis_str,
+                            path_as_friendly_rust_name(&visibility_module),
+                        )
+                    );
+                }
+
+                return Err(er);
+            }
+
+            // Is the datatype *transparent* throughout the entire required area?
+            // (i.e., is the datatype body visible?)
+            if !required_vis.at_least_as_restrictive_as(vis) {
+                let transp_module = vis.restricted_to.clone().unwrap();
+                let mut er = error_with_label(
+                    span,
+                    format!("disallowed: {:} for an opaque datatype", access_type),
+                    format!("this {:} is disallowed because of datatype opaqueness", access_type),
+                ).secondary_label(
+                    &dt.span,
+                    format!("Verus treats this datatype as 'opaque' outside `{:}` (note that Verus always considers the most restrictive field for determining this)",
+                            path_as_friendly_rust_name(&transp_module))
+                );
+
+                if let Some((_source_module, reason)) = disallow_private_access {
+                    let required_vis_str = match &required_vis.restricted_to {
+                        None => "everywhere".to_string(),
+                        Some(module) if module.segments.len() == 0 => format!(
+                            "everywhere in the crate `{:}`",
+                            path_as_friendly_rust_name(module)
+                        ),
+                        Some(module) => format!(
+                            "everywhere in the module `{:}`",
+                            path_as_friendly_rust_name(module)
+                        ),
+                    };
+                    er = er.help(
+                        format!("note that because this is a {:}, this {:} must be well-formed {:}, which is wider than `{:}`",
+                            reason,
+                            access_type,
+                            required_vis_str,
+                            path_as_friendly_rust_name(&transp_module),
+                        )
+                    );
+                }
+
+                return Err(er);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn check_one_expr(
     ctxt: &Ctxt,
     function: &Function,
@@ -265,33 +381,14 @@ fn check_one_expr(
             }
         }
         ExprX::Ctor(Dt::Path(path), _variant, _fields, _update) => {
-            let dt = check_path_and_get_datatype(ctxt, path, &expr.span)?;
-            if let Some(module) = &function.x.owning_module {
-                if !is_datatype_transparent(&module, dt) {
-                    return Err(error(
-                        &expr.span,
-                        "constructor of datatype with inaccessible fields",
-                    ).secondary_label(
-                        &dt.span,
-                        "a datatype is treated as opaque whenever at least one field is not visible"
-                    ));
-                }
-            }
-            let field_vis = match &dt.x.transparency {
-                DatatypeTransparency::Never => None,
-                DatatypeTransparency::WhenVisible(vis) => Some(vis.clone()),
-            };
-            match (disallow_private_access, field_vis) {
-                (None, _) => {}
-                (Some((source_module, _)), Some(field_vis))
-                    if is_visible_to_opt(&field_vis, source_module) => {}
-                (Some((_, reason)), _) => {
-                    let msg = format!(
-                        "in {reason:}, cannot use constructor of private datatype or datatype whose fields are private"
-                    );
-                    return Err(error(&expr.span, msg));
-                }
-            }
+            check_datatype_access(
+                ctxt,
+                path,
+                disallow_private_access,
+                &function.x.owning_module,
+                &expr.span,
+                "constructor",
+            )?;
         }
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => {
             if !crate::ast_util::type_is_bool(&e.typ) {
@@ -304,40 +401,21 @@ fn check_one_expr(
         ExprX::UnaryOpr(
             UnaryOpr::Field(FieldOpr {
                 datatype: Dt::Path(path),
-                variant,
+                variant: _,
                 field: _,
                 get_variant: _,
                 check: _,
             }),
             _,
         ) => {
-            if let Some(dt) = ctxt.dts.get(path) {
-                if let Some(module) = &function.x.owning_module {
-                    if !is_datatype_transparent(&module, dt) {
-                        return Err(error(
-                            &expr.span,
-                            "field access of datatype with inaccessible fields",
-                        ).secondary_label(
-                            &dt.span,
-                            "a datatype is treated as opaque whenever at least one field is not visible"
-                        ));
-                    }
-                }
-                if let Some((source_module, reason)) = disallow_private_access {
-                    let variant = dt.x.get_variant(variant);
-                    for f in variant.fields.iter() {
-                        let (_, _, vis) = &f.a;
-                        if !is_visible_to_opt(vis, source_module) {
-                            let msg = format!(
-                                "in {reason:}, cannot access any field of a datatype where one or more fields are private"
-                            );
-                            return Err(error(&expr.span, msg));
-                        }
-                    }
-                }
-            } else {
-                return Err(error(&expr.span, "field access of datatype with inaccessible fields"));
-            }
+            check_datatype_access(
+                ctxt,
+                path,
+                disallow_private_access,
+                &function.x.owning_module,
+                &expr.span,
+                "field expression",
+            )?;
         }
         ExprX::Multi(MultiOp::Chained(ops), _) => {
             if ops.len() < 1 {

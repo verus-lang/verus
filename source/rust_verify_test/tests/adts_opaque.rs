@@ -18,7 +18,7 @@ test_verify_one_file! {
                 c.passengers
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot access any field of a datatype where one or more fields are private")
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: field expression for an opaque datatype")
 }
 
 test_verify_one_file! {
@@ -36,7 +36,7 @@ test_verify_one_file! {
                 Car { passengers: 0, four_doors: true }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot use constructor of private datatype or datatype whose fields are private")
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: constructor for an opaque datatype")
 }
 
 test_verify_one_file! {
@@ -53,7 +53,19 @@ test_verify_one_file! {
                 true
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot use constructor of private datatype or datatype whose fields are private")
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: constructor for a non-visible datatype")
+}
+
+test_verify_one_file! {
+    #[test] test_field_access_for_non_pub_datatype verus_code! {
+        struct X {
+            pub f: u8,
+        }
+
+        pub open spec fn f(x: X) -> bool {
+            x.f == 0
+        }
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: field expression for a non-visible datatype")
 }
 
 const M1: &str = verus_code_str! {
