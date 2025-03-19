@@ -15,7 +15,7 @@ use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     Fun, Function, FunctionKind, GenericBound, GenericBoundX, Ident, KrateX, TraitX, TypX, VirErr,
-    Visibility,
+    Visibility, TraitId,
 };
 use vir::def::{trait_self_type_param, VERUS_SPEC};
 
@@ -99,7 +99,7 @@ pub(crate) fn translate_trait<'tcx>(
         // Remove the Self: Trait bound introduced by rustc
         Arc::make_mut(&mut typ_bounds).retain(|gb| {
             match &**gb {
-                GenericBoundX::Trait(bnd, tp) => {
+                GenericBoundX::Trait(TraitId::Path(bnd), tp) => {
                     if bnd == &trait_path {
                         let gp: Vec<_> = Some(trait_self_type_param())
                             .into_iter()
@@ -117,6 +117,7 @@ pub(crate) fn translate_trait<'tcx>(
                         return false;
                     }
                 }
+                GenericBoundX::Trait(TraitId::Sized, _tp) => {}
                 GenericBoundX::TypEquality(..) => {}
                 GenericBoundX::ConstTyp(..) => {}
             }

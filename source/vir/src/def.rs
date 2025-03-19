@@ -67,6 +67,7 @@ const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
+const SIZED_BOUND: &str = "sized%";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
 const SLICE_TYPE: &str = "slice%";
@@ -462,6 +463,10 @@ pub fn proj_param(i: usize) -> Ident {
 
 pub fn trait_bound(trait_path: &Path) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
+}
+
+pub fn sized_bound() -> Ident {
+    Arc::new(SIZED_BOUND.to_string())
 }
 
 pub fn prefix_type_id_fun(i: usize) -> Ident {

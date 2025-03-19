@@ -303,7 +303,7 @@ pub enum NullaryOpr {
     /// convert a const generic into an expression, as in fn f<const N: usize>() -> usize { N }
     ConstGeneric(Typ),
     /// predicate representing a satisfied trait bound T(t1, ..., tn) for trait T
-    TraitBound(Path, Typs),
+    TraitBound(TraitId, Typs),
     /// predicate representing a type equality bound T<t1, ..., tn, X = typ> for trait T
     TypEqualityBound(Path, Typs, Ident, Typ),
     /// predicate representing const type bound, e.g., `const X: usize`
@@ -897,13 +897,19 @@ pub struct ParamX {
     pub unwrapped_info: Option<(Mode, VarIdent)>,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+pub enum TraitId {
+    Path(Path),
+    Sized,
+}
+
 pub type GenericBound = Arc<GenericBoundX>;
 pub type GenericBounds = Arc<Vec<GenericBound>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum GenericBoundX {
     /// Implemented trait T(t1, ..., tn) where t1...tn usually contain some type parameters
     // REVIEW: add ImplPaths here?
-    Trait(Path, Typs),
+    Trait(TraitId, Typs),
     /// An equality bound for associated type X of trait T(t1, ..., tn),
     /// written in Rust as T<t1, ..., tn, X = typ>
     TypEquality(Path, Typs, Ident, Typ),
