@@ -1,7 +1,6 @@
 syn_dev::r#mod! {
     // Write Rust code here and run `cargo check` to have Syn parse it.
 
-    pub assume_specification [foo::moo](&self, x: u8) -> (ret: u16)
+    pub axiom fn foo(x: u8)
         requires x == 5;
-
 }

@@ -193,13 +193,10 @@ pub broadcast proof fn axiom_multiset_empty<V>(v: V)
 /// A multiset is equivalent to the empty multiset if and only if it has length 0.
 /// If the multiset has length greater than 0, then there exists some element in the
 /// multiset that has a count greater than 0.
-pub broadcast proof fn lemma_multiset_empty_len<V>(m: Multiset<V>)
+pub broadcast axiom fn lemma_multiset_empty_len<V>(m: Multiset<V>)
     ensures
         (#[trigger] m.len() == 0 <==> m =~= Multiset::empty()) && (#[trigger] m.len() > 0
-            ==> exists|v: V| 0 < m.count(v)),
-{
-    admit();
-}
+            ==> exists|v: V| 0 < m.count(v));
 
 // Specifications of `from_map`
 /// A call to Multiset::new with input map `m` will return a multiset that maps

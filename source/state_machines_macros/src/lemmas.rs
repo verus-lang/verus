@@ -88,6 +88,12 @@ fn check_each_lemma_valid(bundle: &SMBundle) -> parse::Result<()> {
 
         match &l.func.sig.mode {
             FnMode::Default | FnMode::Proof(_) => {}
+            FnMode::ProofAxiom(axiom_token) => {
+                return Err(Error::new(
+                    axiom_token.span(),
+                    "an inductiveness lemma should be `proof`",
+                ));
+            }
             FnMode::Spec(mode_spec) => {
                 return Err(Error::new(
                     mode_spec.span(),

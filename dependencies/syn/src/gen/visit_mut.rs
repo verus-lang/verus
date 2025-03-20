@@ -694,6 +694,9 @@ pub trait VisitMut {
     fn visit_local_init_mut(&mut self, i: &mut crate::LocalInit) {
         visit_local_init_mut(self, i);
     }
+    fn visit_loop_spec_mut(&mut self, i: &mut crate::LoopSpec) {
+        visit_loop_spec_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_macro_mut(&mut self, i: &mut crate::Macro) {
@@ -741,6 +744,9 @@ pub trait VisitMut {
     }
     fn visit_mode_proof_mut(&mut self, i: &mut crate::ModeProof) {
         visit_mode_proof_mut(self, i);
+    }
+    fn visit_mode_proof_axiom_mut(&mut self, i: &mut crate::ModeProofAxiom) {
+        visit_mode_proof_axiom_mut(self, i);
     }
     fn visit_mode_spec_mut(&mut self, i: &mut crate::ModeSpec) {
         visit_mode_spec_mut(self, i);
@@ -2549,6 +2555,9 @@ where
         crate::FnMode::Proof(_binding_0) => {
             v.visit_mode_proof_mut(_binding_0);
         }
+        crate::FnMode::ProofAxiom(_binding_0) => {
+            v.visit_mode_proof_axiom_mut(_binding_0);
+        }
         crate::FnMode::Exec(_binding_0) => {
             v.visit_mode_exec_mut(_binding_0);
         }
@@ -3412,6 +3421,27 @@ where
         v.visit_expr_mut(&mut *(it).1);
     }
 }
+pub fn visit_loop_spec_mut<V>(v: &mut V, node: &mut crate::LoopSpec)
+where
+    V: VisitMut + ?Sized,
+{
+    if let Some(it) = &mut node.iter_name {
+        v.visit_ident_mut(&mut (it).0);
+        skip!((it).1);
+    }
+    if let Some(it) = &mut node.invariants {
+        v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.invariant_except_breaks {
+        v.visit_invariant_except_break_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.decreases {
+        v.visit_decreases_mut(it);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
 pub fn visit_macro_mut<V>(v: &mut V, node: &mut crate::Macro)
@@ -3549,6 +3579,12 @@ where
     V: VisitMut + ?Sized,
 {
     skip!(node.proof_token);
+}
+pub fn visit_mode_proof_axiom_mut<V>(v: &mut V, node: &mut crate::ModeProofAxiom)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.axiom_token);
 }
 pub fn visit_mode_spec_mut<V>(v: &mut V, node: &mut crate::ModeSpec)
 where

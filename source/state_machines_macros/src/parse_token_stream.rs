@@ -302,6 +302,9 @@ fn to_invariant(impl_item_method: ImplItemFn) -> parse::Result<Invariant> {
         FnMode::Proof(mode_proof) => {
             return Err(Error::new(mode_proof.span(), "an invariant function should be `spec`"));
         }
+        FnMode::ProofAxiom(mode_proof) => {
+            return Err(Error::new(mode_proof.span(), "an invariant function should be `spec`"));
+        }
         FnMode::Exec(mode_exec) => {
             return Err(Error::new(mode_exec.span(), "an invariant function should be `spec`"));
         }

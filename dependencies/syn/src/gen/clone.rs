@@ -1117,6 +1117,7 @@ impl Clone for crate::FnMode {
             crate::FnMode::Spec(v0) => crate::FnMode::Spec(v0.clone()),
             crate::FnMode::SpecChecked(v0) => crate::FnMode::SpecChecked(v0.clone()),
             crate::FnMode::Proof(v0) => crate::FnMode::Proof(v0.clone()),
+            crate::FnMode::ProofAxiom(v0) => crate::FnMode::ProofAxiom(v0.clone()),
             crate::FnMode::Exec(v0) => crate::FnMode::Exec(v0.clone()),
             crate::FnMode::Default => crate::FnMode::Default,
         }
@@ -1808,6 +1809,18 @@ impl Clone for crate::LocalInit {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::LoopSpec {
+    fn clone(&self) -> Self {
+        crate::LoopSpec {
+            iter_name: self.iter_name.clone(),
+            invariants: self.invariants.clone(),
+            invariant_except_breaks: self.invariant_except_breaks.clone(),
+            ensures: self.ensures.clone(),
+            decreases: self.decreases.clone(),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::Macro {
@@ -1931,6 +1944,14 @@ impl Clone for crate::ModeProof {
     fn clone(&self) -> Self {
         crate::ModeProof {
             proof_token: self.proof_token.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::ModeProofAxiom {
+    fn clone(&self) -> Self {
+        crate::ModeProofAxiom {
+            axiom_token: self.axiom_token.clone(),
         }
     }
 }

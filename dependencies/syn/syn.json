@@ -2902,6 +2902,11 @@
             "syn": "ModeProof"
           }
         ],
+        "ProofAxiom": [
+          {
+            "syn": "ModeProofAxiom"
+          }
+        ],
         "Exec": [
           {
             "syn": "ModeExec"
@@ -4671,6 +4676,46 @@
       }
     },
     {
+      "ident": "LoopSpec",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "iter_name": {
+          "option": {
+            "tuple": [
+              {
+                "proc_macro2": "Ident"
+              },
+              {
+                "token": "FatArrow"
+              }
+            ]
+          }
+        },
+        "invariants": {
+          "option": {
+            "syn": "Invariant"
+          }
+        },
+        "invariant_except_breaks": {
+          "option": {
+            "syn": "InvariantExceptBreak"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "Decreases"
+          }
+        }
+      }
+    },
+    {
       "ident": "Macro",
       "features": {
         "any": [
@@ -4895,6 +4940,17 @@
       "fields": {
         "proof_token": {
           "token": "Proof"
+        }
+      }
+    },
+    {
+      "ident": "ModeProofAxiom",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "axiom_token": {
+          "token": "Axiom"
         }
       }
     },
@@ -7279,6 +7335,7 @@
     "At": "@",
     "Auto": "auto",
     "Await": "await",
+    "Axiom": "axiom",
     "Become": "become",
     "BigAnd": "&&&",
     "BigOr": "|||",

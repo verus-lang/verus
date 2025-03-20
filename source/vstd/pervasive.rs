@@ -163,12 +163,8 @@ pub closed spec fn spec_affirm(b: bool) -> bool
 #[allow(dead_code)]
 pub spec fn arbitrary<A>() -> A;
 
-#[verifier::external_body]  /* vattr */
-#[allow(dead_code)]
-pub proof fn proof_from_false<A>() -> (tracked a: A) {
-    requires(false);
-    unimplemented!()
-}
+pub axiom fn proof_from_false<A>() -> (tracked a: A)
+    requires false;
 
 #[verifier::external_body]  /* vattr */
 #[allow(dead_code)]

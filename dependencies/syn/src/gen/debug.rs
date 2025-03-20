@@ -1675,6 +1675,11 @@ impl Debug for crate::FnMode {
                 formatter.field(v0);
                 formatter.finish()
             }
+            crate::FnMode::ProofAxiom(v0) => {
+                let mut formatter = formatter.debug_tuple("ProofAxiom");
+                formatter.field(v0);
+                formatter.finish()
+            }
             crate::FnMode::Exec(v0) => {
                 let mut formatter = formatter.debug_tuple("Exec");
                 formatter.field(v0);
@@ -2608,6 +2613,18 @@ impl Debug for crate::LocalInit {
         formatter.finish()
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::LoopSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("LoopSpec");
+        formatter.field("iter_name", &self.iter_name);
+        formatter.field("invariants", &self.invariants);
+        formatter.field("invariant_except_breaks", &self.invariant_except_breaks);
+        formatter.field("ensures", &self.ensures);
+        formatter.field("decreases", &self.decreases);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::Macro {
@@ -2780,6 +2797,14 @@ impl crate::ModeProof {
     fn debug(&self, formatter: &mut fmt::Formatter, name: &str) -> fmt::Result {
         let mut formatter = formatter.debug_struct(name);
         formatter.field("proof_token", &self.proof_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::ModeProofAxiom {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeProofAxiom");
+        formatter.field("axiom_token", &self.axiom_token);
         formatter.finish()
     }
 }

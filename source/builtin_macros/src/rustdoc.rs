@@ -166,7 +166,7 @@ fn attr_for_broadcast_group(sig: &Signature) -> Option<Attribute> {
 fn is_spec(sig: &Signature) -> bool {
     match &sig.mode {
         FnMode::Spec(_) | FnMode::SpecChecked(_) => true,
-        FnMode::Proof(_) | FnMode::Exec(_) | FnMode::Default => false,
+        FnMode::Proof(_) | FnMode::ProofAxiom(_) | FnMode::Exec(_) | FnMode::Default => false,
     }
 }
 
@@ -187,7 +187,7 @@ fn fn_mode_to_string(mode: &FnMode, publish: &Publish) -> String {
             }
             Publish::Default => "spec".to_string(),
         },
-        FnMode::Proof(_) => "proof".to_string(),
+        FnMode::Proof(_) | FnMode::ProofAxiom(_) => "proof".to_string(),
         FnMode::Exec(_) => "exec".to_string(),
         FnMode::Default => "exec".to_string(),
     }

@@ -1096,6 +1096,9 @@ impl PartialEq for crate::FnMode {
             (crate::FnMode::Proof(self0), crate::FnMode::Proof(other0)) => {
                 self0 == other0
             }
+            (crate::FnMode::ProofAxiom(self0), crate::FnMode::ProofAxiom(other0)) => {
+                self0 == other0
+            }
             (crate::FnMode::Exec(self0), crate::FnMode::Exec(other0)) => self0 == other0,
             (crate::FnMode::Default, crate::FnMode::Default) => true,
             _ => false,
@@ -1776,6 +1779,16 @@ impl PartialEq for crate::LocalInit {
         self.expr == other.expr && self.diverge == other.diverge
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::LoopSpec {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::LoopSpec {
+    fn eq(&self, other: &Self) -> bool {
+        self.iter_name == other.iter_name && self.invariants == other.invariants
+            && self.invariant_except_breaks == other.invariant_except_breaks
+            && self.ensures == other.ensures && self.decreases == other.decreases
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Eq for crate::Macro {}
@@ -1899,6 +1912,14 @@ impl PartialEq for crate::ModeGhost {
 impl Eq for crate::ModeProof {}
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for crate::ModeProof {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::ModeProofAxiom {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::ModeProofAxiom {
     fn eq(&self, _other: &Self) -> bool {
         true
     }

@@ -744,6 +744,9 @@ pub trait Fold {
     fn fold_local_init(&mut self, i: crate::LocalInit) -> crate::LocalInit {
         fold_local_init(self, i)
     }
+    fn fold_loop_spec(&mut self, i: crate::LoopSpec) -> crate::LoopSpec {
+        fold_loop_spec(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn fold_macro(&mut self, i: crate::Macro) -> crate::Macro {
@@ -797,6 +800,12 @@ pub trait Fold {
     }
     fn fold_mode_proof(&mut self, i: crate::ModeProof) -> crate::ModeProof {
         fold_mode_proof(self, i)
+    }
+    fn fold_mode_proof_axiom(
+        &mut self,
+        i: crate::ModeProofAxiom,
+    ) -> crate::ModeProofAxiom {
+        fold_mode_proof_axiom(self, i)
     }
     fn fold_mode_spec(&mut self, i: crate::ModeSpec) -> crate::ModeSpec {
         fold_mode_spec(self, i)
@@ -2574,6 +2583,9 @@ where
         crate::FnMode::Proof(_binding_0) => {
             crate::FnMode::Proof(f.fold_mode_proof(_binding_0))
         }
+        crate::FnMode::ProofAxiom(_binding_0) => {
+            crate::FnMode::ProofAxiom(f.fold_mode_proof_axiom(_binding_0))
+        }
         crate::FnMode::Exec(_binding_0) => {
             crate::FnMode::Exec(f.fold_mode_exec(_binding_0))
         }
@@ -3516,6 +3528,19 @@ where
         diverge: (node.diverge).map(|it| ((it).0, Box::new(f.fold_expr(*(it).1)))),
     }
 }
+pub fn fold_loop_spec<F>(f: &mut F, node: crate::LoopSpec) -> crate::LoopSpec
+where
+    F: Fold + ?Sized,
+{
+    crate::LoopSpec {
+        iter_name: (node.iter_name).map(|it| (f.fold_ident((it).0), (it).1)),
+        invariants: (node.invariants).map(|it| f.fold_invariant(it)),
+        invariant_except_breaks: (node.invariant_except_breaks)
+            .map(|it| f.fold_invariant_except_break(it)),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        decreases: (node.decreases).map(|it| f.fold_decreases(it)),
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
 pub fn fold_macro<F>(f: &mut F, node: crate::Macro) -> crate::Macro
@@ -3670,6 +3695,17 @@ where
 {
     crate::ModeProof {
         proof_token: node.proof_token,
+    }
+}
+pub fn fold_mode_proof_axiom<F>(
+    f: &mut F,
+    node: crate::ModeProofAxiom,
+) -> crate::ModeProofAxiom
+where
+    F: Fold + ?Sized,
+{
+    crate::ModeProofAxiom {
+        axiom_token: node.axiom_token,
     }
 }
 pub fn fold_mode_spec<F>(f: &mut F, node: crate::ModeSpec) -> crate::ModeSpec
