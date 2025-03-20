@@ -314,7 +314,7 @@ pub type FunctionSst = Arc<Spanned<FunctionSstX>>;
 pub struct FunctionSstX {
     pub name: Fun,
     pub kind: crate::ast::FunctionKind,
-    pub body_visibility: crate::ast::Visibility,
+    pub body_visibility: crate::ast::BodyVisibility,
     pub owning_module: Option<Path>,
     pub mode: crate::ast::Mode,
     pub opaqueness: crate::ast::Opaqueness,

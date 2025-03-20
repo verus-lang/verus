@@ -1,4 +1,4 @@
-use crate::attributes::{get_mode, get_ret_mode, get_var_mode, VerifierAttrs};
+use crate::attributes::{get_mode, get_ret_mode, get_var_mode, AttrPublish, VerifierAttrs};
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
@@ -26,8 +26,9 @@ use rustc_trait_selection::traits::ImplSource;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
-    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind, KrateX, Mode,
-    Opaqueness, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr, Visibility,
+    BodyVisibility, Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, ItemKind,
+    KrateX, Mode, Opaqueness, ParamX, SpannedTyped, Typ, TypDecoration, TypX, VarIdent, VirErr,
+    Visibility,
 };
 use vir::ast_util::{air_unique_var, clean_ensures_for_unit_return, unit_typ};
 use vir::def::{RETURN_VALUE, VERUS_SPEC};
@@ -966,7 +967,8 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         vir_body
     };
-    let open_closed_present = vattrs.publish.is_some();
+    let open_closed_present =
+        vattrs.publish == Some(AttrPublish::Open) || vattrs.publish == Some(AttrPublish::Closed);
     match kind {
         FunctionKind::TraitMethodImpl { .. } | FunctionKind::TraitMethodDecl { .. }
             if body.is_some() =>
@@ -1907,7 +1909,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let ret = ctxt.spanned_new(span, ret_param);
 
     // No body, so these don't matter
-    let body_visibility = visibility.clone();
+    let body_visibility = vir::ast::BodyVisibility::Visibility(visibility.clone());
     let opaqueness = Opaqueness::Opaque;
 
     let func = FunctionX {
@@ -1946,20 +1948,20 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 fn get_body_visibility_and_fuel(
     span: Span,
     func_visibility: &Visibility,
-    publish: Option<bool>,
+    publish: Option<AttrPublish>,
     opaque: bool,
     opaque_outside_module: bool,
     mode: Mode,
     my_module: &vir::ast::Path,
     has_body: bool,
-) -> Result<(Visibility, Opaqueness), VirErr> {
+) -> Result<(BodyVisibility, Opaqueness), VirErr> {
     let private_vis = Visibility { restricted_to: Some(my_module.clone()) };
 
     if mode != Mode::Spec {
-        if publish == Some(true) {
+        if publish == Some(AttrPublish::Open) {
             return err_span(span, "function is marked `open` but it is not a `spec` function");
         }
-        if publish == Some(false) {
+        if publish == Some(AttrPublish::Closed) {
             return err_span(span, "function is marked `closed` but it is not a `spec` function");
         }
         if opaque || opaque_outside_module {
@@ -1967,28 +1969,40 @@ fn get_body_visibility_and_fuel(
         }
 
         // These don't matter for non-spec functions
-        Ok((private_vis, Opaqueness::Opaque))
+        Ok((BodyVisibility::Visibility(private_vis), Opaqueness::Opaque))
     } else if !has_body {
         if opaque || opaque_outside_module {
             return err_span(span, "opaque has no effect on a function without a body");
         }
 
-        // These don't matter without a body
-        Ok((private_vis, Opaqueness::Opaque))
+        if publish == Some(AttrPublish::Uninterp) {
+            Ok((BodyVisibility::Uninterpreted, Opaqueness::Opaque))
+        } else {
+            // These don't matter without a body
+            Ok((BodyVisibility::Visibility(private_vis), Opaqueness::Opaque))
+        }
     } else {
+        // mode == Mode::Spec && has_body
+        if publish == Some(AttrPublish::Uninterp) {
+            return err_span(span, "function is marked `uninterp` but it has a body");
+        }
+
         if opaque && opaque_outside_module {
             return err_span(span, "function is marked both 'opaque' and 'opaque_outside_module'");
         }
 
-        if publish == Some(true) && func_visibility == &private_vis {
+        if publish == Some(AttrPublish::Open) && func_visibility == &private_vis {
             return err_span(
                 span,
                 "function is marked `open` but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible",
             );
         }
 
-        let body_visibility =
-            if publish == Some(true) { func_visibility.clone() } else { private_vis.clone() };
+        let body_visibility = if publish == Some(AttrPublish::Open) {
+            func_visibility.clone()
+        } else {
+            private_vis.clone()
+        };
 
         let opaqueness = if opaque {
             Opaqueness::Opaque
@@ -2001,6 +2015,6 @@ fn get_body_visibility_and_fuel(
             }
         };
 
-        Ok((body_visibility, opaqueness))
+        Ok((BodyVisibility::Visibility(body_visibility), opaqueness))
     }
 }
