@@ -393,6 +393,15 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 reach_function(ctxt, state, &fn_set_remove_name(&ctxt.vstd_crate_name));
                 reach_function(ctxt, state, &fn_set_subset_of_name(&ctxt.vstd_crate_name));
             };
+            let maybe_reach_set_ops_for_call = |state: &mut State, callee: &Fun| {
+                if let Some(callee) = ctxt.function_map.get(callee) {
+                    // If caller is `all`, we generate no set operations
+                    // If callee is `none`, we generate no set operations
+                    if !function.x.mask_spec_is_all() && !callee.x.mask_spec_is_none() {
+                        reach_set_ops(state);
+                    }
+                }
+            };
             // note: the types in typ_bounds are handled below by map_function_visitor_env
             traverse_generic_bounds(ctxt, state, &function.x.typ_bounds, false);
             let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
@@ -408,8 +417,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         reach_function(ctxt, state, name);
                         if let crate::ast::CallTargetKind::DynamicResolved { resolved, .. } = kind {
                             reach_function(ctxt, state, resolved);
+                            maybe_reach_set_ops_for_call(state, resolved);
                         }
-                        reach_set_ops(state);
+                        maybe_reach_set_ops_for_call(state, name);
                     }
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce

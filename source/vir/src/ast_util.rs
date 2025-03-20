@@ -617,6 +617,22 @@ impl FunctionX {
         }
     }
 
+    pub(crate) fn mask_spec_is_all(&self) -> bool {
+        match &self.mask_spec {
+            None => self.mode == Mode::Exec,
+            Some(MaskSpec::InvariantOpensExcept(_, es)) if es.len() == 0 => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn mask_spec_is_none(&self) -> bool {
+        match &self.mask_spec {
+            None => self.mode != Mode::Exec,
+            Some(MaskSpec::InvariantOpens(_, es)) if es.len() == 0 => true,
+            _ => false,
+        }
+    }
+
     pub fn unwind_spec_or_default(&self) -> UnwindSpec {
         if matches!(self.kind, FunctionKind::TraitMethodImpl { .. }) {
             // Always get the unwind spec from the trait method decl
