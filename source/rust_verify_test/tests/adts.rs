@@ -1591,7 +1591,7 @@ test_verify_one_file! {
                 let ghost f1 = a.foo();
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot access any field of a datatype where one or more fields are private")
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: field expression for an opaque datatype")
 }
 
 test_verify_one_file! {
@@ -1632,7 +1632,7 @@ test_verify_one_file! {
             let mut dev = Device::new(4096);
             dev.write_byte(0, 0);
         }
-    } => Err(err) => assert_vir_error_msg(err, "in 'requires' clause of public function, cannot access any field of a datatype where one or more fields are private")
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: field expression for an opaque datatype")
 }
 
 test_verify_one_file! {

@@ -511,7 +511,7 @@ fn test_clone_int_wrapper(tree_map: TreeMap<u64, IntWrapper>) {
 // ANCHOR_END: clone_int_wrapper
 
 // ANCHOR: clone_weird_int
-struct WeirdInt {
+pub struct WeirdInt {
     pub int_value: u32,
     pub other: u32,
 }

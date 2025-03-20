@@ -52,7 +52,7 @@ test_verify_one_file! {
                 Bike { hard_tail: true }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "in 'ensures' clause of public function, cannot access any field of a datatype where one or more fields are private")
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: field expression for a non-visible datatype")
 }
 
 test_verify_one_file! {
