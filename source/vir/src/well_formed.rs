@@ -106,7 +106,7 @@ fn check_path_and_get_datatype<'a>(
 fn check_path_and_get_function<'a>(
     ctxt: &'a Ctxt,
     x: &Fun,
-    disallow_private_access: Option<(&Option<Path>, &str)>,
+    disallow_private_access: Option<(&Visibility, &str)>,
     span: &crate::messages::Span,
 ) -> Result<&'a Function, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
@@ -165,8 +165,8 @@ fn check_path_and_get_function<'a>(
         }
     };
 
-    if let Some((source_module, reason)) = disallow_private_access {
-        if !is_visible_to_opt(&f.x.visibility, source_module) {
+    if let Some((required_vis, reason)) = disallow_private_access {
+        if !required_vis.at_least_as_restrictive_as(&f.x.visibility) {
             let kind = f.x.item_kind.to_string();
             let msg = format!("in {reason:}, cannot refer to private {kind:}");
             return Err(error(&span, msg));
@@ -179,7 +179,7 @@ fn check_path_and_get_function<'a>(
 fn check_datatype_access(
     ctxt: &Ctxt,
     path: &Path,
-    disallow_private_access: Option<(&Option<Path>, &str)>,
+    disallow_private_access: Option<(&Visibility, &str)>,
     my_module: &Option<Path>,
     span: &Span,
     access_type: &str,
@@ -200,7 +200,7 @@ fn check_datatype_access(
         }
         DatatypeTransparency::WhenVisible(vis) => {
             let required_vis = if let Some((required_vis, _reason)) = disallow_private_access {
-                Visibility { restricted_to: required_vis.clone() }
+                required_vis.clone()
             } else {
                 if my_module.is_none() {
                     return Ok(());
@@ -224,7 +224,7 @@ fn check_datatype_access(
                     ),
                 );
 
-                if let Some((_source_module, reason)) = disallow_private_access {
+                if let Some((_required_vis, reason)) = disallow_private_access {
                     let required_vis_str = match &required_vis.restricted_to {
                         None => "everywhere".to_string(),
                         Some(module) if module.segments.len() == 0 => format!(
@@ -263,7 +263,7 @@ fn check_datatype_access(
                             path_as_friendly_rust_name(&transp_module))
                 );
 
-                if let Some((_source_module, reason)) = disallow_private_access {
+                if let Some((_required_vis, reason)) = disallow_private_access {
                     let required_vis_str = match &required_vis.restricted_to {
                         None => "everywhere".to_string(),
                         Some(module) if module.segments.len() == 0 => format!(
@@ -297,7 +297,7 @@ fn check_one_expr(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
-    disallow_private_access: Option<(&Option<Path>, &str)>,
+    disallow_private_access: Option<(&Visibility, &str)>,
     place: Place,
     diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
@@ -580,7 +580,7 @@ fn check_expr(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
-    disallow_private_access: Option<(&Option<Path>, &str)>,
+    disallow_private_access: Option<(&Visibility, &str)>,
     place: Place,
     diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
@@ -929,7 +929,7 @@ fn check_function(
 
     for req in function.x.require.iter() {
         let msg = "'requires' clause of public function";
-        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(
             ctxt,
             function,
@@ -941,7 +941,7 @@ fn check_function(
     }
     for ens in function.x.ensure.iter() {
         let msg = "'ensures' clause of public function";
-        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState, diags)?;
     }
     if let Some(r) = &function.x.returns {
@@ -961,7 +961,7 @@ fn check_function(
         }
 
         let msg = "'requires' clause of public function";
-        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(ctxt, function, r, disallow_private_access, Place::PreState("returns"), diags)?;
     }
     match &function.x.mask_spec {
@@ -969,7 +969,7 @@ fn check_function(
         Some(MaskSpec::InvariantOpens(_span, es) | MaskSpec::InvariantOpensExcept(_span, es)) => {
             for expr in es.iter() {
                 let msg = "'opens_invariants' clause of public function";
-                let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+                let disallow_private_access = Some((&function.x.visibility, msg));
                 check_expr(
                     ctxt,
                     function,
@@ -982,7 +982,7 @@ fn check_function(
         }
         Some(MaskSpec::InvariantOpensSet(expr)) => {
             let msg = "'opens_invariants' clause of public function";
-            let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+            let disallow_private_access = Some((&function.x.visibility, msg));
             check_expr(
                 ctxt,
                 function,
@@ -997,7 +997,7 @@ fn check_function(
         None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
         Some(UnwindSpec::NoUnwindWhen(expr)) => {
             let msg = "unwind clause of public function";
-            let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+            let disallow_private_access = Some((&function.x.visibility, msg));
             check_expr(
                 ctxt,
                 function,
@@ -1010,7 +1010,7 @@ fn check_function(
     }
     for expr in function.x.decrease.iter() {
         let msg = "'decreases' clause of public function";
-        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(
             ctxt,
             function,
@@ -1022,7 +1022,7 @@ fn check_function(
     }
     if let Some(expr) = &function.x.decrease_when {
         let msg = "'when' clause of public function";
-        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        let disallow_private_access = Some((&function.x.visibility, msg));
         if function.x.mode != Mode::Spec {
             return Err(error(
                 &function.span,
@@ -1057,7 +1057,7 @@ fn check_function(
         // Check that public, non-abstract spec function bodies don't refer to private items:
         let disallow_private_access = if function.x.mode == Mode::Spec {
             let msg = "pub open spec function";
-            Some((&function.x.body_visibility.restricted_to, msg))
+            Some((&function.x.body_visibility, msg))
         } else {
             None
         };
