@@ -393,11 +393,16 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 reach_function(ctxt, state, &fn_set_remove_name(&ctxt.vstd_crate_name));
                 reach_function(ctxt, state, &fn_set_subset_of_name(&ctxt.vstd_crate_name));
             };
-            let maybe_reach_set_ops_for_call = |state: &mut State, callee: &Fun| {
-                if let Some(callee) = ctxt.function_map.get(callee) {
+            let maybe_reach_set_ops_for_call = |state: &mut State, callee_name: &Fun| {
+                let caller =
+                    crate::ast_util::get_non_trait_impl(&ctxt.function_map, &function.x.name);
+                let callee = crate::ast_util::get_non_trait_impl(&ctxt.function_map, callee_name);
+                if let (Some(caller), Some(callee)) = (caller, callee) {
+                    let caller_mask = caller.x.mask_spec_or_default(&function.span);
+                    let callee_mask = callee.x.mask_spec_or_default(&function.span);
                     // If caller is `all`, we generate no set operations
                     // If callee is `none`, we generate no set operations
-                    if !function.x.mask_spec_is_all() && !callee.x.mask_spec_is_none() {
+                    if !caller_mask.is_all() && !callee_mask.is_none() {
                         reach_set_ops(state);
                     }
                 }

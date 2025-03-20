@@ -1,10 +1,10 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
-    FieldOpr, Fun, FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, HeaderExprX, Ident,
-    InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Module, Opaqueness,
-    Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration,
-    TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders,
-    VarIdent, Variant, Variants, Visibility,
+    FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound, GenericBoundX,
+    HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode,
+    Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation,
+    Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder,
+    VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -617,22 +617,6 @@ impl FunctionX {
         }
     }
 
-    pub(crate) fn mask_spec_is_all(&self) -> bool {
-        match &self.mask_spec {
-            None => self.mode == Mode::Exec,
-            Some(MaskSpec::InvariantOpensExcept(_, es)) if es.len() == 0 => true,
-            _ => false,
-        }
-    }
-
-    pub(crate) fn mask_spec_is_none(&self) -> bool {
-        match &self.mask_spec {
-            None => self.mode != Mode::Exec,
-            Some(MaskSpec::InvariantOpens(_, es)) if es.len() == 0 => true,
-            _ => false,
-        }
-    }
-
     pub fn unwind_spec_or_default(&self) -> UnwindSpec {
         if matches!(self.kind, FunctionKind::TraitMethodImpl { .. }) {
             // Always get the unwind spec from the trait method decl
@@ -947,6 +931,25 @@ impl FunctionKind {
     }
 }
 
+// Return a non-TraitMethodImpl for f
+// (if f points to a TraitMethodImpl, return the corresponding method instead)
+pub(crate) fn get_non_trait_impl(func_map: &HashMap<Fun, Function>, f: &Fun) -> Option<Function> {
+    if let Some(function) = func_map.get(f) {
+        if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
+            if let Some(function) = func_map.get(method) {
+                assert!(!matches!(&function.x.kind, FunctionKind::TraitMethodImpl { .. }));
+                Some(function.clone())
+            } else {
+                None
+            }
+        } else {
+            Some(function.clone())
+        }
+    } else {
+        None
+    }
+}
+
 impl ArchWordBits {
     pub fn min_bits(&self) -> u32 {
         match self {
@@ -1011,6 +1014,20 @@ impl MaskSpec {
             MaskSpec::InvariantOpens(_span, exprs) => exprs.clone(),
             MaskSpec::InvariantOpensExcept(_span, exprs) => exprs.clone(),
             MaskSpec::InvariantOpensSet(e) => Arc::new(vec![e.clone()]),
+        }
+    }
+
+    pub(crate) fn is_all(&self) -> bool {
+        match &self {
+            MaskSpec::InvariantOpensExcept(_, es) if es.len() == 0 => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_none(&self) -> bool {
+        match &self {
+            MaskSpec::InvariantOpens(_, es) if es.len() == 0 => true,
+            _ => false,
         }
     }
 }
