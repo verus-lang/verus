@@ -1247,18 +1247,10 @@ test_verify_one_file_with_options! {
 /////////////////////////////////////////////////////
 
 test_verify_one_file_with_options! {
-    #[test] cant_implement_sealed_trait1 ["vstd"] => verus_code! {
+    #[test] cant_implement_sealed_trait ["vstd"] => verus_code! {
         struct S;
         impl ProofFnCopy for S {}
-    } => Err(err) => assert_rust_error_msg(err, "the trait bound `S: builtin::private::Sealed` is not satisfied")
-}
-
-test_verify_one_file_with_options! {
-    #[test] cant_implement_sealed_trait2 ["vstd"] => verus_code! {
-        struct S;
-        impl builtin::private::Sealed for S {}
-        impl ProofFnCopy for S {}
-    } => Err(err) => assert_rust_error_msg(err, "module `private` is private")
+    } => Err(err) => assert_vir_error_msg(err, "cannot implement `sealed` trait")
 }
 
 test_verify_one_file_with_options! {
@@ -1756,4 +1748,28 @@ test_verify_one_file_with_options! {
             x
         }
     } => Err(err) => assert_any_vir_error_msg(err, "use of moved value: `s`")
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_recursive_type1 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+        enum E<'a> {
+            None,
+            Some(tracked proof_fn<'a>[Once]() -> tracked E<'a>),
+        }
+        proof fn test() {
+            let tracked e0 = E::None;
+            let tracked e1 = E::Some(move proof_fn[Once]|| -> tracked E { e0 });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] tracked_recursive_type2 ["vstd"] => verus_code! {
+        use vstd::prelude::*;
+        enum E<'a> {
+            None,
+            Some(proof_fn<'a>[Once](tracked E<'a>) -> ()),
+        }
+    } => Err(err) => assert_vir_error_msg(err, "E in a non-positive position")
 }

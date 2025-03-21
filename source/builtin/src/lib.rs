@@ -1461,29 +1461,29 @@ pub struct FN_T;
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_")]
 pub struct FN_;
 
-mod private {
-    // To enforce sound rules for proof_fn traits, we limit the possible impls of the traits
-    #[doc(hidden)]
-    #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::private::Sealed")]
-    pub trait Sealed {}
-}
-
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnOnce")]
-pub trait ProofFnOnce: private::Sealed {}
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ProofFnOnce {}
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnMut")]
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
 pub trait ProofFnMut: ProofFnOnce {}
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFn")]
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
 pub trait ProofFn: ProofFnMut {}
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnCopy")]
-pub trait ProofFnCopy: private::Sealed {}
-pub trait ProofFnSend: private::Sealed {}
-pub trait ProofFnSync: private::Sealed {}
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ProofFnCopy {}
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ProofFnSend {}
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ProofFnSync {}
 
 // We define ProofFnReqEns<R> as a wrapper around a trait with an associated type,
 // because the broadcast lemma for ProofFnReqEns needs an associated type to trigger properly
 // (it can't be directly generic over ReqEns)
 #[doc(hidden)]
-pub trait ProofFnReqEnsAssoc: private::Sealed {
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ProofFnReqEnsAssoc {
     type ReqEns;
 }
 pub trait ProofFnReqEns<R>: ProofFnReqEnsAssoc<ReqEns = R> {}
@@ -1498,10 +1498,6 @@ pub trait ProofFnReqEnsDef<Args, Output> {
     fn ens(_args: Args, _output: Output) -> bool;
 }
 
-impl<Usage, ReqEns, Cpy, Snd, Syn> private::Sealed
-    for FnProofOptions<Usage, ReqEns, Cpy, Snd, Syn>
-{
-}
 impl<Usage, ReqEns, Cpy, Snd, Syn> ProofFnOnce for FnProofOptions<Usage, ReqEns, Cpy, Snd, Syn> {}
 impl<ReqEns, Cpy, Snd, Syn> ProofFnMut for FnProofOptions<FN_Mut, ReqEns, Cpy, Snd, Syn> {}
 impl<ReqEns, Cpy, Snd, Syn> ProofFnMut for FnProofOptions<FN_Fn, ReqEns, Cpy, Snd, Syn> {}
@@ -1567,28 +1563,10 @@ unsafe impl<'a, Options: ProofFnSync, ArgModes, OutMode, Args, Output> Sync
 {
 }
 
-#[cfg(verus_keep_ghost)]
-impl private::Sealed for FN_Once {}
-#[cfg(verus_keep_ghost)]
-impl private::Sealed for FN_Mut {}
-#[cfg(verus_keep_ghost)]
-impl private::Sealed for FN_Fn {}
-#[cfg(verus_keep_ghost)]
-impl<R> private::Sealed for FN_RE<R> {}
-#[cfg(verus_keep_ghost)]
-impl private::Sealed for FN_Cpy {}
-#[cfg(verus_keep_ghost)]
-impl private::Sealed for FN_Snd {}
-#[cfg(verus_keep_ghost)]
-impl private::Sealed for FN_Syn {}
-#[cfg(verus_keep_ghost)]
-impl private::Sealed for FN_T {}
-#[cfg(verus_keep_ghost)]
-impl private::Sealed for FN_ {}
-
 #[doc(hidden)]
 #[cfg(verus_keep_ghost)]
-pub trait ConfirmUsage<Args, Output, F>: private::Sealed {}
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ConfirmUsage<Args, Output, F> {}
 #[cfg(verus_keep_ghost)]
 impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output = Output>>
     ConfirmUsage<Args, Output, F> for FN_Once
@@ -1607,7 +1585,8 @@ impl<Args: core::marker::Tuple, Output, F: Fn<Args, Output = Output>> ConfirmUsa
 
 #[doc(hidden)]
 #[cfg(verus_keep_ghost)]
-pub trait ConfirmCopy<F>: private::Sealed {}
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ConfirmCopy<F> {}
 #[cfg(verus_keep_ghost)]
 impl<F: Copy> ConfirmCopy<F> for FN_Cpy {}
 #[cfg(verus_keep_ghost)]
@@ -1615,7 +1594,8 @@ impl<F> ConfirmCopy<F> for FN_ {}
 
 #[doc(hidden)]
 #[cfg(verus_keep_ghost)]
-pub trait ConfirmSend<F>: private::Sealed {}
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ConfirmSend<F> {}
 #[cfg(verus_keep_ghost)]
 impl<F: Send> ConfirmSend<F> for FN_Snd {}
 #[cfg(verus_keep_ghost)]
@@ -1623,7 +1603,8 @@ impl<F> ConfirmSend<F> for FN_ {}
 
 #[doc(hidden)]
 #[cfg(verus_keep_ghost)]
-pub trait ConfirmSync<F>: private::Sealed {}
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ConfirmSync<F> {}
 #[cfg(verus_keep_ghost)]
 impl<F: Sync> ConfirmSync<F> for FN_Syn {}
 #[cfg(verus_keep_ghost)]
@@ -1631,7 +1612,8 @@ impl<F> ConfirmSync<F> for FN_ {}
 
 #[doc(hidden)]
 #[cfg(verus_keep_ghost)]
-pub trait ConfirmTracked: private::Sealed {}
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ConfirmTracked {}
 #[cfg(verus_keep_ghost)]
 impl ConfirmTracked for FN_T {}
 #[cfg(verus_keep_ghost)]
