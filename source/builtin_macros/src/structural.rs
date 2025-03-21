@@ -20,6 +20,7 @@ pub fn derive_structural(mut s: synstructure::Structure) -> proc_macro2::TokenSt
 
     s.gen_impl(quote_spanned_builtin! { builtin, s.ast().span() =>
         #[automatically_derived]
+        #[allow(non_local_definitions)]
         gen unsafe impl #builtin::Structural for @Self {
             #[inline]
             #[doc(hidden)]
