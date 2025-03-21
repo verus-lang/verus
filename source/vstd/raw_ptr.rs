@@ -147,7 +147,8 @@ impl<T: ?Sized> View for *mut T {
 #[cfg(verus_keep_ghost)]
 impl<T: ?Sized> super::std_specs::cmp::SpecPartialEqOp<*mut T> for *mut T {
     open spec fn spec_partial_eq(&self, other: &*mut T) -> bool {
-        self@.addr == other@.addr
+        &&& self@.addr == other@.addr
+        &&& self@.metadata == other@.metadata
     }
 }
 
@@ -163,7 +164,8 @@ impl<T: ?Sized> View for *const T {
 #[cfg(verus_keep_ghost)]
 impl<T: ?Sized> super::std_specs::cmp::SpecPartialEqOp<*const T> for *const T {
     open spec fn spec_partial_eq(&self, other: &*const T) -> bool {
-        self@.addr == other@.addr
+        &&& self@.addr == other@.addr
+        &&& self@.metadata == other@.metadata
     }
 }
 
