@@ -273,13 +273,28 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot be marked as `uninterp`")
 }
 
-// test_verify_one_file! {
-//     // TODO reject this code?
-//     #[test] closed_spec_trait_fail verus_code! {
-//         trait T {
-//             closed spec fn bar(&self) -> bool {
-//                 true
-//             }
-//         }
-//     } => Err(err) => todo!()
-// }
+test_verify_one_file! {
+    // TODO reject this code
+    #[ignore] #[test] closed_spec_trait_fail verus_code! {
+        trait T {
+            closed spec fn bar(&self) -> bool {
+                true
+            }
+        }
+    } => Err(_err) => todo!()
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] uninterp_spec_fn_warning verus_code! {
+        spec fn bar(i: nat) -> bool;
+    } => Ok(err) => {
+        assert!(err.errors.is_empty());
+        assert!(err.warnings.iter().find(|w| w.message.contains("uninterpreted functions")).iter().next().is_some());
+    }
+}
+
+test_verify_one_file! {
+    #[test] uninterp_open_fail verus_code! {
+        pub uninterp open fn bar();
+    } => Err(err) => assert_vir_error_msg(err, "expected one of")
+}

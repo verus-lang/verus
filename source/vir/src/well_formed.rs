@@ -627,6 +627,7 @@ fn check_function(
             )
             .secondary_span(&orig_decl.span));
         }
+    } else {
     }
 
     if function.x.attrs.is_decrease_by {
@@ -1519,6 +1520,7 @@ pub fn check_crate(
     }
 
     let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone(), unpruned_krate };
+    // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags, no_verify)?;
     }
