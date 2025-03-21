@@ -1288,6 +1288,19 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     }
 }
 
+pub(crate) fn try_cast_enum_to_int(tcx: TyCtxt<'_>, expr: &Expr) -> Option<u128> {
+    if let ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res, .. })) = expr.kind {
+        if let Ok((enum_did, vdef, true)) = get_adt_res_struct_enum(tcx, *res, expr.span, false) {
+            let adt = tcx.adt_def(enum_did);
+            let idx = adt.variant_index_with_id(vdef.def_id);
+            let val = adt.discriminant_for_variant(tcx, idx).val;
+            return Some(val);
+        }
+    }
+
+    return None;
+}
+
 pub(crate) fn expr_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -1679,6 +1692,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let zero = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(0)))?;
                     let one = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(1)))?;
                     mk_expr(ExprX::If(source_vir, one, Some(zero)))
+                }
+                (_, TypX::Int(_)) if let Some(val) = try_cast_enum_to_int(tcx, expr) => {
+                    let cast_to = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(val)))?;
+                    Ok(mk_ty_clip(&to_vir_ty, &cast_to, expr_vattrs.truncate))
                 }
                 _ => {
                     let source_ty = bctx.types.expr_ty_adjusted(source);
