@@ -6,9 +6,9 @@ use crate::rust_to_vir_base::{
     mk_visibility, remove_host_arg, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
-use crate::util::err_span;
+use crate::unsupported_err;
+use crate::util::{err_span, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
-use crate::{err_unless, unsupported_err};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::{AssocItemKind, ImplItemKind, Item, QPath, Safety, TraitRef};
 use rustc_middle::ty::GenericArgKind;
@@ -270,12 +270,13 @@ pub(crate) fn translate_impl<'tcx>(
                 panic!("Structural impl for non-adt type");
             };
             let ty_applied_never = ctxt.tcx.mk_ty_from_kind(ty_kind_applied_never);
-            err_unless!(
-                ty_applied_never.is_structural_eq_shallow(ctxt.tcx),
-                item.span,
-                format!("structural impl for non-structural type {:?}", ty),
-                ty
-            );
+            if !ty_applied_never.is_structural_eq_shallow(ctxt.tcx) {
+                return Err(vir_err_span_str(
+                    item.span,
+                    &format!("structural impl for non-structural type {:?}", ty),
+                )
+                .help("make sure `PartialEq` is also auto-derived for this type"));
+            }
             true
         } else {
             false
