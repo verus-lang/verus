@@ -638,13 +638,22 @@ impl Visitor {
         };
 
         let (unimpl, ext_attrs) = match (&sig.mode, semi_token, is_trait) {
-            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => (
-                vec![Stmt::Expr(
+            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => {
+                // uninterpreted function
+                let unimpl = vec![Stmt::Expr(
                     Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())),
                     None,
-                )],
-                vec![mk_verus_attr(semi.span, quote! { external_body })],
-            ),
+                )];
+                if !matches!(&sig.publish, Publish::Uninterp(_)) {
+                    proc_macro::Diagnostic::spanned(
+                        sig.span().unwrap(),
+                        proc_macro::Level::Warning,
+                        "uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`\nthis will become a hard error in the future",
+                    )
+                    .emit();
+                }
+                (unimpl, vec![mk_verus_attr(semi.span, quote! { external_body })])
+            }
             _ => (vec![], vec![]),
         };
 
