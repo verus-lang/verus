@@ -445,7 +445,7 @@ test_verify_one_file! {
         pub open spec fn plus_three<T: Integer>(t: T) -> int {
             t as u64 + 3
         }
-    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types, `char`, and pointer types to integer types")
+    } => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types, bool, enum (unit-only or field-less), `char`, and pointer types to integer types")
 }
 
 test_verify_one_file! {
@@ -513,4 +513,37 @@ test_verify_one_file! {
             assert(false as int == 0);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_enum_to_int verus_code! {
+    #[derive(Copy, Clone)]
+    enum E {
+        A,
+        B = 10,
+        C,
+    }
+
+    proof fn test_cast()
+    ensures
+        E::A as int == 0,
+        E::B as int == 10,
+        E::C as int == 11,
+    {}
+} => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_non_unit_enum_to_int verus_code! {
+    #[derive(Copy, Clone)]
+    enum E {
+        A(bool),
+        B(u8),
+    }
+
+    proof fn test_cast()
+    ensures
+        E::A(false) as int == 0
+    {}
+} => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types, bool, enum (unit-only or field-less), `char`, and pointer types to integer types")
 }

@@ -1088,9 +1088,17 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &cast_to_integer, expr_vattrs.truncate))
                 }
+                ((_, false), TypX::Int(_))
+                    if let Some(val) =
+                        crate::rust_to_vir_expr::try_cast_enum_to_int(tcx, args[0]) =>
+                {
+                    let cast_to_integer =
+                        mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(val)))?;
+                    Ok(mk_ty_clip(&to_ty, &cast_to_integer, true))
+                }
                 _ => err_span(
                     expr.span,
-                    "Verus currently only supports casts from integer types, `char`, and pointer types to integer types",
+                    "Verus currently only supports casts from integer types, bool, enum (unit-only or field-less), `char`, and pointer types to integer types",
                 ),
             }
         }
