@@ -1400,7 +1400,7 @@ pub fn call_ensures<Args: core::marker::Tuple, F: FnOnce<Args>>(
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FnProof")]
 pub struct FnProof<'a, Options, ArgModes, OutMode, Args, Output> {
     _no_sync_send: NoSyncSend,
-    _lifetime: PhantomData<&'a dyn Fn<Args, Output = Output>>,
+    _lifetime: PhantomData<&'a dyn Fn(Args) -> Output>,
     _options: PhantomData<Options>,
     _arg_modes: PhantomData<ArgModes>,
     _out_mode: PhantomData<OutMode>,
@@ -1457,12 +1457,14 @@ pub trait ProofFnReqEnsAssoc {
 pub trait ProofFnReqEns<R>: ProofFnReqEnsAssoc<ReqEns = R> {}
 
 pub trait ProofFnReqEnsDef<Args, Output> {
+    #[cfg(verus_keep_ghost)]
     #[verifier::spec]
-    #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnReqEnsDef::req")]
+    #[rustc_diagnostic_item = "verus::builtin::ProofFnReqEnsDef::req"]
     fn req(_args: Args) -> bool;
 
+    #[cfg(verus_keep_ghost)]
     #[verifier::spec]
-    #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnReqEnsDef::ens")]
+    #[rustc_diagnostic_item = "verus::builtin::ProofFnReqEnsDef::ens"]
     fn ens(_args: Args, _output: Output) -> bool;
 }
 
