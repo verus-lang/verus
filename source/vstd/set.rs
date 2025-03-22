@@ -894,17 +894,6 @@ pub broadcast proof fn axiom_set_choose_finite<A>(s: Set<A>)
     let _ = trigger_finite(f, ub);
 }
 
-/// A subset of a finite set `s` is finite.
-pub broadcast proof fn axiom_set_subset_finite<A>(s: Set<A>, sub: Set<A>)
-    requires
-        s.finite(),
-        sub.subset_of(s),
-    ensures
-        #![trigger sub.subset_of(s)]
-        sub.finite(),
-{
-}
-
 // Trusted axioms about len
 // Note: we could add more axioms about len, but they would be incomplete.
 // The following, with axiom_set_ext_equal, are enough to build libraries about len.
@@ -1012,7 +1001,6 @@ pub broadcast group group_set_axioms {
     axiom_set_intersect_finite,
     axiom_set_difference_finite,
     axiom_set_choose_finite,
-    axiom_set_subset_finite,
     axiom_set_empty_len,
     axiom_set_insert_len,
     axiom_set_remove_len,
