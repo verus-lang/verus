@@ -1870,8 +1870,6 @@ fn erase_mir_bound<'a, 'tcx>(
     {
         // "Thin" is a trait alias for Pointee (special case since we don't support trait aliases)
         Some(Bound::Thin)
-    } else if Some(&VerusItem::External(ExternalItem::ProofFnCopy)) == verus_item {
-        Some(Bound::ProofFnCopy)
     } else if Some(&VerusItem::External(ExternalItem::ProofFnOnce)) == verus_item {
         Some(Bound::ProofFn(ClosureKind::FnOnce))
     } else if Some(&VerusItem::External(ExternalItem::ProofFnMut)) == verus_item {

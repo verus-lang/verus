@@ -1099,7 +1099,7 @@ test_verify_one_file_with_options! {
         use vstd::prelude::*;
 
         proof fn test<T: Copy, F>(s: &T, key: T, tracked less: proof_fn<F>(T, T) -> bool)
-            where F: ProofFn + ProofFnCopy
+            where F: ProofFn + Copy
             requires
                 forall |x, y| #[trigger] less.requires((x, y)),
         {
@@ -1250,10 +1250,9 @@ test_verify_one_file_with_options! {
 /////////////////////////////////////////////////////
 
 test_verify_one_file_with_options! {
-    #[test] cant_implement_sealed_trait ["vstd"] => verus_code! {
-        struct S;
-        impl ProofFnCopy for S {}
-    } => Err(err) => assert_vir_error_msg(err, "cannot implement `sealed` trait")
+    #[test] cant_implement_copy_trait ["vstd"] => verus_code! {
+        impl Copy for FOpts<1, (), 0, 0, 0> {}
+    } => Err(err) => assert_rust_error_msg(err, "only traits defined in the current crate can be implemented")
 }
 
 test_verify_one_file_with_options! {
@@ -1335,8 +1334,8 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] copy3 ["vstd"] => verus_code! {
-        proof fn p<F: ProofFnCopy>(tracked f1: proof_fn<F>() -> u8, tracked f2: proof_fn<F>() -> u8) {}
-        proof fn q<F: ProofFnCopy>(tracked f: proof_fn<F>() -> u8) {
+        proof fn p<F: Copy>(tracked f1: proof_fn<F>() -> u8, tracked f2: proof_fn<F>() -> u8) {}
+        proof fn q<F: Copy>(tracked f: proof_fn<F>() -> u8) {
             p(f, f);
         }
         proof fn r(u: u8) {
@@ -1347,21 +1346,21 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] copy4 ["vstd"] => verus_code! {
-        proof fn p<F: ProofFnCopy>(tracked f1: proof_fn<F>() -> u8, tracked f2: proof_fn<F>() -> u8) {}
-        proof fn q<F: ProofFnCopy>(tracked f: proof_fn<F>() -> u8) {
+        proof fn p<F: Copy>(tracked f1: proof_fn<F>() -> u8, tracked f2: proof_fn<F>() -> u8) {}
+        proof fn q<F: Copy>(tracked f: proof_fn<F>() -> u8) {
             p(f, f);
         }
         proof fn r(u: u8) {
             q(proof_fn|| -> u8 { u });
         }
-    } => Err(err) => assert_rust_error_msg(err, "builtin::ProofFnCopy` is not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "Copy` is not satisfied")
 }
 
 test_verify_one_file_with_options! {
     #[test] copy5 ["vstd"] => verus_code! {
         struct S;
-        proof fn p<F: ProofFnCopy>(tracked f1: proof_fn<F>() -> S, tracked f2: proof_fn<F>() -> S) {}
-        proof fn q<F: ProofFnCopy>(tracked f: proof_fn<F>() -> S) {
+        proof fn p<F: Copy>(tracked f1: proof_fn<F>() -> S, tracked f2: proof_fn<F>() -> S) {}
+        proof fn q<F: Copy>(tracked f: proof_fn<F>() -> S) {
             p(f, f);
         }
         proof fn r(s: S) {
@@ -1379,25 +1378,25 @@ test_verify_one_file_with_options! {
         proof fn r(u: u8) {
             q(proof_fn|| -> u8 { u });
         }
-    } => Err(err) => assert_rust_error_msg(err, "builtin::ProofFnSend` is not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "cannot be sent between threads safely")
 }
 
 test_verify_one_file_with_options! {
     #[test] send2 ["vstd"] => verus_code! {
         proof fn p<T: Send>(tracked t: T) {}
-        proof fn q<F: ProofFnSend>(tracked f: proof_fn<F>() -> u8) {
+        proof fn q<F: Send>(tracked f: proof_fn<F>() -> u8) {
             p(f);
         }
         proof fn r(u: u8) {
             q(proof_fn|| -> u8 { u });
         }
-    } => Err(err) => assert_rust_error_msg(err, "builtin::ProofFnSend` is not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "cannot be sent between threads safely")
 }
 
 test_verify_one_file_with_options! {
     #[test] send3 ["vstd"] => verus_code! {
         proof fn p<T: Send>(tracked t: T) {}
-        proof fn q<F: ProofFnSend>(tracked f: proof_fn<F>() -> u8) {
+        proof fn q<F: Send>(tracked f: proof_fn<F>() -> u8) {
             p(f);
         }
         proof fn r(u: u8) {
@@ -1415,25 +1414,25 @@ test_verify_one_file_with_options! {
         proof fn r(u: u8) {
             q(proof_fn|| -> u8 { u });
         }
-    } => Err(err) => assert_rust_error_msg(err, "builtin::ProofFnSync` is not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "cannot be shared between threads safely")
 }
 
 test_verify_one_file_with_options! {
     #[test] sync2 ["vstd"] => verus_code! {
         proof fn p<T: Sync>(tracked t: T) {}
-        proof fn q<F: ProofFnSync>(tracked f: proof_fn<F>() -> u8) {
+        proof fn q<F: Sync>(tracked f: proof_fn<F>() -> u8) {
             p(f);
         }
         proof fn r(u: u8) {
             q(proof_fn|| -> u8 { u });
         }
-    } => Err(err) => assert_rust_error_msg(err, "builtin::ProofFnSync` is not satisfied")
+    } => Err(err) => assert_rust_error_msg(err, "cannot be shared between threads safely")
 }
 
 test_verify_one_file_with_options! {
     #[test] sync3 ["vstd"] => verus_code! {
         proof fn p<T: Sync>(tracked t: T) {}
-        proof fn q<F: ProofFnSync>(tracked f: proof_fn<F>() -> u8) {
+        proof fn q<F: Sync>(tracked f: proof_fn<F>() -> u8) {
             p(f);
         }
         proof fn r(u: u8) {

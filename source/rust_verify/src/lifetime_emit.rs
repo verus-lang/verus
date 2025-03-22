@@ -827,9 +827,6 @@ fn emit_generic_bound(bound: &GenericBound, bare: bool) -> String {
                 ClosureKind::FnOnce => "ProofFnOnce",
             };
         }
-        Bound::ProofFnCopy => {
-            buf += "ProofFnCopy";
-        }
     }
     buf
 }

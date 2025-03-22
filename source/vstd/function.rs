@@ -76,21 +76,6 @@ pub trait ExProofFnReqEns<R>: ProofFnReqEnsAssoc<ReqEns = R> {
     type ExternalTraitSpecificationFor: ProofFnReqEns<R>;
 }
 
-#[verifier::external_trait_specification]
-pub trait ExProofFnCopy {
-    type ExternalTraitSpecificationFor: ProofFnCopy;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExProofFnSend {
-    type ExternalTraitSpecificationFor: ProofFnSend;
-}
-
-#[verifier::external_trait_specification]
-pub trait ExProofFnSync {
-    type ExternalTraitSpecificationFor: ProofFnSync;
-}
-
 #[doc(hidden)]
 pub broadcast proof fn axiom_proof_fn_requires<
     F,

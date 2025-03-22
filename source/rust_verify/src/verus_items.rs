@@ -346,7 +346,6 @@ pub(crate) enum ExternalItem {
     ProofFnOnce,
     ProofFnMut,
     ProofFn,
-    ProofFnCopy,
     Trk,
     RqEn,
 }
@@ -560,7 +559,6 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::ProofFnOnce",      VerusItem::External(ExternalItem::ProofFnOnce)),
         ("verus::builtin::ProofFnMut",       VerusItem::External(ExternalItem::ProofFnMut)),
         ("verus::builtin::ProofFn",          VerusItem::External(ExternalItem::ProofFn)),
-        ("verus::builtin::ProofFnCopy",      VerusItem::External(ExternalItem::ProofFnCopy)),
         ("verus::builtin::Trk",              VerusItem::External(ExternalItem::Trk)),
         ("verus::builtin::RqEn",             VerusItem::External(ExternalItem::RqEn)),
     ]

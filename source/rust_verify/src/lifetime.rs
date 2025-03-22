@@ -278,21 +278,21 @@ struct Arr<A: ?Sized, const N: usize>(Box<A>);
 fn use_type_invariant<A>(a: A) -> A { a }
 
 struct FnProof<'a, P, M, N, A, O>(PhantomData<P>, PhantomData<M>, PhantomData<N>, PhantomData<&'a dyn Fn<A, Output = O>>);
-struct FOpts<const B: u8, C, const D: u8, const E: u8, const G: u8>(C);
-trait ProofFnCopy {}
+struct FOpts<const B: u8, C, const D: u8, const E: u8, const G: u8>(PhantomData<C>);
 trait ProofFnOnce {}
 trait ProofFnMut: ProofFnOnce {}
 trait ProofFn: ProofFnMut {}
 struct ProofFnConfirm;
 trait ConfirmCopy<const D: u8, F> {}
 trait ConfirmUsage<A, O, const B: u8, F> {}
-impl<const B: u8, C, const E: u8, const G: u8> ProofFnCopy for FOpts<B, C, (PROOF_FN_COPY), E, G> {}
+impl<const B: u8, C, const E: u8, const G: u8> Clone for FOpts<B, C, (PROOF_FN_COPY), E, G> { fn clone(&self) -> Self { panic!() } }
+impl<const B: u8, C, const E: u8, const G: u8> Copy for FOpts<B, C, (PROOF_FN_COPY), E, G> {}
 impl<const B: u8, C, const D: u8, const E: u8, const G: u8> ProofFnOnce for FOpts<B, C, D, E, G> {}
 impl<C, const D: u8, const E: u8, const G: u8> ProofFnMut for FOpts<(PROOF_FN_MUT), C, D, E, G> {}
 impl<C, const D: u8, const E: u8, const G: u8> ProofFnMut for FOpts<(PROOF_FN), C, D, E, G> {}
 impl<C, const D: u8, const E: u8, const G: u8> ProofFn for FOpts<(PROOF_FN), C, D, E, G> {}
-impl<'a, P: ProofFnCopy, M, N, A, O> Clone for FnProof<'a, P, M, N, A, O> { fn clone(&self) -> Self { panic!() } }
-impl<'a, P: ProofFnCopy, M, N, A, O> Copy for FnProof<'a, P, M, N, A, O> {}
+impl<'a, P: Copy, M, N, A, O> Clone for FnProof<'a, P, M, N, A, O> { fn clone(&self) -> Self { panic!() } }
+impl<'a, P: Copy, M, N, A, O> Copy for FnProof<'a, P, M, N, A, O> {}
 impl<'a, P: ProofFnOnce, M, N, A: Tuple, O> FnOnce<A> for FnProof<'a, P, M, N, A, O> {
     type Output = O;
     extern \"rust-call\" fn call_once(self, _: A) -> <Self as FnOnce<A>>::Output { panic!() }

@@ -1401,6 +1401,7 @@ pub struct FnProof<'a, Options, ArgModes, OutMode, Args, Output> {
 #[doc(hidden)]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FOpts")]
 pub struct FOpts<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> {
+    _no_sync_send: NoSyncSend,
     _req_ens: PhantomData<ReqEns>,
 }
 
@@ -1436,13 +1437,6 @@ pub trait ProofFnMut: ProofFnOnce {}
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFn")]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
 pub trait ProofFn: ProofFnMut {}
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnCopy")]
-#[cfg_attr(verus_keep_ghost, verifier::sealed)]
-pub trait ProofFnCopy {}
-#[cfg_attr(verus_keep_ghost, verifier::sealed)]
-pub trait ProofFnSend {}
-#[cfg_attr(verus_keep_ghost, verifier::sealed)]
-pub trait ProofFnSync {}
 
 // We define ProofFnReqEns<R> as a wrapper around a trait with an associated type,
 // because the broadcast lemma for ProofFnReqEns needs an associated type to trigger properly
@@ -1489,15 +1483,22 @@ impl<const USAGE: u8, R, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFn
     for FOpts<USAGE, RqEn<R>, COPY, SEND, SYNC>
 {
 }
-impl<const USAGE: u8, ReqEns, const SEND: u8, const SYNC: u8> ProofFnCopy
+impl<const USAGE: u8, ReqEns, const SEND: u8, const SYNC: u8> Clone
+    for FOpts<USAGE, ReqEns, PROOF_FN_COPY, SEND, SYNC>
+{
+    fn clone(&self) -> Self {
+        unimplemented!()
+    }
+}
+impl<const USAGE: u8, ReqEns, const SEND: u8, const SYNC: u8> Copy
     for FOpts<USAGE, ReqEns, PROOF_FN_COPY, SEND, SYNC>
 {
 }
-impl<const USAGE: u8, ReqEns, const COPY: u8, const SYNC: u8> ProofFnSend
+unsafe impl<const USAGE: u8, ReqEns, const COPY: u8, const SYNC: u8> Send
     for FOpts<USAGE, ReqEns, COPY, PROOF_FN_SEND, SYNC>
 {
 }
-impl<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8> ProofFnSync
+unsafe impl<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8> Sync
     for FOpts<USAGE, ReqEns, COPY, SEND, PROOF_FN_SYNC>
 {
 }
@@ -1530,7 +1531,7 @@ impl<'a, Options: ProofFn, ArgModes, OutMode, Args: core::marker::Tuple, Output>
     }
 }
 
-impl<'a, Options: ProofFnCopy, ArgModes, OutMode, Args, Output> Clone
+impl<'a, Options: Copy, ArgModes, OutMode, Args, Output> Clone
     for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
 {
     fn clone(&self) -> Self {
@@ -1538,17 +1539,17 @@ impl<'a, Options: ProofFnCopy, ArgModes, OutMode, Args, Output> Clone
     }
 }
 
-impl<'a, Options: ProofFnCopy, ArgModes, OutMode, Args, Output> Copy
+impl<'a, Options: Copy, ArgModes, OutMode, Args, Output> Copy
     for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
 {
 }
 
-unsafe impl<'a, Options: ProofFnSend, ArgModes, OutMode, Args, Output> Send
+unsafe impl<'a, Options: Send, ArgModes, OutMode, Args, Output> Send
     for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
 {
 }
 
-unsafe impl<'a, Options: ProofFnSync, ArgModes, OutMode, Args, Output> Sync
+unsafe impl<'a, Options: Sync, ArgModes, OutMode, Args, Output> Sync
     for FnProof<'a, Options, ArgModes, OutMode, Args, Output>
 {
 }
