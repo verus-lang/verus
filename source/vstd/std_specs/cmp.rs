@@ -98,7 +98,7 @@ pub trait ExPartialEq<Rhs: ?Sized> {
     // Required method
     fn eq(&self, other: &Rhs) -> (ret: bool)
         ensures
-            ret == spec_partial_eq(self, other),
+            obeys_comparison_model::<Self, Rhs>() ==> ret == spec_partial_eq(self, other),
     ;
 }
 
