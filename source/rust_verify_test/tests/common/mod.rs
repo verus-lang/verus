@@ -322,6 +322,9 @@ pub fn run_verus(
             format!("state_machines_macros={lib_state_machines_macros_path}"),
             "-L".to_string(),
             format!("dependency={verus_target_path_str}"),
+            // suppress Rust's generation of long-type files
+            "-Z".to_string(),
+            "write_long_types_to_disk=no".to_string(),
         ]
         .into_iter(),
     );

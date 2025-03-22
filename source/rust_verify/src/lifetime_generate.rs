@@ -532,23 +532,8 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                 Some(VerusItem::External(ExternalItem::FnProof)) => {
                     Id::new(IdKind::Builtin, 0, "FnProof".to_owned())
                 }
-                Some(VerusItem::External(ExternalItem::FnProofOptions)) => {
-                    Id::new(IdKind::Builtin, 0, "FnProofOptions".to_owned())
-                }
-                Some(VerusItem::External(ExternalItem::FN_Cpy)) => {
-                    Id::new(IdKind::Builtin, 0, "FN_Cpy".to_owned())
-                }
-                Some(VerusItem::External(ExternalItem::FN_)) => {
-                    Id::new(IdKind::Builtin, 0, "FN_".to_owned())
-                }
-                Some(VerusItem::External(ExternalItem::FN_Once)) => {
-                    Id::new(IdKind::Builtin, 0, "FN_Once".to_owned())
-                }
-                Some(VerusItem::External(ExternalItem::FN_Mut)) => {
-                    Id::new(IdKind::Builtin, 0, "FN_Mut".to_owned())
-                }
-                Some(VerusItem::External(ExternalItem::FN_Fn)) => {
-                    Id::new(IdKind::Builtin, 0, "FN_Fn".to_owned())
+                Some(VerusItem::External(ExternalItem::FOpts)) => {
+                    Id::new(IdKind::Builtin, 0, "FOpts".to_owned())
                 }
                 _ => match rust_item {
                     Some(RustItem::Box) => {

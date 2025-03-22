@@ -16,14 +16,18 @@ pub struct ExFnProof<'a, Options, ArgModes, OutMode, Args, Output>(
 #[doc(hidden)]
 #[verifier::external_type_specification]
 #[verifier::external_body]
-#[verifier::reject_recursive_types(Usage)]
+#[verifier::reject_recursive_types(USAGE)]
 #[verifier::reject_recursive_types(ReqEns)]
-#[verifier::reject_recursive_types(Cpy)]
-#[verifier::reject_recursive_types(Snd)]
-#[verifier::reject_recursive_types(Syn)]
-pub struct ExFnProofOptions<Usage, ReqEns, Cpy, Snd, Syn>(
-    FnProofOptions<Usage, ReqEns, Cpy, Snd, Syn>,
-);
+#[verifier::reject_recursive_types(COPY)]
+#[verifier::reject_recursive_types(SEND)]
+#[verifier::reject_recursive_types(SYNC)]
+pub struct ExFnProofOptions<
+    const USAGE: u8,
+    ReqEns,
+    const COPY: u8,
+    const SEND: u8,
+    const SYNC: u8,
+>(FOpts<USAGE, ReqEns, COPY, SEND, SYNC>);
 
 #[verifier::external_trait_specification]
 pub trait ExProofFnSpecification<Args, Output> {
@@ -37,48 +41,13 @@ pub trait ExProofFnSpecification<Args, Output> {
 #[doc(hidden)]
 #[verifier::external_type_specification]
 #[verifier::external_body]
-pub struct ExFnProofOptionOnce(FN_Once);
-
-#[doc(hidden)]
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExFnProofOptionMut(FN_Mut);
-
-#[doc(hidden)]
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExFnProofOption(FN_Fn);
-
-#[doc(hidden)]
-#[verifier::external_type_specification]
-#[verifier::external_body]
 #[verifier::reject_recursive_types(R)]
-pub struct ExFnProofOptionReqEns<R>(FN_RE<R>);
+pub struct ExFnProofOptionReqEns<R>(RqEn<R>);
 
 #[doc(hidden)]
 #[verifier::external_type_specification]
 #[verifier::external_body]
-pub struct ExFnProofOptionCopy(FN_Cpy);
-
-#[doc(hidden)]
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExFnProofOptionSend(FN_Snd);
-
-#[doc(hidden)]
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExFnProofOptionSync(FN_Syn);
-
-#[doc(hidden)]
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExFnProofOptionTracked(FN_T);
-
-#[doc(hidden)]
-#[verifier::external_type_specification]
-#[verifier::external_body]
-pub struct ExFnProofOptionNot(FN_);
+pub struct ExFnProofOptionTracked(Trk);
 
 #[verifier::external_trait_specification]
 pub trait ExProofFnOnce {
@@ -164,30 +133,18 @@ pub broadcast proof fn axiom_proof_fn_ensures<
 /// Retype a proof_fn, introducing ReqEns<R>
 pub proof fn proof_fn_as_req_ens<
     R: ProofFnReqEnsDef<Args, Output>,
-    Usage,
+    const USAGE: u8,
     ReqEns,
-    Cpy,
-    Snd,
-    Syn,
+    const COPY: u8,
+    const SEND: u8,
+    const SYNC: u8,
     ArgModes,
     OutMode,
     Args: std::marker::Tuple,
     Output,
 >(
-    tracked f: FnProof<
-        FnProofOptions<Usage, ReqEns, Cpy, Snd, Syn>,
-        ArgModes,
-        OutMode,
-        Args,
-        Output,
-    >,
-) -> tracked FnProof<
-    FnProofOptions<Usage, FN_RE<R>, Cpy, Snd, Syn>,
-    ArgModes,
-    OutMode,
-    Args,
-    Output,
->
+    tracked f: FnProof<FOpts<USAGE, ReqEns, COPY, SEND, SYNC>, ArgModes, OutMode, Args, Output>,
+) -> tracked FnProof<FOpts<USAGE, RqEn<R>, COPY, SEND, SYNC>, ArgModes, OutMode, Args, Output>
     requires
         forall|args: Args| #[trigger] R::req(args) ==> f.requires(args),
         forall|args: Args, output: Output|

@@ -204,6 +204,13 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
     });
 }
 
+const PROOF_FN_ONCE: u8 = 1;
+const PROOF_FN_MUT: u8 = 2;
+const PROOF_FN: u8 = 3;
+const PROOF_FN_COPY: u8 = 4;
+const PROOF_FN_SEND: u8 = 5;
+const PROOF_FN_SYNC: u8 = 6;
+
 const PRELUDE: &str = "\
 #![feature(negative_impls)]
 #![feature(with_negative_coherence)]
@@ -271,23 +278,19 @@ struct Arr<A: ?Sized, const N: usize>(Box<A>);
 fn use_type_invariant<A>(a: A) -> A { a }
 
 struct FnProof<'a, P, M, N, A, O>(PhantomData<P>, PhantomData<M>, PhantomData<N>, PhantomData<&'a dyn Fn<A, Output = O>>);
-struct FnProofOptions<B, C, D, E, G>(B, C, D, E, G);
-struct FN_Cpy {}
-struct FN_ {}
-struct FN_Once {}
-struct FN_Mut {}
-struct FN_Fn {}
+struct FOpts<const B: u8, C, const D: u8, const E: u8, const G: u8>(C);
 trait ProofFnCopy {}
 trait ProofFnOnce {}
 trait ProofFnMut: ProofFnOnce {}
 trait ProofFn: ProofFnMut {}
-trait ConfirmCopy<F> {}
-trait ConfirmUsage<A, O, F> {}
-impl<B, C, E, G> ProofFnCopy for FnProofOptions<B, C, FN_Cpy, E, G> {}
-impl<B, C, D, E, G> ProofFnOnce for FnProofOptions<B, C, D, E, G> {}
-impl<C, D, E, G> ProofFnMut for FnProofOptions<FN_Mut, C, D, E, G> {}
-impl<C, D, E, G> ProofFnMut for FnProofOptions<FN_Fn, C, D, E, G> {}
-impl<C, D, E, G> ProofFn for FnProofOptions<FN_Fn, C, D, E, G> {}
+struct ProofFnConfirm;
+trait ConfirmCopy<const D: u8, F> {}
+trait ConfirmUsage<A, O, const B: u8, F> {}
+impl<const B: u8, C, const E: u8, const G: u8> ProofFnCopy for FOpts<B, C, (PROOF_FN_COPY), E, G> {}
+impl<const B: u8, C, const D: u8, const E: u8, const G: u8> ProofFnOnce for FOpts<B, C, D, E, G> {}
+impl<C, const D: u8, const E: u8, const G: u8> ProofFnMut for FOpts<(PROOF_FN_MUT), C, D, E, G> {}
+impl<C, const D: u8, const E: u8, const G: u8> ProofFnMut for FOpts<(PROOF_FN), C, D, E, G> {}
+impl<C, const D: u8, const E: u8, const G: u8> ProofFn for FOpts<(PROOF_FN), C, D, E, G> {}
 impl<'a, P: ProofFnCopy, M, N, A, O> Clone for FnProof<'a, P, M, N, A, O> { fn clone(&self) -> Self { panic!() } }
 impl<'a, P: ProofFnCopy, M, N, A, O> Copy for FnProof<'a, P, M, N, A, O> {}
 impl<'a, P: ProofFnOnce, M, N, A: Tuple, O> FnOnce<A> for FnProof<'a, P, M, N, A, O> {
@@ -300,13 +303,13 @@ impl<'a, P: ProofFnMut, M, N, A: Tuple, O> FnMut<A> for FnProof<'a, P, M, N, A, 
 impl<'a, P: ProofFn, M, N, A: Tuple, O> Fn<A> for FnProof<'a, P, M, N, A, O> {
     extern \"rust-call\" fn call(&self, _: A) -> <Self as FnOnce<A>>::Output { panic!() }
 }
-impl<F: Copy> ConfirmCopy<F> for FN_Cpy {}
-impl<F> ConfirmCopy<F> for FN_ {}
-impl<A: Tuple, O, F: FnOnce<A, Output = O>> ConfirmUsage<A, O, F> for FN_Once {}
-impl<A: Tuple, O, F: FnMut<A, Output = O>> ConfirmUsage<A, O, F> for FN_Mut {}
-impl<A: Tuple, O, F: Fn<A, Output = O>> ConfirmUsage<A, O, F> for FN_Fn {}
-pub fn closure_to_fn_proof<'a, C, D, E, G, M, N, A, O, F: 'a>(_f: F) -> FnProof<'a, FnProofOptions<C, FN_, D, E, G>, M, N, A, O>
-where C: ConfirmUsage<A, O, F>, D: ConfirmCopy<F>, M: Tuple, A: Tuple,
+impl<F: Copy> ConfirmCopy<(PROOF_FN_COPY), F> for ProofFnConfirm {}
+impl<F> ConfirmCopy<0, F> for ProofFnConfirm {}
+impl<A: Tuple, O, F: FnOnce<A, Output = O>> ConfirmUsage<A, O, (PROOF_FN_ONCE), F> for ProofFnConfirm {}
+impl<A: Tuple, O, F: FnMut<A, Output = O>> ConfirmUsage<A, O, (PROOF_FN_MUT), F> for ProofFnConfirm {}
+impl<A: Tuple, O, F: Fn<A, Output = O>> ConfirmUsage<A, O, (PROOF_FN), F> for ProofFnConfirm {}
+pub fn closure_to_fn_proof<'a, const B: u8, const D: u8, const E: u8, const G: u8, M, N, A, O, F: 'a>(_f: F) -> FnProof<'a, FOpts<B, (), D, E, G>, M, N, A, O>
+where ProofFnConfirm: ConfirmUsage<A, O, B, F>, ProofFnConfirm: ConfirmCopy<D, F>, M: Tuple, A: Tuple,
 { panic!() }
 
 fn main() {}
@@ -333,7 +336,14 @@ fn emit_check_tracked_lifetimes<'tcx>(
     );
     crate::trait_conflicts::gen_check_trait_impl_conflicts(spans, vir_crate, &mut gen_state);
 
-    for line in PRELUDE.split('\n') {
+    let prelude = PRELUDE
+        .replace("(PROOF_FN_ONCE)", &PROOF_FN_ONCE.to_string())
+        .replace("(PROOF_FN_MUT)", &PROOF_FN_MUT.to_string())
+        .replace("(PROOF_FN)", &PROOF_FN.to_string())
+        .replace("(PROOF_FN_COPY)", &PROOF_FN_COPY.to_string())
+        .replace("(PROOF_FN_SEND)", &PROOF_FN_SEND.to_string())
+        .replace("(PROOF_FN_SYNC)", &PROOF_FN_SYNC.to_string());
+    for line in prelude.split('\n') {
         emit_state.writeln(line.replace("\r", ""));
     }
 

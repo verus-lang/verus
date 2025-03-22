@@ -340,22 +340,15 @@ pub(crate) enum GlobalItem {
 #[allow(non_camel_case_types)]
 pub(crate) enum ExternalItem {
     FnProof,
-    FnProofOptions,
+    FOpts,
     FnProofReq,
     FnProofEns,
     ProofFnOnce,
     ProofFnMut,
     ProofFn,
     ProofFnCopy,
-    FN_Once,
-    FN_Mut,
-    FN_Fn,
-    FN_RE,
-    FN_Cpy,
-    FN_Snd,
-    FN_Syn,
-    FN_T,
-    FN_,
+    Trk,
+    RqEn,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -561,22 +554,15 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
 
         ("verus::builtin::FnProof",          VerusItem::External(ExternalItem::FnProof)),
-        ("verus::builtin::FnProofOptions",   VerusItem::External(ExternalItem::FnProofOptions)),
+        ("verus::builtin::FOpts",   VerusItem::External(ExternalItem::FOpts)),
         ("verus::builtin::ProofFnReqEnsDef::req", VerusItem::External(ExternalItem::FnProofReq)),
         ("verus::builtin::ProofFnReqEnsDef::ens", VerusItem::External(ExternalItem::FnProofEns)),
         ("verus::builtin::ProofFnOnce",      VerusItem::External(ExternalItem::ProofFnOnce)),
         ("verus::builtin::ProofFnMut",       VerusItem::External(ExternalItem::ProofFnMut)),
         ("verus::builtin::ProofFn",          VerusItem::External(ExternalItem::ProofFn)),
         ("verus::builtin::ProofFnCopy",      VerusItem::External(ExternalItem::ProofFnCopy)),
-        ("verus::builtin::FN_Once",          VerusItem::External(ExternalItem::FN_Once)),
-        ("verus::builtin::FN_Mut",           VerusItem::External(ExternalItem::FN_Mut)),
-        ("verus::builtin::FN_Fn",            VerusItem::External(ExternalItem::FN_Fn)),
-        ("verus::builtin::FN_RE",            VerusItem::External(ExternalItem::FN_RE)),
-        ("verus::builtin::FN_Cpy",           VerusItem::External(ExternalItem::FN_Cpy)),
-        ("verus::builtin::FN_Snd",           VerusItem::External(ExternalItem::FN_Snd)),
-        ("verus::builtin::FN_Syn",           VerusItem::External(ExternalItem::FN_Syn)),
-        ("verus::builtin::FN_T",             VerusItem::External(ExternalItem::FN_T)),
-        ("verus::builtin::FN_",              VerusItem::External(ExternalItem::FN_)),
+        ("verus::builtin::Trk",              VerusItem::External(ExternalItem::Trk)),
+        ("verus::builtin::RqEn",             VerusItem::External(ExternalItem::RqEn)),
     ]
 }
 

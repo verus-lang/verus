@@ -1310,17 +1310,20 @@ fn get_proof_fn_one_mode<'tcx>(
     span: Span,
     ty: &rustc_middle::ty::Ty<'tcx>,
 ) -> Result<Mode, VirErr> {
-    if let TyKind::Adt(AdtDef(adt_def_data), _args) = &ty.kind() {
-        let verus_item = ctxt.verus_items.id_to_name.get(&adt_def_data.did);
-        match verus_item {
-            Some(VerusItem::External(crate::verus_items::ExternalItem::FN_)) => {
-                return Ok(Mode::Spec);
-            }
-            Some(VerusItem::External(crate::verus_items::ExternalItem::FN_T)) => {
-                return Ok(Mode::Proof);
-            }
-            _ => {}
+    match &ty.kind() {
+        TyKind::Tuple(_) if ty.tuple_fields().len() == 0 => {
+            return Ok(Mode::Spec);
         }
+        TyKind::Adt(AdtDef(adt_def_data), _args) => {
+            let verus_item = ctxt.verus_items.id_to_name.get(&adt_def_data.did);
+            match verus_item {
+                Some(VerusItem::External(crate::verus_items::ExternalItem::Trk)) => {
+                    return Ok(Mode::Proof);
+                }
+                _ => {}
+            }
+        }
+        _ => {}
     }
     err_span(span, "could not read mode annotations from proof_fn type")
 }
@@ -1675,11 +1678,25 @@ pub(crate) fn check_item_external_generics<'tcx>(
                     }
                 }
             }
-            (GenericArgKind::Const(_), GenericParamKind::Const { .. }) => {
-                return err_span(
-                    span,
-                    "external_type_specification: Const params not yet supported",
-                );
+            (
+                GenericArgKind::Const(c),
+                GenericParamKind::Const {
+                    ty: _,
+                    default: None,
+                    is_host_effect: false,
+                    synthetic: false,
+                },
+            ) => {
+                match c.kind() {
+                    ConstKind::Param(param) if param.name.as_str() == param_name => {
+                        // okay
+                        // Rust's type checking already checks us that c's type matches ty,
+                        // so we don't have to check that here.
+                    }
+                    _ => {
+                        return err();
+                    }
+                }
             }
             _ => {
                 return err();

@@ -244,34 +244,50 @@ struct ProofFnOptions {
 
 enum ProofFnTypeArg {
     Usage(ProofFnUsage),
-    ReqEns(Type),
+    ReqEns(Option<Type>),
     Copy,
     Send,
     Sync,
     Tracked,
-    Not,
+    Ghost,
+    Zero,
 }
+
+const PROOF_FN_ONCE: u8 = 1;
+const PROOF_FN_MUT: u8 = 2;
+const PROOF_FN: u8 = 3;
+const PROOF_FN_COPY: u8 = 4;
+const PROOF_FN_SEND: u8 = 5;
+const PROOF_FN_SYNC: u8 = 6;
 
 impl ProofFnTypeArg {
     fn to_type(&self, span: Span) -> Type {
-        let s = match self {
-            ProofFnTypeArg::Usage(ProofFnUsage::FnOnce) => "FN_Once",
-            ProofFnTypeArg::Usage(ProofFnUsage::FnMut) => "FN_Mut",
-            ProofFnTypeArg::Usage(ProofFnUsage::Fn) => "FN_Fn",
-            ProofFnTypeArg::ReqEns(_) => "FN_RE",
-            ProofFnTypeArg::Copy => "FN_Cpy",
-            ProofFnTypeArg::Send => "FN_Snd",
-            ProofFnTypeArg::Sync => "FN_Syn",
-            ProofFnTypeArg::Tracked => "FN_T",
-            ProofFnTypeArg::Not => "FN_",
+        let (s, n) = match self {
+            ProofFnTypeArg::Usage(ProofFnUsage::FnOnce) => (None, Some(PROOF_FN_ONCE)),
+            ProofFnTypeArg::Usage(ProofFnUsage::FnMut) => (None, Some(PROOF_FN_MUT)),
+            ProofFnTypeArg::Usage(ProofFnUsage::Fn) => (None, Some(PROOF_FN)),
+            ProofFnTypeArg::ReqEns(Some(_)) => (Some("RqEn".to_string()), None),
+            ProofFnTypeArg::ReqEns(None) => (None, None),
+            ProofFnTypeArg::Copy => (None, Some(PROOF_FN_COPY)),
+            ProofFnTypeArg::Send => (None, Some(PROOF_FN_SEND)),
+            ProofFnTypeArg::Sync => (None, Some(PROOF_FN_SYNC)),
+            ProofFnTypeArg::Tracked => (Some("Trk".to_string()), None),
+            ProofFnTypeArg::Ghost => (None, None),
+            ProofFnTypeArg::Zero => (None, Some(0)),
         };
-        let s = format_ident!("{}", s);
-        let stream = match self {
-            ProofFnTypeArg::ReqEns(t) => {
+        let s = s.map(|s| format_ident!("{}", s));
+        let stream = match (self, s, n) {
+            (ProofFnTypeArg::ReqEns(t), Some(s), None) => {
                 quote_spanned_builtin!(builtin, span => #builtin::#s<#t>)
             }
-            _ => {
+            (_, Some(s), _) => {
                 quote_spanned_builtin!(builtin, span => #builtin::#s)
+            }
+            (_, _, Some(n)) => {
+                quote_spanned!(span => #n)
+            }
+            (_, None, None) => {
+                quote_spanned!(span => ())
             }
         };
         Type::Verbatim(stream)
@@ -323,11 +339,11 @@ impl ProofFnOptions {
     fn to_types(&self, span: Span) -> (Type, Type, Type, Type, Type) {
         let usage = ProofFnTypeArg::Usage(self.usage).to_type(span);
         let req_ens = match &self.req_ens {
-            None => ProofFnTypeArg::Not.to_type(span),
-            Some(t) => ProofFnTypeArg::ReqEns(t.clone()).to_type(span),
+            None => ProofFnTypeArg::ReqEns(None).to_type(span),
+            Some(t) => ProofFnTypeArg::ReqEns(Some(t.clone())).to_type(span),
         };
         let f = |b: bool, arg: ProofFnTypeArg| {
-            (if b { arg } else { ProofFnTypeArg::Not }).to_type(span)
+            (if b { arg } else { ProofFnTypeArg::Zero }).to_type(span)
         };
         let copy = f(self.copy, ProofFnTypeArg::Copy);
         let send = f(self.send, ProofFnTypeArg::Send);
@@ -337,13 +353,13 @@ impl ProofFnOptions {
 }
 
 fn proof_fn_track_to_type(span: Span, is_tracked: bool) -> Type {
-    let arg = if is_tracked { ProofFnTypeArg::Tracked } else { ProofFnTypeArg::Not };
+    let arg = if is_tracked { ProofFnTypeArg::Tracked } else { ProofFnTypeArg::Ghost };
     arg.to_type(span)
 }
 
 fn proof_fn_tracks_to_type(span: Span, tracks: impl Iterator<Item = bool>) -> Type {
     // build a tuple type (t1, ..., tn)
-    // where each tk is FN_T or FN_
+    // where each tk is Trk or ()
     let mut elems = Punctuated::new();
     for tracked in tracks {
         elems.push(proof_fn_track_to_type(span, tracked));
@@ -2887,7 +2903,7 @@ impl Visitor {
                 ));
                 if let Some(t) = &opts.req_ens {
                     new_expr = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
-                        #vstd::function::proof_fn_as_req_ens::<#t, _, _, _, _, _, _, _, _, _>(#new_expr)
+                        #vstd::function::proof_fn_as_req_ens::<#t, #usage, _, #copy, #send, #sync, _, _, _, _>(#new_expr)
                     ));
                 }
             }
@@ -3865,7 +3881,7 @@ impl VisitMut for Visitor {
                     };
                     let (usage, req_ens, copy, send, sync) = opts.to_types(options.span());
                     Type::Verbatim(quote_spanned_builtin!(builtin, span =>
-                        #builtin::FnProofOptions<#usage, #req_ens, #copy, #send, #sync>
+                        #builtin::FOpts<#usage, #req_ens, #copy, #send, #sync>
                     ))
                 };
 

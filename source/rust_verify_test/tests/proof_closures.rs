@@ -1174,6 +1174,9 @@ test_verify_one_file_with_options! {
 // Omitting no_impl_fn because exec_closures.rs already checks Fn
 
 test_verify_one_file_with_options! {
+    // HACK: we ignore this test because Rust generates a long-type file for it,
+    // because Rust's error message embeds the file system path of the .rs test file
+    // in the string representation of closure type in the error.
     #[test] tracked_variables_captured_by_closures_send ["vstd"] => verus_code! {
         tracked struct X {
             rc: std::rc::Rc<u32>,

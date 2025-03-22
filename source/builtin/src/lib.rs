@@ -1399,67 +1399,33 @@ pub struct FnProof<'a, Options, ArgModes, OutMode, Args, Output> {
 }
 
 #[doc(hidden)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FnProofOptions")]
-pub struct FnProofOptions<Usage, ReqEns, Cpy, Snd, Syn> {
-    _usage: PhantomData<Usage>,
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FOpts")]
+pub struct FOpts<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> {
     _req_ens: PhantomData<ReqEns>,
-    _copy: PhantomData<Cpy>,
-    _send: PhantomData<Snd>,
-    _sync: PhantomData<Syn>,
 }
 
-// Note: the names FN_Once, FN_, etc. are kept short;
+// Note: the names Trk and RqEn are kept short;
 // otherwise, Rust will create a "*.long-type-*" file whenever there is a type error involving
 // FnProof<...> that doesn't fit into a short enough string.
-// REVIEW: if this problem happens again, we might consider using boolean or integer constants
-// instead of named datatypes.
+// For further brevity, integers are used for USAGE, COPY, SEND, SYNC,
+// and () is used as the type to indicate "not tracked" or "no ReqEns".
 
-#[doc(hidden)]
-#[allow(non_camel_case_types)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_Once")]
-pub struct FN_Once;
-
-#[doc(hidden)]
-#[allow(non_camel_case_types)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_Mut")]
-pub struct FN_Mut;
-
-#[doc(hidden)]
-#[allow(non_camel_case_types)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_Fn")]
-pub struct FN_Fn;
-
-#[doc(hidden)]
-#[allow(non_camel_case_types)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_RE")]
-pub struct FN_RE<R>(PhantomData<R>);
-
-#[doc(hidden)]
-#[allow(non_camel_case_types)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_Cpy")]
-pub struct FN_Cpy;
-
-#[doc(hidden)]
-#[allow(non_camel_case_types)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_Snd")]
-pub struct FN_Snd;
-
-#[doc(hidden)]
-#[allow(non_camel_case_types)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_Syn")]
-pub struct FN_Syn;
+pub const PROOF_FN_ONCE: u8 = 1;
+pub const PROOF_FN_MUT: u8 = 2;
+pub const PROOF_FN: u8 = 3;
+pub const PROOF_FN_COPY: u8 = 4;
+pub const PROOF_FN_SEND: u8 = 5;
+pub const PROOF_FN_SYNC: u8 = 6;
 
 // tracked
 #[doc(hidden)]
-#[allow(non_camel_case_types)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_T")]
-pub struct FN_T;
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::Trk")]
+pub struct Trk;
 
-// not tracked, not copy, not send, not sync
+// ReqEns
 #[doc(hidden)]
-#[allow(non_camel_case_types)]
-#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::FN_")]
-pub struct FN_;
+#[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::RqEn")]
+pub struct RqEn<R>(PhantomData<R>);
 
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::ProofFnOnce")]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
@@ -1498,19 +1464,43 @@ pub trait ProofFnReqEnsDef<Args, Output> {
     fn ens(_args: Args, _output: Output) -> bool;
 }
 
-impl<Usage, ReqEns, Cpy, Snd, Syn> ProofFnOnce for FnProofOptions<Usage, ReqEns, Cpy, Snd, Syn> {}
-impl<ReqEns, Cpy, Snd, Syn> ProofFnMut for FnProofOptions<FN_Mut, ReqEns, Cpy, Snd, Syn> {}
-impl<ReqEns, Cpy, Snd, Syn> ProofFnMut for FnProofOptions<FN_Fn, ReqEns, Cpy, Snd, Syn> {}
-impl<ReqEns, Cpy, Snd, Syn> ProofFn for FnProofOptions<FN_Fn, ReqEns, Cpy, Snd, Syn> {}
-impl<Usage, R, Cpy, Snd, Syn> ProofFnReqEnsAssoc
-    for FnProofOptions<Usage, FN_RE<R>, Cpy, Snd, Syn>
+impl<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFnOnce
+    for FOpts<USAGE, ReqEns, COPY, SEND, SYNC>
+{
+}
+impl<ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFnMut
+    for FOpts<PROOF_FN_MUT, ReqEns, COPY, SEND, SYNC>
+{
+}
+impl<ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFnMut
+    for FOpts<PROOF_FN, ReqEns, COPY, SEND, SYNC>
+{
+}
+impl<ReqEns, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFn
+    for FOpts<PROOF_FN, ReqEns, COPY, SEND, SYNC>
+{
+}
+impl<const USAGE: u8, R, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFnReqEnsAssoc
+    for FOpts<USAGE, RqEn<R>, COPY, SEND, SYNC>
 {
     type ReqEns = R;
 }
-impl<Usage, R, Cpy, Snd, Syn> ProofFnReqEns<R> for FnProofOptions<Usage, FN_RE<R>, Cpy, Snd, Syn> {}
-impl<Usage, ReqEns, Snd, Syn> ProofFnCopy for FnProofOptions<Usage, ReqEns, FN_Cpy, Snd, Syn> {}
-impl<Usage, ReqEns, Cpy, Syn> ProofFnSend for FnProofOptions<Usage, ReqEns, Cpy, FN_Snd, Syn> {}
-impl<Usage, ReqEns, Cpy, Snd> ProofFnSync for FnProofOptions<Usage, ReqEns, Cpy, Snd, FN_Syn> {}
+impl<const USAGE: u8, R, const COPY: u8, const SEND: u8, const SYNC: u8> ProofFnReqEns<R>
+    for FOpts<USAGE, RqEn<R>, COPY, SEND, SYNC>
+{
+}
+impl<const USAGE: u8, ReqEns, const SEND: u8, const SYNC: u8> ProofFnCopy
+    for FOpts<USAGE, ReqEns, PROOF_FN_COPY, SEND, SYNC>
+{
+}
+impl<const USAGE: u8, ReqEns, const COPY: u8, const SYNC: u8> ProofFnSend
+    for FOpts<USAGE, ReqEns, COPY, PROOF_FN_SEND, SYNC>
+{
+}
+impl<const USAGE: u8, ReqEns, const COPY: u8, const SEND: u8> ProofFnSync
+    for FOpts<USAGE, ReqEns, COPY, SEND, PROOF_FN_SYNC>
+{
+}
 
 #[cfg(verus_keep_ghost)]
 impl<'a, Options: ProofFnOnce, ArgModes, OutMode, Args: core::marker::Tuple, Output> FnOnce<Args>
@@ -1566,72 +1556,85 @@ unsafe impl<'a, Options: ProofFnSync, ArgModes, OutMode, Args, Output> Sync
 #[doc(hidden)]
 #[cfg(verus_keep_ghost)]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
-pub trait ConfirmUsage<Args, Output, F> {}
+pub trait ConfirmUsage<Args, Output, const USAGE: u8, F> {}
 #[cfg(verus_keep_ghost)]
 impl<Args: core::marker::Tuple, Output, F: FnOnce<Args, Output = Output>>
-    ConfirmUsage<Args, Output, F> for FN_Once
+    ConfirmUsage<Args, Output, PROOF_FN_ONCE, F> for ProofFnConfirm
 {
 }
 #[cfg(verus_keep_ghost)]
 impl<Args: core::marker::Tuple, Output, F: FnMut<Args, Output = Output>>
-    ConfirmUsage<Args, Output, F> for FN_Mut
+    ConfirmUsage<Args, Output, PROOF_FN_MUT, F> for ProofFnConfirm
 {
 }
 #[cfg(verus_keep_ghost)]
-impl<Args: core::marker::Tuple, Output, F: Fn<Args, Output = Output>> ConfirmUsage<Args, Output, F>
-    for FN_Fn
+impl<Args: core::marker::Tuple, Output, F: Fn<Args, Output = Output>>
+    ConfirmUsage<Args, Output, PROOF_FN, F> for ProofFnConfirm
 {
 }
 
-#[doc(hidden)]
-#[cfg(verus_keep_ghost)]
-#[cfg_attr(verus_keep_ghost, verifier::sealed)]
-pub trait ConfirmCopy<F> {}
-#[cfg(verus_keep_ghost)]
-impl<F: Copy> ConfirmCopy<F> for FN_Cpy {}
-#[cfg(verus_keep_ghost)]
-impl<F> ConfirmCopy<F> for FN_ {}
+pub struct ProofFnConfirm;
 
 #[doc(hidden)]
 #[cfg(verus_keep_ghost)]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
-pub trait ConfirmSend<F> {}
+pub trait ConfirmCopy<const COPY: u8, F> {}
 #[cfg(verus_keep_ghost)]
-impl<F: Send> ConfirmSend<F> for FN_Snd {}
+impl<F: Copy> ConfirmCopy<PROOF_FN_COPY, F> for ProofFnConfirm {}
 #[cfg(verus_keep_ghost)]
-impl<F> ConfirmSend<F> for FN_ {}
+impl<F> ConfirmCopy<0, F> for ProofFnConfirm {}
 
 #[doc(hidden)]
 #[cfg(verus_keep_ghost)]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
-pub trait ConfirmSync<F> {}
+pub trait ConfirmSend<const SEND: u8, F> {}
 #[cfg(verus_keep_ghost)]
-impl<F: Sync> ConfirmSync<F> for FN_Syn {}
+impl<F: Send> ConfirmSend<PROOF_FN_SEND, F> for ProofFnConfirm {}
 #[cfg(verus_keep_ghost)]
-impl<F> ConfirmSync<F> for FN_ {}
+impl<F> ConfirmSend<0, F> for ProofFnConfirm {}
+
+#[doc(hidden)]
+#[cfg(verus_keep_ghost)]
+#[cfg_attr(verus_keep_ghost, verifier::sealed)]
+pub trait ConfirmSync<const SYNC: u8, F> {}
+#[cfg(verus_keep_ghost)]
+impl<F: Sync> ConfirmSync<PROOF_FN_SYNC, F> for ProofFnConfirm {}
+#[cfg(verus_keep_ghost)]
+impl<F> ConfirmSync<0, F> for ProofFnConfirm {}
 
 #[doc(hidden)]
 #[cfg(verus_keep_ghost)]
 #[cfg_attr(verus_keep_ghost, verifier::sealed)]
 pub trait ConfirmTracked {}
 #[cfg(verus_keep_ghost)]
-impl ConfirmTracked for FN_T {}
+impl ConfirmTracked for Trk {}
 #[cfg(verus_keep_ghost)]
-impl ConfirmTracked for FN_ {}
+impl ConfirmTracked for () {}
 
 // Note: Rust can check the well-formedness of all the type arguments except ArgModes;
 // we check ArgModes in the conversion to VIR
 #[doc(hidden)]
 #[cfg(verus_keep_ghost)]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::closure_to_fn_proof")]
-pub fn closure_to_fn_proof<'a, Usage, Cpy, Snd, Syn, ArgModes, OutMode, Args, Output, F: 'a>(
+pub fn closure_to_fn_proof<
+    'a,
+    const USAGE: u8,
+    const COPY: u8,
+    const SEND: u8,
+    const SYNC: u8,
+    ArgModes,
+    OutMode,
+    Args,
+    Output,
+    F: 'a,
+>(
     _f: F,
-) -> FnProof<'a, FnProofOptions<Usage, FN_, Cpy, Snd, Syn>, ArgModes, OutMode, Args, Output>
+) -> FnProof<'a, FOpts<USAGE, (), COPY, SEND, SYNC>, ArgModes, OutMode, Args, Output>
 where
-    Usage: ConfirmUsage<Args, Output, F>,
-    Cpy: ConfirmCopy<F>,
-    Snd: ConfirmSend<F>,
-    Syn: ConfirmSync<F>,
+    ProofFnConfirm: ConfirmUsage<Args, Output, USAGE, F>,
+    ProofFnConfirm: ConfirmCopy<COPY, F>,
+    ProofFnConfirm: ConfirmSend<SEND, F>,
+    ProofFnConfirm: ConfirmSync<SYNC, F>,
     ArgModes: core::marker::Tuple,
     OutMode: ConfirmTracked,
     Args: core::marker::Tuple,
