@@ -81,7 +81,7 @@ pub broadcast proof fn axiom_proof_fn_requires<
     F,
     ArgModes,
     OutMode,
-    Args: std::marker::Tuple,
+    Args: core::marker::Tuple,
     Output,
 >(f: FnProof<F, ArgModes, OutMode, Args, Output>, args: Args) where
     F: ProofFnOnce,
@@ -99,7 +99,7 @@ pub broadcast proof fn axiom_proof_fn_ensures<
     F,
     ArgModes,
     OutMode,
-    Args: std::marker::Tuple,
+    Args: core::marker::Tuple,
     Output,
 >(f: FnProof<F, ArgModes, OutMode, Args, Output>, args: Args, output: Output) where
     F: ProofFnOnce,
@@ -125,7 +125,7 @@ pub proof fn proof_fn_as_req_ens<
     const SYNC: u8,
     ArgModes,
     OutMode,
-    Args: std::marker::Tuple,
+    Args: core::marker::Tuple,
     Output,
 >(
     tracked f: FnProof<FOpts<USAGE, ReqEns, COPY, SEND, SYNC>, ArgModes, OutMode, Args, Output>,
