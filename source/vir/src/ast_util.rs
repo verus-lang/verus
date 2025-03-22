@@ -1,10 +1,10 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
-    FieldOpr, Fun, FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, HeaderExprX, Ident,
-    InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Module, Opaqueness,
-    Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration,
-    TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders,
-    VarIdent, Variant, Variants, Visibility,
+    FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound, GenericBoundX,
+    HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode,
+    Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation,
+    Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder,
+    VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -598,7 +598,7 @@ impl FunctionX {
         **self.name.path.segments.last().expect("last segment") == "main"
     }
 
-    pub fn mask_spec_or_default(&self) -> MaskSpec {
+    pub fn mask_spec_or_default(&self, span: &Span) -> MaskSpec {
         if matches!(self.kind, FunctionKind::TraitMethodImpl { .. }) {
             // Always get the mask spec from the trait method decl
             panic!("mask_spec_or_default should not be called for TraitMethodImpl");
@@ -608,10 +608,10 @@ impl FunctionX {
             None => {
                 if self.mode == Mode::Exec {
                     // default to 'all'
-                    MaskSpec::InvariantOpensExcept(Arc::new(vec![]))
+                    MaskSpec::InvariantOpensExcept(span.clone(), Arc::new(vec![]))
                 } else {
                     // default to 'none'
-                    MaskSpec::InvariantOpens(Arc::new(vec![]))
+                    MaskSpec::InvariantOpens(span.clone(), Arc::new(vec![]))
                 }
             }
             Some(mask_spec) => mask_spec.clone(),
@@ -932,6 +932,25 @@ impl FunctionKind {
     }
 }
 
+// Return a non-TraitMethodImpl for f
+// (if f points to a TraitMethodImpl, return the corresponding method instead)
+pub(crate) fn get_non_trait_impl(func_map: &HashMap<Fun, Function>, f: &Fun) -> Option<Function> {
+    if let Some(function) = func_map.get(f) {
+        if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
+            if let Some(function) = func_map.get(method) {
+                assert!(!matches!(&function.x.kind, FunctionKind::TraitMethodImpl { .. }));
+                Some(function.clone())
+            } else {
+                None
+            }
+        } else {
+            Some(function.clone())
+        }
+    } else {
+        None
+    }
+}
+
 impl ArchWordBits {
     pub fn min_bits(&self) -> u32 {
         match self {
@@ -993,8 +1012,23 @@ impl LowerUniqueVar for Arc<Vec<VarIdent>> {
 impl MaskSpec {
     pub fn exprs(&self) -> Exprs {
         match self {
-            MaskSpec::InvariantOpens(exprs) => exprs.clone(),
-            MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
+            MaskSpec::InvariantOpens(_span, exprs) => exprs.clone(),
+            MaskSpec::InvariantOpensExcept(_span, exprs) => exprs.clone(),
+            MaskSpec::InvariantOpensSet(e) => Arc::new(vec![e.clone()]),
+        }
+    }
+
+    pub(crate) fn is_all(&self) -> bool {
+        match &self {
+            MaskSpec::InvariantOpensExcept(_, es) if es.len() == 0 => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_none(&self) -> bool {
+        match &self {
+            MaskSpec::InvariantOpens(_, es) if es.len() == 0 => true,
+            _ => false,
         }
     }
 }
@@ -1078,8 +1112,9 @@ impl HeaderExprX {
             | HeaderExprX::Recommends(_)
             | HeaderExprX::DecreasesWhen(_)
             | HeaderExprX::DecreasesBy(_)
-            | HeaderExprX::InvariantOpens(_)
-            | HeaderExprX::InvariantOpensExcept(_)
+            | HeaderExprX::InvariantOpens(_, _)
+            | HeaderExprX::InvariantOpensExcept(_, _)
+            | HeaderExprX::InvariantOpensSet(_)
             | HeaderExprX::Hide(_)
             | HeaderExprX::ExtraDependency(_)
             | HeaderExprX::NoUnwind

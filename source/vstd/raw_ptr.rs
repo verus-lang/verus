@@ -216,7 +216,7 @@ impl<T> PointsTo<T> {
     /// Note: If both S and T are non-zero-sized, then this implies the pointers
     /// have distinct addresses.
     #[verifier::external_body]
-    pub proof fn is_disjoint<S>(&mut self, other: &PointsTo<S>)
+    pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
         ensures
             *old(self) == *self,
             self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int

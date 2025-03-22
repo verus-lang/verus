@@ -69,3 +69,13 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_rust_error_msg(err, "the trait bound `Other: builtin::Structural` is not satisfied")
 }
+
+test_verify_one_file! {
+    #[test] test_structural_enum_with_values verus_code! {
+        #[derive(PartialEq, Structural)]
+        pub enum ValueStatus {
+          Valid = 0,
+          Invalid = 1,
+        }
+    } => Ok(())
+}

@@ -105,6 +105,7 @@ pub(crate) enum SpecItem {
     OpensInvariantsAny,
     OpensInvariants,
     OpensInvariantsExcept,
+    OpensInvariantsSet,
     NoUnwind,
     NoUnwindWhen,
 }
@@ -393,6 +394,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::opens_invariants_any",    VerusItem::Spec(SpecItem::OpensInvariantsAny)),
         ("verus::builtin::opens_invariants",        VerusItem::Spec(SpecItem::OpensInvariants)),
         ("verus::builtin::opens_invariants_except", VerusItem::Spec(SpecItem::OpensInvariantsExcept)),
+        ("verus::builtin::opens_invariants_set",    VerusItem::Spec(SpecItem::OpensInvariantsSet)),
 
         ("verus::builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),
         ("verus::builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),

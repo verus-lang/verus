@@ -58,6 +58,7 @@ a.struct[title="struct syn::token::Ghost"],
 a.struct[title="struct syn::token::Global"],
 a.struct[title="struct syn::token::Gt"],
 a.struct[title="struct syn::token::Has"],
+a.struct[title="struct syn::token::HasNot"],
 a.struct[title="struct syn::token::Hide"],
 a.struct[title="struct syn::token::If"],
 a.struct[title="struct syn::token::Impl"],
@@ -70,6 +71,7 @@ a.struct[title="struct syn::token::Invariant"],
 a.struct[title="struct syn::token::InvariantEnsures"],
 a.struct[title="struct syn::token::InvariantExceptBreak"],
 a.struct[title="struct syn::token::Is"],
+a.struct[title="struct syn::token::IsNot"],
 a.struct[title="struct syn::token::LArrow"],
 a.struct[title="struct syn::token::Layout"],
 a.struct[title="struct syn::token::Le"],
@@ -217,6 +219,7 @@ a.struct[title="struct syn::token::Ghost"]::before,
 a.struct[title="struct syn::token::Global"]::before,
 a.struct[title="struct syn::token::Gt"]::before,
 a.struct[title="struct syn::token::Has"]::before,
+a.struct[title="struct syn::token::HasNot"]::before,
 a.struct[title="struct syn::token::Hide"]::before,
 a.struct[title="struct syn::token::If"]::before,
 a.struct[title="struct syn::token::Impl"]::before,
@@ -229,6 +232,7 @@ a.struct[title="struct syn::token::Invariant"]::before,
 a.struct[title="struct syn::token::InvariantEnsures"]::before,
 a.struct[title="struct syn::token::InvariantExceptBreak"]::before,
 a.struct[title="struct syn::token::Is"]::before,
+a.struct[title="struct syn::token::IsNot"]::before,
 a.struct[title="struct syn::token::LArrow"]::before,
 a.struct[title="struct syn::token::Layout"]::before,
 a.struct[title="struct syn::token::Le"]::before,
@@ -557,6 +561,10 @@ a.struct[title="struct syn::token::Has"]::before {
 	content: "Token![has]";
 }
 
+a.struct[title="struct syn::token::HasNot"]::before {
+	content: "Token![hasnt]";
+}
+
 a.struct[title="struct syn::token::Hide"]::before {
 	content: "Token![hide]";
 }
@@ -603,6 +611,10 @@ a.struct[title="struct syn::token::InvariantExceptBreak"]::before {
 
 a.struct[title="struct syn::token::Is"]::before {
 	content: "Token![is]";
+}
+
+a.struct[title="struct syn::token::IsNot"]::before {
+	content: "Token![isnt]";
 }
 
 a.struct[title="struct syn::token::LArrow"]::before {
@@ -1016,6 +1028,8 @@ a.struct[title="struct syn::token::At"]::after,
 a.struct[title="struct syn::token::Eq"]::after,
 a.struct[title="struct syn::token::Equiv"]::after,
 a.struct[title="struct syn::token::Gt"]::after,
+a.struct[title="struct syn::token::HasNot"]::after,
+a.struct[title="struct syn::token::IsNot"]::after,
 a.struct[title="struct syn::token::Lt"]::after,
 a.struct[title="struct syn::token::NeEq"]::after,
 a.struct[title="struct syn::token::Or"]::after,

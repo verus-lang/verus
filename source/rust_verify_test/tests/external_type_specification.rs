@@ -429,7 +429,7 @@ test_verify_one_file! {
         fn test() {
             let x = SomeStruct::<u64> { t: 5 };
         }
-    } => Err(err) => assert_vir_error_msg(err, "constructor of datatype with inaccessible fields")
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: constructor for an opaque datatype")
 }
 
 // positivity

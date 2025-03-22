@@ -79,6 +79,7 @@ pub struct ArgsX {
     pub no_verify: bool,
     pub no_lifetime: bool,
     pub no_auto_recommends_check: bool,
+    pub no_cheating: bool,
     pub time: bool,
     pub time_expanded: bool,
     pub output_json: bool,
@@ -123,6 +124,7 @@ impl ArgsX {
             no_verify: Default::default(),
             no_lifetime: Default::default(),
             no_auto_recommends_check: Default::default(),
+            no_cheating: Default::default(),
             time: Default::default(),
             time_expanded: Default::default(),
             output_json: Default::default(),
@@ -291,6 +293,7 @@ pub fn parse_args_with_imports(
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
+    const OPT_NO_CHEATING: &str = "no-cheating";
     const OPT_TIME: &str = "time";
     const OPT_TIME_EXPANDED: &str = "time-expanded";
     const OPT_OUTPUT_JSON: &str = "output-json";
@@ -442,6 +445,11 @@ pub fn parse_args_with_imports(
         "",
         OPT_NO_AUTO_RECOMMENDS_CHECK,
         "Do not automatically check recommends after verification failures",
+    );
+    opts.optflag(
+        "",
+        OPT_NO_CHEATING,
+        "Do not allow assume, admit, verifier::external_body, and assume_specification",
     );
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
@@ -616,6 +624,7 @@ pub fn parse_args_with_imports(
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
+        no_cheating: matches.opt_present(OPT_NO_CHEATING),
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
         time_expanded: matches.opt_present(OPT_TIME_EXPANDED),
         output_json: matches.opt_present(OPT_OUTPUT_JSON),

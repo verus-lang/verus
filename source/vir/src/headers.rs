@@ -147,7 +147,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                     HeaderExprX::ExtraDependency(x) => {
                         extra_dependencies.push(x.clone());
                     }
-                    HeaderExprX::InvariantOpens(es) => {
+                    HeaderExprX::InvariantOpens(span, es) => {
                         match invariant_mask {
                             None => {}
                             _ => {
@@ -157,9 +157,9 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                                 ));
                             }
                         }
-                        invariant_mask = Some(MaskSpec::InvariantOpens(es.clone()));
+                        invariant_mask = Some(MaskSpec::InvariantOpens(span.clone(), es.clone()));
                     }
-                    HeaderExprX::InvariantOpensExcept(es) => {
+                    HeaderExprX::InvariantOpensExcept(span, es) => {
                         match invariant_mask {
                             None => {}
                             _ => {
@@ -169,7 +169,20 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                                 ));
                             }
                         }
-                        invariant_mask = Some(MaskSpec::InvariantOpensExcept(es.clone()));
+                        invariant_mask =
+                            Some(MaskSpec::InvariantOpensExcept(span.clone(), es.clone()));
+                    }
+                    HeaderExprX::InvariantOpensSet(e) => {
+                        match invariant_mask {
+                            None => {}
+                            _ => {
+                                return Err(error(
+                                    &stmt.span,
+                                    "only one invariant mask spec allowed",
+                                ));
+                            }
+                        }
+                        invariant_mask = Some(MaskSpec::InvariantOpensSet(e.clone()));
                     }
                     HeaderExprX::NoUnwind | HeaderExprX::NoUnwindWhen(_) => {
                         match unwind_spec {

@@ -1,17 +1,16 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX, FieldOpr, Fun,
     Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path, Trait, TypX, UnaryOp,
-    UnaryOpr, UnwindSpec, VirErr, VirErrAs,
+    UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to, is_visible_to_opt,
     path_as_friendly_rust_name, referenced_vars_expr, typ_to_diagnostic_str, types_equal,
     undecorate_typ,
 };
-use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
-use crate::messages::{error, Message};
+use crate::messages::{error, error_with_label, Message, Span};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -22,6 +21,7 @@ struct Ctxt {
     pub(crate) dts: HashMap<Path, Datatype>,
     pub(crate) krate: Krate,
     unpruned_krate: Krate,
+    no_cheating: bool,
 }
 
 #[warn(unused_must_use)]
@@ -107,7 +107,7 @@ fn check_path_and_get_datatype<'a>(
 fn check_path_and_get_function<'a>(
     ctxt: &'a Ctxt,
     x: &Fun,
-    disallow_private_access: Option<(&Option<Path>, &str)>,
+    disallow_private_access: Option<(&Visibility, &str)>,
     span: &crate::messages::Span,
 ) -> Result<&'a Function, VirErr> {
     fn is_proxy<'a>(ctxt: &'a Ctxt, path: &Path) -> Option<&'a Path> {
@@ -166,8 +166,8 @@ fn check_path_and_get_function<'a>(
         }
     };
 
-    if let Some((source_module, reason)) = disallow_private_access {
-        if !is_visible_to_opt(&f.x.visibility, source_module) {
+    if let Some((required_vis, reason)) = disallow_private_access {
+        if !required_vis.at_least_as_restrictive_as(&f.x.visibility) {
             let kind = f.x.item_kind.to_string();
             let msg = format!("in {reason:}, cannot refer to private {kind:}");
             return Err(error(&span, msg));
@@ -177,11 +177,128 @@ fn check_path_and_get_function<'a>(
     Ok(f)
 }
 
+fn check_datatype_access(
+    ctxt: &Ctxt,
+    path: &Path,
+    disallow_private_access: Option<(&Visibility, &str)>,
+    my_module: &Option<Path>,
+    span: &Span,
+    access_type: &str,
+) -> Result<(), VirErr> {
+    let dt = check_path_and_get_datatype(ctxt, path, span)?;
+    match &dt.x.transparency {
+        DatatypeTransparency::Never => {
+            // This can only happen if the datatype is 'external_body'
+            return Err(error_with_label(
+                span,
+                format!("disallowed: {:} for an opaque datatype", access_type),
+                format!("this {:} is disallowed", access_type),
+            )
+            .secondary_label(
+                &dt.span,
+                "Verus treats this datatype as 'opaque' because it is marked 'external_body'",
+            ));
+        }
+        DatatypeTransparency::WhenVisible(vis) => {
+            let required_vis = if let Some((required_vis, _reason)) = disallow_private_access {
+                required_vis.clone()
+            } else {
+                if my_module.is_none() {
+                    return Ok(());
+                }
+                Visibility { restricted_to: my_module.clone() }
+            };
+
+            // Is the datatype *name* visible throughout the entire required area?
+            if !required_vis.at_least_as_restrictive_as(&dt.x.visibility) {
+                let visibility_module = dt.x.visibility.restricted_to.clone().unwrap();
+                let mut er = error_with_label(
+                    span,
+                    format!("disallowed: {:} for a non-visible datatype", access_type),
+                    format!("this {:} is disallowed because of non-visibility", access_type),
+                )
+                .secondary_label(
+                    &dt.span,
+                    format!(
+                        "this datatype is only visible to `{:}`",
+                        path_as_friendly_rust_name(&visibility_module)
+                    ),
+                );
+
+                if let Some((_required_vis, reason)) = disallow_private_access {
+                    let required_vis_str = match &required_vis.restricted_to {
+                        None => "everywhere".to_string(),
+                        Some(module) if module.segments.len() == 0 => format!(
+                            "everywhere in the crate `{:}`",
+                            path_as_friendly_rust_name(module)
+                        ),
+                        Some(module) => format!(
+                            "everywhere in the module `{:}`",
+                            path_as_friendly_rust_name(module)
+                        ),
+                    };
+                    er = er.help(
+                        format!("note that because this is a {:}, this {:} must be well-formed {:}, which is wider than `{:}`",
+                            reason,
+                            access_type,
+                            required_vis_str,
+                            path_as_friendly_rust_name(&visibility_module),
+                        )
+                    );
+                }
+
+                return Err(er);
+            }
+
+            // Is the datatype *transparent* throughout the entire required area?
+            // (i.e., is the datatype body visible?)
+            if !required_vis.at_least_as_restrictive_as(vis) {
+                let transp_module = vis.restricted_to.clone().unwrap();
+                let mut er = error_with_label(
+                    span,
+                    format!("disallowed: {:} for an opaque datatype", access_type),
+                    format!("this {:} is disallowed because of datatype opaqueness", access_type),
+                ).secondary_label(
+                    &dt.span,
+                    format!("Verus treats this datatype as 'opaque' outside `{:}` (note that Verus always considers the most restrictive field for determining this)",
+                            path_as_friendly_rust_name(&transp_module))
+                );
+
+                if let Some((_required_vis, reason)) = disallow_private_access {
+                    let required_vis_str = match &required_vis.restricted_to {
+                        None => "everywhere".to_string(),
+                        Some(module) if module.segments.len() == 0 => format!(
+                            "everywhere in the crate `{:}`",
+                            path_as_friendly_rust_name(module)
+                        ),
+                        Some(module) => format!(
+                            "everywhere in the module `{:}`",
+                            path_as_friendly_rust_name(module)
+                        ),
+                    };
+                    er = er.help(
+                        format!("note that because this is a {:}, this {:} must be well-formed {:}, which is wider than `{:}`",
+                            reason,
+                            access_type,
+                            required_vis_str,
+                            path_as_friendly_rust_name(&transp_module),
+                        )
+                    );
+                }
+
+                return Err(er);
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn check_one_expr(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
-    disallow_private_access: Option<(&Option<Path>, &str)>,
+    disallow_private_access: Option<(&Visibility, &str)>,
     place: Place,
     diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
@@ -266,33 +383,14 @@ fn check_one_expr(
             }
         }
         ExprX::Ctor(Dt::Path(path), _variant, _fields, _update) => {
-            let dt = check_path_and_get_datatype(ctxt, path, &expr.span)?;
-            if let Some(module) = &function.x.owning_module {
-                if !is_datatype_transparent(&module, dt) {
-                    return Err(error(
-                        &expr.span,
-                        "constructor of datatype with inaccessible fields",
-                    ).secondary_label(
-                        &dt.span,
-                        "a datatype is treated as opaque whenever at least one field is not visible"
-                    ));
-                }
-            }
-            let field_vis = match &dt.x.transparency {
-                DatatypeTransparency::Never => None,
-                DatatypeTransparency::WhenVisible(vis) => Some(vis.clone()),
-            };
-            match (disallow_private_access, field_vis) {
-                (None, _) => {}
-                (Some((source_module, _)), Some(field_vis))
-                    if is_visible_to_opt(&field_vis, source_module) => {}
-                (Some((_, reason)), _) => {
-                    let msg = format!(
-                        "in {reason:}, cannot use constructor of private datatype or datatype whose fields are private"
-                    );
-                    return Err(error(&expr.span, msg));
-                }
-            }
+            check_datatype_access(
+                ctxt,
+                path,
+                disallow_private_access,
+                &function.x.owning_module,
+                &expr.span,
+                "constructor",
+            )?;
         }
         ExprX::UnaryOpr(UnaryOpr::CustomErr(_), e) => {
             if !crate::ast_util::type_is_bool(&e.typ) {
@@ -305,40 +403,21 @@ fn check_one_expr(
         ExprX::UnaryOpr(
             UnaryOpr::Field(FieldOpr {
                 datatype: Dt::Path(path),
-                variant,
+                variant: _,
                 field: _,
                 get_variant: _,
                 check: _,
             }),
             _,
         ) => {
-            if let Some(dt) = ctxt.dts.get(path) {
-                if let Some(module) = &function.x.owning_module {
-                    if !is_datatype_transparent(&module, dt) {
-                        return Err(error(
-                            &expr.span,
-                            "field access of datatype with inaccessible fields",
-                        ).secondary_label(
-                            &dt.span,
-                            "a datatype is treated as opaque whenever at least one field is not visible"
-                        ));
-                    }
-                }
-                if let Some((source_module, reason)) = disallow_private_access {
-                    let variant = dt.x.get_variant(variant);
-                    for f in variant.fields.iter() {
-                        let (_, _, vis) = &f.a;
-                        if !is_visible_to_opt(vis, source_module) {
-                            let msg = format!(
-                                "in {reason:}, cannot access any field of a datatype where one or more fields are private"
-                            );
-                            return Err(error(&expr.span, msg));
-                        }
-                    }
-                }
-            } else {
-                return Err(error(&expr.span, "field access of datatype with inaccessible fields"));
-            }
+            check_datatype_access(
+                ctxt,
+                path,
+                disallow_private_access,
+                &function.x.owning_module,
+                &expr.span,
+                "field expression",
+            )?;
         }
         ExprX::Multi(MultiOp::Chained(ops), _) => {
             if ops.len() < 1 {
@@ -388,6 +467,11 @@ fn check_one_expr(
                 VisitorControlFlow::Return => unreachable!(),
                 VisitorControlFlow::Stop(e) => Err(e),
             }?;
+        }
+        ExprX::AssertAssume { is_assume, .. } => {
+            if ctxt.no_cheating && *is_assume {
+                return Err(error(&expr.span, "assume/admit not allowed with --no-cheating"));
+            }
         }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
             ExprX::Binary(crate::ast::BinaryOp::Implies, _, _) => {
@@ -503,7 +587,7 @@ fn check_expr(
     ctxt: &Ctxt,
     function: &Function,
     expr: &Expr,
-    disallow_private_access: Option<(&Option<Path>, &str)>,
+    disallow_private_access: Option<(&Visibility, &str)>,
     place: Place,
     diags: &mut Vec<VirErrAs>,
 ) -> Result<(), VirErr> {
@@ -852,7 +936,7 @@ fn check_function(
 
     for req in function.x.require.iter() {
         let msg = "'requires' clause of public function";
-        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(
             ctxt,
             function,
@@ -864,7 +948,7 @@ fn check_function(
     }
     for ens in function.x.ensure.iter() {
         let msg = "'ensures' clause of public function";
-        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState, diags)?;
     }
     if let Some(r) = &function.x.returns {
@@ -884,15 +968,15 @@ fn check_function(
         }
 
         let msg = "'requires' clause of public function";
-        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(ctxt, function, r, disallow_private_access, Place::PreState("returns"), diags)?;
     }
     match &function.x.mask_spec {
         None => {}
-        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
+        Some(MaskSpec::InvariantOpens(_span, es) | MaskSpec::InvariantOpensExcept(_span, es)) => {
             for expr in es.iter() {
                 let msg = "'opens_invariants' clause of public function";
-                let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+                let disallow_private_access = Some((&function.x.visibility, msg));
                 check_expr(
                     ctxt,
                     function,
@@ -903,12 +987,24 @@ fn check_function(
                 )?;
             }
         }
+        Some(MaskSpec::InvariantOpensSet(expr)) => {
+            let msg = "'opens_invariants' clause of public function";
+            let disallow_private_access = Some((&function.x.visibility, msg));
+            check_expr(
+                ctxt,
+                function,
+                expr,
+                disallow_private_access,
+                Place::PreState("opens_invariants clause"),
+                diags,
+            )?
+        }
     }
     match &function.x.unwind_spec {
         None | Some(UnwindSpec::MayUnwind | UnwindSpec::NoUnwind) => {}
         Some(UnwindSpec::NoUnwindWhen(expr)) => {
             let msg = "unwind clause of public function";
-            let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+            let disallow_private_access = Some((&function.x.visibility, msg));
             check_expr(
                 ctxt,
                 function,
@@ -921,7 +1017,7 @@ fn check_function(
     }
     for expr in function.x.decrease.iter() {
         let msg = "'decreases' clause of public function";
-        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(
             ctxt,
             function,
@@ -933,7 +1029,7 @@ fn check_function(
     }
     if let Some(expr) = &function.x.decrease_when {
         let msg = "'when' clause of public function";
-        let disallow_private_access = Some((&function.x.visibility.restricted_to, msg));
+        let disallow_private_access = Some((&function.x.visibility, msg));
         if function.x.mode != Mode::Spec {
             return Err(error(
                 &function.span,
@@ -968,7 +1064,7 @@ fn check_function(
         // Check that public, non-abstract spec function bodies don't refer to private items:
         let disallow_private_access = if function.x.mode == Mode::Spec {
             let msg = "pub open spec function";
-            Some((&function.x.body_visibility.restricted_to, msg))
+            Some((&function.x.body_visibility, msg))
         } else {
             None
         };
@@ -1008,6 +1104,13 @@ fn check_function(
                 "#[verifier::type_invariant] function should not have a 'recommends' clause (consider adding it as a conjunct in the body)",
             ));
         }
+    }
+
+    if ctxt.no_cheating && (function.x.attrs.is_external_body || function.x.proxy.is_some()) {
+        return Err(error(
+            &function.span,
+            "external_body/assume_specification not allowed with --no-cheating",
+        ));
     }
 
     Ok(())
@@ -1195,6 +1298,7 @@ pub fn check_crate(
     unpruned_krate: Krate,
     diags: &mut Vec<VirErrAs>,
     no_verify: bool,
+    no_cheating: bool,
 ) -> Result<(), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
@@ -1411,7 +1515,7 @@ pub fn check_crate(
         }
     }
 
-    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone(), unpruned_krate };
+    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone(), unpruned_krate, no_cheating };
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags, no_verify)?;
     }

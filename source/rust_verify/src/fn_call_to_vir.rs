@@ -367,9 +367,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let header = match spec_item {
                     SpecItem::Requires => Arc::new(HeaderExprX::Requires(Arc::new(vir_args))),
                     SpecItem::Recommends => Arc::new(HeaderExprX::Recommends(Arc::new(vir_args))),
-                    SpecItem::OpensInvariants => {
-                        Arc::new(HeaderExprX::InvariantOpens(Arc::new(vir_args)))
-                    }
+                    SpecItem::OpensInvariants => Arc::new(HeaderExprX::InvariantOpens(
+                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                        Arc::new(vir_args),
+                    )),
                     SpecItem::Returns => Arc::new(HeaderExprX::Returns(vir_args[0].clone())),
                     _ => unreachable!(),
                 };
@@ -384,12 +385,25 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             SpecItem::OpensInvariantsNone => {
                 record_spec_fn_no_proof_args(bctx, expr);
-                let header = Arc::new(HeaderExprX::InvariantOpens(Arc::new(Vec::new())));
+                let header = Arc::new(HeaderExprX::InvariantOpens(
+                    bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                    Arc::new(Vec::new()),
+                ));
                 mk_expr(ExprX::Header(header))
             }
             SpecItem::OpensInvariantsAny => {
                 record_spec_fn_no_proof_args(bctx, expr);
-                let header = Arc::new(HeaderExprX::InvariantOpensExcept(Arc::new(Vec::new())));
+                let header = Arc::new(HeaderExprX::InvariantOpensExcept(
+                    bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                    Arc::new(Vec::new()),
+                ));
+                mk_expr(ExprX::Header(header))
+            }
+            SpecItem::OpensInvariantsSet => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                let header = Arc::new(HeaderExprX::InvariantOpensSet(arg));
                 mk_expr(ExprX::Header(header))
             }
             SpecItem::Ensures => {

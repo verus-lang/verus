@@ -552,8 +552,14 @@ enum ThisOrThat {
 
 proof fn uses_is(t: ThisOrThat) {
     match t {
-        ThisOrThat::This(..) => assert(t is This),
-        ThisOrThat::That { .. } => assert(t is That),
+        ThisOrThat::This(..) => {
+            assert(t is This);
+            assert(t !is That);
+        },
+        ThisOrThat::That { .. } => {
+            assert(t is That);
+            assert(t !is This);
+        },
     }
 }
 

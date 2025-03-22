@@ -470,7 +470,9 @@ impl Clone for crate::Expr {
             crate::Expr::BigAnd(v0) => crate::Expr::BigAnd(v0.clone()),
             crate::Expr::BigOr(v0) => crate::Expr::BigOr(v0.clone()),
             crate::Expr::Is(v0) => crate::Expr::Is(v0.clone()),
+            crate::Expr::IsNot(v0) => crate::Expr::IsNot(v0.clone()),
             crate::Expr::Has(v0) => crate::Expr::Has(v0.clone()),
+            crate::Expr::HasNot(v0) => crate::Expr::HasNot(v0.clone()),
             crate::Expr::Matches(v0) => crate::Expr::Matches(v0.clone()),
             crate::Expr::GetField(v0) => crate::Expr::GetField(v0.clone()),
             #[cfg(not(feature = "full"))]
@@ -693,6 +695,17 @@ impl Clone for crate::ExprHas {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::ExprHasNot {
+    fn clone(&self) -> Self {
+        crate::ExprHasNot {
+            attrs: self.attrs.clone(),
+            lhs: self.lhs.clone(),
+            has_not_token: self.has_not_token.clone(),
+            rhs: self.rhs.clone(),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::ExprIf {
@@ -735,6 +748,17 @@ impl Clone for crate::ExprIs {
             attrs: self.attrs.clone(),
             base: self.base.clone(),
             is_token: self.is_token.clone(),
+            variant_ident: self.variant_ident.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::ExprIsNot {
+    fn clone(&self) -> Self {
+        crate::ExprIsNot {
+            attrs: self.attrs.clone(),
+            base: self.base.clone(),
+            is_not_token: self.is_not_token.clone(),
             variant_ident: self.variant_ident.clone(),
         }
     }
@@ -1443,6 +1467,7 @@ impl Clone for crate::InvariantNameSet {
             crate::InvariantNameSet::List(v0) => {
                 crate::InvariantNameSet::List(v0.clone())
             }
+            crate::InvariantNameSet::Set(v0) => crate::InvariantNameSet::Set(v0.clone()),
         }
     }
 }
@@ -1468,6 +1493,14 @@ impl Clone for crate::InvariantNameSetNone {
     fn clone(&self) -> Self {
         crate::InvariantNameSetNone {
             token: self.token.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::InvariantNameSetSet {
+    fn clone(&self) -> Self {
+        crate::InvariantNameSetSet {
+            expr: self.expr.clone(),
         }
     }
 }

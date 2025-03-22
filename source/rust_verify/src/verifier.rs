@@ -2747,6 +2747,7 @@ impl Verifier {
             unpruned_crate,
             &mut ctxt.diagnostics.borrow_mut(),
             self.args.no_verify,
+            self.args.no_cheating,
         );
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {

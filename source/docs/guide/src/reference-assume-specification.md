@@ -28,7 +28,7 @@ The general form of this directive is:
 </code>
 </pre>
 
-It is intended to look like an ordinary Rust function signature with a Verus specification, except instead of having a name, it refers to a different function by path.
+It is intended to look like an ordinary Rust function signature with a [Verus specification](./reference-exec-signature.md), except instead of having a name, it refers to a different function by path.
 
 For associated functions and methods, the <code><span style="color: #800000; font-style: italic">function_path</span></code> should have the form `Type::method_name`,
 using "turbofish syntax" for the type (e.g., `Vec::<T>`).

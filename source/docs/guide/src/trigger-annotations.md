@@ -45,10 +45,10 @@ Verus determines the collection of trigger groups as follows:
    the root of the quantifier expression becomes a trigger group.
  * If, after all of the above, no trigger groups have been identified, Verus _may_ use
    heuristics to determine the trigger group(s) based on the body of the quantifier expression.
-     * If `#![all_triggers]` is provided, Verus uses an "aggressive" strategy, all trigger
+     * If `#![all_triggers]` is provided, Verus uses an "aggressive" strategy, choosing all trigger
       groups that can reasonably be inferred as applicable from the body.
-     * If `#![auto]` is provided, Verus uses a "conservative" strategy that selects only
-      on trigger group.
+     * If `#![auto]` is provided, Verus uses a "conservative" strategy, choosing a single
+      trigger group that is judged as optimal by various heuristics.
      * If neither `#![all_triggers]` nor `#![auto]` are provided, Verus uses the same
        "conservative" strategy as it does for `#![auto]`.
  * If, after all of the above, Verus is unable to find any trigger groups, it produces
