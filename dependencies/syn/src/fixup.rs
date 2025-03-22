@@ -770,7 +770,9 @@ fn scan_right(
         | Expr::BigAnd(_)
         | Expr::BigOr(_)
         | Expr::Has(_)
+        | Expr::HasNot(_)
         | Expr::Is(_)
+        | Expr::IsNot(_)
         | Expr::Matches(_)
 
         | Expr::While(_) => match fixup.next_operator {

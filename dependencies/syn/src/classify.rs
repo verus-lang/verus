@@ -43,7 +43,9 @@ pub(crate) fn requires_comma_to_be_match_arm(expr: &Expr) -> bool {
         | Expr::BigAnd(_)
         | Expr::BigOr(_)
         | Expr::Has(_)
+        | Expr::HasNot(_)
         | Expr::Is(_)
+        | Expr::IsNot(_)
         | Expr::Matches(_) => true,
         Expr::Unary(e) if matches!(e.op, crate::op::UnOp::Proof(_)) => false,
 
@@ -204,7 +206,9 @@ pub(crate) fn expr_leading_label(mut expr: &Expr) -> bool {
             | Expr::BigAnd(_)
             | Expr::BigOr(_)
             | Expr::Has(_)
+            | Expr::HasNot(_)
             | Expr::Is(_)
+            | Expr::IsNot(_)
             | Expr::Matches(_) => return false,
         }
     }
@@ -282,7 +286,9 @@ pub(crate) fn expr_trailing_brace(mut expr: &Expr) -> bool {
             Expr::BigAnd(e) => expr = &e.exprs.last().unwrap().expr,
             Expr::BigOr(e) => expr = &e.exprs.last().unwrap().expr,
             Expr::Has(e) => expr = &e.rhs,
+            Expr::HasNot(e) => expr = &e.rhs,
             Expr::Is(_) => return false,
+            Expr::IsNot(_) => return false,
             Expr::Matches(e) => match &e.op_expr {
                 Some(op_expr) => expr = &op_expr.rhs,
                 None => return pat_trailing_brace(&e.pat),

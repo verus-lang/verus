@@ -1883,7 +1883,9 @@ impl Visitor {
             Expr::Index(_)
                 | Expr::View(_)
                 | Expr::Is(_)
+                | Expr::IsNot(_)
                 | Expr::Has(_)
+                | Expr::HasNot(_)
                 | Expr::Matches(_)
                 | Expr::GetField(_)
         ) {
@@ -1931,6 +1933,15 @@ impl Visitor {
                     quote_spanned_builtin!(builtin, span => #builtin::is_variant(#base, #variant_str)),
                 );
             }
+            Expr::IsNot(isnot_) => {
+                let _is_not_token = isnot_.is_not_token;
+                let span = isnot_.span();
+                let base = isnot_.base;
+                let variant_str = isnot_.variant_ident.to_string();
+                *expr = Expr::Verbatim(
+                    quote_spanned_builtin!(builtin, span => !(#builtin::is_variant(#base, #variant_str))),
+                );
+            }
             Expr::Has(has) => {
                 let has_token = has.has_token;
                 let span = has.span();
@@ -1938,6 +1949,14 @@ impl Visitor {
                 let has_call = quote_spanned!(has_token.span => .spec_has(#rhs));
                 let lhs = has.lhs;
                 *expr = Expr::Verbatim(quote_spanned!(span => (#lhs#has_call)));
+            }
+            Expr::HasNot(hasnot) => {
+                let has_not_token = hasnot.has_not_token;
+                let span = hasnot.span();
+                let rhs = hasnot.rhs;
+                let has_call = quote_spanned!(has_not_token.span => .spec_has(#rhs));
+                let lhs = hasnot.lhs;
+                *expr = Expr::Verbatim(quote_spanned!(span => !(#lhs#has_call)));
             }
             Expr::Matches(matches) => {
                 let span = matches.span();
@@ -4107,6 +4126,10 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
         TokenTree::Punct(p) => Some((p.as_char(), p.spacing(), p.span())),
         _ => None,
     };
+    let ident = |t: &TokenTree| match t {
+        TokenTree::Ident(p) => Some((p.to_string(), p.span())),
+        _ => None,
+    };
     let adjacent = |s1: Span, s2: Span| {
         let l1 = s1.end();
         let l2 = s2.start();
@@ -4118,12 +4141,38 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
         punct.set_span(span);
         TokenTree::Punct(punct)
     }
-    for i in 0..(if tokens.len() >= 2 { tokens.len() - 2 } else { 0 }) {
+    let mut i = 0;
+    let mut till = if tokens.len() >= 2 { tokens.len() - 2 } else { 0 };
+    while i < till {
         let t0 = pun(&tokens[i]);
-        let t1 = pun(&tokens[i + 1]);
+        let t1_ident = ident(&tokens[i + 1]);
+        match (t0, t1_ident.as_ref().map(|(a, b)| (a.as_str(), *b))) {
+            (Some(('!', Alone, s1)), Some(("is", s2))) => {
+                if adjacent(s1, s2) {
+                    tokens[i] =
+                        TokenTree::Ident(proc_macro::Ident::new("isnt", s1.join(s2).unwrap()));
+                    tokens.remove(i + 1);
+                    i += 1;
+                    till -= 1;
+                    continue;
+                }
+            }
+            (Some(('!', Alone, s1)), Some(("has", s2))) => {
+                if adjacent(s1, s2) {
+                    tokens[i] =
+                        TokenTree::Ident(proc_macro::Ident::new("hasnt", s1.join(s2).unwrap()));
+                    tokens.remove(i + 1);
+                    i += 1;
+                    till -= 1;
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        let t1_pun = pun(&tokens[i + 1]);
         let t2 = pun(&tokens[i + 2]);
         let t3 = if i + 3 < tokens.len() { pun(&tokens[i + 3]) } else { None };
-        match (t0, t1, t2, t3) {
+        match (t0, t1_pun, t2, t3) {
             (
                 Some(('<', Joint, _)),
                 Some(('=', Alone, s1)),
@@ -4137,14 +4186,14 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
             | (Some(('&', Joint, _)), Some(('&', Alone, s1)), Some(('&', Alone, s2)), _)
             | (Some(('|', Joint, _)), Some(('|', Alone, s1)), Some(('|', Alone, s2)), _) => {
                 if adjacent(s1, s2) {
-                    tokens[i + 1] = mk_joint_punct(t1);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
                 }
             }
             (Some(('=', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _)
             | (Some(('!', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _) => {
                 if adjacent(s1, s2) {
                     tokens[i] = mk_joint_punct(t0);
-                    tokens[i + 1] = mk_joint_punct(t1);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
                 }
             }
             (
@@ -4161,12 +4210,13 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
             ) => {
                 if adjacent(s2, s3) {
                     tokens[i] = mk_joint_punct(t0);
-                    tokens[i + 1] = mk_joint_punct(t1);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
                     tokens[i + 2] = mk_joint_punct(t2);
                 }
             }
             _ => {}
         }
+        i += 1;
     }
     for tt in &mut tokens {
         match tt {
