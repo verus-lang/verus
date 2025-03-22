@@ -69,15 +69,12 @@ test_verify_one_file! {
     #[test] test_integer_op_different_from_generic_op_when_no_vstd_fails verus_code! {
         use core::ops::Add;
 
-        pub closed spec fn spec_trait_add_ens<Lhs, Rhs, O>(lhs: Lhs, rhs: Rhs, ret: O) -> bool;
-
         #[verifier::external_trait_specification]
         pub trait ExAddBasic<Rhs> {
             type ExternalTraitSpecificationFor: core::ops::Add<Rhs>;
             type Output;
             // No precondition (for test only).
-            fn add(self, rhs: Rhs) -> (ret: Self::Output) where Self: Sized
-            ensures spec_trait_add_ens(self, rhs, ret);
+            fn add(self, rhs: Rhs) -> (ret: Self::Output) where Self: Sized;
         }
 
         pub assume_specification[ <usize as core::ops::Add>::add ](a: usize, b: usize) -> (ret: usize);
@@ -108,29 +105,41 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_trait_add verus_code! {
-        #[verifier::external_trait_specification]
-        pub trait ExAddBasic<Rhs> {
-            type ExternalTraitSpecificationFor: core::ops::Add<Rhs>;
-            type Output;
-        }
+    #[test] test_cmp_usize verus_code! {
+        use vstd::prelude::*;
+        use core::cmp::PartialEq;
 
-        pub open spec fn spec_add<Lhs, Rhs, Output>(lhs: Lhs, rhs: Rhs) -> Output;
-
-        #[verifier::external_trait_specification]
-        pub trait ExAddMethod<Rhs> {
-            type ExternalTraitSpecificationFor: core::ops::Add<Rhs>;
-            type Output;
-            // Required method does not have Sized but we added it here to pass lifetime checker
-            fn add(self, rhs: Rhs) -> (ret: Self::Output) where Self: Sized
-            returns spec_add::<_, _, Self::Output>(self, rhs);
+        fn test(a: usize, b: usize) {
+            let c1 = (a == b);
+            let c2 = a.eq(&b);
+            assert(c1 == c2);
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_trait_add2 verus_code! {
-        pub open spec fn spec_add<Lhs, Rhs, Output>(lhs: Lhs, rhs: Rhs) -> Output;
+    #[test] test_cmp_usize_diff verus_code! {
+        use core::cmp::PartialEq;
+
+        #[verifier::external_trait_specification]
+        pub trait ExPartialEqBasic<Rhs: ?Sized> {
+            type ExternalTraitSpecificationFor: PartialEq<Rhs>;
+            fn eq(&self, rhs: &Rhs) -> (ret: bool);
+        }
+
+        pub assume_specification[ <usize as PartialEq>::eq ](a: &usize, b: &usize) -> (ret: bool);
+
+        fn test_usize_cmp(a: usize, b: usize) {
+            let c1 = (a == b);
+            let c2 = a.eq(&b);
+            assert(c1 == c2); //FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_trait_add verus_code! {
+        pub closed spec fn spec_add<Lhs, Rhs, Output>(lhs: Lhs, rhs: Rhs) -> Output;
 
         #[verifier::external_trait_specification]
         pub trait ExAddMethod<Rhs> {
@@ -178,21 +187,21 @@ test_verify_one_file! {
         }
 
         impl SpecPartialEqOp<A> for A {
-            open spec fn spec_partial_eq(&self, rhs: &A) -> bool {
+            closed spec fn spec_partial_eq(&self, rhs: &A) -> bool {
                 self.0 == rhs.0
             }
         }
 
         #[derive(PartialEq)]
-        struct A(pub usize);
+        struct A(usize);
 
         impl SpecSubOp<A> for A {
             type Output = usize;
-            open spec fn spec_sub_requires(lhs: A, rhs: A) -> bool {
+            closed spec fn spec_sub_requires(lhs: A, rhs: A) -> bool {
                 lhs.0 >= 20 && rhs.0 < 10
             }
 
-            open spec fn spec_sub_ensures(lhs: A, rhs: A, ret: usize) -> bool {
+            closed spec fn spec_sub_ensures(lhs: A, rhs: A, ret: usize) -> bool {
                 ret == lhs.0 - rhs.0 - 10
             }
         }
@@ -205,7 +214,7 @@ test_verify_one_file! {
         }
 
         impl SpecPartialOrdOp<A> for A {
-            open spec fn spec_partial_cmp(&self, rhs: &A) -> Option<core::cmp::Ordering> {
+            closed spec fn spec_partial_cmp(&self, rhs: &A) -> Option<core::cmp::Ordering> {
                 if self.0 > 30 && rhs.0 < 9 {
                     Some(core::cmp::Ordering::Greater)
                 } else if self.0 == rhs.0 {
@@ -252,10 +261,10 @@ test_verify_one_file! {
         struct A;
         impl SpecSubOp<A> for A {
             type Output = A;
-            open spec fn spec_sub_requires(lhs: A, other: A) -> bool {
+            closed spec fn spec_sub_requires(lhs: A, other: A) -> bool {
                 true
             }
-            open spec fn spec_sub_ensures(lhs: A, other: A, ret: A) -> bool {
+            closed spec fn spec_sub_ensures(lhs: A, other: A, ret: A) -> bool {
                 true
             }
         }
