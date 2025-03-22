@@ -4004,6 +4004,61 @@ pub(crate) fn rewrite_expr(
     proc_macro::TokenStream::from(new_stream)
 }
 
+struct Stmts(Vec<Stmt>);
+
+impl Parse for Stmts {
+    fn parse(input: ParseStream) -> syn_verus::Result<Self> {
+        let mut stmts = Vec::new();
+        while !input.is_empty() {
+            stmts.push(input.parse()?);
+        }
+        Ok(Stmts(stmts))
+    }
+}
+
+impl ToTokens for Stmts {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        for stmt in &self.0 {
+            stmt.to_tokens(tokens);
+        }
+    }
+}
+
+pub(crate) fn rewrite_stmt(
+    erase_ghost: EraseGhost,
+    inside_const: bool,
+    stream: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let stream = rejoin_tokens(stream);
+    let s: Stmts = parse_macro_input!(stream as Stmts);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 0,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: inside_const,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    let mut stmts = Vec::new();
+    let Stmts(old_stmts) = s;
+    for mut ss in old_stmts {
+        let (skip, extra_stmts) = visitor.visit_stmt_extend(&mut ss);
+        if !skip {
+            stmts.push(ss);
+        }
+        stmts.extend(extra_stmts);
+    }
+    for ss in &mut stmts {
+        visitor.visit_stmt_mut(ss);
+    }
+    Stmts(stmts).to_tokens(&mut new_stream);
+    proc_macro::TokenStream::from(new_stream)
+}
+
 pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, expr: &mut Expr) {
     let mut visitor = Visitor {
         erase_ghost,
