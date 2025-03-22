@@ -517,33 +517,99 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enum_to_int verus_code! {
-    #[derive(Copy, Clone)]
-    enum E {
-        A,
-        B = 10,
-        C,
-    }
+        #[derive(Copy, Clone)]
+        enum E {
+            A,
+            B = 255,
+            C,
+        }
 
-    proof fn test_cast()
-    ensures
-        E::A as int == 0,
-        E::B as int == 10,
-        E::C as int == 11,
-    {}
-} => Ok(())
+        fn test_cast(v: E) -> (ret: usize)
+        ensures
+            E::A as int == 0,
+            E::B as int == 255,
+            E::C as int == 256,
+            ret == 0 || ret == 255 || ret == 256,
+            ret ==  v as int,
+        {
+            v as usize
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] test_enum_to_int_overflow ["--compile"] => verus_code! {
+        #[derive(Copy, Clone)]
+        enum E {
+            A,
+            B = 255,
+            C,
+        }
+
+        fn test_cast_overflow(v: E) -> (ret: u8)
+        ensures
+            E::C as int == 256,
+            ret == v as u8,
+        {
+            v as u8
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_non_unit_enum_to_int verus_code! {
-    #[derive(Copy, Clone)]
-    enum E {
-        A(bool),
-        B(u8),
-    }
+    #[test] test_zero_size_enum_to_int verus_code! {
+        #[derive(Copy, Clone)]
+        enum E {}
 
-    proof fn test_cast()
-    ensures
-        E::A(false) as int == 0
-    {}
-} => Err(err) => assert_vir_error_msg(err, "Verus currently only supports casts from integer types, bool, enum (unit-only or field-less), `char`, and pointer types to integer types")
+        impl E {
+            proof fn test_cast(self)
+            ensures
+                self as int == 0
+            {}
+        }
+    } => Err(err) => assert_vir_error_msg(err, "Zero-sized empty Enum expr")
+}
+
+test_verify_one_file! {
+    #[test] test_enum_to_int_non_empty_fields1 verus_code! {
+        #[derive(Copy, Clone)]
+        enum E {
+            A(bool),
+        }
+
+        proof fn test_cast(v: E)
+        ensures
+            v as int == 0,
+        {}
+    } => Err(err) => assert_vir_error_msg(err, "Enum variant should not contain any fields.")
+}
+
+test_verify_one_file! {
+    #[test] test_enum_to_int_non_empty_fields2 verus_code! {
+        #[derive(Copy, Clone)]
+        enum E {
+            A(bool),
+        }
+
+        proof fn test_cast(v: E)
+        ensures
+            E::A(false) as int == 0,
+        {}
+    } => Err(err) => assert_vir_error_msg(err, "Enum variant should not contain any fields.")
+}
+
+test_verify_one_file! {
+    #[test] test_enum_to_int_proof verus_code! {
+        #[derive(Copy, Clone)]
+        enum E {
+            A,
+            B
+        }
+
+        fn test(tracked e: E) {
+            proof {
+                let tracked i = e as usize;
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "mismatched types")
 }
