@@ -9,7 +9,7 @@ use crate::pat::Pat;
 use crate::path::{Path, QSelf};
 use crate::punctuated::Punctuated;
 use crate::token;
-use crate::verus::TypeFnSpec;
+use crate::verus::{TypeFnProof, TypeFnSpec};
 use proc_macro2::TokenStream;
 
 ast_enum_of_structs! {
@@ -73,6 +73,7 @@ ast_enum_of_structs! {
 
         // Verus stuff
         FnSpec(TypeFnSpec),
+        FnProof(TypeFnProof),
 
         // For testing exhaustiveness in downstream code, use the following idiom:
         //
@@ -519,6 +520,17 @@ pub(crate) mod parsing {
                 ))
             } else {
                 Ok(Type::FnSpec(fn_spec))
+            }
+        } else if lookahead.peek(Token![proof_fn]) {
+            let fn_proof = crate::verus::parse_fn_proof(input)?;
+            if lifetimes.is_some() {
+                use crate::spanned::Spanned;
+                Err(Error::new(
+                    Type::FnProof(fn_proof).span(),
+                    "proof_fn should not have any for-bound lifetimes",
+                ))
+            } else {
+                Ok(Type::FnProof(fn_proof))
             }
         } else if lookahead.peek(Ident)
             || input.peek(Token![super])
