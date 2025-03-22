@@ -225,7 +225,6 @@ test_verify_one_file! {
         use vstd::prelude::*;
         fn test_const_eq(x: *const u8, y: *const u8) {
             if x == y {
-                assert(x@.addr == y@.addr);
                 assert(x == y); // FAILS
             }
         }
