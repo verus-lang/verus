@@ -1088,13 +1088,16 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &cast_to_integer, expr_vattrs.truncate))
                 }
-                ((_, false), TypX::Int(_))
-                    if let Some(val) =
-                        crate::rust_to_vir_expr::try_cast_enum_to_int(tcx, args[0]) =>
-                {
-                    let cast_to_integer =
-                        mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(val)))?;
-                    Ok(mk_ty_clip(&to_ty, &cast_to_integer, true))
+                ((_, false), TypX::Int(_)) if bctx.types.node_type(args[0].hir_id).is_enum() => {
+                    let cast_to = crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
+                        bctx,
+                        args[0],
+                        mk_expr,
+                        ExprModifier::REGULAR,
+                    )?;
+                    let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+                    let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
+                    Ok(mk_ty_clip(&to_ty, &cast_to, expr_vattrs.truncate))
                 }
                 _ => err_span(
                     expr.span,
@@ -1898,7 +1901,7 @@ fn get_string_lit_arg<'tcx>(
     }
 }
 
-fn check_variant_field<'tcx>(
+pub(crate) fn check_variant_field<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     adt_arg: &'tcx Expr<'tcx>,
