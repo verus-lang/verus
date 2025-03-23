@@ -22,7 +22,7 @@ impl<A> Set<A> {
 
     /// Is `true` if called by an "empty" set, i.e., a set containing no elements and has length 0
     pub open spec fn is_empty(self) -> (b: bool) {
-        self.len() == 0
+        self =~= Set::<A>::empty()
     }
 
     /// Returns the set contains an element `f(x)` for every element `x` in `self`.
@@ -887,12 +887,17 @@ pub broadcast group group_set_properties {
 
 pub broadcast proof fn axiom_is_empty<A>(s: Set<A>)
     requires
-        s.finite(),
         !(#[trigger] s.is_empty()),
     ensures
         exists|a: A| s.contains(a),
 {
     admit();  // REVIEW, should this be in `set`, or have a proof?
+}
+
+pub broadcast proof fn axiom_is_empty_len0<A>(s: Set<A>)
+    ensures
+        #[trigger] s.is_empty() <==> (s.finite() && s.len() == 0),
+{
 }
 
 #[doc(hidden)]
@@ -958,6 +963,7 @@ macro_rules! assert_sets_equal_internal {
 
 pub broadcast group group_set_lib_axioms {
     axiom_is_empty,
+    axiom_is_empty_len0,
 }
 
 pub use assert_sets_equal_internal;
