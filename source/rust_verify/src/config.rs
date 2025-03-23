@@ -110,7 +110,7 @@ pub struct ArgsX {
     pub solver: SmtSolver,
     #[cfg(feature = "axiom-usage-info")]
     pub axiom_usage_info: bool,
-    pub check_safe_api: bool,
+    pub check_api_safety: bool,
 }
 
 impl ArgsX {
@@ -156,7 +156,7 @@ impl ArgsX {
             solver: Default::default(),
             #[cfg(feature = "axiom-usage-info")]
             axiom_usage_info: Default::default(),
-            check_safe_api: Default::default(),
+            check_api_safety: Default::default(),
         }
     }
 }
@@ -389,7 +389,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
     #[cfg(feature = "axiom-usage-info")]
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
-    const EXTENDED_CHECK_SAFE_API: &str = "check-safe-api";
+    const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -415,7 +415,7 @@ pub fn parse_args_with_imports(
         #[cfg(feature = "axiom-usage-info")]
         (EXTENDED_AXIOM_USAGE_INFO, "Print usage info for broadcasted axioms, lemmas, and groups"),
         (
-            EXTENDED_CHECK_SAFE_API,
+            EXTENDED_CHECK_API_SAFETY,
             "Check that the API is memory-safe when called from unverified, safe Rust code. Experimental.",
         ),
     ];
@@ -761,7 +761,7 @@ pub fn parse_args_with_imports(
         solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         #[cfg(feature = "axiom-usage-info")]
         axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
-        check_safe_api: extended.get(EXTENDED_CHECK_SAFE_API).is_some(),
+        check_api_safety: extended.get(EXTENDED_CHECK_API_SAFETY).is_some(),
     };
 
     (Arc::new(args), unmatched)
