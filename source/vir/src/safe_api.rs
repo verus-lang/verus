@@ -70,7 +70,8 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
                     ),
                 ));
             }
-            if mask_spec_restricts_implementation(&function.x.mask_spec_or_default()) {
+            if mask_spec_restricts_implementation(&function.x.mask_spec_or_default(&function.span))
+            {
                 return Err(error(
                     &function.span,
                     &format!(
@@ -96,7 +97,8 @@ fn is_decl_in_safe_public_trait(trait_map: &HashMap<Path, Trait>, function: &Fun
 
 fn mask_spec_restricts_implementation(mask_spec: &MaskSpec) -> bool {
     match mask_spec {
-        MaskSpec::InvariantOpens(_es) => true,
-        MaskSpec::InvariantOpensExcept(es) => es.len() > 0,
+        MaskSpec::InvariantOpens(_span, _es) => true,
+        MaskSpec::InvariantOpensExcept(_span, es) => es.len() > 0,
+        MaskSpec::InvariantOpensSet(_e) => true,
     }
 }

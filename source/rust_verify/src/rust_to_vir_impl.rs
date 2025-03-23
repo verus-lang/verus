@@ -319,8 +319,6 @@ pub(crate) fn translate_impl<'tcx>(
 
             if sealed {
                 return err_span(item.span, "cannot implement `sealed` trait");
-            } else if impll.safety != Safety::Safe {
-                return err_span(item.span, "the verifier does not support `unsafe` here");
             }
         }
     }

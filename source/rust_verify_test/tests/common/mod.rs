@@ -294,9 +294,9 @@ pub fn run_verus(
         } else if *option == "-V allow-inline-air" {
             verus_args.push("-V".to_string());
             verus_args.push("allow-inline-air".to_string());
-        } else if *option == "-V check-safe-api" {
+        } else if *option == "-V check-api-safety" {
             verus_args.push("-V".to_string());
-            verus_args.push("check-safe-api".to_string());
+            verus_args.push("check-api-safety".to_string());
         } else if *option == "--is-core" {
             verus_args.push("--is-core".to_string());
             is_core = true;
