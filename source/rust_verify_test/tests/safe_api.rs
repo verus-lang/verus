@@ -229,3 +229,29 @@ test_verify_one_file_with_options! {
     //} => Err(err) => assert_vir_error_msg(err, "Safe API violation: 'requires' clause is nontrivial")
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: function pointer types")
 }
+
+test_verify_one_file_with_options! {
+    #[test] dyn_returned ["-V check-api-safety"] => verus_code! {
+        fn foo(y: u32)
+            requires y > 0
+        {
+        }
+
+        fn test() -> Box<dyn Fn(u32) -> ()> {
+            Box::new(foo)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dyn")
+}
+
+test_verify_one_file_with_options! {
+    #[test] any_returned ["-V check-api-safety"] => verus_code! {
+        fn foo(y: u32)
+            requires y > 0
+        {
+        }
+
+        fn test() -> Box<dyn core::any::Any> {
+            Box::new(foo)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: dyn")
+}
