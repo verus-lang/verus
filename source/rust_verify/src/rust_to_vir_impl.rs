@@ -243,6 +243,15 @@ pub(crate) fn translate_impl<'tcx>(
 
         let verus_item = ctxt.verus_items.id_to_name.get(&trait_def_id);
 
+        if impll.safety != Safety::Safe {
+            if matches!(rust_item, Some(RustItem::Send)) {
+                return err_span(item.span, "unsafe impl for `Send` is not allowed");
+            }
+            if matches!(rust_item, Some(RustItem::Sync)) {
+                return err_span(item.span, "unsafe impl for `Sync` is not allowed");
+            }
+        }
+
         let ignore = if let Some(VerusItem::Marker(MarkerItem::Structural)) = verus_item {
             let ty = {
                 // TODO extract to rust_to_vir_base, or use
@@ -310,8 +319,6 @@ pub(crate) fn translate_impl<'tcx>(
 
             if sealed {
                 return err_span(item.span, "cannot implement `sealed` trait");
-            } else if impll.safety != Safety::Safe {
-                return err_span(item.span, "the verifier does not support `unsafe` here");
             }
         }
     }

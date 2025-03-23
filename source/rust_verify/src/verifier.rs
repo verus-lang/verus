@@ -2741,6 +2741,10 @@ impl Verifier {
         let vir_crate = vir::traits::fixup_ens_has_return_for_trait_method_impls(vir_crate)
             .map_err(|e| (e, Vec::new()))?;
 
+        if self.args.check_api_safety {
+            vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        }
+
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(
             &vir_crate,
@@ -2749,6 +2753,7 @@ impl Verifier {
             self.args.no_verify,
             self.args.no_cheating,
         );
+
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::Warning(err) => {
