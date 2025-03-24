@@ -14,8 +14,8 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    Fun, Function, FunctionKind, GenericBound, GenericBoundX, Ident, KrateX, TraitX, TypX, VirErr,
-    Visibility, TraitId,
+    Fun, Function, FunctionKind, GenericBound, GenericBoundX, Ident, KrateX, TraitId, TraitX, TypX,
+    VirErr, Visibility,
 };
 use vir::def::{trait_self_type_param, VERUS_SPEC};
 

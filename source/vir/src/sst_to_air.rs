@@ -280,10 +280,8 @@ fn big_int_to_expr(i: &BigInt) -> Expr {
 
 fn decoration_base_for_primitive(name: Primitive) -> &'static str {
     match name {
-        Primitive::Array | Primitive::Ptr | Primitive::Global =>
-            crate::def::DECORATE_NIL_SIZED,
-        Primitive::Slice | Primitive::StrSlice =>
-            crate::def::DECORATE_NIL_SLICE,
+        Primitive::Array | Primitive::Ptr | Primitive::Global => crate::def::DECORATE_NIL_SIZED,
+        Primitive::Slice | Primitive::StrSlice => crate::def::DECORATE_NIL_SLICE,
     }
 }
 

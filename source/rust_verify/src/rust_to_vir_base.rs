@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
     Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Path, PathX, Primitive,
-    Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs, TraitId,
+    TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
