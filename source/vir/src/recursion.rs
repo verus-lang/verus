@@ -230,7 +230,7 @@ pub(crate) fn mk_decreases_at_entry(
     Ok((decls, stm_assigns))
 }
 
-pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
+pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
     function: &crate::sst::FunctionSst,
     body: &Exp,
@@ -296,7 +296,9 @@ fn check_termination<'a>(
     body: &Stm,
 ) -> Result<(Ctxt<'a>, Vec<Exp>, Stm), VirErr> {
     let num_decreases = function.x.decrease.len();
-    if num_decreases == 0 {
+    if num_decreases == 0
+        && (function.x.mode != crate::ast::Mode::Exec || !ctx.global.may_not_terminate)
+    {
         return Err(error(&function.span, "recursive function must have a decreases clause"));
     }
 
@@ -371,6 +373,10 @@ pub(crate) fn check_termination_stm(
     body: &Stm,
 ) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
     if !fun_is_recursive(ctx, &function) {
+        return Ok((vec![], body.clone()));
+    }
+
+    if ctx.global.may_not_terminate && function.x.mode == crate::ast::Mode::Exec {
         return Ok((vec![], body.clone()));
     }
 

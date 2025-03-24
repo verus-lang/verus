@@ -226,6 +226,7 @@ impl GlobalCtx {
         func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
         solver: SmtSolver,
         after_simplify: bool,
+        current_crate_may_not_terminate: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -474,7 +475,6 @@ impl GlobalCtx {
 
         let datatype_graph = crate::recursive_types::build_datatype_graph(krate, &mut span_infos);
         let vstd_crate_name = Arc::new(crate::def::VERUSLIB.to_string());
-        let may_not_terminate = krate.may_not_terminate;
 
         Ok(GlobalCtx {
             chosen_triggers,
@@ -494,7 +494,7 @@ impl GlobalCtx {
             vstd_crate_name,
             func_call_graph_log,
             solver,
-            may_not_terminate,
+            may_not_terminate: current_crate_may_not_terminate,
         })
     }
 

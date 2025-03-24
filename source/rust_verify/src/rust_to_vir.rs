@@ -382,7 +382,7 @@ pub fn crate_to_vir<'a, 'tcx>(
         external_types: Vec::new(),
         path_as_rust_names: Vec::new(),
         arch: vir::ast::Arch { word_bits: vir::ast::ArchWordBits::Either32Or64 },
-        may_not_terminate: false,
+        may_not_terminate: vir::ast::MayNotTerminate::No,
     };
 
     let mut external_info = ExternalInfo::new();
@@ -404,10 +404,12 @@ pub fn crate_to_vir<'a, 'tcx>(
         let raw_crate_attrs = ctxt.tcx.hir().krate_attrs();
         let crate_attrs =
             parse_crate_attrs(raw_crate_attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
-        let mut may_not_terminate = false;
+        let mut may_not_terminate = vir::ast::MayNotTerminate::No;
         for attr in crate_attrs {
             match attr {
-                crate::attributes::CrateAttr::AllowMayNotTerminate => may_not_terminate = true,
+                crate::attributes::CrateAttr::AllowMayNotTerminate => {
+                    may_not_terminate = vir::ast::MayNotTerminate::Yes
+                }
             }
         }
         may_not_terminate

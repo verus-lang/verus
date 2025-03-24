@@ -1300,7 +1300,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
         arch: arch.clone(),
-        may_not_terminate: *may_not_terminate,
+        may_not_terminate: may_not_terminate.clone(),
     });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
@@ -1311,6 +1311,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.func_call_graph_log.clone(),
         ctx.solver.clone(),
         true,
+        *may_not_terminate == crate::ast::MayNotTerminate::Yes,
     )?;
     Ok(krate)
 }
@@ -1362,7 +1363,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
             }
             word_bits
         };
-        kratex.may_not_terminate = *may_not_terminate || kratex.may_not_terminate;
+        kratex.may_not_terminate = may_not_terminate.combine(&kratex.may_not_terminate);
     }
     Ok(Arc::new(kratex))
 }

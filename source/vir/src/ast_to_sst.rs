@@ -2008,6 +2008,9 @@ pub(crate) fn expr_to_stm_opt(
             } else {
                 None
             };
+            if decrease.len() == 0 && !ctx.global.may_not_terminate {
+                return Err(error(&expr.span, "loop must have a decreases clause"));
+            }
 
             let (mut stms1, _e1) = expr_to_stm_opt(ctx, state, body)?;
             let mut check_recommends: Vec<Stm> = Vec::new();
@@ -2028,11 +2031,6 @@ pub(crate) fn expr_to_stm_opt(
                 let (rec, exp) = expr_to_pure_exp_check(ctx, state, dec)?;
                 check_recommends.extend(rec);
                 decrease1.push(exp);
-            }
-            if decrease1.len() == 0 {
-                if !ctx.global.may_not_terminate {
-                    return Err(error(&expr.span, "loop must have a decreases clause"));
-                }
             }
             if ctx.checking_spec_preconditions() {
                 stms1.splice(0..0, check_recommends);

@@ -607,6 +607,16 @@ pub(crate) fn parse_attrs(
                         "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
                     );
                 }
+                AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
+                    if name == "allow" && arg == "may_not_terminate" =>
+                {
+                    if let Some(diagnostics) = diagnostics {
+                        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+                            span,
+                            format!("#![verifier::allow(may_not_terminate)] has no effect if not at the crate root"),
+                        )));
+                    }
+                }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
             AttrPrefix::Verus(verus_prefix) => match verus_prefix {

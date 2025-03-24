@@ -307,6 +307,7 @@ pub struct Verifier {
     current_crate_modules: Option<Vec<vir::ast::Module>>,
     item_to_module_map: Option<Arc<crate::external::CrateItems>>,
     buckets: HashMap<BucketId, Bucket>,
+    current_crate_may_not_terminate: bool,
 
     // proof debugging purposes
     expand_flag: bool,
@@ -451,6 +452,7 @@ impl Verifier {
             current_crate_modules: None,
             item_to_module_map: None,
             buckets: HashMap::new(),
+            current_crate_may_not_terminate: false,
 
             expand_flag: false,
             error_format: None,
@@ -496,6 +498,8 @@ impl Verifier {
             current_crate_modules: self.current_crate_modules.clone(),
             item_to_module_map: self.item_to_module_map.clone(),
             buckets: self.buckets.clone(),
+            current_crate_may_not_terminate: self.current_crate_may_not_terminate.clone(),
+
             expand_flag: self.expand_flag,
             error_format: self.error_format,
         }
@@ -2033,6 +2037,7 @@ impl Verifier {
             Arc::new(std::sync::Mutex::new(call_graph_log)),
             self.args.solver,
             false,
+            self.current_crate_may_not_terminate,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
@@ -2670,6 +2675,8 @@ impl Verifier {
         let (vir_crate, item_to_module_map) =
             crate::rust_to_vir::crate_to_vir(&mut ctxt, &other_vir_crates)
                 .map_err(map_err_diagnostics)?;
+        self.current_crate_may_not_terminate =
+            vir_crate.may_not_terminate == vir::ast::MayNotTerminate::Yes;
 
         let time2 = Instant::now();
         let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
@@ -2704,6 +2711,11 @@ impl Verifier {
         vir_crates.push(vir_crate);
         let unpruned_crate =
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
+        // TODO if unpruned_crate.may_not_terminate == vir::ast::MayNotTerminate::Mixed {
+        // TODO     ctxt.diagnostics.borrow_mut().push(vir::ast::VirErrAs::Warning(
+        // TODO         error_bare("some of the included crates allow non-termination, while some do not"),
+        // TODO     ));
+        // TODO }
         let (vir_crate, _, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
             &Arc::new(crate_name.clone()),

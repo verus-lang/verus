@@ -1,7 +1,7 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Datatype, DatatypeTransparency, Dt, Expr, ExprX, FieldOpr, Fun,
-    Function, FunctionKind, Krate, MaskSpec, Mode, MultiOp, Opaqueness, Path, Trait, TypX, UnaryOp,
-    UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
+    Function, FunctionKind, Krate, MaskSpec, MayNotTerminate, Mode, MultiOp, Opaqueness, Path,
+    Trait, TypX, UnaryOp, UnaryOpr, UnwindSpec, VirErr, VirErrAs, Visibility,
 };
 use crate::ast_util::{
     dt_as_friendly_rust_name, fun_as_friendly_rust_name, is_visible_to, is_visible_to_opt,
@@ -1053,9 +1053,10 @@ fn check_function(
 
     if function.x.mode == Mode::Exec
         && (function.x.decrease.len() > 0 || function.x.decrease_by.is_some())
+        && ctxt.krate.may_not_terminate == MayNotTerminate::Yes
     {
         diags.push(VirErrAs::Warning(
-            error(&function.span, "decreases checks in exec functions do not guarantee termination of functions with loops or of their callers"),
+            error(&function.span, "if allow(may_not_terminate) is set, decreases checks in exec functions do not guarantee termination of functions with loops or of their callers"),
         ));
     }
 

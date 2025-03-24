@@ -1287,6 +1287,23 @@ pub struct Arch {
     pub word_bits: ArchWordBits,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]
+pub enum MayNotTerminate {
+    Yes,
+    No,
+    Mixed,
+}
+
+impl MayNotTerminate {
+    pub(crate) fn combine(&self, other: &MayNotTerminate) -> MayNotTerminate {
+        match (self, other) {
+            (MayNotTerminate::Yes, MayNotTerminate::Yes) => MayNotTerminate::Yes,
+            (MayNotTerminate::No, MayNotTerminate::No) => MayNotTerminate::No,
+            _ => MayNotTerminate::Mixed,
+        }
+    }
+}
+
 /// An entire crate
 pub type Krate = Arc<KrateX>;
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -1314,5 +1331,5 @@ pub struct KrateX {
     /// Arch info
     pub arch: Arch,
     /// Allows non-termination
-    pub may_not_terminate: bool,
+    pub may_not_terminate: MayNotTerminate,
 }
