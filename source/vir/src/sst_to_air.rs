@@ -218,20 +218,25 @@ fn decoration_str(d: TypDecoration) -> &'static str {
 
 // return (decorations, typ)
 pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
-    let mk_id = |t: Expr| -> Vec<Expr> {
-        let ds = str_var(crate::def::DECORATE_NIL);
+    let mk_id_sized = |t: Expr| -> Vec<Expr> {
+        let ds = str_var(crate::def::DECORATE_NIL_SIZED);
+        if crate::context::DECORATE { vec![ds, t] } else { vec![t] }
+    };
+    let mk_id = |t: Expr, base: &str| -> Vec<Expr> {
+        let ds = str_var(base);
         if crate::context::DECORATE { vec![ds, t] } else { vec![t] }
     };
     match &**typ {
-        MonoTypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
-        MonoTypX::Int(range) => mk_id(range_to_id(range)),
+        MonoTypX::Bool => mk_id_sized(str_var(crate::def::TYPE_ID_BOOL)),
+        MonoTypX::Int(range) => mk_id_sized(range_to_id(range)),
         MonoTypX::Datatype(dt, typs) => {
             let f_name = crate::def::prefix_type_id(&encode_dt_as_path(dt));
             let mut args: Vec<Expr> = Vec::new();
             for t in typs.iter() {
                 args.extend(monotyp_to_id(t));
             }
-            mk_id(air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args)))
+            // TODO: handle DSTs
+            mk_id_sized(air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args)))
         }
         MonoTypX::Decorate(d, typ) if crate::context::DECORATE => {
             let ds_typ = monotyp_to_id(typ);
@@ -262,7 +267,8 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
             for t in typs.iter() {
                 args.extend(monotyp_to_id(t));
             }
-            mk_id(air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args)))
+            let base = decoration_base_for_primitive(*name);
+            mk_id(air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args)), base)
         }
     }
 }
@@ -270,6 +276,15 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
 fn big_int_to_expr(i: &BigInt) -> Expr {
     use num_traits::Zero;
     if i >= &BigInt::zero() { mk_nat(i) } else { air::ast_util::mk_neg(&mk_nat(-i)) }
+}
+
+fn decoration_base_for_primitive(name: Primitive) -> &'static str {
+    match name {
+        Primitive::Array | Primitive::Ptr | Primitive::Global =>
+            crate::def::DECORATE_NIL_SIZED,
+        Primitive::Slice | Primitive::StrSlice =>
+            crate::def::DECORATE_NIL_SLICE,
+    }
 }
 
 // SMT-level type identifiers.
@@ -291,20 +306,30 @@ fn big_int_to_expr(i: &BigInt) -> Expr {
 //   - (REF (RC (Foo (REF BOOL))))
 // typ_to_ids(typ) return [decorations, type]
 pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
-    let mk_id = |t: Expr| -> Vec<Expr> {
-        let ds = str_var(crate::def::DECORATE_NIL);
+    let mk_id_sized = |t: Expr| -> Vec<Expr> {
+        let ds = str_var(crate::def::DECORATE_NIL_SIZED);
+        if crate::context::DECORATE { vec![ds, t] } else { vec![t] }
+    };
+    let mk_id = |t: Expr, base: &str| -> Vec<Expr> {
+        let ds = str_var(base);
         if crate::context::DECORATE { vec![ds, t] } else { vec![t] }
     };
     match &**typ {
-        TypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
-        TypX::Int(range) => mk_id(range_to_id(range)),
-        TypX::SpecFn(typs, typ) => mk_id(fun_id(typs, typ)),
+        TypX::Bool => mk_id_sized(str_var(crate::def::TYPE_ID_BOOL)),
+        TypX::Int(range) => mk_id_sized(range_to_id(range)),
+        TypX::SpecFn(typs, typ) => mk_id_sized(fun_id(typs, typ)),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
-        TypX::FnDef(fun, typs, _resolved_fun) => mk_id(fndef_id(fun, typs)),
-        TypX::Datatype(dt, typs, _) => mk_id(datatype_id(&encode_dt_as_path(dt), typs)),
-        TypX::Primitive(name, typs) => mk_id(primitive_id(&name, typs)),
+        TypX::FnDef(fun, typs, _resolved_fun) => mk_id_sized(fndef_id(fun, typs)),
+        TypX::Datatype(dt, typs, _) => {
+            // TODO handle DSTs
+            mk_id_sized(datatype_id(&encode_dt_as_path(dt), typs))
+        }
+        TypX::Primitive(name, typs) => {
+            let base = decoration_base_for_primitive(*name);
+            mk_id(primitive_id(&name, typs), base)
+        }
         TypX::Decorate(d, None, typ) if crate::context::DECORATE => {
             let ds_typ = typ_to_ids(typ);
             assert!(ds_typ.len() == 2);
@@ -340,7 +365,7 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
         }
         TypX::TypeId => panic!("internal error: typ_to_ids of TypeId"),
         TypX::ConstInt(c) => {
-            mk_id(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
+            mk_id_sized(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
         }
         TypX::ConstBool(b) => mk_id(str_apply(
             crate::def::TYPE_ID_CONST_BOOL,

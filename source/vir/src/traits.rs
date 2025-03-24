@@ -598,8 +598,11 @@ pub(crate) fn trait_bound_to_air(
     match trait_id {
         TraitId::Path(path) =>
             Some(ident_apply(&crate::def::trait_bound(path), &typ_exprs)),
-        TraitId::Sized =>
-            Some(ident_apply(&crate::def::sized_bound(), &typ_exprs)),
+        TraitId::Sized => {
+            // sized bound only takes decorate param
+            let typ_exprs = Arc::new(typ_exprs[0..1].to_vec());
+            Some(ident_apply(&crate::def::sized_bound(), &typ_exprs))
+        }
     }
 }
 
