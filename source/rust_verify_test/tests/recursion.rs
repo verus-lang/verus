@@ -2034,3 +2034,37 @@ test_verify_one_file! {
 
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] decreases_proof_that_uses_broadcast_with_trait_bound verus_code! {
+        mod m {
+            use super::*;
+
+            pub trait Tr : Sized {
+                spec fn get_lt(self) -> Self;
+                spec fn n(self) -> nat;
+            }
+
+            pub broadcast proof fn is_lt<T: Tr>(t: T)
+                ensures 
+                    t.n() != 0 ==> (#[trigger] t.get_lt()).n() < t.n()
+            {
+                assume(false);
+            }
+        }
+
+        broadcast use m::is_lt;
+
+        use m::Tr;
+
+        spec fn test_rec<T: Tr>(t: T) -> int
+            decreases t.n()
+        {
+            if t.n() == 0 {
+                0
+            } else {
+                test_rec(t.get_lt()) + 1
+            }
+        }
+    } => Ok(())
+}
