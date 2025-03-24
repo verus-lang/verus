@@ -2046,7 +2046,7 @@ test_verify_one_file! {
             }
 
             pub broadcast proof fn is_lt<T: Tr>(t: T)
-                ensures 
+                ensures
                     t.n() != 0 ==> (#[trigger] t.get_lt()).n() < t.n()
             {
                 assume(false);

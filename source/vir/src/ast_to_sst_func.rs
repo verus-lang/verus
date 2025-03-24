@@ -541,7 +541,6 @@ pub fn func_def_to_sst(
 
     let mut req_stms: Vec<Stm> = Vec::new();
     let mut reqs: Vec<Exp> = Vec::new();
-    reqs.extend(crate::traits::trait_bounds_to_sst(ctx, &function.span, &function.x.typ_bounds));
     for e in req_ens_function.x.require.iter() {
         let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
         if ctx.checking_spec_preconditions() {
