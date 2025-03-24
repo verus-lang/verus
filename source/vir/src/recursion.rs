@@ -376,7 +376,10 @@ pub(crate) fn check_termination_stm(
         return Ok((vec![], body.clone()));
     }
 
-    if ctx.global.may_not_terminate && function.x.mode == crate::ast::Mode::Exec {
+    if ctx.global.may_not_terminate
+        && function.x.mode == crate::ast::Mode::Exec
+        && function.x.decrease.is_empty()
+    {
         return Ok((vec![], body.clone()));
     }
 
