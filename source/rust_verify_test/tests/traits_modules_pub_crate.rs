@@ -316,8 +316,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
-test_verify_one_file! {
-    #[test] test_termination_4_ok verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_termination_4_ok ["may_not_terminate"] => verus_code! {
         mod M1 {
             pub(crate) trait T {
                 fn f(&self, x: &Self, n: u64);
@@ -387,8 +387,8 @@ test_verify_one_file! {
     }
 }
 
-test_verify_one_file! {
-    #[test] test_termination_4_fail_1c verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_termination_4_fail_1c ["may_not_terminate"] => verus_code! {
         mod M1 {
             pub(crate) trait T {
                 fn f(&self, x: &Self, n: u64);

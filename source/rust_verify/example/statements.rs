@@ -1,3 +1,4 @@
+#![cfg_attr(verus_keep_ghost, verifier::allow(may_not_terminate))]
 use builtin::*;
 use builtin_macros::*;
 

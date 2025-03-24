@@ -1,3 +1,4 @@
+#![cfg_attr(verus_keep_ghost, verifier::allow(may_not_terminate))]
 use vstd::multiset::*;
 use vstd::prelude::*;
 use vstd::seq_lib::group_seq_properties;

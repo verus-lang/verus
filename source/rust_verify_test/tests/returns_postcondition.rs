@@ -143,8 +143,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
-    #[test] default_trait_fn_with_returns_override verus_code! {
+test_verify_one_file_with_options! {
+    #[test] default_trait_fn_with_returns_override ["may_not_terminate"] => verus_code! {
         trait Tr : Sized {
             fn test(&self) -> &Self
                 returns
@@ -248,8 +248,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "a `returns` clause cannot be declared on both a trait method impl and its declaration")
 }
 
-test_verify_one_file! {
-    #[test] trait_returns_on_trait_method_decl verus_code! {
+test_verify_one_file_with_options! {
+    #[test] trait_returns_on_trait_method_decl ["may_not_terminate"] => verus_code! {
         trait Tr : Sized {
             spec fn ens(&self, i: u8, s: &Self) -> bool;
             spec fn ret(&self, i: u8) -> Self;
@@ -370,8 +370,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 5)
 }
 
-test_verify_one_file! {
-    #[test] trait_returns_on_trait_method_impl verus_code! {
+test_verify_one_file_with_options! {
+    #[test] trait_returns_on_trait_method_impl ["may_not_terminate"] => verus_code! {
         trait Tr : Sized {
             spec fn ens(&self, i: u8, s: &Self) -> bool;
 

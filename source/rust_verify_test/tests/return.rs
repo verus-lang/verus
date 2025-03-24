@@ -73,8 +73,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test3 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test3 ["may_not_terminate"] => verus_code! {
         fn test_ret(b: bool)
             requires b
             ensures b
@@ -88,8 +88,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test3_fails verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test3_fails ["may_not_terminate"] => verus_code! {
         fn test_ret(b: bool)
             requires b
             ensures b

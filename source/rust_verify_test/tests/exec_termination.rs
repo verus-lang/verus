@@ -15,9 +15,37 @@ test_verify_one_file! {
                 return 1 + a(i - 1);
             }
         }
-    } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
-    }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] recursive_exec_function_with_decreases_clause_may_not_terminate ["may_not_terminate"] => verus_code! {
+        fn a(i: u64) -> (r: u64)
+            ensures r == i
+            decreases i
+        {
+            if i == 0 {
+                return 0;
+            } else {
+                return 1 + a(i - 1);
+            }
+        }
+    } => Ok(err) => assert!(err.warnings.iter().find(|x| x.message.contains("if allow(may_not_terminate) is set, decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some())
+}
+
+test_verify_one_file_with_options! {
+    #[test] recursive_exec_function_with_decreases_clause_may_not_terminate_fails ["may_not_terminate"] => verus_code! {
+        fn a(i: u64) -> (r: u64)
+            ensures r == i
+            decreases i
+        {
+            if i == 0 {
+                return 0;
+            } else {
+                return a(i); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
@@ -166,10 +194,11 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] for_loop_2_with_decreases_clause verus_code! { // TODO
+    #[test] for_loop_2_with_decreases_clause verus_code! {
         use vstd::prelude::*;
         fn a() {
             let mut i: i8 = 0;
+            #[verifier::loop_isolation(false)]
             for x in 0..10
                 invariant i == x * 3,
                 decreases 10 - x
@@ -177,13 +206,11 @@ test_verify_one_file! {
                 i += 3;
             }
         }
-    } => Err(err) => {
-        assert!(err.errors.iter().find(|x| x.message == "cannot find value `x` in this scope").is_some()); // doesn't processes decreases clause properly?
-    }
+    } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] for_loop_needs_decreases_clause verus_code! { // TODO
+    #[test] for_loop_needs_decreases_clause verus_code! {
         use vstd::prelude::*;
         fn a() {
             let mut i: i8 = 0;
@@ -193,7 +220,7 @@ test_verify_one_file! {
                 i += 3;
             }
         }
-    } => Ok(()) // this should be Err, but maybe for loops are processed differently than while and loop?
+    } => Err(err) => assert_vir_error_msg(err, "loop must have a decreases clause")
 }
 
 test_verify_one_file_with_options! {
@@ -240,7 +267,5 @@ test_verify_one_file! {
                 i -= 1;
             }
         }
-    } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
-    }
+    } => Ok(())
 }

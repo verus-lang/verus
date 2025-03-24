@@ -1,3 +1,5 @@
+#![cfg_attr(verus_keep_ghost, verifier::allow(may_not_terminate))]
+
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;

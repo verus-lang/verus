@@ -660,6 +660,7 @@ test_verify_one_file_with_options! {
             verus_keep_ghost,
             feature(fn_traits),
         )]
+        #![cfg_attr(verus_keep_ghost, verifier::allow(may_not_terminate))]
 
         #[verifier::external]
         #[path="../../../../builtin/src/lib.rs"]

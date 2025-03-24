@@ -405,8 +405,8 @@ test_verify_one_file! {
     } => Err(err) => assert_rust_error_msg(err, "mismatched types")
 }
 
-test_verify_one_file! {
-    #[test] nest_local_loop_local verus_code! {
+test_verify_one_file_with_options! {
+    #[test] nest_local_loop_local ["may_not_terminate"] => verus_code! {
         use vstd::invariant::*;
 
         pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>, Tracked(j): Tracked<LocalInvariant<A, u8, B>>) {
@@ -422,8 +422,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] never_terminate_in_invariant verus_code! {
+test_verify_one_file_with_options! {
+    #[test] never_terminate_in_invariant ["may_not_terminate"] => verus_code! {
         use vstd::invariant::*;
 
         pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>) {
@@ -722,8 +722,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
-    #[test] local_invariant_non_termination_into_inner_issue1102 verus_code!{
+test_verify_one_file_with_options! {
+    #[test] local_invariant_non_termination_into_inner_issue1102 ["may_not_terminate"] => verus_code!{
         use vstd::invariant::*;
 
         #[verifier::external_body]
@@ -756,8 +756,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
-    #[test] inv_typ_invariants verus_code!{
+test_verify_one_file_with_options! {
+    #[test] inv_typ_invariants ["may_not_terminate"] => verus_code!{
         use vstd::invariant::*;
 
         #[allow(unreachable_code)]

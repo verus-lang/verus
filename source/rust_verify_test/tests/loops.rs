@@ -9,6 +9,7 @@ test_verify_one_file! {
             let mut i = 0;
             while i < 10
                 invariant i <= 10
+                decreases 10 - i
             {
                 i = i + 1;
             }
@@ -21,7 +22,9 @@ test_verify_one_file! {
     #[test] basic_while_fail1 verus_code! {
         fn test1() {
             let mut i = 0;
-            while i < 10 {
+            while i < 10
+                decreases 10 - i
+            {
                 i = i + 1;
             }
             assert(i == 10); // FAILS
@@ -34,9 +37,13 @@ test_verify_one_file! {
         fn test1() {
             let mut i = 0;
             let mut j = 0;
-            while i < 10 {
+            while i < 10
+                decreases 10 - i
+            {
                 i = i + 1;
-                while j < 5 {
+                while j < 5
+                    decreases 5 - j
+                {
                     j = j + 1;
                 }
             }
@@ -45,8 +52,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] complex_while verus_code! {
+test_verify_one_file_with_options! {
+    #[test] complex_while ["may_not_terminate"] => verus_code! {
         fn test1() {
             let mut i = 0;
             let mut x = 0;
@@ -63,8 +70,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] complex_while_fail1 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] complex_while_fail1 ["may_not_terminate"] => verus_code! {
         fn test1() {
             let mut i = 0;
             let mut x = 0;
@@ -99,6 +106,7 @@ test_verify_one_file! {
                 invariant
                     i <= 10,
                     x == i,
+                decreases 10 - i
             {
                 i = i + 1;
             }
@@ -126,6 +134,7 @@ test_verify_one_file! {
                 invariant
                     i <= 10,
                     x == i,
+                decreases 10 - i
             {
                 i = i + 1;
             }
@@ -141,7 +150,9 @@ test_verify_one_file! {
             requires a < 10
         {
             let mut i = a;
-            while i < 20 {
+            while i < 20
+                decreases 20 - i
+            {
                 i = i + 1;
             }
             assert(i == a); // FAILS
@@ -157,7 +168,9 @@ test_verify_one_file! {
             let mut i = a;
             let mut j = a;
             j = j + 2;
-            while i < 20 {
+            while i < 20
+                decreases 20 - i
+            {
                 i = i + 1;
             }
             j = j + 2;
@@ -173,7 +186,9 @@ test_verify_one_file! {
         {
             let mut i = a;
             let mut k = 12;
-            while i < 20 {
+            while i < 20
+                decreases 20 - i
+            {
                 let mut k = i;
                 i = i + 1;
                 k = k + 1;
@@ -191,10 +206,14 @@ test_verify_one_file! {
             requires a < 10
         {
             let mut i = a;
-            while i < 20 {
+            while i < 20
+                decreases 20 - i
+            {
                 i = i + 1;
                 let mut j = a;
-                while j < 10 {
+                while j < 10
+                    decreases 10 - j
+                {
                     j = j + 1;
                 }
                 assert(j == a); // FAILS
@@ -211,10 +230,14 @@ test_verify_one_file! {
             let mut i = a;
             let mut j = a;
             j = j + 2;
-            while i < 20 {
+            while i < 20
+                decreases 20 - i
+            {
                 i = i + 1;
                 let mut j = a;
-                while j < 20 {
+                while j < 20
+                    decreases 20 - j
+                {
                     j = j + 1;
                 }
             }
@@ -231,10 +254,14 @@ test_verify_one_file! {
         {
             let mut i = a;
             let mut k = 12;
-            while i < 20 {
+            while i < 20
+                decreases 20 - i
+            {
                 let mut k = i;
                 i = i + 1;
-                while k < 20 {
+                while k < 20
+                    decreases 20 - k
+                {
                     k = k + 1;
                 }
             }
@@ -244,8 +271,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] basic_loop verus_code! {
+test_verify_one_file_with_options! {
+    #[test] basic_loop ["may_not_terminate"] => verus_code! {
         use vstd::modes::*;
         fn test() {
             let ghost mut a: int = 5;
@@ -260,8 +287,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] basic_loop_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] basic_loop_fail ["may_not_terminate"] => verus_code! {
         fn test() {
             let mut a: u32 = 5;
             loop
@@ -273,8 +300,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] basic_loop_new_vars verus_code! {
+test_verify_one_file_with_options! {
+    #[test] basic_loop_new_vars ["may_not_terminate"] => verus_code! {
         fn test() {
             let mut a: u32 = 5;
             while a < 100
@@ -288,8 +315,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[ignore] #[test] regression_11_incorrect_loop_header verus_code! {
+test_verify_one_file_with_options! {
+    #[ignore] #[test] regression_11_incorrect_loop_header ["may_not_terminate"] => verus_code! {
         fn test() {
             let mut a: u64 = 0;
             while a < 100
@@ -316,7 +343,9 @@ test_verify_one_file! {
             assert(*x == true);
 
             let mut i = 0;
-            while i < 5 {
+            while i < 5
+                decreases 5 - i
+            {
                 i = i + 1;
 
                 update_x(x);
@@ -333,7 +362,9 @@ test_verify_one_file! {
             let mut x = true;
 
             let mut i = 0;
-            while i < 5 {
+            while i < 5
+                decreases 5 - i
+            {
                 i = i + 1;
 
                 update_x(&mut x);
@@ -366,6 +397,7 @@ test_verify_one_file! {
                 invariant_except_break i <= 9
                 invariant 0 <= i <= 10
                 ensures 1 <= i
+                decreases 10 - i
             {
                 assert(i <= 9);
                 i = i + 1;
@@ -386,6 +418,7 @@ test_verify_one_file! {
                 invariant_except_break i <= 9 // FAILS
                 invariant 0 <= i <= 10
                 ensures 1 <= i
+                decreases 10 - i
             {
                 assert(i <= 9);
                 i = i + 1;
@@ -406,6 +439,7 @@ test_verify_one_file! {
                 invariant_except_break i <= 8 // FAILS
                 invariant 0 <= i <= 10
                 ensures 1 <= i
+                decreases 10 - i
             {
                 assert(i <= 9);
                 i = i + 1;
@@ -426,6 +460,7 @@ test_verify_one_file! {
                 invariant_except_break i <= 9
                 invariant 0 <= i <= 10
                 ensures 1 <= i
+                decreases 10 - i
             {
                 break; // FAILS
             }
@@ -442,6 +477,7 @@ test_verify_one_file! {
                 invariant_except_break i <= 9
                 invariant 0 <= i <= 10
                 ensures 1 <= i
+                decreases 10 - i
             {
                 assert(i <= 9);
                 i = i + 1;
@@ -462,6 +498,7 @@ test_verify_one_file! {
                 invariant_except_break i <= 9
                 invariant 0 <= i <= 10
                 ensures 1 <= i
+                decreases 10 - i
             {
                 assert(i <= 9);
                 i = i + 1;
@@ -485,6 +522,7 @@ test_verify_one_file! {
                 invariant_except_break i <= 9
                 invariant 0 <= i <= 10
                 ensures 1 <= i
+                decreases 10 - i
             {
                 assert(i <= 9);
                 i = i + 1;
@@ -500,8 +538,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] infinite_loop verus_code! {
+test_verify_one_file_with_options! {
+    #[test] infinite_loop ["may_not_terminate"] => verus_code! {
         fn test() {
             loop {
             }
@@ -510,8 +548,8 @@ test_verify_one_file! {
     } => Ok(_err) => { /* allow unreachable warnings */ }
 }
 
-test_verify_one_file! {
-    #[test] loop_break_false verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop_break_false ["may_not_terminate"] => verus_code! {
         fn test() {
             loop {
                 break;
@@ -521,8 +559,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] loop_break_false_y verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop_break_false_y ["may_not_terminate"] => verus_code! {
         fn test() {
             'y: loop {
                 break;
@@ -532,8 +570,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] while_b verus_code! {
+test_verify_one_file_with_options! {
+    #[test] while_b ["may_not_terminate"] => verus_code! {
         fn test(b: bool) {
             while b {
             }
@@ -542,8 +580,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] while_b_ok verus_code! {
+test_verify_one_file_with_options! {
+    #[test] while_b_ok ["may_not_terminate"] => verus_code! {
         fn test(b: bool) {
             while b
                 ensures !b
@@ -554,8 +592,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] while_b_fail verus_code! {
+test_verify_one_file_with_options! {
+    #[test] while_b_fail ["may_not_terminate"] => verus_code! {
         fn test(b: bool) {
             while b
                 ensures !b
@@ -567,8 +605,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] while_b2 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] while_b2 ["may_not_terminate"] => verus_code! {
         fn test(b: bool) {
             while b {
                 while b {
@@ -580,8 +618,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] while_b2_x verus_code! {
+test_verify_one_file_with_options! {
+    #[test] while_b2_x ["may_not_terminate"] => verus_code! {
         fn test(b: bool) {
             'x: while b {
                 'y: while b {
@@ -593,8 +631,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] while_b2_y verus_code! {
+test_verify_one_file_with_options! {
+    #[test] while_b2_y ["may_not_terminate"] => verus_code! {
         fn test(b: bool) {
             'x: while b {
                 'y: while b {
@@ -606,8 +644,8 @@ test_verify_one_file! {
     } => Ok(_err) => { /* TODO fix warnings? */ }
 }
 
-test_verify_one_file! {
-    #[test] while_to_loop_ensures verus_code! {
+test_verify_one_file_with_options! {
+    #[test] while_to_loop_ensures ["may_not_terminate"] => verus_code! {
         fn test(b: bool) {
             while b
                 ensures true
@@ -618,8 +656,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] while_to_loop_break verus_code! {
+test_verify_one_file_with_options! {
+    #[test] while_to_loop_break ["may_not_terminate"] => verus_code! {
         fn test(b: bool) {
             while b {
                 break;
@@ -629,8 +667,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] loop_infinite2 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop_infinite2 ["may_not_terminate"] => verus_code! {
         fn test() {
             'x: loop {
                 'y: loop {
@@ -642,8 +680,8 @@ test_verify_one_file! {
     } => Ok(_err) => { /* allow unreachable warnings */ }
 }
 
-test_verify_one_file! {
-    #[test] loop_infinite2y verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop_infinite2y ["may_not_terminate"] => verus_code! {
         fn test() {
             'x: loop {
                 'y: loop {
@@ -655,8 +693,8 @@ test_verify_one_file! {
     } => Ok(_err) => { /* allow unreachable warnings */ }
 }
 
-test_verify_one_file! {
-    #[test] loop_infinite2x verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop_infinite2x ["may_not_terminate"] => verus_code! {
         fn test() {
             'x: loop {
                 'y: loop {
@@ -668,8 +706,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] loop2_ok verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop2_ok ["may_not_terminate"] => verus_code! {
         fn test(b: bool) {
             let mut i: i8 = 0;
             'x: loop
@@ -691,8 +729,8 @@ test_verify_one_file! {
     } => Ok(_err) => { /* TODO fix warnings? */ }
 }
 
-test_verify_one_file! {
-    #[test] loop2_ok_y verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop2_ok_y ["may_not_terminate"] => verus_code! {
         fn test(b: bool) {
             let mut i: i8 = 0;
             'x: loop
@@ -714,8 +752,8 @@ test_verify_one_file! {
     } => Ok(_err) => { /* TODO fix warnings? */ }
 }
 
-test_verify_one_file! {
-    #[test] loop2_fail1 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop2_fail1 ["may_not_terminate"] => verus_code! {
         fn test(b: bool) {
             let mut i: i8 = 0;
             'x: loop
@@ -737,8 +775,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] loop2_fail2 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop2_fail2 ["may_not_terminate"] => verus_code! {
         fn test(b: bool) {
             let mut i: i8 = 0;
             'x: loop
@@ -760,8 +798,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] loop_decreases1 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop_decreases1 ["may_not_terminate"] => verus_code! {
         fn test1() {
             let mut i: u8 = 100;
             loop
@@ -794,8 +832,8 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 2)
 }
 
-test_verify_one_file! {
-    #[test] loop_decreases2 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop_decreases2 ["may_not_terminate"] => verus_code! {
         fn test1() {
             let mut i: u8 = 100;
             let mut j: u8 = 100;
@@ -841,8 +879,8 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 2)
 }
 
-test_verify_one_file! {
-    #[test] loop_decreases3 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop_decreases3 ["may_not_terminate"] => verus_code! {
         fn test_c() {
             'a: loop
                 decreases 3u8
@@ -856,8 +894,8 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error_msg(e, "decrease checking for labeled continue not supported")
 }
 
-test_verify_one_file! {
-    #[test] loop_references_old_version_of_mut_var verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop_references_old_version_of_mut_var ["may_not_terminate"] => verus_code! {
         fn foo(a: &mut u64)
             requires *old(a) === 17
         {
@@ -947,8 +985,8 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 2)
 }
 
-test_verify_one_file! {
-    #[test] boxed_args_are_havoced_regression_340 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] boxed_args_are_havoced_regression_340 ["may_not_terminate"] => verus_code! {
         use vstd::prelude::*;
 
         mod Mod {
@@ -1018,8 +1056,8 @@ test_verify_one_file! {
     } => Err(e) => assert_fails(e, 3)
 }
 
-test_verify_one_file! {
-    #[ignore] #[test] while_continue_panic_regression_421 verus_code! {
+test_verify_one_file_with_options! {
+    #[ignore] #[test] while_continue_panic_regression_421 ["may_not_terminate"] => verus_code! {
         fn test() {
             let i = 7;
             while i < 5 {
@@ -1029,8 +1067,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] iter_loop verus_code! {
+test_verify_one_file_with_options! {
+    #[test] iter_loop ["may_not_terminate"] => verus_code! {
         use vstd::prelude::*;
         fn test_loop() {
             let mut n: u64 = 0;
@@ -1080,8 +1118,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] for_loop1 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] for_loop1 ["may_not_terminate"] => verus_code! {
         use vstd::prelude::*;
         fn test_loop() {
             let mut n: u64 = 0;
@@ -1120,8 +1158,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] for_loop2 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] for_loop2 ["may_not_terminate"] => verus_code! {
         use vstd::prelude::*;
         fn test_loop() {
             let mut n: u64 = 0;
@@ -1171,8 +1209,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] for_loop3 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] for_loop3 ["may_not_terminate"] => verus_code! {
         use vstd::prelude::*;
         fn test_loop(n: u32) -> (v: Vec<u32>)
             ensures
@@ -1206,8 +1244,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] for_loop_vec_custom_iterator verus_code! {
+test_verify_one_file_with_options! {
+    #[test] for_loop_vec_custom_iterator ["may_not_terminate"] => verus_code! {
         use vstd::prelude::*;
 
         pub spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V>;
@@ -1331,8 +1369,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] loop_invariant_except_break_nonlinear verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop_invariant_except_break_nonlinear ["may_not_terminate"] => verus_code! {
         fn integer_square_root(n: u32) -> (result: u32)
             requires
                 n >= 1,
@@ -1381,8 +1419,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] loop_continue_no_break verus_code! {
+test_verify_one_file_with_options! {
+    #[test] loop_continue_no_break ["may_not_terminate"] => verus_code! {
         fn test() {
             let mut i = 0;
             while i < 5

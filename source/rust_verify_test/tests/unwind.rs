@@ -3,8 +3,8 @@
 mod common;
 use common::*;
 
-test_verify_one_file! {
-    #[test] basic verus_code! {
+test_verify_one_file_with_options! {
+    #[test] basic ["may_not_terminate"] => verus_code! {
         use vstd::prelude::*;
         use vstd::invariant::*;
 
