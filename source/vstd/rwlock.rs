@@ -10,10 +10,8 @@ use super::multiset::*;
 use super::prelude::*;
 use super::set::*;
 use core::marker::PhantomData;
-#[cfg(verus_keep_ghost)]
 use state_machines_macros::tokenized_state_machine_vstd;
 
-#[cfg(verus_keep_ghost)]
 tokenized_state_machine_vstd!(
 RwLockToks<K, V, Pred: InvariantPredicate<K, V>> {
     fields {
@@ -257,7 +255,7 @@ impl<V, Pred: RwLockPredicate<V>> InvariantPredicate<(Pred, CellId), PointsTo<V>
     Pred,
 > {
     closed spec fn inv(k: (Pred, CellId), v: PointsTo<V>) -> bool {
-        v.view().pcell == k.1 && v.view().value.is_Some() && k.0.inv(v.view().value.get_Some_0())
+        v.id() == k.1 && v.is_init() && k.0.inv(v.value())
     }
 }
 
@@ -391,8 +389,10 @@ pub struct ReadHandle<'a, V, Pred: RwLockPredicate<V>> {
 impl<'a, V, Pred: RwLockPredicate<V>> WriteHandle<'a, V, Pred> {
     #[verifier::type_invariant]
     spec fn wf_write_handle(self) -> bool {
-        equal(self.perm@.view().pcell, self.rwlock.cell.id()) && self.perm@.view().value.is_None()
-            && equal(self.handle@.instance_id(), self.rwlock.inst@.id()) && self.rwlock.wf()
+        equal(self.perm@.id(), self.rwlock.cell.id()) && self.perm@.is_uninit() && equal(
+            self.handle@.instance_id(),
+            self.rwlock.inst@.id(),
+        ) && self.rwlock.wf()
     }
 
     pub closed spec fn rwlock(self) -> RwLock<V, Pred> {
@@ -422,14 +422,14 @@ impl<'a, V, Pred: RwLockPredicate<V>> ReadHandle<'a, V, Pred> {
     #[verifier::type_invariant]
     spec fn wf_read_handle(self) -> bool {
         equal(self.handle@.instance_id(), self.rwlock.inst@.id())
-            && self.handle@.element().view().value.is_Some() && equal(
-            self.handle@.element().view().pcell,
+            && self.handle@.element().is_init() && equal(
+            self.handle@.element().id(),
             self.rwlock.cell.id(),
         ) && self.rwlock.wf()
     }
 
     pub closed spec fn view(self) -> V {
-        self.handle@.element().view().value.unwrap()
+        self.handle@.element().value()
     }
 
     pub closed spec fn rwlock(self) -> RwLock<V, Pred> {
@@ -530,7 +530,8 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
             ({
                 let val = ret.0;
                 let write_handle = ret.1;
-                &&write_handle.rwlock() == *self && self.inv(val)
+                &&& write_handle.rwlock() == *self
+                &&& self.inv(val)
             }),
     {
         proof {
@@ -542,7 +543,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         > = Option::None;
         while !done
             invariant
-                done ==> token.is_Some() && equal(
+                done ==> token.is_some() && equal(
                     token.get_Some_0().instance_id(),
                     self.inst@.id(),
                 ),

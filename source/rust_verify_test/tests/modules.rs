@@ -99,7 +99,7 @@ test_verify_one_file! {
         fn mod_adt_no_verify() {
             assert(!Car { four_doors: false }.four_doors);
         }
-    } => Err(err) => assert_vir_error_msg(err, "field access of datatype with inaccessible fields")
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: field expression for an opaque datatype")
 }
 
 test_verify_one_file! {

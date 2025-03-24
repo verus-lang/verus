@@ -133,7 +133,7 @@ pub fn demote_external_traits(
                             "requires are not allowed on the implementation for Drop",
                         ));
                     }
-                    if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(es)) if es.len() == 0)
+                    if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(_span, es)) if es.len() == 0)
                     {
                         return Err(error(
                             &function.span,
@@ -840,6 +840,7 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
                     assoc_typs,
                     assoc_typs_bounds,
                     mut methods,
+                    is_unsafe,
                 } = prev.x.clone();
                 assert!(name == t.x.name);
                 if visibility != t.x.visibility {
@@ -891,6 +892,7 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
                     assoc_typs,
                     assoc_typs_bounds,
                     methods,
+                    is_unsafe,
                 };
                 traits[*index] = prev.new_x(prevx);
             } else {

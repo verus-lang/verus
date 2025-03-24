@@ -10,7 +10,10 @@ use crate::ast::{
 use crate::ast_util::{is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
-use crate::def::{fn_inv_name, fn_namespace_name, Spanned};
+use crate::def::{
+    fn_inv_name, fn_namespace_name, fn_set_contains_name, fn_set_empty_name, fn_set_full_name,
+    fn_set_insert_name, fn_set_remove_name, fn_set_subset_of_name, Spanned,
+};
 use crate::poly::MonoTyp;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -380,6 +383,30 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if ctxt.assert_by_compute && crate::interpreter::is_sequence_fn(&f).is_some() {
                 reach_seq_funs(ctxt, state);
             }
+            // set operations may be invoked for checking invariant masks,
+            // either when opening an invariant or invoking another function.
+            let reach_set_ops = |state: &mut State| {
+                reach_function(ctxt, state, &fn_set_contains_name(&ctxt.vstd_crate_name));
+                reach_function(ctxt, state, &fn_set_empty_name(&ctxt.vstd_crate_name));
+                reach_function(ctxt, state, &fn_set_full_name(&ctxt.vstd_crate_name));
+                reach_function(ctxt, state, &fn_set_insert_name(&ctxt.vstd_crate_name));
+                reach_function(ctxt, state, &fn_set_remove_name(&ctxt.vstd_crate_name));
+                reach_function(ctxt, state, &fn_set_subset_of_name(&ctxt.vstd_crate_name));
+            };
+            let maybe_reach_set_ops_for_call = |state: &mut State, callee_name: &Fun| {
+                let caller =
+                    crate::ast_util::get_non_trait_impl(&ctxt.function_map, &function.x.name);
+                let callee = crate::ast_util::get_non_trait_impl(&ctxt.function_map, callee_name);
+                if let (Some(caller), Some(callee)) = (caller, callee) {
+                    let caller_mask = caller.x.mask_spec_or_default(&function.span);
+                    let callee_mask = callee.x.mask_spec_or_default(&function.span);
+                    // If caller is `all`, we generate no set operations
+                    // If callee is `none`, we generate no set operations
+                    if !caller_mask.is_all() && !callee_mask.is_none() {
+                        reach_set_ops(state);
+                    }
+                }
+            };
             // note: the types in typ_bounds are handled below by map_function_visitor_env
             traverse_generic_bounds(ctxt, state, &function.x.typ_bounds, false);
             let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
@@ -395,7 +422,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         reach_function(ctxt, state, name);
                         if let crate::ast::CallTargetKind::DynamicResolved { resolved, .. } = kind {
                             reach_function(ctxt, state, resolved);
+                            maybe_reach_set_ops_for_call(state, resolved);
                         }
+                        maybe_reach_set_ops_for_call(state, name);
                     }
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
@@ -410,6 +439,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             state,
                             &fn_namespace_name(&ctxt.vstd_crate_name, *atomicity),
                         );
+                        reach_set_ops(state);
                     }
                     ExprX::Unary(crate::ast::UnaryOp::InferSpecForLoopIter { .. }, _) => {
                         let t = ReachedType::Datatype(Dt::Path(crate::def::option_type_path()));

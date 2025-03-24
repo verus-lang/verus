@@ -667,10 +667,13 @@ where
     }
     match mask_spec {
         None => {}
-        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
+        Some(MaskSpec::InvariantOpens(_span, es) | MaskSpec::InvariantOpensExcept(_span, es)) => {
             for e in es.iter() {
                 expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
             }
+        }
+        Some(MaskSpec::InvariantOpensSet(e)) => {
+            expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf))
         }
     }
     match unwind_spec {
@@ -1082,7 +1085,7 @@ where
     fe(env, map, &expr)
 }
 
-pub(crate) fn map_expr_visitor<FE>(expr: &Expr, fe: &FE) -> Result<Expr, VirErr>
+pub fn map_expr_visitor<FE>(expr: &Expr, fe: &FE) -> Result<Expr, VirErr>
 where
     FE: Fn(&Expr) -> Result<Expr, VirErr>,
 {
@@ -1299,15 +1302,16 @@ where
 
     let mask_spec = match mask_spec {
         None => None,
-        Some(MaskSpec::InvariantOpens(es)) => {
-            Some(MaskSpec::InvariantOpens(Arc::new(vec_map_result(es, |e| {
-                map_expr_visitor_env(e, map, env, fe, fs, ft)
-            })?)))
-        }
-        Some(MaskSpec::InvariantOpensExcept(es)) => {
-            Some(MaskSpec::InvariantOpensExcept(Arc::new(vec_map_result(es, |e| {
-                map_expr_visitor_env(e, map, env, fe, fs, ft)
-            })?)))
+        Some(MaskSpec::InvariantOpens(span, es)) => Some(MaskSpec::InvariantOpens(
+            span.clone(),
+            Arc::new(vec_map_result(es, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?),
+        )),
+        Some(MaskSpec::InvariantOpensExcept(span, es)) => Some(MaskSpec::InvariantOpensExcept(
+            span.clone(),
+            Arc::new(vec_map_result(es, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?),
+        )),
+        Some(MaskSpec::InvariantOpensSet(e)) => {
+            Some(MaskSpec::InvariantOpensSet(map_expr_visitor_env(e, map, env, fe, fs, ft)?))
         }
     };
     let unwind_spec = match unwind_spec {

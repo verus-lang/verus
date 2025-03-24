@@ -12,7 +12,7 @@ use crate::ast_util::unit_typ;
 use crate::ast_visitor;
 use crate::context::{Ctx, FunctionCtx};
 use crate::def::{unique_local, Spanned};
-use crate::inv_masks::MaskSetE;
+use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message};
 use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst::{
@@ -263,7 +263,6 @@ fn func_body_to_sst(
                 local_decls: Arc::new(termination_decls),
                 statics: Arc::new(vec![]),
                 reqs: Arc::new(vec![]),
-                mask_set: Arc::new(MaskSetE::empty()),
                 unwind: UnwindSst::NoUnwind,
             };
             Some(termination_check)
@@ -308,12 +307,17 @@ pub fn func_decl_to_sst(
     let mut inv_masks: Vec<Exps> = Vec::new();
     match &function.x.mask_spec {
         None => {}
-        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
+        Some(MaskSpec::InvariantOpens(_span, es) | MaskSpec::InvariantOpensExcept(_span, es)) => {
             for e in es.iter() {
                 let (_pars, inv_mask) =
                     req_ens_to_sst(ctx, diagnostics, function, &vec![e.clone()], true)?;
                 inv_masks.push(Arc::new(inv_mask));
             }
+        }
+        Some(MaskSpec::InvariantOpensSet(e)) => {
+            let (_pars, inv_mask) =
+                req_ens_to_sst(ctx, diagnostics, function, &vec![e.clone()], true)?;
+            inv_masks.push(Arc::new(inv_mask));
         }
     }
 
@@ -555,9 +559,12 @@ pub fn func_def_to_sst(
         }
     }
 
-    let mask_spec = req_ens_function.x.mask_spec_or_default();
+    let mask_spec = req_ens_function.x.mask_spec_or_default(&req_ens_function.span);
     let inv_spec_exprs = match &mask_spec {
-        MaskSpec::InvariantOpens(exprs) | MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
+        MaskSpec::InvariantOpens(_span, exprs) | MaskSpec::InvariantOpensExcept(_span, exprs) => {
+            exprs.clone()
+        }
+        MaskSpec::InvariantOpensSet(e) => Arc::new(vec![e.clone()]),
     };
     let mut inv_spec_exps = vec![];
     for e in inv_spec_exprs.iter() {
@@ -573,12 +580,16 @@ pub fn func_def_to_sst(
         };
 
         let exp = state.finalize_exp(ctx, &exp)?;
-        inv_spec_exps.push(crate::inv_masks::MaskSingleton { expr: exp, span: e.span.clone() });
+        inv_spec_exps.push(exp.clone());
     }
-    let mask_set = match mask_spec {
-        MaskSpec::InvariantOpens(_exprs) => MaskSetE::from_list(inv_spec_exps),
-        MaskSpec::InvariantOpensExcept(_exprs) => MaskSetE::from_list_complement(inv_spec_exps),
+    let mask_set = match &mask_spec {
+        MaskSpec::InvariantOpens(span, _exprs) => MaskSet::from_list(&inv_spec_exps, &span),
+        MaskSpec::InvariantOpensExcept(span, _exprs) => {
+            MaskSet::from_list_complement(&inv_spec_exps, &span)
+        }
+        MaskSpec::InvariantOpensSet(_expr) => MaskSet::arbitrary(&inv_spec_exps[0]),
     };
+    state.mask = Some(mask_set);
 
     let unwind = match req_ens_function.x.unwind_spec_or_default() {
         UnwindSpec::MayUnwind => UnwindSst::MayUnwind,
@@ -690,7 +701,6 @@ pub fn func_def_to_sst(
             ens_spec_precondition_stms: Arc::new(ens_spec_precondition_stms),
             kind: PostConditionKind::Ensures,
         }),
-        mask_set: Arc::new(mask_set),
         unwind,
         body: stm,
         local_decls: Arc::new(local_decls),

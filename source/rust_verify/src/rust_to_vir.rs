@@ -23,7 +23,7 @@ use std::collections::HashSet;
 use rustc_ast::IsAuto;
 use rustc_hir::{
     ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId, ItemKind, MaybeOwner,
-    Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode, Safety,
+    Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode,
 };
 use vir::def::Spanned;
 
@@ -197,6 +197,7 @@ fn check_item<'tcx>(
                 None,
                 None,
                 external_info,
+                None,
             )?;
         }
         ItemKind::Use { .. } => {}
@@ -274,6 +275,7 @@ fn check_item<'tcx>(
                 module_path.clone(),
                 external_info,
                 crate_items,
+                attrs,
             )?;
         }
         ItemKind::Const(_ty, generics, body_id) => {
@@ -291,7 +293,7 @@ fn check_item<'tcx>(
             unsupported_err!(item.span, "static mut");
         }
         ItemKind::Macro(_, _) => {}
-        ItemKind::Trait(IsAuto::No, Safety::Safe, trait_generics, _bounds, trait_items) => {
+        ItemKind::Trait(IsAuto::No, safety, trait_generics, _bounds, trait_items) => {
             let trait_def_id = item.owner_id.to_def_id();
             crate::rust_to_vir_trait::translate_trait(
                 ctxt,
@@ -305,6 +307,7 @@ fn check_item<'tcx>(
                 &vattrs,
                 external_info,
                 crate_items,
+                *safety,
             )?;
         }
         ItemKind::TyAlias(_ty, _generics) => {

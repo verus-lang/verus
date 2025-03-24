@@ -37,7 +37,7 @@ See [the formal definition of _decreases-to_](./reference-decreases-to.md).
 
 If the `when` clause is supplied, then the given condition may be assumed when
 proving the decreases properties.
-However, the function will only be defined when the `when` clause is true.
+However, the function definition will only be concretely specified when the `when` clause is true.
 In other words, something like this:
 
 ```rust

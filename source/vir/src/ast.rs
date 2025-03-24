@@ -549,9 +549,11 @@ pub enum HeaderExprX {
     /// Proof function to prove termination for recursive functions
     DecreasesBy(Fun),
     /// The function might open the following invariants
-    InvariantOpens(Exprs),
+    InvariantOpens(Span, Exprs),
     /// The function might open any BUT the following invariants
-    InvariantOpensExcept(Exprs),
+    InvariantOpensExcept(Span, Exprs),
+    /// The function might open the following invariants, specified as a set
+    InvariantOpensSet(Expr),
     /// Make a function f opaque (definition hidden) within the current function body.
     /// (The current function body can later reveal f in specific parts of the current function body if desired.)
     Hide(Fun),
@@ -977,13 +979,19 @@ pub struct FunctionAttrsX {
     pub size_of_broadcast_proof: bool,
     /// is type invariant
     pub is_type_invariant_fn: bool,
+    /// Marked with external_body or external_fn_specification
+    /// TODO: might be duplicate with https://github.com/verus-lang/verus/pull/1473
+    pub is_external_body: bool,
+    /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
+    pub is_unsafe: bool,
 }
 
 /// Function specification of its invariant mask
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum MaskSpec {
-    InvariantOpens(Exprs),
-    InvariantOpensExcept(Exprs),
+    InvariantOpens(Span, Exprs),
+    InvariantOpensExcept(Span, Exprs),
+    InvariantOpensSet(Expr),
 }
 
 /// Function specification of its invariant mask
@@ -1218,6 +1226,7 @@ pub struct TraitX {
     pub assoc_typs: Arc<Vec<Ident>>,
     pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
+    pub is_unsafe: bool,
 }
 
 /// impl<typ_params> trait_name<trait_typ_args[1..]> for trait_typ_args[0] { type name = typ; }

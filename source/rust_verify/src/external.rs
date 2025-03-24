@@ -28,6 +28,8 @@ Here are some odd cases to watch out for:
  * For trait decls and trait impls, we disallow #[verifier::external] on individual
    TraitItems or ImplItems.
 
+ * Autoderive traits need to be handled specially.
+
 To implement this traversal, we use some rustc visitor machinery to do the recursive
 traversal, while keeping track of the current state (Default, Verify, or External).
 (The difference between Default and External is that if a module is in the Default state,
@@ -35,9 +37,11 @@ then it's nested items can be marked VerusAware, but if it's External, this this
 */
 
 use crate::attributes::ExternalAttrs;
+use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::Context;
 use crate::rust_to_vir_base::{def_id_to_vir_path, def_id_to_vir_path_option};
 use crate::rustc_hir::intravisit::*;
+use crate::verus_items::get_rust_item;
 use rustc_hir::{
     ForeignItem, ForeignItemId, HirId, ImplItem, ImplItemId, ImplItemKind, Item, ItemId, ItemKind,
     OwnerId, TraitItem, TraitItemId, TraitItemKind,
@@ -48,6 +52,7 @@ use vir::ast::{Path, VirErr, VirErrAs};
 
 /// Main exported type of this module.
 /// Contains all item-things and their categorizations
+#[derive(Debug)]
 pub struct CrateItems {
     /// Vector of all crate items
     pub items: Vec<CrateItem>,
@@ -240,17 +245,29 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         let owner_id = hir_id.expect_owner();
         let def_id = owner_id.to_def_id();
 
-        emit_errors_warnings_for_ignored_attrs(
-            self.ctxt,
-            self.state,
-            &eattrs,
-            &mut *self.ctxt.diagnostics.borrow_mut(),
-            &mut self.errors,
-            span,
-        );
+        {
+            emit_errors_warnings_for_ignored_attrs(
+                self.ctxt,
+                self.state,
+                &eattrs,
+                &mut *self.ctxt.diagnostics.borrow_mut(),
+                &mut self.errors,
+                span,
+            );
+        }
 
         // Compute the VerifState of this particular item based on its context
         // and its attributes.
+
+        let my_eattrs = eattrs;
+
+        let auto_derive_eattrs =
+            get_attributes_for_automatic_derive(&self.ctxt, &general_item, &attrs, span);
+        let eattrs = if let Some(auto_derive_eattrs) = auto_derive_eattrs {
+            auto_derive_eattrs
+        } else {
+            my_eattrs
+        };
 
         let state_for_this_item = match self.state {
             VerifState::Default => {
@@ -333,7 +350,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
 
         // Compute the context for any _nested_ items
 
-        let state_inside = if eattrs.external_body {
+        let state_inside = if my_eattrs.external_body {
             if !general_item.may_have_external_body() {
                 self.errors.push(crate::util::err_span_bare(
                     span,
@@ -367,6 +384,17 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
                         is_trait: impll.of_trait.is_some(),
                         has_any_verus_aware_item: false,
                     });
+                }
+                ItemKind::Const(_ty, _generics, _body_id) => {
+                    let path = def_id_to_vir_path(self.ctxt.tcx, &self.ctxt.verus_items, def_id);
+                    if path
+                        .segments
+                        .iter()
+                        .find(|s| s.starts_with("_DERIVE_builtin_Structural_FOR_"))
+                        .is_some()
+                    {
+                        self.state = VerifState::Verify;
+                    }
                 }
                 _ => {}
             },
@@ -550,6 +578,93 @@ impl<'a> GeneralItem<'a> {
                 TraitItemKind::Fn(..) => true,
                 _ => false,
             },
+        }
+    }
+}
+
+/// If the user uses a 'derive' trait on a datatype definition, then the
+/// autoderived trait impl needs to be handled specially. This is because
+/// the autoderived trait impl doesn't 'inherit' all the attributes of the
+/// struct; in particular, it doesn't inherit the verus_macro attribute.
+/// So when we come across an autoderive struct, we need to check if
+/// the *type* has the verus_macro attribute.
+///
+/// Different traits are handled on a case-by-case basis; see automatic_derive.rs
+fn get_attributes_for_automatic_derive<'tcx>(
+    ctxt: &Context<'tcx>,
+    general_item: &GeneralItem<'tcx>,
+    attrs: &[rustc_ast::Attribute],
+    span: Span,
+) -> Option<ExternalAttrs> {
+    let warn_unknown = || {
+        let diagnostics = &mut *ctxt.diagnostics.borrow_mut();
+        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
+            span,
+            format!(
+                "Verus doesn't known how to handle this automatically derived item; ignoring it"
+            ),
+        )));
+    };
+
+    if !crate::automatic_derive::is_automatically_derived(attrs) {
+        return None;
+    }
+
+    match general_item {
+        GeneralItem::Item(item) => match &item.kind {
+            ItemKind::Impl(impll) => {
+                if impll.of_trait.is_none() {
+                    return None;
+                }
+
+                let type_def_id = match impll.self_ty.kind {
+                    rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => {
+                        path.res.def_id()
+                    }
+                    _ => {
+                        warn_unknown();
+                        return None;
+                    }
+                };
+                if let Some(type_local_def_id) = type_def_id.as_local() {
+                    let type_hir_id = ctxt.tcx.local_def_id_to_hir_id(type_local_def_id);
+                    let type_attrs = ctxt.tcx.hir().attrs(type_hir_id);
+                    let mut type_eattrs = match ctxt.get_external_attrs(type_attrs) {
+                        Ok(eattrs) => eattrs,
+                        Err(_) => {
+                            warn_unknown();
+                            return None;
+                        }
+                    };
+
+                    if opts_in_to_verus(&type_eattrs) {
+                        let trait_def_id = impll.of_trait.unwrap().path.res.def_id();
+                        let rust_item = get_rust_item(ctxt.tcx, trait_def_id);
+                        let action = crate::automatic_derive::get_action(rust_item);
+                        match action {
+                            AutomaticDeriveAction::Special(_)
+                            | AutomaticDeriveAction::VerifyAsIs => Some(type_eattrs),
+                            AutomaticDeriveAction::Ignore => {
+                                type_eattrs.external = true;
+                                Some(type_eattrs)
+                            }
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    warn_unknown();
+                    None
+                }
+            }
+            _ => {
+                warn_unknown();
+                None
+            }
+        },
+        _ => {
+            warn_unknown();
+            None
         }
     }
 }

@@ -8,7 +8,7 @@ use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::unsupported_err_unless;
 use crate::util::{err_span, err_span_bare};
-use rustc_hir::{Generics, TraitFn, TraitItem, TraitItemKind, TraitItemRef};
+use rustc_hir::{Generics, Safety, TraitFn, TraitItem, TraitItemKind, TraitItemRef};
 use rustc_middle::ty::{ClauseKind, TraitPredicate, TraitRef, TyCtxt};
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
@@ -80,6 +80,7 @@ pub(crate) fn translate_trait<'tcx>(
     trait_vattrs: &VerifierAttrs,
     external_info: &mut ExternalInfo,
     crate_items: &CrateItems,
+    safety: Safety,
 ) -> Result<(), VirErr> {
     let tcx = ctxt.tcx;
     let orig_trait_path = def_id_to_vir_path(tcx, &ctxt.verus_items, trait_def_id);
@@ -273,6 +274,7 @@ pub(crate) fn translate_trait<'tcx>(
                     ex_trait_id_for,
                     ex_item_id_for,
                     external_info,
+                    None,
                 )?;
                 if let Some(fun) = fun {
                     method_names.push(fun);
@@ -382,6 +384,10 @@ pub(crate) fn translate_trait<'tcx>(
         typ_params: generics_params,
         typ_bounds,
         assoc_typs_bounds,
+        is_unsafe: match safety {
+            Safety::Safe => false,
+            Safety::Unsafe => true,
+        },
     };
     vir.traits.push(ctxt.spanned_new(trait_span, traitx));
     Ok(())

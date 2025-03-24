@@ -6,8 +6,8 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Dt, Fun, FunX, Idents,
-    InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
+    ArchWordBits, ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Dt, Fun, FunX, Ident,
+    Idents, InequalityOp, IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, PathX, Primitive,
     SpannedTyped, Typ, TypX, UnaryOp, VarBinders, VarIdent, VarIdentDisambiguate, VirErr,
 };
 use crate::ast_to_sst_func::SstMap;
@@ -15,6 +15,7 @@ use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::context::GlobalCtx;
 use crate::messages::{error, warning, Message, Span, ToAny};
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent};
+use crate::sst_util::subst_exp;
 use crate::unicode::valid_unicode_scalar_bigint;
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
@@ -35,6 +36,7 @@ use std::thread;
 const RLIMIT_MULTIPLIER: u64 = 400_000;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
+type TypeEnv = ScopeMap<Ident, Typ>;
 
 /// `Exps` that support `Hash` and `Eq`. Intended to never leave this module.
 struct ExpsKey {
@@ -99,6 +101,8 @@ struct State {
     depth: usize,
     /// Symbol table mapping bound variables to their values
     env: Env,
+    /// Symbol table mapping bound type arguments to their types
+    type_env: TypeEnv,
     /// Number of iterations computed thus far
     iterations: u64,
     /// Log to write out extra info
@@ -1597,12 +1601,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
                                 state.cache_misses += 1;
                                 state.env.push_scope(true);
+                                state.type_env.push_scope(true);
                                 for (formal, actual) in pars.iter().zip(new_args.iter()) {
                                     let formal_id = formal.x.name.clone();
                                     state.env.insert(formal_id, actual.clone()).unwrap();
                                 }
-                                // Account for const generics by adding, e.g., { N => 7 } to the environment
                                 for (formal, actual) in typ_params.iter().zip(typs.iter()) {
+                                    state.type_env.insert(formal.clone(), actual.clone()).unwrap();
+                                    // Account for const generics by adding, e.g., { N => 7 } to the environment
                                     if let TypX::ConstInt(c) = &**actual {
                                         let formal_id = VarIdent(
                                             formal.clone(),
@@ -1616,8 +1622,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                         state.env.insert(formal_id, value).unwrap();
                                     }
                                 }
+                                // Proactively apply the type environment to the body.
+                                // We don't do this for the variable environment, since
+                                // the body might locally shadow some of the parameter names.
+                                let empty_substs = HashMap::new();
+                                let body = subst_exp(state.type_env.map(), &empty_substs, body);
                                 let result = eval_expr_internal(ctx, state, &body);
                                 state.env.pop_scope();
+                                state.type_env.pop_scope();
                                 state.insert_call(fun, &new_args, &result.clone()?, memoize);
                                 result
                             }
@@ -1836,12 +1848,14 @@ fn eval_expr_launch(
     log: &mut Option<File>,
 ) -> Result<(Exp, Vec<Message>), VirErr> {
     let env = ScopeMap::new();
+    let type_env = ScopeMap::new();
     let cache = HashMap::new();
     let logging = log.is_some();
     let msgs = Vec::new();
     let mut state = State {
         depth: 0,
         env,
+        type_env,
         iterations: 1,
         msgs,
         log: log.take(),

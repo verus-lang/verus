@@ -21,20 +21,20 @@ There are two prover modes related to nonlinear arithmetic.
  * `nonlinear_arith` - Enable Z3's nonlinear theory of arithmetic.
  * `integer_ring` - Enable a decidable, equational theory of rings.
 
-The first is general purpose, but unfortunately somewhat unpredicable. (This is why it is turned off by default.)
-The second implements a decidable procedure for a specific class of problems.
+The first is general-purpose, but unfortunately it is somewhat unpredicable. (This is why it is turned off by default.)
+The second handles a more specific class of problems, but it is decidable and efficient.
 Invoking either prover mode requires an understanding of how to _minimize prover context_.
 We describe each of these modes in more detail below.
 
-If neither mode works for your proof, you can also manually invoke a lemma from
+Note that if neither mode works for your proof, you can also manually invoke a lemma from
 Verus's [arithmetic library](https://verus-lang.github.io/verus/verusdoc/vstd/arithmetic/index.html),
 which supplies a large collection of verified facts about how nonlinear operations behave.
 For example, the inaccessible properties listed above can be proven by invoking
 
-* `lemma_mul_is_commutative`
-* `lemma_mul_is_associative`
-* `lemma_mul_is_distributive_add`
-* `lemma_mul_upper_bound`
+* [`lemma_mul_is_commutative`](https://verus-lang.github.io/verus/verusdoc/vstd/arithmetic/mul/fn.lemma_mul_is_commutative.html)
+* [`lemma_mul_is_associative`](https://verus-lang.github.io/verus/verusdoc/vstd/arithmetic/mul/fn.lemma_mul_is_associative.html)
+* [`lemma_mul_is_distributive_add`](https://verus-lang.github.io/verus/verusdoc/vstd/arithmetic/mul/fn.lemma_mul_is_distributive_add.html)
+* [`lemma_mul_upper_bound`](https://verus-lang.github.io/verus/verusdoc/vstd/arithmetic/mul/fn.lemma_mul_upper_bound.html)
 
 respectively.  If your proof involves using multiple such lemmas, you may want to use a
 [structured proof](calc.md) to make the proof more readable and easier to maintain.
@@ -67,7 +67,7 @@ To supply context explicitly, you can use a `requires` clause, a shown below:
 
 Let's go through this example, one step at a time:
 
- * Verus uses its _normal solver_ to prove that assert's "requires" clause, that `x <= 10 && y <= 10`. This follows from the precondition of the function.
+ * Verus uses its _normal solver_ to prove the assert's `requires` clause, that `x <= 10 && y <= 10`. This follows from the precondition of the function.
  * Verus uses Z3's _nonlinear solver_ to prove `x <= 10 && y <= 10 ==> x * y <= 100`. This would not be possible with the normal solver, but it is possible for the nonlinear solver.
  * The fact `x * y <= 100` is now provided in the proof context for later asserts.
  * Verus uses its _normal solver_ to prove that `x * y <= 1000`, which follows from
@@ -154,7 +154,7 @@ proof fn foo(a: int, b: int, c: int, d: int, x: int, y: int) by(integer_ring)
 This theorem statement appears to be trivial, and indeed, Verus would solve it easily
 using its default proof strategy. 
 However, `integer_ring` will not solve it.
-We can inspect the Singular query to understand why:
+We can inspect the Singular query to understand why.
 (See [here](#examining-the-encoding) for how to log these.)
 
 ```

@@ -408,7 +408,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         #[derive(PartialEq, Eq)]
-        struct MyStruct
+        pub struct MyStruct
         {
             pub i: u16,
             pub j: i32,
@@ -487,7 +487,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         #[derive(PartialEq, Eq, Clone)]
-        struct MyStruct
+        pub struct MyStruct
         {
             pub i: u16,
             pub j: i32,
@@ -564,7 +564,7 @@ test_verify_one_file! {
             let b = m.contains(&s2);
             assert(!b);
         }
-    } => Ok(())
+    } => Ok(_err) => { /* Clone warnings */ }
 }
 
 test_verify_one_file! {
@@ -574,7 +574,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         #[derive(PartialEq, Eq)]
-        struct MyStruct
+        pub struct MyStruct
         {
             pub i: u16,
             pub j: i32,
@@ -619,7 +619,7 @@ test_verify_one_file! {
         use vstd::prelude::*;
 
         #[derive(PartialEq, Eq)]
-        struct MyStruct
+        pub struct MyStruct
         {
             pub i: u16,
             pub j: i32,

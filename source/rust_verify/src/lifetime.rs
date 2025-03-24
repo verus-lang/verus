@@ -258,6 +258,10 @@ fn open_atomic_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V
 fn open_local_invariant_begin<'a, X, V>(_inv: &'a X) -> (InvariantBlockGuard, V) { panic!(); }
 fn open_invariant_end<V>(_guard: InvariantBlockGuard, _v: V) { panic!() }
 fn index<'a, V, Idx, Output>(v: &'a V, index: Idx) -> &'a Output { panic!() }
+trait IndexSet{
+fn index_set<Idx, V>(&mut self, index: Idx, val: V) { panic!() }
+}
+impl<A:?Sized> IndexSet for A {}
 struct C<const N: usize, A: ?Sized>(Box<A>);
 struct Arr<A: ?Sized, const N: usize>(Box<A>);
 fn use_type_invariant<A>(a: A) -> A { a }
@@ -307,6 +311,9 @@ fn emit_check_tracked_lifetimes<'tcx>(
 struct LifetimeCallbacks {}
 
 impl rustc_driver::Callbacks for LifetimeCallbacks {
+    // note: we do not need to to call into config here,
+    // because all config is handled in the other Callbacks
+
     fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
@@ -403,6 +410,8 @@ pub(crate) fn check_tracked_lifetimes<'tcx>(
     let rustc_args = vec![LIFETIME_DRIVER_ARG, LifetimeFileLoader::FILENAME, "--error-format=json"];
 
     let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        // avoid warning about jobserver fd
+        .env_remove("CARGO_MAKEFLAGS")
         .args(&rustc_args[..])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())

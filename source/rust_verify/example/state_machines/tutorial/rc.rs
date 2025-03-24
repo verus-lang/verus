@@ -125,14 +125,14 @@ tokenized_state_machine!(RefCounter<Perm> {
     fn dec_to_zero_inductive(pre: Self, post: Self, x: Perm) { }
 });
 
-struct InnerRc<S> {
+pub struct InnerRc<S> {
     pub rc_cell: PCell<u64>,
     pub s: S,
 }
 
-type MemPerms<S> = simple_pptr::PointsTo<InnerRc<S>>;
+pub type MemPerms<S> = simple_pptr::PointsTo<InnerRc<S>>;
 
-tracked struct GhostStuff<S> {
+pub tracked struct GhostStuff<S> {
     pub tracked rc_perm: cell::PointsTo<u64>,
     pub tracked rc_token: RefCounter::counter<MemPerms<S>>,
 }
@@ -141,8 +141,8 @@ impl<S> GhostStuff<S> {
     pub open spec fn wf(self, inst: RefCounter::Instance<MemPerms<S>>, cell: PCell<u64>) -> bool {
         &&& self.rc_perm@.pcell == cell.id()
         &&& self.rc_token.instance_id() == inst.id()
-        &&& self.rc_perm@.value.is_Some()
-        &&& self.rc_perm@.value.get_Some_0() as nat == self.rc_token.value()
+        &&& self.rc_perm.is_init()
+        &&& self.rc_perm.value() as nat == self.rc_token.value()
     }
 }
 

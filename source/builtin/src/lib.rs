@@ -150,6 +150,14 @@ pub fn opens_invariants_except<A>(_a: A) {
     unimplemented!();
 }
 
+// Can only appear at beginning of function body
+#[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::opens_invariants_set"]
+#[verifier::proof]
+pub fn opens_invariants_set<A>(_a: A) {
+    unimplemented!();
+}
+
 #[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::no_unwind"]
 #[verifier::proof]
@@ -684,7 +692,7 @@ impl core::cmp::Ord for nat {
 //
 
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::builtin::Structural")]
-pub trait Structural {
+pub unsafe trait Structural {
     #[doc(hidden)]
     fn assert_receiver_is_structural(&self) -> () {}
 }
@@ -697,7 +705,7 @@ pub struct AssertParamIsStructural<T: Structural + ?Sized> {
 macro_rules! impl_structural {
     ($($t:ty)*) => {
         $(
-            impl Structural for $t { }
+            unsafe impl Structural for $t { }
         )*
     }
 }

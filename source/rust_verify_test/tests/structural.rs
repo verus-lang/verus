@@ -37,21 +37,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_structural_eq code! {
-        #[derive(PartialEq, Eq)]
-        struct Thing {
-            v: bool,
-        }
-
-        fn test_not_structural(passengers: u64) {
-            let v1 = Thing { v: true };
-            let v2 = Thing { v: true };
-            assert_(v1 == v2);
-        }
-    } => Err(err) => assert_vir_error_msg(err, "==/!= for non smt equality types")
-}
-
-test_verify_one_file! {
     #[test] test_not_structural_generic verus_code! {
         #[derive(PartialEq, Eq, Structural)]
         struct Thing<V> {
@@ -83,4 +68,14 @@ test_verify_one_file! {
             o: Other,
         }
     } => Err(err) => assert_rust_error_msg(err, "the trait bound `Other: builtin::Structural` is not satisfied")
+}
+
+test_verify_one_file! {
+    #[test] test_structural_enum_with_values verus_code! {
+        #[derive(PartialEq, Structural)]
+        pub enum ValueStatus {
+          Valid = 0,
+          Invalid = 1,
+        }
+    } => Ok(())
 }

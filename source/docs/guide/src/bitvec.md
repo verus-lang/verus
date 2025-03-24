@@ -57,7 +57,7 @@ However, for this reason, the bitvector solver cannot reason over _symbolic_ int
 
 The bitvector solver is ideal for proofs about bitwise operations
 ([`&`, `|`, `^`, `<<` and `>>`](./spec-bit-ops.md)).
-However, it is also decent at arithmetic (`+`, `-`, `*`, `/`, `%`) over bounded integers.
+However, it can also be decent at arithmetic (`+`, `-`, `*`, `/`, `%`) over bounded integers.
 
 ## Examples and tips
 
@@ -120,7 +120,7 @@ proof fn test_truncating_add(a: u64, b: u64) {
 
 If you use variables of type `usize` or `isize`, the bitvector solver (by default) assumes they
 might be either 32-bit or 64-bit, which affects the encoding.
-In that case, the solver will generate 2 different queries and verifies both.
+In that case, the solver will generate 2 different queries and verify both.
 
 However, the solver can also be [configured to assume a particular platform size](./reference-global.md#with-usize-and-isize).
 

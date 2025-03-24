@@ -244,7 +244,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] lifetime_union ["--disable-internal-test-mode", "--external-by-default"] => verus_code! {
+    #[test] lifetime_union ["--disable-internal-test-mode"] => verus_code! {
         use core::mem::ManuallyDrop;
         struct X { }
         struct Y { }
@@ -264,7 +264,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] lifetime_union2 ["--disable-internal-test-mode", "--external-by-default"] => verus_code! {
+    #[test] lifetime_union2 ["--disable-internal-test-mode"] => verus_code! {
         use vstd::*;
         use core::mem::ManuallyDrop;
         struct X { }
@@ -392,7 +392,7 @@ test_verify_one_file! {
         pub open spec fn f(u: U) {
             get_union_field::<_, u8>(u, "x");
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot access any field of a datatype where one or more fields are private")
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: field expression for an opaque datatype")
 }
 
 test_verify_one_file! {
@@ -402,5 +402,5 @@ test_verify_one_file! {
         pub open spec fn f(b: bool) -> U {
             U { y: b }
         }
-    } => Err(err) => assert_vir_error_msg(err, "cannot use constructor of private datatype or datatype whose fields are private")
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: constructor for an opaque datatype")
 }

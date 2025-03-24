@@ -22,8 +22,8 @@ use air::ast::{
     Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_var, int_typ, mk_and, mk_bind_expr, mk_eq,
-    mk_implies, mk_unnamed_axiom, str_apply, str_ident, str_typ, str_var, string_apply,
+    bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
+    mk_unnamed_axiom, str_apply, str_ident, str_typ, str_var, string_apply,
 };
 use air::messages::ArcDynMessageLabel;
 use std::sync::Arc;
@@ -553,6 +553,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     // Inv mask
     if function.x.has.has_mask_spec {
         for (i, e) in func_decl_sst.inv_masks.iter().enumerate() {
+            assert!(e.len() == 1);
             let _ = req_ens_to_air(
                 ctx,
                 &mut decl_commands,
@@ -564,7 +565,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
                 &prefix_open_inv(&fun_to_air_ident(&function.x.name), i),
                 &None,
                 function.x.attrs.integer_ring,
-                int_typ(),
+                typ_to_air(ctx, &e[0].typ),
                 None,
                 None,
             );

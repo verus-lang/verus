@@ -124,6 +124,9 @@ test_verify_one_file! {
             requires old(v).len() > 0,
         {
             let a = v[0];
+            v[0] = a;
+            let mut v2: Vec<u8> = vec![0];
+            v2[0] = a;
             assert(a == v.view().index(0));
         }
     } => Ok(())
@@ -507,8 +510,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: instance")
 }
 
-test_verify_one_file! {
-    #[test] derive_copy verus_code! {
+test_verify_one_file_with_options! {
+    #[test] derive_copy ["--no-external-by-default"] => verus_code! {
         // When an auto-derived impl is produced, it doesn't get the verus_macro attribute.
         // However, this test case does not use --external-by-default, so verus will
         // process the derived impls anyway.
@@ -525,8 +528,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file_with_options! {
-    #[test] derive_copy_external_by_default ["--external-by-default"] => verus_code! {
+test_verify_one_file! {
+    #[test] derive_copy_external_by_default verus_code! {
         // When an auto-derived impl is produced, it doesn't get the verus_macro attribute.
         // Since this test case uses --external-by-default, these derived impls do not
         // get processed.

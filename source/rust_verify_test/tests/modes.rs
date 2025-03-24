@@ -42,8 +42,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] struct_fails1 code! {
+test_verify_one_file_with_options! {
+    #[test] struct_fails1 ["--no-external-by-default"] => code! {
         struct S {
             #[verifier::spec] i: bool,
             j: bool,
@@ -67,8 +67,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot perform operation with mode spec")
 }
 
-test_verify_one_file! {
-    #[test] struct_fails1b code! {
+test_verify_one_file_with_options! {
+    #[test] struct_fails1b ["--no-external-by-default"] => code! {
         struct S {
             #[verifier::spec] i: bool,
             j: bool,
@@ -79,8 +79,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
-test_verify_one_file! {
-    #[test] struct_fails2 code! {
+test_verify_one_file_with_options! {
+    #[test] struct_fails2 ["--no-external-by-default"] => code! {
         struct S {
             #[verifier::spec] i: bool,
             j: bool,
@@ -92,8 +92,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
-test_verify_one_file! {
-    #[test] struct_fails3 code! {
+test_verify_one_file_with_options! {
+    #[test] struct_fails3 ["--no-external-by-default"] => code! {
         struct S {
             #[verifier::spec] i: bool,
             j: bool,
@@ -192,8 +192,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot call function `crate::S::get_j` with mode spec")
 }
 
-test_verify_one_file! {
-    #[test] tuple1 code! {
+test_verify_one_file_with_options! {
+    #[test] tuple1 ["--no-external-by-default"] => code! {
         fn test1(i: bool, j: bool) {
             let s = (i, j);
         }
@@ -205,16 +205,16 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] tuple_fails1 code! {
+test_verify_one_file_with_options! {
+    #[test] tuple_fails1 ["--no-external-by-default"] => code! {
         fn test(i: bool, #[verifier::spec] j: bool) {
             let s = (i, j);
         }
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
-test_verify_one_file! {
-    #[test] tuple_fails2 code! {
+test_verify_one_file_with_options! {
+    #[test] tuple_fails2 ["--no-external-by-default"] => code! {
         fn test(i: bool, j: bool) {
             #[verifier::spec] let s = (i, j);
             let ii = s.0;
@@ -222,8 +222,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
-test_verify_one_file! {
-    #[test] tuple_fails3 code! {
+test_verify_one_file_with_options! {
+    #[test] tuple_fails3 ["--no-external-by-default"] => code! {
         fn test(i: bool, #[verifier::spec] j: bool) {
             #[verifier::spec] let s = (i, j);
             let jj = s.0;
@@ -256,16 +256,16 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
-test_verify_one_file! {
-    #[test] eq_mode code! {
+test_verify_one_file_with_options! {
+    #[test] eq_mode ["--no-external-by-default"] => code! {
         fn eq_mode(#[verifier::spec] i: u128) {
             #[verifier::spec] let b: bool = i == 13;
         }
     } => Ok(_)
 }
 
-test_verify_one_file! {
-    #[test] if_spec_cond code! {
+test_verify_one_file_with_options! {
+    #[test] if_spec_cond ["--no-external-by-default"] => code! {
         fn if_spec_cond(#[verifier::spec] i: u128) -> u64 {
             let mut a: u64 = 2;
             if i == 3 {
@@ -276,8 +276,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot assign to exec variable from proof mode")
 }
 
-test_verify_one_file! {
-    #[test] if_spec_cond_proof code! {
+test_verify_one_file_with_options! {
+    #[test] if_spec_cond_proof ["--no-external-by-default"] => code! {
         #[verifier::proof]
         fn if_spec_cond_proof(i: u128) -> u64 {
             let mut a: u64 = 2;
@@ -289,8 +289,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] regression_int_if code! {
+test_verify_one_file_with_options! {
+    #[test] regression_int_if ["--no-external-by-default"] => code! {
         use vstd::pervasive::*;
         fn int_if() {
             #[verifier::spec] let a: u128 = 3;
@@ -312,8 +312,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] ret_mode code! {
+test_verify_one_file_with_options! {
+    #[test] ret_mode ["--no-external-by-default"] => code! {
         #[verifier::returns(spec)] /* vattr */
         fn ret_spec() -> u128 {
             ensures(|i: u128| i == 3);
@@ -328,8 +328,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] ret_mode_fail2 code! {
+test_verify_one_file_with_options! {
+    #[test] ret_mode_fail2 ["--no-external-by-default"] => code! {
         #[verifier::returns(spec)] /* vattr */
         fn ret_spec() -> u128 {
             ensures(|i: u128| i == 3);
@@ -344,16 +344,16 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
-test_verify_one_file! {
-    #[test] ret_mode_fail_requires code! {
+test_verify_one_file_with_options! {
+    #[test] ret_mode_fail_requires ["--no-external-by-default"] => code! {
         fn f() {
             requires({while false {}; true});
         }
     } => Err(err) => assert_vir_error_msg(err, "expected pure mathematical expression")
 }
 
-test_verify_one_file! {
-    #[test] spec_let_decl_init_fail code! {
+test_verify_one_file_with_options! {
+    #[test] spec_let_decl_init_fail ["--no-external-by-default"] => code! {
         #[verifier::spec]
         fn test1() -> u64 {
             let x: u64;
@@ -363,8 +363,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "delayed assignment to non-mut let not allowed for spec variables")
 }
 
-test_verify_one_file! {
-    #[test] let_spec_pass code! {
+test_verify_one_file_with_options! {
+    #[test] let_spec_pass ["--no-external-by-default"] => code! {
         fn test1() {
             #[verifier::spec] let x: u64 = 2;
             builtin::assert_(x == 2);
@@ -372,8 +372,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] decl_init_let_spec_fail code! {
+test_verify_one_file_with_options! {
+    #[test] decl_init_let_spec_fail ["--no-external-by-default"] => code! {
         fn test1() {
             #[verifier::spec] let x: u64;
             x = 2;
@@ -384,15 +384,14 @@ test_verify_one_file! {
 }
 
 const FIELD_UPDATE: &str = code_str! {
-    #[derive(PartialEq, Eq, Structural)]
     struct S {
         #[verifier::spec] a: u64,
         b: bool,
     }
 };
 
-test_verify_one_file! {
-    #[test] test_field_update_fail FIELD_UPDATE.to_string() + code_str! {
+test_verify_one_file_with_options! {
+    #[test] test_field_update_fail ["--no-external-by-default"] => FIELD_UPDATE.to_string() + code_str! {
         fn test() {
             let mut s = S { a: 5, b: false };
             #[verifier::spec] let b = true;
@@ -401,8 +400,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "expression has mode spec, expected mode exec")
 }
 
-test_verify_one_file! {
-    #[test] test_mut_ref_field_fail FIELD_UPDATE.to_string() + code_str! {
+test_verify_one_file_with_options! {
+    #[test] test_mut_ref_field_fail ["--no-external-by-default"] => FIELD_UPDATE.to_string() + code_str! {
         fn muts_exec(a: &mut u64) {
             requires(*old(a) < 30);
             ensures(*a == *old(a) + 1);
@@ -423,8 +422,8 @@ const PROOF_FN_COMMON: &str = code_str! {
     }
 };
 
-test_verify_one_file! {
-    #[test] test_mut_arg_fail1 code! {
+test_verify_one_file_with_options! {
+    #[test] test_mut_arg_fail1 ["--no-external-by-default"] => code! {
         #[verifier::proof]
         fn f(#[verifier::proof] x: &mut bool, #[verifier::proof] b: bool) {
             requires(b);
@@ -597,8 +596,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "use of moved value: `t`")
 }
 
-test_verify_one_file! {
-    #[test] assign_from_proof code! {
+test_verify_one_file_with_options! {
+    #[test] assign_from_proof ["--no-external-by-default"] => code! {
         fn myfun(#[verifier::spec] a: bool) -> bool {
             let mut b = false;
             if a {
