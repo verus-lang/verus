@@ -29,8 +29,8 @@ use crate::lifetime_ast::*;
 use crate::lifetime_generate::*;
 use std::collections::{HashMap, HashSet};
 use vir::ast::{
-    AssocTypeImpl, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, TypDecoration,
-    TypDecorationArg, TraitId,
+    AssocTypeImpl, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, TraitId,
+    TypDecoration, TypDecorationArg,
 };
 
 // General purpose type to represent various types, where N comes from the TypNum enum:
