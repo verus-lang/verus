@@ -248,7 +248,7 @@ test_verify_one_file! {
             t: T,
         }
 
-        #[verus_verify]
+        #[verus_verify(rlimit(2))]
         trait SomeTrait {
             #[verus_spec(ret =>
                 requires true
@@ -277,4 +277,34 @@ test_verify_one_file! {
             proof!{assert(r);}
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_external_with_unsupported_features code!{
+        #[verus_verify(external)]
+        fn f<'a>(v: &'a mut [usize]) -> &'a mut usize {
+            unimplemented!()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_prover_attributes code!{
+        #[verus_verify(spinoff_prover, rlimit(2))]
+        #[verus_spec(
+            ensures
+                true
+        )]
+        fn test()
+        {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_invalid_combination_attr code!{
+        #[verus_verify(external, spinoff_prover)]
+        fn f<'a>(v: &'a mut [usize]) -> &'a mut usize {
+            unimplemented!()
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "conflict parameters")
 }
