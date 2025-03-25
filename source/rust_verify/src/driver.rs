@@ -27,13 +27,16 @@ fn run_compiler<'a, 'b>(
     erase_ghost: bool,
     verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-) -> Result<(), ErrorGuaranteed> {
+) -> Result<(), ()> {
     crate::config::enable_default_features_and_verus_attr(
         &mut rustc_args,
         syntax_macro,
         erase_ghost,
     );
-    mk_compiler(&rustc_args, verifier, file_loader).run()
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        mk_compiler(&rustc_args, verifier, file_loader).run()
+    }));
+    result.map_err(|_| ()).and_then(|r| r.map_err(|_| ()))
 }
 
 pub fn is_verifying_entire_crate(verifier: &Verifier) -> bool {
@@ -130,7 +133,7 @@ pub(crate) fn run_with_erase_macro_compile(
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
     compile: bool,
     vstd: Vstd,
-) -> Result<(), ErrorGuaranteed> {
+) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
     rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     if vstd == Vstd::IsCore {
