@@ -1,7 +1,7 @@
 use crate::ast::{
     CallTarget, CallTargetKind, Expr, ExprX, Fun, Function, FunctionKind, FunctionX, GenericBound,
     GenericBoundX, GenericBounds, Ident, ImplPath, ImplPaths, Krate, Mode, Path, SpannedTyped,
-    Trait, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility, WellKnownItem,
+    Trait, TraitId, TraitImpl, TraitX, Typ, TypX, Typs, VirErr, Visibility, WellKnownItem,
 };
 use crate::ast_util::path_as_friendly_rust_name;
 use crate::ast_visitor::VisitorScopeMap;
@@ -101,7 +101,10 @@ pub fn demote_external_traits(
     for function in &mut kratex.functions {
         for bound in function.x.typ_bounds.iter() {
             let trait_path = match &**bound {
-                GenericBoundX::Trait(path, _) => path,
+                GenericBoundX::Trait(TraitId::Path(path), _) => path,
+                GenericBoundX::Trait(TraitId::Sized, _) => {
+                    continue;
+                }
                 GenericBoundX::TypEquality(path, _, _, _) => path,
                 GenericBoundX::ConstTyp(..) => continue,
             };
@@ -217,8 +220,8 @@ pub fn rewrite_external_bounds(
     let mut bs: Vec<GenericBound> = Vec::new();
     for bound in bounds.iter() {
         let b = match &**bound {
-            GenericBoundX::Trait(path, ts) if path == from_path => {
-                Arc::new(GenericBoundX::Trait(to_path.clone(), ts.clone()))
+            GenericBoundX::Trait(TraitId::Path(path), ts) if path == from_path => {
+                Arc::new(GenericBoundX::Trait(TraitId::Path(to_path.clone()), ts.clone()))
             }
             GenericBoundX::TypEquality(path, ts, x, t) if path == from_path => Arc::new(
                 GenericBoundX::TypEquality(to_path.clone(), ts.clone(), x.clone(), t.clone()),
@@ -538,11 +541,15 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
     let mut bound_exprs: Vec<Expr> = Vec::new();
     for bound in typ_bounds.iter() {
         let exprx = match &**bound {
-            GenericBoundX::Trait(path, typ_args) => {
-                if !ctx.trait_map.contains_key(path) {
+            GenericBoundX::Trait(trait_id, typ_args) => {
+                let skip = match trait_id {
+                    TraitId::Path(path) => !ctx.trait_map.contains_key(path),
+                    TraitId::Sized => false,
+                };
+                if skip {
                     continue;
                 }
-                let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
+                let op = crate::ast::NullaryOpr::TraitBound(trait_id.clone(), typ_args.clone());
                 ExprX::NullaryOpr(op)
             }
             GenericBoundX::TypEquality(path, typ_args, name, typ) => {
@@ -572,11 +579,15 @@ pub(crate) fn trait_bounds_to_sst(
     let mut bound_exps: Vec<crate::sst::Exp> = Vec::new();
     for bound in typ_bounds.iter() {
         let expx = match &**bound {
-            GenericBoundX::Trait(path, typ_args) => {
-                if !ctx.trait_map.contains_key(path) {
+            GenericBoundX::Trait(trait_id, typ_args) => {
+                let skip = match trait_id {
+                    TraitId::Path(path) => !ctx.trait_map.contains_key(path),
+                    TraitId::Sized => false,
+                };
+                if skip {
                     continue;
                 }
-                let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
+                let op = crate::ast::NullaryOpr::TraitBound(trait_id.clone(), typ_args.clone());
                 crate::sst::ExpX::NullaryOpr(op)
             }
             GenericBoundX::TypEquality(path, typ_args, name, typ) => {
@@ -600,17 +611,26 @@ pub(crate) fn trait_bounds_to_sst(
 
 pub(crate) fn trait_bound_to_air(
     ctx: &Ctx,
-    path: &Path,
+    trait_id: &TraitId,
     typ_args: &Typs,
 ) -> Option<air::ast::Expr> {
-    if !ctx.trait_map.contains_key(path) {
-        return None;
+    if let TraitId::Path(path) = trait_id {
+        if !ctx.trait_map.contains_key(path) {
+            return None;
+        }
     }
     let mut typ_exprs: Vec<air::ast::Expr> = Vec::new();
     for t in typ_args.iter() {
         typ_exprs.extend(typ_to_ids(t));
     }
-    Some(ident_apply(&crate::def::trait_bound(path), &typ_exprs))
+    match trait_id {
+        TraitId::Path(path) => Some(ident_apply(&crate::def::trait_bound(path), &typ_exprs)),
+        TraitId::Sized => {
+            // sized bound only takes decorate param
+            let typ_exprs = Arc::new(typ_exprs[0..1].to_vec());
+            Some(ident_apply(&crate::def::sized_bound(), &typ_exprs))
+        }
+    }
 }
 
 pub(crate) fn typ_equality_bound_to_air(
@@ -701,7 +721,9 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
         typ_params.insert(0, crate::def::trait_self_type_param());
         let typ_args: Vec<Typ> =
             typ_params.iter().map(|x| Arc::new(TypX::TypParam(x.clone()))).collect();
-        if let Some(tr_bound) = trait_bound_to_air(ctx, &tr.x.name, &Arc::new(typ_args)) {
+        if let Some(tr_bound) =
+            trait_bound_to_air(ctx, &TraitId::Path(tr.x.name.clone()), &Arc::new(typ_args))
+        {
             let all_bounds =
                 tr.x.typ_bounds.iter().chain(tr.x.assoc_typs_bounds.iter()).cloned().collect();
             let typ_bounds = trait_bounds_to_air(ctx, &Arc::new(all_bounds));
@@ -772,12 +794,13 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     //   forall A. tr_bound%T1(A) ==> tr_bound%T2(S<Seq<A>>, Set<A>)
     let (trait_typ_args, holes) = crate::traits::hide_projections(&imp.x.trait_typ_args);
     let (typ_params, eqs) = crate::sst_to_air_func::hide_projections_air(&imp.x.typ_params, holes);
-    let tr_bound =
-        if let Some(tr_bound) = trait_bound_to_air(ctx, &imp.x.trait_path, &trait_typ_args) {
-            tr_bound
-        } else {
-            return Arc::new(vec![]);
-        };
+    let tr_bound = if let Some(tr_bound) =
+        trait_bound_to_air(ctx, &TraitId::Path(imp.x.trait_path.clone()), &trait_typ_args)
+    {
+        tr_bound
+    } else {
+        return Arc::new(vec![]);
+    };
     let name =
         format!("{}_{}", path_as_friendly_rust_name(&imp.x.impl_path), crate::def::QID_TRAIT_IMPL);
     let trigs = vec![tr_bound.clone()];
