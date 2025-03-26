@@ -277,19 +277,22 @@ pub fn verus_spec(
     }
 }
 
+/// Add a verus proof block.
 #[proc_macro]
 pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     attr_rewrite::proof_rewrite(cfg_erase(), input.into()).into()
 }
 
-/// verus_extra_stmts add extra stmts into executable code that are used only
+/// proof_decl add extra stmts that are used only
 /// for verification.
 /// For example, declare a ghost/tracked variable.
+/// To avoid confusion, let stmts without ghost/tracked is not supported.
+/// Non-local stmts inside proof_decl! are treated similar to those in proof!
 #[proc_macro]
-pub fn verus_extra_stmts(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn proof_decl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let erase = cfg_erase();
     if erase.keep() {
-        syntax::rewrite_stmt(cfg_erase(), false, input.into())
+        syntax::rewrite_proof_decl(erase, input.into())
     } else {
         proc_macro::TokenStream::new()
     }
