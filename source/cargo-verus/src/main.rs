@@ -16,6 +16,7 @@ use std::str;
 
 use anyhow::{anyhow, bail, Context, Result};
 use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
+use colored::Colorize;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -165,6 +166,7 @@ struct VerusCmd {
     cargo_subcommand: CargoSubcommand,
     cargo_args: Vec<String>,
     common_verus_driver_args: Vec<String>,
+    verify: bool,
 }
 
 enum CargoSubcommand {
@@ -189,6 +191,7 @@ impl VerusCmd {
         cargo_subcommand: CargoSubcommand::Nop,
         cargo_args: vec![],
         common_verus_driver_args: vec![],
+        verify: false,
     };
 
     fn new(args: &[String]) -> Result<Self> {
@@ -231,7 +234,7 @@ impl VerusCmd {
 
         common_verus_driver_args.extend(args_iter.cloned());
 
-        Ok(Self { cargo_subcommand, cargo_args, common_verus_driver_args })
+        Ok(Self { cargo_subcommand, cargo_args, common_verus_driver_args, verify: just_verify })
     }
 
     fn metadata(&self) -> Result<Metadata> {
@@ -271,6 +274,7 @@ impl VerusCmd {
         let metadata = self.metadata()?;
         let metadata_index = MetadataIndex::new(&metadata)?;
 
+        let mut verified_something = false;
         for entry in metadata_index.entries() {
             let package = entry.package();
 
@@ -293,6 +297,10 @@ impl VerusCmd {
             }
 
             if verus_metadata.verify {
+                // Any project using Verus may pull in vstd, which has a Cargo.toml file verify=true
+                if !verus_metadata.is_vstd {
+                    verified_something = true;
+                }
                 cmd.env(format!("{VERUS_DRIVER_VERIFY}{package_id}"), "1");
 
                 let mut verus_driver_args_for_package = vec![];
@@ -325,6 +333,15 @@ impl VerusCmd {
                     );
                 }
             }
+        }
+
+        if self.verify && !verified_something {
+            eprint!("{}", "\
+WARNING: You asked for verification, but cargo did not find any crates that opted into verification. 
+         If this is unexpected, try adding this entry to your Cargo.toml file:
+            [package.metadata.verus]
+            verify = true
+".red());
         }
 
         Ok(cmd)
