@@ -631,8 +631,15 @@ impl Visitor {
             Publish::Default => vec![],
             Publish::Closed(o) => vec![mk_verus_attr(o.token.span, quote! { closed })],
             Publish::Open(o) => vec![mk_verus_attr(o.token.span, quote! { open })],
-            Publish::OpenRestricted(_) => {
-                unimplemented!("TODO: support open(...)")
+            Publish::OpenRestricted(o) => {
+                let in_token = &o.in_token;
+                let p = &o.path;
+                stmts.push(stmt_with_semi!(
+                    o.path.span() =>
+                    #[verus::internal(open_visibility_qualifier)]
+                    pub(#in_token#p) use crate as _
+                ));
+                vec![mk_verus_attr(o.open_token.span, quote! { open })]
             }
         };
 

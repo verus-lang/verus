@@ -1,6 +1,7 @@
 use crate::ast::{
     Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind,
     LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent, VirErr,
+    Visibility,
 };
 use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
@@ -26,6 +27,7 @@ pub struct Header {
     pub invariant_mask: Option<MaskSpec>,
     pub unwind_spec: Option<UnwindSpec>,
     pub extra_dependencies: Vec<Fun>,
+    pub open_visibility_qualifier: Option<Visibility>,
 }
 
 pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
@@ -43,6 +45,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut decrease_by: Option<Fun> = None;
     let mut invariant_mask: Option<MaskSpec> = None;
     let mut unwind_spec: Option<UnwindSpec> = None;
+    let mut open_visibility_qualifier: Option<Visibility> = None;
     let mut n = 0;
     let mut unwrap_parameter_allowed = true;
     for stmt in block.iter() {
@@ -199,6 +202,18 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             _ => unreachable!(),
                         };
                     }
+                    HeaderExprX::OpenVisibilityQualifier(v) => {
+                        match open_visibility_qualifier {
+                            None => {}
+                            _ => {
+                                return Err(error(
+                                    &stmt.span,
+                                    "only one open_visibility_qualifier declaration allowed",
+                                ));
+                            }
+                        }
+                        open_visibility_qualifier = Some(v.clone());
+                    }
                 },
                 _ => break,
             },
@@ -236,6 +251,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         invariant_mask,
         unwind_spec,
         extra_dependencies,
+        open_visibility_qualifier,
     })
 }
 

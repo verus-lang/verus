@@ -1116,6 +1116,7 @@ impl HeaderExprX {
             | HeaderExprX::InvariantOpensSet(_)
             | HeaderExprX::Hide(_)
             | HeaderExprX::ExtraDependency(_)
+            | HeaderExprX::OpenVisibilityQualifier(_)
             | HeaderExprX::NoUnwind
             | HeaderExprX::NoUnwindWhen(_) => "beginning of the function body",
 
