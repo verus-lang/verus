@@ -1711,7 +1711,13 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
                 vec![Box::new((stmt.span, StmX::Let(pat, typ, init_exp, els_expr)))]
             }
         }
-        StmtKind::Item(..) => panic!("unexpected statement"),
+        StmtKind::Item(item_id) => {
+            let item = ctxt.tcx.hir().item(*item_id);
+            if matches!(&item.kind, ItemKind::Use(..) | ItemKind::Macro(..)) {
+                return vec![];
+            }
+            panic!("unexpected statement");
+        }
     }
 }
 
