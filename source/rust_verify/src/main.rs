@@ -463,11 +463,13 @@ pub fn main() {
 
     if verifier.args.output_json {
         let mut res = serde_json::json!({
+            "encountered-error": status.is_err(),
             "encountered-vir-error": verifier.encountered_vir_error,
         });
         if rust_verify::driver::is_verifying_entire_crate(&verifier) {
-            res["success"] =
-                serde_json::json!(!verifier.encountered_vir_error && verifier.count_errors == 0);
+            res["success"] = serde_json::json!(
+                !status.is_err() && !verifier.encountered_vir_error && verifier.count_errors == 0
+            );
         }
         if !verifier.encountered_vir_error {
             res.as_object_mut().unwrap().append(
