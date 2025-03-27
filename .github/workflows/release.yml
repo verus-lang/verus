@@ -20,17 +20,17 @@ jobs:
         run: |
           release_info=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             https://api.github.com/repos/verus-lang/verus/releases/163437062)
-          echo "::set-output name=release_tag::$(echo $release_info | jq -r '.tag_name')"
-          echo "::set-output name=release_name::$(echo $release_info | jq -r '.name')"
-          echo "::set-output name=release_assets::$(echo $release_info | jq -r '.assets')"
+          echo "release_tag=$(echo $release_info | jq -r '.tag_name')" >> $GITHUB_ENV
+          echo "release_name=$(echo $release_info | jq -r '.name')" >> $GITHUB_ENV
+          echo "release_assets=$(echo $release_info | jq -r '.assets')" >> $GITHUB_ENV
 
       - name: Create a New Release
         id: create_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          release_tag: ${{ env.release_tag }}
+          release_name: ${{ env.release_name }}
         run: |
-          release_tag="${{ steps.get_release_info.outputs.release_tag }}"
-          release_name="${{ steps.get_release_info.outputs.release_name }}"
           new_release_tag=$(echo $release_tag | sed 's/\/rolling//')
           
           response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
@@ -38,14 +38,14 @@ jobs:
             -d "{\"tag_name\": \"$new_release_tag\", \"name\": \"$release_name\", \"body\": \"$release_tag\"}" \
             https://api.github.com/repos/verus-lang/verus/releases)
           new_release_id=$(echo $response | jq -r '.id')
-          echo "::set-output name=new_release_id::$new_release_id"
+          echo "new_release_id=$new_release_id" >> $GITHUB_ENV
 
       - name: Copy Assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          release_assets: ${{ env.release_assets }}
+          new_release_id: ${{ env.new_release_id }}
         run: |
-          release_assets="${{ steps.get_release_info.outputs.release_assets }}"
-          new_release_id="${{ steps.create_release.outputs.new_release_id }}"
           assets=$(echo $release_assets | jq -c '.[]')
           
           for asset in $assets; do
