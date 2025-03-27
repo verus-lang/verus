@@ -6,19 +6,13 @@ use common::*;
 test_verify_one_file! {
     #[test] test_integer_using_trait_add verus_code! {
         use vstd::prelude::*;
+        use core::ops::Add;
 
-        proof fn test_consistent_add(a: usize, b: usize, ret: usize)
+        fn generic_add<T: Add<Output = T>>(a: T, b: T) -> (ret: T)
         requires
-            vstd::std_specs::ops::spec_add_requires(a, b),
+            call_requires(<T as Add>::add, (a, b))
         ensures
-            vstd::std_specs::ops::spec_add_ensures(a, b, ret) <==> (ret == a + b)
-        {}
-
-        fn generic_add<T: core::ops::Add<Output = T>>(a: T, b: T) -> (ret: T)
-        requires
-            vstd::std_specs::ops::spec_add_requires(a, b),
-        ensures
-            vstd::std_specs::ops::spec_add_ensures(a, b, ret),
+            call_ensures(<T as Add>::add, (a, b), ret)
         {
             a + b
         }
@@ -28,7 +22,9 @@ test_verify_one_file! {
         {
             let c1 = a + b;
             let c2 = generic_add(a, b);
+            let c3 = a.add(b);
             assert(c1 == c2);
+            assert(c1 == c3);
         }
     } => Ok(())
 }
@@ -167,10 +163,10 @@ test_verify_one_file! {
         fn check_sub<Out, T: core::ops::Sub<Output = Out> + core::cmp::PartialOrd>(x: T, y: T) -> (ret: Option<Out>)
             requires
                 obeys_comparison_model::<T, T>(),
-                vstd::std_specs::cmp::spec_gt(&x, &y) ==> spec_sub_requires(x, y)
+                vstd::std_specs::cmp::spec_gt(&x, &y) ==> call_requires(T::sub, (x, y))
             ensures
                 ret.is_some() == vstd::std_specs::cmp::spec_gt(&x, &y),
-                ret.is_some() ==> spec_sub_ensures(x, y, ret.unwrap()),
+                ret.is_some() ==> call_ensures(T::sub, (x, y), ret.unwrap()),
         {
             if x > y {
                 assert(obeys_comparison_model::<T, T>() ==> spec_gt(&x, &y));
@@ -193,21 +189,19 @@ test_verify_one_file! {
         }
 
         #[derive(PartialEq)]
-        struct A(usize);
+        pub struct A(pub usize);
 
-        impl SpecSubOp<A> for A {
-            type Output = usize;
-            closed spec fn spec_sub_requires(lhs: A, rhs: A) -> bool {
-                lhs.0 >= 20 && rhs.0 < 10
-            }
-
-            closed spec fn spec_sub_ensures(lhs: A, rhs: A, ret: usize) -> bool {
-                ret == lhs.0 - rhs.0 - 10
+        impl SpecSubRequires<A> for A {
+            closed spec fn spec_sub_requires(self, rhs: A) -> bool {
+                self.0 >= 20 && rhs.0 < 10
             }
         }
         impl core::ops::Sub<A> for A {
             type Output = usize;
-            fn sub(self, rhs: A) -> usize {
+            fn sub(self, rhs: A) -> (ret: usize)
+            ensures
+                ret == self.0 - rhs.0 - 10
+            {
                 assert(self.0 >= 20 && rhs.0 <= 10);
                 self.0 - rhs.0 - 10
             }
@@ -259,12 +253,8 @@ test_verify_one_file! {
         use vstd::prelude::*;
         use vstd::std_specs::ops::*;
         struct A;
-        impl SpecSubOp<A> for A {
-            type Output = A;
-            closed spec fn spec_sub_requires(lhs: A, other: A) -> bool {
-                true
-            }
-            closed spec fn spec_sub_ensures(lhs: A, other: A, ret: A) -> bool {
+        impl SpecSubRequires<A> for A {
+            closed spec fn spec_sub_requires(self, other: A) -> bool {
                 true
             }
         }
@@ -272,9 +262,6 @@ test_verify_one_file! {
             type Output = A;
             fn sub(self, other: A) -> (ret: A)
             {
-                proof{
-                    broadcast use axiom_sub;
-                }
                 self
             }
         }
@@ -291,8 +278,6 @@ test_verify_one_file! {
         use vstd::std_specs::ops::*;
         use vstd::std_specs::cmp::*;
         fn check_add<Out, T: core::ops::Sub<Output = Out> + core::cmp::PartialOrd>(x: T, y: T) -> (ret: Option<Out>)
-            ensures obeys_comparison_model::<T, T>() ==>
-                vstd::std_specs::cmp::spec_ge(&x, &y) ==> ret.is_some() && spec_sub_ensures(x, y, ret.unwrap()),
         {
             if x >= y {
                 Some(x - y) // FAILS
