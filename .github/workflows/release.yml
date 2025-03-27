@@ -20,6 +20,7 @@ jobs:
         run: |
           release_info=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             https://api.github.com/repos/verus-lang/verus/releases/163437062)
+          echo $release_info
           echo "release_tag=$(echo $release_info | jq -r '.tag_name')" >> $GITHUB_ENV
           echo "release_name=$(echo $release_info | jq -r '.name')" >> $GITHUB_ENV
           echo "release_assets=$(echo $release_info | jq -r '.assets')" >> $GITHUB_ENV
