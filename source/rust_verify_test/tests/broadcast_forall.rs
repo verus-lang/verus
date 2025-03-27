@@ -627,3 +627,26 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "lemma_foo is not a broadcast proof fn")
 }
+
+test_verify_one_file! {
+    #[test] #[ignore] broadcast_group_in_trait verus_code! {
+        trait ATrait {
+            spec fn foo(i: int) -> bool;
+
+            broadcast proof fn lemma_foo(i: int)
+                ensures Self::foo(i)
+            {}
+
+            broadcast group group_foo {
+                // TODO see if we can auto-replace `Self` with the trait name
+                ATrait::lemma_foo,
+            }
+        }
+
+        proof fn lemma_bar<A: ATrait>() {
+            // broadcast use A::group_foo;
+
+            // assert(A::foo(0));
+        }
+    } => Ok(())
+}

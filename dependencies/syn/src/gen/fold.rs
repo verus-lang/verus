@@ -4384,6 +4384,9 @@ where
         crate::TraitItem::Macro(_binding_0) => {
             crate::TraitItem::Macro(f.fold_trait_item_macro(_binding_0))
         }
+        crate::TraitItem::BroadcastGroup(_binding_0) => {
+            crate::TraitItem::BroadcastGroup(f.fold_item_broadcast_group(_binding_0))
+        }
         crate::TraitItem::Verbatim(_binding_0) => crate::TraitItem::Verbatim(_binding_0),
     }
 }

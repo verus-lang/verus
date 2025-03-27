@@ -6296,6 +6296,11 @@
             "syn": "TraitItemMacro"
           }
         ],
+        "BroadcastGroup": [
+          {
+            "syn": "ItemBroadcastGroup"
+          }
+        ],
         "Verbatim": [
           {
             "proc_macro2": "TokenStream"

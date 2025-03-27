@@ -5846,6 +5846,13 @@ impl Debug for Lite<syn::TraitItem> {
                 }
                 formatter.finish()
             }
+            syn::TraitItem::BroadcastGroup(_val) => {
+                formatter.write_str("TraitItem::BroadcastGroup")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
             syn::TraitItem::Verbatim(_val) => {
                 formatter.write_str("TraitItem::Verbatim")?;
                 formatter.write_str("(`")?;

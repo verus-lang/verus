@@ -648,6 +648,9 @@ ast_enum_of_structs! {
         /// A macro invocation within the definition of a trait.
         Macro(TraitItemMacro),
 
+        /// A broadcast group
+        BroadcastGroup(ItemBroadcastGroup),
+
         /// Tokens within the definition of a trait not interpreted by Syn.
         Verbatim(TokenStream),
 
@@ -2531,7 +2534,9 @@ pub(crate) mod parsing {
 
             let lookahead = ahead.lookahead1();
             let allow_safe = false;
-            let mut item = if lookahead.peek(Token![fn]) || peek_signature(&ahead, allow_safe) {
+            let mut item = if lookahead.peek(Token![broadcast]) && input.peek2(Token![group]) {
+                input.parse().map(TraitItem::BroadcastGroup)
+            } else if lookahead.peek(Token![fn]) || peek_signature(&ahead, allow_safe) {
                 input.parse().map(TraitItem::Fn)
             } else if lookahead.peek(Token![const]) {
                 let publish = input.parse()?;
@@ -2602,6 +2607,7 @@ pub(crate) mod parsing {
                 TraitItem::Fn(item) => &mut item.attrs,
                 TraitItem::Type(item) => &mut item.attrs,
                 TraitItem::Macro(item) => &mut item.attrs,
+                TraitItem::BroadcastGroup(item) => &mut item.attrs,
                 TraitItem::Verbatim(_) => unreachable!(),
             };
             attrs.append(item_attrs);

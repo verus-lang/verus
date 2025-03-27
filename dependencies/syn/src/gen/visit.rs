@@ -4465,6 +4465,9 @@ where
         crate::TraitItem::Macro(_binding_0) => {
             v.visit_trait_item_macro(_binding_0);
         }
+        crate::TraitItem::BroadcastGroup(_binding_0) => {
+            v.visit_item_broadcast_group(_binding_0);
+        }
         crate::TraitItem::Verbatim(_binding_0) => {
             skip!(_binding_0);
         }

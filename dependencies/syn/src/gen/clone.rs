@@ -2512,6 +2512,9 @@ impl Clone for crate::TraitItem {
             crate::TraitItem::Fn(v0) => crate::TraitItem::Fn(v0.clone()),
             crate::TraitItem::Type(v0) => crate::TraitItem::Type(v0.clone()),
             crate::TraitItem::Macro(v0) => crate::TraitItem::Macro(v0.clone()),
+            crate::TraitItem::BroadcastGroup(v0) => {
+                crate::TraitItem::BroadcastGroup(v0.clone())
+            }
             crate::TraitItem::Verbatim(v0) => crate::TraitItem::Verbatim(v0.clone()),
         }
     }
