@@ -364,7 +364,7 @@ jobs:
           asset_content_type: application/zip
 
       - name: publish release
-        uses: utaal/action-update-release@v0.2
+        uses: verus-lang/action-update-release@v0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
