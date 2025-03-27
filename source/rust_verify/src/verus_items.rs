@@ -599,6 +599,8 @@ pub(crate) enum RustItem {
     Drop,
     Sized,
     Copy,
+    Send,
+    Sync,
     Clone,
     StructuralPartialEq,
     Eq,
@@ -708,6 +710,12 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
 
     if rust_path == Some("core::marker::Sized") {
         return Some(RustItem::Sized);
+    }
+    if rust_path == Some("core::marker::Send") {
+        return Some(RustItem::Send);
+    }
+    if rust_path == Some("core::marker::Sync") {
+        return Some(RustItem::Sync);
     }
     if rust_path == Some("core::marker::Copy") {
         return Some(RustItem::Copy);

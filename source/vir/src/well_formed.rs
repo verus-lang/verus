@@ -22,6 +22,7 @@ struct Ctxt {
     pub(crate) dts: HashMap<Path, Datatype>,
     pub(crate) krate: Krate,
     unpruned_krate: Krate,
+    no_cheating: bool,
 }
 
 #[warn(unused_must_use)]
@@ -466,6 +467,11 @@ fn check_one_expr(
                 VisitorControlFlow::Return => unreachable!(),
                 VisitorControlFlow::Stop(e) => Err(e),
             }?;
+        }
+        ExprX::AssertAssume { is_assume, .. } => {
+            if ctxt.no_cheating && *is_assume {
+                return Err(error(&expr.span, "assume/admit not allowed with --no-cheating"));
+            }
         }
         ExprX::AssertBy { ensure, vars, .. } => match &ensure.x {
             ExprX::Binary(crate::ast::BinaryOp::Implies, _, _) => {
@@ -1118,6 +1124,13 @@ fn check_function(
         }
     }
 
+    if ctxt.no_cheating && (function.x.attrs.is_external_body || function.x.proxy.is_some()) {
+        return Err(error(
+            &function.span,
+            "external_body/assume_specification not allowed with --no-cheating",
+        ));
+    }
+
     Ok(())
 }
 
@@ -1303,6 +1316,7 @@ pub fn check_crate(
     unpruned_krate: Krate,
     diags: &mut Vec<VirErrAs>,
     no_verify: bool,
+    no_cheating: bool,
 ) -> Result<(), VirErr> {
     let mut funs: HashMap<Fun, Function> = HashMap::new();
     for function in krate.functions.iter() {
@@ -1519,7 +1533,7 @@ pub fn check_crate(
         }
     }
 
-    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone(), unpruned_krate };
+    let ctxt = Ctxt { funs, reveal_groups, dts, krate: krate.clone(), unpruned_krate, no_cheating };
     // TODO remove once `uninterp` is enforced for uninterpreted functions
     for function in krate.functions.iter() {
         check_function(&ctxt, function, diags, no_verify)?;

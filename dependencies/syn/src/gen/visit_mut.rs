@@ -262,6 +262,9 @@ pub trait VisitMut {
     fn visit_expr_has_mut(&mut self, i: &mut crate::ExprHas) {
         visit_expr_has_mut(self, i);
     }
+    fn visit_expr_has_not_mut(&mut self, i: &mut crate::ExprHasNot) {
+        visit_expr_has_not_mut(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_expr_if_mut(&mut self, i: &mut crate::ExprIf) {
@@ -279,6 +282,9 @@ pub trait VisitMut {
     }
     fn visit_expr_is_mut(&mut self, i: &mut crate::ExprIs) {
         visit_expr_is_mut(self, i);
+    }
+    fn visit_expr_is_not_mut(&mut self, i: &mut crate::ExprIsNot) {
+        visit_expr_is_not_mut(self, i);
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -1834,8 +1840,14 @@ where
         crate::Expr::Is(_binding_0) => {
             v.visit_expr_is_mut(_binding_0);
         }
+        crate::Expr::IsNot(_binding_0) => {
+            v.visit_expr_is_not_mut(_binding_0);
+        }
         crate::Expr::Has(_binding_0) => {
             v.visit_expr_has_mut(_binding_0);
+        }
+        crate::Expr::HasNot(_binding_0) => {
+            v.visit_expr_has_not_mut(_binding_0);
         }
         crate::Expr::Matches(_binding_0) => {
             v.visit_expr_matches_mut(_binding_0);
@@ -2071,6 +2083,15 @@ where
     skip!(node.has_token);
     v.visit_expr_mut(&mut *node.rhs);
 }
+pub fn visit_expr_has_not_mut<V>(v: &mut V, node: &mut crate::ExprHasNot)
+where
+    V: VisitMut + ?Sized,
+{
+    v.visit_attributes_mut(&mut node.attrs);
+    v.visit_expr_mut(&mut *node.lhs);
+    skip!(node.has_not_token);
+    v.visit_expr_mut(&mut *node.rhs);
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
 pub fn visit_expr_if_mut<V>(v: &mut V, node: &mut crate::ExprIf)
@@ -2113,6 +2134,15 @@ where
     v.visit_attributes_mut(&mut node.attrs);
     v.visit_expr_mut(&mut *node.base);
     skip!(node.is_token);
+    v.visit_ident_mut(&mut *node.variant_ident);
+}
+pub fn visit_expr_is_not_mut<V>(v: &mut V, node: &mut crate::ExprIsNot)
+where
+    V: VisitMut + ?Sized,
+{
+    v.visit_attributes_mut(&mut node.attrs);
+    v.visit_expr_mut(&mut *node.base);
+    skip!(node.is_not_token);
     v.visit_ident_mut(&mut *node.variant_ident);
 }
 #[cfg(feature = "full")]

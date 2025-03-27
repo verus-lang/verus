@@ -209,6 +209,114 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] open_qualified_refers_to_private verus_code! {
+        mod m {
+            pub mod n {
+                use builtin::*;
+
+                spec fn stuff() -> bool { true }
+
+                pub open(in crate::m) spec fn foo() -> bool {
+                    stuff()
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "in pub open spec function, cannot refer to private function")
+}
+
+test_verify_one_file! {
+    #[test] open_crate verus_code! {
+        mod m {
+            pub mod n {
+                use builtin::*;
+
+                pub open(crate) spec fn foo() -> bool {
+                    true
+                }
+
+                proof fn test() {
+                    assert(foo() == true);
+                }
+            }
+
+            proof fn test2() {
+                assert(n::foo() == true);
+            }
+        }
+
+        proof fn test3() {
+            assert(m::n::foo() == true);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] open_super verus_code! {
+        mod m {
+            pub mod n {
+                use builtin::*;
+
+                pub open(super) spec fn foo() -> bool {
+                    true
+                }
+
+                proof fn test() {
+                    assert(foo() == true);
+                }
+            }
+
+            proof fn test2() {
+                assert(n::foo() == true);
+            }
+        }
+
+        proof fn test3() {
+            assert(m::n::foo() == true); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] open_path verus_code! {
+        mod m {
+            pub mod n {
+                use builtin::*;
+
+                pub open(in crate::m) spec fn foo() -> bool {
+                    true
+                }
+
+                proof fn test() {
+                    assert(foo() == true);
+                }
+            }
+
+            proof fn test2() {
+                assert(n::foo() == true);
+            }
+        }
+
+        proof fn test3() {
+            assert(m::n::foo() == true); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] open_more_public_than_function verus_code! {
+        mod m {
+            pub mod n {
+                use builtin::*;
+
+                pub(in crate::m) open(crate) spec fn foo() -> bool {
+                    true
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "the function body is declared 'open' to a wider scope than the function itself")
+}
+
+test_verify_one_file! {
     #[test] uninterp_exec_fail verus_code! {
         pub uninterp fn bar() {
         }

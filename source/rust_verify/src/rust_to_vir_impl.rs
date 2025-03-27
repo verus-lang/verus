@@ -6,9 +6,9 @@ use crate::rust_to_vir_base::{
     mk_visibility, remove_host_arg, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
-use crate::util::err_span;
+use crate::unsupported_err;
+use crate::util::{err_span, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
-use crate::{err_unless, unsupported_err};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::{AssocItemKind, ImplItemKind, Item, QPath, Safety, TraitRef};
 use rustc_middle::ty::GenericArgKind;
@@ -243,6 +243,15 @@ pub(crate) fn translate_impl<'tcx>(
 
         let verus_item = ctxt.verus_items.id_to_name.get(&trait_def_id);
 
+        if impll.safety != Safety::Safe {
+            if matches!(rust_item, Some(RustItem::Send)) {
+                return err_span(item.span, "unsafe impl for `Send` is not allowed");
+            }
+            if matches!(rust_item, Some(RustItem::Sync)) {
+                return err_span(item.span, "unsafe impl for `Sync` is not allowed");
+            }
+        }
+
         let ignore = if let Some(VerusItem::Marker(MarkerItem::Structural)) = verus_item {
             let ty = {
                 // TODO extract to rust_to_vir_base, or use
@@ -270,12 +279,13 @@ pub(crate) fn translate_impl<'tcx>(
                 panic!("Structural impl for non-adt type");
             };
             let ty_applied_never = ctxt.tcx.mk_ty_from_kind(ty_kind_applied_never);
-            err_unless!(
-                ty_applied_never.is_structural_eq_shallow(ctxt.tcx),
-                item.span,
-                format!("structural impl for non-structural type {:?}", ty),
-                ty
-            );
+            if !ty_applied_never.is_structural_eq_shallow(ctxt.tcx) {
+                return Err(vir_err_span_str(
+                    item.span,
+                    &format!("structural impl for non-structural type {:?}", ty),
+                )
+                .help("make sure `PartialEq` is also auto-derived for this type"));
+            }
             true
         } else {
             false
@@ -309,8 +319,6 @@ pub(crate) fn translate_impl<'tcx>(
 
             if sealed {
                 return err_span(item.span, "cannot implement `sealed` trait");
-            } else if impll.safety != Safety::Safe {
-                return err_span(item.span, "the verifier does not support `unsafe` here");
             }
         }
     }

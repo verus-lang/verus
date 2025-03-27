@@ -1099,6 +1099,118 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] isnot_syntax_pass IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnot(t: ThisOrThat) {
+            match t {
+                ThisOrThat::This(..) => assert(t !is That),
+                ThisOrThat::That {..} => assert(t !is This),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] isnot_syntax_valid_fail IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnot(t: ThisOrThat) {
+            match t {
+                ThisOrThat::This(..) => assert(t !is This), // FAILS
+                ThisOrThat::That {..} => assert(t !is This),
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] isnot_syntax_invalid IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnot(t: ThisOrThat) {
+            assert(t !is Unknown);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "no variant `Unknown` for this datatype")
+}
+
+test_verify_one_file! {
+    #[test] isnot_syntax_precedence IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnot(t: ThisOrThat)
+            requires t !is This,
+        {
+            assert(t !is This != t !is That);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] isnot_syntax_implies IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnot(t: ThisOrThat)
+            requires t !is This,
+        {
+            assert(t !is This ==> true);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] isnot_syntax_is_has_soft_keyword IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn let_with_is_has_ident() {
+            // `is` and `has` should be soft keywords, so we can still use them as identifiers
+            let is = false;
+            assert(!is);
+            let has = false;
+            assert(!has);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] isnot_syntax_no_space IS_GET_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn uses_isnot(t: ThisOrThat)
+            requires t !is This,
+        {
+            assert(t ! is This);
+        }
+    } => Err(_)
+}
+
+const HAS_SYNTAX_COMMON: &'static str = verus_code_str! {
+    pub struct Foo {
+        pub n: nat,
+    }
+
+    impl Foo {
+        pub open spec fn spec_has(self, k: nat) -> bool {
+            k <= self.n
+        }
+    }
+};
+
+test_verify_one_file! {
+    #[test] has_syntax_works HAS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn has_syntax() {
+            let foo = Foo { n: 42 };
+            assert(foo has 7);
+            assert(foo !has 45);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] hasnot_syntax_no_space HAS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn has_syntax() {
+            let foo = Foo { n: 42 };
+            assert(foo ! has 45);
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] hasnot_syntax_precedence HAS_SYNTAX_COMMON.to_string() + verus_code_str! {
+        proof fn has_syntax() {
+            let foo = Foo { n: 42 };
+            assert(foo !has 45 <==> foo !has 43);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] struct_syntax_with_numeric_field_names verus_code! {
         #[is_variant]
         enum Foo {

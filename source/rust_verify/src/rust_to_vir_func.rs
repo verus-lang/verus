@@ -195,7 +195,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
     external_fn_specification_via_external_trait: Option<DefId>,
     external_info: &mut ExternalInfo,
-) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool), VirErr> {
+) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool, Safety), VirErr> {
     // This function is the proxy, and we need to look up the actual path.
 
     if mode != Mode::Exec {
@@ -362,7 +362,9 @@ pub(crate) fn handle_external_fn<'tcx>(
         external_info.external_fn_specification_trait_method_impls.push((external_id, sig.span));
     }
 
-    Ok((external_path, external_item_visibility, kind, has_self_parameter))
+    let safety = ctxt.tcx.fn_sig(external_id).skip_binder().safety();
+
+    Ok((external_path, external_item_visibility, kind, has_self_parameter, safety))
 }
 
 fn get_substs_early<'tcx>(
@@ -527,6 +529,7 @@ fn make_attributes<'tcx>(
     autospec: Option<Fun>,
     print_zero_args: bool,
     print_as_method: bool,
+    safety: Safety,
     span: Span,
 ) -> Result<vir::ast::FunctionAttrs, VirErr> {
     if vattrs.nonlinear && vattrs.spinoff_prover {
@@ -559,6 +562,11 @@ fn make_attributes<'tcx>(
         prophecy_dependent: vattrs.prophecy_dependent,
         size_of_broadcast_proof: vattrs.size_of_broadcast_proof,
         is_type_invariant_fn: vattrs.type_invariant_fn,
+        is_external_body: vattrs.external_body,
+        is_unsafe: match safety {
+            Safety::Safe => false,
+            Safety::Unsafe => true,
+        },
     };
     Ok(Arc::new(fattrs))
 }
@@ -598,7 +606,8 @@ pub(crate) fn check_item_fn<'tcx>(
         None
     };
 
-    let (path, proxy, visibility, kind, has_self_param) = if vattrs.external_fn_specification
+    let (path, proxy, visibility, kind, has_self_param, safety) = if vattrs
+        .external_fn_specification
         || external_fn_specification_via_external_trait.is_some()
     {
         if is_verus_spec {
@@ -608,28 +617,29 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
 
-        let (external_path, external_item_visibility, kind, has_self_param) = handle_external_fn(
-            ctxt,
-            id,
-            kind,
-            visibility,
-            sig,
-            self_generics,
-            &body_id,
-            mode,
-            &vattrs,
-            &external_trait_from_to,
-            external_fn_specification_via_external_trait,
-            external_info,
-        )?;
+        let (external_path, external_item_visibility, kind, has_self_param, safety) =
+            handle_external_fn(
+                ctxt,
+                id,
+                kind,
+                visibility,
+                sig,
+                self_generics,
+                &body_id,
+                mode,
+                &vattrs,
+                &external_trait_from_to,
+                external_fn_specification_via_external_trait,
+                external_info,
+            )?;
 
         let proxy = (*ctxt.spanned_new(sig.span, this_path.clone())).clone();
 
-        (external_path, Some(proxy), external_item_visibility, kind, has_self_param)
+        (external_path, Some(proxy), external_item_visibility, kind, has_self_param, safety)
     } else {
         // No proxy.
         let has_self_param = has_self_parameter(ctxt, id);
-        (this_path.clone(), None, visibility, kind, has_self_param)
+        (this_path.clone(), None, visibility, kind, has_self_param, sig.header.safety)
     };
 
     let name = Arc::new(FunX { path: path.clone() });
@@ -1022,6 +1032,7 @@ pub(crate) fn check_item_fn<'tcx>(
         autospec,
         n_params == 0,
         has_self_param,
+        safety,
         sig.span,
     )?;
 
@@ -1063,6 +1074,7 @@ pub(crate) fn check_item_fn<'tcx>(
         sig.span,
         &visibility,
         vattrs.publish,
+        &header.open_visibility_qualifier,
         vattrs.opaque,
         vattrs.opaque_outside_module,
         mode,
@@ -1786,6 +1798,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         autospec,
         false,
         false,
+        Safety::Safe,
         span,
     )?;
 
@@ -1796,6 +1809,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         span,
         &visibility,
         vattrs.publish,
+        &header.open_visibility_qualifier,
         vattrs.opaque,
         vattrs.opaque_outside_module,
         func_mode,
@@ -1949,6 +1963,7 @@ fn get_body_visibility_and_fuel(
     span: Span,
     func_visibility: &Visibility,
     publish: Option<AttrPublish>,
+    open_visibility_qualifier: &Option<Visibility>,
     opaque: bool,
     opaque_outside_module: bool,
     mode: Mode,
@@ -1956,6 +1971,13 @@ fn get_body_visibility_and_fuel(
     has_body: bool,
 ) -> Result<(BodyVisibility, Opaqueness), VirErr> {
     let private_vis = Visibility { restricted_to: Some(my_module.clone()) };
+
+    if open_visibility_qualifier.is_some() && publish != Some(AttrPublish::Open) {
+        crate::internal_err!(
+            span,
+            "found 'open_visibility_qualifier' declaration but no 'publish' attribute"
+        )
+    }
 
     if mode != Mode::Spec {
         if publish == Some(AttrPublish::Open) {
@@ -1998,8 +2020,20 @@ fn get_body_visibility_and_fuel(
             );
         }
 
+        if let Some(vis) = open_visibility_qualifier {
+            if !vis.at_least_as_restrictive_as(&func_visibility) {
+                return err_span(
+                    span,
+                    "the function body is declared 'open' to a wider scope than the function itself",
+                );
+            }
+        }
+
         let body_visibility = if publish == Some(AttrPublish::Open) {
-            func_visibility.clone()
+            match open_visibility_qualifier {
+                None => func_visibility.clone(),
+                Some(vis) => vis.clone(),
+            }
         } else {
             private_vis.clone()
         };

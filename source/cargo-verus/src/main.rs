@@ -16,6 +16,7 @@ use std::str;
 
 use anyhow::{anyhow, bail, Context, Result};
 use cargo_metadata::{Metadata, MetadataCommand, Package, PackageId};
+use colored::Colorize;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -47,6 +48,91 @@ pub fn main() -> Result<ExitCode> {
     process(&args)
 }
 
+fn new_project(args: &[String]) -> Result<()> {
+    let mut args_iter = args.iter();
+    assert_eq!(args_iter.next(), Some(&"new".into()));
+    let template_type =
+        args_iter.next().ok_or_else(|| anyhow!("Expected `--bin NAME` or `--lib NAME`"))?;
+    let name = args_iter.next().ok_or_else(|| anyhow!("Expected `--bin NAME` or `--lib NAME`"))?;
+
+    let (src_rs, src_rs_data) = match template_type.as_str() {
+        "--bin" => (
+            "main.rs",
+            r#"
+use vstd::prelude::*;
+
+verus! {
+
+fn main() {
+    assert(1 == 0 + 1);
+}
+
+} // verus!
+"#,
+        ),
+        "--lib" => (
+            "lib.rs",
+            r#"
+use vstd::prelude::*;
+
+verus! {
+
+fn foo() {
+    assert(1 == 0 + 1);
+}
+
+} // verus!
+"#,
+        ),
+        _ => bail!("Expected `--bin` or `--lib`, found `{}`", template_type),
+    };
+
+    let gitignore_data = "/target";
+    let cargo_toml_data = r#"
+[package]
+name = "NAME"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+vstd = { git = "https://github.com/verus-lang/verus", rev = "BUILDREV" }
+builtin = { git = "https://github.com/verus-lang/verus", rev = "BUILDREV" }
+builtin_macros = { git = "https://github.com/verus-lang/verus", rev = "BUILDREV" }
+
+[package.metadata.verus]
+verify = true
+"#
+    .replace("NAME", name)
+    .replace(
+        "BUILDREV",
+        match option_env!("VARGO_BUILD_SHA") {
+            None => unimplemented!(),
+            Some(rev) => rev,
+        },
+    );
+
+    let project_dir = PathBuf::from(name);
+    if project_dir.exists() {
+        bail!("Directory `{}` already exists", name);
+    }
+
+    std::fs::create_dir(&project_dir)?;
+    std::fs::create_dir(project_dir.join("src"))?;
+    std::fs::write(project_dir.join(".gitignore"), gitignore_data.trim_start())?;
+    std::fs::write(project_dir.join("Cargo.toml"), cargo_toml_data.trim_start())?;
+    std::fs::write(project_dir.join("src").join(src_rs), src_rs_data.trim_start())?;
+    let git_init = Command::new("git")
+        .current_dir(project_dir)
+        .arg("init")
+        .stdout(std::process::Stdio::null())
+        .status()?;
+    assert!(git_init.success());
+
+    println!("Created new Verus project at {name}");
+
+    Ok(())
+}
+
 fn show_help() {
     println!("{}", help_message());
 }
@@ -58,6 +144,10 @@ fn show_version() {
 
 fn process(args: &[String]) -> Result<ExitCode> {
     let cmd = VerusCmd::new(args)?;
+
+    if let CargoSubcommand::Nop = cmd.cargo_subcommand {
+        return Ok(ExitCode::SUCCESS);
+    }
 
     let mut cmd = cmd.into_std_cmd()?;
 
@@ -76,11 +166,14 @@ struct VerusCmd {
     cargo_subcommand: CargoSubcommand,
     cargo_args: Vec<String>,
     common_verus_driver_args: Vec<String>,
+    verify: bool,
 }
 
 enum CargoSubcommand {
     Build,
     Check,
+    /// Handled separately, no specific cargo subcommand needed
+    Nop,
 }
 
 impl CargoSubcommand {
@@ -88,11 +181,19 @@ impl CargoSubcommand {
         match self {
             Self::Build => "build",
             Self::Check => "check",
+            Self::Nop => unreachable!(),
         }
     }
 }
 
 impl VerusCmd {
+    const NOP: Self = Self {
+        cargo_subcommand: CargoSubcommand::Nop,
+        cargo_args: vec![],
+        common_verus_driver_args: vec![],
+        verify: false,
+    };
+
     fn new(args: &[String]) -> Result<Self> {
         let mut cargo_args = vec![];
         let mut common_verus_driver_args: Vec<String> = vec![];
@@ -104,7 +205,11 @@ impl VerusCmd {
             "check" => (CargoSubcommand::Check, true),
             "verify" => (CargoSubcommand::Build, true),
             "build" => (CargoSubcommand::Build, false),
-            cmd => bail!("Expected command `check`, `verify`, or `build`, found `{cmd}`"),
+            "new" => {
+                new_project(args)?;
+                return Ok(Self::NOP);
+            }
+            cmd => bail!("Expected command `new`, `check`, `verify`, or `build`, found `{cmd}`"),
         };
 
         while let Some(arg) = args_iter.next() {
@@ -129,7 +234,7 @@ impl VerusCmd {
 
         common_verus_driver_args.extend(args_iter.cloned());
 
-        Ok(Self { cargo_subcommand, cargo_args, common_verus_driver_args })
+        Ok(Self { cargo_subcommand, cargo_args, common_verus_driver_args, verify: just_verify })
     }
 
     fn metadata(&self) -> Result<Metadata> {
@@ -169,6 +274,7 @@ impl VerusCmd {
         let metadata = self.metadata()?;
         let metadata_index = MetadataIndex::new(&metadata)?;
 
+        let mut verified_something = false;
         for entry in metadata_index.entries() {
             let package = entry.package();
 
@@ -191,6 +297,10 @@ impl VerusCmd {
             }
 
             if verus_metadata.verify {
+                // Any project using Verus may pull in vstd, which has a Cargo.toml file verify=true
+                if !verus_metadata.is_vstd {
+                    verified_something = true;
+                }
                 cmd.env(format!("{VERUS_DRIVER_VERIFY}{package_id}"), "1");
 
                 let mut verus_driver_args_for_package = vec![];
@@ -223,6 +333,15 @@ impl VerusCmd {
                     );
                 }
             }
+        }
+
+        if self.verify && !verified_something {
+            eprint!("{}", "\
+WARNING: You asked for verification, but cargo did not find any crates that opted into verification. 
+         If this is unexpected, try adding this entry to your Cargo.toml file:
+            [package.metadata.verus]
+            verify = true
+".red());
         }
 
         Ok(cmd)
@@ -395,6 +514,7 @@ OPTIONS are passed to 'cargo build' or 'cargo check', except the following, whic
     -V, --version            Print version info and exit
 
 Commands:
+    new       Create a new Verus project
     verify    Verify the current crate with 'cargo build'
     build     Verify and build the current crate with 'cargo build'
     check     Runs the 'cargo check' subcommand

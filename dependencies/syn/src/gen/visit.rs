@@ -254,6 +254,9 @@ pub trait Visit<'ast> {
     fn visit_expr_has(&mut self, i: &'ast crate::ExprHas) {
         visit_expr_has(self, i);
     }
+    fn visit_expr_has_not(&mut self, i: &'ast crate::ExprHasNot) {
+        visit_expr_has_not(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_expr_if(&mut self, i: &'ast crate::ExprIf) {
@@ -271,6 +274,9 @@ pub trait Visit<'ast> {
     }
     fn visit_expr_is(&mut self, i: &'ast crate::ExprIs) {
         visit_expr_is(self, i);
+    }
+    fn visit_expr_is_not(&mut self, i: &'ast crate::ExprIsNot) {
+        visit_expr_is_not(self, i);
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -1842,8 +1848,14 @@ where
         crate::Expr::Is(_binding_0) => {
             v.visit_expr_is(_binding_0);
         }
+        crate::Expr::IsNot(_binding_0) => {
+            v.visit_expr_is_not(_binding_0);
+        }
         crate::Expr::Has(_binding_0) => {
             v.visit_expr_has(_binding_0);
+        }
+        crate::Expr::HasNot(_binding_0) => {
+            v.visit_expr_has_not(_binding_0);
         }
         crate::Expr::Matches(_binding_0) => {
             v.visit_expr_matches(_binding_0);
@@ -2115,6 +2127,17 @@ where
     skip!(node.has_token);
     v.visit_expr(&*node.rhs);
 }
+pub fn visit_expr_has_not<'ast, V>(v: &mut V, node: &'ast crate::ExprHasNot)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.lhs);
+    skip!(node.has_not_token);
+    v.visit_expr(&*node.rhs);
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
 pub fn visit_expr_if<'ast, V>(v: &mut V, node: &'ast crate::ExprIf)
@@ -2165,6 +2188,17 @@ where
     }
     v.visit_expr(&*node.base);
     skip!(node.is_token);
+    v.visit_ident(&*node.variant_ident);
+}
+pub fn visit_expr_is_not<'ast, V>(v: &mut V, node: &'ast crate::ExprIsNot)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.base);
+    skip!(node.is_not_token);
     v.visit_ident(&*node.variant_ident);
 }
 #[cfg(feature = "full")]

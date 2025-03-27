@@ -564,40 +564,6 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
     bound_exprs
 }
 
-pub(crate) fn trait_bounds_to_sst(
-    ctx: &Ctx,
-    span: &Span,
-    typ_bounds: &GenericBounds,
-) -> Vec<crate::sst::Exp> {
-    let mut bound_exps: Vec<crate::sst::Exp> = Vec::new();
-    for bound in typ_bounds.iter() {
-        let expx = match &**bound {
-            GenericBoundX::Trait(path, typ_args) => {
-                if !ctx.trait_map.contains_key(path) {
-                    continue;
-                }
-                let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
-                crate::sst::ExpX::NullaryOpr(op)
-            }
-            GenericBoundX::TypEquality(path, typ_args, name, typ) => {
-                let op = crate::ast::NullaryOpr::TypEqualityBound(
-                    path.clone(),
-                    typ_args.clone(),
-                    name.clone(),
-                    typ.clone(),
-                );
-                crate::sst::ExpX::NullaryOpr(op)
-            }
-            GenericBoundX::ConstTyp(t1, t2) => {
-                let op = crate::ast::NullaryOpr::ConstTypBound(t1.clone(), t2.clone());
-                crate::sst::ExpX::NullaryOpr(op)
-            }
-        };
-        bound_exps.push(SpannedTyped::new(span, &Arc::new(TypX::Bool), expx));
-    }
-    bound_exps
-}
-
 pub(crate) fn trait_bound_to_air(
     ctx: &Ctx,
     path: &Path,
@@ -840,6 +806,7 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
                     assoc_typs,
                     assoc_typs_bounds,
                     mut methods,
+                    is_unsafe,
                 } = prev.x.clone();
                 assert!(name == t.x.name);
                 if visibility != t.x.visibility {
@@ -891,6 +858,7 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
                     assoc_typs,
                     assoc_typs_bounds,
                     methods,
+                    is_unsafe,
                 };
                 traits[*index] = prev.new_x(prevx);
             } else {

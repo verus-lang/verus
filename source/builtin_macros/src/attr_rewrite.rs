@@ -43,34 +43,51 @@ use crate::{
 
 pub fn rewrite_verus_attribute(
     erase: &EraseGhost,
-    attr_args: Vec<syn::Ident>,
-    input: TokenStream,
-) -> TokenStream {
-    if erase.keep() {
-        let item: Item = parse2(input).expect("#[verus_verify] must be applied to an item");
-        let mut attributes = Vec::new();
-        const VERIFIER_ATTRS: [&str; 2] = ["external", "external_body"];
-        for arg in attr_args {
-            if VERIFIER_ATTRS.contains(&arg.to_string().as_str()) {
-                attributes.push(mk_verus_attr_syn(arg.span(), quote! { #arg }));
-            } else {
-                let span = arg.span();
-                return proc_macro2::TokenStream::from(quote_spanned!(span =>
-                    compile_error!("unsupported parameters {:?} in #[verus_verify(...)]");
-                ));
-            }
-        }
-        if attributes.len() == 0 {
-            attributes.push(mk_verus_attr_syn(item.span(), quote! { verus_macro }));
-        }
-
-        quote_spanned! {item.span()=>
-            #(#attributes)*
-            #item
-        }
-    } else {
-        input
+    attr_args: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    if !erase.keep() {
+        return input;
     }
+
+    let item = syn::parse_macro_input!(input as Item);
+    let args = syn::parse_macro_input!(attr_args with syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated);
+
+    let mut attributes = Vec::new();
+    let mut contains_non_external = false;
+    let mut contains_external = false;
+    const VERIFY_ATTRS: [&str; 2] = ["rlimit", "spinoff_prover"];
+    const IGNORE_VERIFY_ATTRS: [&str; 2] = ["external", "external_body"];
+
+    for arg in &args {
+        let path = arg.path().get_ident().expect("Invalid verus verifier attribute");
+        if IGNORE_VERIFY_ATTRS.contains(&path.to_string().as_str()) {
+            contains_external = true;
+            attributes.push(quote_spanned!(arg.span() => #[verifier::#arg]));
+        } else if VERIFY_ATTRS.contains(&path.to_string().as_str()) {
+            contains_non_external = true;
+            attributes.push(quote_spanned!(arg.span() => #[verifier::#arg]));
+        } else {
+            let span = arg.span();
+            return proc_macro::TokenStream::from(quote_spanned!(span =>
+                compile_error!("unsupported parameters {:?} in #[verus_verify(...)]", arg);
+            ));
+        }
+    }
+    if contains_external && contains_non_external {
+        return proc_macro::TokenStream::from(quote_spanned!(args.span() =>
+            compile_error!("conflict parameters in #[verus_verify(...)]");
+        ));
+    }
+    if !contains_external {
+        attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
+    }
+
+    quote_spanned! {item.span()=>
+        #(#attributes)*
+        #item
+    }
+    .into()
 }
 
 use syn::visit_mut::VisitMut;
