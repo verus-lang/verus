@@ -4011,6 +4011,66 @@ pub(crate) fn rewrite_expr(
     proc_macro::TokenStream::from(new_stream)
 }
 
+struct Stmts(Vec<Stmt>);
+
+impl Parse for Stmts {
+    fn parse(input: ParseStream) -> syn_verus::Result<Self> {
+        Block::parse_within(input).map(|stmts| Stmts(stmts))
+    }
+}
+
+pub(crate) fn rewrite_proof_decl(
+    erase_ghost: EraseGhost,
+    stream: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let stream = rejoin_tokens(stream);
+    let Stmts(stmts) = parse_macro_input!(stream as Stmts);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 0,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    for mut ss in stmts {
+        match ss {
+            Stmt::Local(Local { tracked: None, ghost: None, .. }) => {
+                return quote_spanned!(ss.span() => compile_error!("Exec local is not allowed in proof_decl")).into();
+            }
+            Stmt::Local(_) => {
+                let (skip, mut new_stmts) = visitor.visit_stmt_extend(&mut ss);
+                if !skip {
+                    new_stmts.insert(0, ss)
+                }
+                for mut ss in new_stmts {
+                    visitor.visit_stmt_mut(&mut ss);
+                    ss.to_tokens(&mut new_stream);
+                }
+            }
+            _ => {
+                let span = ss.span();
+                let mut proof_expr = Expr::Unary(ExprUnary {
+                    attrs: vec![],
+                    expr: Box::new(Expr::Block(ExprBlock {
+                        attrs: vec![],
+                        label: None,
+                        block: Block { brace_token: Brace(span), stmts: vec![ss] },
+                    })),
+                    op: UnOp::Proof(Token![proof](span)),
+                });
+                visitor.visit_expr_mut(&mut proof_expr);
+                proof_expr.to_tokens(&mut new_stream);
+            }
+        };
+    }
+    proc_macro::TokenStream::from(new_stream)
+}
+
 pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, expr: &mut Expr) {
     let mut visitor = Visitor {
         erase_ghost,
