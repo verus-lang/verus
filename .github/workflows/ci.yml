@@ -311,7 +311,7 @@ jobs:
 
       - name: update release
         id: update_release
-        uses: utaal/action-update-release@v0.2
+        uses: verus-lang/action-update-release@v0.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
