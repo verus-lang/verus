@@ -35,13 +35,13 @@ jobs:
           release_name: ${{ env.release_name }}
         run: |
           new_release_tag=$(echo $release_tag | sed 's/\/rolling//')
-          new_release_name=$(echo $release_name | sed 's/Rolling /')
+          new_release_name=$(echo $release_name | sed 's/Rolling //')
           
           response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
             -d "{\"tag_name\": \"$new_release_tag\", \"name\": \"$new_release_name\", \"body\": \"$release_tag\"}" \
             https://api.github.com/repos/verus-lang/verus/releases)
-          echo $new_release_tag $response
+          echo $new_release_tag $new_release_name $response
           new_release_id=$(echo $response | jq -r '.id')
           echo "new_release_id=$new_release_id" >> $GITHUB_ENV
 
