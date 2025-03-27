@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 /// Defines the specifications for operator traits.
 ///
 /// This file specifies the behavior of operator traits for integers when the trait method is invoked.
@@ -15,10 +17,7 @@
 /// - For types defined in external crates, preconditions must be specified using an axiom to define
 ///   the uninterpreted `spec_${op}_requires`, which is easy to cause contradict axioms and should be
 ///   avoided when possible.
-
-#![allow(unused_imports)]
 use super::super::prelude::*;
-
 
 verus! {
 
@@ -191,14 +190,15 @@ macro_rules! def_bop_specs {
 }
 
 macro_rules! def_uop_axioms {
-    ($tr: path, $fun: ident, $op:tt, [$($typ:ty)*])  => {verus!{
+    ($tr: path, $fun: ident, $op:tt, [$($typ:ty)*]) => {
+        verus!{
         $(
             pub assume_specification[ <$typ as $tr>::$fun ](a: $typ) -> (ret: $typ)
             ensures
                 ret == ($op a);
         )*
     }
-    }
+    };
 }
 
 def_bop_specs!(core::ops::Add, add, +, [
