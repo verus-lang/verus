@@ -37,6 +37,7 @@ jobs:
             -H "Content-Type: application/json" \
             -d "{\"tag_name\": \"$new_release_tag\", \"name\": \"$release_name\", \"body\": \"$release_tag\"}" \
             https://api.github.com/repos/verus-lang/verus/releases)
+          echo $new_release_tag $response
           new_release_id=$(echo $response | jq -r '.id')
           echo "new_release_id=$new_release_id" >> $GITHUB_ENV
 
