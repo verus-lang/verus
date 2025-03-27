@@ -129,7 +129,7 @@ test_verify_one_file! {
         use vstd::*;
         use state_machines_macros::*;
 
-        pub spec fn f() -> bool;
+        pub uninterp spec fn f() -> bool;
 
         #[verifier::external_body]
         broadcast proof fn f_is_true()

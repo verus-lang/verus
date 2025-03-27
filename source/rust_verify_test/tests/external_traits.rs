@@ -103,7 +103,7 @@ test_verify_one_file! {
             X::foo()
         }
 
-        spec fn llama() -> bool;
+        uninterp spec fn llama() -> bool;
 
         #[verifier::external_fn_specification]
         fn ex_bar()

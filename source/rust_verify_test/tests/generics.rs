@@ -60,7 +60,7 @@ test_verify_one_file! {
         }
         use crate::m::*;
         struct S;
-        spec fn f<B>(s: Seq<&S>) -> Seq<B>;
+        uninterp spec fn f<B>(s: Seq<&S>) -> Seq<B>;
         proof fn test(x: Seq<&S>) {
             let b = f::<S>(x);
         }
@@ -84,7 +84,7 @@ test_verify_one_file! {
         struct Obj<T> { t: T }
 
         impl<T> Obj<T> {
-            spec fn view(&self) -> Data<T>;
+            uninterp spec fn view(&self) -> Data<T>;
         }
 
         fn test(x: &mut Obj<Node>)

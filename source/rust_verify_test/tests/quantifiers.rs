@@ -283,9 +283,9 @@ test_verify_one_file! {
         mod M {
             pub struct A {}
             impl A {
-                pub spec fn f1(&self) -> bool;
-                pub spec fn f2(&self) -> bool;
-                pub spec fn f3(&self) -> bool;
+                pub uninterp spec fn f1(&self) -> bool;
+                pub uninterp spec fn f2(&self) -> bool;
+                pub uninterp spec fn f3(&self) -> bool;
             }
 
             #[verifier::external_body]
