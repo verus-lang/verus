@@ -161,7 +161,7 @@ pub closed spec fn spec_affirm(b: bool) -> bool
 /// In spec, all types are inhabited
 #[verifier::external_body]  /* vattr */
 #[allow(dead_code)]
-pub spec fn arbitrary<A>() -> A;
+pub uninterp spec fn arbitrary<A>() -> A;
 
 #[verifier::external_body]  /* vattr */
 #[allow(dead_code)]

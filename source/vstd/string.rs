@@ -13,10 +13,10 @@ verus! {
 impl View for str {
     type V = Seq<char>;
 
-    spec fn view(&self) -> Seq<char>;
+    uninterp spec fn view(&self) -> Seq<char>;
 }
 
-pub spec fn str_slice_is_ascii(s: &str) -> bool;
+pub uninterp spec fn str_slice_is_ascii(s: &str) -> bool;
 
 #[verifier::when_used_as_spec(str_slice_is_ascii)]
 pub assume_specification[ str::is_ascii ](s: &str) -> (b: bool)
@@ -183,7 +183,7 @@ pub broadcast group group_string_axioms {
 impl View for String {
     type V = Seq<char>;
 
-    spec fn view(&self) -> Seq<char>;
+    uninterp spec fn view(&self) -> Seq<char>;
 }
 
 #[cfg(feature = "alloc")]
@@ -192,7 +192,7 @@ impl View for String {
 pub struct ExString(String);
 
 #[cfg(feature = "alloc")]
-pub spec fn string_is_ascii(s: &String) -> bool;
+pub uninterp spec fn string_is_ascii(s: &String) -> bool;
 
 #[cfg(feature = "alloc")]
 #[verifier::when_used_as_spec(string_is_ascii)]
