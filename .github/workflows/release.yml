@@ -13,9 +13,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-
       - name: Get Release Info
         id: get_release_info
         env:
@@ -26,6 +23,11 @@ jobs:
           echo release_tag="$(echo $release_info | jq -cr '.tag_name')" >> $GITHUB_ENV
           echo release_name="$(echo $release_info | jq -cr '.name')" >> $GITHUB_ENV
           echo release_assets="""$(echo $release_info | jq -cr '.assets')""" >> $GITHUB_ENV
+
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ env.release_tag }}
 
       - name: Create a New Release
         id: create_release
