@@ -115,6 +115,7 @@ pub const FUEL_BOOL: &str = "fuel_bool";
 pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
 pub const FUEL_DEFAULTS: &str = "fuel_defaults";
 pub const RETURN_VALUE: &str = "%return";
+pub const DEFAULT_ENSURES: &str = "default_ensures";
 pub const U_HI: &str = "uHi";
 pub const I_LO: &str = "iLo";
 pub const I_HI: &str = "iHi";
@@ -177,6 +178,8 @@ pub const HEIGHT_LT: &str = "height_lt";
 pub const HEIGHT_REC_FUN: &str = "fun_from_recursive_field";
 pub const CLOSURE_REQ: &str = "closure_req";
 pub const CLOSURE_ENS: &str = "closure_ens";
+pub const DEFAULT_ENS: &str = "default_ens";
+const CLOSURE_PARAM: &str = "closure%";
 pub const EXT_EQ: &str = "ext_eq";
 
 pub const BIT_XOR: &str = "bitxor";
@@ -526,6 +529,10 @@ pub fn simplify_temp_var(n: u64) -> VarIdent {
         PREFIX_SIMPLIFY_TEMP_VAR,
         crate::ast::VarIdentDisambiguate::VirTemp(n),
     )
+}
+
+pub fn closure_param_var() -> VarIdent {
+    crate::ast_util::str_unique_var(CLOSURE_PARAM, crate::ast::VarIdentDisambiguate::AirLocal)
 }
 
 pub fn prefix_pre_var(name: &Ident) -> Ident {

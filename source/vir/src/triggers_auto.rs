@@ -330,9 +330,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     _ => (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms)))),
                 },
                 CallFun::Recursive(_) => panic!("internal error: CheckTermination"),
-                CallFun::InternalFun(InternalFun::ClosureReq | InternalFun::ClosureEns) => {
-                    (is_pure, Arc::new(TermX::App(App::ClosureSpec, Arc::new(all_terms))))
-                }
+                CallFun::InternalFun(
+                    InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns,
+                ) => (is_pure, Arc::new(TermX::App(App::ClosureSpec, Arc::new(all_terms)))),
                 CallFun::InternalFun(_) => {
                     (is_pure, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
                 }
@@ -373,6 +373,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let depth = match op {
                 UnaryOp::Not
                 | UnaryOp::CoerceMode { .. }
+                | UnaryOp::DefaultEnsures
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated
                 | UnaryOp::CastToInteger => 0,

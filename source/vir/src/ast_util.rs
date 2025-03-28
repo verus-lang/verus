@@ -607,6 +607,7 @@ impl crate::ast::CallTargetKind {
             crate::ast::CallTargetKind::DynamicResolved { resolved, typs, .. } => {
                 Some((resolved.clone(), typs.clone()))
             }
+            crate::ast::CallTargetKind::ExternalTraitDefault => None,
         }
     }
 }

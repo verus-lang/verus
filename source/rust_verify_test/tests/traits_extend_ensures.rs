@@ -434,3 +434,351 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] test_disallow_default_ensures1 verus_code! {
+        trait T {
+            fn f(i: u32) -> (r: u32)
+                ensures
+                    r <= i,
+                    default_ensures(r == i / 2);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
+}
+
+test_verify_one_file! {
+    #[test] test_disallow_default_ensures2 verus_code! {
+        trait T {
+            fn f(i: u32) -> (r: u32)
+                requires
+                    default_ensures(true),
+                ensures
+                    r <= i,
+            {
+                i / 2
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
+}
+
+test_verify_one_file! {
+    #[test] test_disallow_default_ensures3 verus_code! {
+        fn f(i: u32) -> (r: u32)
+            ensures
+                r <= i,
+                default_ensures(r == i / 2),
+        {
+            i / 2
+        }
+    } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
+}
+
+test_verify_one_file! {
+    #[test] test_disallow_default_ensures4 verus_code! {
+        fn f(i: u32) -> (r: u32)
+            ensures
+                r <= i,
+        {
+            assert(default_ensures(true));
+            i / 2
+        }
+    } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
+}
+
+test_verify_one_file! {
+    #[test] test_disallow_default_ensures5 verus_code! {
+        trait T {
+            fn f(i: u32) -> (r: u32)
+                ensures
+                    r <= i;
+        }
+        impl T for u8 {
+            fn f(i: u32) -> (r: u32)
+                ensures
+                    default_ensures(r <= i),
+            {
+                i / 2
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
+}
+
+test_verify_one_file! {
+    #[test] test_disallow_default_ensures6 verus_code! {
+        trait T {
+            fn f(i: u32) -> (r: u32)
+                ensures
+                    r <= i,
+            {
+                i / 2
+            }
+        }
+        impl T for u8 {
+            fn f(i: u32) -> (r: u32)
+                ensures
+                    default_ensures(r <= i),
+            {
+                i / 2
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
+}
+
+test_verify_one_file! {
+    #[test] test_default_ensures1 verus_code! {
+        trait T {
+            fn f(i: u32) -> (r: u32)
+                ensures
+                    r <= i,
+                    default_ensures(r == i / 2) // FAILS
+            {
+                i
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_default_ensures2 verus_code! {
+        trait T {
+            fn f(i: u32) -> (r: u32)
+                ensures
+                    r <= i,
+                    default_ensures(r == i / 2)
+            {
+                i / 2
+            }
+        }
+        impl T for u8 {
+        }
+        impl T for u16 {
+            fn f(i: u32) -> u32 {
+                i / 3
+            }
+        }
+        impl T for i16 {
+            fn f(i: u32) -> (r: u32)
+                ensures r == i / 5
+            {
+                i / 5
+            }
+        }
+        fn generic<A: T>() {
+            let r = A::f(6);
+            assert(r <= 6);
+            assert(r == 3); // FAILS
+        }
+        fn inheritor() {
+            let r = <u8 as T>::f(6);
+            assert(r == 3);
+        }
+        fn overrider1() {
+            let r = <u16 as T>::f(6);
+            assert(r == 3); // FAILS
+        }
+        fn overrider2() {
+            let r = <i16 as T>::f(6);
+            assert(r == 3); // FAILS
+        }
+        fn overrider3() {
+            let r = <i16 as T>::f(15);
+            assert(r == 3);
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] test_default_ensures3 verus_code! {
+        trait T {
+            fn f(i: u32) -> (r: u32)
+                ensures
+                    r <= i,
+                    default_ensures(r == i / 2)
+            {
+                i / 2
+            }
+        }
+        impl T for u8 {
+        }
+        impl T for u16 {
+            fn f(i: u32) -> u32 {
+                i / 3
+            }
+        }
+        impl T for i16 {
+            fn f(i: u32) -> (r: u32)
+                ensures r == i / 5
+            {
+                i / 5
+            }
+        }
+        fn generic<A: T>() {
+            assert(forall|r| call_ensures(A::f, (6,), r) ==> r <= 6);
+            assert(forall|r| call_ensures(A::f, (6,), r) ==> r == 3); // FAILS
+        }
+        fn inheritor() {
+            assert(forall|r| call_ensures(<u8 as T>::f, (6,), r) ==> r == 3);
+        }
+        fn overrider1() {
+            assert(forall|r| call_ensures(<u16 as T>::f, (6,), r) ==> r == 3); // FAILS
+        }
+        fn overrider2() {
+            assert(forall|r| call_ensures(<i16 as T>::f, (6,), r) ==> r == 3); // FAILS
+        }
+        fn overrider3() {
+            assert(forall|r| call_ensures(<i16 as T>::f, (15,), r) ==> r == 3);
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] test_default_ensures_extern1 verus_code! {
+        #[verifier::external]
+        trait T {
+            fn f(i: u32) -> u32 {
+                i / 2
+            }
+        }
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            fn f(i: u32) -> (r: u32)
+                ensures
+                    r <= i,
+                    default_ensures(r == i / 2),
+                    ;
+        }
+        impl T for u8 {
+        }
+        #[verifier::external]
+        impl T for i8 {
+        }
+        impl T for u16 {
+            fn f(i: u32) -> u32 {
+                i / 3
+            }
+        }
+        impl T for i16 {
+            fn f(i: u32) -> (r: u32)
+                ensures r == i / 5
+            {
+                i / 5
+            }
+        }
+        #[verifier::external]
+        impl T for bool {
+            fn f(i: u32) -> u32
+            {
+                i / 7
+            }
+        }
+        assume_specification[ <bool as T>::f ](i: u32) -> (r: u32)
+            ensures r == i / 7
+        ;
+        fn generic<A: T>() {
+            let r = A::f(6);
+            assert(r <= 6);
+            assert(r == 3); // FAILS
+        }
+        fn inheritor1() {
+            let r = <u8 as T>::f(6);
+            assert(r == 3);
+        }
+        fn inheritor2() {
+            let r = <i8 as T>::f(6);
+            assert(r == 3);
+        }
+        fn overrider1() {
+            let r = <u16 as T>::f(6);
+            assert(r == 3); // FAILS
+        }
+        fn overrider2() {
+            let r = <i16 as T>::f(6);
+            assert(r == 3); // FAILS
+        }
+        fn overrider3() {
+            let r = <i16 as T>::f(15);
+            assert(r == 3);
+        }
+        fn overrider4() {
+            let r = <bool as T>::f(6);
+            assert(r == 3); // FAILS
+        }
+        fn overrider5() {
+            let r = <bool as T>::f(21);
+            assert(r == 3);
+        }
+    } => Err(err) => assert_fails(err, 4)
+}
+
+test_verify_one_file! {
+    #[test] test_default_ensures_extern2 verus_code! {
+        #[verifier::external]
+        trait T {
+            fn f(i: u32) -> u32 {
+                i / 2
+            }
+        }
+        #[verifier::external_trait_specification]
+        trait ExT {
+            type ExternalTraitSpecificationFor: T;
+            fn f(i: u32) -> (r: u32)
+                ensures
+                    r <= i,
+                    default_ensures(r == i / 2),
+                    ;
+        }
+        impl T for u8 {
+        }
+        #[verifier::external]
+        impl T for i8 {
+        }
+        impl T for u16 {
+            fn f(i: u32) -> u32 {
+                i / 3
+            }
+        }
+        impl T for i16 {
+            fn f(i: u32) -> (r: u32)
+                ensures r == i / 5
+            {
+                i / 5
+            }
+        }
+        #[verifier::external]
+        impl T for bool {
+            fn f(i: u32) -> u32
+            {
+                i / 7
+            }
+        }
+        assume_specification[ <bool as T>::f ](i: u32) -> (r: u32)
+            ensures r == i / 7
+        ;
+        fn generic<A: T>() {
+            assert(forall|r| call_ensures(A::f, (6,), r) ==> r <= 6);
+            assert(forall|r| call_ensures(A::f, (6,), r) ==> r == 3); // FAILS
+        }
+        fn inheritor1() {
+            assert(forall|r| call_ensures(<u8 as T>::f, (6,), r) ==> r == 3);
+        }
+        fn inheritor2() {
+            assert(forall|r| call_ensures(<i8 as T>::f, (6,), r) ==> r == 3);
+        }
+        fn overrider1() {
+            assert(forall|r| call_ensures(<u16 as T>::f, (6,), r) ==> r == 3); // FAILS
+        }
+        fn overrider2() {
+            assert(forall|r| call_ensures(<i16 as T>::f, (6,), r) ==> r == 3); // FAILS
+        }
+        fn overrider3() {
+            assert(forall|r| call_ensures(<i16 as T>::f, (15,), r) ==> r == 3);
+        }
+        fn overrider4() {
+            assert(forall|r| call_ensures(<bool as T>::f, (6,), r) ==> r == 3); // FAILS
+        }
+        fn overrider5() {
+            assert(forall|r| call_ensures(<bool as T>::f, (21,), r) ==> r == 3);
+        }
+    } => Err(err) => assert_fails(err, 4)
+}

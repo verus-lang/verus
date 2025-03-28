@@ -467,6 +467,19 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
             "method specification has a different return from method",
         ));
     }
+
+    let has_default_ensures =
+        ensure.iter().any(|e| matches!(&e.x, ExprX::Unary(crate::ast::UnaryOp::DefaultEnsures, _)));
+    match &mut methodx.kind {
+        crate::ast::FunctionKind::TraitMethodDecl { trait_path: _, has_default }
+            if methodx.proxy.is_some() && has_default_ensures =>
+        {
+            // We use an external trait function default only if the spec mentions it:
+            *has_default = true;
+        }
+        _ => {}
+    };
+
     methodx.opaqueness = opaqueness;
     methodx.params = params; // this is important; the correct parameter modes are in spec_method
     methodx.ret = ret;
