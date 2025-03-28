@@ -651,6 +651,7 @@ impl Visitor {
                     Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())),
                     None,
                 )];
+                #[cfg(verus_keep_ghost)]
                 if !matches!(&sig.publish, Publish::Uninterp(_)) {
                     proc_macro::Diagnostic::spanned(
                         sig.span().unwrap(),
