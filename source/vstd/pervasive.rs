@@ -132,6 +132,23 @@ fn exec_nonstatic_call<Args: core::marker::Tuple, Output, F>(f: F, args: Args) -
     unimplemented!();
 }
 
+#[cfg(verus_keep_ghost)]
+#[verifier(custom_req_err("Call to non-static function fails to satisfy `callee.requires(args)`"))]
+#[doc(hidden)]
+#[verifier::external_body]
+#[rustc_diagnostic_item = "verus::vstd::vstd::proof_nonstatic_call"]
+proof fn proof_nonstatic_call<Args: core::marker::Tuple, Output, F>(
+    tracked f: F,
+    tracked args: Args,
+) -> (tracked output: Output) where F: FnOnce<Args, Output = Output>
+    requires
+        call_requires(f, args),
+    ensures
+        call_ensures(f, args, output),
+{
+    unimplemented!();
+}
+
 /// A tool to check one's reasoning while writing complex spec functions.
 /// Not intended to be used as a mechanism for instantiating quantifiers, `spec_affirm` should
 /// be removed from spec functions once they are complete.

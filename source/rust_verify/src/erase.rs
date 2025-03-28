@@ -22,6 +22,7 @@ pub enum CompilableOperator {
     TrackedBorrow,
     TrackedBorrowMut,
     UseTypeInvariant,
+    ClosureToFnProof(Mode),
 }
 
 /// Information about each call in the AST (each ExprKind::Call).
@@ -39,6 +40,8 @@ pub enum ResolvedCall {
     Ctor(Path, vir::ast::Ident),
     /// The call is to a dynamically computed function, and is exec
     NonStaticExec,
+    /// The call is to a dynamically computed function, and is proof
+    NonStaticProof(std::sync::Arc<Vec<Mode>>),
 }
 
 #[derive(Clone)]

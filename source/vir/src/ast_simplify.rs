@@ -527,7 +527,15 @@ fn simplify_one_expr(
             }
         }
         ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: expr1 } => Ok(expr1.clone()),
-        ExprX::ExecClosure { params, body, requires, ensures, ret, external_spec } => {
+        ExprX::NonSpecClosure {
+            params,
+            proof_fn_modes,
+            body,
+            requires,
+            ensures,
+            ret,
+            external_spec,
+        } => {
             assert!(external_spec.is_none());
 
             let closure_var_ident = state.next_temp();
@@ -544,8 +552,9 @@ fn simplify_one_expr(
             Ok(SpannedTyped::new(
                 &expr.span,
                 &expr.typ,
-                ExprX::ExecClosure {
+                ExprX::NonSpecClosure {
                     params: params.clone(),
+                    proof_fn_modes: proof_fn_modes.clone(),
                     body: body.clone(),
                     requires: requires.clone(),
                     ensures: ensures.clone(),

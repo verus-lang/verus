@@ -328,6 +328,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] mismatch_generics5 verus_code! {
+
+        #[verifier(external)]
+        struct Foo<X, const Y: u8, const Z: u8> { x: X }
+
+        #[verifier(external_type_specification)]
+        struct ExFoo<X, const Y: u8, const Z: u8>(Foo<X, Z, Y>);
+
+    } => Err(err) => assert_vir_error_msg(err, "expected generics to match")
+}
+
+test_verify_one_file! {
+    #[test] mismatch_generics6 verus_code! {
+
+        #[verifier(external)]
+        struct Foo<X, const Y: u8, const Z: u8> { x: X }
+
+        #[verifier(external_type_specification)]
+        struct ExFoo<X, const Y: u8, const Z: u16>(Foo<X, Y, Z>);
+
+    } => Err(err) => assert!(err.errors.iter().any(|x| x.message.contains("mismatched types")))
+}
+
+test_verify_one_file! {
     #[test] mismatch_trait_bounds verus_code! {
 
         #[verifier(external)]
