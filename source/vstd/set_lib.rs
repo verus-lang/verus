@@ -974,9 +974,10 @@ macro_rules! assert_sets_equal_internal {
     }
 }
 
-pub broadcast group group_set_lib_axioms {
+pub broadcast group group_set_lib_default {
     axiom_is_empty,
     axiom_is_empty_len0,
+    lemma_set_subset_finite,
 }
 
 pub use assert_sets_equal_internal;
