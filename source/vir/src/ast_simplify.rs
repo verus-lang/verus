@@ -1156,6 +1156,7 @@ fn mk_fun_decl(
 
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
     let KrateX {
+        name,
         functions,
         reveal_groups,
         datatypes,
@@ -1289,6 +1290,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let external_fns = external_fns.clone();
     let external_types = external_types.clone();
     let krate = Arc::new(KrateX {
+        name: name.clone(),
         functions,
         reveal_groups: reveal_groups.clone(),
         datatypes,
@@ -1321,6 +1323,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
     let mut kratex: KrateX = (*krates.next().expect("at least one crate")).clone();
     for k in krates {
         let KrateX {
+            name: _,
             functions,
             reveal_groups,
             datatypes,
@@ -1334,6 +1337,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
             arch,
             may_not_terminate,
         } = &*k;
+        kratex.name = crate::ast::KrateName::Combined;
         kratex.functions.extend(functions.clone());
         kratex.reveal_groups.extend(reveal_groups.clone());
         kratex.datatypes.extend(datatypes.clone());

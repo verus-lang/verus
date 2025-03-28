@@ -2709,13 +2709,40 @@ impl Verifier {
         // - well_formed::check_crate
         let mut vir_crates: Vec<Krate> = other_vir_crates;
         vir_crates.push(vir_crate);
+        let may_not_terminate_per_crate: HashMap<vir::ast::Ident, bool> = vir_crates
+            .iter()
+            .filter_map(|k| {
+                let vir::ast::KrateName::Named(name) = &k.name else {
+                    unreachable!("unexpected combined crate");
+                };
+                let may_not_terminate = match k.may_not_terminate {
+                    vir::ast::MayNotTerminate::Yes => true,
+                    vir::ast::MayNotTerminate::No => false,
+                    vir::ast::MayNotTerminate::Mixed => {
+                        unreachable!("mixed may_not_terminate (unexpected combined crate)")
+                    }
+                };
+                if name == &ctxt.vstd_crate_name {
+                    None
+                } else {
+                    Some((name.clone(), may_not_terminate))
+                }
+            })
+            .collect();
         let unpruned_crate =
             vir::ast_simplify::merge_krates(vir_crates).map_err(map_err_diagnostics)?;
-        // TODO if unpruned_crate.may_not_terminate == vir::ast::MayNotTerminate::Mixed {
-        // TODO     ctxt.diagnostics.borrow_mut().push(vir::ast::VirErrAs::Warning(
-        // TODO         error_bare("some of the included crates allow non-termination, while some do not"),
-        // TODO     ));
-        // TODO }
+        if unpruned_crate.may_not_terminate == vir::ast::MayNotTerminate::Mixed {
+            if !(may_not_terminate_per_crate.values().all(|&v| v)
+                || may_not_terminate_per_crate.values().all(|&v| !v))
+            {
+                ctxt.diagnostics.borrow_mut().push(vir::ast::VirErrAs::Warning(
+                    vir::messages::error_bare("some of the crates in the verification environment allow non-termination, while some do not")
+                        .help(may_not_terminate_per_crate.iter().filter_map(|(k, v)| {
+                            v.then(|| format!("- {}: {}", k, "allows non termination"))
+                        }).collect::<Vec<_>>().join("\n"))
+                ));
+            }
+        }
         let (vir_crate, _, _, _, _) = vir::prune::prune_krate_for_module_or_krate(
             &unpruned_crate,
             &Arc::new(crate_name.clone()),

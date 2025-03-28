@@ -57,6 +57,7 @@ fn simplify_function(
 
 pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
     let KrateX {
+        name,
         functions,
         reveal_groups,
         datatypes,
@@ -84,6 +85,7 @@ pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
     let external_fns = external_fns.clone();
     let external_types = external_types.clone();
     let krate = Arc::new(KrateX {
+        name: name.clone(),
         functions,
         reveal_groups: reveal_groups.clone(),
         datatypes,

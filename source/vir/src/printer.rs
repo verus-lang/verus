@@ -361,6 +361,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     let mut nw = NodeWriter::new_vir();
 
     let KrateX {
+        name,
         datatypes,
         functions,
         reveal_groups,
@@ -374,6 +375,8 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
         arch,
         may_not_terminate,
     } = &**vir_crate;
+    let name_node = nodes!(name {name.to_node(opts)});
+    writeln!(&mut write, "{}\n", nw.node_to_string(&name_node)).expect("cannot write to vir write");
     for datatype in datatypes.iter() {
         if opts.no_span {
             writeln!(&mut write, ";; {}", &datatype.span.as_string)

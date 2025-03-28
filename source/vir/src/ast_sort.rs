@@ -18,6 +18,7 @@ pub fn sort_krate(krate: &Krate) -> Krate {
     // - all items from a module are grouped together
 
     let KrateX {
+        name,
         functions,
         reveal_groups,
         datatypes,
@@ -58,6 +59,7 @@ pub fn sort_krate(krate: &Krate) -> Krate {
     });
 
     Arc::new(KrateX {
+        name: name.clone(),
         functions,
         reveal_groups: reveal_groups.clone(),
         datatypes,

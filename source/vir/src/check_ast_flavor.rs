@@ -27,6 +27,7 @@ pub fn check_krate_simplified(krate: &Krate) {
     check_krate(krate);
 
     let KrateX {
+        name: _,
         functions,
         reveal_groups: _,
         datatypes,
@@ -148,6 +149,7 @@ fn expr_no_loc_in_spec(
 /// Panics if the ast uses nodes that should have been removed by ast_simplify
 pub fn check_krate(krate: &Krate) {
     let KrateX {
+        name: _,
         functions,
         reveal_groups: _,
         datatypes: _,

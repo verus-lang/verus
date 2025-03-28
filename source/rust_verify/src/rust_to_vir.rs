@@ -371,6 +371,7 @@ pub fn crate_to_vir<'a, 'tcx>(
     imported: &Vec<Krate>,
 ) -> Result<(Krate, CrateItems), VirErr> {
     let mut vir: KrateX = KrateX {
+        name: vir::ast::KrateName::Named(ctxt.crate_name.clone()),
         functions: Vec::new(),
         reveal_groups: Vec::new(),
         datatypes: Vec::new(),

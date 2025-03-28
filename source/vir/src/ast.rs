@@ -1308,10 +1308,18 @@ impl MayNotTerminate {
     }
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, Hash, PartialEq, Eq)]
+pub enum KrateName {
+    Named(Ident),
+    Combined,
+}
+
 /// An entire crate
 pub type Krate = Arc<KrateX>;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct KrateX {
+    /// The crate name
+    pub name: KrateName,
     /// All functions in the crate, plus foreign functions
     pub functions: Vec<Function>,
     /// All reveal_groups in the crate

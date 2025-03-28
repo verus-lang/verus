@@ -745,6 +745,7 @@ pub fn prune_krate_for_module_or_krate(
         // Make sure we keep all of current_crate,
         // so that all of current_crate is sent to the well-formedness checks.
         let KrateX {
+            name: _,
             functions,
             reveal_groups,
             datatypes,
@@ -1081,6 +1082,7 @@ pub fn prune_krate_for_module_or_krate(
     };
 
     let kratex = KrateX {
+        name: krate.name.clone(),
         functions: functions
             .into_iter()
             .filter(|f| state.reached_functions.contains(&f.x.name))
