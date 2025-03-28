@@ -163,18 +163,16 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] publish_proof_fail verus_code! {
-        #[verifier(publish)]
-        pub proof fn bar() {
+        pub open proof fn bar() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "function is marked `open` but it is not a `spec` function")
+    } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open`, `closed`, or `uninterp`")
 }
 
 test_verify_one_file! {
     #[test] publish_exec_fail verus_code! {
-        #[verifier(publish)]
-        pub fn bar() {
+        pub open fn bar() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "function is marked `open` but it is not a `spec` function")
+    } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open`, `closed`, or `uninterp`")
 }
 
 test_verify_one_file! {
@@ -316,4 +314,95 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "the function body is declared 'open' to a wider scope than the function itself")
+}
+
+test_verify_one_file! {
+    #[test] uninterp_exec_fail verus_code! {
+        pub uninterp fn bar() {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open`, `closed`, or `uninterp`")
+}
+
+test_verify_one_file! {
+    #[test] uninterp_spec_body_free_fail verus_code! {
+        pub uninterp spec fn bar() -> bool {
+            true
+        }
+    } => Err(err) => assert_vir_error_msg(err, "function is marked `uninterp` but it has a body")
+}
+
+test_verify_one_file! {
+    #[test] uninterp_spec_body_assoc_fail verus_code! {
+        struct G {
+            v: bool,
+        }
+
+        impl G {
+            pub uninterp spec fn bar(&self) -> bool {
+                self.v
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "function is marked `uninterp` but it has a body")
+}
+
+test_verify_one_file! {
+    #[test] uninterp_spec_body_trait_fail verus_code! {
+        trait T {
+            uninterp spec fn bar(&self) -> bool {
+                true
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "function is marked `uninterp` but it has a body")
+}
+
+test_verify_one_file! {
+    #[test] uninterp_spec_body_trait_impl_fail verus_code! {
+        trait T {
+            uninterp spec fn bar(&self) -> bool;
+
+            #[verifier::external_body]
+            proof fn a(&self)
+                ensures self.bar()
+            {
+            }
+        }
+
+        impl T for bool {
+            spec fn bar(&self) -> bool { // this should be rejected
+                *self
+            }
+        }
+
+        proof fn a() {
+            let t = false;
+            t.a();
+            assert(t.bar());
+        }
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot be marked as `uninterp`")
+}
+
+test_verify_one_file! {
+    // TODO reject this code
+    #[ignore] #[test] closed_spec_trait_fail verus_code! {
+        trait T {
+            closed spec fn bar(&self) -> bool {
+                true
+            }
+        }
+    } => Err(_err) => todo!()
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] uninterp_spec_fn_warning verus_code! {
+        spec fn bar(i: nat) -> bool;
+    } => Ok(err) => {
+        assert!(err.errors.is_empty());
+        assert!(err.warnings.iter().find(|w| w.message.contains("uninterpreted functions")).iter().next().is_some());
+    }
+}
+
+test_verify_one_file! {
+    #[test] uninterp_open_fail verus_code! {
+        pub uninterp open fn bar();
+    } => Err(err) => assert_vir_error_msg(err, "expected one of")
 }

@@ -2764,7 +2764,7 @@ test_verify_one_file! {
     #[test] test_trait_inline2 verus_code! {
         struct S<A> { a: A }
         trait T<A> { spec fn f(&self, i: int) -> A; }
-        spec fn arbitrary<A>() -> A;
+        uninterp spec fn arbitrary<A>() -> A;
         impl<B> T<(B, bool)> for S<B> {
             #[verifier(inline)]
             spec fn f(&self, i: int) -> (B, bool) { arbitrary() }

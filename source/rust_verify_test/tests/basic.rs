@@ -28,7 +28,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test2 verus_code! {
-        spec fn f(i: int, j: int) -> bool;
+        uninterp spec fn f(i: int, j: int) -> bool;
 
         fn test2(b: bool, x: int, y: int, z: int) {
             assert(b || !b);

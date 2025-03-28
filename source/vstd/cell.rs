@@ -153,10 +153,10 @@ pub struct CellId {
 
 impl<V> PointsTo<V> {
     /// The [`CellId`] of the [`PCell`] this permission is associated with.
-    pub spec fn id(&self) -> CellId;
+    pub uninterp spec fn id(&self) -> CellId;
 
     /// The contents of the cell, either unitialized or initialized to some `V`.
-    pub spec fn mem_contents(&self) -> MemContents<V>;
+    pub uninterp spec fn mem_contents(&self) -> MemContents<V>;
 
     pub open spec fn view(self) -> PointsToData<V> {
         PointsToData { pcell: self.id(), value: option_from_mem_contents(self.mem_contents()) }
@@ -194,7 +194,7 @@ impl<V> PointsTo<V> {
 
 impl<V> PCell<V> {
     /// A unique ID for the cell.
-    pub spec fn id(&self) -> CellId;
+    pub uninterp spec fn id(&self) -> CellId;
 
     /// Return an empty ("uninitialized") cell.
     #[inline(always)]

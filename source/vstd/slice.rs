@@ -12,7 +12,7 @@ verus! {
 impl<T> View for [T] {
     type V = Seq<T>;
 
-    spec fn view(&self) -> Seq<T>;
+    uninterp spec fn view(&self) -> Seq<T>;
 }
 
 impl<T: DeepView> DeepView for [T] {
@@ -67,7 +67,7 @@ pub exec fn slice_index_get<T>(slice: &[T], i: usize) -> (out: &T)
 }
 
 ////// Len (with autospec)
-pub spec fn spec_slice_len<T>(slice: &[T]) -> usize;
+pub uninterp spec fn spec_slice_len<T>(slice: &[T]) -> usize;
 
 // This axiom is slightly better than defining spec_slice_len to just be `slice@.len() as usize`
 // (the axiom also shows that slice@.len() is in-bounds for usize)
@@ -117,7 +117,7 @@ pub assume_specification<T, I>[ <[T]>::get::<I> ](slice: &[T], i: I) -> (b: Opti
         spec_slice_get(slice, i),
 ;
 
-pub open spec fn spec_slice_get<T: ?Sized, I: core::slice::SliceIndex<T>>(
+pub uninterp spec fn spec_slice_get<T: ?Sized, I: core::slice::SliceIndex<T>>(
     val: &T,
     idx: I,
 ) -> Option<&<I as core::slice::SliceIndex<T>>::Output>;

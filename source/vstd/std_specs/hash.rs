@@ -49,7 +49,7 @@ impl View for DefaultHasher {
     type V = Seq<Seq<u8>>;
 
     #[verifier::external_body]
-    spec fn view(&self) -> Seq<Seq<u8>>;
+    uninterp spec fn view(&self) -> Seq<Seq<u8>>;
 }
 
 pub trait DefaultHasherAdditionalSpecFns {
@@ -58,7 +58,7 @@ pub trait DefaultHasherAdditionalSpecFns {
 
 impl DefaultHasherAdditionalSpecFns for DefaultHasher {
     #[verifier::external_body]
-    spec fn spec_finish(s: Seq<Seq<u8>>) -> u64;
+    uninterp spec fn spec_finish(s: Seq<Seq<u8>>) -> u64;
 }
 
 // This is the specification of behavior for `DefaultHasher::new()`.
@@ -87,7 +87,7 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
 // isn't satisfied by having `Key` implement `Hash`, since this trait
 // doesn't mandate determinism.
 #[verifier::external_body]
-pub spec fn obeys_key_model<Key: ?Sized>() -> bool;
+pub uninterp spec fn obeys_key_model<Key: ?Sized>() -> bool;
 
 // These axioms state that any primitive type, or `Box` thereof,
 // obeys the requirements to be a key in a hash table that
@@ -221,7 +221,7 @@ pub trait ExBuildHasher {
 }
 
 #[verifier::external_body]
-pub spec fn builds_valid_hashers<T: ?Sized>() -> bool;
+pub uninterp spec fn builds_valid_hashers<T: ?Sized>() -> bool;
 
 // A commonly used type of trait `BuildHasher` is `RandomState`. We
 // model that type here. In particular, we have an axiom that
@@ -250,7 +250,7 @@ pub trait KeysAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
 }
 
 impl<'a, Key: 'a, Value: 'a> KeysAdditionalSpecFns<'a, Key, Value> for Keys<'a, Key, Value> {
-    spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
+    uninterp spec fn view(self: &Keys<'a, Key, Value>) -> (int, Seq<Key>);
 }
 
 pub assume_specification<'a, Key, Value>[ Keys::<'a, Key, Value>::next ](
@@ -371,10 +371,10 @@ impl<Key, Value, S> HashMapAdditionalSpecFns<Key, Value> for HashMap<Key, Value,
 impl<Key, Value, S> View for HashMap<Key, Value, S> {
     type V = Map<Key, Value>;
 
-    spec fn view(&self) -> Map<Key, Value>;
+    uninterp spec fn view(&self) -> Map<Key, Value>;
 }
 
-pub spec fn spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>) -> usize;
+pub uninterp spec fn spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>) -> usize;
 
 pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>)
     ensures
@@ -445,7 +445,10 @@ pub assume_specification<Key: Eq + Hash, Value, S: BuildHasher>[ HashMap::<Key, 
 // specification function. So we have special-case axioms that say
 // what this means in two important circumstances: (1) `Key = Q` and
 // (2) `Key = Box<Q>`.
-pub spec fn contains_borrowed_key<Key, Value, Q: ?Sized>(m: Map<Key, Value>, k: &Q) -> bool;
+pub uninterp spec fn contains_borrowed_key<Key, Value, Q: ?Sized>(
+    m: Map<Key, Value>,
+    k: &Q,
+) -> bool;
 
 pub broadcast proof fn axiom_contains_deref_key<Q, Value>(m: Map<Q, Value>, k: &Q)
     ensures
@@ -493,7 +496,7 @@ pub assume_specification<
 // function. So we have special-case axioms that say what this means
 // in two important circumstances: (1) `Key = Q` and (2) `Key =
 // Box<Q>`.
-pub spec fn maps_borrowed_key_to_value<Key, Value, Q: ?Sized>(
+pub uninterp spec fn maps_borrowed_key_to_value<Key, Value, Q: ?Sized>(
     m: Map<Key, Value>,
     k: &Q,
     v: Value,
@@ -549,7 +552,7 @@ pub assume_specification<
 // body to that specification function. So we have special-case axioms
 // that say what this means in two important circumstances: (1) `Key =
 // Q` and (2) `Key = Box<Q>`.
-pub spec fn borrowed_key_removed<Key, Value, Q: ?Sized>(
+pub uninterp spec fn borrowed_key_removed<Key, Value, Q: ?Sized>(
     old_m: Map<Key, Value>,
     new_m: Map<Key, Value>,
     k: &Q,
@@ -628,7 +631,7 @@ pub trait IterAdditionalSpecFns<'a, Key: 'a> {
 }
 
 impl<'a, Key: 'a> IterAdditionalSpecFns<'a, Key> for Iter<'a, Key> {
-    spec fn view(self: &Iter<'a, Key>) -> (int, Seq<Key>);
+    uninterp spec fn view(self: &Iter<'a, Key>) -> (int, Seq<Key>);
 }
 
 pub assume_specification<'a, Key>[ Iter::<'a, Key>::next ](elements: &mut Iter<'a, Key>) -> (r:
@@ -725,10 +728,10 @@ pub struct ExHashSet<Key, S>(HashSet<Key, S>);
 impl<Key, S> View for HashSet<Key, S> {
     type V = Set<Key>;
 
-    spec fn view(&self) -> Set<Key>;
+    uninterp spec fn view(&self) -> Set<Key>;
 }
 
-pub spec fn spec_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> usize;
+pub uninterp spec fn spec_hash_set_len<Key, S>(m: &HashSet<Key, S>) -> usize;
 
 pub broadcast proof fn axiom_spec_hash_set_len<Key, S>(m: &HashSet<Key, S>)
     ensures
@@ -790,7 +793,7 @@ pub assume_specification<Key: Eq + Hash, S: BuildHasher>[ HashSet::<Key, S>::ins
 // specification function. So we have special-case axioms that say
 // what this means in two important circumstances: (1) `Key = Q` and
 // (2) `Key = Box<Q>`.
-pub spec fn set_contains_borrowed_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q) -> bool;
+pub uninterp spec fn set_contains_borrowed_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q) -> bool;
 
 pub broadcast proof fn axiom_set_contains_deref_key<Q>(m: Set<Q>, k: &Q)
     ensures
@@ -832,7 +835,7 @@ pub assume_specification<
 // function. So we have special-case axioms that say what this means
 // in two important circumstances: (1) `Key = Q` and (2) `Key =
 // Box<Q>`.
-pub spec fn sets_borrowed_key_to_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q, v: &Key) -> bool;
+pub uninterp spec fn sets_borrowed_key_to_key<Key, Q: ?Sized>(m: Set<Key>, k: &Q, v: &Key) -> bool;
 
 pub broadcast proof fn axiom_set_deref_key_to_value<Q>(m: Set<Q>, k: &Q, v: &Q)
     ensures
@@ -877,7 +880,7 @@ pub assume_specification<
 // helpful by itself, since there's no body to that specification
 // function. So we have special-case axioms that say what this means
 // in two important circumstances: (1) `Key = Q` and (2) `Key = Box<Q>`.
-pub spec fn sets_differ_by_borrowed_key<Key, Q: ?Sized>(
+pub uninterp spec fn sets_differ_by_borrowed_key<Key, Q: ?Sized>(
     old_m: Set<Key>,
     new_m: Set<Key>,
     k: &Q,

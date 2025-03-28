@@ -112,7 +112,7 @@ macro_rules! atomic_types {
 
         impl $p_ident {
             #[verifier::external_body] /* vattr */
-            pub spec fn view(self) -> $p_data_ident;
+            pub uninterp spec fn view(self) -> $p_data_ident;
 
             pub open spec fn is_for(&self, patomic: $at_ident) -> bool {
                 self.view().patomic == patomic.id()
@@ -162,7 +162,7 @@ macro_rules! atomic_types_generic {
 
         impl<T> $p_ident <T> {
             #[verifier::external_body] /* vattr */
-            pub spec fn view(self) -> $p_data_ident <T>;
+            pub uninterp spec fn view(self) -> $p_data_ident <T>;
 
             pub open spec fn is_for(&self, patomic: $at_ident <T>) -> bool {
                 self.view().patomic == patomic.id()
@@ -193,7 +193,7 @@ macro_rules! atomic_common_methods {
     ($at_ident: ty, $p_ident: ty, $p_data_ident: ty, $rust_ty: ty, $value_ty: ty, [ $($addr:tt)* ]) => {
         verus!{
 
-        pub spec fn id(&self) -> int;
+        pub uninterp spec fn id(&self) -> int;
 
         #[inline(always)]
         #[verifier::external_body] /* vattr */
