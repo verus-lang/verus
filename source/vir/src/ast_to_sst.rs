@@ -2009,7 +2009,7 @@ pub(crate) fn expr_to_stm_opt(
                 None
             };
             if decrease.len() == 0
-                && !ctx.global.may_not_terminate
+                && !ctx.global.current_crate_may_not_terminate
                 && !ctx
                     .fun
                     .as_ref()

@@ -55,7 +55,7 @@ pub struct GlobalCtx {
     pub crate_name: Ident,
     pub vstd_crate_name: Ident,
     pub solver: SmtSolver,
-    pub(crate) may_not_terminate: bool,
+    pub(crate) current_crate_may_not_terminate: bool,
 }
 
 // Context for verifying one function
@@ -494,7 +494,7 @@ impl GlobalCtx {
             vstd_crate_name,
             func_call_graph_log,
             solver,
-            may_not_terminate: current_crate_may_not_terminate,
+            current_crate_may_not_terminate,
         })
     }
 
@@ -521,7 +521,7 @@ impl GlobalCtx {
             vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
             solver: self.solver.clone(),
-            may_not_terminate: self.may_not_terminate,
+            current_crate_may_not_terminate: self.current_crate_may_not_terminate,
         }
     }
 

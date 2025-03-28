@@ -678,7 +678,7 @@ pub fn func_def_to_sst(
 
     // Check termination
     let no_termination_check = function.x.decrease.len() == 0
-        && (function.x.mode == Mode::Exec && ctx.global.may_not_terminate);
+        && (function.x.mode == Mode::Exec && ctx.global.current_crate_may_not_terminate);
     let (decls, stm) = if no_termination_check || ctx.checking_spec_preconditions() {
         (vec![], stm)
     } else {

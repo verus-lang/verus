@@ -1311,7 +1311,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.func_call_graph_log.clone(),
         ctx.solver.clone(),
         true,
-        *may_not_terminate == crate::ast::MayNotTerminate::Yes,
+        ctx.current_crate_may_not_terminate.clone(),
     )?;
     Ok(krate)
 }
