@@ -2971,22 +2971,26 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::Impl(impll) => {
                             erase_impl(krate, &mut ctxt, &mut state, id, impll, crate_items);
                         }
-                        ItemKind::OpaqueTy(OpaqueTy {
-                            generics: _,
-                            bounds: _,
-                            origin: OpaqueTyOrigin::AsyncFn(_),
-                            in_trait: _,
-                            lifetime_mapping: _,
-                            hir_id: _,
-                            def_id: _,
-                            span: _,
-                        }) => {
-                            continue;
-                        }
-                        _ => {
+                        ItemKind::TraitAlias(_, _) => {
                             dbg!(item);
                             panic!("unexpected item");
                         }
+                        ItemKind::Trait( IsAuto::Yes, _, _, _, _,) | ItemKind::Trait(IsAuto::No, _, _, _, _,) => {
+                            dbg!(item);
+                            panic!("unexpected item");
+                        }
+                        // TODO(1.85.0) ItemKind::OpaqueTy(OpaqueTy {
+                        // TODO(1.85.0)     generics: _,
+                        // TODO(1.85.0)     bounds: _,
+                        // TODO(1.85.0)     origin: OpaqueTyOrigin::AsyncFn(_),
+                        // TODO(1.85.0)     in_trait: _,
+                        // TODO(1.85.0)     lifetime_mapping: _,
+                        // TODO(1.85.0)     hir_id: _,
+                        // TODO(1.85.0)     def_id: _,
+                        // TODO(1.85.0)     span: _,
+                        // TODO(1.85.0) }) => {
+                        // TODO(1.85.0)     continue;
+                        // TODO(1.85.0) }
                     }
                 }
                 OwnerNode::TraitItem(_trait_item) => {
