@@ -322,6 +322,8 @@ pub(crate) enum Attr {
     TypeInvariantFn,
     // Used for the encoding of `open([visibility qualified])`
     OpenVisibilityQualifier,
+    // Admit that the function may not terminate
+    AdmitMayNotTerminate,
 }
 
 #[derive(Debug, PartialEq)]
@@ -608,6 +610,12 @@ pub(crate) fn parse_attrs(
                         span,
                         "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
                     );
+                }
+                // matches #![verifier::admit(may_not_terminate)]
+                AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
+                    if name == "admit" && arg == "may_not_terminate" =>
+                {
+                    v.push(Attr::AdmitMayNotTerminate);
                 }
                 AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
                     if name == "allow" && arg == "may_not_terminate" =>
@@ -945,6 +953,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) size_of_broadcast_proof: bool,
     pub(crate) type_invariant_fn: bool,
     pub(crate) open_visibility_qualifier: bool,
+    pub(crate) admit_may_not_terminate: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1092,6 +1101,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         size_of_broadcast_proof: false,
         type_invariant_fn: false,
         open_visibility_qualifier: false,
+        admit_may_not_terminate: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1160,6 +1170,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
             Attr::TypeInvariantFn => vs.type_invariant_fn = true,
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
+            Attr::AdmitMayNotTerminate => vs.admit_may_not_terminate = true,
             _ => {}
         }
     }

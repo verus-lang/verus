@@ -269,3 +269,22 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] exec_recursive_function_with_while_loop_admit_may_not_terminate verus_code! {
+        #[verifier::admit(may_not_terminate)]
+        fn a(mut i: u64)
+            requires i <= 10,
+        {
+            let ghost initial_i = i;
+            while 0 < i && i <= 10
+                invariant
+                    0 <= i <= 10,
+                    i <= initial_i,
+            {
+                a(i - 1);
+                i -= 1;
+            }
+        }
+    } => Ok(())
+}

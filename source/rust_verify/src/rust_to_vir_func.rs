@@ -566,6 +566,7 @@ fn make_attributes<'tcx>(
             Safety::Safe => false,
             Safety::Unsafe => true,
         },
+        admit_may_not_terminate: vattrs.admit_may_not_terminate,
     };
     Ok(Arc::new(fattrs))
 }

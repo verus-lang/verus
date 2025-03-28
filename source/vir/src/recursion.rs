@@ -297,7 +297,8 @@ fn check_termination<'a>(
 ) -> Result<(Ctxt<'a>, Vec<Exp>, Stm), VirErr> {
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0
-        && (function.x.mode != crate::ast::Mode::Exec || !ctx.global.may_not_terminate)
+        && (function.x.mode != crate::ast::Mode::Exec
+            || (!ctx.global.may_not_terminate && !function.x.attrs.admit_may_not_terminate))
     {
         return Err(error(&function.span, "recursive function must have a decreases clause"));
     }
@@ -376,7 +377,7 @@ pub(crate) fn check_termination_stm(
         return Ok((vec![], body.clone()));
     }
 
-    if ctx.global.may_not_terminate
+    if (ctx.global.may_not_terminate || function.x.attrs.admit_may_not_terminate)
         && function.x.mode == crate::ast::Mode::Exec
         && function.x.decrease.is_empty()
     {

@@ -809,6 +809,13 @@ fn check_function(
         ));
     }
 
+    if function.x.attrs.admit_may_not_terminate && ctxt.no_cheating {
+        return Err(error(
+            &function.span,
+            "admit(may_not_terminate) not allowed with --no-cheating",
+        ));
+    }
+
     #[cfg(feature = "singular")]
     if function.x.attrs.integer_ring {
         let _ = match std::env::var("VERUS_SINGULAR_PATH") {
