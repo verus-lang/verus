@@ -248,7 +248,7 @@ test_verify_one_file! {
             t: T,
         }
 
-        #[verus_verify]
+        #[verus_verify(rlimit(2))]
         trait SomeTrait {
             #[verus_spec(ret =>
                 requires true
@@ -277,4 +277,88 @@ test_verify_one_file! {
             proof!{assert(r);}
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_external_with_unsupported_features code!{
+        #[verus_verify(external)]
+        fn f<'a>(v: &'a mut [usize]) -> &'a mut usize {
+            unimplemented!()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_prover_attributes code!{
+        #[verus_verify(spinoff_prover, rlimit(2))]
+        #[verus_spec(
+            ensures
+                true
+        )]
+        fn test()
+        {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_invalid_combination_attr code!{
+        #[verus_verify(external, spinoff_prover)]
+        fn f<'a>(v: &'a mut [usize]) -> &'a mut usize {
+            unimplemented!()
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "conflict parameters")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_decl code!{
+        #[verus_spec]
+        fn f() {}
+        #[verus_spec]
+        fn test() {
+            proof!{
+                let x = 1 as int;
+                assert(x == 1);
+            }
+            proof_decl!{
+                let ghost mut x;
+                let tracked y = false;
+                x = 2int;
+                assert(!y);
+                if x == 1 {
+                    assert(false);
+                }
+            }
+
+            f();
+            proof!{
+                assert(!y);
+                assert(x == 2);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_decl_reject_exec code!{
+        #[verus_spec]
+        fn f() {}
+        #[verus_spec]
+        fn test() {
+            proof_decl!{
+                f();
+            }
+            f();
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot call function `crate::f` with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_decl_reject_exec_local code!{
+        #[verus_spec]
+        fn test() {
+            proof_decl!{
+                let x = true;
+            }
+        }
+    } => Err(e) => assert_vir_error_msg(e, "Exec local is not allowed in proof_decl")
 }

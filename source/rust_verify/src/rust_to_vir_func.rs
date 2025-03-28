@@ -1072,6 +1072,7 @@ pub(crate) fn check_item_fn<'tcx>(
         sig.span,
         &visibility,
         vattrs.publish,
+        &header.open_visibility_qualifier,
         vattrs.opaque,
         vattrs.opaque_outside_module,
         mode,
@@ -1806,6 +1807,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         span,
         &visibility,
         vattrs.publish,
+        &header.open_visibility_qualifier,
         vattrs.opaque,
         vattrs.opaque_outside_module,
         func_mode,
@@ -1959,6 +1961,7 @@ fn get_body_visibility_and_fuel(
     span: Span,
     func_visibility: &Visibility,
     publish: Option<bool>,
+    open_visibility_qualifier: &Option<Visibility>,
     opaque: bool,
     opaque_outside_module: bool,
     mode: Mode,
@@ -1966,6 +1969,13 @@ fn get_body_visibility_and_fuel(
     has_body: bool,
 ) -> Result<(Visibility, Opaqueness), VirErr> {
     let private_vis = Visibility { restricted_to: Some(my_module.clone()) };
+
+    if open_visibility_qualifier.is_some() && publish != Some(true) {
+        crate::internal_err!(
+            span,
+            "found 'open_visibility_qualifier' declaration but no 'publish' attribute"
+        )
+    }
 
     if mode != Mode::Spec {
         if publish == Some(true) {
@@ -1999,8 +2009,23 @@ fn get_body_visibility_and_fuel(
             );
         }
 
-        let body_visibility =
-            if publish == Some(true) { func_visibility.clone() } else { private_vis.clone() };
+        if let Some(vis) = open_visibility_qualifier {
+            if !vis.at_least_as_restrictive_as(&func_visibility) {
+                return err_span(
+                    span,
+                    "the function body is declared 'open' to a wider scope than the function itself",
+                );
+            }
+        }
+
+        let body_visibility = if publish == Some(true) {
+            match open_visibility_qualifier {
+                None => func_visibility.clone(),
+                Some(vis) => vis.clone(),
+            }
+        } else {
+            private_vis.clone()
+        };
 
         let opaqueness = if opaque {
             Opaqueness::Opaque

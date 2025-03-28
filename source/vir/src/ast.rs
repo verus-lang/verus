@@ -564,6 +564,8 @@ pub enum HeaderExprX {
     NoUnwind,
     /// This function will not unwind if the given condition holds (function of arguments)
     NoUnwindWhen(Expr),
+    /// The visibility used in, e.g., `open(crate)`
+    OpenVisibilityQualifier(Visibility),
 }
 
 /// Primitive constant values

@@ -576,6 +576,19 @@ pub proof fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>)
     assert(s2.intersect(s1) =~= s1);
 }
 
+/// A subset of a finite set `s` is finite.
+pub broadcast proof fn lemma_set_subset_finite<A>(s: Set<A>, sub: Set<A>)
+    requires
+        s.finite(),
+        sub.subset_of(s),
+    ensures
+        #![trigger sub.subset_of(s)]
+        sub.finite(),
+{
+    let complement = s.difference(sub);
+    assert(sub =~= s.difference(complement));
+}
+
 /// The size of the difference of finite set `s1` and set `s2` is less than or equal to the size of `s1`.
 pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
     requires
@@ -961,9 +974,10 @@ macro_rules! assert_sets_equal_internal {
     }
 }
 
-pub broadcast group group_set_lib_axioms {
+pub broadcast group group_set_lib_default {
     axiom_is_empty,
     axiom_is_empty_len0,
+    lemma_set_subset_finite,
 }
 
 pub use assert_sets_equal_internal;

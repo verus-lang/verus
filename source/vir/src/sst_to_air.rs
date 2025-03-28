@@ -2709,11 +2709,12 @@ pub(crate) fn body_stm_to_air(
         }
     }
 
-    let mut local = local_shared.clone();
     for e in crate::traits::trait_bounds_to_air(ctx, typ_bounds) {
         // The outer query already has this in reqs, but inner queries need it separately:
         local_shared.push(Arc::new(DeclX::Axiom(air::ast::Axiom { named: None, expr: e })));
     }
+
+    let mut local = local_shared.clone();
 
     let mut state = State {
         local_shared,

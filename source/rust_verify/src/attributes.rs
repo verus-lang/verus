@@ -320,6 +320,8 @@ pub(crate) enum Attr {
     SizeOfBroadcastProof,
     // Is this a type_invariant spec function
     TypeInvariantFn,
+    // Used for the encoding of `open([visibility qualified])`
+    OpenVisibilityQualifier,
 }
 
 #[derive(Debug, PartialEq)]
@@ -732,6 +734,9 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
                         v.push(Attr::ExternalFnSpecification)
                     }
+                    AttrTree::Fun(_, arg, None) if arg == "open_visibility_qualifier" => {
+                        v.push(Attr::OpenVisibilityQualifier)
+                    }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
                     }
@@ -939,6 +944,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) item_broadcast_use: bool,
     pub(crate) size_of_broadcast_proof: bool,
     pub(crate) type_invariant_fn: bool,
+    pub(crate) open_visibility_qualifier: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1085,6 +1091,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         item_broadcast_use: false,
         size_of_broadcast_proof: false,
         type_invariant_fn: false,
+        open_visibility_qualifier: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1152,6 +1159,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             }
             Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
             Attr::TypeInvariantFn => vs.type_invariant_fn = true,
+            Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
             _ => {}
         }
     }

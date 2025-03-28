@@ -2928,6 +2928,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         self.rust_end_time = Some(Instant::now());
 
         if let Some(_guar) = compiler.sess.dcx().has_errors() {
+            self.verifier.encountered_error = true;
             return rustc_driver::Compilation::Stop;
         }
 
