@@ -4,7 +4,9 @@ Below, you can find instructions for:
 
 ## Obtaining Verus and Rust
 
-You can obtain a binary release of Verus from [https://github.com/verus-lang/verus/releases](https://github.com/verus-lang/verus/releases). At the moment we offer rolling binary releases that track the latest commit on `main` (marked "pre-release"), and weekly point releases (you can get the "latest"). If you need a specific older version, which is not one of the weekly releases, you can build it yourself using the instructions in [BUILD.md](./BUILD.md).
+You can obtain a binary release of Verus from [https://github.com/verus-lang/verus/releases](https://github.com/verus-lang/verus/releases). At the moment we offer rolling binary releases that track the latest commit on `main` (marked "pre-release"), and weekly point releases (you can get the "latest" at [https://github.com/verus-lang/verus/releases/latest](https://github.com/verus-lang/verus/releases/latest)). We recommend the weekly point releases.
+
+If you need a specific older version, which is not one of the weekly releases, you can build it yourself using the instructions in [BUILD.md](./BUILD.md).
 
 On that page, open the "Assets" drawer and download the release for your platform, then unpack the zip file in a convenient location, e.g. `~/verus`. We will use this path as an example for the following, but you can replace it with your preferred location.
 
