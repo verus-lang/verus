@@ -1251,8 +1251,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] mutable_reference_no_decreases verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mutable_reference_no_decreases ["may_not_terminate"] => verus_code! {
         fn e(s: &mut u64, i: usize) -> usize {
             if i < 10 {
                 e(s, i + 1)
@@ -1263,8 +1263,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] mutable_reference_decreases_1 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mutable_reference_decreases_1 ["may_not_terminate"] => verus_code! {
         fn e(s: &mut u64, i: usize) -> usize
             decreases i
         {
@@ -1279,8 +1279,8 @@ test_verify_one_file! {
     }
 }
 
-test_verify_one_file! {
-    #[test] mutable_reference_decreases_2_pass verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mutable_reference_decreases_2_pass ["may_not_terminate"] => verus_code! {
         fn e(s: &mut u64) -> u64
             decreases *old(s)
         {

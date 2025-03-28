@@ -94,3 +94,14 @@ test_verify_one_file_with_options! {
         {}
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_no_cheating_admit_may_not_terminate ["--no-cheating"] => verus_code! {
+        #[verifier::admit(may_not_terminate)]
+        fn a(mut i: u64)
+            requires i <= 10,
+        {
+            a(i)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "admit(may_not_terminate) not allowed with --no-cheating")
+}

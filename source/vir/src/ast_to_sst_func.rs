@@ -471,6 +471,8 @@ pub(crate) fn map_expr_rename_vars(
     })
 }
 
+/// Lower a VIR function to SST for the purpopse of checking that its definition
+/// satisfies its specification.
 pub fn func_def_to_sst(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
@@ -675,7 +677,8 @@ pub fn func_def_to_sst(
     let ens_spec_precondition_stms = ens_spec_precondition_stms?;
 
     // Check termination
-    let no_termination_check = function.x.mode == Mode::Exec && function.x.decrease.len() == 0;
+    let no_termination_check = function.x.decrease.len() == 0
+        && (function.x.mode == Mode::Exec && ctx.global.current_crate_may_not_terminate);
     let (decls, stm) = if no_termination_check || ctx.checking_spec_preconditions() {
         (vec![], stm)
     } else {

@@ -1413,7 +1413,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_returns_clause ["vstd"] => verus_code! {
+    #[test] test_returns_clause ["vstd", "may_not_terminate"] => verus_code! {
         fn llama(x: u8) -> bool
             requires x == 4 || x == 7,
             returns (x == 4)
@@ -1459,7 +1459,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_returns_clause2 ["vstd"] => verus_code! {
+    #[test] test_returns_clause2 ["vstd", "may_not_terminate"] => verus_code! {
         fn llama(x: u8) -> (b: bool)
             requires x == 4 || x == 7 || x == 9,
             ensures x == 4 || x == 7
@@ -1526,7 +1526,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] call_ensures_return_clause_on_trait_method_decl ["vstd"] => verus_code! {
+    #[test] call_ensures_return_clause_on_trait_method_decl ["vstd", "may_not_terminate"] => verus_code! {
         trait Tr : Sized {
             spec fn ens(&self, i: u8, s: &Self) -> bool;
             spec fn ret(&self, i: u8) -> Self;
@@ -1585,7 +1585,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] call_ensures_return_clause_on_trait_method_impl ["vstd"] => verus_code! {
+    #[test] call_ensures_return_clause_on_trait_method_impl ["vstd", "may_not_terminate"] => verus_code! {
         trait Tr : Sized {
             spec fn ens(&self, i: u8, s: &Self) -> bool;
 
@@ -1625,8 +1625,8 @@ test_verify_one_file_with_options! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
-    #[test] call_ensures_returns_on_default_method_impl verus_code! {
+test_verify_one_file_with_options! {
+    #[test] call_ensures_returns_on_default_method_impl ["may_not_terminate"] => verus_code! {
         trait Tr : Sized {
             fn test(&self, i: u8) -> (s: &Self)
                 ensures 20 <= i < 30,
