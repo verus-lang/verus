@@ -189,10 +189,9 @@ test_verify_one_file! {
         }
 
         #[derive(PartialEq)]
-        struct A(pub usize);
+        pub struct A(pub usize);
 
         impl SpecSubRequires<A> for A {
-            type Output = usize;
             closed spec fn spec_sub_requires(self, rhs: A) -> bool {
                 self.0 >= 20 && rhs.0 < 10
             }
@@ -255,7 +254,6 @@ test_verify_one_file! {
         use vstd::std_specs::ops::*;
         struct A;
         impl SpecSubRequires<A> for A {
-            type Output = A;
             closed spec fn spec_sub_requires(self, other: A) -> bool {
                 true
             }

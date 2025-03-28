@@ -45,7 +45,6 @@ macro_rules! def_bin_ops_spec {
             /// without writing axiom for spec_{op}_requires.
             /// Spec{Op}Requires::spec_requires(...) <==> spec_{op}_requires(...)
             pub trait $spec_trait<Rhs>: Sized {
-                type Output;
                 open spec fn $spec_requires(self, rhs: Rhs) -> bool {true}
             }
 
@@ -56,8 +55,7 @@ macro_rules! def_bin_ops_spec {
                 type Output;
                 fn $fun(self, rhs: Rhs) -> (ret: Self::Output)
                 where Self: Sized
-                requires $spec_requires(self, rhs)
-                no_unwind when $spec_requires(self, rhs);
+                requires $spec_requires::<Self, Rhs>(self, rhs);
             }
 
             pub broadcast proof fn $axiom_requires<Lhs, Rhs>(lhs: Lhs, rhs: Rhs)
@@ -250,8 +248,6 @@ macro_rules! def_call_requires_axiom {
     ($typ:ty, $mname: ident) => {
         verus!{
         impl SpecAddRequires<$typ> for $typ {
-            type Output = $typ;
-
             #[verifier(inline)]
             open spec fn spec_add_requires(self, rhs: $typ) -> bool {
                 (self + rhs) as $typ == (self + rhs)
@@ -259,8 +255,6 @@ macro_rules! def_call_requires_axiom {
         }
 
         impl SpecSubRequires<$typ> for $typ {
-            type Output = $typ;
-
             #[verifier(inline)]
             open spec fn spec_sub_requires(self, rhs: $typ) -> bool {
                 (self - rhs) as $typ == (self - rhs)
@@ -269,8 +263,6 @@ macro_rules! def_call_requires_axiom {
 
 
         impl SpecRemRequires<$typ> for $typ {
-            type Output = $typ;
-
             #[verifier(inline)]
             open spec fn spec_rem_requires(self, rhs: $typ) -> bool {
                 rhs != 0
@@ -278,8 +270,6 @@ macro_rules! def_call_requires_axiom {
         }
 
         impl SpecDivRequires<$typ> for $typ {
-            type Output = $typ;
-
             #[verifier(inline)]
             open spec fn spec_div_requires(self, rhs: $typ) -> bool {
                 rhs != 0
@@ -287,8 +277,6 @@ macro_rules! def_call_requires_axiom {
         }
 
         impl SpecMulRequires<$typ> for $typ {
-            type Output = $typ;
-
             #[verifier(inline)]
             open spec fn spec_mul_requires(self, rhs: $typ) -> bool {
                 self * rhs == (self * rhs) as $typ
@@ -296,8 +284,6 @@ macro_rules! def_call_requires_axiom {
         }
 
         impl SpecShlRequires<$typ> for $typ {
-            type Output = $typ;
-
             #[verifier(inline)]
             open spec fn spec_shl_requires(self, rhs: $typ) -> bool {
                 rhs <= $typ::BITS
@@ -305,8 +291,6 @@ macro_rules! def_call_requires_axiom {
         }
 
         impl SpecShrRequires<$typ> for $typ {
-            type Output = $typ;
-
             #[verifier(inline)]
             open spec fn spec_shr_requires(self, rhs: $typ) -> bool {
                 rhs <= $typ::BITS
