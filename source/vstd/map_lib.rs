@@ -35,6 +35,16 @@ impl<K, V> Map<K, V> {
         exists|i: K| #[trigger] self.dom().contains(i) && self[i] == v
     }
 
+    /// Returns `Some(v)` if the key `k` is in the domain of `self` and maps to `v`,
+    /// and `None` if the key `k` is not in the domain of `self`.
+    pub open spec fn index_opt(self, k: K) -> Option<V> {
+        if self.contains_key(k) {
+            Some(self[k])
+        } else {
+            None
+        }
+    }
+
     ///
     /// Returns the set of values in the map.
     ///
