@@ -9,7 +9,7 @@ use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::fold::BoundVarReplacerDelegate;
-use rustc_middle::ty::TraitPredicate;
+use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
@@ -235,7 +235,7 @@ pub(crate) fn clean_all_escaping_bound_vars<
             *regions.entry(br).or_insert(rustc_middle::ty::Region::new_late_param(
                 tcx,
                 param_env_src,
-                br.kind,
+                rustc_middle::ty::LateParamRegionKind::from_bound(br.var, br.kind),
             ))
         },
         types: &mut |b| panic!("unexpected bound ty in binder: {:?}", b),
@@ -435,6 +435,7 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
 ) -> vir::ast::ImplPaths {
     let mut impl_paths = Vec::new();
     let param_env = tcx.param_env(param_env_src);
+    let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
 
     // REVIEW: do we need this?
     // let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
@@ -468,10 +469,12 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
                 unreachable!()
             };
 
-            let candidate = tcx.codegen_select_candidate((param_env, trait_refs));
+            let candidate_query_input = typing_env.as_query_input(trait_refs);
+            let candidate = tcx.codegen_select_candidate(candidate_query_input);
             let candidate = candidate.or_else(|_| {
-                let trait_refs = tcx.normalize_erasing_regions(param_env, trait_refs);
-                tcx.codegen_select_candidate((param_env, trait_refs))
+                let trait_refs = tcx.normalize_erasing_regions(typing_env, trait_refs);
+                let candidate_query_input = typing_env.as_query_input(trait_refs);
+                tcx.codegen_select_candidate(candidate_query_input)
             });
             if let Ok(impl_source) = candidate {
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
@@ -735,6 +738,7 @@ pub(crate) fn mid_ty_filter_for_external_impls<'tcx>(
 
         TyKind::CoroutineClosure(_, _) => false,
         TyKind::Pat(_, _) => false,
+        TyKind::UnsafeBinder(_) => false,
     }
 }
 
@@ -773,7 +777,6 @@ pub(crate) fn mid_generics_filter_for_external_impls<'tcx>(
             GenericParamDefKind::Type { has_default: true, .. } => {
                 return false;
             }
-            GenericParamDefKind::Const { is_host_effect: true, .. } => continue,
             GenericParamDefKind::Const { .. } => {}
         }
         if param.pure_wrt_drop {
@@ -1015,7 +1018,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             // wouldn't be allowed if the type were left in an unnormalized form.
             use crate::rustc_trait_selection::traits::NormalizeExt;
             let param_env = tcx.param_env(param_env_src);
-            let infcx = tcx.infer_ctxt().ignoring_regions().build();
+            let infcx = tcx.infer_ctxt().ignoring_regions().build(
+                rustc_type_ir::TypingMode::PostAnalysis
+            );
             let cause = rustc_infer::traits::ObligationCause::dummy();
             let at = infcx.at(&cause, param_env);
             let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
@@ -1072,10 +1077,10 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             unsupported_err!(span, "opaque type")
         }
         TyKind::FnDef(def_id, args) => {
-            let param_env = tcx.param_env(param_env_src);
-            let normalized_substs = tcx.normalize_erasing_regions(param_env, *args);
+            let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
+            let normalized_substs = tcx.normalize_erasing_regions(typing_env, *args);
             let inst =
-                rustc_middle::ty::Instance::try_resolve(tcx, param_env, *def_id, normalized_substs);
+                rustc_middle::ty::Instance::try_resolve(tcx, typing_env, *def_id, normalized_substs);
             let mut resolved = None;
             if let Ok(Some(inst)) = inst {
                 if let rustc_middle::ty::InstanceKind::Item(did) = inst.def {
@@ -1126,6 +1131,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Error(..) => unsupported_err!(span, "type inference error types"),
         TyKind::CoroutineClosure(_, _) => unsupported_err!(span, "coroutine closure types"),
         TyKind::Pat(_, _) => unsupported_err!(span, "pattern types"),
+        TyKind::UnsafeBinder(_) => unsupported_err!(span, "unsafe binder types"),
     };
     Ok(t)
 }
@@ -1801,7 +1807,7 @@ fn check_generics_bounds_main<'tcx>(
             | GenericParamDefKind::Const { has_default: _, is_host_effect: false, .. } => {
                 mid_params.push(param);
             }
-            GenericParamDefKind::Const { is_host_effect: true, .. } => {}
+            GenericParamDefKind::Const { .. } => {}
         }
     }
 
