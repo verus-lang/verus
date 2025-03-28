@@ -525,11 +525,9 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
     /// **Warning:** The lock is _NOT_ released automatically when the handle
     /// is dropped. You must call [`WriteHandle::release_write`].
     /// Verus does not check that lock is released.
-    pub fn acquire_write(&self) -> (ret: (V, WriteHandle<V, Pred>))
+    pub fn acquire_write(&self) -> (ret: Result<(V, WriteHandle<V, Pred>), ()>)
         ensures
-            ({
-                let val = ret.0;
-                let write_handle = ret.1;
+            ret matches Ok((val, write_handle)) ==> ({
                 &&& write_handle.rwlock() == *self
                 &&& self.inv(val)
             }),
@@ -541,13 +539,16 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         let tracked mut token: Option<
             RwLockToks::pending_writer<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>,
         > = Option::None;
-        while !done
+        let mut counter: u64 = 1073741824;
+        while !done && counter > 0
             invariant
                 done ==> token.is_some() && equal(
                     token.get_Some_0().instance_id(),
                     self.inst@.id(),
                 ),
                 self.wf(),
+                counter >= 0,
+            decreases counter,
         {
             let result =
                 atomic_with_ghost!(
@@ -565,11 +566,18 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
                 Result::Ok(_) => true,
                 _ => false,
             };
+
+            counter -= 1;
         }
-        loop
+        if !done {
+            return Result::Err(());
+        }
+        let mut counter: u64 = 1073741824;
+        while counter > 0
             invariant
                 token.is_Some() && equal(token.get_Some_0().instance_id(), self.inst@.id()),
                 self.wf(),
+            decreases counter,
         {
             let tracked mut perm_opt: Option<PointsTo<V>> = None;
             let tracked mut handle_opt: Option<
@@ -607,9 +615,11 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
                     handle: Tracked(handle),
                     rwlock: self,
                 };
-                return (t, write_handle);
+                return Result::Ok((t, write_handle));
             }
+            counter -= 1;
         }
+        return Result::Err(());
     }
 
     /// Acquires a shared read-lock. To release it, use [`ReadHandle::release_read`].
@@ -617,17 +627,21 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
     /// **Warning:** The lock is _NOT_ released automatically when the handle
     /// is dropped. You must call [`ReadHandle::release_read`].
     /// Verus does not check that lock is released.
-    pub fn acquire_read(&self) -> (read_handle: ReadHandle<V, Pred>)
+    pub fn acquire_read(&self) -> (read_handle: Result<ReadHandle<V, Pred>, ()>)
         ensures
-            read_handle.rwlock() == *self,
-            self.inv(read_handle.view()),
+            read_handle matches Ok(rh) ==> ({
+                &&& rh.rwlock() == *self
+                &&& self.inv(rh.view())
+            }),
     {
         proof {
             use_type_invariant(self);
         }
-        loop
+        let mut counter: u64 = 1073741824;
+        while counter > 0
             invariant
                 self.wf(),
+            decreases counter,
         {
             let val = atomic_with_ghost!(&self.rc => load(); ghost g => { });
 
@@ -674,7 +688,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
                                 Option::None => proof_from_false(),
                             };
                             let read_handle = ReadHandle { handle: Tracked(handle), rwlock: self };
-                            return read_handle;
+                            return Ok(read_handle);
                         } else {
                             let _ =
                                 atomic_with_ghost!(
@@ -689,17 +703,19 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
                     _ => {},
                 }
             }
+            counter -= 1;
         }
+        Err(())
     }
 
     /// Destroys the lock and returns the inner object.
     /// Note that this may deadlock if not all locks have been released.
-    pub fn into_inner(self) -> (v: V)
+    pub fn into_inner(self) -> (v: Result<V, ()>)
         ensures
-            self.inv(v),
+            v matches Ok(v) ==> self.inv(v),
     {
-        let (v, _write_handle) = self.acquire_write();
-        v
+        let (v, _write_handle) = self.acquire_write()?;
+        Ok(v)
     }
 }
 
