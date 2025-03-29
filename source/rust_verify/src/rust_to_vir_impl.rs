@@ -649,6 +649,10 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             );
         }
         for method in traitt.x.methods.iter() {
+            let f = &func_map[method];
+            if matches!(&f.x.kind, FunctionKind::TraitMethodDecl { has_default: true, .. }) {
+                continue;
+            }
             if !methods_we_have.contains::<vir::ast::Ident>(&method.path.last_segment()) {
                 return err_span(
                     span,
