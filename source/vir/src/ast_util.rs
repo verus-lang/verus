@@ -34,6 +34,18 @@ impl PathX {
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
     }
 
+    pub fn push_segments(&self, idents: Vec<Ident>) -> Path {
+        let mut segments = (*self.segments).clone();
+        segments.extend(idents);
+        Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
+    pub fn matches_prefix(&self, prefix: &Path) -> bool {
+        prefix.krate == self.krate
+            && prefix.segments.len() <= self.segments.len()
+            && prefix.segments[..] == self.segments[..prefix.segments.len()]
+    }
+
     pub fn is_rust_std_path(&self) -> bool {
         match &self.krate {
             Some(k) if &**k == "std" || &**k == "alloc" || &**k == "core" => true,
@@ -392,14 +404,11 @@ pub fn friendly_fun_name_crate_relative(module: &Path, fun: &Fun) -> String {
 
 // Can source_module see an item restricted to restricted_to?
 pub fn is_visible_to_of_owner(restricted_to: &Option<Path>, source_module: &Path) -> bool {
-    let sources = &source_module.segments;
     match restricted_to {
         None => true,
-        Some(target) if target.segments.len() > sources.len() => false,
         Some(target) => {
             // Child can access private item in parent, so check if target is parent:
-            let targets = &target.segments;
-            target.krate == source_module.krate && targets[..] == sources[..targets.len()]
+            source_module.matches_prefix(target)
         }
     }
 }
@@ -470,17 +479,7 @@ impl Visibility {
         match (&self.restricted_to, &vis2.restricted_to) {
             (_, None) => true,
             (None, Some(_)) => false,
-            (Some(p1), Some(p2)) => {
-                if p1.krate != p2.krate {
-                    return false;
-                }
-                if p1.segments.len() >= p2.segments.len() {
-                    let m = p2.segments.len();
-                    &p1.segments[..m] == &p2.segments[..m]
-                } else {
-                    false
-                }
-            }
+            (Some(p1), Some(p2)) => p1.matches_prefix(p2),
         }
     }
 }
