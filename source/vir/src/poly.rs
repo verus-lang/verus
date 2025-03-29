@@ -459,7 +459,9 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 }
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(args)))
             }
-            CallFun::InternalFun(InternalFun::ClosureReq | InternalFun::ClosureEns) => {
+            CallFun::InternalFun(
+                InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns,
+            ) => {
                 let exps = visit_exps_poly(ctx, state, exps);
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), exps))
             }
@@ -525,7 +527,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
-                UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } => {
+                UnaryOp::Trigger(_) | UnaryOp::DefaultEnsures | UnaryOp::CoerceMode { .. } => {
                     mk_exp_typ(&e1.typ, ExpX::Unary(*op, e1.clone()))
                 }
                 UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
@@ -733,7 +735,17 @@ fn take_temp(state: &mut State, dest: &Dest) -> Option<VarIdent> {
 fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
     let mk_stm = |s: StmX| Spanned::new(stm.span.clone(), s);
     match &stm.x {
-        StmX::Call { fun, resolved_method, mode, typ_args, args, split, dest, assert_id } => {
+        StmX::Call {
+            fun,
+            resolved_method,
+            is_trait_default,
+            mode,
+            typ_args,
+            args,
+            split,
+            dest,
+            assert_id,
+        } => {
             let function = &ctx.func_sst_map[fun].x;
             let is_spec = function.mode == Mode::Spec;
             let is_trait = !matches!(function.kind, FunctionKind::Static);
@@ -763,6 +775,7 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
             let callx = StmX::Call {
                 fun: fun.clone(),
                 resolved_method: resolved_method.clone(),
+                is_trait_default: *is_trait_default,
                 mode: *mode,
                 typ_args: typ_args.clone(),
                 args: Arc::new(new_args),

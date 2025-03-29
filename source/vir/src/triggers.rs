@@ -109,6 +109,7 @@ fn check_trigger_expr_arg(state: &mut State, expect_boxed: bool, arg: &Exp) {
             }
             UnaryOp::Not
             | UnaryOp::Clip { .. }
+            | UnaryOp::DefaultEnsures
             | UnaryOp::BitNot(_)
             | UnaryOp::StrLen
             | UnaryOp::StrIsAscii
@@ -252,6 +253,9 @@ fn check_trigger_expr(
                 | UnaryOp::MustBeFinalized
                 | UnaryOp::MustBeElaborated
                 | UnaryOp::CastToInteger => Ok(()),
+                UnaryOp::DefaultEnsures => {
+                    Err(error(&exp.span, "triggers cannot contain default_ensures"))
+                }
                 UnaryOp::InferSpecForLoopIter { .. } => {
                     Err(error(&exp.span, "triggers cannot contain loop spec inference"))
                 }
