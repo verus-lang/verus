@@ -49,29 +49,29 @@ pub struct Multiset<V> {
 
 impl<V> Multiset<V> {
     /// Returns the _count_, or _multiplicity_ of a single value within the multiset.
-    pub spec fn count(self, value: V) -> nat;
+    pub uninterp spec fn count(self, value: V) -> nat;
 
     /// The total size of the multiset, i.e., the sum of all multiplicities over all values.
-    pub spec fn len(self) -> nat;
+    pub uninterp spec fn len(self) -> nat;
 
     /// An empty multiset.
-    pub spec fn empty() -> Self;
+    pub uninterp spec fn empty() -> Self;
 
     /// Creates a multiset whose elements are given by the domain of the map `m` and whose
     /// multiplicities are given by the corresponding values of `m[element]`. The map `m`
     /// must be finite, or else this multiset is arbitrary.
-    pub spec fn from_map(m: Map<V, nat>) -> Self;
+    pub uninterp spec fn from_map(m: Map<V, nat>) -> Self;
 
     pub open spec fn from_set(m: Set<V>) -> Self {
         Self::from_map(Map::new(|k| m.contains(k), |v| 1))
     }
 
     /// A singleton multiset, i.e., a multiset with a single element of multiplicity 1.
-    pub spec fn singleton(v: V) -> Self;
+    pub uninterp spec fn singleton(v: V) -> Self;
 
     /// Takes the union of two multisets. For a given element, its multiplicity in
     /// the resulting multiset is the sum of its multiplicities in the operands.
-    pub spec fn add(self, m2: Self) -> Self;
+    pub uninterp spec fn add(self, m2: Self) -> Self;
 
     /// Takes the difference of two multisets.
     /// The multiplicities of `m2` are subtracted from those of `self`; if any element
@@ -80,7 +80,7 @@ impl<V> Multiset<V> {
     ///
     /// Note in particular that `self == self.sub(m).add(m)` only holds if
     /// `m` is included in `self`.
-    pub spec fn sub(self, m2: Self) -> Self;
+    pub uninterp spec fn sub(self, m2: Self) -> Self;
 
     /// Inserts one instance the value `v` into the multiset.
     ///
@@ -123,7 +123,7 @@ impl<V> Multiset<V> {
     }
 
     // TODO define this in terms of a more general constructor?
-    pub spec fn filter(self, f: impl Fn(V) -> bool) -> Self;
+    pub uninterp spec fn filter(self, f: impl Fn(V) -> bool) -> Self;
 
     /// Chooses an arbitrary value of the multiset.
     ///

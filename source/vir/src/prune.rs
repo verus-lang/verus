@@ -7,7 +7,7 @@ use crate::ast::{
     Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt,
     Trait, TraitX, Typ, TypX,
 };
-use crate::ast_util::{is_visible_to, is_visible_to_or_true};
+use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{
@@ -393,6 +393,20 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                 reach_function(ctxt, state, &fn_set_remove_name(&ctxt.vstd_crate_name));
                 reach_function(ctxt, state, &fn_set_subset_of_name(&ctxt.vstd_crate_name));
             };
+            let maybe_reach_set_ops_for_call = |state: &mut State, callee_name: &Fun| {
+                let caller =
+                    crate::ast_util::get_non_trait_impl(&ctxt.function_map, &function.x.name);
+                let callee = crate::ast_util::get_non_trait_impl(&ctxt.function_map, callee_name);
+                if let (Some(caller), Some(callee)) = (caller, callee) {
+                    let caller_mask = caller.x.mask_spec_or_default(&function.span);
+                    let callee_mask = callee.x.mask_spec_or_default(&function.span);
+                    // If caller is `all`, we generate no set operations
+                    // If callee is `none`, we generate no set operations
+                    if !caller_mask.is_all() && !callee_mask.is_none() {
+                        reach_set_ops(state);
+                    }
+                }
+            };
             // note: the types in typ_bounds are handled below by map_function_visitor_env
             traverse_generic_bounds(ctxt, state, &function.x.typ_bounds, false);
             let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
@@ -408,8 +422,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         reach_function(ctxt, state, name);
                         if let crate::ast::CallTargetKind::DynamicResolved { resolved, .. } = kind {
                             reach_function(ctxt, state, resolved);
+                            maybe_reach_set_ops_for_call(state, resolved);
                         }
-                        reach_set_ops(state);
+                        maybe_reach_set_ops_for_call(state, name);
                     }
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
@@ -853,7 +868,7 @@ pub fn prune_krate_for_module_or_krate(
         // - function is exec or proof
         // (when optimizing for modules, after well-formedness checks)
         let is_vis = is_visible_to(&f.x.visibility, &module);
-        let is_open = is_visible_to(&f.x.body_visibility, &module);
+        let is_open = is_body_visible_to(&f.x.body_visibility, &module);
         let is_non_opaque = f.x.opaqueness.get_default_fuel_for_module_path(module) != 0;
         let is_revealed = is_non_opaque || revealed_functions.contains(&f.x.name);
         let is_spec = f.x.mode == Mode::Spec;

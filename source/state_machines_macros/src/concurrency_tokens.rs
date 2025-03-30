@@ -3,7 +3,7 @@
 //!
 //!  * The Instance type
 //!  * All the Token types for shardable fields
-//!  * #[verifier::proof] methods for each transition (including init and readonly transitions)
+//!  * #[cfg_attr(verus_keep_ghost, verifier::proof)] methods for each transition (including init and readonly transitions)
 
 use crate::ast::{
     Arm, Field, Lemma, LetKind, MonoidElt, MonoidStmtType, ShardableType, SpecialOp, SplitKind,
@@ -167,10 +167,10 @@ fn trusted_clone() -> TokenStream {
     return quote_vstd! { vstd =>
         #[cfg(verus_keep_ghost_body)]
         #[verus::internal(verus_macro)]
-        #[verifier::proof]
+        #[cfg_attr(verus_keep_ghost, verifier::proof)]
         #[verifier::external_body] /* vattr */
         #[verifier::returns(proof)] /* vattr */
-        pub fn clone(#[verifier::proof] &self) -> Self {
+        pub fn clone(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self) -> Self {
             ensures(|s: Self| #vstd::prelude::equal(*self, s));
             ::core::unimplemented!();
         }
@@ -1317,9 +1317,10 @@ fn token_trait_impls(
         ts.extend(quote! {
             #[cfg_attr(verus_keep_ghost, verus::internal(verus_macro))]
             #impl_decl {
+                #[cfg(verus_keep_ghost)]
                 #[cfg_attr(verus_keep_ghost, verifier::external_body)]
                 #[cfg_attr(verus_keep_ghost, verifier::proof)]
-                fn unique(#[verifier::proof] &mut self, #[verifier::proof] other: &Self) {
+                fn unique(#[cfg_attr(verus_keep_ghost, verifier::proof)] &mut self, #[cfg_attr(verus_keep_ghost, verifier::proof)] other: &Self) {
                     ::core::unimplemented!();
                 }
             }
@@ -1352,6 +1353,7 @@ fn token_trait_impl_main(
     let add_spec_fn = |ts: &mut TokenStream, name: &str, ty: &Type| {
         let name = Ident::new(name, token_ty.span());
         ts.extend(quote! {
+            #[cfg(verus_keep_ghost)]
             #[cfg_attr(verus_keep_ghost, verifier::spec)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             fn #name(&self) -> #ty { ::core::unimplemented!() }
@@ -1359,9 +1361,10 @@ fn token_trait_impl_main(
     };
     let add_agree = |ts: &mut TokenStream| {
         ts.extend(quote! {
+            #[cfg(verus_keep_ghost)]
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
-            fn agree(#[verifier::proof] &self, #[verifier::proof] other: &Self)
+            fn agree(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self, #[cfg_attr(verus_keep_ghost, verifier::proof)] other: &Self)
             { ::core::unimplemented!(); }
         });
     };
@@ -1369,19 +1372,19 @@ fn token_trait_impl_main(
         ts.extend(quote! {
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
-            fn join(#[verifier::proof] &mut self, #[verifier::proof] other: Self)
+            fn join(#[cfg_attr(verus_keep_ghost, verifier::proof)] &mut self, #[cfg_attr(verus_keep_ghost, verifier::proof)] other: Self)
             { ::core::unimplemented!(); }
 
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
-            fn split(#[verifier::proof] &mut self, count: nat) -> Self
+            fn split(#[cfg_attr(verus_keep_ghost, verifier::proof)] &mut self, count: nat) -> Self
             { ::core::unimplemented!(); }
 
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
-            fn weaken_shared(#[verifier::proof] &self, count: nat) -> &Self
+            fn weaken_shared(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self, count: nat) -> &Self
             { ::core::unimplemented!(); }
         });
     };
@@ -1390,12 +1393,13 @@ fn token_trait_impl_main(
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]
-            fn weaken(#[verifier::proof] &self, count: nat) -> Self
+            fn weaken(#[cfg_attr(verus_keep_ghost, verifier::proof)] &self, count: nat) -> Self
             { ::core::unimplemented!(); }
         });
     };
     let add_arbitrary = |ts: &mut TokenStream| {
         ts.extend(quote! {
+            #[cfg(verus_keep_ghost)]
             #[cfg_attr(verus_keep_ghost, verifier::proof)]
             #[cfg_attr(verus_keep_ghost, verifier::external_body)]
             #[cfg_attr(verus_keep_ghost, verifier::returns(proof))]

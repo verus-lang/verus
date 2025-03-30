@@ -866,7 +866,11 @@ impl Signature {
     }
 
     pub fn erase_spec_fields(&mut self) {
-        self.publish = Publish::Default;
+        // not erasing uninterp for erroring when implementing
+        if !matches!(self.publish, Publish::Uninterp(_)) {
+            self.publish = Publish::Default;
+        }
+
         self.spec.erase_spec_fields();
     }
 }

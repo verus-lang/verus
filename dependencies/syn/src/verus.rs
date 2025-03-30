@@ -7,6 +7,7 @@ ast_enum_of_structs! {
         Closed(Closed),
         Open(Open),
         OpenRestricted(OpenRestricted),
+        Uninterp(Uninterp),
         Default,
     }
 }
@@ -29,6 +30,12 @@ ast_struct! {
         pub paren_token: token::Paren,
         pub in_token: Option<Token![in]>,
         pub path: Box<Path>,
+    }
+}
+
+ast_struct! {
+    pub struct Uninterp {
+        pub token: Token![uninterp],
     }
 }
 
@@ -197,6 +204,7 @@ ast_enum_of_structs! {
         Any(InvariantNameSetAny),
         None(InvariantNameSetNone),
         List(InvariantNameSetList),
+        Set(InvariantNameSetSet),
     }
 }
 
@@ -216,6 +224,12 @@ ast_struct! {
     pub struct InvariantNameSetList {
         pub bracket_token: token::Bracket,
         pub exprs: Punctuated<Expr, Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct InvariantNameSetSet {
+        pub expr: Expr,
     }
 }
 
@@ -403,10 +417,28 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct ExprIsNot {
+        pub attrs: Vec<Attribute>,
+        pub base: Box<Expr>,
+        pub is_not_token: Token![isnt],
+        pub variant_ident: Box<Ident>,
+    }
+}
+
+ast_struct! {
     pub struct ExprHas {
         pub attrs: Vec<Attribute>,
         pub lhs: Box<Expr>,
         pub has_token: Token![has],
+        pub rhs: Box<Expr>,
+    }
+}
+
+ast_struct! {
+    pub struct ExprHasNot {
+        pub attrs: Vec<Attribute>,
+        pub lhs: Box<Expr>,
+        pub has_not_token: Token![hasnt],
         pub rhs: Box<Expr>,
     }
 }
@@ -503,6 +535,9 @@ pub mod parsing {
                 } else {
                     Ok(Publish::Open(Open { token }))
                 }
+            } else if input.peek(Token![uninterp]) {
+                let token = input.parse::<Token![uninterp]>()?;
+                Ok(Publish::Uninterp(Uninterp { token }))
             } else {
                 Ok(Publish::Default)
             }
@@ -817,7 +852,8 @@ pub mod parsing {
                 let list = input.parse()?;
                 InvariantNameSet::List(list)
             } else {
-                return Err(input.error("invariant clause expected `any` or `none`"));
+                let set = input.parse()?;
+                InvariantNameSet::Set(set)
             };
             Ok(set)
         }
@@ -849,6 +885,14 @@ pub mod parsing {
                 bracket_token,
                 exprs,
             })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantNameSetSet {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let expr = Expr::parse_without_eager_brace(input)?;
+            Ok(InvariantNameSetSet { expr })
         }
     }
 
@@ -1414,6 +1458,12 @@ mod printing {
         }
     }
 
+    impl ToTokens for Uninterp {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+        }
+    }
+
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for ModeSpec {
         fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -1594,6 +1644,13 @@ mod printing {
             self.bracket_token.surround(tokens, |tokens| {
                 self.exprs.to_tokens(tokens);
             });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InvariantNameSetSet {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.expr.to_tokens(tokens);
         }
     }
 
@@ -1786,11 +1843,31 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprIsNot {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.base.to_tokens(tokens);
+            self.is_not_token.to_tokens(tokens);
+            self.variant_ident.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for ExprHas {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             outer_attrs_to_tokens(&self.attrs, tokens);
             self.lhs.to_tokens(tokens);
             self.has_token.to_tokens(tokens);
+            self.rhs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprHasNot {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.lhs.to_tokens(tokens);
+            self.has_not_token.to_tokens(tokens);
             self.rhs.to_tokens(tokens);
         }
     }

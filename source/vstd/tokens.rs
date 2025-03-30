@@ -12,7 +12,7 @@ verus_! {
 
 #[verusfmt::skip]
 broadcast use
-    super::set_lib::group_set_lib_axioms,
+    super::set_lib::group_set_lib_default,
     super::set::group_set_axioms,
     super::map::group_map_axioms;
 

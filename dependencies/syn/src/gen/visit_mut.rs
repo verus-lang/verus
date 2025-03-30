@@ -262,6 +262,9 @@ pub trait VisitMut {
     fn visit_expr_has_mut(&mut self, i: &mut crate::ExprHas) {
         visit_expr_has_mut(self, i);
     }
+    fn visit_expr_has_not_mut(&mut self, i: &mut crate::ExprHasNot) {
+        visit_expr_has_not_mut(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_expr_if_mut(&mut self, i: &mut crate::ExprIf) {
@@ -279,6 +282,9 @@ pub trait VisitMut {
     }
     fn visit_expr_is_mut(&mut self, i: &mut crate::ExprIs) {
         visit_expr_is_mut(self, i);
+    }
+    fn visit_expr_is_not_mut(&mut self, i: &mut crate::ExprIsNot) {
+        visit_expr_is_not_mut(self, i);
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -558,6 +564,9 @@ pub trait VisitMut {
     ) {
         visit_invariant_name_set_none_mut(self, i);
     }
+    fn visit_invariant_name_set_set_mut(&mut self, i: &mut crate::InvariantNameSetSet) {
+        visit_invariant_name_set_set_mut(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_item_mut(&mut self, i: &mut crate::Item) {
@@ -690,6 +699,9 @@ pub trait VisitMut {
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_local_init_mut(&mut self, i: &mut crate::LocalInit) {
         visit_local_init_mut(self, i);
+    }
+    fn visit_loop_spec_mut(&mut self, i: &mut crate::LoopSpec) {
+        visit_loop_spec_mut(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
@@ -1063,6 +1075,9 @@ pub trait VisitMut {
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_un_op_mut(&mut self, i: &mut crate::UnOp) {
         visit_un_op_mut(self, i);
+    }
+    fn visit_uninterp_mut(&mut self, i: &mut crate::Uninterp) {
+        visit_uninterp_mut(self, i);
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -1825,8 +1840,14 @@ where
         crate::Expr::Is(_binding_0) => {
             v.visit_expr_is_mut(_binding_0);
         }
+        crate::Expr::IsNot(_binding_0) => {
+            v.visit_expr_is_not_mut(_binding_0);
+        }
         crate::Expr::Has(_binding_0) => {
             v.visit_expr_has_mut(_binding_0);
+        }
+        crate::Expr::HasNot(_binding_0) => {
+            v.visit_expr_has_not_mut(_binding_0);
         }
         crate::Expr::Matches(_binding_0) => {
             v.visit_expr_matches_mut(_binding_0);
@@ -2062,6 +2083,15 @@ where
     skip!(node.has_token);
     v.visit_expr_mut(&mut *node.rhs);
 }
+pub fn visit_expr_has_not_mut<V>(v: &mut V, node: &mut crate::ExprHasNot)
+where
+    V: VisitMut + ?Sized,
+{
+    v.visit_attributes_mut(&mut node.attrs);
+    v.visit_expr_mut(&mut *node.lhs);
+    skip!(node.has_not_token);
+    v.visit_expr_mut(&mut *node.rhs);
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
 pub fn visit_expr_if_mut<V>(v: &mut V, node: &mut crate::ExprIf)
@@ -2104,6 +2134,15 @@ where
     v.visit_attributes_mut(&mut node.attrs);
     v.visit_expr_mut(&mut *node.base);
     skip!(node.is_token);
+    v.visit_ident_mut(&mut *node.variant_ident);
+}
+pub fn visit_expr_is_not_mut<V>(v: &mut V, node: &mut crate::ExprIsNot)
+where
+    V: VisitMut + ?Sized,
+{
+    v.visit_attributes_mut(&mut node.attrs);
+    v.visit_expr_mut(&mut *node.base);
+    skip!(node.is_not_token);
     v.visit_ident_mut(&mut *node.variant_ident);
 }
 #[cfg(feature = "full")]
@@ -2883,6 +2922,9 @@ where
         crate::InvariantNameSet::List(_binding_0) => {
             v.visit_invariant_name_set_list_mut(_binding_0);
         }
+        crate::InvariantNameSet::Set(_binding_0) => {
+            v.visit_invariant_name_set_set_mut(_binding_0);
+        }
     }
 }
 pub fn visit_invariant_name_set_any_mut<V>(
@@ -2915,6 +2957,15 @@ where
     V: VisitMut + ?Sized,
 {
     skip!(node.token);
+}
+pub fn visit_invariant_name_set_set_mut<V>(
+    v: &mut V,
+    node: &mut crate::InvariantNameSetSet,
+)
+where
+    V: VisitMut + ?Sized,
+{
+    v.visit_expr_mut(&mut node.expr);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -3395,6 +3446,27 @@ where
     if let Some(it) = &mut node.diverge {
         skip!((it).0);
         v.visit_expr_mut(&mut *(it).1);
+    }
+}
+pub fn visit_loop_spec_mut<V>(v: &mut V, node: &mut crate::LoopSpec)
+where
+    V: VisitMut + ?Sized,
+{
+    if let Some(it) = &mut node.iter_name {
+        v.visit_ident_mut(&mut (it).0);
+        skip!((it).1);
+    }
+    if let Some(it) = &mut node.invariants {
+        v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.invariant_except_breaks {
+        v.visit_invariant_except_break_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.decreases {
+        v.visit_decreases_mut(it);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -3903,6 +3975,9 @@ where
         }
         crate::Publish::OpenRestricted(_binding_0) => {
             v.visit_open_restricted_mut(_binding_0);
+        }
+        crate::Publish::Uninterp(_binding_0) => {
+            v.visit_uninterp_mut(_binding_0);
         }
         crate::Publish::Default => {}
     }
@@ -4581,6 +4656,12 @@ where
             skip!(_binding_0);
         }
     }
+}
+pub fn visit_uninterp_mut<V>(v: &mut V, node: &mut crate::Uninterp)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]

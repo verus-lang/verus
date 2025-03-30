@@ -287,11 +287,16 @@ pub fn run_verus(
             no_external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
+        } else if *option == "--no-cheating" {
+            verus_args.push("--no-cheating".to_string());
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {
             verus_args.push("-V".to_string());
             verus_args.push("allow-inline-air".to_string());
+        } else if *option == "-V check-api-safety" {
+            verus_args.push("-V".to_string());
+            verus_args.push("check-api-safety".to_string());
         } else if *option == "--is-core" {
             verus_args.push("--is-core".to_string());
             is_core = true;

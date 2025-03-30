@@ -26,12 +26,12 @@ use syn_verus::{
     BinOp, Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
     ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArg, FnArgKind, FnMode, Global, Ident,
     ImplItem, ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
-    InvariantNameSetList, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
-    ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
-    ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path, Publish, Recommends, Requires,
-    ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants, SignatureSpec,
-    SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnSpec,
-    TypePath, UnOp, Visibility,
+    InvariantNameSetList, InvariantNameSetSet, Item, ItemBroadcastGroup, ItemConst, ItemEnum,
+    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local,
+    MatchesOpExpr, MatchesOpToken, ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path,
+    Publish, Recommends, Requires, ReturnType, Returns, Signature, SignatureDecreases,
+    SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem,
+    TraitItemFn, Type, TypeFnSpec, TypePath, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -452,6 +452,15 @@ impl Visitor {
                         Some(Semi { spans: [bracket_token.span.close()] }),
                     ));
                 }
+                InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
+                    self.visit_expr_mut(&mut expr);
+                    spec_stmts.push(Stmt::Expr(
+                        Expr::Verbatim(
+                            quote_spanned_builtin!(builtin, expr.span() => #builtin::opens_invariants_set(#expr)),
+                        ),
+                        Some(Semi { spans: [expr.span()] }),
+                    ));
+                }
             }
         }
 
@@ -600,7 +609,7 @@ impl Visitor {
             let publish_span = sig.publish.span();
             stmts.push(stmt_with_semi!(
                 publish_span =>
-                compile_error!("only `spec` functions can be marked `open` or `closed`")
+                compile_error!("only `spec` functions can be marked `open`, `closed`, or `uninterp`")
             ));
         }
 
@@ -622,19 +631,37 @@ impl Visitor {
             Publish::Default => vec![],
             Publish::Closed(o) => vec![mk_verus_attr(o.token.span, quote! { closed })],
             Publish::Open(o) => vec![mk_verus_attr(o.token.span, quote! { open })],
-            Publish::OpenRestricted(_) => {
-                unimplemented!("TODO: support open(...)")
+            Publish::Uninterp(o) => vec![mk_verus_attr(o.token.span, quote! { uninterp })],
+            Publish::OpenRestricted(o) => {
+                let in_token = &o.in_token;
+                let p = &o.path;
+                stmts.push(stmt_with_semi!(
+                    o.path.span() =>
+                    #[verus::internal(open_visibility_qualifier)]
+                    pub(#in_token#p) use crate as _
+                ));
+                vec![mk_verus_attr(o.open_token.span, quote! { open })]
             }
         };
 
         let (unimpl, ext_attrs) = match (&sig.mode, semi_token, is_trait) {
-            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => (
-                vec![Stmt::Expr(
+            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => {
+                // uninterpreted function
+                let unimpl = vec![Stmt::Expr(
                     Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())),
                     None,
-                )],
-                vec![mk_verus_attr(semi.span, quote! { external_body })],
-            ),
+                )];
+                #[cfg(verus_keep_ghost)]
+                if !matches!(&sig.publish, Publish::Uninterp(_)) {
+                    proc_macro::Diagnostic::spanned(
+                        sig.span().unwrap(),
+                        proc_macro::Level::Warning,
+                        "uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`\nthis will become a hard error in the future",
+                    )
+                    .emit();
+                }
+                (unimpl, vec![mk_verus_attr(semi.span, quote! { external_body })])
+            }
             _ => (vec![], vec![]),
         };
 
@@ -764,6 +791,7 @@ impl Visitor {
             (_, _, Publish::Default) => vec![mk_verus_attr(span, quote! { open })],
             (_, _, Publish::Closed(o)) => vec![mk_verus_attr(o.token.span, quote! { closed })],
             (_, _, Publish::Open(o)) => vec![mk_verus_attr(o.token.span, quote! { open })],
+            (_, _, Publish::Uninterp(o)) => vec![mk_verus_attr(o.token.span, quote! { uninterp })],
             (_, _, Publish::OpenRestricted(_)) => {
                 unimplemented!("TODO: support open(...)")
             }
@@ -1874,7 +1902,9 @@ impl Visitor {
             Expr::Index(_)
                 | Expr::View(_)
                 | Expr::Is(_)
+                | Expr::IsNot(_)
                 | Expr::Has(_)
+                | Expr::HasNot(_)
                 | Expr::Matches(_)
                 | Expr::GetField(_)
         ) {
@@ -1922,6 +1952,15 @@ impl Visitor {
                     quote_spanned_builtin!(builtin, span => #builtin::is_variant(#base, #variant_str)),
                 );
             }
+            Expr::IsNot(isnot_) => {
+                let _is_not_token = isnot_.is_not_token;
+                let span = isnot_.span();
+                let base = isnot_.base;
+                let variant_str = isnot_.variant_ident.to_string();
+                *expr = Expr::Verbatim(
+                    quote_spanned_builtin!(builtin, span => !(#builtin::is_variant(#base, #variant_str))),
+                );
+            }
             Expr::Has(has) => {
                 let has_token = has.has_token;
                 let span = has.span();
@@ -1929,6 +1968,14 @@ impl Visitor {
                 let has_call = quote_spanned!(has_token.span => .spec_has(#rhs));
                 let lhs = has.lhs;
                 *expr = Expr::Verbatim(quote_spanned!(span => (#lhs#has_call)));
+            }
+            Expr::HasNot(hasnot) => {
+                let has_not_token = hasnot.has_not_token;
+                let span = hasnot.span();
+                let rhs = hasnot.rhs;
+                let has_call = quote_spanned!(has_not_token.span => .spec_has(#rhs));
+                let lhs = hasnot.lhs;
+                *expr = Expr::Verbatim(quote_spanned!(span => !(#lhs#has_call)));
             }
             Expr::Matches(matches) => {
                 let span = matches.span();
@@ -3976,6 +4023,66 @@ pub(crate) fn rewrite_expr(
     proc_macro::TokenStream::from(new_stream)
 }
 
+struct Stmts(Vec<Stmt>);
+
+impl Parse for Stmts {
+    fn parse(input: ParseStream) -> syn_verus::Result<Self> {
+        Block::parse_within(input).map(|stmts| Stmts(stmts))
+    }
+}
+
+pub(crate) fn rewrite_proof_decl(
+    erase_ghost: EraseGhost,
+    stream: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let stream = rejoin_tokens(stream);
+    let Stmts(stmts) = parse_macro_input!(stream as Stmts);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 0,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    for mut ss in stmts {
+        match ss {
+            Stmt::Local(Local { tracked: None, ghost: None, .. }) => {
+                return quote_spanned!(ss.span() => compile_error!("Exec local is not allowed in proof_decl")).into();
+            }
+            Stmt::Local(_) => {
+                let (skip, mut new_stmts) = visitor.visit_stmt_extend(&mut ss);
+                if !skip {
+                    new_stmts.insert(0, ss)
+                }
+                for mut ss in new_stmts {
+                    visitor.visit_stmt_mut(&mut ss);
+                    ss.to_tokens(&mut new_stream);
+                }
+            }
+            _ => {
+                let span = ss.span();
+                let mut proof_expr = Expr::Unary(ExprUnary {
+                    attrs: vec![],
+                    expr: Box::new(Expr::Block(ExprBlock {
+                        attrs: vec![],
+                        label: None,
+                        block: Block { brace_token: Brace(span), stmts: vec![ss] },
+                    })),
+                    op: UnOp::Proof(Token![proof](span)),
+                });
+                visitor.visit_expr_mut(&mut proof_expr);
+                proof_expr.to_tokens(&mut new_stream);
+            }
+        };
+    }
+    proc_macro::TokenStream::from(new_stream)
+}
+
 pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, expr: &mut Expr) {
     let mut visitor = Visitor {
         erase_ghost,
@@ -4098,6 +4205,10 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
         TokenTree::Punct(p) => Some((p.as_char(), p.spacing(), p.span())),
         _ => None,
     };
+    let ident = |t: &TokenTree| match t {
+        TokenTree::Ident(p) => Some((p.to_string(), p.span())),
+        _ => None,
+    };
     let adjacent = |s1: Span, s2: Span| {
         let l1 = s1.end();
         let l2 = s2.start();
@@ -4109,12 +4220,38 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
         punct.set_span(span);
         TokenTree::Punct(punct)
     }
-    for i in 0..(if tokens.len() >= 2 { tokens.len() - 2 } else { 0 }) {
+    let mut i = 0;
+    let mut till = if tokens.len() >= 2 { tokens.len() - 2 } else { 0 };
+    while i < till {
         let t0 = pun(&tokens[i]);
-        let t1 = pun(&tokens[i + 1]);
+        let t1_ident = ident(&tokens[i + 1]);
+        match (t0, t1_ident.as_ref().map(|(a, b)| (a.as_str(), *b))) {
+            (Some(('!', Alone, s1)), Some(("is", s2))) => {
+                if adjacent(s1, s2) {
+                    tokens[i] =
+                        TokenTree::Ident(proc_macro::Ident::new("isnt", s1.join(s2).unwrap()));
+                    tokens.remove(i + 1);
+                    i += 1;
+                    till -= 1;
+                    continue;
+                }
+            }
+            (Some(('!', Alone, s1)), Some(("has", s2))) => {
+                if adjacent(s1, s2) {
+                    tokens[i] =
+                        TokenTree::Ident(proc_macro::Ident::new("hasnt", s1.join(s2).unwrap()));
+                    tokens.remove(i + 1);
+                    i += 1;
+                    till -= 1;
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        let t1_pun = pun(&tokens[i + 1]);
         let t2 = pun(&tokens[i + 2]);
         let t3 = if i + 3 < tokens.len() { pun(&tokens[i + 3]) } else { None };
-        match (t0, t1, t2, t3) {
+        match (t0, t1_pun, t2, t3) {
             (
                 Some(('<', Joint, _)),
                 Some(('=', Alone, s1)),
@@ -4128,14 +4265,14 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
             | (Some(('&', Joint, _)), Some(('&', Alone, s1)), Some(('&', Alone, s2)), _)
             | (Some(('|', Joint, _)), Some(('|', Alone, s1)), Some(('|', Alone, s2)), _) => {
                 if adjacent(s1, s2) {
-                    tokens[i + 1] = mk_joint_punct(t1);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
                 }
             }
             (Some(('=', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _)
             | (Some(('!', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _) => {
                 if adjacent(s1, s2) {
                     tokens[i] = mk_joint_punct(t0);
-                    tokens[i + 1] = mk_joint_punct(t1);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
                 }
             }
             (
@@ -4152,12 +4289,13 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
             ) => {
                 if adjacent(s2, s3) {
                     tokens[i] = mk_joint_punct(t0);
-                    tokens[i + 1] = mk_joint_punct(t1);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
                     tokens[i + 2] = mk_joint_punct(t2);
                 }
             }
             _ => {}
         }
+        i += 1;
     }
     for tt in &mut tokens {
         match tt {

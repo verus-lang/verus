@@ -33,7 +33,7 @@ fn example1() {
 
 // Using higher-order functions is often cumbersome, we can use traits instead.
 
-struct FixedParity {
+pub struct FixedParity {
     pub parity: int,
 }
 

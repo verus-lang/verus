@@ -36,11 +36,11 @@ pub open spec fn valid_layout(size: usize, align: usize) -> bool {
 // Note: for exec functions, and for proof functions that take tracked arguments,
 // we CAN rely on rustc's checking. So in those cases it's okay for us to assume
 // a `V: Sized` type is sized.
-pub spec fn is_sized<V: ?Sized>() -> bool;
+pub uninterp spec fn is_sized<V: ?Sized>() -> bool;
 
-pub spec fn size_of<V>() -> nat;
+pub uninterp spec fn size_of<V>() -> nat;
 
-pub spec fn align_of<V>() -> nat;
+pub uninterp spec fn align_of<V>() -> nat;
 
 // Naturally, the size of any executable type is going to fit into a `usize`.
 // What I'm not sure of is whether it will be possible to "reason about" arbitrarily

@@ -44,7 +44,7 @@ pub assume_specification<T>[ Option::<T>::from_residual ](option: Option<Infalli
         option2.is_none(),
 ;
 
-pub spec fn spec_from<S, T>(value: T, ret: S) -> bool;
+pub uninterp spec fn spec_from<S, T>(value: T, ret: S) -> bool;
 
 pub broadcast proof fn spec_from_blanket_identity<T>(t: T, s: T)
     ensures

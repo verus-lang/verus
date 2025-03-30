@@ -175,11 +175,11 @@ macro_rules! declare_invariant_impl {
             /// The constant specified upon the initialization of this `
             #[doc = stringify!($invariant)]
             ///`.
-            pub spec fn constant(&self) -> K;
+            pub uninterp spec fn constant(&self) -> K;
 
             /// Namespace the invariant was declared in.
             #[rustc_diagnostic_item = concat!("verus::vstd::invariant::", stringify!($invariant), "::namespace")]
-            pub spec fn namespace(&self) -> int;
+            pub uninterp spec fn namespace(&self) -> int;
 
             /// Returns `true` if it is possible to store the value `v` into the `
             #[doc = stringify!($invariant)]

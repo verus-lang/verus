@@ -200,6 +200,13 @@ pub(crate) enum GhostBlockAttr {
 }
 
 #[derive(Debug, PartialEq)]
+pub(crate) enum AttrPublish {
+    Open,
+    Closed,
+    Uninterp,
+}
+
+#[derive(Debug, PartialEq)]
 pub(crate) enum Attr {
     // specify mode (spec, proof, exec)
     Mode(Mode),
@@ -218,7 +225,7 @@ pub(crate) enum Attr {
     // hide body (from all modules) until revealed
     Opaque,
     // publish body?
-    Publish(bool),
+    Publish(AttrPublish),
     // publish body with zero fuel
     OpaqueOutsideModule,
     // inline spec function in SMT query
@@ -320,6 +327,8 @@ pub(crate) enum Attr {
     SizeOfBroadcastProof,
     // Is this a type_invariant spec function
     TypeInvariantFn,
+    // Used for the encoding of `open([visibility qualified])`
+    OpenVisibilityQualifier,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -384,10 +393,6 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
                 AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
                 AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
-                AttrTree::Fun(_, arg, None) if arg == "publish" => {
-                    report_deprecated("publish", "use `open spec fn` and `closed spec fn` instead");
-                    v.push(Attr::Publish(true))
-                }
                 AttrTree::Fun(_, arg, None) if arg == "opaque_outside_module" => {
                     v.push(Attr::OpaqueOutsideModule)
                 }
@@ -628,8 +633,15 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "external_body" => {
                         v.push(Attr::ExternalBody)
                     }
-                    AttrTree::Fun(_, arg, None) if arg == "open" => v.push(Attr::Publish(true)),
-                    AttrTree::Fun(_, arg, None) if arg == "closed" => v.push(Attr::Publish(false)),
+                    AttrTree::Fun(_, arg, None) if arg == "open" => {
+                        v.push(Attr::Publish(AttrPublish::Open))
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "closed" => {
+                        v.push(Attr::Publish(AttrPublish::Closed))
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "uninterp" => {
+                        v.push(Attr::Publish(AttrPublish::Uninterp))
+                    }
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
                         if arg == "returns" && name == "spec" =>
                     {
@@ -693,6 +705,9 @@ pub(crate) fn parse_attrs(
                     }
                     AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
                         v.push(Attr::ExternalFnSpecification)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "open_visibility_qualifier" => {
+                        v.push(Attr::OpenVisibilityQualifier)
                     }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
@@ -857,7 +872,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) verus_macro: bool,
     pub(crate) external_body: bool,
     pub(crate) opaque: bool,
-    pub(crate) publish: Option<bool>,
+    pub(crate) publish: Option<AttrPublish>,
     pub(crate) opaque_outside_module: bool,
     pub(crate) inline: bool,
     pub(crate) ext_equal: bool,
@@ -901,6 +916,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) item_broadcast_use: bool,
     pub(crate) size_of_broadcast_proof: bool,
     pub(crate) type_invariant_fn: bool,
+    pub(crate) open_visibility_qualifier: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1047,6 +1063,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         item_broadcast_use: false,
         size_of_broadcast_proof: false,
         type_invariant_fn: false,
+        open_visibility_qualifier: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1114,6 +1131,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             }
             Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
             Attr::TypeInvariantFn => vs.type_invariant_fn = true,
+            Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
             _ => {}
         }
     }

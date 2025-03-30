@@ -1321,9 +1321,19 @@
             "syn": "ExprIs"
           }
         ],
+        "IsNot": [
+          {
+            "syn": "ExprIsNot"
+          }
+        ],
         "Has": [
           {
             "syn": "ExprHas"
+          }
+        ],
+        "HasNot": [
+          {
+            "syn": "ExprHasNot"
           }
         ],
         "Matches": [
@@ -1873,6 +1883,32 @@
       }
     },
     {
+      "ident": "ExprHasNot",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "lhs": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "has_not_token": {
+          "token": "HasNot"
+        },
+        "rhs": {
+          "box": {
+            "syn": "Expr"
+          }
+        }
+      }
+    },
+    {
       "ident": "ExprIf",
       "features": {
         "any": [
@@ -1977,6 +2013,32 @@
         },
         "is_token": {
           "token": "Is"
+        },
+        "variant_ident": {
+          "box": {
+            "proc_macro2": "Ident"
+          }
+        }
+      }
+    },
+    {
+      "ident": "ExprIsNot",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "base": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "is_not_token": {
+          "token": "IsNot"
         },
         "variant_ident": {
           "box": {
@@ -3552,6 +3614,11 @@
           {
             "syn": "InvariantNameSetList"
           }
+        ],
+        "Set": [
+          {
+            "syn": "InvariantNameSetSet"
+          }
         ]
       }
     },
@@ -3593,6 +3660,17 @@
       "fields": {
         "token": {
           "token": "InvNone"
+        }
+      }
+    },
+    {
+      "ident": "InvariantNameSetSet",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "expr": {
+          "syn": "Expr"
         }
       }
     },
@@ -4655,6 +4733,46 @@
       }
     },
     {
+      "ident": "LoopSpec",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "iter_name": {
+          "option": {
+            "tuple": [
+              {
+                "proc_macro2": "Ident"
+              },
+              {
+                "token": "FatArrow"
+              }
+            ]
+          }
+        },
+        "invariants": {
+          "option": {
+            "syn": "Invariant"
+          }
+        },
+        "invariant_except_breaks": {
+          "option": {
+            "syn": "InvariantExceptBreak"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "Decreases"
+          }
+        }
+      }
+    },
+    {
       "ident": "Macro",
       "features": {
         "any": [
@@ -5590,6 +5708,11 @@
         "OpenRestricted": [
           {
             "syn": "OpenRestricted"
+          }
+        ],
+        "Uninterp": [
+          {
+            "syn": "Uninterp"
           }
         ],
         "Default": []
@@ -6943,6 +7066,17 @@
       "exhaustive": false
     },
     {
+      "ident": "Uninterp",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Uninterp"
+        }
+      }
+    },
+    {
       "ident": "UseGlob",
       "features": {
         "any": [
@@ -7311,6 +7445,7 @@
     "Global": "global",
     "Gt": ">",
     "Has": "has",
+    "HasNot": "hasnt",
     "Hide": "hide",
     "If": "if",
     "Impl": "impl",
@@ -7323,6 +7458,7 @@
     "InvariantEnsures": "invariant_ensures",
     "InvariantExceptBreak": "invariant_except_break",
     "Is": "is",
+    "IsNot": "isnt",
     "LArrow": "<-",
     "Layout": "layout",
     "Le": "<=",
@@ -7394,6 +7530,7 @@
     "Type": "type",
     "Typeof": "typeof",
     "Underscore": "_",
+    "Uninterp": "uninterp",
     "Union": "union",
     "Unsafe": "unsafe",
     "Unsized": "unsized",

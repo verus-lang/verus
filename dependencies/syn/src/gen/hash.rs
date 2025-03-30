@@ -749,16 +749,24 @@ impl Hash for crate::Expr {
                 state.write_u8(47u8);
                 v0.hash(state);
             }
-            crate::Expr::Has(v0) => {
+            crate::Expr::IsNot(v0) => {
                 state.write_u8(48u8);
                 v0.hash(state);
             }
-            crate::Expr::Matches(v0) => {
+            crate::Expr::Has(v0) => {
                 state.write_u8(49u8);
                 v0.hash(state);
             }
-            crate::Expr::GetField(v0) => {
+            crate::Expr::HasNot(v0) => {
                 state.write_u8(50u8);
+                v0.hash(state);
+            }
+            crate::Expr::Matches(v0) => {
+                state.write_u8(51u8);
+                v0.hash(state);
+            }
+            crate::Expr::GetField(v0) => {
+                state.write_u8(52u8);
                 v0.hash(state);
             }
             #[cfg(not(feature = "full"))]
@@ -978,6 +986,17 @@ impl Hash for crate::ExprHas {
         self.rhs.hash(state);
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ExprHasNot {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.lhs.hash(state);
+        self.rhs.hash(state);
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::ExprIf {
@@ -1015,6 +1034,17 @@ impl Hash for crate::ExprInfer {
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::ExprIs {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.base.hash(state);
+        self.variant_ident.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ExprIsNot {
     fn hash<H>(&self, state: &mut H)
     where
         H: Hasher,
@@ -1818,6 +1848,10 @@ impl Hash for crate::InvariantNameSet {
                 state.write_u8(2u8);
                 v0.hash(state);
             }
+            crate::InvariantNameSet::Set(v0) => {
+                state.write_u8(3u8);
+                v0.hash(state);
+            }
         }
     }
 }
@@ -1843,6 +1877,15 @@ impl Hash for crate::InvariantNameSetNone {
     where
         H: Hasher,
     {}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::InvariantNameSetSet {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.expr.hash(state);
+    }
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -2279,6 +2322,19 @@ impl Hash for crate::LocalInit {
     {
         self.expr.hash(state);
         self.diverge.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::LoopSpec {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.iter_name.hash(state);
+        self.invariants.hash(state);
+        self.invariant_except_breaks.hash(state);
+        self.ensures.hash(state);
+        self.decreases.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -2816,8 +2872,12 @@ impl Hash for crate::Publish {
                 state.write_u8(2u8);
                 v0.hash(state);
             }
-            crate::Publish::Default => {
+            crate::Publish::Uninterp(v0) => {
                 state.write_u8(3u8);
+                v0.hash(state);
+            }
+            crate::Publish::Default => {
+                state.write_u8(4u8);
             }
         }
     }
@@ -3498,6 +3558,13 @@ impl Hash for crate::UnOp {
             }
         }
     }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::Uninterp {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

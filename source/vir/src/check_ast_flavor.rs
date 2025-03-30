@@ -42,12 +42,26 @@ pub fn check_krate_simplified(krate: &Krate) {
 
     for function in functions {
         let FunctionX {
-            require, ensure, decrease, body, typ_bounds, params, ret, mask_spec, ..
+            require,
+            ensure,
+            decrease,
+            body,
+            typ_bounds,
+            params,
+            ret,
+            mask_spec,
+            body_visibility,
+            ..
         } = &function.x;
 
+        if let crate::ast::BodyVisibility::Uninterpreted = body_visibility {
+            assert!(body.is_none());
+        }
+
         let mask_exprs = match mask_spec {
-            Some(MaskSpec::InvariantOpens(es)) => es.clone(),
-            Some(MaskSpec::InvariantOpensExcept(es)) => es.clone(),
+            Some(MaskSpec::InvariantOpens(_span, es)) => es.clone(),
+            Some(MaskSpec::InvariantOpensExcept(_span, es)) => es.clone(),
+            Some(MaskSpec::InvariantOpensSet(e)) => Arc::new(vec![e.clone()]),
             None => Arc::new(vec![]),
         };
 

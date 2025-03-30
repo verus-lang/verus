@@ -133,7 +133,7 @@ pub fn demote_external_traits(
                             "requires are not allowed on the implementation for Drop",
                         ));
                     }
-                    if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(es)) if es.len() == 0)
+                    if !matches!(&function.x.mask_spec, Some(crate::ast::MaskSpec::InvariantOpens(_span, es)) if es.len() == 0)
                     {
                         return Err(error(
                             &function.span,
@@ -193,6 +193,12 @@ pub fn demote_external_traits(
 
 pub fn rewrite_one_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> Typ {
     match &**typ {
+        TypX::FnDef(fun, typs, None) if fun.path.matches_prefix(from_path) => {
+            let suffix = fun.path.segments[from_path.segments.len()..].to_vec();
+            let path = to_path.push_segments(suffix);
+            let fun = Arc::new(crate::ast::FunX { path });
+            Arc::new(TypX::FnDef(fun, typs.clone(), None))
+        }
         TypX::Projection { trait_typ_args, trait_path, name } if trait_path == from_path => {
             Arc::new(TypX::Projection {
                 trait_typ_args: trait_typ_args.clone(),
@@ -201,6 +207,18 @@ pub fn rewrite_one_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> 
             })
         }
         _ => typ.clone(),
+    }
+}
+
+pub fn rewrite_one_external_expr(from_path: &Path, to_path: &Path, expr: &Expr) -> Expr {
+    match &expr.x {
+        ExprX::ExecFnByName(fun) if fun.path.matches_prefix(from_path) => {
+            let suffix = fun.path.segments[from_path.segments.len()..].to_vec();
+            let path = to_path.push_segments(suffix);
+            let fun = Arc::new(crate::ast::FunX { path });
+            expr.new_x(ExprX::ExecFnByName(fun))
+        }
+        _ => expr.clone(),
     }
 }
 
@@ -237,17 +255,16 @@ pub fn rewrite_external_function(
     to_path: &Path,
     function: &Function,
 ) -> Function {
-    let ft = |_: &mut (), t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
     let mut map: VisitorScopeMap = ScopeMap::new();
     crate::ast_visitor::map_function_visitor_env(
         function,
         &mut map,
         &mut (),
-        &|_state, _, expr| Ok(expr.clone()),
-        &|_state, _, stmt| Ok(vec![stmt.clone()]),
-        &ft,
+        &|_, _, e| Ok(rewrite_one_external_expr(from_path, to_path, e)),
+        &|_, _, stmt| Ok(vec![stmt.clone()]),
+        &|_, t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t)),
     )
-    .expect("rewrite_external_typ")
+    .expect("rewrite_external_function")
 }
 
 /*
@@ -564,40 +581,6 @@ pub(crate) fn trait_bounds_to_ast(ctx: &Ctx, span: &Span, typ_bounds: &GenericBo
     bound_exprs
 }
 
-pub(crate) fn trait_bounds_to_sst(
-    ctx: &Ctx,
-    span: &Span,
-    typ_bounds: &GenericBounds,
-) -> Vec<crate::sst::Exp> {
-    let mut bound_exps: Vec<crate::sst::Exp> = Vec::new();
-    for bound in typ_bounds.iter() {
-        let expx = match &**bound {
-            GenericBoundX::Trait(path, typ_args) => {
-                if !ctx.trait_map.contains_key(path) {
-                    continue;
-                }
-                let op = crate::ast::NullaryOpr::TraitBound(path.clone(), typ_args.clone());
-                crate::sst::ExpX::NullaryOpr(op)
-            }
-            GenericBoundX::TypEquality(path, typ_args, name, typ) => {
-                let op = crate::ast::NullaryOpr::TypEqualityBound(
-                    path.clone(),
-                    typ_args.clone(),
-                    name.clone(),
-                    typ.clone(),
-                );
-                crate::sst::ExpX::NullaryOpr(op)
-            }
-            GenericBoundX::ConstTyp(t1, t2) => {
-                let op = crate::ast::NullaryOpr::ConstTypBound(t1.clone(), t2.clone());
-                crate::sst::ExpX::NullaryOpr(op)
-            }
-        };
-        bound_exps.push(SpannedTyped::new(span, &Arc::new(TypX::Bool), expx));
-    }
-    bound_exps
-}
-
 pub(crate) fn trait_bound_to_air(
     ctx: &Ctx,
     path: &Path,
@@ -840,6 +823,7 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
                     assoc_typs,
                     assoc_typs_bounds,
                     mut methods,
+                    is_unsafe,
                 } = prev.x.clone();
                 assert!(name == t.x.name);
                 if visibility != t.x.visibility {
@@ -891,6 +875,7 @@ pub fn merge_external_traits(krate: Krate) -> Result<Krate, VirErr> {
                     assoc_typs,
                     assoc_typs_bounds,
                     methods,
+                    is_unsafe,
                 };
                 traits[*index] = prev.new_x(prevx);
             } else {

@@ -24,8 +24,8 @@ use air::ast_util::str_ident;
 use rustc_ast::{Attribute, BindingMode, BorrowKind, ByRef, LitKind, Mutability};
 use rustc_hir::def::{CtorKind, CtorOf, DefKind, Res};
 use rustc_hir::{
-    BinOpKind, Block, Closure, Destination, Expr, ExprKind, HirId, LetExpr, LetStmt, LoopSource,
-    Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
+    BinOpKind, Block, Closure, Destination, Expr, ExprKind, HirId, ItemKind, LetExpr, LetStmt,
+    LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
@@ -2728,7 +2728,34 @@ pub(crate) fn stmt_to_vir<'tcx>(
             } else if vattrs.internal_const_body {
                 dbg!(&item_id.hir_id());
                 unreachable!();
+            } else if vattrs.open_visibility_qualifier {
+                let item = bctx.ctxt.tcx.hir().item(*item_id);
+                if !matches!(&item.kind, ItemKind::Use(..)) {
+                    crate::internal_err!(
+                        item.span,
+                        "open_visibility_qualifier should be on a 'use' item"
+                    );
+                }
+
+                let hir_id = item.hir_id();
+                let owner_id = hir_id.expect_owner();
+                let def_id = owner_id.to_def_id();
+
+                let vis = bctx.ctxt.tcx.visibility(def_id);
+                let vis = crate::rust_to_vir_base::mk_visibility_from_vis(&bctx.ctxt, vis);
+
+                let vir_expr = bctx.spanned_typed_new(
+                    stmt.span,
+                    &vir::ast_util::unit_typ(),
+                    ExprX::Header(Arc::new(HeaderExprX::OpenVisibilityQualifier(vis))),
+                );
+
+                Ok(vec![bctx.spanned_new(stmt.span, StmtX::Expr(vir_expr))])
             } else {
+                let item = bctx.ctxt.tcx.hir().item(*item_id);
+                if matches!(&item.kind, ItemKind::Use(..) | ItemKind::Macro(..)) {
+                    return Ok(vec![]);
+                }
                 unsupported_err!(stmt.span, "internal item statements", stmt)
             }
         }

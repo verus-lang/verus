@@ -168,7 +168,7 @@ pub tracked struct PointsTo<V> {
 #[verusfmt::skip]
 broadcast use
     super::raw_ptr::group_raw_ptr_axioms,
-    super::set_lib::group_set_lib_axioms,
+    super::set_lib::group_set_lib_default,
     super::set::group_set_axioms;
 
 impl<V> PPtr<V> {
@@ -295,18 +295,19 @@ impl<V> PointsTo<V> {
     /// Guarantees that two distinct `PointsTo<V>` objects point to disjoint ranges of memory.
     /// If both S and V are non-zero-sized, then this also implies the pointers
     /// have distinct addresses.
-    pub proof fn is_disjoint<S>(&mut self, other: &PointsTo<S>)
+    pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
         ensures
             *old(self) == *self,
             self.addr() + size_of::<V>() <= other.addr() || other.addr() + size_of::<S>()
                 <= self.addr(),
     {
+        use_type_invariant(&*self);
         self.points_to.is_disjoint(&other.points_to);
     }
 
     /// Guarantees that two distinct, non-ZST `PointsTo<V>` objects point to different
     /// addresses. This is a corollary of [`PointsTo::is_disjoint`].
-    pub proof fn is_distinct<S>(&mut self, other: &PointsTo<S>)
+    pub proof fn is_distinct<S>(tracked &mut self, tracked other: &PointsTo<S>)
         requires
             size_of::<V>() != 0,
             size_of::<S>() != 0,
@@ -314,6 +315,7 @@ impl<V> PointsTo<V> {
             *old(self) == *self,
             self.addr() != other.addr(),
     {
+        use_type_invariant(&*self);
         self.points_to.is_disjoint(&other.points_to);
     }
 }
@@ -390,13 +392,15 @@ impl<V> PPtr<V> {
     ///
     /// This consumes `perm`, since it will no longer be safe to access
     /// that memory location.
-    #[verifier::external_body]
     pub fn free(self, Tracked(perm): Tracked<PointsTo<V>>)
         requires
             perm.pptr() == self,
             perm.is_uninit(),
         opens_invariants none
     {
+        proof {
+            use_type_invariant(&perm);
+        }
         if core::mem::size_of::<V>() != 0 {
             let ptr: *mut u8 = with_exposed_provenance(self.0, Tracked(perm.exposed));
             let tracked PointsTo { points_to, dealloc: dea, exposed } = perm;
@@ -505,7 +509,6 @@ impl<V> PPtr<V> {
 
     /// Given a shared borrow of the `PointsTo<V>`, obtain a shared borrow of `V`.
     #[inline(always)]
-    #[verifier::external_body]
     pub fn borrow<'a>(self, Tracked(perm): Tracked<&'a PointsTo<V>>) -> (v: &'a V)
         requires
             perm.pptr() == self,

@@ -105,6 +105,7 @@ pub(crate) enum SpecItem {
     OpensInvariantsAny,
     OpensInvariants,
     OpensInvariantsExcept,
+    OpensInvariantsSet,
     NoUnwind,
     NoUnwindWhen,
 }
@@ -377,6 +378,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::opens_invariants_any",    VerusItem::Spec(SpecItem::OpensInvariantsAny)),
         ("verus::builtin::opens_invariants",        VerusItem::Spec(SpecItem::OpensInvariants)),
         ("verus::builtin::opens_invariants_except", VerusItem::Spec(SpecItem::OpensInvariantsExcept)),
+        ("verus::builtin::opens_invariants_set",    VerusItem::Spec(SpecItem::OpensInvariantsSet)),
 
         ("verus::builtin::no_unwind",               VerusItem::Spec(SpecItem::NoUnwind)),
         ("verus::builtin::no_unwind_when",          VerusItem::Spec(SpecItem::NoUnwindWhen)),
@@ -601,6 +603,8 @@ pub(crate) enum RustItem {
     Drop,
     Sized,
     Copy,
+    Send,
+    Sync,
     Clone,
     StructuralPartialEq,
     Eq,
@@ -710,6 +714,12 @@ pub(crate) fn get_rust_item_str(rust_path: Option<&str>) -> Option<RustItem> {
 
     if rust_path == Some("core::marker::Sized") {
         return Some(RustItem::Sized);
+    }
+    if rust_path == Some("core::marker::Send") {
+        return Some(RustItem::Send);
+    }
+    if rust_path == Some("core::marker::Sync") {
+        return Some(RustItem::Sync);
     }
     if rust_path == Some("core::marker::Copy") {
         return Some(RustItem::Copy);

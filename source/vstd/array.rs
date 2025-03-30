@@ -86,7 +86,7 @@ pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
     admit();
 }
 
-pub spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
+pub uninterp spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
 
 pub broadcast proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
     ensures
@@ -112,7 +112,7 @@ pub assume_specification<T, const N: usize>[ <[T; N]>::as_slice ](ar: &[T; N]) -
         ar@ == out@,
 ;
 
-pub spec fn spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T) -> (res: [T; N]);
+pub uninterp spec fn spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T) -> (res: [T; N]);
 
 pub broadcast proof fn axiom_spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T)
     ensures

@@ -748,6 +748,7 @@ define_keywords! {
     "exec"        pub struct Exec
     "open"        pub struct Open
     "closed"      pub struct Closed
+    "uninterp"    pub struct Uninterp
     "ghost"       pub struct Ghost
     "tracked"     pub struct Tracked
     "requires"    pub struct Requires
@@ -771,6 +772,7 @@ define_keywords! {
     "exists"      pub struct Exists
     "choose"      pub struct Choose
     "is"          pub struct Is
+    "isnt"        pub struct IsNot
     "FnSpec"      pub struct FnSpec
     "spec_fn"     pub struct SpecFn
     "via"         pub struct Via
@@ -778,6 +780,7 @@ define_keywords! {
     "any"         pub struct InvAny
     "none"        pub struct InvNone
     "has"         pub struct Has
+    "hasnt"       pub struct HasNot
     "global"      pub struct Global
     "size_of"     pub struct SizeOf
     "layout"      pub struct Layout
@@ -1031,6 +1034,7 @@ macro_rules! Token {
     [exec]        => { $crate::token::Exec };
     [open]        => { $crate::token::Open };
     [closed]      => { $crate::token::Closed };
+    [uninterp]    => { $crate::token::Uninterp };
     [ghost]       => { $crate::token::Ghost };
     [tracked]     => { $crate::token::Tracked };
     [requires]    => { $crate::token::Requires };
@@ -1052,13 +1056,15 @@ macro_rules! Token {
     [by]          => { $crate::token::By };
     [via]         => { $crate::token::Via };
     [any]         => { $crate::token::InvAny };
-    [none]         => { $crate::token::InvNone };
+    [none]        => { $crate::token::InvNone };
     [when]        => { $crate::token::When };
     [forall]      => { $crate::token::Forall };
     [exists]      => { $crate::token::Exists };
     [choose]      => { $crate::token::Choose };
     [is]          => { $crate::token::Is };
+    [isnt]        => { $crate::token::IsNot };
     [has]         => { $crate::token::Has };
+    [hasnt]       => { $crate::token::HasNot };
     [global]      => { $crate::token::Global };
     [size_of]     => { $crate::token::SizeOf };
     [layout]      => { $crate::token::Layout };

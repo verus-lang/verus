@@ -21,7 +21,7 @@ pub struct ExVecDeque<T, A: Allocator>(VecDeque<T, A>);
 impl<T, A: Allocator> View for VecDeque<T, A> {
     type V = Seq<T>;
 
-    spec fn view(&self) -> Seq<T>;
+    uninterp spec fn view(&self) -> Seq<T>;
 }
 
 pub trait VecDequeAdditionalSpecFns<T>: View<V = Seq<T>> {
@@ -39,7 +39,7 @@ impl<T, A: Allocator> VecDequeAdditionalSpecFns<T> for VecDeque<T, A> {
 }
 
 ////// Len (with autospec)
-pub spec fn spec_vec_dequeue_len<T, A: Allocator>(v: &VecDeque<T, A>) -> usize;
+pub uninterp spec fn spec_vec_dequeue_len<T, A: Allocator>(v: &VecDeque<T, A>) -> usize;
 
 // This axiom is slightly better than defining spec_vec_dequeue_len to just be `v@.len() as usize`
 // (the axiom also shows that v@.len() is in-bounds for usize)
@@ -250,7 +250,7 @@ pub trait IterAdditionalSpecFns<'a, T: 'a> {
 }
 
 impl<'a, T: 'a> IterAdditionalSpecFns<'a, T> for Iter<'a, T> {
-    spec fn view(self: &Iter<'a, T>) -> (int, Seq<T>);
+    uninterp spec fn view(self: &Iter<'a, T>) -> (int, Seq<T>);
 }
 
 pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T>) -> (r: Option<
@@ -344,7 +344,7 @@ impl<'a, T> View for IterGhostIterator<'a, T> {
 // the iterator in spec mode. To do that, we add
 // `#[verifier::when_used_as_spec(spec_iter)` to the specification for
 // the executable `iter` method and define that spec function here.
-pub open spec fn spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>) -> (r: Iter<'a, T>);
+pub uninterp spec fn spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>) -> (r: Iter<'a, T>);
 
 pub broadcast proof fn axiom_spec_iter<'a, T, A: Allocator>(v: &'a VecDeque<T, A>)
     ensures

@@ -74,11 +74,11 @@ pub ghost struct Provenance {}
 
 impl Provenance {
     /// The provenance of the null ptr (or really, "no provenance")
-    pub spec fn null() -> Self;
+    pub uninterp spec fn null() -> Self;
 
-    pub spec fn start_addr(&self) -> usize;
+    pub uninterp spec fn start_addr(&self) -> usize;
 
-    pub spec fn alloc_len(&self) -> usize;
+    pub uninterp spec fn alloc_len(&self) -> usize;
 }
 
 /// Metadata
@@ -149,7 +149,7 @@ pub ghost struct PointsToData<T> {
 impl<T: ?Sized> View for *mut T {
     type V = PtrData;
 
-    spec fn view(&self) -> Self::V;
+    uninterp spec fn view(&self) -> Self::V;
 }
 
 impl<T: ?Sized> View for *const T {
@@ -164,12 +164,12 @@ impl<T: ?Sized> View for *const T {
 // impl<T> View for PointsTo<T> {
 //     type V = PointsToData<T>;
 
-//     spec fn view(&self) -> Self::V;
+//     uninterp spec fn view(&self) -> Self::V;
 //     // Either implement this function so it's tied to ptr() or get rid of it and fix all the errors
 // }
 
 impl<T> PointsTo<T> {
-    pub open spec fn opt_value(&self) -> MemContents<T>;
+    pub uninterp spec fn opt_value(&self) -> MemContents<T>;
 
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
@@ -217,7 +217,142 @@ impl<T> PointsTo<T> {
     /// Note: If both S and T are non-zero-sized, then this implies the pointers
     /// have distinct addresses.
     #[verifier::external_body]
-    pub proof fn is_disjoint<S>(&mut self, other: &PointsTo<S>)
+    pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
+        ensures
+            *old(self) == *self,
+            self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
+                + size_of::<S>() <= self.ptr() as int,
+    {
+        unimplemented!();
+    }
+}
+
+// impl<T> View for PointsTo<[T]> {
+//     type V = PointsToData<T>;
+
+//     spec fn view(&self) -> Self::V {
+//         PointsToData {
+//             ptr: self.ptr(), 
+//             opt_value: self.mem_contents_seq()
+//         }
+//     }
+// }
+
+impl<T: ?Sized> PointsTo<T> {
+    pub uninterp spec fn ptr(&self) -> *mut T;
+}
+
+
+
+impl<T> PointsTo<[T]> {
+    pub uninterp spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
+    // MemContents<Seq<T>> or Seq<MemContents<T>>, have options
+    // Q: What is the conceptual difference between these two, in terms of how I'd model it?
+    // A: MemContents<T> - either have T or uninit, Seq<MemContent<T>> - every entry can be init or uninit, independently
+    // MemContents<Seq<T>> - entire sequence is init or uninit. Weird bc don't actually have sequence in memory, but not sufficient
+    // don't write opt_value in terms of view
+
+    // #[verifier::inline]
+    pub open spec fn is_init(&self) -> bool {
+        forall |i| 0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
+    }
+
+    // #[verifier::inline]
+    pub open spec fn is_uninit(&self) -> bool {
+        !self.is_init()
+    }
+
+    // #[verifier::inline]
+    pub open spec fn value(&self) -> Seq<T> {
+        Seq::new(self.mem_contents_seq().len(), |i| self.mem_contents_seq().index(i).value())
+    }
+
+    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
+    ///
+    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
+    // See https://doc.rust-lang.org/std/ptr/#safety
+    #[verifier::external_body]
+    pub proof fn is_nonnull(tracked &self)
+        requires
+            size_of::<T>() != 0,
+        ensures
+            self.ptr()@.addr != 0,
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
+    pub proof fn ptr_bounds(tracked &self)
+        // TODO: do I need this requires?
+        requires
+            size_of::<T>() != 0, 
+        ensures
+            self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
+            self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len() >= self.ptr()@.addr + self.value().len() * size_of::<T>(), 
+    {
+        unimplemented!();
+    }
+
+    // TODO: Add invariant that self.ptr()@.metadata == Metadata::Length(self.mem_contents_seq().len())?
+    // Probably skip unless I need it
+
+    #[verifier::external_body]
+    pub proof fn subrange(tracked &self, start_index: usize, len: nat) -> (tracked sub_points_to: &Self)
+        requires
+            start_index + len <= self.mem_contents_seq().len(),
+        ensures
+            sub_points_to.ptr() == ptr_mut_from_data::<[T]>(
+                PtrData { addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize, provenance: self.ptr()@.provenance, metadata: Metadata::Length(len as usize) },
+            ),
+            sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(start_index as int, start_index as int + len as int),
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
+    pub proof fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>)
+        where 
+            T: PrimitiveInt + CompatibleSmallerBaseFor<V> + Integer,
+            V: PrimitiveInt + BasePow2 + Integer,
+        requires
+            self.is_init(),
+            is_sized::<V>(),
+            self.ptr()@.addr as int % align_of::<V>() as int == 0, 
+            self.value().len() * size_of::<T>() == size_of::<V>(),
+        ensures
+            points_to.ptr() == ptr_mut_from_data::<V>(
+                PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: Metadata::Thin },
+            ),
+            points_to.is_init(),
+            points_to.value() as int == to_big_ne::<V, T>(self.value(), Endian::Little).index(0),
+            // TODO: Update this so Endian::Little isn't hardcoded in
+    {
+        unimplemented!();
+    }
+
+    /// "Forgets" about the value stored behind the pointer.
+    /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
+    /// Note that this is a `proof` function, i.e.,
+    /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
+    /// Only the proof-code representation changes.
+    /// 
+    /// TODO-E: replace w/version that forgets about entry - entry in sequence, by index
+    /// ie add index param
+    /// skip unless i need it
+    /// Q: What does this mean?
+    // #[verifier::external_body]
+    // pub proof fn leak_contents(tracked &mut self)
+    //     ensures
+    //         self.ptr() == old(self).ptr(),
+    //         self.is_uninit(),
+    // {
+    //     unimplemented!();
+    // }
+
+    /// Note: If both S and T are non-zero-sized, then this implies the pointers
+    /// have distinct addresses.
+    #[verifier::external_body]
+    pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
         ensures
             *old(self) == *self,
             self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
@@ -352,7 +487,7 @@ impl<T> PointsTo<[T]> {
     /// Note: If both S and T are non-zero-sized, then this implies the pointers
     /// have distinct addresses.
     #[verifier::external_body]
-    pub proof fn is_disjoint<S>(&mut self, other: &PointsTo<S>)
+    pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
         ensures
             *old(self) == *self,
             self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
@@ -382,7 +517,7 @@ impl<T> MemContents<T> {
 //////////////////////////////////////
 // Inverse functions:
 // Pointers are equivalent to their model
-pub spec fn ptr_mut_from_data<T: ?Sized>(data: PtrData) -> *mut T;
+pub uninterp spec fn ptr_mut_from_data<T: ?Sized>(data: PtrData) -> *mut T;
 
 #[verifier::inline]
 pub open spec fn ptr_from_data<T: ?Sized>(data: PtrData) -> *const T {
@@ -399,7 +534,7 @@ pub broadcast proof fn axiom_ptr_mut_from_data<T>(data: PtrData)
 // Equiv to ptr_mut_from_data, but named differently to avoid trigger issues
 // Only use for ptrs_mut_eq
 #[doc(hidden)]
-pub spec fn view_reverse_for_eq<T: ?Sized>(data: PtrData) -> *mut T;
+pub uninterp spec fn view_reverse_for_eq<T: ?Sized>(data: PtrData) -> *mut T;
 
 /// Implies that `a@ == b@ ==> a == b`.
 #[verifier::external_body]
@@ -646,7 +781,7 @@ impl IsExposed {
         self.provenance()
     }
 
-    pub spec fn provenance(self) -> Provenance;
+    pub uninterp spec fn provenance(self) -> Provenance;
 
     #[verifier::external_body]
     pub proof fn null() -> (tracked exp: IsExposed)
@@ -702,9 +837,9 @@ pub tracked struct PointsToRaw {
 }
 
 impl PointsToRaw {
-    pub spec fn provenance(self) -> Provenance;
+    pub uninterp spec fn provenance(self) -> Provenance;
 
-    pub spec fn dom(self) -> Set<int>;
+    pub uninterp spec fn dom(self) -> Set<int>;
 
     pub open spec fn is_range(self, start: int, len: int) -> bool {
         super::set_lib::set_int_range(start, start + len) =~= self.dom()
@@ -830,7 +965,7 @@ pub ghost struct DeallocData {
 }
 
 impl Dealloc {
-    pub spec fn view(self) -> DeallocData;
+    pub uninterp spec fn view(self) -> DeallocData;
 
     #[verifier::inline]
     pub open spec fn addr(self) -> usize {
@@ -953,9 +1088,9 @@ impl<'a, T> SharedReference<'a, T> {
 }
 
 impl<'a, T: ?Sized> SharedReference<'a, T> {
-    pub spec fn value(self) -> &'a T;
+    pub uninterp spec fn value(self) -> &'a T;
 
-    pub spec fn ptr(self) -> *const T;
+    pub uninterp spec fn ptr(self) -> *const T;
 
     #[verifier::external_body]
     pub fn new(t: &'a T) -> (s: Self)

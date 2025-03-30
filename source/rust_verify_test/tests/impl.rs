@@ -52,7 +52,7 @@ test_verify_one_file! {
                 Bike { hard_tail: true }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "in 'ensures' clause of public function, cannot access any field of a datatype where one or more fields are private")
+    } => Err(err) => assert_vir_error_msg(err, "disallowed: field expression for a non-visible datatype")
 }
 
 test_verify_one_file! {
@@ -320,11 +320,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] unsafe_impl_fail verus_code! {
+    #[test] unsafe_impl_fail_send verus_code! {
         struct Foo {
             x: u32,
         }
 
         unsafe impl Send for Foo { }
-    } => Err(e) => assert_vir_error_msg(e, "the verifier does not support `unsafe` here")
+    } => Err(e) => assert_vir_error_msg(e, "unsafe impl for `Send` is not allowed")
+}
+
+test_verify_one_file! {
+    #[test] unsafe_impl_fail_sync verus_code! {
+        struct Foo {
+            x: u32,
+        }
+
+        unsafe impl Sync for Foo { }
+    } => Err(e) => assert_vir_error_msg(e, "unsafe impl for `Sync` is not allowed")
 }

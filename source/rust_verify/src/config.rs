@@ -79,6 +79,7 @@ pub struct ArgsX {
     pub no_verify: bool,
     pub no_lifetime: bool,
     pub no_auto_recommends_check: bool,
+    pub no_cheating: bool,
     pub time: bool,
     pub time_expanded: bool,
     pub output_json: bool,
@@ -109,6 +110,7 @@ pub struct ArgsX {
     pub solver: SmtSolver,
     #[cfg(feature = "axiom-usage-info")]
     pub axiom_usage_info: bool,
+    pub check_api_safety: bool,
 }
 
 impl ArgsX {
@@ -123,6 +125,7 @@ impl ArgsX {
             no_verify: Default::default(),
             no_lifetime: Default::default(),
             no_auto_recommends_check: Default::default(),
+            no_cheating: Default::default(),
             time: Default::default(),
             time_expanded: Default::default(),
             output_json: Default::default(),
@@ -153,6 +156,7 @@ impl ArgsX {
             solver: Default::default(),
             #[cfg(feature = "axiom-usage-info")]
             axiom_usage_info: Default::default(),
+            check_api_safety: Default::default(),
         }
     }
 }
@@ -291,6 +295,7 @@ pub fn parse_args_with_imports(
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
+    const OPT_NO_CHEATING: &str = "no-cheating";
     const OPT_TIME: &str = "time";
     const OPT_TIME_EXPANDED: &str = "time-expanded";
     const OPT_OUTPUT_JSON: &str = "output-json";
@@ -384,6 +389,7 @@ pub fn parse_args_with_imports(
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
     #[cfg(feature = "axiom-usage-info")]
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
+    const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
         (EXTENDED_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output"),
         (EXTENDED_DEBUG, "Enable debugging of proof failures"),
@@ -408,6 +414,10 @@ pub fn parse_args_with_imports(
         ),
         #[cfg(feature = "axiom-usage-info")]
         (EXTENDED_AXIOM_USAGE_INFO, "Print usage info for broadcasted axioms, lemmas, and groups"),
+        (
+            EXTENDED_CHECK_API_SAFETY,
+            "Check that the API is memory-safe when called from unverified, safe Rust code. Experimental.",
+        ),
     ];
 
     let default_num_threads: usize = std::thread::available_parallelism()
@@ -442,6 +452,11 @@ pub fn parse_args_with_imports(
         "",
         OPT_NO_AUTO_RECOMMENDS_CHECK,
         "Do not automatically check recommends after verification failures",
+    );
+    opts.optflag(
+        "",
+        OPT_NO_CHEATING,
+        "Do not allow assume, admit, verifier::external_body, and assume_specification",
     );
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optflag("", OPT_TIME_EXPANDED, "Measure and report time taken with module breakdown");
@@ -616,6 +631,7 @@ pub fn parse_args_with_imports(
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
+        no_cheating: matches.opt_present(OPT_NO_CHEATING),
         time: matches.opt_present(OPT_TIME) || matches.opt_present(OPT_TIME_EXPANDED),
         time_expanded: matches.opt_present(OPT_TIME_EXPANDED),
         output_json: matches.opt_present(OPT_OUTPUT_JSON),
@@ -745,6 +761,7 @@ pub fn parse_args_with_imports(
         solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
         #[cfg(feature = "axiom-usage-info")]
         axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
+        check_api_safety: extended.get(EXTENDED_CHECK_API_SAFETY).is_some(),
     };
 
     (Arc::new(args), unmatched)
