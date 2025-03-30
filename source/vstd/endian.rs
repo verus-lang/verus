@@ -46,21 +46,30 @@ pub enum Endian {
 pub uninterp spec fn endianness() -> Endian;
 
 pub enum EndianNat<B: Base> {
-    LittleEndianNat(LittleEndianNat<B>),
-    BigEndianNat(BigEndianNat<B>),
+    Little(LittleEndianNat<B>),
+    Big(BigEndianNat<B>),
 }
 
-// TODO: fix the return type once we've implemented BigEndianNat. 
+impl<B: Base> EndianNat<B> {
+    pub open spec fn index(self, i: int) -> int {
+        match self {
+            EndianNat::Little(le_nat) => le_nat.index(i),
+            EndianNat::Big(be_nat) => be_nat.index(i),
+        }
+    }
+}
+
 // TODO: something relating PrimitiveInt to Integer, so that if it's a primitive int, then casting is fine
 // TODO: currently I just pass the endianness in. But we might want to make that global in some sense
-pub open spec fn to_big_ne<BIG, B>(n: Seq<B>, endianness: Endian) -> LittleEndianNat<BIG>
+// TODO: implement Endian::Big case once we have BigEndianNat
+pub open spec fn to_big_ne<BIG, B>(n: Seq<B>, endianness: Endian) -> EndianNat<BIG>
     where
         BIG: BasePow2,
         B: CompatibleSmallerBaseFor<BIG> + PrimitiveInt + Integer,
 {
     match endianness {
-        Endian::Little => LittleEndianNat::<B>::to_big::<BIG>(LittleEndianNat::<B>::new(Seq::new(n.len(), |i: int| n[i] as int))),
-        Endian::Big => LittleEndianNat::<B>::to_big::<BIG>(LittleEndianNat::<B>::new(Seq::new(n.len(), |i: int| n[i] as int))), //TODO: replace with BigEndianNat functions
+        Endian::Little => EndianNat::Little(LittleEndianNat::<B>::to_big::<BIG>(LittleEndianNat::<B>::new(Seq::new(n.len(), |i: int| n[i] as int)))),
+        Endian::Big => EndianNat::Little(LittleEndianNat::<B>::to_big::<BIG>(LittleEndianNat::<B>::new(Seq::new(n.len(), |i: int| n[i] as int)))), 
     }
 }
 
@@ -69,7 +78,7 @@ pub proof fn lemma_to_big_ne_little<BIG, B>(n: Seq<B>)
         BIG: BasePow2,
         B: CompatibleSmallerBaseFor<BIG> + PrimitiveInt + Integer,
     ensures 
-        to_big_ne::<BIG, B>(n, Endian::Little) == LittleEndianNat::<B>::to_big::<BIG>(LittleEndianNat::<B>::new(Seq::new(n.len(), |i: int| n[i] as int))),
+        to_big_ne::<BIG, B>(n, Endian::Little) == EndianNat::Little(LittleEndianNat::<B>::to_big::<BIG>(LittleEndianNat::<B>::new(Seq::new(n.len(), |i: int| n[i] as int)))),
 {}
 
 // Not needed at the moment
@@ -89,15 +98,6 @@ pub proof fn lemma_to_big_ne_little<BIG, B>(n: Seq<B>)
 // element is the most significant position.
 #[verifier::ext_equal]
 pub struct LittleEndianNat<B: Base> {
-    pub digits: Seq<int>,
-    pub phantom: core::marker::PhantomData<B>,
-}
-
-/// Big endian interpretation of a sequence of numbers with a given base.
-/// The last element of a sequence is the least significant position; the first
-// element is the most significant position.
-#[verifier::ext_equal]
-pub struct BigEndianNat<B: Base> {
     pub digits: Seq<int>,
     pub phantom: core::marker::PhantomData<B>,
 }
@@ -379,22 +379,22 @@ impl<B: Base> LittleEndianNat<B> {
     pub uninterp spec fn from_nat_with_len(n: nat, len: nat) -> Self
         recommends pow(B::base() as int, len) > n;
 
-    proof fn from_nat_with_len_ensures(n: nat, len: nat)
-        requires 
-            pow(B::base() as int, len) > n,
-        ensures 
-            Self::from_nat_with_len(n, len).len() == len,
-            Self::from_nat_with_len(n, len).to_nat_right() == n,
-    {
-        assume(false);
-    }
+    // proof fn from_nat_with_len_ensures(n: nat, len: nat)
+    //     requires 
+    //         pow(B::base() as int, len) > n,
+    //     ensures 
+    //         Self::from_nat_with_len(n, len).len() == len,
+    //         Self::from_nat_with_len(n, len).to_nat_right() == n,
+    // {
+    //     assume(false);
+    // }
 
-    proof fn lemma_from_nat_injective(n: nat)
-        ensures
-            Self::from_nat(n).to_nat_right() == n,
-    {
-        assume(false);
-    }
+    // proof fn lemma_from_nat_injective(n: nat)
+    //     ensures
+    //         Self::from_nat(n).to_nat_right() == n,
+    // {
+    //     assume(false);
+    // }
 
     // /////////////////////////////////////////////////// //
     //         Conversion Routines                         //
@@ -507,83 +507,83 @@ impl<B: Base> LittleEndianNat<B> {
         }
     }
 
-    /// Converting from a BIG base to a SMALL base does not change the fundamental value
-    pub proof fn to_small_ensures<BIG>(n: LittleEndianNat<BIG>)
-        where
-            BIG: BasePow2,
-            B: CompatibleSmallerBaseFor<BIG>,
-        ensures
-            Self::from_big(n).len() == n.len() * Self::exp(),
-            Self::from_big(n).to_nat_right() == n.to_nat_right(),
-    {
-        assume(false);
-    }
+    // /// Converting from a BIG base to a SMALL base does not change the fundamental value
+    // pub proof fn to_small_ensures<BIG>(n: LittleEndianNat<BIG>)
+    //     where
+    //         BIG: BasePow2,
+    //         B: CompatibleSmallerBaseFor<BIG>,
+    //     ensures
+    //         Self::from_big(n).len() == n.len() * Self::exp(),
+    //         Self::from_big(n).to_nat_right() == n.to_nat_right(),
+    // {
+    //     assume(false);
+    // }
 
-    /// Converting from a SMALL base to a BIG base does not change the fundamental value
-    pub proof fn to_big_ensures<BIG>(n: LittleEndianNat<B>)
-        where
-            BIG: BasePow2,
-            B: CompatibleSmallerBaseFor<BIG>,
-        requires
-            n.len() % Self::exp() == 0,
-        ensures
-            Self::to_big(n).len() == n.len() / Self::exp(),
-            Self::to_big(n).to_nat_right() == n.to_nat_right(),
-    {
-        assume(false);
-    }
+    // /// Converting from a SMALL base to a BIG base does not change the fundamental value
+    // pub proof fn to_big_ensures<BIG>(n: LittleEndianNat<B>)
+    //     where
+    //         BIG: BasePow2,
+    //         B: CompatibleSmallerBaseFor<BIG>,
+    //     requires
+    //         n.len() % Self::exp() == 0,
+    //     ensures
+    //         Self::to_big(n).len() == n.len() / Self::exp(),
+    //         Self::to_big(n).to_nat_right() == n.to_nat_right(),
+    // {
+    //     assume(false);
+    // }
 
-    // to_small is injective
-    pub proof fn to_small_injective<BIG>(x: LittleEndianNat<BIG>, y: LittleEndianNat<BIG>)
-        where
-            BIG: BasePow2,
-            B: CompatibleSmallerBaseFor<BIG>,
-        requires
-            Self::from_big(x) == Self::from_big(y),
-            x.len() == y.len(),
-        ensures
-            x == y,
-    {
-        assume(false);
-    }
+    // // to_small is injective
+    // pub proof fn to_small_injective<BIG>(x: LittleEndianNat<BIG>, y: LittleEndianNat<BIG>)
+    //     where
+    //         BIG: BasePow2,
+    //         B: CompatibleSmallerBaseFor<BIG>,
+    //     requires
+    //         Self::from_big(x) == Self::from_big(y),
+    //         x.len() == y.len(),
+    //     ensures
+    //         x == y,
+    // {
+    //     assume(false);
+    // }
 
-    // to_big is injective
-    pub proof fn to_big_injective<BIG>(x: LittleEndianNat<B>, y: LittleEndianNat<B>)
-        where
-            BIG: BasePow2,
-            B: CompatibleSmallerBaseFor<BIG>,
-        requires
-            x.len() % Self::exp() == 0,
-            y.len() % Self::exp() == 0,
-            Self::to_big(x) == Self::to_big(y),
-            x.len() == y.len(),
-        ensures
-            x == y,
-    {
-        assume(false);
-    }
+    // // to_big is injective
+    // pub proof fn to_big_injective<BIG>(x: LittleEndianNat<B>, y: LittleEndianNat<B>)
+    //     where
+    //         BIG: BasePow2,
+    //         B: CompatibleSmallerBaseFor<BIG>,
+    //     requires
+    //         x.len() % Self::exp() == 0,
+    //         y.len() % Self::exp() == 0,
+    //         Self::to_big(x) == Self::to_big(y),
+    //         x.len() == y.len(),
+    //     ensures
+    //         x == y,
+    // {
+    //     assume(false);
+    // }
 
-    pub proof fn to_big_cycle<BIG>(x: LittleEndianNat<B>)
-        where
-            BIG: BasePow2,
-            B: CompatibleSmallerBaseFor<BIG>,
-        requires
-            x.len() % Self::exp() == 0,
-        ensures
-            Self::from_big(Self::to_big(x)) == x,
-    {
-        assume(false);
-    }
+    // pub proof fn to_big_cycle<BIG>(x: LittleEndianNat<B>)
+    //     where
+    //         BIG: BasePow2,
+    //         B: CompatibleSmallerBaseFor<BIG>,
+    //     requires
+    //         x.len() % Self::exp() == 0,
+    //     ensures
+    //         Self::from_big(Self::to_big(x)) == x,
+    // {
+    //     assume(false);
+    // }
 
-    pub proof fn from_big_cycle<BIG>(x: LittleEndianNat<BIG>)
-        where
-            BIG: BasePow2,
-            B: CompatibleSmallerBaseFor<BIG>,
-        ensures
-            Self::to_big(Self::from_big(x)) == x,
-    {
-        assume(false);
-    }
+    // pub proof fn from_big_cycle<BIG>(x: LittleEndianNat<BIG>)
+    //     where
+    //         BIG: BasePow2,
+    //         B: CompatibleSmallerBaseFor<BIG>,
+    //     ensures
+    //         Self::to_big(Self::from_big(x)) == x,
+    // {
+    //     assume(false);
+    // }
 
     // TODO: Generalize this to: Self::to_big(x).index(i) == x.skip(i * Self.exp()).take(Self::exp()).to_nat_right() as int,
     pub proof fn to_big_initial<BIG>(x: LittleEndianNat<B>)
@@ -608,6 +608,97 @@ impl<B: Base> LittleEndianNat<B> {
         assert(Self::to_big(x) == LittleEndianNat::new(seq![x.take(Self::exp()).to_nat_right() as int]).append(Self::to_big(x.skip(Self::exp()))));
     }
 
+}
+
+/// Big endian interpretation of a sequence of numbers with a given base.
+/// The last element of a sequence is the least significant position; the first
+// element is the most significant position.
+#[verifier::ext_equal]
+pub struct BigEndianNat<B: Base> {
+    pub digits: Seq<int>,
+    pub phantom: core::marker::PhantomData<B>,
+}
+
+impl<B: Base> BigEndianNat<B> {
+    pub open spec fn in_bounds(s: Seq<int>) -> bool {
+        forall|i| 0 <= i < s.len() ==> 0 <= #[trigger] s[i] < B::base()
+    }
+
+    pub open spec fn new(digits: Seq<int>) -> Self
+        recommends
+            Self::in_bounds(digits),
+    {
+        BigEndianNat { digits, phantom: PhantomData }
+    }
+
+    pub open spec fn wf(self) -> bool {
+        Self::in_bounds(self.digits)
+    }
+
+    pub open spec fn len(self) -> nat {
+        self.digits.len()
+    }
+
+    pub open spec fn index(self, i: int) -> int {
+        self.digits[i]
+    }
+
+    // Do we define first to always return self.digits.first() or to return the least significant element?
+    pub open spec fn first(self) -> nat {
+        self.digits.first() as nat
+    }
+
+    pub proof fn first_nat(self)
+        requires
+            self.wf(),
+            self.len() > 0,
+        ensures
+            self.first() as int == self.digits.first(),
+    {
+    }
+
+    // Do we append from the other way?
+    pub open spec fn append(self, other: Self) -> Self {
+        BigEndianNat::new(self.digits + other.digits)
+    }
+
+    // Do we define last to always return self.digits.last() or to return the most significant element?
+    pub open spec fn last(self) -> nat {
+        self.digits.last() as nat
+    }
+
+    pub proof fn last_nat(self)
+        requires
+            self.wf(),
+            self.len() > 0,
+        ensures
+            self.last() as int == self.digits.last(),
+    {
+    }
+
+    pub proof fn index_nat(self, i: int)
+        requires
+            self.wf(),
+            0 <= i < self.len(),
+        ensures
+            self.index(i) as int == self.digits.index(i),
+    {}
+
+    pub open spec fn skip(self, n: nat) -> Self {
+        BigEndianNat { digits: self.digits.skip(n as int), phantom: self.phantom }
+    }
+
+    pub open spec fn take(self, n: nat) -> Self {
+        BigEndianNat { digits: self.digits.take(n as int), phantom: self.phantom }
+    }
+
+    pub open spec fn drop_first(self) -> Self {
+        BigEndianNat { digits: self.digits.drop_first(), phantom: self.phantom }
+    }
+
+    pub open spec fn drop_last(self) -> Self {
+        BigEndianNat { digits: self.digits.drop_last(), phantom: self.phantom }
+    }
 }
 
 impl Base for u8 {
@@ -677,22 +768,22 @@ impl CompatibleSmallerBaseFor<usize> for u8 {
     }
 }
 
-proof fn test(x: LittleEndianNat<u64>, y: LittleEndianNat<u8>) 
-    requires y.len() % 8 == 0,
-{
-    let x8 = LittleEndianNat::<u8>::from_big(x);
-    let x8_64 = LittleEndianNat::<u8>::to_big::<u64>(x8);
-    assert(x == x8_64) by {
-        LittleEndianNat::<u8>::from_big_cycle(x);
-    };
+// proof fn test(x: LittleEndianNat<u64>, y: LittleEndianNat<u8>) 
+//     requires y.len() % 8 == 0,
+// {
+//     let x8 = LittleEndianNat::<u8>::from_big(x);
+//     let x8_64 = LittleEndianNat::<u8>::to_big::<u64>(x8);
+//     assert(x == x8_64) by {
+//         LittleEndianNat::<u8>::from_big_cycle(x);
+//     };
 
-    let y_64 = LittleEndianNat::<u8>::to_big::<u64>(y);
-    if y.len() > 0 {
-        assert(y_64.index(0) == y.take(8).to_nat_right() as int) by {
-            LittleEndianNat::<u8>::to_big_initial::<u64>(y);
-        };
-    }
-}
+//     let y_64 = LittleEndianNat::<u8>::to_big::<u64>(y);
+//     if y.len() > 0 {
+//         assert(y_64.index(0) == y.take(8).to_nat_right() as int) by {
+//             LittleEndianNat::<u8>::to_big_initial::<u64>(y);
+//         };
+//     }
+// }
 
 pub proof fn lemma_to_nat_right_bitwise_and(x: LittleEndianNat<u8>, y: LittleEndianNat<u8>)
     requires

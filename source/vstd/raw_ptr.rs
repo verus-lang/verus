@@ -298,7 +298,7 @@ impl<T> PointsTo<[T]> {
             size_of::<T>() != 0, 
         ensures
             self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
-            self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len() >= self.ptr()@.addr + self.value().len() * size_of::<T>(), 
+            self.ptr()@.addr + self.value().len() * size_of::<T>() <= self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len(),
     {
         unimplemented!();
     }
