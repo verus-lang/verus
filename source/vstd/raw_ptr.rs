@@ -242,126 +242,6 @@ impl<T: ?Sized> PointsTo<T> {
     pub uninterp spec fn ptr(&self) -> *mut T;
 }
 
-
-
-impl<T> PointsTo<[T]> {
-    pub uninterp spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
-    // MemContents<Seq<T>> or Seq<MemContents<T>>, have options
-    // Q: What is the conceptual difference between these two, in terms of how I'd model it?
-    // A: MemContents<T> - either have T or uninit, Seq<MemContent<T>> - every entry can be init or uninit, independently
-    // MemContents<Seq<T>> - entire sequence is init or uninit. Weird bc don't actually have sequence in memory, but not sufficient
-    // don't write opt_value in terms of view
-
-    // #[verifier::inline]
-    pub open spec fn is_init(&self) -> bool {
-        forall |i| 0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
-    }
-
-    // #[verifier::inline]
-    pub open spec fn is_uninit(&self) -> bool {
-        !self.is_init()
-    }
-
-    // #[verifier::inline]
-    pub open spec fn value(&self) -> Seq<T> {
-        Seq::new(self.mem_contents_seq().len(), |i| self.mem_contents_seq().index(i).value())
-    }
-
-    /// Guarantee that the `PointsTo` for any non-zero-sized type points to a non-null address.
-    ///
-    // ZST pointers *are* allowed to be null, so we need a precondition that size != 0.
-    // See https://doc.rust-lang.org/std/ptr/#safety
-    #[verifier::external_body]
-    pub proof fn is_nonnull(tracked &self)
-        requires
-            size_of::<T>() != 0,
-        ensures
-            self.ptr()@.addr != 0,
-    {
-        unimplemented!();
-    }
-
-    #[verifier::external_body]
-    pub proof fn ptr_bounds(tracked &self)
-        // TODO: do I need this requires?
-        requires
-            size_of::<T>() != 0, 
-        ensures
-            self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
-            self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len() >= self.ptr()@.addr + self.value().len() * size_of::<T>(), 
-    {
-        unimplemented!();
-    }
-
-    // TODO: Add invariant that self.ptr()@.metadata == Metadata::Length(self.mem_contents_seq().len())?
-    // Probably skip unless I need it
-
-    #[verifier::external_body]
-    pub proof fn subrange(tracked &self, start_index: usize, len: nat) -> (tracked sub_points_to: &Self)
-        requires
-            start_index + len <= self.mem_contents_seq().len(),
-        ensures
-            sub_points_to.ptr() == ptr_mut_from_data::<[T]>(
-                PtrData { addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize, provenance: self.ptr()@.provenance, metadata: Metadata::Length(len as usize) },
-            ),
-            sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(start_index as int, start_index as int + len as int),
-    {
-        unimplemented!();
-    }
-
-    #[verifier::external_body]
-    pub proof fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>)
-        where 
-            T: PrimitiveInt + CompatibleSmallerBaseFor<V> + Integer,
-            V: PrimitiveInt + BasePow2 + Integer,
-        requires
-            self.is_init(),
-            is_sized::<V>(),
-            self.ptr()@.addr as int % align_of::<V>() as int == 0, 
-            self.value().len() * size_of::<T>() == size_of::<V>(),
-        ensures
-            points_to.ptr() == ptr_mut_from_data::<V>(
-                PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: Metadata::Thin },
-            ),
-            points_to.is_init(),
-            points_to.value() as int == to_big_ne::<V, T>(self.value(), Endian::Little).index(0),
-            // TODO: Update this so Endian::Little isn't hardcoded in
-    {
-        unimplemented!();
-    }
-
-    /// "Forgets" about the value stored behind the pointer.
-    /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
-    /// Note that this is a `proof` function, i.e.,
-    /// it is operationally a no-op in executable code, even on the Rust Abstract Machine.
-    /// Only the proof-code representation changes.
-    /// 
-    /// TODO-E: replace w/version that forgets about entry - entry in sequence, by index
-    /// ie add index param
-    /// skip unless i need it
-    /// Q: What does this mean?
-    // #[verifier::external_body]
-    // pub proof fn leak_contents(tracked &mut self)
-    //     ensures
-    //         self.ptr() == old(self).ptr(),
-    //         self.is_uninit(),
-    // {
-    //     unimplemented!();
-    // }
-
-    /// Note: If both S and T are non-zero-sized, then this implies the pointers
-    /// have distinct addresses.
-    #[verifier::external_body]
-    pub proof fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
-        ensures
-            *old(self) == *self,
-            self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= self.ptr() as int,
-    {
-        unimplemented!();
-    }
-}
-
 // impl<T> View for PointsTo<[T]> {
 //     type V = PointsToData<T>;
 
@@ -373,14 +253,9 @@ impl<T> PointsTo<[T]> {
 //     }
 // }
 
-impl<T: ?Sized> PointsTo<T> {
-    pub open spec fn ptr(&self) -> *mut T;
-}
-
-
 
 impl<T> PointsTo<[T]> {
-    pub open spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
+    pub uninterp spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
     // MemContents<Seq<T>> or Seq<MemContents<T>>, have options
     // Q: What is the conceptual difference between these two, in terms of how I'd model it?
     // A: MemContents<T> - either have T or uninit, Seq<MemContent<T>> - every entry can be init or uninit, independently
@@ -1178,7 +1053,7 @@ impl<'a, T> SharedReference<'a, [T]> {
 impl<'a, T> View for SharedReference<'a, [T]> {
     type V = Seq<T>;
 
-    spec fn view(&self) -> Seq<T>;
+    uninterp spec fn view(&self) -> Seq<T>;
 }
 
 #[verifier::external_body]

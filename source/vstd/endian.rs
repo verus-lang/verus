@@ -43,7 +43,7 @@ pub enum Endian {
     Big,
 }
 
-pub spec fn endianness() -> Endian;
+pub uninterp spec fn endianness() -> Endian;
 
 pub enum EndianNat<B: Base> {
     LittleEndianNat(LittleEndianNat<B>),
@@ -373,10 +373,10 @@ impl<B: Base> LittleEndianNat<B> {
     }
 
     /// Converts a nat to a sequence
-    pub open spec fn from_nat(n: nat) -> Self;
+    pub uninterp spec fn from_nat(n: nat) -> Self;
 
     /// Converts a nat to a sequence of a specified length
-    pub open spec fn from_nat_with_len(n: nat, len: nat) -> Self
+    pub uninterp spec fn from_nat_with_len(n: nat, len: nat) -> Self
         recommends pow(B::base() as int, len) > n;
 
     proof fn from_nat_with_len_ensures(n: nat, len: nat)
