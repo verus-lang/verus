@@ -23,6 +23,8 @@ use core::slice::SliceIndex;
 use core::ops::Index;
 use crate::vstd::slice::spec_slice_len;
 use crate::vstd::seq::*;
+use crate::vstd::primitive_int::PrimitiveInt;
+use crate::vstd::endian::*;
 
 verus! {
 
@@ -144,9 +146,6 @@ pub ghost struct PointsToData<T> {
     pub opt_value: MemContents<T>,
 }
 
-//pub ghost struct PointsToBytesData<T> {
-//    pub provena
-//}
 impl<T: ?Sized> View for *mut T {
     type V = PtrData;
 
@@ -166,20 +165,11 @@ impl<T: ?Sized> View for *const T {
 //     type V = PointsToData<T>;
 
 //     spec fn view(&self) -> Self::V;
-//     // TODO-E: Either implement this function so it's tied to ptr() or get rid of it and fix all the errors
+//     // Either implement this function so it's tied to ptr() or get rid of it and fix all the errors
 // }
 
 impl<T> PointsTo<T> {
-    // #[verifier::inline]
-    // pub open spec fn ptr(&self) -> *mut T {
-    //     self.view().ptr
-    // }
-
-    // #[verifier::inline]
     pub open spec fn opt_value(&self) -> MemContents<T>;
-    // {
-    //     self.view().opt_value
-    // }
 
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
@@ -249,34 +239,28 @@ impl<T> PointsTo<T> {
 // }
 
 impl<T: ?Sized> PointsTo<T> {
-    // #[verifier::inline]
     pub open spec fn ptr(&self) -> *mut T;
 }
 
-// TODO: make spec constant/function (uninterpreted) representing endian-ness, similar to size_of()
 
 
 impl<T> PointsTo<[T]> {
-    // #[verifier::inline]
     pub open spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
-    // {
-    //     self.view().opt_value
-    // }
-    // TODO-E: MemContents<Seq<T>> or Seq<MemContents<T>>, have options
+    // MemContents<Seq<T>> or Seq<MemContents<T>>, have options
     // Q: What is the conceptual difference between these two, in terms of how I'd model it?
     // A: MemContents<T> - either have T or uninit, Seq<MemContent<T>> - every entry can be init or uninit, independently
     // MemContents<Seq<T>> - entire sequence is init or uninit. Weird bc don't actually have sequence in memory, but not sufficient
     // don't write opt_value in terms of view
 
     // #[verifier::inline]
-    // pub open spec fn is_init(&self) -> bool {
-    //     self.mem_contents_seq().is_init()
-    // }
+    pub open spec fn is_init(&self) -> bool {
+        forall |i| 0 <= i < self.mem_contents_seq().len() ==> self.mem_contents_seq().index(i).is_init()
+    }
 
     // #[verifier::inline]
-    // pub open spec fn is_uninit(&self) -> bool {
-    //     self.mem_contents_seq().is_uninit()
-    // }
+    pub open spec fn is_uninit(&self) -> bool {
+        !self.is_init()
+    }
 
     // #[verifier::inline]
     pub open spec fn value(&self) -> Seq<T> {
@@ -305,6 +289,43 @@ impl<T> PointsTo<[T]> {
         ensures
             self.ptr()@.provenance.start_addr() <= self.ptr()@.addr,
             self.ptr()@.provenance.start_addr() + self.ptr()@.provenance.alloc_len() >= self.ptr()@.addr + self.value().len() * size_of::<T>(), 
+    {
+        unimplemented!();
+    }
+
+    // TODO: Add invariant that self.ptr()@.metadata == Metadata::Length(self.mem_contents_seq().len())?
+    // Probably skip unless I need it
+
+    #[verifier::external_body]
+    pub proof fn subrange(tracked &self, start_index: usize, len: nat) -> (tracked sub_points_to: &Self)
+        requires
+            start_index + len <= self.mem_contents_seq().len(),
+        ensures
+            sub_points_to.ptr() == ptr_mut_from_data::<[T]>(
+                PtrData { addr: (self.ptr()@.addr + start_index * size_of::<T>()) as usize, provenance: self.ptr()@.provenance, metadata: Metadata::Length(len as usize) },
+            ),
+            sub_points_to.mem_contents_seq() == self.mem_contents_seq().subrange(start_index as int, start_index as int + len as int),
+    {
+        unimplemented!();
+    }
+
+    #[verifier::external_body]
+    pub proof fn cast_points_to<V>(tracked &self) -> (tracked points_to: &PointsTo<V>)
+        where 
+            T: PrimitiveInt + CompatibleSmallerBaseFor<V> + Integer,
+            V: PrimitiveInt + BasePow2 + Integer,
+        requires
+            self.is_init(),
+            is_sized::<V>(),
+            self.ptr()@.addr as int % align_of::<V>() as int == 0, 
+            self.value().len() * size_of::<T>() == size_of::<V>(),
+        ensures
+            points_to.ptr() == ptr_mut_from_data::<V>(
+                PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: Metadata::Thin },
+            ),
+            points_to.is_init(),
+            points_to.value() as int == to_big_ne::<V, T>(self.value(), Endian::Little).index(0),
+            // TODO: Update this so Endian::Little isn't hardcoded in
     {
         unimplemented!();
     }
@@ -736,7 +757,7 @@ impl PointsToRaw {
     pub proof fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
             is_sized::<V>(),
-            start as int % align_of::<V>() as int == 0, //TODO: revisit here
+            start as int % align_of::<V>() as int == 0, 
             self.is_range(start as int, size_of::<V>() as int),
         ensures
             points_to.ptr() == ptr_mut_from_data::<V>(
@@ -1012,9 +1033,8 @@ impl<'a, T> SharedReference<'a, [T]> {
     pub proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[T]>)
         ensures
             pt.ptr() == self.ptr(),
-            // pt.is_init(),
+            pt.is_init(),
             pt.value() == self.value()@,
-        // TODO-E: move preconditions to run_utf8_validation() here?
     {
         unimplemented!();
     }
@@ -1065,17 +1085,17 @@ pub broadcast proof fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedRefe
 //         index.index(self.as_ref())
 //     }
 // }
-#[verifier::external_trait_specification]
-pub trait ExIndex<Idx> 
-where
-    Idx: ?Sized,
-{
-    type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
+// #[verifier::external_trait_specification]
+// pub trait ExIndex<Idx> 
+// where
+//     Idx: ?Sized,
+// {
+//     type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
 
-    type Output: ?Sized;
+//     type Output: ?Sized;
 
-    fn index(&self, index: Idx) -> &Self::Output;
-}
+//     fn index(&self, index: Idx) -> &Self::Output;
+// }
 
 // impl<'a, T, I> Index<I> for &'a T 
 // where

@@ -1,11 +1,13 @@
 #![allow(unused_imports)]
 
 use super::prelude::*;
+use super::group_vstd_default;
 
 verus! {
 
 // TODO add some means for Verus to calculate the size & alignment of types
 // TODO use a definition from a math library, once we have one.
+#[verifier::opaque]
 pub open spec fn is_power_2(n: int) -> bool
     decreases n,
 {
@@ -121,6 +123,18 @@ pub broadcast proof fn layout_of_primitives()
         #![trigger size_of::<i64>()]
         #![trigger size_of::<usize>()]
         #![trigger size_of::<isize>()]
+        #![trigger is_sized::<bool>()]
+        #![trigger is_sized::<char>()]
+        #![trigger is_sized::<u8>()]
+        #![trigger is_sized::<i8>()]
+        #![trigger is_sized::<u16>()]
+        #![trigger is_sized::<i16>()]
+        #![trigger is_sized::<u32>()]
+        #![trigger is_sized::<i32>()]
+        #![trigger is_sized::<u64>()]
+        #![trigger is_sized::<i64>()]
+        #![trigger is_sized::<usize>()]
+        #![trigger is_sized::<isize>()]
         size_of::<bool>() == 1,
         size_of::<char>() == 4,
         size_of::<u8>() == size_of::<i8>() == 1,
@@ -130,7 +144,41 @@ pub broadcast proof fn layout_of_primitives()
         size_of::<u128>() == size_of::<i128>() == 16,
         size_of::<usize>() == size_of::<isize>(),
         size_of::<usize>() * 8 == usize::BITS,
+        is_sized::<bool>(),
+        is_sized::<char>(),
+        is_sized::<u8>(),
+        is_sized::<i8>(),
+        is_sized::<u16>(),
+        is_sized::<i16>(),
+        is_sized::<u32>(),
+        is_sized::<i32>(),
+        is_sized::<u64>(),
+        is_sized::<i64>(),
+        is_sized::<usize>(),
+        is_sized::<isize>(),
 {
+}
+
+// TODO: Are these the right triggers?
+// The alignment is at least 1 by https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size
+// TODO: specify that the alignment is always a power of 2?
+#[verifier::external_body]
+pub broadcast proof fn align_properties<T>()
+    ensures
+        #![trigger size_of::<T>()]
+        #![trigger align_of::<T>()]
+        size_of::<T>() % align_of::<T>() == 0,
+        align_of::<T>() > 0,
+;
+
+pub proof fn usize_size_pow2()
+    ensures 
+        is_power_2(size_of::<usize>() as int),
+{
+    broadcast use group_vstd_default;
+
+    assert(is_power_2(4)) by (compute);
+    assert(is_power_2(8)) by (compute);
 }
 
 /// Size and alignment of the unit tuple ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.tuple.unit)).
@@ -175,6 +223,7 @@ pub broadcast group group_layout_axioms {
     layout_of_unit_tuple,
     layout_of_references_and_pointers,
     layout_of_references_and_pointers_for_sized_types,
+    align_properties,
 }
 
 } // verus!

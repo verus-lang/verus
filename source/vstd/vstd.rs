@@ -47,6 +47,8 @@ pub mod pcm_lib;
 pub mod pervasive;
 pub mod proph;
 pub mod raw_ptr;
+pub mod primitive_int;
+pub mod endian;
 
 // TODO this should be permitted even in not(verus_keep_ghost)
 #[cfg(verus_keep_ghost)]
