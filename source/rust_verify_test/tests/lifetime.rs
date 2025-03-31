@@ -439,15 +439,15 @@ test_verify_one_file! {
         #[verifier(external_body)]
         #[verifier(reject_recursive_types(A))]
         #[verifier(reject_recursive_types(B))]
-        struct S<A, B>(A, std::marker::PhantomData<B>);
+        struct S<'a, A, const N: u8, B>(A, std::marker::PhantomData<&'a B>);
 
         #[verifier(external)]
-        impl<A, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }
-        impl<A: Copy, B> Copy for S<A, B> {}
+        impl<'a, A, const N: u8, B> Clone for S<'a, A, N, B> { fn clone(&self) -> Self { panic!() } }
+        impl<'a, A: Copy, const N: u8, B> Copy for S<'a, A, N, B> {}
 
         struct Q {}
 
-        proof fn f(tracked x: S<u8, Q>) -> tracked (S<u8, Q>, S<u8, Q>) {
+        proof fn f<'a>(tracked x: S<'a, u8, 3, Q>) -> tracked (S<'a, u8, 3, Q>, S<'a, u8, 3, Q>) {
             (x, x)
         }
     } => Ok(())
