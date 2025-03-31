@@ -135,16 +135,13 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_trait_add verus_code! {
-        pub closed spec fn spec_add<Lhs, Rhs, Output>(lhs: Lhs, rhs: Rhs) -> Output;
-
         #[verifier::external_trait_specification]
         pub trait ExAddMethod<Rhs> {
             type ExternalTraitSpecificationFor: core::ops::Add<Rhs>;
             type Output;
 
             // Required method does not have Sized but we added it here to pass lifetime checker
-            fn add(self, rhs: Rhs) -> (ret: Self::Output) where Self: Sized
-            returns spec_add::<_, _, Self::Output>(self, rhs);
+            fn add(self, rhs: Rhs) -> (ret: Self::Output) where Self: Sized;
         }
 
         // lifetime should not add ?Sized for the imported add function.

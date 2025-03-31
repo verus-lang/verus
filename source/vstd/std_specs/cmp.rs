@@ -22,13 +22,13 @@ pub broadcast group group_cmp_axioms {
 /// must have consistent PartialEq, PartialOrd, and Ord.
 ///
 /// Rust safe implementation should obeys_comparison_model to avoid undefined behaviors.
-pub open spec fn obeys_comparison_model<Lhs: ?Sized, Rhs: ?Sized>() -> bool;
+pub uninterp spec fn obeys_comparison_model<Lhs: ?Sized, Rhs: ?Sized>() -> bool;
 
-pub open spec fn spec_partial_cmp<Lhs: ?Sized, Rhs: ?Sized>(lhs: &Lhs, rhs: &Rhs) -> Option<
+pub uninterp spec fn spec_partial_cmp<Lhs: ?Sized, Rhs: ?Sized>(lhs: &Lhs, rhs: &Rhs) -> Option<
     Ordering,
 >;
 
-pub open spec fn spec_partial_eq<T1: ?Sized, T2: ?Sized>(v1: &T1, rhs: &T2) -> bool;
+pub uninterp spec fn spec_partial_eq<T1: ?Sized, T2: ?Sized>(v1: &T1, rhs: &T2) -> bool;
 
 #[verifier(inline)]
 pub open spec fn spec_lt<Lhs: ?Sized, Rhs: ?Sized>(lhs: &Lhs, rhs: &Rhs) -> bool {
