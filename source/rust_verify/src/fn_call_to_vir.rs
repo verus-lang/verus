@@ -1090,10 +1090,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 }
                 ((_, false), TypX::Int(_)) if bctx.types.node_type(args[0].hir_id).is_enum() => {
                     let cast_to = crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
-                        bctx,
-                        args[0],
-                        mk_expr,
-                        ExprModifier::REGULAR,
+                        bctx, args[0], source_vir, mk_expr,
                     )?;
                     let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;

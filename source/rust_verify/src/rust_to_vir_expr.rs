@@ -1288,15 +1288,15 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     }
 }
 
+/// Callers must guarantee that expr_vir is a vir representation of expr.
 pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &'tcx Expr<'tcx>,
+    expr_vir: vir::ast::Expr,
     mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, vir::messages::Message>,
-    current_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let ty = bctx.types.node_type(expr.hir_id);
-    let expr_vir = expr_to_vir(bctx, expr, current_modifier)?;
     assert!(ty.is_enum());
     if let ExprKind::Path(QPath::Resolved(
         None,
@@ -1739,7 +1739,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     mk_expr(ExprX::If(source_vir, one, Some(zero)))
                 }
                 (_, TypX::Int(_)) if bctx.types.node_type(source.hir_id).is_enum() => {
-                    let cast_to = expr_cast_enum_int_to_vir(bctx, source, mk_expr, modifier)?;
+                    let cast_to = expr_cast_enum_int_to_vir(bctx, source, source_vir, mk_expr)?;
                     Ok(mk_ty_clip(&to_vir_ty, &cast_to, expr_vattrs.truncate))
                 }
                 _ => {
