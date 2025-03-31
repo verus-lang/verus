@@ -1288,6 +1288,64 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     }
 }
 
+/// Callers must guarantee that expr_vir is a vir representation of expr.
+pub(crate) fn expr_cast_enum_int_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &'tcx Expr<'tcx>,
+    expr_vir: vir::ast::Expr,
+    mk_expr: impl Fn(ExprX) -> Result<vir::ast::Expr, vir::messages::Message>,
+) -> Result<vir::ast::Expr, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    let ty = bctx.types.node_type(expr.hir_id);
+    assert!(ty.is_enum());
+    if let ExprKind::Path(QPath::Resolved(
+        None,
+        rustc_hir::Path {
+            res: res @ Res::Def(DefKind::Ctor(CtorOf::Variant, _) | DefKind::Variant, _),
+            ..
+        },
+    )) = expr.kind
+    {
+        if let Ok((enum_did, vdef, true, _is_union)) = get_adt_res(tcx, *res, expr.span, false) {
+            let adt = tcx.adt_def(enum_did);
+            let idx = adt.variant_index_with_id(vdef.def_id);
+            let val = adt.discriminant_for_variant(tcx, idx).val;
+            return mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(val)));
+        }
+    }
+
+    let TyKind::Adt(adt, _) = ty.kind() else {
+        unreachable!();
+    };
+    let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
+    for (idx, vdef) in adt.variants().iter_enumerated() {
+        let val = adt.discriminant_for_variant(tcx, idx).val;
+        let cast_to = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(val)))?;
+        unsupported_err_unless!(
+            vdef.fields.len() == 0,
+            expr.span,
+            "Enum variant should not contain any fields."
+        );
+        let variant_name = vdef.name.to_string();
+        let (adt_path, _) =
+            crate::fn_call_to_vir::check_variant_field(bctx, expr.span, expr, &variant_name, None)?;
+
+        let pattern = bctx.spanned_typed_new(
+            expr.span,
+            &expr_vir.typ,
+            PatternX::Constructor(adt_path, Arc::new(variant_name), Arc::new(vec![])),
+        );
+        let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+        erasure_info.hir_vir_ids.push((expr.hir_id, pattern.span.id));
+        let guard = mk_expr(ExprX::Const(Constant::Bool(true)))?;
+        let body = cast_to;
+        let vir_arm = bctx.spanned_new(expr.span, ArmX { pattern, guard, body });
+        vir_arms.push(vir_arm);
+    }
+    unsupported_err_unless!(vir_arms.len() > 0, expr.span, "Zero-sized empty Enum expr");
+    return Ok(mk_expr(ExprX::Match(expr_vir, Arc::new(vir_arms)))?);
+}
+
 pub(crate) fn expr_to_vir_innermost<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -1679,6 +1737,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let zero = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(0)))?;
                     let one = mk_expr(ExprX::Const(vir::ast_util::const_int_from_u128(1)))?;
                     mk_expr(ExprX::If(source_vir, one, Some(zero)))
+                }
+                (_, TypX::Int(_)) if bctx.types.node_type(source.hir_id).is_enum() => {
+                    let cast_to = expr_cast_enum_int_to_vir(bctx, source, source_vir, mk_expr)?;
+                    Ok(mk_ty_clip(&to_vir_ty, &cast_to, expr_vattrs.truncate))
                 }
                 _ => {
                     let source_ty = bctx.types.expr_ty_adjusted(source);
