@@ -242,18 +242,6 @@ impl<T: ?Sized> PointsTo<T> {
     pub uninterp spec fn ptr(&self) -> *mut T;
 }
 
-// impl<T> View for PointsTo<[T]> {
-//     type V = PointsToData<T>;
-
-//     spec fn view(&self) -> Self::V {
-//         PointsToData {
-//             ptr: self.ptr(), 
-//             opt_value: self.mem_contents_seq()
-//         }
-//     }
-// }
-
-
 impl<T> PointsTo<[T]> {
     pub uninterp spec fn mem_contents_seq(&self) -> Seq<MemContents<T>>;
     // MemContents<Seq<T>> or Seq<MemContents<T>>, have options
@@ -334,8 +322,7 @@ impl<T> PointsTo<[T]> {
                 PtrData { addr: self.ptr()@.addr, provenance: self.ptr()@.provenance, metadata: Metadata::Thin },
             ),
             points_to.is_init(),
-            points_to.value() as int == to_big_ne::<V, T>(self.value(), Endian::Little).index(0),
-            // TODO: Update this so Endian::Little isn't hardcoded in
+            points_to.value() as int == to_big_ne::<V, T>(self.value()).index(0),
     {
         unimplemented!();
     }

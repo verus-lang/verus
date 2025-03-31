@@ -165,7 +165,6 @@ pub broadcast proof fn layout_of_primitives()
 #[verifier::external_body]
 pub broadcast proof fn align_properties<T>()
     ensures
-        #![trigger size_of::<T>()]
         #![trigger align_of::<T>()]
         size_of::<T>() % align_of::<T>() == 0,
         align_of::<T>() > 0,
