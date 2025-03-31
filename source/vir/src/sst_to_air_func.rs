@@ -465,6 +465,7 @@ fn req_ens_to_air(
 /// Returns vector of commands that declare the function symbol itself,
 /// as well as any related functions symbols (e.g., recursive versions),
 /// if the function is a spec function.
+#[tracing::instrument(skip_all)]
 pub fn func_name_to_air(
     ctx: &Ctx,
     _diagnostics: &impl air::messages::Diagnostics,
@@ -472,6 +473,8 @@ pub fn func_name_to_air(
     specialization: &mono::Specialization,
 ) -> Result<Commands, VirErr> {
     let mut commands: Vec<Command> = Vec::new();
+
+    tracing::info!("Function name: {:?} specialized to: {specialization:?}", function.x.name);
     let declare_rec = |commands: &mut Vec<Command>| {
         // Check whether we need to declare the recursive version too
         if function.x.has.has_body {
@@ -510,8 +513,14 @@ pub fn func_name_to_air(
         }
 
         let mut all_typs = vec_map(&function.x.pars, |param| {
-            typ_to_air(ctx, &specialization.transform_typ(&function.x.typ_params, &param.x.typ))
+            tracing::trace!("Type rewrite target: {:?}", param.x.typ);
+            if let Some(at) = specialization.typ_to_air(&param.x.typ, &function.x.typ_params) {
+                at
+            } else {
+                typ_to_air(ctx, &specialization.transform_typ(&function.x.typ_params, &param.x.typ))
+            }
         });
+        tracing::trace!("Spec mode function parameters (1): {all_typs:?}");
         for _ in function.x.typ_params.iter() {
             for x in crate::def::types().iter().rev() {
                 all_typs.insert(0, str_typ(x));
@@ -772,13 +781,14 @@ pub fn func_decl_to_air(
 /// (Note: this means that you shouldn't call func_axioms_to_air with a decreases_by function
 /// on its own.)
 
+#[tracing::instrument(skip_all)]
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
     function: &FunctionSst,
     public_body: bool,
     specialization: &mono::Specialization,
 ) -> Result<(Commands, Vec<CommandsWithContext>), VirErr> {
-    tracing::debug!("Generating Air for {:?}", function.x.name);
+    tracing::debug!("Generating Air for {:?} with spec {specialization:?}", function.x.name);
     let func_axioms_sst = &function.x.axioms;
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<CommandsWithContext> = Vec::new();
@@ -892,7 +902,9 @@ pub fn func_axioms_to_air(
                 // so we can just return here.
                 return Ok((Arc::new(decl_commands), check_commands));
             }
+            tracing::trace!("This is in proof mode (1)");
             if let Some((params, exp, triggers)) = &func_axioms_sst.proof_exec_axioms {
+                tracing::trace!("This is in proof mode (2)");
                 let new_body_exp = specialization.transform_exp(&function.x.typ_params, exp);
                 let span = &function.span;
                 let mut binders: Vec<VarBinder<Typ>> = Vec::new();

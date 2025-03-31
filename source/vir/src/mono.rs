@@ -296,6 +296,18 @@ impl Specialization {
         assert!(self.is_empty() || self.typs.len() == typ_params.len());
         std::iter::zip(typ_params.iter().cloned(), self.typs.iter().cloned()).collect()
     }
+    pub fn typ_to_air(&self, t: &Typ, typ_params: &Idents) -> Option<air::ast::Typ> {
+        match &**t {
+            TypX::Datatype(dt, typs, _) => {
+                let sm = self.create_spec_map(typ_params);
+                let spec_params = typs_as_spec(typs, &sm);
+                let spec = Specialization { typs: Arc::new(spec_params) };
+                let ident = spec.dt_to_air_ident(dt);
+                Some(air::ast_util::ident_typ(&ident))
+            }
+            _ => None,
+        }
+    }
 }
 impl Default for Specialization {
     fn default() -> Self {

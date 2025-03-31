@@ -33,9 +33,9 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
-use vir::mono::Specialization;
-use vir::mono::PolyStrategy;
 use vir::mono::KrateSpecializations;
+use vir::mono::PolyStrategy;
+use vir::mono::Specialization;
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
@@ -1364,34 +1364,30 @@ impl Verifier {
 
         for function in &krate.functions {
             ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
-            let commands = vir::sst_to_air_func::func_name_to_air(
-                ctx,
-                reporter,
-                function,
-                &Specialization::empty(),
-            )?;
-            let comment =
-                "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
-            self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
-            function_decl_commands.push((commands.clone(), comment.clone()));
 
-            if ctx.poly_strategy != PolyStrategy::Mono {
+            let Some(specs) = specializations.function_spec.get(&function.x.name) else {
+                let commands = vir::sst_to_air_func::func_name_to_air(
+                    ctx,
+                    reporter,
+                    function,
+                    &Specialization::empty(),
+                )?;
+                let comment =
+                    "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
+                self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
+                function_decl_commands.push((commands.clone(), comment.clone()));
                 continue;
+            };
+            for spec in specs.iter() {
+                assert!(!spec.typs.is_empty());
+                let commands =
+                    vir::sst_to_air_func::func_name_to_air(ctx, reporter, function, spec)?;
+                let comment =
+                    "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name) + &format!("{spec:?}");
+                let inner_comment = comment.clone() + &spec.comment();
+                self.run_commands(bucket_id, reporter, &mut air_context, &commands, &inner_comment);
+                function_decl_commands.push((commands.clone(), comment.clone()));
             }
-
-                let Some(specs) = specializations.function_spec.get(&function.x.name) else {
-                    continue;
-                };
-                for spec in specs.iter() {
-                    if spec.typs.is_empty() {
-                        continue;
-                    }
-                    let commands =
-                        vir::sst_to_air_func::func_name_to_air(ctx, reporter, function, spec)?;
-                    let inner_comment = comment.clone() + &spec.comment();
-                    self.run_commands(bucket_id, reporter, &mut air_context, &commands, &inner_comment);
-                    function_decl_commands.push((commands.clone(), comment.clone()));
-                }
         }
         ctx.fun = None;
 
@@ -1940,7 +1936,7 @@ impl Verifier {
             uses_array,
             fndef_types,
             self.args.debugger,
-            poly_strategy, 
+            poly_strategy,
         )?;
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
@@ -1955,10 +1951,11 @@ impl Verifier {
             &pruned_krate,
         )?;
         let specializations = match bucket.strategy {
-            // krate_sst should have everything! 
-            PolyStrategy::Mono => { 
+            // krate_sst should have everything!
+            PolyStrategy::Mono => {
                 tracing::trace!("We are mono");
-                vir::mono::collect_specializations(&krate_sst)}
+                vir::mono::collect_specializations(&krate_sst)
+            }
             PolyStrategy::Poly => Default::default(),
         };
         tracing::trace!("Specializations {specializations:?}");

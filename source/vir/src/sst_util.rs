@@ -55,6 +55,11 @@ pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
             Some(t) => Ok(t.clone()),
             None => Ok(t.clone()),
         },
+        TypX::Datatype(dt, typs, impl_paths) => {
+            tracing::trace!("Substituting on dt: {t:?}");
+            let typs: Vec<_> = typs.iter().map(|t| subst_typ(typ_substs, t)).collect();
+            Ok(Arc::new(TypX::Datatype(dt.clone(), Arc::new(typs), impl_paths.clone())))
+        }
         _ => Ok(t.clone()),
     })
     .expect("subst_typ")
