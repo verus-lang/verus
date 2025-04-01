@@ -30,7 +30,7 @@ test_verify_one_file_with_options! {
                 return 1 + a(i - 1);
             }
         }
-    } => Ok(err) => assert!(err.warnings.iter().find(|x| x.message.contains("if allow(may_not_terminate) is set, decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some())
+    } => Ok(err) => assert!(err.warnings.iter().find(|x| x.message.contains("if may_not_terminate is set, decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some())
 }
 
 test_verify_one_file_with_options! {
@@ -271,8 +271,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_recursive_function_with_while_loop_admit_may_not_terminate verus_code! {
-        #[verifier::admit(may_not_terminate)]
+    #[test] exec_recursive_function_with_while_loop_assume_termination verus_code! {
+        #[verifier::assume_termination]
         fn a(mut i: u64)
             requires i <= 10,
         {
@@ -287,4 +287,77 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_terminating_function_cannot_call_nonterminating_function verus_code! {
+        fn a(mut i: u64) {
+            while i > 0
+                invariant 0 <= i,
+                decreases i,
+            {
+                b();
+                i -= 1;
+            }
+        }
+
+        #[verifier::may_not_terminate]
+        fn b() {
+            loop { }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "the current function must terminate, but the callee may not terminate")
+}
+
+test_verify_one_file! {
+    #[test] exec_terminating_function_cannot_call_nonterminating_function_trait_1 verus_code! {
+        fn a<AA: A>(mut i: u64) {
+            while i > 0
+                invariant 0 <= i,
+                decreases i,
+            {
+                AA::b();
+                i -= 1;
+            }
+        }
+
+        trait A {
+            #[verifier::may_not_terminate]
+            fn b();
+        }
+
+        struct X { }
+
+        impl A for X {
+            fn b() {
+                loop { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "the current function must terminate, but the callee may not terminate")
+}
+
+test_verify_one_file! {
+    #[test] exec_terminating_function_cannot_call_nonterminating_function_trait_2 verus_code! {
+        fn a<AA: A>(mut i: u64) {
+            while i > 0
+                invariant 0 <= i,
+                decreases i,
+            {
+                AA::b();
+                i -= 1;
+            }
+        }
+
+        trait A {
+            fn b();
+        }
+
+        struct X { }
+
+        impl A for X {
+            #[verifier::may_not_terminate]
+            fn b() {
+                loop { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "this function implementation may not be marked as may_not_terminate, according to the definition in the trait")
 }

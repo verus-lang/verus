@@ -1156,7 +1156,6 @@ fn mk_fun_decl(
 
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
     let KrateX {
-        name,
         functions,
         reveal_groups,
         datatypes,
@@ -1168,7 +1167,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         external_types,
         path_as_rust_names,
         arch,
-        may_not_terminate,
     } = &**krate;
     let mut state = State::new();
 
@@ -1290,7 +1288,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let external_fns = external_fns.clone();
     let external_types = external_types.clone();
     let krate = Arc::new(KrateX {
-        name: name.clone(),
         functions,
         reveal_groups: reveal_groups.clone(),
         datatypes,
@@ -1302,7 +1299,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
         arch: arch.clone(),
-        may_not_terminate: may_not_terminate.clone(),
     });
     *ctx = crate::context::GlobalCtx::new(
         &krate,
@@ -1313,7 +1309,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.func_call_graph_log.clone(),
         ctx.solver.clone(),
         true,
-        ctx.current_crate_may_not_terminate.clone(),
     )?;
     Ok(krate)
 }
@@ -1323,7 +1318,6 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
     let mut kratex: KrateX = (*krates.next().expect("at least one crate")).clone();
     for k in krates {
         let KrateX {
-            name: _,
             functions,
             reveal_groups,
             datatypes,
@@ -1335,9 +1329,7 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
             external_types,
             path_as_rust_names,
             arch,
-            may_not_terminate,
         } = &*k;
-        kratex.name = crate::ast::KrateName::Combined;
         kratex.functions.extend(functions.clone());
         kratex.reveal_groups.extend(reveal_groups.clone());
         kratex.datatypes.extend(datatypes.clone());
@@ -1367,7 +1359,6 @@ pub fn merge_krates(krates: Vec<Krate>) -> Result<Krate, VirErr> {
             }
             word_bits
         };
-        kratex.may_not_terminate = may_not_terminate.combine(&kratex.may_not_terminate);
     }
     Ok(Arc::new(kratex))
 }

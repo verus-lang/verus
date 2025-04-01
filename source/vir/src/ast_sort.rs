@@ -18,7 +18,6 @@ pub fn sort_krate(krate: &Krate) -> Krate {
     // - all items from a module are grouped together
 
     let KrateX {
-        name,
         functions,
         reveal_groups,
         datatypes,
@@ -30,7 +29,6 @@ pub fn sort_krate(krate: &Krate) -> Krate {
         external_types,
         path_as_rust_names,
         arch,
-        may_not_terminate,
     } = &**krate;
     let mut functions = functions.clone();
     let mut datatypes = datatypes.clone();
@@ -59,7 +57,6 @@ pub fn sort_krate(krate: &Krate) -> Krate {
     });
 
     Arc::new(KrateX {
-        name: name.clone(),
         functions,
         reveal_groups: reveal_groups.clone(),
         datatypes,
@@ -71,6 +68,5 @@ pub fn sort_krate(krate: &Krate) -> Krate {
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
         arch: arch.clone(),
-        may_not_terminate: may_not_terminate.clone(),
     })
 }

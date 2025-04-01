@@ -1,4 +1,4 @@
-#![cfg_attr(verus_keep_ghost, verifier::allow(may_not_terminate))]
+#![cfg_attr(verus_keep_ghost, verifier::may_not_terminate)]
 // #![allow(unused_imports, unused_macros, non_camel_case_types)] #![feature(fmt_internals)]
 use vstd::prelude::*;
 

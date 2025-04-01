@@ -425,7 +425,7 @@ pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<Tes
         code
     } else {
         let may_not_terminate_str =
-            if may_not_terminate { "#![verifier::allow(may_not_terminate)]\n" } else { "" };
+            if may_not_terminate { "#![verifier::may_not_terminate]\n" } else { "" };
         format!("{}{}{}\n{}", FEATURE_PRELUDE, may_not_terminate_str, USE_PRELUDE, code.as_str())
     };
 

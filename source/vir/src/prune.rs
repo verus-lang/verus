@@ -745,7 +745,6 @@ pub fn prune_krate_for_module_or_krate(
         // Make sure we keep all of current_crate,
         // so that all of current_crate is sent to the well-formedness checks.
         let KrateX {
-            name: _,
             functions,
             reveal_groups,
             datatypes,
@@ -757,7 +756,6 @@ pub fn prune_krate_for_module_or_krate(
             external_types: _no_pruning_of_external_types,
             path_as_rust_names: _no_pruning_of_past_as_rust_names,
             arch: _no_pruning_of_arch,
-            may_not_terminate: _may_not_terminate,
         } = &**current_crate;
         for f in functions {
             reach(&mut state.reached_functions, &mut state.worklist_functions, &f.x.name);
@@ -1082,7 +1080,6 @@ pub fn prune_krate_for_module_or_krate(
     };
 
     let kratex = KrateX {
-        name: krate.name.clone(),
         functions: functions
             .into_iter()
             .filter(|f| state.reached_functions.contains(&f.x.name))
@@ -1117,7 +1114,6 @@ pub fn prune_krate_for_module_or_krate(
         external_types: krate.external_types.clone(),
         path_as_rust_names: krate.path_as_rust_names.clone(),
         arch: krate.arch.clone(),
-        may_not_terminate: krate.may_not_terminate.clone(),
     };
     let mut spec_fn_types: Vec<usize> = state.spec_fn_types.into_iter().collect();
     spec_fn_types.sort();

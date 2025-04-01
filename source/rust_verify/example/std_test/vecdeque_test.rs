@@ -1,4 +1,4 @@
-#![cfg_attr(verus_keep_ghost, verifier::allow(may_not_terminate))]
+#![cfg_attr(verus_keep_ghost, verifier::may_not_terminate)]
 use std::collections::VecDeque;
 use vstd::pervasive::runtime_assert;
 #[allow(unused_imports)]

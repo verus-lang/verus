@@ -322,14 +322,10 @@ pub(crate) enum Attr {
     TypeInvariantFn,
     // Used for the encoding of `open([visibility qualified])`
     OpenVisibilityQualifier,
-    // Admit that the function may not terminate
-    AdmitMayNotTerminate,
-}
-
-#[derive(Debug, PartialEq)]
-pub(crate) enum CrateAttr {
-    // Allow may_not_terminate
-    AllowMayNotTerminate,
+    // Allow the function to not terminate
+    MayNotTerminate,
+    // Assume that the function terminates
+    AssumeTermination,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -344,28 +340,6 @@ fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
         Some(i) => Ok(i),
         None => err_span(span, format!("expected integer constant, found {:?}", &attr_tree)),
     }
-}
-
-pub(crate) fn parse_crate_attrs(
-    attrs: &[Attribute],
-    _diagnostics: Option<&mut Vec<VirErrAs>>,
-) -> Result<Vec<CrateAttr>, VirErr> {
-    let mut crate_attrs = Vec::new();
-    for (prefix, span, attr) in attrs_to_trees(attrs)? {
-        match prefix {
-            AttrPrefix::Verifier => match &attr {
-                // matches #![verifier::allow(may_not_terminate)]
-                AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
-                    if name == "allow" && arg == "may_not_terminate" =>
-                {
-                    crate_attrs.push(CrateAttr::AllowMayNotTerminate);
-                }
-                _ => return err_span(span, "unrecognized verifier attribute"),
-            },
-            _ => {}
-        }
-    }
-    Ok(crate_attrs)
 }
 
 pub(crate) fn parse_attrs(
@@ -612,20 +586,11 @@ pub(crate) fn parse_attrs(
                     );
                 }
                 // matches #![verifier::admit(may_not_terminate)]
-                AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
-                    if name == "admit" && arg == "may_not_terminate" =>
-                {
-                    v.push(Attr::AdmitMayNotTerminate);
+                AttrTree::Fun(_, arg, None) if arg == "assume_termination" => {
+                    v.push(Attr::AssumeTermination);
                 }
-                AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
-                    if name == "allow" && arg == "may_not_terminate" =>
-                {
-                    if let Some(diagnostics) = diagnostics {
-                        diagnostics.push(VirErrAs::Warning(crate::util::err_span_bare(
-                            span,
-                            format!("#![verifier::allow(may_not_terminate)] has no effect if not at the crate root"),
-                        )));
-                    }
+                AttrTree::Fun(_, arg, None) if arg == "may_not_terminate" => {
+                    v.push(Attr::MayNotTerminate);
                 }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
@@ -818,6 +783,18 @@ pub(crate) fn get_auto_ext_equal_walk_parents<'tcx>(
     vir::ast::AutoExtEqual::default()
 }
 
+pub(crate) fn get_allow_may_not_terminate_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> bool {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::MayNotTerminate = attr {
+            return true;
+        }
+    }
+    false
+}
+
 pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr> {
     for attr in parse_attrs_opt(attrs, None) {
         match attr {
@@ -953,7 +930,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) size_of_broadcast_proof: bool,
     pub(crate) type_invariant_fn: bool,
     pub(crate) open_visibility_qualifier: bool,
-    pub(crate) admit_may_not_terminate: bool,
+    pub(crate) assume_termination: bool,
+    pub(crate) may_not_terminate: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1101,7 +1079,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         size_of_broadcast_proof: false,
         type_invariant_fn: false,
         open_visibility_qualifier: false,
-        admit_may_not_terminate: false,
+        assume_termination: false,
+        may_not_terminate: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1170,7 +1149,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
             Attr::TypeInvariantFn => vs.type_invariant_fn = true,
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
-            Attr::AdmitMayNotTerminate => vs.admit_may_not_terminate = true,
+            Attr::AssumeTermination => vs.assume_termination = true,
+            Attr::MayNotTerminate => vs.may_not_terminate = true,
             _ => {}
         }
     }

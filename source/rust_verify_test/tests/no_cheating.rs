@@ -97,11 +97,11 @@ test_verify_one_file_with_options! {
 
 test_verify_one_file_with_options! {
     #[test] test_no_cheating_admit_may_not_terminate ["--no-cheating"] => verus_code! {
-        #[verifier::admit(may_not_terminate)]
+        #[verifier::assume_termination]
         fn a(mut i: u64)
             requires i <= 10,
         {
             a(i)
         }
-    } => Err(err) => assert_vir_error_msg(err, "admit(may_not_terminate) not allowed with --no-cheating")
+    } => Err(err) => assert_vir_error_msg(err, "#[verifier::assume_termination] not allowed with --no-cheating")
 }

@@ -298,8 +298,7 @@ fn check_termination<'a>(
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0
         && (function.x.mode != crate::ast::Mode::Exec
-            || (!ctx.global.current_crate_may_not_terminate
-                && !function.x.attrs.admit_may_not_terminate))
+            || (!function.x.attrs.may_not_terminate && !function.x.attrs.assume_termination))
     {
         return Err(error(&function.span, "recursive function must have a decreases clause"));
     }
@@ -378,7 +377,7 @@ pub(crate) fn check_termination_stm(
         return Ok((vec![], body.clone()));
     }
 
-    if (ctx.global.current_crate_may_not_terminate || function.x.attrs.admit_may_not_terminate)
+    if (function.x.attrs.may_not_terminate || function.x.attrs.assume_termination)
         && function.x.mode == crate::ast::Mode::Exec
         && function.x.decrease.is_empty()
     {

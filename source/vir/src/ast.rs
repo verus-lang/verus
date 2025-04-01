@@ -986,8 +986,10 @@ pub struct FunctionAttrsX {
     pub is_external_body: bool,
     /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
     pub is_unsafe: bool,
-    /// Whether to admit that this function may not terminate
-    pub admit_may_not_terminate: bool,
+    /// Whether to assume that this function terminates
+    pub assume_termination: bool,
+    /// Whether to allow this function to not terminate
+    pub may_not_terminate: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1291,35 +1293,10 @@ pub struct Arch {
     pub word_bits: ArchWordBits,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, ToDebugSNode)]
-pub enum MayNotTerminate {
-    Yes,
-    No,
-    Mixed,
-}
-
-impl MayNotTerminate {
-    pub(crate) fn combine(&self, other: &MayNotTerminate) -> MayNotTerminate {
-        match (self, other) {
-            (MayNotTerminate::Yes, MayNotTerminate::Yes) => MayNotTerminate::Yes,
-            (MayNotTerminate::No, MayNotTerminate::No) => MayNotTerminate::No,
-            _ => MayNotTerminate::Mixed,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, Hash, PartialEq, Eq)]
-pub enum KrateName {
-    Named(Ident),
-    Combined,
-}
-
 /// An entire crate
 pub type Krate = Arc<KrateX>;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct KrateX {
-    /// The crate name
-    pub name: KrateName,
     /// All functions in the crate, plus foreign functions
     pub functions: Vec<Function>,
     /// All reveal_groups in the crate
@@ -1342,6 +1319,4 @@ pub struct KrateX {
     pub path_as_rust_names: Vec<(Path, String)>,
     /// Arch info
     pub arch: Arch,
-    /// Allows non-termination
-    pub may_not_terminate: MayNotTerminate,
 }

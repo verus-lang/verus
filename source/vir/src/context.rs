@@ -55,7 +55,6 @@ pub struct GlobalCtx {
     pub crate_name: Ident,
     pub vstd_crate_name: Ident,
     pub solver: SmtSolver,
-    pub(crate) current_crate_may_not_terminate: bool,
 }
 
 // Context for verifying one function
@@ -226,7 +225,6 @@ impl GlobalCtx {
         func_call_graph_log: Arc<std::sync::Mutex<Option<FuncCallGraphLogFiles>>>,
         solver: SmtSolver,
         after_simplify: bool,
-        current_crate_may_not_terminate: bool,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -494,7 +492,6 @@ impl GlobalCtx {
             vstd_crate_name,
             func_call_graph_log,
             solver,
-            current_crate_may_not_terminate,
         })
     }
 
@@ -521,7 +518,6 @@ impl GlobalCtx {
             vstd_crate_name: self.vstd_crate_name.clone(),
             func_call_graph_log: self.func_call_graph_log.clone(),
             solver: self.solver.clone(),
-            current_crate_may_not_terminate: self.current_crate_may_not_terminate,
         }
     }
 

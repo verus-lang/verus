@@ -566,7 +566,10 @@ fn make_attributes<'tcx>(
             Safety::Safe => false,
             Safety::Unsafe => true,
         },
-        admit_may_not_terminate: vattrs.admit_may_not_terminate,
+        assume_termination: vattrs.assume_termination,
+        may_not_terminate: crate::attributes::get_allow_may_not_terminate_walk_parents(
+            ctxt.tcx, def_id,
+        ),
     };
     Ok(Arc::new(fattrs))
 }

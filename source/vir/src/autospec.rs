@@ -57,7 +57,6 @@ fn simplify_function(
 
 pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
     let KrateX {
-        name,
         functions,
         reveal_groups,
         datatypes,
@@ -69,7 +68,6 @@ pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
         external_types,
         path_as_rust_names,
         arch,
-        may_not_terminate,
     } = &**krate;
 
     let mut func_map: HashMap<Fun, Function> = HashMap::new();
@@ -85,7 +83,6 @@ pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
     let external_fns = external_fns.clone();
     let external_types = external_types.clone();
     let krate = Arc::new(KrateX {
-        name: name.clone(),
         functions,
         reveal_groups: reveal_groups.clone(),
         datatypes,
@@ -97,7 +94,6 @@ pub fn resolve_autospec(krate: &Krate) -> Result<Krate, VirErr> {
         external_types,
         path_as_rust_names: path_as_rust_names.clone(),
         arch: arch.clone(),
-        may_not_terminate: may_not_terminate.clone(),
     });
 
     Ok(krate)

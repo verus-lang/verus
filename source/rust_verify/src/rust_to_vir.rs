@@ -6,7 +6,6 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
-use crate::attributes::parse_crate_attrs;
 use crate::context::Context;
 use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
 use crate::reveal_hide::handle_reveal_hide;
@@ -371,7 +370,6 @@ pub fn crate_to_vir<'a, 'tcx>(
     imported: &Vec<Krate>,
 ) -> Result<(Krate, CrateItems), VirErr> {
     let mut vir: KrateX = KrateX {
-        name: vir::ast::KrateName::Named(ctxt.crate_name.clone()),
         functions: Vec::new(),
         reveal_groups: Vec::new(),
         datatypes: Vec::new(),
@@ -383,7 +381,6 @@ pub fn crate_to_vir<'a, 'tcx>(
         external_types: Vec::new(),
         path_as_rust_names: Vec::new(),
         arch: vir::ast::Arch { word_bits: vir::ast::ArchWordBits::Either32Or64 },
-        may_not_terminate: vir::ast::MayNotTerminate::No,
     };
 
     let mut external_info = ExternalInfo::new();
@@ -401,20 +398,6 @@ pub fn crate_to_vir<'a, 'tcx>(
         .insert(tcx.get_diagnostic_item(rustc_span::sym::Send).expect("send"));
 
     let crate_items = crate::external::get_crate_items(ctxt)?;
-    vir.may_not_terminate = {
-        let raw_crate_attrs = ctxt.tcx.hir().krate_attrs();
-        let crate_attrs =
-            parse_crate_attrs(raw_crate_attrs, Some(&mut *ctxt.diagnostics.borrow_mut()))?;
-        let mut may_not_terminate = vir::ast::MayNotTerminate::No;
-        for attr in crate_attrs {
-            match attr {
-                crate::attributes::CrateAttr::AllowMayNotTerminate => {
-                    may_not_terminate = vir::ast::MayNotTerminate::Yes
-                }
-            }
-        }
-        may_not_terminate
-    };
 
     let mut typs_sizes_set: HashMap<TypIgnoreImplPaths, u128> = HashMap::new();
     for (_, owner_opt) in ctxt.krate.owners.iter_enumerated() {

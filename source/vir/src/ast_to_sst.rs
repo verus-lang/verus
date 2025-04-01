@@ -2009,11 +2009,13 @@ pub(crate) fn expr_to_stm_opt(
                 None
             };
             if decrease.len() == 0
-                && !ctx.global.current_crate_may_not_terminate
                 && !ctx
                     .fun
                     .as_ref()
-                    .map(|x| x.current_fun_attrs.admit_may_not_terminate)
+                    .map(|x| {
+                        x.current_fun_attrs.assume_termination
+                            || x.current_fun_attrs.may_not_terminate
+                    })
                     .unwrap_or(false)
             {
                 return Err(error(&expr.span, "loop must have a decreases clause"));
