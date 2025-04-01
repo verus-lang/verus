@@ -679,7 +679,8 @@ pub fn func_def_to_sst(
 
     // Check termination
     let exec_with_no_termination_check = function.x.mode == Mode::Exec
-        && (req_ens_function.x.attrs.may_not_terminate || function.x.attrs.assume_termination);
+        && (req_ens_function.x.attrs.exec_may_not_terminate
+            || function.x.attrs.exec_assume_termination);
     let no_termination_check = function.x.decrease.len() == 0 && exec_with_no_termination_check;
     let (decls, stm) = if no_termination_check || ctx.checking_spec_preconditions() {
         (vec![], stm)

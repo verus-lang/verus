@@ -2012,9 +2012,17 @@ pub(crate) fn expr_to_stm_opt(
                 && !ctx
                     .fun
                     .as_ref()
-                    .map(|x| {
-                        x.current_fun_attrs.assume_termination
-                            || x.current_fun_attrs.may_not_terminate
+                    .map(|c| {
+                        let function = &ctx.func_map[&c.current_fun];
+                        let req_ens_function = match &function.x.kind {
+                            crate::ast::FunctionKind::TraitMethodImpl { method, .. }
+                            | crate::ast::FunctionKind::ForeignTraitMethodImpl { method, .. } => {
+                                &ctx.func_map[method]
+                            }
+                            _ => &function,
+                        };
+                        req_ens_function.x.attrs.exec_assume_termination
+                            || req_ens_function.x.attrs.exec_may_not_terminate
                     })
                     .unwrap_or(false)
             {

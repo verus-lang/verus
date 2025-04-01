@@ -119,6 +119,7 @@ struct Ctxt {
     pub(crate) traits: HashSet<Path>,
     pub(crate) check_ghost_blocks: bool,
     pub(crate) fun_mode: Mode,
+    pub(crate) dont_enforce_exec_termination: bool,
     pub(crate) special_paths: SpecialPaths,
 }
 
@@ -851,6 +852,24 @@ fn check_expr_handle_mut_arg(
             }
             if !mode_le(outer_mode, function.x.mode) {
                 return Err(error(&expr.span, mode_error_msg()));
+            }
+            {
+                let req_ens_function = match &function.x.kind {
+                    FunctionKind::TraitMethodImpl { method, .. }
+                    | FunctionKind::ForeignTraitMethodImpl { method, .. } => &ctxt.funs[method],
+                    _ => &function,
+                };
+                if outer_mode == Mode::Exec && !ctxt.dont_enforce_exec_termination {
+                    if req_ens_function.x.mode == Mode::Exec
+                        && req_ens_function.x.attrs.exec_may_not_terminate
+                        && !req_ens_function.x.attrs.exec_assume_termination
+                    {
+                        return Err(error(
+                            &expr.span,
+                            "the current function must terminate, but the callee may not terminate",
+                        ));
+                    }
+                }
             }
             for (param, arg) in function.x.params.iter().zip(es.iter()) {
                 let param_mode = mode_join(outer_mode, param.x.mode);
@@ -1815,6 +1834,7 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
         check_ghost_blocks: false,
         fun_mode: Mode::Exec,
         special_paths,
+        dont_enforce_exec_termination: false,
     };
     let type_inv_info =
         TypeInvInfo { ctor_needs_check: HashMap::new(), field_loc_needs_check: HashMap::new() };
@@ -1832,6 +1852,13 @@ pub fn check_crate(krate: &Krate) -> Result<(Krate, ErasureModes), VirErr> {
     for function in kratex.functions.iter_mut() {
         ctxt.check_ghost_blocks = function.x.attrs.uses_ghost_blocks;
         ctxt.fun_mode = function.x.mode;
+        let req_ens_function = match &function.x.kind {
+            FunctionKind::TraitMethodImpl { method, .. }
+            | FunctionKind::ForeignTraitMethodImpl { method, .. } => &ctxt.funs[method],
+            _ => &function,
+        };
+        ctxt.dont_enforce_exec_termination = req_ens_function.x.attrs.exec_may_not_terminate
+            || req_ens_function.x.attrs.exec_assume_termination;
         if function.x.attrs.atomic {
             let mut typing = typing.push_atomic_insts(Some(AtomicInstCollector::new()));
             check_function(&ctxt, &mut record, &mut typing, function)?;

@@ -298,7 +298,8 @@ fn check_termination<'a>(
     let num_decreases = function.x.decrease.len();
     if num_decreases == 0
         && (function.x.mode != crate::ast::Mode::Exec
-            || (!function.x.attrs.may_not_terminate && !function.x.attrs.assume_termination))
+            || (!function.x.attrs.exec_may_not_terminate
+                && !function.x.attrs.exec_assume_termination))
     {
         return Err(error(&function.span, "recursive function must have a decreases clause"));
     }

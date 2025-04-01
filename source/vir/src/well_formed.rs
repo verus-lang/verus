@@ -352,14 +352,6 @@ fn check_one_expr(
                     "cannot call a broadcast_forall function with 0 arguments directly",
                 ));
             }
-            if !function.x.attrs.may_not_terminate && !function.x.attrs.assume_termination {
-                if f.x.attrs.may_not_terminate && !function.x.attrs.assume_termination {
-                    return Err(error(
-                        &expr.span,
-                        "the current function must terminate, but the callee may not terminate",
-                    ));
-                }
-            }
             for (_param, arg) in f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut) {
                 fn is_ok(e: &Expr) -> bool {
                     match &e.x {
@@ -629,7 +621,7 @@ fn check_function(
             ));
         }
 
-        if function.x.attrs.may_not_terminate {
+        if function.x.attrs.exec_may_not_terminate {
             return Err(error(
                 &function.span,
                 "trait method implementation cannot declare may_not_terminate; this can only be inherited from the trait declaration",
@@ -824,7 +816,7 @@ fn check_function(
         ));
     }
 
-    if function.x.attrs.assume_termination && ctxt.no_cheating {
+    if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
         return Err(error(
             &function.span,
             "#[verifier::assume_termination] not allowed with --no-cheating",
@@ -1073,9 +1065,15 @@ fn check_function(
         )?;
     }
 
-    if function.x.mode == Mode::Exec
+    let req_ens_function = match &function.x.kind {
+        FunctionKind::TraitMethodImpl { method, .. }
+        | FunctionKind::ForeignTraitMethodImpl { method, .. } => &ctxt.funs[method],
+        _ => &function,
+    };
+    if req_ens_function.x.mode == Mode::Exec
         && (function.x.decrease.len() > 0 || function.x.decrease_by.is_some())
-        && (function.x.attrs.assume_termination || function.x.attrs.may_not_terminate)
+        && (req_ens_function.x.attrs.exec_assume_termination
+            || req_ens_function.x.attrs.exec_may_not_terminate)
     {
         diags.push(VirErrAs::Warning(
             error(&function.span, "if may_not_terminate is set, decreases checks in exec functions do not guarantee termination of functions with loops or of their callers"),
