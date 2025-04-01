@@ -607,7 +607,7 @@
 (declare-const fuel%vstd!seq_lib.group_filter_ensures. FuelId)
 (declare-const fuel%vstd!seq_lib.group_seq_lib_default. FuelId)
 (declare-const fuel%vstd!set.group_set_axioms. FuelId)
-(declare-const fuel%vstd!set_lib.group_set_lib_axioms. FuelId)
+(declare-const fuel%vstd!set_lib.group_set_lib_default. FuelId)
 (declare-const fuel%vstd!slice.group_slice_axioms. FuelId)
 (declare-const fuel%vstd!string.group_string_axioms. FuelId)
 (declare-const fuel%vstd!std_specs.bits.group_bits_axioms. FuelId)
@@ -618,7 +618,7 @@
 (axiom (distinct fuel%vstd!array.group_array_axioms. fuel%vstd!layout.group_layout_axioms.
   fuel%vstd!map.group_map_axioms. fuel%vstd!multiset.group_multiset_axioms. fuel%vstd!raw_ptr.group_raw_ptr_axioms.
   fuel%vstd!seq.group_seq_axioms. fuel%vstd!seq_lib.group_filter_ensures. fuel%vstd!seq_lib.group_seq_lib_default.
-  fuel%vstd!set.group_set_axioms. fuel%vstd!set_lib.group_set_lib_axioms. fuel%vstd!slice.group_slice_axioms.
+  fuel%vstd!set.group_set_axioms. fuel%vstd!set_lib.group_set_lib_default. fuel%vstd!slice.group_slice_axioms.
   fuel%vstd!string.group_string_axioms. fuel%vstd!std_specs.bits.group_bits_axioms.
   fuel%vstd!std_specs.control_flow.group_control_flow_axioms. fuel%vstd!std_specs.range.group_range_axioms.
   fuel%vstd!std_specs.vec.group_vec_axioms. fuel%vstd!group_vstd_default.
@@ -635,7 +635,7 @@
    (fuel_bool_default fuel%vstd!seq_lib.group_seq_lib_default.)
    (fuel_bool_default fuel%vstd!map.group_map_axioms.)
    (fuel_bool_default fuel%vstd!set.group_set_axioms.)
-   (fuel_bool_default fuel%vstd!set_lib.group_set_lib_axioms.)
+   (fuel_bool_default fuel%vstd!set_lib.group_set_lib_default.)
    (fuel_bool_default fuel%vstd!std_specs.bits.group_bits_axioms.)
    (fuel_bool_default fuel%vstd!std_specs.control_flow.group_control_flow_axioms.)
    (fuel_bool_default fuel%vstd!std_specs.vec.group_vec_axioms.)
@@ -675,48 +675,81 @@
    :skolemid skolem_internal_crate__tuple__0_has_type_always_definition
 )))
 
-;;(declare-sort Proph%I 0)
-;;(declare-fun Proph%cur%I (Proph%I) Int)
-;;(declare-fun Proph%future%I (Proph%I) Int)
-
 (declare-datatypes (
    (Proph%I 0)  ;; 1st datatype being defined
 ) (
    ((Proph%I% (Proph%cur%I Int) (Proph%future%I Int))) ;; variants for the 1st datatype
 ))
 
-;; Function-Def mutref::main
-;; mutref.rs:6:1: 6:10 (#0)
+;; Function-Specs mut_ref::mutate
+(declare-fun req%mut_ref!mutate. (Proph%I) Bool)
+(axiom (forall ((x! Proph%I)) (!
+   (= (req%mut_ref!mutate. x!) (axiom_location ("failed precondition") (mut_ref!mutate.)
+     (> (Proph%cur%I x!) 42)
+   ))
+   :pattern ((req%mut_ref!mutate. x!))
+   :qid internal_req__mut_ref!mutate._definition
+   :skolemid skolem_internal_req__mut_ref!mutate._definition
+)))
+(declare-fun ens%mut_ref!mutate. (Proph%I) Bool)
+(axiom (forall ((x! Proph%I)) (!
+   (= (ens%mut_ref!mutate. x!) (and
+     (uInv 32 (Proph%future%I x!)) ; x! new value
+     (= (Proph%future%I x!) (Sub (Proph%cur%I x!) 42)) ; pre%x! old value
+   ))
+   :pattern ((ens%mut_ref!mutate. x!))
+   :qid internal_ens__mut_ref!mutate._definition
+   :skolemid skolem_internal_ens__mut_ref!mutate._definition
+)))
+
+;; Function-Def mut_ref::mutate
+;; mut-ref.rs:4:5: 4:27 (#0)
 (check-valid
+ (declare-var x! Int)
+ (axiom fuel_defaults)
+ (axiom (uInv 32 x!))
+ (axiom (> x! 42))
+ (block
+  (snapshot snap%PRE)
+  (assert
+   ("possible arithmetic underflow/overflow")
+   ()
+   (uInv 32 (Sub x! 42))
+  )
+  (assign x! (uClip 32 (Sub x! 42)))
+  (assert
+   ("postcondition not satisfied" "at the end of the function body" "failed this postcondition")
+   ()
+   (= x! (Sub (old snap%PRE x!) 42))
+)))
+
+;; Function-Def mut_ref::main
+;; mut-ref.rs:11:5: 11:14 (#0)
+(check-valid
+ (declare-const no%param Int)
  (declare-const tmp%1 Bool)
- (declare-var a@ Int)
- (declare-var b@ Proph%I)
+ (declare-var x@ Int)
+ (declare-const x@proph%1 Proph%I)
  (axiom fuel_defaults)
  (block
-  ; let mut a: int = 0
-  (assume (= a@ 0))
-
-  ; let mut b: &mut int = &mut a; // b = {b_cur: 0, b_fut: ?}
-  (block
-    (assume (= (Proph%cur%I b@) a@))
-    (havoc a@)
-    (assume (= (Proph%future%I b@) a@))
-  )
-  
-  ; *b = 5
-  (block
-    (assign b@ ((_ update-field Proph%cur%I) b@ 5))
-    (assume (= (Proph%cur%I b@) 5))
-  )
-  
-  ; resolve(b);
-  (block
-    (assume (= (Proph%cur%I b@) (Proph%future%I b@)))
-  )
-
-  ; assert(a == 5);
   (assume
-   (= tmp%1 (= a@ 5))
+   (= x@ 84)
+  )
+  (block
+   (assume (= (Proph%cur%I x@proph%1) x@))
+   (havoc x@)
+   (assume (= x@ (Proph%future%I x@proph%1)))
+   (assert
+    ("precondition not satisfied")
+    (mut_ref!mutate.)
+    (req%mut_ref!mutate. x@proph%1)
+   )
+   (assume
+    (ens%mut_ref!mutate. x@proph%1)
+   )
+  )
+  (assume
+   (= tmp%1 (= x@ 42))
   )
   (assert
    ("assertion failed" "assertion failed")
