@@ -324,29 +324,11 @@ test_verify_one_file! {
             #[verifier::may_not_terminate]
             fn b();
         }
-
-        struct X { }
-
-        impl A for X {
-            fn b() {
-                loop { }
-            }
-        }
     } => Err(err) => assert_vir_error_msg(err, "the current function must terminate, but the callee may not terminate")
 }
 
 test_verify_one_file! {
     #[test] exec_terminating_function_cannot_call_nonterminating_function_trait_2 verus_code! {
-        fn a<AA: A>(mut i: u64) {
-            while i > 0
-                invariant 0 <= i,
-                decreases i,
-            {
-                AA::b();
-                i -= 1;
-            }
-        }
-
         trait A {
             fn b();
         }
@@ -359,5 +341,21 @@ test_verify_one_file! {
                 loop { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "this function implementation may not be marked as may_not_terminate, according to the definition in the trait")
+    } => Err(err) => assert_vir_error_msg(err, "trait method implementation cannot declare may_not_terminate; this can only be inherited from the trait declaration")
+}
+
+test_verify_one_file! {
+    #[test] exec_terminating_function_cannot_call_nonterminating_function_trait_3 verus_code! {
+        trait A {
+            fn b();
+        }
+
+        struct X { }
+
+        impl A for X {
+            fn b() {
+                loop { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "loop must have a decreases clause")
 }

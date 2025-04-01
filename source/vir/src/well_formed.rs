@@ -628,6 +628,13 @@ fn check_function(
                 "trait method implementation cannot declare an unwind specification; this can only be inherited from the trait declaration",
             ));
         }
+
+        if function.x.attrs.may_not_terminate {
+            return Err(error(
+                &function.span,
+                "trait method implementation cannot declare may_not_terminate; this can only be inherited from the trait declaration",
+            ));
+        }
     }
 
     if function.x.attrs.is_decrease_by {
