@@ -1379,7 +1379,6 @@ impl Verifier {
                 continue;
             };
             for spec in specs.iter() {
-                assert!(!spec.typs.is_empty());
                 let commands =
                     vir::sst_to_air_func::func_name_to_air(ctx, reporter, function, spec)?;
                 let comment =
