@@ -333,7 +333,7 @@ test_verify_one_file! {
     #[test] test_attr_on_const verus_code! {
         #[verifier(external_fn_specification)]
         const x: u8 = 5;
-    } => Err(err) => assert_vir_error_msg(err, "`external_fn_specification` attribute not supported here")
+    } => Err(err) => assert_vir_error_msg(err, "`assume_specification` attribute not supported for const")
 }
 
 test_verify_one_file! {
