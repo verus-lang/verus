@@ -516,13 +516,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         R::ret(|| {
             Spanned::new(
                 par.span.clone(),
-                ParX {
-                    name: par.x.name.clone(),
-                    typ: R::get(t),
-                    mode: par.x.mode,
-                    is_mut: par.x.is_mut,
-                    purpose: par.x.purpose,
-                },
+                ParX { name: par.x.name.clone(), typ: R::get(t), mode: par.x.mode },
             )
         })
     }

@@ -306,7 +306,12 @@ fn check_one_expr(
     match &expr.x {
         ExprX::Var(x) => {
             if let Place::PreState(clause_name) = place {
-                for param in function.x.params.iter().filter(|p| p.x.is_mut) {
+                for param in function
+                    .x
+                    .params
+                    .iter()
+                    .filter(|p| todo!("determine if p is a mutable reference"))
+                {
                     if *x == param.x.name {
                         return Err(error(
                             &expr.span,
@@ -353,7 +358,12 @@ fn check_one_expr(
                     "cannot call a broadcast_forall function with 0 arguments directly",
                 ));
             }
-            for (_param, arg) in f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut) {
+            for (_param, arg) in
+                f.x.params
+                    .iter()
+                    .zip(args.iter())
+                    .filter(|(p, _)| todo!("determine if p is a mutable reference"))
+            {
                 fn is_ok(e: &Expr) -> bool {
                     match &e.x {
                         ExprX::VarLoc(_) => true,
@@ -536,7 +546,7 @@ fn check_one_expr(
         ExprX::ExecFnByName(fun) => {
             let func = check_path_and_get_function(ctxt, fun, disallow_private_access, &expr.span)?;
             for param in func.x.params.iter() {
-                if param.x.is_mut {
+                if todo!("determine if param is a mutable reference") {
                     return Err(error(
                         &expr.span,
                         "not supported: using a function that takes '&mut' params as a value",

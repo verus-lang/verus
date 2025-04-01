@@ -1054,7 +1054,6 @@ fn simplify_function(
             name: dummy_param_name(),
             typ: Arc::new(TypX::Int(IntRange::Int)),
             mode: Mode::Spec,
-            is_mut: false,
             unwrapped_info: None,
         };
         param_names.push(paramx.name.clone());

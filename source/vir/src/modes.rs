@@ -854,7 +854,7 @@ fn check_expr_handle_mut_arg(
             }
             for (param, arg) in function.x.params.iter().zip(es.iter()) {
                 let param_mode = mode_join(outer_mode, param.x.mode);
-                if param.x.is_mut {
+                if todo!("parameter is a mutable reference") {
                     if typing.in_forall_stmt {
                         return Err(error(
                             &arg.span,

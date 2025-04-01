@@ -638,8 +638,14 @@ where
 
     map.push_scope(true);
     for p in params.iter() {
-        let _ = map
-            .insert(p.x.name.clone(), ScopeEntry::new_outer_param_ret(&p.x.typ, p.x.is_mut, true));
+        let _ = map.insert(
+            p.x.name.clone(),
+            ScopeEntry::new_outer_param_ret(
+                &p.x.typ,
+                todo!("find a new way to determine if the param is mut"),
+                true,
+            ),
+        );
     }
     for e in require.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
@@ -1139,7 +1145,6 @@ where
         name: param.x.name.clone(),
         typ,
         mode: param.x.mode,
-        is_mut: param.x.is_mut,
         unwrapped_info: param.x.unwrapped_info.clone(),
     };
     Ok(Spanned::new(param.span.clone(), paramx))
@@ -1271,8 +1276,14 @@ where
     map.push_scope(true);
     let params = map_params_visitor(params, env, ft)?;
     for p in params.iter() {
-        let _ = map
-            .insert(p.x.name.clone(), ScopeEntry::new_outer_param_ret(&p.x.typ, p.x.is_mut, true));
+        let _ = map.insert(
+            p.x.name.clone(),
+            ScopeEntry::new_outer_param_ret(
+                &p.x.typ,
+                todo!("find a new way to determine if the param is a mut ref"),
+                true,
+            ),
+        );
     }
     let ret = map_param_visitor(ret, env, ft)?;
     let require =

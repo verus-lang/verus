@@ -723,51 +723,26 @@ pub(crate) fn check_item_fn<'tcx>(
             return err_span(span, format!("&mut parameter not allowed for spec functions"));
         }
 
-        let typ = {
-            let typ = mid_ty_to_vir(
-                ctxt.tcx,
-                &ctxt.verus_items,
-                id,
-                span,
-                is_ref_mut.map(|(t, _)| t).unwrap_or(input),
-                false,
-            )?;
-            if let Some((_, decoration)) = is_ref_mut.and_then(|(_, w)| w) {
-                Arc::new(TypX::Decorate(decoration, None, typ))
-            } else {
-                typ
-            }
-        };
-
-        // is_mut: means a parameter is like `x: &mut X` or `x: Tracked<&mut X>`
-        let is_mut = is_ref_mut.is_some();
+        let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, id, span, input, true)?;
 
         let vir_param = ctxt.spanned_new(
             span,
-            ParamX {
-                name: name.clone(),
-                typ: typ.clone(),
-                mode: param_mode,
-                is_mut,
-                unwrapped_info: None,
-            },
+            ParamX { name: name.clone(), typ: typ.clone(), mode: param_mode, unwrapped_info: None },
         );
         if is_mut_var {
             if mode == Mode::Spec {
                 return err_span(span, format!("mut argument not allowed for spec functions"));
             }
-            if is_mut {
+            if todo!("mut ref") {
                 // REVIEW
                 // For all mut params, we introduce a new variable that shadows the original mut
                 // param and assign the value of the param to the new variable. This does not
                 // work properly when the type of the param is a mutable reference because
                 // declaring and assigning to a variable of type `&mut T` is not implemented yet.
-                unsupported_err!(span, "mut parameters of &mut types")
+                unsupported_err!(span, "mut parameters of &mut types");
+                todo!()
             }
-            vir_mut_params.push((
-                vir_param.clone(),
-                is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode),
-            ));
+            vir_mut_params.push((vir_param.clone(), is_ref_mut));
             let new_binding_pat = ctxt.spanned_typed_new(
                 span,
                 &typ,
@@ -790,7 +765,7 @@ pub(crate) fn check_item_fn<'tcx>(
             );
             mut_params_redecl.push(redecl);
         }
-        vir_params.push((vir_param, is_ref_mut.map(|(_, m)| m).flatten().map(|(mode, _)| mode)));
+        vir_params.push((vir_param, is_ref_mut));
     }
 
     let n_params = vir_params.len();
@@ -940,13 +915,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let ret_span = sig.decl.output.span();
     let ret = ctxt.spanned_new(
         ret_span,
-        ParamX {
-            name: ret_name,
-            typ: ret_typ,
-            mode: ret_mode,
-            is_mut: false,
-            unwrapped_info: None,
-        },
+        ParamX { name: ret_name, typ: ret_typ, mode: ret_mode, unwrapped_info: None },
     );
     let (typ_params, typ_bounds) = {
         let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
@@ -1367,33 +1336,31 @@ fn check_generics_for_invariant_fn<'tcx>(
 // Ghost<&mut T> => Some(T, Some(Spec))
 // Tracked<&mut T> => Some(T, Some(Proof))
 // _ => None
-fn is_mut_ty<'tcx>(
-    ctxt: &Context<'tcx>,
-    ty: rustc_middle::ty::Ty<'tcx>,
-) -> Option<(&'tcx rustc_middle::ty::Ty<'tcx>, Option<(Mode, TypDecoration)>)> {
+fn is_mut_ty<'tcx>(_ctxt: &Context<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> Option<Mode> {
     use rustc_middle::ty::*;
     match ty.kind() {
-        TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some((tys, None)),
+        TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some(Mode::Exec),
         TyKind::Adt(AdtDef(adt_def_data), args) => {
-            let did = adt_def_data.did;
-            let verus_item = ctxt.verus_items.id_to_name.get(&did);
-            if let Some(VerusItem::BuiltinType(
-                bt @ (BuiltinTypeItem::Ghost | BuiltinTypeItem::Tracked),
-            )) = verus_item
-            {
-                assert_eq!(args.len(), 1);
-                if let GenericArgKind::Type(t) = args[0].unpack() {
-                    if let Some((inner, None)) = is_mut_ty(ctxt, t) {
-                        let mode_and_decoration = match bt {
-                            BuiltinTypeItem::Ghost => (Mode::Spec, TypDecoration::Ghost),
-                            BuiltinTypeItem::Tracked => (Mode::Proof, TypDecoration::Tracked),
-                            _ => unreachable!(),
-                        };
-                        return Some((inner, Some(mode_and_decoration)));
-                    }
-                }
-            }
-            None
+            todo!()
+            // let did = adt_def_data.did;
+            // let verus_item = ctxt.verus_items.id_to_name.get(&did);
+            // if let Some(VerusItem::BuiltinType(
+            //     bt @ (BuiltinTypeItem::Ghost | BuiltinTypeItem::Tracked),
+            // )) = verus_item
+            // {
+            //     assert_eq!(args.len(), 1);
+            //     if let GenericArgKind::Type(t) = args[0].unpack() {
+            //         if let Some((inner, None)) = is_mut_ty(ctxt, t) {
+            //             let mode_and_decoration = match bt {
+            //                 BuiltinTypeItem::Ghost => (Mode::Spec, TypDecoration::Ghost),
+            //                 BuiltinTypeItem::Tracked => (Mode::Proof, TypDecoration::Tracked),
+            //                 _ => unreachable!(),
+            //             };
+            //             return Some((inner, Some(mode_and_decoration)));
+            //         }
+            //     }
+            // }
+            // None
         }
         _ => None,
     }
@@ -1776,13 +1743,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     let ret_name = air_unique_var(RETURN_VALUE);
     let ret = ctxt.spanned_new(
         span,
-        ParamX {
-            name: ret_name,
-            typ: typ.clone(),
-            mode: ret_mode,
-            is_mut: false,
-            unwrapped_info: None,
-        },
+        ParamX { name: ret_name, typ: typ.clone(), mode: ret_mode, unwrapped_info: None },
     );
     let autospec = vattrs.autospec.clone().map(|method_name| {
         let path = autospec_fun(&path, method_name.clone());
@@ -1893,19 +1854,10 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     for (param, input) in idents.iter().zip(inputs.iter()) {
         let name = no_body_param_to_var(param);
         let is_mut = is_mut_ty(ctxt, *input);
-        let typ = mid_ty_to_vir(
-            ctxt.tcx,
-            &ctxt.verus_items,
-            id,
-            param.span,
-            is_mut.map(|(t, _)| t).unwrap_or(input),
-            false,
-        )?;
+        let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, id, param.span, input, false)?;
         // REVIEW: the parameters don't have attributes, so we use the overall mode
-        let vir_param = ctxt.spanned_new(
-            param.span,
-            ParamX { name, typ, mode, is_mut: is_mut.is_some(), unwrapped_info: None },
-        );
+        let vir_param =
+            ctxt.spanned_new(param.span, ParamX { name, typ, mode, unwrapped_info: None });
         vir_params.push(vir_param);
     }
     let params = Arc::new(vir_params);
@@ -1917,7 +1869,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         name: air_unique_var(RETURN_VALUE),
         typ: ret_typ,
         mode: ret_mode,
-        is_mut: false,
         unwrapped_info: None,
     };
     let ret = ctxt.spanned_new(span, ret_param);

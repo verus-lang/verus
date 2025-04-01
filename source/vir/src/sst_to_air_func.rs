@@ -12,7 +12,7 @@ use crate::def::{
 };
 use crate::messages::{MessageLabel, Span};
 use crate::sst::FuncCheckSst;
-use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParPurpose, ParX, Pars};
+use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParX, Pars};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
 };
@@ -44,11 +44,7 @@ pub(crate) fn func_bind_trig(
         }
     }
     for param in params.iter() {
-        let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
-            prefix_pre_var(&param.x.name.lower())
-        } else {
-            param.x.name.lower()
-        };
+        let name = param.x.name.lower();
         binders.push(ident_binder(&name, &typ_to_air(ctx, &param.x.typ)));
     }
     if add_fuel {
@@ -76,11 +72,7 @@ pub(crate) fn func_bind(
 pub(crate) fn func_def_typs_args(typ_args: &Typs, params: &Pars) -> Vec<Expr> {
     let mut f_args: Vec<Expr> = typ_args.iter().map(typ_to_ids).flatten().collect();
     for param in params.iter() {
-        let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
-            prefix_pre_var(&param.x.name.lower())
-        } else {
-            param.x.name.lower()
-        };
+        let name = param.x.name.lower();
         f_args.push(ident_var(&name));
     }
     f_args
@@ -592,30 +584,14 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
     }
 
     // Ensures
-    let mut ens_typs: Vec<_> = function
-        .x
-        .pars
-        .iter()
-        .flat_map(|param| {
-            let air_typ = typ_to_air(ctx, &param.x.typ);
-            if !param.x.is_mut { vec![air_typ] } else { vec![air_typ.clone(), air_typ] }
-        })
-        .collect();
+    let mut ens_typs: Vec<_> =
+        function.x.pars.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect();
     let mut ens_typing_invs: Vec<Expr> = Vec::new();
     if matches!(function.x.mode, Mode::Exec | Mode::Proof) {
         if function.x.has.has_return_name {
             let ParX { name, typ, .. } = &function.x.ret.x;
             ens_typs.push(typ_to_air(ctx, &typ));
             if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&name.lower())) {
-                ens_typing_invs.push(expr);
-            }
-        }
-        // typing invariants for synthetic out-params for &mut params
-        for param in
-            func_decl_sst.post_pars.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost))
-        {
-            if let Some(expr) = typ_invariant(ctx, &param.x.typ, &ident_var(&param.x.name.lower()))
-            {
                 ens_typing_invs.push(expr);
             }
         }

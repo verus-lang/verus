@@ -14,7 +14,7 @@ use crate::context::{Ctx, FunctionCtx};
 use crate::def::{unique_local, Spanned};
 use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message};
-use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX};
+use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParX, Pars, Stm, StmX};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
@@ -94,17 +94,12 @@ pub fn mk_fun_ctx<F: FunctionCommon>(
 
 pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
     param.map_x(|p| {
-        let ParamX { name, typ, mode, is_mut, unwrapped_info: _ } = p;
-        if *is_mut && !allow_is_mut {
+        let ParamX { name, typ, mode, unwrapped_info: _ } = p;
+        if !allow_is_mut {
+            todo!("chck that Param type is not a mutable reference");
             panic!("mut unexpected here");
         }
-        ParX {
-            name: name.clone(),
-            typ: typ.clone(),
-            mode: *mode,
-            is_mut: *is_mut,
-            purpose: ParPurpose::Regular,
-        }
+        ParX { name: name.clone(), typ: typ.clone(), mode: *mode }
     })
 }
 
@@ -116,31 +111,8 @@ pub(crate) fn params_to_pre_post_pars(params: &Params, pre: bool) -> Pars {
     Arc::new(
         params
             .iter()
-            .flat_map(|param| {
-                let mut res = Vec::new();
-                if param.x.is_mut {
-                    res.push(param.map_x(|p| ParX {
-                        name: p.name.clone(),
-                        typ: p.typ.clone(),
-                        mode: p.mode,
-                        is_mut: p.is_mut,
-                        purpose: ParPurpose::MutPre,
-                    }));
-                }
-                if !(param.x.is_mut && pre) {
-                    res.push(param.map_x(|p| ParX {
-                        name: p.name.clone(),
-                        typ: p.typ.clone(),
-                        mode: p.mode,
-                        is_mut: p.is_mut,
-                        purpose: if param.x.is_mut {
-                            ParPurpose::MutPost
-                        } else {
-                            ParPurpose::Regular
-                        },
-                    }));
-                }
-                res
+            .map(|param| {
+                param.map_x(|p| ParX { name: p.name.clone(), typ: p.typ.clone(), mode: p.mode })
             })
             .collect::<Vec<_>>(),
     )
@@ -515,8 +487,10 @@ pub fn func_def_to_sst(
     for param in function.x.params.iter() {
         state.declare_var_stm(
             &param.x.name,
-            &param.x.typ,
-            LocalDeclKind::Param { mutable: param.x.is_mut },
+            todo!("if this is a mutable reference, treat it specially"), // &param.x.typ,
+            LocalDeclKind::Param {
+                mutable: todo!("find a new way to determine if this should be mut"),
+            },
             false,
         );
     }

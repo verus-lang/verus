@@ -13,7 +13,7 @@ use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_secondary_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
-    ParPurpose, Pars, Stm, StmX, UniqueIdent,
+    Pars, Stm, StmX, UniqueIdent,
 };
 use crate::sst_util::{sst_bitwidth, sst_conjoin, sst_int_literal, sst_le, sst_lt, sst_unit_value};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
@@ -300,17 +300,17 @@ impl<'a> State<'a> {
 
     pub(crate) fn declare_params(&mut self, params: &Pars) {
         for param in params.iter() {
-            if !matches!(param.x.purpose, ParPurpose::MutPost) {
-                let name = &param.x.name;
-                self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
-                self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
-                self.declare_var_stm(
-                    name,
-                    &param.x.typ,
-                    LocalDeclKind::Param { mutable: false },
-                    false,
-                );
-            }
+            // TODO(prophecy) if !matches!(param.x.purpose, ParPurpose::MutPost) {
+            let name = &param.x.name;
+            self.rename_counters.insert(name.0.clone(), 0).map(|_| panic!("rename_counters"));
+            self.rename_map.insert(name.clone(), name.clone()).expect("rename_map");
+            self.declare_var_stm(
+                name,
+                &param.x.typ,
+                LocalDeclKind::Param { mutable: false },
+                false,
+            );
+            // }
         }
     }
 

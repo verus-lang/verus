@@ -350,7 +350,7 @@ fn visit_and_insert_pars(
     // Parameter types are made Poly for spec functions and trait methods
     let mut new_pars: Vec<Par> = Vec::new();
     for par in pars.iter() {
-        let ParX { name, typ, mode, is_mut, purpose } = &par.x;
+        let ParX { name, typ, mode } = &par.x;
         let is_poly = match poly {
             InsertPars::Native => false,
             InsertPars::Poly => true,
@@ -359,8 +359,7 @@ fn visit_and_insert_pars(
         let typ =
             if is_poly { coerce_typ_to_poly(ctx, typ) } else { coerce_typ_to_native(ctx, typ) };
         let _ = types.insert(name.clone(), typ.clone());
-        let parx =
-            ParX { name: name.clone(), typ, mode: *mode, is_mut: *is_mut, purpose: *purpose };
+        let parx = ParX { name: name.clone(), typ, mode: *mode };
         new_pars.push(Spanned::new(par.span.clone(), parx));
     }
     Arc::new(new_pars)

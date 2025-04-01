@@ -1644,7 +1644,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             let typ_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
-            if func.x.params.iter().any(|p| p.x.is_mut) && ctx.debug {
+            if func.x.params.iter().any(|p| todo!("determine if p is a mutable reference"))
+                && ctx.debug
+            {
                 unimplemented!("&mut args are unsupported in debugger mode");
             }
             let mut call_snapshot = false;
@@ -1667,18 +1669,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 } else {
                     arg.clone()
                 };
-                if param.x.is_mut {
-                    call_snapshot = true;
-                    let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
-                        loc_to_field_update_data(arg);
-                    mutated_fields
-                        .entry(base_var)
-                        .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
-                        .a
-                        .push(fields.iter().map(|o| o.opr.clone()).collect());
-                    let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?);
+                // TODO(prophecy): this is where the changes at the call sites will need to be made
+                if todo!("parameter is a mutable reference") {
+                    // TODO(prophecy): (this will change) call_snapshot = true;
+                    // TODO(prophecy): (this will change) let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
+                    // TODO(prophecy): (this will change)     loc_to_field_update_data(arg);
+                    // TODO(prophecy): (this will change) mutated_fields
+                    // TODO(prophecy): (this will change)     .entry(base_var)
+                    // TODO(prophecy): (this will change)     .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
+                    // TODO(prophecy): (this will change)     .a
+                    // TODO(prophecy): (this will change)     .push(fields.iter().map(|o| o.opr.clone()).collect());
+                    // TODO(prophecy): (this will change) let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
+                    // TODO(prophecy): (this will change) ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
+                    // TODO(prophecy): (this will change) ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?);
                 } else {
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
                 };
@@ -2671,13 +2674,9 @@ pub(crate) fn body_stm_to_air(
     use indexmap::{IndexMap, IndexSet};
     let mut declared: IndexMap<UniqueIdent, Typ> = IndexMap::new();
     let mut assigned: IndexSet<UniqueIdent> = IndexSet::new();
-    let mut has_mut_params = false;
     for param in params.iter() {
         declared.insert(unique_local(&param.x.name), param.x.typ.clone());
         assigned.insert(unique_local(&param.x.name));
-        if param.x.is_mut {
-            has_mut_params = true;
-        }
     }
     for decl in local_decls.iter() {
         declared.insert(decl.ident.clone(), decl.typ.clone());
@@ -2704,7 +2703,7 @@ pub(crate) fn body_stm_to_air(
 
     let mut may_be_used_in_old = HashSet::<UniqueIdent>::new();
     for param in params.iter() {
-        if param.x.is_mut {
+        if todo!("param is a mutable reference") {
             may_be_used_in_old.insert(unique_local(&param.x.name));
         }
     }
@@ -2747,9 +2746,6 @@ pub(crate) fn body_stm_to_air(
 
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm)?;
 
-    if has_mut_params {
-        stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
-    }
     if state.static_prelude.len() > 0 {
         stmts.splice(0..0, state.static_prelude.clone());
     }
