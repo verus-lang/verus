@@ -441,7 +441,8 @@ test_verify_one_file! {
             fn f(i: u32) -> (r: u32)
                 ensures
                     r <= i,
-                    default_ensures(r == i / 2);
+                default_ensures
+                    r == i / 2;
         }
     } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
 }
@@ -451,7 +452,7 @@ test_verify_one_file! {
         trait T {
             fn f(i: u32) -> (r: u32)
                 requires
-                    default_ensures(true),
+                    (builtin::default_ensures)(true),
                 ensures
                     r <= i,
             {
@@ -466,7 +467,8 @@ test_verify_one_file! {
         fn f(i: u32) -> (r: u32)
             ensures
                 r <= i,
-                default_ensures(r == i / 2),
+            default_ensures
+                r == i / 2,
         {
             i / 2
         }
@@ -479,7 +481,7 @@ test_verify_one_file! {
             ensures
                 r <= i,
         {
-            assert(default_ensures(true));
+            assert((builtin::default_ensures)(true));
             i / 2
         }
     } => Err(err) => assert_vir_error_msg(err, "default_ensures not allowed here")
@@ -494,8 +496,8 @@ test_verify_one_file! {
         }
         impl T for u8 {
             fn f(i: u32) -> (r: u32)
-                ensures
-                    default_ensures(r <= i),
+                default_ensures
+                    r <= i,
             {
                 i / 2
             }
@@ -515,8 +517,8 @@ test_verify_one_file! {
         }
         impl T for u8 {
             fn f(i: u32) -> (r: u32)
-                ensures
-                    default_ensures(r <= i),
+                default_ensures
+                    r <= i,
             {
                 i / 2
             }
@@ -530,7 +532,8 @@ test_verify_one_file! {
             fn f(i: u32) -> (r: u32)
                 ensures
                     r <= i,
-                    default_ensures(r == i / 2) // FAILS
+                default_ensures
+                    r == i / 2, // FAILS
             {
                 i
             }
@@ -544,7 +547,8 @@ test_verify_one_file! {
             fn f(i: u32) -> (r: u32)
                 ensures
                     r <= i,
-                    default_ensures(r == i / 2)
+                default_ensures
+                    r == i / 2,
             {
                 i / 2
             }
@@ -593,7 +597,8 @@ test_verify_one_file! {
             fn f(i: u32) -> (r: u32)
                 ensures
                     r <= i,
-                    default_ensures(r == i / 2)
+                default_ensures
+                    r == i / 2,
             {
                 i / 2
             }
@@ -645,8 +650,8 @@ test_verify_one_file! {
             fn f(i: u32) -> (r: u32)
                 ensures
                     r <= i,
-                    default_ensures(r == i / 2),
-                    ;
+                default_ensures
+                    r == i / 2;
         }
         impl T for u8 {
         }
@@ -725,8 +730,8 @@ test_verify_one_file! {
             fn f(i: u32) -> (r: u32)
                 ensures
                     r <= i,
-                    default_ensures(r == i / 2),
-                    ;
+                default_ensures
+                    r == i / 2;
         }
         impl T for u8 {
         }

@@ -29,6 +29,7 @@ a.struct[title="struct syn::token::Continue"],
 a.struct[title="struct syn::token::Crate"],
 a.struct[title="struct syn::token::Decreases"],
 a.struct[title="struct syn::token::Default"],
+a.struct[title="struct syn::token::DefaultEnsures"],
 a.struct[title="struct syn::token::Do"],
 a.struct[title="struct syn::token::Dollar"],
 a.struct[title="struct syn::token::Dot"],
@@ -190,6 +191,7 @@ a.struct[title="struct syn::token::Continue"]::before,
 a.struct[title="struct syn::token::Crate"]::before,
 a.struct[title="struct syn::token::Decreases"]::before,
 a.struct[title="struct syn::token::Default"]::before,
+a.struct[title="struct syn::token::DefaultEnsures"]::before,
 a.struct[title="struct syn::token::Do"]::before,
 a.struct[title="struct syn::token::Dollar"]::before,
 a.struct[title="struct syn::token::Dot"]::before,
@@ -443,6 +445,10 @@ a.struct[title="struct syn::token::Decreases"]::before {
 
 a.struct[title="struct syn::token::Default"]::before {
 	content: "Token![default]";
+}
+
+a.struct[title="struct syn::token::DefaultEnsures"]::before {
+	content: "Token![default_ensures]";
 }
 
 a.struct[title="struct syn::token::Do"]::before {
@@ -1129,6 +1135,7 @@ a.struct[title="struct syn::token::Yield"]::after {
 }
 
 a.struct[title="struct syn::token::AssumeSpecification"]::after,
+a.struct[title="struct syn::token::DefaultEnsures"]::after,
 a.struct[title="struct syn::token::InvariantEnsures"]::after,
 a.struct[title="struct syn::token::NoUnwind"]::after,
 a.struct[title="struct syn::token::OpensInvariants"]::after,

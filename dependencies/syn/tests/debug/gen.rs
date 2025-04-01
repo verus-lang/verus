@@ -258,6 +258,20 @@ impl Debug for Lite<syn::AssumeSpecification> {
             }
             formatter.field("ensures", Print::ref_cast(val));
         }
+        if let Some(val) = &self.value.default_ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::DefaultEnsures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("default_ensures", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.returns {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -749,6 +763,13 @@ impl Debug for Lite<syn::DataUnion> {
 impl Debug for Lite<syn::Decreases> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Decreases");
+        formatter.field("exprs", Lite(&self.value.exprs));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::DefaultEnsures> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("DefaultEnsures");
         formatter.field("exprs", Lite(&self.value.exprs));
         formatter.finish()
     }
@@ -5595,6 +5616,20 @@ impl Debug for Lite<syn::SignatureSpec> {
             }
             formatter.field("ensures", Print::ref_cast(val));
         }
+        if let Some(val) = &self.value.default_ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::DefaultEnsures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("default_ensures", Print::ref_cast(val));
+        }
         if let Some(val) = &self.value.returns {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -6896,6 +6931,11 @@ impl Debug for Lite<syn::token::Decreases> {
 impl Debug for Lite<syn::token::Default> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![default]")
+    }
+}
+impl Debug for Lite<syn::token::DefaultEnsures> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![default_ensures]")
     }
 }
 impl Debug for Lite<syn::token::Do> {

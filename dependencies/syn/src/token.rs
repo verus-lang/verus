@@ -754,6 +754,7 @@ define_keywords! {
     "requires"    pub struct Requires
     "recommends"  pub struct Recommends
     "ensures"     pub struct Ensures
+    "default_ensures" pub struct DefaultEnsures
     "returns"     pub struct Returns
     "decreases"   pub struct Decreases
     "opens_invariants"   pub struct OpensInvariants
@@ -1040,6 +1041,7 @@ macro_rules! Token {
     [requires]    => { $crate::token::Requires };
     [recommends]  => { $crate::token::Recommends };
     [ensures]     => { $crate::token::Ensures };
+    [default_ensures] => { $crate::token::DefaultEnsures };
     [returns]     => { $crate::token::Returns };
     [decreases]   => { $crate::token::Decreases };
     [opens_invariants]   => { $crate::token::OpensInvariants };
