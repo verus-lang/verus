@@ -105,8 +105,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] loop_fail
+test_verify_one_file_with_options! {
+    #[test] loop_fail ["may_not_terminate"] =>
     COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>) -> u32 {
             let mut x: u32 = 5;
@@ -156,8 +156,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "atomic function cannot contain more than 1 atomic operation")
 }
 
-test_verify_one_file! {
-    #[test] nonatomic_everything_ok
+test_verify_one_file_with_options! {
+    #[test] nonatomic_everything_ok ["may_not_terminate"] =>
     COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>) -> u32 {
             let mut x: u32 = 5;

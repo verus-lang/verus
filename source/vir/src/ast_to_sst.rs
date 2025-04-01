@@ -2008,6 +2008,18 @@ pub(crate) fn expr_to_stm_opt(
             } else {
                 None
             };
+            if decrease.len() == 0
+                && !ctx
+                    .fun
+                    .as_ref()
+                    .map(|x| {
+                        x.current_fun_attrs.assume_termination
+                            || x.current_fun_attrs.may_not_terminate
+                    })
+                    .unwrap_or(false)
+            {
+                return Err(error(&expr.span, "loop must have a decreases clause"));
+            }
 
             let (mut stms1, _e1) = expr_to_stm_opt(ctx, state, body)?;
             let mut check_recommends: Vec<Stm> = Vec::new();

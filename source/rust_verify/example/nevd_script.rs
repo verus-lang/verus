@@ -1,3 +1,4 @@
+#![cfg_attr(verus_keep_ghost, verifier::may_not_terminate)]
 fn main() {}
 
 // ## 11 -- 10-program.rs
