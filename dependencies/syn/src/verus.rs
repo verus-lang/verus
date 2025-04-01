@@ -143,6 +143,13 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct DefaultEnsures {
+        pub token: Token![default_ensures],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
     pub struct Returns {
         pub token: Token![returns],
         pub exprs: Specification,
@@ -240,6 +247,7 @@ ast_struct! {
         pub requires: Option<Requires>,
         pub recommends: Option<Recommends>,
         pub ensures: Option<Ensures>,
+        pub default_ensures: Option<DefaultEnsures>,
         pub returns: Option<Returns>,
         pub decreases: Option<SignatureDecreases>,
         pub invariants: Option<SignatureInvariants>,
@@ -253,6 +261,7 @@ impl SignatureSpec {
         self.requires = None;
         self.recommends = None;
         self.ensures = None;
+        self.default_ensures = None;
         self.returns = None;
         self.decreases = None;
         self.invariants = None;
@@ -352,6 +361,7 @@ ast_struct! {
         // REVIEW: consider replacing these with SignatureSpec
         pub requires: Option<Requires>,
         pub ensures: Option<Ensures>,
+        pub default_ensures: Option<DefaultEnsures>,
         pub returns: Option<Returns>,
         pub invariants: Option<SignatureInvariants>,
         pub unwind: Option<SignatureUnwind>,
@@ -626,6 +636,7 @@ pub mod parsing {
                 || input.peek(Token![invariant])
                 || input.peek(Token![invariant_ensures])
                 || input.peek(Token![ensures])
+                || input.peek(Token![default_ensures])
                 || input.peek(Token![returns])
                 || input.peek(Token![decreases])
                 || input.peek(Token![via])
@@ -647,7 +658,7 @@ pub mod parsing {
                 if input.peek2(token::Comma) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by a comma (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
-                if input.peek2(Token![ensures]) {
+                if input.peek2(Token![ensures]) || input.peek2(Token![default_ensures]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'ensures' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
                 if input.peek2(Token![opens_invariants]) {
@@ -717,6 +728,17 @@ pub mod parsing {
             attr::parsing::parse_inner(input, &mut attrs)?;
             Ok(Ensures {
                 attrs,
+                token,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for DefaultEnsures {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let token = input.parse()?;
+            Ok(DefaultEnsures {
                 token,
                 exprs: input.parse()?,
             })
@@ -941,6 +963,17 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<DefaultEnsures> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![default_ensures]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Option<Returns> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![returns]) {
@@ -1024,6 +1057,7 @@ pub mod parsing {
             let requires: Option<Requires> = input.parse()?;
             let recommends: Option<Recommends> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
+            let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let decreases: Option<SignatureDecreases> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
@@ -1034,6 +1068,7 @@ pub mod parsing {
                 requires,
                 recommends,
                 ensures,
+                default_ensures,
                 returns,
                 decreases,
                 invariants,
@@ -1295,6 +1330,7 @@ pub mod parsing {
 
             let requires: Option<Requires> = input.parse()?;
             let ensures: Option<Ensures> = input.parse()?;
+            let default_ensures: Option<DefaultEnsures> = input.parse()?;
             let returns: Option<Returns> = input.parse()?;
             let invariants: Option<SignatureInvariants> = input.parse()?;
             let unwind: Option<SignatureUnwind> = input.parse()?;
@@ -1314,6 +1350,7 @@ pub mod parsing {
                 output,
                 requires,
                 ensures,
+                default_ensures,
                 returns,
                 invariants,
                 unwind,
@@ -1551,6 +1588,14 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for DefaultEnsures {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Returns {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
@@ -1661,6 +1706,7 @@ mod printing {
             self.requires.to_tokens(tokens);
             self.recommends.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
+            self.default_ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.decreases.to_tokens(tokens);
             self.invariants.to_tokens(tokens);
@@ -1959,6 +2005,7 @@ mod printing {
 
             self.requires.to_tokens(tokens);
             self.ensures.to_tokens(tokens);
+            self.default_ensures.to_tokens(tokens);
             self.returns.to_tokens(tokens);
             self.invariants.to_tokens(tokens);
             self.unwind.to_tokens(tokens);
