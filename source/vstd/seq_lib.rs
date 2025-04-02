@@ -1750,7 +1750,7 @@ pub broadcast proof fn lemma_seq_concat_contains_all_elements<A>(x: Seq<A>, y: S
 /// After pushing an element onto a sequence, the sequence contains that element
 pub broadcast proof fn lemma_seq_contains_after_push<A>(s: Seq<A>, v: A, x: A)
     ensures
-        #[trigger] s.push(v).contains(x) <==> v == x || s.contains(x)
+        #[trigger] s.push(v).contains(x) <==> v == x || s.contains(x),
 {
     assert forall|elt: A| #[trigger] s.contains(elt) implies #[trigger] s.push(v).contains(elt) by {
         let index = choose|i: int| 0 <= i < s.len() && s[i] == elt;
@@ -2028,8 +2028,7 @@ pub proof fn lemma_seq_properties<A>()
         forall|s: Seq<A>| #[trigger] s.len() == 0 ==> s =~= Seq::<A>::empty(),  //from lemma_seq_empty_equality(s),
         forall|x: Seq<A>, y: Seq<A>, elt: A| #[trigger]
             (x + y).contains(elt) <==> x.contains(elt) || y.contains(elt),  //from lemma_seq_concat_contains_all_elements(x, y, elt),
-        forall|s: Seq<A>, v: A, x: A|
-            #[trigger] s.push(v).contains(x) <==> v == x || s.contains(x),  //from lemma_seq_contains_after_push(s, v, x)
+        forall|s: Seq<A>, v: A, x: A| #[trigger] s.push(v).contains(x) <==> v == x || s.contains(x),  //from lemma_seq_contains_after_push(s, v, x)
         forall|s: Seq<A>, start: int, stop: int, x: A|
             (0 <= start <= stop <= s.len() && #[trigger] s.subrange(start, stop).contains(x)) <==> (
             exists|i: int| 0 <= start <= i < stop <= s.len() && #[trigger] s[i] == x),  //from lemma_seq_subrange_elements(s, start, stop, x),
