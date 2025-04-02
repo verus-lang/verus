@@ -248,7 +248,6 @@ pub(crate) fn gen_check_trait_impl_conflicts(
         let decl = DatatypeDecl {
             name: state.datatype_name(path),
             span: spans.from_air_span(&d.span, None),
-            implements_copy: None,
             generic_params,
             generic_bounds,
             datatype: Box::new(Datatype::Struct(Fields::Pos(fields))),
@@ -326,6 +325,7 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             trait_as_datatype,
             assoc_typs,
             trait_polarity,
+            is_clone: false,
         };
         state.trait_impls.push(decl);
     }
