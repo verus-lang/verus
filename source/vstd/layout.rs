@@ -20,6 +20,13 @@ pub open spec fn is_power_2(n: int) -> bool
     }
 }
 
+pub open spec fn is_power_2_exists (m: int) -> bool 
+{
+    exists|i: nat| crate::vstd::arithmetic::power::pow(2, i) == m
+}
+
+// TODO: proof tying is_power_2 and is_power_2_exists together
+
 /// Matches the conditions here: <https://doc.rust-lang.org/stable/std/alloc/struct.Layout.html>
 pub open spec fn valid_layout(size: usize, align: usize) -> bool {
     is_power_2(align as int) && size <= isize::MAX as int - (isize::MAX as int % align as int)
@@ -159,16 +166,24 @@ pub broadcast proof fn layout_of_primitives()
 {
 }
 
-// TODO: Are these the right triggers?
 // The alignment is at least 1 by https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size
-// TODO: specify that the alignment is always a power of 2?
 #[verifier::external_body]
 pub broadcast proof fn align_properties<T>()
     ensures
         #![trigger align_of::<T>()]
         size_of::<T>() % align_of::<T>() == 0,
-        align_of::<T>() > 0,
+        is_power_2_exists(align_of::<T>() as int),
 ;
+
+pub broadcast proof fn align_nonzero<T>()
+    ensures 
+        #![trigger align_of::<T>()]
+        align_of::<T>() > 0,
+{
+    broadcast use 
+        crate::vstd::arithmetic::power::lemma_pow_positive, 
+        align_properties;
+}
 
 pub proof fn usize_size_pow2()
     ensures 
@@ -217,12 +232,17 @@ pub broadcast proof fn layout_of_references_and_pointers_for_sized_types<T: Size
         align_of::<*mut T>() == align_of::<usize>(),
 ;
 
+pub broadcast group group_align_properties {
+    align_properties,
+    align_nonzero,
+}
+
 pub broadcast group group_layout_axioms {
     layout_of_primitives,
     layout_of_unit_tuple,
     layout_of_references_and_pointers,
     layout_of_references_and_pointers_for_sized_types,
-    align_properties,
+    group_align_properties,
 }
 
 } // verus!

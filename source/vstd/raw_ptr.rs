@@ -18,7 +18,6 @@ they can be seamlessly cast to and fro.
 
 use super::layout::*;
 use super::prelude::*;
-// use len_trait::len;
 use core::slice::SliceIndex;
 use core::ops::Index;
 use crate::vstd::slice::spec_slice_len;
@@ -164,7 +163,12 @@ impl<T: ?Sized> View for *const T {
 // impl<T> View for PointsTo<T> {
 //     type V = PointsToData<T>;
 
-//     uninterp spec fn view(&self) -> Self::V;
+//     open spec fn view(&self) -> Self::V {
+//         PointsToData {
+//             ptr: self.ptr(), 
+//             opt_value: self.mem_contents_seq()
+//         }
+//     }
 //     // Either implement this function so it's tied to ptr() or get rid of it and fix all the errors
 // }
 
@@ -230,7 +234,7 @@ impl<T> PointsTo<T> {
 // impl<T> View for PointsTo<[T]> {
 //     type V = PointsToData<T>;
 
-//     spec fn view(&self) -> Self::V {
+//     open spec fn view(&self) -> Self::V {
 //         PointsToData {
 //             ptr: self.ptr(), 
 //             opt_value: self.mem_contents_seq()
@@ -754,7 +758,7 @@ impl PointsToRaw {
     pub proof fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
             is_sized::<V>(),
-            start as int % align_of::<V>() as int == 0, 
+            start as int % align_of::<V>() as int == 0,
             self.is_range(start as int, size_of::<V>() as int),
         ensures
             points_to.ptr() == ptr_mut_from_data::<V>(
@@ -920,7 +924,6 @@ pub fn deallocate(
 #[verifier::accept_recursive_types(T)]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::SharedReference")]
 pub struct SharedReference<'a, T: ?Sized>(&'a T);
-// pub struct SharedReference<'a, T: ?Sized>(&'a [T]);
 
 
 impl<'a, T: ?Sized> Clone for SharedReference<'a, T> {
@@ -990,27 +993,8 @@ impl<'a, T> SharedReference<'a, [T]> {
         self.0.as_ptr()
     }
 
-    // pub const fn from_ptr(ptr: *const T, len: int) -> (s: Self)
-    //     requires
-    //         ptr as nat % size_of::<T>() == 0,
-    //         ptr@.provenance.alloc_len() == len * size_of::<T>(),
-    // {
-    //     SharedReference(&*ptr as &[T])
-    // }
-
-    // pub const fn cast_shared_ref<U>(self) -> (output: SharedReference<'a, [U]>)
-    //     requires 
-    //         size_of::<T>() % size_of::<U>() == 0,
-    //     ensures 
-    //         self.as_ptr()@.provenance == output.as_ptr()@.provenance,
-    //         self.as_ptr()@.addr == output.as_ptr()@.addr,
-    // {
-    //     SharedReference(self.as_ref() as &[U])
-    // }
-
     pub const fn len(self) -> (output: usize)
         ensures
-            // output == self.value().view().len()
             output == spec_slice_len(self.value())
     {
         self.as_ref().len()
@@ -1023,7 +1007,6 @@ impl<'a, T> SharedReference<'a, [T]> {
             *out == self.value()@.index(idx as int),
     {
         &(self.as_ref())[idx]
-        // self.as_ref().index(idx)
     }
 
     #[verifier::external_body]
@@ -1031,6 +1014,7 @@ impl<'a, T> SharedReference<'a, [T]> {
         ensures
             pt.ptr() == self.ptr(),
             pt.is_init(),
+            // TODO: under what conditions can I assume it is init?
             pt.value() == self.value()@,
     {
         unimplemented!();

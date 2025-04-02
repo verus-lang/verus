@@ -1114,7 +1114,6 @@ fn run() -> Result<(), String> {
                         .arg(target);
                     if release {
                         cmd = cmd.arg("--release");
-                        // cmd = cmd.arg("--no-lifetime")
                     }
                     cmd = cmd.args(extra_args);
                     log_command(&cmd, verbose);

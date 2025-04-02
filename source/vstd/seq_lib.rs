@@ -187,7 +187,6 @@ impl<A> Seq<A> {
 
     // deprecated since the triggers inside of 2 of the conjuncts are blocked
     #[cfg_attr(not(verus_verify_core), deprecated = "Use `broadcast use group_filter_ensures` instead" )]
-    
     pub proof fn filter_lemma(self, pred: spec_fn(A) -> bool)
         ensures
     // we don't keep anything bad
