@@ -56,6 +56,14 @@ pub trait OptionAdditionalFns<T>: Sized {
         ensures
             t == self.get_Some_0(),
     ;
+
+    proof fn tracked_take(tracked &mut self) -> (tracked t: T)
+        requires
+            old(self).is_Some(),
+        ensures
+            t == old(self).get_Some_0(),
+            self.is_None(),
+    ;
 }
 
 impl<T> OptionAdditionalFns<T> for Option<T> {
@@ -96,6 +104,13 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
             Option::Some(t) => t,
             Option::None => proof_from_false(),
         }
+    }
+
+    /// Similar to `Option::take`
+    proof fn tracked_take(tracked &mut self) -> (tracked t: T) {
+        let tracked mut x = None::<T>;
+        crate::modes::tracked_swap(self, &mut x);
+        x.tracked_unwrap()
     }
 }
 
