@@ -671,6 +671,8 @@ pub enum BuiltinSpecFun {
     ClosureEns,
     /// default_ensures clauses, for use by call_ensures on impls that inherit the default
     DefaultEns,
+    /// ensures of a strong_call_ensures trait decl
+    StrongTraitEns,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Hash, ToDebugSNode, PartialEq, Eq)]
@@ -992,6 +994,9 @@ pub struct FunctionAttrsX {
     /// is this a method, i.e., written with x.f() syntax? useful for printing
     pub print_as_method: bool,
     pub prophecy_dependent: bool,
+    /// When true on a trait decl function, the call_ensures axiom is <==> rather than ==>
+    /// and prophecy is disallowed in the ensures.
+    pub strong_call_ensures: bool,
     /// broadcast proof from size_of global
     pub size_of_broadcast_proof: bool,
     /// is type invariant
