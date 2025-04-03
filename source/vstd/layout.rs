@@ -166,7 +166,8 @@ pub broadcast proof fn layout_of_primitives()
 {
 }
 
-// The alignment is at least 1 by https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size
+// The size is a multiple of alignment and alignment is always a power of 2 by 
+// https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size
 #[verifier::external_body]
 pub broadcast proof fn align_properties<T>()
     ensures
@@ -175,6 +176,7 @@ pub broadcast proof fn align_properties<T>()
         is_power_2_exists(align_of::<T>() as int),
 ;
 
+// The alignment is at least 1 by https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size
 pub broadcast proof fn align_nonzero<T>()
     ensures 
         #![trigger align_of::<T>()]
