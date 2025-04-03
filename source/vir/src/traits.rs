@@ -222,11 +222,6 @@ pub fn rewrite_one_external_expr(from_path: &Path, to_path: &Path, expr: &Expr) 
     }
 }
 
-pub fn rewrite_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> Typ {
-    let ft = |t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
-    crate::ast_visitor::map_typ_visitor(typ, &ft).expect("rewrite_external_typ")
-}
-
 pub fn rewrite_external_bounds(
     from_path: &Path,
     to_path: &Path,
