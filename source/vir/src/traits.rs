@@ -595,7 +595,7 @@ pub(crate) fn trait_bound_to_air(
     }
     let mut typ_exprs: Vec<air::ast::Expr> = Vec::new();
     for t in typ_args.iter() {
-        typ_exprs.extend(typ_to_ids(t));
+        typ_exprs.extend(typ_to_ids(ctx, t));
     }
     match trait_id {
         TraitId::Path(path) => Some(ident_apply(&crate::def::trait_bound(path), &typ_exprs)),
@@ -608,7 +608,7 @@ pub(crate) fn trait_bound_to_air(
 }
 
 pub(crate) fn typ_equality_bound_to_air(
-    _ctx: &Ctx,
+    ctx: &Ctx,
     trait_path: &Path,
     typ_args: &Typs,
     name: &Ident,
@@ -616,9 +616,9 @@ pub(crate) fn typ_equality_bound_to_air(
 ) -> air::ast::Expr {
     let mut typ_exprs: Vec<air::ast::Expr> = Vec::new();
     for t in typ_args.iter() {
-        typ_exprs.extend(typ_to_ids(t));
+        typ_exprs.extend(typ_to_ids(ctx, t));
     }
-    let ids = typ_to_ids(typ);
+    let ids = typ_to_ids(ctx, typ);
     assert!(ids.len() == 2);
     let idd = &ids[0];
     let idt = &ids[1];
@@ -631,7 +631,7 @@ pub(crate) fn typ_equality_bound_to_air(
 
 pub(crate) fn const_typ_bound_to_air(ctx: &Ctx, c: &Typ, t: &Typ) -> air::ast::Expr {
     let f = crate::ast_util::const_generic_to_primitive(t);
-    let expr = air::ast_util::str_apply(f, &vec![crate::sst_to_air::typ_to_id(c)]);
+    let expr = air::ast_util::str_apply(f, &vec![crate::sst_to_air::typ_to_id(ctx, c)]);
     if let Some(inv) = crate::sst_to_air::typ_invariant(ctx, t, &expr) {
         inv
     } else {
@@ -767,7 +767,8 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     // -->
     //   forall A. tr_bound%T1(A) ==> tr_bound%T2(S<Seq<A>>, Set<A>)
     let (trait_typ_args, holes) = crate::traits::hide_projections(&imp.x.trait_typ_args);
-    let (typ_params, eqs) = crate::sst_to_air_func::hide_projections_air(&imp.x.typ_params, holes);
+    let (typ_params, eqs) =
+        crate::sst_to_air_func::hide_projections_air(ctx, &imp.x.typ_params, holes);
     let tr_bound = if let Some(tr_bound) =
         trait_bound_to_air(ctx, &TraitId::Path(imp.x.trait_path.clone()), &trait_typ_args)
     {

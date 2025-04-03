@@ -217,7 +217,7 @@ fn decoration_str(d: TypDecoration) -> &'static str {
 }
 
 // return (decorations, typ)
-pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
+pub fn monotyp_to_id(ctx: &Ctx, typ: &MonoTyp) -> Vec<Expr> {
     let mk_id_sized = |t: Expr| -> Vec<Expr> {
         let ds = str_var(crate::def::DECORATE_NIL_SIZED);
         if crate::context::DECORATE { vec![ds, t] } else { vec![t] }
@@ -233,22 +233,22 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
             let f_name = crate::def::prefix_type_id(&encode_dt_as_path(dt));
             let mut args: Vec<Expr> = Vec::new();
             for t in typs.iter() {
-                args.extend(monotyp_to_id(t));
+                args.extend(monotyp_to_id(ctx, t));
             }
             // TODO: handle DSTs
             mk_id_sized(air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args)))
         }
         MonoTypX::Decorate(d, typ) if crate::context::DECORATE => {
-            let ds_typ = monotyp_to_id(typ);
+            let ds_typ = monotyp_to_id(ctx, typ);
             assert!(ds_typ.len() == 2);
             let ds = str_apply(decoration_str(*d), &vec![ds_typ[0].clone()]);
             vec![ds, ds_typ[1].clone()]
         }
         MonoTypX::Decorate2(d, typs) if crate::context::DECORATE => {
             assert!(typs.len() == 2);
-            let ds_typ1 = monotyp_to_id(&typs[0]);
+            let ds_typ1 = monotyp_to_id(ctx, &typs[0]);
             assert!(ds_typ1.len() == 2);
-            let ds_typ2 = monotyp_to_id(&typs[1]);
+            let ds_typ2 = monotyp_to_id(ctx, &typs[1]);
             assert!(ds_typ2.len() == 2);
             let ds = str_apply(
                 decoration_str(*d),
@@ -256,16 +256,16 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
             );
             vec![ds, ds_typ2[1].clone()]
         }
-        MonoTypX::Decorate(_, typ) => monotyp_to_id(typ),
+        MonoTypX::Decorate(_, typ) => monotyp_to_id(ctx, typ),
         MonoTypX::Decorate2(_, typs) => {
             assert!(typs.len() == 2);
-            monotyp_to_id(&typs[1])
+            monotyp_to_id(ctx, &typs[1])
         }
         MonoTypX::Primitive(name, typs) => {
             let f_name = primitive_type_id(name);
             let mut args: Vec<Expr> = Vec::new();
             for t in typs.iter() {
-                args.extend(monotyp_to_id(t));
+                args.extend(monotyp_to_id(ctx, t));
             }
             let base = decoration_base_for_primitive(*name);
             mk_id(air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args)), base)
@@ -303,7 +303,7 @@ fn decoration_base_for_primitive(name: Primitive) -> &'static str {
 // instead of:
 //   - (REF (RC (Foo (REF BOOL))))
 // typ_to_ids(typ) return [decorations, type]
-pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
+pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
     let mk_id_sized = |t: Expr| -> Vec<Expr> {
         let ds = str_var(crate::def::DECORATE_NIL_SIZED);
         if crate::context::DECORATE { vec![ds, t] } else { vec![t] }
@@ -315,21 +315,21 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
     match &**typ {
         TypX::Bool => mk_id_sized(str_var(crate::def::TYPE_ID_BOOL)),
         TypX::Int(range) => mk_id_sized(range_to_id(range)),
-        TypX::SpecFn(typs, typ) => mk_id_sized(fun_id(typs, typ)),
+        TypX::SpecFn(typs, typ) => mk_id_sized(fun_id(ctx, typs, typ)),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should have been removed by ast_simplify")
         }
-        TypX::FnDef(fun, typs, _resolved_fun) => mk_id_sized(fndef_id(fun, typs)),
+        TypX::FnDef(fun, typs, _resolved_fun) => mk_id_sized(fndef_id(ctx, fun, typs)),
         TypX::Datatype(dt, typs, _) => {
             // TODO handle DSTs
-            mk_id_sized(datatype_id(&encode_dt_as_path(dt), typs))
+            mk_id_sized(datatype_id(ctx, &encode_dt_as_path(dt), typs))
         }
         TypX::Primitive(name, typs) => {
             let base = decoration_base_for_primitive(*name);
-            mk_id(primitive_id(&name, typs), base)
+            mk_id(primitive_id(ctx, &name, typs), base)
         }
         TypX::Decorate(d, None, typ) if crate::context::DECORATE => {
-            let ds_typ = typ_to_ids(typ);
+            let ds_typ = typ_to_ids(ctx, typ);
             assert!(ds_typ.len() == 2);
             let ds = str_apply(decoration_str(*d), &vec![ds_typ[0].clone()]);
             vec![ds, ds_typ[1].clone()]
@@ -337,9 +337,9 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
         TypX::Decorate(d, Some(TypDecorationArg { allocator_typ }), typ)
             if crate::context::DECORATE =>
         {
-            let ds_typ1 = typ_to_ids(allocator_typ);
+            let ds_typ1 = typ_to_ids(ctx, allocator_typ);
             assert!(ds_typ1.len() == 2);
-            let ds_typ2 = typ_to_ids(typ);
+            let ds_typ2 = typ_to_ids(ctx, typ);
             assert!(ds_typ2.len() == 2);
             let ds = str_apply(
                 decoration_str(*d),
@@ -347,15 +347,15 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
             );
             vec![ds, ds_typ2[1].clone()]
         }
-        TypX::Decorate(_, _, typ) => typ_to_ids(typ),
-        TypX::Boxed(typ) => typ_to_ids(typ),
+        TypX::Decorate(_, _, typ) => typ_to_ids(ctx, typ),
+        TypX::Boxed(typ) => typ_to_ids(ctx, typ),
         TypX::TypParam(x) => {
             suffix_typ_param_ids(x).iter().map(|x| ident_var(&x.lower())).collect()
         }
         TypX::Projection { trait_typ_args, trait_path, name } => {
             let mut args: Vec<Expr> = Vec::new();
             for t in trait_typ_args.iter() {
-                args.extend(typ_to_ids(t));
+                args.extend(typ_to_ids(ctx, t));
             }
             let pd = ident_apply(&crate::def::projection(true, trait_path, name), &args);
             let pt = ident_apply(&crate::def::projection(false, trait_path, name), &args);
@@ -365,7 +365,7 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
         TypX::ConstInt(c) => {
             mk_id_sized(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
         }
-        TypX::ConstBool(b) => mk_id(str_apply(
+        TypX::ConstBool(b) => mk_id_sized(str_apply(
             crate::def::TYPE_ID_CONST_BOOL,
             &vec![Arc::new(ExprX::Const(Constant::Bool(*b)))],
         )),
@@ -373,43 +373,43 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
     }
 }
 
-pub(crate) fn typ_to_id(typ: &Typ) -> Expr {
-    typ_to_ids(typ).last().unwrap().clone()
+pub(crate) fn typ_to_id(ctx: &Ctx, typ: &Typ) -> Expr {
+    typ_to_ids(ctx, typ).last().unwrap().clone()
 }
 
-pub(crate) fn fun_id(typs: &Typs, typ: &Typ) -> Expr {
+pub(crate) fn fun_id(ctx: &Ctx, typs: &Typs, typ: &Typ) -> Expr {
     let f_name = crate::def::prefix_type_id_fun(typs.len());
     let mut args: Vec<Expr> = Vec::new();
     for t in typs.iter() {
-        args.extend(typ_to_ids(t));
+        args.extend(typ_to_ids(ctx, t));
     }
-    args.extend(typ_to_ids(typ));
+    args.extend(typ_to_ids(ctx, typ));
     air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args))
 }
 
-pub(crate) fn datatype_id(path: &Path, typs: &Typs) -> Expr {
+pub(crate) fn datatype_id(ctx: &Ctx, path: &Path, typs: &Typs) -> Expr {
     let f_name = crate::def::prefix_type_id(path);
     let mut args: Vec<Expr> = Vec::new();
     for t in typs.iter() {
-        args.extend(typ_to_ids(t));
+        args.extend(typ_to_ids(ctx, t));
     }
     air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args))
 }
 
-pub(crate) fn primitive_id(name: &Primitive, typs: &Typs) -> Expr {
+pub(crate) fn primitive_id(ctx: &Ctx, name: &Primitive, typs: &Typs) -> Expr {
     let f_name = primitive_type_id(name);
     let mut args: Vec<Expr> = Vec::new();
     for t in typs.iter() {
-        args.extend(typ_to_ids(t));
+        args.extend(typ_to_ids(ctx, t));
     }
     air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args))
 }
 
-pub(crate) fn fndef_id(fun: &Fun, typs: &Typs) -> Expr {
+pub(crate) fn fndef_id(ctx: &Ctx, fun: &Fun, typs: &Typs) -> Expr {
     let f_name = crate::def::prefix_fndef_type_id(fun);
     let mut args: Vec<Expr> = Vec::new();
     for t in typs.iter() {
-        args.extend(typ_to_ids(t));
+        args.extend(typ_to_ids(ctx, t));
     }
     air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args))
 }
@@ -418,8 +418,8 @@ pub(crate) fn expr_has_type(expr: &Expr, typ: &Expr) -> Expr {
     str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), typ.clone()])
 }
 
-pub(crate) fn expr_has_typ(expr: &Expr, typ: &Typ) -> Expr {
-    expr_has_type(expr, &typ_to_id(typ))
+pub(crate) fn expr_has_typ(ctx: &Ctx, expr: &Expr, typ: &Typ) -> Expr {
+    expr_has_type(expr, &typ_to_id(ctx, typ))
 }
 
 // If expr has type typ, what can we assume to be true about expr?
@@ -447,17 +447,17 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             Some(apply_range_fun(&f_name, &range, vec![expr.clone()]))
         }
         TypX::SpecFn(..) => {
-            Some(expr_has_typ(&try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ))
+            Some(expr_has_typ(ctx, &try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ))
         }
         TypX::Primitive(Primitive::Array, _) => {
-            Some(expr_has_typ(&try_box(ctx, expr.clone(), typ).expect("try_box array"), typ))
+            Some(expr_has_typ(ctx, &try_box(ctx, expr.clone(), typ).expect("try_box array"), typ))
         }
         TypX::Datatype(dt, _, _) => {
             if ctx.datatype_is_transparent[dt] {
                 if ctx.datatypes_with_invariant.contains(dt) {
                     let box_expr =
                         ident_apply(&prefix_box(&encode_dt_as_path(dt)), &vec![expr.clone()]);
-                    Some(expr_has_typ(&box_expr, typ))
+                    Some(expr_has_typ(ctx, &box_expr, typ))
                 } else {
                     None
                 }
@@ -470,9 +470,9 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             }
         }
         TypX::Decorate(..) => unreachable!(),
-        TypX::Boxed(_) => Some(expr_has_typ(expr, typ)),
-        TypX::TypParam(_) => Some(expr_has_typ(expr, typ)),
-        TypX::Projection { .. } => Some(expr_has_typ(expr, typ)),
+        TypX::Boxed(_) => Some(expr_has_typ(ctx, expr, typ)),
+        TypX::TypParam(_) => Some(expr_has_typ(ctx, expr, typ)),
+        TypX::Projection { .. } => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Bool | TypX::AnonymousClosure(..) | TypX::TypeId => None,
         TypX::Air(_) => panic!("typ_invariant"),
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
@@ -745,6 +745,8 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
 }
 
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<Expr, VirErr> {
+    let typ_to_ids = |typ| typ_to_ids(ctx, typ);
+
     let result = match &exp.x {
         ExpX::Const(c) => {
             let expr = constant_to_expr(ctx, c);
@@ -865,7 +867,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)) => {
             let f = crate::ast_util::const_generic_to_primitive(&exp.typ);
-            str_apply(f, &vec![typ_to_id(c)])
+            str_apply(f, &vec![typ_to_id(ctx, c)])
         }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p, ts)) => {
             if let Some(e) = crate::traits::trait_bound_to_air(ctx, p, ts) {
@@ -1162,7 +1164,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             Arc::new(expx)
         }
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(deep, t), lhs, rhs) => {
-            let mut args = vec![Arc::new(ExprX::Const(Constant::Bool(*deep))), typ_to_id(t)];
+            let mut args = vec![Arc::new(ExprX::Const(Constant::Bool(*deep))), typ_to_id(ctx, t)];
             args.push(exp_to_expr(ctx, lhs, expr_ctxt)?);
             args.push(exp_to_expr(ctx, rhs, expr_ctxt)?);
             str_apply(crate::def::EXT_EQ, &args)
@@ -1258,7 +1260,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     Some(_) => {
                         // use as_type to coerce expression to some value of the requested type,
                         // even if the choose expression is unsatisfiable
-                        let args = vec![choose_expr, typ_to_id(typ)];
+                        let args = vec![choose_expr, typ_to_id(ctx, typ)];
                         choose_expr = str_apply(crate::def::AS_TYPE, &args);
                     }
                     _ => {}
@@ -1564,6 +1566,7 @@ fn assume_other_fields_unchanged_inner(
 //     let result = match &stm.x {
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
+    let typ_to_ids = |typ| typ_to_ids(ctx, typ);
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
         StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest, assert_id } => {
