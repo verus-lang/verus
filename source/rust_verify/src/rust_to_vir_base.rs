@@ -1022,18 +1022,26 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
             let trait_def = tcx.generics_of(t.def_id).parent;
             let t_args: Vec<_> = t.args.iter().filter(|x| x.as_region().is_none()).collect();
-            if t_args.iter().find(|x| x.as_type().is_none()).is_some() {
-                unsupported_err!(span, "projection type")
-            }
             match trait_def {
                 Some(trait_def) if t_args.len() >= 1 => {
                     let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def);
                     // In rustc, see create_substs_for_ast_path and create_substs_for_generic_args
                     let mut trait_typ_args = Vec::new();
-                    for ty in t_args.iter() {
-                        let ty = ty.as_type().expect("already checked for as_type");
-                        trait_typ_args.push(t_rec_flags(&ty, false)?.0);
+
+                    for arg in t_args.iter() {
+                        match arg.unpack() {
+                            rustc_middle::ty::GenericArgKind::Type(t) => {
+                                trait_typ_args.push(t_rec_flags(&t, false)?.0);
+                            }
+                            rustc_middle::ty::GenericArgKind::Lifetime(_) => {
+                                panic!("already filtered out lifetimes");
+                            }
+                            rustc_middle::ty::GenericArgKind::Const(cnst) => {
+                                trait_typ_args.push(mid_ty_const_to_vir(tcx, Some(span), &cnst)?);
+                            }
+                        }
                     }
+
                     let trait_typ_args = Arc::new(trait_typ_args);
                     let proj = TypX::Projection { trait_typ_args, trait_path, name };
                     return Ok((Arc::new(proj), false));
