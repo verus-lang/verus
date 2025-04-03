@@ -660,12 +660,6 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             }
         }
 
-        if traitt.x.assoc_typs_bounds.len() > 0 {
-            return err_span(
-                span,
-                "not supported: using assume_specification for a trait method impl where the trait has associated types",
-            );
-        }
         for method in traitt.x.methods.iter() {
             if !methods_we_have.contains::<vir::ast::Ident>(&method.path.last_segment()) {
                 return err_span(
