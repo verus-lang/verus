@@ -458,3 +458,30 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_broadcast_all_triggers verus_code! {
+        uninterp spec fn a(a: nat) -> bool;
+        uninterp spec fn b(a: nat) -> bool;
+        uninterp spec fn c(a: nat) -> bool;
+        uninterp spec fn d(a: nat) -> bool;
+
+        broadcast proof fn axiom_a(x: nat)
+            requires
+                a(x)
+            ensures
+                #![all_triggers] b(x) && c(x)
+            // a(x) ==> b(x) && c(x)
+        {
+            admit();
+        }
+
+        proof fn test(x: nat)
+            requires a(x)
+        {
+            broadcast use axiom_a;
+            assume(forall|x: nat| b(x) ==> d(x));
+            assert(d(x));
+        }
+    } => Ok(())
+}
