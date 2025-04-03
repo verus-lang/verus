@@ -109,7 +109,7 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     /// Similar to `Option::take`
     proof fn tracked_take(tracked &mut self) -> (tracked t: T) {
         let tracked mut x = None::<T>;
-        crate::modes::tracked_swap(self, &mut x);
+        super::super::modes::tracked_swap(self, &mut x);
         x.tracked_unwrap()
     }
 }
