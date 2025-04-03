@@ -1604,11 +1604,13 @@ pub(crate) fn check_item_external_generics<'tcx>(
                     }
                 }
             }
-            (GenericArgKind::Const(_), GenericParamKind::Const { .. }) => {
-                return err_span(
-                    span,
-                    "external_type_specification: Const params not yet supported",
-                );
+            (GenericArgKind::Const(cnst), GenericParamKind::Const { .. }) => {
+                match cnst.kind() {
+                    ConstKind::Param(param) if param.name.as_str() == param_name => { /* okay */ }
+                    _ => {
+                        return err();
+                    }
+                }
             }
             _ => {
                 return err();
