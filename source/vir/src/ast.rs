@@ -1228,6 +1228,7 @@ pub struct DatatypeX {
     /// Generate ext_equal lemmas for datatype
     pub ext_equal: bool,
     pub user_defined_invariant_fn: Option<Fun>,
+    pub sized_constraint: Option<Typ>,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;

@@ -10,7 +10,7 @@ use crate::util::err_span;
 use air::ast_util::str_ident;
 use rustc_ast::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
-use rustc_middle::ty::{GenericArgsRef, TyKind};
+use rustc_middle::ty::{AdtDef, GenericArgsRef, TyKind};
 use rustc_span::Span;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -205,6 +205,7 @@ pub(crate) fn check_item_struct<'tcx>(
         mode,
         ext_equal: vattrs.ext_equal,
         user_defined_invariant_fn: None,
+        sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
     };
     vir.datatypes.push(ctxt.spanned_new(span, datatype));
     Ok(())
@@ -293,6 +294,7 @@ pub(crate) fn check_item_enum<'tcx>(
             mode: get_mode(Mode::Exec, attrs),
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
+            sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
         },
     ));
     Ok(())
@@ -392,9 +394,29 @@ pub(crate) fn check_item_union<'tcx>(
             mode: get_mode(Mode::Exec, attrs),
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
+            sized_constraint: get_sized_constraint(span, ctxt, &adt_def)?,
         },
     ));
     Ok(())
+}
+
+fn get_sized_constraint<'tcx>(
+    span: Span,
+    ctxt: &Context<'tcx>,
+    adt_def: &AdtDef<'tcx>,
+) -> Result<Option<vir::ast::Typ>, VirErr> {
+    use crate::rustc_middle::ty::inherent::AdtDef;
+    match adt_def.sized_constraint(ctxt.tcx) {
+        None => Ok(None),
+        Some(ty) => Ok(Some(mid_ty_to_vir(
+            ctxt.tcx,
+            &ctxt.verus_items,
+            adt_def.def_id(),
+            span,
+            &ty.skip_binder(),
+            false,
+        )?)),
+    }
 }
 
 pub(crate) fn check_item_external<'tcx>(
@@ -553,6 +575,7 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
+            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else if external_adt_def.is_struct() {
@@ -589,6 +612,7 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
+            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     } else {
@@ -638,6 +662,7 @@ pub(crate) fn check_item_external<'tcx>(
             mode,
             ext_equal: vattrs.ext_equal,
             user_defined_invariant_fn: None,
+            sized_constraint: get_sized_constraint(span, ctxt, external_adt_def)?,
         };
         vir.datatypes.push(ctxt.spanned_new(span, datatype));
     }
