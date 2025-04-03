@@ -4564,7 +4564,7 @@ pub(crate) fn has_external_code(attrs: &Vec<Attribute>) -> bool {
 /// Constructs #[name(tokens)]
 macro_rules! declare_mk_rust_attr {
     ($name:ident, $s:ident) => {
-        fn $name(span: Span, name: &str, tokens: TokenStream) -> $s::Attribute {
+        pub(crate) fn $name(span: Span, name: &str, tokens: TokenStream) -> $s::Attribute {
             let mut path_segments = $s::punctuated::Punctuated::new();
             path_segments.push($s::PathSegment {
                 ident: $s::Ident::new(name, span),
