@@ -94,6 +94,10 @@ pub trait ExPtrPointee {
 #[verifier::external_trait_specification]
 pub trait ExIterator {
     type ExternalTraitSpecificationFor: core::iter::Iterator;
+
+    type Item;
+
+    fn next(&mut self) -> Option<Self::Item>;
 }
 
 #[verifier::external_trait_specification]
