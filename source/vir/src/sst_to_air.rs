@@ -755,7 +755,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             // These functions are special-cased to not take a decoration argument for
             // the first type parameter.
             let skip_first_decoration = match func {
-                InternalFun::ClosureReq | InternalFun::ClosureEns => true,
+                InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns => true,
                 _ => false,
             };
 
@@ -770,6 +770,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 match func {
                     InternalFun::ClosureReq => str_ident(crate::def::CLOSURE_REQ),
                     InternalFun::ClosureEns => str_ident(crate::def::CLOSURE_ENS),
+                    InternalFun::DefaultEns => str_ident(crate::def::DEFAULT_ENS),
                     InternalFun::CheckDecreaseInt => str_ident(crate::def::CHECK_DECREASE_INT),
                     InternalFun::CheckDecreaseHeight => {
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)
@@ -896,6 +897,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: CoerceMode should have been removed before here")
+            }
+            UnaryOp::DefaultEnsures => {
+                return Err(error(&exp.span, "default_ensures not allowed here"));
             }
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", exp)
@@ -1534,7 +1538,17 @@ fn assume_other_fields_unchanged_inner(
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, VirErr> {
     let expr_ctxt = &ExprCtxt::new();
     let result = match &stm.x {
-        StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest, assert_id } => {
+        StmX::Call {
+            fun,
+            resolved_method,
+            is_trait_default,
+            mode,
+            typ_args: typs,
+            args,
+            split,
+            dest,
+            assert_id,
+        } => {
             // When we emit the VCs for a call to `f`, we might also want these to include
             // the generic conditions
             // `call_requires(f, (args...))` and `call_ensures(f, (args...), ret)`
@@ -1729,19 +1743,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 }
             }
 
-            let (has_ens, ens_fun, ens_typ_args) = match resolved_method {
+            let (has_ens, resolved_ens, ens_fun, ens_typ_args) = match resolved_method {
                 Some((res_fun, res_typs)) if ctx.funcs_with_ensure_predicate[res_fun] => {
                     // Use ens predicate for the statically-resolved function
                     let res_typ_args = res_typs.iter().map(typ_to_ids).flatten().collect();
-                    (true, res_fun, res_typ_args)
+                    (true, true, res_fun, res_typ_args)
                 }
                 _ if ctx.funcs_with_ensure_predicate[&func.x.name] => {
                     // Use ens predicate for the generic function
-                    (true, &func.x.name, typ_args)
+                    (true, false, &func.x.name, typ_args)
                 }
                 _ => {
                     // No ens predicate
-                    (false, &func.x.name, typ_args)
+                    (false, false, &func.x.name, typ_args)
                 }
             };
 
@@ -1766,6 +1780,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     }
                 } else {
                     crate::messages::internal_error(&stm.span, "ens_has_return but no Dest");
+                }
+            }
+            if let Some(is_trait_default) = is_trait_default {
+                if !resolved_ens {
+                    ens_args.insert(0, air::ast_util::mk_const_bool(*is_trait_default));
                 }
             }
             if has_ens {

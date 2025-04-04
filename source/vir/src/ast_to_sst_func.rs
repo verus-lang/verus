@@ -611,10 +611,15 @@ pub fn func_def_to_sst(
             req_stms.extend(stms);
         }
     }
+
     let mut ens_spec_precondition_stms: Vec<Stm> = Vec::new();
     let mut enss: Vec<Exp> = Vec::new();
     if inherit {
         for e in req_ens_function.x.ensure.iter() {
+            if matches!(&e.x, ExprX::Unary(UnaryOp::DefaultEnsures, _)) {
+                // We're overriding req_ens_function, so we only inherit the non-default-ensures
+                continue;
+            }
             let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
             if ctx.checking_spec_preconditions() {
                 let stms = check_pure_expr(ctx, &mut state, &e_with_req_ens_params)?;
@@ -634,6 +639,12 @@ pub fn func_def_to_sst(
         }
     }
     for e in function.x.ensure.iter() {
+        // Turn our own default_ensures into normal ensures,
+        // so that they are checked in the body of the default implementation.
+        let e = match &e.x {
+            ExprX::Unary(UnaryOp::DefaultEnsures, e) => e.clone(),
+            _ => e.clone(),
+        };
         if ctx.checking_spec_preconditions() {
             ens_spec_precondition_stms.extend(check_pure_expr(ctx, &mut state, &e)?);
         } else {
