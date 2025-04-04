@@ -568,6 +568,40 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_proof_with_try code!{
+        use vstd::prelude::*;
+        #[verus_spec(
+            with Tracked(y): Tracked<&mut u32>
+        )]
+        fn f() -> Result<(), ()> {
+            Ok(())
+        }
+
+        #[verus_spec(
+            with Tracked(y): Tracked<&mut u32>
+        )]
+        fn test_try_call() -> Result<(), ()> {
+            proof_with!{Tracked(y)}
+            let _ = f()?;
+            Ok(())
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_with_err code!{
+        #[verus_spec]
+        fn test_mut_tracked(x: u32) -> u32 {
+            proof_declare!{
+                let ghost y = x;
+            }
+            proof_with!{Ghost(y)}
+            x
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "with ghost inputs/outputs cannot be applied to a non-call expression")
+}
+
+test_verify_one_file! {
     #[test] test_dual_spec code!{
         #[verus_verify(dual_spec(spec_f))]
         #[verus_spec(
