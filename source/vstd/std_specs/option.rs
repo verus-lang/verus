@@ -186,6 +186,42 @@ pub assume_specification<T: Clone>[ <Option<T> as Clone>::clone ](opt: &Option<T
         opt.is_some() ==> res.is_some() && cloned::<T>(opt.unwrap(), res.unwrap()),
 ;
 
+pub assume_specification<T: PartialEq>[ <Option<T> as PartialEq>::eq ](
+    x: &Option<T>,
+    y: &Option<T>,
+) -> (res: bool)
+    ensures
+        (match (x, y) {
+            (None, None) => res,
+            (Some(xx), Some(yy)) => call_ensures(T::eq, (xx, yy), res),
+            _ => !res,
+        }),
+;
+
+pub assume_specification<T: PartialOrd>[ <Option<T> as PartialOrd>::partial_cmp ](
+    x: &Option<T>,
+    y: &Option<T>,
+) -> (res: Option<core::cmp::Ordering>)
+    ensures
+        (match (x, y) {
+            (None, None) => res == Some(core::cmp::Ordering::Equal),
+            (None, Some(_)) => res == Some(core::cmp::Ordering::Less),
+            (Some(_), None) => res == Some(core::cmp::Ordering::Greater),
+            (Some(xx), Some(yy)) => call_ensures(T::partial_cmp, (xx, yy), res),
+        }),
+;
+
+pub assume_specification<T: Ord>[ <Option<T> as Ord>::cmp ](x: &Option<T>, y: &Option<T>) -> (res:
+    core::cmp::Ordering)
+    ensures
+        (match (x, y) {
+            (None, None) => res == core::cmp::Ordering::Equal,
+            (None, Some(_)) => res == core::cmp::Ordering::Less,
+            (Some(_), None) => res == core::cmp::Ordering::Greater,
+            (Some(xx), Some(yy)) => call_ensures(T::cmp, (xx, yy), res),
+        }),
+;
+
 // ok_or
 #[verifier::inline]
 pub open spec fn spec_ok_or<T, E>(option: Option<T>, err: E) -> Result<T, E> {

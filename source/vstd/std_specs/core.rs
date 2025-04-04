@@ -44,9 +44,18 @@ pub trait ExFrom<T>: Sized {
     type ExternalTraitSpecificationFor: core::convert::From<T>;
 }
 
+/// WARNING: the specification of PartialEq is experimental and is likely to change
 #[verifier::external_trait_specification]
 pub trait ExPartialEq<Rhs: ?Sized> {
     type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
+
+    #[verifier::strong_call_ensures]
+    fn eq(&self, other: &Rhs) -> bool;
+
+    fn ne(&self, other: &Rhs) -> (r: bool)
+        ensures
+            default_ensures(call_ensures(Self::eq, (self, other), !r)),
+    ;
 }
 
 #[verifier::external_trait_specification]
@@ -54,14 +63,80 @@ pub trait ExEq: PartialEq {
     type ExternalTraitSpecificationFor: core::cmp::Eq;
 }
 
+/// WARNING: the specification of PartialOrd is experimental and is likely to change
 #[verifier::external_trait_specification]
 pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
     type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
+
+    #[verifier::strong_call_ensures]
+    fn partial_cmp(&self, other: &Rhs) -> Option<core::cmp::Ordering>;
+
+    fn lt(&self, other: &Rhs) -> (r: bool)
+        ensures
+            default_ensures(
+                exists|o|
+                    {
+                        &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
+                        &&& r <==> o == Some(core::cmp::Ordering::Less)
+                    },
+            ),
+    ;
+
+    fn le(&self, other: &Rhs) -> (r: bool)
+        ensures
+            default_ensures(
+                exists|o|
+                    {
+                        &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
+                        &&& r <==> o matches Some(
+                            core::cmp::Ordering::Less
+                            | core::cmp::Ordering::Equal,
+                        )
+                    },
+            ),
+    ;
+
+    fn gt(&self, other: &Rhs) -> (r: bool)
+        ensures
+            default_ensures(
+                exists|o|
+                    {
+                        &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
+                        &&& r <==> o == Some(core::cmp::Ordering::Greater)
+                    },
+            ),
+    ;
+
+    fn ge(&self, other: &Rhs) -> (r: bool)
+        ensures
+            default_ensures(
+                exists|o|
+                    {
+                        &&& #[trigger] call_ensures(Self::partial_cmp, (self, other), o)
+                        &&& r <==> o matches Some(
+                            core::cmp::Ordering::Greater
+                            | core::cmp::Ordering::Equal,
+                        )
+                    },
+            ),
+    ;
 }
 
+/// WARNING: the specification of Ord is experimental and is likely to change
 #[verifier::external_trait_specification]
 pub trait ExOrd: Eq + PartialOrd {
     type ExternalTraitSpecificationFor: Ord;
+
+    #[verifier::strong_call_ensures]
+    fn cmp(
+        &self,
+        other: &Self,
+    ) -> core::cmp::Ordering;
+    // TODO: specs for max, min, clamp.
+    // Note that the semantics of the default max/min changed very recently (Jan 30, 2025)
+    // from being based on cmp to being based on lt.
+    // Since we're still on an older version, we might want to wait to define these specs.
+
 }
 
 #[verifier::external_trait_specification]
@@ -109,6 +184,9 @@ pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
     opens_invariants none
     no_unwind
 ;
+
+#[verifier::external_type_specification]
+pub struct ExOrdering(core::cmp::Ordering);
 
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(V)]
@@ -233,6 +311,16 @@ impl<T> IndexSetTrustedSpec<usize> for [T] {
 pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
     requires
         false,
+;
+
+pub assume_specification[ <bool as PartialEq<bool>>::eq ](x: &bool, y: &bool) -> (res: bool)
+    ensures
+        res <==> x == y,
+;
+
+pub assume_specification[ <bool as PartialEq<bool>>::ne ](x: &bool, y: &bool) -> (res: bool)
+    ensures
+        res <==> x != y,
 ;
 
 } // verus!

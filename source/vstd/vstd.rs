@@ -33,6 +33,8 @@ pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_set;
 pub mod invariant;
+pub mod laws_cmp;
+pub mod laws_eq;
 pub mod layout;
 pub mod map;
 pub mod map_lib;
@@ -93,6 +95,8 @@ pub broadcast group group_vstd_default {
     raw_ptr::group_raw_ptr_axioms,
     compute::all_spec_ensures,
     layout::group_layout_axioms,
+    laws_eq::group_laws_eq,
+    laws_cmp::group_laws_cmp,
 }
 
 #[cfg(not(feature = "alloc"))]
@@ -113,6 +117,8 @@ pub broadcast group group_vstd_default {
     raw_ptr::group_raw_ptr_axioms,
     compute::all_spec_ensures,
     layout::group_layout_axioms,
+    laws_eq::group_laws_eq,
+    laws_cmp::group_laws_cmp,
 }
 
 } // verus!
