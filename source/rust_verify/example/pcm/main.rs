@@ -7,7 +7,6 @@ pub mod agreement;
 pub mod log;
 pub mod monotonic_counter;
 pub mod oneshot;
-pub mod frac;
 
 verus! {
 
