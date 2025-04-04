@@ -288,29 +288,6 @@ test_verify_one_file_with_options! {
             type ExternalTraitSpecificationFor: core::iter::IntoIterator;
         }
 
-        #[verifier::external_trait_specification]
-        pub trait ExPartialEq<Rhs: ?Sized> {
-            type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
-        }
-
-        #[verifier::external_trait_specification]
-        pub trait ExEq: PartialEq {
-            type ExternalTraitSpecificationFor: core::cmp::Eq;
-        }
-
-        #[verifier::external_trait_specification]
-        pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
-            type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
-        }
-
-        #[verifier::external_trait_specification]
-        pub trait ExOrd: Eq + PartialOrd {
-            type ExternalTraitSpecificationFor: Ord;
-        }
-
-        #[verifier::external_type_specification]
-        pub struct ExOrdering(core::cmp::Ordering);
-
         #[verifier::external_type_specification]
         #[verifier::external_body]
         #[verifier::reject_recursive_types_in_ground_variants(I)]

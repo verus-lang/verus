@@ -1,6 +1,8 @@
 #![allow(unused_imports)]
 use super::super::prelude::*;
 
+use core::cmp::Ordering;
+
 macro_rules! num_specs {
     ($uN: ty, $iN: ty, $modname_u:ident, $modname_i:ident, $range:expr) => {
         verus! {
@@ -14,6 +16,30 @@ macro_rules! num_specs {
 
             pub assume_specification[<$uN as Clone>::clone](x: &$uN) -> (res: $uN)
                 ensures res == x;
+
+            pub assume_specification[<$uN as PartialEq<$uN>>::eq](x: &$uN, y: &$uN) -> (res: bool)
+                ensures res <==> x == y;
+
+            pub assume_specification[<$uN as PartialEq<$uN>>::ne](x: &$uN, y: &$uN) -> (res: bool)
+                ensures res <==> x != y;
+
+            pub assume_specification[<$uN as Ord>::cmp](x: &$uN, y: &$uN) -> (res: Ordering)
+                ensures res == (if *x < *y { Ordering::Less } else if *x > *y { Ordering::Greater } else { Ordering::Equal });
+
+            pub assume_specification[<$uN as PartialOrd<$uN>>::partial_cmp](x: &$uN, y: &$uN) -> (res: Option<Ordering>)
+                ensures res == (if *x < *y { Some(Ordering::Less) } else if *x > *y { Some(Ordering::Greater) } else { Some(Ordering::Equal) });
+
+            pub assume_specification[<$uN as PartialOrd<$uN>>::lt](x: &$uN, y: &$uN) -> (res: bool)
+                ensures res <==> *x < *y;
+
+            pub assume_specification[<$uN as PartialOrd<$uN>>::le](x: &$uN, y: &$uN) -> (res: bool)
+                ensures res <==> *x <= *y;
+
+            pub assume_specification[<$uN as PartialOrd<$uN>>::gt](x: &$uN, y: &$uN) -> (res: bool)
+                ensures res <==> *x > *y;
+
+            pub assume_specification[<$uN as PartialOrd<$uN>>::ge](x: &$uN, y: &$uN) -> (res: bool)
+                ensures res <==> *x >= *y;
 
             pub open spec fn wrapping_add(x: $uN, y: $uN) -> $uN {
                 if x + y > <$uN>::MAX {
@@ -129,6 +155,30 @@ macro_rules! num_specs {
 
             pub assume_specification[<$iN as Clone>::clone](x: &$iN) -> (res: $iN)
                 ensures res == x;
+
+            pub assume_specification[<$iN as PartialEq<$iN>>::eq](x: &$iN, y: &$iN) -> (res: bool)
+                ensures res <==> x == y;
+
+            pub assume_specification[<$iN as PartialEq<$iN>>::ne](x: &$iN, y: &$iN) -> (res: bool)
+                ensures res <==> x != y;
+
+            pub assume_specification[<$iN as Ord>::cmp](x: &$iN, y: &$iN) -> (res: Ordering)
+                ensures res == (if *x < *y { Ordering::Less } else if *x > *y { Ordering::Greater } else { Ordering::Equal });
+
+            pub assume_specification[<$iN as PartialOrd<$iN>>::partial_cmp](x: &$iN, y: &$iN) -> (res: Option<Ordering>)
+                ensures res == (if *x < *y { Some(Ordering::Less) } else if *x > *y { Some(Ordering::Greater) } else { Some(Ordering::Equal) });
+
+            pub assume_specification[<$iN as PartialOrd<$iN>>::lt](x: &$iN, y: &$iN) -> (res: bool)
+                ensures res <==> *x < *y;
+
+            pub assume_specification[<$iN as PartialOrd<$iN>>::le](x: &$iN, y: &$iN) -> (res: bool)
+                ensures res <==> *x <= *y;
+
+            pub assume_specification[<$iN as PartialOrd<$iN>>::gt](x: &$iN, y: &$iN) -> (res: bool)
+                ensures res <==> *x > *y;
+
+            pub assume_specification[<$iN as PartialOrd<$iN>>::ge](x: &$iN, y: &$iN) -> (res: bool)
+                ensures res <==> *x >= *y;
 
             pub open spec fn wrapping_add(x: $iN, y: $iN) -> $iN {
                 if x + y > <$iN>::MAX {
