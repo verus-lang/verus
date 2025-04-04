@@ -831,7 +831,8 @@ fn exec_closure_spec_ensures(
     params: &VarBinders<Typ>,
     ret: &VarBinder<Typ>,
     ensures: &Vec<Expr>,
-    default_ens: bool,
+    builtin_spec_fun: BuiltinSpecFun,
+    equiv: bool,
 ) -> Result<Expr, VirErr> {
     // For ensures:
 
@@ -872,15 +873,13 @@ fn exec_closure_spec_ensures(
         closure_var,
         &tuple_var,
         &ret_var,
-        if default_ens { BuiltinSpecFun::DefaultEns } else { BuiltinSpecFun::ClosureEns },
+        builtin_spec_fun,
     ));
 
     let bool_typ = Arc::new(TypX::Bool);
-    let ens_quant_body = SpannedTyped::new(
-        span,
-        &bool_typ,
-        ExprX::Binary(BinaryOp::Implies, closure_ens_call.clone(), enss_body),
-    );
+    let op = if equiv { BinaryOp::Eq(Mode::Spec) } else { BinaryOp::Implies };
+    let ens_quant_body =
+        SpannedTyped::new(span, &bool_typ, ExprX::Binary(op, closure_ens_call.clone(), enss_body));
 
     let forall = Quant { quant: air::ast::Quant::Forall };
     let binders =
@@ -903,8 +902,16 @@ fn exec_closure_spec(
     let req_forall = exec_closure_spec_requires(state, span, closure_var, params, requires)?;
 
     if ensures.len() > 0 {
-        let ens_forall =
-            exec_closure_spec_ensures(state, span, closure_var, params, ret, ensures, false)?;
+        let ens_forall = exec_closure_spec_ensures(
+            state,
+            span,
+            closure_var,
+            params,
+            ret,
+            ensures,
+            BuiltinSpecFun::ClosureEns,
+            false,
+        )?;
         Ok(conjoin(span, &vec![req_forall, ens_forall]))
     } else {
         Ok(req_forall)
@@ -922,7 +929,7 @@ pub(crate) fn need_fndef_axiom(fndef_typs: &HashSet<Fun>, f: &Function) -> bool 
 }
 
 fn add_fndef_axioms_to_function(
-    _ctx: &GlobalCtx,
+    ctx: &GlobalCtx,
     state: &mut State,
     function: &Function,
 ) -> Result<Function, VirErr> {
@@ -1001,19 +1008,50 @@ fn add_fndef_axioms_to_function(
             _ => closure_enss.push(e.clone()),
         }
     }
-    for (default_ens, enss) in [(false, closure_enss), (true, default_enss)] {
-        if enss.len() > 0 {
-            let ens_forall = exec_closure_spec_ensures(
-                state,
-                &function.span,
-                &fndef_singleton,
-                &params,
-                &ret,
-                &enss,
-                default_ens,
-            )?;
-            fndef_axioms.push(ens_forall);
+
+    let strong_call_ensures = ctx.fun_attrs[fun].strong_call_ensures;
+    if strong_call_ensures {
+        let (_, tuple_var) = exec_closure_spec_param(state, &function.span, &params);
+        let ret_var = SpannedTyped::new(&function.span, &ret.a, ExprX::Var(ret.name.clone()));
+        let strong_ens_expr = mk_closure_ens_call(
+            state,
+            &function.span,
+            &params,
+            &fndef_singleton,
+            &tuple_var,
+            &ret_var,
+            BuiltinSpecFun::StrongTraitEns,
+        );
+        if is_trait_method_impl {
+            closure_enss.push(strong_ens_expr);
+        } else if let FunctionKind::TraitMethodDecl { has_default: true, .. } = &function.x.kind {
+            default_enss.push(strong_ens_expr);
         }
+    }
+
+    let mut enss_list: Vec<(BuiltinSpecFun, Vec<Expr>, bool)> = Vec::new();
+    if function.x.attrs.strong_call_ensures {
+        enss_list.push((BuiltinSpecFun::StrongTraitEns, closure_enss.clone(), true));
+    }
+    if closure_enss.len() > 0 {
+        let equiv = is_trait_method_impl && strong_call_ensures;
+        enss_list.push((BuiltinSpecFun::ClosureEns, closure_enss, equiv));
+    }
+    if default_enss.len() > 0 {
+        enss_list.push((BuiltinSpecFun::DefaultEns, default_enss, strong_call_ensures));
+    }
+    for (builtin_spec_fun, enss, equiv) in enss_list {
+        let ens_forall = exec_closure_spec_ensures(
+            state,
+            &function.span,
+            &fndef_singleton,
+            &params,
+            &ret,
+            &enss,
+            builtin_spec_fun,
+            equiv,
+        )?;
+        fndef_axioms.push(ens_forall);
     }
 
     let mut functionx = function.x.clone();

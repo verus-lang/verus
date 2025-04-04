@@ -321,6 +321,9 @@ pub(crate) enum Attr {
     Sealed,
     // Marks spec functions that depend on resolved prophecies
     ProphecyDependent,
+    // When true on a trait decl function, the call_ensures axiom is <==> rather than ==>
+    // and prophecy is disallowed in the ensures.
+    StrongCallEnsures,
     // Unrecognized attribute that starts with 'rustc_', internal to the stdlib
     UnsupportedRustcAttr(String, Span),
     // Broadcast proof for size_of global
@@ -574,6 +577,9 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "sealed" => v.push(Attr::Sealed),
                 AttrTree::Fun(_, arg, None) if arg == "prophetic" => {
                     v.push(Attr::ProphecyDependent)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "strong_call_ensures" => {
+                    v.push(Attr::StrongCallEnsures)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "type_invariant" => {
                     v.push(Attr::TypeInvariantFn)
@@ -913,6 +919,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) size_of_global: bool,
     pub(crate) sealed: bool,
     pub(crate) prophecy_dependent: bool,
+    pub(crate) strong_call_ensures: bool,
     pub(crate) item_broadcast_use: bool,
     pub(crate) size_of_broadcast_proof: bool,
     pub(crate) type_invariant_fn: bool,
@@ -1060,6 +1067,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         internal_get_field_many_variants: false,
         sealed: false,
         prophecy_dependent: false,
+        strong_call_ensures: false,
         item_broadcast_use: false,
         size_of_broadcast_proof: false,
         type_invariant_fn: false,
@@ -1126,6 +1134,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::InternalGetFieldManyVariants => vs.internal_get_field_many_variants = true,
             Attr::Sealed => vs.sealed = true,
             Attr::ProphecyDependent => vs.prophecy_dependent = true,
+            Attr::StrongCallEnsures => vs.strong_call_ensures = true,
             Attr::UnsupportedRustcAttr(name, span) => {
                 unsupported_rustc_attr = Some((name.clone(), span))
             }

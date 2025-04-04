@@ -460,7 +460,10 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(args)))
             }
             CallFun::InternalFun(
-                InternalFun::ClosureReq | InternalFun::ClosureEns | InternalFun::DefaultEns,
+                InternalFun::ClosureReq
+                | InternalFun::ClosureEns
+                | InternalFun::DefaultEns
+                | InternalFun::StrongTraitEns,
             ) => {
                 let exps = visit_exps_poly(ctx, state, exps);
                 mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), exps))
