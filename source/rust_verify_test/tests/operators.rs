@@ -101,16 +101,31 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_cmp_usize verus_code! {
-        use vstd::prelude::*;
+    #[test] test_partial_eq_overload verus_code! {
         use core::cmp::PartialEq;
 
-        fn test(a: usize, b: usize) {
-            let c1 = (a == b);
-            let c2 = a.eq(&b);
-            assert(c1 == c2);
+        pub struct A(pub usize);
+
+        #[verifier::external_trait_specification]
+        pub trait ExPartialEqBasic<Rhs: ?Sized> {
+            type ExternalTraitSpecificationFor: PartialEq<Rhs>;
+            fn eq(&self, rhs: &Rhs) -> (ret: bool);
         }
-    } => Ok(())
+
+        impl PartialEq<A> for A {
+            fn eq(&self, rhs: &A) -> (ret: bool)
+            ensures
+                ret <==> (self.0 != rhs.0)
+            {
+                self.0 != rhs.0
+            }
+        }
+
+        fn test_usize_cmp(a: A, b: A) {
+            let c2 = (a == b);
+            assert(c1 == (a@ != b@)); //FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -155,37 +170,7 @@ test_verify_one_file! {
     #[test] test_operator_overload verus_code! {
         use vstd::prelude::*;
         use vstd::std_specs::ops::*;
-        use vstd::std_specs::cmp::*;
 
-        fn check_sub<Out, T: core::ops::Sub<Output = Out> + core::cmp::PartialOrd>(x: T, y: T) -> (ret: Option<Out>)
-            requires
-                obeys_comparison_model::<T, T>(),
-                vstd::std_specs::cmp::spec_gt(&x, &y) ==> call_requires(T::sub, (x, y))
-            ensures
-                ret.is_some() == vstd::std_specs::cmp::spec_gt(&x, &y),
-                ret.is_some() ==> call_ensures(T::sub, (x, y), ret.unwrap()),
-        {
-            if x > y {
-                assert(obeys_comparison_model::<T, T>() ==> spec_gt(&x, &y));
-                Some(x - y)
-            } else {
-                None
-            }
-        }
-
-        fn check_sub_u8(x: u8, y: u8)
-        {
-            let out = check_sub(x, y);
-            assert(out.is_some() ==> (x >= y));
-        }
-
-        impl SpecPartialEqOp<A> for A {
-            closed spec fn spec_partial_eq(&self, rhs: &A) -> bool {
-                self.0 == rhs.0
-            }
-        }
-
-        #[derive(PartialEq)]
         pub struct A(pub usize);
 
         impl SpecSubRequires<A> for A {
@@ -202,43 +187,6 @@ test_verify_one_file! {
                 assert(self.0 >= 20 && rhs.0 <= 10);
                 self.0 - rhs.0 - 10
             }
-        }
-
-        impl SpecPartialOrdOp<A> for A {
-            closed spec fn spec_partial_cmp(&self, rhs: &A) -> Option<core::cmp::Ordering> {
-                if self.0 > 30 && rhs.0 < 9 {
-                    Some(core::cmp::Ordering::Greater)
-                } else if self.0 == rhs.0 {
-                    Some(core::cmp::Ordering::Equal)
-                } else {
-                    None
-                }
-            }
-            proof fn lemma_cmp_eq_no_logic_err(&self, rhs: &A) {}
-        }
-
-        impl core::cmp::PartialOrd<A> for A {
-            fn partial_cmp(&self, rhs: &A) -> Option<core::cmp::Ordering>{
-                if self.0 > 30 && rhs.0 < 9 {
-                    Some(core::cmp::Ordering::Greater)
-                } else if self.0 == rhs.0  {
-                    Some(core::cmp::Ordering::Equal)
-                } else {
-                    None
-                }
-            }
-        }
-
-        fn check_sub_special()
-        {
-            let a1 = A(30);
-            let a2 = A(9);
-            if a1 > a2 {
-                assert(a1.0 > 30);
-            }
-            let res = a1 - a2;
-            assert(res == 11);
-
         }
 
     } => Ok(())
@@ -267,22 +215,6 @@ test_verify_one_file! {
             let ord2 = x1.sub(x2);
         }
     } => Ok(())
-}
-
-test_verify_one_file! {
-    #[test] test_operator_overload_failed_precondition verus_code! {
-        use vstd::prelude::*;
-        use vstd::std_specs::ops::*;
-        use vstd::std_specs::cmp::*;
-        fn check_add<Out, T: core::ops::Sub<Output = Out> + core::cmp::PartialOrd>(x: T, y: T) -> (ret: Option<Out>)
-        {
-            if x >= y {
-                Some(x - y) // FAILS
-            } else {
-                None
-            }
-        }
-    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {

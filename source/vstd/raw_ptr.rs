@@ -144,28 +144,12 @@ impl<T: ?Sized> View for *mut T {
     uninterp spec fn view(&self) -> Self::V;
 }
 
-#[cfg(verus_keep_ghost)]
-impl<T: ?Sized> super::std_specs::cmp::SpecPartialEqOp<*mut T> for *mut T {
-    open spec fn spec_partial_eq(&self, other: &*mut T) -> bool {
-        &&& self@.addr == other@.addr
-        &&& self@.metadata == other@.metadata
-    }
-}
-
 impl<T: ?Sized> View for *const T {
     type V = PtrData;
 
     #[verifier::inline]
     open spec fn view(&self) -> Self::V {
         (*self as *mut T).view()
-    }
-}
-
-#[cfg(verus_keep_ghost)]
-impl<T: ?Sized> super::std_specs::cmp::SpecPartialEqOp<*const T> for *const T {
-    open spec fn spec_partial_eq(&self, other: &*const T) -> bool {
-        &&& self@.addr == other@.addr
-        &&& self@.metadata == other@.metadata
     }
 }
 
