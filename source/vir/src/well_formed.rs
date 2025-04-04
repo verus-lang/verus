@@ -1162,6 +1162,47 @@ fn check_datatype(ctxt: &Ctxt, dt: &Datatype) -> Result<(), VirErr> {
         }
     }
 
+    // I actually think it's impossible to trigger this, at least when the datatype's public
+    // signature is well-formed (i.e., Verus recognizes all trait bounds, etc.)
+    //
+    // You might think we could have something like this:
+    //
+    //    #[verifier::external_body]
+    //    struct X<T> {
+    //         last_field: SomeExternalType<T>
+    //    }
+    //
+    // which results in a trait bound
+    //
+    //    X<T>: Sized where SomeExternalType<T>: Sized
+    //
+    // which would then cause an error because Verus doesn't recognize `SomeExternalType`.
+    //
+    // However, the last trait bound will itself be simplified (e.g., to `T: Sized` or similiar).
+    // Even with more complicated situations like associated types, I think it's not possible
+    // to trigger this error. Rust handles all this for us before we ever get the sized_constraint.
+
+    if let Some(sized_constraint) = &dt.x.sized_constraint {
+        match check_typ(ctxt, sized_constraint, &dt.span) {
+            Ok(()) => {}
+            Err(e) => {
+                let typ_args = Arc::new(
+                    dt.x.typ_params
+                        .iter()
+                        .map(|(id, _)| Arc::new(TypX::TypParam(id.clone())))
+                        .collect::<Vec<_>>(),
+                );
+                let t = Arc::new(TypX::Datatype(dt.x.name.clone(), typ_args, Arc::new(vec![])));
+                let e = e.help(format!(
+                    "this type appears in the implicit trait bound, `{:}: Sized` where {:}: Sized`",
+                    typ_to_diagnostic_str(&t),
+                    typ_to_diagnostic_str(sized_constraint)
+                ));
+                return Err(e);
+            }
+        }
+    }
+
     Ok(())
 }
 
