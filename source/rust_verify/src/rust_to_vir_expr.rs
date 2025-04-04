@@ -1386,6 +1386,8 @@ fn operator_overload_to_vir<'tcx>(
     } else {
         None
     };
+
+    let mut call_type = vir::ast::CallTargetKind::Static;
     let (fun, typ_args, args) = if let Some((op, lhs, rhs)) = bexpr {
         let do_replace = match op.node {
             BinOpKind::Eq | BinOpKind::Ne => {
@@ -1413,6 +1415,28 @@ fn operator_overload_to_vir<'tcx>(
         else {
             crate::internal_err!(span, "operator needs an accessible trait");
         };
+        if matches!(op.node, BinOpKind::Le | BinOpKind::Lt | BinOpKind::Ge | BinOpKind::Gt) {
+            call_type = vir::ast::CallTargetKind::Dynamic; // ensure_default=false
+            let lhs_ty = bctx.types.node_type(lhs.hir_id);
+            let rhs_ty = bctx.types.node_type(rhs.hir_id);
+            let param_env = tcx.param_env(bctx.fun_id);
+            let Some(assoc_fn) = tcx
+                .associated_items(trait_ref)
+                .filter_by_name_unhygienic(fun_sym)
+                .find(|item| item.kind == rustc_middle::ty::AssocKind::Fn)
+            else {
+                panic!("could not find function");
+            };
+            let substs = tcx.mk_args(&[lhs_ty.into(), rhs_ty.into()]);
+            if let Ok(Some(instance)) =
+                tcx.resolve_instance_raw(param_env.and((assoc_fn.def_id, substs)))
+            {
+                let assoc = tcx.associated_item(instance.def_id());
+                if matches!(assoc.container, rustc_middle::ty::AssocItemContainer::TraitContainer) {
+                    call_type = vir::ast::CallTargetKind::ExternalTraitDefault; // ensure_default=true
+                }
+            }
+        }
         let fun = Arc::new(FunX {
             path: trait_method_path(tcx, tcx.def_path(trait_ref), fun_sym.to_ident_string()),
         });
@@ -1455,7 +1479,7 @@ fn operator_overload_to_vir<'tcx>(
     };
     let ret_type = &expr_typ(expr)?;
     let call_target = CallTarget::Fun(
-        vir::ast::CallTargetKind::Static,
+        call_type,
         fun.clone(),
         typ_args,
         Arc::new(vec![ImplPath::FnDefImplPath(fun)]),
