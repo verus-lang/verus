@@ -109,6 +109,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let decorate_tracked = str_to_node(DECORATE_TRACKED);
     let decorate_never = str_to_node(DECORATE_NEVER);
     let decorate_const_ptr = str_to_node(DECORATE_CONST_PTR);
+    let decorate_struct_inherit = str_to_node(DECORATE_STRUCT_INHERIT);
     let has_type = str_to_node(HAS_TYPE);
     let as_type = str_to_node(AS_TYPE);
     let mk_fun = str_to_node(MK_FUN);
@@ -172,6 +173,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-sort [decoration] 0)
         (declare-const [decorate_nil_sized] [decoration])
         (declare-const [decorate_nil_slice] [decoration])
+        (declare-fun [decorate_struct_inherit] ([decoration]) [decoration])
         (declare-fun [decorate_ref] ([decoration]) [decoration])
         (declare-fun [decorate_mut_ref] ([decoration]) [decoration])
         (declare-fun [decorate_box] ([decoration] [typ] [decoration]) [decoration])
@@ -193,6 +195,24 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [const_int] ([typ]) Int)
         (declare-fun [const_bool] ([typ]) Bool)
 
+        // The sized-ness of a type is determined by its decoration.
+        // Ref, Box, etc. are all typed.
+        // For the "base" decorations, we can use either decoration_nil_sized (sized)
+        // or decoration_nil_slice (unsized). For new DST types, add a new decoration_nil_X kind.
+        //
+        // A struct is usually decoration_nil (sized). However, some structs may have their
+        // sizedness conditional on some other type (the last field of the type).
+        // This is found on the sized_constraint field of a VIR Datatype. When this optional
+        // value is present, we use `decorate_struct_inherit`.
+        (axiom (forall ((d [decoration])) (!
+            (=>
+                ([sized] d)
+                ([sized] ([decorate_struct_inherit] d))
+            )
+            :pattern (([sized] ([decorate_struct_inherit] d)))
+            :qid prelude_sized_decorate_struct_inherit
+            :skolemid skolem_prelude_sized_decorate_struct_inherit
+        )))
         (axiom (forall ((d [decoration])) (!
             ([sized] ([decorate_ref] d))
             :pattern (([sized] ([decorate_ref] d)))

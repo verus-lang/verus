@@ -23,7 +23,7 @@ use crate::def::{
     SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::messages::{error, error_with_label, Span};
-use crate::poly::{typ_as_mono, typ_is_poly, MonoTyp, MonoTypX};
+use crate::poly::{typ_as_mono, typ_is_poly, MonoTyp, MonoTypX, MonoTyps};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
     UnwindSst,
@@ -235,8 +235,14 @@ pub fn monotyp_to_id(ctx: &Ctx, typ: &MonoTyp) -> Vec<Expr> {
             for t in typs.iter() {
                 args.extend(monotyp_to_id(ctx, t));
             }
-            // TODO: handle DSTs
-            mk_id_sized(air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args)))
+            let t = air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args));
+
+            if crate::context::DECORATE {
+                let ds = decoration_for_datatype_mono(ctx, dt, typs);
+                vec![ds, t]
+            } else {
+                vec![t]
+            }
         }
         MonoTypX::Decorate(d, typ) if crate::context::DECORATE => {
             let ds_typ = monotyp_to_id(ctx, typ);
@@ -321,8 +327,13 @@ pub fn typ_to_ids(ctx: &Ctx, typ: &Typ) -> Vec<Expr> {
         }
         TypX::FnDef(fun, typs, _resolved_fun) => mk_id_sized(fndef_id(ctx, fun, typs)),
         TypX::Datatype(dt, typs, _) => {
-            // TODO handle DSTs
-            mk_id_sized(datatype_id(ctx, &encode_dt_as_path(dt), typs))
+            let t = datatype_id(ctx, &encode_dt_as_path(dt), typs);
+            if crate::context::DECORATE {
+                let ds = decoration_for_datatype(ctx, dt, typs);
+                vec![ds, t]
+            } else {
+                vec![t]
+            }
         }
         TypX::Primitive(name, typs) => {
             let base = decoration_base_for_primitive(*name);
@@ -420,6 +431,31 @@ pub(crate) fn expr_has_type(expr: &Expr, typ: &Expr) -> Expr {
 
 pub(crate) fn expr_has_typ(ctx: &Ctx, expr: &Expr, typ: &Typ) -> Expr {
     expr_has_type(expr, &typ_to_id(ctx, typ))
+}
+
+pub(crate) fn decoration_for_datatype_mono(ctx: &Ctx, dt: &Dt, monotyps: &MonoTyps) -> Expr {
+    let datatype = ctx.datatype_map.get(dt).unwrap();
+    match &datatype.x.sized_constraint {
+        None => str_var(crate::def::DECORATE_NIL_SIZED),
+        Some(constraint) => {
+            let typs = Arc::new(vec_map(&**monotyps, crate::poly::monotyp_to_typ));
+            let c = subst_typ_for_datatype(&datatype.x.typ_params, &typs, constraint);
+            let dec = typ_to_ids(ctx, &c)[0].clone();
+            str_apply(crate::def::DECORATE_STRUCT_INHERIT, &vec![dec])
+        }
+    }
+}
+
+pub(crate) fn decoration_for_datatype(ctx: &Ctx, dt: &Dt, typs: &Typs) -> Expr {
+    let datatype = ctx.datatype_map.get(dt).unwrap();
+    match &datatype.x.sized_constraint {
+        None => str_var(crate::def::DECORATE_NIL_SIZED),
+        Some(constraint) => {
+            let c = subst_typ_for_datatype(&datatype.x.typ_params, typs, constraint);
+            let dec = typ_to_ids(ctx, &c)[0].clone();
+            str_apply(crate::def::DECORATE_STRUCT_INHERIT, &vec![dec])
+        }
+    }
 }
 
 // If expr has type typ, what can we assume to be true about expr?
