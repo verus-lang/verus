@@ -132,23 +132,23 @@ test_verify_one_file! {
             b: B,
         }
 
-        proof fn test5<T>() {
+        proof fn test_sized_struct<T>() {
             assert(is_sized::<Y>());
         }
 
-        proof fn test6<T>() {
+        proof fn test_unsized_struct<T>() {
             assert(is_sized::<X>()); // FAILS
         }
 
-        proof fn test7<T>() {
+        proof fn test_conditional_struct<T>() {
             assert(is_sized::<Z<T>>());
         }
 
-        proof fn test8<T: ?Sized>() {
+        proof fn test_conditional_struct_fail<T: ?Sized>() {
             assert(is_sized::<Z<T>>()); // FAILS
         }
 
-        proof fn test9<T: ?Sized>() {
+        proof fn test_reference<T: ?Sized>() {
             assert(is_sized::<&T>());
             assert(is_sized::<T>()); // FAILS
         }
