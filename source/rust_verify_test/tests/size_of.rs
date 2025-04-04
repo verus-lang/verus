@@ -148,9 +148,52 @@ test_verify_one_file! {
             assert(is_sized::<Z<T>>()); // FAILS
         }
 
+        proof fn test_conditional_struct_specific() {
+            assert(is_sized::<Z<u32>>());
+        }
+
+        proof fn test_conditional_struct_specific_fail() {
+            assert(is_sized::<Z<[bool]>>()); // FAILS
+        }
+
+        #[verifier::external_body]
+        #[verifier::reject_recursive_types(B)]
+        struct Zopaque<B: ?Sized> {
+            a: u32,
+            b: B,
+        }
+
+        proof fn test_conditional_struct_opaque<T>() {
+            assert(is_sized::<Zopaque<T>>());
+        }
+
+        proof fn test_conditional_struct_opaque_fail<T: ?Sized>() {
+            assert(is_sized::<Zopaque<T>>()); // FAILS
+        }
+
+        proof fn test_conditional_struct_opaque_specific() {
+            assert(is_sized::<Zopaque<u32>>());
+        }
+
+        proof fn test_conditional_struct_opaque_specific_fail() {
+            assert(is_sized::<Zopaque<[bool]>>()); // FAILS
+        }
+
         proof fn test_reference<T: ?Sized>() {
             assert(is_sized::<&T>());
             assert(is_sized::<T>()); // FAILS
         }
-    } => Err(err) => assert_fails(err, 5)
+
+        proof fn test_tuple<T: ?Sized>() {
+            assert(is_sized::<(u64, T)>()); // FAILS
+        }
+
+        proof fn test_tuple_sized<T: Sized>() {
+            assert(is_sized::<()>());
+            assert(is_sized::<(u64, )>());
+            assert(is_sized::<(T, )>());
+            assert(is_sized::<(u64, T)>());
+            assert(is_sized::<(u64, u32, T)>());
+        }
+    } => Err(err) => assert_fails(err, 9)
 }
