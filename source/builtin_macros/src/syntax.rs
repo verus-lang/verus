@@ -1109,7 +1109,8 @@ impl Visitor {
         match stmt {
             Stmt::Local(local) => self.visit_local_extend(local),
             Stmt::Item(Item::BroadcastUse(broadcast_use)) => {
-                let BroadcastUse { attrs, broadcast_use_tokens: _, paths, semi: _ } = broadcast_use;
+                let BroadcastUse { attrs, broadcast_use_tokens: _, brace_token: _, paths, semi: _ } =
+                    broadcast_use;
                 if self.erase_ghost.erase() {
                     (true, vec![])
                 } else {

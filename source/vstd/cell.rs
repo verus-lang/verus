@@ -15,7 +15,7 @@ use super::*;
 
 verus! {
 
-broadcast use super::map::group_map_axioms, super::set::group_set_axioms;
+broadcast use {super::map::group_map_axioms, super::set::group_set_axioms};
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 
 /// `PCell<V>` (which stands for "permissioned call") is the primitive Verus `Cell` type.

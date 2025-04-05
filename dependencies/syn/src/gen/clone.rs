@@ -245,6 +245,7 @@ impl Clone for crate::BroadcastUse {
         crate::BroadcastUse {
             attrs: self.attrs.clone(),
             broadcast_use_tokens: self.broadcast_use_tokens.clone(),
+            brace_token: self.brace_token.clone(),
             paths: self.paths.clone(),
             semi: self.semi.clone(),
         }
