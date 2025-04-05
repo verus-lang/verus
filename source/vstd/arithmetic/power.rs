@@ -513,7 +513,7 @@ pub proof fn lemma_pow_division_inequality(x: nat, b: nat, e1: nat, e2: nat)
                 pow(b as int, e2),
             );
             lemma_fundamental_div_mod(x as int, pow(b as int, e2));
-            broadcast use lemma_mul_is_commutative, group_mod_properties;
+            broadcast use {lemma_mul_is_commutative, group_mod_properties};
 
             lemma_pow_adds(b as int, (e1 - e2) as nat, e2);
         }
