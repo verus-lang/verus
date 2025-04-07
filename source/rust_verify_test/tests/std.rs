@@ -548,12 +548,22 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] external_derive_attr ["--no-external-by-default"] => verus_code! {
-        // When an auto-derived impl is produced, it doesn't get the verus_macro attribute.
-        // Since this test case uses --external-by-default, these derived impls do not
-        // get processed.
-
         #[derive(Clone, Copy)]
         #[verifier::external_derive]
+        struct X {
+            u: u64,
+        }
+
+        fn test(x: X) {
+            let a = x.clone();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
+}
+
+test_verify_one_file_with_options! {
+    #[test] external_derive_attr_list ["--no-external-by-default"] => verus_code! {
+        #[derive(Clone, Copy)]
+        #[verifier::external_derive(Clone)]
         struct X {
             u: u64,
         }

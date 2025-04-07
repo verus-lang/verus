@@ -259,14 +259,14 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         // Compute the VerifState of this particular item based on its context
         // and its attributes.
 
-        let my_eattrs = eattrs;
+        let my_eattrs = eattrs.clone();
 
         let auto_derive_eattrs =
             get_attributes_for_automatic_derive(&self.ctxt, &general_item, &attrs, span);
         let eattrs = if let Some(auto_derive_eattrs) = auto_derive_eattrs {
             auto_derive_eattrs
         } else {
-            my_eattrs
+            my_eattrs.clone()
         };
 
         let state_for_this_item = match self.state {
@@ -613,9 +613,9 @@ fn get_attributes_for_automatic_derive<'tcx>(
     match general_item {
         GeneralItem::Item(item) => match &item.kind {
             ItemKind::Impl(impll) => {
-                if impll.of_trait.is_none() {
+                let Some(of_trait) = impll.of_trait else {
                     return None;
-                }
+                };
 
                 let type_def_id = match impll.self_ty.kind {
                     rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => {
@@ -637,7 +637,29 @@ fn get_attributes_for_automatic_derive<'tcx>(
                         }
                     };
 
-                    if type_eattrs.external_auto_derives {
+                    if match &type_eattrs.external_auto_derives {
+                        crate::attributes::AutoDerivesAttr::Regular => false,
+                        crate::attributes::AutoDerivesAttr::AllExternal => true,
+                        crate::attributes::AutoDerivesAttr::SomeExternal(names) => {
+                            let def_path = ctxt.tcx.def_path(of_trait.path.res.def_id());
+                            def_path
+                                .data
+                                .last()
+                                .map(|seg| {
+                                    names.iter().any(|d| {
+                                        use rustc_hir::definitions::DefPathData;
+                                        match &seg.data {
+                                            DefPathData::ValueNs(symbol)
+                                            | DefPathData::TypeNs(symbol) => {
+                                                symbol.to_string().contains(d)
+                                            }
+                                            _ => true,
+                                        }
+                                    })
+                                })
+                                .unwrap_or(false)
+                        }
+                    } {
                         type_eattrs.external = true;
                         return Some(type_eattrs);
                     }
