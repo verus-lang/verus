@@ -298,6 +298,8 @@ pub(crate) enum Attr {
     // In order to apply a specification to a trait externally
     // (the string is the name of the associated type pointing to the specified trait)
     ExternalTraitSpecification(String),
+    // Any auto-derives for this type should be treated external
+    ExternalAutoDerives(Option<std::collections::HashSet<String>>),
     // Marks a variable that's spec or ghost mode in exec code
     UnwrappedBinding,
     // Marks the auxiliary function constructed by reveal/hide
@@ -562,6 +564,16 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, arg, None) if arg == "external_type_specification" => {
                     v.push(Attr::ExternalTypeSpecification)
+                }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "external_derive" =>
+                {
+                    v.push(Attr::ExternalAutoDerives(Some(
+                        r.split(",").map(|x| x.trim().to_owned()).collect(),
+                    )));
+                }
+                AttrTree::Fun(_, arg, None) if arg == "external_derive" => {
+                    v.push(Attr::ExternalAutoDerives(None));
                 }
                 AttrTree::Fun(_, arg, None) if arg == "external_trait_specification" => v.push(
                     Attr::ExternalTraitSpecification("ExternalTraitSpecificationFor".to_string()),
@@ -849,10 +861,17 @@ pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<Stri
     Ok(v)
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum AutoDerivesAttr {
+    Regular,
+    AllExternal,
+    SomeExternal(std::collections::HashSet<String>),
+}
+
 // Only those relevant to classifying an item as external / not external
 // (external_body is relevant because it means anything on the inside of the item should
 // be external)
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct ExternalAttrs {
     pub(crate) external: bool,
     pub(crate) external_body: bool,
@@ -865,6 +884,7 @@ pub(crate) struct ExternalAttrs {
     pub(crate) size_of_global: bool,
     pub(crate) any_other_verus_specific_attribute: bool,
     pub(crate) internal_get_field_many_variants: bool,
+    pub(crate) external_auto_derives: AutoDerivesAttr,
 }
 
 #[derive(Debug)]
@@ -972,6 +992,7 @@ pub(crate) fn get_external_attrs(
         size_of_global: false,
         any_other_verus_specific_attribute: false,
         internal_get_field_many_variants: false,
+        external_auto_derives: AutoDerivesAttr::Regular,
     };
 
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -987,6 +1008,12 @@ pub(crate) fn get_external_attrs(
             Attr::SizeOfGlobal => es.size_of_global = true,
             Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
             Attr::Trusted => {}
+            Attr::ExternalAutoDerives(None) => {
+                es.external_auto_derives = AutoDerivesAttr::AllExternal
+            }
+            Attr::ExternalAutoDerives(Some(external_auto_derives)) => {
+                es.external_auto_derives = AutoDerivesAttr::SomeExternal(external_auto_derives)
+            }
             Attr::UnsupportedRustcAttr(..) => {}
             _ => {
                 es.any_other_verus_specific_attribute = true;
