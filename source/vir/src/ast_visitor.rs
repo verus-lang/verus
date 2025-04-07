@@ -642,7 +642,7 @@ where
             p.x.name.clone(),
             ScopeEntry::new_outer_param_ret(
                 &p.x.typ,
-                todo!("find a new way to determine if the param is mut"),
+                matches!(&*p.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)),
                 true,
             ),
         );

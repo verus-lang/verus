@@ -487,9 +487,9 @@ pub fn func_def_to_sst(
     for param in function.x.params.iter() {
         state.declare_var_stm(
             &param.x.name,
-            todo!("if this is a mutable reference, treat it specially"), // &param.x.typ,
+            &param.x.typ, // TODO: ask if this needs to be treated specially if it is a mutable reference?
             LocalDeclKind::Param {
-                mutable: todo!("find a new way to determine if this should be mut"),
+                mutable: matches!(&*param.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)),
             },
             false,
         );

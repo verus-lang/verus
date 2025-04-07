@@ -2703,7 +2703,7 @@ pub(crate) fn body_stm_to_air(
 
     let mut may_be_used_in_old = HashSet::<UniqueIdent>::new();
     for param in params.iter() {
-        if todo!("param is a mutable reference") {
+        if matches!(&*param.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)) {
             may_be_used_in_old.insert(unique_local(&param.x.name));
         }
     }
