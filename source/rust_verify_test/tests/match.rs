@@ -70,7 +70,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test2 ["may_not_terminate"] => verus_code! {
+    #[test] test2 ["exec_allows_no_decreases_clause"] => verus_code! {
         enum List<A> {
             Nil,
             Cons(A, Box<List<A>>),
@@ -119,7 +119,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test2_struct ["may_not_terminate"] => verus_code! {
+    #[test] test2_struct ["exec_allows_no_decreases_clause"] => verus_code! {
         enum List<A> {
             Nil,
             Cons { hd: A, tl: Box<List<A>> },
@@ -168,7 +168,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test2_fails ["may_not_terminate"] => verus_code! {
+    #[test] test2_fails ["exec_allows_no_decreases_clause"] => verus_code! {
         enum List<A> {
             Nil,
             Cons(A, Box<List<A>>),

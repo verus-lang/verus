@@ -203,7 +203,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] question_mark_option ["may_not_terminate"] => verus_code! {
+    #[test] question_mark_option ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::*;
 
         fn test() -> (res: Option<u32>)
@@ -248,7 +248,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] question_mark_result ["may_not_terminate"] => verus_code! {
+    #[test] question_mark_result ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::*;
 
         fn test() -> (res: Result<u32, bool>)

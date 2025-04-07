@@ -987,9 +987,9 @@ pub struct FunctionAttrsX {
     /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
     pub is_unsafe: bool,
     /// Whether to assume that this function terminates
-    pub assume_termination: bool,
+    pub exec_assume_termination: bool,
     /// Whether to allow this function to not terminate
-    pub may_not_terminate: bool,
+    pub exec_allows_no_decreases_clause: bool,
 }
 
 /// Function specification of its invariant mask

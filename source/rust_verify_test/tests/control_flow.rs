@@ -482,7 +482,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] conditional_with_infinite_loop ["may_not_terminate"] => verus_code! {
+    #[test] conditional_with_infinite_loop ["exec_allows_no_decreases_clause"] => verus_code! {
         fn main(b: bool) {
             let x = if b {
                 1
@@ -495,7 +495,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] conditional_with_infinite_while_loop ["may_not_terminate"] => verus_code! {
+    #[test] conditional_with_infinite_while_loop ["exec_allows_no_decreases_clause"] => verus_code! {
         fn foo(b: bool) {
             let x = if b {
                 1
@@ -621,7 +621,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] closure_call_eval_order ["vstd", "may_not_terminate"] => verus_code! {
+    #[test] closure_call_eval_order ["vstd", "exec_allows_no_decreases_clause"] => verus_code! {
         // REVIEW: exec closures implicitly rely on vstd
         fn test(x1: bool, x2: bool) {
             let f = |i: u64, b: bool| {

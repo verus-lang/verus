@@ -525,7 +525,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
     /// **Warning:** The lock is _NOT_ released automatically when the handle
     /// is dropped. You must call [`WriteHandle::release_write`].
     /// Verus does not check that lock is released.
-    #[verifier::may_not_terminate]
+    #[verifier::exec_allows_no_decreases_clause]
     pub fn acquire_write(&self) -> (ret: (V, WriteHandle<V, Pred>))
         ensures
             ({
@@ -618,7 +618,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
     /// **Warning:** The lock is _NOT_ released automatically when the handle
     /// is dropped. You must call [`ReadHandle::release_read`].
     /// Verus does not check that lock is released.
-    #[verifier::may_not_terminate]
+    #[verifier::exec_allows_no_decreases_clause]
     pub fn acquire_read(&self) -> (read_handle: ReadHandle<V, Pred>)
         ensures
             read_handle.rwlock() == *self,
@@ -696,7 +696,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
 
     /// Destroys the lock and returns the inner object.
     /// Note that this may deadlock if not all locks have been released.
-    #[verifier::may_not_terminate]
+    #[verifier::exec_allows_no_decreases_clause]
     pub fn into_inner(self) -> (v: V)
         ensures
             self.inv(v),

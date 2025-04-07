@@ -106,7 +106,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop_fail ["may_not_terminate"] =>
+    #[test] loop_fail ["exec_allows_no_decreases_clause"] =>
     COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(i: Tracked<AtomicInvariant<A, u8, B>>) -> u32 {
             let mut x: u32 = 5;
@@ -157,7 +157,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] nonatomic_everything_ok ["may_not_terminate"] =>
+    #[test] nonatomic_everything_ok ["exec_allows_no_decreases_clause"] =>
     COMMON.to_string() + verus_code_str! {
         pub fn do_nothing<A, B: InvariantPredicate<A, u8>>(#[verifier::proof] i: LocalInvariant<A, u8, B>) -> u32 {
             let mut x: u32 = 5;

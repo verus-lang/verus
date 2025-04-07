@@ -19,7 +19,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] recursive_exec_function_with_decreases_clause_may_not_terminate ["may_not_terminate"] => verus_code! {
+    #[test] recursive_exec_function_with_decreases_clause_exec_allows_no_decreases_clause ["exec_allows_no_decreases_clause"] => verus_code! {
         fn a(i: u64) -> (r: u64)
             ensures r == i
             decreases i
@@ -30,11 +30,11 @@ test_verify_one_file_with_options! {
                 return 1 + a(i - 1);
             }
         }
-    } => Ok(err) => assert!(err.warnings.iter().find(|x| x.message.contains("if may_not_terminate is set, decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some())
+    } => Ok(err) => assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some())
 }
 
 test_verify_one_file_with_options! {
-    #[test] recursive_exec_function_with_decreases_clause_may_not_terminate_fails ["may_not_terminate"] => verus_code! {
+    #[test] recursive_exec_function_with_decreases_clause_exec_allows_no_decreases_clause_fails ["exec_allows_no_decreases_clause"] => verus_code! {
         fn a(i: u64) -> (r: u64)
             ensures r == i
             decreases i
@@ -224,7 +224,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] nontermination_infinite_loop_allowed_with_attribute ["may_not_terminate"] => verus_code! {
+    #[test] nontermination_infinite_loop_allowed_with_attribute ["exec_allows_no_decreases_clause"] => verus_code! {
         fn a(i: u64) -> (r: u64)
             ensures false
         {
@@ -234,7 +234,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] nontermination_infinite_loop_with_ghost_allowed_with_attribute ["may_not_terminate"] => verus_code! {
+    #[test] nontermination_infinite_loop_with_ghost_allowed_with_attribute ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::modes::*;
         fn a() {
             let ghost mut a: int = 5;
@@ -290,7 +290,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_terminating_function_cannot_call_nonterminating_function verus_code! {
+    #[test] exec_terminating_function_can_call_nonterminating_function verus_code! {
         fn a(mut i: u64) {
             while i > 0
                 invariant 0 <= i,
@@ -301,11 +301,11 @@ test_verify_one_file! {
             }
         }
 
-        #[verifier::may_not_terminate]
+        #[verifier::exec_allows_no_decreases_clause]
         fn b() {
             loop { }
         }
-    } => Err(err) => assert_vir_error_msg(err, "the current function must terminate, but the callee may not terminate")
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -321,32 +321,14 @@ test_verify_one_file! {
         }
 
         trait A {
-            #[verifier::may_not_terminate]
+            #[verifier::exec_allows_no_decreases_clause]
             fn b();
         }
-
-        struct X { }
-
-        impl A for X {
-            fn b() {
-                loop { }
-            }
-        }
-    } => Err(err) => assert_vir_error_msg(err, "the current function must terminate, but the callee may not terminate")
+    } => Err(err) => assert_vir_error_msg(err, "trait method declaration cannot declare exec_allows_no_decreases_clause")
 }
 
 test_verify_one_file! {
     #[test] exec_terminating_function_cannot_call_nonterminating_function_trait_2 verus_code! {
-        fn a<AA: A>(mut i: u64) {
-            while i > 0
-                invariant 0 <= i,
-                decreases i,
-            {
-                AA::b();
-                i -= 1;
-            }
-        }
-
         trait A {
             fn b();
         }
@@ -354,10 +336,26 @@ test_verify_one_file! {
         struct X { }
 
         impl A for X {
-            #[verifier::may_not_terminate]
+            #[verifier::exec_allows_no_decreases_clause]
             fn b() {
                 loop { }
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "this function implementation may not be marked as may_not_terminate, according to the definition in the trait")
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] exec_terminating_function_cannot_call_nonterminating_function_trait_3 verus_code! {
+        trait A {
+            fn b();
+        }
+
+        struct X { }
+
+        impl A for X {
+            fn b() {
+                loop { }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "loop must have a decreases clause")
 }

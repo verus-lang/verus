@@ -345,7 +345,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] ret_mode_fail_requires ["--no-external-by-default", "may_not_terminate"] => code! {
+    #[test] ret_mode_fail_requires ["--no-external-by-default", "exec_allows_no_decreases_clause"] => code! {
         fn f() {
             requires({while false {}; true});
         }

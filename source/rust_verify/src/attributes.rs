@@ -322,8 +322,8 @@ pub(crate) enum Attr {
     TypeInvariantFn,
     // Used for the encoding of `open([visibility qualified])`
     OpenVisibilityQualifier,
-    // Allow the function to not terminate
-    MayNotTerminate,
+    // Allow the function to not have decreases clauses
+    ExecAllowNoDecreasesClause,
     // Assume that the function terminates
     AssumeTermination,
 }
@@ -585,12 +585,11 @@ pub(crate) fn parse_attrs(
                         "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
                     );
                 }
-                // matches #![verifier::admit(may_not_terminate)]
                 AttrTree::Fun(_, arg, None) if arg == "assume_termination" => {
                     v.push(Attr::AssumeTermination);
                 }
-                AttrTree::Fun(_, arg, None) if arg == "may_not_terminate" => {
-                    v.push(Attr::MayNotTerminate);
+                AttrTree::Fun(_, arg, None) if arg == "exec_allows_no_decreases_clause" => {
+                    v.push(Attr::ExecAllowNoDecreasesClause);
                 }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
@@ -783,12 +782,12 @@ pub(crate) fn get_auto_ext_equal_walk_parents<'tcx>(
     vir::ast::AutoExtEqual::default()
 }
 
-pub(crate) fn get_allow_may_not_terminate_walk_parents<'tcx>(
+pub(crate) fn get_allow_exec_allows_no_decreases_clause_walk_parents<'tcx>(
     tcx: rustc_middle::ty::TyCtxt<'tcx>,
     def_id: rustc_span::def_id::DefId,
 ) -> bool {
     for attr in parse_attrs_walk_parents(tcx, def_id) {
-        if let Attr::MayNotTerminate = attr {
+        if let Attr::ExecAllowNoDecreasesClause = attr {
             return true;
         }
     }
@@ -931,7 +930,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) type_invariant_fn: bool,
     pub(crate) open_visibility_qualifier: bool,
     pub(crate) assume_termination: bool,
-    pub(crate) may_not_terminate: bool,
+    pub(crate) exec_allows_no_decreases_clause: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1080,7 +1079,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         type_invariant_fn: false,
         open_visibility_qualifier: false,
         assume_termination: false,
-        may_not_terminate: false,
+        exec_allows_no_decreases_clause: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1150,7 +1149,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::TypeInvariantFn => vs.type_invariant_fn = true,
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
             Attr::AssumeTermination => vs.assume_termination = true,
-            Attr::MayNotTerminate => vs.may_not_terminate = true,
+            Attr::ExecAllowNoDecreasesClause => vs.exec_allows_no_decreases_clause = true,
             _ => {}
         }
     }

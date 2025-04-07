@@ -760,7 +760,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_hash_map_keys ["may_not_terminate"] => verus_code! {
+    #[test] test_hash_map_keys ["exec_allows_no_decreases_clause"] => verus_code! {
         use std::collections::HashMap;
         use std::collections::hash_map::Keys;
         use vstd::prelude::*;
@@ -799,7 +799,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_hash_set_iter ["may_not_terminate"] => verus_code! {
+    #[test] test_hash_set_iter ["exec_allows_no_decreases_clause"] => verus_code! {
         use std::collections::HashSet;
         use std::collections::hash_set::Iter;
         use vstd::prelude::*;

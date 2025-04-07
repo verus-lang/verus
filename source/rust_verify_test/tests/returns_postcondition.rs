@@ -144,7 +144,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] default_trait_fn_with_returns_override ["may_not_terminate"] => verus_code! {
+    #[test] default_trait_fn_with_returns_override ["exec_allows_no_decreases_clause"] => verus_code! {
         trait Tr : Sized {
             fn test(&self) -> &Self
                 returns
@@ -249,7 +249,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] trait_returns_on_trait_method_decl ["may_not_terminate"] => verus_code! {
+    #[test] trait_returns_on_trait_method_decl ["exec_allows_no_decreases_clause"] => verus_code! {
         trait Tr : Sized {
             spec fn ens(&self, i: u8, s: &Self) -> bool;
             spec fn ret(&self, i: u8) -> Self;
@@ -371,7 +371,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] trait_returns_on_trait_method_impl ["may_not_terminate"] => verus_code! {
+    #[test] trait_returns_on_trait_method_impl ["exec_allows_no_decreases_clause"] => verus_code! {
         trait Tr : Sized {
             spec fn ens(&self, i: u8, s: &Self) -> bool;
 

@@ -2012,9 +2012,10 @@ pub(crate) fn expr_to_stm_opt(
                 && !ctx
                     .fun
                     .as_ref()
-                    .map(|x| {
-                        x.current_fun_attrs.assume_termination
-                            || x.current_fun_attrs.may_not_terminate
+                    .map(|c| {
+                        let function = &ctx.func_map[&c.current_fun];
+                        function.x.attrs.exec_assume_termination
+                            || function.x.attrs.exec_allows_no_decreases_clause
                     })
                     .unwrap_or(false)
             {

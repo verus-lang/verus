@@ -96,7 +96,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_no_cheating_admit_may_not_terminate ["--no-cheating"] => verus_code! {
+    #[test] test_no_cheating_admit_exec_allows_no_decreases_clause ["--no-cheating"] => verus_code! {
         #[verifier::assume_termination]
         fn a(mut i: u64)
             requires i <= 10,

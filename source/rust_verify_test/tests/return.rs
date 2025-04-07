@@ -74,7 +74,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test3 ["may_not_terminate"] => verus_code! {
+    #[test] test3 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test_ret(b: bool)
             requires b
             ensures b
@@ -89,7 +89,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test3_fails ["may_not_terminate"] => verus_code! {
+    #[test] test3_fails ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test_ret(b: bool)
             requires b
             ensures b

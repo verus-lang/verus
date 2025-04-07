@@ -1,5 +1,5 @@
 // rust_verify/tests/example.rs expect-failures
-#![cfg_attr(verus_keep_ghost, verifier::may_not_terminate)]
+#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 
 #![allow(unused_imports)]
 

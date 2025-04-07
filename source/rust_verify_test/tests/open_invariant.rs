@@ -406,7 +406,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] nest_local_loop_local ["may_not_terminate"] => verus_code! {
+    #[test] nest_local_loop_local ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::invariant::*;
 
         pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>, Tracked(j): Tracked<LocalInvariant<A, u8, B>>) {
@@ -423,7 +423,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] never_terminate_in_invariant ["may_not_terminate"] => verus_code! {
+    #[test] never_terminate_in_invariant ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::invariant::*;
 
         pub fn X<A, B: InvariantPredicate<A, u8>>(Tracked(i): Tracked<LocalInvariant<A, u8, B>>) {
@@ -723,7 +723,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] local_invariant_non_termination_into_inner_issue1102 ["may_not_terminate"] => verus_code!{
+    #[test] local_invariant_non_termination_into_inner_issue1102 ["exec_allows_no_decreases_clause"] => verus_code!{
         use vstd::invariant::*;
 
         #[verifier::external_body]
@@ -757,7 +757,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] inv_typ_invariants ["may_not_terminate"] => verus_code!{
+    #[test] inv_typ_invariants ["exec_allows_no_decreases_clause"] => verus_code!{
         use vstd::invariant::*;
 
         #[allow(unreachable_code)]

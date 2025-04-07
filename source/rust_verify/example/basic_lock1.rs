@@ -1,4 +1,4 @@
-#![cfg_attr(verus_keep_ghost, verifier::may_not_terminate)]
+#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 use vstd::prelude::*;
 use vstd::atomic::*;
 use vstd::invariant::*;

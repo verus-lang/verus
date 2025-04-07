@@ -253,7 +253,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_new_vars ["may_not_terminate"] => verus_code! {
+    #[test] test_new_vars ["exec_allows_no_decreases_clause"] => verus_code! {
         proof fn test6(x: int)
             requires x == 5
         {

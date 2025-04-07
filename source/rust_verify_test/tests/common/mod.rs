@@ -407,10 +407,10 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
 pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<TestErr, TestErr> {
     let mut options: Vec<_> = options.into_iter().map(|x| *x).collect();
     let mut no_prelude = false;
-    let mut may_not_terminate = false;
+    let mut exec_allows_no_decreases_clause = false;
     options.retain(|x| {
-        if *x == "may_not_terminate" {
-            may_not_terminate = true;
+        if *x == "exec_allows_no_decreases_clause" {
+            exec_allows_no_decreases_clause = true;
             false
         } else if *x == "no-auto-import-builtin" {
             no_prelude = true;
@@ -424,9 +424,18 @@ pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<Tes
     let code = if no_prelude {
         code
     } else {
-        let may_not_terminate_str =
-            if may_not_terminate { "#![verifier::may_not_terminate]\n" } else { "" };
-        format!("{}{}{}\n{}", FEATURE_PRELUDE, may_not_terminate_str, USE_PRELUDE, code.as_str())
+        let exec_allows_no_decreases_clause_str = if exec_allows_no_decreases_clause {
+            "#![verifier::exec_allows_no_decreases_clause]\n"
+        } else {
+            ""
+        };
+        format!(
+            "{}{}{}\n{}",
+            FEATURE_PRELUDE,
+            exec_allows_no_decreases_clause_str,
+            USE_PRELUDE,
+            code.as_str()
+        )
     };
 
     let files = vec![("test.rs".to_string(), code)];

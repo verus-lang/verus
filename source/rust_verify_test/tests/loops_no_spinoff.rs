@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] spinoff_attribute ["may_not_terminate"] => verus_code! {
+    #[test] spinoff_attribute ["exec_allows_no_decreases_clause"] => verus_code! {
         mod m {
             #![verifier::loop_isolation(false)]
             mod n {
@@ -20,7 +20,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] spinoff_attribute_fail ["may_not_terminate"] => verus_code! {
+    #[test] spinoff_attribute_fail ["exec_allows_no_decreases_clause"] => verus_code! {
         mod m {
             #![verifier::loop_isolation(false)]
             mod n {
@@ -37,7 +37,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] basic_while ["may_not_terminate"] => verus_code! {
+    #[test] basic_while ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test1() {
             let mut i = 0;
             #[verifier::loop_isolation(false)]
@@ -52,7 +52,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] basic_while_fail1 ["may_not_terminate"] => verus_code! {
+    #[test] basic_while_fail1 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test1() {
             let mut i = 0;
             #[verifier::loop_isolation(false)]
@@ -65,7 +65,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] basic_while_fail2 ["may_not_terminate"] => verus_code! {
+    #[test] basic_while_fail2 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test1() {
             let mut i = 0;
             let mut j = 0;
@@ -83,7 +83,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] complex_while ["may_not_terminate"] => verus_code! {
+    #[test] complex_while ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test1() {
             let mut i = 0;
             let mut x = 0;
@@ -102,7 +102,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] complex_while_fail1 ["may_not_terminate"] => verus_code! {
+    #[test] complex_while_fail1 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test1() {
             let mut i = 0;
             let mut x = 0;
@@ -121,7 +121,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] complex_while2 ["may_not_terminate"] => verus_code! {
+    #[test] complex_while2 ["exec_allows_no_decreases_clause"] => verus_code! {
         proof fn check(a: u64)
             requires 1 <= a
         {
@@ -149,7 +149,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] complex_while2_fail ["may_not_terminate"] => verus_code! {
+    #[test] complex_while2_fail ["exec_allows_no_decreases_clause"] => verus_code! {
         proof fn check(a: u64)
             requires 2 <= a
         {
@@ -177,7 +177,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_variables_havoc_basic ["may_not_terminate"] => verus_code! {
+    #[test] test_variables_havoc_basic ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(a: u64)
             requires a < 10
         {
@@ -192,7 +192,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_variables_not_havoc_basic ["may_not_terminate"] => verus_code! {
+    #[test] test_variables_not_havoc_basic ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(a: u64)
             requires a < 10
         {
@@ -211,7 +211,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_variables_no_effect_basic ["may_not_terminate"] => verus_code! {
+    #[test] test_variables_no_effect_basic ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(a: u64)
             requires a < 10
         {
@@ -231,7 +231,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_variables_havoc_nested ["may_not_terminate"] => verus_code! {
+    #[test] test_variables_havoc_nested ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(a: u64)
             requires a < 10
         {
@@ -251,7 +251,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_variables_not_havoc_nested ["may_not_terminate"] => verus_code! {
+    #[test] test_variables_not_havoc_nested ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(a: u64)
             requires a < 10
         {
@@ -274,7 +274,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_variables_no_effect_nested ["may_not_terminate"] => verus_code! {
+    #[test] test_variables_no_effect_nested ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(a: u64)
             requires a < 10
         {
@@ -296,7 +296,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] basic_loop ["may_not_terminate"] => verus_code! {
+    #[test] basic_loop ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::modes::*;
         fn test() {
             let ghost mut a: int = 5;
@@ -313,7 +313,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] basic_loop_fail ["may_not_terminate"] => verus_code! {
+    #[test] basic_loop_fail ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             let mut a: u32 = 5;
             #[verifier::loop_isolation(false)]
@@ -327,7 +327,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] basic_loop_new_vars ["may_not_terminate"] => verus_code! {
+    #[test] basic_loop_new_vars ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             let mut a: u32 = 5;
             #[verifier::loop_isolation(false)]
@@ -349,7 +349,7 @@ const MUT_REF_COMMON: &str = verus_code_str! {
 };
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_havoc_loop_1_regression_231 ["may_not_terminate"] => MUT_REF_COMMON.to_string() + verus_code_str! {
+    #[test] mut_ref_havoc_loop_1_regression_231 ["exec_allows_no_decreases_clause"] => MUT_REF_COMMON.to_string() + verus_code_str! {
         fn foo(x: &mut bool)
             requires *old(x) == true
         {
@@ -369,7 +369,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] mut_ref_havoc_loop_2_regression_231 ["may_not_terminate"] => MUT_REF_COMMON.to_string() + verus_code_str! {
+    #[test] mut_ref_havoc_loop_2_regression_231 ["exec_allows_no_decreases_clause"] => MUT_REF_COMMON.to_string() + verus_code_str! {
         fn foo2() {
             let mut x = true;
 
@@ -387,7 +387,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop_termination_unsupported ["may_not_terminate"] => verus_code! {
+    #[test] loop_termination_unsupported ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             let mut a: u64 = 0;
             #[verifier::loop_isolation(false)]
@@ -402,7 +402,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] example_loop_break ["may_not_terminate"] => verus_code! {
+    #[test] example_loop_break ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             let mut i: i8 = 0;
             #[verifier::loop_isolation(false)]
@@ -421,7 +421,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] example_loop_break_fail1 ["may_not_terminate"] => verus_code! {
+    #[test] example_loop_break_fail1 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             let mut i: i8 = 10;
             #[verifier::loop_isolation(false)]
@@ -440,7 +440,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] example_loop_break_fail3 ["may_not_terminate"] => verus_code! {
+    #[test] example_loop_break_fail3 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             let mut i: i8 = 0;
             #[verifier::loop_isolation(false)]
@@ -455,7 +455,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] example_loop_break_fail4 ["may_not_terminate"] => verus_code! {
+    #[test] example_loop_break_fail4 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             let mut i: i8 = 0;
             #[verifier::loop_isolation(false)]
@@ -474,7 +474,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] example_loop_continue ["may_not_terminate"] => verus_code! {
+    #[test] example_loop_continue ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             let mut i: i8 = 0;
             #[verifier::loop_isolation(false)]
@@ -496,7 +496,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] example_loop_continue_fail ["may_not_terminate"] => verus_code! {
+    #[test] example_loop_continue_fail ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             let mut i: i8 = 0;
             #[verifier::loop_isolation(false)]
@@ -518,7 +518,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] infinite_loop ["may_not_terminate"] => verus_code! {
+    #[test] infinite_loop ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             #[verifier::loop_isolation(false)]
             loop {
@@ -529,7 +529,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop_break_false ["may_not_terminate"] => verus_code! {
+    #[test] loop_break_false ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             #[verifier::loop_isolation(false)]
             loop {
@@ -541,7 +541,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop_break_false_y ["may_not_terminate"] => verus_code! {
+    #[test] loop_break_false_y ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             #[verifier::loop_isolation(false)]
             'y: loop {
@@ -553,7 +553,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] while_b ["may_not_terminate"] => verus_code! {
+    #[test] while_b ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(b: bool) {
             #[verifier::loop_isolation(false)]
             while b {
@@ -564,7 +564,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] while_b_fail ["may_not_terminate"] => verus_code! {
+    #[test] while_b_fail ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(b: bool) {
             #[verifier::loop_isolation(false)]
             while b {
@@ -576,7 +576,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] while_b2 ["may_not_terminate"] => verus_code! {
+    #[test] while_b2 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(b: bool) {
             #[verifier::loop_isolation(false)]
             while b {
@@ -591,7 +591,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] while_b2_x ["may_not_terminate"] => verus_code! {
+    #[test] while_b2_x ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(b: bool) {
             #[verifier::loop_isolation(false)]
             'x: while b {
@@ -606,7 +606,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] while_b2_y ["may_not_terminate"] => verus_code! {
+    #[test] while_b2_y ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(b: bool) {
             #[verifier::loop_isolation(false)]
             'x: while b {
@@ -621,7 +621,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] while_to_loop_break ["may_not_terminate"] => verus_code! {
+    #[test] while_to_loop_break ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(b: bool) {
             #[verifier::loop_isolation(false)]
             while b {
@@ -633,7 +633,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop_infinite2 ["may_not_terminate"] => verus_code! {
+    #[test] loop_infinite2 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             #[verifier::loop_isolation(false)]
             'x: loop {
@@ -648,7 +648,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop_infinite2y ["may_not_terminate"] => verus_code! {
+    #[test] loop_infinite2y ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             #[verifier::loop_isolation(false)]
             'x: loop {
@@ -663,7 +663,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop_infinite2x ["may_not_terminate"] => verus_code! {
+    #[test] loop_infinite2x ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             #[verifier::loop_isolation(false)]
             'x: loop {
@@ -678,7 +678,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop2_ok ["may_not_terminate"] => verus_code! {
+    #[test] loop2_ok ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(b: bool) {
             let mut i: i8 = 0;
             #[verifier::loop_isolation(false)]
@@ -703,7 +703,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop2_ok_y ["may_not_terminate"] => verus_code! {
+    #[test] loop2_ok_y ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(b: bool) {
             let mut i: i8 = 0;
             #[verifier::loop_isolation(false)]
@@ -728,7 +728,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop2_fail1 ["may_not_terminate"] => verus_code! {
+    #[test] loop2_fail1 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(b: bool) {
             let mut i: i8 = 0;
             #[verifier::loop_isolation(false)]
@@ -753,7 +753,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop2_fail2 ["may_not_terminate"] => verus_code! {
+    #[test] loop2_fail2 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test(b: bool) {
             let mut i: i8 = 0;
             #[verifier::loop_isolation(false)]
@@ -864,7 +864,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop_decreases3 ["may_not_terminate"] => verus_code! {
+    #[test] loop_decreases3 ["exec_allows_no_decreases_clause"] => verus_code! {
         #[verifier::loop_isolation(false)]
         fn test_c() {
             'a: loop
@@ -880,7 +880,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop_references_old_version_of_mut_var ["may_not_terminate"] => verus_code! {
+    #[test] loop_references_old_version_of_mut_var ["exec_allows_no_decreases_clause"] => verus_code! {
         fn foo(a: &mut u64)
             requires *old(a) === 17
         {
@@ -978,7 +978,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] boxed_args_are_havoced_regression_340 ["may_not_terminate"] => verus_code! {
+    #[test] boxed_args_are_havoced_regression_340 ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
 
         mod Mod {
@@ -1052,7 +1052,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] iter_loop ["may_not_terminate"] => verus_code! {
+    #[test] iter_loop ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
         fn test_loop() {
             let mut n: u64 = 0;
@@ -1101,7 +1101,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] for_loop1 ["may_not_terminate"] => verus_code! {
+    #[test] for_loop1 ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
         fn test_loop() {
             let mut n: u64 = 0;
@@ -1144,7 +1144,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] for_loop2 ["may_not_terminate"] => verus_code! {
+    #[test] for_loop2 ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
         fn test_loop() {
             let mut n: u64 = 0;
@@ -1198,7 +1198,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] for_loop3 ["may_not_terminate"] => verus_code! {
+    #[test] for_loop3 ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
         fn test_loop(n: u32) -> (v: Vec<u32>)
             ensures
@@ -1235,7 +1235,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] for_loop_vec_custom_iterator ["may_not_terminate"] => verus_code! {
+    #[test] for_loop_vec_custom_iterator ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
 
         pub spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V>;
@@ -1361,7 +1361,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] loop_continue_no_break_spinoff ["may_not_terminate"] => verus_code! {
+    #[test] loop_continue_no_break_spinoff ["exec_allows_no_decreases_clause"] => verus_code! {
         fn test() {
             let mut i = 0;
             #[verifier::loop_isolation(false)]

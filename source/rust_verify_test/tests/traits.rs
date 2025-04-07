@@ -445,7 +445,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_termination_4_ok ["may_not_terminate"] => verus_code! {
+    #[test] test_termination_4_ok ["exec_allows_no_decreases_clause"] => verus_code! {
         trait T {
             fn f(&self, x: &Self, n: u64);
         }
@@ -506,7 +506,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_termination_4_fail_1c ["may_not_terminate"] => verus_code! {
+    #[test] test_termination_4_fail_1c ["exec_allows_no_decreases_clause"] => verus_code! {
         trait T {
             fn f(&self, x: &Self, n: u64);
         }
@@ -1363,7 +1363,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_verify_loop ["may_not_terminate"] => verus_code! {
+    #[test] test_verify_loop ["exec_allows_no_decreases_clause"] => verus_code! {
         trait T {
             spec fn f() -> bool;
         }

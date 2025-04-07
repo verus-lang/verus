@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file_with_options! {
-    #[test] verus_verify_basic_while ["may_not_terminate"] =>  code! {
+    #[test] verus_verify_basic_while ["exec_allows_no_decreases_clause"] =>  code! {
         #[verus_spec]
         fn test1() {
             let mut i = 0;
@@ -22,7 +22,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] verus_verify_basic_loop ["may_not_terminate"] => code! {
+    #[test] verus_verify_basic_loop ["exec_allows_no_decreases_clause"] => code! {
         #[verus_spec]
         fn test1() {
             let mut i = 0;
@@ -46,7 +46,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] verus_verify_basic_for_loop_verus_spec ["may_not_terminate"] =>  code! {
+    #[test] verus_verify_basic_for_loop_verus_spec ["exec_allows_no_decreases_clause"] =>  code! {
         use vstd::prelude::*;
         #[verus_spec(v =>
             ensures
@@ -70,7 +70,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] verus_verify_for_loop_verus_spec_naming_iter ["may_not_terminate"] =>  code! {
+    #[test] verus_verify_for_loop_verus_spec_naming_iter ["exec_allows_no_decreases_clause"] =>  code! {
         use vstd::prelude::*;
         #[verus_spec(v =>
             ensures
@@ -94,7 +94,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] verus_verify_basic_while_fail1 ["may_not_terminate"] => code! {
+    #[test] verus_verify_basic_while_fail1 ["exec_allows_no_decreases_clause"] => code! {
         #[verus_spec]
         fn test1() {
             let mut i = 0;
@@ -107,7 +107,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] basic_while_false_invariant ["may_not_terminate"] => code! {
+    #[test] basic_while_false_invariant ["exec_allows_no_decreases_clause"] => code! {
         #[verus_verify]
         fn test1() {
             let mut i = 0;
@@ -123,7 +123,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] verus_verify_invariant_on_func ["may_not_terminate"] => code! {
+    #[test] verus_verify_invariant_on_func ["exec_allows_no_decreases_clause"] => code! {
         #[verus_spec(
             invariant true
         )]

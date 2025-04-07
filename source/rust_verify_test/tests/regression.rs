@@ -357,7 +357,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] parse_empty_requires_ensure_invariant ["may_not_terminate"] => verus_code! {
+    #[test] parse_empty_requires_ensure_invariant ["exec_allows_no_decreases_clause"] => verus_code! {
         proof fn test()
             requires
         {
