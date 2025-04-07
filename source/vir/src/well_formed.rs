@@ -358,12 +358,11 @@ fn check_one_expr(
                     "cannot call a broadcast_forall function with 0 arguments directly",
                 ));
             }
-            for (_param, arg) in
-                f.x.params
-                    .iter()
-                    .zip(args.iter())
-                    .filter(|(p, _)| todo!("determine if p is a mutable reference"))
-            {
+            dbg!(&f.x.params);
+            dbg!(&args);
+            for (_param, arg) in f.x.params.iter().zip(args.iter()).filter(|(p, _)| {
+                matches!(&*p.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _))
+            }) {
                 fn is_ok(e: &Expr) -> bool {
                     match &e.x {
                         ExprX::VarLoc(_) => true,

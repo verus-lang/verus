@@ -705,8 +705,8 @@ pub(crate) fn check_item_fn<'tcx>(
         }
     };
 
-    let mut vir_mut_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
-    let mut vir_params: Vec<(vir::ast::Param, Option<Mode>)> = Vec::new();
+    let mut vir_mut_params: Vec<(vir::ast::Param, Option<Option<Mode>>)> = Vec::new();
+    let mut vir_params: Vec<(vir::ast::Param, Option<Option<Mode>>)> = Vec::new();
     let mut mut_params_redecl: Vec<vir::ast::Stmt> = Vec::new();
     assert!(params.len() == inputs.len());
     for ((name, span, hir_id, is_mut_var), input) in params.into_iter().zip(inputs.iter()) {
@@ -718,7 +718,8 @@ pub(crate) fn check_item_fn<'tcx>(
             // where the mode will later be overridden by the separate spec method anyway:
             Mode::Exec
         };
-        let is_ref_mut = is_mut_ty(ctxt, *input);
+        // outer Some indicates mutable reference, inner some indicates Tracked/Ghost wrapper
+        let is_ref_mut: Option<Option<Mode>> = is_mut_ty(ctxt, *input);
         if is_ref_mut.is_some() && mode == Mode::Spec {
             return err_span(span, format!("&mut parameter not allowed for spec functions"));
         }
@@ -742,7 +743,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 unsupported_err!(span, "mut parameters of &mut types");
                 todo!()
             }
-            vir_mut_params.push((vir_param.clone(), is_ref_mut));
+            // TODO(prophecy) vir_mut_params.push((vir_param.clone(), is_ref_mut));
             let new_binding_pat = ctxt.spanned_typed_new(
                 span,
                 &typ,
@@ -869,10 +870,13 @@ pub(crate) fn check_item_fn<'tcx>(
     let mut all_param_names: Vec<vir::ast::VarIdent> = Vec::new();
     let mut all_param_name_set: HashSet<vir::ast::VarIdent> = HashSet::new();
     let mut unwrap_param_map: HashMap<vir::ast::VarIdent, UnwrapParameter> = HashMap::new();
+    /* TODO(prophecy) */
+    assert!(header.unwrap_parameters.is_empty());
     for unwrap in header.unwrap_parameters.iter() {
         all_param_names.push(unwrap.inner_name.clone());
         unwrap_param_map.insert(unwrap.outer_name.clone(), unwrap.clone());
     }
+    // unwrap_mut: Option<Option<Mode>>
     for (param, unwrap_mut) in vir_params.iter_mut() {
         all_param_names.push(param.x.name.clone());
         if let Some(unwrap) = unwrap_param_map.get(&param.x.name) {
@@ -886,7 +890,7 @@ pub(crate) fn check_item_fn<'tcx>(
             paramx.name = unwrap.inner_name.clone();
             paramx.unwrapped_info = Some((unwrap.mode, unwrap.outer_name.clone()));
             *param = vir::def::Spanned::new(param.span.clone(), paramx);
-        } else if vir_body.is_some() && unwrap_mut.is_some() {
+        } else if vir_body.is_some() && unwrap_mut.map(|x| x.is_some()).unwrap_or(false) {
             let param_user_name = vir::def::user_local_name(&param.x.name);
             return Err(vir::messages::error(
                 &param.span,
@@ -1025,6 +1029,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let body_with_mut_redecls = if vir_mut_params.is_empty() {
         body
     } else {
+        todo!("handle mut params in prophecy mode");
         body.map(move |body| {
             SpannedTyped::new(
                 &body.span.clone(),
@@ -1332,14 +1337,14 @@ fn check_generics_for_invariant_fn<'tcx>(
     }
 }
 
-// &mut T => Some(T, None)
-// Ghost<&mut T> => Some(T, Some(Spec))
-// Tracked<&mut T> => Some(T, Some(Proof))
+// &mut T => Some(None)
+// Ghost<&mut T> => Some(Some(Spec))
+// Tracked<&mut T> => Some(Some(Proof))
 // _ => None
-fn is_mut_ty<'tcx>(_ctxt: &Context<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> Option<Mode> {
+fn is_mut_ty<'tcx>(_ctxt: &Context<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> Option<Option<Mode>> {
     use rustc_middle::ty::*;
     match ty.kind() {
-        TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some(Mode::Exec),
+        TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some(None),
         TyKind::Adt(AdtDef(adt_def_data), args) => {
             todo!()
             // let did = adt_def_data.did;

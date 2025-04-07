@@ -2,7 +2,7 @@ use crate::ast::{
     Arm, ArmX, AssocTypeImpl, AssocTypeImplX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field,
     Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, MaskSpec, Param, ParamX,
     Params, Pattern, PatternX, SpannedTyped, Stmt, StmtX, TraitImpl, TraitImplX, Typ,
-    TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarIdent, Variant, VirErr,
+    TypDecoration, TypDecorationArg, TypX, Typs, UnaryOpr, UnwindSpec, VarIdent, Variant, VirErr,
 };
 use crate::def::Spanned;
 use crate::util::vec_map_result;
@@ -1280,7 +1280,7 @@ where
             p.x.name.clone(),
             ScopeEntry::new_outer_param_ret(
                 &p.x.typ,
-                todo!("find a new way to determine if the param is a mut ref"),
+                matches!(&*p.x.typ, TypX::Decorate(TypDecoration::MutRef, None, _)),
                 true,
             ),
         );
