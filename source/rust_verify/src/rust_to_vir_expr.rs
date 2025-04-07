@@ -219,7 +219,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     }
 
     let adjustments = bctx.types.expr_adjustments(expr);
-
     expr_to_vir_with_adjustments(bctx, expr, modifier, adjustments, adjustments.len())
 }
 

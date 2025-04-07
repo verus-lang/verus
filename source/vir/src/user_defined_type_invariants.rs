@@ -60,12 +60,14 @@ pub(crate) fn annotate_user_defined_invariants(
                     let function = &functions.get(fun).unwrap();
                     let mut all_asserts = vec![];
                     for (arg, param) in args.iter().zip(function.x.params.iter()) {
-                        todo!("prophecy support in type invairants");
-                        // TODO(prophecy) this may need to change: if param.x.is_mut {
-                        // TODO(prophecy) this may need to change:     let mut new_asserts =
-                        // TODO(prophecy) this may need to change:         asserts_for_lhs(info, functions, datatypes, module, arg)?;
-                        // TODO(prophecy) this may need to change:     all_asserts.append(&mut new_asserts);
-                        // TODO(prophecy) this may need to change: }
+                        if matches!(
+                            &*param.x.typ,
+                            TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)
+                        ) {
+                            let mut new_asserts =
+                                asserts_for_lhs(info, functions, datatypes, module, arg)?;
+                            all_asserts.append(&mut new_asserts);
+                        }
                     }
                     if all_asserts.len() > 0 {
                         // TODO: this should go the solver
