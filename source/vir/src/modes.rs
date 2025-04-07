@@ -1,7 +1,7 @@
 use crate::ast::{
     AutospecUsage, BinaryOp, CallTarget, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function,
     FunctionKind, InvAtomicity, ItemKind, Krate, Mode, ModeCoercion, MultiOp, Path, Pattern,
-    PatternX, Stmt, StmtX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
+    PatternX, Stmt, StmtX, TypDecoration, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VirErr,
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
@@ -854,7 +854,10 @@ fn check_expr_handle_mut_arg(
             }
             for (param, arg) in function.x.params.iter().zip(es.iter()) {
                 let param_mode = mode_join(outer_mode, param.x.mode);
-                if todo!("parameter is a mutable reference") {
+                if matches!(
+                    &*param.x.typ,
+                    crate::ast::TypX::Decorate(TypDecoration::MutRef, None, _)
+                ) {
                     if typing.in_forall_stmt {
                         return Err(error(
                             &arg.span,

@@ -1850,7 +1850,7 @@ fn mk_vir_args<'tcx>(
             };
             if is_mut_ref_param {
                 let expr =
-                    expr_to_vir(bctx, arg, ExprModifier { deref_mut: true, addr_of_mut: true })?;
+                    expr_to_vir(bctx, arg, ExprModifier { deref_mut: false, addr_of_mut: true })?;
                 Ok(bctx.spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
             } else {
                 expr_to_vir(

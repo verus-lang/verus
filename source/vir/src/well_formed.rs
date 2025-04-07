@@ -358,8 +358,6 @@ fn check_one_expr(
                     "cannot call a broadcast_forall function with 0 arguments directly",
                 ));
             }
-            dbg!(&f.x.params);
-            dbg!(&args);
             for (_param, arg) in f.x.params.iter().zip(args.iter()).filter(|(p, _)| {
                 matches!(&*p.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _))
             }) {
