@@ -621,7 +621,7 @@ fn check_function(
             ));
         }
     }
-    if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
+    if let FunctionKind::TraitMethodDecl { has_default: false, .. } = &function.x.kind {
         if function.x.attrs.exec_allows_no_decreases_clause {
             return Err(error(
                 &function.span,

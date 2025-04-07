@@ -309,7 +309,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_terminating_function_cannot_call_nonterminating_function_trait_1 verus_code! {
+    #[test] exec_termination_flag_1 verus_code! {
         fn a<AA: A>(mut i: u64) {
             while i > 0
                 invariant 0 <= i,
@@ -328,7 +328,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] exec_terminating_function_cannot_call_nonterminating_function_trait_2 verus_code! {
+    #[test] exec_termination_flag_2 verus_code! {
         trait A {
             fn b();
         }
@@ -344,8 +344,24 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file_with_options! {
+    #[test] exec_termination_flag_3 ["exec_allows_no_decreases_clause"] => verus_code! {
+        trait A {
+            fn b();
+        }
+
+        struct X { }
+
+        impl A for X {
+            fn b() {
+                loop { }
+            }
+        }
+    } => Ok(())
+}
+
 test_verify_one_file! {
-    #[test] exec_terminating_function_cannot_call_nonterminating_function_trait_3 verus_code! {
+    #[test] exec_termination_flag_4 verus_code! {
         trait A {
             fn b();
         }
@@ -358,4 +374,15 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "loop must have a decreases clause")
+}
+
+test_verify_one_file! {
+    #[test] exec_termination_flag_5 verus_code! {
+        trait A {
+            #[verifier::exec_allows_no_decreases_clause]
+            fn b() {
+                loop { }
+            }
+        }
+    } => Ok(())
 }
