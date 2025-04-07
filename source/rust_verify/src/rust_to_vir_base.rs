@@ -1007,30 +1007,12 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
             let norm = at.normalize(*ty);
             if norm.value != *ty {
-                let mut has_infer = false;
                 for arg in norm.value.walk().into_iter() {
                     if let GenericArgKind::Type(t) = arg.unpack() {
-                        if let TyKind::Infer(..) = t.kind() {
-                            // If we find any Infer variables, abort the normalization.
-                            //
-                            // Why this comes up:
-                            // 'normalize' will create inference variables if it encounters
-                            // a projection type that it can't normalize.
-                            // Probably, we shouldn't be calling normalize with non-normalizable
-                            // types.
-                            //
-                            // Currently, the reason this comes up has to do with the way
-                            // we invoke mid_ty_to_vir on an external_trait_specification.
-                            // Specifically, the param_env has [ Self: ProxyTrait ]
-                            // but we attempt to normalize <Self as ExternalTrait>::AssocTyp.
-                            // There may be a better way to handle this.
-                            has_infer = true;
-                        }
+                        assert!(!matches!(t.kind(), TyKind::Infer(..)));
                     }
                 }
-                if !has_infer {
-                    return t_rec(&norm.value);
-                }
+                return t_rec(&norm.value);
             }
             // If normalization isn't possible, return a projection type:
             let assoc_item = tcx.associated_item(t.def_id);
@@ -1040,18 +1022,26 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
             let trait_def = tcx.generics_of(t.def_id).parent;
             let t_args: Vec<_> = t.args.iter().filter(|x| x.as_region().is_none()).collect();
-            if t_args.iter().find(|x| x.as_type().is_none()).is_some() {
-                unsupported_err!(span, "projection type")
-            }
             match trait_def {
                 Some(trait_def) if t_args.len() >= 1 => {
                     let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def);
                     // In rustc, see create_substs_for_ast_path and create_substs_for_generic_args
                     let mut trait_typ_args = Vec::new();
-                    for ty in t_args.iter() {
-                        let ty = ty.as_type().expect("already checked for as_type");
-                        trait_typ_args.push(t_rec_flags(&ty, false)?.0);
+
+                    for arg in t_args.iter() {
+                        match arg.unpack() {
+                            rustc_middle::ty::GenericArgKind::Type(t) => {
+                                trait_typ_args.push(t_rec_flags(&t, false)?.0);
+                            }
+                            rustc_middle::ty::GenericArgKind::Lifetime(_) => {
+                                panic!("already filtered out lifetimes");
+                            }
+                            rustc_middle::ty::GenericArgKind::Const(cnst) => {
+                                trait_typ_args.push(mid_ty_const_to_vir(tcx, Some(span), &cnst)?);
+                            }
+                        }
                     }
+
                     let trait_typ_args = Arc::new(trait_typ_args);
                     let proj = TypX::Projection { trait_typ_args, trait_path, name };
                     return Ok((Arc::new(proj), false));
@@ -1614,11 +1604,13 @@ pub(crate) fn check_item_external_generics<'tcx>(
                     }
                 }
             }
-            (GenericArgKind::Const(_), GenericParamKind::Const { .. }) => {
-                return err_span(
-                    span,
-                    "external_type_specification: Const params not yet supported",
-                );
+            (GenericArgKind::Const(cnst), GenericParamKind::Const { .. }) => {
+                match cnst.kind() {
+                    ConstKind::Param(param) if param.name.as_str() == param_name => { /* okay */ }
+                    _ => {
+                        return err();
+                    }
+                }
             }
             _ => {
                 return err();

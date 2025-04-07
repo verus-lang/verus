@@ -748,6 +748,7 @@ define_keywords! {
     "exec"        pub struct Exec
     "open"        pub struct Open
     "closed"      pub struct Closed
+    "uninterp"    pub struct Uninterp
     "ghost"       pub struct Ghost
     "tracked"     pub struct Tracked
     "requires"    pub struct Requires
@@ -1033,6 +1034,7 @@ macro_rules! Token {
     [exec]        => { $crate::token::Exec };
     [open]        => { $crate::token::Open };
     [closed]      => { $crate::token::Closed };
+    [uninterp]    => { $crate::token::Uninterp };
     [ghost]       => { $crate::token::Ghost };
     [tracked]     => { $crate::token::Tracked };
     [requires]    => { $crate::token::Requires };

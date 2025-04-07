@@ -700,6 +700,9 @@ pub trait VisitMut {
     fn visit_local_init_mut(&mut self, i: &mut crate::LocalInit) {
         visit_local_init_mut(self, i);
     }
+    fn visit_loop_spec_mut(&mut self, i: &mut crate::LoopSpec) {
+        visit_loop_spec_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_macro_mut(&mut self, i: &mut crate::Macro) {
@@ -1072,6 +1075,9 @@ pub trait VisitMut {
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_un_op_mut(&mut self, i: &mut crate::UnOp) {
         visit_un_op_mut(self, i);
+    }
+    fn visit_uninterp_mut(&mut self, i: &mut crate::Uninterp) {
+        visit_uninterp_mut(self, i);
     }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
@@ -3442,6 +3448,27 @@ where
         v.visit_expr_mut(&mut *(it).1);
     }
 }
+pub fn visit_loop_spec_mut<V>(v: &mut V, node: &mut crate::LoopSpec)
+where
+    V: VisitMut + ?Sized,
+{
+    if let Some(it) = &mut node.iter_name {
+        v.visit_ident_mut(&mut (it).0);
+        skip!((it).1);
+    }
+    if let Some(it) = &mut node.invariants {
+        v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.invariant_except_breaks {
+        v.visit_invariant_except_break_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.decreases {
+        v.visit_decreases_mut(it);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
 pub fn visit_macro_mut<V>(v: &mut V, node: &mut crate::Macro)
@@ -3948,6 +3975,9 @@ where
         }
         crate::Publish::OpenRestricted(_binding_0) => {
             v.visit_open_restricted_mut(_binding_0);
+        }
+        crate::Publish::Uninterp(_binding_0) => {
+            v.visit_uninterp_mut(_binding_0);
         }
         crate::Publish::Default => {}
     }
@@ -4626,6 +4656,12 @@ where
             skip!(_binding_0);
         }
     }
+}
+pub fn visit_uninterp_mut<V>(v: &mut V, node: &mut crate::Uninterp)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]

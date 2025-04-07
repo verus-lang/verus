@@ -1,10 +1,10 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
-    FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound, GenericBoundX,
-    HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode,
-    Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, TriggerAnnotation,
-    Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder,
-    VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
+    ArchWordBits, BinaryOp, BodyVisibility, Constant, DatatypeTransparency, DatatypeX, Dt, Expr,
+    ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound,
+    GenericBoundX, HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind,
+    MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
+    TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
+    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -32,6 +32,18 @@ impl PathX {
         let mut segments = (*self.segments).clone();
         segments.push(ident);
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
+    pub fn push_segments(&self, idents: Vec<Ident>) -> Path {
+        let mut segments = (*self.segments).clone();
+        segments.extend(idents);
+        Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
+    pub fn matches_prefix(&self, prefix: &Path) -> bool {
+        prefix.krate == self.krate
+            && prefix.segments.len() <= self.segments.len()
+            && prefix.segments[..] == self.segments[..prefix.segments.len()]
     }
 
     pub fn is_rust_std_path(&self) -> bool {
@@ -392,14 +404,11 @@ pub fn friendly_fun_name_crate_relative(module: &Path, fun: &Fun) -> String {
 
 // Can source_module see an item restricted to restricted_to?
 pub fn is_visible_to_of_owner(restricted_to: &Option<Path>, source_module: &Path) -> bool {
-    let sources = &source_module.segments;
     match restricted_to {
         None => true,
-        Some(target) if target.segments.len() > sources.len() => false,
         Some(target) => {
             // Child can access private item in parent, so check if target is parent:
-            let targets = &target.segments;
-            target.krate == source_module.krate && targets[..] == sources[..targets.len()]
+            source_module.matches_prefix(target)
         }
     }
 }
@@ -407,6 +416,15 @@ pub fn is_visible_to_of_owner(restricted_to: &Option<Path>, source_module: &Path
 // Can source_module see an item with target_visibility?
 pub fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bool {
     is_visible_to_of_owner(&target_visibility.restricted_to, source_module)
+}
+
+pub fn is_body_visible_to(target_visibility: &BodyVisibility, source_module: &Path) -> bool {
+    match &target_visibility {
+        BodyVisibility::Uninterpreted => false,
+        BodyVisibility::Visibility(visibility) => {
+            is_visible_to_of_owner(&visibility.restricted_to, source_module)
+        }
+    }
 }
 
 pub fn is_transparent_to(transparency: &DatatypeTransparency, source_module: &Path) -> bool {
@@ -461,18 +479,18 @@ impl Visibility {
         match (&self.restricted_to, &vis2.restricted_to) {
             (_, None) => true,
             (None, Some(_)) => false,
-            (Some(p1), Some(p2)) => {
-                if p1.krate != p2.krate {
-                    return false;
-                }
-                if p1.segments.len() >= p2.segments.len() {
-                    let m = p2.segments.len();
-                    &p1.segments[..m] == &p2.segments[..m]
-                } else {
-                    false
-                }
-            }
+            (Some(p1), Some(p2)) => p1.matches_prefix(p2),
         }
+    }
+}
+
+impl BodyVisibility {
+    pub fn is_public(&self) -> bool {
+        matches!(self, BodyVisibility::Visibility(Visibility { restricted_to: None }))
+    }
+
+    pub fn public() -> Self {
+        BodyVisibility::Visibility(Visibility { restricted_to: None })
     }
 }
 

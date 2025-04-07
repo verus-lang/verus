@@ -1238,7 +1238,7 @@ test_verify_one_file_with_options! {
     #[test] for_loop_vec_custom_iterator ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
 
-        pub spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V>;
+        pub uninterp spec fn spec_phantom_data<V: ?Sized>() -> core::marker::PhantomData<V>;
 
         pub struct VecIterCopy<'a, T: 'a> {
             pub vec: &'a Vec<T>,

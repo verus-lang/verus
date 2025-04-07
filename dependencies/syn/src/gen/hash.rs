@@ -2324,6 +2324,19 @@ impl Hash for crate::LocalInit {
         self.diverge.hash(state);
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::LoopSpec {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.iter_name.hash(state);
+        self.invariants.hash(state);
+        self.invariant_except_breaks.hash(state);
+        self.ensures.hash(state);
+        self.decreases.hash(state);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::Macro {
@@ -2859,8 +2872,12 @@ impl Hash for crate::Publish {
                 state.write_u8(2u8);
                 v0.hash(state);
             }
-            crate::Publish::Default => {
+            crate::Publish::Uninterp(v0) => {
                 state.write_u8(3u8);
+                v0.hash(state);
+            }
+            crate::Publish::Default => {
+                state.write_u8(4u8);
             }
         }
     }
@@ -3541,6 +3558,13 @@ impl Hash for crate::UnOp {
             }
         }
     }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::Uninterp {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
 }
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]

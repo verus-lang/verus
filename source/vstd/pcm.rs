@@ -78,9 +78,9 @@ pub open spec fn set_op<P: PCM>(s: Set<P>, t: P) -> Set<P> {
 }
 
 impl<P: PCM> Resource<P> {
-    pub spec fn value(self) -> P;
+    pub uninterp spec fn value(self) -> P;
 
-    pub spec fn loc(self) -> Loc;
+    pub uninterp spec fn loc(self) -> Loc;
 
     #[verifier::external_body]
     pub proof fn alloc(value: P) -> (tracked out: Self)

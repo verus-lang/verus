@@ -2031,3 +2031,57 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails_type_invariant_error(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] type_inv_const_params verus_code! {
+        struct S<const N: u64> {
+            i: u64,
+        }
+
+        impl<const N: u64> S<N> {
+            #[verifier::type_invariant]
+            pub closed spec fn inv(self) -> bool {
+                self.i < N
+            }
+        }
+
+        fn test_ctor_fail() {
+            let s = S::<12> { i: 12 }; // FAILS
+        }
+
+        fn test_field_fail() {
+            let mut s = S::<12> { i: 11 };
+            s.i = 13; // FAILS
+        }
+
+        fn test_good() {
+            let mut s = S::<12> { i: 11 };
+            s.i = 10;
+        }
+
+        fn test3<const N: u64>(s: S<N>) {
+            proof { use_type_invariant(&s); }
+            assert(s.i < N);
+        }
+
+        fn test4(s: S<12>) {
+            proof { use_type_invariant(&s); }
+            assert(s.i < 12);
+        }
+    } => Err(err) => assert_fails_type_invariant_error(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] type_inv_const_params_wrong_type verus_code! {
+        struct S<const N: u64, const M: u64> {
+            i: u64,
+        }
+
+        impl<const N: u64, const M: u64> S<M, N> {
+            #[verifier::type_invariant]
+            pub closed spec fn inv(self) -> bool {
+                self.i < N
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "expected generics to match")
+}

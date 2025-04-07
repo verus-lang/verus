@@ -193,6 +193,12 @@ pub fn demote_external_traits(
 
 pub fn rewrite_one_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> Typ {
     match &**typ {
+        TypX::FnDef(fun, typs, None) if fun.path.matches_prefix(from_path) => {
+            let suffix = fun.path.segments[from_path.segments.len()..].to_vec();
+            let path = to_path.push_segments(suffix);
+            let fun = Arc::new(crate::ast::FunX { path });
+            Arc::new(TypX::FnDef(fun, typs.clone(), None))
+        }
         TypX::Projection { trait_typ_args, trait_path, name } if trait_path == from_path => {
             Arc::new(TypX::Projection {
                 trait_typ_args: trait_typ_args.clone(),
@@ -204,9 +210,16 @@ pub fn rewrite_one_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> 
     }
 }
 
-pub fn rewrite_external_typ(from_path: &Path, to_path: &Path, typ: &Typ) -> Typ {
-    let ft = |t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
-    crate::ast_visitor::map_typ_visitor(typ, &ft).expect("rewrite_external_typ")
+pub fn rewrite_one_external_expr(from_path: &Path, to_path: &Path, expr: &Expr) -> Expr {
+    match &expr.x {
+        ExprX::ExecFnByName(fun) if fun.path.matches_prefix(from_path) => {
+            let suffix = fun.path.segments[from_path.segments.len()..].to_vec();
+            let path = to_path.push_segments(suffix);
+            let fun = Arc::new(crate::ast::FunX { path });
+            expr.new_x(ExprX::ExecFnByName(fun))
+        }
+        _ => expr.clone(),
+    }
 }
 
 pub fn rewrite_external_bounds(
@@ -237,17 +250,16 @@ pub fn rewrite_external_function(
     to_path: &Path,
     function: &Function,
 ) -> Function {
-    let ft = |_: &mut (), t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t));
     let mut map: VisitorScopeMap = ScopeMap::new();
     crate::ast_visitor::map_function_visitor_env(
         function,
         &mut map,
         &mut (),
-        &|_state, _, expr| Ok(expr.clone()),
-        &|_state, _, stmt| Ok(vec![stmt.clone()]),
-        &ft,
+        &|_, _, e| Ok(rewrite_one_external_expr(from_path, to_path, e)),
+        &|_, _, stmt| Ok(vec![stmt.clone()]),
+        &|_, t: &Typ| Ok(rewrite_one_external_typ(from_path, to_path, t)),
     )
-    .expect("rewrite_external_typ")
+    .expect("rewrite_external_function")
 }
 
 /*

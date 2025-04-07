@@ -1370,3 +1370,47 @@ test_verify_one_file! {
         assert!(err.warnings[0].message.contains("#[verifier::verify] has no effect because item is already marked external"));
     }
 }
+
+test_verify_one_file! {
+    #[test] test_trait_with_assoc_type_bounds verus_code! {
+        trait Sr {
+            fn s_foo(&self);
+        }
+
+        trait Tr {
+            type AssocType: Sr;
+
+            fn t_foo(&self) -> Self::AssocType;
+        }
+
+        struct X { u: u64 }
+        struct Y { }
+
+        impl Sr for X {
+            fn s_foo(&self) { }
+        }
+
+        #[verifier::external]
+        impl Tr for Y {
+            type AssocType = X;
+
+            fn t_foo(&self) -> X {
+                X { u: 0 }
+            }
+        }
+
+        assume_specification [ Y::t_foo ] (y: &Y) -> (x: X)
+            ensures x == (X { u: 0 });
+
+        fn test(y: &Y) {
+            let j = y.t_foo();
+            assert(j == X { u: 0 });
+        }
+
+        fn test_fails(y: &Y) {
+            let j = y.t_foo();
+            assert(j == X { u: 0 });
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

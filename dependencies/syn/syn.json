@@ -4733,6 +4733,46 @@
       }
     },
     {
+      "ident": "LoopSpec",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "iter_name": {
+          "option": {
+            "tuple": [
+              {
+                "proc_macro2": "Ident"
+              },
+              {
+                "token": "FatArrow"
+              }
+            ]
+          }
+        },
+        "invariants": {
+          "option": {
+            "syn": "Invariant"
+          }
+        },
+        "invariant_except_breaks": {
+          "option": {
+            "syn": "InvariantExceptBreak"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "Decreases"
+          }
+        }
+      }
+    },
+    {
       "ident": "Macro",
       "features": {
         "any": [
@@ -5668,6 +5708,11 @@
         "OpenRestricted": [
           {
             "syn": "OpenRestricted"
+          }
+        ],
+        "Uninterp": [
+          {
+            "syn": "Uninterp"
           }
         ],
         "Default": []
@@ -7021,6 +7066,17 @@
       "exhaustive": false
     },
     {
+      "ident": "Uninterp",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Uninterp"
+        }
+      }
+    },
+    {
       "ident": "UseGlob",
       "features": {
         "any": [
@@ -7474,6 +7530,7 @@
     "Type": "type",
     "Typeof": "typeof",
     "Underscore": "_",
+    "Uninterp": "uninterp",
     "Union": "union",
     "Unsafe": "unsafe",
     "Unsized": "unsized",

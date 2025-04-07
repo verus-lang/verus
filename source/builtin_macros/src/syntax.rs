@@ -609,7 +609,7 @@ impl Visitor {
             let publish_span = sig.publish.span();
             stmts.push(stmt_with_semi!(
                 publish_span =>
-                compile_error!("only `spec` functions can be marked `open` or `closed`")
+                compile_error!("only `spec` functions can be marked `open`, `closed`, or `uninterp`")
             ));
         }
 
@@ -631,6 +631,7 @@ impl Visitor {
             Publish::Default => vec![],
             Publish::Closed(o) => vec![mk_verus_attr(o.token.span, quote! { closed })],
             Publish::Open(o) => vec![mk_verus_attr(o.token.span, quote! { open })],
+            Publish::Uninterp(o) => vec![mk_verus_attr(o.token.span, quote! { uninterp })],
             Publish::OpenRestricted(o) => {
                 let in_token = &o.in_token;
                 let p = &o.path;
@@ -644,13 +645,23 @@ impl Visitor {
         };
 
         let (unimpl, ext_attrs) = match (&sig.mode, semi_token, is_trait) {
-            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => (
-                vec![Stmt::Expr(
+            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => {
+                // uninterpreted function
+                let unimpl = vec![Stmt::Expr(
                     Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())),
                     None,
-                )],
-                vec![mk_verus_attr(semi.span, quote! { external_body })],
-            ),
+                )];
+                #[cfg(verus_keep_ghost)]
+                if !matches!(&sig.publish, Publish::Uninterp(_)) {
+                    proc_macro::Diagnostic::spanned(
+                        sig.span().unwrap(),
+                        proc_macro::Level::Warning,
+                        "uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`\nthis will become a hard error in the future",
+                    )
+                    .emit();
+                }
+                (unimpl, vec![mk_verus_attr(semi.span, quote! { external_body })])
+            }
             _ => (vec![], vec![]),
         };
 
@@ -780,6 +791,7 @@ impl Visitor {
             (_, _, Publish::Default) => vec![mk_verus_attr(span, quote! { open })],
             (_, _, Publish::Closed(o)) => vec![mk_verus_attr(o.token.span, quote! { closed })],
             (_, _, Publish::Open(o)) => vec![mk_verus_attr(o.token.span, quote! { open })],
+            (_, _, Publish::Uninterp(o)) => vec![mk_verus_attr(o.token.span, quote! { uninterp })],
             (_, _, Publish::OpenRestricted(_)) => {
                 unimplemented!("TODO: support open(...)")
             }

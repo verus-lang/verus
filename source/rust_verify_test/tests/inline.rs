@@ -36,14 +36,14 @@ test_verify_one_file! {
             (b, a)
         }
 
-        spec fn fx(x: int) -> bool;
+        uninterp spec fn fx(x: int) -> bool;
 
         #[verifier(inline)]
         spec fn fy(x: int) -> bool {
             fx(x)
         }
 
-        spec fn fpx<A>(x: A) -> bool;
+        uninterp spec fn fpx<A>(x: A) -> bool;
 
         #[verifier(inline)]
         spec fn fpy<A>(x: A) -> bool {

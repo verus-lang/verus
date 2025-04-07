@@ -715,7 +715,7 @@ test_verify_one_file! {
         struct X { u: u64, }
 
         impl Tr for X {
-            spec fn foo(&self) -> bool;
+            uninterp spec fn foo(&self) -> bool;
         }
 
         fn stuff<T: Tr>(t: T)

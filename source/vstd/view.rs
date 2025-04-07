@@ -104,7 +104,7 @@ impl<A: DeepView> DeepView for alloc::sync::Arc<A> {
 impl<T, A: core::alloc::Allocator> View for alloc::vec::Vec<T, A> {
     type V = Seq<T>;
 
-    spec fn view(&self) -> Seq<T>;
+    uninterp spec fn view(&self) -> Seq<T>;
 }
 
 #[cfg(all(feature = "alloc", any(verus_keep_ghost, feature = "allocator")))]
@@ -121,7 +121,7 @@ impl<T: DeepView, A: core::alloc::Allocator> DeepView for alloc::vec::Vec<T, A> 
 impl<T> View for alloc::vec::Vec<T> {
     type V = Seq<T>;
 
-    spec fn view(&self) -> Seq<T>;
+    uninterp spec fn view(&self) -> Seq<T>;
 }
 
 #[cfg(all(feature = "alloc", not(verus_keep_ghost), not(feature = "allocator")))]

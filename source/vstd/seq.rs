@@ -35,22 +35,22 @@ pub struct Seq<A> {
 impl<A> Seq<A> {
     /// An empty sequence (i.e., a sequence of length 0).
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::empty"]
-    pub spec fn empty() -> Seq<A>;
+    pub uninterp spec fn empty() -> Seq<A>;
 
     /// Construct a sequence `s` of length `len` where entry `s[i]` is given by `f(i)`.
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::new"]
-    pub spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
+    pub uninterp spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
 
     /// The length of a sequence.
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::len"]
-    pub spec fn len(self) -> nat;
+    pub uninterp spec fn len(self) -> nat;
 
     /// Gets the value at the given index `i`.
     ///
     /// If `i` is not in the range `[0, self.len())`, then the resulting value
     /// is meaningless and arbitrary.
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::index"]
-    pub spec fn index(self, i: int) -> A
+    pub uninterp spec fn index(self, i: int) -> A
         recommends
             0 <= i < self.len(),
     ;
@@ -77,7 +77,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::push"]
-    pub spec fn push(self, a: A) -> Seq<A>;
+    pub uninterp spec fn push(self, a: A) -> Seq<A>;
 
     /// Updates the sequence at the given index, replacing the element with the given
     /// value, and leaves all other entries unchanged.
@@ -92,7 +92,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::update"]
-    pub spec fn update(self, i: int, a: A) -> Seq<A>
+    pub uninterp spec fn update(self, i: int, a: A) -> Seq<A>
         recommends
             0 <= i < self.len(),
     ;
@@ -111,7 +111,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::subrange"]
-    pub spec fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>
+    pub uninterp spec fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>
         recommends
             0 <= start_inclusive <= end_exclusive <= self.len(),
     ;
@@ -139,7 +139,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::add"]
-    pub spec fn add(self, rhs: Seq<A>) -> Seq<A>;
+    pub uninterp spec fn add(self, rhs: Seq<A>) -> Seq<A>;
 
     /// `+` operator, synonymous with `add`
     #[verifier::inline]

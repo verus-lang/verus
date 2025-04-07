@@ -75,7 +75,7 @@ callers are under no obligation to obey the `i > 0` recommendation:
 {{#include ../../../rust_verify/example/guide/modes.rs:recommends1}}
 ```
 
-It's perfectly legal for `test1` to call `f(0)`, and no error or warning will be generated for `g`
+It's perfectly legal for `test1` to call `f(0)`, and no error or warning will be generated for `f`
 (in fact, Verus will not check the recommendation at all).
 However, *if* there's a verification error in a function,
 Verus will automatically rerun the verification with recommendation checking turned on,

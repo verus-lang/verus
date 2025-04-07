@@ -525,9 +525,9 @@ spec(checked) fn my_spec_fun2(x: int, y: int) -> int
 /// This is safe, since spec functions (unlike proof and exec functions) may always
 /// return arbitrary values of any type,
 /// where the value may be special "bottom" value for otherwise uninhabited types.
-spec fn my_uninterpreted_fun1(i: int, j: int) -> int;
+uninterp spec fn my_uninterpreted_fun1(i: int, j: int) -> int;
 
-spec fn my_uninterpreted_fun2(i: int, j: int) -> int
+uninterp spec fn my_uninterpreted_fun2(i: int, j: int) -> int
     recommends
         0 <= i < 10,
         0 <= j < 10,
@@ -535,7 +535,7 @@ spec fn my_uninterpreted_fun2(i: int, j: int) -> int
 
 /// Trait functions may have specifications
 trait T {
-    proof fn my_uninterpreted_fun2(&self, i: int, j: int) -> (r: int)
+    proof fn my_function_decl(&self, i: int, j: int) -> (r: int)
         requires
             0 <= i < 10,
             0 <= j < 10,

@@ -75,7 +75,21 @@ fn trait_impl_to_vir<'tcx>(
     hir_generics: Option<&'tcx rustc_hir::Generics<'tcx>>,
     module_path: Path,
     auto_imported: bool,
-) -> Result<(Path, Typs, TraitImpl), VirErr> {
+) -> Result<Option<(Path, Typs, TraitImpl)>, VirErr> {
+    let trait_polarity = ctxt.tcx.impl_polarity(impl_def_id);
+    if trait_polarity == rustc_middle::ty::ImplPolarity::Negative {
+        // Negative impls currently show up in two expected cases:
+        // - Send
+        // - Sync
+        // and in one surprising case:
+        // - Iterator
+        //   - see https://github.com/rust-lang/rust/commit/1a8109253196064e26a427d9184874ae14c55f6e
+        // Currently, we ignore negative impls;
+        // trait_conflicts.rs should protect us from any overlap caused by ignoring negative impls
+        // TODO: better handling of negative impls
+        return Ok(None);
+    }
+
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
     let trait_did = trait_ref.skip_binder().def_id;
     let impl_paths = crate::rust_to_vir_base::get_impl_paths(
@@ -133,7 +147,7 @@ fn trait_impl_to_vir<'tcx>(
         auto_imported,
     };
     let trait_impl = ctxt.spanned_new(span, trait_impl);
-    Ok((trait_path, types, trait_impl))
+    Ok(Some((trait_path, types, trait_impl)))
 }
 
 fn translate_assoc_type<'tcx>(
@@ -327,7 +341,7 @@ pub(crate) fn translate_impl<'tcx>(
         let impl_def_id = item.owner_id.to_def_id();
         external_info.internal_trait_impls.insert(impl_def_id);
         let path_span = path.span.to(impll.self_ty.span);
-        let (trait_path, types, trait_impl) = trait_impl_to_vir(
+        if let Some((trait_path, types, trait_impl)) = trait_impl_to_vir(
             ctxt,
             item.span,
             path_span,
@@ -335,9 +349,12 @@ pub(crate) fn translate_impl<'tcx>(
             Some(impll.generics),
             module_path.clone(),
             false,
-        )?;
-        vir.trait_impls.push(trait_impl);
-        Some((trait_path, types))
+        )? {
+            vir.trait_impls.push(trait_impl);
+            Some((trait_path, types))
+        } else {
+            None
+        }
     } else {
         None
     };
@@ -551,9 +568,8 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         let span = tcx.def_span(&impl_def_id);
         let impl_path = def_id_to_vir_path(tcx, &ctxt.verus_items, impl_def_id);
         let module_path = impl_path.pop_segment();
-        if let Ok((trait_path, trait_typ_args, trait_impl)) =
-            trait_impl_to_vir(ctxt, span, span, impl_def_id, None, module_path, true)
-        {
+        let t_impl_opt = trait_impl_to_vir(ctxt, span, span, impl_def_id, None, module_path, true);
+        if let Ok(Some((trait_path, trait_typ_args, trait_impl))) = t_impl_opt {
             let mut assoc_type_impls: Vec<AssocTypeImpl> = Vec::new();
             for assoc_item in tcx.associated_items(impl_def_id).in_definition_order() {
                 match assoc_item.kind {
@@ -591,6 +607,8 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             krate.trait_impls.push(trait_impl);
             krate.assoc_type_impls.append(&mut assoc_type_impls);
             collected_impls.insert(impl_def_id);
+        } else if let Ok(None) = t_impl_opt {
+            // Negative impl; do nothing for now
         } else {
             // Ideally, our filtering should prevent us from reaching here.
             // Probably, we didn't want to include the external impl anyway,
@@ -642,12 +660,6 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             }
         }
 
-        if traitt.x.assoc_typs_bounds.len() > 0 {
-            return err_span(
-                span,
-                "not supported: using assume_specification for a trait method impl where the trait has associated types",
-            );
-        }
         for method in traitt.x.methods.iter() {
             if !methods_we_have.contains::<vir::ast::Ident>(&method.path.last_segment()) {
                 return err_span(
@@ -666,9 +678,11 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
 
         let module_path = impl_path.pop_segment();
 
-        let (_trait_path, _types, trait_impl) =
-            trait_impl_to_vir(ctxt, span, span, *impl_def_id, None, module_path, false)?;
-        krate.trait_impls.push(trait_impl);
+        if let Some((_trait_path, _types, trait_impl)) =
+            trait_impl_to_vir(ctxt, span, span, *impl_def_id, None, module_path, false)?
+        {
+            krate.trait_impls.push(trait_impl);
+        }
     }
 
     Ok(())

@@ -7,7 +7,7 @@ use crate::ast::{
     Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt,
     Trait, TraitX, Typ, TypX,
 };
-use crate::ast_util::{is_visible_to, is_visible_to_or_true};
+use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{
@@ -868,7 +868,7 @@ pub fn prune_krate_for_module_or_krate(
         // - function is exec or proof
         // (when optimizing for modules, after well-formedness checks)
         let is_vis = is_visible_to(&f.x.visibility, &module);
-        let is_open = is_visible_to(&f.x.body_visibility, &module);
+        let is_open = is_body_visible_to(&f.x.body_visibility, &module);
         let is_non_opaque = f.x.opaqueness.get_default_fuel_for_module_path(module) != 0;
         let is_revealed = is_non_opaque || revealed_functions.contains(&f.x.name);
         let is_spec = f.x.mode == Mode::Spec;

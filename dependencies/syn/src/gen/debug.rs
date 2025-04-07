@@ -2642,6 +2642,18 @@ impl Debug for crate::LocalInit {
         formatter.finish()
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::LoopSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("LoopSpec");
+        formatter.field("iter_name", &self.iter_name);
+        formatter.field("invariants", &self.invariants);
+        formatter.field("invariant_except_breaks", &self.invariant_except_breaks);
+        formatter.field("ensures", &self.ensures);
+        formatter.field("decreases", &self.decreases);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::Macro {
@@ -3231,6 +3243,11 @@ impl Debug for crate::Publish {
             }
             crate::Publish::OpenRestricted(v0) => {
                 let mut formatter = formatter.debug_tuple("OpenRestricted");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            crate::Publish::Uninterp(v0) => {
+                let mut formatter = formatter.debug_tuple("Uninterp");
                 formatter.field(v0);
                 formatter.finish()
             }
@@ -3970,6 +3987,14 @@ impl Debug for crate::UnOp {
                 formatter.finish()
             }
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::Uninterp {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Uninterp");
+        formatter.field("token", &self.token);
+        formatter.finish()
     }
 }
 #[cfg(feature = "full")]
