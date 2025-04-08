@@ -3,8 +3,8 @@
 mod common;
 use common::*;
 
-test_verify_one_file! {
-    #[test] verus_verify_basic_while  code! {
+test_verify_one_file_with_options! {
+    #[test] verus_verify_basic_while ["exec_allows_no_decreases_clause"] =>  code! {
         #[verus_spec]
         fn test1() {
             let mut i = 0;
@@ -21,8 +21,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] verus_verify_basic_loop code! {
+test_verify_one_file_with_options! {
+    #[test] verus_verify_basic_loop ["exec_allows_no_decreases_clause"] => code! {
         #[verus_spec]
         fn test1() {
             let mut i = 0;
@@ -45,8 +45,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] verus_verify_basic_for_loop_verus_spec  code! {
+test_verify_one_file_with_options! {
+    #[test] verus_verify_basic_for_loop_verus_spec ["exec_allows_no_decreases_clause"] =>  code! {
         use vstd::prelude::*;
         #[verus_spec(v =>
             ensures
@@ -69,8 +69,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] verus_verify_for_loop_verus_spec_naming_iter  code! {
+test_verify_one_file_with_options! {
+    #[test] verus_verify_for_loop_verus_spec_naming_iter ["exec_allows_no_decreases_clause"] =>  code! {
         use vstd::prelude::*;
         #[verus_spec(v =>
             ensures
@@ -93,8 +93,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] verus_verify_basic_while_fail1 code! {
+test_verify_one_file_with_options! {
+    #[test] verus_verify_basic_while_fail1 ["exec_allows_no_decreases_clause"] => code! {
         #[verus_spec]
         fn test1() {
             let mut i = 0;
@@ -106,8 +106,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] basic_while_false_invariant code! {
+test_verify_one_file_with_options! {
+    #[test] basic_while_false_invariant ["exec_allows_no_decreases_clause"] => code! {
         #[verus_verify]
         fn test1() {
             let mut i = 0;
@@ -122,8 +122,8 @@ test_verify_one_file! {
     } => Err(err) => assert_any_vir_error_msg(err, "invariant not satisfied before loop")
 }
 
-test_verify_one_file! {
-    #[test] verus_verify_invariant_on_func code! {
+test_verify_one_file_with_options! {
+    #[test] verus_verify_invariant_on_func ["exec_allows_no_decreases_clause"] => code! {
         #[verus_spec(
             invariant true
         )]

@@ -752,8 +752,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 1)
 }
 
-test_verify_one_file! {
-    #[test] e18_pass verus_code! {
+test_verify_one_file_with_options! {
+    #[test] e18_pass ["exec_allows_no_decreases_clause"] => verus_code! {
         spec fn fibo(val: nat) -> nat
             // TODO I think Dafny is pretty successful at inferring decreases.
             decreases val
@@ -836,12 +836,12 @@ test_verify_one_file! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 
-test_verify_one_file! {
-    #[test] e19_pass verus_code! {
+test_verify_one_file_with_options! {
+    #[test] e19_pass ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::view::*;
         use vstd::prelude::*;
 
@@ -881,8 +881,8 @@ test_verify_one_file! {
 
 // TODO prevent panics for underflow/overflow in debug mode
 
-test_verify_one_file! {
-    #[test] e20_pass verus_code! {
+test_verify_one_file_with_options! {
+    #[test] e20_pass ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::view::*;
         #[allow(unused_imports)]
         use vstd::seq::*;
@@ -920,8 +920,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] e20_pass_with_ints verus_code! {
+test_verify_one_file_with_options! {
+    #[test] e20_pass_with_ints ["exec_allows_no_decreases_clause"] => verus_code! {
         // This version of e20 uses `Seq<int>` in `is_sorted`, which requires a manual conversion
 
         use vstd::view::*;
@@ -968,8 +968,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] e21_pass verus_code! {
+test_verify_one_file_with_options! {
+    #[test] e21_pass ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::view::*;
         #[allow(unused_imports)]
         use vstd::seq::*;

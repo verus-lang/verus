@@ -94,3 +94,14 @@ test_verify_one_file_with_options! {
         {}
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file_with_options! {
+    #[test] test_no_cheating_admit_exec_allows_no_decreases_clause ["--no-cheating"] => verus_code! {
+        #[verifier::assume_termination]
+        fn a(mut i: u64)
+            requires i <= 10,
+        {
+            a(i)
+        }
+    } => Err(err) => assert_vir_error_msg(err, "#[verifier::assume_termination] not allowed with --no-cheating")
+}
