@@ -82,6 +82,15 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     #[allow(non_snake_case)]
     let FnDefSingleton = str_to_node(FNDEF_SINGLETON);
 
+    let proph_int = str_to_node(PROPH_INT);
+    let proph_construct_int = str_to_node(PROPH_CONSTRUCT_INT);
+    let proph_int_cur = str_to_node(PROPH_INT_CUR);
+    let proph_int_fut = str_to_node(PROPH_INT_FUT);
+    let proph_bool = str_to_node(PROPH_BOOL);
+    let proph_construct_bool = str_to_node(PROPH_CONSTRUCT_BOOL);
+    let proph_bool_cur = str_to_node(PROPH_BOOL_CUR);
+    let proph_bool_fut = str_to_node(PROPH_BOOL_FUT);
+
     let char_lo_1 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_1_MIN));
     let char_hi_1 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_1_MAX));
     let char_lo_2 = str_to_node(&format!("{}", crate::unicode::CHAR_RANGE_2_MIN));
@@ -146,6 +155,18 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 
         // FnDef
         (declare-datatypes (([FnDef] 0)) ((([FnDefSingleton]))))
+
+        // Prophetic variables
+        (declare-datatypes (
+            ([proph_int] 0)
+        )(
+            (([proph_construct_int] ([proph_int_cur] Int) ([proph_int_fut] Int)))
+        ))
+        (declare-datatypes (
+            ([proph_bool] 0)
+        )(
+            (([proph_construct_bool] ([proph_bool_cur] Bool) ([proph_bool_fut] Bool)))
+        ))
 
         // Polymorphism
         (declare-sort [Poly] 0)
