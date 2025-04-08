@@ -1320,6 +1320,7 @@ impl Visitor {
                     let paths = &item_broadcast_use.paths;
                     if self.erase_ghost.erase() {
                         if item_broadcast_use.warning {
+                            #[cfg(verus_keep_ghost)]
                             proc_macro::Diagnostic::spanned(
                                 span.unwrap(),
                                 proc_macro::Level::Warning,
