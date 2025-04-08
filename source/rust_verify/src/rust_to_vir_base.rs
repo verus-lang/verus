@@ -838,7 +838,9 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::Char => (Arc::new(TypX::Int(IntRange::Char)), false),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => {
             let (t0, ghost) = t_rec(tys)?;
-            (Arc::new(TypX::Decorate(TypDecoration::Ref, None, t0.clone())), ghost)
+            // let typ = t_rec(ty)?.0;
+            let typs = Arc::new(vec![t0]);
+            (Arc::new(TypX::Primitive(Primitive::SharedRef, typs)), ghost)
         }
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
             let (t0, ghost) = t_rec(tys)?;

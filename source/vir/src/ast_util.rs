@@ -1,10 +1,5 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, BodyVisibility, Constant, DatatypeTransparency, DatatypeX, Dt, Expr,
-    ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound,
-    GenericBoundX, HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind,
-    MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
-    TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
-    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
+    ArchWordBits, BinaryOp, BodyVisibility, Constant, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound, GenericBoundX, HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Primitive, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -230,6 +225,15 @@ pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
 
 pub fn undecorate_typ(typ: &Typ) -> Typ {
     if let TypX::Decorate(_, _, t) = &**typ { undecorate_typ(t) } else { typ.clone() }
+}
+
+pub fn remove_shared_ref_typ(typ: &Typ) -> Typ {
+    match &**typ {
+        TypX::Primitive(Primitive::SharedRef, ts)  => remove_shared_ref_typ(&ts[0]),
+        TypX::Decorate(_, _, t) => remove_shared_ref_typ(t),
+        _ => typ.clone(),
+    }
+    // if let TypX::Primitive(Primitive::SharedRef, ts) = &**typ { remove_shared_ref_typ(t) } else { typ.clone() }
 }
 
 pub fn allowed_bitvector_type(typ: &Typ) -> bool {
@@ -804,6 +808,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 crate::ast::Primitive::StrSlice => "StrSlice".to_owned(),
                 crate::ast::Primitive::Ptr => format!("*mut {typs_str}"),
                 crate::ast::Primitive::Global => format!("Global"),
+                crate::ast::Primitive::SharedRef => format!("&{typs_str}"),
             }
         }
         TypX::Datatype(Dt::Tuple(_arity), typs, _) => {

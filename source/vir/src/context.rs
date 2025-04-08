@@ -187,7 +187,7 @@ fn datatypes_invs(
                         TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
                         TypX::Primitive(
-                            Primitive::Array | Primitive::Slice | Primitive::Ptr,
+                            Primitive::Array | Primitive::Slice | Primitive::Ptr | Primitive::SharedRef,
                             _,
                         ) => {
                             // Each of these is like an abstract Datatype

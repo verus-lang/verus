@@ -94,6 +94,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
         TypX::Primitive(crate::ast::Primitive::StrSlice, _) => false,
         TypX::Primitive(crate::ast::Primitive::Ptr, _) => false,
+        TypX::Primitive(crate::ast::Primitive::SharedRef, _) => false, //TODO: revisit
         TypX::Primitive(crate::ast::Primitive::Global, _) => false,
         TypX::FnDef(..) => false,
     }

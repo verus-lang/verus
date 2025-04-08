@@ -53,6 +53,7 @@ enum TypNum {
     Never,
     ConstPtr,
     Global,
+    SharedRef,
 }
 
 fn gen_num_typ(n: TypNum, ts: Vec<Typ>) -> Typ {
@@ -113,6 +114,7 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
                 Primitive::StrSlice => TypNum::StrSlice,
                 Primitive::Ptr => TypNum::Ptr,
                 Primitive::Global => TypNum::Global,
+                Primitive::SharedRef => TypNum::SharedRef,
             };
             gen_num_typ(n, gen_typs(state, ts))
         }

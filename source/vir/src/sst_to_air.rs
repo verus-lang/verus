@@ -100,6 +100,7 @@ pub(crate) fn primitive_path(name: &Primitive) -> Path {
         Primitive::StrSlice => crate::def::strslice_type(),
         Primitive::Ptr => crate::def::ptr_type(),
         Primitive::Global => crate::def::global_type(),
+        Primitive::SharedRef => crate::def::shared_ref_type(),
     }
 }
 
@@ -110,6 +111,7 @@ pub(crate) fn primitive_type_id(name: &Primitive) -> Ident {
         Primitive::StrSlice => crate::def::TYPE_ID_STRSLICE,
         Primitive::Ptr => crate::def::TYPE_ID_PTR,
         Primitive::Global => crate::def::TYPE_ID_GLOBAL,
+        Primitive::SharedRef => crate::def::TYPE_ID_SHARED_REF,
     })
 }
 
@@ -174,7 +176,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::Primitive(
-            Primitive::Slice | Primitive::StrSlice | Primitive::Ptr | Primitive::Global,
+            Primitive::Slice | Primitive::StrSlice | Primitive::Ptr | Primitive::Global | Primitive::SharedRef,
             _,
         ) => match typ_as_mono(typ) {
             None => panic!("should be boxed"),
@@ -452,7 +454,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         TypX::ConstInt(_) => None,
         TypX::Primitive(p, _) => {
             match p {
-                Primitive::Array | Primitive::Slice | Primitive::Ptr => {
+                Primitive::Array | Primitive::Slice | Primitive::Ptr | Primitive::SharedRef => {
                     // Each of these is like an abstract Datatype
                     if typ_as_mono(typ).is_none() {
                         panic!("abstract datatype should be boxed")

@@ -1,9 +1,7 @@
 use crate::ast::{
-    CallTarget, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionX, Path,
-    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent,
-    VarIdentDisambiguate, VirErr,
+    CallTarget, Datatype, Dt, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, FunctionX, Path, PatternX, Primitive, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, UnwindSpec, VarIdent, VarIdentDisambiguate, VirErr
 };
-use crate::ast_util::{is_unit, undecorate_typ};
+use crate::ast_util::{is_unit, remove_shared_ref_typ, undecorate_typ};
 use crate::def::Spanned;
 use crate::messages::Span;
 use crate::messages::{error, internal_error};
@@ -79,9 +77,9 @@ pub(crate) fn annotate_user_defined_invariants(
                 ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: true, expr, fun: _ } => {
                     // Check that this is fine, and fill in the correct 'fun'
 
-                    let typ = undecorate_typ(&expr.typ);
+                    let typ = remove_shared_ref_typ(&expr.typ);
                     if !matches!(&*typ, TypX::Datatype(..)) {
-                        return Err(error(&expr.span, "this type is not a datatype"));
+                        return Err(error(&expr.span, "this type is not a datatype - here"));
                     }
                     if let Some(fun) = typ_get_user_defined_type_invariant(datatypes, &typ) {
                         let function = functions.get(&fun).unwrap();
@@ -285,11 +283,12 @@ pub fn check_typ_ok_for_use_typ_invariant(span: &Span, t: &Typ) -> Result<(), Vi
             use crate::ast::TypDecoration::*;
             match dec {
                 Ref | Box | Rc | Arc | Tracked => check_typ_ok_for_use_typ_invariant(span, t),
-                MutRef | Never | ConstPtr => Err(error(span, "this type is not a datatype")),
+                MutRef | Never | ConstPtr => Err(error(span, "this type is not a datatype - decorate")),
                 Ghost => Err(error(span, "cannot apply use_type_invariant for Ghost<_>")),
             }
         }
         TypX::Datatype(..) => Ok(()),
-        _ => Err(error(span, "this type is not a datatype")),
+        TypX::Primitive(Primitive::SharedRef, ts) => check_typ_ok_for_use_typ_invariant(span, &ts[0]),
+        _ => Err(error(span, "this type is not a datatype - datatype")),
     }
 }

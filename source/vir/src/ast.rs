@@ -215,6 +215,7 @@ pub enum Primitive {
     StrSlice,
     Ptr, // Mut ptr, unless Const decoration is applied
     Global,
+    SharedRef,
 }
 
 #[derive(Debug, Serialize, Deserialize, Hash, ToDebugSNode, Clone)]
