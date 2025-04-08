@@ -1288,16 +1288,6 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     }
 }
 
-fn trait_method_path<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    def_path: rustc_hir::definitions::DefPath,
-    call: String,
-) -> vir::ast::Path {
-    let trait_path =
-        crate::rust_to_vir_base::def_path_to_vir_path(tcx, def_path).expect("trait path");
-    crate::rust_to_vir_base::typ_path_and_ident_to_vir_path(&trait_path, Arc::new(call))
-}
-
 // Add lang_item_for_op from rust/compiler/rustc_hir_typeck/src/op.rs
 // Returns the required traits to use op
 // Note: comparison operators are defined only by PartialEq and PartialOrd
@@ -1387,8 +1377,7 @@ fn operator_overload_to_vir<'tcx>(
         None
     };
 
-    let mut call_type = vir::ast::CallTargetKind::Static;
-    let (fun, typ_args, args) = if let Some((op, lhs, rhs)) = bexpr {
+    let (trait_id, fun_sym, args, substs) = if let Some((op, lhs, rhs)) = bexpr {
         let do_replace = match op.node {
             BinOpKind::Eq | BinOpKind::Ne => {
                 !is_smt_equality(bctx, expr.span, &lhs.hir_id, &rhs.hir_id)?
@@ -1411,43 +1400,16 @@ fn operator_overload_to_vir<'tcx>(
         if !do_replace {
             return Ok(None);
         }
-        let (fun_sym, Some(trait_ref)) = lang_item_for_op(tcx, Some((op, is_assign)), None, span)?
+        let (fun_sym, Some(trait_id)) = lang_item_for_op(tcx, Some((op, is_assign)), None, span)?
         else {
             crate::internal_err!(span, "operator needs an accessible trait");
         };
-        if matches!(op.node, BinOpKind::Le | BinOpKind::Lt | BinOpKind::Ge | BinOpKind::Gt) {
-            call_type = vir::ast::CallTargetKind::Dynamic; // ensure_default=false
-            let lhs_ty = bctx.types.node_type(lhs.hir_id);
-            let rhs_ty = bctx.types.node_type(rhs.hir_id);
-            let param_env = tcx.param_env(bctx.fun_id);
-            let Some(assoc_fn) = tcx
-                .associated_items(trait_ref)
-                .filter_by_name_unhygienic(fun_sym)
-                .find(|item| item.kind == rustc_middle::ty::AssocKind::Fn)
-            else {
-                panic!("could not find function");
-            };
-            let substs = tcx.mk_args(&[lhs_ty.into(), rhs_ty.into()]);
-            if let Ok(Some(instance)) =
-                tcx.resolve_instance_raw(param_env.and((assoc_fn.def_id, substs)))
-            {
-                let assoc = tcx.associated_item(instance.def_id());
-                if matches!(assoc.container, rustc_middle::ty::AssocItemContainer::TraitContainer) {
-                    call_type = vir::ast::CallTargetKind::ExternalTraitDefault; // ensure_default=true
-                }
-            }
-        }
-        let fun = Arc::new(FunX {
-            path: trait_method_path(tcx, tcx.def_path(trait_ref), fun_sym.to_ident_string()),
-        });
-        let lhs = expr_to_vir(bctx, lhs, ExprModifier::REGULAR)?;
-        let rhs = expr_to_vir(bctx, rhs, ExprModifier::REGULAR)?;
+        let lhs_ty = bctx.types.node_type(lhs.hir_id);
+        let rhs_ty = bctx.types.node_type(rhs.hir_id);
+        let substs = tcx.mk_args(&[lhs_ty.into(), rhs_ty.into()]);
 
-        let lhs_typ = undecorate_typ(&lhs.typ).clone();
-        let rhs_typ = undecorate_typ(&rhs.typ).clone();
-        let typ_args = Arc::new(vec![lhs_typ, rhs_typ]);
-        let args = Arc::new(vec![lhs, rhs]);
-        (fun, typ_args, args)
+        let args = vec![lhs, rhs];
+        (trait_id, fun_sym, args, substs)
     } else if let ExprKind::Unary(op, arg) = expr.kind {
         let ty = bctx.types.expr_ty_adjusted(arg);
         match ty.kind() {
@@ -1456,36 +1418,35 @@ fn operator_overload_to_vir<'tcx>(
             }
             _ => {}
         }
-        let (fun_sym, Some(trait_ref)) = lang_item_for_op(tcx, None, Some(op), span)? else {
+        let (fun_sym, Some(trait_id)) = lang_item_for_op(tcx, None, Some(op), span)? else {
             crate::internal_err!(span, "Needs to import trait for operator");
         };
-        let fun = Arc::new(FunX {
-            path: trait_method_path(tcx, tcx.def_path(trait_ref), fun_sym.to_ident_string()),
-        });
-        let arg = expr_to_vir(bctx, arg, ExprModifier::REGULAR)?;
-        let typ = undecorate_typ(&arg.typ).clone();
-        let typ_args = Arc::new(vec![typ]);
-        let args = Arc::new(vec![arg]);
-        (fun, typ_args, args)
+
+        let args = vec![arg];
+        let arg_ty = bctx.types.node_type(arg.hir_id);
+        let substs = tcx.mk_args(&[arg_ty.into()]);
+        (trait_id, fun_sym, args, substs)
     } else {
         return Ok(None);
     };
-    let expr_typ = |e: &Expr| {
-        if current_modifier.deref_mut {
-            typ_of_node_expect_mut_ref(bctx, e.span, &expr.hir_id)
-        } else {
-            typ_of_node(bctx, e.span, &e.hir_id, false)
-        }
+    let Some(assoc_fn) = tcx
+        .associated_items(trait_id)
+        .filter_by_name_unhygienic(fun_sym)
+        .find(|item| item.kind == rustc_middle::ty::AssocKind::Fn)
+    else {
+        panic!("could not find function");
     };
-    let ret_type = &expr_typ(expr)?;
-    let call_target = CallTarget::Fun(
-        call_type,
-        fun.clone(),
-        typ_args,
-        Arc::new(vec![ImplPath::FnDefImplPath(fun)]),
-        AutospecUsage::Final,
-    );
-    Ok(Some(bctx.spanned_typed_new(expr.span, ret_type, ExprX::Call(call_target, args))))
+    let fun_def_id = assoc_fn.def_id;
+    Ok(Some(fn_call_to_vir(
+        bctx,
+        expr,
+        fun_def_id,
+        substs,
+        expr.span,
+        args,
+        current_modifier,
+        true,
+    )?))
 }
 
 pub(crate) fn expr_to_vir_innermost<'tcx>(

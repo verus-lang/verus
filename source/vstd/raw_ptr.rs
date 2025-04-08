@@ -144,6 +144,14 @@ impl<T: ?Sized> View for *mut T {
     uninterp spec fn view(&self) -> Self::V;
 }
 
+pub assume_specification<T: ?Sized>[ <*mut T as PartialEq<*mut T>>::eq ](
+    x: &*mut T,
+    y: &*mut T,
+) -> (res: bool)
+    ensures
+        res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
+;
+
 impl<T: ?Sized> View for *const T {
     type V = PtrData;
 
@@ -152,6 +160,14 @@ impl<T: ?Sized> View for *const T {
         (*self as *mut T).view()
     }
 }
+
+pub assume_specification<T: ?Sized>[ <*const T as PartialEq<*const T>>::eq ](
+    x: &*const T,
+    y: &*const T,
+) -> (res: bool)
+    ensures
+        res <==> (x@.addr == y@.addr) && (x@.metadata == y@.metadata),
+;
 
 impl<T> View for PointsTo<T> {
     type V = PointsToData<T>;

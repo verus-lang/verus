@@ -227,3 +227,61 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_rust_error_msg(e, "binary operation `==` cannot be applied to type `A`")
 }
+
+test_verify_one_file! {
+    #[test] test_eq_overload verus_code! {
+        use vstd::prelude::*;
+        use core::cmp::PartialEq;
+        use vstd::laws_eq::*;
+        use vstd::laws_cmp::*;
+
+        pub struct S {
+            a: u8,
+            b: usize,
+            c: bool,
+        }
+
+        impl PartialEq for S {
+            fn eq(&self, other: &S) -> (ret: bool)
+                ensures
+                    !ret
+            {
+                false
+            }
+        }
+
+        fn test(s1: S, s2: S)
+        {
+            let c1 = (s1 == s2);
+            assert(!c1);
+            let c2 = (s1.eq(&s2));
+            assert(!c2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_structural_eq verus_code! {
+        use vstd::prelude::*;
+
+        #[derive(PartialEq, Structural)]
+        pub struct S {
+            a: u8,
+            b: usize,
+            c: bool,
+        }
+
+        // This does not take effect since structural equality has higher priority than the trait spec.
+        pub assume_specification[ S::eq ](lhs: &S, rhs: &S) -> (ret: bool)
+            ensures
+                ret == false,
+        ;
+
+        fn test(s1: S, s2: S)
+        requires s1 == s2
+        {
+            let c = (s1 == s2);
+            assert(c);
+        }
+    } => Ok(())
+}

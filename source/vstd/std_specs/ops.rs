@@ -344,7 +344,7 @@ macro_rules! def_call_requires_axiom {
 
         pub broadcast proof fn shl_op_call_requires(a: $typ, b: $typ)
         ensures
-            a.spec_shr_requires(b) ==> #[trigger]call_requires(<$typ as core::ops::Shl>::shl, (a, b)),
+            a.spec_shl_requires(b) ==> #[trigger]call_requires(<$typ as core::ops::Shl>::shl, (a, b)),
         {
             axiom_shl_requires(a, b);
         }
