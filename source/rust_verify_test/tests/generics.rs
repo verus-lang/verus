@@ -43,6 +43,45 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] const_generic_bool verus_code! {
+        #[verifier(external_body)]
+        #[verifier::accept_recursive_types(A)]
+        struct S<A, const B: bool>(A);
+
+        #[verifier(external_body)]
+        fn get<'a, A, const B: bool>(s: &'a S<A, B>) -> &'a A {
+            &s.0
+        }
+
+        impl<A, const B: bool> S<A, B> {
+            spec fn s_b(&self) -> bool { B }
+        }
+
+        spec fn f<const B: bool>() -> bool { B }
+
+        spec fn g<const B: bool>() -> bool { f::<B>() }
+
+        proof fn h() {
+            let x = g::<true>();
+            assert(x == true);
+        }
+
+        proof fn h2() {
+            let x = g::<true>();
+            assert(x == false); // FAILS
+        }
+
+        fn test_s_b(s: &S<u8, true>) {
+            assert(s.s_b() == true);
+        }
+
+        fn test_s_b2(s: &S<u8, true>) {
+            assert(s.s_b() == false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
     #[test] test_decorated_types verus_code! {
         spec fn sizeof<A>() -> nat;
 

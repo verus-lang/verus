@@ -1162,9 +1162,14 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     };
     match cnst_kind {
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
-        ConstKind::Value(_tcx, ValTree::Leaf(i)) => {
+        ConstKind::Value(ty, ValTree::Leaf(i))
+            if matches!(ty.kind(), TyKind::Uint(_) | TyKind::Int(_)) =>
+        {
             let c = num_bigint::BigInt::from(i.to_bits(i.size()));
             Ok(Arc::new(TypX::ConstInt(c)))
+        }
+        ConstKind::Value(ty, ValTree::Leaf(i)) if matches!(ty.kind(), TyKind::Bool) => {
+            Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0)))
         }
         _ => {
             unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
