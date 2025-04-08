@@ -335,6 +335,7 @@ ast_struct! {
         pub brace_token: Option<token::Brace>,
         pub paths: Punctuated<ExprPath, Token![,]>,
         pub semi: Token![;],
+        pub warning: bool,
     }
 }
 
@@ -1246,6 +1247,7 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for BroadcastUse {
         fn parse(input: ParseStream) -> Result<Self> {
+            let mut warning = false;
             let attrs = Vec::new();
             let broadcast_use_tokens: (Token![broadcast], Token![use]) =
                 (input.parse()?, input.parse()?);
@@ -1257,7 +1259,19 @@ pub mod parsing {
             } else {
                 let path = input.parse()?;
                 let mut paths = Punctuated::new();
-                paths.push_value(path);
+                paths.push(path);
+                loop {
+                    if input.peek(Token![;]) {
+                        break;
+                    }
+                    warning = true;
+                    if input.peek(Token![,]) {
+                        let _: Token![,] = input.parse()?;
+                        continue;
+                    }
+                    let path = input.parse()?;
+                    paths.push(path);
+                }
                 (None, paths)
             };
 
@@ -1269,6 +1283,7 @@ pub mod parsing {
                 brace_token,
                 paths,
                 semi,
+                warning,
             })
         }
     }
@@ -1765,6 +1780,7 @@ mod printing {
                 brace_token,
                 paths,
                 semi,
+                warning: _,
             } = self;
             broadcast_use_tokens.0.to_tokens(tokens);
             broadcast_use_tokens.1.to_tokens(tokens);

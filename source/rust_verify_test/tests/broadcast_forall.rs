@@ -627,3 +627,12 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "lemma_foo is not a broadcast proof fn")
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] broadcast_old_syntax_warning verus_code! {
+        broadcast use vstd::seq_lib::group_seq_properties, vstd::set_lib::group_set_properties;
+    } => Ok(err) => {
+        assert!(err.errors.is_empty());
+        assert!(err.warnings.iter().find(|w| w.message.contains("broadcast use")).iter().next().is_some());
+    }
+}

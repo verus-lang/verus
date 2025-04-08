@@ -590,4 +590,15 @@ proof fn uses_spec_has(s: Set<int>, ms: vstd::multiset::Multiset<int>)
     assert(ms has 4 == ms has 4);
 }
 
+proof fn broadcast_use() {
+    broadcast use vstd::seq_lib::group_seq_properties;
+    // you can use broadcase use on the module level, in proof functions,
+    // in proof blocks, or in assert-by
+    assert forall|s: Seq<usize>, v: usize, x: usize|
+        { s.contains(x) ==> s.push(v).contains(x) } by {
+        broadcast use vstd::seq_lib::group_seq_properties;
+
+    };
+}
+
 } // verus!

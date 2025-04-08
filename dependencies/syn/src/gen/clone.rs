@@ -248,6 +248,7 @@ impl Clone for crate::BroadcastUse {
             brace_token: self.brace_token.clone(),
             paths: self.paths.clone(),
             semi: self.semi.clone(),
+            warning: self.warning.clone(),
         }
     }
 }

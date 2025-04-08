@@ -1109,8 +1109,7 @@ impl Visitor {
         match stmt {
             Stmt::Local(local) => self.visit_local_extend(local),
             Stmt::Item(Item::BroadcastUse(broadcast_use)) => {
-                let BroadcastUse { attrs, broadcast_use_tokens: _, brace_token: _, paths, semi: _ } =
-                    broadcast_use;
+                let BroadcastUse { attrs, paths, .. } = broadcast_use;
                 if self.erase_ghost.erase() {
                     (true, vec![])
                 } else {
@@ -1320,6 +1319,15 @@ impl Visitor {
                     let span = item.span();
                     let paths = &item_broadcast_use.paths;
                     if self.erase_ghost.erase() {
+                        if item_broadcast_use.warning {
+                            proc_macro::Diagnostic::spanned(
+                                span.unwrap(),
+                                proc_macro::Level::Warning,
+                                "Outdated syntax for broadcast use.\n\
+                                         Use semicolon for multiple uses.",
+                            )
+                            .emit();
+                        }
                         *item = Item::Verbatim(quote! { const _: () = (); });
                     } else {
                         let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
