@@ -186,6 +186,7 @@ fn datatypes_invs(
                         TypX::Bool | TypX::AnonymousClosure(..) => {}
                         TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
+                        TypX::ConstBool(_) => {}
                         TypX::Primitive(
                             Primitive::Array | Primitive::Slice | Primitive::Ptr,
                             _,

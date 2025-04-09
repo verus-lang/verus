@@ -1351,7 +1351,15 @@ fn verus_item_to_vir<'tcx, 'a>(
             record_spec_fn_allow_proof_args(bctx, expr);
 
             if !is_smt_arith(bctx, args[0].span, args[1].span, &args[0].hir_id, &args[1].hir_id)? {
-                return err_span(expr.span, "expected types for this operator");
+                let t1 = bctx.types.expr_ty_adjusted(&args[0]);
+                let t2 = bctx.types.expr_ty_adjusted(&args[1]);
+                return err_span(
+                    expr.span,
+                    format!(
+                        "types are not compatible with this operator (got {:?} and {:?})",
+                        t1, t2
+                    ),
+                );
             }
 
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;

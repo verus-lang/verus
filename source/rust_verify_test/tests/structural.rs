@@ -79,3 +79,33 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_structural_trait_bound verus_code! {
+        use vstd::prelude::*;
+
+        // Structural required for Rust eq to connect to SMT ==
+        pub struct VecMap<Key,Value>
+        where Key: View + Eq + Structural
+        {
+            v: Vec<(Key,Value)>
+        }
+
+        impl<Key,Value> VecMap<Key,Value>
+        where Key: View + Eq + Structural
+        {
+            pub fn get<'a>(&'a self, k: &Key) -> (result: Option<&'a Value>)
+            {
+                let mut i: usize = 0;
+                while i < self.v.len()
+                {
+                    if &self.v[i].0 == k {
+                        return Some(&self.v[i].1)
+                    }
+                }
+                None
+            }
+        }
+
+    } => Ok(())
+}
