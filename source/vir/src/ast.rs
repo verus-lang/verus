@@ -267,6 +267,8 @@ pub enum TypX {
     TypeId,
     /// Const integer type argument (e.g. for array sizes)
     ConstInt(BigInt),
+    /// Const bool type argument
+    ConstBool(bool),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
 }

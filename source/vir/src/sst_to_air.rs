@@ -185,6 +185,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Projection { .. } => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
+        TypX::ConstBool(_) => panic!("const bool cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
     }
 }
@@ -343,6 +344,10 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
         TypX::ConstInt(c) => {
             mk_id(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
         }
+        TypX::ConstBool(b) => mk_id(str_apply(
+            crate::def::TYPE_ID_CONST_BOOL,
+            &vec![Arc::new(ExprX::Const(Constant::Bool(*b)))],
+        )),
         TypX::Air(_) => panic!("internal error: typ_to_ids of Air"),
     }
 }
@@ -452,6 +457,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
         TypX::ConstInt(_) => None,
+        TypX::ConstBool(_) => None,
         TypX::Primitive(p, _) => {
             match p {
                 Primitive::Array | Primitive::Slice | Primitive::Ptr | Primitive::SharedRef => {
@@ -516,6 +522,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Projection { .. } => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
+        TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
@@ -547,6 +554,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Projection { .. } => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
+        TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
@@ -835,7 +843,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             str_apply(crate::def::ARRAY_NEW, &args)
         }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)) => {
-            str_apply(crate::def::CONST_INT, &vec![typ_to_id(c)])
+            let f = crate::ast_util::const_generic_to_primitive(&exp.typ);
+            str_apply(f, &vec![typ_to_id(c)])
         }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p, ts)) => {
             if let Some(e) = crate::traits::trait_bound_to_air(ctx, p, ts) {

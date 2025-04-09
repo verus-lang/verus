@@ -156,6 +156,7 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
             Box::new(TypX::Projection { self_typ, trait_as_datatype, name, assoc_typ_args: vec![] })
         }
         vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
+        vir::ast::TypX::ConstBool(b) => Box::new(TypX::Primitive(b.to_string())),
         vir::ast::TypX::TypeId | vir::ast::TypX::Air(..) => {
             panic!("internal error: unexpected type")
         }
