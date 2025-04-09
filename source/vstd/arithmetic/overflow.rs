@@ -191,7 +191,7 @@ macro_rules! checked_uint_gen {
                     proof {
                         use_type_invariant(&self);
                     }
-                    let i: Ghost<nat> = Ghost((&self@ + v2) as nat);
+                    let i: Ghost<nat> = Ghost((self@ + v2) as nat);
                     match self.v {
                         Some(v1) => Self{ i, v: v1.checked_add(v2) },
                         None => Self{ i, v: None },

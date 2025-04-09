@@ -21,7 +21,7 @@ pub proof fn tracked_swap<V>(tracked a: &mut V, tracked b: &mut V)
 #[verifier::external_body]
 pub proof fn tracked_static_ref<V>(tracked v: V) -> (tracked res: &'static V)
     ensures
-        res == v,
+        *res == v,
 {
     unimplemented!();
 }

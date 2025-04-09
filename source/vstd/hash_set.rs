@@ -97,7 +97,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     pub fn get<'a>(&'a self, k: &Key) -> (result: Option<&'a Key>)
         ensures
             match result {
-                Some(v) => self@.contains(k@) && v == &k,
+                Some(v) => self@.contains(k@) && v == k,
                 None => !self@.contains(k@),
             },
     {
