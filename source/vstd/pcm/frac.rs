@@ -85,7 +85,7 @@ pub struct FracGhost<T, const TOTAL: u64 = 2> {
 
 impl<T, const TOTAL: u64> FracGhost<T, TOTAL> {
     #[verifier::type_invariant]
-    pub closed spec fn inv(self) -> bool {
+    spec fn inv(self) -> bool {
         self.r.value() is Value
     }
 
@@ -246,7 +246,7 @@ pub struct GhostVar<T> {
 
 impl<T> GhostVar<T> {
     #[verifier::type_invariant]
-    pub closed spec fn inv(self) -> bool {
+    spec fn inv(self) -> bool {
         self.frac.frac() == 1
     }
 
@@ -265,7 +265,7 @@ pub struct GhostVarAuth<T> {
 
 impl<T> GhostVarAuth<T> {
     #[verifier::type_invariant]
-    pub closed spec fn inv(self) -> bool {
+    spec fn inv(self) -> bool {
         self.frac.frac() == 1
     }
 
