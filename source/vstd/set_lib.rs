@@ -649,6 +649,25 @@ pub proof fn lemma_subset_equality<A>(x: Set<A>, y: Set<A>)
     }
 }
 
+/// If x is a subset of y and y is finite, the size of x is smaller than or equal to that of y.
+pub proof fn lemma_subset_smaller_than_superset<A>(x: Set<A>, y: Set<A>)
+    requires
+        x.subset_of(y),
+        y.finite(),
+    ensures
+        x.finite(),
+        x.len() <= y.len(),
+    decreases x.len(),
+{
+    broadcast use group_set_properties;
+
+    if x =~= Set::<A>::empty() {
+    } else {
+        let e = x.choose();
+        lemma_subset_smaller_than_finite_superset(x.remove(e), y.remove(e));
+    }
+}
+
 /// If an injective function is applied to each element of a set to construct
 /// another set, the two sets have the same size.
 // the dafny original lemma reasons with partial function f
