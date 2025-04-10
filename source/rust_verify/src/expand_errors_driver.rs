@@ -592,7 +592,7 @@ impl ExpandErrorsDriver {
             note = note.primary_span(span);
         }
         if in_fancy_note {
-            note = note.fancy_note(main_body);
+            note = note.fancy_note(format!("\n\n{:}", main_body));
         }
 
         use vir::messages::ToAny;
