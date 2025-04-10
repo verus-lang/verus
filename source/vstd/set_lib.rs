@@ -664,7 +664,7 @@ pub proof fn lemma_subset_smaller_than_superset<A>(x: Set<A>, y: Set<A>)
     if x =~= Set::<A>::empty() {
     } else {
         let e = x.choose();
-        lemma_subset_smaller_than_finite_superset(x.remove(e), y.remove(e));
+        lemma_subset_smaller_than_superset(x.remove(e), y.remove(e));
     }
 }
 
