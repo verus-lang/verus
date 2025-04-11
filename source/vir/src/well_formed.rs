@@ -310,7 +310,7 @@ fn check_one_expr(
                     .x
                     .params
                     .iter()
-                    .filter(|p| todo!("determine if p is a mutable reference"))
+                    .filter(|p| matches!(&*p.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)))
                 {
                     if *x == param.x.name {
                         return Err(error(

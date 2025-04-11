@@ -1345,8 +1345,8 @@ fn is_mut_ty<'tcx>(_ctxt: &Context<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> Opt
     use rustc_middle::ty::*;
     match ty.kind() {
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some(None),
-        TyKind::Adt(AdtDef(adt_def_data), args) => {
-            todo!()
+        //TyKind::Adt(AdtDef(adt_def_data), args) => {
+        //    todo!()
             // let did = adt_def_data.did;
             // let verus_item = ctxt.verus_items.id_to_name.get(&did);
             // if let Some(VerusItem::BuiltinType(
@@ -1366,7 +1366,7 @@ fn is_mut_ty<'tcx>(_ctxt: &Context<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> Opt
             //     }
             // }
             // None
-        }
+        //},
         _ => None,
     }
 }

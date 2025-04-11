@@ -15,12 +15,12 @@ use crate::def::{
     path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when,
     prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
     snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
-    unique_local, variant_field_ident, variant_field_ident_internal, variant_ident,
+    unique_local, variant_field_ident, variant_field_ident_internal, variant_ident, suffix_local_unique_proph,
     CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
     FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
     SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
     STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END, U_HI,
+    SUFFIX_SNAP_WHILE_END, U_HI, PROPH_INT, PROPH_BOOL, PROPH_INT_CUR, PROPH_INT_FUT
 };
 use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, typ_is_poly, MonoTyp, MonoTypX};
@@ -169,7 +169,17 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 }
             }
         }
-        TypX::Decorate(_, _, t) => typ_to_air(ctx, t),
+        TypX::Decorate(mut_ref, _, t) => {
+            if matches!(*mut_ref, TypDecoration::MutRef) {
+                match &**t {
+                    TypX::Int(_) => str_typ(PROPH_INT),
+                    TypX::Bool => str_typ(PROPH_BOOL),
+                    _ => typ_to_air(ctx, t)
+                }
+            } else {
+                typ_to_air(ctx, t)
+            }
+        },
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
@@ -719,10 +729,22 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             let expr = constant_to_expr(ctx, c);
             expr
         }
-        ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
+        ExpX::Var(x) => match expr_ctxt.mode {
+            ExprMode::Spec => match &*exp.typ {
+                TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _) => str_apply(PROPH_INT_FUT, &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))]),
+                _ => string_var(&suffix_local_unique_id(x))
+            },
+            _ => string_var(&suffix_local_unique_id(x))
+        }
         ExpX::VarLoc(x) => string_var(&suffix_local_unique_id(x)),
         ExpX::VarAt(x, VarAt::Pre) => match expr_ctxt.mode {
-            ExprMode::Spec => string_var(&prefix_pre_var(&suffix_local_unique_id(x))),
+            ExprMode::Spec => match &*exp.typ {
+                TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _) => str_apply(PROPH_INT_CUR, &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))]),
+                //TypX::Decorate(crate::ast::TypDecoration::MutRef, None, TypX::Bool) => string_var(&proph_bool_cur_var(&suffix_local_unique_id(x))),
+                _ => {
+                    string_var(&prefix_pre_var(&suffix_local_unique_id(x)))
+                }
+            }
             ExprMode::Body => {
                 Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_unique_id(x)))
             }
@@ -1549,7 +1571,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
             for arg in args.iter() {
-                req_args.push(exp_to_expr(ctx, arg, expr_ctxt)?);
+                match &arg.x {
+                    ExpX::Loc(x) => match &x.x {
+                        ExpX::VarLoc(x) => req_args.push(string_var(&suffix_local_unique_proph(&suffix_local_unique_id(x)))),
+                        _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?)
+                    },
+                    _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?)
+                };
             }
             let req_args = Arc::new(req_args);
 
@@ -1644,7 +1672,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             let typ_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
-            if func.x.params.iter().any(|p| todo!("determine if p is a mutable reference"))
+            if func.x.params.iter().any(|p| matches!(&*p.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)))
                 && ctx.debug
             {
                 unimplemented!("&mut args are unsupported in debugger mode");
@@ -1669,26 +1697,42 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 } else {
                     arg.clone()
                 };
+
                 // TODO(prophecy): this is where the changes at the call sites will need to be made
-                if todo!("parameter is a mutable reference") {
-                    // TODO(prophecy): (this will change) call_snapshot = true;
-                    // TODO(prophecy): (this will change) let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
-                    // TODO(prophecy): (this will change)     loc_to_field_update_data(arg);
-                    // TODO(prophecy): (this will change) mutated_fields
-                    // TODO(prophecy): (this will change)     .entry(base_var)
-                    // TODO(prophecy): (this will change)     .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
-                    // TODO(prophecy): (this will change)     .a
-                    // TODO(prophecy): (this will change)     .push(fields.iter().map(|o| o.opr.clone()).collect());
-                    // TODO(prophecy): (this will change) let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
-                    // TODO(prophecy): (this will change) ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
-                    // TODO(prophecy): (this will change) ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?);
+                if matches!(&*param.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)) {
+                    call_snapshot = true;
+                    let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
+                        loc_to_field_update_data(arg);
+                    
+                    let second_apply = str_apply(PROPH_INT_FUT, &vec![Arc::new(ExprX::Var(Arc::new(suffix_local_unique_proph(&suffix_local_unique_id(&base_var)).to_string())))]);
+                    let second_eq = Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))), second_apply));
+                    stmts.insert(0, Arc::new(StmtX::Assume(second_eq)));
+                    stmts.insert(0, Arc::new(StmtX::Havoc(suffix_local_unique_id(&base_var))));
+                    let first_apply = str_apply(PROPH_INT_CUR, &vec![Arc::new(ExprX::Var(Arc::new(suffix_local_unique_proph(&suffix_local_unique_id(&base_var)).to_string())))]);
+                    let first_eq = Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, first_apply, Arc::new(ExprX::Var(suffix_local_unique_id(&base_var)))));
+                    stmts.insert(0, Arc::new(StmtX::Assume(first_eq)));
+
+                    mutated_fields
+                        .entry(base_var)
+                        .or_insert(LocFieldInfo { base_typ, base_span, a: Vec::new() })
+                        .a
+                        .push(fields.iter().map(|o| o.opr.clone()).collect());
+                    //let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
+                    //ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
+                    match &arg_x.x {
+                        ExpX::Loc(x) => match &x.x {
+                            ExpX::VarLoc(x) => ens_args_wo_typ.push(string_var(&suffix_local_unique_proph(&suffix_local_unique_id(x)))),
+                            _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
+                        },
+                        _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
+                    };
                 } else {
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
                 };
             }
-            let havoc_stmts = mutated_fields
-                .keys()
-                .map(|base| Arc::new(StmtX::Havoc(suffix_local_unique_id(&base))));
+            //let havoc_stmts = mutated_fields
+            //    .keys()
+            //    .map(|base| Arc::new(StmtX::Havoc(suffix_local_unique_id(&base))));
 
             let unchaged_stmts = mutated_fields
                 .iter()
@@ -1720,11 +1764,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 .collect::<Result<Vec<Vec<Stmt>>, VirErr>>()?
                 .into_iter()
                 .flatten();
-            let mut_stmts: Vec<_> = havoc_stmts.chain(unchaged_stmts).collect::<Vec<_>>();
+            let mut_stmts: Vec<_> = unchaged_stmts.collect::<Vec<_>>();
 
             if call_snapshot {
-                stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
-                stmts.extend(mut_stmts.into_iter());
+                //stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
+                //stmts.extend(mut_stmts.into_iter());
             } else {
                 assert_eq!(mut_stmts.len(), 0);
                 if ctx.debug {
@@ -1750,6 +1794,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut ens_args: Vec<_> =
                 ens_typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
+            
             if func.x.ens_has_return {
                 if let Some(Dest { dest, is_init }) = dest {
                     let var = suffix_local_unique_id(&get_loc_var(dest));
@@ -1823,7 +1868,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 vec![]
             } else {
                 // Set `dest_id` variable to the returned expression.
-
                 let mut stmts = if let Some(dest_id) = state.post_condition_info.dest.clone() {
                     let ret_exp =
                         ret_exp.as_ref().expect("if dest is provided, expr must be provided");
@@ -1866,7 +1910,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                                 }
                             }
                         };
-
                         let ens_stmt = StmtX::Assert(assert_id.clone(), error, None, ens.clone());
                         stmts.push(Arc::new(ens_stmt));
                     }
@@ -2662,11 +2705,16 @@ pub(crate) fn body_stm_to_air(
         }
     }
     for decl in local_decls.iter() {
-        local_shared.push(if decl.kind.is_mutable() {
-            Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
+        if decl.kind.is_mutable() {
+            //dbg!(&decl.typ);
+            match &*decl.typ {
+                TypX::Decorate(crate::ast::TypDecoration::MutRef, None, t) => local_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, t)))),
+                _ => local_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ))))
+            };
+            local_shared.push(Arc::new(DeclX::Const(suffix_local_unique_proph(&suffix_local_unique_id(&decl.ident)), typ_to_air(ctx, &decl.typ))));
         } else {
-            Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
-        });
+            local_shared.push(Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ))));
+        };
     }
 
     set_fuel(ctx, &mut local_shared, hidden);
@@ -2674,9 +2722,13 @@ pub(crate) fn body_stm_to_air(
     use indexmap::{IndexMap, IndexSet};
     let mut declared: IndexMap<UniqueIdent, Typ> = IndexMap::new();
     let mut assigned: IndexSet<UniqueIdent> = IndexSet::new();
+    let mut has_mut_params = false;
     for param in params.iter() {
         declared.insert(unique_local(&param.x.name), param.x.typ.clone());
         assigned.insert(unique_local(&param.x.name));
+        if matches!(&*param.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)) {
+            has_mut_params = true;
+        }
     }
     for decl in local_decls.iter() {
         declared.insert(decl.ident.clone(), decl.typ.clone());
@@ -2745,6 +2797,10 @@ pub(crate) fn body_stm_to_air(
     );
 
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm)?;
+
+    if has_mut_params {
+        stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+    }
 
     if state.static_prelude.len() > 0 {
         stmts.splice(0..0, state.static_prelude.clone());

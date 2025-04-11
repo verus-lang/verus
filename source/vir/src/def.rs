@@ -198,6 +198,7 @@ pub const PROPH_BOOL: &str = "Proph%B";
 pub const PROPH_CONSTRUCT_BOOL: &str = "Proph%B%";
 pub const PROPH_BOOL_CUR: &str = "Proph%cur%B";
 pub const PROPH_BOOL_FUT: &str = "Proph%future%B";
+pub const PROPH_INT_SUFFIX: &str = "proph%I";
 
 // List of QID suffixes we add to internally generated quantifiers
 pub const QID_BOX_AXIOM: &str = "box_axiom";
@@ -333,6 +334,10 @@ pub(crate) fn unique_local(id: &VarIdent) -> VarIdent {
 pub fn suffix_local_unique_id(ident: &VarIdent) -> Ident {
     use crate::ast_util::LowerUniqueVar;
     ident.lower()
+}
+
+pub fn suffix_local_unique_proph(ident: &Ident) -> Ident {
+    Arc::new(ident.to_string() + PROPH_INT_SUFFIX)
 }
 
 pub fn subst_rename_ident(x: &VarIdent, n: u64) -> VarIdent {
@@ -539,16 +544,6 @@ pub fn simplify_temp_var(n: u64) -> VarIdent {
 
 pub fn prefix_pre_var(name: &Ident) -> Ident {
     Arc::new(PREFIX_PRE_VAR.to_string() + name)
-}
-
-pub fn proph_int_cur_var(name: &Ident) -> Ident {
-    let string = "(".to_string() + PROPH_INT_CUR + " " + name + ")";
-    Arc::new(string)
-}
-
-pub fn proph_bool_cur_var(name: &Ident) -> Ident {
-    let string = "(".to_string() + PROPH_BOOL_CUR + " " + name + ")";
-    Arc::new(string)
 }
 
 pub fn encode_dt_as_path(dt: &Dt) -> Path {
