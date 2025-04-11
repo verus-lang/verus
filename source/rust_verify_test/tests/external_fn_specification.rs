@@ -1414,3 +1414,10 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] test_trait_fn verus_code! {
+        use std::fmt::Display;
+        pub assume_specification<T: Display>[ T::to_string ](this: &T) -> (other: String);
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification cannot be used to specify generic specifications of trait methods")
+}

@@ -1704,10 +1704,16 @@ pub(crate) fn get_external_def_id<'tcx>(
                     external_id,
                     normalized_substs,
                 );
-                let Ok(Some(inst)) = inst else {
+                let Ok(inst) = inst else {
                     return err_span(
                         sig.span,
                         "Verus Internal Error: handling assume_specification, resolve failed",
+                    );
+                };
+                let Some(inst) = inst else {
+                    return err_span(
+                        sig.span,
+                        "assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead",
                     );
                 };
                 let rustc_middle::ty::InstanceKind::Item(did) = inst.def else {
