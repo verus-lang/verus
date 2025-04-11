@@ -111,7 +111,7 @@ test_verify_one_file! {
 
         proof fn test() {
             let s: Set<nat> = set![9];
-            broadcast use fold::lemma_fold_insert, fold::lemma_fold_empty;
+            broadcast use {fold::lemma_fold_insert, fold::lemma_fold_empty};
             assert(s.finite());
             assert(s.len() > 0);
             assert(s.fold(0, |p: nat, a: nat| p + a) == 9);

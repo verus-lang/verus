@@ -3823,14 +3823,14 @@ test_verify_one_file! {
 
             proof fn test1(s: S)
             {
-                broadcast use p_prop_1, p_prop_2;
+                broadcast use{p_prop_1, p_prop_2};
                 assert(QQ::e(s) == 200);
                 assert(QQ::e(&s) == 300);
             }
 
             proof fn test2(s: S)
             {
-                broadcast use p_prop_1, p_prop_2;
+                broadcast use{p_prop_1, p_prop_2};
                 assert(QQ::e(s) == 300); // FAILS
             }
         }
