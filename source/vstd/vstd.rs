@@ -34,6 +34,7 @@ pub mod hash_map;
 pub mod hash_set;
 pub mod invariant;
 pub mod layout;
+pub mod logatom;
 pub mod map;
 pub mod map_lib;
 pub mod math;
