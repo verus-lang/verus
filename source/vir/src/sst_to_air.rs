@@ -2711,7 +2711,7 @@ pub(crate) fn body_stm_to_air(
                 TypX::Decorate(crate::ast::TypDecoration::MutRef, None, t) => local_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, t)))),
                 _ => local_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ))))
             };
-            local_shared.push(Arc::new(DeclX::Const(suffix_local_unique_proph(&suffix_local_unique_id(&decl.ident)), typ_to_air(ctx, &decl.typ))));
+            local_shared.push(Arc::new(DeclX::Const(suffix_local_unique_proph(&suffix_local_unique_id(&decl.ident)), typ_to_air(ctx, &Arc::new(TypX::Decorate(crate::ast::TypDecoration::MutRef, None, decl.typ.clone()))))));
         } else {
             local_shared.push(Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ))));
         };
