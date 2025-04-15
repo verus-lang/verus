@@ -14,13 +14,14 @@ use crate::def::{
     encode_dt_as_path, fun_to_string, is_variant_ident, new_internal_qid, new_user_qid_name,
     path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when,
     prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
-    snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id, suffix_typ_param_ids,
-    unique_local, variant_field_ident, variant_field_ident_internal, variant_ident, suffix_local_unique_proph,
-    CommandsWithContext, CommandsWithContextX, ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY,
-    SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR, STRSLICE_IS_ASCII, STRSLICE_LEN,
-    STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END, U_HI, PROPH_INT, PROPH_BOOL, PROPH_INT_CUR, PROPH_INT_FUT
+    snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id,
+    suffix_local_unique_proph, suffix_typ_param_ids, unique_local, variant_field_ident,
+    variant_field_ident_internal, variant_ident, CommandsWithContext, CommandsWithContextX,
+    ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, PROPH_BOOL, PROPH_INT,
+    PROPH_INT_CUR, PROPH_INT_FUT, SNAPSHOT_CALL, SNAPSHOT_PRE, STRSLICE_GET_CHAR,
+    STRSLICE_IS_ASCII, STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
 use crate::messages::{error, error_with_label, Span};
 use crate::poly::{typ_as_mono, typ_is_poly, MonoTyp, MonoTypX};
@@ -174,12 +175,12 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 match &**t {
                     TypX::Int(_) => str_typ(PROPH_INT),
                     TypX::Bool => str_typ(PROPH_BOOL),
-                    _ => typ_to_air(ctx, t)
+                    _ => typ_to_air(ctx, t),
                 }
             } else {
                 typ_to_air(ctx, t)
             }
-        },
+        }
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
@@ -731,20 +732,22 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
         ExpX::Var(x) => match expr_ctxt.mode {
             ExprMode::Spec => match &*exp.typ {
-                TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _) => str_apply(PROPH_INT_FUT, &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))]),
-                _ => string_var(&suffix_local_unique_id(x))
+                TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _) => {
+                    str_apply(PROPH_INT_FUT, &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))])
+                }
+                _ => string_var(&suffix_local_unique_id(x)),
             },
-            _ => string_var(&suffix_local_unique_id(x))
-        }
+            _ => string_var(&suffix_local_unique_id(x)),
+        },
         ExpX::VarLoc(x) => string_var(&suffix_local_unique_id(x)),
         ExpX::VarAt(x, VarAt::Pre) => match expr_ctxt.mode {
             ExprMode::Spec => match &*exp.typ {
-                TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _) => str_apply(PROPH_INT_CUR, &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))]),
-                //TypX::Decorate(crate::ast::TypDecoration::MutRef, None, TypX::Bool) => string_var(&proph_bool_cur_var(&suffix_local_unique_id(x))),
-                _ => {
-                    string_var(&prefix_pre_var(&suffix_local_unique_id(x)))
+                TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _) => {
+                    str_apply(PROPH_INT_CUR, &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))])
                 }
-            }
+                //TypX::Decorate(crate::ast::TypDecoration::MutRef, None, TypX::Bool) => string_var(&proph_bool_cur_var(&suffix_local_unique_id(x))),
+                _ => string_var(&prefix_pre_var(&suffix_local_unique_id(x))),
+            },
             ExprMode::Body => {
                 Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_unique_id(x)))
             }
@@ -1573,10 +1576,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             for arg in args.iter() {
                 match &arg.x {
                     ExpX::Loc(x) => match &x.x {
-                        ExpX::VarLoc(x) => req_args.push(string_var(&suffix_local_unique_proph(&suffix_local_unique_id(x)))),
-                        _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?)
+                        ExpX::VarLoc(x) => req_args.push(string_var(&suffix_local_unique_proph(
+                            &suffix_local_unique_id(x),
+                        ))),
+                        _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?),
                     },
-                    _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?)
+                    _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?),
                 };
             }
             let req_args = Arc::new(req_args);
@@ -1672,8 +1677,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             let typ_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
-            if func.x.params.iter().any(|p| matches!(&*p.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)))
-                && ctx.debug
+            if func.x.params.iter().any(|p| {
+                matches!(&*p.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _))
+            }) && ctx.debug
             {
                 unimplemented!("&mut args are unsupported in debugger mode");
             }
@@ -1699,17 +1705,40 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 };
 
                 // TODO(prophecy): this is where the changes at the call sites will need to be made
-                if matches!(&*param.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)) {
+                if matches!(
+                    &*param.x.typ,
+                    TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)
+                ) {
                     call_snapshot = true;
                     let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
                         loc_to_field_update_data(arg);
-                    
-                    let second_apply = str_apply(PROPH_INT_FUT, &vec![Arc::new(ExprX::Var(Arc::new(suffix_local_unique_proph(&suffix_local_unique_id(&base_var)).to_string())))]);
-                    let second_eq = Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))), second_apply));
+
+                    let second_apply = str_apply(
+                        PROPH_INT_FUT,
+                        &vec![Arc::new(ExprX::Var(Arc::new(
+                            suffix_local_unique_proph(&suffix_local_unique_id(&base_var))
+                                .to_string(),
+                        )))],
+                    );
+                    let second_eq = Arc::new(ExprX::Binary(
+                        air::ast::BinaryOp::Eq,
+                        Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))),
+                        second_apply,
+                    ));
                     stmts.insert(0, Arc::new(StmtX::Assume(second_eq)));
                     stmts.insert(0, Arc::new(StmtX::Havoc(suffix_local_unique_id(&base_var))));
-                    let first_apply = str_apply(PROPH_INT_CUR, &vec![Arc::new(ExprX::Var(Arc::new(suffix_local_unique_proph(&suffix_local_unique_id(&base_var)).to_string())))]);
-                    let first_eq = Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, first_apply, Arc::new(ExprX::Var(suffix_local_unique_id(&base_var)))));
+                    let first_apply = str_apply(
+                        PROPH_INT_CUR,
+                        &vec![Arc::new(ExprX::Var(Arc::new(
+                            suffix_local_unique_proph(&suffix_local_unique_id(&base_var))
+                                .to_string(),
+                        )))],
+                    );
+                    let first_eq = Arc::new(ExprX::Binary(
+                        air::ast::BinaryOp::Eq,
+                        first_apply,
+                        Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))),
+                    ));
                     stmts.insert(0, Arc::new(StmtX::Assume(first_eq)));
 
                     mutated_fields
@@ -1721,10 +1750,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     //ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
                     match &arg_x.x {
                         ExpX::Loc(x) => match &x.x {
-                            ExpX::VarLoc(x) => ens_args_wo_typ.push(string_var(&suffix_local_unique_proph(&suffix_local_unique_id(x)))),
-                            _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
+                            ExpX::VarLoc(x) => ens_args_wo_typ.push(string_var(
+                                &suffix_local_unique_proph(&suffix_local_unique_id(x)),
+                            )),
+                            _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?),
                         },
-                        _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
+                        _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?),
                     };
                 } else {
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
@@ -1794,7 +1825,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let mut ens_args: Vec<_> =
                 ens_typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
-            
+
             if func.x.ens_has_return {
                 if let Some(Dest { dest, is_init }) = dest {
                     let var = suffix_local_unique_id(&get_loc_var(dest));
@@ -2708,12 +2739,30 @@ pub(crate) fn body_stm_to_air(
         if decl.kind.is_mutable() {
             //dbg!(&decl.typ);
             match &*decl.typ {
-                TypX::Decorate(crate::ast::TypDecoration::MutRef, None, t) => local_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, t)))),
-                _ => local_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ))))
+                TypX::Decorate(crate::ast::TypDecoration::MutRef, None, t) => local_shared.push(
+                    Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, t))),
+                ),
+                _ => local_shared.push(Arc::new(DeclX::Var(
+                    suffix_local_unique_id(&decl.ident),
+                    typ_to_air(ctx, &decl.typ),
+                ))),
             };
-            local_shared.push(Arc::new(DeclX::Const(suffix_local_unique_proph(&suffix_local_unique_id(&decl.ident)), typ_to_air(ctx, &Arc::new(TypX::Decorate(crate::ast::TypDecoration::MutRef, None, decl.typ.clone()))))));
+            local_shared.push(Arc::new(DeclX::Const(
+                suffix_local_unique_proph(&suffix_local_unique_id(&decl.ident)),
+                typ_to_air(
+                    ctx,
+                    &Arc::new(TypX::Decorate(
+                        crate::ast::TypDecoration::MutRef,
+                        None,
+                        decl.typ.clone(),
+                    )),
+                ),
+            )));
         } else {
-            local_shared.push(Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ))));
+            local_shared.push(Arc::new(DeclX::Const(
+                suffix_local_unique_id(&decl.ident),
+                typ_to_air(ctx, &decl.typ),
+            )));
         };
     }
 

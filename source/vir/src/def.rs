@@ -190,6 +190,7 @@ pub const SINGULAR_MOD: &str = "singular_mod";
 pub const ARRAY_NEW: &str = "array_new";
 pub const ARRAY_INDEX: &str = "array_index";
 
+// TODO: use a const fn to genereate these names
 pub const PROPH_INT: &str = "Proph%I";
 pub const PROPH_CONSTRUCT_INT: &str = "Proph%I%";
 pub const PROPH_INT_CUR: &str = "Proph%cur%I";

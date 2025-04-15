@@ -306,12 +306,9 @@ fn check_one_expr(
     match &expr.x {
         ExprX::Var(x) => {
             if let Place::PreState(clause_name) = place {
-                for param in function
-                    .x
-                    .params
-                    .iter()
-                    .filter(|p| matches!(&*p.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)))
-                {
+                for param in function.x.params.iter().filter(|p| {
+                    matches!(&*p.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _))
+                }) {
                     if *x == param.x.name {
                         return Err(error(
                             &expr.span,

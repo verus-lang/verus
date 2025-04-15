@@ -1347,25 +1347,25 @@ fn is_mut_ty<'tcx>(_ctxt: &Context<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> Opt
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) => Some(None),
         //TyKind::Adt(AdtDef(adt_def_data), args) => {
         //    todo!()
-            // let did = adt_def_data.did;
-            // let verus_item = ctxt.verus_items.id_to_name.get(&did);
-            // if let Some(VerusItem::BuiltinType(
-            //     bt @ (BuiltinTypeItem::Ghost | BuiltinTypeItem::Tracked),
-            // )) = verus_item
-            // {
-            //     assert_eq!(args.len(), 1);
-            //     if let GenericArgKind::Type(t) = args[0].unpack() {
-            //         if let Some((inner, None)) = is_mut_ty(ctxt, t) {
-            //             let mode_and_decoration = match bt {
-            //                 BuiltinTypeItem::Ghost => (Mode::Spec, TypDecoration::Ghost),
-            //                 BuiltinTypeItem::Tracked => (Mode::Proof, TypDecoration::Tracked),
-            //                 _ => unreachable!(),
-            //             };
-            //             return Some((inner, Some(mode_and_decoration)));
-            //         }
-            //     }
-            // }
-            // None
+        // let did = adt_def_data.did;
+        // let verus_item = ctxt.verus_items.id_to_name.get(&did);
+        // if let Some(VerusItem::BuiltinType(
+        //     bt @ (BuiltinTypeItem::Ghost | BuiltinTypeItem::Tracked),
+        // )) = verus_item
+        // {
+        //     assert_eq!(args.len(), 1);
+        //     if let GenericArgKind::Type(t) = args[0].unpack() {
+        //         if let Some((inner, None)) = is_mut_ty(ctxt, t) {
+        //             let mode_and_decoration = match bt {
+        //                 BuiltinTypeItem::Ghost => (Mode::Spec, TypDecoration::Ghost),
+        //                 BuiltinTypeItem::Tracked => (Mode::Proof, TypDecoration::Tracked),
+        //                 _ => unreachable!(),
+        //             };
+        //             return Some((inner, Some(mode_and_decoration)));
+        //         }
+        //     }
+        // }
+        // None
         //},
         _ => None,
     }

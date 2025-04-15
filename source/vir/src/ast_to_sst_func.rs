@@ -489,7 +489,10 @@ pub fn func_def_to_sst(
             &param.x.name,
             &param.x.typ, // TODO: ask if this needs to be treated specially if it is a mutable reference?
             LocalDeclKind::Param {
-                mutable: matches!(&*param.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)),
+                mutable: matches!(
+                    &*param.x.typ,
+                    TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)
+                ),
             },
             false,
         );

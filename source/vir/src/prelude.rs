@@ -158,13 +158,9 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
 
         // Prophetic variables
         (declare-datatypes (
-            ([proph_int] 0)
+            ([proph_int] 0) ([proph_bool] 0)
         )(
             (([proph_construct_int] ([proph_int_cur] Int) ([proph_int_fut] Int)))
-        ))
-        (declare-datatypes (
-            ([proph_bool] 0)
-        )(
             (([proph_construct_bool] ([proph_bool_cur] Bool) ([proph_bool_fut] Bool)))
         ))
 
