@@ -80,9 +80,9 @@ pub assume_specification<T, E>[ Result::<T, E>::as_ref ](result: &Result<T, E>) 
 >)
     ensures
         r.is_Ok() <==> result.is_Ok(),
-        r.is_Ok() ==> result.get_Ok_0() == r.get_Ok_0(),
+        r.is_Ok() ==> result.get_Ok_0() == *r.get_Ok_0(),
         r.is_Err() <==> result.is_Err(),
-        r.is_Err() ==> result.get_Err_0() == r.get_Err_0(),
+        r.is_Err() ==> result.get_Err_0() == *r.get_Err_0(),
 ;
 
 // unwrap

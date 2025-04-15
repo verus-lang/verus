@@ -13,7 +13,7 @@ macro_rules! num_specs {
             use super::*;
 
             pub assume_specification[<$uN as Clone>::clone](x: &$uN) -> (res: $uN)
-                ensures res == x;
+                ensures res == *x;
 
             pub open spec fn wrapping_add(x: $uN, y: $uN) -> $uN {
                 if x + y > <$uN>::MAX {
@@ -128,7 +128,7 @@ macro_rules! num_specs {
             use super::*;
 
             pub assume_specification[<$iN as Clone>::clone](x: &$iN) -> (res: $iN)
-                ensures res == x;
+                ensures res == *x;
 
             pub open spec fn wrapping_add(x: $iN, y: $iN) -> $iN {
                 if x + y > <$iN>::MAX {

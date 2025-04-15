@@ -57,7 +57,7 @@ pub assume_specification<T, A: Allocator>[ VecDeque::<T, A>::index ](
     requires
         i < v.len(),
     ensures
-        result == v.spec_index(i as int),
+        *result == v.spec_index(i as int),
 ;
 
 #[verifier::when_used_as_spec(spec_vec_dequeue_len)]
@@ -269,7 +269,7 @@ pub assume_specification<'a, T>[ Iter::<'a, T>::next ](elements: &mut Iter<'a, T
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
+                    &&& *element == old_seq[old_index]
                 },
             }
         }),

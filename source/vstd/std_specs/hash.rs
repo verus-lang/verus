@@ -269,7 +269,7 @@ pub assume_specification<'a, Key, Value>[ Keys::<'a, Key, Value>::next ](
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1
-                    &&& k == old_seq[old_index]
+                    &&& *k == old_seq[old_index]
                 },
             }
         }),
@@ -649,7 +649,7 @@ pub assume_specification<'a, Key>[ Iter::<'a, Key>::next ](elements: &mut Iter<'
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1
-                    &&& element == old_seq[old_index]
+                    &&& *element == old_seq[old_index]
                 },
             }
         }),
@@ -848,7 +848,7 @@ pub broadcast proof fn axiom_set_box_key_to_value<Q>(m: Set<Box<Q>>, q: &Q, v: &
     ensures
         #[trigger] sets_borrowed_key_to_key::<Box<Q>, Q>(m, q, v) <==> (m.contains(*v) && Box::new(
             *q,
-        ) == v),
+        ) == *v),
 {
     admit();
 }

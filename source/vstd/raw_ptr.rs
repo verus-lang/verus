@@ -558,7 +558,7 @@ pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T
         perm.ptr() == ptr,
         perm.is_init(),
     ensures
-        v == perm.value(),
+        *v == perm.value(),
     opens_invariants none
     no_unwind
 {
@@ -632,7 +632,7 @@ impl Clone for IsExposed {
     #[verifier::external_body]
     fn clone(&self) -> (s: Self)
         ensures
-            s == self,
+            s == *self,
     {
         IsExposed {  }
     }
@@ -1000,14 +1000,15 @@ impl<'a, T> SharedReference<'a, [T]> {
         self.as_ref().len()
     }
 
-    pub fn index(self, idx: usize) -> (out: &'a T)
-        requires 
-            0 <= idx < self.value()@.len()
-        ensures
-            *out == self.value()@.index(idx as int),
-    {
-        &(self.as_ref())[idx]
-    }
+    // pub fn index(self, idx: usize) -> (out: &'a T)
+    //     requires 
+    //         0 <= idx < self.value()@.len()
+    //     ensures
+    //         *out == self.value()@.index(idx as int),
+    // {
+    //     &((*self.as_ref())[idx])
+    // }
+    // TODO: why am I getting this error??
 
     #[verifier::external_body]
     pub proof fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[T]>)
@@ -1117,7 +1118,7 @@ pub fn ptr_ref2<'a, T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (
         perm.ptr() == ptr,
         perm.is_init(),
     ensures
-        v.value() == perm.value(),
+        *v.value() == perm.value(),
         v.ptr().addr() == ptr.addr(),
         v.ptr()@.metadata == ptr@.metadata,
     opens_invariants none

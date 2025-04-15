@@ -54,7 +54,7 @@ pub trait OptionAdditionalFns<T>: Sized {
         requires
             self.is_Some(),
         ensures
-            t == self.get_Some_0(),
+            *t == self.get_Some_0(),
     ;
 
     proof fn tracked_take(tracked &mut self) -> (tracked t: T)
@@ -143,7 +143,7 @@ pub assume_specification<T>[ Option::<T>::is_none ](option: &Option<T>) -> (b: b
 pub assume_specification<T>[ Option::<T>::as_ref ](option: &Option<T>) -> (a: Option<&T>)
     ensures
         a.is_Some() <==> option.is_Some(),
-        a.is_Some() ==> option.get_Some_0() == a.get_Some_0(),
+        a.is_Some() ==> option.get_Some_0() == *a.get_Some_0(),
 ;
 
 // unwrap

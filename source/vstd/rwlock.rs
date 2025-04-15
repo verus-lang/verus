@@ -344,7 +344,7 @@ struct_with_invariants_vstd!{
     }
 
     #[verifier::type_invariant]
-    spec fn wf(&self) -> bool {
+    spec fn wf(self) -> bool {
         invariant on exc with (inst) is (v: bool, g: RwLockToks::flag_exc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>) {
             g.instance_id() == inst@.id()
                 && g.value() == v
@@ -439,7 +439,7 @@ impl<'a, V, Pred: RwLockPredicate<V>> ReadHandle<'a, V, Pred> {
     /// Obtain a shared reference to the object contained in the lock.
     pub fn borrow<'b>(&'b self) -> (val: &'b V)
         ensures
-            val == self.view(),
+            *val == self.view(),
     {
         proof {
             use_type_invariant(self);

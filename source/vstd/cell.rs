@@ -356,7 +356,7 @@ pub struct InvCell<T> {
 
 impl<T> InvCell<T> {
     #[verifier::type_invariant]
-    closed spec fn wf(&self) -> bool {
+    closed spec fn wf(self) -> bool {
         &&& self.perm_inv@.constant() === (self.possible_values@, self.pcell)
     }
 

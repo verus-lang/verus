@@ -47,7 +47,7 @@ impl<T> Prophecy<T> where T: Structural {
     #[verifier::external_body]
     pub exec fn resolve(self, v: &T)
         ensures
-            self@ == v,
+            self@ == *v,
     {
     }
 }

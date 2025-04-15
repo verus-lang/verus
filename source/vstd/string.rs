@@ -211,7 +211,7 @@ pub assume_specification<'a>[ String::as_str ](s: &'a String) -> (res: &'a str)
 #[cfg(feature = "alloc")]
 pub assume_specification[ <String as Clone>::clone ](s: &String) -> (res: String)
     ensures
-        res == s,
+        res == *s,
 ;
 
 #[cfg(feature = "alloc")]

@@ -203,7 +203,7 @@ macro_rules! declare_tuple_view {
             #[verus::internal(spec)]
             #[verus::internal(open)]
             fn view(&self) -> ($($a::V, )*) {
-                ($(self.$n.view(), )*)
+                ($((*self).$n.view(), )*)
             }
         }
 
@@ -214,7 +214,7 @@ macro_rules! declare_tuple_view {
             #[verus::internal(spec)]
             #[verus::internal(open)]
             fn deep_view(&self) -> ($($a::V, )*) {
-                ($(self.$n.deep_view(), )*)
+                ($((*self).$n.deep_view(), )*)
             }
         }
     }

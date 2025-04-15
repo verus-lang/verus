@@ -19,19 +19,19 @@ pub fn ex_clone_clone_from<T: Clone>(a: &mut T, b: &T)
 */
 
 pub assume_specification[ <bool as Clone>::clone ](b: &bool) -> (res: bool)
-    returns
-        b,
+    ensures
+        res == *b,
 ;
 
 pub assume_specification[ <char as Clone>::clone ](c: &char) -> (res: char)
-    returns
-        c,
+    ensures
+        res == *c,
 ;
 
 #[allow(suspicious_double_ref_op)]
 pub assume_specification<'b, T: ?Sized, 'a>[ <&'b T as Clone>::clone ](b: &'a &'b T) -> (res: &'b T)
     ensures
-        res == b,
+        res == *b,
 ;
 
 /*
@@ -48,12 +48,12 @@ pub assume_specification<T: Copy>[ <Tracked<T> as Clone>::clone ](b: &Tracked<T>
     T,
 >)
     ensures
-        res == b,
+        res == *b,
 ;
 
 pub assume_specification<T>[ <Ghost<T> as Clone>::clone ](b: &Ghost<T>) -> (res: Ghost<T>)
     ensures
-        res == b,
+        res == *b,
 ;
 
 } // verus!

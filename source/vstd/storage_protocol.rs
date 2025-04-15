@@ -272,7 +272,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         requires
             guards(p.value(), s_value),
         ensures
-            s == s_value,
+            *s == s_value,
     {
         unimplemented!();
     }
