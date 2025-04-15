@@ -351,6 +351,7 @@ fn erase_generic_const<'tcx>(ctxt: &Context<'tcx>, state: &mut State, cnst: &Con
             Box::new(TypX::TypParam(state.typ_param(x.to_string(), None)))
         }
         vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
+        vir::ast::TypX::ConstBool(b) => Box::new(TypX::Primitive(b.to_string())),
         _ => panic!("GenericArgKind::Const"),
     }
 }

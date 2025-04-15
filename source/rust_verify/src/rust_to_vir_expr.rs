@@ -1984,6 +1984,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     };
                     match *undecorate_typ(&expr_typ()?) {
                         TypX::Int(_) => {}
+                        TypX::Bool => {}
                         _ => {
                             unsupported_err!(expr.span, format!("non-int ConstParam {:?}", id))
                         }

@@ -636,3 +636,12 @@ test_verify_one_file! {
         assert!(err.warnings.iter().find(|w| w.message.contains("broadcast use")).iter().next().is_some());
     }
 }
+
+test_verify_one_file! {
+    #[test] broadcast_mut_params verus_code! {
+        pub broadcast proof fn seq_reverse_len<A>(s: &mut u8)
+            ensures
+                *s == *s
+        { }
+    } => Err(err) => assert_vir_error_msg(err, "broadcast function cannot have &mut parameters")
+}

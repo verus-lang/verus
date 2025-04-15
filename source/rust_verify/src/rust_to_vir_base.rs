@@ -1162,9 +1162,14 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     };
     match cnst_kind {
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
-        ConstKind::Value(_tcx, ValTree::Leaf(i)) => {
+        ConstKind::Value(ty, ValTree::Leaf(i))
+            if matches!(ty.kind(), TyKind::Uint(_) | TyKind::Int(_)) =>
+        {
             let c = num_bigint::BigInt::from(i.to_bits(i.size()));
             Ok(Arc::new(TypX::ConstInt(c)))
+        }
+        ConstKind::Value(ty, ValTree::Leaf(i)) if matches!(ty.kind(), TyKind::Bool) => {
+            Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0)))
         }
         _ => {
             unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
@@ -1235,9 +1240,10 @@ pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
 }
 
 pub(crate) fn implements_structural<'tcx>(
-    ctxt: &Context<'tcx>,
+    bctx: &BodyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
 ) -> bool {
+    let ctxt = &bctx.ctxt;
     let structural_def_id = ctxt
         .verus_items
         .name_to_id
@@ -1253,7 +1259,7 @@ pub(crate) fn implements_structural<'tcx>(
         .type_implements_trait(
             *structural_def_id,
             vec![ty].into_iter(),
-            rustc_middle::ty::ParamEnv::empty(),
+            ctxt.tcx.param_env(bctx.fun_id),
         )
         .must_apply_modulo_regions();
     ty_impls_structural
@@ -1272,7 +1278,11 @@ pub(crate) fn is_smt_equality<'tcx>(
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
         (TypX::Datatype(..), TypX::Datatype(..)) if types_equal(&t1, &t2) => {
             let ty = bctx.types.node_type(*id1);
-            Ok(implements_structural(&bctx.ctxt, ty))
+            Ok(implements_structural(&bctx, ty))
+        }
+        (TypX::TypParam(_), TypX::TypParam(_)) if types_equal(&t1, &t2) => {
+            let ty = bctx.types.node_type(*id1);
+            Ok(implements_structural(&bctx, ty))
         }
         _ => Ok(false),
     }

@@ -149,6 +149,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         }
         (TypX::TypeId, TypX::TypeId) => true,
         (TypX::ConstInt(i1), TypX::ConstInt(i2)) => i1 == i2,
+        (TypX::ConstBool(b1), TypX::ConstBool(b2)) => b1 == b2,
         (TypX::Air(a1), TypX::Air(a2)) => a1 == a2,
         (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
             f1 == f2 && n_types_equal(ts1, ts2)
@@ -166,6 +167,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Projection { .. }, _) => false,
         (TypX::TypeId, _) => false,
         (TypX::ConstInt(_), _) => false,
+        (TypX::ConstBool(_), _) => false,
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
     }
@@ -263,6 +265,14 @@ pub fn int_range_from_type(typ: &Typ) -> Option<IntRange> {
         TypX::Int(range) => Some(*range),
         TypX::Boxed(typ) => int_range_from_type(typ),
         _ => None,
+    }
+}
+
+pub(crate) fn const_generic_to_primitive(typ: &Typ) -> &'static str {
+    match &*undecorate_typ(typ) {
+        TypX::Int(_) => crate::def::CONST_INT,
+        TypX::Bool => crate::def::CONST_BOOL,
+        _ => panic!("unexpected const generic type"),
     }
 }
 
@@ -869,6 +879,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         }
         TypX::TypeId => format!("typeid"),
         TypX::ConstInt(_) => format!("constint"),
+        TypX::ConstBool(_) => format!("constbool"),
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::FnDef(f, typs, _res) => format!(
             "FnDef({}){}",

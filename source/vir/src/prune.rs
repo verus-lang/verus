@@ -122,6 +122,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Projection { trait_typ_args, .. } => typ_to_reached_type(&trait_typ_args[0]),
         TypX::TypeId => ReachedType::None,
         TypX::ConstInt(_) => ReachedType::None,
+        TypX::ConstBool(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::Primitive(Primitive::StrSlice, _) => ReachedType::StrSlice,
         TypX::Primitive(Primitive::Array, _) => ReachedType::Array,
@@ -265,7 +266,7 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
             panic!("unexpected TypX")
         }
         TypX::Decorate(_, _, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
-        TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) => {}
+        TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) | TypX::ConstBool(_) => {}
         TypX::Projection { trait_typ_args: _, trait_path, name, .. } => {
             reach_assoc_type_decl(ctxt, state, &(trait_path.clone(), name.clone()));
             // let visitor handle self_typ, trait_typ_args
