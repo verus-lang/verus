@@ -712,7 +712,7 @@ pub proof fn lemma_truncate_middle(x: int, b: int, c: int)
         0 < b * c,
         (b * x) % (b * c) == b * (x % c),
 {
-    broadcast use { lemma_mul_strictly_positive, lemma_mul_nonnegative };
+    broadcast use {lemma_mul_strictly_positive, lemma_mul_nonnegative};
 
     calc! {
         (==)

@@ -227,7 +227,7 @@ test_verify_one_file! {
             }
 
             proof fn t5(p: Ring) requires p.inv() {
-                broadcast use{Ring_succ, Ring_prev};
+                broadcast use {Ring_succ, Ring_prev};
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p);
             }
@@ -306,7 +306,7 @@ test_verify_one_file! {
             }
 
             proof fn t5(p: Ring) requires p.inv() {
-                broadcast use{Ring::succ_ensures, Ring::prev_ensures};
+                broadcast use {Ring::succ_ensures, Ring::prev_ensures};
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p);
             }
@@ -357,7 +357,7 @@ test_verify_one_file! {
             use builtin::*;
             use crate::ring::*;
 
-            broadcast use{Ring_prev, Ring_succ};
+            broadcast use {Ring_prev, Ring_succ};
 
             proof fn t2(p: Ring) requires p.inv() {
                 assert(p.succ().prev() == p);
@@ -374,7 +374,7 @@ test_verify_one_file! {
             use crate::ring::*;
 
             proof fn t2(p: Ring) requires p.inv() {
-                broadcast use{Ring_prev, Ring_succ};
+                broadcast use {Ring_prev, Ring_succ};
                 assert(p.succ().prev() == p);
                 assert(p.prev().succ() == p);
             }
