@@ -1265,19 +1265,11 @@ impl<'f> Visitor<'f> {
     }
 
     fn fn_code_kind(&self, kind: CodeKind) -> CodeKind {
-        if self.in_state_machine_macro > 0 {
-            kind.join_prefer_left(CodeKind::Spec)
-        } else {
-            kind
-        }
+        if self.in_state_machine_macro > 0 { kind.join_prefer_left(CodeKind::Spec) } else { kind }
     }
 
     fn mode_or_trusted(&self, kind: CodeKind) -> CodeKind {
-        if self.trusted > 0 {
-            CodeKind::Trusted
-        } else {
-            kind
-        }
+        if self.trusted > 0 { CodeKind::Trusted } else { kind }
     }
 
     fn handle_signature(
