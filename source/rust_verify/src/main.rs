@@ -349,6 +349,7 @@ pub fn main() {
                                 "function-breakdown" : smt_function_breakdown.get_mut(*m).map(|b| b.iter().map(|(f, t)| {
                                     serde_json::json!({
                                         "function" : vir::ast_util::fun_as_friendly_rust_name(f),
+                                        "mode:" : verifier.func_modes.get(f).map(|m| m.to_string()).unwrap_or_default(),
                                         "time" : t.time_millis,
                                         "rlimit-count" : t.rlimit_count,
                                         "success" : !verifier.func_fails.contains(f),
