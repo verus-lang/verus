@@ -2478,7 +2478,9 @@ fn erase_impl<'tcx>(
             AssocItemKind::Type => {
                 // handled in erase_trait
             }
-            _ => panic!("unexpected impl {:?}", impl_item_ref),
+            AssocItemKind::Const => {
+                // handled in erase_trait
+            }
         }
     }
 }

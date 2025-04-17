@@ -14,9 +14,9 @@ use syn_verus::token;
 use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
     visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
-    visit_impl_item_fn_mut, visit_item_const_mut, visit_item_enum_mut, visit_item_fn_mut,
-    visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut, visit_local_mut,
-    visit_specification_mut, visit_trait_item_fn_mut, VisitMut,
+    visit_impl_item_const_mut, visit_impl_item_fn_mut, visit_item_const_mut, visit_item_enum_mut,
+    visit_item_fn_mut, visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut,
+    visit_local_mut, visit_specification_mut, visit_trait_item_fn_mut, VisitMut,
 };
 use syn_verus::BroadcastUse;
 use syn_verus::ExprBlock;
@@ -3552,6 +3552,34 @@ impl VisitMut for Visitor {
             sta.static_token.span,
         );
         visit_item_static_mut(self, sta);
+    }
+
+    fn visit_impl_item_const_mut(&mut self, impl_c: &mut syn_verus::ImplItemConst) {
+        let mut mode = FnMode::Default;
+        let mode = self.visit_const_or_static(
+            impl_c.expr.span(),
+            &mut impl_c.attrs,
+            Some(&impl_c.vis),
+            &mut impl_c.publish,
+            &mut mode,
+        );
+        let mut ensures = None;
+        let mut block = None;
+        let mut eq_token = Some(impl_c.eq_token);
+        let mut semi_token = Some(impl_c.semi_token);
+        let mut expr = Some(Box::new(impl_c.expr.clone()));
+        self.desugar_const_or_static(
+            &mode,
+            &mut ensures,
+            &mut block,
+            &mut expr,
+            &mut eq_token,
+            &mut semi_token,
+            &impl_c.ty,
+            impl_c.expr.span(),
+        );
+        impl_c.expr = *expr.unwrap();
+        visit_impl_item_const_mut(self, impl_c);
     }
 
     fn visit_field_mut(&mut self, field: &mut Field) {

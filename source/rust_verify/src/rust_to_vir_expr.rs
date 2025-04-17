@@ -1945,7 +1945,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         ));
                         return Ok(vir_expr);
                     } else {
-                        unsupported_err!(expr.span, "associated constants");
+                        let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                        let fun = FunX { path };
+                        let autospec_usage = if bctx.in_ghost {
+                            AutospecUsage::IfMarked
+                        } else {
+                            AutospecUsage::Final
+                        };
+                        mk_expr(ExprX::ConstVar(Arc::new(fun), autospec_usage))
                     }
                 }
                 Res::Def(DefKind::Const, id) => {
