@@ -59,6 +59,7 @@ pub mod storage_protocol;
 pub mod string;
 #[cfg(feature = "std")]
 pub mod thread;
+pub mod type_eq;
 pub mod view;
 
 pub mod relations;
