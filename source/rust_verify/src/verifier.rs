@@ -33,6 +33,9 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
+use vir::mono::KrateSpecializations;
+use vir::mono::PolyStrategy;
+use vir::mono::Specialization;
 
 use crate::buckets::{Bucket, BucketId};
 use crate::expand_errors_driver::ExpandErrorsResult;
@@ -1296,6 +1299,7 @@ impl Verifier {
         source_map: Option<&SourceMap>,
         bucket_id: &BucketId,
         ctx: &mut vir::context::Ctx,
+        specializations: KrateSpecializations,
     ) -> Result<VerifyBucketOut, VirErr> {
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
@@ -1367,6 +1371,7 @@ impl Verifier {
                 .cloned()
                 .filter(|d| is_visible_to(&d.x.visibility, module))
                 .collect(),
+            &specializations,
         );
         self.run_commands(
             bucket_id,
@@ -1401,14 +1406,31 @@ impl Verifier {
 
         let mut function_decl_commands = vec![];
 
-        // Declare the function symbols
         for function in &krate.functions {
             ctx.fun = vir::ast_to_sst_func::mk_fun_ctx(function, false);
-            let commands = vir::sst_to_air_func::func_name_to_air(ctx, reporter, function)?;
-            let comment =
-                "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
-            self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
-            function_decl_commands.push((commands.clone(), comment.clone()));
+
+            let Some(specs) = specializations.function_spec.get(&function.x.name) else {
+                let commands = vir::sst_to_air_func::func_name_to_air(
+                    ctx,
+                    reporter,
+                    function,
+                    &Specialization::empty(),
+                )?;
+                let comment =
+                    "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name);
+                self.run_commands(bucket_id, reporter, &mut air_context, &commands, &comment);
+                function_decl_commands.push((commands.clone(), comment.clone()));
+                continue;
+            };
+            for spec in specs.iter() {
+                let commands =
+                    vir::sst_to_air_func::func_name_to_air(ctx, reporter, function, spec)?;
+                let comment =
+                    "Function-Decl ".to_string() + &fun_as_friendly_rust_name(&function.x.name) + &format!("{spec:?}");
+                let inner_comment = comment.clone() + &spec.comment();
+                self.run_commands(bucket_id, reporter, &mut air_context, &commands, &inner_comment);
+                function_decl_commands.push((commands.clone(), comment.clone()));
+            }
         }
         ctx.fun = None;
 
@@ -1919,6 +1941,7 @@ impl Verifier {
         })
     }
 
+    #[tracing::instrument(skip(self, reporter, krate, source_map, global_ctx))]
     fn verify_bucket_outer(
         &mut self,
         reporter: &impl Diagnostics,
@@ -1955,6 +1978,8 @@ impl Verifier {
             .find(|m| &m.x.path == bucket_id.module())
             .expect("module in krate")
             .clone();
+        let bucket = &self.get_bucket(bucket_id);
+        let poly_strategy = bucket.strategy;
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
@@ -1964,23 +1989,43 @@ impl Verifier {
             uses_array,
             fndef_types,
             self.args.debugger,
+            poly_strategy,
         )?;
         if self.args.log_all || self.args.log_args.log_vir_poly {
             let mut file =
                 self.create_log_file(Some(&bucket_id), crate::config::VIR_POLY_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &pruned_krate, &self.args.log_args.vir_log_option);
         }
-
+        let bucket = &self.get_bucket(bucket_id);
         let krate_sst = vir::ast_to_sst_crate::ast_to_sst_krate(
             &mut ctx,
             reporter,
-            &self.get_bucket(bucket_id).funs,
+            &bucket.funs,
             &pruned_krate,
         )?;
-        let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
+        let specializations = match bucket.strategy {
+            // krate_sst should have everything!
+            PolyStrategy::Mono => {
+                tracing::trace!("We are mono");
+                vir::mono::collect_specializations(&krate_sst)
+            }
+            PolyStrategy::Poly => Default::default(),
+        };
+        tracing::trace!("Specializations {specializations:?}");
 
-        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
-            self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx)?;
+        let krate_sst = match poly_strategy {
+            PolyStrategy::Mono => krate_sst,
+            PolyStrategy::Poly => vir::poly::poly_krate_for_module(&mut ctx, &krate_sst),
+        };
+
+        let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } = self.verify_bucket(
+            reporter,
+            &krate_sst,
+            source_map,
+            bucket_id,
+            &mut ctx,
+            specializations,
+        )?;
 
         global_ctx = ctx.free();
 
@@ -2231,13 +2276,11 @@ impl Verifier {
                         // if it is the active bucket, mark it as done, and reset the active bucket
                         if let Some(m) = active_bucket {
                             if m == id {
-                                assert!(
-                                    messages
-                                        .get_mut(id)
-                                        .expect("message id out of range")
-                                        .1
-                                        .is_empty()
-                                );
+                                assert!(messages
+                                    .get_mut(id)
+                                    .expect("message id out of range")
+                                    .1
+                                    .is_empty());
                                 active_bucket = None;
                             }
                         }

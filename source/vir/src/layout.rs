@@ -22,6 +22,7 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
         )
         | crate::ast::TypX::Boxed(_)
         | crate::ast::TypX::ConstInt(_)
+        | crate::ast::TypX::Poly
         | crate::ast::TypX::ConstBool(_)
         | crate::ast::TypX::Primitive(_, _) => Ok(typ.clone()),
 
@@ -34,9 +35,11 @@ pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {
             return Err(error(span, "this type is not supported in global size_of / align_of"));
         }
 
+
         crate::ast::TypX::Air(_) | crate::ast::TypX::TypeId => {
             unreachable!()
         }
+
     })?;
     Ok(())
 }

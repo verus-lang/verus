@@ -148,6 +148,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
         }
+        TypX::Poly => None,
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
         TypX::Boxed(..) | TypX::TypParam(..) | TypX::SpecFn(..) | TypX::FnDef(..) => None,
@@ -203,13 +204,14 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
         TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
+        TypX::Poly => true,
     }
 }
 
 /// Intended to be called on the pre-Poly SST
 pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::FnDef(..) => typ.clone(),
+        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::Poly| TypX::FnDef(..) => typ.clone(),
         TypX::Primitive(Primitive::Array, _) => typ.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")
@@ -259,6 +261,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => typ.clone(),
+        TypX::Poly => typ.clone(),
         TypX::ConstBool(_) => typ.clone(),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
@@ -271,6 +274,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
         | TypX::SpecFn(..)
         | TypX::Datatype(..)
         | TypX::Primitive(_, _)
+        | TypX::Poly
         | TypX::FnDef(..) => exp.clone(),
         TypX::AnonymousClosure(..) => {
             panic!("internal error: AnonymousClosure should be removed by ast_simplify")

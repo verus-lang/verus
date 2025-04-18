@@ -3,6 +3,7 @@ use vir::{
     ast::{Fun, Krate, Path},
     ast_util::fun_as_friendly_rust_name,
 };
+use vir::mono::PolyStrategy;
 
 // A "bucket" is a group of functions that are processed together
 // with the same pruning context.
@@ -25,6 +26,7 @@ pub enum BucketId {
 #[derive(Clone, Debug)]
 pub struct Bucket {
     pub funs: HashSet<Fun>,
+    pub strategy: PolyStrategy,
 }
 
 impl BucketId {
@@ -90,12 +92,22 @@ pub fn get_buckets(
     modules_to_verify: &Vec<vir::ast::Module>,
 ) -> Vec<(BucketId, Bucket)> {
     let mut map: HashMap<BucketId, Vec<Fun>> = HashMap::new();
+    // For every monomorphized function, store all of the dependencies that must also be mono
+    let mut mono_map: HashMap<BucketId, Vec<Fun>> = Default::default();
     let module_set: HashSet<&Path> = modules_to_verify.iter().map(|m| &m.x.path).collect();
     for func in &krate.functions {
         if let Some(owning_module) = &func.x.owning_module {
             if module_set.contains(owning_module) {
                 let bucket_id = if func.x.attrs.spinoff_prover {
-                    BucketId::Fun(owning_module.clone(), func.x.name.clone())
+                    let id = BucketId::Fun(owning_module.clone(), func.x.name.clone());
+                    tracing::debug!{"Function mono? {:?}", func.x.attrs.mono.to_string()}
+                    if func.x.attrs.mono {
+                        // do not do this, nothing goes into the bucket, this should be in the krate
+                        
+                       mono_map.insert(id.clone(), func.x.extra_dependencies.clone());
+                    }
+                    tracing::trace!("Monomorphizing {:?}", func.x.name);
+                    id 
                 } else {
                     BucketId::Module(owning_module.clone())
                 };
@@ -114,6 +126,21 @@ pub fn get_buckets(
 
     buckets
         .into_iter()
-        .map(|(bucket_id, vec)| (bucket_id, Bucket { funs: vec.into_iter().collect() }))
+        .map(|(bucket_id, vec)| {
+            let bucket = match mono_map.get(&bucket_id) {
+                Some(extra) => {
+                    let funs: HashSet<_> = vec.into_iter().chain(extra.iter().cloned()).collect();
+                    tracing::trace!("Monomorphizing {:?}", funs);
+                    Bucket {
+                        funs,
+                        strategy: PolyStrategy::Mono,
+                    }
+                }
+                None => {
+                    Bucket { funs: vec.into_iter().collect(), strategy: PolyStrategy::default()}
+                }
+            };
+            (bucket_id, bucket)
+        })
         .collect()
 }

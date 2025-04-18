@@ -42,6 +42,7 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
             TypX::Bool => R::ret(|| typ.clone()),
             TypX::Int(_) => R::ret(|| typ.clone()),
             TypX::TypParam(_) => R::ret(|| typ.clone()),
+            TypX::Poly => R::ret(|| typ.clone()),
             TypX::TypeId => R::ret(|| typ.clone()),
             TypX::ConstInt(_) => R::ret(|| typ.clone()),
             TypX::ConstBool(_) => R::ret(|| typ.clone()),

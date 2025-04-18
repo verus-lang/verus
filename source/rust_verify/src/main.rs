@@ -25,6 +25,8 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn main() {
+    tracing_forest::init();
+
     let mut dep_tracker = rust_verify::cargo_verus_dep_tracker::DepTracker::init();
     let via_cargo = dep_tracker.compare_env(rust_verify::cargo_verus::VERUS_DRIVER_VIA_CARGO, "1");
     // For now, builtin, vstd, etc. must be rebuilt for each via_cargo crate:

@@ -55,7 +55,7 @@ fn check_well_founded_typ(
 ) -> bool {
     match &**typ {
         TypX::Bool | TypX::Int(_) => true,
-        TypX::ConstInt(_) | TypX::ConstBool(_) | TypX::Primitive(_, _) => true,
+        TypX::ConstInt(_) | TypX::ConstBool(_) | TypX::Primitive(_, _) | TypX::Poly => true,
         TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
             panic!("internal error: unexpected type in check_well_founded_typ")
         }
@@ -275,6 +275,7 @@ fn check_positive_uses(
         TypX::TypeId => Ok(()),
         TypX::ConstInt(_) => Ok(()),
         TypX::ConstBool(_) => Ok(()),
+        TypX::Poly => Ok(()),
         TypX::Air(_) => Ok(()),
     }
 }

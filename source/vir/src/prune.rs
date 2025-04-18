@@ -123,6 +123,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::TypeId => ReachedType::None,
         TypX::ConstInt(_) => ReachedType::None,
         TypX::ConstBool(_) => ReachedType::None,
+        TypX::Poly => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::Primitive(Primitive::StrSlice, _) => ReachedType::StrSlice,
         TypX::Primitive(Primitive::Array, _) => ReachedType::Array,
@@ -258,7 +259,7 @@ fn reach_type(ctxt: &Ctxt, state: &mut State, typ: &ReachedType) {
 // shallowly reach typ (the AST visitor takes care of recursing through typ)
 fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::Datatype(..) | TypX::Primitive(..) => {
+        TypX::Bool | TypX::Int(_) | TypX::SpecFn(..) | TypX::Datatype(..) | TypX::Primitive(..) | TypX::Poly => {
             reach_type(ctxt, state, &typ_to_reached_type(typ));
         }
         TypX::AnonymousClosure(..) => {}

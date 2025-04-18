@@ -283,6 +283,8 @@ pub(crate) enum Attr {
     IntegerRing,
     // Use a new dedicated Z3 process just for this query
     SpinoffProver,
+    // monorphize this query
+    Mono,
     // Use a new dedicated Z3 process for loops
     LoopIsolation(bool),
     // Memoize function call results during interpretation
@@ -503,6 +505,9 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "nonlinear" => v.push(Attr::NonLinear),
                 AttrTree::Fun(_, arg, None) if arg == "spinoff_prover" => {
                     v.push(Attr::SpinoffProver)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "mono" => {
+                    v.push(Attr::Mono)
                 }
                 AttrTree::Fun(_, arg, None) if arg == "loop_isolation" => {
                     v.push(Attr::LoopIsolation(true))
@@ -915,6 +920,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) check_recommends: bool,
     pub(crate) nonlinear: bool,
     pub(crate) spinoff_prover: bool,
+    pub(crate) mono: bool,
     pub(crate) loop_isolation: Option<bool>,
     pub(crate) memoize: bool,
     pub(crate) rlimit: Option<f32>,
@@ -1069,6 +1075,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         check_recommends: false,
         nonlinear: false,
         spinoff_prover: false,
+        mono: false,
         loop_isolation: None,
         memoize: false,
         rlimit: None,
@@ -1137,6 +1144,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::CheckRecommends => vs.check_recommends = true,
             Attr::NonLinear => vs.nonlinear = true,
             Attr::SpinoffProver => vs.spinoff_prover = true,
+            Attr::Mono => vs.mono = true,
             Attr::LoopIsolation(flag) => vs.loop_isolation = Some(flag),
             Attr::Memoize => vs.memoize = true,
             Attr::RLimit(rlimit) => vs.rlimit = Some(rlimit),

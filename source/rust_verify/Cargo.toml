@@ -23,6 +23,9 @@ indicatif = "0.17.7"
 console = { version = "0.15", default-features = false, features = ["ansi-parsing"] }
 indexmap = { version = "1" }
 
+tracing.workspace = true
+tracing-forest = { version = "0.1.6", features = ["full"] }
+
 [target.'cfg(windows)'.dependencies]
 win32job = "1"
 

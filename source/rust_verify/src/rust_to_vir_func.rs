@@ -631,6 +631,7 @@ fn make_attributes<'tcx>(
         check_recommends: vattrs.check_recommends,
         nonlinear: vattrs.nonlinear,
         spinoff_prover: vattrs.spinoff_prover,
+        mono: vattrs.mono,
         memoize: vattrs.memoize,
         rlimit: vattrs.rlimit,
         print_zero_args,

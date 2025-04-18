@@ -270,6 +270,8 @@ pub enum TypX {
     ConstBool(bool),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
+    /// Handler for poly in monomorphization
+    Poly
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]
@@ -977,6 +979,8 @@ pub struct FunctionAttrsX {
     pub nonlinear: bool,
     /// Use a dedicated Z3 process for this single query
     pub spinoff_prover: bool,
+    /// Monomorphize this function 
+    pub mono: bool,
     /// Memoize function call results during interpretation
     pub memoize: bool,
     /// override default rlimit

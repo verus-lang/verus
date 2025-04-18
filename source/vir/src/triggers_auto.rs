@@ -348,7 +348,8 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
         }
         ExpX::Ctor(path, variant, fields) => {
-            let (variant, args) = crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields);
+            let (variant, args) =
+                crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields, &Default::default());
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
                 args.map(|e| gather_terms(ctxt, ctx, &e.a, depth + 1)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);

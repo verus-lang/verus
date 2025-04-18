@@ -127,6 +127,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_strslice = str_to_node(TYPE_ID_STRSLICE);
     let type_id_ptr = str_to_node(TYPE_ID_PTR);
     let type_id_global = str_to_node(TYPE_ID_GLOBAL);
+    let type_id_poly = str_to_node(TYPE_ID_POLY);
 
     let mut prelude = nodes_vec!(
         // Fuel
@@ -161,6 +162,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-sort [typ] 0)
         (declare-const [type_id_bool] [typ])
         (declare-const [type_id_int] [typ])
+        (declare-const [type_id_poly] [typ])
         (declare-const [type_id_nat] [typ])
         (declare-const [type_id_char] [typ])
         (declare-fun [type_id_uint] (Int) [typ])

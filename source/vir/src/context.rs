@@ -7,6 +7,7 @@ use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
 use crate::messages::{error, Span};
 use crate::poly::MonoTyp;
+use crate::mono::PolyStrategy;
 use crate::recursion::Node;
 use crate::scc::Graph;
 use crate::sst::BndInfo;
@@ -104,6 +105,7 @@ pub struct Ctx {
     // proof debug purposes
     pub debug: bool,
     pub arch_word_bits: ArchWordBits,
+    pub poly_strategy: PolyStrategy
 }
 
 impl Ctx {
@@ -198,6 +200,7 @@ fn datatypes_invs(
                         }
                         TypX::Primitive(Primitive::StrSlice, _) => {}
                         TypX::Primitive(Primitive::Global, _) => {}
+                        TypX::Poly => {}
                     }
                 }
             }
@@ -566,6 +569,7 @@ impl Ctx {
         uses_array: bool,
         fndef_types: Vec<Fun>,
         debug: bool,
+        poly_strategy : PolyStrategy,
     ) -> Result<Self, VirErr> {
         let mut datatype_is_transparent: HashMap<Dt, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
@@ -626,6 +630,7 @@ impl Ctx {
             string_hashes,
             debug,
             arch_word_bits: krate.arch.word_bits,
+            poly_strategy: poly_strategy,
         })
     }
 
