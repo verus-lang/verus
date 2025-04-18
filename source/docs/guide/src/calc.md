@@ -62,9 +62,9 @@ reasons) might be useful. For example, one might want to say `a_1 <= a_2 == a_3
 
 This is supported by `calc` by specifying the extra intermediate relations
 inline (with the default being the top-level relation). These relations are
-checked to be consistent with the top-level relation, to maintain transitivity.
-So, for example, using `>` as the top-level relation for the above chain
-would be caught and reported with a helpful error message.
+checked to be consistent with the top-level relation, to maintain
+transitivity. So, for example, using `>` in the above chain would be caught
+and reported with a helpful error message.
 
 A simple example of using intermediate relations looks like the following:
 
