@@ -265,11 +265,7 @@ fn func_body_to_air(
 
     let spec_map = specialization.create_spec_map(&function.x.typ_params);
     if let Some(exp) = decrease_when {
-        let expr = exp_to_expr(
-            ctx,
-            &exp,
-            &ExprCtxt::new_mode(ExprMode::Spec, &spec_map),
-        )?;
+        let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec, &spec_map))?;
         // conditions on value arguments:
         def_reqs.push(expr);
     }
@@ -324,8 +320,7 @@ fn func_body_to_air(
     //   (axiom (forall (... fuel) (= (rec%f ... fuel) (rec%f ... zero) )))
     //   (axiom (forall (... fuel) (= (rec%f ... (succ fuel)) body[rec%f ... fuel] )))
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
-    let body_expr =
-        exp_to_expr(&ctx, &new_body_exp, &ExprCtxt::new(&spec_map))?;
+    let body_expr = exp_to_expr(&ctx, &new_body_exp, &ExprCtxt::new(&spec_map))?;
     tracing::trace!("Body expr: {body_expr:?}");
     let def_body = if !function.x.has.is_recursive {
         body_expr
@@ -755,11 +750,7 @@ pub fn func_decl_to_air(
     ctx.funcs_with_ensure_predicate.insert(function.x.name.clone(), has_ens_pred);
 
     for exp in func_decl_sst.fndef_axioms.iter() {
-        let expr = exp_to_expr(
-            ctx,
-            exp,
-            &ExprCtxt::new_mode(ExprMode::Spec, &spec_map),
-        )?;
+        let expr = exp_to_expr(ctx, exp, &ExprCtxt::new_mode(ExprMode::Spec, &spec_map))?;
         let axiom = mk_unnamed_axiom(expr);
         decl_commands.push(Arc::new(CommandX::Global(axiom)));
     }

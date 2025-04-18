@@ -688,7 +688,6 @@ impl<'a> ExprCtxt<'a> {
     }
 }
 
-
 fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Result<Expr, VirErr> {
     if let TypX::Int(range) = &*undecorate_typ(&exp.typ) {
         match range {
@@ -758,11 +757,7 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
     Some(Arc::new(qid))
 }
 
-pub(crate) fn exp_to_expr(
-    ctx: &Ctx,
-    exp: &Exp,
-    expr_ctxt: &ExprCtxt,
-) -> Result<Expr, VirErr> {
+pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<Expr, VirErr> {
     let result = match &exp.x {
         ExpX::Const(c) => {
             let expr = constant_to_expr(ctx, c);
@@ -939,14 +934,11 @@ pub(crate) fn exp_to_expr(
                     return Ok(Arc::new(bit_expr));
                 }
             }
-            UnaryOp::HeightTrigger => str_apply(
-                crate::def::HEIGHT,
-                &vec![exp_to_expr(ctx, exp, expr_ctxt)?],
-            ),
-            UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt)?,
-            UnaryOp::Clip { range: IntRange::Int, .. } => {
-                exp_to_expr(ctx, exp, expr_ctxt)?
+            UnaryOp::HeightTrigger => {
+                str_apply(crate::def::HEIGHT, &vec![exp_to_expr(ctx, exp, expr_ctxt)?])
             }
+            UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt)?,
+            UnaryOp::Clip { range: IntRange::Int, .. } => exp_to_expr(ctx, exp, expr_ctxt)?,
             UnaryOp::Clip { range, .. } => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let f_name = match range {
@@ -1031,15 +1023,12 @@ pub(crate) fn exp_to_expr(
                     .expect("UnaryOpr::Field expects a datatype");
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let field_ident = variant_field_ident(
-                        &dt_spec.mangle_path(&encode_dt_as_path(datatype)),
-                        variant,
-                        field,
-                    );
+                    &dt_spec.mangle_path(&encode_dt_as_path(datatype)),
+                    variant,
+                    field,
+                );
                 tracing::trace!("Generating UnaryOpr::Field {field_ident}");
-                Arc::new(ExprX::Apply(
-                    field_ident,
-                    Arc::new(vec![expr]),
-                ))
+                Arc::new(ExprX::Apply(field_ident, Arc::new(vec![expr])))
             }
             UnaryOpr::CustomErr(_) => {
                 // CustomErr is handled by split_expression. Maybe it could
@@ -1253,8 +1242,7 @@ pub(crate) fn exp_to_expr(
                     }
                 }
                 let triggers = vec_map_result(&*trigs, |trig| {
-                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt))
-                        .map(|v| Arc::new(v))
+                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
                 })?;
                 let qid = new_user_qid(ctx, &exp);
                 air::ast_util::mk_quantifier(quant.quant, &bs, &triggers, qid, &expr)
@@ -1265,8 +1253,7 @@ pub(crate) fn exp_to_expr(
                     Arc::new(BinderX { name: b.name.lower(), a: typ_to_air(ctx, &b.a) })
                 });
                 let triggers = vec_map_result(&*trigs, |trig| {
-                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt))
-                        .map(|v| Arc::new(v))
+                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
                 })?;
                 let qid = (triggers.len() > 0).then(|| ()).and_then(|_| new_user_qid(ctx, &exp));
                 let lambda = air::ast_util::mk_lambda(&binders, &triggers, qid, &expr);
@@ -1290,8 +1277,7 @@ pub(crate) fn exp_to_expr(
                 let typ = &e.typ;
                 let typ_inv = typ_invariant(ctx, typ, &body_expr);
                 let triggers = vec_map_result(&*trigs, |trig| {
-                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt))
-                        .map(|v| Arc::new(v))
+                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt)).map(|v| Arc::new(v))
                 })?;
                 let binders = Arc::new(bs);
                 let qid = new_user_qid(ctx, &exp);
@@ -2492,8 +2478,7 @@ fn stm_to_stmts(
 
             // Build the names_expr. Note: In the SST, this should have been assigned
             // to an expression whose value is constant for the entire block.
-            let namespace_expr =
-                exp_to_expr(ctx, namespace_exp, &ExprCtxt::new(spec_map))?;
+            let namespace_expr = exp_to_expr(ctx, namespace_exp, &ExprCtxt::new(spec_map))?;
 
             // Assert that the namespace of the inv we are opening is in the mask set
             if !ctx.checking_spec_preconditions() {
