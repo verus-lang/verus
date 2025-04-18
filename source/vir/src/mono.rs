@@ -428,7 +428,7 @@ pub fn collect_specializations(krate: &KrateSst) -> KrateSpecializations {
             let callee_sst = functions
                 .iter()
                 .find(|f| f.x.name == callee)
-                .unwrap_or_else(|| panic!("Function name not found: {}", callee));
+                .unwrap_or_else(|| panic!("Function name not found: {:?}", callee));
             to_visit.push_back((callee_spec.clone(), callee_sst));
 
             function_spec.entry(callee).or_insert_with(HashSet::new).insert(callee_spec);
