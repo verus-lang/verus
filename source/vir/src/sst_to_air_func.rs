@@ -16,7 +16,6 @@ use crate::sst::FuncCheckSst;
 use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParPurpose, ParX, Pars};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
-    LocalContext,
 };
 use crate::util::vec_map;
 use air::ast::{
@@ -270,7 +269,6 @@ fn func_body_to_air(
             ctx,
             &exp,
             &ExprCtxt::new_mode(ExprMode::Spec, &spec_map),
-            &LocalContext::empty(ctx),
         )?;
         // conditions on value arguments:
         def_reqs.push(expr);
@@ -327,7 +325,7 @@ fn func_body_to_air(
     //   (axiom (forall (... fuel) (= (rec%f ... (succ fuel)) body[rec%f ... fuel] )))
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
     let body_expr =
-        exp_to_expr(&ctx, &new_body_exp, &ExprCtxt::new(&spec_map), &LocalContext::empty(ctx))?;
+        exp_to_expr(&ctx, &new_body_exp, &ExprCtxt::new(&spec_map))?;
     tracing::trace!("Body expr: {body_expr:?}");
     let def_body = if !function.x.has.is_recursive {
         body_expr
@@ -441,7 +439,7 @@ fn req_ens_to_air(
             } else {
                 ExprCtxt::new_mode(ExprMode::Spec, spec_map)
             };
-            let expr = exp_to_expr(ctx, exp, &expr_ctxt, &LocalContext::empty(ctx))?;
+            let expr = exp_to_expr(ctx, exp, &expr_ctxt)?;
             let loc_expr = match msg {
                 None => expr,
                 Some(msg) => {
@@ -761,7 +759,6 @@ pub fn func_decl_to_air(
             ctx,
             exp,
             &ExprCtxt::new_mode(ExprMode::Spec, &spec_map),
-            &LocalContext::empty(ctx),
         )?;
         let axiom = mk_unnamed_axiom(expr);
         decl_commands.push(Arc::new(CommandX::Global(axiom)));
@@ -925,7 +922,7 @@ pub fn func_axioms_to_air(
                 } else {
                     ExprCtxt::new_mode(ExprMode::Spec, &spec_map)
                 };
-                let expr = exp_to_expr(ctx, &forall, &expr_ctxt, &LocalContext::empty(ctx))?;
+                let expr = exp_to_expr(ctx, &forall, &expr_ctxt)?;
 
                 let fuel_imply = if function.x.attrs.size_of_broadcast_proof {
                     // special broadcast lemma for size_of global

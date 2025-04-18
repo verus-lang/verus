@@ -688,14 +688,6 @@ impl<'a> ExprCtxt<'a> {
     }
 }
 
-pub(crate) struct LocalContext {
-    pub poly_mode: bool,
-}
-impl LocalContext {
-    pub fn empty(ctx: &Ctx) -> Self {
-        Self { poly_mode: ctx.poly_strategy == mono::PolyStrategy::Poly }
-    }
-}
 
 fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Result<Expr, VirErr> {
     if let TypX::Int(range) = &*undecorate_typ(&exp.typ) {
@@ -770,9 +762,7 @@ pub(crate) fn exp_to_expr(
     ctx: &Ctx,
     exp: &Exp,
     expr_ctxt: &ExprCtxt,
-    local_ctx: &LocalContext,
 ) -> Result<Expr, VirErr> {
-    let sub_local_ctx = LocalContext::empty(ctx);
     let result = match &exp.x {
         ExpX::Const(c) => {
             let expr = constant_to_expr(ctx, c);
@@ -788,7 +778,7 @@ pub(crate) fn exp_to_expr(
             ExprMode::BodyPre => string_var(&suffix_local_unique_id(x)),
         },
         ExpX::StaticVar(f) => string_var(&static_name(f)),
-        ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt, &sub_local_ctx)?,
+        ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt)?,
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x))),
         ExpX::Call(f @ (CallFun::Fun(..) | CallFun::Recursive(_)), typs, args) => {
             let specialization = match ctx.poly_strategy {
@@ -808,9 +798,8 @@ pub(crate) fn exp_to_expr(
             let name = suffix_global_id(&fun_to_air_ident(&x_name));
             let name = specialization.transform_ident(name);
             let mut exprs: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
-            let arg_local_ctx = LocalContext { poly_mode: specialization.is_empty() };
             for arg in args.iter() {
-                exprs.push(exp_to_expr(ctx, arg, expr_ctxt, &arg_local_ctx)?);
+                exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
             }
             ident_apply(&name, &exprs)
         }
@@ -827,7 +816,7 @@ pub(crate) fn exp_to_expr(
                 exprs.remove(0);
             }
             for arg in args.iter() {
-                exprs.push(exp_to_expr(ctx, arg, expr_ctxt, &sub_local_ctx)?);
+                exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
             }
             Arc::new(ExprX::Apply(
                 match func {
@@ -842,8 +831,8 @@ pub(crate) fn exp_to_expr(
             ))
         }
         ExpX::CallLambda(e0, args) => {
-            let e0 = exp_to_expr(ctx, e0, expr_ctxt, &sub_local_ctx)?;
-            let args = vec_map_result(args, |e| exp_to_expr(ctx, e, expr_ctxt, &sub_local_ctx))?;
+            let e0 = exp_to_expr(ctx, e0, expr_ctxt)?;
+            let args = vec_map_result(args, |e| exp_to_expr(ctx, e, expr_ctxt))?;
             Arc::new(ExprX::ApplyFun(typ_to_air(ctx, &exp.typ), e0, Arc::new(args)))
         }
         // Constructor for datatypes
@@ -854,7 +843,7 @@ pub(crate) fn exp_to_expr(
                 .expect("Must be a datatype");
             let (variant, args) = ctor_to_apply(ctx, path, variant, binders, &dt_spec);
             let args = args
-                .map(|b| exp_to_expr(ctx, &b.a, expr_ctxt, &sub_local_ctx))
+                .map(|b| exp_to_expr(ctx, &b.a, expr_ctxt))
                 .collect::<Result<Vec<_>, VirErr>>()?;
             tracing::trace!("Generating ExpX::Ctor call to {variant}");
             Arc::new(ExprX::Apply(variant, Arc::new(args)))
@@ -865,7 +854,7 @@ pub(crate) fn exp_to_expr(
         ExpX::ArrayLiteral(es) => {
             let mut exprs: Vec<Expr> = vec![];
             for e in es.iter() {
-                exprs.push(exp_to_expr(ctx, e, expr_ctxt, &sub_local_ctx)?);
+                exprs.push(exp_to_expr(ctx, e, expr_ctxt)?);
             }
             let typ = match &*exp.typ {
                 TypX::Primitive(Primitive::Array, typs) => typs[0].clone(),
@@ -922,15 +911,15 @@ pub(crate) fn exp_to_expr(
         ExpX::Unary(op, exp) => match op {
             UnaryOp::StrLen => Arc::new(ExprX::Apply(
                 str_ident(STRSLICE_LEN),
-                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?]),
+                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
             )),
             UnaryOp::StrIsAscii => Arc::new(ExprX::Apply(
                 str_ident(STRSLICE_IS_ASCII),
-                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?]),
+                Arc::new(vec![exp_to_expr(ctx, exp, expr_ctxt)?]),
             )),
-            UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?),
+            UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt)?),
             UnaryOp::BitNot(width_opt) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let expr = if !expr_ctxt.spec_map.is_empty() {
                     try_box(ctx, expr, &exp.typ).expect("Box")
                 } else {
@@ -952,14 +941,14 @@ pub(crate) fn exp_to_expr(
             }
             UnaryOp::HeightTrigger => str_apply(
                 crate::def::HEIGHT,
-                &vec![exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?],
+                &vec![exp_to_expr(ctx, exp, expr_ctxt)?],
             ),
-            UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?,
+            UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt)?,
             UnaryOp::Clip { range: IntRange::Int, .. } => {
-                exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?
+                exp_to_expr(ctx, exp, expr_ctxt)?
             }
             UnaryOp::Clip { range, .. } => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let f_name = match range {
                     IntRange::Int => panic!("internal error: Int"),
                     IntRange::Nat => crate::def::NAT_CLIP,
@@ -978,7 +967,7 @@ pub(crate) fn exp_to_expr(
             UnaryOp::InferSpecForLoopIter { .. } => {
                 // loop_inference failed to promote to Some, so demote to None
                 let exp = crate::loop_inference::make_option_exp(None, &exp.span, &exp.typ);
-                exp_to_expr(ctx, &exp, expr_ctxt, &sub_local_ctx)?
+                exp_to_expr(ctx, &exp, expr_ctxt)?
             }
             UnaryOp::CastToInteger => {
                 panic!("internal error: CastToInteger should have been removed before here")
@@ -986,7 +975,7 @@ pub(crate) fn exp_to_expr(
         },
         ExpX::UnaryOpr(op, exp) => match op {
             UnaryOpr::Box(typ) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 if local_ctx.poly_mode {
                     try_box(ctx, expr, typ).unwrap_or_else(|| panic!("Box {:?}", typ))
                 } else {
@@ -994,7 +983,7 @@ pub(crate) fn exp_to_expr(
                 }
             }
             UnaryOpr::Unbox(typ) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 if local_ctx.poly_mode {
                     try_unbox(ctx, expr.clone(), typ).unwrap_or_else(|| panic!("Unbox: {:?}", expr))
                 } else {
@@ -1002,7 +991,7 @@ pub(crate) fn exp_to_expr(
                 }
             }
             UnaryOpr::HasType(typ) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 if let Some(inv) = typ_invariant(ctx, typ, &expr) {
                     inv
                 } else {
@@ -1010,24 +999,24 @@ pub(crate) fn exp_to_expr(
                 }
             }
             UnaryOpr::IsVariant { datatype, variant } => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let name = is_variant_ident(datatype, variant);
                 tracing::trace!("Generating UnaryOpr::IsVariant of {datatype:?}: {name:?}");
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
             }
             UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMin, _) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let name = Arc::new(I_LO.to_string());
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
             }
             UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::SignedMax, _) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let name = Arc::new(I_HI.to_string());
                 let x = Arc::new(ExprX::Apply(name, Arc::new(vec![expr])));
                 mk_sub(&x, &mk_nat(1))
             }
             UnaryOpr::IntegerTypeBound(IntegerTypeBoundKind::UnsignedMax, _) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let name = Arc::new(U_HI.to_string());
                 let x = Arc::new(ExprX::Apply(name, Arc::new(vec![expr])));
                 mk_sub(&x, &mk_nat(1))
@@ -1040,7 +1029,7 @@ pub(crate) fn exp_to_expr(
                 tracing::debug!("Maybe calling datatypex2 {datatype:?}");
                 let dt_spec = Specialization::from_datatype(&exp.typ, expr_ctxt.spec_map)
                     .expect("UnaryOpr::Field expects a datatype");
-                let expr = exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
                 let field_ident = variant_field_ident(
                         &dt_spec.mangle_path(&encode_dt_as_path(datatype)),
                         variant,
@@ -1056,7 +1045,7 @@ pub(crate) fn exp_to_expr(
                 // CustomErr is handled by split_expression. Maybe it could
                 // be useful in the 'normal' case too, but right now, we just
                 // ignore it here.
-                return exp_to_expr(ctx, exp, expr_ctxt, &sub_local_ctx);
+                return exp_to_expr(ctx, exp, expr_ctxt);
             }
         },
         ExpX::Binary(op, lhs, rhs) => {
@@ -1066,8 +1055,8 @@ pub(crate) fn exp_to_expr(
                 (_, ExpX::Const(..)) => true,
                 _ => false,
             };
-            let lh = exp_to_expr(ctx, lhs, expr_ctxt, &sub_local_ctx)?;
-            let rh = exp_to_expr(ctx, rhs, expr_ctxt, &sub_local_ctx)?;
+            let lh = exp_to_expr(ctx, lhs, expr_ctxt)?;
+            let rh = exp_to_expr(ctx, rhs, expr_ctxt)?;
             let expx = match op {
                 BinaryOp::And => {
                     return Ok(mk_and(&vec![lh, rh]));
@@ -1130,8 +1119,8 @@ pub(crate) fn exp_to_expr(
                 BinaryOp::StrGetChar => ExprX::Apply(
                     str_ident(STRSLICE_GET_CHAR),
                     Arc::new(vec![
-                        exp_to_expr(ctx, lhs, expr_ctxt, &sub_local_ctx)?,
-                        exp_to_expr(ctx, rhs, expr_ctxt, &sub_local_ctx)?,
+                        exp_to_expr(ctx, lhs, expr_ctxt)?,
+                        exp_to_expr(ctx, rhs, expr_ctxt)?,
                     ]),
                 ),
                 BinaryOp::ArrayIndex => {
@@ -1140,8 +1129,8 @@ pub(crate) fn exp_to_expr(
                         _ => panic!("internal error: unexpected ArrayIndex type"),
                     };
                     let mut args: Vec<Expr> = ts.iter().map(typ_to_ids).flatten().collect();
-                    args.push(exp_to_expr(ctx, lhs, expr_ctxt, &sub_local_ctx)?);
-                    args.push(exp_to_expr(ctx, rhs, expr_ctxt, &sub_local_ctx)?);
+                    args.push(exp_to_expr(ctx, lhs, expr_ctxt)?);
+                    args.push(exp_to_expr(ctx, rhs, expr_ctxt)?);
                     ExprX::Apply(str_ident(crate::def::ARRAY_INDEX), Arc::new(args))
                 }
                 // here the binary bitvector Ops are translated into the integer versions
@@ -1214,28 +1203,28 @@ pub(crate) fn exp_to_expr(
         }
         ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(deep, t), lhs, rhs) => {
             let mut args = vec![Arc::new(ExprX::Const(Constant::Bool(*deep))), typ_to_id(t)];
-            args.push(exp_to_expr(ctx, lhs, expr_ctxt, &sub_local_ctx)?);
-            args.push(exp_to_expr(ctx, rhs, expr_ctxt, &sub_local_ctx)?);
+            args.push(exp_to_expr(ctx, lhs, expr_ctxt)?);
+            args.push(exp_to_expr(ctx, rhs, expr_ctxt)?);
             str_apply(crate::def::EXT_EQ, &args)
         }
         ExpX::If(e1, e2, e3) => mk_ite(
-            &exp_to_expr(ctx, e1, expr_ctxt, &sub_local_ctx)?,
-            &exp_to_expr(ctx, e2, expr_ctxt, &sub_local_ctx)?,
-            &exp_to_expr(ctx, e3, expr_ctxt, &sub_local_ctx)?,
+            &exp_to_expr(ctx, e1, expr_ctxt)?,
+            &exp_to_expr(ctx, e2, expr_ctxt)?,
+            &exp_to_expr(ctx, e3, expr_ctxt)?,
         ),
-        ExpX::WithTriggers(_triggers, body) => exp_to_expr(ctx, body, expr_ctxt, &sub_local_ctx)?,
+        ExpX::WithTriggers(_triggers, body) => exp_to_expr(ctx, body, expr_ctxt)?,
         ExpX::Bind(bnd, e) => match &bnd.x {
             BndX::Let(binders) => {
-                let expr = exp_to_expr(ctx, e, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let mut bs: Vec<Binder<Expr>> = Vec::new();
                 for b in binders.iter() {
-                    let e = exp_to_expr(ctx, &b.a, expr_ctxt, &sub_local_ctx)?;
+                    let e = exp_to_expr(ctx, &b.a, expr_ctxt)?;
                     bs.push(Arc::new(BinderX { name: b.name.lower(), a: e }));
                 }
                 air::ast_util::mk_let(&bs, &expr)
             }
             BndX::Quant(quant, binders, trigs, _) => {
-                let expr = exp_to_expr(ctx, e, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let mut invs: Vec<Expr> = Vec::new();
                 for binder in binders.iter() {
                     let typ_inv = typ_invariant(ctx, &binder.a, &ident_var(&binder.name.lower()));
@@ -1264,19 +1253,19 @@ pub(crate) fn exp_to_expr(
                     }
                 }
                 let triggers = vec_map_result(&*trigs, |trig| {
-                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt, &sub_local_ctx))
+                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt))
                         .map(|v| Arc::new(v))
                 })?;
                 let qid = new_user_qid(ctx, &exp);
                 air::ast_util::mk_quantifier(quant.quant, &bs, &triggers, qid, &expr)
             }
             BndX::Lambda(binders, trigs) => {
-                let expr = exp_to_expr(ctx, e, expr_ctxt, &sub_local_ctx)?;
+                let expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 let binders = vec_map(&*binders, |b| {
                     Arc::new(BinderX { name: b.name.lower(), a: typ_to_air(ctx, &b.a) })
                 });
                 let triggers = vec_map_result(&*trigs, |trig| {
-                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt, &sub_local_ctx))
+                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt))
                         .map(|v| Arc::new(v))
                 })?;
                 let qid = (triggers.len() > 0).then(|| ()).and_then(|_| new_user_qid(ctx, &exp));
@@ -1294,14 +1283,14 @@ pub(crate) fn exp_to_expr(
                     }
                     bs.push(Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) }));
                 }
-                let cond_expr = exp_to_expr(ctx, cond, expr_ctxt, &sub_local_ctx)?;
-                let body_expr = exp_to_expr(ctx, e, expr_ctxt, &sub_local_ctx)?;
+                let cond_expr = exp_to_expr(ctx, cond, expr_ctxt)?;
+                let body_expr = exp_to_expr(ctx, e, expr_ctxt)?;
                 invs.push(cond_expr.clone());
                 let cond_expr = mk_and(&invs);
                 let typ = &e.typ;
                 let typ_inv = typ_invariant(ctx, typ, &body_expr);
                 let triggers = vec_map_result(&*trigs, |trig| {
-                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt, &sub_local_ctx))
+                    vec_map_result(trig, |x| exp_to_expr(ctx, x, expr_ctxt))
                         .map(|v| Arc::new(v))
                 })?;
                 let binders = Arc::new(bs);
@@ -1505,7 +1494,6 @@ fn assume_other_fields_unchanged(
     base: &UniqueIdent,
     mutated_fields: &LocFieldInfo<Vec<Vec<FieldOpr>>>,
     expr_ctxt: &ExprCtxt,
-    local_ctx: &LocalContext,
 ) -> Result<Option<Stmt>, VirErr> {
     let LocFieldInfo { base_typ, base_span, a: updates } = mutated_fields;
     let base_exp = SpannedTyped::new(base_span, base_typ, ExpX::VarLoc(base.clone()));
@@ -1516,7 +1504,6 @@ fn assume_other_fields_unchanged(
         &base_exp,
         updates,
         expr_ctxt,
-        local_ctx,
     )?;
     Ok((eqs.len() > 0)
         .then(|| Arc::new(StmtX::Assume(Arc::new(ExprX::Multi(MultiOp::And, Arc::new(eqs)))))))
@@ -1529,7 +1516,6 @@ fn assume_other_fields_unchanged_inner(
     base: &Exp,
     updates: &Vec<Vec<FieldOpr>>,
     expr_ctxt: &ExprCtxt,
-    local_ctx: &LocalContext,
 ) -> Result<Vec<Expr>, VirErr> {
     match &updates[..] {
         [f] if f.len() == 0 => Ok(vec![]),
@@ -1632,7 +1618,6 @@ fn stm_to_stmts(
     spec_map: &mono::SpecMap,
 ) -> Result<Vec<Stmt>, VirErr> {
     let expr_ctxt = &ExprCtxt::new(spec_map);
-    let local_ctx = LocalContext::empty(ctx);
     let result = match &stm.x {
         StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest, assert_id } => {
             assert!(split.is_none());
@@ -1641,7 +1626,7 @@ fn stm_to_stmts(
 
             let mut req_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
             for arg in args.iter() {
-                req_args.push(exp_to_expr(ctx, arg, expr_ctxt, &local_ctx)?);
+                req_args.push(exp_to_expr(ctx, arg, expr_ctxt)?);
             }
             let req_args = Arc::new(req_args);
 
@@ -1759,10 +1744,10 @@ fn stm_to_stmts(
                         .a
                         .push(fields.iter().map(|o| o.opr.clone()).collect());
                     let arg_old = snapshotted_var_locs(arg, SNAPSHOT_CALL);
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt, &local_ctx)?);
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt, &local_ctx)?);
+                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt)?);
+                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?);
                 } else {
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt, &local_ctx)?)
+                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?)
                 };
             }
             let havoc_stmts = mutated_fields
@@ -1833,7 +1818,7 @@ fn stm_to_stmts(
             if func.x.ens_has_return {
                 if let Some(Dest { dest, is_init }) = dest {
                     let var = suffix_local_unique_id(&get_loc_var(dest));
-                    ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt, &local_ctx)?);
+                    ens_args.push(exp_to_expr(ctx, &dest, expr_ctxt)?);
                     if !*is_init {
                         let havoc = StmtX::Havoc(var);
                         stmts.push(Arc::new(havoc));
@@ -1857,7 +1842,7 @@ fn stm_to_stmts(
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
         StmX::Assert(assert_id, error, expr) => {
-            let air_expr = exp_to_expr(ctx, &expr, expr_ctxt, &local_ctx)?;
+            let air_expr = exp_to_expr(ctx, &expr, expr_ctxt)?;
             let error = match error {
                 Some(error) => error.clone(),
                 None => error_with_label(
@@ -2022,7 +2007,7 @@ fn stm_to_stmts(
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
             }
-            vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt, &local_ctx)?))]
+            vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)?))]
         }
         StmX::Assign { lhs: Dest { dest, is_init: true }, rhs } => {
             let x = loc_is_var(dest).expect("is_init assign dest must be a variable");
@@ -2035,7 +2020,7 @@ fn stm_to_stmts(
             }
 
             let dest = dest;
-            let mut value = exp_to_expr(ctx, &rhs, expr_ctxt, &local_ctx)?;
+            let mut value = exp_to_expr(ctx, &rhs, expr_ctxt)?;
             let mut value_typ = rhs.typ.clone();
 
             let (base_var, LocFieldInfo { base_typ, base_span: _, a: fields }) =
@@ -2053,7 +2038,7 @@ fn stm_to_stmts(
                 if typ_is_poly(ctx, field_typ) && !typ_is_poly(ctx, &value_typ) {
                     value = try_box(ctx, value, &value_typ).expect("box field update");
                 }
-                let base_expr = exp_to_expr(ctx, &base_exp, expr_ctxt, &local_ctx)?;
+                let base_expr = exp_to_expr(ctx, &base_exp, expr_ctxt)?;
                 value = Arc::new(ExprX::Binary(bop, base_expr, value));
                 value_typ = base_exp.typ.clone();
             }
@@ -2132,7 +2117,7 @@ fn stm_to_stmts(
                         decrease,
                         decrease.len(),
                     )?;
-                    let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt, &local_ctx)?;
+                    let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
                     let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_CONTINUE);
                     let dec_stmt = StmtX::Assert(None, error, None, expr);
                     stmts.push(Arc::new(dec_stmt));
@@ -2171,7 +2156,7 @@ fn stm_to_stmts(
             vec![Arc::new(StmtX::DeadEnd(one_stmt(stmts)))]
         }
         StmX::If(cond, lhs, rhs) => {
-            let pos_cond = exp_to_expr(ctx, &cond, expr_ctxt, &local_ctx)?;
+            let pos_cond = exp_to_expr(ctx, &cond, expr_ctxt)?;
             let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
             let pos_assume = Arc::new(StmtX::Assume(pos_cond));
             let neg_assume = Arc::new(StmtX::Assume(neg_cond));
@@ -2208,7 +2193,7 @@ fn stm_to_stmts(
         } => {
             let loop_isolation = *loop_isolation;
             let (cond_stm, pos_assume, neg_assume) = if let Some((cond_stm, cond_exp)) = cond {
-                let pos_cond = exp_to_expr(ctx, &cond_exp, expr_ctxt, &local_ctx)?;
+                let pos_cond = exp_to_expr(ctx, &cond_exp, expr_ctxt)?;
                 let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
                 let pos_assume = Arc::new(StmtX::Assume(pos_cond));
                 let neg_assume = Arc::new(StmtX::Assume(neg_cond));
@@ -2223,7 +2208,7 @@ fn stm_to_stmts(
                 let inv_exp =
                     crate::loop_inference::finalize_inv(modified_vars, &inv.inv, &mut hint_message);
                 let msg_opt = exp_get_custom_err(&inv_exp);
-                let expr = exp_to_expr(ctx, &inv_exp, expr_ctxt, &local_ctx)?;
+                let expr = exp_to_expr(ctx, &inv_exp, expr_ctxt)?;
                 if cond.is_some() {
                     assert!(inv.at_entry);
                     assert!(inv.at_exit);
@@ -2410,7 +2395,7 @@ fn stm_to_stmts(
                         decrease,
                         decrease.len(),
                     )?;
-                    let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt, &local_ctx)?;
+                    let expr = exp_to_expr(ctx, &dec_exp, expr_ctxt)?;
                     let error = error(&stm.span, crate::def::DEC_FAIL_LOOP_END);
                     let dec_stmt = StmtX::Assert(None, error, None, expr);
                     air_body.push(Arc::new(dec_stmt));
@@ -2511,7 +2496,7 @@ fn stm_to_stmts(
             // Build the names_expr. Note: In the SST, this should have been assigned
             // to an expression whose value is constant for the entire block.
             let namespace_expr =
-                exp_to_expr(ctx, namespace_exp, &ExprCtxt::new(spec_map), &local_ctx)?;
+                exp_to_expr(ctx, namespace_exp, &ExprCtxt::new(spec_map))?;
 
             // Assert that the namespace of the inv we are opening is in the mask set
             if !ctx.checking_spec_preconditions() {
@@ -2772,18 +2757,16 @@ pub(crate) fn body_stm_to_air(
     let mut ens_exprs: Vec<(Span, Expr)> = Vec::new();
     for ens in post_condition.ens_exps.iter() {
         let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body, spec_map);
-        let local_ctx = &LocalContext::empty(ctx);
-        let e = exp_to_expr(ctx, &ens, expr_ctxt, &local_ctx)?;
+        let e = exp_to_expr(ctx, &ens, expr_ctxt)?;
         ens_exprs.push((ens.span.clone(), e));
     }
 
     let f_mask_singletons =
         |v: &Vec<MaskSingleton<Exp>>| -> Result<Vec<MaskSingleton<Expr>>, VirErr> {
             let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body, spec_map);
-            let local_ctx = &LocalContext::empty(ctx);
             let mut v2: Vec<MaskSingleton<Expr>> = Vec::new();
             for m in v.iter() {
-                let expr = exp_to_expr(ctx, &m.expr, expr_ctxt, &local_ctx)?;
+                let expr = exp_to_expr(ctx, &m.expr, expr_ctxt)?;
                 v2.push(MaskSingleton { expr, span: m.span.clone() });
             }
             Ok(v2)
@@ -2799,8 +2782,7 @@ pub(crate) fn body_stm_to_air(
         UnwindSst::NoUnwind => UnwindAir::NoUnwind(ReasonForNoUnwind::Function),
         UnwindSst::NoUnwindWhen(exp) => {
             let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body, spec_map);
-            let local_ctx = LocalContext::empty(ctx);
-            let e = exp_to_expr(ctx, &exp, expr_ctxt, &local_ctx)?;
+            let e = exp_to_expr(ctx, &exp, expr_ctxt)?;
             UnwindAir::NoUnwindWhen(e)
         }
     };
@@ -2877,8 +2859,7 @@ pub(crate) fn body_stm_to_air(
 
     for req in reqs.iter() {
         let expr_ctxt = &ExprCtxt::new_mode(ExprMode::BodyPre, spec_map);
-        let local_ctx = LocalContext::empty(ctx);
-        let e = exp_to_expr(ctx, &req, expr_ctxt, &local_ctx)?;
+        let e = exp_to_expr(ctx, &req, expr_ctxt)?;
         local.push(mk_unnamed_axiom(e));
     }
 
