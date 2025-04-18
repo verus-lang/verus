@@ -568,6 +568,7 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
                     push(span, ": module-level reveal");
                 }
             }
+            Node::Crate(_) => {}
             Node::SpanInfo { span_infos_index, text } => {
                 push(span_infos[*span_infos_index].clone(), text);
             }
