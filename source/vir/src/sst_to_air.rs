@@ -24,7 +24,7 @@ use crate::def::{
 };
 use crate::inv_masks::{MaskSet, MaskSingleton};
 use crate::messages::{error, error_with_label, Span};
-use crate::mono::{self, Specialization};
+use crate::mono::{self, PolyStrategy, Specialization};
 use crate::poly::{typ_as_mono, typ_is_poly, MonoTyp, MonoTypX};
 use crate::sst::{
     BndInfo, BndInfoUser, BndX, CallFun, Dest, Exp, ExpX, InternalFun, Stm, StmX, UniqueIdent,
@@ -976,7 +976,7 @@ pub(crate) fn exp_to_expr(
         ExpX::UnaryOpr(op, exp) => match op {
             UnaryOpr::Box(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                if local_ctx.poly_mode {
+                if ctx.poly_strategy == PolyStrategy::Poly {
                     try_box(ctx, expr, typ).unwrap_or_else(|| panic!("Box {:?}", typ))
                 } else {
                     expr
@@ -984,7 +984,7 @@ pub(crate) fn exp_to_expr(
             }
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                if local_ctx.poly_mode {
+                if ctx.poly_strategy == PolyStrategy::Poly {
                     try_unbox(ctx, expr.clone(), typ).unwrap_or_else(|| panic!("Unbox: {:?}", expr))
                 } else {
                     expr.clone()
@@ -1548,8 +1548,8 @@ fn assume_other_fields_unchanged_inner(
                                 let box_unbox = SpannedTyped::new(&base.span, &base.typ, exprx);
                                 let eq = ExprX::Binary(
                                     air::ast::BinaryOp::Eq,
-                                    exp_to_expr(ctx, &box_unbox, expr_ctxt, local_ctx)?,
-                                    exp_to_expr(ctx, &base, expr_ctxt, local_ctx)?,
+                                    exp_to_expr(ctx, &box_unbox, expr_ctxt)?,
+                                    exp_to_expr(ctx, &base, expr_ctxt)?,
                                 );
                                 box_unbox_eq.push(Arc::new(eq));
                             }
@@ -1589,16 +1589,14 @@ fn assume_other_fields_unchanged_inner(
                             &field_exp,
                             further_updates,
                             expr_ctxt,
-                            local_ctx,
                         )
                     } else {
                         let old = exp_to_expr(
                             ctx,
                             &snapshotted_var_locs(&field_exp, snapshot_name),
                             expr_ctxt,
-                            local_ctx,
                         )?;
-                        let new = exp_to_expr(ctx, &field_exp, expr_ctxt, local_ctx)?;
+                        let new = exp_to_expr(ctx, &field_exp, expr_ctxt)?;
                         Ok(vec![Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, old, new))])
                     }
                 })?;
@@ -1765,7 +1763,6 @@ fn stm_to_stmts(
                         base,
                         mutated_fields,
                         expr_ctxt,
-                        &local_ctx,
                     ) {
                         Ok(stmt) => {
                             let typ_inv_stmts = typ_invariant(
