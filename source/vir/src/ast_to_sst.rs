@@ -6,7 +6,7 @@ use crate::ast::{
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{types_equal, undecorate_typ, unit_typ, QUANT_FORALL};
+use crate::ast_util::{types_equal, undecorate_typ, remove_shared_ref_typ, unit_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
 use crate::inv_masks::MaskSet;
@@ -2562,7 +2562,7 @@ pub fn assert_assume_satisfies_user_defined_type_invariant(
     fun: &Fun,
     is_assume: bool,
 ) {
-    let typs = match &*undecorate_typ(&exp.typ) {
+    let typs = match &*remove_shared_ref_typ(&exp.typ) {
         TypX::Datatype(_path, typs, ..) => typs.clone(),
         _ => panic!("assert_assume_satisfies_user_defined_type_invariant: expected datatype"),
     };

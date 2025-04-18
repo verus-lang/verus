@@ -5,7 +5,7 @@ use crate::ast::{
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
-use crate::ast_util::undecorate_typ;
+use crate::ast_util::{undecorate_typ, remove_shared_ref_typ};
 use crate::ast_util::{air_unique_var, ident_var_binder, typ_to_diagnostic_str};
 use crate::context::Ctx;
 use crate::def::{
@@ -536,7 +536,7 @@ pub(crate) fn expand_call_graph(
             ExprX::AssertAssumeUserDefinedTypeInvariant { is_assume: _, expr: _, fun } => {
                 call_graph.add_edge(f_node.clone(), Node::Fun(fun.clone()));
 
-                let typ = undecorate_typ(&expr.typ);
+                let typ = remove_shared_ref_typ(&expr.typ);
                 let impl_paths = match &*typ {
                     TypX::Datatype(_, _, impl_paths) => impl_paths,
                     _ => panic!("expected datatype"),

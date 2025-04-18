@@ -1082,9 +1082,16 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             {
                 *typ = inner_typ.clone();
             }
+            if let TypX::Primitive(vir::ast::Primitive::SharedRef, inner_typs) = &**typ
+            {
+                *typ = inner_typs[0].clone();
+            }
             Ok(new_expr)
         }
         Adjust::Deref(Some(_)) => {
+            // TODO: Do I need to change the implementation of this one too? 
+            // I think no, since it seems like either a recursive call or an error
+            
             // note: deref has signature (&self) -> &Self::Target
             // and deref_mut has signature (&mut self) -> &mut Self::Target
             // The adjustment, though, goes from self -> Self::Target
@@ -1816,6 +1823,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 ))
             }
             UnOp::Deref => {
+                // Problem: deref operation currently does nothing bc the old representation was the same either way. 
+                // Now I need a nontrivial implementation that actually pulls out what is being pointed to
                 let inner_ty = bctx.types.expr_ty_adjusted(arg);
                 match inner_ty.kind() {
                     TyKind::RawPtr(..) => 
@@ -1856,6 +1865,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 ) = &**typ
                 {
                     *typ = inner_typ.clone();
+                }
+                if let TypX::Primitive(vir::ast::Primitive::SharedRef, inner_typs) = &**typ
+                {
+                    *typ = inner_typs[0].clone();
                 }
                 Ok(new_expr)
             }

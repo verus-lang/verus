@@ -19,13 +19,13 @@ pub fn ex_clone_clone_from<T: Clone>(a: &mut T, b: &T)
 */
 
 pub assume_specification[ <bool as Clone>::clone ](b: &bool) -> (res: bool)
-    ensures
-        res == *b,
+    returns 
+        *b,
 ;
 
 pub assume_specification[ <char as Clone>::clone ](c: &char) -> (res: char)
-    ensures
-        res == *c,
+    returns 
+        *c,
 ;
 
 #[allow(suspicious_double_ref_op)]
