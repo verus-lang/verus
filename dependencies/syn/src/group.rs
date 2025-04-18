@@ -1,26 +1,33 @@
 use crate::error::Result;
 use crate::parse::ParseBuffer;
 use crate::token;
-use proc_macro2::{Delimiter, Span};
+use proc_macro2::extra::DelimSpan;
+use proc_macro2::Delimiter;
 
 // Not public API.
 #[doc(hidden)]
 pub struct Parens<'a> {
+    #[doc(hidden)]
     pub token: token::Paren,
+    #[doc(hidden)]
     pub content: ParseBuffer<'a>,
 }
 
 // Not public API.
 #[doc(hidden)]
 pub struct Braces<'a> {
+    #[doc(hidden)]
     pub token: token::Brace,
+    #[doc(hidden)]
     pub content: ParseBuffer<'a>,
 }
 
 // Not public API.
 #[doc(hidden)]
 pub struct Brackets<'a> {
+    #[doc(hidden)]
     pub token: token::Bracket,
+    #[doc(hidden)]
     pub content: ParseBuffer<'a>,
 }
 
@@ -28,7 +35,9 @@ pub struct Brackets<'a> {
 #[cfg(any(feature = "full", feature = "derive"))]
 #[doc(hidden)]
 pub struct Group<'a> {
+    #[doc(hidden)]
     pub token: token::Group,
+    #[doc(hidden)]
     pub content: ParseBuffer<'a>,
 }
 
@@ -62,7 +71,7 @@ pub fn parse_brackets<'a>(input: &ParseBuffer<'a>) -> Result<Brackets<'a>> {
 #[cfg(any(feature = "full", feature = "derive"))]
 pub(crate) fn parse_group<'a>(input: &ParseBuffer<'a>) -> Result<Group<'a>> {
     parse_delimited(input, Delimiter::None).map(|(span, content)| Group {
-        token: token::Group(span),
+        token: token::Group(span.join()),
         content,
     })
 }
@@ -70,10 +79,10 @@ pub(crate) fn parse_group<'a>(input: &ParseBuffer<'a>) -> Result<Group<'a>> {
 fn parse_delimited<'a>(
     input: &ParseBuffer<'a>,
     delimiter: Delimiter,
-) -> Result<(Span, ParseBuffer<'a>)> {
+) -> Result<(DelimSpan, ParseBuffer<'a>)> {
     input.step(|cursor| {
         if let Some((content, span, rest)) = cursor.group(delimiter) {
-            let scope = crate::buffer::close_span_of_group(*cursor);
+            let scope = span.close();
             let nested = crate::parse::advance_step_cursor(cursor, content);
             let unexpected = crate::parse::get_unexpected(input);
             let content = crate::parse::new_parse_buffer(scope, nested, unexpected);
@@ -119,7 +128,7 @@ fn parse_delimited<'a>(
 ///             struct_token: input.parse()?,
 ///             ident: input.parse()?,
 ///             paren_token: parenthesized!(content in input),
-///             fields: content.parse_terminated(Type::parse)?,
+///             fields: content.parse_terminated(Type::parse, Token![,])?,
 ///             semi_token: input.parse()?,
 ///         })
 ///     }
@@ -133,10 +142,10 @@ fn parse_delimited<'a>(
 /// # }
 /// ```
 #[macro_export]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+#[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
 macro_rules! parenthesized {
     ($content:ident in $cursor:expr) => {
-        match $crate::group::parse_parens(&$cursor) {
+        match $crate::__private::parse_parens(&$cursor) {
             $crate::__private::Ok(parens) => {
                 $content = parens.content;
                 parens.token
@@ -185,7 +194,7 @@ macro_rules! parenthesized {
 ///             struct_token: input.parse()?,
 ///             ident: input.parse()?,
 ///             brace_token: braced!(content in input),
-///             fields: content.parse_terminated(Field::parse)?,
+///             fields: content.parse_terminated(Field::parse, Token![,])?,
 ///         })
 ///     }
 /// }
@@ -211,10 +220,10 @@ macro_rules! parenthesized {
 /// # }
 /// ```
 #[macro_export]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+#[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
 macro_rules! braced {
     ($content:ident in $cursor:expr) => {
-        match $crate::group::parse_braces(&$cursor) {
+        match $crate::__private::parse_braces(&$cursor) {
             $crate::__private::Ok(braces) => {
                 $content = braces.content;
                 braces.token
@@ -266,10 +275,10 @@ macro_rules! braced {
 /// # }
 /// ```
 #[macro_export]
-#[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+#[cfg_attr(docsrs, doc(cfg(feature = "parsing")))]
 macro_rules! bracketed {
     ($content:ident in $cursor:expr) => {
-        match $crate::group::parse_brackets(&$cursor) {
+        match $crate::__private::parse_brackets(&$cursor) {
             $crate::__private::Ok(brackets) => {
                 $content = brackets.content;
                 brackets.token

@@ -6,7 +6,7 @@ use crate::ast_util::{
 };
 use crate::context::Ctx;
 use crate::def::{
-    encode_dt_as_path, is_variant_ident_mangled, path_to_string, prefix_box, prefix_spec_fn_type,
+    encode_dt_as_path, is_variant_ident, is_variant_ident_mangled, path_to_string, prefix_box, prefix_spec_fn_type,
     prefix_tuple_param, prefix_type_id, prefix_unbox, variant_field_ident,
     variant_field_ident_internal, variant_ident, variant_ident_mangled, Spanned, QID_ACCESSOR,
     QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER, QID_HAS_TYPE_ALWAYS,
@@ -76,6 +76,20 @@ fn field_to_par(span: &Span, f: &Field) -> Par {
     )
 }
 
+// For soundness, FieldOpr needs type arguments when there are >= 2 variants
+// (see https://github.com/verus-lang/verus/issues/1366 )
+fn has_field_typ_args(num_variants: usize) -> bool {
+    num_variants >= 2
+}
+
+pub(crate) fn field_typ_args<A: Default>(num_variants: usize, f: impl Fn() -> A) -> A {
+    if has_field_typ_args(num_variants) {
+        f()
+    } else {
+        A::default()
+    }
+}
+
 fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
     match &**typ {
         TypX::Int(_) => false,
@@ -91,6 +105,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Projection { .. } => true,
         TypX::TypeId => panic!("internal error: uses_ext_equal of TypeId"),
         TypX::ConstInt(_) => false,
+        TypX::ConstBool(_) => false,
         TypX::Air(_) => panic!("internal error: uses_ext_equal of Air"),
         TypX::Primitive(crate::ast::Primitive::Array, _) => true,
         TypX::Primitive(crate::ast::Primitive::Slice, _) => true,
@@ -346,6 +361,8 @@ fn datatype_or_fun_to_air_commands(
     }
 
     // constructor and field axioms
+    let tparams_opt = field_typ_args(variants.len(), || tparams.clone());
+    let typ_args_opt = field_typ_args(variants.len(), || typ_args.clone());
     for variant in variants.iter() {
         if let EncodedDtKind::Dt(dt) = &kind {
             if declare_box && ctx.datatypes_with_invariant.contains(dt) {
@@ -380,38 +397,47 @@ fn datatype_or_fun_to_air_commands(
                 axiom_commands.push(Arc::new(CommandX::Global(axiom)));
             }
         }
-        for (i, field) in variant.fields.iter().enumerate() {
+        for field in variant.fields.iter() {
+            let mut xfield_params: Vec<air::ast::Typ> = Vec::new();
+            let mut xfield_args: Vec<air::ast::Expr> = Vec::new();
+            let mut xfield_unbox_args: Vec<air::ast::Expr> = Vec::new();
+            for _ in tparams_opt.iter() {
+                xfield_params.extend(crate::def::types().iter().map(|s| str_typ(s)));
+            }
+            for t in typ_args_opt.iter() {
+                xfield_args.extend(crate::sst_to_air::typ_to_ids(t));
+                xfield_unbox_args.extend(crate::sst_to_air::typ_to_ids(t));
+            }
+            xfield_params.push(dtyp.clone());
+            xfield_args.push(x_var.clone());
+            xfield_unbox_args.push(unbox_x.clone());
             let id = variant_field_ident(dpath, &variant.name, &field.name);
             let internal_id = variant_field_ident_internal(dpath, &variant.name, &field.name, true);
-            let typ = match spec.typs.get(i) {
-                Some(st) => st.to_typ(),
-                None => {
-                    let (typ, _, _) = &field.a;
-                    typ.clone()
-                }
-            };
-            let xfield = ident_apply(&id, &vec![x_var.clone()]);
+            let (typ, _, _) = &field.a;
+            let xfield = ident_apply(&id, &xfield_args);
             let xfield_internal = ident_apply(&internal_id, &vec![x_var.clone()]);
-            let xfield_unbox = ident_apply(&id, &vec![unbox_x.clone()]);
+            let xfield_unbox = ident_apply(&id, &xfield_unbox_args);
 
             // Create a wrapper function to access the field,
             // because it seems to be dangerous to trigger directly on e.f,
             // because Z3 seems to introduce e.f internally,
             // which can unexpectedly trigger matching loops creating e.f.f.f.f...
-            //   function f(x:datatyp):typ
-            //   axiom forall x. f(x) = x.f
-            let decl_field = Arc::new(DeclX::Fun(
-                id.clone(),
-                Arc::new(vec![dtyp.clone()]),
-                typ_to_air(ctx, &typ),
-            ));
+            //   function get_f(x:datatyp):typ
+            //   axiom forall x. get_f(x) = x.f
+            // Also, see https://github.com/verus-lang/verus/issues/1366 : for 2 or more variants,
+            // when there are type parameters, we need to guard the axiom with a variant check:
+            //   axiom forall a, x. x is f's variant ==> get_f(a, x) = x.f
+            let decl_field =
+                Arc::new(DeclX::Fun(id.clone(), Arc::new(xfield_params), typ_to_air(ctx, typ)));
             tracing::trace!("decl_field axiom: {decl_field:?}");
             field_commands.push(Arc::new(CommandX::Global(decl_field)));
             let trigs = vec![xfield.clone()];
             let name = format!("{}_{}", id, QID_ACCESSOR);
-            let bind =
-                func_bind_trig(ctx, name, &Arc::new(vec![]), &x_params(&datatyp), &trigs, false);
+            let bind = func_bind_trig(ctx, name, &tparams_opt, &x_params(&datatyp), &trigs, false);
             let eq = mk_eq(&xfield, &xfield_internal);
+            let vid = is_variant_ident(&Dt::Path(dpath.clone()), &*variant.name);
+            let is_variant = ident_apply(&vid, &vec![x_var.clone()]);
+            let eq = if tparams_opt.len() > 0 { mk_implies(&is_variant, &eq) } else { eq };
             let forall = mk_bind_expr(&bind, &eq);
             let axiom = mk_unnamed_axiom(forall);
             tracing::trace!("field accessor axiom for datatype: {datatyp:?}");
@@ -550,6 +576,7 @@ fn datatype_or_fun_to_air_commands(
                     dpath,
                     &field_box_path,
                     &is_variant_ident_mangled(my_dt, &*variant.name, spec),
+                    &tparams_opt,
                     &variant_field_ident(dpath, &variant.name, &field.name),
                     recursive_function_field,
                 );
@@ -627,8 +654,16 @@ fn datatype_or_fun_to_air_commands(
                     // to avoid trigger matching loops, use ==, not ext_equal, for recursive fields:
                     && !crate::ast_visitor::typ_visitor_check(typ, &mut is_recursive).is_err();
                 let fid = variant_field_ident(dpath, &variant.name, &field.name);
-                let xfield = ident_apply(&fid, &vec![unbox_x.clone()]);
-                let yfield = ident_apply(&fid, &vec![unbox_y.clone()]);
+                let mut xfield_args: Vec<air::ast::Expr> = Vec::new();
+                let mut yfield_args: Vec<air::ast::Expr> = Vec::new();
+                for t in typ_args_opt.iter() {
+                    xfield_args.extend(crate::sst_to_air::typ_to_ids(t));
+                    yfield_args.extend(crate::sst_to_air::typ_to_ids(t));
+                }
+                xfield_args.push(unbox_x.clone());
+                yfield_args.push(unbox_y.clone());
+                let xfield = ident_apply(&fid, &xfield_args);
+                let yfield = ident_apply(&fid, &yfield_args);
                 let eq = if uses_ext {
                     let xfield = crate::sst_to_air::as_box(ctx, xfield, typ);
                     let yfield = crate::sst_to_air::as_box(ctx, yfield, typ);

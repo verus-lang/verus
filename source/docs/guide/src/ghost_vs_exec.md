@@ -59,7 +59,8 @@ As an example of ghost code that uses these abilities,
 a call to the Verus [`Seq::index(...)` function](https://github.com/verus-lang/verus/blob/main/source/vstd/seq.rs)
 can duplicate a value from the sequence, if the index `i` is within bounds,
 and create a value out of thin air if `i` is out of bounds:
-```
+
+```rust
 impl<A> Seq<A> {
 ...
     /// Gets the value at the given index `i`.

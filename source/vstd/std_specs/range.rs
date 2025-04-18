@@ -25,15 +25,13 @@ pub trait StepSpec where Self: Sized {
     spec fn spec_backward_checked_int(self, count: int) -> Option<Self>;
 }
 
-pub spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
+pub uninterp spec fn spec_range_next<A>(a: Range<A>) -> (Range<A>, Option<A>);
 
-#[verifier::external_fn_specification]
-pub fn ex_range_next<A: core::iter::Step>(range: &mut Range<A>) -> (r: Option<A>)
+pub assume_specification<A: core::iter::Step>[ Range::<A>::next ](range: &mut Range<A>) -> (r:
+    Option<A>)
     ensures
         (*range, r) == spec_range_next(*old(range)),
-{
-    range.next()
-}
+;
 
 pub struct RangeGhostIterator<A> {
     pub start: A,

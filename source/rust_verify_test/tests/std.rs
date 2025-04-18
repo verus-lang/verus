@@ -57,7 +57,7 @@ test_verify_one_file! {
         fn foo(x: &X) {
             let y = x.clone();
         }
-    } => Err(err) => assert_vir_error_msg(err, "`crate::X::clone` is not supported")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
 }
 
 test_verify_one_file! {
@@ -124,6 +124,9 @@ test_verify_one_file! {
             requires old(v).len() > 0,
         {
             let a = v[0];
+            v[0] = a;
+            let mut v2: Vec<u8> = vec![0];
+            v2[0] = a;
             assert(a == v.view().index(0));
         }
     } => Ok(())
@@ -466,7 +469,12 @@ test_verify_one_file! {
 
         fn test3<T: Clone>(a: Box<T>) {
             let b = a.clone();
-            assert(call_ensures(T::clone, (&*a,), *b));
+            assert(call_ensures(T::clone, (&*a,), *b) || a == b);
+        }
+
+        fn test3_fails<T: Clone>(a: Box<T>) {
+            let b = a.clone();
+            assert(call_ensures(T::clone, (&*a,), *b)); // FAILS
         }
 
         pub struct X { pub i: u64 }
@@ -486,9 +494,9 @@ test_verify_one_file! {
 
         fn test5(a: Box<X>) {
             let b = a.clone();
-            assert(b == X { i: 5 });
+            assert(b == X { i: 5 } || b == a);
         }
-    } => Err(err) => assert_fails(err, 2)
+    } => Err(err) => assert_fails(err, 3)
 }
 
 test_verify_one_file! {
@@ -500,4 +508,68 @@ test_verify_one_file! {
             assert(a == b); // FAILS
         }
     } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: instance")
+}
+
+test_verify_one_file_with_options! {
+    #[test] derive_copy ["--no-external-by-default"] => verus_code! {
+        // When an auto-derived impl is produced, it doesn't get the verus_macro attribute.
+        // However, this test case does not use --external-by-default, so verus will
+        // process the derived impls anyway.
+
+        #[derive(Clone, Copy)]
+        struct X {
+            u: u64,
+        }
+
+        fn test(x: X) {
+            let a = x;
+            let b = x;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] derive_copy_external_by_default verus_code! {
+        // When an auto-derived impl is produced, it doesn't get the verus_macro attribute.
+        // Since this test case uses --external-by-default, these derived impls do not
+        // get processed.
+
+        #[derive(Clone, Copy)]
+        struct X {
+            u: u64,
+        }
+
+        fn test(x: X) {
+            let a = x;
+            let b = x;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] external_derive_attr ["--no-external-by-default"] => verus_code! {
+        #[derive(Clone, Copy)]
+        #[verifier::external_derive]
+        struct X {
+            u: u64,
+        }
+
+        fn test(x: X) {
+            let a = x.clone();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
+}
+
+test_verify_one_file_with_options! {
+    #[test] external_derive_attr_list ["--no-external-by-default"] => verus_code! {
+        #[derive(Clone, Copy)]
+        #[verifier::external_derive(Clone)]
+        struct X {
+            u: u64,
+        }
+
+        fn test(x: X) {
+            let a = x.clone();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
 }

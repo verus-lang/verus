@@ -1,27 +1,41 @@
 [package]
 name = "prettyplease_verus"
-version = "0.1.15"
+version = "0.2.29"
 authors = ["David Tolnay <dtolnay@gmail.com>"]
-edition = "2021"
-rust-version = "1.56"
-license = "MIT OR Apache-2.0"
-description = "A minimal `syn` syntax tree pretty-printer"
-repository = "https://github.com/dtolnay/prettyplease"
-documentation = "https://docs.rs/prettyplease"
-readme = "README.md"
-links = "prettyplease01"
 autoexamples = false
+categories = ["development-tools"]
+description = "A minimal `syn` syntax tree pretty-printer"
+documentation = "https://docs.rs/prettyplease"
+edition = "2021"
 exclude = ["cargo-expand"]
+keywords = ["rustfmt"]
+license = "MIT OR Apache-2.0"
+links = "prettyplease-verus02"
+repository = "https://github.com/dtolnay/prettyplease"
+rust-version = "1.62"
 
 [features]
 verbatim = ["syn_verus/parsing"]
 
 [dependencies]
-proc-macro2 = { version = "1.0", default-features = false }
+proc-macro2 = { version = "1.0.80", default-features = false }
 syn_verus = { path="../syn", default-features = false, features = ["full"] }
 
 [dev-dependencies]
-syn_verus = { path="../syn", default-features = false, features = ["parsing"] }
+indoc = "2"
+proc-macro2 = { version = "1.0.80", default-features = false }
+quote = { version = "1.0.35", default-features = false }
+syn_verus = { path="../syn", default-features = false, features = ["clone-impls", "extra-traits", "parsing", "printing", "visit-mut"] }
+
+[lib]
+doc-scrape-examples = false
+
+[package.metadata.docs.rs]
+targets = ["x86_64-unknown-linux-gnu"]
+rustdoc-args = ["--generate-link-to-definition"]
+
+[package.metadata.playground]
+features = ["verbatim"]
 
 [workspace]
 members = ["cargo-expand/update", "examples/update"]

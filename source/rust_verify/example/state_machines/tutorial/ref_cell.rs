@@ -10,99 +10,9 @@ use vstd::invariant::*;
 use vstd::multiset::*;
 use vstd::pervasive::*;
 use vstd::prelude::*;
+use vstd::shared::*;
 
 verus! {
-
-//// TODO move this to vstd
-// Module to keep Dupe definitions private
-mod DupeMod {
-    use vstd::prelude::*;
-    use state_machines_macros::*;
-
-    tokenized_state_machine!(Dupe<T> {
-        fields {
-            #[sharding(storage_option)]
-            pub storage: Option<T>,
-
-            #[sharding(constant)]
-            pub val: T,
-        }
-
-        init!{
-            initialize_one(t: T) {
-                // Initialize with a single reader
-                init storage = Option::Some(t);
-                init val = t;
-            }
-        }
-
-        #[invariant]
-        pub fn agreement(&self) -> bool {
-            self.storage == Option::Some(self.val)
-        }
-
-        property!{
-            borrow() {
-                guard storage >= Some(pre.val);
-            }
-        }
-
-         #[inductive(initialize_one)]
-         fn initialize_one_inductive(post: Self, t: T) { }
-    });
-
-}
-
-use DupeMod::*;
-
-/// Allows shared access to any (tracked) ghost resource, making it
-/// read-only "forever".
-///
-/// This is sort of the like "the `Rc` of ghost objects".
-/// There's no actual reference counter (since it's a ghost object
-/// and is never garbage-collected) but it has the same API:
-/// It is cloneable, and the contents are borrowable read-only.
-// TODO make it Copy
-pub tracked struct Shareable<T> {
-    tracked inst: Dupe::Instance<T>,
-}
-
-impl<T> Shareable<T> {
-    pub closed spec fn wf(self) -> bool {
-        true
-    }
-
-    pub closed spec fn view(self) -> T {
-        self.inst.val()
-    }
-
-    pub proof fn new(tracked t: T) -> (tracked s: Self)
-        ensures
-            s.wf() && s@ == t,
-    {
-        let tracked inst = Dupe::Instance::initialize_one(  /* spec */
-        t, Option::Some(t));
-        Shareable { inst }
-    }
-
-    pub proof fn clone(tracked &self) -> (tracked other: Self)
-        requires
-            self.wf(),
-        ensures
-            other.wf() && self@ == other@,
-    {
-        Shareable { inst: self.inst.clone() }
-    }
-
-    pub proof fn borrow(tracked &self) -> (tracked t: &T)
-        requires
-            self.wf(),
-        ensures
-            *t == self@,
-    {
-        self.inst.borrow()
-    }
-}
 
 //////////////////////////////////////////////////////////////////////////////
 pub enum BorrowFlag {
@@ -156,7 +66,7 @@ tokenized_state_machine!(RefCounter<S> {
     #[invariant]
     pub fn storage_inv(&self) -> bool {
         match self.storage {
-            Some(x) => x@.pcell == self.pcell_loc && x@.value.is_Some(),
+            Some(x) => x@.pcell == self.pcell_loc && x.is_init(),
             None => true,
         }
     }
@@ -176,7 +86,7 @@ tokenized_state_machine!(RefCounter<S> {
 
     transition!{
         do_deposit(x: Perm<S>) {
-            require(x@.pcell == pre.pcell_loc && x@.value.is_Some());
+            require(x@.pcell == pre.pcell_loc && x.is_init());
             remove writer -= true;
             assert(pre.flag == BorrowFlag::MutBorrow);
             update flag = BorrowFlag::ReadBorrow(0);
@@ -196,7 +106,7 @@ tokenized_state_machine!(RefCounter<S> {
             add writer += true;
 
             withdraw storage -= Some(let x);
-            assert(x@.pcell == pre.pcell_loc && x@.value.is_Some());
+            assert(x@.pcell == pre.pcell_loc && x.is_init());
         }
     }
 
@@ -219,7 +129,7 @@ tokenized_state_machine!(RefCounter<S> {
 
             birds_eye let x = pre.storage.get_Some_0();
             add reader += { x };
-            assert(x@.pcell == pre.pcell_loc && x@.value.is_Some());
+            assert(x@.pcell == pre.pcell_loc && x.is_init());
         }
     }
 
@@ -252,8 +162,8 @@ impl<S> GhostStuff<S> {
     pub closed spec fn wf(self, inst: RefCounter::Instance<S>, rc_cell: PCell<isize>) -> bool {
         &&& self.rc_perm@.pcell == rc_cell.id()
         &&& self.flag_token.instance_id() == inst.id()
-        &&& self.rc_perm@.value.is_Some()
-        &&& self.rc_perm@.value.get_Some_0() as int == match self.flag_token.value() {
+        &&& self.rc_perm.is_init()
+        &&& self.rc_perm.value() as int == match self.flag_token.value() {
             BorrowFlag::MutBorrow => 1,
             BorrowFlag::ReadBorrow(n) => -n,
         }
@@ -269,13 +179,12 @@ struct_with_invariants!{
         value_cell: PCell<S>,
 
         inst: Tracked< RefCounter::Instance<S> >,
-        inv: Tracked< Shareable<LocalInvariant<_, GhostStuff<S>, _>> >,
+        inv: Tracked< Shared<LocalInvariant<_, GhostStuff<S>, _>> >,
     }
 
     pub closed spec fn wf(self) -> bool {
         predicate {
             &&& self.inst@.pcell_loc() == self.value_cell.id()
-            &&& self.inv@.wf()
         }
 
         invariant on inv with (inst, rc_cell)
@@ -297,11 +206,11 @@ impl<'a, S> Ref<'a, S> {
         self.ref_cell.wf()
             && self.reader@.instance_id() == self.ref_cell.inst@.id()
             && self.reader@.element()@.pcell == self.ref_cell.value_cell.id()
-            && self.reader@.element()@.value.is_Some()
+            && self.reader@.element().is_init()
     }
 
     pub closed spec fn value(&self) -> S {
-        self.reader@.element()@.value.get_Some_0()
+        self.reader@.element().value()
     }
 }
 
@@ -316,11 +225,11 @@ impl<'a, S> RefMut<'a, S> {
         self.ref_cell.wf()
           && self.writer@.instance_id() == self.ref_cell.inst@.id()
           && self.perm@@.pcell == self.ref_cell.value_cell.id()
-          && self.perm@@.value.is_Some()
+          && self.perm@.is_init()
     }
 
     pub closed spec fn value(&self) -> S {
-        self.perm@@.value.get_Some_0()
+        self.perm@.value()
     }
 }
 
@@ -343,7 +252,7 @@ impl<S> RefCell<S> {
             GhostStuff { rc_perm, flag_token: flag },
             0,
         );
-        RefCell::<S> { rc_cell, value_cell, inst: tracked_inst, inv: Tracked(Shareable::new(inv)) }
+        RefCell::<S> { rc_cell, value_cell, inst: tracked_inst, inv: Tracked(Shared::new(inv)) }
     }
 
     fn try_borrow<'a>(&'a self) -> (opt_ref: Option<Ref<'a, S>>)

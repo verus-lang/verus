@@ -35,22 +35,22 @@ pub struct Seq<A> {
 impl<A> Seq<A> {
     /// An empty sequence (i.e., a sequence of length 0).
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::empty"]
-    pub spec fn empty() -> Seq<A>;
+    pub uninterp spec fn empty() -> Seq<A>;
 
     /// Construct a sequence `s` of length `len` where entry `s[i]` is given by `f(i)`.
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::new"]
-    pub spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
+    pub uninterp spec fn new(len: nat, f: impl Fn(int) -> A) -> Seq<A>;
 
     /// The length of a sequence.
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::len"]
-    pub spec fn len(self) -> nat;
+    pub uninterp spec fn len(self) -> nat;
 
     /// Gets the value at the given index `i`.
     ///
     /// If `i` is not in the range `[0, self.len())`, then the resulting value
     /// is meaningless and arbitrary.
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::index"]
-    pub spec fn index(self, i: int) -> A
+    pub uninterp spec fn index(self, i: int) -> A
         recommends
             0 <= i < self.len(),
     ;
@@ -77,7 +77,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::push"]
-    pub spec fn push(self, a: A) -> Seq<A>;
+    pub uninterp spec fn push(self, a: A) -> Seq<A>;
 
     /// Updates the sequence at the given index, replacing the element with the given
     /// value, and leaves all other entries unchanged.
@@ -92,26 +92,10 @@ impl<A> Seq<A> {
     /// }
     /// ```
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::update"]
-    pub spec fn update(self, i: int, a: A) -> Seq<A>
+    pub uninterp spec fn update(self, i: int, a: A) -> Seq<A>
         recommends
             0 <= i < self.len(),
     ;
-
-    /// DEPRECATED: use =~= or =~~= instead.
-    /// Returns `true` if the two sequences are pointwise equal, i.e.,
-    /// they have the same length and the corresponding values are equal
-    /// at each index. This is equivalent to the sequences being actually equal
-    /// by [`axiom_seq_ext_equal`].
-    ///
-    /// To prove that two sequences are equal via extensionality, it may be easier
-    /// to use the general-purpose `=~=` or `=~~=` or
-    /// to use the [`assert_seqs_equal!`](crate::seq_lib::assert_seqs_equal) macro,
-    /// rather than using `.ext_equal` directly.
-    #[cfg_attr(not(verus_verify_core), deprecated = "use =~= or =~~= instead")]
-    #[rustc_diagnostic_item = "verus::vstd::seq::Seq::ext_equal"]
-    pub open spec fn ext_equal(self, s2: Seq<A>) -> bool {
-        self =~= s2
-    }
 
     /// Returns a sequence for the given subrange.
     ///
@@ -127,7 +111,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::subrange"]
-    pub spec fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>
+    pub uninterp spec fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>
         recommends
             0 <= start_inclusive <= end_exclusive <= self.len(),
     ;
@@ -155,7 +139,7 @@ impl<A> Seq<A> {
     /// }
     /// ```
     #[rustc_diagnostic_item = "verus::vstd::seq::Seq::add"]
-    pub spec fn add(self, rhs: Seq<A>) -> Seq<A>;
+    pub uninterp spec fn add(self, rhs: Seq<A>) -> Seq<A>;
 
     /// `+` operator, synonymous with `add`
     #[verifier::inline]

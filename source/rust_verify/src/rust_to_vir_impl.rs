@@ -1,14 +1,16 @@
+use crate::automatic_derive::is_automatically_derived;
 use crate::context::Context;
+use crate::external::CrateItems;
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, mid_ty_const_to_vir, mid_ty_to_vir, mk_visibility, remove_host_arg,
-    typ_path_and_ident_to_vir_path,
+    def_id_to_vir_path, def_id_to_vir_path_option, mid_ty_const_to_vir, mid_ty_to_vir,
+    mk_visibility, remove_host_arg, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
-use crate::util::err_span;
+use crate::unsupported_err;
+use crate::util::{err_span, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
-use crate::{err_unless, unsupported_err};
 use indexmap::{IndexMap, IndexSet};
-use rustc_hir::{AssocItemKind, ImplItemKind, Item, QPath, TraitRef, Unsafety};
+use rustc_hir::{AssocItemKind, ImplItemKind, Item, QPath, Safety, TraitRef};
 use rustc_middle::ty::GenericArgKind;
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
@@ -73,7 +75,21 @@ fn trait_impl_to_vir<'tcx>(
     hir_generics: Option<&'tcx rustc_hir::Generics<'tcx>>,
     module_path: Path,
     auto_imported: bool,
-) -> Result<(Path, Typs, TraitImpl), VirErr> {
+) -> Result<Option<(Path, Typs, TraitImpl)>, VirErr> {
+    let trait_polarity = ctxt.tcx.impl_polarity(impl_def_id);
+    if trait_polarity == rustc_middle::ty::ImplPolarity::Negative {
+        // Negative impls currently show up in two expected cases:
+        // - Send
+        // - Sync
+        // and in one surprising case:
+        // - Iterator
+        //   - see https://github.com/rust-lang/rust/commit/1a8109253196064e26a427d9184874ae14c55f6e
+        // Currently, we ignore negative impls;
+        // trait_conflicts.rs should protect us from any overlap caused by ignoring negative impls
+        // TODO: better handling of negative impls
+        return Ok(None);
+    }
+
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
     let trait_did = trait_ref.skip_binder().def_id;
     let impl_paths = crate::rust_to_vir_base::get_impl_paths(
@@ -131,7 +147,7 @@ fn trait_impl_to_vir<'tcx>(
         auto_imported,
     };
     let trait_impl = ctxt.spanned_new(span, trait_impl);
-    Ok((trait_path, types, trait_impl))
+    Ok(Some((trait_path, types, trait_impl)))
 }
 
 fn translate_assoc_type<'tcx>(
@@ -164,16 +180,16 @@ fn translate_assoc_type<'tcx>(
     let assoc_generics = ctxt.tcx.generics_of(assoc_def_id);
     let mut assoc_args: Vec<rustc_middle::ty::GenericArg> =
         trait_ref.instantiate_identity().args.into_iter().collect();
-    for p in &assoc_generics.params {
+    for p in &assoc_generics.own_params {
         let e = rustc_middle::ty::EarlyParamRegion {
-            def_id: p.def_id,
+            //def_id: p.def_id,
             index: assoc_generics.param_def_id_to_index(ctxt.tcx, p.def_id).expect("param_def"),
             name: p.name,
         };
         let r = rustc_middle::ty::Region::new_early_param(ctxt.tcx, e);
         assoc_args.push(rustc_middle::ty::GenericArg::from(r));
     }
-    let inst_bounds = bounds.instantiate(ctxt.tcx, &assoc_args);
+    let inst_bounds = bounds.instantiate(ctxt.tcx, &*assoc_args);
     let param_env = ctxt.tcx.param_env(impl_item_id);
     let inst_bounds = ctxt.tcx.normalize_erasing_regions(param_env, inst_bounds);
 
@@ -218,11 +234,13 @@ pub(crate) fn translate_impl<'tcx>(
     impll: &rustc_hir::Impl<'tcx>,
     module_path: Path,
     external_info: &mut ExternalInfo,
+    crate_items: &CrateItems,
+    attrs: &[rustc_ast::Attribute],
 ) -> Result<(), VirErr> {
     let impl_def_id = item.owner_id.to_def_id();
     let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);
 
-    if impll.unsafety != Unsafety::Normal && impll.of_trait.is_none() {
+    if impll.safety != Safety::Safe && impll.of_trait.is_none() {
         return err_span(item.span, "the verifier does not support `unsafe` here");
     }
 
@@ -239,18 +257,12 @@ pub(crate) fn translate_impl<'tcx>(
 
         let verus_item = ctxt.verus_items.id_to_name.get(&trait_def_id);
 
-        /* sealed, `unsafe` */
-        {
-            let trait_attrs = ctxt.tcx.get_attrs_unchecked(trait_def_id);
-            let sealed = crate::attributes::is_sealed(
-                trait_attrs,
-                Some(&mut *ctxt.diagnostics.borrow_mut()),
-            )?;
-
-            if sealed {
-                return err_span(item.span, "cannot implement `sealed` trait");
-            } else if impll.unsafety != Unsafety::Normal {
-                return err_span(item.span, "the verifier does not support `unsafe` here");
+        if impll.safety != Safety::Safe {
+            if matches!(rust_item, Some(RustItem::Send)) {
+                return err_span(item.span, "unsafe impl for `Send` is not allowed");
+            }
+            if matches!(rust_item, Some(RustItem::Sync)) {
+                return err_span(item.span, "unsafe impl for `Sync` is not allowed");
             }
         }
 
@@ -281,17 +293,13 @@ pub(crate) fn translate_impl<'tcx>(
                 panic!("Structural impl for non-adt type");
             };
             let ty_applied_never = ctxt.tcx.mk_ty_from_kind(ty_kind_applied_never);
-            err_unless!(
-                ty_applied_never.is_structural_eq_shallow(ctxt.tcx),
-                item.span,
-                format!("structural impl for non-structural type {:?}", ty),
-                ty
-            );
-            true
-        } else if let Some(RustItem::StructuralPartialEq | RustItem::PartialEq | RustItem::Eq) =
-            rust_item
-        {
-            // TODO SOUNDNESS additional checks of the implementation
+            if !ty_applied_never.is_structural_eq_shallow(ctxt.tcx) {
+                return Err(vir_err_span_str(
+                    item.span,
+                    &format!("structural impl for non-structural type {:?}", ty),
+                )
+                .help("make sure `PartialEq` is also auto-derived for this type"));
+            }
             true
         } else {
             false
@@ -315,6 +323,17 @@ pub(crate) fn translate_impl<'tcx>(
                 }
             }
             return Ok(());
+        } else {
+            /* sealed, `unsafe` */
+            let trait_attrs = ctxt.tcx.get_attrs_unchecked(trait_def_id);
+            let sealed = crate::attributes::is_sealed(
+                trait_attrs,
+                Some(&mut *ctxt.diagnostics.borrow_mut()),
+            )?;
+
+            if sealed {
+                return err_span(item.span, "cannot implement `sealed` trait");
+            }
         }
     }
 
@@ -322,7 +341,7 @@ pub(crate) fn translate_impl<'tcx>(
         let impl_def_id = item.owner_id.to_def_id();
         external_info.internal_trait_impls.insert(impl_def_id);
         let path_span = path.span.to(impll.self_ty.span);
-        let (trait_path, types, trait_impl) = trait_impl_to_vir(
+        if let Some((trait_path, types, trait_impl)) = trait_impl_to_vir(
             ctxt,
             item.span,
             path_span,
@@ -330,9 +349,20 @@ pub(crate) fn translate_impl<'tcx>(
             Some(impll.generics),
             module_path.clone(),
             false,
-        )?;
-        vir.trait_impls.push(trait_impl);
-        Some((trait_path, types))
+        )? {
+            vir.trait_impls.push(trait_impl);
+            Some((trait_path, types))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let autoderive_action = if impll.of_trait.is_some() && is_automatically_derived(attrs) {
+        let trait_def_id = impll.of_trait.unwrap().path.res.def_id();
+        let rust_item = crate::verus_items::get_rust_item(ctxt.tcx, trait_def_id);
+        Some(crate::automatic_derive::get_action(rust_item))
     } else {
         None
     };
@@ -340,14 +370,16 @@ pub(crate) fn translate_impl<'tcx>(
     for impl_item_ref in impll.items {
         let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
         let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
-        if trait_path_typ_args.is_some() {
-            let vattrs = ctxt.get_verifier_attrs(fn_attrs)?;
-            if vattrs.external {
+
+        if crate_items.is_impl_item_external(impl_item_ref.id) {
+            if trait_path_typ_args.is_some() {
+                // sanity check - this should be redundant with prior check in external.rs
                 return err_span(
                     item.span,
                     "an item in a trait impl cannot be marked external - you can either use external_body, or mark the entire trait impl as external",
                 );
             }
+            continue;
         }
 
         match impl_item_ref.kind {
@@ -389,6 +421,7 @@ pub(crate) fn translate_impl<'tcx>(
                             None,
                             None,
                             external_info,
+                            autoderive_action.as_ref(),
                         )?;
                     }
                     _ => unsupported_err!(item.span, "unsupported item in impl", impl_item_ref),
@@ -472,9 +505,11 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
     for c in tcx.crates(()) {
         assert!(*c != rustc_span::def_id::LOCAL_CRATE);
         for trait_id in tcx.traits(*c) {
-            let path = def_id_to_vir_path(tcx, &ctxt.verus_items, *trait_id);
-            if all_traits.contains(&path) {
-                all_trait_ids.push(*trait_id);
+            let path = def_id_to_vir_path_option(tcx, Some(&ctxt.verus_items), *trait_id);
+            if let Some(path) = path {
+                if all_traits.contains(&path) {
+                    all_trait_ids.push(*trait_id);
+                }
             }
         }
     }
@@ -533,9 +568,8 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         let span = tcx.def_span(&impl_def_id);
         let impl_path = def_id_to_vir_path(tcx, &ctxt.verus_items, impl_def_id);
         let module_path = impl_path.pop_segment();
-        if let Ok((trait_path, trait_typ_args, trait_impl)) =
-            trait_impl_to_vir(ctxt, span, span, impl_def_id, None, module_path, true)
-        {
+        let t_impl_opt = trait_impl_to_vir(ctxt, span, span, impl_def_id, None, module_path, true);
+        if let Ok(Some((trait_path, trait_typ_args, trait_impl))) = t_impl_opt {
             let mut assoc_type_impls: Vec<AssocTypeImpl> = Vec::new();
             for assoc_item in tcx.associated_items(impl_def_id).in_definition_order() {
                 match assoc_item.kind {
@@ -573,6 +607,8 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
             krate.trait_impls.push(trait_impl);
             krate.assoc_type_impls.append(&mut assoc_type_impls);
             collected_impls.insert(impl_def_id);
+        } else if let Ok(None) = t_impl_opt {
+            // Negative impl; do nothing for now
         } else {
             // Ideally, our filtering should prevent us from reaching here.
             // Probably, we didn't want to include the external impl anyway,
@@ -620,22 +656,16 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         for (fun_def_id, fun_span) in funs.iter() {
             let path = def_id_to_vir_path(tcx, &ctxt.verus_items, *fun_def_id);
             if !methods_we_have.insert(path.last_segment()) {
-                return err_span(*fun_span, "duplicate external_fn_specification for this method");
+                return err_span(*fun_span, "duplicate assume_specification for this method");
             }
         }
 
-        if traitt.x.assoc_typs_bounds.len() > 0 {
-            return err_span(
-                span,
-                "not supported: using external_fn_specification for a trait method impl where the trait has associated types",
-            );
-        }
         for method in traitt.x.methods.iter() {
             if !methods_we_have.contains::<vir::ast::Ident>(&method.path.last_segment()) {
                 return err_span(
                     span,
                     format!(
-                        "using external_fn_specification for this function requires you to specify all other functions for the same trait impl, but the method `{:}` is missing",
+                        "using assume_specification for this function requires you to specify all other functions for the same trait impl, but the method `{:}` is missing",
                         method.path.last_segment()
                     ),
                 );
@@ -648,9 +678,11 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
 
         let module_path = impl_path.pop_segment();
 
-        let (_trait_path, _types, trait_impl) =
-            trait_impl_to_vir(ctxt, span, span, *impl_def_id, None, module_path, false)?;
-        krate.trait_impls.push(trait_impl);
+        if let Some((_trait_path, _types, trait_impl)) =
+            trait_impl_to_vir(ctxt, span, span, *impl_def_id, None, module_path, false)?
+        {
+            krate.trait_impls.push(trait_impl);
+        }
     }
 
     Ok(())

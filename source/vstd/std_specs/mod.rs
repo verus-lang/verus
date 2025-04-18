@@ -1,3 +1,6 @@
+#[cfg(feature = "alloc")]
+pub mod alloc;
+
 pub mod atomic;
 pub mod bits;
 pub mod clone;
@@ -16,4 +19,11 @@ pub mod result;
 pub mod vec;
 
 #[cfg(feature = "alloc")]
+pub mod vecdeque;
+
+#[cfg(feature = "alloc")]
 pub mod smart_ptrs;
+
+// This struct is a hack that exists purely to create
+// a rustdoc page dedicated to 'assume_specification' specs
+pub struct VstdSpecsForRustStdLib;

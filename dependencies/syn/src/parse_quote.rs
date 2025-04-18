@@ -24,9 +24,8 @@
 /// }
 /// ```
 ///
-/// *This macro is available only if Syn is built with the `"parsing"` feature,
-/// although interpolation of syntax tree nodes into the quoted tokens is only
-/// supported if Syn is built with the `"printing"` feature as well.*
+/// *This macro is available only if Syn is built with both the `"parsing"` and
+/// `"printing"` features.*
 ///
 /// # Example
 ///
@@ -54,22 +53,33 @@
 ///
 /// - [`Attribute`] — parses one attribute, allowing either outer like `#[...]`
 ///   or inner like `#![...]`
+/// - [`Vec<Attribute>`] — parses multiple attributes, including mixed kinds in
+///   any order
 /// - [`Punctuated<T, P>`] — parses zero or more `T` separated by punctuation
 ///   `P` with optional trailing punctuation
+/// - [`Vec<Arm>`] — parses arms separated by optional commas according to the
+///   same grammar as the inside of a `match` expression
 /// - [`Vec<Stmt>`] — parses the same as `Block::parse_within`
+/// - [`Pat`], [`Box<Pat>`] — parses the same as
+///   `Pat::parse_multi_with_leading_vert`
+/// - [`Field`] — parses a named or unnamed struct field
 ///
+/// [`Vec<Attribute>`]: Attribute
+/// [`Vec<Arm>`]: Arm
 /// [`Vec<Stmt>`]: Block::parse_within
+/// [`Pat`]: Pat::parse_multi_with_leading_vert
+/// [`Box<Pat>`]: Pat::parse_multi_with_leading_vert
 ///
 /// # Panics
 ///
 /// Panics if the tokens fail to parse as the expected syntax tree type. The
 /// caller is responsible for ensuring that the input tokens are syntactically
 /// valid.
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "parsing", feature = "printing"))))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "parsing", feature = "printing"))))]
 #[macro_export]
 macro_rules! parse_quote {
     ($($tt:tt)*) => {
-        $crate::parse_quote::parse($crate::__private::quote::quote!($($tt)*))
+        $crate::__private::parse_quote($crate::__private::quote::quote!($($tt)*))
     };
 }
 
@@ -97,22 +107,24 @@ macro_rules! parse_quote {
 ///     };
 /// }
 /// ```
-#[cfg_attr(doc_cfg, doc(cfg(all(feature = "parsing", feature = "printing"))))]
+#[cfg_attr(docsrs, doc(cfg(all(feature = "parsing", feature = "printing"))))]
 #[macro_export]
 macro_rules! parse_quote_spanned {
     ($span:expr=> $($tt:tt)*) => {
-        $crate::parse_quote::parse($crate::__private::quote::quote_spanned!($span=> $($tt)*))
+        $crate::__private::parse_quote($crate::__private::quote::quote_spanned!($span=> $($tt)*))
     };
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 // Can parse any type that implements Parse.
 
-use crate::parse::{Parse, ParseStream, Parser, Result};
+use crate::error::Result;
+use crate::parse::{Parse, ParseStream, Parser};
 use proc_macro2::TokenStream;
 
 // Not public API.
 #[doc(hidden)]
+#[track_caller]
 pub fn parse<T: ParseQuote>(token_stream: TokenStream) -> T {
     let parser = T::parse;
     match parser.parse2(token_stream) {
@@ -121,7 +133,6 @@ pub fn parse<T: ParseQuote>(token_stream: TokenStream) -> T {
     }
 }
 
-// Not public API.
 #[doc(hidden)]
 pub trait ParseQuote: Sized {
     fn parse(input: ParseStream) -> Result<Self>;
@@ -138,9 +149,9 @@ impl<T: Parse> ParseQuote for T {
 
 use crate::punctuated::Punctuated;
 #[cfg(any(feature = "full", feature = "derive"))]
-use crate::{attr, Attribute};
+use crate::{attr, Attribute, Field, FieldMutability, Ident, Type, Visibility};
 #[cfg(feature = "full")]
-use crate::{Block, Stmt};
+use crate::{Arm, Block, Pat, Stmt};
 
 #[cfg(any(feature = "full", feature = "derive"))]
 impl ParseQuote for Attribute {
@@ -150,6 +161,63 @@ impl ParseQuote for Attribute {
         } else {
             attr::parsing::single_parse_outer(input)
         }
+    }
+}
+
+#[cfg(any(feature = "full", feature = "derive"))]
+impl ParseQuote for Vec<Attribute> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut attrs = Vec::new();
+        while !input.is_empty() {
+            attrs.push(ParseQuote::parse(input)?);
+        }
+        Ok(attrs)
+    }
+}
+
+#[cfg(any(feature = "full", feature = "derive"))]
+impl ParseQuote for Field {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let attrs = input.call(Attribute::parse_outer)?;
+        let vis: Visibility = input.parse()?;
+        let mode: crate::verus::DataMode = input.parse()?;
+
+        let ident: Option<Ident>;
+        let colon_token: Option<Token![:]>;
+        let is_named = input.peek(Ident) && input.peek2(Token![:]) && !input.peek2(Token![::]);
+        if is_named {
+            ident = Some(input.parse()?);
+            colon_token = Some(input.parse()?);
+        } else {
+            ident = None;
+            colon_token = None;
+        }
+
+        let ty: Type = input.parse()?;
+
+        Ok(Field {
+            attrs,
+            vis,
+            mode,
+            mutability: FieldMutability::None,
+            ident,
+            colon_token,
+            ty,
+        })
+    }
+}
+
+#[cfg(feature = "full")]
+impl ParseQuote for Pat {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Pat::parse_multi_with_leading_vert(input)
+    }
+}
+
+#[cfg(feature = "full")]
+impl ParseQuote for Box<Pat> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        <Pat as ParseQuote>::parse(input).map(Box::new)
     }
 }
 
@@ -163,5 +231,12 @@ impl<T: Parse, P: Parse> ParseQuote for Punctuated<T, P> {
 impl ParseQuote for Vec<Stmt> {
     fn parse(input: ParseStream) -> Result<Self> {
         Block::parse_within(input)
+    }
+}
+
+#[cfg(feature = "full")]
+impl ParseQuote for Vec<Arm> {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Arm::parse_multiple(input)
     }
 }

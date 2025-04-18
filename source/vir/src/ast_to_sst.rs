@@ -1,14 +1,15 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, ComputeMode,
     Constant, Expr, ExprX, FieldOpr, Fun, Function, Ident, IntRange, InvAtomicity,
-    LoopInvariantKind, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
+    LoopInvariantKind, MaskSpec, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs,
+    UnaryOp, UnaryOpr, VarAt, VarBinder, VarBinderX, VarBinders, VarIdent, VarIdentDisambiguate,
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
 use crate::ast_util::{types_equal, undecorate_typ, unit_typ, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
+use crate::inv_masks::MaskSet;
 use crate::messages::{error, error_with_secondary_label, internal_error, warning, Span, ToAny};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
@@ -74,6 +75,8 @@ pub(crate) struct State<'a> {
     pub statics: IndexSet<Fun>,
     pub assert_id_counter: u64,
     loop_id_counter: u64,
+
+    pub mask: Option<MaskSet>,
 }
 
 #[derive(Clone)]
@@ -120,7 +123,7 @@ macro_rules! unwrap_or_return_never {
 }
 
 impl<'a> State<'a> {
-    pub fn new(diagnostics: &'a impl Diagnostics) -> Self {
+    pub fn new(diagnostics: &'a dyn Diagnostics) -> Self {
         let mut rename_map = ScopeMap::new();
         let mut rename_exp_idents = ScopeMap::new();
         rename_map.push_scope(true);
@@ -141,6 +144,8 @@ impl<'a> State<'a> {
             statics: IndexSet::new(),
             assert_id_counter: 0,
             loop_id_counter: 0,
+
+            mask: None,
         }
     }
 
@@ -484,27 +489,11 @@ fn loop_body_has_break(loop_label: &Option<String>, body: &Expr) -> bool {
 }
 
 /// Determine if it's possible for control flow to reach the statement after the loop exit.
-/// Naturally, we need to be conservative and answer 'yes' if we can't tell.
-/// However, this analysis is also relevant to the typing of the program: in particular,
-/// we ALSO need to return 'no' if any case where rustc's typechecker
-/// might have said 'no'.
+/// To be conservative, we need to answer 'yes' (true) if we can't tell.
 ///
-/// The reason is that: if rustc determines that the loop can't exit, then
-/// the code after this will be unreachable, which means the user might be allowed
-/// to leave off a return expression. We need to detect that case, or else we might
-/// wrongly determine that it returns a 'unit' and we'll create malformed AIR code.
-///
-/// So when does Rust do this? As far as I can tell, it only does this if:
-///
-///   (i) it's a 'loop' statement, and
-///   (ii) it doesn't have ANY 'break' statement in it
-///        (It is possible that a 'break' statement in a while loop might itself be
-///        unreachable, but Rust doesn't seem to take that into account for this purpose.)
-///
-/// TODO: Update this check when we support 'break' statements.
-/// Notes: it may be possible to get this information from rustc, either typeck or MIR.
-/// On the other hand, we'll need to answer the question "does this loop have any break
-/// statements?" for invariant gen anyway, and that's a slightly different question.
+/// Note: we originally used this to handle the case where the loop body returns
+/// the never type (!). However, that isn't actually important anymore since loops will
+/// be wrapped in the NeverToAny node. It's likely that this check can simply be removed.
 
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
@@ -694,7 +683,7 @@ pub(crate) fn expr_to_pure_exp_check(
 
 pub(crate) fn expr_to_decls_exp_skip_checks(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &dyn Diagnostics,
     view_as_spec: bool,
     params: &Pars,
     expr: &Expr,
@@ -724,7 +713,7 @@ pub(crate) fn expr_to_bind_decls_exp_skip_checks(
 
 pub(crate) fn expr_to_exp_skip_checks(
     ctx: &Ctx,
-    diagnostics: &impl Diagnostics,
+    diagnostics: &dyn Diagnostics,
     params: &Pars,
     expr: &Expr,
 ) -> Result<Exp, VirErr> {
@@ -842,6 +831,40 @@ fn is_small_exp_or_loc(exp: &Exp) -> bool {
     }
 }
 
+fn mask_set_for_call(fun: &Function, typs: &Typs, args: Arc<Vec<Exp>>) -> MaskSet {
+    let mask_spec = fun.x.mask_spec_or_default(&fun.span);
+    match &mask_spec {
+        MaskSpec::InvariantOpens(span, es) | MaskSpec::InvariantOpensExcept(span, es) => {
+            let mut inv_exps = vec![];
+            for (i, e) in es.iter().enumerate() {
+                let expx = ExpX::Call(
+                    CallFun::InternalFun(InternalFun::OpenInvariantMask(fun.x.name.clone(), i)),
+                    typs.clone(),
+                    args.clone(),
+                );
+                let exp = SpannedTyped::new(&e.span, &e.typ, expx);
+                inv_exps.push(exp);
+            }
+            match &mask_spec {
+                MaskSpec::InvariantOpens(..) => MaskSet::from_list(&inv_exps, span),
+                MaskSpec::InvariantOpensExcept(..) => {
+                    MaskSet::from_list_complement(&inv_exps, span)
+                }
+                MaskSpec::InvariantOpensSet(..) => panic!(),
+            }
+        }
+        MaskSpec::InvariantOpensSet(e) => {
+            let expx = ExpX::Call(
+                CallFun::InternalFun(InternalFun::OpenInvariantMask(fun.x.name.clone(), 0)),
+                typs.clone(),
+                args.clone(),
+            );
+            let exp = SpannedTyped::new(&e.span, &e.typ, expx);
+            MaskSet::arbitrary(&exp)
+        }
+    }
+}
+
 fn stm_call(
     ctx: &Ctx,
     state: &mut State,
@@ -869,16 +892,34 @@ fn stm_call(
             stms.push(init_var(&arg.span, &temp_id, arg));
         }
     }
+
+    let small_args = Arc::new(small_args);
+    if !state.checking_recommends(ctx) {
+        match &state.mask {
+            Some(caller_mask) => {
+                let callee_mask = mask_set_for_call(&fun, &typs, small_args.clone());
+                for assertion in callee_mask.subset_of(ctx, caller_mask, span) {
+                    stms.push(Spanned::new(
+                        span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
+            }
+            None => (),
+        }
+    }
+
     let call = StmX::Call {
         fun: name,
         resolved_method,
         mode: fun.x.mode,
         typ_args: typs,
-        args: Arc::new(small_args),
+        args: small_args,
         split: None,
         dest,
         assert_id: state.next_assert_id(),
     };
+
     stms.push(Spanned::new(span.clone(), call));
     Ok(stms_to_one_stm(span, stms))
 }
@@ -2075,15 +2116,31 @@ pub(crate) fn expr_to_stm_opt(
             stms1.push(init_var(&expr.span, &ident, &arb_exp));
             let inner_var = SpannedTyped::new(&expr.span, &inner_typ, ExpX::Var(ident));
 
-            // Assume the invariant
+            // Check that the invariant namespace is not already opened
             let typ_args = get_inv_typ_args(&big_inv_exp.typ);
+            let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
+
+            if !state.checking_recommends(ctx) {
+                for assertion in state.mask.as_ref().unwrap().contains(ctx, &ns_exp) {
+                    stms1.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(state.next_assert_id(), Some(assertion.err), assertion.cond),
+                    ))
+                }
+            }
+
+            let mut inner_mask = Some(state.mask.as_ref().unwrap().remove(&ns_exp));
+
+            // Assume the invariant
             let main_inv = call_inv(ctx, &inv_tmp_var, &inner_var, &typ_args, *atomicity);
             stms1.push(Spanned::new(expr.span.clone(), StmX::Assume(main_inv.clone())));
 
             // Process the body
 
             state.push_scope();
+            std::mem::swap(&mut state.mask, &mut inner_mask);
             let (body_stms, body_e) = expr_to_stm_opt(ctx, state, body)?;
+            std::mem::swap(&mut state.mask, &mut inner_mask);
             state.pop_scope();
 
             let body_stm = stms_to_one_stm(&expr.span, body_stms);
@@ -2110,8 +2167,7 @@ pub(crate) fn expr_to_stm_opt(
             }
 
             let block_stm = stms_to_one_stm(&expr.span, stms1);
-            let ns_exp = call_namespace(ctx, &inv_tmp_var, &typ_args, *atomicity);
-            stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(ns_exp, block_stm)));
+            stms0.push(Spanned::new(expr.span.clone(), StmX::OpenInvariant(block_stm)));
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
         ExprX::Return(e1) => {
@@ -2155,6 +2211,11 @@ pub(crate) fn expr_to_stm_opt(
             let stmx = StmX::BreakOrContinue { label: label.clone(), is_break: *is_break };
             let stm = Spanned::new(expr.span.clone(), stmx);
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))
+        }
+        ExprX::NeverToAny(e) => {
+            let (mut stms, _e) = expr_to_stm_opt(ctx, state, e)?;
+            stms.push(assume_false(&expr.span));
+            Ok((stms, ReturnValue::Never))
         }
         ExprX::Ghost { .. } => {
             panic!("internal error: ExprX::Ghost should have been simplified by ast_simplify")
@@ -2268,7 +2329,10 @@ fn stmt_to_stm(
             let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
             Ok((stms, exp, None))
         }
-        StmtX::Decl { pattern, mode: _, init } => {
+        StmtX::Decl { pattern, mode: _, init, els } => {
+            if els.is_some() {
+                panic!("let-else should be simplified in ast_simpllify {:?}.", stmt)
+            }
             let (name, mutable) = match &pattern.x {
                 PatternX::Var { name, mutable } => (name, mutable),
                 _ => panic!("internal error: Decl should have been simplified by ast_simplify"),
@@ -2376,6 +2440,12 @@ fn exec_closure_body_stms(
     let mut typ_inv_vars = vec![];
 
     state.push_scope();
+
+    // Right now there is no way to specify an invariant mask on a closure function
+    // All closure funcs are assumed to have mask set 'full'
+    let mut mask = Some(MaskSet::full(&body.span));
+    std::mem::swap(&mut state.mask, &mut mask);
+
     for param in params.iter() {
         let uid =
             state.declare_var_stm(&param.name, &param.a, LocalDeclKind::ExecClosureParam, false);
@@ -2427,6 +2497,7 @@ fn exec_closure_body_stms(
         None => { /* never-return case */ }
     }
 
+    std::mem::swap(&mut state.mask, &mut mask);
     state.pop_scope();
 
     Ok((stms, Arc::new(typ_inv_vars)))

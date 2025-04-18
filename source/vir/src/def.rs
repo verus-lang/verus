@@ -150,6 +150,7 @@ pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
+pub const TYPE_ID_CONST_BOOL: &str = "CONST_BOOL";
 pub const DECORATION: &str = "Dcr";
 pub const DECORATE_NIL: &str = "$";
 pub const DECORATE_REF: &str = "REF";
@@ -171,6 +172,7 @@ pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
 pub const CONST_INT: &str = "const_int";
+pub const CONST_BOOL: &str = "const_bool";
 pub const CHECK_DECREASE_INT: &str = "check_decrease_int";
 pub const CHECK_DECREASE_HEIGHT: &str = "check_decrease_height";
 pub const HEIGHT: &str = "height";
@@ -221,6 +223,9 @@ pub const VERUSLIB_PREFIX: &str = "vstd::";
 pub const PERVASIVE_PREFIX: &str = "pervasive::";
 
 pub const RUST_DEF_CTOR: &str = "ctor%";
+
+// used by axiom-usage-info to identify axioms from the prelude
+pub const AXIOM_NAME_PRELUDE: &str = "prelude_axiom_";
 
 // List of pre-defined error messages
 pub const ASSERTION_FAILURE: &str = "assertion failure";
@@ -678,6 +683,11 @@ pub fn snapshot_ident(name: &str) -> Ident {
     Arc::new(format!("{}{}", PREFIX_SNAPSHOT, name))
 }
 
+// only used by axiom-usage-info to identify prelude axioms
+pub fn prelude_axiom_name(name: &str) -> String {
+    format!("{AXIOM_NAME_PRELUDE}{name}")
+}
+
 /// For a given snapshot, does it represent the state
 /// at the start of the corresponding span, the end, or the full span?
 #[derive(Debug)]
@@ -824,6 +834,91 @@ pub fn fn_namespace_name(vstd_crate_name: &Ident, atomicity: InvAtomicity) -> Fu
                 Arc::new("invariant".to_string()),
                 atomicity_type_name(atomicity),
                 Arc::new("namespace".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn set_type_path(vstd_crate_name: &Ident) -> Path {
+    Arc::new(PathX {
+        krate: Some(vstd_crate_name.clone()),
+        segments: Arc::new(vec![Arc::new("set".to_string()), Arc::new("Set".to_string())]),
+    })
+}
+
+pub fn fn_set_empty_name(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("set".to_string()),
+                Arc::new("Set".to_string()),
+                Arc::new("empty".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_set_full_name(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("set".to_string()),
+                Arc::new("Set".to_string()),
+                Arc::new("full".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_set_subset_of_name(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("set".to_string()),
+                Arc::new("Set".to_string()),
+                Arc::new("subset_of".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_set_insert_name(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("set".to_string()),
+                Arc::new("Set".to_string()),
+                Arc::new("insert".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_set_remove_name(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("set".to_string()),
+                Arc::new("Set".to_string()),
+                Arc::new("remove".to_string()),
+            ]),
+        }),
+    })
+}
+
+pub fn fn_set_contains_name(vstd_crate_name: &Ident) -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: Some(vstd_crate_name.clone()),
+            segments: Arc::new(vec![
+                Arc::new("set".to_string()),
+                Arc::new("Set".to_string()),
+                Arc::new("contains".to_string()),
             ]),
         }),
     })

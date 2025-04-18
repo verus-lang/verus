@@ -41,8 +41,8 @@ use std::sync::Arc;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
 pub enum PolyStrategy {
-    #[default]
     Mono,
+    #[default]
     Poly,
 }
 
@@ -164,6 +164,7 @@ pub(crate) fn typ_as_spec(typ: &Typ, spec_map: &SpecMap) -> SpecTyp {
         }
         TypX::Boxed(..) | TypX::SpecFn(..) | TypX::FnDef(..) => Arc::new(SpecTypX::Poly),
         TypX::ConstInt(_) => Arc::new(SpecTypX::Poly),
+        TypX::ConstBool(_) => Arc::new(SpecTypX::Poly),
         TypX::Projection { .. } => Arc::new(SpecTypX::Poly),
         TypX::Poly => Arc::new(SpecTypX::Poly),
     }
@@ -337,18 +338,18 @@ impl<'a> Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for Specializatio
     fn visit_typ(&mut self, typ: &Typ) -> Result<(), ()> {
         match &**typ {
             TypX::SpecFn(inners, inner) => {
-                self.visit_typs(&inners);
-                self.visit_typ(&inner);
+                self.visit_typs(&inners)?;
+                self.visit_typ(&inner)?;
             }
             TypX::AnonymousClosure(inners, inner, _) => {
-                self.visit_typs(&inners);
-                self.visit_typ(&inner);
+                self.visit_typs(&inners)?;
+                self.visit_typ(&inner)?;
             }
             TypX::FnDef(_, inners, _) => {
-                self.visit_typs(&inners);
+                self.visit_typs(&inners)?;
             }
             TypX::Primitive(_, inners) => {
-                self.visit_typs(&inners);
+                self.visit_typs(&inners)?;
             }
             TypX::Datatype(dt, typ_params, _impl_path) => {
                 self.visit_typs(&typ_params)?;
@@ -357,7 +358,7 @@ impl<'a> Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for Specializatio
                 entry.insert(spec);
             }
             TypX::Boxed(inner) => {
-                self.visit_typ(&inner);
+                self.visit_typ(&inner)?;
             }
             _ => (),
         }
@@ -427,7 +428,7 @@ pub fn collect_specializations(krate: &KrateSst) -> KrateSpecializations {
             let callee_sst = functions
                 .iter()
                 .find(|f| f.x.name == callee)
-                .unwrap_or_else(|| panic!("Function name not found: {callee}"));
+                .unwrap_or_else(|| panic!("Function name not found: {}", callee));
             to_visit.push_back((callee_spec.clone(), callee_sst));
 
             function_spec.entry(callee).or_insert_with(HashSet::new).insert(callee_spec);

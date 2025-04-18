@@ -1,0 +1,4 @@
+verus_git_url = "https://github.com/verus-lang/verus.git"
+verus_revspec = "main"
+verus_features = ["singular"]
+

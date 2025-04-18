@@ -1,4 +1,5 @@
 use super::*;
+use crate::parse::ParseStream;
 use crate::punctuated::Punctuated;
 
 ast_enum_of_structs! {
@@ -6,6 +7,7 @@ ast_enum_of_structs! {
         Closed(Closed),
         Open(Open),
         OpenRestricted(OpenRestricted),
+        Uninterp(Uninterp),
         Default,
     }
 }
@@ -28,6 +30,12 @@ ast_struct! {
         pub paren_token: token::Paren,
         pub in_token: Option<Token![in]>,
         pub path: Box<Path>,
+    }
+}
+
+ast_struct! {
+    pub struct Uninterp {
+        pub token: Token![uninterp],
     }
 }
 
@@ -196,6 +204,7 @@ ast_enum_of_structs! {
         Any(InvariantNameSetAny),
         None(InvariantNameSetNone),
         List(InvariantNameSetList),
+        Set(InvariantNameSetSet),
     }
 }
 
@@ -215,6 +224,12 @@ ast_struct! {
     pub struct InvariantNameSetList {
         pub bracket_token: token::Bracket,
         pub exprs: Punctuated<Expr, Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct InvariantNameSetSet {
+        pub expr: Expr,
     }
 }
 
@@ -323,6 +338,28 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct AssumeSpecification {
+        pub attrs: Vec<Attribute>,
+        pub vis: Visibility,
+        pub assume_specification: Token![assume_specification],
+        pub generics: Generics,
+        pub bracket_token: token::Bracket,
+        pub qself: Option<QSelf>,
+        pub path: Path,
+        pub paren_token: token::Paren,
+        pub inputs: Punctuated<FnArg, Token![,]>,
+        pub output: ReturnType,
+        // REVIEW: consider replacing these with SignatureSpec
+        pub requires: Option<Requires>,
+        pub ensures: Option<Ensures>,
+        pub returns: Option<Returns>,
+        pub invariants: Option<SignatureInvariants>,
+        pub unwind: Option<SignatureUnwind>,
+        pub semi: Token![;],
+    }
+}
+
+ast_struct! {
     pub struct View {
         pub attrs: Vec<Attribute>,
         pub expr: Box<Expr>,
@@ -343,16 +380,30 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct BigAndExpr {
+        pub tok: Token![&&&],
+        pub expr: Box<Expr>,
+    }
+}
+
+ast_struct! {
     pub struct BigAnd {
         /// exprs.len() must be >= 1
-        pub exprs: Vec<(Token![&&&], Box<Expr>)>,
+        pub exprs: Vec<BigAndExpr>,
+    }
+}
+
+ast_struct! {
+    pub struct BigOrExpr {
+        pub tok: Token![|||],
+        pub expr: Box<Expr>,
     }
 }
 
 ast_struct! {
     pub struct BigOr {
         /// exprs.len() must be >= 1
-        pub exprs: Vec<(Token![|||], Box<Expr>)>,
+        pub exprs: Vec<BigOrExpr>,
     }
 }
 
@@ -366,10 +417,28 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct ExprIsNot {
+        pub attrs: Vec<Attribute>,
+        pub base: Box<Expr>,
+        pub is_not_token: Token![isnt],
+        pub variant_ident: Box<Ident>,
+    }
+}
+
+ast_struct! {
     pub struct ExprHas {
         pub attrs: Vec<Attribute>,
         pub lhs: Box<Expr>,
         pub has_token: Token![has],
+        pub rhs: Box<Expr>,
+    }
+}
+
+ast_struct! {
+    pub struct ExprHasNot {
+        pub attrs: Vec<Attribute>,
+        pub lhs: Box<Expr>,
+        pub has_not_token: Token![hasnt],
         pub rhs: Box<Expr>,
     }
 }
@@ -466,6 +535,9 @@ pub mod parsing {
                 } else {
                     Ok(Publish::Open(Open { token }))
                 }
+            } else if input.peek(Token![uninterp]) {
+                let token = input.parse::<Token![uninterp]>()?;
+                Ok(Publish::Uninterp(Uninterp { token }))
             } else {
                 Ok(Publish::Default)
             }
@@ -780,7 +852,8 @@ pub mod parsing {
                 let list = input.parse()?;
                 InvariantNameSet::List(list)
             } else {
-                return Err(input.error("invariant clause expected `any` or `none`"));
+                let set = input.parse()?;
+                InvariantNameSet::Set(set)
             };
             Ok(set)
         }
@@ -807,11 +880,19 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let content;
             let bracket_token = bracketed!(content in input);
-            let exprs = content.parse_terminated(Expr::parse)?;
+            let exprs = content.parse_terminated(Expr::parse, Token![,])?;
             Ok(InvariantNameSetList {
                 bracket_token,
                 exprs,
             })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for InvariantNameSetSet {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let expr = Expr::parse_without_eager_brace(input)?;
+            Ok(InvariantNameSetSet { expr })
         }
     }
 
@@ -965,7 +1046,7 @@ pub mod parsing {
     impl Parse for SignatureSpecAttr {
         fn parse(input: ParseStream) -> Result<Self> {
             let ret_pat = if input.peek2(Token![=>]) {
-                let pat = input.parse()?;
+                let pat = Pat::parse_single(&input)?;
                 let token = input.parse()?;
                 Some((pat, token))
             } else {
@@ -1070,7 +1151,7 @@ pub mod parsing {
             let or1_token: Token![|] = input.parse()?;
             let mut inputs = Punctuated::new();
             while !input.peek(Token![|]) {
-                let mut pat = input.parse()?;
+                let mut pat = Pat::parse_single(&input)?;
                 if input.peek(Token![:]) {
                     let colon_token = input.parse()?;
                     let ty = input.parse()?;
@@ -1190,6 +1271,58 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for AssumeSpecification {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let attrs = input.call(Attribute::parse_outer)?;
+            let vis = input.parse()?;
+            let assume_specification = input.parse()?;
+
+            let mut generics: Generics = input.parse()?;
+
+            let content;
+            let bracket_token = bracketed!(content in input);
+            let (qself, path) = path::parsing::qpath(&content, true)?;
+
+            let content;
+            let paren_token = parenthesized!(content in input);
+            let (inputs, variadic) = crate::item::parsing::parse_fn_args(&content)?;
+            if variadic.is_some() {
+                return Err(content.error("variadic parameters not allowed"));
+            }
+
+            let output: ReturnType = input.parse()?;
+            generics.where_clause = input.parse()?;
+
+            let requires: Option<Requires> = input.parse()?;
+            let ensures: Option<Ensures> = input.parse()?;
+            let returns: Option<Returns> = input.parse()?;
+            let invariants: Option<SignatureInvariants> = input.parse()?;
+            let unwind: Option<SignatureUnwind> = input.parse()?;
+
+            let semi = input.parse()?;
+
+            Ok(AssumeSpecification {
+                attrs,
+                vis,
+                assume_specification,
+                bracket_token,
+                generics,
+                qself,
+                path,
+                paren_token,
+                inputs,
+                output,
+                requires,
+                ensures,
+                returns,
+                invariants,
+                unwind,
+                semi,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for ItemBroadcastGroup {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = Vec::new();
@@ -1199,7 +1332,7 @@ pub mod parsing {
             let ident = input.parse()?;
             let content;
             let brace_token = braced!(content in input);
-            let paths = content.parse_terminated(ExprPath::parse)?;
+            let paths = content.parse_terminated(ExprPath::parse, Token![,])?;
 
             Ok(ItemBroadcastGroup {
                 attrs,
@@ -1322,6 +1455,12 @@ mod printing {
                 self.in_token.to_tokens(tokens);
                 self.path.to_tokens(tokens);
             });
+        }
+    }
+
+    impl ToTokens for Uninterp {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
         }
     }
 
@@ -1509,6 +1648,13 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for InvariantNameSetSet {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.expr.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for SignatureSpec {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.prover.to_tokens(tokens);
@@ -1669,9 +1815,9 @@ mod printing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for BigAnd {
         fn to_tokens(&self, tokens: &mut TokenStream) {
-            for (prefix, expr) in &self.exprs {
-                prefix.to_tokens(tokens);
-                expr.to_tokens(tokens);
+            for expr in &self.exprs {
+                expr.tok.to_tokens(tokens);
+                expr.expr.to_tokens(tokens);
             }
         }
     }
@@ -1679,9 +1825,9 @@ mod printing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for BigOr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
-            for (prefix, expr) in &self.exprs {
-                prefix.to_tokens(tokens);
-                expr.to_tokens(tokens);
+            for expr in &self.exprs {
+                expr.tok.to_tokens(tokens);
+                expr.expr.to_tokens(tokens);
             }
         }
     }
@@ -1697,11 +1843,31 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprIsNot {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.base.to_tokens(tokens);
+            self.is_not_token.to_tokens(tokens);
+            self.variant_ident.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for ExprHas {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             outer_attrs_to_tokens(&self.attrs, tokens);
             self.lhs.to_tokens(tokens);
             self.has_token.to_tokens(tokens);
+            self.rhs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ExprHasNot {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.lhs.to_tokens(tokens);
+            self.has_not_token.to_tokens(tokens);
             self.rhs.to_tokens(tokens);
         }
     }
@@ -1770,6 +1936,35 @@ mod printing {
             self.member.to_tokens(tokens);
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for AssumeSpecification {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            outer_attrs_to_tokens(&self.attrs, tokens);
+            self.vis.to_tokens(tokens);
+            self.assume_specification.to_tokens(tokens);
+            self.generics.to_tokens(tokens);
+
+            self.bracket_token.surround(tokens, |tokens| {
+                use crate::path::printing::PathStyle;
+                path::printing::print_qpath(tokens, &self.qself, &self.path, PathStyle::Mod)
+            });
+
+            self.paren_token.surround(tokens, |tokens| {
+                self.inputs.to_tokens(tokens);
+            });
+
+            self.output.to_tokens(tokens);
+            self.generics.where_clause.to_tokens(tokens);
+
+            self.requires.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
+            self.returns.to_tokens(tokens);
+            self.invariants.to_tokens(tokens);
+            self.unwind.to_tokens(tokens);
+            self.semi.to_tokens(tokens);
+        }
+    }
 }
 
 pub(crate) fn disallow_prefix_binop(input: crate::parse::ParseStream) -> crate::parse::Result<()> {
@@ -1793,7 +1988,7 @@ pub(crate) fn parse_matches(
     big_and: bool,
 ) -> Result<Expr> {
     let matches_token: Token![matches] = input.parse()?;
-    let pat = input.parse()?;
+    let pat = Pat::parse_single(&input)?;
 
     let op_expr = if input.peek(Token![&&&]) {
         if big_and {
@@ -1820,9 +2015,9 @@ pub(crate) fn parse_matches(
         loop {
             let next = expr::parsing::peek_precedence(input);
             if matches!(op_token, MatchesOpToken::Implies(_))
-                && next >= expr::parsing::Precedence::Imply
+                && next >= crate::precedence::Precedence::Imply
                 || matches!(op_token, MatchesOpToken::AndAnd(_))
-                    && next >= expr::parsing::Precedence::And
+                    && next >= crate::precedence::Precedence::And
             {
                 rhs = expr::parsing::parse_expr(input, rhs, allow_struct, next)?;
             } else {
@@ -1858,7 +2053,7 @@ pub(crate) fn parse_prefix_binop(
         if attrs.len() != 0 {
             return Err(input.error("`&&&` cannot have attributes"));
         }
-        let mut exprs: Vec<(Token![&&&], Box<Expr>)> = Vec::new();
+        let mut exprs: Vec<BigAndExpr> = Vec::new();
         while let Ok(token) = input.parse() {
             let lhs = expr::parsing::unary_expr(input, AllowStruct(true))?;
             let expr: Expr = if input.peek(Token![matches]) {
@@ -1871,24 +2066,96 @@ pub(crate) fn parse_prefix_binop(
                     input,
                     lhs,
                     AllowStruct(true),
-                    expr::parsing::Precedence::Any,
+                    crate::precedence::Precedence::Assign,
                 )?
             };
 
-            exprs.push((token, Box::new(expr)));
+            exprs.push(BigAndExpr {
+                tok: token,
+                expr: Box::new(expr),
+            });
         }
         Ok(Some(Expr::BigAnd(BigAnd { exprs })))
     } else if !big_and_only && input.peek(Token![|||]) {
         if attrs.len() != 0 {
             return Err(input.error("`|||` cannot have attributes"));
         }
-        let mut exprs: Vec<(Token![|||], Box<Expr>)> = Vec::new();
+        let mut exprs: Vec<BigOrExpr> = Vec::new();
         while let Ok(token) = input.parse() {
             let expr: Expr = input.parse()?;
-            exprs.push((token, Box::new(expr)));
+            exprs.push(BigOrExpr {
+                tok: token,
+                expr: Box::new(expr),
+            });
         }
         Ok(Some(Expr::BigOr(BigOr { exprs })))
     } else {
         Ok(None)
+    }
+}
+
+pub(crate) fn parse_fn_spec(input: ParseStream) -> Result<TypeFnSpec> {
+    let args;
+
+    let fn_spec = TypeFnSpec {
+        fn_spec_token: input.parse()?,
+        spec_fn_token: input.parse()?,
+        paren_token: parenthesized!(args in input),
+        inputs: {
+            let mut inputs = Punctuated::new();
+
+            while !args.is_empty() {
+                let attrs = args.call(Attribute::parse_outer)?;
+
+                let arg = crate::ty::parsing::parse_bare_fn_arg(&args, false)?;
+                inputs.push_value(BareFnArg { attrs, ..arg });
+
+                if args.is_empty() {
+                    break;
+                }
+
+                let comma = args.parse()?;
+                inputs.push_punct(comma);
+            }
+
+            inputs
+        },
+        output: input.call(ReturnType::without_plus)?,
+    };
+
+    Ok(fn_spec)
+}
+
+ast_struct! {
+    pub struct LoopSpec {
+        pub iter_name: Option<(Ident, Token![=>])>,
+        pub invariants: Option<Invariant>,
+        pub invariant_except_breaks: Option<InvariantExceptBreak>,
+        pub ensures: Option<Ensures>,
+        pub decreases: Option<Decreases>,
+    }
+}
+
+impl parse::Parse for LoopSpec {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let iter_name = if input.peek2(Token![=>]) {
+            let pat = input.parse()?;
+            let token = input.parse()?;
+            Some((pat, token))
+        } else {
+            None
+        };
+
+        let invariants: Option<Invariant> = input.parse()?;
+        let invariant_except_breaks: Option<InvariantExceptBreak> = input.parse()?;
+        let ensures: Option<Ensures> = input.parse()?;
+        let decreases: Option<Decreases> = input.parse()?;
+        Ok(LoopSpec {
+            iter_name,
+            invariants,
+            invariant_except_breaks,
+            ensures,
+            decreases,
+        })
     }
 }

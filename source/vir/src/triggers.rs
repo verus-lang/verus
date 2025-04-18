@@ -6,6 +6,7 @@ use crate::context::Ctx;
 use crate::messages::{error, Span};
 use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs};
 use crate::triggers_auto::AutoType;
+use crate::util::vec_map;
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -135,10 +136,37 @@ fn check_trigger_expr_args(state: &mut State, expect_boxed: bool, args: &Exps) {
     }
 }
 
+fn get_free_vars(exp: &Exp) -> Result<HashSet<VarIdent>, VirErr> {
+    let mut scope_map = ScopeMap::new();
+    let mut free_vars = HashSet::<VarIdent>::new();
+    crate::sst_visitor::exp_typ_visitor_check(
+        exp,
+        &mut scope_map,
+        &mut free_vars,
+        &mut |exp: &Exp, free_vars: &mut HashSet<VarIdent>, _scope_map| match &exp.x {
+            ExpX::Var(x) => {
+                free_vars.insert(x.clone());
+                Ok(())
+            }
+            ExpX::Bind(_, _) => {
+                Err(error(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose"))
+            }
+            _ => Ok(()),
+        },
+        &mut |typ: &Typ, free_vars: &mut HashSet<VarIdent>, _scope_map| match &**typ {
+            TypX::TypParam(x) => {
+                free_vars.insert(crate::def::suffix_typ_param_id(x));
+                Ok(())
+            }
+            _ => Ok(()),
+        },
+    )?;
+    Ok(free_vars)
+}
+
 fn check_trigger_expr(
     state: &mut State,
     exp: &Exp,
-    free_vars: &mut HashSet<VarIdent>,
     lets: &HashSet<VarIdent>,
 ) -> Result<(), VirErr> {
     match &exp.x {
@@ -160,13 +188,6 @@ fn check_trigger_expr(
     }
 
     let mut scope_map = ScopeMap::new();
-    let ft = |free_vars: &mut HashSet<VarIdent>, t: &Typ| match &**t {
-        TypX::TypParam(x) => {
-            free_vars.insert(crate::def::suffix_typ_param_id(x));
-            Ok(t.clone())
-        }
-        _ => Ok(t.clone()),
-    };
     crate::sst_visitor::exp_visitor_check(
         exp,
         &mut scope_map,
@@ -188,10 +209,7 @@ fn check_trigger_expr(
             }
             ExpX::Loc(..) | ExpX::VarLoc(..) => Ok(()),
             ExpX::ExecFnByName(..) => Ok(()),
-            ExpX::Call(_, typs, args) => {
-                for typ in typs.iter() {
-                    crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
-                }
+            ExpX::Call(_, _typs, args) => {
                 check_trigger_expr_args(state, true, args);
                 Ok(())
             }
@@ -202,15 +220,11 @@ fn check_trigger_expr(
                         "let variables in triggers not supported, use #![trigger ...] instead",
                     ));
                 }
-                free_vars.insert(x.clone());
                 Ok(())
             }
             ExpX::VarAt(_, VarAt::Pre) => Ok(()),
             ExpX::Old(_, _) => panic!("internal error: Old"),
-            ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(typ)) => {
-                crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
-                Ok(())
-            }
+            ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(_typ)) => Ok(()),
             ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(..)) => {
                 Err(error(&exp.span, "triggers cannot contain trait bounds"))
             }
@@ -273,7 +287,6 @@ fn check_trigger_expr(
                         Ok(())
                     }
                     ArrayIndex => {
-                        crate::ast_visitor::map_typ_visitor_env(&arg1.typ, free_vars, &ft).unwrap();
                         check_trigger_expr_arg(state, true, arg1);
                         check_trigger_expr_arg(state, true, arg2);
                         Ok(())
@@ -285,8 +298,7 @@ fn check_trigger_expr(
                     }
                 }
             }
-            ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(_, typ), arg1, arg2) => {
-                crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
+            ExpX::BinaryOpr(crate::ast::BinaryOpr::ExtEq(_, _typ), arg1, arg2) => {
                 check_trigger_expr_arg(state, true, arg1);
                 check_trigger_expr_arg(state, true, arg2);
                 Ok(())
@@ -310,6 +322,8 @@ fn check_trigger_expr(
 
 fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
     let mut map: ScopeMap<VarIdent, bool> = ScopeMap::new();
+    // REVIEW: 'lets' is an over-approximation because nothing ever gets removed
+    // while you traverse?
     let mut lets: HashSet<VarIdent> = HashSet::new();
     map.push_scope(false);
     for x in state.trigger_vars.iter() {
@@ -331,16 +345,21 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 Ok(())
             }
             ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(group)), e1) => {
-                let mut free_vars: HashSet<VarIdent> = HashSet::new();
+                let free_vars: HashSet<VarIdent> = get_free_vars(e1)?;
                 let e1 = preprocess_exp(&e1);
-                check_trigger_expr(state, &e1, &mut free_vars, &lets)?;
                 for x in &free_vars {
-                    if map.get(x) == Some(&true) && !state.trigger_vars.contains(x) {
+                    if map.get(x) == Some(&true)
+                        && !state.trigger_vars.contains(x)
+                        && !lets.contains(x)
+                    {
                         // If the trigger contains variables declared by a nested quantifier,
                         // it must be the nested quantifier's trigger, not ours.
                         return Ok(());
                     }
                 }
+                check_trigger_expr(state, &e1, &lets)?;
+                // If the trigger doesn't contain *any* of our trigger vars, then it must
+                // be for a more outer quantifier
                 if !state.trigger_vars.iter().any(|trigger_var| free_vars.contains(trigger_var)) {
                     return Ok(());
                 }
@@ -363,8 +382,8 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                         let mut coverage: HashSet<VarIdent> = HashSet::new();
                         let es: Vec<Exp> = trigger.iter().map(preprocess_exp).collect();
                         for e in &es {
-                            let mut free_vars: HashSet<VarIdent> = HashSet::new();
-                            check_trigger_expr(state, e, &mut free_vars, &lets)?;
+                            let free_vars: HashSet<VarIdent> = get_free_vars(e)?;
+                            check_trigger_expr(state, e, &lets)?;
                             for x in free_vars {
                                 if state.trigger_vars.contains(&x) {
                                     coverage.insert(x);
@@ -458,6 +477,23 @@ pub(crate) fn build_triggers(
                 ));
             }
         }
+        let mut chosen_triggers_vec = ctx.global.chosen_triggers.borrow_mut();
+        let found_triggers: Vec<Vec<(Span, String)>> =
+            vec_map(&trigs, |trig| vec_map(&trig, |t| (t.span.clone(), format!("{:?}", t.x))));
+        let module = match &ctx.fun {
+            Some(crate::context::FunctionCtx { module_for_chosen_triggers: Some(m), .. }) => {
+                m.clone()
+            }
+            _ => ctx.module.x.path.clone(),
+        };
+        let chosen_triggers = crate::context::ChosenTriggers {
+            module,
+            span: span.clone(),
+            triggers: found_triggers,
+            low_confidence: false,
+            manual: true,
+        };
+        chosen_triggers_vec.push(chosen_triggers);
         Ok(Arc::new(trigs))
     } else {
         crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)

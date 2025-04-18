@@ -7,10 +7,13 @@ use crate::ast::{
     Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt,
     Trait, TraitX, Typ, TypX,
 };
-use crate::ast_util::{is_visible_to, is_visible_to_of_owner, is_visible_to_or_true};
+use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
-use crate::def::{fn_inv_name, fn_namespace_name, Spanned};
+use crate::def::{
+    fn_inv_name, fn_namespace_name, fn_set_contains_name, fn_set_empty_name, fn_set_full_name,
+    fn_set_insert_name, fn_set_remove_name, fn_set_subset_of_name, Spanned,
+};
 use crate::poly::MonoTyp;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -119,6 +122,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Projection { trait_typ_args, .. } => typ_to_reached_type(&trait_typ_args[0]),
         TypX::TypeId => ReachedType::None,
         TypX::ConstInt(_) => ReachedType::None,
+        TypX::ConstBool(_) => ReachedType::None,
         TypX::Poly => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::Primitive(Primitive::StrSlice, _) => ReachedType::StrSlice,
@@ -263,7 +267,7 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
             panic!("unexpected TypX")
         }
         TypX::Decorate(_, _, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
-        TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) => {}
+        TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) | TypX::ConstBool(_) => {}
         TypX::Projection { trait_typ_args: _, trait_path, name, .. } => {
             reach_assoc_type_decl(ctxt, state, &(trait_path.clone(), name.clone()));
             // let visitor handle self_typ, trait_typ_args
@@ -381,6 +385,30 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if ctxt.assert_by_compute && crate::interpreter::is_sequence_fn(&f).is_some() {
                 reach_seq_funs(ctxt, state);
             }
+            // set operations may be invoked for checking invariant masks,
+            // either when opening an invariant or invoking another function.
+            let reach_set_ops = |state: &mut State| {
+                reach_function(ctxt, state, &fn_set_contains_name(&ctxt.vstd_crate_name));
+                reach_function(ctxt, state, &fn_set_empty_name(&ctxt.vstd_crate_name));
+                reach_function(ctxt, state, &fn_set_full_name(&ctxt.vstd_crate_name));
+                reach_function(ctxt, state, &fn_set_insert_name(&ctxt.vstd_crate_name));
+                reach_function(ctxt, state, &fn_set_remove_name(&ctxt.vstd_crate_name));
+                reach_function(ctxt, state, &fn_set_subset_of_name(&ctxt.vstd_crate_name));
+            };
+            let maybe_reach_set_ops_for_call = |state: &mut State, callee_name: &Fun| {
+                let caller =
+                    crate::ast_util::get_non_trait_impl(&ctxt.function_map, &function.x.name);
+                let callee = crate::ast_util::get_non_trait_impl(&ctxt.function_map, callee_name);
+                if let (Some(caller), Some(callee)) = (caller, callee) {
+                    let caller_mask = caller.x.mask_spec_or_default(&function.span);
+                    let callee_mask = callee.x.mask_spec_or_default(&function.span);
+                    // If caller is `all`, we generate no set operations
+                    // If callee is `none`, we generate no set operations
+                    if !caller_mask.is_all() && !callee_mask.is_none() {
+                        reach_set_ops(state);
+                    }
+                }
+            };
             // note: the types in typ_bounds are handled below by map_function_visitor_env
             traverse_generic_bounds(ctxt, state, &function.x.typ_bounds, false);
             let fe = |state: &mut State, _: &mut VisitorScopeMap, e: &Expr| {
@@ -396,7 +424,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                         reach_function(ctxt, state, name);
                         if let crate::ast::CallTargetKind::DynamicResolved { resolved, .. } = kind {
                             reach_function(ctxt, state, resolved);
+                            maybe_reach_set_ops_for_call(state, resolved);
                         }
+                        maybe_reach_set_ops_for_call(state, name);
                     }
                     ExprX::OpenInvariant(_, _, _, atomicity) => {
                         // SST -> AIR conversion for OpenInvariant may introduce
@@ -411,6 +441,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
                             state,
                             &fn_namespace_name(&ctxt.vstd_crate_name, *atomicity),
                         );
+                        reach_set_ops(state);
                     }
                     ExprX::Unary(crate::ast::UnaryOp::InferSpecForLoopIter { .. }, _) => {
                         let t = ReachedType::Datatype(Dt::Path(crate::def::option_type_path()));
@@ -830,31 +861,21 @@ pub fn prune_krate_for_module_or_krate(
             }
             continue;
         }
+        let module = module.as_ref().unwrap();
+
         // Remove body if any of the following are true:
         // - function is not visible
         // - function is abstract
         // - function is opaque and not revealed
         // - function is exec or proof
         // (when optimizing for modules, after well-formedness checks)
-        let vis = f.x.visibility.clone();
-        let is_vis = is_visible_to_or_true(&vis, &module);
-        let within_module = if let Some(module) = &module {
-            is_visible_to_of_owner(&f.x.owning_module, module)
-        } else {
-            true
-        };
-        let is_non_opaque =
-            if within_module { f.x.fuel > 0 } else { f.x.fuel > 0 && f.x.publish == Some(true) };
+        let is_vis = is_visible_to(&f.x.visibility, &module);
+        let is_open = is_body_visible_to(&f.x.body_visibility, &module);
+        let is_non_opaque = f.x.opaqueness.get_default_fuel_for_module_path(module) != 0;
         let is_revealed = is_non_opaque || revealed_functions.contains(&f.x.name);
         let is_spec = f.x.mode == Mode::Spec;
-        if is_vis && is_revealed && is_spec {
-            if !within_module && f.x.publish == Some(false) {
-                let mut function = f.x.clone();
-                function.fuel = 0;
-                functions.push(Spanned::new(f.span.clone(), function));
-            } else {
-                functions.push(f.clone());
-            }
+        if is_vis && is_open && is_revealed && is_spec {
+            functions.push(f.clone());
         } else if f.x.body.is_none() {
             functions.push(f.clone());
         } else {

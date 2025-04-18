@@ -1,10 +1,11 @@
+use crate::workspace_path;
 use anyhow::Result;
 use proc_macro2::TokenStream;
 use std::fs;
 use std::io::Write;
 use std::path::Path;
 
-pub fn write<P: AsRef<Path>>(path: P, content: TokenStream) -> Result<()> {
+pub fn write(relative_to_workspace_root: impl AsRef<Path>, content: TokenStream) -> Result<()> {
     let mut formatted = Vec::new();
     writeln!(
         formatted,
@@ -17,7 +18,8 @@ pub fn write<P: AsRef<Path>>(path: P, content: TokenStream) -> Result<()> {
     let pretty = prettyplease::unparse(&syntax_tree);
     write!(formatted, "{}", pretty)?;
 
-    if path.as_ref().is_file() && fs::read(&path)? == formatted {
+    let path = workspace_path::get(relative_to_workspace_root);
+    if path.is_file() && fs::read(&path)? == formatted {
         return Ok(());
     }
 

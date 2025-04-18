@@ -36,12 +36,16 @@ pub mod config;
 #[path = "../../../tools/common/consts.rs"]
 pub mod consts;
 
+mod automatic_derive;
+pub mod cargo_verus;
+pub mod cargo_verus_dep_tracker;
 pub mod context;
 pub mod debugger;
 pub mod def;
 pub mod driver;
 pub mod erase;
 mod expand_errors_driver;
+pub mod external;
 pub mod externs;
 pub mod file_loader;
 mod fn_call_to_vir;

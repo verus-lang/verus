@@ -18,8 +18,8 @@ test_verify_one_file! {
                 forall|i: nat, j: nat|
                     i < self.nodes.len() && j < self.nodes.index(spec_cast_integer::<nat, int>(i)).values.len() ==>
                     {
-                        let values = #[verifier(trigger)] self.nodes.index(spec_cast_integer::<nat, int>(i)).values;
-                        self.base_v <= #[verifier(trigger)] values.index(spec_cast_integer::<nat, int>(j))
+                        let values = #[trigger] self.nodes.index(spec_cast_integer::<nat, int>(i)).values;
+                        self.base_v <= #[trigger] values.index(spec_cast_integer::<nat, int>(j))
                     }
             }
         }
@@ -52,7 +52,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_ok_arith_trigger verus_code! {
-        spec fn some_fn(a: nat) -> nat;
+        uninterp spec fn some_fn(a: nat) -> nat;
         proof fn quant()
             ensures
                 forall|a: nat, b: nat| #[trigger] some_fn(a + b) == 10,
@@ -212,7 +212,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_bitwise_trigger verus_code! {
-        spec fn f(u: u8) -> bool;
+        uninterp spec fn f(u: u8) -> bool;
         proof fn test() {
             assert(forall|i: u8| #[trigger]f(i) || #[trigger](i >> 2) == i >> 2);
         }
@@ -236,7 +236,7 @@ test_verify_one_file! {
     #[test] test_spec_index_trigger_regression_262 verus_code! {
         use vstd::seq::*;
 
-        spec fn foo(a: nat) -> bool;
+        uninterp spec fn foo(a: nat) -> bool;
 
         proof fn f(s: Seq<nat>)
             requires
@@ -249,11 +249,24 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] test_arith_variables_with_same_names verus_code! {
+        // https://github.com/verus-lang/verus/issues/1447
+        spec fn a(x: int) -> bool;
+
+        proof fn p_() {
+            let ranking_pred = |n: int| a(n);
+            assert forall|n: int| #![trigger a(n)] a(n) by { } // FAILS
+            assert forall|n: int| #![trigger a(-n)] a(-n) by { }
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
 const TRIGGER_ON_LAMBDA_COMMON: &str = verus_code_str! {
     struct S { a: int, }
 
-    spec fn prop_1(s: S) -> bool;
-    spec fn prop_2(s: S) -> bool;
+    uninterp spec fn prop_1(s: S) -> bool;
+    uninterp spec fn prop_2(s: S) -> bool;
 };
 
 test_verify_one_file! {
@@ -326,11 +339,11 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_trigger_all verus_code! {
-        spec fn bar(i: nat) -> bool;
-        spec fn baz(i: nat) -> bool;
-        spec fn qux(j: nat) -> bool;
-        spec fn mux(j: nat) -> bool;
-        spec fn res(i : nat, j : nat) -> bool;
+        uninterp spec fn bar(i: nat) -> bool;
+        uninterp spec fn baz(i: nat) -> bool;
+        uninterp spec fn qux(j: nat) -> bool;
+        uninterp spec fn mux(j: nat) -> bool;
+        uninterp spec fn res(i : nat, j : nat) -> bool;
 
         proof fn foo()
             requires
@@ -374,8 +387,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_nested verus_code! {
-        spec fn f(x: int) -> bool;
-        spec fn g(x: int) -> bool;
+        uninterp spec fn f(x: int) -> bool;
+        uninterp spec fn g(x: int) -> bool;
 
         proof fn test() {
             // trigger for outer quantifier should be f(x)
@@ -387,6 +400,88 @@ test_verify_one_file! {
             let t = f(3);
             let u = g(4);
             assert(f(3) && g(4));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_self_in_trigger_in_clone_issue1347 verus_code! {
+        use vstd::*;
+        use vstd::prelude::*;
+
+        struct Node {
+            child: Option<Box<Node>>,
+        }
+
+        impl Node {
+            pub spec fn map(self) -> Map<int, int>;
+        }
+
+        impl Clone for Node {
+            fn clone(&self) -> (res: Self)
+                ensures forall |key: int| #[trigger] self.map().dom().contains(key) ==> key == 3
+            {
+                return Node { child: None }; // FAILS
+            }
+        }
+
+        fn test(n: Node) {
+            let t = n.clone();
+            assert(forall |key: int| n.map().dom().contains(key) ==> key == 3);
+        }
+
+        fn test2(n: Node) {
+            let c = Node::clone;
+            let t = c(&n);
+            assert(forall |key: int| n.map().dom().contains(key) ==> key == 3);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_lets_and_nested_quantifiers_issue1347 verus_code! {
+        uninterp spec fn llama(x: int) -> int;
+        uninterp spec fn foo(x: int, y: int) -> bool;
+        uninterp spec fn bar(x: int) -> bool;
+
+        proof fn test() {
+            let b =
+              forall |x: int| #[trigger] bar(x) ==> ({
+                let y = llama(x);
+                forall |z: int| #[trigger] foo(y, z)
+              });
+
+            assume(b);
+            assume(bar(7));
+            assert(foo(llama(7), 20));
+            assert(foo(llama(7), 21));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_broadcast_all_triggers verus_code! {
+        uninterp spec fn a(a: nat) -> bool;
+        uninterp spec fn b(a: nat) -> bool;
+        uninterp spec fn c(a: nat) -> bool;
+        uninterp spec fn d(a: nat) -> bool;
+
+        broadcast proof fn axiom_a(x: nat)
+            requires
+                a(x)
+            ensures
+                #![all_triggers] b(x) && c(x)
+            // a(x) ==> b(x) && c(x)
+        {
+            admit();
+        }
+
+        proof fn test(x: nat)
+            requires a(x)
+        {
+            broadcast use axiom_a;
+            assume(forall|x: nat| b(x) ==> d(x));
+            assert(d(x));
         }
     } => Ok(())
 }

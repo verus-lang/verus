@@ -283,9 +283,9 @@ test_verify_one_file! {
         mod M {
             pub struct A {}
             impl A {
-                pub spec fn f1(&self) -> bool;
-                pub spec fn f2(&self) -> bool;
-                pub spec fn f3(&self) -> bool;
+                pub uninterp spec fn f1(&self) -> bool;
+                pub uninterp spec fn f2(&self) -> bool;
+                pub uninterp spec fn f3(&self) -> bool;
             }
 
             #[verifier::external_body]
@@ -303,4 +303,22 @@ test_verify_one_file! {
             broadcast use ab;
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trigger_with_expression_should_be_disallowed_regression_1456 verus_code! {
+        spec fn a(x: int) -> bool;
+        spec fn b(x: int) -> bool;
+        spec fn c(x: int) -> bool;
+
+        proof fn test(i: int)
+            requires
+                forall|x: int| #[trigger a(x)] c(x) && (a(x) ==> b(x)),
+                a(i),
+            ensures
+                b(i),
+        {
+
+        }
+    } => Err(err) => assert_vir_error_msg(err, "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute")
 }

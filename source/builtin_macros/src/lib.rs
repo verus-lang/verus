@@ -7,7 +7,6 @@
     feature(proc_macro_diagnostic)
 )]
 
-use attr_rewrite::SpecAttributeKind;
 #[cfg(verus_keep_ghost)]
 use std::sync::OnceLock;
 use synstructure::{decl_attribute, decl_derive};
@@ -262,8 +261,7 @@ pub fn verus_verify(
     args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let args: syn::AttributeArgs = syn::parse_macro_input!(args as syn::AttributeArgs);
-    attr_rewrite::rewrite_verus_attribute(&cfg_erase(), args, input.into()).into()
+    attr_rewrite::rewrite_verus_attribute(&cfg_erase(), args, input)
 }
 
 #[proc_macro_attribute]
@@ -279,74 +277,24 @@ pub fn verus_spec(
     }
 }
 
-// The attribute should work together with verus_verify attribute.
-#[proc_macro_attribute]
-pub fn ensures(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let erase = cfg_erase();
-    if erase.keep() {
-        attr_rewrite::rewrite(erase, SpecAttributeKind::Ensures, attr.into(), input.into())
-            .expect("Misuse of #[ensures()].")
-            .into()
-    } else {
-        input
-    }
-}
-
-// The attribute should work together with verus_verify attribute.
-#[proc_macro_attribute]
-pub fn decreases(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let erase = cfg_erase();
-    if erase.keep() {
-        attr_rewrite::rewrite(erase, SpecAttributeKind::Decreases, attr.into(), input.into())
-            .expect("Misuse of #[decreases()].")
-            .into()
-    } else {
-        input
-    }
-}
-
-// The attribute should work together with verus_verify attribute.
-#[proc_macro_attribute]
-pub fn invariant(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let erase = cfg_erase();
-    if erase.keep() {
-        attr_rewrite::rewrite(erase, SpecAttributeKind::Invariant, attr.into(), input.into())
-            .expect("Misuse of #[invariant()]")
-            .into()
-    } else {
-        input
-    }
-}
-
-// The attribute should work together with verus_verify attribute.
-#[proc_macro_attribute]
-pub fn invariant_except_break(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let erase = cfg_erase();
-    if erase.keep() {
-        let kind = SpecAttributeKind::InvariantExceptBreak;
-        attr_rewrite::rewrite(erase, kind, attr.into(), input.into())
-            .expect("Misuse of #[invariant_except_break()]")
-            .into()
-    } else {
-        input
-    }
-}
-
+/// Add a verus proof block.
 #[proc_macro]
 pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     attr_rewrite::proof_rewrite(cfg_erase(), input.into()).into()
 }
 
+/// proof_decl add extra stmts that are used only
+/// for verification.
+/// For example, declare a ghost/tracked variable.
+/// To avoid confusion, let stmts without ghost/tracked is not supported.
+/// Non-local stmts inside proof_decl! are treated similar to those in proof!
+#[proc_macro]
+pub fn proof_decl(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let erase = cfg_erase();
+    if erase.keep() {
+        syntax::rewrite_proof_decl(erase, input.into())
+    } else {
+        proc_macro::TokenStream::new()
+    }
+}
 /*** End of verus small macro definition for executable items ***/

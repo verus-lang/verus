@@ -82,7 +82,6 @@ use crate::ast::{
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::inv_masks::{MaskSetE, MaskSingleton};
 use crate::sst::{
     BndX, CallFun, Dest, Exp, ExpX, Exps, FuncCheckSst, FuncDeclSst, FunctionSst, FunctionSstX,
     InternalFun, KrateSst, KrateSstX, LocalDecl, LocalDeclKind, Par, ParX, Pars, PostConditionSst,
@@ -154,6 +153,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
         TypX::Boxed(..) | TypX::TypParam(..) | TypX::SpecFn(..) | TypX::FnDef(..) => None,
         TypX::ConstInt(_) => None,
+        TypX::ConstBool(_) => None,
         TypX::Projection { .. } => None,
     }
 }
@@ -202,6 +202,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(_, _) => typ_as_mono(typ).is_none(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
+        TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
         TypX::Poly => true,
     }
@@ -240,6 +241,7 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
+        TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -260,6 +262,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => typ.clone(),
         TypX::Poly => typ.clone(),
+        TypX::ConstBool(_) => typ.clone(),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -291,6 +294,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
         TypX::TypParam(_) | TypX::Projection { .. } => exp.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
+        TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -448,6 +452,21 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                 };
                 let typ = return_typ(ctx, function, is_trait, &exp.typ);
                 mk_exp_typ(&typ, ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(args)))
+            }
+            CallFun::InternalFun(InternalFun::OpenInvariantMask(name, _i)) => {
+                let function = &ctx.func_sst_map[name].x;
+                let is_spec = function.mode == Mode::Spec;
+                let is_trait = !matches!(function.kind, FunctionKind::Static);
+                let mut args: Vec<Exp> = Vec::new();
+                for (par, arg) in function.pars.iter().zip(exps.iter()) {
+                    let arg = if is_spec || is_trait || typ_is_poly(ctx, &par.x.typ) {
+                        visit_exp_poly(ctx, state, arg)
+                    } else {
+                        visit_exp_native(ctx, state, arg)
+                    };
+                    args.push(arg);
+                }
+                mk_exp(ExpX::Call(call_fun.clone(), typs.clone(), Arc::new(args)))
             }
             CallFun::InternalFun(InternalFun::ClosureReq | InternalFun::ClosureEns) => {
                 let exps = visit_exps_poly(ctx, state, exps);
@@ -876,10 +895,9 @@ fn visit_stm(ctx: &Ctx, state: &mut State, stm: &Stm) -> Stm {
                 modified_vars: modified_vars.clone(),
             })
         }
-        StmX::OpenInvariant(e, s) => {
-            let e = visit_exp_native(ctx, state, e);
+        StmX::OpenInvariant(s) => {
             let s = visit_stm(ctx, state, s);
-            mk_stm(StmX::OpenInvariant(e, s))
+            mk_stm(StmX::OpenInvariant(s))
         }
         StmX::ClosureInner { body, typ_inv_vars } => {
             state.types.push_scope(true);
@@ -974,27 +992,11 @@ fn visit_func_check_sst(
     poly_ret: &InsertPars,
     ret_typ: &Typ,
 ) -> FuncCheckSst {
-    let FuncCheckSst { reqs, post_condition, mask_set, unwind, body, local_decls, statics } =
-        function;
+    let FuncCheckSst { reqs, post_condition, unwind, body, local_decls, statics } = function;
 
     state.temp_types.clear();
 
     let reqs = visit_exps_native(ctx, state, reqs);
-
-    let f_mask_singletons =
-        |state: &mut State, v: &Vec<MaskSingleton<Exp>>| -> Vec<MaskSingleton<Exp>> {
-            let mut v2: Vec<MaskSingleton<Exp>> = Vec::new();
-            for m in v.iter() {
-                let exp = visit_exp_native(ctx, state, &m.expr);
-                v2.push(MaskSingleton { expr: exp, span: m.span.clone() });
-            }
-            v2
-        };
-    let mask_set = MaskSetE {
-        base: mask_set.base.clone(),
-        plus: f_mask_singletons(state, &mask_set.plus),
-        minus: f_mask_singletons(state, &mask_set.minus),
-    };
 
     let unwind = match &unwind {
         UnwindSst::MayUnwind | UnwindSst::NoUnwind => unwind.clone(),
@@ -1071,7 +1073,6 @@ fn visit_func_check_sst(
     FuncCheckSst {
         reqs,
         post_condition,
-        mask_set: Arc::new(mask_set),
         unwind,
         body,
         local_decls: Arc::new(locals),
@@ -1083,17 +1084,16 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
     let FunctionSstX {
         name,
         kind,
-        vis_abs,
+        body_visibility,
+        opaqueness,
         owning_module,
         mode: mut function_mode,
-        fuel,
         typ_params,
         typ_bounds,
         pars,
         ret,
         ens_has_return,
         item_kind,
-        publish,
         attrs,
         has,
         decl,
@@ -1187,17 +1187,16 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
     let functionx = FunctionSstX {
         name: name.clone(),
         kind: kind.clone(),
-        vis_abs: vis_abs.clone(),
+        body_visibility: body_visibility.clone(),
+        opaqueness: opaqueness.clone(),
         owning_module: owning_module.clone(),
         mode: function_mode,
-        fuel: *fuel,
         typ_params: typ_params.clone(),
         typ_bounds: typ_bounds.clone(),
         pars,
         ret,
         ens_has_return: *ens_has_return,
         item_kind: *item_kind,
-        publish: *publish,
         attrs: attrs.clone(),
         has: has.clone(),
         decl,

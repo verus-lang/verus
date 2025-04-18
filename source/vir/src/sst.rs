@@ -51,6 +51,7 @@ pub enum InternalFun {
     ClosureEns,
     CheckDecreaseInt,
     CheckDecreaseHeight,
+    OpenInvariantMask(Fun, usize),
 }
 
 #[derive(Debug, Clone, Hash)]
@@ -196,7 +197,7 @@ pub enum StmX {
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         modified_vars: Arc<Vec<UniqueIdent>>,
     },
-    OpenInvariant(Exp, Stm),
+    OpenInvariant(Stm),
     ClosureInner {
         body: Stm,
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
@@ -278,7 +279,6 @@ pub struct FuncDeclSst {
 pub struct FuncCheckSst {
     pub reqs: Exps,
     pub post_condition: Arc<PostConditionSst>,
-    pub mask_set: Arc<crate::inv_masks::MaskSetE<Exp>>,
     pub unwind: UnwindSst,
     pub body: Stm,
     pub local_decls: Arc<Vec<LocalDecl>>,
@@ -314,17 +314,16 @@ pub type FunctionSst = Arc<Spanned<FunctionSstX>>;
 pub struct FunctionSstX {
     pub name: Fun,
     pub kind: crate::ast::FunctionKind,
-    pub vis_abs: crate::ast::Visibility,
+    pub body_visibility: crate::ast::BodyVisibility,
     pub owning_module: Option<Path>,
     pub mode: crate::ast::Mode,
-    pub fuel: u32,
+    pub opaqueness: crate::ast::Opaqueness,
     pub typ_params: crate::ast::Idents,
     pub typ_bounds: crate::ast::GenericBounds,
     pub pars: Pars,
     pub ret: Par,
     pub ens_has_return: bool,
     pub item_kind: crate::ast::ItemKind,
-    pub publish: Option<bool>,
     pub attrs: crate::ast::FunctionAttrs,
     pub has: FunctionSstHas,
     pub decl: Arc<FuncDeclSst>,

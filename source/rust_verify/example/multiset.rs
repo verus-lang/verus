@@ -6,19 +6,18 @@ use vstd::seq_lib::*;
 verus! {
 
 proof fn multiset_ext_eq() {
+    broadcast use group_to_multiset_ensures;
     let a: Seq<int> = seq![1, 2, 3];
     let b: Seq<int> = seq![1, 3, 2];
-    lemma_seq_properties::<int>();  //Provides the necessary lemmas for seq to multiset conversion
-    // These two assertions trigger quantifiers relating sequence contents to multiset counts
     assert(a =~= seq![1].push(2).push(3));
     assert(b =~= seq![1].push(3).push(2));
     assert(a.to_multiset() =~= b.to_multiset());
 }
 
 proof fn multiset_ext_eq2() {
+    broadcast use group_to_multiset_ensures;
     let a: Seq<int> = seq![3, 2, 1, 1, 2, 3];
     let b: Seq<int> = seq![1, 2, 3, 1, 2, 3];
-    lemma_seq_properties::<int>();  //Provides the necessary lemmas for seq to multiset conversion
     // These two assertions trigger quantifiers relating sequence contents to multiset counts
     assert(a =~= seq![3].push(2).push(1).push(1).push(2).push(3));
     assert(b =~= seq![1].push(2).push(3).push(1).push(2).push(3));
@@ -26,8 +25,7 @@ proof fn multiset_ext_eq2() {
 }
 
 proof fn sorted_by_leq() {
-    //Provides the verifier with important lemmas about sequences
-    lemma_seq_properties::<int>();
+    broadcast use group_to_multiset_ensures;
     let leq = |x: int, y: int| x <= y;
     let unsorted = seq![3, 1, 5, 2, 4];
     let sorted = unsorted.sort_by(leq);

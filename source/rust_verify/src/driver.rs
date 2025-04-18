@@ -4,6 +4,13 @@ use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
 use rustc_errors::ErrorGuaranteed;
 use std::time::{Duration, Instant};
 
+struct DefaultCallbacks;
+impl rustc_driver::Callbacks for DefaultCallbacks {}
+
+pub fn run_rustc_compiler_directly(rustc_args: &Vec<String>) -> Result<(), ErrorGuaranteed> {
+    rustc_driver::RunCompiler::new(&rustc_args, &mut DefaultCallbacks).run()
+}
+
 fn mk_compiler<'a, 'b>(
     rustc_args: &'a [String],
     verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
@@ -20,13 +27,16 @@ fn run_compiler<'a, 'b>(
     erase_ghost: bool,
     verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-) -> Result<(), ErrorGuaranteed> {
+) -> Result<(), ()> {
     crate::config::enable_default_features_and_verus_attr(
         &mut rustc_args,
         syntax_macro,
         erase_ghost,
     );
-    mk_compiler(&rustc_args, verifier, file_loader).run()
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        mk_compiler(&rustc_args, verifier, file_loader).run()
+    }));
+    result.map_err(|_| ()).and_then(|r| r.map_err(|_| ()))
 }
 
 pub fn is_verifying_entire_crate(verifier: &Verifier) -> bool {
@@ -86,7 +96,7 @@ In the long run, we'd like to move to a model where rustc only runs once on the 
 This would avoid the complex interleaving above and avoid needing to use lifetime.rs
 for all functions (it would only be needed for functions with tracked data in proof code).
 */
-pub struct CompilerCallbacksEraseMacro {
+struct CompilerCallbacksEraseMacro {
     pub do_compile: bool,
 }
 
@@ -123,7 +133,7 @@ pub(crate) fn run_with_erase_macro_compile(
     file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
     compile: bool,
     vstd: Vstd,
-) -> Result<(), ErrorGuaranteed> {
+) -> Result<(), ()> {
     let mut callbacks = CompilerCallbacksEraseMacro { do_compile: compile };
     rustc_args.extend(["--cfg", "verus_keep_ghost"].map(|s| s.to_string()));
     if vstd == Vstd::IsCore {
@@ -211,7 +221,7 @@ where
         + Send
         + Sync,
 {
-    if !rustc_args.contains(&"--edition".to_string()) {
+    if !rustc_args.iter().any(|a| a.starts_with("--edition")) {
         rustc_args.push(format!("--edition"));
         rustc_args.push(format!("2021"));
     }
@@ -268,18 +278,6 @@ where
         lifetime_end_time,
         ..
     } = verifier_callbacks;
-    if !verifier.args.output_json && !verifier.encountered_vir_error {
-        println!(
-            "verification results:: {} verified, {} errors{}",
-            verifier.count_verified,
-            verifier.count_errors,
-            if !is_verifying_entire_crate(&verifier) {
-                " (partial verification with `--verify-*`)"
-            } else {
-                ""
-            }
-        );
-    }
     let time1 = Instant::now();
     let time_lifetime = match (lifetime_start_time, lifetime_end_time) {
         (Some(t1), Some(t2)) => t2 - t1,
@@ -304,13 +302,13 @@ where
         );
     }
 
-    let compile_status = if !verifier.args.compile && verifier.args.no_lifetime {
+    let compile_status = if !verifier.compile && verifier.args.no_lifetime {
         Ok(())
     } else {
         run_with_erase_macro_compile(
             rustc_args,
             Box::new(file_loader),
-            verifier.args.compile,
+            verifier.compile,
             verifier.args.vstd,
         )
     };

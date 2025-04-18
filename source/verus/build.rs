@@ -38,7 +38,7 @@ fn main() {
         toolchain
     } else {
         panic!(
-            "unexpected output from `rustup show active-toolchain`\nexpected a toolchain override\ngot: {stdout}"
+            "unexpected output from `rustup show active-toolchain`\nexpected a valid toolchain\ngot: {stdout}"
         );
     };
 

@@ -693,6 +693,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] opens_invariants_trait_method_impl5 verus_code! {
+        use vstd::prelude::*;
+
         proof fn open_me(x: int)
             opens_invariants [x]
         { }
@@ -819,4 +821,69 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot show invariant namespace is in the mask given by the function signature")
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_set verus_code!{
+        use vstd::invariant::*;
+        use vstd::set::*;
+
+        struct P {}
+        impl InvariantPredicate<(), ()> for P {
+            closed spec fn inv(k: (), v: ()) -> bool { true }
+        }
+
+        proof fn a(tracked credit1: OpenInvariantCredit,
+                   tracked credit2: OpenInvariantCredit,
+                   tracked inv1: AtomicInvariant<(), (), P>,
+                   tracked inv2: AtomicInvariant<(), (), P>,
+                   s: Set<int>)
+            requires
+                !s.contains(inv1.namespace()),
+                !s.contains(inv2.namespace()),
+                inv1.namespace() != inv2.namespace(),
+            opens_invariants
+                any
+        {
+            open_atomic_invariant_in_proof!(credit1 => &inv1 => inner => {
+                b(s);
+                open_atomic_invariant_in_proof!(credit2 => &inv2 => inner => {
+                    b(s);
+                });
+            });
+        }
+
+        proof fn b(s: Set<int>)
+            opens_invariants s
+        {
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] opens_invariants_set_fails verus_code!{
+        use vstd::invariant::*;
+        use vstd::set::*;
+
+        struct P {}
+        impl InvariantPredicate<(), ()> for P {
+            closed spec fn inv(k: (), v: ()) -> bool { true }
+        }
+
+        proof fn a(tracked credit: OpenInvariantCredit,
+                   tracked inv: AtomicInvariant<(), (), P>,
+                   s: Set<int>)
+            opens_invariants
+                any
+        {
+            open_atomic_invariant_in_proof!(credit => &inv => inner => {
+                b(s);
+            });
+        }
+
+        proof fn b(s: Set<int>)
+            opens_invariants s
+        {
+        }
+    } => Err(err) => assert_vir_error_msg(err, "callee may open invariants disallowed at call-site")
 }

@@ -27,9 +27,14 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
 pub fn main() {
     tracing_forest::init();
 
+    let mut dep_tracker = rust_verify::cargo_verus_dep_tracker::DepTracker::init();
+    let via_cargo = dep_tracker.compare_env(rust_verify::cargo_verus::VERUS_DRIVER_VIA_CARGO, "1");
+    // For now, builtin, vstd, etc. must be rebuilt for each via_cargo crate:
+    let via_cargo_rebuild_verus_libs = via_cargo;
+
     let mut internal_args = std::env::args();
     let internal_program = internal_args.next().unwrap();
-    let build_test_mode = if let Some(first_arg) = internal_args.next() {
+    let (build_test_mode, has_rustc) = if let Some(first_arg) = internal_args.next() {
         match first_arg.as_str() {
             rust_verify::lifetime::LIFETIME_DRIVER_ARG => {
                 let mut internal_args: Vec<_> = internal_args.collect();
@@ -40,11 +45,15 @@ pub fn main() {
                 rust_verify::lifetime::lifetime_rustc_driver(&internal_args[..], buffer);
                 return;
             }
-            "--internal-test-mode" => true,
-            _ => false,
+            arg if arg.contains("rustc") => {
+                // Setting RUSTC_WRAPPER causes Cargo to pass rustc path as the first argument.
+                (false, true)
+            }
+            "--internal-test-mode" => (true, false),
+            _ => (false, false),
         }
     } else {
-        false
+        (false, false)
     };
 
     let build_info = verus_build_info();
@@ -52,15 +61,24 @@ pub fn main() {
     let total_time_0 = std::time::Instant::now();
 
     let _ = os_setup();
+    vir::util::set_verus_github_bug_report_url(
+        ::rust_verify::consts::VERUS_GITHUB_BUG_REPORT_URL.to_owned(),
+    );
     let logger_handler =
         rustc_session::EarlyDiagCtxt::new(rustc_session::config::ErrorOutputType::default());
     rustc_driver::init_logger(&logger_handler, rustc_log::LoggerConfig::from_env("RUSTVERIFY_LOG"));
 
-    let mut args = if build_test_mode { internal_args } else { std::env::args() };
-    let program = if build_test_mode { internal_program } else { args.next().unwrap() };
+    if via_cargo != has_rustc {
+        let _ = logger_handler.early_err("Error: VERUS_DRIVER_VIA_CARGO must be 1 if and only if 'rustc' is the first argument to verus");
+        std::process::exit(1);
+    }
+
+    let mut args = if build_test_mode || via_cargo { internal_args } else { std::env::args() };
+    let program =
+        if build_test_mode || via_cargo { internal_program } else { args.next().unwrap() };
 
     let mut vstd = None;
-    let verus_root = if !build_test_mode {
+    let verus_root = if !(build_test_mode || via_cargo_rebuild_verus_libs) {
         let verus_root = rust_verify::driver::find_verusroot();
         if let Some(rust_verify::driver::VerusRoot { path: verusroot, .. }) = &verus_root {
             let vstd_path = verusroot.join("vstd.vir").to_str().unwrap().to_string();
@@ -71,7 +89,27 @@ pub fn main() {
         None
     };
 
-    let (our_args, rustc_args) = rust_verify::config::parse_args_with_imports(&program, args, vstd);
+    let mut args: Vec<String> = args.collect();
+    let is_direct_rustc_call = via_cargo
+        && rust_verify::cargo_verus::extend_args_and_check_is_direct_rustc_call(
+            &mut args,
+            &mut dep_tracker,
+        );
+
+    if is_direct_rustc_call {
+        args.insert(0, program);
+        match rust_verify::driver::run_rustc_compiler_directly(&args) {
+            Ok(()) => return,
+            Err(_) => {
+                std::process::exit(1);
+            }
+        }
+    }
+
+    let via_cargo = via_cargo.then(|| rust_verify::config::parse_cargo_args(&program, &mut args));
+
+    let (our_args, rustc_args) =
+        rust_verify::config::parse_args_with_imports(&program, args.into_iter(), vstd);
 
     if our_args.version {
         if our_args.output_json {
@@ -84,6 +122,11 @@ pub fn main() {
         }
         return;
     }
+
+    let via_cargo_compile = via_cargo
+        .as_ref()
+        .map(|args| rust_verify::cargo_verus::is_compile(args, &mut dep_tracker))
+        .unwrap_or(false);
 
     if !build_test_mode {
         match build_info.profile {
@@ -100,15 +143,28 @@ pub fn main() {
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
 
     let file_loader = rust_verify::file_loader::RealFileLoader;
-    let verifier = rust_verify::verifier::Verifier::new(our_args);
+    let verifier =
+        rust_verify::verifier::Verifier::new(our_args, via_cargo, via_cargo_compile, dep_tracker);
 
-    let (verifier, stats, status) =
-        rust_verify::driver::run(verifier, rustc_args, verus_root, file_loader, build_test_mode);
+    let (verifier, stats, status) = rust_verify::driver::run(
+        verifier,
+        rustc_args,
+        verus_root,
+        file_loader,
+        build_test_mode || via_cargo_rebuild_verus_libs,
+    );
 
     let total_time_1 = std::time::Instant::now();
     let total_time = total_time_1 - total_time_0;
 
     let times_ms_json_data = if verifier.args.time {
+        fn compute_total(
+            verifier: &rust_verify::verifier::Verifier,
+            f: impl Fn(&rust_verify::verifier::BucketStats) -> std::time::Duration,
+        ) -> u128 {
+            verifier.bucket_stats.iter().map(|(_, v)| f(v)).sum::<std::time::Duration>().as_millis()
+        }
+
         let mut smt_init_times = verifier
             .bucket_stats
             .iter()
@@ -116,7 +172,7 @@ pub fn main() {
             .map(|(k, v)| (k.module(), v.time_smt_init.as_millis()))
             .collect::<Vec<_>>();
         smt_init_times.sort_by(|(_, a), (_, b)| b.cmp(a));
-        let total_smt_init: u128 = smt_init_times.iter().map(|(_, v)| v).sum();
+        let total_smt_init: u128 = compute_total(&verifier, |v| v.time_smt_init);
 
         struct SmtStats {
             time_millis: u128,
@@ -138,7 +194,7 @@ pub fn main() {
             })
             .collect::<Vec<_>>();
         smt_run_stats.sort_by(|(_, a), (_, b)| b.time_millis.cmp(&a.time_millis));
-        let total_smt_run: u128 = smt_run_stats.iter().map(|(_, v)| v.time_millis).sum();
+        let total_smt_run: u128 = compute_total(&verifier, |v| v.time_smt_run);
         let rlimit_counts: Option<Vec<u64>> =
             smt_run_stats.iter().map(|(_, v)| v.rlimit_count).collect();
         let total_rlimit_count: Option<u64> =
@@ -184,7 +240,8 @@ pub fn main() {
             })
             .collect::<Vec<_>>();
         air_times.sort_by(|(_, a), (_, b)| b.cmp(a));
-        let total_air: u128 = air_times.iter().map(|(_, v)| v).sum();
+        let total_air: u128 =
+            compute_total(&verifier, |v| v.time_air - (v.time_smt_init + v.time_smt_run));
 
         let mut verify_times = verifier
             .bucket_stats
@@ -193,7 +250,7 @@ pub fn main() {
             .map(|(k, v)| (k.module(), (v.time_verify).as_millis()))
             .collect::<Vec<_>>();
         verify_times.sort_by(|(_, a), (_, b)| b.cmp(a));
-        let total_verify: u128 = verify_times.iter().map(|(_, v)| v).sum();
+        let total_verify: u128 = compute_total(&verifier, |v| v.time_verify);
 
         // Rust time:
         let rust_init = stats.time_rustc;
@@ -344,7 +401,7 @@ pub fn main() {
                 }
             }
             println!(
-                "    total air-time:        {:>10} ms   ({} threads)",
+                "        total air-time:        {:>10} ms   ({} threads)",
                 total_air, verifier.num_threads
             );
             if verifier.args.time_expanded {
@@ -359,18 +416,18 @@ pub fn main() {
             }
             if !verifier.encountered_vir_error {
                 println!(
-                    "    total smt-time:        {:>10} ms   ({} threads)",
+                    "        total smt-time:        {:>10} ms   ({} threads)",
                     (total_smt_init + total_smt_run),
                     verifier.num_threads
                 );
                 println!(
-                    "        total smt-init:        {:>10} ms   ({} threads)",
+                    "            total smt-init:        {:>10} ms   ({} threads)",
                     total_smt_init, verifier.num_threads
                 );
                 if verifier.args.time_expanded {
                     for (i, (m, t)) in smt_init_times.iter().take(3).enumerate() {
                         println!(
-                            "            {}. {:<40} {:>10} ms",
+                            "                {}. {:<40} {:>10} ms",
                             i + 1,
                             rust_verify::verifier::module_name(m),
                             t
@@ -378,7 +435,7 @@ pub fn main() {
                     }
                 }
                 println!(
-                    "        total smt-run:         {:>10} ms{} ({} threads)",
+                    "            total smt-run:         {:>10} ms{} ({} threads)",
                     total_smt_run,
                     total_rlimit_count
                         .map(|rc| format!(", {:>8} rlimit", rc))
@@ -388,7 +445,7 @@ pub fn main() {
                 if verifier.args.time_expanded {
                     for (i, (m, t)) in smt_run_stats.iter().take(3).enumerate() {
                         println!(
-                            "            {}. {:<40} {:>10} ms{}",
+                            "                {}. {:<40} {:>10} ms{}",
                             i + 1,
                             rust_verify::verifier::module_name(m),
                             t.time_millis,
@@ -408,11 +465,13 @@ pub fn main() {
 
     if verifier.args.output_json {
         let mut res = serde_json::json!({
+            "encountered-error": status.is_err(),
             "encountered-vir-error": verifier.encountered_vir_error,
         });
         if rust_verify::driver::is_verifying_entire_crate(&verifier) {
-            res["success"] =
-                serde_json::json!(!verifier.encountered_vir_error && verifier.count_errors == 0);
+            res["success"] = serde_json::json!(
+                !status.is_err() && !verifier.encountered_vir_error && verifier.count_errors == 0
+            );
         }
         if !verifier.encountered_vir_error {
             res.as_object_mut().unwrap().append(

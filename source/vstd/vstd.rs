@@ -28,7 +28,6 @@ pub mod bytes;
 pub mod calc_macro;
 pub mod cell;
 pub mod compute;
-pub mod function;
 #[cfg(all(feature = "alloc", feature = "std"))]
 pub mod hash_map;
 #[cfg(all(feature = "alloc", feature = "std"))]
@@ -45,14 +44,8 @@ pub mod pcm;
 pub mod pcm_lib;
 pub mod pervasive;
 pub mod proph;
-#[cfg(feature = "alloc")]
-pub mod ptr;
 pub mod raw_ptr;
-
-// TODO this should be permitted even in not(verus_keep_ghost)
-#[cfg(verus_keep_ghost)]
 pub mod rwlock;
-
 pub mod seq;
 pub mod seq_lib;
 pub mod set;
@@ -75,7 +68,6 @@ pub mod std_specs;
 // Re-exports all vstd types, traits, and functions that are commonly used or replace
 // regular `core` or `std` definitions.
 pub mod prelude;
-#[cfg(verus_keep_ghost)]
 pub mod tokens;
 
 use prelude::*;
@@ -89,7 +81,7 @@ pub broadcast group group_vstd_default {
     seq_lib::group_seq_lib_default,
     map::group_map_axioms,
     set::group_set_axioms,
-    set_lib::group_set_lib_axioms,
+    set_lib::group_set_lib_default,
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
     std_specs::vec::group_vec_axioms,
@@ -99,7 +91,8 @@ pub broadcast group group_vstd_default {
     string::group_string_axioms,
     std_specs::range::group_range_axioms,
     raw_ptr::group_raw_ptr_axioms,
-    compute::all_spec_implies,
+    compute::all_spec_ensures,
+    layout::group_layout_axioms,
 }
 
 #[cfg(not(feature = "alloc"))]
@@ -109,7 +102,7 @@ pub broadcast group group_vstd_default {
     seq_lib::group_seq_lib_default,
     map::group_map_axioms,
     set::group_set_axioms,
-    set_lib::group_set_lib_axioms,
+    set_lib::group_set_lib_default,
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
     slice::group_slice_axioms,
@@ -118,7 +111,8 @@ pub broadcast group group_vstd_default {
     string::group_string_axioms,
     std_specs::range::group_range_axioms,
     raw_ptr::group_raw_ptr_axioms,
-    compute::all_spec_implies,
+    compute::all_spec_ensures,
+    layout::group_layout_axioms,
 }
 
 } // verus!

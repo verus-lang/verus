@@ -200,6 +200,13 @@ pub(crate) enum GhostBlockAttr {
 }
 
 #[derive(Debug, PartialEq)]
+pub(crate) enum AttrPublish {
+    Open,
+    Closed,
+    Uninterp,
+}
+
+#[derive(Debug, PartialEq)]
 pub(crate) enum Attr {
     // specify mode (spec, proof, exec)
     Mode(Mode),
@@ -218,7 +225,7 @@ pub(crate) enum Attr {
     // hide body (from all modules) until revealed
     Opaque,
     // publish body?
-    Publish(bool),
+    Publish(AttrPublish),
     // publish body with zero fuel
     OpaqueOutsideModule,
     // inline spec function in SMT query
@@ -293,6 +300,8 @@ pub(crate) enum Attr {
     // In order to apply a specification to a trait externally
     // (the string is the name of the associated type pointing to the specified trait)
     ExternalTraitSpecification(String),
+    // Any auto-derives for this type should be treated external
+    ExternalAutoDerives(Option<std::collections::HashSet<String>>),
     // Marks a variable that's spec or ghost mode in exec code
     UnwrappedBinding,
     // Marks the auxiliary function constructed by reveal/hide
@@ -322,6 +331,8 @@ pub(crate) enum Attr {
     SizeOfBroadcastProof,
     // Is this a type_invariant spec function
     TypeInvariantFn,
+    // Used for the encoding of `open([visibility qualified])`
+    OpenVisibilityQualifier,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -386,10 +397,6 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "external" => v.push(Attr::External),
                 AttrTree::Fun(_, arg, None) if arg == "verify" => v.push(Attr::Verify),
                 AttrTree::Fun(_, arg, None) if arg == "opaque" => v.push(Attr::Opaque),
-                AttrTree::Fun(_, arg, None) if arg == "publish" => {
-                    report_deprecated("publish", "use `open spec fn` and `closed spec fn` instead");
-                    v.push(Attr::Publish(true))
-                }
                 AttrTree::Fun(_, arg, None) if arg == "opaque_outside_module" => {
                     v.push(Attr::OpaqueOutsideModule)
                 }
@@ -563,6 +570,16 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "external_type_specification" => {
                     v.push(Attr::ExternalTypeSpecification)
                 }
+                AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, r, None)]))
+                    if arg == "external_derive" =>
+                {
+                    v.push(Attr::ExternalAutoDerives(Some(
+                        r.split(",").map(|x| x.trim().to_owned()).collect(),
+                    )));
+                }
+                AttrTree::Fun(_, arg, None) if arg == "external_derive" => {
+                    v.push(Attr::ExternalAutoDerives(None));
+                }
                 AttrTree::Fun(_, arg, None) if arg == "external_trait_specification" => v.push(
                     Attr::ExternalTraitSpecification("ExternalTraitSpecificationFor".to_string()),
                 ),
@@ -577,6 +594,12 @@ pub(crate) fn parse_attrs(
                 }
                 AttrTree::Fun(_, arg, None) if arg == "type_invariant" => {
                     v.push(Attr::TypeInvariantFn)
+                }
+                AttrTree::Fun(_, arg, None) if arg == "invalid_trigger_attribute" => {
+                    return err_span(
+                        span,
+                        "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
+                    );
                 }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
@@ -627,8 +650,15 @@ pub(crate) fn parse_attrs(
                     AttrTree::Fun(_, arg, None) if arg == "external_body" => {
                         v.push(Attr::ExternalBody)
                     }
-                    AttrTree::Fun(_, arg, None) if arg == "open" => v.push(Attr::Publish(true)),
-                    AttrTree::Fun(_, arg, None) if arg == "closed" => v.push(Attr::Publish(false)),
+                    AttrTree::Fun(_, arg, None) if arg == "open" => {
+                        v.push(Attr::Publish(AttrPublish::Open))
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "closed" => {
+                        v.push(Attr::Publish(AttrPublish::Closed))
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "uninterp" => {
+                        v.push(Attr::Publish(AttrPublish::Uninterp))
+                    }
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))
                         if arg == "returns" && name == "spec" =>
                     {
@@ -689,6 +719,12 @@ pub(crate) fn parse_attrs(
                     }
                     AttrTree::Fun(_, arg, None) if arg == "size_of_broadcast_proof" => {
                         v.push(Attr::SizeOfBroadcastProof)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "external_fn_specification" => {
+                        v.push(Attr::ExternalFnSpecification)
+                    }
+                    AttrTree::Fun(_, arg, None) if arg == "open_visibility_qualifier" => {
+                        v.push(Attr::OpenVisibilityQualifier)
                     }
                     _ => {
                         return err_span(span, "unrecognized internal attribute");
@@ -830,29 +866,38 @@ pub(crate) fn get_custom_err_annotations(attrs: &[Attribute]) -> Result<Vec<Stri
     Ok(v)
 }
 
-pub(crate) fn get_fuel(vattrs: &VerifierAttrs) -> u32 {
-    if vattrs.opaque { 0 } else { 1 }
+#[derive(Debug, Clone)]
+pub(crate) enum AutoDerivesAttr {
+    Regular,
+    AllExternal,
+    SomeExternal(std::collections::HashSet<String>),
 }
 
-pub(crate) fn get_publish(
-    vattrs: &VerifierAttrs,
-) -> (Option<bool>, /* open/closed present: */ bool) {
-    match (vattrs.publish, vattrs.opaque_outside_module) {
-        (None, _) => (None, false),
-        (Some(false), _) => (None, true),
-        (Some(true), false) => (Some(true), true),
-        (Some(true), true) => (Some(false), true),
-    }
+// Only those relevant to classifying an item as external / not external
+// (external_body is relevant because it means anything on the inside of the item should
+// be external)
+#[derive(Debug, Clone)]
+pub(crate) struct ExternalAttrs {
+    pub(crate) external: bool,
+    pub(crate) external_body: bool,
+    pub(crate) external_fn_specification: bool,
+    pub(crate) external_type_specification: bool,
+    pub(crate) external_trait_specification: bool,
+    pub(crate) sets_mode: bool,
+    pub(crate) verify: bool,
+    pub(crate) verus_macro: bool,
+    pub(crate) size_of_global: bool,
+    pub(crate) any_other_verus_specific_attribute: bool,
+    pub(crate) internal_get_field_many_variants: bool,
+    pub(crate) external_auto_derives: AutoDerivesAttr,
 }
 
 #[derive(Debug)]
 pub(crate) struct VerifierAttrs {
     pub(crate) verus_macro: bool,
     pub(crate) external_body: bool,
-    pub(crate) external: bool,
-    pub(crate) verify: bool,
     pub(crate) opaque: bool,
-    pub(crate) publish: Option<bool>,
+    pub(crate) publish: Option<AttrPublish>,
     pub(crate) opaque_outside_module: bool,
     pub(crate) inline: bool,
     pub(crate) ext_equal: bool,
@@ -897,20 +942,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) item_broadcast_use: bool,
     pub(crate) size_of_broadcast_proof: bool,
     pub(crate) type_invariant_fn: bool,
-}
-
-impl VerifierAttrs {
-    pub(crate) fn is_external(&self, cmd_line_args: &crate::config::Args) -> bool {
-        self.external
-            || !(cmd_line_args.no_external_by_default
-                || self.verus_macro
-                || self.external_body
-                || self.external_fn_specification
-                || self.external_type_specification
-                || self.external_trait_specification.is_some()
-                || self.verify
-                || self.sets_mode)
-    }
+    pub(crate) open_visibility_qualifier: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -949,16 +981,77 @@ pub(crate) fn is_sealed(
     Ok(false)
 }
 
+/// Get the attributes needed to determine if the item is external.
+pub(crate) fn get_external_attrs(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<ExternalAttrs, VirErr> {
+    let mut es = ExternalAttrs {
+        external_body: false,
+        external_fn_specification: false,
+        external_type_specification: false,
+        external_trait_specification: false,
+        external: false,
+        verify: false,
+        sets_mode: false,
+        verus_macro: false,
+        size_of_global: false,
+        any_other_verus_specific_attribute: false,
+        internal_get_field_many_variants: false,
+        external_auto_derives: AutoDerivesAttr::Regular,
+    };
+
+    for attr in parse_attrs(attrs, diagnostics)? {
+        match attr {
+            Attr::ExternalBody => es.external_body = true,
+            Attr::ExternalFnSpecification => es.external_fn_specification = true,
+            Attr::ExternalTypeSpecification => es.external_type_specification = true,
+            Attr::ExternalTraitSpecification(_) => es.external_trait_specification = true,
+            Attr::External => es.external = true,
+            Attr::Verify => es.verify = true,
+            Attr::Mode(_) => es.sets_mode = true,
+            Attr::VerusMacro => es.verus_macro = true,
+            Attr::SizeOfGlobal => es.size_of_global = true,
+            Attr::InternalGetFieldManyVariants => es.internal_get_field_many_variants = true,
+            Attr::Trusted => {}
+            Attr::ExternalAutoDerives(None) => {
+                es.external_auto_derives = AutoDerivesAttr::AllExternal
+            }
+            Attr::ExternalAutoDerives(Some(external_auto_derives)) => {
+                es.external_auto_derives = AutoDerivesAttr::SomeExternal(external_auto_derives)
+            }
+            Attr::UnsupportedRustcAttr(..) => {}
+            _ => {
+                es.any_other_verus_specific_attribute = true;
+            }
+        }
+    }
+
+    return Ok(es);
+}
+
 pub(crate) fn get_verifier_attrs(
     attrs: &[Attribute],
     diagnostics: Option<&mut Vec<VirErrAs>>,
-    cmd_line_args: Option<&crate::config::Args>,
+) -> Result<VerifierAttrs, VirErr> {
+    get_verifier_attrs_maybe_check(attrs, diagnostics, true)
+}
+
+pub(crate) fn get_verifier_attrs_no_check(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+) -> Result<VerifierAttrs, VirErr> {
+    get_verifier_attrs_maybe_check(attrs, diagnostics, false)
+}
+
+pub(crate) fn get_verifier_attrs_maybe_check(
+    attrs: &[Attribute],
+    diagnostics: Option<&mut Vec<VirErrAs>>,
+    do_check: bool,
 ) -> Result<VerifierAttrs, VirErr> {
     let mut vs = VerifierAttrs {
         verus_macro: false,
         external_body: false,
-        external: false,
-        verify: false,
         opaque: false,
         publish: None,
         opaque_outside_module: false,
@@ -1004,14 +1097,13 @@ pub(crate) fn get_verifier_attrs(
         item_broadcast_use: false,
         size_of_broadcast_proof: false,
         type_invariant_fn: false,
+        open_visibility_qualifier: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
         match attr {
             Attr::VerusMacro => vs.verus_macro = true,
             Attr::ExternalBody => vs.external_body = true,
-            Attr::External => vs.external = true,
-            Attr::Verify => vs.verify = true,
             Attr::ExternalFnSpecification => vs.external_fn_specification = true,
             Attr::ExternalTypeSpecification => vs.external_type_specification = true,
             Attr::ExternalTraitSpecification(assoc) => {
@@ -1074,25 +1166,12 @@ pub(crate) fn get_verifier_attrs(
             }
             Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
             Attr::TypeInvariantFn => vs.type_invariant_fn = true,
+            Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
             _ => {}
         }
     }
-    if attrs.len() > 0 {
-        let span = attrs[0].span;
-        let mismatches = vec![
-            ("inside verus macro", "`verify`", vs.verus_macro, vs.verify),
-            ("`external`", "`verify`", vs.external, vs.verify),
-            ("`external_body`", "`verify`", vs.external_body, vs.verify),
-            ("`external_body`", "`external`", vs.external_body, vs.external),
-        ];
-        for (msg1, msg2, flag1, flag2) in mismatches {
-            if flag1 && flag2 {
-                return err_span(span, format!("item cannot be both {msg1} and {msg2}",));
-            }
-        }
-    }
-    if let Some((rustc_attr, span)) = unsupported_rustc_attr {
-        if cmd_line_args.is_none() || !vs.is_external(cmd_line_args.unwrap()) {
+    if do_check {
+        if let Some((rustc_attr, span)) = unsupported_rustc_attr {
             return err_span(span, format!("The attribute `{rustc_attr:}` is not supported"));
         }
     }

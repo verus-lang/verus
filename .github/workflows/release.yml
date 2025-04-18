@@ -1,0 +1,68 @@
+name: release
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  copy-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get Release Info
+        id: get_release_info
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_info=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            https://api.github.com/repos/verus-lang/verus/releases/163437062)
+          echo release_tag="$(echo $release_info | jq -cr '.tag_name')" >> $GITHUB_ENV
+          echo release_name="$(echo $release_info | jq -cr '.name')" >> $GITHUB_ENV
+          echo release_assets="""$(echo $release_info | jq -cr '.assets')""" >> $GITHUB_ENV
+
+      - name: Checkout repository
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ env.release_tag }}
+
+      - name: Create a New Release
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          release_tag: ${{ env.release_tag }}
+          release_name: ${{ env.release_name }}
+        run: |
+          new_release_tag=$(echo $release_tag | sed 's/\/rolling//')
+          new_release_name=$(echo $release_name | sed 's/Rolling //')
+          
+          response=$(curl -s -X POST -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\": \"$new_release_tag\", \"name\": \"$new_release_name\", \"body\": \"$release_tag\"}" \
+            https://api.github.com/repos/verus-lang/verus/releases)
+          echo $new_release_tag $new_release_name $response
+          new_release_id=$(echo $response | jq -r '.id')
+          echo "new_release_id=$new_release_id" >> $GITHUB_ENV
+
+      - name: Copy Assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          release_assets: ${{ env.release_assets }}
+          new_release_id: ${{ env.new_release_id }}
+        run: |
+          assets=$(echo $release_assets | jq -c '.[]')
+          
+          for asset in $assets; do
+            asset_url=$(echo $asset | jq -r '.url')
+            asset_name=$(echo $asset | jq -r '.name')
+            asset_download_url=$(curl -s -H "Authorization: token $GITHUB_TOKEN" $asset_url | jq -r '.browser_download_url')
+            
+            curl -L -o $asset_name -H "Authorization: token $GITHUB_TOKEN" $asset_download_url
+            curl -X POST -H "Authorization: token $GITHUB_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @$asset_name \
+              "https://uploads.github.com/repos/verus-lang/verus/releases/$new_release_id/assets?name=$asset_name"
+          done

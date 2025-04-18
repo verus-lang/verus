@@ -11,6 +11,8 @@ vir = { path = "../vir" }
 serde = "1"
 serde_json = { version = ">=1.0.95", features = ["preserve_order"] }
 bincode = "1.0.1"
+sha2 = "0.10.2"
+hex = "0.4.3"
 sise = "0.6.0"
 num-bigint = "0.4.4"
 num-format = "0.4.0"

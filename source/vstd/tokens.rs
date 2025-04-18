@@ -12,7 +12,7 @@ verus_! {
 
 #[verusfmt::skip]
 broadcast use
-    super::set_lib::group_set_lib_axioms,
+    super::set_lib::group_set_lib_default,
     super::set::group_set_axioms,
     super::map::group_map_axioms;
 
@@ -536,6 +536,7 @@ impl<Element, Token> MultisetToken<Element, Token>
             s.multiset() === Multiset::empty(),
     {
         let tracked s = Self { inst: instance_id, m: Map::tracked_empty(), _v: PhantomData, };
+        broadcast use super::set::fold::lemma_fold_empty;
         assert(Self::map_elems(Map::empty()) =~= Map::empty());
         return s;
     }

@@ -5,9 +5,10 @@ use crate::ast_to_sst_func::SstMap;
 use crate::context::Ctx;
 use crate::def::{unique_local, Spanned};
 use crate::messages::{error_with_label, warning, ToAny};
-use crate::sst::{BndX, CallFun, Exp, ExpX, FunctionSst, Stm, StmX, UniqueIdent};
+use crate::sst::{BndX, CallFun, Exp, ExpX, FuncCheckSst, FunctionSst, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{NoScoper, Rewrite, Visitor};
 use crate::triggers::build_triggers;
+use crate::visitor::Returner;
 use air::messages::Diagnostics;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,7 +17,7 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
     ctx: &Ctx,
     diagnostics: &D,
     fun_ssts: &HashMap<Fun, FunctionSst>,
-    is_native: &mut HashMap<VarIdent, bool>,
+    is_native: &mut Option<HashMap<VarIdent, bool>>,
     exp: &Exp,
 ) -> Result<Exp, VirErr> {
     match &exp.x {
@@ -24,7 +25,10 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
             let (fun, typs) =
                 if let Some((f, ts)) = resolved_method { (f, ts) } else { (fun, typs) };
             if let Some(func) = fun_ssts.get(fun) {
-                if func.x.attrs.inline && func.x.axioms.spec_axioms.is_some() {
+                if func.x.attrs.inline
+                    && func.x.axioms.spec_axioms.is_some()
+                    && func.x.kind.inline_okay()
+                {
                     let typ_params = &func.x.typ_params;
                     let pars = &func.x.pars;
                     let body = &func.x.axioms.spec_axioms.as_ref().unwrap().body_exp;
@@ -66,8 +70,10 @@ fn elaborate_one_exp<D: Diagnostics + ?Sized>(
                     assert!(assert_by_vars.len() == bs.len());
                     for (x, b) in assert_by_vars.iter().zip(bs.iter()) {
                         let native = natives.contains(&b.name);
-                        if let Some(n) = is_native.insert(x.clone(), native) {
-                            assert!(n == native);
+                        if let Some(is_native) = is_native {
+                            if let Some(n) = is_native.insert(x.clone(), native) {
+                                assert!(n == native);
+                            }
                         }
                     }
                 }
@@ -143,7 +149,7 @@ struct ElaborateVisitor1<'a, 'b, 'c, D: Diagnostics> {
     ctx: &'a Ctx,
     diagnostics: &'b D,
     fun_ssts: &'c HashMap<Fun, FunctionSst>,
-    is_native: HashMap<VarIdent, bool>,
+    is_native: Option<HashMap<VarIdent, bool>>,
 }
 
 impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
@@ -157,16 +163,38 @@ impl<'a, 'b, 'c, D: Diagnostics> Visitor<Rewrite, VirErr, NoScoper>
     fn visit_stm(&mut self, stm: &Stm) -> Result<Stm, VirErr> {
         self.visit_stm_rec(stm)
     }
+
+    fn visit_func_check(&mut self, def: &FuncCheckSst) -> Result<FuncCheckSst, VirErr> {
+        self.is_native = Some(HashMap::new());
+        let reqs = self.visit_exps(&def.reqs)?;
+        let post_condition = self.visit_postcondition(&def.post_condition)?;
+        let body = self.visit_stm(&def.body)?;
+        let local_decls =
+            Rewrite::map_vec(&def.local_decls, &mut |decl| self.visit_local_decl(decl))?;
+        let unwind = self.visit_unwind(&def.unwind)?;
+        let is_native = self.is_native.take().expect("is_native");
+
+        let mut def = FuncCheckSst {
+            reqs: Arc::new(reqs),
+            post_condition: Arc::new(post_condition),
+            unwind,
+            body,
+            local_decls: Arc::new(local_decls),
+            statics: def.statics.clone(),
+        };
+
+        rewrite_locals(&is_native, &mut def);
+
+        Ok(def)
+    }
 }
 
-impl<'a, 'b, 'c, D: Diagnostics> ElaborateVisitor1<'a, 'b, 'c, D> {
-    fn rewrite_locals(&self, function: &mut crate::sst::FuncCheckSst) {
-        for local in Arc::make_mut(&mut function.local_decls) {
-            use crate::sst::LocalDeclKind;
-            if matches!(local.kind, LocalDeclKind::AssertByVar { .. }) {
-                let native = self.is_native[&local.ident];
-                Arc::make_mut(local).kind = LocalDeclKind::AssertByVar { native };
-            }
+fn rewrite_locals(is_native: &HashMap<VarIdent, bool>, function: &mut crate::sst::FuncCheckSst) {
+    for local in Arc::make_mut(&mut function.local_decls) {
+        use crate::sst::LocalDeclKind;
+        if matches!(local.kind, LocalDeclKind::AssertByVar { .. }) {
+            let native = is_native[&local.ident];
+            Arc::make_mut(local).kind = LocalDeclKind::AssertByVar { native };
         }
     }
 }
@@ -191,20 +219,8 @@ pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
     fun_ssts: &'c HashMap<Fun, FunctionSst>,
     function: &mut FunctionSst,
 ) -> Result<(), VirErr> {
-    let mut visitor = ElaborateVisitor1 { ctx, diagnostics, fun_ssts, is_native: HashMap::new() };
+    let mut visitor = ElaborateVisitor1 { ctx, diagnostics, fun_ssts, is_native: None };
     *function = visitor.visit_function(function)?;
-    let function_mut = Arc::make_mut(function);
-    if let Some(check) = &mut function_mut.x.exec_proof_check {
-        visitor.rewrite_locals(Arc::make_mut(check));
-    }
-    if let Some(check) = &mut function_mut.x.recommends_check {
-        visitor.rewrite_locals(Arc::make_mut(check));
-    }
-    if let Some(axioms) = &mut Arc::make_mut(&mut function_mut.x.axioms).spec_axioms {
-        if let Some(check) = &mut axioms.termination_check {
-            visitor.rewrite_locals(check);
-        }
-    }
 
     if function.x.axioms.proof_exec_axioms.is_some() {
         let typ_params = function.x.typ_params.clone();

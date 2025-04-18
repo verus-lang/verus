@@ -153,7 +153,7 @@ impl ExpandErrorsDriver {
     /// for the root ID with a Fail result, then afterwards call `report`
     /// for the other queries.
     /// This will advance the current assert_id to the next assert_id that
-    /// should be queries.
+    /// should be queried.
     pub fn report(&mut self, ctx: &Ctx, assert_id: &AssertId, result: ExpandErrorsResult) {
         assert!(&self.current == &**assert_id);
         if assert_id.len() == 1 {
@@ -371,7 +371,7 @@ impl ExpandErrorsDriver {
             }
         }
 
-        let mut b: Vec<String> = vec!["diagnostics via expansion:\n".into()];
+        let mut b: Vec<String> = vec![];
 
         for (i, line) in self.output.iter().enumerate() {
             close_up_group_bars(&mut b, &mut group_bars, line.indent);
@@ -547,14 +547,24 @@ impl ExpandErrorsDriver {
         ctx: &Ctx,
         error_format: Option<ErrorOutputType>,
     ) -> air::messages::ArcDynMessage {
-        let s = if matches!(
-            error_format,
-            Some(rustc_session::config::ErrorOutputType::HumanReadable(
-                rustc_errors::emitter::HumanReadableErrorType::Short(_)
-            ))
-        ) {
-            "diagnostics via expansion".into()
-        } else {
+        // It's difficult to get our pretty output to work while using rust's
+        // error reporting. Thus, this output has to go out-of-band, which
+        // can be done through the fancy note. However, we only want to do this
+        // when necessary.
+
+        use rustc_errors::emitter::HumanReadableErrorType;
+        use rustc_session::config::ErrorOutputType;
+
+        let (in_fancy_note, in_msg) = match error_format {
+            Some(ErrorOutputType::HumanReadable(HumanReadableErrorType::Short, _)) => {
+                (false, false)
+            }
+            Some(ErrorOutputType::HumanReadable(_, _)) => (true, false),
+            Some(rustc_session::config::ErrorOutputType::Json { .. }) => (false, true),
+            None => (true, false),
+        };
+
+        let main_body = if in_fancy_note || in_msg {
             let mut s = self.get_output(ctx);
 
             if self.has_strange_result() {
@@ -567,11 +577,22 @@ impl ExpandErrorsDriver {
             }
 
             s
+        } else {
+            "".to_string()
         };
 
-        let mut note = vir::messages::note_bare(s);
+        let mut msg = "diagnostics via expansion".to_string();
+        if in_msg {
+            msg += "\n\n";
+            msg += &main_body;
+        }
+
+        let mut note = vir::messages::note_bare(msg);
         for (span, _) in self.spans.iter() {
             note = note.primary_span(span);
+        }
+        if in_fancy_note {
+            note = note.fancy_note(format!("\n\n{:}", main_body));
         }
 
         use vir::messages::ToAny;

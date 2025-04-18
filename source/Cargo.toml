@@ -4,6 +4,7 @@ members = [
   "air",
   "builtin",
   "builtin_macros",
+  "cargo-verus",
   "vir",
   "vir_macros",
   "rust_verify",
@@ -19,6 +20,8 @@ members = [
 ]
 exclude = [
   "vstd",
+  "examples/cargo-verus/library",
+  "examples/cargo-verus/test",
 ]
 
 [workspace.dependencies]

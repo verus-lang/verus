@@ -190,7 +190,7 @@ impl<'a> VisitMut for SelfVisitor<'a> {
     fn visit_path_mut(&mut self, path: &mut Path) {
         if path.leading_colon.is_none() && path.segments[0].ident.to_string() == "Self" {
             let orig_span = path.segments[0].ident.span();
-            let mut segments = Punctuated::<PathSegment, token::Colon2>::new();
+            let mut segments = Punctuated::<PathSegment, token::PathSep>::new();
             for seg in self.subst_path.segments.iter() {
                 let mut seg = seg.clone();
                 seg.ident = Ident::new(&seg.ident.to_string(), orig_span);

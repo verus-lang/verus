@@ -7,8 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{Fun, FunctionKind, ImplPath, ItemKind, Mode, Path, TraitImpl, VirErr};
 use vir::ast_to_sst_func::{mk_fun_ctx, mk_fun_ctx_dec};
-use vir::ast_util::fun_as_friendly_rust_name;
-use vir::ast_util::is_visible_to;
+use vir::ast_util::{fun_as_friendly_rust_name, is_body_visible_to, is_visible_to};
 use vir::def::{CommandsWithContext, SnapPos};
 use vir::mono::{collect_specializations, KrateSpecializations, PolyStrategy, Specialization};
 use vir::recursion::Node;
@@ -211,6 +210,26 @@ impl<'a> OpGenerator<'a> {
         for function in scc_functions.iter() {
             self.ctx.fun = mk_fun_ctx_dec(function, true, true);
             let verifying_owning_bucket = self.bucket.contains(&function.x.name);
+
+            let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
+                self.ctx,
+                function,
+                is_body_visible_to(&function.x.body_visibility, &module),
+                &Specialization::empty(),
+            )?;
+            self.ctx.fun = None;
+
+            if verifying_owning_bucket {
+                let snap_map = vec![];
+                let commands = Arc::new(check_commands);
+                query_ops.push(Op::query(
+                    QueryOp::SpecTermination,
+                    commands,
+                    snap_map,
+                    &function,
+                    None,
+                ));
+            }
             let op_kind = if function.x.axioms.proof_exec_axioms.is_some() {
                 ContextOp::Broadcast
             } else {
@@ -221,7 +240,7 @@ impl<'a> OpGenerator<'a> {
                     let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
                         self.ctx,
                         function,
-                        is_visible_to(&function.x.vis_abs, &module),
+                        is_body_visible_to(&function.x.body_visibility, &module),
                         spec,
                     )?;
                     self.ctx.fun = None;
@@ -243,7 +262,7 @@ impl<'a> OpGenerator<'a> {
                 let (decl_commands, check_commands) = vir::sst_to_air_func::func_axioms_to_air(
                     self.ctx,
                     function,
-                    is_visible_to(&function.x.vis_abs, &module),
+                    is_body_visible_to(&function.x.body_visibility, &module),
                     &Specialization::empty(),
                 )?;
                 self.ctx.fun = None;

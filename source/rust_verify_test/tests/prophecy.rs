@@ -10,9 +10,9 @@ const PROPH: &str = verus_code_str! {
 
     impl<T> Prophecy<T> {
         #[verifier::prophetic]
-        pub open spec fn value(&self) -> T;
+        pub uninterp spec fn value(&self) -> T;
 
-        pub open spec fn may_resolve(&self) -> bool;
+        pub uninterp spec fn may_resolve(&self) -> bool;
 
         #[verifier::external_body]
         pub proof fn new() -> (tracked s: Self)

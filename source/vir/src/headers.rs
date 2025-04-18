@@ -1,6 +1,7 @@
 use crate::ast::{
     Expr, ExprX, Exprs, Fun, Function, FunctionX, HeaderExprX, LoopInvariant, LoopInvariantKind,
     LoopInvariants, MaskSpec, Stmt, StmtX, Typ, UnwindSpec, UnwrapParameter, VarIdent, VirErr,
+    Visibility,
 };
 use crate::ast_util::{air_unique_var, params_equal_opt};
 use crate::def::VERUS_SPEC;
@@ -26,6 +27,7 @@ pub struct Header {
     pub invariant_mask: Option<MaskSpec>,
     pub unwind_spec: Option<UnwindSpec>,
     pub extra_dependencies: Vec<Fun>,
+    pub open_visibility_qualifier: Option<Visibility>,
 }
 
 pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
@@ -43,12 +45,13 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut decrease_by: Option<Fun> = None;
     let mut invariant_mask: Option<MaskSpec> = None;
     let mut unwind_spec: Option<UnwindSpec> = None;
+    let mut open_visibility_qualifier: Option<Visibility> = None;
     let mut n = 0;
     let mut unwrap_parameter_allowed = true;
     for stmt in block.iter() {
         let mut is_unwrap_parameter = false;
         match &stmt.x {
-            StmtX::Expr(expr) => match &expr.x {
+            StmtX::Expr(expr) => match &peel(expr).x {
                 ExprX::Header(header) => match &**header {
                     HeaderExprX::UnwrapParameter(unwrap) => {
                         if !unwrap_parameter_allowed {
@@ -147,7 +150,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                     HeaderExprX::ExtraDependency(x) => {
                         extra_dependencies.push(x.clone());
                     }
-                    HeaderExprX::InvariantOpens(es) => {
+                    HeaderExprX::InvariantOpens(span, es) => {
                         match invariant_mask {
                             None => {}
                             _ => {
@@ -157,9 +160,9 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                                 ));
                             }
                         }
-                        invariant_mask = Some(MaskSpec::InvariantOpens(es.clone()));
+                        invariant_mask = Some(MaskSpec::InvariantOpens(span.clone(), es.clone()));
                     }
-                    HeaderExprX::InvariantOpensExcept(es) => {
+                    HeaderExprX::InvariantOpensExcept(span, es) => {
                         match invariant_mask {
                             None => {}
                             _ => {
@@ -169,7 +172,20 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                                 ));
                             }
                         }
-                        invariant_mask = Some(MaskSpec::InvariantOpensExcept(es.clone()));
+                        invariant_mask =
+                            Some(MaskSpec::InvariantOpensExcept(span.clone(), es.clone()));
+                    }
+                    HeaderExprX::InvariantOpensSet(e) => {
+                        match invariant_mask {
+                            None => {}
+                            _ => {
+                                return Err(error(
+                                    &stmt.span,
+                                    "only one invariant mask spec allowed",
+                                ));
+                            }
+                        }
+                        invariant_mask = Some(MaskSpec::InvariantOpensSet(e.clone()));
                     }
                     HeaderExprX::NoUnwind | HeaderExprX::NoUnwindWhen(_) => {
                         match unwind_spec {
@@ -185,6 +201,18 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             }
                             _ => unreachable!(),
                         };
+                    }
+                    HeaderExprX::OpenVisibilityQualifier(v) => {
+                        match open_visibility_qualifier {
+                            None => {}
+                            _ => {
+                                return Err(error(
+                                    &stmt.span,
+                                    "only one open_visibility_qualifier declaration allowed",
+                                ));
+                            }
+                        }
+                        open_visibility_qualifier = Some(v.clone());
                     }
                 },
                 _ => break,
@@ -223,10 +251,13 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         invariant_mask,
         unwind_spec,
         extra_dependencies,
+        open_visibility_qualifier,
     })
 }
 
 pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
+    let body = peel_mut(body);
+
     #[derive(Clone, Copy)]
     enum NestedHeaderBlock {
         No,
@@ -293,7 +324,7 @@ pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
             }
             let mut header = read_header_block(&mut block)?;
             if let Some(e) = &expr {
-                if let ExprX::Header(h) = &e.x {
+                if let ExprX::Header(h) = &peel(e).x {
                     if let HeaderExprX::NoMethodBody = **h {
                         if block.len() != 0 {
                             return Err(error(
@@ -364,9 +395,10 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         proxy: _,
         kind: _,
         visibility: _,
+        body_visibility: _,
+        opaqueness,
         owning_module: _,
         mode: _,
-        fuel,
         typ_params,
         typ_bounds,
         params,
@@ -382,7 +414,6 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         mask_spec,
         unwind_spec,
         item_kind: _,
-        publish: _,
         attrs: _,
         body: _,
         extra_dependencies,
@@ -436,7 +467,7 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
             "method specification has a different return from method",
         ));
     }
-    methodx.fuel = fuel;
+    methodx.opaqueness = opaqueness;
     methodx.params = params; // this is important; the correct parameter modes are in spec_method
     methodx.ret = ret;
     methodx.require = require;
@@ -482,4 +513,21 @@ pub fn make_trait_decls(methods: Vec<Function>) -> Result<Vec<Function>, VirErr>
         return Err(error(&extra_spec.span, "no matching method found for method specification"));
     }
     Ok(decls)
+}
+
+fn peel(expr: &Expr) -> &Expr {
+    match &expr.x {
+        ExprX::NeverToAny(e) => e,
+        _ => expr,
+    }
+}
+
+fn peel_mut(expr: &mut Expr) -> &mut Expr {
+    match &expr.x {
+        ExprX::NeverToAny(_) => match &mut Arc::make_mut(expr).x {
+            ExprX::NeverToAny(e) => e,
+            _ => unreachable!(),
+        },
+        _ => expr,
+    }
 }

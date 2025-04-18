@@ -270,9 +270,9 @@ pub fn run_verus(
     std::thread::sleep(std::time::Duration::from_millis(1000));
 
     let mut verus_args = Vec::new();
-    let mut external_by_default = false;
+    let mut no_external_by_default = false;
     let mut is_core = false;
-    verus_args.push("--internal-test-mode".to_string());
+    let mut use_internal_test_mode = true;
 
     for option in options.iter() {
         if *option == "--expand-errors" {
@@ -283,23 +283,33 @@ pub fn run_verus(
             verus_args.push("--compile".to_string());
             verus_args.push("-o".to_string());
             verus_args.push(test_dir.join("libtest.rlib").to_str().expect("valid path").to_owned());
-        } else if *option == "--external-by-default" {
-            external_by_default = true;
+        } else if *option == "--no-external-by-default" {
+            no_external_by_default = true;
         } else if *option == "--no-lifetime" {
             verus_args.push("--no-lifetime".to_string());
+        } else if *option == "--no-cheating" {
+            verus_args.push("--no-cheating".to_string());
         } else if *option == "vstd" {
             // ignore
         } else if *option == "-V allow-inline-air" {
             verus_args.push("-V".to_string());
             verus_args.push("allow-inline-air".to_string());
+        } else if *option == "-V check-api-safety" {
+            verus_args.push("-V".to_string());
+            verus_args.push("check-api-safety".to_string());
         } else if *option == "--is-core" {
             verus_args.push("--is-core".to_string());
             is_core = true;
+        } else if *option == "--disable-internal-test-mode" {
+            use_internal_test_mode = false;
         } else {
             panic!("option '{}' not recognized by test harness", option);
         }
     }
-    if !external_by_default {
+    if use_internal_test_mode {
+        verus_args.insert(0, "--internal-test-mode".to_string());
+    }
+    if no_external_by_default {
         verus_args.push("--no-external-by-default".to_string());
     }
 
@@ -328,9 +338,8 @@ pub fn run_verus(
     verus_args.extend(extra_args.into_iter());
 
     verus_args.push(entry_file.to_str().unwrap().to_string());
-    verus_args.append(&mut vec!["--cfg".to_string(), "erasure_macro_todo".to_string()]);
 
-    if import_vstd && !is_core {
+    if import_vstd && !is_core && use_internal_test_mode {
         let lib_vstd_vir_path = verus_target_path.join("vstd.vir");
         let lib_vstd_vir_path = lib_vstd_vir_path.to_str().unwrap();
         let lib_vstd_path = verus_target_path.join("libvstd.rlib");
@@ -380,10 +389,12 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
     #![allow(unused_imports)]
     #![allow(unused_macros)]
     #![allow(deprecated)]
-    #![feature(exclusive_range_pattern)]
     #![feature(strict_provenance)]
     #![feature(allocator_api)]
     #![feature(proc_macro_hygiene)]
+    #![feature(const_refs_to_static)]
+    #![feature(never_type)]
+    #![feature(core_intrinsics)]
 
     use builtin::*;
     use builtin_macros::*;

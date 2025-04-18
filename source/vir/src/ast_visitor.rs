@@ -45,6 +45,7 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
             TypX::Poly => R::ret(|| typ.clone()),
             TypX::TypeId => R::ret(|| typ.clone()),
             TypX::ConstInt(_) => R::ret(|| typ.clone()),
+            TypX::ConstBool(_) => R::ret(|| typ.clone()),
             TypX::Air(_) => R::ret(|| typ.clone()),
             TypX::SpecFn(ts, tr) => {
                 let ts = self.visit_typs(ts)?;
@@ -518,6 +519,9 @@ where
                         }
                     }
                 }
+                ExprX::NeverToAny(e) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf))
+                }
             }
             VisitorControlFlow::Recurse
         }
@@ -544,10 +548,13 @@ where
         StmtX::Expr(e) => {
             expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
         }
-        StmtX::Decl { pattern, mode: _, init } => {
+        StmtX::Decl { pattern, mode: _, init, els } => {
             map.push_scope(true);
             if let Some(init) = init {
                 expr_visitor_control_flow!(expr_visitor_dfs(init, map, mf));
+            }
+            if let Some(els) = els {
+                expr_visitor_control_flow!(expr_visitor_dfs(els, map, mf));
             }
             insert_pattern_vars(map, &pattern, init.is_some());
             expr_visitor_control_flow!(pat_visitor_dfs(&pattern, map, mf));
@@ -607,9 +614,10 @@ where
         proxy: _,
         kind: _,
         visibility: _,
+        body_visibility: _,
+        opaqueness: _,
         owning_module: _,
         mode: _,
-        fuel: _,
         typ_params: _,
         typ_bounds: _,
         params,
@@ -625,7 +633,6 @@ where
         mask_spec,
         unwind_spec,
         item_kind: _,
-        publish: _,
         attrs: _,
         body,
         extra_dependencies: _,
@@ -662,10 +669,13 @@ where
     }
     match mask_spec {
         None => {}
-        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
+        Some(MaskSpec::InvariantOpens(_span, es) | MaskSpec::InvariantOpensExcept(_span, es)) => {
             for e in es.iter() {
                 expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
             }
+        }
+        Some(MaskSpec::InvariantOpensSet(e)) => {
+            expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf))
         }
     }
     match unwind_spec {
@@ -1068,12 +1078,16 @@ where
             ExprX::OpenInvariant(expr1, binder, expr2, *atomicity)
         }
         ExprX::AirStmt(s) => ExprX::AirStmt(s.clone()),
+        ExprX::NeverToAny(e) => {
+            let expr = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
+            ExprX::NeverToAny(expr)
+        }
     };
     let expr = SpannedTyped::new(&expr.span, &map_typ_visitor_env(&expr.typ, env, ft)?, exprx);
     fe(env, map, &expr)
 }
 
-pub(crate) fn map_expr_visitor<FE>(expr: &Expr, fe: &FE) -> Result<Expr, VirErr>
+pub fn map_expr_visitor<FE>(expr: &Expr, fe: &FE) -> Result<Expr, VirErr>
 where
     FE: Fn(&Expr) -> Result<Expr, VirErr>,
 {
@@ -1105,12 +1119,14 @@ where
             let expr = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
             fs(env, map, &Spanned::new(stmt.span.clone(), StmtX::Expr(expr)))
         }
-        StmtX::Decl { pattern, mode, init } => {
+        StmtX::Decl { pattern, mode, init, els } => {
             let pattern = map_pattern_visitor_env(pattern, map, env, fe, fs, ft)?;
             let init =
                 init.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
             insert_pattern_vars(map, &pattern, init.is_some());
-            let decl = StmtX::Decl { pattern, mode: *mode, init };
+            let els =
+                els.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
+            let decl = StmtX::Decl { pattern, mode: *mode, init, els };
             fs(env, map, &Spanned::new(stmt.span.clone(), decl))
         }
     }
@@ -1197,9 +1213,10 @@ where
         proxy,
         kind,
         visibility,
+        body_visibility,
+        opaqueness,
         owning_module,
         mode,
-        fuel,
         typ_params,
         typ_bounds,
         params,
@@ -1215,7 +1232,6 @@ where
         mask_spec,
         unwind_spec,
         item_kind,
-        publish,
         attrs,
         body,
         extra_dependencies,
@@ -1249,9 +1265,10 @@ where
         }
     };
     let visibility = visibility.clone();
+    let body_visibility = body_visibility.clone();
+    let opaqueness = opaqueness.clone();
     let owning_module = owning_module.clone();
     let mode = *mode;
-    let fuel = *fuel;
     let typ_bounds = map_generic_bounds_visitor(typ_bounds, env, ft)?;
     map.push_scope(true);
     let params = map_params_visitor(params, env, ft)?;
@@ -1287,15 +1304,16 @@ where
 
     let mask_spec = match mask_spec {
         None => None,
-        Some(MaskSpec::InvariantOpens(es)) => {
-            Some(MaskSpec::InvariantOpens(Arc::new(vec_map_result(es, |e| {
-                map_expr_visitor_env(e, map, env, fe, fs, ft)
-            })?)))
-        }
-        Some(MaskSpec::InvariantOpensExcept(es)) => {
-            Some(MaskSpec::InvariantOpensExcept(Arc::new(vec_map_result(es, |e| {
-                map_expr_visitor_env(e, map, env, fe, fs, ft)
-            })?)))
+        Some(MaskSpec::InvariantOpens(span, es)) => Some(MaskSpec::InvariantOpens(
+            span.clone(),
+            Arc::new(vec_map_result(es, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?),
+        )),
+        Some(MaskSpec::InvariantOpensExcept(span, es)) => Some(MaskSpec::InvariantOpensExcept(
+            span.clone(),
+            Arc::new(vec_map_result(es, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?),
+        )),
+        Some(MaskSpec::InvariantOpensSet(e)) => {
+            Some(MaskSpec::InvariantOpensSet(map_expr_visitor_env(e, map, env, fe, fs, ft)?))
         }
     };
     let unwind_spec = match unwind_spec {
@@ -1309,7 +1327,6 @@ where
     let attrs = attrs.clone();
     let extra_dependencies = extra_dependencies.clone();
     let item_kind = *item_kind;
-    let publish = *publish;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
 
@@ -1329,9 +1346,10 @@ where
         proxy,
         kind,
         visibility,
+        body_visibility,
+        opaqueness,
         owning_module,
         mode,
-        fuel,
         typ_params: typ_params.clone(),
         typ_bounds,
         params,
@@ -1347,7 +1365,6 @@ where
         mask_spec,
         unwind_spec,
         item_kind,
-        publish,
         attrs,
         body,
         extra_dependencies,

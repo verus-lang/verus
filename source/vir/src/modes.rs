@@ -1516,6 +1516,13 @@ fn check_expr_handle_mut_arg(
             Ok(Mode::Exec)
         }
         ExprX::AirStmt(_) => Ok(Mode::Exec),
+        ExprX::NeverToAny(e) => {
+            let mode = check_expr(ctxt, record, typing, outer_mode, e)?;
+            if mode == Mode::Spec {
+                return Err(error(&expr.span, "never-to-any coercion is not allowed in spec mode"));
+            }
+            Ok(mode)
+        }
     };
     Ok((mode?, None))
 }
@@ -1532,7 +1539,7 @@ fn check_stmt(
             let _ = check_expr(ctxt, record, typing, outer_mode, e)?;
             Ok(())
         }
-        StmtX::Decl { pattern, mode: None, init } => {
+        StmtX::Decl { pattern, mode: None, init, els: _ } => {
             // Special case mode inference just for our encoding of "let tracked pat = ..."
             // in Rust as "let xl; ... { let pat ... xl = xr; }".
             match (&pattern.x, init) {
@@ -1543,7 +1550,7 @@ fn check_stmt(
             }
             Ok(())
         }
-        StmtX::Decl { pattern, mode: Some(mode), init } => {
+        StmtX::Decl { pattern, mode: Some(mode), init, els } => {
             let mode = if typing.block_ghostness != Ghost::Exec && *mode == Mode::Exec {
                 Mode::Spec
             } else {
@@ -1563,6 +1570,15 @@ fn check_stmt(
             match init.as_ref() {
                 None => {}
                 Some(expr) => {
+                    check_expr_has_mode(ctxt, record, typing, outer_mode, expr, mode)?;
+                }
+            }
+            match els.as_ref() {
+                None => {}
+                Some(expr) => {
+                    if mode != Mode::Exec {
+                        return Err(error(&stmt.span, "let-else only work in exec mode"));
+                    }
                     check_expr_has_mode(ctxt, record, typing, outer_mode, expr, mode)?;
                 }
             }

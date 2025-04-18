@@ -390,15 +390,11 @@ impl<K: Copy + TotalOrdered, V: Clone> Clone for Node<K, V> {
             self.well_formed() ==> res.well_formed(),
             self.as_map().dom() =~= res.as_map().dom(),
             forall |key| #[trigger] res.as_map().dom().contains(key) ==>
-                call_ensures(V::clone, (&self.as_map()[key],), res.as_map()[key])
+                cloned::<V>(self.as_map()[key], res.as_map()[key])
     {
-        // TODO(fixme): Assigning V::clone to a variable is a hack needed to work around
-        // this issue: https://github.com/verus-lang/verus/issues/1348
-        let v_clone = V::clone;
-
         let res = Node {
             key: self.key,
-            value: v_clone(&self.value),
+            value: self.value.clone(),
             // Ordinarily, we would use Option<Node>::clone rather than inlining
             // the case statement here; we write it this way to work around
             // this issue: https://github.com/verus-lang/verus/issues/1346
@@ -428,7 +424,7 @@ impl<K: Copy + TotalOrdered, V: Clone> Clone for TreeMap<K, V> {
     fn clone(&self) -> (res: Self)
         ensures self@.dom() =~= res@.dom(),
             forall |key| #[trigger] res@.dom().contains(key) ==>
-                call_ensures(V::clone, (&self@[key],), res@[key])
+                cloned::<V>(self@[key], res@[key])
 // ANCHOR_END: clone_signature
     {
         proof {
@@ -515,7 +511,7 @@ fn test_clone_int_wrapper(tree_map: TreeMap<u64, IntWrapper>) {
 // ANCHOR_END: clone_int_wrapper
 
 // ANCHOR: clone_weird_int
-struct WeirdInt {
+pub struct WeirdInt {
     pub int_value: u32,
     pub other: u32,
 }

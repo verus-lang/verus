@@ -503,7 +503,7 @@ test_verify_one_file! {
 
 test_verify_one_file_with_options! {
     #[test] shift_regression_928_1 ["vstd"] => verus_code! {
-        pub open spec fn id(x:int) -> int;
+        pub spec fn id(x:int) -> int;
 
         pub proof fn bar() {
             assert(
@@ -665,4 +665,101 @@ test_verify_one_file! {
             assert(prop(size));
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] default_impl_1_issue1406 verus_code! {
+        trait Tr {
+            spec fn foo(&self) -> bool { true }
+        }
+
+        struct X { }
+
+        impl Tr for X {
+            spec fn foo(&self) -> bool { false }
+        }
+
+        spec fn foo_wrapper<T: Tr>(t: &T) -> bool {
+            t.foo()
+        }
+
+        proof fn test2() {
+            let x = X { };
+            assert(foo_wrapper(&x)) by(compute); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] default_impl_2_issue1406 verus_code! {
+        trait Tr {
+            spec fn foo(&self) -> bool { true }
+        }
+
+        spec fn foo_wrapper<T: Tr>(t: &T) -> bool {
+            t.foo()
+        }
+
+        proof fn test3<T: Tr>(t: &T) {
+            assert(foo_wrapper(t)) by(compute); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] default_impl_compute_only_1_issue1406 verus_code! {
+        trait Tr {
+            spec fn foo(&self) -> bool { true }
+        }
+
+        struct X { }
+
+        impl Tr for X {
+            spec fn foo(&self) -> bool { false }
+        }
+
+        spec fn foo_wrapper<T: Tr>(t: &T) -> bool {
+            t.foo()
+        }
+
+        proof fn test2() {
+            let x = X { };
+            assert(foo_wrapper(&x)) by(compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] default_impl_compute_only_2_issue1406 verus_code! {
+        trait Tr {
+            spec fn foo(&self) -> bool { true }
+        }
+
+        spec fn foo_wrapper<T: Tr>(t: &T) -> bool {
+            t.foo()
+        }
+
+        proof fn test3<T: Tr>(t: &T) {
+            assert(foo_wrapper(t)) by(compute_only);
+        }
+    } => Err(err) => assert_vir_error_msg(err, "failed to simplify down to true")
+}
+
+test_verify_one_file! {
+    #[test] type_args_issue1446 verus_code! {
+        trait Tr {
+            spec fn foo() -> bool;
+        }
+
+        spec fn hello<A: Tr, B: Tr>() -> bool {
+            A::foo()
+        }
+
+        proof fn test<A: Tr, B: Tr>()
+            requires A::foo(),
+        {
+            assert(hello::<B, A>()) by(compute); // FAILS
+            assert(B::foo());
+        }
+    } => Err(err) => assert_fails(err, 1)
 }

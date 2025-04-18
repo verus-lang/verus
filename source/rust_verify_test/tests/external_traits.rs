@@ -22,7 +22,7 @@ test_verify_one_file! {
         fn ex_foo() {
             X::foo()
         }
-    } => Err(err) => assert_vir_error_msg(err, "using external_fn_specification for this function requires you to specify all other functions for the same trait impl, but the method `bar` is missing")
+    } => Err(err) => assert_vir_error_msg(err, "using assume_specification for this function requires you to specify all other functions for the same trait impl, but the method `bar` is missing")
 }
 
 test_verify_one_file! {
@@ -54,7 +54,7 @@ test_verify_one_file! {
         fn ex_bar() {
             X::bar()
         }
-    } => Err(err) => assert_vir_error_msg(err, "duplicate external_fn_specification for this method")
+    } => Err(err) => assert_vir_error_msg(err, "duplicate assume_specification for this method")
 }
 
 test_verify_one_file! {
@@ -103,7 +103,7 @@ test_verify_one_file! {
             X::foo()
         }
 
-        spec fn llama() -> bool;
+        uninterp spec fn llama() -> bool;
 
         #[verifier::external_fn_specification]
         fn ex_bar()
@@ -281,8 +281,8 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
-test_verify_one_file! {
-    #[test] test_trait4 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_trait4 ["--disable-internal-test-mode"] => verus_code! {
         #[verifier::external_trait_specification]
         pub trait ExIntoIterator {
             type ExternalTraitSpecificationFor: core::iter::IntoIterator;

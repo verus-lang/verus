@@ -125,14 +125,14 @@ tokenized_state_machine!(RefCounter<Perm> {
     fn dec_to_zero_inductive(pre: Self, post: Self, x: Perm) { }
 });
 
-struct InnerArc<S> {
+pub struct InnerArc<S> {
     pub rc_cell: PAtomicU64,
     pub s: S,
 }
 
-type MemPerms<S> = simple_pptr::PointsTo<InnerArc<S>>;
+pub type MemPerms<S> = simple_pptr::PointsTo<InnerArc<S>>;
 
-tracked struct GhostStuff<S> {
+pub tracked struct GhostStuff<S> {
     pub tracked rc_perm: PermissionU64,
     pub tracked rc_token: RefCounter::counter<MemPerms<S>>,
 }
@@ -249,7 +249,6 @@ impl<S> MyArc<S> {
             open_atomic_invariant!(self.inv.borrow().borrow() => g => {
                 let tracked GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
 
-                let count = count + 1;
                 res = inner_rc_ref.rc_cell.compare_exchange_weak(Tracked(&mut rc_perm), count, count + 1);
 
                 proof {

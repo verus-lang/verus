@@ -1,0 +1,1142 @@
+a.struct[title="struct syn::token::Abstract"],
+a.struct[title="struct syn::token::And"],
+a.struct[title="struct syn::token::AndAnd"],
+a.struct[title="struct syn::token::AndEq"],
+a.struct[title="struct syn::token::As"],
+a.struct[title="struct syn::token::Assert"],
+a.struct[title="struct syn::token::Assume"],
+a.struct[title="struct syn::token::AssumeSpecification"],
+a.struct[title="struct syn::token::Async"],
+a.struct[title="struct syn::token::At"],
+a.struct[title="struct syn::token::Auto"],
+a.struct[title="struct syn::token::Await"],
+a.struct[title="struct syn::token::Become"],
+a.struct[title="struct syn::token::BigAnd"],
+a.struct[title="struct syn::token::BigOr"],
+a.struct[title="struct syn::token::Box"],
+a.struct[title="struct syn::token::Break"],
+a.struct[title="struct syn::token::Broadcast"],
+a.struct[title="struct syn::token::BroadcastGroup"],
+a.struct[title="struct syn::token::By"],
+a.struct[title="struct syn::token::Caret"],
+a.struct[title="struct syn::token::CaretEq"],
+a.struct[title="struct syn::token::Choose"],
+a.struct[title="struct syn::token::Closed"],
+a.struct[title="struct syn::token::Colon"],
+a.struct[title="struct syn::token::Comma"],
+a.struct[title="struct syn::token::Const"],
+a.struct[title="struct syn::token::Continue"],
+a.struct[title="struct syn::token::Crate"],
+a.struct[title="struct syn::token::Decreases"],
+a.struct[title="struct syn::token::Default"],
+a.struct[title="struct syn::token::Do"],
+a.struct[title="struct syn::token::Dollar"],
+a.struct[title="struct syn::token::Dot"],
+a.struct[title="struct syn::token::DotDot"],
+a.struct[title="struct syn::token::DotDotDot"],
+a.struct[title="struct syn::token::DotDotEq"],
+a.struct[title="struct syn::token::Dyn"],
+a.struct[title="struct syn::token::Else"],
+a.struct[title="struct syn::token::Ensures"],
+a.struct[title="struct syn::token::Enum"],
+a.struct[title="struct syn::token::Eq"],
+a.struct[title="struct syn::token::EqEq"],
+a.struct[title="struct syn::token::EqEqEq"],
+a.struct[title="struct syn::token::Equiv"],
+a.struct[title="struct syn::token::Exec"],
+a.struct[title="struct syn::token::Exists"],
+a.struct[title="struct syn::token::Exply"],
+a.struct[title="struct syn::token::Extern"],
+a.struct[title="struct syn::token::FatArrow"],
+a.struct[title="struct syn::token::Final"],
+a.struct[title="struct syn::token::Fn"],
+a.struct[title="struct syn::token::FnSpec"],
+a.struct[title="struct syn::token::For"],
+a.struct[title="struct syn::token::Forall"],
+a.struct[title="struct syn::token::Ge"],
+a.struct[title="struct syn::token::Ghost"],
+a.struct[title="struct syn::token::Global"],
+a.struct[title="struct syn::token::Gt"],
+a.struct[title="struct syn::token::Has"],
+a.struct[title="struct syn::token::HasNot"],
+a.struct[title="struct syn::token::Hide"],
+a.struct[title="struct syn::token::If"],
+a.struct[title="struct syn::token::Impl"],
+a.struct[title="struct syn::token::Implies"],
+a.struct[title="struct syn::token::Imply"],
+a.struct[title="struct syn::token::In"],
+a.struct[title="struct syn::token::InvAny"],
+a.struct[title="struct syn::token::InvNone"],
+a.struct[title="struct syn::token::Invariant"],
+a.struct[title="struct syn::token::InvariantEnsures"],
+a.struct[title="struct syn::token::InvariantExceptBreak"],
+a.struct[title="struct syn::token::Is"],
+a.struct[title="struct syn::token::IsNot"],
+a.struct[title="struct syn::token::LArrow"],
+a.struct[title="struct syn::token::Layout"],
+a.struct[title="struct syn::token::Le"],
+a.struct[title="struct syn::token::Let"],
+a.struct[title="struct syn::token::Loop"],
+a.struct[title="struct syn::token::Lt"],
+a.struct[title="struct syn::token::Macro"],
+a.struct[title="struct syn::token::Match"],
+a.struct[title="struct syn::token::Matches"],
+a.struct[title="struct syn::token::Minus"],
+a.struct[title="struct syn::token::MinusEq"],
+a.struct[title="struct syn::token::Mod"],
+a.struct[title="struct syn::token::Move"],
+a.struct[title="struct syn::token::Mut"],
+a.struct[title="struct syn::token::Ne"],
+a.struct[title="struct syn::token::NeEq"],
+a.struct[title="struct syn::token::NoUnwind"],
+a.struct[title="struct syn::token::Not"],
+a.struct[title="struct syn::token::Open"],
+a.struct[title="struct syn::token::OpensInvariants"],
+a.struct[title="struct syn::token::Or"],
+a.struct[title="struct syn::token::OrEq"],
+a.struct[title="struct syn::token::OrOr"],
+a.struct[title="struct syn::token::Override"],
+a.struct[title="struct syn::token::PathSep"],
+a.struct[title="struct syn::token::Percent"],
+a.struct[title="struct syn::token::PercentEq"],
+a.struct[title="struct syn::token::Plus"],
+a.struct[title="struct syn::token::PlusEq"],
+a.struct[title="struct syn::token::Pound"],
+a.struct[title="struct syn::token::Priv"],
+a.struct[title="struct syn::token::Proof"],
+a.struct[title="struct syn::token::Pub"],
+a.struct[title="struct syn::token::Question"],
+a.struct[title="struct syn::token::RArrow"],
+a.struct[title="struct syn::token::Raw"],
+a.struct[title="struct syn::token::Recommends"],
+a.struct[title="struct syn::token::Ref"],
+a.struct[title="struct syn::token::Requires"],
+a.struct[title="struct syn::token::Return"],
+a.struct[title="struct syn::token::Returns"],
+a.struct[title="struct syn::token::Reveal"],
+a.struct[title="struct syn::token::RevealWithFuel"],
+a.struct[title="struct syn::token::SelfType"],
+a.struct[title="struct syn::token::SelfValue"],
+a.struct[title="struct syn::token::Semi"],
+a.struct[title="struct syn::token::Shl"],
+a.struct[title="struct syn::token::ShlEq"],
+a.struct[title="struct syn::token::Shr"],
+a.struct[title="struct syn::token::ShrEq"],
+a.struct[title="struct syn::token::SizeOf"],
+a.struct[title="struct syn::token::Slash"],
+a.struct[title="struct syn::token::SlashEq"],
+a.struct[title="struct syn::token::Spec"],
+a.struct[title="struct syn::token::SpecFn"],
+a.struct[title="struct syn::token::Star"],
+a.struct[title="struct syn::token::StarEq"],
+a.struct[title="struct syn::token::Static"],
+a.struct[title="struct syn::token::Struct"],
+a.struct[title="struct syn::token::Super"],
+a.struct[title="struct syn::token::Tilde"],
+a.struct[title="struct syn::token::TildeEq"],
+a.struct[title="struct syn::token::TildeNe"],
+a.struct[title="struct syn::token::TildeTildeEq"],
+a.struct[title="struct syn::token::TildeTildeNe"],
+a.struct[title="struct syn::token::Tracked"],
+a.struct[title="struct syn::token::Trait"],
+a.struct[title="struct syn::token::Try"],
+a.struct[title="struct syn::token::Type"],
+a.struct[title="struct syn::token::Typeof"],
+a.struct[title="struct syn::token::Underscore"],
+a.struct[title="struct syn::token::Uninterp"],
+a.struct[title="struct syn::token::Union"],
+a.struct[title="struct syn::token::Unsafe"],
+a.struct[title="struct syn::token::Unsized"],
+a.struct[title="struct syn::token::Use"],
+a.struct[title="struct syn::token::Via"],
+a.struct[title="struct syn::token::Virtual"],
+a.struct[title="struct syn::token::When"],
+a.struct[title="struct syn::token::Where"],
+a.struct[title="struct syn::token::While"],
+a.struct[title="struct syn::token::Yield"] {
+	display: inline-block;
+	color: transparent;
+	white-space: nowrap;
+}
+
+a.struct[title="struct syn::token::Abstract"]::before,
+a.struct[title="struct syn::token::And"]::before,
+a.struct[title="struct syn::token::AndAnd"]::before,
+a.struct[title="struct syn::token::AndEq"]::before,
+a.struct[title="struct syn::token::As"]::before,
+a.struct[title="struct syn::token::Assert"]::before,
+a.struct[title="struct syn::token::Assume"]::before,
+a.struct[title="struct syn::token::AssumeSpecification"]::before,
+a.struct[title="struct syn::token::Async"]::before,
+a.struct[title="struct syn::token::At"]::before,
+a.struct[title="struct syn::token::Auto"]::before,
+a.struct[title="struct syn::token::Await"]::before,
+a.struct[title="struct syn::token::Become"]::before,
+a.struct[title="struct syn::token::BigAnd"]::before,
+a.struct[title="struct syn::token::BigOr"]::before,
+a.struct[title="struct syn::token::Box"]::before,
+a.struct[title="struct syn::token::Break"]::before,
+a.struct[title="struct syn::token::Broadcast"]::before,
+a.struct[title="struct syn::token::BroadcastGroup"]::before,
+a.struct[title="struct syn::token::By"]::before,
+a.struct[title="struct syn::token::Caret"]::before,
+a.struct[title="struct syn::token::CaretEq"]::before,
+a.struct[title="struct syn::token::Choose"]::before,
+a.struct[title="struct syn::token::Closed"]::before,
+a.struct[title="struct syn::token::Colon"]::before,
+a.struct[title="struct syn::token::Comma"]::before,
+a.struct[title="struct syn::token::Const"]::before,
+a.struct[title="struct syn::token::Continue"]::before,
+a.struct[title="struct syn::token::Crate"]::before,
+a.struct[title="struct syn::token::Decreases"]::before,
+a.struct[title="struct syn::token::Default"]::before,
+a.struct[title="struct syn::token::Do"]::before,
+a.struct[title="struct syn::token::Dollar"]::before,
+a.struct[title="struct syn::token::Dot"]::before,
+a.struct[title="struct syn::token::DotDot"]::before,
+a.struct[title="struct syn::token::DotDotDot"]::before,
+a.struct[title="struct syn::token::DotDotEq"]::before,
+a.struct[title="struct syn::token::Dyn"]::before,
+a.struct[title="struct syn::token::Else"]::before,
+a.struct[title="struct syn::token::Ensures"]::before,
+a.struct[title="struct syn::token::Enum"]::before,
+a.struct[title="struct syn::token::Eq"]::before,
+a.struct[title="struct syn::token::EqEq"]::before,
+a.struct[title="struct syn::token::EqEqEq"]::before,
+a.struct[title="struct syn::token::Equiv"]::before,
+a.struct[title="struct syn::token::Exec"]::before,
+a.struct[title="struct syn::token::Exists"]::before,
+a.struct[title="struct syn::token::Exply"]::before,
+a.struct[title="struct syn::token::Extern"]::before,
+a.struct[title="struct syn::token::FatArrow"]::before,
+a.struct[title="struct syn::token::Final"]::before,
+a.struct[title="struct syn::token::Fn"]::before,
+a.struct[title="struct syn::token::FnSpec"]::before,
+a.struct[title="struct syn::token::For"]::before,
+a.struct[title="struct syn::token::Forall"]::before,
+a.struct[title="struct syn::token::Ge"]::before,
+a.struct[title="struct syn::token::Ghost"]::before,
+a.struct[title="struct syn::token::Global"]::before,
+a.struct[title="struct syn::token::Gt"]::before,
+a.struct[title="struct syn::token::Has"]::before,
+a.struct[title="struct syn::token::HasNot"]::before,
+a.struct[title="struct syn::token::Hide"]::before,
+a.struct[title="struct syn::token::If"]::before,
+a.struct[title="struct syn::token::Impl"]::before,
+a.struct[title="struct syn::token::Implies"]::before,
+a.struct[title="struct syn::token::Imply"]::before,
+a.struct[title="struct syn::token::In"]::before,
+a.struct[title="struct syn::token::InvAny"]::before,
+a.struct[title="struct syn::token::InvNone"]::before,
+a.struct[title="struct syn::token::Invariant"]::before,
+a.struct[title="struct syn::token::InvariantEnsures"]::before,
+a.struct[title="struct syn::token::InvariantExceptBreak"]::before,
+a.struct[title="struct syn::token::Is"]::before,
+a.struct[title="struct syn::token::IsNot"]::before,
+a.struct[title="struct syn::token::LArrow"]::before,
+a.struct[title="struct syn::token::Layout"]::before,
+a.struct[title="struct syn::token::Le"]::before,
+a.struct[title="struct syn::token::Let"]::before,
+a.struct[title="struct syn::token::Loop"]::before,
+a.struct[title="struct syn::token::Lt"]::before,
+a.struct[title="struct syn::token::Macro"]::before,
+a.struct[title="struct syn::token::Match"]::before,
+a.struct[title="struct syn::token::Matches"]::before,
+a.struct[title="struct syn::token::Minus"]::before,
+a.struct[title="struct syn::token::MinusEq"]::before,
+a.struct[title="struct syn::token::Mod"]::before,
+a.struct[title="struct syn::token::Move"]::before,
+a.struct[title="struct syn::token::Mut"]::before,
+a.struct[title="struct syn::token::Ne"]::before,
+a.struct[title="struct syn::token::NeEq"]::before,
+a.struct[title="struct syn::token::NoUnwind"]::before,
+a.struct[title="struct syn::token::Not"]::before,
+a.struct[title="struct syn::token::Open"]::before,
+a.struct[title="struct syn::token::OpensInvariants"]::before,
+a.struct[title="struct syn::token::Or"]::before,
+a.struct[title="struct syn::token::OrEq"]::before,
+a.struct[title="struct syn::token::OrOr"]::before,
+a.struct[title="struct syn::token::Override"]::before,
+a.struct[title="struct syn::token::PathSep"]::before,
+a.struct[title="struct syn::token::Percent"]::before,
+a.struct[title="struct syn::token::PercentEq"]::before,
+a.struct[title="struct syn::token::Plus"]::before,
+a.struct[title="struct syn::token::PlusEq"]::before,
+a.struct[title="struct syn::token::Pound"]::before,
+a.struct[title="struct syn::token::Priv"]::before,
+a.struct[title="struct syn::token::Proof"]::before,
+a.struct[title="struct syn::token::Pub"]::before,
+a.struct[title="struct syn::token::Question"]::before,
+a.struct[title="struct syn::token::RArrow"]::before,
+a.struct[title="struct syn::token::Raw"]::before,
+a.struct[title="struct syn::token::Recommends"]::before,
+a.struct[title="struct syn::token::Ref"]::before,
+a.struct[title="struct syn::token::Requires"]::before,
+a.struct[title="struct syn::token::Return"]::before,
+a.struct[title="struct syn::token::Returns"]::before,
+a.struct[title="struct syn::token::Reveal"]::before,
+a.struct[title="struct syn::token::RevealWithFuel"]::before,
+a.struct[title="struct syn::token::SelfType"]::before,
+a.struct[title="struct syn::token::SelfValue"]::before,
+a.struct[title="struct syn::token::Semi"]::before,
+a.struct[title="struct syn::token::Shl"]::before,
+a.struct[title="struct syn::token::ShlEq"]::before,
+a.struct[title="struct syn::token::Shr"]::before,
+a.struct[title="struct syn::token::ShrEq"]::before,
+a.struct[title="struct syn::token::SizeOf"]::before,
+a.struct[title="struct syn::token::Slash"]::before,
+a.struct[title="struct syn::token::SlashEq"]::before,
+a.struct[title="struct syn::token::Spec"]::before,
+a.struct[title="struct syn::token::SpecFn"]::before,
+a.struct[title="struct syn::token::Star"]::before,
+a.struct[title="struct syn::token::StarEq"]::before,
+a.struct[title="struct syn::token::Static"]::before,
+a.struct[title="struct syn::token::Struct"]::before,
+a.struct[title="struct syn::token::Super"]::before,
+a.struct[title="struct syn::token::Tilde"]::before,
+a.struct[title="struct syn::token::TildeEq"]::before,
+a.struct[title="struct syn::token::TildeNe"]::before,
+a.struct[title="struct syn::token::TildeTildeEq"]::before,
+a.struct[title="struct syn::token::TildeTildeNe"]::before,
+a.struct[title="struct syn::token::Tracked"]::before,
+a.struct[title="struct syn::token::Trait"]::before,
+a.struct[title="struct syn::token::Try"]::before,
+a.struct[title="struct syn::token::Type"]::before,
+a.struct[title="struct syn::token::Typeof"]::before,
+a.struct[title="struct syn::token::Underscore"]::before,
+a.struct[title="struct syn::token::Uninterp"]::before,
+a.struct[title="struct syn::token::Union"]::before,
+a.struct[title="struct syn::token::Unsafe"]::before,
+a.struct[title="struct syn::token::Unsized"]::before,
+a.struct[title="struct syn::token::Use"]::before,
+a.struct[title="struct syn::token::Via"]::before,
+a.struct[title="struct syn::token::Virtual"]::before,
+a.struct[title="struct syn::token::When"]::before,
+a.struct[title="struct syn::token::Where"]::before,
+a.struct[title="struct syn::token::While"]::before,
+a.struct[title="struct syn::token::Yield"]::before {
+	display: inline-block;
+	color: var(--type-link-color);
+	width: 0;
+}
+
+a.struct[title="struct syn::token::Abstract"]::before {
+	content: "Token![abstract]";
+}
+
+a.struct[title="struct syn::token::And"]::before {
+	content: "Token![&]";
+}
+
+a.struct[title="struct syn::token::AndAnd"]::before {
+	content: "Token![&&]";
+}
+
+a.struct[title="struct syn::token::AndEq"]::before {
+	content: "Token![&=]";
+}
+
+a.struct[title="struct syn::token::As"]::before {
+	content: "Token![as]";
+}
+
+a.struct[title="struct syn::token::Assert"]::before {
+	content: "Token![assert]";
+}
+
+a.struct[title="struct syn::token::Assume"]::before {
+	content: "Token![assume]";
+}
+
+a.struct[title="struct syn::token::AssumeSpecification"]::before {
+	content: "Token![assume_specification]";
+}
+
+a.struct[title="struct syn::token::Async"]::before {
+	content: "Token![async]";
+}
+
+a.struct[title="struct syn::token::At"]::before {
+	content: "Token![@]";
+}
+
+a.struct[title="struct syn::token::Auto"]::before {
+	content: "Token![auto]";
+}
+
+a.struct[title="struct syn::token::Await"]::before {
+	content: "Token![await]";
+}
+
+a.struct[title="struct syn::token::Become"]::before {
+	content: "Token![become]";
+}
+
+a.struct[title="struct syn::token::BigAnd"]::before {
+	content: "Token![&&&]";
+}
+
+a.struct[title="struct syn::token::BigOr"]::before {
+	content: "Token![|||]";
+}
+
+a.struct[title="struct syn::token::Box"]::before {
+	content: "Token![box]";
+}
+
+a.struct[title="struct syn::token::Break"]::before {
+	content: "Token![break]";
+}
+
+a.struct[title="struct syn::token::Broadcast"]::before {
+	content: "Token![broadcast]";
+}
+
+a.struct[title="struct syn::token::BroadcastGroup"]::before {
+	content: "Token![group]";
+	font-size: calc(100% * 14 / 13);
+}
+
+a.struct[title="struct syn::token::By"]::before {
+	content: "Token![by]";
+}
+
+a.struct[title="struct syn::token::Caret"]::before {
+	content: "Token![^]";
+}
+
+a.struct[title="struct syn::token::CaretEq"]::before {
+	content: "Token![^=]";
+}
+
+a.struct[title="struct syn::token::Choose"]::before {
+	content: "Token![choose]";
+}
+
+a.struct[title="struct syn::token::Closed"]::before {
+	content: "Token![closed]";
+}
+
+a.struct[title="struct syn::token::Colon"]::before {
+	content: "Token![:]";
+}
+
+a.struct[title="struct syn::token::Comma"]::before {
+	content: "Token![,]";
+}
+
+a.struct[title="struct syn::token::Const"]::before {
+	content: "Token![const]";
+}
+
+a.struct[title="struct syn::token::Continue"]::before {
+	content: "Token![continue]";
+}
+
+a.struct[title="struct syn::token::Crate"]::before {
+	content: "Token![crate]";
+}
+
+a.struct[title="struct syn::token::Decreases"]::before {
+	content: "Token![decreases]";
+}
+
+a.struct[title="struct syn::token::Default"]::before {
+	content: "Token![default]";
+}
+
+a.struct[title="struct syn::token::Do"]::before {
+	content: "Token![do]";
+}
+
+a.struct[title="struct syn::token::Dollar"]::before {
+	content: "Token![$]";
+}
+
+a.struct[title="struct syn::token::Dot"]::before {
+	content: "Token![.]";
+}
+
+a.struct[title="struct syn::token::DotDot"]::before {
+	content: "Token![..]";
+}
+
+a.struct[title="struct syn::token::DotDotDot"]::before {
+	content: "Token![...]";
+}
+
+a.struct[title="struct syn::token::DotDotEq"]::before {
+	content: "Token![..=]";
+}
+
+a.struct[title="struct syn::token::Dyn"]::before {
+	content: "Token![dyn]";
+}
+
+a.struct[title="struct syn::token::Else"]::before {
+	content: "Token![else]";
+}
+
+a.struct[title="struct syn::token::Ensures"]::before {
+	content: "Token![ensures]";
+}
+
+a.struct[title="struct syn::token::Enum"]::before {
+	content: "Token![enum]";
+}
+
+a.struct[title="struct syn::token::Eq"]::before {
+	content: "Token![=]";
+}
+
+a.struct[title="struct syn::token::EqEq"]::before {
+	content: "Token![==]";
+}
+
+a.struct[title="struct syn::token::EqEqEq"]::before {
+	content: "Token![===]";
+}
+
+a.struct[title="struct syn::token::Equiv"]::before {
+	content: "Token![<==>]";
+}
+
+a.struct[title="struct syn::token::Exec"]::before {
+	content: "Token![exec]";
+}
+
+a.struct[title="struct syn::token::Exists"]::before {
+	content: "Token![exists]";
+}
+
+a.struct[title="struct syn::token::Exply"]::before {
+	content: "Token![<==]";
+}
+
+a.struct[title="struct syn::token::Extern"]::before {
+	content: "Token![extern]";
+}
+
+a.struct[title="struct syn::token::FatArrow"]::before {
+	content: "Token![=>]";
+}
+
+a.struct[title="struct syn::token::Final"]::before {
+	content: "Token![final]";
+}
+
+a.struct[title="struct syn::token::Fn"]::before {
+	content: "Token![fn]";
+}
+
+a.struct[title="struct syn::token::FnSpec"]::before {
+	content: "Token![FnSpec]";
+}
+
+a.struct[title="struct syn::token::For"]::before {
+	content: "Token![for]";
+}
+
+a.struct[title="struct syn::token::Forall"]::before {
+	content: "Token![forall]";
+}
+
+a.struct[title="struct syn::token::Ge"]::before {
+	content: "Token![>=]";
+}
+
+a.struct[title="struct syn::token::Ghost"]::before {
+	content: "Token![ghost]";
+}
+
+a.struct[title="struct syn::token::Global"]::before {
+	content: "Token![global]";
+}
+
+a.struct[title="struct syn::token::Gt"]::before {
+	content: "Token![>]";
+}
+
+a.struct[title="struct syn::token::Has"]::before {
+	content: "Token![has]";
+}
+
+a.struct[title="struct syn::token::HasNot"]::before {
+	content: "Token![hasnt]";
+}
+
+a.struct[title="struct syn::token::Hide"]::before {
+	content: "Token![hide]";
+}
+
+a.struct[title="struct syn::token::If"]::before {
+	content: "Token![if]";
+}
+
+a.struct[title="struct syn::token::Impl"]::before {
+	content: "Token![impl]";
+}
+
+a.struct[title="struct syn::token::Implies"]::before {
+	content: "Token![implies]";
+}
+
+a.struct[title="struct syn::token::Imply"]::before {
+	content: "Token![==>]";
+}
+
+a.struct[title="struct syn::token::In"]::before {
+	content: "Token![in]";
+}
+
+a.struct[title="struct syn::token::InvAny"]::before {
+	content: "Token![any]";
+}
+
+a.struct[title="struct syn::token::InvNone"]::before {
+	content: "Token![none]";
+}
+
+a.struct[title="struct syn::token::Invariant"]::before {
+	content: "Token![invariant]";
+}
+
+a.struct[title="struct syn::token::InvariantEnsures"]::before {
+	content: "Token![invariant_ensures]";
+}
+
+a.struct[title="struct syn::token::InvariantExceptBreak"]::before {
+	content: "Token![invariant_except_break]";
+}
+
+a.struct[title="struct syn::token::Is"]::before {
+	content: "Token![is]";
+}
+
+a.struct[title="struct syn::token::IsNot"]::before {
+	content: "Token![isnt]";
+}
+
+a.struct[title="struct syn::token::LArrow"]::before {
+	content: "Token![<-]";
+}
+
+a.struct[title="struct syn::token::Layout"]::before {
+	content: "Token![layout]";
+}
+
+a.struct[title="struct syn::token::Le"]::before {
+	content: "Token![<=]";
+}
+
+a.struct[title="struct syn::token::Let"]::before {
+	content: "Token![let]";
+}
+
+a.struct[title="struct syn::token::Loop"]::before {
+	content: "Token![loop]";
+}
+
+a.struct[title="struct syn::token::Lt"]::before {
+	content: "Token![<]";
+}
+
+a.struct[title="struct syn::token::Macro"]::before {
+	content: "Token![macro]";
+}
+
+a.struct[title="struct syn::token::Match"]::before {
+	content: "Token![match]";
+}
+
+a.struct[title="struct syn::token::Matches"]::before {
+	content: "Token![matches]";
+}
+
+a.struct[title="struct syn::token::Minus"]::before {
+	content: "Token![-]";
+}
+
+a.struct[title="struct syn::token::MinusEq"]::before {
+	content: "Token![-=]";
+}
+
+a.struct[title="struct syn::token::Mod"]::before {
+	content: "Token![mod]";
+}
+
+a.struct[title="struct syn::token::Move"]::before {
+	content: "Token![move]";
+}
+
+a.struct[title="struct syn::token::Mut"]::before {
+	content: "Token![mut]";
+}
+
+a.struct[title="struct syn::token::Ne"]::before {
+	content: "Token![!=]";
+}
+
+a.struct[title="struct syn::token::NeEq"]::before {
+	content: "Token![!==]";
+}
+
+a.struct[title="struct syn::token::NoUnwind"]::before {
+	content: "Token![no_unwind]";
+}
+
+a.struct[title="struct syn::token::Not"]::before {
+	content: "Token![!]";
+}
+
+a.struct[title="struct syn::token::Open"]::before {
+	content: "Token![open]";
+}
+
+a.struct[title="struct syn::token::OpensInvariants"]::before {
+	content: "Token![opens_invariants]";
+}
+
+a.struct[title="struct syn::token::Or"]::before {
+	content: "Token![|]";
+}
+
+a.struct[title="struct syn::token::OrEq"]::before {
+	content: "Token![|=]";
+}
+
+a.struct[title="struct syn::token::OrOr"]::before {
+	content: "Token![||]";
+}
+
+a.struct[title="struct syn::token::Override"]::before {
+	content: "Token![override]";
+}
+
+a.struct[title="struct syn::token::PathSep"]::before {
+	content: "Token![::]";
+}
+
+a.struct[title="struct syn::token::Percent"]::before {
+	content: "Token![%]";
+}
+
+a.struct[title="struct syn::token::PercentEq"]::before {
+	content: "Token![%=]";
+}
+
+a.struct[title="struct syn::token::Plus"]::before {
+	content: "Token![+]";
+}
+
+a.struct[title="struct syn::token::PlusEq"]::before {
+	content: "Token![+=]";
+}
+
+a.struct[title="struct syn::token::Pound"]::before {
+	content: "Token![#]";
+}
+
+a.struct[title="struct syn::token::Priv"]::before {
+	content: "Token![priv]";
+}
+
+a.struct[title="struct syn::token::Proof"]::before {
+	content: "Token![proof]";
+}
+
+a.struct[title="struct syn::token::Pub"]::before {
+	content: "Token![pub]";
+}
+
+a.struct[title="struct syn::token::Question"]::before {
+	content: "Token![?]";
+}
+
+a.struct[title="struct syn::token::RArrow"]::before {
+	content: "Token![->]";
+}
+
+a.struct[title="struct syn::token::Raw"]::before {
+	content: "Token![raw]";
+}
+
+a.struct[title="struct syn::token::Recommends"]::before {
+	content: "Token![recommends]";
+}
+
+a.struct[title="struct syn::token::Ref"]::before {
+	content: "Token![ref]";
+}
+
+a.struct[title="struct syn::token::Requires"]::before {
+	content: "Token![requires]";
+}
+
+a.struct[title="struct syn::token::Return"]::before {
+	content: "Token![return]";
+}
+
+a.struct[title="struct syn::token::Returns"]::before {
+	content: "Token![returns]";
+}
+
+a.struct[title="struct syn::token::Reveal"]::before {
+	content: "Token![reveal]";
+}
+
+a.struct[title="struct syn::token::RevealWithFuel"]::before {
+	content: "Token![reveal_with_fuel]";
+}
+
+a.struct[title="struct syn::token::SelfType"]::before {
+	content: "Token![Self]";
+}
+
+a.struct[title="struct syn::token::SelfValue"]::before {
+	content: "Token![self]";
+}
+
+a.struct[title="struct syn::token::Semi"]::before {
+	content: "Token![;]";
+}
+
+a.struct[title="struct syn::token::Shl"]::before {
+	content: "Token![<<]";
+}
+
+a.struct[title="struct syn::token::ShlEq"]::before {
+	content: "Token![<<=]";
+}
+
+a.struct[title="struct syn::token::Shr"]::before {
+	content: "Token![>>]";
+}
+
+a.struct[title="struct syn::token::ShrEq"]::before {
+	content: "Token![>>=]";
+}
+
+a.struct[title="struct syn::token::SizeOf"]::before {
+	content: "Token![size_of]";
+}
+
+a.struct[title="struct syn::token::Slash"]::before {
+	content: "Token![/]";
+}
+
+a.struct[title="struct syn::token::SlashEq"]::before {
+	content: "Token![/=]";
+}
+
+a.struct[title="struct syn::token::Spec"]::before {
+	content: "Token![spec]";
+}
+
+a.struct[title="struct syn::token::SpecFn"]::before {
+	content: "Token![SpecFn]";
+}
+
+a.struct[title="struct syn::token::Star"]::before {
+	content: "Token![*]";
+}
+
+a.struct[title="struct syn::token::StarEq"]::before {
+	content: "Token![*=]";
+}
+
+a.struct[title="struct syn::token::Static"]::before {
+	content: "Token![static]";
+}
+
+a.struct[title="struct syn::token::Struct"]::before {
+	content: "Token![struct]";
+}
+
+a.struct[title="struct syn::token::Super"]::before {
+	content: "Token![super]";
+}
+
+a.struct[title="struct syn::token::Tilde"]::before {
+	content: "Token![~]";
+}
+
+a.struct[title="struct syn::token::TildeEq"]::before {
+	content: "Token![=~=]";
+}
+
+a.struct[title="struct syn::token::TildeNe"]::before {
+	content: "Token![!~=]";
+}
+
+a.struct[title="struct syn::token::TildeTildeEq"]::before {
+	content: "Token![=~~=]";
+}
+
+a.struct[title="struct syn::token::TildeTildeNe"]::before {
+	content: "Token![!~~=]";
+}
+
+a.struct[title="struct syn::token::Tracked"]::before {
+	content: "Token![tracked]";
+}
+
+a.struct[title="struct syn::token::Trait"]::before {
+	content: "Token![trait]";
+}
+
+a.struct[title="struct syn::token::Try"]::before {
+	content: "Token![try]";
+}
+
+a.struct[title="struct syn::token::Type"]::before {
+	content: "Token![type]";
+}
+
+a.struct[title="struct syn::token::Typeof"]::before {
+	content: "Token![typeof]";
+}
+
+a.struct[title="struct syn::token::Underscore"]::before {
+	content: "Token![_]";
+	font-size: calc(100% * 10 / 9);
+}
+
+a.struct[title="struct syn::token::Uninterp"]::before {
+	content: "Token![uninterp]";
+}
+
+a.struct[title="struct syn::token::Union"]::before {
+	content: "Token![union]";
+}
+
+a.struct[title="struct syn::token::Unsafe"]::before {
+	content: "Token![unsafe]";
+}
+
+a.struct[title="struct syn::token::Unsized"]::before {
+	content: "Token![unsized]";
+}
+
+a.struct[title="struct syn::token::Use"]::before {
+	content: "Token![use]";
+}
+
+a.struct[title="struct syn::token::Via"]::before {
+	content: "Token![via]";
+}
+
+a.struct[title="struct syn::token::Virtual"]::before {
+	content: "Token![virtual]";
+}
+
+a.struct[title="struct syn::token::When"]::before {
+	content: "Token![when]";
+}
+
+a.struct[title="struct syn::token::Where"]::before {
+	content: "Token![where]";
+}
+
+a.struct[title="struct syn::token::While"]::before {
+	content: "Token![while]";
+}
+
+a.struct[title="struct syn::token::Yield"]::before {
+	content: "Token![yield]";
+}
+
+a.struct[title="struct syn::token::Underscore"] {
+	font-size: calc(100% * 9 / 10);
+}
+
+a.struct[title="struct syn::token::BroadcastGroup"] {
+	font-size: calc(100% * 13 / 14);
+}
+
+a.struct[title="struct syn::token::TildeTildeEq"]::after,
+a.struct[title="struct syn::token::TildeTildeNe"]::after {
+	content: "";
+}
+
+a.struct[title="struct syn::token::PercentEq"]::after,
+a.struct[title="struct syn::token::Question"]::after {
+	content: ".";
+}
+
+a.struct[title="struct syn::token::DotDotDot"]::after,
+a.struct[title="struct syn::token::FatArrow"]::after,
+a.struct[title="struct syn::token::Percent"]::after {
+	content: "..";
+}
+
+a.struct[title="struct syn::token::CaretEq"]::after,
+a.struct[title="struct syn::token::Dollar"]::after,
+a.struct[title="struct syn::token::DotDotEq"]::after,
+a.struct[title="struct syn::token::MinusEq"]::after,
+a.struct[title="struct syn::token::PathSep"]::after,
+a.struct[title="struct syn::token::SelfValue"]::after,
+a.struct[title="struct syn::token::SlashEq"]::after {
+	content: "...";
+}
+
+a.struct[title="struct syn::token::AndAnd"]::after,
+a.struct[title="struct syn::token::Caret"]::after,
+a.struct[title="struct syn::token::Colon"]::after,
+a.struct[title="struct syn::token::Comma"]::after,
+a.struct[title="struct syn::token::DotDot"]::after,
+a.struct[title="struct syn::token::LArrow"]::after,
+a.struct[title="struct syn::token::Minus"]::after,
+a.struct[title="struct syn::token::PlusEq"]::after,
+a.struct[title="struct syn::token::Pound"]::after,
+a.struct[title="struct syn::token::RArrow"]::after,
+a.struct[title="struct syn::token::SelfType"]::after,
+a.struct[title="struct syn::token::Slash"]::after,
+a.struct[title="struct syn::token::StarEq"]::after,
+a.struct[title="struct syn::token::Tilde"]::after,
+a.struct[title="struct syn::token::TildeEq"]::after,
+a.struct[title="struct syn::token::TildeNe"]::after {
+	content: "....";
+}
+
+a.struct[title="struct syn::token::AndEq"]::after,
+a.struct[title="struct syn::token::BigAnd"]::after,
+a.struct[title="struct syn::token::EqEqEq"]::after,
+a.struct[title="struct syn::token::InvAny"]::after,
+a.struct[title="struct syn::token::InvNone"]::after,
+a.struct[title="struct syn::token::Plus"]::after,
+a.struct[title="struct syn::token::Semi"]::after,
+a.struct[title="struct syn::token::Star"]::after {
+	content: ".....";
+}
+
+a.struct[title="struct syn::token::And"]::after,
+a.struct[title="struct syn::token::BigOr"]::after,
+a.struct[title="struct syn::token::Dot"]::after,
+a.struct[title="struct syn::token::EqEq"]::after,
+a.struct[title="struct syn::token::Exply"]::after,
+a.struct[title="struct syn::token::Imply"]::after,
+a.struct[title="struct syn::token::Not"]::after,
+a.struct[title="struct syn::token::OrEq"]::after,
+a.struct[title="struct syn::token::OrOr"]::after,
+a.struct[title="struct syn::token::ShlEq"]::after,
+a.struct[title="struct syn::token::ShrEq"]::after {
+	content: "......";
+}
+
+a.struct[title="struct syn::token::At"]::after,
+a.struct[title="struct syn::token::Eq"]::after,
+a.struct[title="struct syn::token::Equiv"]::after,
+a.struct[title="struct syn::token::Gt"]::after,
+a.struct[title="struct syn::token::HasNot"]::after,
+a.struct[title="struct syn::token::IsNot"]::after,
+a.struct[title="struct syn::token::Lt"]::after,
+a.struct[title="struct syn::token::NeEq"]::after,
+a.struct[title="struct syn::token::Or"]::after,
+a.struct[title="struct syn::token::Shl"]::after,
+a.struct[title="struct syn::token::Shr"]::after {
+	content: ".......";
+}
+
+a.struct[title="struct syn::token::Abstract"]::after,
+a.struct[title="struct syn::token::As"]::after,
+a.struct[title="struct syn::token::Assert"]::after,
+a.struct[title="struct syn::token::Assume"]::after,
+a.struct[title="struct syn::token::Async"]::after,
+a.struct[title="struct syn::token::Auto"]::after,
+a.struct[title="struct syn::token::Await"]::after,
+a.struct[title="struct syn::token::Become"]::after,
+a.struct[title="struct syn::token::Box"]::after,
+a.struct[title="struct syn::token::Break"]::after,
+a.struct[title="struct syn::token::Broadcast"]::after,
+a.struct[title="struct syn::token::By"]::after,
+a.struct[title="struct syn::token::Choose"]::after,
+a.struct[title="struct syn::token::Closed"]::after,
+a.struct[title="struct syn::token::Const"]::after,
+a.struct[title="struct syn::token::Continue"]::after,
+a.struct[title="struct syn::token::Crate"]::after,
+a.struct[title="struct syn::token::Decreases"]::after,
+a.struct[title="struct syn::token::Default"]::after,
+a.struct[title="struct syn::token::Do"]::after,
+a.struct[title="struct syn::token::Dyn"]::after,
+a.struct[title="struct syn::token::Else"]::after,
+a.struct[title="struct syn::token::Ensures"]::after,
+a.struct[title="struct syn::token::Enum"]::after,
+a.struct[title="struct syn::token::Exec"]::after,
+a.struct[title="struct syn::token::Exists"]::after,
+a.struct[title="struct syn::token::Extern"]::after,
+a.struct[title="struct syn::token::Final"]::after,
+a.struct[title="struct syn::token::Fn"]::after,
+a.struct[title="struct syn::token::FnSpec"]::after,
+a.struct[title="struct syn::token::For"]::after,
+a.struct[title="struct syn::token::Forall"]::after,
+a.struct[title="struct syn::token::Ge"]::after,
+a.struct[title="struct syn::token::Ghost"]::after,
+a.struct[title="struct syn::token::Global"]::after,
+a.struct[title="struct syn::token::Has"]::after,
+a.struct[title="struct syn::token::Hide"]::after,
+a.struct[title="struct syn::token::If"]::after,
+a.struct[title="struct syn::token::Impl"]::after,
+a.struct[title="struct syn::token::Implies"]::after,
+a.struct[title="struct syn::token::In"]::after,
+a.struct[title="struct syn::token::Invariant"]::after,
+a.struct[title="struct syn::token::Is"]::after,
+a.struct[title="struct syn::token::Layout"]::after,
+a.struct[title="struct syn::token::Le"]::after,
+a.struct[title="struct syn::token::Let"]::after,
+a.struct[title="struct syn::token::Loop"]::after,
+a.struct[title="struct syn::token::Macro"]::after,
+a.struct[title="struct syn::token::Match"]::after,
+a.struct[title="struct syn::token::Matches"]::after,
+a.struct[title="struct syn::token::Mod"]::after,
+a.struct[title="struct syn::token::Move"]::after,
+a.struct[title="struct syn::token::Mut"]::after,
+a.struct[title="struct syn::token::Ne"]::after,
+a.struct[title="struct syn::token::Open"]::after,
+a.struct[title="struct syn::token::Override"]::after,
+a.struct[title="struct syn::token::Priv"]::after,
+a.struct[title="struct syn::token::Proof"]::after,
+a.struct[title="struct syn::token::Pub"]::after,
+a.struct[title="struct syn::token::Raw"]::after,
+a.struct[title="struct syn::token::Recommends"]::after,
+a.struct[title="struct syn::token::Ref"]::after,
+a.struct[title="struct syn::token::Requires"]::after,
+a.struct[title="struct syn::token::Return"]::after,
+a.struct[title="struct syn::token::Returns"]::after,
+a.struct[title="struct syn::token::Reveal"]::after,
+a.struct[title="struct syn::token::Spec"]::after,
+a.struct[title="struct syn::token::SpecFn"]::after,
+a.struct[title="struct syn::token::Static"]::after,
+a.struct[title="struct syn::token::Struct"]::after,
+a.struct[title="struct syn::token::Super"]::after,
+a.struct[title="struct syn::token::Tracked"]::after,
+a.struct[title="struct syn::token::Trait"]::after,
+a.struct[title="struct syn::token::Try"]::after,
+a.struct[title="struct syn::token::Type"]::after,
+a.struct[title="struct syn::token::Typeof"]::after,
+a.struct[title="struct syn::token::Uninterp"]::after,
+a.struct[title="struct syn::token::Union"]::after,
+a.struct[title="struct syn::token::Unsafe"]::after,
+a.struct[title="struct syn::token::Unsized"]::after,
+a.struct[title="struct syn::token::Use"]::after,
+a.struct[title="struct syn::token::Via"]::after,
+a.struct[title="struct syn::token::Virtual"]::after,
+a.struct[title="struct syn::token::When"]::after,
+a.struct[title="struct syn::token::Where"]::after,
+a.struct[title="struct syn::token::While"]::after,
+a.struct[title="struct syn::token::Yield"]::after {
+	content: "........";
+}
+
+a.struct[title="struct syn::token::AssumeSpecification"]::after,
+a.struct[title="struct syn::token::InvariantEnsures"]::after,
+a.struct[title="struct syn::token::NoUnwind"]::after,
+a.struct[title="struct syn::token::OpensInvariants"]::after,
+a.struct[title="struct syn::token::SizeOf"]::after {
+	content: ".........";
+}
+
+a.struct[title="struct syn::token::InvariantExceptBreak"]::after,
+a.struct[title="struct syn::token::RevealWithFuel"]::after {
+	content: "..........";
+}

@@ -237,17 +237,6 @@ check_not_copy!(
     "vstd::raw_ptr::PointsTo<T>"
 );
 
-// PPtr
-
-check_send_sync!(ptr_points_to_send_sync, "<T: Send + Sync>", "vstd::ptr::PointsTo<T>");
-check_send!(ptr_points_to_send, ptr_points_to_send2, "<T: Send>", "vstd::ptr::PointsTo<T>");
-check_sync!(ptr_points_to_sync, ptr_points_to_sync2, "<T: Sync>", "vstd::ptr::PointsTo<T>");
-check_none!(ptr_points_none, ptr_points_none2, "<T>", "vstd::ptr::PointsTo<T>");
-
-check_covariant!(ptr_points_to_covariant, ptr_points_to_covariant2, "", "vstd::ptr::PointsTo<$P>");
-
-check_send_sync!(points_to_raw_send_sync, "", "vstd::ptr::PointsToRaw");
-
 // cells
 
 check_send_sync!(cell_points_to_send_sync, "<T: Send + Sync>", "vstd::cell::PointsTo<T>");

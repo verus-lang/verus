@@ -154,6 +154,7 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
             Box::new(TypX::Projection { self_typ, trait_as_datatype, name, assoc_typ_args: vec![] })
         }
         vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
+        vir::ast::TypX::ConstBool(b) => Box::new(TypX::Primitive(b.to_string())),
         vir::ast::TypX::TypeId | vir::ast::TypX::Air(..) => {
             panic!("internal error: unexpected type")
         }
@@ -248,7 +249,6 @@ pub(crate) fn gen_check_trait_impl_conflicts(
         let decl = DatatypeDecl {
             name: state.datatype_name(path),
             span: spans.from_air_span(&d.span, None),
-            implements_copy: None,
             generic_params,
             generic_bounds,
             datatype: Box::new(Datatype::Struct(Fields::Pos(fields))),
@@ -317,6 +317,7 @@ pub(crate) fn gen_check_trait_impl_conflicts(
                 ));
             }
         }
+        let trait_polarity = rustc_middle::ty::ImplPolarity::Positive;
         let decl = TraitImpl {
             span,
             self_typ,
@@ -324,6 +325,8 @@ pub(crate) fn gen_check_trait_impl_conflicts(
             generic_bounds,
             trait_as_datatype,
             assoc_typs,
+            trait_polarity,
+            is_clone: false,
         };
         state.trait_impls.push(decl);
     }

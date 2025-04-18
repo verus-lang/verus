@@ -3,6 +3,18 @@ use super::super::prelude::*;
 verus! {
 
 #[verifier::external_trait_specification]
+pub trait ExIndex<Idx> where Idx: ?Sized {
+    type Output: ?Sized;
+
+    type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExIndexMut<Idx>: core::ops::Index<Idx> where Idx: ?Sized {
+    type ExternalTraitSpecificationFor: core::ops::IndexMut<Idx>;
+}
+
+#[verifier::external_trait_specification]
 pub trait ExInteger: Copy {
     type ExternalTraitSpecificationFor: Integer;
 }
@@ -30,7 +42,21 @@ pub trait ExDebug {
 #[verifier::external_trait_specification]
 pub trait ExFrom<T>: Sized {
     type ExternalTraitSpecificationFor: core::convert::From<T>;
+
+    fn from(v: T) -> (ret: Self);
 }
+
+#[verifier::external_trait_specification]
+pub trait ExInto<T>: Sized {
+    type ExternalTraitSpecificationFor: core::convert::Into<T>;
+
+    fn into(self) -> (ret: T);
+}
+
+pub assume_specification<T, U: From<T>>[ T::into ](a: T) -> (ret: U)
+    ensures
+        call_ensures(U::from, (a,), ret),
+;
 
 #[verifier::external_trait_specification]
 pub trait ExPartialEq<Rhs: ?Sized> {
@@ -68,6 +94,10 @@ pub trait ExPtrPointee {
 #[verifier::external_trait_specification]
 pub trait ExIterator {
     type ExternalTraitSpecificationFor: core::iter::Iterator;
+
+    type Item;
+
+    fn next(&mut self) -> Option<Self::Item>;
 }
 
 #[verifier::external_trait_specification]
@@ -90,16 +120,13 @@ pub trait ExStructural {
     type ExternalTraitSpecificationFor: Structural;
 }
 
-#[verifier::external_fn_specification]
-pub fn ex_swap<T>(a: &mut T, b: &mut T)
+pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
     ensures
         *a == *old(b),
         *b == *old(a),
     opens_invariants none
     no_unwind
-{
-    core::mem::swap(a, b)
-}
+;
 
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(V)]
@@ -115,14 +142,11 @@ pub open spec fn iter_into_iter_spec<I: Iterator>(i: I) -> I {
     i
 }
 
-#[verifier::external_fn_specification]
 #[verifier::when_used_as_spec(iter_into_iter_spec)]
-pub fn ex_iter_into_iter<I: Iterator>(i: I) -> (r: I)
+pub assume_specification<I: Iterator>[ I::into_iter ](i: I) -> (r: I)
     ensures
         r == i,
-{
-    i.into_iter()
-}
+;
 
 // I don't really expect this to be particularly useful;
 // this is mostly here because I wanted an easy way to test
@@ -136,25 +160,114 @@ pub struct ExDuration(core::time::Duration);
 #[verifier::accept_recursive_types(V)]
 pub struct ExPhantomData<V: ?Sized>(core::marker::PhantomData<V>);
 
-#[verifier::external_fn_specification]
-pub fn ex_intrinsics_likely(b: bool) -> (c: bool)
+pub assume_specification[ core::intrinsics::likely ](b: bool) -> (c: bool)
     ensures
         c == b,
-{
-    core::intrinsics::likely(b)
-}
+;
 
-#[verifier::external_fn_specification]
-pub fn ex_intrinsics_unlikely(b: bool) -> (c: bool)
+pub assume_specification[ core::intrinsics::unlikely ](b: bool) -> (c: bool)
     ensures
         c == b,
-{
-    core::intrinsics::unlikely(b)
-}
+;
+
+pub assume_specification<T, F: FnOnce() -> T>[ bool::then ](b: bool, f: F) -> (ret: Option<T>)
+    ensures
+        if b {
+            ret.is_some() && f.ensures((), ret.unwrap())
+        } else {
+            ret.is_none()
+        },
+;
 
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::reject_recursive_types_in_ground_variants(V)]
 pub struct ExManuallyDrop<V: ?Sized>(core::mem::ManuallyDrop<V>);
 
+// A private seal trait to prevent a trait from being implemented outside of vstd.
+pub(crate) trait TrustedSpecSealed {
+
+}
+
+#[allow(private_bounds)]
+pub trait IndexSetTrustedSpec<Idx>: core::ops::IndexMut<Idx> + TrustedSpecSealed {
+    spec fn spec_index_set_requires(&self, index: Idx) -> bool;
+
+    spec fn spec_index_set_ensures(
+        &self,
+        new_container: &Self,
+        index: Idx,
+        val: Self::Output,
+    ) -> bool where Self::Output: Sized;
+}
+
+// TODO(uutaal): Do not need index_set once mutable reference support lands.
+// Use index_set to replace IndexMut in assign-operator.
+// Users must provide IndexSetTrustedSpec to use it.
+// It could be replaced after mutable reference is fully supported
+// Avoid call it explicitly.
+#[verifier(external_body)]
+pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
+    T: ?Sized + core::ops::IndexMut<Idx> + core::ops::Index<Idx, Output = E> + IndexSetTrustedSpec<
+        Idx,
+    >,
+
+    requires
+        old(container).spec_index_set_requires(index),
+    ensures
+        old(container).spec_index_set_ensures(container, index, val),
+{
+    container[index] = val;
+}
+
+impl<T, const N: usize> TrustedSpecSealed for [T; N] {
+
+}
+
+impl<T, const N: usize> IndexSetTrustedSpec<usize> for [T; N] {
+    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
+        0 <= index < N
+    }
+
+    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
+        new_container@ === self@.update(index as int, val)
+    }
+}
+
+impl<T> TrustedSpecSealed for [T] {
+
+}
+
+impl<T> IndexSetTrustedSpec<usize> for [T] {
+    open spec fn spec_index_set_requires(&self, index: usize) -> bool {
+        0 <= index < self@.len()
+    }
+
+    open spec fn spec_index_set_ensures(&self, new_container: &Self, index: usize, val: T) -> bool {
+        new_container@ == self@.update(index as int, val)
+    }
+}
+
+pub assume_specification[ core::hint::unreachable_unchecked ]() -> !
+    requires
+        false,
+;
+
 } // verus!
+macro_rules! impl_from_spec {
+    ($from: ty => [$($to: ty)*]) => {
+        verus!{
+        $(
+        pub assume_specification[ <$to as core::convert::From<$from>>::from ](a: $from) -> (ret: $to)
+            ensures
+                ret == a as $to,
+        ;
+        )*
+        }
+    };
+}
+
+impl_from_spec! {u8 => [u16 u32 u64 usize u128]}
+impl_from_spec! {u16 => [u32 u64 usize u128]}
+impl_from_spec! {u32 => [u64 u128]}
+impl_from_spec! {u64 => [u128]}

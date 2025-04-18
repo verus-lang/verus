@@ -23,8 +23,8 @@ use air::ast::{
     Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_var, int_typ, mk_and, mk_bind_expr, mk_eq,
-    mk_implies, mk_unnamed_axiom, str_apply, str_ident, str_typ, str_var, string_apply,
+    bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
+    mk_unnamed_axiom, str_apply, str_ident, str_typ, str_var, string_apply,
 };
 use air::messages::ArcDynMessageLabel;
 use std::sync::Arc;
@@ -289,7 +289,8 @@ fn func_body_to_air(
 
     // non-recursive:
     //   (axiom (fuel_bool_default fuel%f))
-    if function.x.fuel > 0 {
+    let fuel = function.x.opaqueness.get_fuel_for_module(&function.x.name, &ctx.module);
+    if fuel > 0 {
         let axiom_expr = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_fuel)]);
         let fuel_axiom = mk_unnamed_axiom(axiom_expr);
         decl_commands.push(Arc::new(CommandX::Global(fuel_axiom)));
@@ -638,6 +639,7 @@ pub fn func_decl_to_air(
     // Inv mask
     if function.x.has.has_mask_spec {
         for (i, e) in func_decl_sst.inv_masks.iter().enumerate() {
+            assert!(e.len() == 1);
             let _ = req_ens_to_air(
                 ctx,
                 &mut decl_commands,
@@ -649,7 +651,7 @@ pub fn func_decl_to_air(
                 &prefix_open_inv(&func_name, i),
                 &None,
                 function.x.attrs.integer_ring,
-                int_typ(),
+                typ_to_air(ctx, &e[0].typ),
                 None,
                 None,
                 &spec_map,

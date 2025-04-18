@@ -36,7 +36,7 @@ The invariant predicate must:
 There is no restriction that the type invariant function have the same _visibility_ as the
 type it is declared for, only that it is visible whenever the type invariant needs to be asserted
 or assumed (as described below). Since type invariants are intended for encapsulation,
-it is recommended that it be as private as possible.
+it is recommended that they be as private as possible.
 
 ### Enforcing that the type invariant holds
 

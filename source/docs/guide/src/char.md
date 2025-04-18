@@ -10,7 +10,8 @@ of allowed values:
 
 `[0, 0xD7ff] ∪ [0xE000, 0x10FFFF]`
 
-In spec code, chars can be cast to an from other integer types using `as`. This is more
+In spec code, chars can be [cast to and from other integer types using `as`](./reference-as.md).
+This is more
 permissive than exec code, which disallows many of these coercions.
 As with other coercions, the result may be undefined if the integer being coerced does not
 fit in the target range.

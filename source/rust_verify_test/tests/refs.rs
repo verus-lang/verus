@@ -124,7 +124,7 @@ test_verify_one_file! {
         spec fn add1(a: &mut u64) {
             *a = add(*a, 1);
         }
-    } => Err(err) => assert_vir_error_msg(err, "&mut argument not allowed for #[verifier::spec] functions")
+    } => Err(err) => assert_vir_error_msg(err, "&mut parameter not allowed for spec functions")
 }
 
 test_verify_one_file! {
@@ -230,7 +230,7 @@ test_verify_one_file! {
                 *self = Value { v: add(v, 1) };
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "&mut argument not allowed for #[verifier::spec] functions")
+    } => Err(err) => assert_vir_error_msg(err, "&mut parameter not allowed for spec functions")
 }
 
 test_verify_one_file! {
@@ -365,8 +365,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_regression_115_mut_ref_pattern_case_2 code! {
+test_verify_one_file_with_options! {
+    #[test] test_regression_115_mut_ref_pattern_case_2 ["--no-external-by-default"] => code! {
         fn foo(x: &mut bool) -> (u8, u8) {
             ensures(|ret: (u8, u8)| (*x) == ! *old(x));
 

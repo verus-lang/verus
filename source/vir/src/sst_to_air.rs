@@ -1,6 +1,6 @@
 use crate::ast::{
     ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, Dt, FieldOpr, Fun, Ident, Idents, InequalityOp,
-    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, MaskSpec, Mode, Path, PathX, Primitive,
+    IntRange, IntegerTypeBitwidth, IntegerTypeBoundKind, Mode, Path, PathX, Primitive,
     SpannedTyped, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec,
     VarAt, VarIdent, VariantCheck, VirErr, Visibility,
 };
@@ -22,7 +22,6 @@ use crate::def::{
     STRSLICE_LEN, STRSLICE_NEW_STRLIT, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
     SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END, U_HI,
 };
-use crate::inv_masks::{MaskSet, MaskSingleton};
 use crate::messages::{error, error_with_label, Span};
 use crate::mono::{self, PolyStrategy, Specialization};
 use crate::poly::{typ_as_mono, typ_is_poly, MonoTyp, MonoTypX};
@@ -186,6 +185,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::ConstInt(_) => panic!("const integer cannot be used as an expression type"),
         TypX::Poly => str_typ(POLY),
+        TypX::ConstBool(_) => panic!("const bool cannot be used as an expression type"),
         TypX::Air(t) => t.clone(),
     }
 }
@@ -356,6 +356,10 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
         TypX::ConstInt(c) => {
             mk_id(str_apply(crate::def::TYPE_ID_CONST_INT, &vec![big_int_to_expr(c)]))
         }
+        TypX::ConstBool(b) => mk_id(str_apply(
+            crate::def::TYPE_ID_CONST_BOOL,
+            &vec![Arc::new(ExprX::Const(Constant::Bool(*b)))],
+        )),
         TypX::Air(_) => panic!("internal error: typ_to_ids of Air"),
         TypX::Poly => mk_id(str_var(crate::def::TYPE_ID_POLY)),
     }
@@ -466,6 +470,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         // REVIEW: we could also try to add an IntRange type invariant for TypX::ConstInt
         // (see also context.rs datatypes_invs)
         TypX::ConstInt(_) => None,
+        TypX::ConstBool(_) => None,
         TypX::Poly => None,
         TypX::Primitive(p, _) => {
             match p {
@@ -531,6 +536,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Projection { .. } => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
+        TypX::ConstBool(_) => None,
         TypX::Poly => None,
         TypX::Air(_) => None,
     };
@@ -563,28 +569,11 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Projection { .. } => None,
         TypX::TypeId => None,
         TypX::ConstInt(_) => None,
+        TypX::ConstBool(_) => None,
         TypX::Air(_) => None,
         TypX::Poly => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
-}
-
-pub fn mask_set_from_spec(spec: &MaskSpec, function_name: &Fun, args: &Vec<Expr>) -> MaskSet {
-    match spec {
-        MaskSpec::InvariantOpens(exprs) => {
-            let mut l = vec![];
-            for (i, e) in exprs.iter().enumerate() {
-                let expr =
-                    ident_apply(&prefix_open_inv(&fun_to_air_ident(function_name), i), &args);
-                l.push(MaskSingleton { expr, span: e.span.clone() });
-            }
-            MaskSet::from_list(l)
-        }
-        MaskSpec::InvariantOpensExcept(exprs) if exprs.len() == 0 => MaskSet::full(),
-        MaskSpec::InvariantOpensExcept(_exprs) => {
-            panic!("custom mask specs are not yet implemented");
-        }
-    }
 }
 
 pub(crate) fn ctor_to_apply<'a>(
@@ -798,6 +787,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             }
             ident_apply(&name, &exprs)
         }
+        ExpX::Call(CallFun::InternalFun(InternalFun::OpenInvariantMask(f, i)), typs, args) => {
+            let mut exprs: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
+            for arg in args.iter() {
+                exprs.push(exp_to_expr(ctx, arg, expr_ctxt)?);
+            }
+            ident_apply(&prefix_open_inv(&fun_to_air_ident(f), *i), &exprs)
+        }
         ExpX::Call(CallFun::InternalFun(func), typs, args) => {
             // These functions are special-cased to not take a decoration argument for
             // the first type parameter.
@@ -821,6 +817,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                     InternalFun::CheckDecreaseHeight => {
                         str_ident(crate::def::CHECK_DECREASE_HEIGHT)
                     }
+                    InternalFun::OpenInvariantMask(..) => panic!(),
                 },
                 Arc::new(exprs),
             ))
@@ -885,7 +882,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             str_apply(crate::def::ARRAY_NEW, &args)
         }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::ConstGeneric(c)) => {
-            str_apply(crate::def::CONST_INT, &vec![typ_to_id(c)])
+            let f = crate::ast_util::const_generic_to_primitive(&exp.typ);
+            str_apply(f, &vec![typ_to_id(c)])
         }
         ExpX::NullaryOpr(crate::ast::NullaryOpr::TraitBound(p, ts)) => {
             if let Some(e) = crate::traits::trait_bound_to_air(ctx, p, ts) {
@@ -1022,13 +1020,24 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 let dt_spec = Specialization::from_datatype(&exp.typ, expr_ctxt.spec_map)
                     .expect("UnaryOpr::Field expects a datatype");
                 let expr = exp_to_expr(ctx, exp, expr_ctxt)?;
-                let field_ident = variant_field_ident(
-                    &dt_spec.mangle_path(&encode_dt_as_path(datatype)),
-                    variant,
-                    field,
-                );
-                tracing::trace!("Generating UnaryOpr::Field {field_ident}");
-                Arc::new(ExprX::Apply(field_ident, Arc::new(vec![expr])))
+                let (ts, num_variants) = match &*undecorate_typ(&exp.typ) {
+                    TypX::Datatype(Dt::Path(p), ts, _) => {
+                        let (_, variants) = &ctx.global.datatypes[p];
+                        (ts.clone(), variants.len())
+                    }
+                    TypX::Datatype(Dt::Tuple(_), ts, _) => (ts.clone(), 1),
+                    _ => panic!("internal error: expected datatype in field op"),
+                };
+                let mut exprs: Vec<Expr> =
+                    crate::datatype_to_air::field_typ_args(num_variants, || {
+                        ts.iter().map(typ_to_ids).flatten().collect()
+                    });
+                exprs.push(expr);
+        let path = dt_spec.mangle_path(&encode_dt_as_path(datatype));
+                Arc::new(ExprX::Apply(
+                    variant_field_ident(&path, variant, field),
+                    Arc::new(exprs),
+                ))
             }
             UnaryOpr::CustomErr(_) => {
                 // CustomErr is handled by split_expression. Maybe it could
@@ -1341,7 +1350,6 @@ struct State {
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
     assign_map: AssignMap, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
-    mask: MaskSet,         // set of invariants that are allowed to be opened
     unwind: UnwindAir,
     post_condition_info: PostConditionInfo,
     loop_infos: Vec<LoopInfo>,
@@ -1604,6 +1612,14 @@ fn stm_to_stmts(
     let expr_ctxt = &ExprCtxt::new(spec_map);
     let result = match &stm.x {
         StmX::Call { fun, resolved_method, mode, typ_args: typs, args, split, dest, assert_id } => {
+            // When we emit the VCs for a call to `f`, we might also want these to include
+            // the generic conditions
+            // `call_requires(f, (args...))` and `call_ensures(f, (args...), ret)`
+            // We don't want to do this all the time though --- only when the generic
+            // FnDef types exist post-pruning.
+            let emit_generic_conditions = ctx.fndef_types.contains(fun);
+            let resolved_fun = resolved_method.clone().map(|r| r.0);
+
             assert!(split.is_none());
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[fun];
@@ -1621,13 +1637,29 @@ fn stm_to_stmts(
             {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
 
-                let e_req = Arc::new(ExprX::Apply(f_req, req_args.clone()));
+                let mut e_req = Arc::new(ExprX::Apply(f_req, req_args.clone()));
+
+                if emit_generic_conditions {
+                    let generic_req_exp = crate::sst_util::sst_call_requires(
+                        ctx,
+                        &stm.span,
+                        fun,
+                        typs,
+                        func,
+                        &resolved_fun,
+                        args,
+                    );
+                    let generic_req_expr = exp_to_expr(ctx, &generic_req_exp, expr_ctxt)?;
+                    e_req = mk_implies(&mk_not(&generic_req_expr), &e_req);
+                }
+
                 let description =
                     match (ctx.checking_spec_preconditions(), &func.x.attrs.custom_req_err) {
                         (true, None) => "recommendation not met".to_string(),
                         (_, None) => crate::def::PRECONDITION_FAILURE.to_string(),
                         (_, Some(s)) => s.clone(),
                     };
+
                 let error = error(&stm.span, description);
                 let filter = Some(fun_to_air_ident(&func.x.name));
                 stmts.push(Arc::new(StmtX::Assert(assert_id.clone(), error, filter, e_req)));
@@ -1686,12 +1718,6 @@ fn stm_to_stmts(
                 };
                 let e = mk_implies(&e1, &e2);
                 stmts.push(Arc::new(StmtX::Assert(None, error, None, e)));
-            }
-
-            let callee_mask_set =
-                mask_set_from_spec(&func.x.mask_spec_or_default(), &func.x.name, &req_args);
-            if !ctx.checking_spec_preconditions() {
-                callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
             }
 
             let typ_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
@@ -1815,12 +1841,30 @@ fn stm_to_stmts(
                         let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
                         stmts.push(snapshot);
                     }
+                } else {
+                    crate::messages::internal_error(&stm.span, "ens_has_return but no Dest");
                 }
             }
             if has_ens {
                 let f_ens = prefix_ensures(&fun_to_air_ident(&ens_fun));
                 let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
                 stmts.push(Arc::new(StmtX::Assume(e_ens)));
+            }
+            if emit_generic_conditions {
+                let dest_exp =
+                    if func.x.ens_has_return { Some(dest.clone().unwrap().dest) } else { None };
+                let generic_ens_exp = crate::sst_util::sst_call_ensures(
+                    ctx,
+                    &stm.span,
+                    fun,
+                    typs,
+                    func,
+                    &resolved_fun,
+                    args,
+                    dest_exp,
+                );
+                let generic_ens_expr = exp_to_expr(ctx, &generic_ens_exp, expr_ctxt)?;
+                stmts.push(Arc::new(StmtX::Assume(generic_ens_expr)));
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
@@ -2122,16 +2166,11 @@ fn stm_to_stmts(
                 }
             }
 
-            // Right now there is no way to specify an invariant mask on a closure function
-            // All closure funcs are assumed to have mask set 'full'
-            let mut mask = MaskSet::full();
-            std::mem::swap(&mut state.mask, &mut mask);
             // Right now all closures are assumed to unwind
             let mut unwind = UnwindAir::MayUnwind;
             std::mem::swap(&mut state.unwind, &mut unwind);
 
             let mut body_stmts = stm_to_stmts(ctx, state, body, spec_map)?;
-            std::mem::swap(&mut state.mask, &mut mask);
             std::mem::swap(&mut state.unwind, &mut unwind);
 
             stmts.append(&mut body_stmts);
@@ -2473,30 +2512,18 @@ fn stm_to_stmts(
             }
             stmts
         }
-        StmX::OpenInvariant(namespace_exp, body_stm) => {
+        StmX::OpenInvariant(body_stm) => {
             let mut stmts = vec![];
 
             // Build the names_expr. Note: In the SST, this should have been assigned
             // to an expression whose value is constant for the entire block.
-            let namespace_expr = exp_to_expr(ctx, namespace_exp, &ExprCtxt::new(spec_map))?;
-
-            // Assert that the namespace of the inv we are opening is in the mask set
-            if !ctx.checking_spec_preconditions() {
-                state.mask.assert_contains(&namespace_exp.span, &namespace_expr, &mut stmts, None);
-            }
 
             // process the body
-            // first remove the namespace from the mask set so that we cannot re-open
-            // the same invariant inside
-            let mut inner_mask =
-                state.mask.remove_element(namespace_exp.span.clone(), namespace_expr);
             // Disallow unwinding inside the invariant block
             let mut inner_unwind =
                 UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(stm.span.clone()));
-            swap(&mut state.mask, &mut inner_mask);
             swap(&mut state.unwind, &mut inner_unwind);
             stmts.append(&mut stm_to_stmts(ctx, state, body_stm, spec_map)?);
-            swap(&mut state.mask, &mut inner_mask);
             swap(&mut state.unwind, &mut inner_unwind);
 
             stmts
@@ -2672,7 +2699,7 @@ pub(crate) fn body_stm_to_air(
     is_nonlinear: bool,
     spec_map: &mono::SpecMap,
 ) -> Result<(Vec<CommandsWithContext>, Vec<(Span, SnapPos)>), VirErr> {
-    let FuncCheckSst { reqs, post_condition, mask_set, body: stm, local_decls, statics, unwind } =
+    let FuncCheckSst { reqs, post_condition, body: stm, local_decls, statics, unwind } =
         func_check_sst;
 
     if is_bit_vector_mode {
@@ -2743,22 +2770,6 @@ pub(crate) fn body_stm_to_air(
         ens_exprs.push((ens.span.clone(), e));
     }
 
-    let f_mask_singletons =
-        |v: &Vec<MaskSingleton<Exp>>| -> Result<Vec<MaskSingleton<Expr>>, VirErr> {
-            let expr_ctxt = &ExprCtxt::new_mode(ExprMode::Body, spec_map);
-            let mut v2: Vec<MaskSingleton<Expr>> = Vec::new();
-            for m in v.iter() {
-                let expr = exp_to_expr(ctx, &m.expr, expr_ctxt)?;
-                v2.push(MaskSingleton { expr, span: m.span.clone() });
-            }
-            Ok(v2)
-        };
-    let mask_air = MaskSet {
-        base: mask_set.base.clone(),
-        plus: f_mask_singletons(&mask_set.plus)?,
-        minus: f_mask_singletons(&mask_set.minus)?,
-    };
-
     let unwind_air = match unwind {
         UnwindSst::MayUnwind => UnwindAir::MayUnwind,
         UnwindSst::NoUnwind => UnwindAir::NoUnwind(ReasonForNoUnwind::Function),
@@ -2776,11 +2787,12 @@ pub(crate) fn body_stm_to_air(
         }
     }
 
-    let mut local = local_shared.clone();
     for e in crate::traits::trait_bounds_to_air(ctx, typ_bounds) {
         // The outer query already has this in reqs, but inner queries need it separately:
         local_shared.push(Arc::new(DeclX::Axiom(air::ast::Axiom { named: None, expr: e })));
     }
+
+    let mut local = local_shared.clone();
 
     let mut state = State {
         local_shared,
@@ -2790,7 +2802,6 @@ pub(crate) fn body_stm_to_air(
         sids: vec![initial_sid.clone()],
         snap_map: Vec::new(),
         assign_map: indexmap::IndexMap::new(),
-        mask: mask_air,
         unwind: unwind_air,
         post_condition_info: PostConditionInfo {
             dest: post_condition.dest.clone(),

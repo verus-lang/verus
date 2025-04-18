@@ -249,7 +249,7 @@ test_verify_one_file! {
 
             verus!{
                 mod X {
-                    pub open spec fn foo();
+                    pub uninterp spec fn foo();
                 }
 
                 proof fn some_proof_fn() {
@@ -482,8 +482,8 @@ test_verify_one_file! {
             page_id: Ghost<PageId>,
         }
 
-        spec fn a(page_id: PageId) -> bool;
-        spec fn b(page_id: PageId) -> bool;
+        uninterp spec fn a(page_id: PageId) -> bool;
+        uninterp spec fn b(page_id: PageId) -> bool;
 
         proof fn test(pic: PageIdContainer) {
             let page_id = pic.page_id@;
@@ -535,7 +535,7 @@ test_verify_one_file! {
         pub struct Y {
             y: int
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected one of")
+    } => Err(err) => assert_vir_error_msg(err, "unexpected token, expected `]`")
 }
 
 test_verify_one_file! {
@@ -552,7 +552,7 @@ test_verify_one_file! {
         #[verifier(external),verifier(external_body)]
         proof fn bar() {
         }
-    } => Err(err) => assert_vir_error_msg(err, "expected `]`, found `,`")
+    } => Err(err) => assert_vir_error_msg(err, "unexpected token, expected `]`")
 }
 
 test_verify_one_file! {
@@ -582,7 +582,7 @@ test_verify_one_file! {
         pub open fn test() -> bool {
             1int > 0int
         }
-    } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open` or `closed`")
+    } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open`, `closed`, or `uninterp`")
 }
 
 test_verify_one_file! {
@@ -638,7 +638,7 @@ test_verify_one_file! {
         proof fn test(mymap: Map<nat, nat>)
             requires !mymap.dom().finite() {
 
-            let m = Multiset::new(mymap);
+            let m = Multiset::from_map(mymap);
             assert(m.dom().finite());
 
             assert(!m.dom().finite()); // FAILS
@@ -653,7 +653,7 @@ test_verify_one_file! {
         proof fn test(mymap: Map<nat, nat>)
             requires !mymap.dom().finite() {
 
-            let m = Multiset::new(mymap);
+            let m = Multiset::from_map(mymap);
             assert(m.dom().finite());
 
             assert(m.dom() =~= mymap.dom()); // FAILS
@@ -669,8 +669,8 @@ test_verify_one_file! {
         use vstd::seq::*;
         proof fn test(s2: Seq<char>, s1: Seq<char>)
             requires
-                (s1 + new_strlit("-ab")@ == s2 + new_strlit("-cde")@) ||
-                (s1 + new_strlit("-cde")@ == s2 + new_strlit("-cde")@),
+                (s1 + ("-ab")@ == s2 + ("-cde")@) ||
+                (s1 + ("-cde")@ == s2 + ("-cde")@),
         {
             assert(
                 (s1.len() + 3 == s2.len() + 4) ||
@@ -678,28 +678,28 @@ test_verify_one_file! {
             ) by {
                 reveal_strlit("-cde");
                 reveal_strlit("-ab");
-                assert((s1 + new_strlit("-ab")@).len() == s1.len() + new_strlit("-ab")@.len() == s1.len() + 3);
-                assert((s1 + new_strlit("-cde")@).len() == s1.len() + new_strlit("-cde")@.len() == s1.len() + 4);
-                assert((s2 + new_strlit("-cde")@).len() == s2.len() + new_strlit("-cde")@.len() == s2.len() + 4);
+                assert((s1 + ("-ab")@).len() == s1.len() + ("-ab")@.len() == s1.len() + 3);
+                assert((s1 + ("-cde")@).len() == s1.len() + ("-cde")@.len() == s1.len() + 4);
+                assert((s2 + ("-cde")@).len() == s2.len() + ("-cde")@.len() == s2.len() + 4);
             };
 
-            assert(s1 + new_strlit("-ab")@ != s2 + new_strlit("-cde")@) by {
-                let str1 = s1 + new_strlit("-ab")@;
-                let str2 = s2 + new_strlit("-cde")@;
+            assert(s1 + ("-ab")@ != s2 + ("-cde")@) by {
+                let str1 = s1 + ("-ab")@;
+                let str2 = s2 + ("-cde")@;
                 assert(str1.len() == s1.len() + 3) by {
                     reveal_strlit("-ab");
-                    assert(str1.len() == (s1 + new_strlit("-ab")@).len() == s1.len() + new_strlit("-ab")@.len() == s1.len() + 3);
+                    assert(str1.len() == (s1 + ("-ab")@).len() == s1.len() + ("-ab")@.len() == s1.len() + 3);
                 };
                 assert(str2.len() == s2.len() + 4) by {
                     reveal_strlit("-cde");
-                    assert(str2.len() == (s2 + new_strlit("-cde")@).len() == s2.len() + new_strlit("-cde")@.len() == s2.len() + 4);
+                    assert(str2.len() == (s2 + ("-cde")@).len() == s2.len() + ("-cde")@.len() == s2.len() + 4);
                 };
                 if str2.len() == str1.len() {
                     assert(s1.len() + 3 == s2.len() + 4);
-                    assert(s1 + new_strlit("-ab")@ == s2 + new_strlit("-cde")@); // from the requires
+                    assert(s1 + ("-ab")@ == s2 + ("-cde")@); // from the requires
 
-                    assert(str1 == s2 + new_strlit("-cde")@);
-                    assert(str1 == s1 + new_strlit("-ab")@);
+                    assert(str1 == s2 + ("-cde")@);
+                    assert(str1 == s1 + ("-ab")@);
 
                     reveal_strlit("-ab");
                     reveal_strlit("-cde");
@@ -844,7 +844,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] assert_forall_trigger_regression_824 verus_code! {
         use vstd::seq::Seq;
-        pub open spec fn f(x: u32) -> bool;
+        pub uninterp spec fn f(x: u32) -> bool;
 
         proof fn test(a: Seq<u32>)
             requires forall |i| #![trigger f(a[i])] f(a[i]),
@@ -1025,8 +1025,8 @@ test_verify_one_file! {
                 #[verifier::external_body]
                 pub struct S { p: core::marker::PhantomData<()> }
 
-                pub spec fn p1(s: S) -> bool;
-                pub spec fn p2(s: S) -> bool;
+                pub uninterp spec fn p1(s: S) -> bool;
+                pub uninterp spec fn p2(s: S) -> bool;
 
                 pub proof fn p(s: S)
                     requires p1(s),
@@ -1327,4 +1327,119 @@ test_verify_one_file! {
             reveal(u64::do_something);
         }
     } => Err(e) => assert_vir_error_msg(e, "use the universal function call syntax to disambiguate")
+}
+
+test_verify_one_file_with_options! {
+    #[test] const_in_array_types_regression_1334 ["vstd"] => verus_code! {
+        const TEST: usize = 4;
+
+        pub fn get_array() -> [u8; TEST] {
+            return [0; TEST]
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] fieldless_enum_regression_1339 verus_code! {
+        enum FieldLess {
+            A = 0,
+            B = 1,
+            C = 2,
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] verus_macro_in_impl_block_issue1461 code! {
+        use vstd::prelude::*;
+
+        verus! {
+        pub struct MyStruct {}
+        }
+
+        impl MyStruct {
+            verus! {
+                proof fn unsound()
+                {
+                    assert(false); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] verus_macro_in_impl_block_issue1461_traits code! {
+        use vstd::prelude::*;
+
+        verus! {
+            pub struct MyStruct {}
+
+            trait Tr {
+                fn unsound();
+            }
+        }
+
+        impl Tr for MyStruct {
+            verus! {
+                fn unsound()
+                {
+                    assert(false);
+                }
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "In order to verify any items of this trait impl, the entire impl must be verified. Try wrapping the entire impl in the `verus!` macro.")
+}
+
+test_verify_one_file! {
+    #[test] impl_of_partialeq_ignored_regression_1466 verus_code!(
+        use vstd::prelude::*;
+        use core::cmp::PartialEq;
+        pub struct A(pub u8);
+        impl core::cmp::PartialEq<A> for A {
+            fn eq(&self, other: &A) -> (r: bool)
+            ensures
+                self.0 != other.0
+            {
+                proof{
+                    assert(false); // FAILS
+                }
+                self.0 == other.0
+            }
+        }
+    ) => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] derive_regression_1575 verus_code! {
+        #[derive(Clone, Copy)]
+        enum A { A, }
+
+        #[derive(Clone, Copy)]
+        enum B { B, }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] field_update_regression_1591 verus_code! {
+        use vstd::map::*;
+
+        struct PCB {
+            pid: usize,
+            parent_pid: usize,
+        }
+
+
+        fn test(pcb: &mut PCB) {
+            pcb.parent_pid = 10;
+
+            //assert(pcb.pid == old(pcb).pid); // this assert should not be necessary
+
+            proof {
+                let m = Map::<usize, bool>::empty();
+                let m2 = m.insert(pcb.pid, false);
+                assert(m2.contains_key(pcb.pid));
+            }
+        }
+    } => Ok(())
 }

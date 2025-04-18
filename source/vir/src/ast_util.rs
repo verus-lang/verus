@@ -1,10 +1,10 @@
 use crate::ast::{
-    ArchWordBits, BinaryOp, Constant, DatatypeTransparency, DatatypeX, Dt, Expr, ExprX, Exprs,
-    FieldOpr, Fun, FunX, FunctionKind, FunctionX, GenericBound, GenericBoundX, HeaderExprX, Ident,
-    InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind, MaskSpec, Mode, Param, ParamX, Params,
-    Path, PathX, Quant, SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg,
-    TypX, Typs, UnaryOp, UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent,
-    Variant, Variants, Visibility,
+    ArchWordBits, BinaryOp, BodyVisibility, Constant, DatatypeTransparency, DatatypeX, Dt, Expr,
+    ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound,
+    GenericBoundX, HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind,
+    MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
+    TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
+    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -32,6 +32,18 @@ impl PathX {
         let mut segments = (*self.segments).clone();
         segments.push(ident);
         Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
+    pub fn push_segments(&self, idents: Vec<Ident>) -> Path {
+        let mut segments = (*self.segments).clone();
+        segments.extend(idents);
+        Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
+
+    pub fn matches_prefix(&self, prefix: &Path) -> bool {
+        prefix.krate == self.krate
+            && prefix.segments.len() <= self.segments.len()
+            && prefix.segments[..] == self.segments[..prefix.segments.len()]
     }
 
     pub fn is_rust_std_path(&self) -> bool {
@@ -75,8 +87,18 @@ impl fmt::Display for Mode {
     }
 }
 
+impl<X: fmt::Display> fmt::Display for SpannedTyped<X> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.x)
+    }
+}
+
 pub fn type_is_bool(typ: &Typ) -> bool {
     matches!(&**typ, TypX::Bool)
+}
+
+pub fn bool_typ() -> Typ {
+    Arc::new(TypX::Bool)
 }
 
 // ImplPaths is ignored in types_equal
@@ -128,6 +150,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         }
         (TypX::TypeId, TypX::TypeId) => true,
         (TypX::ConstInt(i1), TypX::ConstInt(i2)) => i1 == i2,
+        (TypX::ConstBool(b1), TypX::ConstBool(b2)) => b1 == b2,
         (TypX::Air(a1), TypX::Air(a2)) => a1 == a2,
         (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
             f1 == f2 && n_types_equal(ts1, ts2)
@@ -145,6 +168,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Projection { .. }, _) => false,
         (TypX::TypeId, _) => false,
         (TypX::ConstInt(_), _) => false,
+        (TypX::ConstBool(_), _) => false,
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
         (TypX::Poly, _) => false,
@@ -243,6 +267,14 @@ pub fn int_range_from_type(typ: &Typ) -> Option<IntRange> {
         TypX::Int(range) => Some(*range),
         TypX::Boxed(typ) => int_range_from_type(typ),
         _ => None,
+    }
+}
+
+pub(crate) fn const_generic_to_primitive(typ: &Typ) -> &'static str {
+    match &*undecorate_typ(typ) {
+        TypX::Int(_) => crate::def::CONST_INT,
+        TypX::Bool => crate::def::CONST_BOOL,
+        _ => panic!("unexpected const generic type"),
     }
 }
 
@@ -384,14 +416,11 @@ pub fn friendly_fun_name_crate_relative(module: &Path, fun: &Fun) -> String {
 
 // Can source_module see an item restricted to restricted_to?
 pub fn is_visible_to_of_owner(restricted_to: &Option<Path>, source_module: &Path) -> bool {
-    let sources = &source_module.segments;
     match restricted_to {
         None => true,
-        Some(target) if target.segments.len() > sources.len() => false,
         Some(target) => {
             // Child can access private item in parent, so check if target is parent:
-            let targets = &target.segments;
-            target.krate == source_module.krate && targets[..] == sources[..targets.len()]
+            source_module.matches_prefix(target)
         }
     }
 }
@@ -399,6 +428,15 @@ pub fn is_visible_to_of_owner(restricted_to: &Option<Path>, source_module: &Path
 // Can source_module see an item with target_visibility?
 pub fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bool {
     is_visible_to_of_owner(&target_visibility.restricted_to, source_module)
+}
+
+pub fn is_body_visible_to(target_visibility: &BodyVisibility, source_module: &Path) -> bool {
+    match &target_visibility {
+        BodyVisibility::Uninterpreted => false,
+        BodyVisibility::Visibility(visibility) => {
+            is_visible_to_of_owner(&visibility.restricted_to, source_module)
+        }
+    }
 }
 
 pub fn is_transparent_to(transparency: &DatatypeTransparency, source_module: &Path) -> bool {
@@ -426,10 +464,6 @@ pub fn is_visible_to_or_true(target_visibility: &Visibility, source_module: &Opt
 }
 
 impl Visibility {
-    pub(crate) fn is_private_to(&self, module: &Option<Path>) -> bool {
-        module.is_some() && module == &self.restricted_to
-    }
-
     pub fn is_public(&self) -> bool {
         matches!(self, Visibility { restricted_to: None })
     }
@@ -451,6 +485,24 @@ impl Visibility {
                 if p1.segments.len() < p2.segments.len() { vis2.clone() } else { self.clone() }
             }
         }
+    }
+
+    pub fn at_least_as_restrictive_as(&self, vis2: &Visibility) -> bool {
+        match (&self.restricted_to, &vis2.restricted_to) {
+            (_, None) => true,
+            (None, Some(_)) => false,
+            (Some(p1), Some(p2)) => p1.matches_prefix(p2),
+        }
+    }
+}
+
+impl BodyVisibility {
+    pub fn is_public(&self) -> bool {
+        matches!(self, BodyVisibility::Visibility(Visibility { restricted_to: None }))
+    }
+
+    pub fn public() -> Self {
+        BodyVisibility::Visibility(Visibility { restricted_to: None })
     }
 }
 
@@ -575,7 +627,7 @@ impl FunctionX {
         **self.name.path.segments.last().expect("last segment") == "main"
     }
 
-    pub fn mask_spec_or_default(&self) -> MaskSpec {
+    pub fn mask_spec_or_default(&self, span: &Span) -> MaskSpec {
         if matches!(self.kind, FunctionKind::TraitMethodImpl { .. }) {
             // Always get the mask spec from the trait method decl
             panic!("mask_spec_or_default should not be called for TraitMethodImpl");
@@ -585,10 +637,10 @@ impl FunctionX {
             None => {
                 if self.mode == Mode::Exec {
                     // default to 'all'
-                    MaskSpec::InvariantOpensExcept(Arc::new(vec![]))
+                    MaskSpec::InvariantOpensExcept(span.clone(), Arc::new(vec![]))
                 } else {
                     // default to 'none'
-                    MaskSpec::InvariantOpens(Arc::new(vec![]))
+                    MaskSpec::InvariantOpens(span.clone(), Arc::new(vec![]))
                 }
             }
             Some(mask_spec) => mask_spec.clone(),
@@ -830,6 +882,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::TypeId => format!("typeid"),
         TypX::ConstInt(_) => format!("constint"),
         TypX::Poly => format!("poly"),
+        TypX::ConstBool(_) => format!("constbool"),
         TypX::Air(_) => panic!("unexpected air type here"),
         TypX::FnDef(f, typs, _res) => format!(
             "FnDef({}){}",
@@ -897,6 +950,53 @@ impl<A: Clone> VarBinderX<A> {
     }
 }
 
+impl FunctionKind {
+    pub(crate) fn inline_okay(&self) -> bool {
+        match self {
+            FunctionKind::Static | FunctionKind::TraitMethodImpl { .. } => true,
+            // We don't want to do inlining for MethodDecls. If a MethodDecl has a body,
+            // it's a *default* body, so we can't know for sure it hasn't been overridden.
+            FunctionKind::TraitMethodDecl { .. } | FunctionKind::ForeignTraitMethodImpl { .. } => {
+                false
+            }
+        }
+    }
+}
+
+// Return a non-TraitMethodImpl for f
+// (if f points to a TraitMethodImpl, return the corresponding method instead)
+pub(crate) fn get_non_trait_impl(func_map: &HashMap<Fun, Function>, f: &Fun) -> Option<Function> {
+    if let Some(function) = func_map.get(f) {
+        if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
+            if let Some(function) = func_map.get(method) {
+                assert!(!matches!(&function.x.kind, FunctionKind::TraitMethodImpl { .. }));
+                Some(function.clone())
+            } else {
+                None
+            }
+        } else {
+            Some(function.clone())
+        }
+    } else {
+        None
+    }
+}
+
+impl ArchWordBits {
+    pub fn min_bits(&self) -> u32 {
+        match self {
+            ArchWordBits::Either32Or64 => 32,
+            ArchWordBits::Exactly(v) => *v,
+        }
+    }
+    pub fn num_bits(&self) -> Option<u32> {
+        match self {
+            ArchWordBits::Either32Or64 => None,
+            ArchWordBits::Exactly(v) => Some(*v),
+        }
+    }
+}
+
 pub fn str_unique_var(s: &str, dis: crate::ast::VarIdentDisambiguate) -> VarIdent {
     VarIdent(Arc::new(s.to_string()), dis)
 }
@@ -943,8 +1043,23 @@ impl LowerUniqueVar for Arc<Vec<VarIdent>> {
 impl MaskSpec {
     pub fn exprs(&self) -> Exprs {
         match self {
-            MaskSpec::InvariantOpens(exprs) => exprs.clone(),
-            MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
+            MaskSpec::InvariantOpens(_span, exprs) => exprs.clone(),
+            MaskSpec::InvariantOpensExcept(_span, exprs) => exprs.clone(),
+            MaskSpec::InvariantOpensSet(e) => Arc::new(vec![e.clone()]),
+        }
+    }
+
+    pub(crate) fn is_all(&self) -> bool {
+        match &self {
+            MaskSpec::InvariantOpensExcept(_, es) if es.len() == 0 => true,
+            _ => false,
+        }
+    }
+
+    pub(crate) fn is_none(&self) -> bool {
+        match &self {
+            MaskSpec::InvariantOpens(_, es) if es.len() == 0 => true,
+            _ => false,
         }
     }
 }
@@ -1028,10 +1143,12 @@ impl HeaderExprX {
             | HeaderExprX::Recommends(_)
             | HeaderExprX::DecreasesWhen(_)
             | HeaderExprX::DecreasesBy(_)
-            | HeaderExprX::InvariantOpens(_)
-            | HeaderExprX::InvariantOpensExcept(_)
+            | HeaderExprX::InvariantOpens(_, _)
+            | HeaderExprX::InvariantOpensExcept(_, _)
+            | HeaderExprX::InvariantOpensSet(_)
             | HeaderExprX::Hide(_)
             | HeaderExprX::ExtraDependency(_)
+            | HeaderExprX::OpenVisibilityQualifier(_)
             | HeaderExprX::NoUnwind
             | HeaderExprX::NoUnwindWhen(_) => "beginning of the function body",
 
@@ -1049,5 +1166,53 @@ impl HeaderExprX {
 impl Default for crate::ast::AutoExtEqual {
     fn default() -> Self {
         crate::ast::AutoExtEqual { assert: true, assert_by: false, ensures: false }
+    }
+}
+
+impl Opaqueness {
+    /// Default fuel for the given function viewed from the given module,
+    /// only accounting for the visibility signifier on the function,
+    /// i.e., NOT accounting for any extra reveals in the module.
+    /// The module-reveals are accounted for in the prune phase and the result
+    /// is saved in the 'fuel_for_this_module' field.
+    ///
+    /// This is always 0 or 1, depending on opaqueness; setting the fuel to
+    /// values higher than 1 (for recursive functions) can only be done (at the moment)
+    /// with reveal_with_fuel statements, which are more specific than the module level.
+    pub fn get_default_fuel_for_module_path(&self, module_path: &Path) -> u32 {
+        match self {
+            Opaqueness::Opaque => 0,
+            Opaqueness::Revealed { visibility } => {
+                if is_visible_to(visibility, module_path) {
+                    1
+                } else {
+                    0
+                }
+            }
+        }
+    }
+
+    /// Default fuel for the given function viewed from the given module,
+    /// accounting for the visibility signifier on the function,
+    /// as well as any extra reveals in the module.
+    pub fn get_fuel_for_module(&self, name: &Fun, module: &Module) -> u32 {
+        let f = self.get_default_fuel_for_module_path(&module.x.path);
+        if f > 0 {
+            return f;
+        }
+        let revealed = if let Some(reveals) = &module.x.reveals {
+            reveals.x.iter().any(|r| r == name)
+        } else {
+            false
+        };
+
+        if revealed {
+            match self {
+                Opaqueness::Opaque => 1,
+                Opaqueness::Revealed { visibility: _ } => 0,
+            }
+        } else {
+            f
+        }
     }
 }

@@ -344,6 +344,23 @@ fn clean_vstd(target_verus_dir: &std::path::PathBuf) -> Result<(), String> {
     Ok(())
 }
 
+const EXPECTED_FEATURES: &[&str] = &["singular", "axiom-usage-info", "record-history"];
+
+fn check_expected_features(feature_args: &Vec<String>) -> Result<(), String> {
+    let feature_args: Vec<_> = feature_args
+        .iter()
+        .flat_map(|x| x.split(",").map(|x| x.to_owned()).collect::<Vec<_>>())
+        .collect();
+    if let Some(unexpected_feature) = feature_args.iter().find(|a| {
+        !EXPECTED_FEATURES.contains(&a.as_str())
+            && !(a.as_str() == "-F")
+            && !(a.as_str() == "--features")
+    }) {
+        return Err(format!("feature {unexpected_feature} is not expected"));
+    }
+    Ok(())
+}
+
 fn filter_features(
     feature_args: &Vec<String>,
     accepted: std::collections::HashSet<&'static str>,
@@ -478,10 +495,9 @@ fn run() -> Result<(), String> {
         if !output.status.success() {
             return Err(format!("rustup failed"));
         }
-        let active_toolchain_re = Regex::new(
-            r"^(([A-Za-z0-9.-]+)-(?:aarch64|x86_64)-[A-Za-z0-9]+-[A-Za-z0-9-]+) \(overridden by '(.*)'\)"
-        )
-        .unwrap();
+        let active_toolchain_re =
+            Regex::new(r"^(([A-Za-z0-9.-]+)-(?:aarch64|x86_64)-[A-Za-z0-9]+-[A-Za-z0-9-]+)")
+                .unwrap();
         let stdout = std::str::from_utf8(&output.stdout)
             .map_err(|_| format!("rustup output is invalid utf8"))?;
         let mut captures = active_toolchain_re.captures_iter(&stdout);
@@ -493,7 +509,7 @@ fn run() -> Result<(), String> {
             }
             Some(toolchain)
         } else {
-            return Err(format!("unexpected output from `rustup show active-toolchain`\nexpected a toolchain override\ngot: {stdout}"));
+            return Err(format!("unexpected output from `rustup show active-toolchain`\nexpected a valid toolchain\ngot: {stdout}"));
         }
     } else {
         None
@@ -665,6 +681,8 @@ fn run() -> Result<(), String> {
         args_bucket = new_args_bucket.into_iter().map(|(_, x)| x).collect();
         feature_args.into_iter().map(|(_, x)| x).collect()
     };
+
+    check_expected_features(&feature_args)?;
 
     if !in_nextest {
         match (task, package.as_ref().map(|x| x.as_str())) {
@@ -1114,6 +1132,7 @@ fn run() -> Result<(), String> {
                 "state_machines_macros",
                 "vstd_build",
                 "verus",
+                "cargo-verus",
             ];
 
             let build_vstd = {
@@ -1178,6 +1197,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                 format!("{}state_machines_macros.{}", LIB_PRE, LIB_DL),
                 format!("rust_verify{}", EXE),
                 format!("verus{}", EXE),
+                format!("cargo-verus{}", EXE),
             ]
             .into_iter()
             {

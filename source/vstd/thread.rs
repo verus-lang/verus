@@ -20,7 +20,7 @@ pub struct JoinHandle<Ret> {
 impl<Ret> JoinHandle<Ret> {
     /// Predicate restricting the possible return values. This is determined by the
     /// postcondition of the closure provided when calling `spawn()`.
-    pub spec fn predicate(&self, ret: Ret) -> bool;
+    pub uninterp spec fn predicate(&self, ret: Ret) -> bool;
 
     /// Wait for a thread to complete.
     #[verifier::external_body]
@@ -167,7 +167,7 @@ pub tracked struct IsThread {
 }
 
 impl IsThread {
-    pub spec fn view(&self) -> ThreadId;
+    pub uninterp spec fn view(&self) -> ThreadId;
 
     /// Guarantees that any two `IsThread` objects on the same thread
     /// will have the same ID.
@@ -235,9 +235,9 @@ unsafe impl<V> Send for ThreadShareable<V> {
 }
 
 impl<V> ThreadShareable<V> {
-    pub spec fn view(&self) -> V;
+    pub uninterp spec fn view(&self) -> V;
 
-    pub spec fn id(&self) -> ThreadId;
+    pub uninterp spec fn id(&self) -> ThreadId;
 
     /// Recover the inner value provide we are on the same thread.
     #[verifier::external_body]

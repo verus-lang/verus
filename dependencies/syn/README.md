@@ -3,8 +3,8 @@ Parser for Rust source code
 
 [<img alt="github" src="https://img.shields.io/badge/github-dtolnay/syn-8da0cb?style=for-the-badge&labelColor=555555&logo=github" height="20">](https://github.com/dtolnay/syn)
 [<img alt="crates.io" src="https://img.shields.io/crates/v/syn.svg?style=for-the-badge&color=fc8d62&logo=rust" height="20">](https://crates.io/crates/syn)
-[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-syn-66c2a5?style=for-the-badge&labelColor=555555&logoColor=white&logo=data:image/svg+xml;base64,PHN2ZyByb2xlPSJpbWciIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgdmlld0JveD0iMCAwIDUxMiA1MTIiPjxwYXRoIGZpbGw9IiNmNWY1ZjUiIGQ9Ik00ODguNiAyNTAuMkwzOTIgMjE0VjEwNS41YzAtMTUtOS4zLTI4LjQtMjMuNC0zMy43bC0xMDAtMzcuNWMtOC4xLTMuMS0xNy4xLTMuMS0yNS4zIDBsLTEwMCAzNy41Yy0xNC4xIDUuMy0yMy40IDE4LjctMjMuNCAzMy43VjIxNGwtOTYuNiAzNi4yQzkuMyAyNTUuNSAwIDI2OC45IDAgMjgzLjlWMzk0YzAgMTMuNiA3LjcgMjYuMSAxOS45IDMyLjJsMTAwIDUwYzEwLjEgNS4xIDIyLjEgNS4xIDMyLjIgMGwxMDMuOS01MiAxMDMuOSA1MmMxMC4xIDUuMSAyMi4xIDUuMSAzMi4yIDBsMTAwLTUwYzEyLjItNi4xIDE5LjktMTguNiAxOS45LTMyLjJWMjgzLjljMC0xNS05LjMtMjguNC0yMy40LTMzLjd6TTM1OCAyMTQuOGwtODUgMzEuOXYtNjguMmw4NS0zN3Y3My4zek0xNTQgMTA0LjFsMTAyLTM4LjIgMTAyIDM4LjJ2LjZsLTEwMiA0MS40LTEwMi00MS40di0uNnptODQgMjkxLjFsLTg1IDQyLjV2LTc5LjFsODUtMzguOHY3NS40em0wLTExMmwtMTAyIDQxLjQtMTAyLTQxLjR2LS42bDEwMi0zOC4yIDEwMiAzOC4ydi42em0yNDAgMTEybC04NSA0Mi41di03OS4xbDg1LTM4Ljh2NzUuNHptMC0xMTJsLTEwMiA0MS40LTEwMi00MS40di0uNmwxMDItMzguMiAxMDIgMzguMnYuNnoiPjwvcGF0aD48L3N2Zz4K" height="20">](https://docs.rs/syn)
-[<img alt="build status" src="https://img.shields.io/github/workflow/status/dtolnay/syn/CI/master?style=for-the-badge" height="20">](https://github.com/dtolnay/syn/actions?query=branch%3Amaster)
+[<img alt="docs.rs" src="https://img.shields.io/badge/docs.rs-syn-66c2a5?style=for-the-badge&labelColor=555555&logo=docs.rs" height="20">](https://docs.rs/syn)
+[<img alt="build status" src="https://img.shields.io/github/actions/workflow/status/dtolnay/syn/ci.yml?branch=master&style=for-the-badge" height="20">](https://github.com/dtolnay/syn/actions?query=branch%3Amaster)
 
 Syn is a parsing library for parsing a stream of Rust tokens into a syntax tree
 of Rust source code.
@@ -39,14 +39,14 @@ contains some APIs that may be useful more generally.
   procedural macros enable only what they need, and do not pay in compile time
   for all the rest.
 
-[`syn::File`]: https://docs.rs/syn/1.0/syn/struct.File.html
-[`syn::Item`]: https://docs.rs/syn/1.0/syn/enum.Item.html
-[`syn::Expr`]: https://docs.rs/syn/1.0/syn/enum.Expr.html
-[`syn::Type`]: https://docs.rs/syn/1.0/syn/enum.Type.html
-[`syn::DeriveInput`]: https://docs.rs/syn/1.0/syn/struct.DeriveInput.html
-[parser functions]: https://docs.rs/syn/1.0/syn/parse/index.html
+[`syn::File`]: https://docs.rs/syn/2.0/syn/struct.File.html
+[`syn::Item`]: https://docs.rs/syn/2.0/syn/enum.Item.html
+[`syn::Expr`]: https://docs.rs/syn/2.0/syn/enum.Expr.html
+[`syn::Type`]: https://docs.rs/syn/2.0/syn/enum.Type.html
+[`syn::DeriveInput`]: https://docs.rs/syn/2.0/syn/struct.DeriveInput.html
+[parser functions]: https://docs.rs/syn/2.0/syn/parse/index.html
 
-*Version requirement: Syn supports rustc 1.31 and up.*
+*Version requirement: Syn supports rustc 1.61 and up.*
 
 [*Release notes*](https://github.com/dtolnay/syn/releases)
 
@@ -76,7 +76,7 @@ tokens back to the compiler to compile into the user's crate.
 
 ```toml
 [dependencies]
-syn = "1.0"
+syn = "2.0"
 quote = "1.0"
 
 [lib]
@@ -104,9 +104,8 @@ pub fn my_macro(input: TokenStream) -> TokenStream {
 ```
 
 The [`heapsize`] example directory shows a complete working implementation of a
-derive macro. It works on any Rust compiler 1.31+. The example derives a
-`HeapSize` trait which computes an estimate of the amount of heap memory owned
-by a value.
+derive macro. The example derives a `HeapSize` trait which computes an estimate
+of the amount of heap memory owned by a value.
 
 [`heapsize`]: examples/heapsize
 

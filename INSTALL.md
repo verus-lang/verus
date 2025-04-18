@@ -1,129 +1,48 @@
 Below, you can find instructions for:
-  * [Building Verus](./INSTALL.md#building-the-project)
-  * [Running Verus on the command line](./INSTALL.md#running-the-verifier)
+  * [Obtaining Verus and Rust](./INSTALL.md#obtaining-verus-and-rust)
   * [Using Verus in an IDE](./INSTALL.md#ide-support)
 
-# Building the Project
+## Obtaining Verus and Rust
 
-The main project source is in `source`.
+You can obtain a binary release of Verus from [https://github.com/verus-lang/verus/releases](https://github.com/verus-lang/verus/releases). At the moment we offer rolling binary releases that track the latest commit on `main` (marked "pre-release"), and weekly point releases (you can get the "latest" at [https://github.com/verus-lang/verus/releases/latest](https://github.com/verus-lang/verus/releases/latest)). We recommend the weekly point releases.
 
-`tools` contains scripts for setting up the development environment by
-building a `cargo` wrapper that ensures artifacts are built correctly with
-our custom build process.
+If you need a specific older version, which is not one of the weekly releases, you can build it yourself using the instructions in [BUILD.md](./BUILD.md).
 
-See [`source/CODE.md`](source/CODE.md) for more details about files in `source`.  See the
-[official docs](https://rustc-dev-guide.rust-lang.org/) for more about the
-normal Rust compiler.
+On that page, open the "Assets" drawer and download the release for your platform, then unpack the zip file in a convenient location, e.g. `~/verus`. We will use this path as an example for the following, but you can replace it with your preferred location.
 
-## Step 1: Setup Z3
+*If you're on MacOS* the binaries and libraries will be quarantined by Gatekeeper, which will pop up a number of messages about running software downloaded from the internet. To avoid this issue, once you have unpacked the `zip` file, open a shell in the newly unzipped directory and run `bash macos_allow_gatekeeper.sh`, which will remove the Gatekeeper quarantine flag from all the relevant files (you can inspect the file first, if you'd like, it only makes changes inside the directory you just unpacked).
 
-Change directory to `source`: `cd source`
+`~/verus` now contains a binary distribution of Verus, which depends on a distribution of the currently supported version of Rust, installed via `rustup`. If you run `~/verus/verus` it will check if `rustup` and the correct toolchain are available and print a message accordingly.
 
-### On Windows: Get Z3 and set the `VERUS_Z3_PATH` environment variable
-
-Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
-Make sure you get Z3 4.12.5.
-The Z3 `bin` folder contain the executable `z3.exe`.
-Set the `VERUS_Z3_PATH` environment variable to the path of the Z3 executable file.
-
-### On Unix/macOS/Windows: Get a local Z3
-
-From `source`, use the script `./tools/get-z3.sh` (on Unix/macOs) or `./tools/get-z3.ps1` (on Windows) to download Z3.
-On Unix/macOS the cargo wrapper will correctly set the `VERUS_Z3_PATH` environment variable for the verifier to find Z3.
-If you run the verifier binary manually, set `VERUS_Z3_PATH` to `source/z3` or `source/z3.exe`.
-
-## Step 2: Ensure you have a recent rustup installed
-
-If you don't have it yet, obtain rustup from https://rustup.rs.
-We have only tested recent versions (1.25.2); older versions of rustup may behave in way our build
-process does not expect.
-
-## Step 3: Build Verus
-
-You should be in the `source` subdirectory.
-
-First, activate the development environment with one of the following: (This is automatic for [direnv](https://direnv.net/) users[^1])
+For example, if rustup is not available, you'll see something like:
 
 ```
-source ../tools/activate       # for bash and zsh
-source ../tools/activate.fish  # for fish
-..\tools\activate.bat          # for Windows
-..\tools\activate.ps1          # for Windows (Power Shell)
+$ ~/verus/verus 
+verus: rustup not found, or not executable
+verus needs a rustup installation
+run the following command (in a bash-compatible shell) to install rustup:
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- --default-toolchain 1.82.0-x86_64-unknown-linux-gnu
+or visit https://rustup.rs/ for more information
 ```
 
-This command builds (or re-builds) `vargo`, our cargo wrapper, and adds it to the `PATH` for the current shell.
+Follow these instructions to obtain rustup and the current version of the toolchain used by Verus, then run `verus` again.
 
-Now, simply run,
-
-```
-vargo build --release
-```
-
-(Omit `--release` for a debug build.)
-
-This will build everything you need to use Verus:
-- The `rust_verify` binary, which verifies Verus code.
-- Additional libraries that Verus code will need to include (`builtin`, `builtin_macros`, and `state_machines_macros`).
-- The [Verus standard library, `vstd`](https://verus-lang.github.io/verus/verusdoc/vstd/), which is written in Verus. Our build system builds **and verifies** the `vstd` crate.
-
-If everything is successful, you should see output indicating that various modules in `vstd` are being verified.
-
-# Running the Verifier 
-
-After running the build steps above, you can verify an example file.
-From the `source` directory, run:
+When you update `verus`, or if you already had `rustup` installed, the necessary toolchain may not be installed, and running `~/verus/verus` will instead print:
 
 ```
-vargo run -p rust_verify --release -- rust_verify/example/vectors.rs
+$ ~/verus/verus
+verus: required rust toolchain 1.82.0-x86_64-unknown-linux-gnu not found
+run the following command (in a bash-compatible shell) to install the necessary toolchain:
+  rustup install 1.82.0-x86_64-unknown-linux-gnu
+error: toolchain '1.82.0-x86_64-unknown-linux-gnu' is not installed
 ```
 
-This will make sure that the Verus and `vstd` builds are up-to-date, then run the verifier.
+Follow the instructions to install the necessary toolchain.
 
-You can also run the verifier directly (skipping the up-to-date check) with:
-
-on Linux and macOS:
-
-```
-./target-verus/release/verus rust_verify/example/vectors.rs
-```
-
-on Windows:
-
-```
-.\target-verus\release\verus.exe rust_verify\example\vectors.rs
-```
-
-You should see something like the following, indicating that verification was a success:
-
-```
-verification results:: verified: 7 errors: 0
-```
-
-You can also add the `--compile` flag, which tells Verus to compile the Verus code into a binary via `rustc`. For example:
-
-on Linux and macOS:
-
-```
-./target-verus/release/verus rust_verify/example/doubly_linked_xor.rs --compile
-./doubly_linked_xor
-```
-
-on Windows:
-
-```
-.\target-verus\release\verus.exe rust_verify\example\doubly_linked_xor.rs --compile
-.\doubly_linked_xor.exe
-```
-To verify an entire crate, simply point Verus at your `src/main.rs` file for an executable project, or `src/lib.rs` for a library project. You'll need to add `--crate-type=lib` for the latter.
+You can now run `~/verus/verus` to verify and compile verus files and projects.
 
 Now you're ready to write some Verus! Check out [our guide](https://verus-lang.github.io/verus/guide/getting_started.html) if you haven't yet.
 
-Note that while `vargo` needs to be run from the `source` directory, the `verus` binary can be run (directly, or via a symlink) from any
-directory, which is useful when verifying and compiling a project elsewhere on your file-system.
-
 # IDE Support
 
-Once you have built Verus, you can use it in IDE clients (such as Visual Studio
-Code, Emacs, or Vim) that support the LSP protocol.  Follow [these instructions](https://verus-lang.github.io/verus/guide/ide_support.html).
-
-[^1]: If you are a [direnv](https://direnv.net/) user this activation is performed automatically, i.e. you don't need to `source ../tools/activate`; instead, `vargo` will automatically be in your `PATH` as long as you are in the `source` subdirectory.
+Once you have built or installed Verus, you can use it in IDE clients (such as Visual Studio Code, Emacs, or Vim) that support the LSP protocol.  Follow [these instructions](https://verus-lang.github.io/verus/guide/ide_support.html).

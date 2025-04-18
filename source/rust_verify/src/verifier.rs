@@ -1,5 +1,5 @@
 use crate::commands::{Op, OpGenerator, OpKind, QueryOp, Style};
-use crate::config::{Args, ShowTriggers};
+use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::externs::VerusExterns;
@@ -67,7 +67,7 @@ impl<'tcx> Reporter<'tcx> {
     pub(crate) fn new(spans: &SpanContext, compiler: &'tcx Compiler) -> Self {
         Reporter {
             spans: spans.clone(),
-            compiler_diagnostics: compiler.sess.dcx(),
+            compiler_diagnostics: &compiler.sess.dcx(),
             source_map: compiler.sess.source_map(),
         }
     }
@@ -116,20 +116,26 @@ impl air::messages::Diagnostics for Reporter<'_> {
 
         match level {
             MessageLevel::Note => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_note(msg.note.clone()),
+                self.compiler_diagnostics.handle().struct_note(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Warning => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_warn(msg.note.clone()),
+                self.compiler_diagnostics.handle().struct_warn(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
             MessageLevel::Error => emit_with_diagnostic_details(
-                self.compiler_diagnostics.struct_err(msg.note.clone()),
+                self.compiler_diagnostics.handle().struct_err(msg.note.clone()),
                 multispan,
                 &msg.help,
             ),
+        }
+
+        if let Some(fancy_note) = &msg.fancy_note {
+            // The fancy_note might use terminal colors, which will get escaped if we use
+            // the Rust emitter. Thus, we have to emit this note out-of-band.
+            eprintln!("{:}{:}", console::style("note: ").bright().blue().to_string(), fancy_note);
         }
     }
 
@@ -258,6 +264,7 @@ pub struct Verifier {
     /// this is the actual number of threads used for verification. This will be set to the
     /// minimum of the requested threads and the number of buckets to verify
     pub num_threads: usize,
+    pub encountered_error: bool,
     pub encountered_vir_error: bool,
     pub count_verified: u64,
     pub count_errors: u64,
@@ -285,6 +292,14 @@ pub struct Verifier {
     /// smt runtimes for each function per bucket
     pub func_times: HashMap<BucketId, HashMap<Fun, FunctionSmtStats>>,
 
+    pub via_cargo_args: Option<CargoVerusArgs>,
+    // Some(DepTracker) if via_cargo_args.is_some(), None otherwise
+    // In both cases, is set to None when VerifierCallbacksEraseMacro.config finishes with it
+    dep_tracker: Option<crate::cargo_verus_dep_tracker::DepTracker>,
+    import_virs_via_cargo: Option<Vec<(String, String)>>,
+    export_vir_path_via_cargo: Option<std::path::PathBuf>,
+    pub(crate) compile: bool,
+
     // If we've already created the log directory, this is the path to it:
     created_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
     created_solver_log_dir: Arc<std::sync::Mutex<Option<std::path::PathBuf>>>,
@@ -293,7 +308,7 @@ pub struct Verifier {
     crate_names: Option<Vec<String>>,
     air_no_span: Option<vir::messages::Span>,
     current_crate_modules: Option<Vec<vir::ast::Module>>,
-    item_to_module_map: Option<Arc<crate::rust_to_vir::ItemToModuleMap>>,
+    item_to_module_map: Option<Arc<crate::external::CrateItems>>,
     buckets: HashMap<BucketId, Bucket>,
 
     // proof debugging purposes
@@ -305,9 +320,10 @@ pub struct Verifier {
 fn report_chosen_triggers(
     diagnostics: &impl air::messages::Diagnostics,
     chosen: &vir::context::ChosenTriggers,
+    automatically: bool,
 ) {
-    diagnostics
-        .report(&note(&chosen.span, "automatically chose triggers for this expression:").to_any());
+    let s = if automatically { "automatically chose" } else { "selected" }.to_owned();
+    diagnostics.report(&note(&chosen.span, s + " triggers for this expression:").to_any());
 
     for (n, trigger) in chosen.triggers.iter().enumerate() {
         let note = format!("  trigger {} of {}:", n + 1, chosen.triggers.len());
@@ -395,9 +411,17 @@ struct VerifyBucketOut {
 }
 
 impl Verifier {
-    pub fn new(args: Args) -> Verifier {
+    pub fn new(
+        args: Args,
+        via_cargo_args: Option<CargoVerusArgs>,
+        via_cargo_compile: bool,
+        dep_tracker: crate::cargo_verus_dep_tracker::DepTracker,
+    ) -> Verifier {
+        let compile = args.compile || via_cargo_compile;
+
         Verifier {
             num_threads: 1,
+            encountered_error: false,
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
@@ -415,6 +439,12 @@ impl Verifier {
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
 
+            dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
+            via_cargo_args,
+            import_virs_via_cargo: None,
+            export_vir_path_via_cargo: None,
+            compile,
+
             created_log_dir: Arc::new(std::sync::Mutex::new(None)),
             created_solver_log_dir: Arc::new(std::sync::Mutex::new(None)),
             vir_crate: None,
@@ -431,8 +461,12 @@ impl Verifier {
     }
 
     pub fn from_self(&self) -> Verifier {
+        // Note: if we needed to share dep_tracker, we could clone it or Arc it
+        assert!(self.dep_tracker.is_none());
+
         Verifier {
             num_threads: 1,
+            encountered_error: self.encountered_error,
             encountered_vir_error: false,
             count_verified: 0,
             count_errors: 0,
@@ -449,6 +483,13 @@ impl Verifier {
             time_vir_rust_to_vir: Duration::new(0, 0),
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
+
+            via_cargo_args: self.via_cargo_args.clone(),
+            dep_tracker: None,
+            import_virs_via_cargo: self.import_virs_via_cargo.clone(),
+            export_vir_path_via_cargo: self.export_vir_path_via_cargo.clone(),
+            compile: self.compile,
+
             created_log_dir: self.created_log_dir.clone(),
             created_solver_log_dir: self.created_solver_log_dir.clone(),
             vir_crate: self.vir_crate.clone(),
@@ -663,9 +704,10 @@ impl Verifier {
         command: &Command,
         context: &CommandContext,
         hint_upon_failure: &std::cell::RefCell<Option<Message>>,
-        is_singular: bool,
-        failed_assert_ids: &mut Vec<AssertId>,
+        prover_choice: vir::def::ProverChoice,
+        default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
+        let is_singular = prover_choice == vir::def::ProverChoice::Singular;
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         let do_report_long_running = self.args.report_long_running;
@@ -826,7 +868,9 @@ impl Verifier {
                 }
                 ValidityResult::Invalid(Some(air_model), Some(error), assert_id_opt) => {
                     if let Some(assert_id) = assert_id_opt {
-                        failed_assert_ids.push(assert_id.clone());
+                        if prover_choice == vir::def::ProverChoice::DefaultProver {
+                            default_prover_failed_assert_ids.push(assert_id.clone());
+                        }
                     }
 
                     if is_first_check && level == Some(MessageLevel::Error) {
@@ -967,7 +1011,7 @@ impl Verifier {
         function_name: &Fun,
         comment: &str,
         desc_prefix: Option<&str>,
-        failed_assert_ids: &mut Vec<AssertId>,
+        default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
         let user_filter = self.user_filter.as_ref().unwrap();
         let includes_function = user_filter.includes_function(function_name);
@@ -1015,8 +1059,8 @@ impl Verifier {
                     &command,
                     &context,
                     hint_upon_failure,
-                    *prover_choice == vir::def::ProverChoice::Singular,
-                    failed_assert_ids,
+                    *prover_choice,
+                    default_prover_failed_assert_ids,
                 );
         }
 
@@ -1130,7 +1174,7 @@ impl Verifier {
             air_context.set_z3_param(&option, &value);
         }
         #[cfg(feature = "axiom-usage-info")]
-        if self.args.broadcast_usage_info {
+        if self.args.axiom_usage_info {
             air_context.enable_usage_info();
         }
 
@@ -1472,7 +1516,7 @@ impl Verifier {
 
                         let mut any_invalid = false;
                         let mut any_timed_out = false;
-                        let mut failed_assert_ids = vec![];
+                        let mut default_prover_failed_assert_ids = vec![];
                         let mut func_curr_smt_time = Duration::ZERO;
 
                         let mut func_curr_smt_rlimit_count = match self.args.solver {
@@ -1581,7 +1625,7 @@ impl Verifier {
                                 &function.x.name,
                                 &op.to_air_comment(),
                                 None,
-                                &mut failed_assert_ids,
+                                &mut default_prover_failed_assert_ids,
                             );
                             func_curr_smt_time +=
                                 query_air_context.get_time().1 - iter_curr_smt_time;
@@ -1617,6 +1661,10 @@ impl Verifier {
                                     let axioms_list = used_axioms
                                         .iter()
                                         .map(|x| {
+                                            if x.starts_with(vir::def::AXIOM_NAME_PRELUDE) {
+                                                return format!("  - (prelude) {}", x);
+                                            }
+
                                             let funx = &function_opgen.ctx().fun_ident_map[x];
                                             let is_reveal_group = krate
                                                 .reveal_groups
@@ -1756,17 +1804,21 @@ impl Verifier {
                         }
 
                         if matches!(query_op, QueryOp::Body(Style::Normal)) {
-                            if (any_invalid && !self.args.no_auto_recommends_check)
+                            if (any_invalid
+                                && !self.args.no_auto_recommends_check
+                                && !any_timed_out)
                                 || function.x.attrs.check_recommends
                             {
                                 function_opgen.retry_with_recommends(&op, any_invalid)?;
                             }
 
-                            if any_invalid && self.args.expand_errors && failed_assert_ids.len() > 0
+                            if any_invalid
+                                && self.args.expand_errors
+                                && default_prover_failed_assert_ids.len() > 0
                             {
                                 function_opgen.start_expand_errors_if_possible(
                                     &op,
-                                    failed_assert_ids[0].clone(),
+                                    default_prover_failed_assert_ids[0].clone(),
                                 );
                                 flush_diagnostics_to_report = true;
                             }
@@ -1784,7 +1836,9 @@ impl Verifier {
                         }
 
                         if matches!(query_op, QueryOp::SpecTermination) {
-                            if (any_invalid && !self.args.no_auto_recommends_check)
+                            if (any_invalid
+                                && !self.args.no_auto_recommends_check
+                                && !any_timed_out)
                                 || function.x.attrs.check_recommends
                             {
                                 // Do recommends-checking for the body of the function.
@@ -2499,18 +2553,33 @@ impl Verifier {
             match (
                 self.args.show_triggers,
                 modules_to_verify.iter().find(|m| &m.x.path == &chosen.module).is_some(),
+                chosen.manual,
             ) {
-                (ShowTriggers::Selective, true) if chosen.low_confidence => {
-                    report_chosen_triggers(&reporter, &chosen);
+                (ShowTriggers::Selective, true, false) if chosen.low_confidence => {
+                    report_chosen_triggers(&reporter, &chosen, true);
                     low_confidence_triggers = Some(chosen.span);
                 }
-                (ShowTriggers::Module, true) => {
-                    report_chosen_triggers(&reporter, &chosen);
+                (ShowTriggers::Module, true, false) => {
+                    report_chosen_triggers(&reporter, &chosen, true);
                 }
-                (ShowTriggers::Verbose, _) => {
-                    report_chosen_triggers(&reporter, &chosen);
+                (ShowTriggers::AllModules, _, false) => {
+                    report_chosen_triggers(&reporter, &chosen, true);
                 }
-                _ => {}
+                (ShowTriggers::Verbose, true, _) => {
+                    report_chosen_triggers(&reporter, &chosen, !chosen.manual);
+                }
+                (ShowTriggers::VerboseAllModules, _, _) => {
+                    report_chosen_triggers(&reporter, &chosen, !chosen.manual);
+                }
+                (
+                    ShowTriggers::Selective
+                    | ShowTriggers::Module
+                    | ShowTriggers::AllModules
+                    | ShowTriggers::Silent
+                    | ShowTriggers::Verbose,
+                    _,
+                    _,
+                ) => {}
             }
         }
         if let Some(span) = low_confidence_triggers {
@@ -2633,7 +2702,10 @@ impl Verifier {
             crate_name: Arc::new(crate_name.clone()),
             vstd_crate_name,
         });
-        let multi_crate = self.args.export.is_some() || import_len > 0 || self.args.use_crate_name;
+        let multi_crate = self.args.export.is_some()
+            || import_len > 0
+            || self.args.use_crate_name
+            || self.via_cargo_args.is_some();
         crate::rust_to_vir_base::MULTI_CRATE
             .with(|m| m.store(multi_crate, std::sync::atomic::Ordering::Relaxed));
 
@@ -2693,8 +2765,13 @@ impl Verifier {
 
         Arc::make_mut(&mut current_vir_crate).arch.word_bits = vir_crate.arch.word_bits;
 
-        crate::import_export::export_crate(&self.args, crate_metadata, current_vir_crate.clone())
-            .map_err(map_err_diagnostics)?;
+        crate::import_export::export_crate(
+            &self.args,
+            &self.export_vir_path_via_cargo,
+            crate_metadata,
+            current_vir_crate.clone(),
+        )
+        .map_err(map_err_diagnostics)?;
 
         if self.args.log_all || self.args.log_args.log_vir {
             let mut file = self
@@ -2712,13 +2789,19 @@ impl Verifier {
         let vir_crate = vir::traits::fixup_ens_has_return_for_trait_method_impls(vir_crate)
             .map_err(|e| (e, Vec::new()))?;
 
+        if self.args.check_api_safety {
+            vir::safe_api::check_safe_api(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        }
+
         let check_crate_result1 = vir::well_formed::check_one_crate(&current_vir_crate);
         let check_crate_result = vir::well_formed::check_crate(
             &vir_crate,
             unpruned_crate,
             &mut ctxt.diagnostics.borrow_mut(),
             self.args.no_verify,
+            self.args.no_cheating,
         );
+
         for diag in ctxt.diagnostics.borrow_mut().drain(..) {
             match diag {
                 vir::ast::VirErrAs::Warning(err) => {
@@ -2826,15 +2909,39 @@ fn hir_crate<'tcx>(tcx: TyCtxt<'tcx>, _: ()) -> rustc_hir::Crate<'tcx> {
 
 impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        if let Some(mut dep_tracker) = self.verifier.dep_tracker.take() {
+            let import_dep_if_present = &self
+                .verifier
+                .via_cargo_args
+                .as_ref()
+                .expect("dep_tracker is present, so via_cargo_args must be Some")
+                .import_dep_if_present;
+            let import_deps_if_present: HashSet<String> =
+                import_dep_if_present.iter().cloned().collect();
+            let success = crate::cargo_verus::handle_externs(
+                &config.opts.externs,
+                import_deps_if_present,
+                &mut dep_tracker,
+            );
+            match success {
+                Ok(imports) => {
+                    self.verifier.import_virs_via_cargo = Some(imports);
+                }
+                Err(err) => {
+                    eprintln!("Error: {}", err);
+                    std::process::exit(1);
+                }
+            }
+            dep_tracker.config_install(config);
+        }
+
         config.override_queries = Some(|_session, providers| {
             providers.hir_crate = hir_crate;
 
-            // Do not actually evaluate consts if we are not compiling, as doing so triggers the
-            // constness checker, which is more restrictive than necessary for verification.
-            // Doing this will delay some const-ness errors to when verus is run with `--compile`.
-            providers.eval_to_const_value_raw =
-                |_tcx, _key| Ok(rustc_middle::mir::ConstValue::ZeroSized);
-
+            // Hooking mir_const_qualif solves constness issue in function body,
+            // but const-eval will still do check-const when evaluating const
+            // value. Thus const_header_wrapper is still needed.
+            providers.mir_const_qualif = |_, _| rustc_middle::mir::ConstQualifs::default();
             // Prevent the borrow checker from running, as we will run our own lifetime analysis.
             // Stopping after `after_expansion` used to be enough, but now borrow check is triggered
             // by const evaluation through the mir interpreter.
@@ -2857,22 +2964,30 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         self.rust_end_time = Some(Instant::now());
 
         if let Some(_guar) = compiler.sess.dcx().has_errors() {
+            self.verifier.encountered_error = true;
             return rustc_driver::Compilation::Stop;
         }
 
         self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
-        // write_dep_info will internally check whether the `--emit=dep-info` flag is set
-        if let Err(_) = queries.write_dep_info() {
-            // ErrorGuaranteed indicates than an error has already been reported to the user, so we can just exit
-            std::process::exit(-1);
-        }
-
         let _result = queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
+            if self.verifier.via_cargo_args.is_some() {
+                let crate_meta_path = tcx
+                    .output_filenames(())
+                    .path(rustc_session::config::OutputType::Metadata);
+                if let rustc_session::config::OutFileName::Real(path) = crate_meta_path {
+                    self.verifier.export_vir_path_via_cargo = Some(path.with_extension("vir"));
+                }
+            }
+
+            rustc_interface::passes::write_dep_info(tcx);
             let crate_name = tcx.crate_name(LOCAL_CRATE).as_str().to_owned();
 
             let time_import0 = Instant::now();
-            let imported = match crate::import_export::import_crates(&self.verifier.args) {
+            let imported = match crate::import_export::import_crates(
+                &self.verifier.args,
+                self.verifier.import_virs_via_cargo.clone().unwrap_or_default(),
+            ) {
                 Ok(imported) => imported,
                 Err(err) => {
                     assert!(err.spans.len() == 0);
@@ -2923,6 +3038,7 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                     return;
                 }
                 if let Some(_guar) = compiler.sess.dcx().has_errors() {
+                    self.verifier.encountered_error = true;
                     return;
                 }
                 self.lifetime_start_time = Some(Instant::now());
@@ -3005,6 +3121,21 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 }
             }
         });
+        if !self.verifier.args.output_json
+            && !self.verifier.encountered_error
+            && !self.verifier.encountered_vir_error
+        {
+            println!(
+                "verification results:: {} verified, {} errors{}",
+                self.verifier.count_verified,
+                self.verifier.count_errors,
+                if !crate::driver::is_verifying_entire_crate(&self.verifier) {
+                    " (partial verification with `--verify-*`)"
+                } else {
+                    ""
+                }
+            );
+        }
         rustc_driver::Compilation::Stop
     }
 }

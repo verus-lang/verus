@@ -11,27 +11,27 @@ use syn_verus::parse_quote_spanned;
 use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
-use syn_verus::token::Colon2;
 use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
     visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
-    visit_impl_item_method_mut, visit_item_const_mut, visit_item_enum_mut, visit_item_fn_mut,
+    visit_impl_item_fn_mut, visit_item_const_mut, visit_item_enum_mut, visit_item_fn_mut,
     visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut, visit_local_mut,
-    visit_specification_mut, visit_trait_item_method_mut, VisitMut,
+    visit_specification_mut, visit_trait_item_fn_mut, VisitMut,
 };
 use syn_verus::BroadcastUse;
 use syn_verus::ExprBlock;
+use syn_verus::ExprForLoop;
 use syn_verus::{
-    braced, bracketed, parenthesized, parse_macro_input, AttrStyle, Attribute, BareFnArg, BinOp,
-    Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
-    ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind, FnMode, Global, Ident,
-    ImplItem, ImplItemMethod, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
-    InvariantNameSetList, Item, ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod,
-    ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken,
-    ModeSpec, ModeSpecChecked, Pat, Path, PathArguments, PathSegment, Publish, Recommends,
-    Requires, ReturnType, Returns, Signature, SignatureDecreases, SignatureInvariants,
-    SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem, TraitItemMethod,
-    Type, TypeFnSpec, TypePath, UnOp, Visibility,
+    braced, bracketed, parenthesized, parse_macro_input, AssumeSpecification, Attribute, BareFnArg,
+    BinOp, Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
+    ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArg, FnArgKind, FnMode, Global, Ident,
+    ImplItem, ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
+    InvariantNameSetList, InvariantNameSetSet, Item, ItemBroadcastGroup, ItemConst, ItemEnum,
+    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local,
+    MatchesOpExpr, MatchesOpToken, ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path,
+    Publish, Recommends, Requires, ReturnType, Returns, Signature, SignatureDecreases,
+    SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem,
+    TraitItemFn, Type, TypeFnSpec, TypePath, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -124,6 +124,12 @@ fn path_is_ident(path: &Path, s: &str) -> bool {
     segments.len() == 1 && segments.first().unwrap().ident.to_string() == s
 }
 
+pub(crate) fn into_spans(span: Span) -> proc_macro2::extra::DelimSpan {
+    let mut group = proc_macro2::Group::new(proc_macro2::Delimiter::None, TokenStream::new());
+    group.set_span(span);
+    group.delim_span()
+}
+
 macro_rules! stmt_with_semi {
     ($b:ident, $span:expr => $($tok:tt)*) => {
         {
@@ -133,9 +139,9 @@ macro_rules! stmt_with_semi {
         }
     };
     ($span:expr => $($tok:tt)*) => {
-        Stmt::Semi(
+        Stmt::Expr(
             Expr::Verbatim(quote_spanned!{ $span => $($tok)* }),
-            Semi { spans: [ $span ] },
+            Some(Semi { spans: [ $span ] }),
         )
     };
 }
@@ -228,9 +234,29 @@ impl Visitor {
             // Remove verus:: and verifier:: attributes to make it easier for
             // standard rustc to compile the code
             attrs.retain(|attr| {
-                let prefix = attr.path.segments[0].ident.to_string();
+                let prefix = attr.path().segments[0].ident.to_string();
                 prefix != "verus" && prefix != "verifier"
             });
+        }
+    }
+
+    fn visit_loop_spec(&mut self, spec: &mut syn_verus::LoopSpec) {
+        let mut visit_spec = |exprs: &mut syn_verus::Specification| {
+            for expr in exprs.exprs.iter_mut() {
+                self.visit_expr_mut(expr);
+            }
+        };
+        if let Some(exprs) = spec.invariants.as_mut() {
+            visit_spec(&mut exprs.exprs);
+        }
+        if let Some(exprs) = spec.invariant_except_breaks.as_mut() {
+            visit_spec(&mut exprs.exprs);
+        }
+        if let Some(exprs) = spec.ensures.as_mut() {
+            visit_spec(&mut exprs.exprs);
+        }
+        if let Some(exprs) = spec.decreases.as_mut() {
+            visit_spec(&mut exprs.exprs);
         }
     }
 
@@ -256,11 +282,11 @@ impl Visitor {
                 for expr in exprs.exprs.iter_mut() {
                     self.visit_expr_mut(expr);
                 }
-                spec_stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
                         quote_spanned_builtin!(builtin, token.span => #builtin::requires([#exprs])),
                     ),
-                    Semi { spans: [token.span] },
+                    Some(Semi { spans: [token.span] }),
                 ));
             }
         }
@@ -269,17 +295,17 @@ impl Visitor {
                 for expr in exprs.exprs.iter_mut() {
                     self.visit_expr_mut(expr);
                 }
-                spec_stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(quote_spanned_builtin!(builtin, token.span => #builtin::recommends([#exprs]))),
-                    Semi { spans: [token.span] },
+                    Some(Semi { spans: [token.span] }),
                 ));
             }
             if let Some((via_token, via_expr)) = via {
-                spec_stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
                         quote_spanned_builtin!(builtin, via_expr.span() => #builtin::recommends_by(#via_expr)),
                     ),
-                    Semi { spans: [via_token.span] },
+                    Some(Semi { spans: [via_token.span] }),
                 ));
             }
         }
@@ -299,7 +325,7 @@ impl Visitor {
                                 "when using #![trigger f(x)], at least one ensures is required";
                             let expr =
                                 Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                            spec_stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                            spec_stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                             false
                         } else {
                             let e = take_expr(&mut exprs.exprs[0]);
@@ -332,18 +358,18 @@ impl Visitor {
                 };
                 if cont {
                     if let Some((p, ty)) = ret_pat {
-                        spec_stmts.push(Stmt::Semi(
+                        spec_stmts.push(Stmt::Expr(
                             Expr::Verbatim(
                                 quote_spanned_builtin!(builtin, token.span => #builtin::ensures(|#p: #ty| [#exprs])),
                             ),
-                            Semi { spans: [token.span] },
+                            Some(Semi { spans: [token.span] }),
                         ));
                     } else {
-                        spec_stmts.push(Stmt::Semi(
+                        spec_stmts.push(Stmt::Expr(
                             Expr::Verbatim(
                                 quote_spanned_builtin!(builtin, token.span => #builtin::ensures([#exprs])),
                             ),
-                            Semi { spans: [token.span] },
+                            Some(Semi { spans: [token.span] }),
                         ));
                     }
                 }
@@ -354,11 +380,11 @@ impl Visitor {
                 for expr in exprs.exprs.iter_mut() {
                     self.visit_expr_mut(expr);
                 }
-                spec_stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
                         quote_spanned_builtin!(builtin, token.span => #builtin::returns([#exprs])),
                     ),
-                    Semi { spans: [token.span] },
+                    Some(Semi { spans: [token.span] }),
                 ));
             }
         }
@@ -370,60 +396,69 @@ impl Visitor {
                 if matches!(expr, Expr::Tuple(..)) {
                     let err = "decreases cannot be a tuple; use `decreases x, y` rather than `decreases (x, y)`";
                     let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                    spec_stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                    spec_stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                 }
             }
-            spec_stmts.push(Stmt::Semi(
+            spec_stmts.push(Stmt::Expr(
                 Expr::Verbatim(
                     quote_spanned_builtin!(builtin, token.span => #builtin::decreases((#exprs))),
                 ),
-                Semi { spans: [token.span] },
+                Some(Semi { spans: [token.span] }),
             ));
             if let Some((when_token, mut when_expr)) = when {
                 self.visit_expr_mut(&mut when_expr);
-                spec_stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
                         quote_spanned_builtin!(builtin, when_expr.span() => #builtin::decreases_when(#when_expr)),
                     ),
-                    Semi { spans: [when_token.span] },
+                    Some(Semi { spans: [when_token.span] }),
                 ));
             }
             if let Some((via_token, via_expr)) = via {
-                spec_stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
                         quote_spanned_builtin!(builtin, via_expr.span() => #builtin::decreases_by(#via_expr)),
                     ),
-                    Semi { spans: [via_token.span] },
+                    Some(Semi { spans: [via_token.span] }),
                 ));
             }
         }
         if let Some(SignatureInvariants { token: _, set }) = opens_invariants {
             match set {
                 InvariantNameSet::Any(any) => {
-                    spec_stmts.push(Stmt::Semi(
+                    spec_stmts.push(Stmt::Expr(
                         Expr::Verbatim(
                             quote_spanned_builtin!(builtin, any.span() => #builtin::opens_invariants_any()),
                         ),
-                        Semi { spans: [any.span()] },
+                        Some(Semi { spans: [any.span()] }),
                     ));
                 }
                 InvariantNameSet::None(none) => {
-                    spec_stmts.push(Stmt::Semi(
+                    spec_stmts.push(Stmt::Expr(
                         Expr::Verbatim(
                             quote_spanned_builtin!(builtin, none.span() => #builtin::opens_invariants_none()),
                         ),
-                        Semi { spans: [none.span()] },
+                        Some(Semi { spans: [none.span()] }),
                     ));
                 }
                 InvariantNameSet::List(InvariantNameSetList { bracket_token, mut exprs }) => {
                     for expr in exprs.iter_mut() {
                         self.visit_expr_mut(expr);
                     }
-                    spec_stmts.push(Stmt::Semi(
+                    spec_stmts.push(Stmt::Expr(
                         Expr::Verbatim(
-                            quote_spanned_builtin!(builtin, bracket_token.span => #builtin::opens_invariants([#exprs])),
+                            quote_spanned_builtin!(builtin, bracket_token.span.join() => #builtin::opens_invariants([#exprs])),
                         ),
-                        Semi { spans: [bracket_token.span] },
+                        Some(Semi { spans: [bracket_token.span.close()] }),
+                    ));
+                }
+                InvariantNameSet::Set(InvariantNameSetSet { mut expr }) => {
+                    self.visit_expr_mut(&mut expr);
+                    spec_stmts.push(Stmt::Expr(
+                        Expr::Verbatim(
+                            quote_spanned_builtin!(builtin, expr.span() => #builtin::opens_invariants_set(#expr)),
+                        ),
+                        Some(Semi { spans: [expr.span()] }),
                     ));
                 }
             }
@@ -432,26 +467,29 @@ impl Visitor {
         if let Some(SignatureUnwind { token, when }) = unwind {
             if let Some((when_token, mut when_expr)) = when {
                 self.visit_expr_mut(&mut when_expr);
-                spec_stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
                         quote_spanned_builtin!(builtin, when_expr.span() => #builtin::no_unwind_when(#when_expr)),
                     ),
-                    Semi { spans: [when_token.span] },
+                    Some(Semi { spans: [when_token.span] }),
                 ));
             } else {
-                spec_stmts.push(Stmt::Semi(
+                spec_stmts.push(Stmt::Expr(
                     Expr::Verbatim(
                         quote_spanned_builtin!(builtin, token.span() => #builtin::no_unwind()),
                     ),
-                    Semi { spans: [token.span] },
+                    Some(Semi { spans: [token.span] }),
                 ));
             }
         }
 
         if is_const {
-            vec![Stmt::Expr(Expr::Verbatim(
-                quote_spanned!(span => #[verus::internal(const_header_wrapper)] || { #(#spec_stmts)* };),
-            ))]
+            vec![Stmt::Expr(
+                Expr::Verbatim(
+                    quote_spanned!(span => #[verus::internal(const_header_wrapper)] || { #(#spec_stmts)* };),
+                ),
+                None,
+            )]
         } else {
             spec_stmts
         }
@@ -486,7 +524,6 @@ impl Visitor {
             }
 
             // Check for Ghost(x) or Tracked(x) argument
-            use syn_verus::PatType;
             if let FnArgKind::Typed(PatType { pat, .. }) = &mut arg.kind {
                 let pat = &mut **pat;
                 let mut tracked_wrapper = false;
@@ -494,8 +531,8 @@ impl Visitor {
                 if let Pat::TupleStruct(tup) = &*pat {
                     let ghost_wrapper = path_is_ident(&tup.path, "Ghost");
                     tracked_wrapper = path_is_ident(&tup.path, "Tracked");
-                    if ghost_wrapper || tracked_wrapper || tup.pat.elems.len() == 1 {
-                        if let Pat::Ident(id) = &tup.pat.elems[0] {
+                    if ghost_wrapper || tracked_wrapper || tup.elems.len() == 1 {
+                        if let Pat::Ident(id) = &tup.elems[0] {
                             wrapped_pat_id = Some(id.clone());
                         }
                     }
@@ -572,7 +609,7 @@ impl Visitor {
             let publish_span = sig.publish.span();
             stmts.push(stmt_with_semi!(
                 publish_span =>
-                compile_error!("only `spec` functions can be marked `open` or `closed`")
+                compile_error!("only `spec` functions can be marked `open`, `closed`, or `uninterp`")
             ));
         }
 
@@ -594,16 +631,37 @@ impl Visitor {
             Publish::Default => vec![],
             Publish::Closed(o) => vec![mk_verus_attr(o.token.span, quote! { closed })],
             Publish::Open(o) => vec![mk_verus_attr(o.token.span, quote! { open })],
-            Publish::OpenRestricted(_) => {
-                unimplemented!("TODO: support open(...)")
+            Publish::Uninterp(o) => vec![mk_verus_attr(o.token.span, quote! { uninterp })],
+            Publish::OpenRestricted(o) => {
+                let in_token = &o.in_token;
+                let p = &o.path;
+                stmts.push(stmt_with_semi!(
+                    o.path.span() =>
+                    #[verus::internal(open_visibility_qualifier)]
+                    pub(#in_token#p) use crate as _
+                ));
+                vec![mk_verus_attr(o.open_token.span, quote! { open })]
             }
         };
 
         let (unimpl, ext_attrs) = match (&sig.mode, semi_token, is_trait) {
-            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => (
-                vec![Stmt::Expr(Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())))],
-                vec![mk_verus_attr(semi.span, quote! { external_body })],
-            ),
+            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => {
+                // uninterpreted function
+                let unimpl = vec![Stmt::Expr(
+                    Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())),
+                    None,
+                )];
+                #[cfg(verus_keep_ghost)]
+                if !matches!(&sig.publish, Publish::Uninterp(_)) {
+                    proc_macro::Diagnostic::spanned(
+                        sig.span().unwrap(),
+                        proc_macro::Level::Warning,
+                        "uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`\nthis will become a hard error in the future",
+                    )
+                    .emit();
+                }
+                (unimpl, vec![mk_verus_attr(semi.span, quote! { external_body })])
+            }
             _ => (vec![], vec![]),
         };
 
@@ -671,10 +729,11 @@ impl Visitor {
                 self.inside_ghost += 1;
                 self.visit_expr_mut(&mut expr);
                 self.inside_ghost -= 1;
-                stmts.push(Stmt::Expr(Expr::Verbatim(quote_spanned!(con_span => #[allow(non_snake_case)]#[verus::internal(verus_macro)] #[verus::internal(const_body)] fn __VERUS_CONST_BODY__() -> #con_ty { #expr } ))));
-                stmts.push(Stmt::Expr(Expr::Verbatim(
-                    quote_spanned!(con_span => unsafe { core::mem::zeroed() }),
-                )));
+                stmts.push(Stmt::Expr(Expr::Verbatim(quote_spanned!(con_span => #[allow(non_snake_case)]#[verus::internal(verus_macro)] #[verus::internal(const_body)] fn __VERUS_CONST_BODY__() -> #con_ty { #expr } )), None));
+                stmts.push(Stmt::Expr(
+                    Expr::Verbatim(quote_spanned!(con_span => unsafe { core::mem::zeroed() })),
+                    None,
+                ));
                 *con_expr = Some(Box::new(Expr::Block(syn_verus::ExprBlock {
                     attrs: vec![],
                     label: None,
@@ -689,7 +748,7 @@ impl Visitor {
                 if attrs.len() > 0 {
                     let err = "outer attributes only allowed on function's ensures";
                     let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                    stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                    stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                 } else if exprs.exprs.len() > 0 {
                     for expr in exprs.exprs.iter_mut() {
                         self.visit_expr_mut(expr);
@@ -732,6 +791,7 @@ impl Visitor {
             (_, _, Publish::Default) => vec![mk_verus_attr(span, quote! { open })],
             (_, _, Publish::Closed(o)) => vec![mk_verus_attr(o.token.span, quote! { closed })],
             (_, _, Publish::Open(o)) => vec![mk_verus_attr(o.token.span, quote! { open })],
+            (_, _, Publish::Uninterp(o)) => vec![mk_verus_attr(o.token.span, quote! { uninterp })],
             (_, _, Publish::OpenRestricted(_)) => {
                 unimplemented!("TODO: support open(...)")
             }
@@ -790,11 +850,11 @@ impl VisitMut for ExecGhostPatVisitor {
         };
         match pat {
             Pat::TupleStruct(pts)
-                if pts.pat.elems.len() == 1
+                if pts.elems.len() == 1
                     && (path_is_ident(&pts.path, "Tracked")
                         || path_is_ident(&pts.path, "Ghost")) =>
             {
-                if let Pat::Ident(id) = &mut pts.pat.elems[0] {
+                if let Pat::Ident(id) = &mut pts.elems[0] {
                     if id.by_ref.is_some() || id.subpat.is_some() {
                         return;
                     }
@@ -826,7 +886,8 @@ impl VisitMut for ExecGhostPatVisitor {
                         } else {
                             quote_spanned!(span => #x = #tmp_x.view())
                         };
-                        let assign = Stmt::Semi(Expr::Verbatim(assign), Semi { spans: [span] });
+                        let assign =
+                            Stmt::Expr(Expr::Verbatim(assign), Some(Semi { spans: [span] }));
                         self.x_assigns.push(assign);
                     }
                     *pat = parse_quote_spanned!(span => #tmp_x);
@@ -867,7 +928,8 @@ impl VisitMut for ExecGhostPatVisitor {
                 let assign = quote_spanned!(span => #x = #tmp_x);
                 id.ident = tmp_x;
                 self.x_decls.push(decl);
-                self.x_assigns.push(Stmt::Semi(Expr::Verbatim(assign), Semi { spans: [span] }));
+                self.x_assigns
+                    .push(Stmt::Expr(Expr::Verbatim(assign), Some(Semi { spans: [span] })));
                 return;
             }
             _ => {}
@@ -900,15 +962,11 @@ macro_rules! do_split_trait_method {
 // don't exactly match between fun and fun.clone() (they have different macro contexts),
 // which would cause the body and specs to mismatch.
 // (See also split_trait_method_syn below.)
-fn split_trait_method(
-    spec_items: &mut Vec<TraitItem>,
-    fun: &mut TraitItemMethod,
-    erase_ghost: bool,
-) {
+fn split_trait_method(spec_items: &mut Vec<TraitItem>, fun: &mut TraitItemFn, erase_ghost: bool) {
     if !erase_ghost && fun.default.is_none() {
         // Copy into separate spec method, then remove spec from original method
         do_split_trait_method!(syn_verus, fun, spec_fun, mk_rust_attr);
-        spec_items.push(TraitItem::Method(spec_fun));
+        spec_items.push(TraitItem::Fn(spec_fun));
         fun.sig.erase_spec_fields();
     } else if erase_ghost {
         match (&mut fun.default, &fun.sig.mode) {
@@ -918,7 +976,7 @@ fn split_trait_method(
                 let expr: Expr = Expr::Verbatim(quote_spanned! {
                     span => { panic!() }
                 });
-                let stmt = Stmt::Expr(expr);
+                let stmt = Stmt::Expr(expr, None);
                 default.stmts = vec![stmt];
             }
             _ => {}
@@ -929,17 +987,18 @@ fn split_trait_method(
 // syn version of split_trait_method (see above)
 // (Note: there are no spec fields to erase in syn; the spec attribute must be erased separately.)
 pub(crate) fn split_trait_method_syn(
-    fun: &syn::TraitItemMethod,
+    fun: &syn::TraitItemFn,
     erase_ghost: bool,
-) -> Option<syn::TraitItemMethod> {
+) -> Option<syn::TraitItemFn> {
     use syn::{token::Brace, Block, Expr, Stmt};
     if !erase_ghost && fun.default.is_none() {
         do_split_trait_method!(syn, fun, spec_fun, mk_rust_attr_syn);
-        // We won't run visit_trait_item_method_mut, so we need to add no_method_body here:
+        // We won't run visit_trait_item_fn_mut, so we need to add no_method_body here:
         let span = fun.sig.fn_token.span;
-        let stmts = vec![Stmt::Expr(Expr::Verbatim(
-            quote_spanned_builtin!(builtin, span => #builtin::no_method_body()),
-        ))];
+        let stmts = vec![Stmt::Expr(
+            Expr::Verbatim(quote_spanned_builtin!(builtin, span => #builtin::no_method_body())),
+            None,
+        )];
         spec_fun.default = Some(Block { brace_token: Brace(span), stmts });
         Some(spec_fun)
     } else {
@@ -1017,7 +1076,7 @@ impl Visitor {
         } else if local.tracked.is_none() && local.ghost.is_none() {
             stmts.extend(visit_pat.x_decls);
             let block = Block { brace_token: Brace(span), stmts: visit_pat.x_assigns };
-            stmts.push(Stmt::Semi(mk_proof_block(block), Semi { spans: [span] }));
+            stmts.push(Stmt::Expr(mk_proof_block(block), Some(Semi { spans: [span] })));
             (false, stmts)
         } else {
             let tmp = Ident::new("verus_tmp", Span::mixed_site().located_at(local.span()));
@@ -1028,9 +1087,9 @@ impl Visitor {
             };
             stmts.push(tmp_decl);
             let pat = take_pat(&mut local.pat);
-            let init = take_expr(&mut local.init.as_mut().expect("init").1);
+            let init = take_expr(&mut local.init.as_mut().expect("init").expr);
             let block1 = parse_quote_spanned!(span => { #tmp = #init });
-            stmts.push(Stmt::Semi(mk_proof_block(block1), Semi { spans: [span] }));
+            stmts.push(Stmt::Expr(mk_proof_block(block1), Some(Semi { spans: [span] })));
             stmts.extend(visit_pat.x_decls);
             let let_pat = if local.tracked.is_some() {
                 parse_quote_spanned!(span => #[verus::internal(proof)] let #pat = #tmp;)
@@ -1040,7 +1099,7 @@ impl Visitor {
             let mut block_stmts = vec![let_pat];
             block_stmts.extend(visit_pat.x_assigns);
             let block2 = Block { brace_token: Brace(span), stmts: block_stmts };
-            stmts.push(Stmt::Semi(mk_proof_block(block2), Semi { spans: [span] }));
+            stmts.push(Stmt::Expr(mk_proof_block(block2), Some(Semi { spans: [span] })));
             (true, stmts)
         }
     }
@@ -1056,16 +1115,19 @@ impl Visitor {
                 } else {
                     let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
                         quote_spanned_builtin!(builtin, span => #builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #builtin::reveal_hide_internal_path_(#path) } #[verus::internal(broadcast_use_reveal)] __VERUS_REVEAL_INTERNAL__}, 1); )
-                    ))).collect();
+                    ), None)).collect();
                     let mut attrs = attrs.clone();
                     if self.inside_ghost == 0 {
                         attrs.push(mk_verus_attr(span, quote! { proof_block }));
                     }
-                    let block = Stmt::Expr(Expr::Block(ExprBlock {
-                        attrs: attrs,
-                        label: None,
-                        block: Block { brace_token: token::Brace(span), stmts },
-                    }));
+                    let block = Stmt::Expr(
+                        Expr::Block(ExprBlock {
+                            attrs: attrs,
+                            label: None,
+                            block: Block { brace_token: token::Brace(span), stmts },
+                        }),
+                        None,
+                    );
                     (true, vec![block])
                 }
             }
@@ -1099,6 +1161,7 @@ impl Visitor {
             // as Ghost<D> or Tracked<D>.
         }
         let erase_ghost = self.erase_ghost.erase();
+        let mut assume_spec_extra_impl_items = vec![];
         // We'd like to erase ghost items, but there may be dangling references to the ghost items:
         // - "use" declarations may refer to the items ("use m::f;" makes it hard to erase f)
         // - "impl" may refer to struct and enum items ("impl<A> S<A> { ... }" impedes erasing S)
@@ -1119,7 +1182,7 @@ impl Visitor {
                         let expr: Expr = Expr::Verbatim(quote_spanned! {
                             span => { panic!() }
                         });
-                        let stmt = Stmt::Expr(expr);
+                        let stmt = Stmt::Expr(expr, None);
                         fun.block.stmts = vec![stmt];
                         fun.semi_token = None;
                         continue;
@@ -1242,6 +1305,7 @@ impl Visitor {
                                     broadcast proof fn #lemma_ident()
                                         ensures
                                             #[trigger] #vstd::layout::size_of::<#type_>() == #size_lit,
+                                            #vstd::layout::is_sized::<#type_>(),
                                             #ensures_align
                                     {
                                     }
@@ -1259,10 +1323,13 @@ impl Visitor {
                     } else {
                         let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(
                             quote_spanned_builtin!(builtin, span => #builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #builtin::reveal_hide_internal_path_(#path) } #[verus::internal(broadcast_use_reveal)] __VERUS_REVEAL_INTERNAL__}, 1); )
-                        ))).collect();
-                        let block = Block { brace_token: token::Brace { span }, stmts };
+                        ), None)).collect();
+                        let block =
+                            Block { brace_token: token::Brace { span: into_spans(span) }, stmts };
                         *item = Item::Verbatim(quote_spanned! { span =>
-                            #[verus::internal(item_broadcast_use)] const _: () = #block;
+                            #[verus::internal(verus_macro)]
+                            #[verus::internal(item_broadcast_use)]
+                            const _: () = #block;
                         });
                     }
                 }
@@ -1271,9 +1338,162 @@ impl Visitor {
                         self.handle_broadcast_group(item_broadcast_group, item.span()),
                     );
                 }
+                Item::AssumeSpecification(assume_specification) => {
+                    *item = self.handle_assume_specification(
+                        assume_specification,
+                        item.span(),
+                        &mut assume_spec_extra_impl_items,
+                    );
+                }
                 _ => (),
             }
         }
+        if assume_spec_extra_impl_items.len() > 0 {
+            items.push(Item::Verbatim(quote_vstd! {vstd =>
+                impl #vstd::std_specs::VstdSpecsForRustStdLib {
+                    #(#assume_spec_extra_impl_items)*
+                }
+            }))
+        }
+    }
+
+    fn handle_assume_specification(
+        &mut self,
+        assume_specification: &AssumeSpecification,
+        span: Span,
+        assume_spec_extra_impl_items: &mut Vec<ImplItem>,
+    ) -> Item {
+        let AssumeSpecification {
+            mut attrs,
+            vis,
+            assume_specification: assume_specification_token,
+            generics,
+            bracket_token: _,
+            qself,
+            path,
+            paren_token,
+            inputs,
+            output,
+            requires,
+            ensures,
+            returns,
+            invariants,
+            unwind,
+            semi,
+        } = assume_specification.clone();
+        let ex_ident = get_ex_ident_mangle_path(&qself, &path);
+
+        let sig = Signature {
+            publish: Publish::Default,
+            constness: None,
+            asyncness: None,
+            unsafety: Some(token::Unsafe { span }),
+            abi: None,
+            broadcast: None,
+            mode: FnMode::Default,
+            fn_token: token::Fn { span },
+            ident: ex_ident,
+            generics: generics,
+            paren_token: paren_token,
+            inputs: inputs,
+            variadic: None,
+            output: output,
+            spec: SignatureSpec {
+                prover: None,
+                requires: requires,
+                recommends: None,
+                ensures: ensures,
+                returns: returns,
+                decreases: None,
+                invariants: invariants,
+                unwind: unwind,
+            },
+        };
+
+        match sig.inputs.first() {
+            Some(FnArg { tracked: _, kind: FnArgKind::Receiver(_) }) => {
+                return Item::Verbatim(
+                    quote_spanned!(span => compile_error!("use a named param instead of 'self' argument");),
+                );
+            }
+            _ => false,
+        };
+
+        attrs.push(mk_verus_attr(
+            assume_specification_token.span,
+            quote_spanned! { assume_specification_token.span => external_fn_specification },
+        ));
+        attrs.push(mk_rust_attr(
+            assume_specification_token.span,
+            "allow",
+            quote! { non_snake_case },
+        ));
+
+        let block =
+            Box::new(Block { brace_token: token::Brace { span: into_spans(span) }, stmts: vec![] });
+        let mut item_fn = ItemFn { attrs, vis, sig, block, semi_token: None };
+
+        if self.rustdoc {
+            crate::rustdoc::process_item_fn_assume_specification(
+                &mut item_fn,
+                assume_specification,
+            );
+        }
+
+        let mut stmts = self.visit_fn(
+            &mut item_fn.attrs,
+            Some(&item_fn.vis),
+            &mut item_fn.sig,
+            Some(semi),
+            false,
+        );
+
+        if self.rustdoc && crate::cfg_verify_vstd() {
+            let mut block = (*item_fn.block).clone();
+            block.stmts.push(Stmt::Expr(Expr::Verbatim(quote! { ::core::unimplemented!() }), None));
+            let impl_item_fn = syn_verus::ImplItem::Fn(syn_verus::ImplItemFn {
+                attrs: item_fn.attrs.clone(),
+                vis: item_fn.vis.clone(),
+                defaultness: None,
+                sig: item_fn.sig.clone(),
+                block,
+                semi_token: None,
+            });
+            assume_spec_extra_impl_items.push(impl_item_fn);
+        }
+
+        let mut args = vec![];
+        for input in item_fn.sig.inputs.iter() {
+            let ident = match &input.kind {
+                FnArgKind::Receiver(recvr) => {
+                    return Item::Verbatim(
+                        quote_spanned!(recvr.self_token.span() => compile_error!("bad argument");),
+                    );
+                }
+                FnArgKind::Typed(pat_type) => match &*pat_type.pat {
+                    Pat::Ident(PatIdent { ident, .. }) => ident,
+                    _ => {
+                        return Item::Verbatim(
+                            quote_spanned!(pat_type.pat.span() => compile_error!("'assume_specification' expects ident, not complex pattern");),
+                        );
+                    }
+                },
+            };
+            args.push(Expr::Verbatim(quote! { #ident }));
+        }
+
+        let callee =
+            syn_verus::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
+        // We wrap the function call in an 'unsafe' block, since the user might be applying
+        // a specification to an unsafe function.
+        let e = Expr::Verbatim(quote! {
+            unsafe { #callee(#(#args),*) }
+        });
+        stmts.push(Stmt::Expr(e, None));
+
+        item_fn.block.stmts = stmts;
+
+        Item::Fn(item_fn)
     }
 
     fn handle_broadcast_group(
@@ -1301,11 +1521,12 @@ impl Visitor {
             }
         } else {
             let stmts: Vec<Stmt> = paths.iter().map(|path| Stmt::Expr(Expr::Verbatim(quote_spanned_builtin!{ builtin, span =>
-                #builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, 1); })))
+                #builtin::reveal_hide_({#[verus::internal(reveal_fn)] fn __VERUS_REVEAL_INTERNAL__() { #builtin::reveal_hide_internal_path_(#path) } __VERUS_REVEAL_INTERNAL__}, 1); }), None))
                 .collect();
-            let block = Block { brace_token: token::Brace { span }, stmts };
+            let block = Block { brace_token: token::Brace { span: into_spans(span) }, stmts };
             let mut item_fn: ItemFn = parse_quote_spanned! { span =>
                 #[verus::internal(reveal_group)]
+                #[verus::internal(verus_macro)]
                 #[verus::internal(proof)]
                 #vis fn #ident() #block
             };
@@ -1335,7 +1556,7 @@ impl Visitor {
     fn visit_impl_items_prefilter(&mut self, items: &mut Vec<ImplItem>, for_trait: bool) {
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
-                ImplItem::Method(fun) => match fun.sig.mode {
+                ImplItem::Fn(fun) => match fun.sig.mode {
                     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
@@ -1350,7 +1571,7 @@ impl Visitor {
         // Unfortunately, we just have to assume that if for_trait == true,
         // the methods might be public
         items.retain(|item| match item {
-            ImplItem::Method(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
+            ImplItem::Fn(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
                 (
                     (Visibility::Public(_), _) | (_, true),
                     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_),
@@ -1368,7 +1589,7 @@ impl Visitor {
         for item in items.iter_mut() {
             let span = item.span();
             match item {
-                ImplItem::Method(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
+                ImplItem::Fn(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
                     (
                         (Visibility::Public(_), _) | (_, true),
                         FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_),
@@ -1377,7 +1598,7 @@ impl Visitor {
                         let expr: Expr = Expr::Verbatim(quote_spanned! {
                             span => { panic!() }
                         });
-                        let stmt = Stmt::Expr(expr);
+                        let stmt = Stmt::Expr(expr, None);
                         fun.block.stmts = vec![stmt];
                         fun.semi_token = None;
                         continue;
@@ -1397,7 +1618,7 @@ impl Visitor {
         if self.rustdoc {
             for trait_item in items.iter_mut() {
                 match trait_item {
-                    TraitItem::Method(trait_item_method) => {
+                    TraitItem::Fn(trait_item_method) => {
                         crate::rustdoc::process_trait_item_method(trait_item_method);
                     }
                     _ => {}
@@ -1407,7 +1628,7 @@ impl Visitor {
 
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
-                TraitItem::Method(fun) => match fun.sig.mode {
+                TraitItem::Fn(fun) => match fun.sig.mode {
                     FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
@@ -1418,7 +1639,7 @@ impl Visitor {
         let mut spec_items: Vec<TraitItem> = Vec::new();
         for item in items.iter_mut() {
             match item {
-                TraitItem::Method(ref mut fun) => {
+                TraitItem::Fn(ref mut fun) => {
                     split_trait_method(&mut spec_items, fun, erase_ghost);
                 }
                 _ => {}
@@ -1641,11 +1862,11 @@ impl Visitor {
         self.visit_expr_with_arith(expr, InsideArith::None);
 
         if let Expr::BigAnd(exprs) = expr {
-            let mut new_expr = take_expr(&mut exprs.exprs[0].1);
+            let mut new_expr = take_expr(&mut exprs.exprs[0].expr);
             for i in 1..exprs.exprs.len() {
-                let span = exprs.exprs[i].0.span();
+                let span = exprs.exprs[i].tok.span();
                 let spans = [span, span];
-                let right = take_expr(&mut exprs.exprs[i].1);
+                let right = take_expr(&mut exprs.exprs[i].expr);
                 let left = Box::new(Expr::Verbatim(quote_spanned!(new_expr.span() => (#new_expr))));
                 let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
                 let attrs = Vec::new();
@@ -1655,11 +1876,11 @@ impl Visitor {
             }
             *expr = new_expr;
         } else if let Expr::BigOr(exprs) = expr {
-            let mut new_expr = take_expr(&mut exprs.exprs[0].1);
+            let mut new_expr = take_expr(&mut exprs.exprs[0].expr);
             for i in 1..exprs.exprs.len() {
-                let span = exprs.exprs[i].0.span();
+                let span = exprs.exprs[i].tok.span();
                 let spans = [span, span];
-                let right = take_expr(&mut exprs.exprs[i].1);
+                let right = take_expr(&mut exprs.exprs[i].expr);
                 let left = Box::new(Expr::Verbatim(quote_spanned!(new_expr.span() => (#new_expr))));
                 let right = Box::new(Expr::Verbatim(quote_spanned!(right.span() => (#right))));
                 let attrs = Vec::new();
@@ -1681,7 +1902,9 @@ impl Visitor {
             Expr::Index(_)
                 | Expr::View(_)
                 | Expr::Is(_)
+                | Expr::IsNot(_)
                 | Expr::Has(_)
+                | Expr::HasNot(_)
                 | Expr::Matches(_)
                 | Expr::GetField(_)
         ) {
@@ -1729,6 +1952,15 @@ impl Visitor {
                     quote_spanned_builtin!(builtin, span => #builtin::is_variant(#base, #variant_str)),
                 );
             }
+            Expr::IsNot(isnot_) => {
+                let _is_not_token = isnot_.is_not_token;
+                let span = isnot_.span();
+                let base = isnot_.base;
+                let variant_str = isnot_.variant_ident.to_string();
+                *expr = Expr::Verbatim(
+                    quote_spanned_builtin!(builtin, span => !(#builtin::is_variant(#base, #variant_str))),
+                );
+            }
             Expr::Has(has) => {
                 let has_token = has.has_token;
                 let span = has.span();
@@ -1736,6 +1968,14 @@ impl Visitor {
                 let has_call = quote_spanned!(has_token.span => .spec_has(#rhs));
                 let lhs = has.lhs;
                 *expr = Expr::Verbatim(quote_spanned!(span => (#lhs#has_call)));
+            }
+            Expr::HasNot(hasnot) => {
+                let has_not_token = hasnot.has_not_token;
+                let span = hasnot.span();
+                let rhs = hasnot.rhs;
+                let has_call = quote_spanned!(has_not_token.span => .spec_has(#rhs));
+                let lhs = hasnot.lhs;
+                *expr = Expr::Verbatim(quote_spanned!(span => !(#lhs#has_call)));
             }
             Expr::Matches(matches) => {
                 let span = matches.span();
@@ -1903,7 +2143,7 @@ impl Visitor {
             let attrs = std::mem::take(&mut binary.attrs);
             let func =
                 Box::new(Expr::Verbatim(quote_spanned_builtin!(builtin, span => #builtin::imply)));
-            let paren_token = Paren { span };
+            let paren_token = Paren { span: into_spans(span) };
             let mut args = Punctuated::new();
             if imply {
                 // imply `left ==> right`
@@ -1934,7 +2174,7 @@ impl Visitor {
                 BinOp::BigNe(_) | BinOp::ExtNe(_) | BinOp::ExtDeepNe(_) => false,
                 _ => unreachable!(),
             };
-            let paren_token = Paren { span };
+            let paren_token = Paren { span: into_spans(span) };
             let mut args = Punctuated::new();
             args.push(take_expr(&mut *binary.left));
             args.push(take_expr(&mut *binary.right));
@@ -2165,22 +2405,25 @@ impl Visitor {
                     let mut block = if let Some(block) = assert.body {
                         *block
                     } else {
-                        Block { brace_token: token::Brace { span }, stmts: vec![] }
+                        Block {
+                            brace_token: token::Brace { span: into_spans(span) },
+                            stmts: vec![],
+                        }
                     };
                     let mut stmts: Vec<Stmt> = Vec::new();
                     if let Some(Requires { token, exprs }) = &assert.requires {
-                        stmts.push(Stmt::Semi(
+                        stmts.push(Stmt::Expr(
                             Expr::Verbatim(
                                 quote_spanned_builtin!(builtin, token.span => #builtin::requires([#exprs])),
                             ),
-                            Semi { spans: [token.span] },
+                            Some(Semi { spans: [token.span] }),
                         ));
                     }
-                    stmts.push(Stmt::Semi(
+                    stmts.push(Stmt::Expr(
                         Expr::Verbatim(
                             quote_spanned_builtin!(builtin, span => #builtin::ensures(#arg)),
                         ),
-                        Semi { spans: [span] },
+                        Some(Semi { spans: [span] }),
                     ));
                     block.stmts.splice(0..0, stmts);
                     let assert_x_by: Expr = if prover_id == "bit_vector" {
@@ -2330,7 +2573,7 @@ impl Visitor {
             *expr = self.maybe_erase_expr(
                 span,
                 Expr::Verbatim(
-                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { #inner } ),
+                    quote_spanned!(span => #[verifier::proof_block] /* vattr */ { #[verus::internal(const_header_wrapper)]||{#inner}; } ),
                 ),
             );
         }
@@ -2397,7 +2640,12 @@ impl Visitor {
             match (is_inside_ghost, mode_block, &*unary.expr) {
                 (false, (false, _), Expr::Block(..)) => {
                     // proof { ... }
-                    let inner = take_expr(&mut *unary.expr);
+                    let mut inner = take_expr(&mut *unary.expr);
+                    if self.inside_const {
+                        inner = Expr::Verbatim(
+                            quote_spanned!(span => {#[verus::internal(const_header_wrapper)] ||/* vattr */{#inner};}),
+                        );
+                    }
                     *expr = self.maybe_erase_expr(
                         span,
                         Expr::Verbatim(
@@ -2471,7 +2719,7 @@ impl Visitor {
                 if attrs.len() > 0 {
                     let err = "outer attributes only allowed on function's ensures";
                     let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                    stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                    stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                 } else {
                     for expr in exprs.exprs.iter_mut() {
                         self.visit_expr_mut(expr);
@@ -2549,7 +2797,7 @@ impl Visitor {
             if attrs.len() > 0 {
                 let err = "outer attributes only allowed on function's ensures";
                 let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
             } else if exprs.exprs.len() > 0 {
                 stmts.push(stmt_with_semi!(builtin, token.span => #builtin::ensures([#exprs])));
             }
@@ -2559,7 +2807,7 @@ impl Visitor {
                 if matches!(expr, Expr::Tuple(..)) {
                     let err = "decreases cannot be a tuple; use `decreases x, y` rather than `decreases (x, y)`";
                     let expr = Expr::Verbatim(quote_spanned!(token.span => compile_error!(#err)));
-                    stmts.push(Stmt::Semi(expr, Semi { spans: [token.span] }));
+                    stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                 }
             }
             stmts.push(stmt_with_semi!(builtin, token.span => #builtin::decreases((#exprs))));
@@ -2635,9 +2883,9 @@ impl Visitor {
         } = for_loop;
 
         let no_loop_invariant = attrs.iter().position(|attr| {
-            attr.path.segments.len() == 2
-                && attr.path.segments[0].ident.to_string() == "verifier"
-                && attr.path.segments[1].ident.to_string() == "no_loop_invariant"
+            attr.path().segments.len() == 2
+                && attr.path().segments[0].ident.to_string() == "verifier"
+                && attr.path().segments[1].ident.to_string() == "no_loop_invariant"
         });
         if let Some(i) = no_loop_invariant {
             attrs.remove(i);
@@ -2646,9 +2894,9 @@ impl Visitor {
         // should always succeed.  In case something goes unexpectedly wrong, though,
         // give people a reasonable way to disable it:
         let no_auto_loop_invariant = attrs.iter().position(|attr| {
-            attr.path.segments.len() == 2
-                && attr.path.segments[0].ident.to_string() == "verifier"
-                && attr.path.segments[1].ident.to_string() == "no_auto_loop_invariant"
+            attr.path().segments.len() == 2
+                && attr.path().segments[0].ident.to_string() == "verifier"
+                && attr.path().segments[1].ident.to_string() == "no_auto_loop_invariant"
         });
         if let Some(i) = no_auto_loop_invariant {
             attrs.remove(i);
@@ -2808,23 +3056,31 @@ impl Visitor {
     ) -> Result<ExtractQuantTriggersFound, Expr> {
         let mut triggers: Vec<Expr> = Vec::new();
         for attr in inner_attrs {
-            let trigger: syn_verus::Result<syn_verus::Specification> =
-                syn_verus::parse2(attr.tokens.clone());
+            use syn_verus::Meta;
+            let trigger: syn_verus::Result<Punctuated<Expr, Token![,]>> = match &attr.meta {
+                Meta::Path(_) => Ok(Punctuated::new()),
+                Meta::List(list) => {
+                    let spec: syn_verus::Result<syn_verus::Specification> =
+                        syn_verus::parse2(list.tokens.clone());
+                    spec.map(|e| e.exprs)
+                }
+                Meta::NameValue(_) => Err(syn_verus::Error::new(span, "expected trigger")),
+            };
             let path_segments_str =
-                attr.path.segments.iter().map(|x| x.ident.to_string()).collect::<Vec<_>>();
+                attr.path().segments.iter().map(|x| x.ident.to_string()).collect::<Vec<_>>();
             let ident_str = match &path_segments_str[..] {
                 [attr_name] => Some(attr_name),
                 _ => None,
             };
             match (trigger, ident_str) {
-                (Ok(trigger), Some(id)) if id == &"auto" && trigger.exprs.len() == 0 => {
+                (Ok(trigger), Some(id)) if id == &"auto" && trigger.len() == 0 => {
                     return Ok(ExtractQuantTriggersFound::Auto);
                 }
-                (Ok(trigger), Some(id)) if id == &"all_triggers" && trigger.exprs.len() == 0 => {
+                (Ok(trigger), Some(id)) if id == &"all_triggers" && trigger.len() == 0 => {
                     return Ok(ExtractQuantTriggersFound::AllTriggers);
                 }
                 (Ok(trigger), Some(id)) if id == &"trigger" => {
-                    let mut exprs = trigger.exprs;
+                    let mut exprs = trigger;
                     for expr in exprs.iter_mut() {
                         self.visit_expr_mut(expr);
                     }
@@ -2975,72 +3231,95 @@ impl VisitMut for Visitor {
     }
 
     fn visit_attribute_mut(&mut self, attr: &mut Attribute) {
+        fn path_verifier(
+            span: Span,
+        ) -> Punctuated<syn_verus::PathSegment, syn_verus::token::PathSep> {
+            let mut path_segments = Punctuated::new();
+            path_segments.push(syn_verus::PathSegment {
+                ident: Ident::new("verifier", span),
+                arguments: syn_verus::PathArguments::None,
+            });
+            path_segments
+        }
+        fn invalid_attribute(span: Span, trigger: bool) -> Attribute {
+            let mut path_segments = path_verifier(span);
+            path_segments.push(syn_verus::PathSegment {
+                ident: if trigger {
+                    Ident::new("invalid_trigger_attribute", span)
+                } else {
+                    Ident::new("invalid_attribute", span)
+                },
+                arguments: syn_verus::PathArguments::None,
+            });
+            let path = Path { leading_colon: None, segments: path_segments };
+            Attribute {
+                pound_token: token::Pound { spans: [span] },
+                style: syn_verus::AttrStyle::Outer,
+                bracket_token: token::Bracket { span: into_spans(span) },
+                meta: syn_verus::Meta::Path(path),
+            }
+        }
         if let syn_verus::AttrStyle::Outer = attr.style {
-            match &attr.path.segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
+            match &attr.path().segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
                 [attr_name] if attr_name.to_string() == "trigger" => {
-                    *attr = mk_verus_attr(attr.span(), quote! { trigger });
+                    let mut valid = true;
+                    if let syn_verus::Meta::List(list) = &attr.meta {
+                        if !list.tokens.is_empty() {
+                            *attr = invalid_attribute(attr.span(), true);
+                            valid = false;
+                        }
+                    }
+                    if valid {
+                        *attr = mk_verus_attr(attr.span(), quote! { trigger });
+                    }
                 }
                 [attr_name] if attr_name.to_string() == "via_fn" => {
                     *attr = mk_verus_attr(attr.span(), quote! { via });
                 }
                 [attr_name] if attr_name.to_string() == "verifier" => {
-                    let Ok(parsed) = attr.parse_meta() else {
+                    let span = attr.span();
+                    let Ok(parsed) = attr.parse_args_with(
+                        Punctuated::<syn_verus::Meta, Token![,]>::parse_terminated,
+                    ) else {
+                        *attr = invalid_attribute(span, false);
                         return;
                     };
-                    let span = attr.span();
-                    fn path_verifier(span: Span) -> Punctuated<PathSegment, Colon2> {
-                        let mut path_segments = Punctuated::new();
-                        path_segments.push(PathSegment {
-                            ident: Ident::new("verifier", span),
-                            arguments: PathArguments::None,
-                        });
-                        path_segments
-                    }
-                    fn invalid_attribute(span: Span) -> Attribute {
-                        let mut path_segments = path_verifier(span);
-                        path_segments.push(PathSegment {
-                            ident: Ident::new("invalid_attribute", span),
-                            arguments: PathArguments::None,
-                        });
-                        Attribute {
-                            pound_token: token::Pound { spans: [span] },
-                            style: AttrStyle::Outer,
-                            bracket_token: token::Bracket { span },
-                            path: Path { leading_colon: None, segments: path_segments },
-                            tokens: quote!(),
-                        }
-                    }
                     match parsed {
-                        syn_verus::Meta::List(meta_list) if meta_list.nested.len() == 1 => {
-                            let (second_segment, nested) = match &meta_list.nested[0] {
-                                syn_verus::NestedMeta::Meta(syn_verus::Meta::List(meta_list)) => {
-                                    let rest = &meta_list.nested[0];
-                                    (&meta_list.path.segments[0], Some(quote! { (#rest) }))
+                        meta_list if meta_list.len() == 1 => {
+                            let (second_segment, nested) = match &meta_list[0] {
+                                syn_verus::Meta::List(meta_list) => {
+                                    let rest = &meta_list.tokens;
+                                    (&meta_list.path.segments[0], Some(quote! { #rest }))
                                 }
-                                syn_verus::NestedMeta::Meta(syn_verus::Meta::Path(meta_path)) => {
-                                    (&meta_path.segments[0], None)
-                                }
+                                syn_verus::Meta::Path(meta_path) => (&meta_path.segments[0], None),
                                 _ => {
-                                    *attr = invalid_attribute(span);
+                                    *attr = invalid_attribute(span, false);
                                     return;
                                 }
                             };
                             let mut path_segments = path_verifier(span);
                             path_segments.push(second_segment.clone());
+                            let path = Path { leading_colon: None, segments: path_segments };
+                            let meta = if let Some(nested) = nested {
+                                syn_verus::Meta::List(syn_verus::MetaList {
+                                    path,
+                                    delimiter: syn_verus::MacroDelimiter::Paren(token::Paren {
+                                        span: into_spans(span),
+                                    }),
+                                    tokens: quote! { #nested },
+                                })
+                            } else {
+                                syn_verus::Meta::Path(path)
+                            };
                             *attr = Attribute {
                                 pound_token: token::Pound { spans: [span] },
-                                style: AttrStyle::Outer,
-                                bracket_token: token::Bracket { span },
-                                path: Path { leading_colon: None, segments: path_segments },
-                                tokens: if let Some(nested) = nested {
-                                    quote! { #nested }
-                                } else {
-                                    quote! {}
-                                },
+                                style: syn_verus::AttrStyle::Outer,
+                                bracket_token: token::Bracket { span: into_spans(span) },
+                                meta,
                             };
                         }
                         _ => {
-                            *attr = invalid_attribute(span);
+                            *attr = invalid_attribute(span, false);
                             return;
                         }
                     }
@@ -3050,26 +3329,35 @@ impl VisitMut for Visitor {
         }
 
         if let syn_verus::AttrStyle::Inner(_) = attr.style {
-            match &attr.path.segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
+            match &attr.path().segments.iter().map(|x| &x.ident).collect::<Vec<_>>()[..] {
                 [attr_name] if attr_name.to_string() == "trigger" => {
                     // process something like: #![trigger f(a, b), g(c, d)]
-                    // attr.tokens is f(a, b), g(c, d)
-                    // turn this into a tuple (f(a, b), g(c, d)),
-                    // parse it into an Expr, visit the Expr, turn the Expr back into tokens,
-                    // remove the ( and ).
-                    let old_stream = proc_macro::TokenStream::from(attr.tokens.clone());
-                    let mut tuple_stream = proc_macro::TokenStream::new();
-                    let group =
-                        proc_macro::Group::new(proc_macro::Delimiter::Parenthesis, old_stream);
-                    tuple_stream.extend(vec![proc_macro::TokenTree::Group(group)]);
-                    let mut new_tuples = self.visit_stream_expr(tuple_stream).into_iter();
-                    let new_tuple = new_tuples.next().expect("visited tuple");
-                    assert!(new_tuples.next().is_none());
-                    if let proc_macro::TokenTree::Group(group) = new_tuple {
-                        assert!(group.delimiter() == proc_macro::Delimiter::Parenthesis);
-                        attr.tokens = proc_macro2::TokenStream::from(group.stream());
-                    } else {
-                        panic!("expected tuple");
+                    use syn_verus::Meta;
+                    match &mut attr.meta {
+                        Meta::Path(_) => {}
+                        Meta::List(list) => {
+                            // list.tokens is f(a, b), g(c, d)
+                            // turn this into a tuple (f(a, b), g(c, d)),
+                            // parse it into an Expr, visit the Expr, turn the Expr back into tokens,
+                            // remove the ( and ).
+                            let old_stream = proc_macro::TokenStream::from(list.tokens.clone());
+                            let mut tuple_stream = proc_macro::TokenStream::new();
+                            let group = proc_macro::Group::new(
+                                proc_macro::Delimiter::Parenthesis,
+                                old_stream,
+                            );
+                            tuple_stream.extend(vec![proc_macro::TokenTree::Group(group)]);
+                            let mut new_tuples = self.visit_stream_expr(tuple_stream).into_iter();
+                            let new_tuple = new_tuples.next().expect("visited tuple");
+                            assert!(new_tuples.next().is_none());
+                            if let proc_macro::TokenTree::Group(group) = new_tuple {
+                                assert!(group.delimiter() == proc_macro::Delimiter::Parenthesis);
+                                list.tokens = proc_macro2::TokenStream::from(group.stream());
+                            } else {
+                                panic!("expected tuple");
+                            }
+                        }
+                        Meta::NameValue(_) => {}
                     }
                 }
                 _ => (),
@@ -3172,7 +3460,7 @@ impl VisitMut for Visitor {
         }
     }
 
-    fn visit_impl_item_method_mut(&mut self, method: &mut ImplItemMethod) {
+    fn visit_impl_item_fn_mut(&mut self, method: &mut ImplItemFn) {
         if self.rustdoc {
             crate::rustdoc::process_impl_item_method(method);
         }
@@ -3190,13 +3478,13 @@ impl VisitMut for Visitor {
         if is_external_code {
             self.inside_external_code += 1;
         }
-        visit_impl_item_method_mut(self, method);
+        visit_impl_item_fn_mut(self, method);
         if is_external_code {
             self.inside_external_code -= 1;
         }
     }
 
-    fn visit_trait_item_method_mut(&mut self, method: &mut TraitItemMethod) {
+    fn visit_trait_item_fn_mut(&mut self, method: &mut TraitItemFn) {
         let is_spec_method = method.sig.ident.to_string().starts_with(VERUS_SPEC);
         let mut stmts =
             self.visit_fn(&mut method.attrs, None, &mut method.sig, method.semi_token, true);
@@ -3204,9 +3492,10 @@ impl VisitMut for Visitor {
             block.stmts.splice(0..0, stmts);
         } else if self.erase_ghost.keep() && is_spec_method {
             let span = method.sig.fn_token.span;
-            stmts.push(Stmt::Expr(Expr::Verbatim(
-                quote_spanned_builtin!(builtin, span => #builtin::no_method_body()),
-            )));
+            stmts.push(Stmt::Expr(
+                Expr::Verbatim(quote_spanned_builtin!(builtin, span => #builtin::no_method_body())),
+                None,
+            ));
             let block = Block { brace_token: Brace(span), stmts };
             method.default = Some(block);
         }
@@ -3217,7 +3506,7 @@ impl VisitMut for Visitor {
         if is_external_code {
             self.inside_external_code += 1;
         }
-        visit_trait_item_method_mut(self, method);
+        visit_trait_item_fn_mut(self, method);
         if is_external_code {
             self.inside_external_code -= 1;
         }
@@ -3377,9 +3666,9 @@ impl VisitMut for Visitor {
         self.inside_type -= 1;
     }
 
-    fn visit_generic_method_argument_mut(&mut self, arg: &mut syn_verus::GenericMethodArgument) {
+    fn visit_generic_argument_mut(&mut self, arg: &mut syn_verus::GenericArgument) {
         self.inside_type += 1;
-        syn_verus::visit_mut::visit_generic_method_argument_mut(self, arg);
+        syn_verus::visit_mut::visit_generic_argument_mut(self, arg);
         self.inside_type -= 1;
     }
 
@@ -3437,6 +3726,7 @@ enum MacroElement {
     Comma(Token![,]),
     Semi(Token![;]),
     FatArrow(Token![=>]),
+    Colon(Token![:]),
     Expr(Expr),
 }
 
@@ -3445,6 +3735,7 @@ enum MacroElementExplicitExpr {
     Comma(Token![,]),
     Semi(Token![;]),
     FatArrow(Token![=>]),
+    Colon(Token![:]),
     ExplicitExpr(Token![@], Token![@], Expr),
     TT(TokenTree),
 }
@@ -3490,6 +3781,8 @@ impl Parse for MacroElement {
             Ok(MacroElement::Semi(input.parse()?))
         } else if input.peek(Token![=>]) {
             Ok(MacroElement::FatArrow(input.parse()?))
+        } else if input.peek(Token![:]) {
+            Ok(MacroElement::Colon(input.parse()?))
         } else {
             Ok(MacroElement::Expr(input.parse()?))
         }
@@ -3504,6 +3797,8 @@ impl Parse for MacroElementExplicitExpr {
             Ok(MacroElementExplicitExpr::Semi(input.parse()?))
         } else if input.peek(Token![=>]) {
             Ok(MacroElementExplicitExpr::FatArrow(input.parse()?))
+        } else if input.peek(Token![:]) {
+            Ok(MacroElementExplicitExpr::Colon(input.parse()?))
         } else if input.peek(Token![@]) && input.peek2(Token![@]) {
             let at1 = input.parse()?;
             let at2 = input.parse()?;
@@ -3588,6 +3883,7 @@ impl ToTokens for MacroElement {
             MacroElement::Comma(e) => e.to_tokens(tokens),
             MacroElement::Semi(e) => e.to_tokens(tokens),
             MacroElement::FatArrow(e) => e.to_tokens(tokens),
+            MacroElement::Colon(e) => e.to_tokens(tokens),
             MacroElement::Expr(e) => e.to_tokens(tokens),
         }
     }
@@ -3599,6 +3895,7 @@ impl ToTokens for MacroElementExplicitExpr {
             MacroElementExplicitExpr::Comma(e) => e.to_tokens(tokens),
             MacroElementExplicitExpr::Semi(e) => e.to_tokens(tokens),
             MacroElementExplicitExpr::FatArrow(e) => e.to_tokens(tokens),
+            MacroElementExplicitExpr::Colon(e) => e.to_tokens(tokens),
             MacroElementExplicitExpr::ExplicitExpr(_at1, _at2, e) => e.to_tokens(tokens),
             MacroElementExplicitExpr::TT(e) => e.to_tokens(tokens),
         }
@@ -3726,6 +4023,66 @@ pub(crate) fn rewrite_expr(
     proc_macro::TokenStream::from(new_stream)
 }
 
+struct Stmts(Vec<Stmt>);
+
+impl Parse for Stmts {
+    fn parse(input: ParseStream) -> syn_verus::Result<Self> {
+        Block::parse_within(input).map(|stmts| Stmts(stmts))
+    }
+}
+
+pub(crate) fn rewrite_proof_decl(
+    erase_ghost: EraseGhost,
+    stream: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let stream = rejoin_tokens(stream);
+    let Stmts(stmts) = parse_macro_input!(stream as Stmts);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 0,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    for mut ss in stmts {
+        match ss {
+            Stmt::Local(Local { tracked: None, ghost: None, .. }) => {
+                return quote_spanned!(ss.span() => compile_error!("Exec local is not allowed in proof_decl")).into();
+            }
+            Stmt::Local(_) => {
+                let (skip, mut new_stmts) = visitor.visit_stmt_extend(&mut ss);
+                if !skip {
+                    new_stmts.insert(0, ss)
+                }
+                for mut ss in new_stmts {
+                    visitor.visit_stmt_mut(&mut ss);
+                    ss.to_tokens(&mut new_stream);
+                }
+            }
+            _ => {
+                let span = ss.span();
+                let mut proof_expr = Expr::Unary(ExprUnary {
+                    attrs: vec![],
+                    expr: Box::new(Expr::Block(ExprBlock {
+                        attrs: vec![],
+                        label: None,
+                        block: Block { brace_token: Brace(span), stmts: vec![ss] },
+                    })),
+                    op: UnOp::Proof(Token![proof](span)),
+                });
+                visitor.visit_expr_mut(&mut proof_expr);
+                proof_expr.to_tokens(&mut new_stream);
+            }
+        };
+    }
+    proc_macro::TokenStream::from(new_stream)
+}
+
 pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, expr: &mut Expr) {
     let mut visitor = Visitor {
         erase_ghost,
@@ -3766,6 +4123,78 @@ pub(crate) fn sig_specs_attr(
     visitor.take_sig_specs(&mut spec, ret_pat, sig.constness.is_some(), sig_span)
 }
 
+pub(crate) fn while_loop_spec_attr(
+    erase_ghost: EraseGhost,
+    spec_attr: syn_verus::LoopSpec,
+) -> Vec<Stmt> {
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 1,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    let mut spec_attr = spec_attr;
+    visitor.visit_loop_spec(&mut spec_attr);
+    let syn_verus::LoopSpec { invariants, invariant_except_breaks, ensures, decreases, .. } =
+        spec_attr;
+    let mut stmt = vec![];
+    visitor.add_loop_specs(
+        &mut stmt,
+        invariant_except_breaks,
+        invariants,
+        None,
+        ensures,
+        decreases,
+    );
+    stmt
+}
+
+pub(crate) fn for_loop_spec_attr(
+    erase_ghost: EraseGhost,
+    spec_attr: syn_verus::LoopSpec,
+    forloop: syn::ExprForLoop,
+) -> syn_verus::Expr {
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 1,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    let mut spec_attr = spec_attr;
+    visitor.visit_loop_spec(&mut spec_attr);
+    let syn_verus::LoopSpec { iter_name, invariants: invariant, decreases, .. } = spec_attr;
+    let syn::ExprForLoop { attrs, label, for_token, pat, in_token, expr, body, .. } = forloop;
+    let verus_forloop = ExprForLoop {
+        attrs: attrs.into_iter().map(|a| parse_quote_spanned! {a.span() => #a}).collect(),
+        label: label.map(|l| syn_verus::Label {
+            name: syn_verus::Lifetime::new(l.name.ident.to_string().as_str(), l.name.span()),
+            colon_token: Token![:](l.colon_token.span),
+        }),
+        for_token: Token![for](for_token.span),
+        pat: Box::new(Pat::Verbatim(quote_spanned! {pat.span() => #pat})),
+        in_token: Token![in](in_token.span),
+        expr_name: iter_name.map(|(name, token)| Box::new((name, Token![:](token.span())))),
+        expr: Box::new(Expr::Verbatim(quote_spanned! {expr.span() => #expr})),
+        invariant,
+        decreases,
+        body: Block {
+            brace_token: Brace(body.brace_token.span),
+            stmts: vec![Stmt::Expr(Expr::Verbatim(quote_spanned! {body.span() => #body}), None)],
+        },
+    };
+    visitor.desugar_for_loop(verus_forloop)
+}
+
 // Unfortunately, the macro_rules tt tokenizer breaks tokens like &&& and ==> into smaller tokens.
 // Try to put the original tokens back together here.
 #[cfg(verus_keep_ghost)]
@@ -3774,6 +4203,10 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
     let mut tokens: Vec<TokenTree> = stream.into_iter().collect();
     let pun = |t: &TokenTree| match t {
         TokenTree::Punct(p) => Some((p.as_char(), p.spacing(), p.span())),
+        _ => None,
+    };
+    let ident = |t: &TokenTree| match t {
+        TokenTree::Ident(p) => Some((p.to_string(), p.span())),
         _ => None,
     };
     let adjacent = |s1: Span, s2: Span| {
@@ -3787,12 +4220,38 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
         punct.set_span(span);
         TokenTree::Punct(punct)
     }
-    for i in 0..(if tokens.len() >= 2 { tokens.len() - 2 } else { 0 }) {
+    let mut i = 0;
+    let mut till = if tokens.len() >= 2 { tokens.len() - 2 } else { 0 };
+    while i < till {
         let t0 = pun(&tokens[i]);
-        let t1 = pun(&tokens[i + 1]);
+        let t1_ident = ident(&tokens[i + 1]);
+        match (t0, t1_ident.as_ref().map(|(a, b)| (a.as_str(), *b))) {
+            (Some(('!', Alone, s1)), Some(("is", s2))) => {
+                if adjacent(s1, s2) {
+                    tokens[i] =
+                        TokenTree::Ident(proc_macro::Ident::new("isnt", s1.join(s2).unwrap()));
+                    tokens.remove(i + 1);
+                    i += 1;
+                    till -= 1;
+                    continue;
+                }
+            }
+            (Some(('!', Alone, s1)), Some(("has", s2))) => {
+                if adjacent(s1, s2) {
+                    tokens[i] =
+                        TokenTree::Ident(proc_macro::Ident::new("hasnt", s1.join(s2).unwrap()));
+                    tokens.remove(i + 1);
+                    i += 1;
+                    till -= 1;
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        let t1_pun = pun(&tokens[i + 1]);
         let t2 = pun(&tokens[i + 2]);
         let t3 = if i + 3 < tokens.len() { pun(&tokens[i + 3]) } else { None };
-        match (t0, t1, t2, t3) {
+        match (t0, t1_pun, t2, t3) {
             (
                 Some(('<', Joint, _)),
                 Some(('=', Alone, s1)),
@@ -3806,14 +4265,14 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
             | (Some(('&', Joint, _)), Some(('&', Alone, s1)), Some(('&', Alone, s2)), _)
             | (Some(('|', Joint, _)), Some(('|', Alone, s1)), Some(('|', Alone, s2)), _) => {
                 if adjacent(s1, s2) {
-                    tokens[i + 1] = mk_joint_punct(t1);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
                 }
             }
             (Some(('=', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _)
             | (Some(('!', Alone, _)), Some(('~', Alone, s1)), Some(('=', Alone, s2)), _) => {
                 if adjacent(s1, s2) {
                     tokens[i] = mk_joint_punct(t0);
-                    tokens[i + 1] = mk_joint_punct(t1);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
                 }
             }
             (
@@ -3830,12 +4289,13 @@ pub(crate) fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::Toke
             ) => {
                 if adjacent(s2, s3) {
                     tokens[i] = mk_joint_punct(t0);
-                    tokens[i + 1] = mk_joint_punct(t1);
+                    tokens[i + 1] = mk_joint_punct(t1_pun);
                     tokens[i + 2] = mk_joint_punct(t2);
                 }
             }
             _ => {}
         }
+        i += 1;
     }
     for tt in &mut tokens {
         match tt {
@@ -3978,14 +4438,19 @@ pub(crate) fn proof_macro_explicit_exprs(
 pub(crate) fn has_external_code(attrs: &Vec<Attribute>) -> bool {
     attrs.iter().any(|attr| {
         // verifier::external
-        attr.path.segments.len() == 2
-            && attr.path.segments[0].ident.to_string() == "verifier"
-            && (attr.path.segments[1].ident.to_string() == "external"
-                || attr.path.segments[1].ident.to_string() == "external_body")
+        attr.path().segments.len() == 2
+            && attr.path().segments[0].ident.to_string() == "verifier"
+            && (attr.path().segments[1].ident.to_string() == "external"
+                || attr.path().segments[1].ident.to_string() == "external_body")
         // verifier(external)
-        || attr.path.segments.len() == 1
-            && attr.path.segments[0].ident.to_string() == "verifier"
-            && matches!(attr.tokens.to_string().as_str(), "(external)" | "(external_body)")
+        || attr.path().segments.len() == 1
+            && attr.path().segments[0].ident.to_string() == "verifier"
+            && match &attr.meta {
+                syn_verus::Meta::List(list) => {
+                    matches!(list.tokens.to_string().as_str(), "external" | "external_body")
+                }
+                _ => false,
+            }
     })
 }
 
@@ -3998,12 +4463,23 @@ macro_rules! declare_mk_rust_attr {
                 ident: $s::Ident::new(name, span),
                 arguments: $s::PathArguments::None,
             });
+            let path = $s::Path { leading_colon: None, segments: path_segments };
+            let meta = if tokens.is_empty() {
+                $s::Meta::Path(path)
+            } else {
+                $s::Meta::List($s::MetaList {
+                    path,
+                    delimiter: $s::MacroDelimiter::Paren($s::token::Paren {
+                        span: into_spans(span),
+                    }),
+                    tokens: quote! { #tokens },
+                })
+            };
             $s::Attribute {
                 pound_token: $s::token::Pound { spans: [span] },
                 style: $s::AttrStyle::Outer,
-                bracket_token: $s::token::Bracket { span },
-                path: $s::Path { leading_colon: None, segments: path_segments },
-                tokens: quote! { (#tokens) },
+                bracket_token: $s::token::Bracket { span: into_spans(span) },
+                meta,
             }
         }
     };
@@ -4024,12 +4500,23 @@ macro_rules! declare_mk_verus_attr {
                 ident: $s::Ident::new("internal", span),
                 arguments: $s::PathArguments::None,
             });
+            let path = $s::Path { leading_colon: None, segments: path_segments };
+            let meta = if tokens.is_empty() {
+                $s::Meta::Path(path)
+            } else {
+                $s::Meta::List($s::MetaList {
+                    path,
+                    delimiter: $s::MacroDelimiter::Paren($s::token::Paren {
+                        span: into_spans(span),
+                    }),
+                    tokens: quote! { #tokens },
+                })
+            };
             $s::Attribute {
                 pound_token: $s::token::Pound { spans: [span] },
                 style: $s::AttrStyle::Outer,
-                bracket_token: $s::token::Bracket { span },
-                path: $s::Path { leading_colon: None, segments: path_segments },
-                tokens: quote! { (#tokens) },
+                bracket_token: $s::token::Bracket { span: into_spans(span) },
+                meta,
             }
         }
     };
@@ -4082,4 +4569,28 @@ impl ToTokens for Vstd {
             tokens.extend(quote_spanned! { self.0 => ::vstd });
         }
     }
+}
+
+fn get_ex_ident_mangle_path(qself: &Option<syn_verus::QSelf>, path: &Path) -> Ident {
+    static UID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let uid = UID.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+    let mut s = format!("_verus_external_fn_specification_{:}_", uid);
+
+    let expr_path = syn_verus::ExprPath { attrs: vec![], qself: qself.clone(), path: path.clone() };
+    let mut tokens = TokenStream::new();
+    expr_path.to_tokens(&mut tokens);
+    let toks = tokens.to_string();
+
+    for c in toks.chars() {
+        if c.is_ascii_alphanumeric() {
+            s += &c.to_string();
+        } else if c == '_' {
+            s += "__";
+        } else {
+            s += &format!("_{:}_", c as u32);
+        }
+    }
+
+    return Ident::new(&s, path.span());
 }

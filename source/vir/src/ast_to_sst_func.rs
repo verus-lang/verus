@@ -8,11 +8,11 @@ use crate::ast_to_sst::{
     expr_to_one_stm_with_post, expr_to_pure_exp_check, expr_to_pure_exp_skip_checks,
     expr_to_stm_opt, expr_to_stm_or_error, stms_to_one_stm, State,
 };
-use crate::ast_util::unit_typ;
+use crate::ast_util::{is_body_visible_to, unit_typ};
 use crate::ast_visitor;
 use crate::context::{Ctx, FunctionCtx};
 use crate::def::{unique_local, Spanned};
-use crate::inv_masks::MaskSetE;
+use crate::inv_masks::MaskSet;
 use crate::messages::{error, Message};
 use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst::{
@@ -28,7 +28,6 @@ pub type SstMap = Arc<HashMap<Fun, FunctionSst>>;
 
 pub trait FunctionCommon {
     fn name(&self) -> &Fun;
-    fn vis_abs(&self) -> crate::ast::Visibility;
     fn owning_module(&self) -> &Option<Path>;
     fn mode(&self) -> crate::ast::Mode;
     fn attrs(&self) -> &crate::ast::FunctionAttrs;
@@ -37,18 +36,6 @@ pub trait FunctionCommon {
 impl FunctionCommon for crate::ast::FunctionX {
     fn name(&self) -> &Fun {
         &self.name
-    }
-
-    fn vis_abs(&self) -> crate::ast::Visibility {
-        let vis = self.visibility.clone();
-        let restricted_to = if self.publish.is_none() {
-            // private to owning_module
-            self.owning_module.clone()
-        } else {
-            // public
-            None
-        };
-        crate::ast::Visibility { restricted_to, ..vis }
     }
 
     fn owning_module(&self) -> &Option<Path> {
@@ -67,10 +54,6 @@ impl FunctionCommon for crate::ast::FunctionX {
 impl FunctionCommon for FunctionSstX {
     fn name(&self) -> &Fun {
         &self.name
-    }
-
-    fn vis_abs(&self) -> crate::ast::Visibility {
-        self.vis_abs.clone()
     }
 
     fn owning_module(&self) -> &Option<Path> {
@@ -271,7 +254,6 @@ fn func_body_to_sst(
                 local_decls: Arc::new(termination_decls),
                 statics: Arc::new(vec![]),
                 reqs: Arc::new(vec![]),
-                mask_set: Arc::new(MaskSetE::empty()),
                 unwind: UnwindSst::NoUnwind,
             };
             Some(termination_check)
@@ -316,12 +298,17 @@ pub fn func_decl_to_sst(
     let mut inv_masks: Vec<Exps> = Vec::new();
     match &function.x.mask_spec {
         None => {}
-        Some(MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es)) => {
+        Some(MaskSpec::InvariantOpens(_span, es) | MaskSpec::InvariantOpensExcept(_span, es)) => {
             for e in es.iter() {
                 let (_pars, inv_mask) =
                     req_ens_to_sst(ctx, diagnostics, function, &vec![e.clone()], true)?;
                 inv_masks.push(Arc::new(inv_mask));
             }
+        }
+        Some(MaskSpec::InvariantOpensSet(e)) => {
+            let (_pars, inv_mask) =
+                req_ens_to_sst(ctx, diagnostics, function, &vec![e.clone()], true)?;
+            inv_masks.push(Arc::new(inv_mask));
         }
     }
 
@@ -545,7 +532,6 @@ pub fn func_def_to_sst(
 
     let mut req_stms: Vec<Stm> = Vec::new();
     let mut reqs: Vec<Exp> = Vec::new();
-    reqs.extend(crate::traits::trait_bounds_to_sst(ctx, &function.span, &function.x.typ_bounds));
     for e in req_ens_function.x.require.iter() {
         let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
         if ctx.checking_spec_preconditions() {
@@ -561,9 +547,12 @@ pub fn func_def_to_sst(
         }
     }
 
-    let mask_spec = req_ens_function.x.mask_spec_or_default();
+    let mask_spec = req_ens_function.x.mask_spec_or_default(&req_ens_function.span);
     let inv_spec_exprs = match &mask_spec {
-        MaskSpec::InvariantOpens(exprs) | MaskSpec::InvariantOpensExcept(exprs) => exprs.clone(),
+        MaskSpec::InvariantOpens(_span, exprs) | MaskSpec::InvariantOpensExcept(_span, exprs) => {
+            exprs.clone()
+        }
+        MaskSpec::InvariantOpensSet(e) => Arc::new(vec![e.clone()]),
     };
     let mut inv_spec_exps = vec![];
     for e in inv_spec_exprs.iter() {
@@ -579,12 +568,16 @@ pub fn func_def_to_sst(
         };
 
         let exp = state.finalize_exp(ctx, &exp)?;
-        inv_spec_exps.push(crate::inv_masks::MaskSingleton { expr: exp, span: e.span.clone() });
+        inv_spec_exps.push(exp.clone());
     }
-    let mask_set = match mask_spec {
-        MaskSpec::InvariantOpens(_exprs) => MaskSetE::from_list(inv_spec_exps),
-        MaskSpec::InvariantOpensExcept(_exprs) => MaskSetE::from_list_complement(inv_spec_exps),
+    let mask_set = match &mask_spec {
+        MaskSpec::InvariantOpens(span, _exprs) => MaskSet::from_list(&inv_spec_exps, &span),
+        MaskSpec::InvariantOpensExcept(span, _exprs) => {
+            MaskSet::from_list_complement(&inv_spec_exps, &span)
+        }
+        MaskSpec::InvariantOpensSet(_expr) => MaskSet::arbitrary(&inv_spec_exps[0]),
     };
+    state.mask = Some(mask_set);
 
     let unwind = match req_ens_function.x.unwind_spec_or_default() {
         UnwindSpec::MayUnwind => UnwindSst::MayUnwind,
@@ -696,7 +689,6 @@ pub fn func_def_to_sst(
             ens_spec_precondition_stms: Arc::new(ens_spec_precondition_stms),
             kind: PostConditionKind::Ensures,
         }),
-        mask_set: Arc::new(mask_set),
         unwind,
         body: stm,
         local_decls: Arc::new(local_decls),
@@ -723,7 +715,7 @@ pub fn function_to_sst(
         ctx,
         diagnostics,
         function,
-        crate::ast_util::is_visible_to(&function.x.vis_abs(), &module),
+        is_body_visible_to(&function.x.body_visibility, &module),
         verifying_owning_bucket,
     )?;
     ctx.fun = None;
@@ -766,17 +758,16 @@ pub fn function_to_sst(
     let functionx = FunctionSstX {
         name: function.x.name.clone(),
         kind: function.x.kind.clone(),
-        vis_abs: function.x.vis_abs(),
+        body_visibility: function.x.body_visibility.clone(),
         owning_module: function.x.owning_module.clone(),
         mode: function.x.mode,
-        fuel: function.x.fuel,
+        opaqueness: function.x.opaqueness.clone(),
         typ_params: function.x.typ_params.clone(),
         typ_bounds: function.x.typ_bounds.clone(),
         pars: params_to_pars(&function.x.params, true),
         ret: param_to_par(&function.x.ret, true),
         ens_has_return: function.x.ens_has_return,
         item_kind: function.x.item_kind,
-        publish: function.x.publish,
         attrs: function.x.attrs.clone(),
         has,
         decl: Arc::new(func_decl_sst),

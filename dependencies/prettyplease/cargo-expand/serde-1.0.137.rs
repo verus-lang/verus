@@ -11089,15 +11089,14 @@ pub mod de {
             where
                 A: SeqAccess<'de>,
             {
-                while let Some(IgnoredAny)
-                    = match seq.next_element() {
-                        ::core::result::Result::Ok(val) => val,
-                        ::core::result::Result::Err(err) => {
-                            return ::core::result::Result::Err(
-                                ::core::convert::From::from(err),
-                            );
-                        }
-                    } {}
+                while let Some(IgnoredAny) = match seq.next_element() {
+                    ::core::result::Result::Ok(val) => val,
+                    ::core::result::Result::Err(err) => {
+                        return ::core::result::Result::Err(
+                            ::core::convert::From::from(err),
+                        );
+                    }
+                } {}
                 Ok(IgnoredAny)
             }
             #[inline]
@@ -11105,15 +11104,14 @@ pub mod de {
             where
                 A: MapAccess<'de>,
             {
-                while let Some((IgnoredAny, IgnoredAny))
-                    = match map.next_entry() {
-                        ::core::result::Result::Ok(val) => val,
-                        ::core::result::Result::Err(err) => {
-                            return ::core::result::Result::Err(
-                                ::core::convert::From::from(err),
-                            );
-                        }
-                    } {}
+                while let Some((IgnoredAny, IgnoredAny)) = match map.next_entry() {
+                    ::core::result::Result::Ok(val) => val,
+                    ::core::result::Result::Err(err) => {
+                        return ::core::result::Result::Err(
+                            ::core::convert::From::from(err),
+                        );
+                    }
+                } {}
                 Ok(IgnoredAny)
             }
             #[inline]
@@ -14147,15 +14145,14 @@ pub mod de {
             {
                 let len = size_hint::cautious(seq.size_hint());
                 let mut values = Vec::with_capacity(len);
-                while let Some(value)
-                    = match seq.next_element() {
-                        ::core::result::Result::Ok(val) => val,
-                        ::core::result::Result::Err(err) => {
-                            return ::core::result::Result::Err(
-                                ::core::convert::From::from(err),
-                            );
-                        }
-                    } {
+                while let Some(value) = match seq.next_element() {
+                    ::core::result::Result::Ok(val) => val,
+                    ::core::result::Result::Err(err) => {
+                        return ::core::result::Result::Err(
+                            ::core::convert::From::from(err),
+                        );
+                    }
+                } {
                     values.push(value);
                 }
                 CString::new(values).map_err(Error::custom)
@@ -14323,15 +14320,14 @@ pub mod de {
                         let mut values = BinaryHeap::with_capacity(
                             size_hint::cautious(seq.size_hint()),
                         );
-                        while let Some(value)
-                            = match seq.next_element() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(value) = match seq.next_element() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             BinaryHeap::push(&mut values, value);
                         }
                         Ok(values)
@@ -14369,15 +14365,14 @@ pub mod de {
                             &mut self.0,
                             size_hint::cautious(seq.size_hint()),
                         );
-                        while let Some(value)
-                            = match seq.next_element() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(value) = match seq.next_element() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             BinaryHeap::push(&mut self.0, value);
                         }
                         Ok(())
@@ -14411,15 +14406,14 @@ pub mod de {
                         A: SeqAccess<'de>,
                     {
                         let mut values = BTreeSet::new();
-                        while let Some(value)
-                            = match seq.next_element() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(value) = match seq.next_element() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             BTreeSet::insert(&mut values, value);
                         }
                         Ok(values)
@@ -14454,15 +14448,14 @@ pub mod de {
                     {
                         BTreeSet::clear(&mut self.0);
                         nop_reserve(&mut self.0, size_hint::cautious(seq.size_hint()));
-                        while let Some(value)
-                            = match seq.next_element() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(value) = match seq.next_element() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             BTreeSet::insert(&mut self.0, value);
                         }
                         Ok(())
@@ -14496,15 +14489,14 @@ pub mod de {
                         A: SeqAccess<'de>,
                     {
                         let mut values = LinkedList::new();
-                        while let Some(value)
-                            = match seq.next_element() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(value) = match seq.next_element() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             LinkedList::push_back(&mut values, value);
                         }
                         Ok(values)
@@ -14539,15 +14531,14 @@ pub mod de {
                     {
                         LinkedList::clear(&mut self.0);
                         nop_reserve(&mut self.0, size_hint::cautious(seq.size_hint()));
-                        while let Some(value)
-                            = match seq.next_element() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(value) = match seq.next_element() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             LinkedList::push_back(&mut self.0, value);
                         }
                         Ok(())
@@ -14586,15 +14577,14 @@ pub mod de {
                             size_hint::cautious(seq.size_hint()),
                             S::default(),
                         );
-                        while let Some(value)
-                            = match seq.next_element() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(value) = match seq.next_element() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             HashSet::insert(&mut values, value);
                         }
                         Ok(values)
@@ -14633,15 +14623,14 @@ pub mod de {
                             &mut self.0,
                             size_hint::cautious(seq.size_hint()),
                         );
-                        while let Some(value)
-                            = match seq.next_element() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(value) = match seq.next_element() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             HashSet::insert(&mut self.0, value);
                         }
                         Ok(())
@@ -14677,15 +14666,14 @@ pub mod de {
                         let mut values = VecDeque::with_capacity(
                             size_hint::cautious(seq.size_hint()),
                         );
-                        while let Some(value)
-                            = match seq.next_element() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(value) = match seq.next_element() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             VecDeque::push_back(&mut values, value);
                         }
                         Ok(values)
@@ -14723,15 +14711,14 @@ pub mod de {
                             &mut self.0,
                             size_hint::cautious(seq.size_hint()),
                         );
-                        while let Some(value)
-                            = match seq.next_element() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(value) = match seq.next_element() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             VecDeque::push_back(&mut self.0, value);
                         }
                         Ok(())
@@ -14767,15 +14754,14 @@ pub mod de {
                         let mut values = Vec::with_capacity(
                             size_hint::cautious(seq.size_hint()),
                         );
-                        while let Some(value)
-                            = match seq.next_element() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(value) = match seq.next_element() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             values.push(value);
                         }
                         Ok(values)
@@ -14825,15 +14811,14 @@ pub mod de {
                                 return Ok(());
                             }
                         }
-                        while let Some(value)
-                            = match seq.next_element() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(value) = match seq.next_element() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             self.0.push(value);
                         }
                         Ok(())
@@ -28087,15 +28072,14 @@ pub mod de {
                         A: MapAccess<'de>,
                     {
                         let mut values = BTreeMap::new();
-                        while let Some((key, value))
-                            = match map.next_entry() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some((key, value)) = match map.next_entry() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             values.insert(key, value);
                         }
                         Ok(values)
@@ -28137,15 +28121,14 @@ pub mod de {
                             size_hint::cautious(map.size_hint()),
                             S::default(),
                         );
-                        while let Some((key, value))
-                            = match map.next_entry() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some((key, value)) = match map.next_entry() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             values.insert(key, value);
                         }
                         Ok(values)
@@ -28876,15 +28859,14 @@ pub mod de {
                     {
                         let mut secs: Option<u64> = None;
                         let mut nanos: Option<u32> = None;
-                        while let Some(key)
-                            = match map.next_key() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(key) = match map.next_key() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             match key {
                                 Field::Secs => {
                                     if secs.is_some() {
@@ -29066,15 +29048,14 @@ pub mod de {
                     {
                         let mut secs: Option<u64> = None;
                         let mut nanos: Option<u32> = None;
-                        while let Some(key)
-                            = match map.next_key() {
-                                ::core::result::Result::Ok(val) => val,
-                                ::core::result::Result::Err(err) => {
-                                    return ::core::result::Result::Err(
-                                        ::core::convert::From::from(err),
-                                    );
-                                }
-                            } {
+                        while let Some(key) = match map.next_key() {
+                            ::core::result::Result::Ok(val) => val,
+                            ::core::result::Result::Err(err) => {
+                                return ::core::result::Result::Err(
+                                    ::core::convert::From::from(err),
+                                );
+                            }
+                        } {
                             match key {
                                 Field::Secs => {
                                     if secs.is_some() {
@@ -29302,15 +29283,14 @@ pub mod de {
                 {
                     let mut start: Option<Idx> = None;
                     let mut end: Option<Idx> = None;
-                    while let Some(key)
-                        = match map.next_key() {
-                            ::core::result::Result::Ok(val) => val,
-                            ::core::result::Result::Err(err) => {
-                                return ::core::result::Result::Err(
-                                    ::core::convert::From::from(err),
-                                );
-                            }
-                        } {
+                    while let Some(key) = match map.next_key() {
+                        ::core::result::Result::Ok(val) => val,
+                        ::core::result::Result::Err(err) => {
+                            return ::core::result::Result::Err(
+                                ::core::convert::From::from(err),
+                            );
+                        }
+                    } {
                         match key {
                             Field::Start => {
                                 if start.is_some() {
@@ -36372,15 +36352,14 @@ pub mod __private {
                     let mut vec = Vec::with_capacity(
                         size_hint::cautious(visitor.size_hint()),
                     );
-                    while let Some(e)
-                        = match visitor.next_element() {
-                            ::core::result::Result::Ok(val) => val,
-                            ::core::result::Result::Err(err) => {
-                                return ::core::result::Result::Err(
-                                    ::core::convert::From::from(err),
-                                );
-                            }
-                        } {
+                    while let Some(e) = match visitor.next_element() {
+                        ::core::result::Result::Ok(val) => val,
+                        ::core::result::Result::Err(err) => {
+                            return ::core::result::Result::Err(
+                                ::core::convert::From::from(err),
+                            );
+                        }
+                    } {
                         vec.push(e);
                     }
                     Ok(Content::Seq(vec))
@@ -36392,15 +36371,14 @@ pub mod __private {
                     let mut vec = Vec::with_capacity(
                         size_hint::cautious(visitor.size_hint()),
                     );
-                    while let Some(kv)
-                        = match visitor.next_entry() {
-                            ::core::result::Result::Ok(val) => val,
-                            ::core::result::Result::Err(err) => {
-                                return ::core::result::Result::Err(
-                                    ::core::convert::From::from(err),
-                                );
-                            }
-                        } {
+                    while let Some(kv) = match visitor.next_entry() {
+                        ::core::result::Result::Ok(val) => val,
+                        ::core::result::Result::Err(err) => {
+                            return ::core::result::Result::Err(
+                                ::core::convert::From::from(err),
+                            );
+                        }
+                    } {
                         vec.push(kv);
                     }
                     Ok(Content::Map(vec))
@@ -36726,17 +36704,16 @@ pub mod __private {
                     let mut vec = Vec::with_capacity(
                         size_hint::cautious(map.size_hint()),
                     );
-                    while let Some(k)
-                        = match map
-                            .next_key_seed(TagOrContentVisitor::new(self.tag_name))
-                        {
-                            ::core::result::Result::Ok(val) => val,
-                            ::core::result::Result::Err(err) => {
-                                return ::core::result::Result::Err(
-                                    ::core::convert::From::from(err),
-                                );
-                            }
-                        } {
+                    while let Some(k) = match map
+                        .next_key_seed(TagOrContentVisitor::new(self.tag_name))
+                    {
+                        ::core::result::Result::Ok(val) => val,
+                        ::core::result::Result::Err(err) => {
+                            return ::core::result::Result::Err(
+                                ::core::convert::From::from(err),
+                            );
+                        }
+                    } {
                         match k {
                             TagOrContent::Tag => {
                                 if tag.is_some() {
@@ -39273,8 +39250,7 @@ pub mod __private {
                 {
                     match self.iter.next() {
                         Some(value) => {
-                            seed
-                                .deserialize(ContentRefDeserializer::new(value))
+                            seed.deserialize(ContentRefDeserializer::new(value))
                                 .map(Some)
                         }
                         None => Ok(None),

@@ -1,5 +1,6 @@
 use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, GhostBlockAttr};
 use crate::erase::{ErasureHints, ResolvedCall};
+use crate::external::CrateItems;
 use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir, remove_host_arg};
 use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
 use crate::verus_items::{BuiltinTypeItem, RustItem, VerusItem, VerusItems};
@@ -10,12 +11,12 @@ use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
     AssocItemKind, Block, BlockCheckMode, BodyId, Closure, Crate, Expr, ExprKind, FnSig, HirId,
     Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OpaqueTy,
-    OpaqueTyOrigin, OwnerNode, Pat, PatKind, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind,
-    TraitItemRef, UnOp, Unsafety,
+    OpaqueTyOrigin, OwnerNode, Pat, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem,
+    TraitItemKind, TraitItemRef, UnOp,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegionKind, BoundVariableKind, ClauseKind, Const, GenericArgKind,
-    GenericParamDefKind, RegionKind, Ty, TyCtxt, TyKind, TypeckResults, VariantDef,
+    GenericParamDefKind, RegionKind, TermKind, Ty, TyCtxt, TyKind, TypeckResults, VariantDef,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::kw;
@@ -45,7 +46,7 @@ impl TypX {
 }
 
 struct Context<'tcx> {
-    cmd_line_args: crate::config::Args,
+    _cmd_line_args: crate::config::Args,
     tcx: TyCtxt<'tcx>,
     verus_items: Arc<VerusItems>,
     types_opt: Option<&'tcx TypeckResults<'tcx>>,
@@ -55,9 +56,6 @@ struct Context<'tcx> {
     /// Map each datatype path to its VIR Datatype
     datatypes: HashMap<Path, vir::ast::Datatype>,
     ignored_functions: HashSet<DefId>,
-    /// For each struct/enum that implements Copy,
-    /// for each GenericParam A say whether clone and copy require A: Clone and A: Copy
-    copy_types: HashMap<DefId, Vec<bool>>,
     calls: HashMap<HirId, ResolvedCall>,
     /// Mode of each if/else or match condition, used to decide how to erase if/else and match
     /// condition.  For example, in "if x < 10 { x + 1 } else { x + 2 }", this will record the span
@@ -328,72 +326,6 @@ fn span_dummy() -> Span {
     data.span()
 }
 
-fn add_copy_type(ctxt: &mut Context, state: &mut State, id: DefId) {
-    let tcx = ctxt.tcx;
-    let copy = tcx.lang_items().copy_trait();
-    let sized = tcx.lang_items().sized_trait();
-    // check for implementation of the form:
-    //   impl<A1 ... An> Copy for S<A1 ... An>
-    if let Some(trait_ref) = tcx.impl_trait_ref(id) {
-        if trait_ref.skip_binder().args.len() == 1 {
-            if let GenericArgKind::Type(ty) = trait_ref.skip_binder().args[0].unpack() {
-                if let TyKind::Adt(AdtDef(adt_def_data), args) = ty.kind() {
-                    let did = adt_def_data.did;
-                    let generics = tcx.generics_of(id);
-                    let mut copy_bounds: Vec<(Id, bool)> = Vec::new();
-                    if generics.params.len() == args.len() {
-                        for (param, arg) in generics.params.iter().zip(args.iter()) {
-                            let name = state.typ_param(param.name.to_string(), Some(param.index));
-                            copy_bounds.push((name, false));
-                            if let GenericArgKind::Type(arg_ty) = arg.unpack() {
-                                if let TyKind::Param(p) = arg_ty.kind() {
-                                    if p.name == param.name {
-                                        continue;
-                                    }
-                                }
-                            }
-                            return;
-                        }
-                    } else {
-                        return;
-                    }
-                    for (pred, _) in tcx.predicates_of(id).predicates {
-                        if let Some(ClauseKind::Trait(p)) = pred.kind().no_bound_vars() {
-                            let pid = p.trait_ref.def_id;
-                            // For now, only allowed predicates are Copy and Sized
-                            if Some(pid) == copy {
-                                let x = match *erase_ty(
-                                    ctxt,
-                                    state,
-                                    &p.trait_ref.args[0].expect_ty(),
-                                ) {
-                                    TypX::TypParam(x) => x,
-                                    _ => panic!("PredicateKind::Trait"),
-                                };
-                                let x_ref = copy_bounds.iter_mut().find(|(name, _)| name == &x);
-                                let x_ref = x_ref.expect("generic param bound");
-                                x_ref.1 = true;
-                                continue;
-                            }
-                            if Some(pid) == sized {
-                                continue;
-                            }
-                        }
-                        return;
-                    }
-                    if tcx.impl_polarity(id) != rustc_middle::ty::ImplPolarity::Positive {
-                        return;
-                    }
-                    // Found a matching Copy Impl
-                    assert!(!ctxt.copy_types.contains_key(&did));
-                    let copy_bounds = copy_bounds.into_iter().map(|(_, copy)| copy).collect();
-                    ctxt.copy_types.insert(did, copy_bounds);
-                }
-            }
-        }
-    }
-}
-
 fn erase_hir_region<'tcx>(ctxt: &Context<'tcx>, state: &mut State, r: &RegionKind) -> Option<Id> {
     match r {
         RegionKind::ReEarlyParam(bound) => Some(state.lifetime((bound.name.to_string(), None))),
@@ -411,11 +343,15 @@ fn erase_hir_region<'tcx>(ctxt: &Context<'tcx>, state: &mut State, r: &RegionKin
 }
 
 fn erase_generic_const<'tcx>(ctxt: &Context<'tcx>, state: &mut State, cnst: &Const<'tcx>) -> Typ {
-    match &*mid_ty_const_to_vir(ctxt.tcx, None, cnst).expect("mit_ty_const_to_vir failed") {
+    use crate::rustc_middle::query::Key;
+    match &*mid_ty_const_to_vir(ctxt.tcx, Some(cnst.default_span(ctxt.tcx)), cnst)
+        .expect("mit_ty_const_to_vir failed")
+    {
         vir::ast::TypX::TypParam(x) => {
             Box::new(TypX::TypParam(state.typ_param(x.to_string(), None)))
         }
         vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
+        vir::ast::TypX::ConstBool(b) => Box::new(TypX::Primitive(b.to_string())),
         _ => panic!("GenericArgKind::Const"),
     }
 }
@@ -555,7 +491,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             };
             Box::new(TypX::Datatype(datatype_name, Vec::new(), typ_args))
         }
-        TyKind::Alias(rustc_middle::ty::AliasKind::Projection, t) => {
+        TyKind::Alias(rustc_middle::ty::AliasTyKind::Projection, t) => {
             // Note: even if rust_to_vir_base decides to normalize t,
             // we don't have to normalize t here, since we're generating Rust code, not VIR.
             // However, normalizing means we might reach less stuff so it's
@@ -596,7 +532,7 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             let projection_generics = ctxt.tcx.generics_of(t.def_id);
             let trait_def = projection_generics.parent;
             if let Some(trait_def) = trait_def {
-                let n = t.args.len() - projection_generics.params.len();
+                let n = t.args.len() - projection_generics.own_params.len();
                 let (trait_typ_args, self_typ) =
                     erase_generic_args(ctxt, state, &t.args[..n], true);
                 let (assoc_typ_args, _) = erase_generic_args(ctxt, state, &t.args[n..], false);
@@ -987,14 +923,14 @@ fn erase_call<'tcx>(
             );
 
             let normalized_substs = ctxt.tcx.normalize_erasing_regions(param_env, node_substs);
-            let inst = rustc_middle::ty::Instance::resolve(
+            let inst = rustc_middle::ty::Instance::try_resolve(
                 ctxt.tcx,
                 param_env,
                 fn_def_id,
                 normalized_substs,
             );
             if let Ok(Some(inst)) = inst {
-                if let rustc_middle::ty::InstanceDef::Item(did) = inst.def {
+                if let rustc_middle::ty::InstanceKind::Item(did) = inst.def {
                     node_substs = &inst.args;
                     fn_def_id = did;
                 }
@@ -1272,7 +1208,10 @@ fn erase_expr<'tcx>(
                         return mk_exp(ExpX::Call(fun_exp, vec![], vec![]));
                     }
                 }
-                Res::Def(DefKind::Static { mutability: Mutability::Not, nested: false }, id) => {
+                Res::Def(
+                    DefKind::Static { mutability: Mutability::Not, nested: false, .. },
+                    id,
+                ) => {
                     if expect_spec || ctxt.var_modes[&expr.hir_id] == Mode::Spec {
                         None
                     } else {
@@ -1675,8 +1614,11 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
                 vec![]
             }
         }
-        StmtKind::Let(LetStmt { pat, ty: _, init, els: _, hir_id, span: _, source: _ }) => {
+        StmtKind::Let(LetStmt { pat, ty: _, init, els, hir_id, span: _, source: _ }) => {
             let mode = ctxt.var_modes[&pat.hir_id];
+            if mode != Mode::Exec && els.is_some() {
+                panic!("let-else is not supported in spec");
+            }
             if mode == Mode::Spec {
                 if let Some(init) = init {
                     if let Some(e) = erase_expr(ctxt, state, true, init) {
@@ -1692,10 +1634,22 @@ fn erase_stmt<'tcx>(ctxt: &Context<'tcx>, state: &mut State, stmt: &Stmt<'tcx>) 
                 let typ = erase_ty(ctxt, state, &ctxt.types().node_type(*hir_id));
                 let init_exp =
                     if let Some(init) = init { erase_expr(ctxt, state, false, init) } else { None };
-                vec![Box::new((stmt.span, StmX::Let(pat, typ, init_exp)))]
+                let els_expr = if let Some(els) = els {
+                    erase_block(ctxt, state, false, &els)
+                        .or_else(|| Some(Box::new((els.span, ExpX::Panic))))
+                } else {
+                    None
+                };
+                vec![Box::new((stmt.span, StmX::Let(pat, typ, init_exp, els_expr)))]
             }
         }
-        StmtKind::Item(..) => panic!("unexpected statement"),
+        StmtKind::Item(item_id) => {
+            let item = ctxt.tcx.hir().item(*item_id);
+            if matches!(&item.kind, ItemKind::Use(..) | ItemKind::Macro(..)) {
+                return vec![];
+            }
+            panic!("unexpected statement");
+        }
     }
 }
 
@@ -1795,6 +1749,8 @@ fn erase_mir_bound<'a, 'tcx>(
     let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
     if Some(id) == tcx.lang_items().copy_trait() {
         Some(Bound::Copy)
+    } else if Some(id) == tcx.lang_items().clone_trait() {
+        Some(Bound::Clone)
     } else if Some(id) == tcx.lang_items().sized_trait() {
         Some(Bound::Sized)
     } else if Some(RustItem::Allocator) == rust_item {
@@ -1876,35 +1832,39 @@ fn erase_mir_predicates<'a, 'tcx>(
                 }
             }
             ClauseKind::Projection(pred) => {
-                if Some(pred.projection_ty.def_id) == tcx.lang_items().fn_once_output() {
-                    assert!(pred.projection_ty.args.len() == 2);
-                    let typ = erase_ty(ctxt, state, &pred.projection_ty.args[0].expect_ty());
-                    let mut fn_params = match pred.projection_ty.args[1].unpack() {
+                if Some(pred.projection_term.def_id) == tcx.lang_items().fn_once_output() {
+                    assert!(pred.projection_term.args.len() == 2);
+                    let typ = erase_ty(ctxt, state, &pred.projection_term.args[0].expect_ty());
+                    let mut fn_params = match pred.projection_term.args[1].unpack() {
                         GenericArgKind::Type(ty) => erase_ty(ctxt, state, &ty),
                         _ => panic!("unexpected fn projection"),
                     };
                     if !matches!(*fn_params, TypX::Tuple(_)) {
                         fn_params = Box::new(TypX::Tuple(vec![fn_params]));
                     }
-                    let fn_ret = erase_ty(ctxt, state, &pred.term.ty().expect("fn_ret"));
+                    let fn_ret = if let TermKind::Ty(ty) = pred.term.unpack() {
+                        erase_ty(ctxt, state, &ty)
+                    } else {
+                        panic!("fn_ret");
+                    };
                     fn_projections.insert(typ, (fn_params, fn_ret)).map(|_| panic!("{:?}", pred));
                 } else {
-                    let typ0 = erase_ty(ctxt, state, &pred.projection_ty.args[0].expect_ty());
-                    let typ_eq = if let Some(ty) = pred.term.ty() {
+                    let typ0 = erase_ty(ctxt, state, &pred.projection_term.args[0].expect_ty());
+                    let typ_eq = if let TermKind::Ty(ty) = pred.term.unpack() {
                         erase_ty(ctxt, state, &ty)
                     } else {
                         panic!("should have been disallowed by rust_verify_base.rs");
                     };
-                    let trait_def_id = pred.projection_ty.trait_def_id(tcx);
-                    let item_def_id = pred.projection_ty.def_id;
+                    let trait_def_id = pred.projection_term.trait_def_id(tcx);
+                    let item_def_id = pred.projection_term.def_id;
                     let assoc_item = tcx.associated_item(item_def_id);
                     let projection_generics = ctxt.tcx.generics_of(item_def_id);
-                    let n = pred.projection_ty.args.len() - projection_generics.params.len();
+                    let n = pred.projection_term.args.len() - projection_generics.own_params.len();
                     let mut bound =
-                        erase_mir_bound(ctxt, state, trait_def_id, &pred.projection_ty.args[..n])
+                        erase_mir_bound(ctxt, state, trait_def_id, &pred.projection_term.args[..n])
                             .expect("bound");
                     let (x_args, _) =
-                        erase_generic_args(ctxt, state, &pred.projection_ty.args[n..], true);
+                        erase_generic_args(ctxt, state, &pred.projection_term.args[n..], true);
                     let x_args = x_args.into_iter().map(|a| a.as_lifetime()).collect();
                     if let Bound::Trait { trait_path: _, args: _, equality } = &mut bound {
                         assert!(equality.is_none());
@@ -1957,7 +1917,7 @@ fn erase_mir_generics<'tcx>(
             }
         }
     }
-    for gparam in &mir_generics.params {
+    for gparam in &mir_generics.own_params {
         match gparam.kind {
             GenericParamDefKind::Lifetime => {
                 let name = state.lifetime((gparam.name.to_string(), None));
@@ -1967,7 +1927,7 @@ fn erase_mir_generics<'tcx>(
                 let name = state.typ_param(gparam.name.to_string(), Some(gparam.index));
                 typ_params.push(GenericParam { name, const_typ: None });
             }
-            GenericParamDefKind::Const { has_default: _, is_host_effect: false } => {
+            GenericParamDefKind::Const { has_default: _, is_host_effect: false, .. } => {
                 let name = state.typ_param(gparam.name.to_string(), None);
                 let t = erase_ty(ctxt, state, &ctxt.tcx.type_of(gparam.def_id).skip_binder());
                 typ_params.push(GenericParam { name, const_typ: Some(t) });
@@ -2188,6 +2148,10 @@ fn erase_fn<'tcx>(
 fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: DefId) {
     let (name, _) = state.remaining_typs_needed_for_each_impl.remove(&impl_id).unwrap();
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
+    let trait_id = trait_ref.skip_binder().def_id;
+    let is_copy = Some(trait_id) == ctxt.tcx.lang_items().copy_trait();
+    let is_clone = Some(trait_id) == ctxt.tcx.lang_items().clone_trait();
+    let is_copy_or_clone = is_copy || is_clone;
 
     let span = ctxt.tcx.def_span(impl_id);
 
@@ -2217,6 +2181,16 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
     let self_typ = erase_ty(ctxt, state, &self_ty);
     let trait_as_datatype = Box::new(TypX::Datatype(name.clone(), vec![], trait_typ_args));
 
+    if is_copy_or_clone {
+        if let TypX::Datatype(x, _, _) = &*self_typ {
+            if x.kind != IdKind::Datatype {
+                return;
+            }
+        } else {
+            return;
+        }
+    }
+
     let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)> = Vec::new();
     for assoc_item in ctxt.tcx.associated_items(impl_id).in_definition_order() {
         match assoc_item.kind {
@@ -2243,14 +2217,18 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
         }
     }
 
+    let trait_polarity = ctxt.tcx.impl_polarity(impl_id);
     let trait_impl = TraitImpl {
         span: Some(span),
         generic_params,
         generic_bounds,
-        self_typ,
+        self_typ: self_typ.clone(),
+        trait_polarity,
         trait_as_datatype,
         assoc_typs,
+        is_clone,
     };
+
     state.trait_impls.push(trait_impl);
 }
 
@@ -2264,9 +2242,9 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
             return;
         }
     }
-    if Some(trait_id) == ctxt.tcx.lang_items().copy_trait() {
-        return;
-    }
+    let is_copy = Some(trait_id) == ctxt.tcx.lang_items().copy_trait();
+    let is_clone = Some(trait_id) == ctxt.tcx.lang_items().clone_trait();
+    let is_copy_or_clone = is_copy || is_clone;
 
     state.enclosing_trait_ids.push(trait_id);
 
@@ -2320,6 +2298,9 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
     // (Note 2: if we allow cycles between a trait and its supertraits, we'll need a more
     // sophisticated algorithm.)
     let mut supertrait_may_have_assoc_types_or_copy = false;
+    if is_copy_or_clone {
+        supertrait_may_have_assoc_types_or_copy = true;
+    }
     for (pred, _) in ctxt.tcx.predicates_of(trait_id).predicates.iter() {
         match (pred.kind().skip_binder(), &pred.kind().bound_vars()[..]) {
             (ClauseKind::Trait(pred), _bound_vars) => {
@@ -2337,7 +2318,13 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
     }
 
     if supertrait_may_have_assoc_types_or_copy || assoc_typs.len() > 0 {
-        let name = state.trait_name(&path);
+        let name = if is_copy {
+            Id::new(IdKind::Builtin, 0, "Copy".to_owned())
+        } else if is_clone {
+            Id::new(IdKind::Builtin, 0, "Clone".to_owned())
+        } else {
+            state.trait_name(&path)
+        };
         let mut lifetimes: Vec<GenericParam> = Vec::new();
         let mut typ_params: Vec<GenericParam> = Vec::new();
         let mut generic_bounds: Vec<GenericBound> = Vec::new();
@@ -2353,9 +2340,11 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
         typ_params.remove(0); // remove Self type parameter
         let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
 
-        let decl = TraitDecl { name: name.clone(), generic_params, generic_bounds, assoc_typs };
-        state.trait_decl_set.insert(path.clone());
-        state.trait_decls.push(decl);
+        if !is_copy_or_clone {
+            let decl = TraitDecl { name: name.clone(), generic_params, generic_bounds, assoc_typs };
+            state.trait_decl_set.insert(path.clone());
+            state.trait_decls.push(decl);
+        }
 
         for impl_id in ctxt.tcx.all_impls(trait_id) {
             let mut datatypes: Vec<DefId> = Vec::new();
@@ -2425,8 +2414,7 @@ fn erase_trait_item<'tcx>(
                 let id = owner_id.to_def_id();
 
                 let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
-                let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
-                    .expect("get_verifier_attrs");
+                let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
 
                 erase_fn(
                     krate,
@@ -2453,6 +2441,7 @@ fn erase_impl<'tcx>(
     state: &mut State,
     impl_id: DefId,
     impll: &Impl<'tcx>,
+    crate_items: &CrateItems,
 ) {
     for impl_item_ref in impll.items {
         match impl_item_ref.kind {
@@ -2461,9 +2450,8 @@ fn erase_impl<'tcx>(
                 let ImplItem { ident, owner_id, kind, .. } = impl_item;
                 let id = owner_id.to_def_id();
                 let attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
-                let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
-                    .expect("get_verifier_attrs");
-                if vattrs.is_external(&ctxt.cmd_line_args) {
+                let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                if crate_items.is_impl_item_external(impl_item_ref.id) {
                     continue;
                 }
                 if vattrs.reveal_group {
@@ -2490,7 +2478,7 @@ fn erase_impl<'tcx>(
             AssocItemKind::Type => {
                 // handled in erase_trait
             }
-            _ => panic!("unexpected impl"),
+            _ => panic!("unexpected impl {:?}", impl_item_ref),
         }
     }
 }
@@ -2505,7 +2493,6 @@ fn erase_datatype<'tcx>(
     let datatype = Box::new(datatype);
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     let name = state.datatype_name(&path);
-    let implements_copy = ctxt.copy_types.get(&id).cloned();
     let mut lifetimes: Vec<GenericParam> = Vec::new();
     let mut typ_params: Vec<GenericParam> = Vec::new();
     let mut generic_bounds: Vec<GenericBound> = Vec::new();
@@ -2520,8 +2507,7 @@ fn erase_datatype<'tcx>(
     );
     let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
     let span = Some(span);
-    let decl =
-        DatatypeDecl { name, span, implements_copy, generic_params, generic_bounds, datatype };
+    let decl = DatatypeDecl { name, span, generic_params, generic_bounds, datatype };
     state.datatype_decls.push(decl);
 }
 
@@ -2571,7 +2557,7 @@ fn erase_variant_data<'tcx>(
 fn erase_abstract_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, span: Span, id: DefId) {
     let mut fields: Vec<Typ> = Vec::new();
     let mir_generics = ctxt.tcx.generics_of(id);
-    for gparam in mir_generics.params.iter() {
+    for gparam in mir_generics.own_params.iter() {
         // Rust requires all lifetime/type variables to be mentioned in the fields,
         // so introduce a dummy field for each lifetime/type variable
         match gparam.kind {
@@ -2600,20 +2586,11 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
     } else {
         ctxt.tcx.item_attrs(id)
     };
-    let vattrs =
-        get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args)).expect("get_verifier_attrs");
-    if vattrs.external_type_specification {
-        return;
-    }
 
     let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
-
-    if let Some(RustItem::Box) = rust_item {
-        return;
-    }
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     if let Some(
-        RustItem::Rc
+        RustItem::Box
+        | RustItem::Rc
         | RustItem::Arc
         | RustItem::AllocGlobal
         | RustItem::ManuallyDrop
@@ -2622,6 +2599,13 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
     {
         return;
     }
+
+    let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+    if vattrs.external_type_specification {
+        return;
+    }
+
+    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
 
     // Check if the struct is 'external_body'
     // (Recall that the 'external_body' label may have been applied by a proxy type,
@@ -2670,17 +2654,16 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     verus_items: Arc<VerusItems>,
     krate: &'tcx Crate<'tcx>,
     erasure_hints: &ErasureHints,
-    item_to_module_map: &crate::rust_to_vir::ItemToModuleMap,
+    crate_items: &CrateItems,
 ) -> State {
     let mut ctxt = Context {
-        cmd_line_args,
+        _cmd_line_args: cmd_line_args,
         tcx,
         verus_items,
         types_opt: None,
         functions: HashMap::new(),
         datatypes: HashMap::new(),
         ignored_functions: HashSet::new(),
-        copy_types: HashMap::new(),
         calls: HashMap::new(),
         condition_modes: HashMap::new(),
         var_modes: HashMap::new(),
@@ -2753,38 +2736,25 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     for (hir_id, mode) in &erasure_hints.direct_var_modes {
         ctxt.var_modes.insert(*hir_id, *mode).map(|v| panic!("{:?}", v));
     }
-    if let Some(copy) = tcx.lang_items().copy_trait() {
-        for c in tcx.crates(()) {
-            for (copy_impl, _) in tcx.implementations_of_trait((*c, copy)) {
-                add_copy_type(&mut ctxt, &mut state, *copy_impl);
-            }
-        }
-    }
     for owner in krate.owners.iter() {
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
                 OwnerNode::Item(item) => {
-                    if matches!(item_to_module_map.get(&item.item_id()), Some(None)) {
+                    if !matches!(&item.kind, ItemKind::Impl(_))
+                        && crate_items.is_item_external(item.item_id())
+                    {
                         // item is external
                         continue;
                     }
                     match &item.kind {
-                        ItemKind::Impl(Impl { of_trait: Some(trait_ref), .. }) => {
-                            if Some(trait_ref.path.res.def_id()) == tcx.lang_items().copy_trait() {
-                                add_copy_type(&mut ctxt, &mut state, item.owner_id.to_def_id());
-                            }
-                        }
                         ItemKind::Trait(
                             IsAuto::No,
-                            Unsafety::Normal,
+                            Safety::Safe,
                             _trait_generics,
                             _bounds,
                             _trait_items,
                         ) => {
-                            let attrs = tcx.hir().attrs(item.hir_id());
-                            let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
-                                .expect("get_verifier_attrs");
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
+                            if crate_items.is_item_external(item.item_id()) {
                                 continue;
                             }
                             // We only need traits with associated type declarations.
@@ -2799,19 +2769,24 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
             }
         }
     }
+    if let Some(id) = ctxt.tcx.lang_items().copy_trait() {
+        erase_trait(&ctxt, &mut state, id);
+    }
+    if let Some(id) = ctxt.tcx.lang_items().clone_trait() {
+        erase_trait(&ctxt, &mut state, id);
+    }
 
     for owner in krate.owners.iter() {
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
                 OwnerNode::Item(item) => {
-                    if matches!(item_to_module_map.get(&item.item_id()), Some(None)) {
+                    if crate_items.is_item_external(item.item_id()) {
                         // item is external
                         continue;
                     }
                     let attrs = tcx.hir().attrs(item.hir_id());
-                    let vattrs = get_verifier_attrs(attrs, None, Some(&ctxt.cmd_line_args))
-                        .expect("get_verifier_attrs");
-                    if vattrs.external || vattrs.internal_reveal_fn || vattrs.internal_const_body {
+                    let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                    if vattrs.internal_reveal_fn || vattrs.internal_const_body {
                         continue;
                     }
                     let id = item.owner_id.to_def_id();
@@ -2824,28 +2799,16 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         ItemKind::TyAlias(..) => {}
                         ItemKind::GlobalAsm(..) => {}
                         ItemKind::Struct(_s, _generics) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
                             state.reach_datatype(&ctxt, id);
                         }
                         ItemKind::Enum(_e, _generics) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
                             state.reach_datatype(&ctxt, id);
                         }
                         ItemKind::Union(_e, _generics) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
                             state.reach_datatype(&ctxt, id);
                         }
                         ItemKind::Const(_ty, _, body_id) | ItemKind::Static(_ty, _, body_id) => {
-                            if vattrs.size_of_global
-                                || vattrs.item_broadcast_use
-                                || vattrs.is_external(&ctxt.cmd_line_args)
-                            {
+                            if vattrs.size_of_global || vattrs.item_broadcast_use {
                                 continue;
                             }
                             erase_const_or_static(
@@ -2860,9 +2823,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             );
                         }
                         ItemKind::Fn(sig, _generics, body_id) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
                             if vattrs.reveal_group {
                                 continue;
                             }
@@ -2900,14 +2860,11 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         }
                         ItemKind::Trait(
                             IsAuto::No,
-                            Unsafety::Normal,
+                            Safety::Safe | Safety::Unsafe,
                             _trait_generics,
                             _bounds,
                             trait_items,
                         ) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
                             let ex_trait_id_for =
                                 crate::rust_to_vir_trait::external_trait_specification_of(
                                     tcx,
@@ -2931,10 +2888,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             );
                         }
                         ItemKind::Impl(impll) => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
-                            erase_impl(krate, &mut ctxt, &mut state, id, impll);
+                            erase_impl(krate, &mut ctxt, &mut state, id, impll, crate_items);
                         }
                         ItemKind::OpaqueTy(OpaqueTy {
                             generics: _,
@@ -2942,14 +2896,10 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             origin: OpaqueTyOrigin::AsyncFn(_),
                             in_trait: _,
                             lifetime_mapping: _,
-                            precise_capturing_args: None,
                         }) => {
                             continue;
                         }
                         _ => {
-                            if vattrs.is_external(&ctxt.cmd_line_args) {
-                                continue;
-                            }
                             dbg!(item);
                             panic!("unexpected item");
                         }

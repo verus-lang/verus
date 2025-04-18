@@ -10,7 +10,6 @@ use crate::messages::{Message, Span};
 pub use air::ast::{Binder, Binders};
 use num_bigint::BigInt;
 use serde::{Deserialize, Serialize};
-use std::fmt::Display;
 use std::sync::Arc;
 use vir_macros::{to_node_impl, ToDebugSNode};
 
@@ -102,6 +101,14 @@ pub struct Visibility {
     /// None for pub
     /// Some(path) means visible to path and path's descendents
     pub restricted_to: Option<Path>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
+pub enum BodyVisibility {
+    Uninterpreted,
+    /// None for pub
+    /// Some(path) means visible to path and path's descendents
+    Visibility(Visibility),
 }
 
 /// Describes whether a variable, function, etc. is compiled or just used for verification
@@ -259,9 +266,11 @@ pub enum TypX {
     TypeId,
     /// Const integer type argument (e.g. for array sizes)
     ConstInt(BigInt),
+    /// Const bool type argument
+    ConstBool(bool),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
-
+    /// Handler for poly in monomorphization
     Poly
 }
 
@@ -552,9 +561,11 @@ pub enum HeaderExprX {
     /// Proof function to prove termination for recursive functions
     DecreasesBy(Fun),
     /// The function might open the following invariants
-    InvariantOpens(Exprs),
+    InvariantOpens(Span, Exprs),
     /// The function might open any BUT the following invariants
-    InvariantOpensExcept(Exprs),
+    InvariantOpensExcept(Span, Exprs),
+    /// The function might open the following invariants, specified as a set
+    InvariantOpensSet(Expr),
     /// Make a function f opaque (definition hidden) within the current function body.
     /// (The current function body can later reveal f in specific parts of the current function body if desired.)
     Hide(Fun),
@@ -565,6 +576,8 @@ pub enum HeaderExprX {
     NoUnwind,
     /// This function will not unwind if the given condition holds (function of arguments)
     NoUnwindWhen(Expr),
+    /// The visibility used in, e.g., `open(crate)`
+    OpenVisibilityQualifier(Visibility),
 }
 
 /// Primitive constant values
@@ -585,12 +598,6 @@ pub struct SpannedTyped<X> {
     pub span: Span,
     pub typ: Typ,
     pub x: X,
-}
-
-impl<X: Display> Display for SpannedTyped<X> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.x)
-    }
 }
 
 /// Patterns for match expressions
@@ -858,6 +865,8 @@ pub enum ExprX {
     Block(Stmts, Option<Expr>),
     /// Inline AIR statement
     AirStmt(Arc<String>),
+    /// never-to-any conversion
+    NeverToAny(Expr),
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -871,7 +880,7 @@ pub enum StmtX {
     /// The declaration may contain a pattern;
     /// however, ast_simplify replaces all patterns with PatternX::Var
     /// (The mode is only allowed to be None for one special case; see modes.rs)
-    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Expr> },
+    Decl { pattern: Pattern, mode: Option<Mode>, init: Option<Expr>, els: Option<Expr> },
 }
 
 /// Function parameter
@@ -986,13 +995,19 @@ pub struct FunctionAttrsX {
     pub size_of_broadcast_proof: bool,
     /// is type invariant
     pub is_type_invariant_fn: bool,
+    /// Marked with external_body or external_fn_specification
+    /// TODO: might be duplicate with https://github.com/verus-lang/verus/pull/1473
+    pub is_external_body: bool,
+    /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
+    pub is_unsafe: bool,
 }
 
 /// Function specification of its invariant mask
 #[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum MaskSpec {
-    InvariantOpens(Exprs),
-    InvariantOpensExcept(Exprs),
+    InvariantOpens(Span, Exprs),
+    InvariantOpensExcept(Span, Exprs),
+    InvariantOpensSet(Expr),
 }
 
 /// Function specification of its invariant mask
@@ -1054,6 +1069,14 @@ pub enum ItemKind {
     Static,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, ToDebugSNode)]
+pub enum Opaqueness {
+    /// Opaque everywhere
+    Opaque,
+    /// Revealed insided the range given by 'visibility', opaque elsewhere.
+    Revealed { visibility: Visibility },
+}
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1062,21 +1085,22 @@ pub struct FunctionX {
     /// Name of function
     pub name: Fun,
     /// Proxy used to declare the spec of this function
-    /// (e.g., some function marked `external_fn_specification`)
+    /// (e.g., some function marked `external_fn_specification`/`assume_specification`)
     pub proxy: Option<Spanned<Path>>,
     /// Kind (translation to AIR is different for each different kind)
     pub kind: FunctionKind,
     /// Access control (public/private)
     pub visibility: Visibility,
+    /// Controlled by 'open'. (Only applicable to spec functions.)
+    pub body_visibility: BodyVisibility,
+    /// Controlled by 'opaque/opaque_outside_module'. (Only applicable to spec functions.)
+    pub opaqueness: Opaqueness,
     /// Owning module
     pub owning_module: Option<Path>,
     /// exec functions are compiled, proof/spec are erased
     /// exec/proof functions can have requires/ensures, spec cannot
     /// spec functions can be used in requires/ensures, proof/exec cannot
     pub mode: Mode,
-    /// Default amount of fuel: 0 means opaque, >= 1 means visible
-    /// For recursive functions, fuel determines the number of unfoldings that the SMT solver sees
-    pub fuel: u32,
     /// Type parameters to generic functions
     /// (for trait methods, the trait parameters come first, then the method parameters)
     pub typ_params: Idents,
@@ -1115,10 +1139,6 @@ pub struct FunctionX {
     pub unwind_spec: Option<UnwindSpec>,
     /// Allows the item to be a const declaration or static
     pub item_kind: ItemKind,
-    /// For public spec functions, publish == None means that the body is private
-    /// even though the function is public, the bool indicates false = opaque, true = visible
-    /// the body is public
-    pub publish: Option<bool>,
     /// Various attributes
     pub attrs: FunctionAttrs,
     /// Body of the function (may be None for foreign functions or for external_body functions)
@@ -1222,6 +1242,7 @@ pub struct TraitX {
     pub assoc_typs: Arc<Vec<Ident>>,
     pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
+    pub is_unsafe: bool,
 }
 
 /// impl<typ_params> trait_name<trait_typ_args[1..]> for trait_typ_args[0] { type name = typ; }
@@ -1275,21 +1296,6 @@ pub struct ModuleX {
 pub enum ArchWordBits {
     Either32Or64,
     Exactly(u32),
-}
-
-impl ArchWordBits {
-    pub fn min_bits(&self) -> u32 {
-        match self {
-            ArchWordBits::Either32Or64 => 32,
-            ArchWordBits::Exactly(v) => *v,
-        }
-    }
-    pub fn num_bits(&self) -> Option<u32> {
-        match self {
-            ArchWordBits::Either32Or64 => None,
-            ArchWordBits::Exactly(v) => Some(*v),
-        }
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

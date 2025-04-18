@@ -22,7 +22,7 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
-use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, InstanceDef, TyKind};
+use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
 use rustc_span::Span;
@@ -195,12 +195,10 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     } else {
         let param_env = tcx.param_env(bctx.fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let inst = Instance::resolve(tcx, param_env, f, normalized_substs);
-        let Ok(inst) = inst else {
-            return err_span(expr.span, "Verus internal error: Instance::resolve");
-        };
+        let inst = Instance::try_resolve(tcx, param_env, f, normalized_substs);
+        let Ok(inst) = inst else { crate::internal_err!(expr.span, "Instance::resolve") };
         match inst {
-            Some(Instance { def: InstanceDef::Item(did), args }) => {
+            Some(Instance { def: rustc_middle::ty::InstanceKind::Item(did), args }) => {
                 let typs = mk_typ_args(bctx, args, did, expr.span)?;
                 let mut f =
                     Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
@@ -366,9 +364,10 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let header = match spec_item {
                     SpecItem::Requires => Arc::new(HeaderExprX::Requires(Arc::new(vir_args))),
                     SpecItem::Recommends => Arc::new(HeaderExprX::Recommends(Arc::new(vir_args))),
-                    SpecItem::OpensInvariants => {
-                        Arc::new(HeaderExprX::InvariantOpens(Arc::new(vir_args)))
-                    }
+                    SpecItem::OpensInvariants => Arc::new(HeaderExprX::InvariantOpens(
+                        bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                        Arc::new(vir_args),
+                    )),
                     SpecItem::Returns => Arc::new(HeaderExprX::Returns(vir_args[0].clone())),
                     _ => unreachable!(),
                 };
@@ -383,12 +382,25 @@ fn verus_item_to_vir<'tcx, 'a>(
             }
             SpecItem::OpensInvariantsNone => {
                 record_spec_fn_no_proof_args(bctx, expr);
-                let header = Arc::new(HeaderExprX::InvariantOpens(Arc::new(Vec::new())));
+                let header = Arc::new(HeaderExprX::InvariantOpens(
+                    bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                    Arc::new(Vec::new()),
+                ));
                 mk_expr(ExprX::Header(header))
             }
             SpecItem::OpensInvariantsAny => {
                 record_spec_fn_no_proof_args(bctx, expr);
-                let header = Arc::new(HeaderExprX::InvariantOpensExcept(Arc::new(Vec::new())));
+                let header = Arc::new(HeaderExprX::InvariantOpensExcept(
+                    bctx.ctxt.spans.to_air_span(expr.span.clone()),
+                    Arc::new(Vec::new()),
+                ));
+                mk_expr(ExprX::Header(header))
+            }
+            SpecItem::OpensInvariantsSet => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let arg = mk_one_vir_arg(bctx, expr.span, &args)?;
+                let header = Arc::new(HeaderExprX::InvariantOpensSet(arg));
                 mk_expr(ExprX::Header(header))
             }
             SpecItem::Ensures => {
@@ -1076,9 +1088,17 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &cast_to_integer, expr_vattrs.truncate))
                 }
+                ((_, false), TypX::Int(_)) if bctx.types.node_type(args[0].hir_id).is_enum() => {
+                    let cast_to = crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
+                        bctx, args[0], source_vir, mk_expr,
+                    )?;
+                    let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+                    let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
+                    Ok(mk_ty_clip(&to_ty, &cast_to, expr_vattrs.truncate))
+                }
                 _ => err_span(
                     expr.span,
-                    "Verus currently only supports casts from integer types, `char`, and pointer types to integer types",
+                    "Verus currently only supports casts from integer types, bool, enum (unit-only or field-less), `char`, and pointer types to integer types",
                 ),
             }
         }
@@ -1331,7 +1351,15 @@ fn verus_item_to_vir<'tcx, 'a>(
             record_spec_fn_allow_proof_args(bctx, expr);
 
             if !is_smt_arith(bctx, args[0].span, args[1].span, &args[0].hir_id, &args[1].hir_id)? {
-                return err_span(expr.span, "expected types for this operator");
+                let t1 = bctx.types.expr_ty_adjusted(&args[0]);
+                let t2 = bctx.types.expr_ty_adjusted(&args[1]);
+                return err_span(
+                    expr.span,
+                    format!(
+                        "types are not compatible with this operator (got {:?} and {:?})",
+                        t1, t2
+                    ),
+                );
             }
 
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
@@ -1399,7 +1427,9 @@ fn verus_item_to_vir<'tcx, 'a>(
                         }
                     }
                 }
-                _ => unreachable!("internal error"),
+                _ => {
+                    crate::internal_err!(expr.span, "unexpected verus item")
+                }
             };
 
             let e = mk_expr(ExprX::Binary(vop, lhs, rhs))?;
@@ -1876,7 +1906,7 @@ fn get_string_lit_arg<'tcx>(
     }
 }
 
-fn check_variant_field<'tcx>(
+pub(crate) fn check_variant_field<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     adt_arg: &'tcx Expr<'tcx>,

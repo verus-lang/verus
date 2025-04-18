@@ -896,8 +896,7 @@ mod de {
                                 T: serde::de::EnumAccess<'de>,
                             {
                                 unsafe {
-                                    a
-                                        .take::<T::Variant>()
+                                    a.take::<T::Variant>()
                                         .newtype_variant_seed(seed)
                                         .map_err(erase)
                                 }
@@ -914,8 +913,7 @@ mod de {
                                 T: serde::de::EnumAccess<'de>,
                             {
                                 unsafe {
-                                    a
-                                        .take::<T::Variant>()
+                                    a.take::<T::Variant>()
                                         .tuple_variant(len, visitor)
                                         .map_err(erase)
                                 }
@@ -932,8 +930,7 @@ mod de {
                                 T: serde::de::EnumAccess<'de>,
                             {
                                 unsafe {
-                                    a
-                                        .take::<T::Variant>()
+                                    a.take::<T::Variant>()
                                         .struct_variant(fields, visitor)
                                         .map_err(erase)
                                 }
@@ -1163,8 +1160,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_unit_struct(name, &mut erased)
+                self.erased_deserialize_unit_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1180,8 +1176,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_newtype_struct(name, &mut erased)
+                self.erased_deserialize_newtype_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1218,8 +1213,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_tuple_struct(name, len, &mut erased)
+                self.erased_deserialize_tuple_struct(name, len, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1245,8 +1239,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_struct(name, fields, &mut erased)
+                self.erased_deserialize_struct(name, fields, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1274,8 +1267,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_enum(name, variants, &mut erased)
+                self.erased_deserialize_enum(name, variants, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1499,8 +1491,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_unit_struct(name, &mut erased)
+                self.erased_deserialize_unit_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1516,8 +1507,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_newtype_struct(name, &mut erased)
+                self.erased_deserialize_newtype_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1554,8 +1544,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_tuple_struct(name, len, &mut erased)
+                self.erased_deserialize_tuple_struct(name, len, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1581,8 +1570,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_struct(name, fields, &mut erased)
+                self.erased_deserialize_struct(name, fields, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1610,8 +1598,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_enum(name, variants, &mut erased)
+                self.erased_deserialize_enum(name, variants, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1835,8 +1822,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_unit_struct(name, &mut erased)
+                self.erased_deserialize_unit_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1852,8 +1838,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_newtype_struct(name, &mut erased)
+                self.erased_deserialize_newtype_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1890,8 +1875,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_tuple_struct(name, len, &mut erased)
+                self.erased_deserialize_tuple_struct(name, len, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1917,8 +1901,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_struct(name, fields, &mut erased)
+                self.erased_deserialize_struct(name, fields, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -1946,8 +1929,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_enum(name, variants, &mut erased)
+                self.erased_deserialize_enum(name, variants, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2172,8 +2154,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_unit_struct(name, &mut erased)
+                self.erased_deserialize_unit_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2189,8 +2170,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_newtype_struct(name, &mut erased)
+                self.erased_deserialize_newtype_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2227,8 +2207,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_tuple_struct(name, len, &mut erased)
+                self.erased_deserialize_tuple_struct(name, len, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2254,8 +2233,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_struct(name, fields, &mut erased)
+                self.erased_deserialize_struct(name, fields, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2283,8 +2261,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_enum(name, variants, &mut erased)
+                self.erased_deserialize_enum(name, variants, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2508,8 +2485,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_unit_struct(name, &mut erased)
+                self.erased_deserialize_unit_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2525,8 +2501,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_newtype_struct(name, &mut erased)
+                self.erased_deserialize_newtype_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2567,8 +2542,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_tuple_struct(name, len, &mut erased)
+                self.erased_deserialize_tuple_struct(name, len, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2594,8 +2568,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_struct(name, fields, &mut erased)
+                self.erased_deserialize_struct(name, fields, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2623,8 +2596,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_enum(name, variants, &mut erased)
+                self.erased_deserialize_enum(name, variants, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2848,8 +2820,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_unit_struct(name, &mut erased)
+                self.erased_deserialize_unit_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2865,8 +2836,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_newtype_struct(name, &mut erased)
+                self.erased_deserialize_newtype_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2907,8 +2877,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_tuple_struct(name, len, &mut erased)
+                self.erased_deserialize_tuple_struct(name, len, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2934,8 +2903,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_struct(name, fields, &mut erased)
+                self.erased_deserialize_struct(name, fields, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -2963,8 +2931,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_enum(name, variants, &mut erased)
+                self.erased_deserialize_enum(name, variants, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -3188,8 +3155,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_unit_struct(name, &mut erased)
+                self.erased_deserialize_unit_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -3205,8 +3171,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_newtype_struct(name, &mut erased)
+                self.erased_deserialize_newtype_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -3247,8 +3212,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_tuple_struct(name, len, &mut erased)
+                self.erased_deserialize_tuple_struct(name, len, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -3274,8 +3238,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_struct(name, fields, &mut erased)
+                self.erased_deserialize_struct(name, fields, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -3303,8 +3266,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_enum(name, variants, &mut erased)
+                self.erased_deserialize_enum(name, variants, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -3528,8 +3490,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_unit_struct(name, &mut erased)
+                self.erased_deserialize_unit_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -3545,8 +3506,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_newtype_struct(name, &mut erased)
+                self.erased_deserialize_newtype_struct(name, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -3587,8 +3547,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_tuple_struct(name, len, &mut erased)
+                self.erased_deserialize_tuple_struct(name, len, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -3614,8 +3573,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_struct(name, fields, &mut erased)
+                self.erased_deserialize_struct(name, fields, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -3643,8 +3601,7 @@ mod de {
                 state: Some(visitor),
             };
             unsafe {
-                self
-                    .erased_deserialize_enum(name, variants, &mut erased)
+                self.erased_deserialize_enum(name, variants, &mut erased)
                     .unsafe_map(Out::take)
             }
         }
@@ -5250,8 +5207,7 @@ mod ser {
             name: &'static str,
         ) -> Result<Ok, Error> {
             unsafe {
-                self
-                    .take()
+                self.take()
                     .serialize_unit_struct(name)
                     .unsafe_map(Ok::new)
                     .map_err(erase)
@@ -5264,8 +5220,7 @@ mod ser {
             variant: &'static str,
         ) -> Result<Ok, Error> {
             unsafe {
-                self
-                    .take()
+                self.take()
                     .serialize_unit_variant(name, variant_index, variant)
                     .unsafe_map(Ok::new)
                     .map_err(erase)
@@ -5277,8 +5232,7 @@ mod ser {
             v: &dyn Serialize,
         ) -> Result<Ok, Error> {
             unsafe {
-                self
-                    .take()
+                self.take()
                     .serialize_newtype_struct(name, v)
                     .unsafe_map(Ok::new)
                     .map_err(erase)
@@ -5292,8 +5246,7 @@ mod ser {
             v: &dyn Serialize,
         ) -> Result<Ok, Error> {
             unsafe {
-                self
-                    .take()
+                self.take()
                     .serialize_newtype_variant(name, variant_index, variant, v)
                     .unsafe_map(Ok::new)
                     .map_err(erase)
@@ -5313,8 +5266,7 @@ mod ser {
             len: usize,
         ) -> Result<TupleStruct, Error> {
             unsafe {
-                self
-                    .take()
+                self.take()
                     .serialize_tuple_struct(name, len)
                     .unsafe_map(TupleStruct::new)
                     .map_err(erase)
@@ -5328,8 +5280,7 @@ mod ser {
             len: usize,
         ) -> Result<TupleVariant, Error> {
             unsafe {
-                self
-                    .take()
+                self.take()
                     .serialize_tuple_variant(name, variant_index, variant, len)
                     .unsafe_map(TupleVariant::new)
                     .map_err(erase)
@@ -5344,8 +5295,7 @@ mod ser {
             len: usize,
         ) -> Result<Struct, Error> {
             unsafe {
-                self
-                    .take()
+                self.take()
                     .serialize_struct(name, len)
                     .unsafe_map(Struct::new)
                     .map_err(erase)
@@ -5359,8 +5309,7 @@ mod ser {
             len: usize,
         ) -> Result<StructVariant, Error> {
             unsafe {
-                self
-                    .take()
+                self.take()
                     .serialize_struct_variant(name, variant_index, variant, len)
                     .unsafe_map(StructVariant::new)
                     .map_err(erase)

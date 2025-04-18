@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, BinaryOpr, Dt, FieldOpr, Fun, Ident, Quant, SpannedTyped, Typ, TypX, Typs, UnaryOp,
-    UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
+    BinaryOp, BinaryOpr, Dt, FieldOpr, Fun, FunctionKind, Ident, Quant, SpannedTyped, Typ, TypX,
+    Typs, UnaryOp, UnaryOpr, VarBinders, VarIdent, VarIdentDisambiguate, Variant, VariantCheck,
 };
 use crate::ast_to_sst::get_function_sst;
 use crate::ast_util::{is_transparent_to, type_is_bool, undecorate_typ};
@@ -136,7 +136,7 @@ fn get_fuel_at_id(stm: &Stm, a_id: &AssertId, fuels: &mut HashMap<Fun, u32>) -> 
             }
             return false;
         }
-        StmX::OpenInvariant(_, stm) => {
+        StmX::OpenInvariant(stm) => {
             if get_fuel_at_id(stm, a_id, fuels) {
                 return true;
             }
@@ -895,10 +895,39 @@ fn can_inline_function(
 ) -> Result<Option<usize>, Option<String>> {
     let opaque_err = Err(Some("function is opaque".to_string()));
     let hidden_err = Err(Some("function is hidden".to_string()));
-    let closed_err = Err(Some("function is closed".to_string()));
+    let closed_err =
+        Err(Some("function is closed or uninterpreted (body is not visible here)".to_string()));
     let uninterp_err = Err(Some("function is uninterpreted".to_string()));
     let foreign_module_err = Err(None);
     let type_err = Err(Some("not bool type".to_string()));
+
+    match &fun_to_inline.x.kind {
+        FunctionKind::Static | FunctionKind::TraitMethodImpl { .. } => {}
+        FunctionKind::TraitMethodDecl { .. } => {
+            return Err(Some("trait function (note: expand-errors is currently limited in its support for resolving generic trait functions)".to_string()));
+        }
+        FunctionKind::ForeignTraitMethodImpl { .. } => {
+            return Err(Some("Internal error: ForeignTraitMethodImpl".to_string()));
+        }
+    }
+
+    let body = match fun_to_inline.x.axioms.spec_axioms.as_ref() {
+        Some(body) => body,
+        None => {
+            return uninterp_err;
+        }
+    };
+
+    if !crate::ast_util::is_visible_to_of_owner(&fun_to_inline.x.owning_module, &ctx.module.x.path)
+    {
+        // if the target inline function is outside this module, track `open` `closed` at module boundaries
+        if !crate::ast_util::is_body_visible_to(
+            &fun_to_inline.x.body_visibility,
+            &ctx.module.x.path,
+        ) {
+            return closed_err;
+        }
+    }
 
     let fun_owner = match &ctx.fun {
         Some(f) => get_function_sst(ctx, span, &f.current_fun).unwrap(),
@@ -913,7 +942,8 @@ fn can_inline_function(
         return Err(Some("reached fuel limit for recursion".to_string()));
     }
 
-    let mut fuel = fun_to_inline.x.fuel;
+    let mut fuel =
+        fun_to_inline.x.opaqueness.get_fuel_for_module(&fun_to_inline.x.name, &ctx.module);
     let mut hidden = false;
 
     let fs_to_hide = &fun_owner.x.attrs.hidden;
@@ -940,29 +970,6 @@ fn can_inline_function(
     } else {
         if fun_to_inline.x.owning_module.is_none() {
             return foreign_module_err;
-        }
-
-        let body = match fun_to_inline.x.axioms.spec_axioms.as_ref() {
-            Some(body) => body,
-            None => {
-                return uninterp_err;
-            }
-        };
-        if !crate::ast_util::is_visible_to_of_owner(
-            &fun_to_inline.x.owning_module,
-            &ctx.module.x.path,
-        ) {
-            // if the target inline function is outside this module, track `open` `closed` at module boundaries
-            match fun_to_inline.x.publish {
-                Some(b) => {
-                    if !b {
-                        return opaque_err;
-                    }
-                }
-                None => {
-                    return closed_err;
-                }
-            };
         }
 
         // Note: this should never happen

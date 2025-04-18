@@ -156,6 +156,7 @@ fn expr_followed_by_stmts(expr: &Expr, stmts: Vec<Stmt>, id_cell: &Cell<u64>) ->
             ),
             mode: None,
             init: Some(expr.clone()),
+            els: None,
         };
         stmts.insert(0, Spanned::new(expr.span.clone(), decl));
         SpannedTyped::new(

@@ -1,4 +1,4 @@
-use crate::ast::Path;
+use crate::ast::{Idents, Path};
 use crate::def::*;
 use crate::sst_to_air::path_to_air_ident;
 use air::ast::Ident;
@@ -95,6 +95,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_uint = str_to_node(TYPE_ID_UINT);
     let type_id_sint = str_to_node(TYPE_ID_SINT);
     let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
+    let type_id_const_bool = str_to_node(TYPE_ID_CONST_BOOL);
     let decoration = str_to_node(DECORATION);
     let decorate_nil = str_to_node(DECORATE_NIL);
     let decorate_ref = str_to_node(DECORATE_REF);
@@ -110,6 +111,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let as_type = str_to_node(AS_TYPE);
     let mk_fun = str_to_node(MK_FUN);
     let const_int = str_to_node(CONST_INT);
+    let const_bool = str_to_node(CONST_BOOL);
     let ext_eq = str_to_node(EXT_EQ);
 
     let bit_xor = str_to_node(BIT_XOR);
@@ -166,6 +168,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [type_id_const_int] (Int) [typ])
+        (declare-fun [type_id_const_bool] (Bool) [typ])
         (declare-sort [decoration] 0)
         (declare-const [decorate_nil] [decoration])
         (declare-fun [decorate_ref] ([decoration]) [decoration])
@@ -186,11 +189,18 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [as_type] ([Poly] [typ]) [Poly])
         (declare-fun [mk_fun] (Fun) Fun)
         (declare-fun [const_int] ([typ]) Int)
+        (declare-fun [const_bool] ([typ]) Bool)
         (axiom (forall ((i Int)) (!
             (= i ([const_int] ([type_id_const_int] i)))
             :pattern (([type_id_const_int] i))
             :qid prelude_type_id_const_int
             :skolemid skolem_prelude_type_id_const_int
+        )))
+        (axiom (forall ((b Bool)) (!
+            (= b ([const_bool] ([type_id_const_bool] b)))
+            :pattern (([type_id_const_bool] b))
+            :qid prelude_type_id_const_bool
+            :skolemid skolem_prelude_type_id_const_bool
         )))
         (axiom (forall ((b Bool)) (!
             ([has_type] ([box_bool] b) [type_id_bool])
@@ -750,6 +760,7 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
     let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
+    let prelude_axiom_array_index = str_to_node(&prelude_axiom_name("array_index"));
 
     nodes_vec!(
         // array literals
@@ -796,12 +807,16 @@ pub(crate) fn array_functions(box_array: &str) -> Vec<Node> {
         // Rewrite as ([array_index] ...), which vstd can more easily trigger on.
         // (Note that there's no axiom in the reverse direction converting array_index to apply,
         // because that would create a matching loop on i via I and %I.)
-        (axiom (forall ((Tdcr [decoration]) (T [typ]) (N Int) (Fn Fun) (i Int)) (!
+        (axiom (!
+            (forall ((Tdcr [decoration]) (T [typ]) (N Int) (Fn Fun) (i Int)) (!
             (= ([array_index] Tdcr T $ ([type_id_const_int] N) Fn (I i)) (apply [Poly] Fn i))
             :pattern (([array_new] Tdcr T N Fn) (apply [Poly] Fn i))
             :qid prelude_array_index_trigger
             :skolemid skolem_prelude_array_index_trigger
-        )))
+            ))
+            :named
+            [prelude_axiom_array_index]
+        ))
     )
 }
 
@@ -830,10 +845,11 @@ pub(crate) fn strslice_functions(strslice_name: &str) -> Vec<Node> {
     )
 }
 
-pub(crate) fn datatype_height_axiom(
+fn datatype_height_axiom(
     typ_name1: &Path,
     typ_name2: &Option<Path>,
     is_variant_ident: &Ident,
+    tparams: &Idents,
     field: &Ident,
     recursive_function_field: bool,
 ) -> Node {
@@ -846,18 +862,34 @@ pub(crate) fn datatype_height_axiom(
     let is_variant = str_to_node(is_variant_ident.as_str());
     let typ1 = str_to_node(path_to_air_ident(typ_name1).as_str());
     let box_t1 = str_to_node(prefix_box(typ_name1).as_str());
+    let mut forall_params: Vec<Node> = Vec::new();
+    let mut field_x: Vec<Node> = Vec::new();
+    field_x.push(field);
+    for typ_param in tparams.iter() {
+        for (x, t) in crate::def::suffix_typ_param_ids_types(&typ_param) {
+            use crate::ast_util::LowerUniqueVar;
+            let x = str_to_node(&x.lower());
+            let t = str_to_node(t);
+            forall_params.push(node!(([x][t])));
+            field_x.push(x);
+        }
+    }
+    forall_params.push(node!((x[typ1])));
+    field_x.push(node!(x));
+    let forall_params = Node::List(forall_params);
+    let field_x = Node::List(field_x);
     let field_of_x = match typ_name2 {
         Some(typ2) => {
             let box_t2 = str_to_node(prefix_box(&typ2).as_str());
-            node!(([box_t2] ([field] x)))
+            node!(([box_t2][field_x]))
         }
         // for a field with generic type, [field]'s return type is already "Poly"
-        None => node!(([field] x)),
+        None => field_x,
     };
     let field_of_x =
         if recursive_function_field { node!(([height_rec_fun][field_of_x])) } else { field_of_x };
     node!(
-        (axiom (forall ((x [typ1])) (!
+        (axiom (forall [forall_params] (!
             (=>
                 ([is_variant] x)
                 ([height_lt]
@@ -876,12 +908,15 @@ pub(crate) fn datatype_height_axioms(
     typ_name1: &Path,
     typ_name2: &Option<Path>,
     is_variant_ident: &Ident,
+    tparams: &Idents,
     field: &Ident,
     recursive_function_field: bool,
 ) -> Vec<Node> {
-    let axiom1 = datatype_height_axiom(typ_name1, typ_name2, is_variant_ident, field, false);
+    let axiom1 =
+        datatype_height_axiom(typ_name1, typ_name2, is_variant_ident, tparams, field, false);
     if recursive_function_field {
-        let axiom2 = datatype_height_axiom(typ_name1, typ_name2, is_variant_ident, field, true);
+        let axiom2 =
+            datatype_height_axiom(typ_name1, typ_name2, is_variant_ident, tparams, field, true);
         vec![axiom1, axiom2]
     } else {
         vec![axiom1]
