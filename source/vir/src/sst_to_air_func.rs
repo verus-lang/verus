@@ -598,7 +598,11 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
         .iter()
         .flat_map(|param| {
             let air_typ = typ_to_air(ctx, &param.x.typ);
-            if !param.x.is_mut { vec![air_typ] } else { vec![air_typ.clone(), air_typ] }
+            if !param.x.is_mut {
+                vec![air_typ]
+            } else {
+                vec![air_typ.clone(), air_typ]
+            }
         })
         .collect();
     let mut ens_typing_invs: Vec<Expr> = Vec::new();

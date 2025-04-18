@@ -220,7 +220,11 @@ fn decoration_str(d: TypDecoration) -> &'static str {
 pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
     let mk_id = |t: Expr| -> Vec<Expr> {
         let ds = str_var(crate::def::DECORATE_NIL);
-        if crate::context::DECORATE { vec![ds, t] } else { vec![t] }
+        if crate::context::DECORATE {
+            vec![ds, t]
+        } else {
+            vec![t]
+        }
     };
     match &**typ {
         MonoTypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
@@ -269,7 +273,11 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
 
 fn big_int_to_expr(i: &BigInt) -> Expr {
     use num_traits::Zero;
-    if i >= &BigInt::zero() { mk_nat(i) } else { air::ast_util::mk_neg(&mk_nat(-i)) }
+    if i >= &BigInt::zero() {
+        mk_nat(i)
+    } else {
+        air::ast_util::mk_neg(&mk_nat(-i))
+    }
 }
 
 // SMT-level type identifiers.
@@ -293,7 +301,11 @@ fn big_int_to_expr(i: &BigInt) -> Expr {
 pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
     let mk_id = |t: Expr| -> Vec<Expr> {
         let ds = str_var(crate::def::DECORATE_NIL);
-        if crate::context::DECORATE { vec![ds, t] } else { vec![t] }
+        if crate::context::DECORATE {
+            vec![ds, t]
+        } else {
+            vec![t]
+        }
     };
     match &**typ {
         TypX::Bool => mk_id(str_var(crate::def::TYPE_ID_BOOL)),
@@ -1356,7 +1368,11 @@ pub(crate) fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
 }
 
 pub(crate) fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
-    if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
+    if stmts.len() == 1 {
+        stmts[0].clone()
+    } else {
+        Arc::new(StmtX::Block(Arc::new(stmts)))
+    }
 }
 
 #[derive(Debug)]

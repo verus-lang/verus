@@ -71,7 +71,11 @@ fn has_field_typ_args(num_variants: usize) -> bool {
 }
 
 pub(crate) fn field_typ_args<A: Default>(num_variants: usize, f: impl Fn() -> A) -> A {
-    if has_field_typ_args(num_variants) { f() } else { A::default() }
+    if has_field_typ_args(num_variants) {
+        f()
+    } else {
+        A::default()
+    }
 }
 
 fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
