@@ -354,9 +354,7 @@ impl<'a> Visitor<sst_visitor::Walk, (), sst_visitor::NoScoper> for Specializatio
                 self.visit_typs(&typ_params)?;
                 let spec = Specialization::from_typs(&typ_params, self.spec_map);
                 let entry = self.instantiations.entry(dt.clone()).or_default();
-                if entry.insert(spec) {
-                    tracing::debug!("Visiting datatype: {dt:?} @ {typ_params:?}");
-                }
+                entry.insert(spec);
             }
             TypX::Boxed(inner) => {
                 self.visit_typ(&inner);
@@ -410,7 +408,7 @@ pub fn collect_specializations(krate: &KrateSst) -> KrateSpecializations {
     let mut datatype_spec: HashMap<Dt, HashSet<Specialization>> = HashMap::new();
 
     while let Some((caller_spec, caller_sst)) = to_visit.pop_front() {
-        tracing::debug!("Visiting {:?}", caller_sst.x.name);
+        tracing::trace!("Visiting {:?}", caller_sst.x.name);
         let sites = collect_specializations_from_function(&caller_spec, &caller_sst);
         for (callee, callee_spec) in sites
             .function_spec
@@ -439,6 +437,6 @@ pub fn collect_specializations(krate: &KrateSst) -> KrateSpecializations {
             entry.extend(dt_spec);
         }
     }
-    tracing::trace!("Generating specs: {function_spec:?}");
+    tracing::trace!("Collected fucnction specs: {function_spec:?}");
     KrateSpecializations { function_spec, datatype_spec }
 }
