@@ -356,8 +356,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] parse_empty_requires_ensure_invariant verus_code! {
+test_verify_one_file_with_options! {
+    #[test] parse_empty_requires_ensure_invariant ["exec_allows_no_decreases_clause"] => verus_code! {
         proof fn test()
             requires
         {

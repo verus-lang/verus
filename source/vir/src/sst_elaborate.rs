@@ -243,7 +243,7 @@ pub(crate) fn elaborate_function1<'a, 'b, 'c, D: Diagnostics>(
 }
 
 // Compute and rewrite-recursive-calls
-pub(crate) fn elaborate_function2<'a, 'b, D: Diagnostics>(
+pub(crate) fn elaborate_function_rewrite_recursive<'a, 'b, D: Diagnostics>(
     ctx: &'a Ctx,
     diagnostics: &'b D,
     fun_ssts: SstMap,
@@ -257,7 +257,7 @@ pub(crate) fn elaborate_function2<'a, 'b, D: Diagnostics>(
         let axioms = Arc::make_mut(&mut Arc::make_mut(function).x.axioms);
         if let Some(spec_body) = &mut axioms.spec_axioms {
             // Rewrite recursive calls to use fuel
-            let (body_exp, _) = crate::recursion::rewrite_recursive_fun_with_fueled_rec_call(
+            let (body_exp, _) = crate::recursion::rewrite_spec_recursive_fun_with_fueled_rec_call(
                 ctx,
                 function_ref,
                 &spec_body.body_exp,

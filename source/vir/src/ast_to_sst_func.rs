@@ -236,6 +236,7 @@ fn func_body_to_sst(
                 function,
                 Some(proof_body_stm),
                 &check_body_stm,
+                false,
             )?;
             termination_decls.splice(0..0, check_state.local_decls.into_iter());
 
@@ -462,6 +463,8 @@ pub(crate) fn map_expr_rename_vars(
     })
 }
 
+/// Lower a VIR function to SST for the purpopse of checking that its definition
+/// satisfies its specification.
 pub fn func_def_to_sst(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
@@ -666,11 +669,21 @@ pub fn func_def_to_sst(
     let ens_spec_precondition_stms = ens_spec_precondition_stms?;
 
     // Check termination
-    let no_termination_check = function.x.mode == Mode::Exec && function.x.decrease.len() == 0;
+    let exec_with_no_termination_check = function.x.mode == Mode::Exec
+        && (function.x.attrs.exec_allows_no_decreases_clause
+            || function.x.attrs.exec_assume_termination);
+    let no_termination_check = function.x.decrease.len() == 0 && exec_with_no_termination_check;
     let (decls, stm) = if no_termination_check || ctx.checking_spec_preconditions() {
         (vec![], stm)
     } else {
-        crate::recursion::check_termination_stm(ctx, diagnostics, function, None, &stm)?
+        crate::recursion::check_termination_stm(
+            ctx,
+            diagnostics,
+            function,
+            None,
+            &stm,
+            exec_with_no_termination_check,
+        )?
     };
 
     // SST --> AIR

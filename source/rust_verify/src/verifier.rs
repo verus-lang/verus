@@ -496,6 +496,7 @@ impl Verifier {
             current_crate_modules: self.current_crate_modules.clone(),
             item_to_module_map: self.item_to_module_map.clone(),
             buckets: self.buckets.clone(),
+
             expand_flag: self.expand_flag,
             error_format: self.error_format,
         }

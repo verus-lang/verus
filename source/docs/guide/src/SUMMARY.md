@@ -23,6 +23,7 @@
 - [Recursion and loops](recursion_loops.md)
     - [Recursive spec functions, decreases, fuel](recursion.md)
     - [Recursive exec and proof functions, proofs by induction](induction.md)
+        - [Lightweight termination checking](exec_termination.md)
     - [Loops and invariants](while.md)
         - [Loops with break](break.md)
         - [For Loops](for.md)
