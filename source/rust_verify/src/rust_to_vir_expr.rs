@@ -572,6 +572,10 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             return pattern_to_vir(bctx, pat);
         }
         PatKind::Or(pats) => {
+            if pats.len() == 1 {
+                return pattern_to_vir(bctx, &pats[0]);
+            }
+
             assert!(pats.len() >= 2);
 
             let mut patterns: Vec<vir::ast::Pattern> = Vec::new();
