@@ -752,19 +752,19 @@ fn check_function(
     }
     if function.x.attrs.broadcast_forall {
         if function.x.mode != Mode::Proof {
-            return Err(error(
-                &function.span,
-                "broadcast_forall function must be declared as proof",
-            ));
+            return Err(error(&function.span, "broadcast function must be declared as proof"));
         }
         if function.x.ens_has_return {
-            return Err(error(&function.span, "broadcast_forall function cannot have return type"));
+            return Err(error(&function.span, "broadcast function cannot have return type"));
         }
         for param in function.x.params.iter() {
             if param.x.mode != Mode::Spec {
+                return Err(error(&function.span, "broadcast function must have spec parameters"));
+            }
+            if param.x.is_mut {
                 return Err(error(
                     &function.span,
-                    "broadcast_forall function must have spec parameters",
+                    "broadcast function cannot have &mut parameters",
                 ));
             }
         }

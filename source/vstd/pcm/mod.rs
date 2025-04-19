@@ -1,6 +1,8 @@
 use super::prelude::*;
 use super::set::*;
 
+pub mod frac;
+
 verus! {
 
 /// Interface for ghost state that is consistent with the common

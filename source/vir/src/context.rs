@@ -186,6 +186,7 @@ fn datatypes_invs(
                         TypX::Bool | TypX::AnonymousClosure(..) => {}
                         TypX::Air(_) => panic!("datatypes_invs"),
                         TypX::ConstInt(_) => {}
+                        TypX::ConstBool(_) => {}
                         TypX::Primitive(
                             Primitive::Array | Primitive::Slice | Primitive::Ptr,
                             _,
@@ -250,6 +251,8 @@ impl GlobalCtx {
             krate.reveal_groups.iter().map(|g| g.x.name.clone()).collect();
 
         let mut func_call_graph: Graph<Node> = Graph::new();
+        let crate_node = Node::Crate(crate_name.clone());
+        func_call_graph.add_node(crate_node.clone());
 
         for t in &krate.traits {
             crate::recursive_types::add_trait_to_graph(&mut func_call_graph, t);
@@ -344,26 +347,35 @@ impl GlobalCtx {
                 func_call_graph.add_node(target.clone());
                 func_call_graph.add_edge(group_node.clone(), target);
             }
+            if let Some(group_crate) = &group.x.broadcast_use_by_default_when_this_crate_is_imported
+            {
+                let is_imported = crate_name != *group_crate;
+                if is_imported {
+                    func_call_graph.add_edge(crate_node.clone(), group_node);
+                }
+            }
         }
         for module in &krate.modules {
+            let module_reveal_node = Node::ModuleReveal(module.x.path.clone());
+            func_call_graph.add_node(module_reveal_node.clone());
+            if module.x.path.krate == Some(crate_name.clone()) {
+                func_call_graph.add_edge(module_reveal_node.clone(), crate_node.clone());
+            }
             if let Some(ref reveals) = module.x.reveals {
-                let module_reveal_node = Node::ModuleReveal(module.x.path.clone());
-                func_call_graph.add_node(module_reveal_node.clone());
                 for fun in reveals.x.iter() {
                     let target = Node::Fun(fun.clone());
                     func_call_graph.add_node(target.clone());
                     func_call_graph.add_edge(module_reveal_node.clone(), target);
                 }
-
-                for f in krate
-                    .functions
-                    .iter()
-                    .filter(|f| f.x.owning_module.as_ref() == Some(&module.x.path))
-                {
-                    let source = Node::Fun(f.x.name.clone());
-                    func_call_graph.add_node(source.clone());
-                    func_call_graph.add_edge(source, module_reveal_node.clone());
-                }
+            }
+            for f in krate
+                .functions
+                .iter()
+                .filter(|f| f.x.owning_module.as_ref() == Some(&module.x.path))
+            {
+                let source = Node::Fun(f.x.name.clone());
+                func_call_graph.add_node(source.clone());
+                func_call_graph.add_edge(source, module_reveal_node.clone());
             }
         }
 
@@ -406,6 +418,7 @@ impl GlobalCtx {
                         }
                     }
                     Node::ModuleReveal(path) =>               labelize("ModuleReveal", path_as_friendly_rust_name_raw(path)) + ", shape=\"component\"",
+                    Node::Crate(c) =>                         labelize("Crate", c.to_string()) + ", shape=\"component\"",
                     Node::SpanInfo { span_infos_index: _, text: _ } => {
                         format!("shape=\"point\"")
                     }
@@ -414,11 +427,14 @@ impl GlobalCtx {
             }
 
             fn nostd_filter(n: &Node) -> (bool, bool) {
-                fn is_not_std(path: &Path) -> bool {
-                    match path.krate.as_ref().map(|x| x.as_str()) {
+                fn is_not_std_crate(crate_name: &Option<Ident>) -> bool {
+                    match crate_name.as_ref().map(|x| x.as_str()) {
                         Some("vstd") | Some("core") | Some("alloc") => false,
                         _ => true,
                     }
+                }
+                fn is_not_std(path: &Path) -> bool {
+                    is_not_std_crate(&path.krate)
                 }
                 let render = match n {
                     Node::Fun(fun) => is_not_std(&fun.path),
@@ -430,6 +446,7 @@ impl GlobalCtx {
                     Node::TraitReqEns(ImplPath::TraitImplPath(path), _) => is_not_std(path),
                     Node::TraitReqEns(ImplPath::FnDefImplPath(fun), _) => is_not_std(&fun.path),
                     Node::ModuleReveal(path) => is_not_std(path),
+                    Node::Crate(c) => is_not_std_crate(&Some(c.clone())),
                     Node::SpanInfo { .. } => true,
                 };
                 (render, render && !matches!(n, Node::SpanInfo { .. }))

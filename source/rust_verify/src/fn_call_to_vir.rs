@@ -1096,9 +1096,17 @@ fn verus_item_to_vir<'tcx, 'a>(
                     let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
                     Ok(mk_ty_clip(&to_ty, &cast_to_integer, expr_vattrs.truncate))
                 }
+                ((_, false), TypX::Int(_)) if bctx.types.node_type(args[0].hir_id).is_enum() => {
+                    let cast_to = crate::rust_to_vir_expr::expr_cast_enum_int_to_vir(
+                        bctx, args[0], source_vir, mk_expr,
+                    )?;
+                    let expr_attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+                    let expr_vattrs = bctx.ctxt.get_verifier_attrs(expr_attrs)?;
+                    Ok(mk_ty_clip(&to_ty, &cast_to, expr_vattrs.truncate))
+                }
                 _ => err_span(
                     expr.span,
-                    "Verus currently only supports casts from integer types, `char`, and pointer types to integer types",
+                    "Verus currently only supports casts from integer types, bool, enum (unit-only or field-less), `char`, and pointer types to integer types",
                 ),
             }
         }
@@ -1351,7 +1359,15 @@ fn verus_item_to_vir<'tcx, 'a>(
             record_spec_fn_allow_proof_args(bctx, expr);
 
             if !is_smt_arith(bctx, args[0].span, args[1].span, &args[0].hir_id, &args[1].hir_id)? {
-                return err_span(expr.span, "expected types for this operator");
+                let t1 = bctx.types.expr_ty_adjusted(&args[0]);
+                let t2 = bctx.types.expr_ty_adjusted(&args[1]);
+                return err_span(
+                    expr.span,
+                    format!(
+                        "types are not compatible with this operator (got {:?} and {:?})",
+                        t1, t2
+                    ),
+                );
             }
 
             let (lhs, rhs) = mk_two_vir_args(bctx, expr.span, &args)?;
@@ -1926,7 +1942,7 @@ fn get_string_lit_arg<'tcx>(
     }
 }
 
-fn check_variant_field<'tcx>(
+pub(crate) fn check_variant_field<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     adt_arg: &'tcx Expr<'tcx>,

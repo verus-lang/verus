@@ -56,9 +56,6 @@ struct Context<'tcx> {
     /// Map each datatype path to its VIR Datatype
     datatypes: HashMap<Path, vir::ast::Datatype>,
     ignored_functions: HashSet<DefId>,
-    /// For each struct/enum that implements Copy,
-    /// for each GenericParam A say whether clone and copy require A: Clone and A: Copy
-    copy_types: HashMap<DefId, Vec<bool>>,
     calls: HashMap<HirId, ResolvedCall>,
     /// Mode of each if/else or match condition, used to decide how to erase if/else and match
     /// condition.  For example, in "if x < 10 { x + 1 } else { x + 2 }", this will record the span
@@ -329,72 +326,6 @@ fn span_dummy() -> Span {
     data.span()
 }
 
-fn add_copy_type(ctxt: &mut Context, state: &mut State, id: DefId) {
-    let tcx = ctxt.tcx;
-    let copy = tcx.lang_items().copy_trait();
-    let sized = tcx.lang_items().sized_trait();
-    // check for implementation of the form:
-    //   impl<A1 ... An> Copy for S<A1 ... An>
-    if let Some(trait_ref) = tcx.impl_trait_ref(id) {
-        if trait_ref.skip_binder().args.len() == 1 {
-            if let GenericArgKind::Type(ty) = trait_ref.skip_binder().args[0].unpack() {
-                if let TyKind::Adt(AdtDef(adt_def_data), args) = ty.kind() {
-                    let did = adt_def_data.did;
-                    let generics = tcx.generics_of(id);
-                    let mut copy_bounds: Vec<(Id, bool)> = Vec::new();
-                    if generics.own_params.len() == args.len() {
-                        for (param, arg) in generics.own_params.iter().zip(args.iter()) {
-                            let name = state.typ_param(param.name.to_string(), Some(param.index));
-                            copy_bounds.push((name, false));
-                            if let GenericArgKind::Type(arg_ty) = arg.unpack() {
-                                if let TyKind::Param(p) = arg_ty.kind() {
-                                    if p.name == param.name {
-                                        continue;
-                                    }
-                                }
-                            }
-                            return;
-                        }
-                    } else {
-                        return;
-                    }
-                    for (pred, _) in tcx.predicates_of(id).predicates {
-                        if let Some(ClauseKind::Trait(p)) = pred.kind().no_bound_vars() {
-                            let pid = p.trait_ref.def_id;
-                            // For now, only allowed predicates are Copy and Sized
-                            if Some(pid) == copy {
-                                let x = match *erase_ty(
-                                    ctxt,
-                                    state,
-                                    &p.trait_ref.args[0].expect_ty(),
-                                ) {
-                                    TypX::TypParam(x) => x,
-                                    _ => panic!("PredicateKind::Trait"),
-                                };
-                                let x_ref = copy_bounds.iter_mut().find(|(name, _)| name == &x);
-                                let x_ref = x_ref.expect("generic param bound");
-                                x_ref.1 = true;
-                                continue;
-                            }
-                            if Some(pid) == sized {
-                                continue;
-                            }
-                        }
-                        return;
-                    }
-                    if tcx.impl_polarity(id) != rustc_middle::ty::ImplPolarity::Positive {
-                        return;
-                    }
-                    // Found a matching Copy Impl
-                    assert!(!ctxt.copy_types.contains_key(&did));
-                    let copy_bounds = copy_bounds.into_iter().map(|(_, copy)| copy).collect();
-                    ctxt.copy_types.insert(did, copy_bounds);
-                }
-            }
-        }
-    }
-}
-
 fn erase_hir_region<'tcx>(ctxt: &Context<'tcx>, state: &mut State, r: &RegionKind) -> Option<Id> {
     match r {
         RegionKind::ReEarlyParam(bound) => Some(state.lifetime((bound.name.to_string(), None))),
@@ -420,6 +351,7 @@ fn erase_generic_const<'tcx>(ctxt: &Context<'tcx>, state: &mut State, cnst: &Con
             Box::new(TypX::TypParam(state.typ_param(x.to_string(), None)))
         }
         vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
+        vir::ast::TypX::ConstBool(b) => Box::new(TypX::Primitive(b.to_string())),
         _ => panic!("GenericArgKind::Const"),
     }
 }
@@ -1817,6 +1749,8 @@ fn erase_mir_bound<'a, 'tcx>(
     let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
     if Some(id) == tcx.lang_items().copy_trait() {
         Some(Bound::Copy)
+    } else if Some(id) == tcx.lang_items().clone_trait() {
+        Some(Bound::Clone)
     } else if Some(id) == tcx.lang_items().sized_trait() {
         Some(Bound::Sized)
     } else if Some(RustItem::Allocator) == rust_item {
@@ -2214,6 +2148,10 @@ fn erase_fn<'tcx>(
 fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: DefId) {
     let (name, _) = state.remaining_typs_needed_for_each_impl.remove(&impl_id).unwrap();
     let trait_ref = ctxt.tcx.impl_trait_ref(impl_id).expect("impl_trait_ref");
+    let trait_id = trait_ref.skip_binder().def_id;
+    let is_copy = Some(trait_id) == ctxt.tcx.lang_items().copy_trait();
+    let is_clone = Some(trait_id) == ctxt.tcx.lang_items().clone_trait();
+    let is_copy_or_clone = is_copy || is_clone;
 
     let span = ctxt.tcx.def_span(impl_id);
 
@@ -2242,6 +2180,16 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
     let self_ty = ctxt.tcx.type_of(impl_id).skip_binder();
     let self_typ = erase_ty(ctxt, state, &self_ty);
     let trait_as_datatype = Box::new(TypX::Datatype(name.clone(), vec![], trait_typ_args));
+
+    if is_copy_or_clone {
+        if let TypX::Datatype(x, _, _) = &*self_typ {
+            if x.kind != IdKind::Datatype {
+                return;
+            }
+        } else {
+            return;
+        }
+    }
 
     let mut assoc_typs: Vec<(Id, Vec<GenericParam>, Typ)> = Vec::new();
     for assoc_item in ctxt.tcx.associated_items(impl_id).in_definition_order() {
@@ -2278,6 +2226,7 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
         trait_polarity,
         trait_as_datatype,
         assoc_typs,
+        is_clone,
     };
 
     state.trait_impls.push(trait_impl);
@@ -2293,9 +2242,9 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
             return;
         }
     }
-    if Some(trait_id) == ctxt.tcx.lang_items().copy_trait() {
-        return;
-    }
+    let is_copy = Some(trait_id) == ctxt.tcx.lang_items().copy_trait();
+    let is_clone = Some(trait_id) == ctxt.tcx.lang_items().clone_trait();
+    let is_copy_or_clone = is_copy || is_clone;
 
     state.enclosing_trait_ids.push(trait_id);
 
@@ -2349,6 +2298,9 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
     // (Note 2: if we allow cycles between a trait and its supertraits, we'll need a more
     // sophisticated algorithm.)
     let mut supertrait_may_have_assoc_types_or_copy = false;
+    if is_copy_or_clone {
+        supertrait_may_have_assoc_types_or_copy = true;
+    }
     for (pred, _) in ctxt.tcx.predicates_of(trait_id).predicates.iter() {
         match (pred.kind().skip_binder(), &pred.kind().bound_vars()[..]) {
             (ClauseKind::Trait(pred), _bound_vars) => {
@@ -2366,7 +2318,13 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
     }
 
     if supertrait_may_have_assoc_types_or_copy || assoc_typs.len() > 0 {
-        let name = state.trait_name(&path);
+        let name = if is_copy {
+            Id::new(IdKind::Builtin, 0, "Copy".to_owned())
+        } else if is_clone {
+            Id::new(IdKind::Builtin, 0, "Clone".to_owned())
+        } else {
+            state.trait_name(&path)
+        };
         let mut lifetimes: Vec<GenericParam> = Vec::new();
         let mut typ_params: Vec<GenericParam> = Vec::new();
         let mut generic_bounds: Vec<GenericBound> = Vec::new();
@@ -2382,9 +2340,11 @@ fn erase_trait<'tcx>(ctxt: &Context<'tcx>, state: &mut State, trait_id: DefId) {
         typ_params.remove(0); // remove Self type parameter
         let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
 
-        let decl = TraitDecl { name: name.clone(), generic_params, generic_bounds, assoc_typs };
-        state.trait_decl_set.insert(path.clone());
-        state.trait_decls.push(decl);
+        if !is_copy_or_clone {
+            let decl = TraitDecl { name: name.clone(), generic_params, generic_bounds, assoc_typs };
+            state.trait_decl_set.insert(path.clone());
+            state.trait_decls.push(decl);
+        }
 
         for impl_id in ctxt.tcx.all_impls(trait_id) {
             let mut datatypes: Vec<DefId> = Vec::new();
@@ -2533,7 +2493,6 @@ fn erase_datatype<'tcx>(
     let datatype = Box::new(datatype);
     let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
     let name = state.datatype_name(&path);
-    let implements_copy = ctxt.copy_types.get(&id).cloned();
     let mut lifetimes: Vec<GenericParam> = Vec::new();
     let mut typ_params: Vec<GenericParam> = Vec::new();
     let mut generic_bounds: Vec<GenericBound> = Vec::new();
@@ -2548,8 +2507,7 @@ fn erase_datatype<'tcx>(
     );
     let generic_params = lifetimes.into_iter().chain(typ_params.into_iter()).collect();
     let span = Some(span);
-    let decl =
-        DatatypeDecl { name, span, implements_copy, generic_params, generic_bounds, datatype };
+    let decl = DatatypeDecl { name, span, generic_params, generic_bounds, datatype };
     state.datatype_decls.push(decl);
 }
 
@@ -2706,7 +2664,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
         functions: HashMap::new(),
         datatypes: HashMap::new(),
         ignored_functions: HashSet::new(),
-        copy_types: HashMap::new(),
         calls: HashMap::new(),
         condition_modes: HashMap::new(),
         var_modes: HashMap::new(),
@@ -2779,13 +2736,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
     for (hir_id, mode) in &erasure_hints.direct_var_modes {
         ctxt.var_modes.insert(*hir_id, *mode).map(|v| panic!("{:?}", v));
     }
-    if let Some(copy) = tcx.lang_items().copy_trait() {
-        for c in tcx.crates(()) {
-            for (copy_impl, _) in tcx.implementations_of_trait((*c, copy)) {
-                add_copy_type(&mut ctxt, &mut state, *copy_impl);
-            }
-        }
-    }
     for owner in krate.owners.iter() {
         if let MaybeOwner::Owner(owner) = owner {
             match owner.node() {
@@ -2797,11 +2747,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                         continue;
                     }
                     match &item.kind {
-                        ItemKind::Impl(Impl { of_trait: Some(trait_ref), .. }) => {
-                            if Some(trait_ref.path.res.def_id()) == tcx.lang_items().copy_trait() {
-                                add_copy_type(&mut ctxt, &mut state, item.owner_id.to_def_id());
-                            }
-                        }
                         ItemKind::Trait(
                             IsAuto::No,
                             Safety::Safe,
@@ -2823,6 +2768,12 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                 _ => {}
             }
         }
+    }
+    if let Some(id) = ctxt.tcx.lang_items().copy_trait() {
+        erase_trait(&ctxt, &mut state, id);
+    }
+    if let Some(id) = ctxt.tcx.lang_items().clone_trait() {
+        erase_trait(&ctxt, &mut state, id);
     }
 
     for owner in krate.owners.iter() {

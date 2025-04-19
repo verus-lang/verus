@@ -126,33 +126,119 @@ pub(crate) fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx B
     find_body_krate(ctxt.krate, body_id)
 }
 
+// Check for any obvious type mismatches
+fn compare_external_ty_or_true<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    verus_items: &crate::verus_items::VerusItems,
+    from_path: &vir::ast::Path,
+    to_path: &vir::ast::Path,
+    ty1: &rustc_middle::ty::Ty<'tcx>,
+    ty2: &rustc_middle::ty::Ty<'tcx>,
+) -> bool {
+    use rustc_middle::ty::{GenericArg, GenericArgKind, Ty};
+    // TODO, but low priority, since this is just a check for trusted declarations:
+    // finish more cases so as to be more precise and report more mismatches.
+    // (Note: we used to try to convert to VIR types and compare,
+    // but this led to rustc internal errors, since we didn't have the write param_env_src for ty2)
+    let check_t = |t1: &Ty<'tcx>, t2: &Ty<'tcx>| -> bool {
+        compare_external_ty_or_true(tcx, verus_items, from_path, to_path, t1, t2)
+    };
+    let check_ts = |ts1: &[Ty<'tcx>], ts2: &[Ty<'tcx>]| -> bool {
+        ts1.len() == ts2.len() && ts1.iter().zip(ts2.iter()).all(|(t1, t2)| check_t(t1, t2))
+    };
+    let check_args = |args1: &[GenericArg<'tcx>], args2: &[GenericArg<'tcx>]| -> bool {
+        if args1.len() != args2.len() {
+            return false;
+        }
+        for (arg1, arg2) in args1.iter().zip(args2.iter()) {
+            let ok = match (&arg1.unpack(), &arg2.unpack()) {
+                (GenericArgKind::Type(t1), GenericArgKind::Type(t2)) => check_t(t1, t2),
+                _ => arg1 == arg2,
+            };
+            if !ok {
+                return false;
+            }
+        }
+        true
+    };
+    match (ty1.kind(), ty2.kind()) {
+        // These cases are complete:
+        (TyKind::Bool, _) => ty1 == ty2,
+        (TyKind::Uint(_), _) => ty1 == ty2,
+        (TyKind::Int(_), _) => ty1 == ty2,
+        (TyKind::Char, _) => ty1 == ty2,
+        (TyKind::Closure(..), _) => ty1 == ty2,
+        (TyKind::Str, _) => ty1 == ty2,
+        (TyKind::Never, _) => ty1 == ty2,
+        (TyKind::Float(..), _) => ty1 == ty2,
+        (TyKind::Param(_), _) => ty1 == ty2,
+        (TyKind::Ref(_, t1, m1), TyKind::Ref(_, t2, m2)) => m1 == m2 && check_t(t1, t2),
+        (TyKind::Tuple(_), TyKind::Tuple(_)) => check_ts(ty1.tuple_fields(), ty2.tuple_fields()),
+        (TyKind::Slice(t1), TyKind::Slice(t2)) => check_t(t1, t2),
+        (TyKind::RawPtr(t1, m1), TyKind::RawPtr(t2, m2)) => m1 == m2 && check_t(t1, t2),
+        (TyKind::Array(t1, len1), TyKind::Array(t2, len2)) => len1 == len2 && check_t(t1, t2),
+        (TyKind::Adt(a1, args1), TyKind::Adt(a2, args2)) => a1 == a2 && check_args(args1, args2),
+        (TyKind::Alias(k1, t1), TyKind::Alias(k2, t2)) => {
+            if k1 != k2 {
+                return false;
+            }
+            if tcx.associated_item(t1.def_id).name != tcx.associated_item(t2.def_id).name {
+                return false;
+            }
+            if !check_args(&t1.args, &t2.args) {
+                return false;
+            }
+            let trait_def1 = tcx.generics_of(t1.def_id).parent;
+            let trait_def2 = tcx.generics_of(t2.def_id).parent;
+            match (trait_def1, trait_def2) {
+                (None, None) => true,
+                (Some(trait_def1), Some(trait_def2)) => {
+                    let mut trait_path1 = def_id_to_vir_path(tcx, verus_items, trait_def1);
+                    let trait_path2 = def_id_to_vir_path(tcx, verus_items, trait_def2);
+                    if trait_path1 == *from_path {
+                        trait_path1 = to_path.clone();
+                    }
+                    trait_path1 == trait_path2
+                }
+                _ => false,
+            }
+        }
+
+        // These cases are incomplete and always return true:
+        (TyKind::FnDef(..), _) => true,
+        (TyKind::Coroutine(..), _) => true,
+        (TyKind::CoroutineWitness(..), _) => true,
+        (TyKind::Bound(..), _) => true,
+        (TyKind::Placeholder(..), _) => true,
+        (TyKind::Infer(..), _) => true,
+        (TyKind::Error(..), _) => true,
+        (TyKind::CoroutineClosure(..), _) => true,
+        (TyKind::Pat(..), _) => true,
+        (TyKind::Foreign(..), _) => true,
+        (TyKind::FnPtr(..), _) => true,
+        (TyKind::Dynamic(..), _) => true,
+
+        _ => false,
+    }
+}
+
 fn compare_external_ty<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
-    param_env_src: DefId,
-    span: Span,
     ty1: &rustc_middle::ty::Ty<'tcx>,
     ty2: &rustc_middle::ty::Ty<'tcx>,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
-) -> Result<bool, VirErr> {
+) -> bool {
     if let Some((from_path, to_path)) = external_trait_from_to {
-        // TODO, but low priority, since this is just a check for trusted declarations:
-        // rewrite the original MIR Ty or write a comparison function that traverses two MIR Tys.
-        // For now, it's easier to just use less precise VIR types for the comparison:
-        let t1 = mid_ty_to_vir(tcx, verus_items, param_env_src, span, ty1, true)?;
-        let t2 = mid_ty_to_vir(tcx, verus_items, param_env_src, span, ty2, true)?;
-        let t1 = vir::traits::rewrite_external_typ(&from_path, &to_path, &t1);
-        Ok(vir::ast_util::types_equal(&t1, &t2))
+        compare_external_ty_or_true(tcx, verus_items, from_path, to_path, ty1, ty2)
     } else {
-        Ok(ty1 == ty2)
+        ty1 == ty2
     }
 }
 
 fn compare_external_sig<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
-    param_env_src: DefId,
-    span: Span,
     sig1: &rustc_middle::ty::FnSig<'tcx>,
     sig2: &rustc_middle::ty::FnSig<'tcx>,
     external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
@@ -166,15 +252,7 @@ fn compare_external_sig<'tcx>(
         return Ok(false);
     }
     for (ty1, ty2) in io1.iter().zip(io2.iter()) {
-        if !compare_external_ty(
-            tcx,
-            verus_items,
-            param_env_src,
-            span,
-            &ty1,
-            &ty2,
-            external_trait_from_to,
-        )? {
+        if !compare_external_ty(tcx, verus_items, &ty1, &ty2, external_trait_from_to) {
             return Ok(false);
         }
     }
@@ -300,8 +378,6 @@ pub(crate) fn handle_external_fn<'tcx>(
     let poly_sig_eq = compare_external_sig(
         ctxt.tcx,
         &ctxt.verus_items,
-        id,
-        sig.span,
         &poly_sig1,
         &poly_sig2,
         &external_trait_from_to,
@@ -1633,10 +1709,16 @@ pub(crate) fn get_external_def_id<'tcx>(
                     external_id,
                     normalized_substs,
                 );
-                let Ok(Some(inst)) = inst else {
+                let Ok(inst) = inst else {
                     return err_span(
                         sig.span,
                         "Verus Internal Error: handling assume_specification, resolve failed",
+                    );
+                };
+                let Some(inst) = inst else {
+                    return err_span(
+                        sig.span,
+                        "assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead",
                     );
                 };
                 let rustc_middle::ty::InstanceKind::Item(did) = inst.def else {

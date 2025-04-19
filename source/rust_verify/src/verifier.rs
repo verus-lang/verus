@@ -701,9 +701,10 @@ impl Verifier {
         command: &Command,
         context: &CommandContext,
         hint_upon_failure: &std::cell::RefCell<Option<Message>>,
-        is_singular: bool,
-        failed_assert_ids: &mut Vec<AssertId>,
+        prover_choice: vir::def::ProverChoice,
+        default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
+        let is_singular = prover_choice == vir::def::ProverChoice::Singular;
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         let do_report_long_running = self.args.report_long_running;
@@ -864,7 +865,9 @@ impl Verifier {
                 }
                 ValidityResult::Invalid(Some(air_model), Some(error), assert_id_opt) => {
                     if let Some(assert_id) = assert_id_opt {
-                        failed_assert_ids.push(assert_id.clone());
+                        if prover_choice == vir::def::ProverChoice::DefaultProver {
+                            default_prover_failed_assert_ids.push(assert_id.clone());
+                        }
                     }
 
                     if is_first_check && level == Some(MessageLevel::Error) {
@@ -1005,7 +1008,7 @@ impl Verifier {
         function_name: &Fun,
         comment: &str,
         desc_prefix: Option<&str>,
-        failed_assert_ids: &mut Vec<AssertId>,
+        default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
         let user_filter = self.user_filter.as_ref().unwrap();
         let includes_function = user_filter.includes_function(function_name);
@@ -1053,8 +1056,8 @@ impl Verifier {
                     &command,
                     &context,
                     hint_upon_failure,
-                    *prover_choice == vir::def::ProverChoice::Singular,
-                    failed_assert_ids,
+                    *prover_choice,
+                    default_prover_failed_assert_ids,
                 );
         }
 
@@ -1491,7 +1494,7 @@ impl Verifier {
 
                         let mut any_invalid = false;
                         let mut any_timed_out = false;
-                        let mut failed_assert_ids = vec![];
+                        let mut default_prover_failed_assert_ids = vec![];
                         let mut func_curr_smt_time = Duration::ZERO;
 
                         let mut func_curr_smt_rlimit_count = match self.args.solver {
@@ -1600,7 +1603,7 @@ impl Verifier {
                                 &function.x.name,
                                 &op.to_air_comment(),
                                 None,
-                                &mut failed_assert_ids,
+                                &mut default_prover_failed_assert_ids,
                             );
                             func_curr_smt_time +=
                                 query_air_context.get_time().1 - iter_curr_smt_time;
@@ -1787,11 +1790,13 @@ impl Verifier {
                                 function_opgen.retry_with_recommends(&op, any_invalid)?;
                             }
 
-                            if any_invalid && self.args.expand_errors && failed_assert_ids.len() > 0
+                            if any_invalid
+                                && self.args.expand_errors
+                                && default_prover_failed_assert_ids.len() > 0
                             {
                                 function_opgen.start_expand_errors_if_possible(
                                     &op,
-                                    failed_assert_ids[0].clone(),
+                                    default_prover_failed_assert_ids[0].clone(),
                                 );
                                 flush_diagnostics_to_report = true;
                             }

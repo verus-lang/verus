@@ -32,6 +32,9 @@ pub enum Node {
     TraitImpl(ImplPath),
     TraitReqEns(ImplPath, bool),
     ModuleReveal(Path),
+    // Everything in crate c depends on Crate(c)
+    // Crate(c) can depend on broadcast_use_by_default_when_this_crate_is_imported from other crates
+    Crate(crate::ast::Ident),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
     SpanInfo { span_infos_index: usize, text: String },

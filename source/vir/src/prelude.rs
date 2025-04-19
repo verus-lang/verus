@@ -96,6 +96,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_uint = str_to_node(TYPE_ID_UINT);
     let type_id_sint = str_to_node(TYPE_ID_SINT);
     let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
+    let type_id_const_bool = str_to_node(TYPE_ID_CONST_BOOL);
     let decoration = str_to_node(DECORATION);
     let decorate_nil = str_to_node(DECORATE_NIL);
     let decorate_ref = str_to_node(DECORATE_REF);
@@ -111,6 +112,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let as_type = str_to_node(AS_TYPE);
     let mk_fun = str_to_node(MK_FUN);
     let const_int = str_to_node(CONST_INT);
+    let const_bool = str_to_node(CONST_BOOL);
     let ext_eq = str_to_node(EXT_EQ);
 
     let bit_xor = str_to_node(BIT_XOR);
@@ -165,6 +167,7 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [type_id_const_int] (Int) [typ])
+        (declare-fun [type_id_const_bool] (Bool) [typ])
         (declare-sort [decoration] 0)
         (declare-const [decorate_nil] [decoration])
         (declare-fun [decorate_ref] ([decoration]) [decoration])
@@ -185,11 +188,18 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-fun [as_type] ([Poly] [typ]) [Poly])
         (declare-fun [mk_fun] (Fun) Fun)
         (declare-fun [const_int] ([typ]) Int)
+        (declare-fun [const_bool] ([typ]) Bool)
         (axiom (forall ((i Int)) (!
             (= i ([const_int] ([type_id_const_int] i)))
             :pattern (([type_id_const_int] i))
             :qid prelude_type_id_const_int
             :skolemid skolem_prelude_type_id_const_int
+        )))
+        (axiom (forall ((b Bool)) (!
+            (= b ([const_bool] ([type_id_const_bool] b)))
+            :pattern (([type_id_const_bool] b))
+            :qid prelude_type_id_const_bool
+            :skolemid skolem_prelude_type_id_const_bool
         )))
         (axiom (forall ((b Bool)) (!
             ([has_type] ([box_bool] b) [type_id_bool])

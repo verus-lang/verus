@@ -17,6 +17,7 @@ struct Config {
     json: bool,
     no_external_by_default: bool,
     delimiters_are_layout: bool,
+    proofs_arent_trusted: bool,
 }
 
 fn main() {
@@ -29,6 +30,7 @@ fn main() {
     opts.optflag("", "no-external-by-default", "do not ignore items outside of verus! by default");
     opts.optflag("", "json", "output as machine-readable json");
     opts.optflag("", "delimiters-are-layout", "consider delimiter-only lines as layout");
+    opts.optflag("", "proofs-arent-trusted", "do not apply trusted to proofs");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -59,6 +61,7 @@ fn main() {
         json: matches.opt_present("json"),
         no_external_by_default: matches.opt_present("no-external-by-default"),
         delimiters_are_layout: matches.opt_present("delimiters-are-layout"),
+        proofs_arent_trusted: matches.opt_present("proofs-arent-trusted"),
     };
 
     match run(config, &std::path::Path::new(&deps_path)) {
@@ -1590,6 +1593,18 @@ fn process_file(config: Rc<Config>, input_path: &std::path::Path) -> Result<File
         {
             if !line.kinds.is_empty() {
                 line.kinds = HashSet::from([CodeKind::Layout])
+            }
+        }
+        if config.proofs_arent_trusted {
+            if (line.line_content.contains(&LineContent::Body(CodeKind::Proof))
+                || line.line_content.contains(&LineContent::Signature(CodeKind::Proof)))
+                && line.kinds == HashSet::from([CodeKind::Trusted])
+            {
+                if line.line_content.contains(&LineContent::FunctionSpec) {
+                    line.kinds = HashSet::from([CodeKind::Spec]);
+                } else {
+                    line.kinds = HashSet::from([CodeKind::Proof]);
+                }
             }
         }
         if let Some(captures) = override_re.captures(trimmed) {

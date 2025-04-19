@@ -153,7 +153,7 @@ impl ExpandErrorsDriver {
     /// for the root ID with a Fail result, then afterwards call `report`
     /// for the other queries.
     /// This will advance the current assert_id to the next assert_id that
-    /// should be queries.
+    /// should be queried.
     pub fn report(&mut self, ctx: &Ctx, assert_id: &AssertId, result: ExpandErrorsResult) {
         assert!(&self.current == &**assert_id);
         if assert_id.len() == 1 {
@@ -592,7 +592,7 @@ impl ExpandErrorsDriver {
             note = note.primary_span(span);
         }
         if in_fancy_note {
-            note = note.fancy_note(main_body);
+            note = note.fancy_note(format!("\n\n{:}", main_body));
         }
 
         use vir::messages::ToAny;

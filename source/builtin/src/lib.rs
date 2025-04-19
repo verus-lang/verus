@@ -706,6 +706,13 @@ pub unsafe trait Structural {
     fn assert_receiver_is_structural(&self) -> () {}
 }
 
+unsafe impl<S: Structural + ?Sized> Structural for &S {
+    #[doc(hidden)]
+    fn assert_receiver_is_structural(&self) -> () {
+        S::assert_receiver_is_structural(self)
+    }
+}
+
 #[doc(hidden)]
 pub struct AssertParamIsStructural<T: Structural + ?Sized> {
     _field: core::marker::PhantomData<T>,

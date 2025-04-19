@@ -4204,3 +4204,72 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference in a definition")
 }
+
+test_verify_one_file! {
+    #[test] trait_with_const_param_and_assoc_type verus_code! {
+        use vstd::*;
+
+        pub trait Trait<const X: usize> {
+            type AssocType;
+
+            fn exec_get_x(&self) -> (r: usize)
+                ensures r == X;
+
+            fn exec_get_x_2(a: &Self::AssocType) -> (r: usize)
+                ensures r == X;
+        }
+
+        struct Bar<const X: usize> {
+        }
+
+        impl<const X: usize> Trait<X> for Bar<X> {
+            type AssocType = [bool; X];
+
+            fn exec_get_x(&self) -> (r: usize)
+            {
+                return X;
+            }
+
+            fn exec_get_x_2(a: &[bool; X]) -> (r: usize)
+            {
+                return a.len();
+            }
+        }
+
+        fn test_generic<const X: usize, T: Trait<X>>(t: &T, j: &T::AssocType) {
+            let r = t.exec_get_x();
+            assert(r == X);
+
+            let r2 = T::exec_get_x_2(j);
+            assert(r2 == X);
+        }
+
+        fn test_specific<const X: usize>(t: &Bar<X>, j: &<Bar<X> as Trait<X>>::AssocType) {
+            let r = t.exec_get_x();
+            assert(r == X);
+
+            let r2 = <Bar<X> as Trait<X>>::exec_get_x_2(j);
+            assert(r2 == X);
+        }
+
+        fn test_generic_fail<const X: usize, T: Trait<X>>(t: &T, j: &T::AssocType) {
+            let r = t.exec_get_x();
+            assert(r == X);
+
+            let r2 = T::exec_get_x_2(j);
+            assert(r2 == X);
+
+            assert(false); // FAILS
+        }
+
+        fn test_specific_fail<const X: usize>(t: &Bar<X>, j: &<Bar<X> as Trait<X>>::AssocType) {
+            let r = t.exec_get_x();
+            assert(r == X);
+
+            let r2 = <Bar<X> as Trait<X>>::exec_get_x_2(j);
+            assert(r2 == X);
+
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
