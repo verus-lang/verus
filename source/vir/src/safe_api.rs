@@ -50,7 +50,7 @@ pub fn check_safe_api(krate: &Krate) -> Result<(), VirErr> {
         if (function.x.mode == Mode::Exec || function.x.mode == Mode::Proof)
             && is_decl_in_safe_public_trait(&trait_map, function)
         {
-            if function.x.ensure.len() > 0 {
+            if function.x.ensure.0.len() + function.x.ensure.1.len() > 0 {
                 return Err(error(
                     &function.span,
                     &format!(

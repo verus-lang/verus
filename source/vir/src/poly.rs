@@ -527,7 +527,7 @@ fn visit_exp(ctx: &Ctx, state: &mut State, exp: &Exp) -> Exp {
                     let e1 = coerce_exp_to_poly(ctx, &e1);
                     mk_exp(ExpX::Unary(*op, e1))
                 }
-                UnaryOp::Trigger(_) | UnaryOp::DefaultEnsures | UnaryOp::CoerceMode { .. } => {
+                UnaryOp::Trigger(_) | UnaryOp::CoerceMode { .. } => {
                     mk_exp_typ(&e1.typ, ExpX::Unary(*op, e1.clone()))
                 }
                 UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
@@ -936,7 +936,7 @@ fn visit_func_decl_sst(
         ens_pars,
         post_pars,
         reqs,
-        enss,
+        enss: (enss0, enss1),
         inv_masks,
         unwind_condition,
         fndef_axioms,
@@ -952,7 +952,8 @@ fn visit_func_decl_sst(
 
     state.types.push_scope(true);
     let ens_pars = visit_and_insert_pars(ctx, &mut state.types, poly_pars, ens_pars);
-    let enss = visit_exps_native(ctx, state, enss);
+    let enss0 = visit_exps_native(ctx, state, enss0);
+    let enss1 = visit_exps_native(ctx, state, enss1);
     state.types.pop_scope();
 
     state.types.push_scope(true);
@@ -965,7 +966,7 @@ fn visit_func_decl_sst(
         ens_pars,
         post_pars,
         reqs,
-        enss,
+        enss: (enss0, enss1),
         inv_masks,
         unwind_condition,
         fndef_axioms,

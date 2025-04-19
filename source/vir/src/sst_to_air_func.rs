@@ -384,7 +384,8 @@ fn req_ens_to_air(
     commands: &mut Vec<Command>,
     params: &Pars,
     typing_invs: &Vec<Expr>,
-    specs: &Exps,
+    regular_specs: &Exps,
+    trait_default_specs: &Exps,
     typ_params: &Idents,
     typs: &air::ast::Typs,
     name: &Ident,
@@ -395,6 +396,11 @@ fn req_ens_to_air(
     inherit_from: Option<(bool, Ident, Typs)>,
     filter: Option<Ident>,
 ) -> Result<bool, VirErr> {
+    let specs: Vec<(bool, crate::sst::Exp)> = regular_specs
+        .iter()
+        .map(|e| (false, e.clone()))
+        .chain(trait_default_specs.iter().map(|e| (true, e.clone())))
+        .collect();
     if specs.len() + typing_invs.len() > 0 {
         let mut all_typs = (**typs).clone();
         for _ in typ_params.iter() {
@@ -424,19 +430,22 @@ fn req_ens_to_air(
         for e in typing_invs {
             exprs.push(e.clone());
         }
-        for exp in specs.iter() {
+        for (default_ensures, exp) in specs.iter() {
             let expr_ctxt = if is_singular {
                 ExprCtxt::new_mode_singular(ExprMode::Spec, true)
             } else {
                 ExprCtxt::new_mode(ExprMode::Spec)
             };
-            let (only_in_default, exp) = match (is_trait_default_ensures, &exp.x) {
-                (true, ExpX::Unary(crate::ast::UnaryOp::DefaultEnsures, e)) => (true, e.clone()),
-                _ => (false, exp.clone()),
-            };
             let mut expr = exp_to_expr(ctx, &exp, &expr_ctxt)?;
-            if only_in_default {
-                expr = mk_implies(&str_var(crate::def::DEFAULT_ENSURES), &expr);
+            if *default_ensures {
+                if is_trait_default_ensures {
+                    expr = mk_implies(&str_var(crate::def::DEFAULT_ENSURES), &expr);
+                } else {
+                    return Err(crate::messages::error(
+                        &exp.span,
+                        "default_ensures not allowed here",
+                    ));
+                }
             }
             let loc_expr = match msg {
                 None => expr,
@@ -599,6 +608,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             &func_decl_sst.req_inv_pars,
             &vec![],
             &func_decl_sst.reqs,
+            &Arc::new(vec![]),
             &function.x.typ_params,
             &req_typs,
             &prefix_requires(&fun_to_air_ident(&function.x.name)),
@@ -621,6 +631,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
                 &func_decl_sst.req_inv_pars,
                 &vec![],
                 &e,
+                &Arc::new(vec![]),
                 &function.x.typ_params,
                 &req_typs,
                 &prefix_open_inv(&fun_to_air_ident(&function.x.name), i),
@@ -642,6 +653,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             &func_decl_sst.req_inv_pars,
             &vec![],
             &Arc::new(vec![e.clone()]),
+            &Arc::new(vec![]),
             &function.x.typ_params,
             &req_typs,
             &prefix_no_unwind_when(&fun_to_air_ident(&function.x.name)),
@@ -700,7 +712,8 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Command
             &mut decl_commands,
             &func_decl_sst.ens_pars,
             &ens_typing_invs,
-            &func_decl_sst.enss,
+            &func_decl_sst.enss.0,
+            &func_decl_sst.enss.1,
             &function.x.typ_params,
             &Arc::new(ens_typs),
             &prefix_ensures(&fun_to_air_ident(&function.x.name)),

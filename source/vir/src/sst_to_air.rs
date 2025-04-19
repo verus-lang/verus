@@ -898,9 +898,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
             UnaryOp::CoerceMode { .. } => {
                 panic!("internal error: CoerceMode should have been removed before here")
             }
-            UnaryOp::DefaultEnsures => {
-                return Err(error(&exp.span, "default_ensures not allowed here"));
-            }
             UnaryOp::MustBeFinalized | UnaryOp::MustBeElaborated => {
                 panic!("internal error: Exp not finalized: {:?}", exp)
             }

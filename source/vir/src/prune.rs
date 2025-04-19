@@ -633,7 +633,7 @@ fn collect_broadcast_triggers(f: &Function) -> Vec<(Vec<Fun>, Vec<ReachedType>)>
     };
 
     // Collect all triggers
-    for expr in f.x.require.iter().chain(f.x.ensure.iter()) {
+    for expr in f.x.require.iter().chain(f.x.ensure.0.iter()).chain(f.x.ensure.1.iter()) {
         let control = crate::ast_visitor::expr_visitor_dfs(expr, &mut map, &mut f_get_triggers);
         if control == VisitorControlFlow::Stop(()) {
             return vec![];

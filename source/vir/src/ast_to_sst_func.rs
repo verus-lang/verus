@@ -292,7 +292,9 @@ pub fn func_decl_to_sst(
     function: &Function,
 ) -> Result<FuncDeclSst, VirErr> {
     let (pars, reqs) = req_ens_to_sst(ctx, diagnostics, function, &function.x.require, true)?;
-    let (ens_pars, enss) = req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure, false)?;
+    let (ens_pars, enss0) =
+        req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure.0, false)?;
+    let (_, enss1) = req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure.1, false)?;
     let post_pars = params_to_pre_post_pars(&function.x.params, false);
 
     let mut inv_masks: Vec<Exps> = Vec::new();
@@ -379,7 +381,7 @@ pub fn func_decl_to_sst(
         ens_pars,
         post_pars,
         reqs: Arc::new(reqs),
-        enss: Arc::new(enss),
+        enss: (Arc::new(enss0), Arc::new(enss1)),
         inv_masks: Arc::new(inv_masks),
         unwind_condition,
         fndef_axioms: Arc::new(fndef_axiom_exps),
@@ -427,7 +429,8 @@ pub fn func_axioms_to_sst(
                 reqs.extend(crate::traits::trait_bounds_to_ast(ctx, span, &function.x.typ_bounds));
                 reqs.extend((*function.x.require).clone());
                 let req = crate::ast_util::conjoin(span, &reqs);
-                let ens = crate::ast_util::conjoin(span, &*function.x.ensure);
+                assert!(function.x.ensure.1.len() == 0);
+                let ens = crate::ast_util::conjoin(span, &*function.x.ensure.0);
                 let req_ens = crate::ast_util::mk_implies(span, &req, &ens);
                 let params = params_to_pre_post_pars(&function.x.params, false);
                 // Use expr_to_bind_decls_exp_skip_checks, skipping checks on req_ens,
@@ -615,11 +618,9 @@ pub fn func_def_to_sst(
     let mut ens_spec_precondition_stms: Vec<Stm> = Vec::new();
     let mut enss: Vec<Exp> = Vec::new();
     if inherit {
-        for e in req_ens_function.x.ensure.iter() {
-            if matches!(&e.x, ExprX::Unary(UnaryOp::DefaultEnsures, _)) {
-                // We're overriding req_ens_function, so we only inherit the non-default-ensures
-                continue;
-            }
+        // We're overriding req_ens_function, so we only inherit the non-default-ensures
+        let non_default_ensure = &req_ens_function.x.ensure.0;
+        for e in non_default_ensure.iter() {
             let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
             if ctx.checking_spec_preconditions() {
                 let stms = check_pure_expr(ctx, &mut state, &e_with_req_ens_params)?;
@@ -638,13 +639,7 @@ pub fn func_def_to_sst(
             }
         }
     }
-    for e in function.x.ensure.iter() {
-        // Turn our own default_ensures into normal ensures,
-        // so that they are checked in the body of the default implementation.
-        let e = match &e.x {
-            ExprX::Unary(UnaryOp::DefaultEnsures, e) => e.clone(),
-            _ => e.clone(),
-        };
+    for e in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         if ctx.checking_spec_preconditions() {
             ens_spec_precondition_stms.extend(check_pure_expr(ctx, &mut state, &e)?);
         } else {
@@ -759,7 +754,7 @@ pub fn function_to_sst(
     let has = FunctionSstHas {
         has_body: function.x.body.is_some(),
         has_requires: function.x.require.len() > 0,
-        has_ensures: function.x.ensure.len() > 0,
+        has_ensures: function.x.ensure.0.len() + function.x.ensure.1.len() > 0,
         has_decrease: function.x.decrease.len() > 0,
         has_mask_spec: function.x.mask_spec.is_some(),
         has_return_name: function.x.ens_has_return,

@@ -605,7 +605,8 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
         let ens_pars = self.visit_pars(&func_decl.ens_pars)?;
         let post_pars = self.visit_pars(&func_decl.post_pars)?;
         let reqs = self.visit_exps(&func_decl.reqs)?;
-        let enss = self.visit_exps(&func_decl.enss)?;
+        let enss0 = self.visit_exps(&func_decl.enss.0)?;
+        let enss1 = self.visit_exps(&func_decl.enss.1)?;
         let fndef_axioms = self.visit_exps(&func_decl.fndef_axioms)?;
         let mut inv_masks = R::vec();
         for es in func_decl.inv_masks.iter() {
@@ -619,7 +620,7 @@ pub(crate) trait Visitor<R: Returner, Err, Scope: Scoper> {
             ens_pars: R::get_vec_a(ens_pars),
             post_pars: R::get_vec_a(post_pars),
             reqs: R::get_vec_a(reqs),
-            enss: R::get_vec_a(enss),
+            enss: (R::get_vec_a(enss0), R::get_vec_a(enss1)),
             inv_masks: R::get_vec_a(inv_masks),
             unwind_condition: R::get_opt(unwind_condition),
             fndef_axioms: R::get_vec_a(fndef_axioms),

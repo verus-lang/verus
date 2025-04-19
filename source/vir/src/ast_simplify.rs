@@ -977,9 +977,9 @@ fn add_fndef_axioms_to_function(
         name: function.x.ret.x.name.clone(),
         a: function.x.ret.x.typ.clone(),
     });
-    let mut ensures = function.x.ensure.clone();
+    let (mut closure_enss, default_enss) = function.x.ensure.clone();
     if inherit {
-        assert!(ensures.len() == 0);
+        assert!(closure_enss.len() + default_enss.len() == 0);
         let (_, tuple_var) = exec_closure_spec_param(state, &function.span, &params);
         let ret_var = SpannedTyped::new(&function.span, &ret.a, ExprX::Var(ret.name.clone()));
         let default_expr = mk_closure_ens_call(
@@ -991,15 +991,7 @@ fn add_fndef_axioms_to_function(
             &ret_var,
             BuiltinSpecFun::DefaultEns,
         );
-        ensures = Arc::new(vec![default_expr]);
-    }
-    let mut closure_enss: Vec<Expr> = Vec::new();
-    let mut default_enss: Vec<Expr> = Vec::new();
-    for e in ensures.iter() {
-        match &e.x {
-            ExprX::Unary(UnaryOp::DefaultEnsures, e) => default_enss.push(e.clone()),
-            _ => closure_enss.push(e.clone()),
-        }
+        closure_enss = Arc::new(vec![default_expr]);
     }
     for (default_ens, enss) in [(false, closure_enss), (true, default_enss)] {
         if enss.len() > 0 {
@@ -1009,7 +1001,7 @@ fn add_fndef_axioms_to_function(
                 &fndef_singleton,
                 &params,
                 &ret,
-                &enss,
+                &*enss,
                 default_ens,
             )?;
             fndef_axioms.push(ens_forall);
@@ -1040,7 +1032,7 @@ fn simplify_function(
                 ExprX::Var(functionx.ret.x.name.clone()),
             );
             let eq = mk_eq(&r.span, &var, &r);
-            Arc::make_mut(&mut functionx.ensure).push(eq);
+            Arc::make_mut(&mut functionx.ensure.0).push(eq);
         } else {
             // For a unit return type, any returns clause is tautological so we
             // can just skip appending to the postconditions.

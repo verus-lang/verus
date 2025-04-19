@@ -332,9 +332,6 @@ pub enum UnaryOp {
     Clip { range: IntRange, truncate: bool },
     /// Operations that coerce from/to builtin::Ghost or builtin::Tracked
     CoerceMode { op_mode: Mode, from_mode: Mode, to_mode: Mode, kind: ModeCoercion },
-    /// Mark an ensures clause in a trait as applying just to the default implementation,
-    /// not the trait declaration in general
-    DefaultEnsures,
     /// Internal consistency check to make sure finalize_exp gets called
     /// (appears only briefly in SST before finalize_exp is called)
     MustBeFinalized,
@@ -543,7 +540,8 @@ pub enum HeaderExprX {
     /// Preconditions on exec/proof functions
     Requires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
-    Ensures(Option<(VarIdent, Typ)>, Exprs),
+    /// (regular ensures, default ensures)
+    Ensures(Option<(VarIdent, Typ)>, (Exprs, Exprs)),
     /// Returns clause
     Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
@@ -1116,7 +1114,8 @@ pub struct FunctionX {
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
     pub require: Exprs,
     /// Postconditions (proof/exec functions only)
-    pub ensure: Exprs,
+    /// (regular ensures, trait-default ensures)
+    pub ensure: (Exprs, Exprs),
     /// Expression in the 'returns' clause
     pub returns: Option<Expr>,
     /// Decreases clause to ensure recursive function termination

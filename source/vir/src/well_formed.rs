@@ -667,7 +667,7 @@ fn check_function(
                 "decreases_by/recommends_by function cannot have requires clauses (use decreases_when in the spec function instead)",
             ));
         }
-        if function.x.ensure.len() != 0 {
+        if function.x.ensure.0.len() + function.x.ensure.1.len() != 0 {
             return Err(error(
                 &function.span,
                 "decreases_by/recommends_by function cannot have ensures clauses",
@@ -894,7 +894,7 @@ fn check_function(
                 Ok(())
             })?;
         }
-        for ens in function.x.ensure.iter() {
+        for ens in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
             crate::ast_visitor::expr_visitor_check(ens, &mut |_scope_map, expr| {
                 match *undecorate_typ(&expr.typ) {
                     TypX::Int(crate::ast::IntRange::Int) => {}
@@ -962,7 +962,7 @@ fn check_function(
             diags,
         )?;
     }
-    for ens in function.x.ensure.iter() {
+    for ens in function.x.ensure.0.iter().chain(function.x.ensure.1.iter()) {
         let msg = "'ensures' clause of public function";
         let disallow_private_access = Some((&function.x.visibility, msg));
         check_expr(ctxt, function, ens, disallow_private_access, Place::BodyOrPostState, diags)?;
@@ -1444,6 +1444,11 @@ pub fn check_crate(
                 &function,
             )?;
         }
+        if function.x.ensure.1.len() > 0
+            && !matches!(&function.x.kind, FunctionKind::TraitMethodDecl { .. })
+        {
+            return Err(error(&function.span, "default_ensures not allowed here"));
+        }
         if let FunctionKind::TraitMethodDecl { .. } = &function.x.kind {
             if function.x.body.is_some() {
                 if function.x.decrease.len() > 0 {
@@ -1467,7 +1472,8 @@ pub fn check_crate(
                 .x
                 .require
                 .iter()
-                .chain(function.x.ensure.iter())
+                .chain(function.x.ensure.0.iter())
+                .chain(function.x.ensure.1.iter())
                 .chain(function.x.returns.iter())
             {
                 let control = crate::ast_visitor::expr_visitor_dfs(
