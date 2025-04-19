@@ -756,6 +756,7 @@ define_keywords! {
     "ensures"     pub struct Ensures
     "returns"     pub struct Returns
     "decreases"   pub struct Decreases
+    "with"        pub struct With
     "opens_invariants"   pub struct OpensInvariants
     "invariant_except_break"   pub struct InvariantExceptBreak
     "no_unwind"   pub struct NoUnwind
@@ -1042,6 +1043,7 @@ macro_rules! Token {
     [ensures]     => { $crate::token::Ensures };
     [returns]     => { $crate::token::Returns };
     [decreases]   => { $crate::token::Decreases };
+    [with]   => { $crate::token::With };
     [opens_invariants]   => { $crate::token::OpensInvariants };
     [invariant_except_break]   => { $crate::token::InvariantExceptBreak };
     [no_unwind]   => { $crate::token::NoUnwind };

@@ -1,3 +1,4 @@
+#![feature(proc_macro_hygiene)]
 #![allow(unused_imports)]
 
 use builtin::*;
@@ -286,4 +287,38 @@ trait T {
             j <= r,
     )]
     fn my_uninterpreted_fun2(&self, i: u8, j: u8) -> u8;
+}
+
+#[verus_spec(ret =>
+    with
+        Tracked(y): Tracked<&mut u32>, Ghost(w): Ghost<u64> -> z: Ghost<u32>
+    requires
+        x < 100,
+        *old(y) < 100,
+    ensures
+        *y == x,
+        ret == x,
+        z == x,
+)]
+fn test_mut_tracked(x: u32) -> u32 {
+    proof!{
+        *y = x;
+    }
+    #[verus_spec(with |=Ghost(x))]
+    x
+}
+
+fn test_cal_mut_tracked(x: u32) {
+    proof_decl!{
+        let ghost mut z;
+        let tracked mut y = 0u32;
+        z = 0u32;
+    }
+    #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))]
+    let _ = test_mut_tracked(0u32);
+
+    (#[verus_spec(with Tracked(&mut y), Ghost(0))]
+    test_mut_tracked(0u32));
+
+    return;
 }
