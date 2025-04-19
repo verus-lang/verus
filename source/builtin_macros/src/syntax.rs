@@ -19,6 +19,7 @@ use syn_verus::visit_mut::{
     visit_specification_mut, visit_trait_item_fn_mut, VisitMut,
 };
 use syn_verus::BroadcastUse;
+use syn_verus::DefaultEnsures;
 use syn_verus::ExprBlock;
 use syn_verus::ExprForLoop;
 use syn_verus::{
@@ -169,6 +170,16 @@ macro_rules! quote_spanned_builtin {
     }
 }
 
+macro_rules! parse_quote_spanned_builtin {
+    ($b:ident, $span:expr => $($tt:tt)*) => {
+        {
+            let sp = $span;
+            let $b = crate::syntax::Builtin(sp);
+            ::syn_verus::parse_quote_spanned!{ sp => $($tt)* }
+        }
+    }
+}
+
 macro_rules! quote_spanned_builtin_vstd {
     ($b:ident, $v:ident, $span:expr => $($tt:tt)*) => {
         {
@@ -217,6 +228,29 @@ macro_rules! parse_quote_spanned_vstd {
             let $b = crate::syntax::Vstd(sp);
             ::syn_verus::parse_quote_spanned!{ sp => $($tt)* }
         }
+    }
+}
+
+fn merge_default_ensures(
+    ensures: Option<Ensures>,
+    default_ensures: Option<DefaultEnsures>,
+) -> Option<Ensures> {
+    let Some(default_ensures) = default_ensures else {
+        return ensures;
+    };
+    let DefaultEnsures { token, mut exprs } = default_ensures;
+    for expr in exprs.exprs.iter_mut() {
+        let span = expr.span();
+        *expr = parse_quote_spanned_builtin!(builtin, span => #builtin::default_ensures(#expr));
+    }
+    if let Some(mut ensures) = ensures {
+        for expr in exprs.exprs.into_iter() {
+            ensures.exprs.exprs.push(expr);
+        }
+        Some(ensures)
+    } else {
+        let token = Token![ensures](token.span());
+        Some(Ensures { attrs: vec![], token, exprs })
     }
 }
 
@@ -270,10 +304,13 @@ impl Visitor {
         let requires = self.take_ghost(&mut spec.requires);
         let recommends = self.take_ghost(&mut spec.recommends);
         let ensures = self.take_ghost(&mut spec.ensures);
+        let default_ensures = self.take_ghost(&mut spec.default_ensures);
         let returns = self.take_ghost(&mut spec.returns);
         let decreases = self.take_ghost(&mut spec.decreases);
         let opens_invariants = self.take_ghost(&mut spec.invariants);
         let unwind = self.take_ghost(&mut spec.unwind);
+
+        let ensures = merge_default_ensures(ensures, default_ensures);
 
         let mut spec_stmts = Vec::new();
         // TODO: wrap specs inside ghost blocks
@@ -1376,6 +1413,7 @@ impl Visitor {
             output,
             requires,
             ensures,
+            default_ensures,
             returns,
             invariants,
             unwind,
@@ -1403,6 +1441,7 @@ impl Visitor {
                 requires: requires,
                 recommends: None,
                 ensures: ensures,
+                default_ensures,
                 returns: returns,
                 decreases: None,
                 invariants: invariants,

@@ -543,6 +543,47 @@ trait T {
             i <= r,
             j <= r,
     ;
+
+    /// A trait function may have a default (provided) implementation,
+    /// and this defaults may have additional ensures specified with default_ensures
+    fn my_function_with_a_default(&self, i: u32, j: u32) -> (r: u32)
+        requires
+            0 <= i < 10,
+            0 <= j < 10,
+        ensures
+            i <= r,
+            j <= r,
+        default_ensures
+            i == r || j == r,
+        {
+            if i >= j { i } else { j }
+        }
+}
+
+struct S1;
+struct S2;
+
+/// An impl can choose to use the default impl of my_function_with_a_default,
+/// in which case the default_ensures applies to my_function_with_a_default
+impl T for S1 {
+    proof fn my_function_decl(&self, i: int, j: int) -> (r: int) {
+        i + j
+    }
+}
+
+/// An impl can choose not to use the default impl of my_function_with_a_default,
+/// and instead provide its own impl, in which case the default_ensures is ignored
+impl T for S2 {
+    proof fn my_function_decl(&self, i: int, j: int) -> (r: int) {
+        i + j
+    }
+
+    fn my_function_with_a_default(&self, i: u32, j: u32) -> (r: u32)
+        ensures
+            r == i + j,
+    {
+        i + j
+    }
 }
 
 enum ThisOrThat {
