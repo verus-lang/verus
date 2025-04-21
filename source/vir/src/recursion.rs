@@ -48,6 +48,19 @@ struct Ctxt<'a> {
     ctx: &'a Ctx,
 }
 
+// Get edges, skipping past SpanInfo
+pub(crate) fn get_edges_from<'a>(graph: &'a Graph<Node>, t: &Node) -> Vec<&'a Node> {
+    let mut nodes: Vec<&'a Node> = Vec::new();
+    for node in graph.get_edges_from(t) {
+        if let Node::SpanInfo { .. } = node {
+            nodes.extend(get_edges_from(graph, node));
+        } else {
+            nodes.push(node);
+        }
+    }
+    nodes
+}
+
 pub(crate) fn get_callee(
     ctx: &Ctx,
     target: &Fun,
