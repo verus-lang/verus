@@ -761,7 +761,7 @@ pub broadcast proof fn lemma_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If set `s2` contains element `a`, then the set difference of `s1` and `s2` does not contain `a`.
-pub broadcast proof fn lemma_set_difference2<A>(s1: Set<A>, s2: Set<A>, a: A)
+pub broadcast proof fn lemma_set_difference2<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>, a: A)
     ensures
         #![trigger s1.difference(s2).contains(a)]
         s2.contains(a) ==> !s1.difference(s2).contains(a),
@@ -818,7 +818,7 @@ pub broadcast proof fn lemma_set_empty_equivalency_len<A, const Finite: bool>(s:
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If sets `a` and `b` are disjoint, meaning they share no elements in common, then the length
 /// of the union `a.union(b)` is equal to the sum of the lengths of `a` and `b`.
-pub broadcast proof fn lemma_set_disjoint_lens<A, const Finite: bool>(a: Set<A, Finite>, b: Set<A, Finite>)
+pub broadcast proof fn lemma_set_disjoint_lens<A, const Finite1: bool, const Finite2: bool>(a: Set<A, Finite1>, b: Set<A, Finite2>)
     requires
         a.finite(),
         b.finite(),
@@ -846,7 +846,7 @@ pub broadcast proof fn lemma_set_disjoint_lens<A, const Finite: bool>(a: Set<A, 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The length of the union between two sets added to the length of the intersection between the
 /// two sets is equal to the sum of the lengths of the two sets.
-pub broadcast proof fn lemma_set_intersect_union_lens<A, const Finite: bool>(a: Set<A, Finite>, b: Set<A, Finite>)
+pub broadcast proof fn lemma_set_intersect_union_lens<A, const Finite1: bool, const Finite2: bool>(a: Set<A, Finite1>, b: Set<A, Finite2>)
     requires
         a.finite(),
         b.finite(),
@@ -866,6 +866,7 @@ pub broadcast proof fn lemma_set_intersect_union_lens<A, const Finite: bool>(a: 
             assert(a.intersect(b).remove(x) =~= a.remove(x).intersect(b));
         } else {
             assert(a.remove(x).union(b) =~= a.union(b).remove(x));
+            assert( a.union(b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len() );
         }
     }
 }
@@ -876,7 +877,7 @@ pub broadcast proof fn lemma_set_intersect_union_lens<A, const Finite: bool>(a: 
 ///
 /// The length of the set difference `A \ B` is equal to the length of `A` minus the length of the
 /// intersection `A ∩ B`.
-pub broadcast proof fn lemma_set_difference_len<A, const Finite: bool>(a: Set<A, Finite>, b: Set<A, Finite>)
+pub broadcast proof fn lemma_set_difference_len<A, const Finite1: bool, const Finite2: bool>(a: Set<A, Finite1>, b: Set<A, Finite2>)
     requires
         a.finite(),
         b.finite(),
@@ -934,6 +935,28 @@ pub proof fn lemma_set_properties<A, const Finite1: bool, const Finite2: bool>()
                 - a.intersect(b).len())),  //from lemma_set_difference_len
 {
     broadcast use group_set_properties;
+
+    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] a.union(b).union(b) == a.union(b) );
+    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] a.union(b).union(a) == a.union(b) );
+    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b) );
+    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b) );
+    assert forall|s1: Set<A, Finite1>, s2: Set<A, Finite2>, a: A| s2.contains(a) implies !s1.difference(s2).contains(a) by {
+        lemma_set_difference2(s1, s2, a);
+    };
+    assert forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
+            (a.finite() && b.finite() && a.disjoint(b)) implies #[trigger] a.union(b).len() == a.len()
+                + b.len() by {
+        lemma_set_disjoint_lens(a, b);
+    };
+    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
+            (a.finite() && b.finite()) ==> #[trigger] a.union(b).len() + #[trigger] a.intersect(
+                b,
+            ).len() == a.len() + b.len() );
+    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
+            (a.finite() && b.finite()) ==> ((#[trigger] a.difference(b).len() + b.difference(
+                a,
+            ).len() + a.intersect(b).len() == a.union(b).len()) && (a.difference(b).len() == a.len()
+                - a.intersect(b).len())) );
 
     assert forall|s: Set<A, Finite1>| #[trigger] s.len() != 0 && s.finite() implies exists|a: A|
         s.contains(a) by {

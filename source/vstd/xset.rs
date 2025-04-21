@@ -960,7 +960,7 @@ pub broadcast proof fn lemma_set_finite_intersect<A, const Finite2: bool>(s1: Se
 
 /// The set difference between `s1` and `s2` contains element `a` if and only if
 /// `s1` contains `a` and `s2` does not contain `a`.
-pub broadcast proof fn lemma_set_difference<A, const Finite: bool>(s1: Set<A, Finite>, s2: Set<A, Finite>, a: A)
+pub broadcast proof fn lemma_set_difference<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>, a: A)
     ensures
         #[trigger] s1.difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
 {
@@ -1110,7 +1110,7 @@ pub broadcast proof fn lemma_set_union_finite<A, const Finite1: bool, const Fini
 }
 
 /// The intersection of two finite sets is finite.
-pub broadcast proof fn lemma_set_intersect_finite<A, const Finite: bool>(s1: Set<A, Finite>, s2: Set<A, Finite>)
+pub broadcast proof fn lemma_set_intersect_finite<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>)
     requires
         s1.finite() || s2.finite(),
     ensures
@@ -1122,7 +1122,7 @@ pub broadcast proof fn lemma_set_intersect_finite<A, const Finite: bool>(s1: Set
 }
 
 /// The set difference between two finite sets is finite.
-pub broadcast proof fn lemma_set_difference_finite<A, const Finite: bool>(s1: Set<A, Finite>, s2: Set<A, Finite>)
+pub broadcast proof fn lemma_set_difference_finite<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>)
     requires
         s1.finite(),
     ensures
@@ -1255,7 +1255,7 @@ pub broadcast proof fn lemma_set_choose_len<A, const Finite: bool>(s: Set<A, Fin
 // filter definition is closed now, so we expose its meaning through this lemma
 pub broadcast proof fn lemma_set_filter_is_intersect<A, const Finite: bool>(s: Set<A, Finite>, f: spec_fn(A) -> bool)
 ensures
-    congruent(s.filter(f), s.intersect(ISet::new(f)))
+    congruent(#[trigger] s.filter(f), s.intersect(ISet::new(f)))
 {
 }
 
