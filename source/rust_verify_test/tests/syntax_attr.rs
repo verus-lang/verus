@@ -521,3 +521,107 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_dual_spec code!{
+        #[verus_verify(dual_spec(spec_f))]
+        #[verus_spec(
+            requires
+                x < 100,
+                y < 100,
+            returns f(x, y)
+        )]
+        fn f(x: u32, y: u32) -> u32 {
+            proof!{
+                assert(true);
+            }
+            x + y
+        }
+
+        #[verus_verify(dual_spec)]
+        #[verus_spec(
+            requires
+                x < 100,
+            returns
+                f2(x),
+        )]
+        pub fn f2(x: u32) -> u32 {
+            f(x, 1)
+        }
+
+        #[verus_verify]
+        struct S;
+
+        impl S {
+            #[verus_verify(dual_spec)]
+            #[verus_spec(
+                returns
+                    self.foo(x),
+            )]
+            fn foo(&self, x: u32) -> u32 {
+                x
+            }
+        }
+
+        verus!{
+        proof fn lemma_f(x: u32, y: u32)
+        requires
+            x < 100,
+        ensures
+            y == 1 ==> f(x, y) == f2(x),
+            f(x, y) == spec_f(x, y),
+            f2(x) == __VERUS_SPEC_f2(x),
+            f(x, y) == (x + y) as u32,
+            __VERUS_SPEC_f2(x) == x + 1,
+        {}
+
+        mod inner {
+            use super::*;
+            proof fn lemma_f(x: u32)
+            requires
+                x < 100,
+            ensures
+                f2(x) == __VERUS_SPEC_f2(x),
+                __VERUS_SPEC_f2(x) == (x + 1),
+            {}
+        }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_dual_spec_unsupported_body code!{
+        #[verus_verify(dual_spec(spec_f))]
+        #[verus_spec(
+            requires
+                x < 100,
+                y < 100,
+            returns
+                f(x, y),
+        )]
+        fn f(x: &mut u32, y: u32) -> u32 {
+            *x = *x + y;
+            *x
+        }
+    } => Err(e) => assert_vir_error_msg(e, "The verifier does not yet support the following Rust feature")
+}
+
+test_verify_one_file! {
+    #[test] test_dual_spec_unsupported_trait code!{
+        trait X {
+            fn f(&self) -> u32;
+        }
+
+        impl X for u32 {
+            #[verus_verify(dual_spec(spec_f))]
+            #[verus_spec(
+                ensures
+                    self.spec_f(),
+            )]
+            fn f(&self) -> u32{
+                *self
+            }
+        }
+
+    } => Err(e) => assert_rust_error_msg(e, "method `spec_f` is not a member of trait `X`")
+}
