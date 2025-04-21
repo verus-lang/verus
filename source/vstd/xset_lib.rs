@@ -787,12 +787,6 @@ pub broadcast proof fn lemma_set_disjoint<A, const Finite: bool, const Finite2: 
         #![trigger a.union(b).difference(a)]  //TODO: this might be too free
         a.disjoint(b) ==> (a.union(b).difference(a) =~= b.to_infinite() && a.union(b).difference(b) =~= a.to_infinite()),
 {
-    if a.disjoint(b) {
-        assume( false ); // TODO(jonh): left off
-        assert(
-             (a.union(b).difference(a) =~= b.to_infinite() && a.union(b).difference(b) =~= a.to_infinite())
-        );
-    }
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
