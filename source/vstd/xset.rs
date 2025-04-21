@@ -90,7 +90,6 @@ pub closed spec fn set_int_range(lo: int, hi: int) -> Set<int> {
     Set::private_new(|i: int| lo <= i && i < hi)
 }
 
-// TODO(jonh) broadcast
 pub broadcast proof fn lemma_set_int_range_ensures(lo: int, hi: int)
 ensures
     #![trigger(set_int_range(lo, hi))]
@@ -98,9 +97,8 @@ ensures
 {
 }
 
-// TODO(jonh) broadcast
 pub broadcast proof fn lemma_set_finite_from_type<A>(s: Set<A, true>)
-ensures s.finite()
+ensures #[trigger] s.finite()
 {
     // Preserving this is the reason for the trustedness in the
     // paragraph below. Until we replace the representation of finite
@@ -128,7 +126,10 @@ pub open spec fn congruent<A, const Finite1: bool, const Finite2: bool>(s1: Set<
     forall |a: A| s1.contains(a) <==> s2.contains(a)
 }
 
-// TODO(jonh): broadcast
+// TODO(jonh): discuss broadcasting. Not clear there's a broadcastable trigger here.
+// We could do s1.len && s2.len, but maybe that's too aggressive.
+// congruent(s1,s2) sort of demands the callsite type "assert(congruent(s1,s2))" anyway, so maybe
+// not useful.
 pub proof fn congruent_len<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>)
 requires
     congruent(s1, s2),
@@ -429,6 +430,7 @@ pub mod fold {
 
     broadcast group group_set_axioms_early {
         lemma_to_finite_contains,
+        lemma_set_finite_from_type,
         lemma_set_int_range_ensures,
         lemma_set_empty,
         lemma_set_new,
@@ -696,7 +698,6 @@ pub mod fold {
         let pred = |s: Set<A, Finite>, y, d| s.finite();
 
         let empty = Set::<A, Finite>::empty();
-        lemma_set_finite_from_type(empty.to_finite());
         congruent_infiniteness(empty, empty.to_finite());
 
         lemma_fold_graph_induct::<A, Finite, B>(z, f, s, y, d, pred);
@@ -1051,6 +1052,7 @@ pub broadcast proof fn lemma_set_insert_finite<A, const Finite: bool>(s: Set<A, 
         #[trigger] s.insert(a).finite(),
 {
     lemma_set_finite_from_type(s.to_finite().insert(a));
+    // TODO(verus): why is lemma above not getting broadcast-used by .finite() requires of congruent_infiniteness?
     congruent_infiniteness(s.to_finite().insert(a), s.insert(a));
 }
 
@@ -1061,6 +1063,7 @@ pub broadcast proof fn lemma_set_remove_finite<A, const Finite: bool>(s: Set<A, 
         #[trigger] s.remove(a).finite(),
 {
     lemma_set_finite_from_type(s.to_finite().remove(a));
+    // TODO(verus): why is lemma above not getting broadcast-used by .finite() requires of congruent_infiniteness?
     congruent_infiniteness(s.to_finite().remove(a), s.remove(a));
 }
 
@@ -1142,7 +1145,7 @@ pub broadcast proof fn lemma_set_difference_finite<A, const Finite1: bool, const
 }
 
 /// An infinite set `s` contains the element `s.choose()`.
-// TODO(jonh): rename choose_infinite!
+// TODO(verus): deprecate and rename choose_infinite!
 pub broadcast proof fn lemma_set_choose_finite<A, const Finite: bool>(s: Set<A, Finite>)
     requires
         !s.finite(),
@@ -1215,6 +1218,7 @@ pub broadcast proof fn lemma_set_remove_len<A, const Finite: bool>(s: Set<A, Fin
         }),
 {
     lemma_set_finite_from_type(s.to_finite().remove(a));
+    // TODO(verus): why is lemma above not getting broadcast-used by .finite() requires of congruent_infiniteness?
     congruent_infiniteness(s.to_finite().remove(a), s.remove(a));
     lemma_set_insert_len(s.remove(a), a);
     if s.contains(a) {
@@ -1233,8 +1237,6 @@ pub broadcast proof fn lemma_set_contains_len<A>(s: Set<A>, a: A)
 {
     let a = s.choose();
     assert(s.remove(a).insert(a) =~= s);
-//     lemma_set_remove_finite(s, a);   // TODO delete; obvious from types now
-//
     lemma_set_finite_from_type(s.remove(a));
 
     lemma_set_insert_finite(s.remove(a), a);
@@ -1269,8 +1271,8 @@ ensures
 
 pub broadcast group group_set_axioms {
     lemma_to_finite_contains,
-    lemma_set_int_range_ensures,
     lemma_set_finite_from_type,
+    lemma_set_int_range_ensures,
     lemma_set_empty,
     lemma_set_new,
     lemma_set_insert_same,
