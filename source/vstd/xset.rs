@@ -91,9 +91,9 @@ pub closed spec fn set_int_range(lo: int, hi: int) -> Set<int> {
 }
 
 // TODO(jonh) broadcast
-pub /*broadcast*/ proof fn lemma_set_int_range_ensures(lo: int, hi: int)
+pub broadcast proof fn lemma_set_int_range_ensures(lo: int, hi: int)
 ensures
-//     #[trigger(set_int_range(lo, hi))]
+    #![trigger(set_int_range(lo, hi))]
     forall |i: int| set_int_range(lo, hi).contains(i) <==> lo <= i && i < hi,
 {
 }
@@ -429,7 +429,7 @@ pub mod fold {
 
     broadcast group group_set_axioms_early {
         lemma_to_finite_contains,
-//         lemma_set_int_range_ensures,
+        lemma_set_int_range_ensures,
         lemma_set_empty,
         lemma_set_new,
         lemma_set_insert_same,
@@ -1269,7 +1269,7 @@ ensures
 
 pub broadcast group group_set_axioms {
     lemma_to_finite_contains,
-//         lemma_set_int_range_ensures,
+    lemma_set_int_range_ensures,
     lemma_set_finite_from_type,
     lemma_set_empty,
     lemma_set_new,

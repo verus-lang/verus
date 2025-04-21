@@ -680,12 +680,10 @@ pub proof fn lemma_int_range(lo: int, hi: int)
         set_int_range(lo, hi).len() == hi - lo,
     decreases hi - lo,
 {
-    lemma_set_int_range_ensures(lo, hi);    // TODO receive broadcast
     if lo == hi {
         assert(set_int_range(lo, hi) =~= Set::empty());
     } else {
         lemma_int_range(lo, hi - 1);
-        lemma_set_int_range_ensures(lo, hi - 1);    // TODO receive broadcast
         assert(set_int_range(lo, hi - 1).insert(hi - 1) =~= set_int_range(lo, hi));
     }
 }
@@ -870,8 +868,10 @@ pub broadcast proof fn lemma_set_intersect_union_lens<A, const Finite1: bool, co
             assert(a.remove(x).union(b) =~= a.union(b));
             assert(a.intersect(b).remove(x) =~= a.remove(x).intersect(b));
         } else {
+            // b does not contain x
             assert(a.remove(x).union(b) =~= a.union(b).remove(x));
-            assert( a.union(b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len() );
+            // some trigger needed to reduce flakiness
+            assert( a.intersect(b) == a.remove(x).intersect(b) );
         }
     }
 }
