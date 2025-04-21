@@ -78,6 +78,13 @@ impl<A, const Finite: bool> Set<A, Finite> {
     }
 }
 
+// TOOD(verus folks): "broadcast functions should have explicit #[trigger]" -- but hey there is one
+pub broadcast proof fn lemma_to_finite_contains<A, const Finite: bool>(s: Set<A, Finite>)
+ensures
+    s.finite() ==> forall |a| s.contains(a) <==> #[trigger] s.to_finite().contains(a)
+{
+}
+
 /// Creates a finite set of integers in the range [lo, hi).
 pub closed spec fn set_int_range(lo: int, hi: int) -> Set<int> {
     Set::private_new(|i: int| lo <= i && i < hi)
@@ -421,6 +428,7 @@ pub mod fold {
     use super::*;
 
     broadcast group group_set_axioms_early {
+        lemma_to_finite_contains,
 //         lemma_set_int_range_ensures,
         lemma_set_empty,
         lemma_set_new,
@@ -1260,6 +1268,7 @@ ensures
 }
 
 pub broadcast group group_set_axioms {
+    lemma_to_finite_contains,
 //         lemma_set_int_range_ensures,
     lemma_set_finite_from_type,
     lemma_set_empty,

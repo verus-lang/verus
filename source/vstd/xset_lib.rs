@@ -478,20 +478,31 @@ impl<A, const Finite:bool> Set<A, Finite> {
 }
 
 /// The result of inserting an element `a` into a set `s` is finite iff `s` is finite.
-// TODO(jonh): this is trivial on FSets and can be proven on ISets by transforming
-// them into FSets.
 pub broadcast proof fn lemma_set_insert_finite_iff<A>(s: ISet<A>, a: A)
     ensures
         #[trigger] s.insert(a).finite() <==> s.finite(),
 {
+    // apppeal to finite-typed versions
     if s.insert(a).finite() {
         if s.contains(a) {
-            assert(s == s.insert(a));
+            assert( s.insert(a) == s );
         } else {
-            assert(s == s.insert(a).remove(a));
+            congruent_infiniteness( s.insert(a).to_finite().remove(a), s );
         }
     }
-    assert(s.insert(a).finite() ==> s.finite());
+    if s.finite() {
+        congruent_infiniteness( s.to_finite().insert(a), s.insert(a) );
+    }
+
+    // Original proof appeals to finite-preservation lemmas on infinite sets
+//     if s.insert(a).finite() {
+//         if s.contains(a) {
+//             assert(s == s.insert(a));
+//         } else {
+//             assert(s == s.insert(a).remove(a));
+//         }
+//     }
+//     assert(s.insert(a).finite() ==> s.finite());
 }
 
 /// The result of removing an element `a` into a set `s` is finite iff `s` is finite.
@@ -936,32 +947,11 @@ pub proof fn lemma_set_properties<A, const Finite1: bool, const Finite2: bool>()
 {
     broadcast use group_set_properties;
 
+    // TODO(verus): For some reason I now have to explicitly re-trigger extensionality expressions sitting in ensures
     assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] a.union(b).union(b) == a.union(b) );
     assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] a.union(b).union(a) == a.union(b) );
     assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b) );
     assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b) );
-    assert forall|s1: Set<A, Finite1>, s2: Set<A, Finite2>, a: A| s2.contains(a) implies !s1.difference(s2).contains(a) by {
-        lemma_set_difference2(s1, s2, a);
-    };
-    assert forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
-            (a.finite() && b.finite() && a.disjoint(b)) implies #[trigger] a.union(b).len() == a.len()
-                + b.len() by {
-        lemma_set_disjoint_lens(a, b);
-    };
-    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
-            (a.finite() && b.finite()) ==> #[trigger] a.union(b).len() + #[trigger] a.intersect(
-                b,
-            ).len() == a.len() + b.len() );
-    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
-            (a.finite() && b.finite()) ==> ((#[trigger] a.difference(b).len() + b.difference(
-                a,
-            ).len() + a.intersect(b).len() == a.union(b).len()) && (a.difference(b).len() == a.len()
-                - a.intersect(b).len())) );
-
-    assert forall|s: Set<A, Finite1>| #[trigger] s.len() != 0 && s.finite() implies exists|a: A|
-        s.contains(a) by {
-        assert(s.contains(s.choose()));
-    }
 }
 
 pub broadcast group group_set_properties {
