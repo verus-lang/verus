@@ -81,6 +81,7 @@ impl<A, const Finite: bool> Set<A, Finite> {
 // TOOD(verus folks): "broadcast functions should have explicit #[trigger]" -- but hey there is one
 pub broadcast proof fn lemma_to_finite_contains<A, const Finite: bool>(s: Set<A, Finite>)
 ensures
+    #![trigger(s.to_finite())]
     s.finite() ==> forall |a| s.contains(a) <==> #[trigger] s.to_finite().contains(a)
 {
 }
