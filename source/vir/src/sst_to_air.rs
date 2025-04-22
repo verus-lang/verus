@@ -1933,6 +1933,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                                     )
                                 }
                             }
+                            PostConditionKind::EnsuresSafeApiCheck => {
+                                crate::safe_api::err_for_trait_ensures(
+                                    span,
+                                    &ctx.fun.as_ref().unwrap().current_fun,
+                                )
+                            }
                         };
 
                         let ens_stmt = StmtX::Assert(assert_id.clone(), error, None, ens.clone());
