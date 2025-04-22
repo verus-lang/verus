@@ -319,8 +319,16 @@ pub fn run_verus(
             "test_crate".to_string(),
             "--crate-type".to_string(),
             "lib".to_string(),
-            "--extern".to_string(),
-            format!("builtin={lib_builtin_path}"),
+        ]
+        .into_iter(),
+    );
+    if !is_core {
+        verus_args.extend(
+            vec!["--extern".to_string(), format!("builtin={lib_builtin_path}")].into_iter(),
+        );
+    }
+    verus_args.extend(
+        vec![
             "--extern".to_string(),
             format!("builtin_macros={lib_builtin_macros_path}"),
             "--extern".to_string(),
