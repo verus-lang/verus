@@ -491,9 +491,6 @@ fn get_sized_constraint<'tcx>(
             TyKind::Adt(other_adt_def, args) => {
                 let opt = other_adt_def.sized_constraint(tcx);
                 let Some(sc3) = opt else {
-                    dbg!(sized_constraint);
-                    dbg!(sc2);
-                    dbg!(None::<()>);
                     return Ok(None);
                 };
                 sc3.instantiate(tcx, args)
@@ -507,9 +504,6 @@ fn get_sized_constraint<'tcx>(
             break;
         }
 
-        dbg!(sized_constraint);
-        dbg!(sc2);
-        dbg!(sc3);
         sized_constraint = sc3;
     }
 
