@@ -43,7 +43,7 @@ pub fn check_krate_simplified(krate: &Krate) {
     for function in functions {
         let FunctionX {
             require,
-            ensure,
+            ensure: (ensure0, ensure1),
             decrease,
             body,
             typ_bounds,
@@ -67,7 +67,8 @@ pub fn check_krate_simplified(krate: &Krate) {
 
         let all_exprs = require
             .iter()
-            .chain(ensure.iter())
+            .chain(ensure0.iter())
+            .chain(ensure1.iter())
             .chain(decrease.iter())
             .chain(body.iter())
             .chain(mask_exprs.iter());
@@ -174,10 +175,14 @@ pub fn check_krate(krate: &Krate) {
     } = &**krate;
 
     for function in functions {
-        let FunctionX { require, ensure, decrease, body, .. } = &function.x;
+        let FunctionX { require, ensure: (ensure0, ensure1), decrease, body, .. } = &function.x;
 
-        let all_exprs =
-            require.iter().chain(ensure.iter()).chain(decrease.iter()).chain(body.iter());
+        let all_exprs = require
+            .iter()
+            .chain(ensure0.iter())
+            .chain(ensure1.iter())
+            .chain(decrease.iter())
+            .chain(body.iter());
         for expr in all_exprs {
             match expr_visitor_dfs(
                 expr,

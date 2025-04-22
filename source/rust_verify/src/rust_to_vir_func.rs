@@ -876,11 +876,13 @@ pub(crate) fn check_item_fn<'tcx>(
             let body = find_body(ctxt, body_id);
             let external_body = vattrs.external_body || vattrs.external_fn_specification;
             let mut vir_body = body_to_vir(ctxt, id, body_id, body, mode, external_body)?;
-            let header = vir::headers::read_header(&mut vir_body)?;
+            let header =
+                vir::headers::read_header(&mut vir_body, &vir::headers::HeaderAllows::All)?;
             (Some(vir_body), header, Some(body.value.hir_id))
         }
         CheckItemFnEither::ParamNames(_params) => {
-            let header = vir::headers::read_header_block(&mut vec![])?;
+            let header =
+                vir::headers::read_header_block(&mut vec![], &vir::headers::HeaderAllows::All)?;
             (None, header, None)
         }
     };
@@ -925,7 +927,9 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
     }
-    if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
+    if mode == Mode::Spec
+        && (header.require.len() + header.ensure.0.len() + header.ensure.1.len()) > 0
+    {
         return err_span(sig.span, "spec functions cannot have requires/ensures");
     }
     if mode == Mode::Spec && header.returns.is_some() {
@@ -937,7 +941,7 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode != Mode::Exec && vattrs.external_fn_specification {
         return err_span(sig.span, "assume_specification should be 'exec'");
     }
-    if header.ensure.len() > 0 {
+    if header.ensure.0.len() + header.ensure.1.len() > 0 {
         match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
             (None, None) => {}
             (None, Some(_)) => {
@@ -1144,7 +1148,8 @@ pub(crate) fn check_item_fn<'tcx>(
     // Note: ens_has_return isn't final; it may need to be changed later to make
     // sure it's in sync for trait method impls and trait method decls.
     // See `fixup_ens_has_return_for_trait_method_impls`.
-    let (ensure, ens_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure);
+    let (ensure0, ens_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure.0);
+    let (ensure1, _ns_has_return) = clean_ensures_for_unit_return(&ret, &header.ensure.1);
 
     let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
         sig.span,
@@ -1174,7 +1179,7 @@ pub(crate) fn check_item_fn<'tcx>(
         ens_has_return,
         require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
         returns: header.returns,
-        ensure: ensure,
+        ensure: (ensure0, ensure1),
         decrease: header.decrease,
         decrease_when: header.decrease_when,
         decrease_by: header.decrease_by,
@@ -1315,7 +1320,7 @@ fn fix_external_fn_specification_trait_method_decl_typs(
             .new_x(vir::ast::ParamX { typ: subst_typ(&typ_substs, &ret.x.typ), ..ret.x.clone() });
 
         unsupported_err_unless!(require.len() == 0, span, "requires clauses");
-        unsupported_err_unless!(ensure.len() == 0, span, "ensures clauses");
+        unsupported_err_unless!(ensure.0.len() + ensure.1.len() == 0, span, "ensures clauses");
         unsupported_err_unless!(returns.is_some(), span, "returns clauses");
         unsupported_err_unless!(decrease.len() == 0, span, "decreases clauses");
         unsupported_err_unless!(decrease_when.is_none(), span, "decreases_when clauses");
@@ -1844,15 +1849,12 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     .unwrap_or((*body_id, body));
     let mut vir_body =
         body_to_vir(ctxt, id, &actual_body_id, actual_body, body_mode, vattrs.external_body)?;
-    let header = vir::headers::read_header(&mut vir_body)?;
-    if header.require.len() + header.recommend.len() > 0 {
-        return err_span(span, "consts cannot have requires/recommends");
-    }
-    if ret_mode == Mode::Spec && header.ensure.len() > 0 {
+    let header = vir::headers::read_header(
+        &mut vir_body,
+        &vir::headers::HeaderAllows::Some(vec![vir::headers::HeaderAllow::Ensure]),
+    )?;
+    if ret_mode == Mode::Spec && header.ensure.0.len() > 0 {
         return err_span(span, "spec consts cannot have ensures");
-    }
-    if header.returns.is_some() {
-        return err_span(span, "consts cannot have `returns` clause");
     }
 
     let ret_name = air_unique_var(RETURN_VALUE);
@@ -1914,7 +1916,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         ret,
         ens_has_return,
         require: Arc::new(vec![]),
-        ensure,
+        ensure: (ensure, Arc::new(vec![])),
         returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,
@@ -2023,7 +2025,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         ret,
         ens_has_return,
         require: Arc::new(vec![]),
-        ensure: Arc::new(vec![]),
+        ensure: (Arc::new(vec![]), Arc::new(vec![])),
         returns: None,
         decrease: Arc::new(vec![]),
         decrease_when: None,
