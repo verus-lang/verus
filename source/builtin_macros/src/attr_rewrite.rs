@@ -36,17 +36,16 @@
 /// - Refer to `example/syntax_attr.rs`.
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use syn::{parse2, spanned::Spanned, Block, Expr, Item};
+use syn::{parse2, spanned::Spanned, Expr, Item};
 
 use crate::{
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
     syntax,
-    syntax::mk_rust_attr_syn,
     syntax::mk_verus_attr_syn,
     EraseGhost,
 };
 
-pub const VERIFIED: &str = "verus_verified";
+pub const VERIFIED: &str = "_VERUS_VERIFIED";
 
 enum VerusIOTarget {
     Local(syn::Local),
@@ -87,7 +86,7 @@ pub fn rewrite_verus_attribute(
         return input;
     }
 
-    let mut item = syn::parse_macro_input!(input as Item);
+    let item = syn::parse_macro_input!(input as Item);
     let args = syn::parse_macro_input!(attr_args with syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated);
 
     let mut attributes = Vec::new();
@@ -118,24 +117,6 @@ pub fn rewrite_verus_attribute(
     }
     if !contains_external {
         attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
-    }
-
-    match &mut item {
-        Item::Impl(i) => {
-            if let Some(_) = &mut i.trait_ {
-                for impl_item in &mut i.items {
-                    if let syn::ImplItem::Fn(m) = impl_item {
-                        // push is_trait_impl attribute to the impl item
-                        m.attrs.push(mk_rust_attr_syn(
-                            m.span(),
-                            "is_trait_impl",
-                            TokenStream::new(),
-                        ));
-                    }
-                }
-            }
-        }
-        _ => {}
     }
 
     quote_spanned! {item.span()=>
@@ -254,13 +235,6 @@ pub fn rewrite_verus_spec_on_fun_or_loop(
             let spec_attr =
                 syn_verus::parse_macro_input!(outer_attr_tokens as syn_verus::SignatureSpecAttr);
 
-            let is_trait_impl = fun.attrs.contains(&mk_rust_attr_syn(
-                fun.span(),
-                "is_trait_impl",
-                TokenStream::new(),
-            ));
-            // remove is_trait_impl attribute
-            fun.attrs.retain(|attr| !attr.path().is_ident("is_trait_impl"));
             fun.attrs.push(mk_verus_attr_syn(fun.span(), quote! { verus_macro }));
 
             // Create a copy of unverified function.
@@ -269,15 +243,12 @@ pub fn rewrite_verus_spec_on_fun_or_loop(
             // Allow unverified code to use the function without changing in/output.
             let mut new_stream = TokenStream::new();
             if let Some(with) = &spec_attr.spec.with {
-                let unverified_fun =
-                    rewrite_unverified_func(&mut fun, with.with.span(), is_trait_impl);
+                let unverified_fun = rewrite_unverified_func(&mut fun, with.with.span());
                 unverified_fun.to_tokens(&mut new_stream);
             }
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut fun.sig);
-            if erase.keep() {
-                let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
-                let _ = fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
-            }
+            let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
+            let _ = fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
             fun.to_tokens(&mut new_stream);
             proc_macro::TokenStream::from(new_stream)
         }
@@ -288,23 +259,22 @@ pub fn rewrite_verus_spec_on_fun_or_loop(
             let mut new_stream = TokenStream::new();
 
             if let Some(with) = &spec_attr.spec.with {
-                let unverified_method =
-                    rewrite_unverified_trait_item_fun(&mut method, with.with.span());
-                unverified_method.to_tokens(&mut new_stream);
-                /*return proc_macro::TokenStream::from(
+                // Trait method requires can only be inherited from the trait declaration
+                // However, we cannot distinguish trait function impl vs other function impl.
+                // let unverified_method = rewrite_unverified_func(&mut method, with.with.span());
+                // unverified_method.to_tokens(&mut new_stream);
+                return proc_macro::TokenStream::from(
                     quote_spanned!(with.with.span() => compile_error!("`with` does not support trait");),
-                );*/
+                );
             }
 
             let spec_stmts = syntax::sig_specs_attr(erase, spec_attr, &mut method.sig);
-            if erase.keep() {
-                let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
-                let mut spec_fun_opt = syntax::split_trait_method_syn(&method, erase.erase());
-                let spec_fun = spec_fun_opt.as_mut().unwrap_or(&mut method);
-                let _ = spec_fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
-                method.attrs.push(mk_verus_attr_syn(method.span(), quote! { verus_macro }));
-                spec_fun_opt.to_tokens(&mut new_stream);
-            }
+            let new_stmts = spec_stmts.into_iter().map(|s| parse2(quote! { #s }).unwrap());
+            let mut spec_fun_opt = syntax::split_trait_method_syn(&method, erase.erase());
+            let spec_fun = spec_fun_opt.as_mut().unwrap_or(&mut method);
+            let _ = spec_fun.block_mut().unwrap().stmts.splice(0..0, new_stmts);
+            method.attrs.push(mk_verus_attr_syn(method.span(), quote! { verus_macro }));
+            spec_fun_opt.to_tokens(&mut new_stream);
             method.to_tokens(&mut new_stream);
             proc_macro::TokenStream::from(new_stream)
         }
@@ -491,8 +461,12 @@ fn rewrite_with_expr(
     x_declares
 }
 
-fn unverified_fun_stmts(span: proc_macro2::Span) -> Vec<syn::Stmt> {
-    vec![
+// Create a copy of function with unverified function signature without a
+// function body, to enable seamless use of unverified call to the function in
+// verification.
+fn rewrite_unverified_func(fun: &mut syn::ItemFn, span: proc_macro2::Span) -> syn::ItemFn {
+    let mut unverified_fun = fun.clone();
+    let stmts = vec![
         syn::Stmt::Expr(
             syn::Expr::Verbatim(
                 quote_spanned_builtin!(builtin, span => #builtin::requires([false])),
@@ -503,44 +477,12 @@ fn unverified_fun_stmts(span: proc_macro2::Span) -> Vec<syn::Stmt> {
             syn::Expr::Verbatim(quote_spanned! {span => unimplemented!()}),
             Some(syn::token::Semi { spans: [span] }),
         ),
-    ]
-}
-
-fn create_unverified_func<T: Clone + AnyAttrBlock>(fun: &T, span: proc_macro2::Span) -> T {
-    let mut unverified_fun = fun.clone();
+    ];
     unverified_fun.attrs_mut().push(mk_verus_attr_syn(span, quote! { external_body }));
     if let Some(block) = unverified_fun.block_mut() {
         block.stmts.clear();
-        block.stmts.extend(unverified_fun_stmts(span));
-    };
-    unverified_fun
-}
-
-fn rewrite_unverified_trait_item_fun(
-    fun: &mut syn::TraitItemFn,
-    span: proc_macro2::Span,
-) -> syn::TraitItemFn {
-    let mut unverified_fun = create_unverified_func(fun, span);
-    unverified_fun.default = Some(Block {
-        brace_token: syn::token::Brace::default(),
-        stmts: unverified_fun_stmts(span),
-    });
-    // change name to verified_{fname}
-    let x = &fun.sig.ident;
-    fun.sig.ident = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
-    unverified_fun
-}
-
-// Create a copy of function with unverified function signature without a
-// function body, to enable seamless use of unverified call to the function in
-// verification.
-fn rewrite_unverified_func(
-    fun: &mut syn::ItemFn,
-    span: proc_macro2::Span,
-    is_trait_impl: bool,
-) -> Option<syn::ItemFn> {
-    let unverified_fun =
-        if !is_trait_impl { Some(create_unverified_func(fun, span)) } else { None };
+        block.stmts.extend(stmts);
+    }
     // change name to verified_{fname}
     let x = &fun.sig.ident;
     fun.sig.ident = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());

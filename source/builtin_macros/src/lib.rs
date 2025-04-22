@@ -272,14 +272,6 @@ pub fn verus_spec(
     attr_rewrite::rewrite_verus_spec(cfg_erase(), attr.into(), input.into()).into()
 }
 
-#[proc_macro_attribute]
-pub fn is_trait_impl(
-    _attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    input
-}
-
 /// Add a verus proof block.
 #[proc_macro]
 pub fn proof(input: proc_macro::TokenStream) -> proc_macro::TokenStream {

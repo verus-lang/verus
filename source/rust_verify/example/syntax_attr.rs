@@ -307,3 +307,18 @@ fn test_mut_tracked(x: u32) -> u32 {
     #[verus_spec(with |=Ghost(x))]
     x
 }
+
+fn test_cal_mut_tracked(x: u32) {
+    proof_decl!{
+        let ghost mut z;
+        let tracked mut y = 0u32;
+        z = 0u32;
+    }
+    #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))]
+    let _ = test_mut_tracked(0u32);
+
+    (#[verus_spec(with Tracked(&mut y), Ghost(0))]
+    test_mut_tracked(0u32));
+
+    return;
+}
