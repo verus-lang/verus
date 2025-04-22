@@ -1,5 +1,4 @@
 use super::prelude::*;
-use super::type_eq::{heterogeneous_eq, TypeEq};
 
 verus! {
 
@@ -27,15 +26,11 @@ pub trait DeepView {
 ///
 /// Note on naming: at some point in the future, [`View`] will become `ShallowView`, and then with
 /// sufficient migration time, [`UnambiguousView`] will be renamed to `View`.
-pub trait UnambiguousView where
-    Self: View,
-    Self: DeepView,
-    <Self as View>::V: TypeEq<<Self as DeepView>::V>,
- {
+pub trait UnambiguousView where Self: View, Self: DeepView<V = <Self as View>::V> {
     proof fn all_views_are_eq(&self)
         ensures
             self.view() == self.unambiguous_view(),
-            heterogeneous_eq(self.unambiguous_view(), self.deep_view()),
+            self.unambiguous_view() == self.deep_view(),
     ;
 
     #[verifier::inline]
@@ -62,9 +57,7 @@ impl<A: DeepView + ?Sized> DeepView for &A {
     }
 }
 
-impl<A: UnambiguousView> UnambiguousView for &A where
-    <Self as View>::V: TypeEq<<Self as DeepView>::V>,
- {
+impl<A: UnambiguousView> UnambiguousView for &A where  {
     proof fn all_views_are_eq(&self) {
         (**self).all_views_are_eq()
     }
@@ -91,9 +84,7 @@ impl<A: DeepView + ?Sized> DeepView for alloc::boxed::Box<A> {
 }
 
 #[cfg(feature = "alloc")]
-impl<A: UnambiguousView> UnambiguousView for alloc::boxed::Box<A> where
-    <Self as View>::V: TypeEq<<Self as DeepView>::V>,
- {
+impl<A: UnambiguousView> UnambiguousView for alloc::boxed::Box<A> where  {
     proof fn all_views_are_eq(&self) {
         (**self).all_views_are_eq()
     }
@@ -120,9 +111,7 @@ impl<A: DeepView> DeepView for alloc::rc::Rc<A> {
 }
 
 #[cfg(feature = "alloc")]
-impl<A: UnambiguousView> UnambiguousView for alloc::rc::Rc<A> where
-    <Self as View>::V: TypeEq<<Self as DeepView>::V>,
- {
+impl<A: UnambiguousView> UnambiguousView for alloc::rc::Rc<A> where  {
     proof fn all_views_are_eq(&self) {
         (**self).all_views_are_eq()
     }
@@ -149,9 +138,7 @@ impl<A: DeepView> DeepView for alloc::sync::Arc<A> {
 }
 
 #[cfg(feature = "alloc")]
-impl<A: UnambiguousView> UnambiguousView for alloc::sync::Arc<A> where
-    <Self as View>::V: TypeEq<<Self as DeepView>::V>,
- {
+impl<A: UnambiguousView> UnambiguousView for alloc::sync::Arc<A> where  {
     proof fn all_views_are_eq(&self) {
         (**self).all_views_are_eq()
     }
