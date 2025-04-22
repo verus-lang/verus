@@ -441,14 +441,7 @@ fn rewrite_with_expr(
                 let x = &method;
                 *method = syn::Ident::new(&format!("{VERIFIED}_{x}"), x.span());
             }
-            syn::Expr::Try(syn::ExprTry { expr, .. }) => {
-                let call_with_spec =
-                    syn_verus::WithSpecOnExpr { inputs, outputs, follows, ..call_with_spec };
-                return rewrite_with_expr(erase, expr, call_with_spec);
-            }
-            _ => {
-                panic!("with attribute cannot be applied to a non-call expression");
-            }
+            _ => {}
         }
     }
 
