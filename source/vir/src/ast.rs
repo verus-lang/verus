@@ -1228,6 +1228,10 @@ pub struct DatatypeX {
     /// Generate ext_equal lemmas for datatype
     pub ext_equal: bool,
     pub user_defined_invariant_fn: Option<Fun>,
+    /// This is an optional value -- None means "always sized"
+    /// whereas Some(T) means "The given type is Sized iff T is Sized".
+    /// For structs, this is usually the last field of the struct, or is derived from it.
+    /// For enums, this is always None.
     pub sized_constraint: Option<Typ>,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;

@@ -441,7 +441,7 @@ pub(crate) fn decoration_for_datatype_mono(ctx: &Ctx, dt: &Dt, monotyps: &MonoTy
             let typs = Arc::new(vec_map(&**monotyps, crate::poly::monotyp_to_typ));
             let c = subst_typ_for_datatype(&datatype.x.typ_params, &typs, constraint);
             let dec = typ_to_ids(ctx, &c)[0].clone();
-            str_apply(crate::def::DECORATE_STRUCT_INHERIT, &vec![dec])
+            str_apply(crate::def::DECORATE_DST_INHERIT, &vec![dec])
         }
     }
 }
@@ -453,7 +453,7 @@ pub(crate) fn decoration_for_datatype(ctx: &Ctx, dt: &Dt, typs: &Typs) -> Expr {
         Some(constraint) => {
             let c = subst_typ_for_datatype(&datatype.x.typ_params, typs, constraint);
             let dec = typ_to_ids(ctx, &c)[0].clone();
-            str_apply(crate::def::DECORATE_STRUCT_INHERIT, &vec![dec])
+            str_apply(crate::def::DECORATE_DST_INHERIT, &vec![dec])
         }
     }
 }
