@@ -1,7 +1,7 @@
 use crate::ast::{
     AutospecUsage, CallTarget, CallTargetKind, Constant, Dt, ExprX, Fun, Function, FunctionKind,
-    GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VarBinder,
-    VirErr,
+    GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, TraitId, Typ, TypX, Typs, UnaryOpr,
+    VarBinder, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
@@ -32,6 +32,9 @@ pub enum Node {
     TraitImpl(ImplPath),
     TraitReqEns(ImplPath, bool),
     ModuleReveal(Path),
+    // Everything in crate c depends on Crate(c)
+    // Crate(c) can depend on broadcast_use_by_default_when_this_crate_is_imported from other crates
+    Crate(crate::ast::Ident),
     // This is used to replace an X --> Y edge with X --> SpanInfo --> Y edges
     // to give more precise span information than X or Y alone provide
     SpanInfo { span_infos_index: usize, text: String },
@@ -43,6 +46,19 @@ struct Ctxt<'a> {
     num_decreases: Option<usize>,
     scc_rep: Node,
     ctx: &'a Ctx,
+}
+
+// Get edges, skipping past SpanInfo
+pub(crate) fn get_edges_from<'a>(graph: &'a Graph<Node>, t: &Node) -> Vec<&'a Node> {
+    let mut nodes: Vec<&'a Node> = Vec::new();
+    for node in graph.get_edges_from(t) {
+        if let Node::SpanInfo { .. } = node {
+            nodes.extend(get_edges_from(graph, node));
+        } else {
+            nodes.push(node);
+        }
+    }
+    nodes
 }
 
 pub(crate) fn get_callee(
@@ -439,7 +455,10 @@ pub(crate) fn expand_call_graph(
             }
         }
         let tr = match &**bound {
-            GenericBoundX::Trait(tr, _) => tr,
+            GenericBoundX::Trait(TraitId::Path(tr), _) => tr,
+            GenericBoundX::Trait(TraitId::Sized, _) => {
+                continue;
+            }
             GenericBoundX::TypEquality(tr, _, _, _) => tr,
             GenericBoundX::ConstTyp(_, _) => {
                 continue;

@@ -290,7 +290,7 @@ test_verify_one_file_with_options! {
         use vstd::prelude::*;
 
         // TODO requires/ensures need to be spec-erased
-        spec fn goo() -> bool;
+        uninterp spec fn goo() -> bool;
 
         proof fn testfn() {
             let tracked f = proof_fn|| ensures goo() { assume(goo()); };

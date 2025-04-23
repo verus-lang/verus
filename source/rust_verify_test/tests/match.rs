@@ -1282,3 +1282,47 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] or_pattern_1_disjunct_issue1588 verus_code! {
+        enum Foo {
+            A,
+            B,
+        }
+
+        fn test(foo: &Foo) {
+            match foo {
+                | Foo::A => {
+                    assert(foo == Foo::A);
+                }
+                _ => {
+                    assert(foo == Foo::B);
+                }
+            }
+        }
+
+        fn test2(foo: &Foo) {
+            match foo {
+                | Foo::A => {
+                    assert(foo == Foo::A);
+                    assert(false); // FAILS
+                }
+                _ => {
+                    assert(foo == Foo::B);
+                }
+            }
+        }
+
+        fn test3(foo: &Foo) {
+            match foo {
+                | Foo::A => {
+                    assert(foo == Foo::A);
+                }
+                _ => {
+                    assert(foo == Foo::B);
+                    assert(false); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

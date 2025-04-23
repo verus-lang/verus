@@ -5,9 +5,9 @@
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Dt, Expr, ExprX, Fun,
     Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt,
-    Trait, TraitX, Typ, TypX,
+    Trait, TraitId, TraitX, Typ, TypX,
 };
-use crate::ast_util::{is_visible_to, is_visible_to_or_true};
+use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{
@@ -122,6 +122,7 @@ fn typ_to_reached_type(typ: &Typ) -> ReachedType {
         TypX::Projection { trait_typ_args, .. } => typ_to_reached_type(&trait_typ_args[0]),
         TypX::TypeId => ReachedType::None,
         TypX::ConstInt(_) => ReachedType::None,
+        TypX::ConstBool(_) => ReachedType::None,
         TypX::Air(_) => panic!("unexpected TypX::Air"),
         TypX::Primitive(Primitive::StrSlice, _) => ReachedType::StrSlice,
         TypX::Primitive(Primitive::Array, _) => ReachedType::Array,
@@ -265,7 +266,7 @@ fn reach_typ(ctxt: &Ctxt, state: &mut State, typ: &Typ) {
             panic!("unexpected TypX")
         }
         TypX::Decorate(_, _, _t) | TypX::Boxed(_t) => {} // let visitor handle _t
-        TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) => {}
+        TypX::TypParam(_) | TypX::TypeId | TypX::ConstInt(_) | TypX::ConstBool(_) => {}
         TypX::Projection { trait_typ_args: _, trait_path, name, .. } => {
             reach_assoc_type_decl(ctxt, state, &(trait_path.clone(), name.clone()));
             // let visitor handle self_typ, trait_typ_args
@@ -338,7 +339,10 @@ fn traverse_generic_bounds(
     for bound in bounds.iter() {
         // note: the types in the bounds are handled below in traverse_typs
         let path = match &**bound {
-            crate::ast::GenericBoundX::Trait(path, _) => path,
+            crate::ast::GenericBoundX::Trait(TraitId::Path(path), _) => path,
+            crate::ast::GenericBoundX::Trait(TraitId::Sized, _) => {
+                continue;
+            }
             crate::ast::GenericBoundX::TypEquality(path, _, name, _) => {
                 reach_assoc_type_decl(ctxt, state, &(path.clone(), name.clone()));
                 path
@@ -868,7 +872,7 @@ pub fn prune_krate_for_module_or_krate(
         // - function is exec or proof
         // (when optimizing for modules, after well-formedness checks)
         let is_vis = is_visible_to(&f.x.visibility, &module);
-        let is_open = is_visible_to(&f.x.body_visibility, &module);
+        let is_open = is_body_visible_to(&f.x.body_visibility, &module);
         let is_non_opaque = f.x.opaqueness.get_default_fuel_for_module_path(module) != 0;
         let is_revealed = is_non_opaque || revealed_functions.contains(&f.x.name);
         let is_spec = f.x.mode == Mode::Spec;
@@ -968,8 +972,13 @@ pub fn prune_krate_for_module_or_krate(
         let mut bound_types: Vec<ReachedType> = Vec::new();
         for bound in imp.x.typ_bounds.iter() {
             match &**bound {
-                crate::ast::GenericBoundX::Trait(path, typ_args) => {
-                    bound_traits.push(path.clone());
+                crate::ast::GenericBoundX::Trait(tid, typ_args) => {
+                    match tid {
+                        TraitId::Path(path) => {
+                            bound_traits.push(path.clone());
+                        }
+                        TraitId::Sized => {}
+                    }
                     for t in typ_args.iter() {
                         bound_types.push(typ_to_reached_type(t));
                     }

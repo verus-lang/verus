@@ -103,6 +103,14 @@ pub struct Visibility {
     pub restricted_to: Option<Path>,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, ToDebugSNode, PartialEq, Eq)]
+pub enum BodyVisibility {
+    Uninterpreted,
+    /// None for pub
+    /// Some(path) means visible to path and path's descendents
+    Visibility(Visibility),
+}
+
 /// Describes whether a variable, function, etc. is compiled or just used for verification
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum Mode {
@@ -258,6 +266,8 @@ pub enum TypX {
     TypeId,
     /// Const integer type argument (e.g. for array sizes)
     ConstInt(BigInt),
+    /// Const bool type argument
+    ConstBool(bool),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
 }
@@ -293,7 +303,7 @@ pub enum NullaryOpr {
     /// convert a const generic into an expression, as in fn f<const N: usize>() -> usize { N }
     ConstGeneric(Typ),
     /// predicate representing a satisfied trait bound T(t1, ..., tn) for trait T
-    TraitBound(Path, Typs),
+    TraitBound(TraitId, Typs),
     /// predicate representing a type equality bound T<t1, ..., tn, X = typ> for trait T
     TypEqualityBound(Path, Typs, Ident, Typ),
     /// predicate representing const type bound, e.g., `const X: usize`
@@ -564,6 +574,8 @@ pub enum HeaderExprX {
     NoUnwind,
     /// This function will not unwind if the given condition holds (function of arguments)
     NoUnwindWhen(Expr),
+    /// The visibility used in, e.g., `open(crate)`
+    OpenVisibilityQualifier(Visibility),
 }
 
 /// Primitive constant values
@@ -889,13 +901,19 @@ pub struct ParamX {
     pub unwrapped_info: Option<(Mode, VarIdent)>,
 }
 
+#[derive(Debug, Serialize, Deserialize, ToDebugSNode, Clone, PartialEq, Eq, Hash)]
+pub enum TraitId {
+    Path(Path),
+    Sized,
+}
+
 pub type GenericBound = Arc<GenericBoundX>;
 pub type GenericBounds = Arc<Vec<GenericBound>>;
 #[derive(Debug, Serialize, Deserialize, ToDebugSNode)]
 pub enum GenericBoundX {
     /// Implemented trait T(t1, ..., tn) where t1...tn usually contain some type parameters
     // REVIEW: add ImplPaths here?
-    Trait(Path, Typs),
+    Trait(TraitId, Typs),
     /// An equality bound for associated type X of trait T(t1, ..., tn),
     /// written in Rust as T<t1, ..., tn, X = typ>
     TypEquality(Path, Typs, Ident, Typ),
@@ -986,6 +1004,8 @@ pub struct FunctionAttrsX {
     /// Marked with external_body or external_fn_specification
     /// TODO: might be duplicate with https://github.com/verus-lang/verus/pull/1473
     pub is_external_body: bool,
+    /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
+    pub is_unsafe: bool,
 }
 
 /// Function specification of its invariant mask
@@ -1078,7 +1098,7 @@ pub struct FunctionX {
     /// Access control (public/private)
     pub visibility: Visibility,
     /// Controlled by 'open'. (Only applicable to spec functions.)
-    pub body_visibility: Visibility,
+    pub body_visibility: BodyVisibility,
     /// Controlled by 'opaque/opaque_outside_module'. (Only applicable to spec functions.)
     pub opaqueness: Opaqueness,
     /// Owning module
@@ -1212,6 +1232,11 @@ pub struct DatatypeX {
     /// Generate ext_equal lemmas for datatype
     pub ext_equal: bool,
     pub user_defined_invariant_fn: Option<Fun>,
+    /// This is an optional value -- None means "always sized"
+    /// whereas Some(T) means "The given type is Sized iff T is Sized".
+    /// For structs, this is usually the last field of the struct, or is derived from it.
+    /// For enums, this is always None.
+    pub sized_constraint: Option<Typ>,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;
@@ -1228,6 +1253,7 @@ pub struct TraitX {
     pub assoc_typs: Arc<Vec<Ident>>,
     pub assoc_typs_bounds: GenericBounds,
     pub methods: Arc<Vec<Fun>>,
+    pub is_unsafe: bool,
 }
 
 /// impl<typ_params> trait_name<trait_typ_args[1..]> for trait_typ_args[0] { type name = typ; }

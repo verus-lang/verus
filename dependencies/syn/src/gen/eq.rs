@@ -2270,6 +2270,9 @@ impl PartialEq for crate::Publish {
                 crate::Publish::OpenRestricted(self0),
                 crate::Publish::OpenRestricted(other0),
             ) => self0 == other0,
+            (crate::Publish::Uninterp(self0), crate::Publish::Uninterp(other0)) => {
+                self0 == other0
+            }
             (crate::Publish::Default, crate::Publish::Default) => true,
             _ => false,
         }
@@ -2406,6 +2409,7 @@ impl PartialEq for crate::SignatureSpec {
             && self.recommends == other.recommends && self.ensures == other.ensures
             && self.returns == other.returns && self.decreases == other.decreases
             && self.invariants == other.invariants && self.unwind == other.unwind
+            && self.with == other.with
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -2839,6 +2843,14 @@ impl PartialEq for crate::UnOp {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::Uninterp {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::Uninterp {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Eq for crate::UseGlob {}
@@ -3000,5 +3012,22 @@ impl PartialEq for crate::WherePredicate {
             }
             _ => false,
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::WithSpecOnExpr {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::WithSpecOnExpr {
+    fn eq(&self, other: &Self) -> bool {
+        self.inputs == other.inputs && self.outputs == other.outputs
+            && self.follows == other.follows
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Eq for crate::WithSpecOnFn {}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for crate::WithSpecOnFn {
+    fn eq(&self, other: &Self) -> bool {
+        self.inputs == other.inputs && self.outputs == other.outputs
     }
 }

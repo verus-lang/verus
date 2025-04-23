@@ -973,41 +973,6 @@ fn emit_fields(state: &mut EmitState, fields: &Fields, suffix: &str) {
     }
 }
 
-fn emit_copy_clone(
-    state: &mut EmitState,
-    d: &DatatypeDecl,
-    copy_bounds: &Vec<bool>,
-    bound: &Bound,
-    bound_name: &str,
-    body: &str,
-) {
-    // impl<A: Clone, B> Clone for S<A, B> { fn clone(&self) -> Self { panic!() } }
-    // impl<A: Copy, B> Copy for S<A, B> {}
-    assert!(d.generic_params.len() == copy_bounds.len());
-    state.newdecl();
-    state.newline();
-    state.write("impl");
-    let mut copy_generics: Vec<GenericParam> = Vec::new();
-    let mut generic_args: Vec<GenericParam> = Vec::new();
-    let mut generic_bounds: Vec<GenericBound> = Vec::new();
-    for (gparam, copy_bound) in d.generic_params.iter().zip(copy_bounds.iter()) {
-        if *copy_bound {
-            let typ = Box::new(TypX::TypParam(gparam.name.clone()));
-            let generic_bound = GenericBound { typ, bound_vars: vec![], bound: bound.clone() };
-            generic_bounds.push(generic_bound);
-        }
-        copy_generics.push(gparam.clone());
-        generic_args.push(GenericParam { name: gparam.name.clone(), const_typ: None });
-    }
-    emit_generic_params(state, &copy_generics);
-    state.write(format!(" {bound_name} for "));
-    state.write(d.name.to_string());
-    emit_generic_params(state, &generic_args);
-    emit_generic_bounds(state, &vec![], &generic_bounds);
-    state.write(" ");
-    state.write(body);
-}
-
 pub(crate) fn emit_trait_decl(state: &mut EmitState, t: &TraitDecl) {
     state.newdecl();
     state.newline();
@@ -1083,11 +1048,6 @@ pub(crate) fn emit_datatype_decl(state: &mut EmitState, d: &DatatypeDecl) {
         }
     }
     state.end_span_opt(d.span);
-    if let Some(copy_bounds) = &d.implements_copy {
-        let clone_body = "{ fn clone(&self) -> Self { panic!() } }";
-        emit_copy_clone(state, d, copy_bounds, &Bound::Clone, "Clone", clone_body);
-        emit_copy_clone(state, d, copy_bounds, &Bound::Copy, "Copy", "{}");
-    }
 }
 
 pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
@@ -1099,6 +1059,7 @@ pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
         generic_bounds,
         assoc_typs,
         trait_polarity,
+        is_clone,
     } = t;
     state.newdecl();
     state.newline();
@@ -1123,6 +1084,10 @@ pub(crate) fn emit_trait_impl(state: &mut EmitState, t: &TraitImpl) {
         state.write(" = ");
         state.write(&typ.to_string());
         state.write(";");
+    }
+    if *is_clone {
+        state.newline();
+        state.write("fn clone(&self) -> Self { panic!() }");
     }
     state.newline_unindent();
     state.write("}");

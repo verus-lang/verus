@@ -67,7 +67,7 @@ pub ghost struct Provenance {}
 
 impl Provenance {
     /// The provenance of the null ptr (or really, "no provenance")
-    pub spec fn null() -> Self;
+    pub uninterp spec fn null() -> Self;
 }
 
 /// Metadata
@@ -141,7 +141,7 @@ pub ghost struct PointsToData<T> {
 impl<T: ?Sized> View for *mut T {
     type V = PtrData;
 
-    spec fn view(&self) -> Self::V;
+    uninterp spec fn view(&self) -> Self::V;
 }
 
 impl<T: ?Sized> View for *const T {
@@ -156,7 +156,7 @@ impl<T: ?Sized> View for *const T {
 impl<T> View for PointsTo<T> {
     type V = PointsToData<T>;
 
-    spec fn view(&self) -> Self::V;
+    uninterp spec fn view(&self) -> Self::V;
 }
 
 impl<T> PointsTo<T> {
@@ -246,7 +246,7 @@ impl<T> MemContents<T> {
 //////////////////////////////////////
 // Inverse functions:
 // Pointers are equivalent to their model
-pub spec fn ptr_mut_from_data<T: ?Sized>(data: PtrData) -> *mut T;
+pub uninterp spec fn ptr_mut_from_data<T: ?Sized>(data: PtrData) -> *mut T;
 
 #[verifier::inline]
 pub open spec fn ptr_from_data<T: ?Sized>(data: PtrData) -> *const T {
@@ -254,7 +254,7 @@ pub open spec fn ptr_from_data<T: ?Sized>(data: PtrData) -> *const T {
 }
 
 #[verifier::external_body]
-pub broadcast proof fn axiom_ptr_mut_from_data<T>(data: PtrData)
+pub broadcast proof fn axiom_ptr_mut_from_data<T: ?Sized>(data: PtrData)
     ensures
         (#[trigger] ptr_mut_from_data::<T>(data))@ == data,
 {
@@ -263,11 +263,11 @@ pub broadcast proof fn axiom_ptr_mut_from_data<T>(data: PtrData)
 // Equiv to ptr_mut_from_data, but named differently to avoid trigger issues
 // Only use for ptrs_mut_eq
 #[doc(hidden)]
-pub spec fn view_reverse_for_eq<T: ?Sized>(data: PtrData) -> *mut T;
+pub uninterp spec fn view_reverse_for_eq<T: ?Sized>(data: PtrData) -> *mut T;
 
 /// Implies that `a@ == b@ ==> a == b`.
 #[verifier::external_body]
-pub broadcast proof fn ptrs_mut_eq<T>(a: *mut T)
+pub broadcast proof fn ptrs_mut_eq<T: ?Sized>(a: *mut T)
     ensures
         view_reverse_for_eq::<T>(#[trigger] a@) == a,
 {
@@ -510,7 +510,7 @@ impl IsExposed {
         self.provenance()
     }
 
-    pub spec fn provenance(self) -> Provenance;
+    pub uninterp spec fn provenance(self) -> Provenance;
 
     #[verifier::external_body]
     pub proof fn null() -> (tracked exp: IsExposed)
@@ -565,9 +565,9 @@ pub tracked struct PointsToRaw {
 }
 
 impl PointsToRaw {
-    pub spec fn provenance(self) -> Provenance;
+    pub uninterp spec fn provenance(self) -> Provenance;
 
-    pub spec fn dom(self) -> Set<int>;
+    pub uninterp spec fn dom(self) -> Set<int>;
 
     pub open spec fn is_range(self, start: int, len: int) -> bool {
         super::set_lib::set_int_range(start, start + len) =~= self.dom()
@@ -619,7 +619,6 @@ impl PointsToRaw {
     #[verifier::external_body]
     pub proof fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
-            is_sized::<V>(),
             start as int % align_of::<V>() as int == 0,
             self.is_range(start as int, size_of::<V>() as int),
         ensures
@@ -640,7 +639,6 @@ impl<V> PointsTo<V> {
         ensures
             points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() as int),
             points_to_raw.provenance() == self.ptr()@.provenance,
-            is_sized::<V>(),
     {
         unimplemented!();
     }
@@ -663,7 +661,7 @@ pub ghost struct DeallocData {
 }
 
 impl Dealloc {
-    pub spec fn view(self) -> DeallocData;
+    pub uninterp spec fn view(self) -> DeallocData;
 
     #[verifier::inline]
     pub open spec fn addr(self) -> usize {
@@ -771,9 +769,9 @@ impl<'a, T> Copy for SharedReference<'a, T> {
 }
 
 impl<'a, T> SharedReference<'a, T> {
-    pub spec fn value(self) -> T;
+    pub uninterp spec fn value(self) -> T;
 
-    pub spec fn ptr(self) -> *const T;
+    pub uninterp spec fn ptr(self) -> *const T;
 
     #[verifier::external_body]
     fn new(t: &'a T) -> (s: Self)

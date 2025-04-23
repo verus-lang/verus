@@ -3275,6 +3275,11 @@ impl Debug for crate::Publish {
                 formatter.field(v0);
                 formatter.finish()
             }
+            crate::Publish::Uninterp(v0) => {
+                let mut formatter = formatter.debug_tuple("Uninterp");
+                formatter.field(v0);
+                formatter.finish()
+            }
             crate::Publish::Default => formatter.write_str("Default"),
         }
     }
@@ -3439,6 +3444,7 @@ impl Debug for crate::SignatureSpec {
         formatter.field("decreases", &self.decreases);
         formatter.field("invariants", &self.invariants);
         formatter.field("unwind", &self.unwind);
+        formatter.field("with", &self.with);
         formatter.finish()
     }
 }
@@ -4032,6 +4038,14 @@ impl Debug for crate::UnOp {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::Uninterp {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Uninterp");
+        formatter.field("token", &self.token);
+        formatter.finish()
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Debug for crate::UseGlob {
@@ -4211,5 +4225,26 @@ impl Debug for crate::WherePredicate {
                 formatter.finish()
             }
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::WithSpecOnExpr {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("WithSpecOnExpr");
+        formatter.field("with", &self.with);
+        formatter.field("inputs", &self.inputs);
+        formatter.field("outputs", &self.outputs);
+        formatter.field("follows", &self.follows);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::WithSpecOnFn {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("WithSpecOnFn");
+        formatter.field("with", &self.with);
+        formatter.field("inputs", &self.inputs);
+        formatter.field("outputs", &self.outputs);
+        formatter.finish()
     }
 }

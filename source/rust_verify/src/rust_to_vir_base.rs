@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
     Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, Path, PathX,
-    Primitive, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
+    Primitive, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -210,7 +210,10 @@ pub(crate) fn qpath_to_ident<'tcx>(
     }
 }
 
-fn clean_all_escaping_bound_vars<'tcx, T: rustc_middle::ty::TypeFoldable<TyCtxt<'tcx>>>(
+pub(crate) fn clean_all_escaping_bound_vars<
+    'tcx,
+    T: rustc_middle::ty::TypeFoldable<TyCtxt<'tcx>>,
+>(
     tcx: TyCtxt<'tcx>,
     value: T,
     param_env_src: DefId,
@@ -1007,30 +1010,12 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
             let norm = at.normalize(*ty);
             if norm.value != *ty {
-                let mut has_infer = false;
                 for arg in norm.value.walk().into_iter() {
                     if let GenericArgKind::Type(t) = arg.unpack() {
-                        if let TyKind::Infer(..) = t.kind() {
-                            // If we find any Infer variables, abort the normalization.
-                            //
-                            // Why this comes up:
-                            // 'normalize' will create inference variables if it encounters
-                            // a projection type that it can't normalize.
-                            // Probably, we shouldn't be calling normalize with non-normalizable
-                            // types.
-                            //
-                            // Currently, the reason this comes up has to do with the way
-                            // we invoke mid_ty_to_vir on an external_trait_specification.
-                            // Specifically, the param_env has [ Self: ProxyTrait ]
-                            // but we attempt to normalize <Self as ExternalTrait>::AssocTyp.
-                            // There may be a better way to handle this.
-                            has_infer = true;
-                        }
+                        assert!(!matches!(t.kind(), TyKind::Infer(..)));
                     }
                 }
-                if !has_infer {
-                    return t_rec(&norm.value);
-                }
+                return t_rec(&norm.value);
             }
             // If normalization isn't possible, return a projection type:
             let assoc_item = tcx.associated_item(t.def_id);
@@ -1040,18 +1025,26 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             //   let trait_def = tcx.parent(assoc_item.trait_item_def_id.expect("..."));
             let trait_def = tcx.generics_of(t.def_id).parent;
             let t_args: Vec<_> = t.args.iter().filter(|x| x.as_region().is_none()).collect();
-            if t_args.iter().find(|x| x.as_type().is_none()).is_some() {
-                unsupported_err!(span, "projection type")
-            }
             match trait_def {
                 Some(trait_def) if t_args.len() >= 1 => {
                     let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def);
                     // In rustc, see create_substs_for_ast_path and create_substs_for_generic_args
                     let mut trait_typ_args = Vec::new();
-                    for ty in t_args.iter() {
-                        let ty = ty.as_type().expect("already checked for as_type");
-                        trait_typ_args.push(t_rec_flags(&ty, false)?.0);
+
+                    for arg in t_args.iter() {
+                        match arg.unpack() {
+                            rustc_middle::ty::GenericArgKind::Type(t) => {
+                                trait_typ_args.push(t_rec_flags(&t, false)?.0);
+                            }
+                            rustc_middle::ty::GenericArgKind::Lifetime(_) => {
+                                panic!("already filtered out lifetimes");
+                            }
+                            rustc_middle::ty::GenericArgKind::Const(cnst) => {
+                                trait_typ_args.push(mid_ty_const_to_vir(tcx, Some(span), &cnst)?);
+                            }
+                        }
                     }
+
                     let trait_typ_args = Arc::new(trait_typ_args);
                     let proj = TypX::Projection { trait_typ_args, trait_path, name };
                     return Ok((Arc::new(proj), false));
@@ -1172,9 +1165,14 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     };
     match cnst_kind {
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
-        ConstKind::Value(_tcx, ValTree::Leaf(i)) => {
+        ConstKind::Value(ty, ValTree::Leaf(i))
+            if matches!(ty.kind(), TyKind::Uint(_) | TyKind::Int(_)) =>
+        {
             let c = num_bigint::BigInt::from(i.to_bits(i.size()));
             Ok(Arc::new(TypX::ConstInt(c)))
+        }
+        ConstKind::Value(ty, ValTree::Leaf(i)) if matches!(ty.kind(), TyKind::Bool) => {
+            Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0)))
         }
         _ => {
             unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
@@ -1245,9 +1243,10 @@ pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
 }
 
 pub(crate) fn implements_structural<'tcx>(
-    ctxt: &Context<'tcx>,
+    bctx: &BodyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
 ) -> bool {
+    let ctxt = &bctx.ctxt;
     let structural_def_id = ctxt
         .verus_items
         .name_to_id
@@ -1263,7 +1262,7 @@ pub(crate) fn implements_structural<'tcx>(
         .type_implements_trait(
             *structural_def_id,
             vec![ty].into_iter(),
-            rustc_middle::ty::ParamEnv::empty(),
+            ctxt.tcx.param_env(bctx.fun_id),
         )
         .must_apply_modulo_regions();
     ty_impls_structural
@@ -1282,7 +1281,11 @@ pub(crate) fn is_smt_equality<'tcx>(
         (TypX::Int(_), TypX::Int(_)) => Ok(true),
         (TypX::Datatype(..), TypX::Datatype(..)) if types_equal(&t1, &t2) => {
             let ty = bctx.types.node_type(*id1);
-            Ok(implements_structural(&bctx.ctxt, ty))
+            Ok(implements_structural(&bctx, ty))
+        }
+        (TypX::TypParam(_), TypX::TypParam(_)) if types_equal(&t1, &t2) => {
+            let ty = bctx.types.node_type(*id1);
+            Ok(implements_structural(&bctx, ty))
         }
         _ => Ok(false),
     }
@@ -1377,8 +1380,7 @@ pub(crate) fn check_generic_bound<'tcx>(
     trait_def_id: DefId,
     args: &[GenericArg<'tcx>],
 ) -> Result<Option<vir::ast::GenericBound>, VirErr> {
-    if Some(trait_def_id) == tcx.lang_items().sized_trait()
-        || Some(trait_def_id) == tcx.lang_items().copy_trait()
+    if Some(trait_def_id) == tcx.lang_items().copy_trait()
         || Some(trait_def_id) == tcx.lang_items().unpin_trait()
         || Some(trait_def_id) == tcx.lang_items().sync_trait()
         || Some(trait_def_id) == tcx.lang_items().tuple_trait()
@@ -1407,7 +1409,11 @@ pub(crate) fn check_generic_bound<'tcx>(
                 }
             }
         }
-        let trait_name = def_id_to_vir_path(tcx, verus_items, trait_def_id);
+        let trait_name = if Some(trait_def_id) == tcx.lang_items().sized_trait() {
+            TraitId::Sized
+        } else {
+            TraitId::Path(def_id_to_vir_path(tcx, verus_items, trait_def_id))
+        };
         Ok(Some(Arc::new(GenericBoundX::Trait(trait_name, Arc::new(vir_args)))))
     }
 }
@@ -1540,7 +1546,7 @@ where
                     substs,
                 )?;
                 if let Some(generic_bound) = generic_bound {
-                    if let GenericBoundX::Trait(path, typs) = &*generic_bound {
+                    if let GenericBoundX::Trait(TraitId::Path(path), typs) = &*generic_bound {
                         let bound = GenericBoundX::TypEquality(
                             path.clone(),
                             typs.clone(),

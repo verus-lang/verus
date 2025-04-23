@@ -35,6 +35,7 @@ pub mod hash_map;
 pub mod hash_set;
 pub mod invariant;
 pub mod layout;
+pub mod logatom;
 pub mod map;
 pub mod map_lib;
 pub mod math;
@@ -82,7 +83,7 @@ pub broadcast group group_vstd_default {
     seq_lib::group_seq_lib_default,
     map::group_map_axioms,
     set::group_set_axioms,
-    set_lib::group_set_lib_axioms,
+    set_lib::group_set_lib_default,
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
     std_specs::vec::group_vec_axioms,
@@ -104,7 +105,7 @@ pub broadcast group group_vstd_default {
     seq_lib::group_seq_lib_default,
     map::group_map_axioms,
     set::group_set_axioms,
-    set_lib::group_set_lib_axioms,
+    set_lib::group_set_lib_default,
     std_specs::bits::group_bits_axioms,
     std_specs::control_flow::group_control_flow_axioms,
     slice::group_slice_axioms,

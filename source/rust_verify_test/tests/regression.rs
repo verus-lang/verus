@@ -249,7 +249,7 @@ test_verify_one_file! {
 
             verus!{
                 mod X {
-                    pub spec fn foo();
+                    pub uninterp spec fn foo();
                 }
 
                 proof fn some_proof_fn() {
@@ -482,8 +482,8 @@ test_verify_one_file! {
             page_id: Ghost<PageId>,
         }
 
-        spec fn a(page_id: PageId) -> bool;
-        spec fn b(page_id: PageId) -> bool;
+        uninterp spec fn a(page_id: PageId) -> bool;
+        uninterp spec fn b(page_id: PageId) -> bool;
 
         proof fn test(pic: PageIdContainer) {
             let page_id = pic.page_id@;
@@ -582,7 +582,7 @@ test_verify_one_file! {
         pub open fn test() -> bool {
             1int > 0int
         }
-    } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open` or `closed`")
+    } => Err(err) => assert_vir_error_msg(err, "only `spec` functions can be marked `open`, `closed`, or `uninterp`")
 }
 
 test_verify_one_file! {
@@ -844,7 +844,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] assert_forall_trigger_regression_824 verus_code! {
         use vstd::seq::Seq;
-        pub spec fn f(x: u32) -> bool;
+        pub uninterp spec fn f(x: u32) -> bool;
 
         proof fn test(a: Seq<u32>)
             requires forall |i| #![trigger f(a[i])] f(a[i]),
@@ -1025,8 +1025,8 @@ test_verify_one_file! {
                 #[verifier::external_body]
                 pub struct S { p: core::marker::PhantomData<()> }
 
-                pub spec fn p1(s: S) -> bool;
-                pub spec fn p2(s: S) -> bool;
+                pub uninterp spec fn p1(s: S) -> bool;
+                pub uninterp spec fn p2(s: S) -> bool;
 
                 pub proof fn p(s: S)
                     requires p1(s),
@@ -1408,4 +1408,38 @@ test_verify_one_file! {
             }
         }
     ) => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] derive_regression_1575 verus_code! {
+        #[derive(Clone, Copy)]
+        enum A { A, }
+
+        #[derive(Clone, Copy)]
+        enum B { B, }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[ignore] #[test] field_update_regression_1591 verus_code! {
+        use vstd::map::*;
+
+        struct PCB {
+            pid: usize,
+            parent_pid: usize,
+        }
+
+
+        fn test(pcb: &mut PCB) {
+            pcb.parent_pid = 10;
+
+            //assert(pcb.pid == old(pcb).pid); // this assert should not be necessary
+
+            proof {
+                let m = Map::<usize, bool>::empty();
+                let m2 = m.insert(pcb.pid, false);
+                assert(m2.contains_key(pcb.pid));
+            }
+        }
+    } => Ok(())
 }

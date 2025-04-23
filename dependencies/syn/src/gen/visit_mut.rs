@@ -1088,6 +1088,9 @@ pub trait VisitMut {
     fn visit_un_op_mut(&mut self, i: &mut crate::UnOp) {
         visit_un_op_mut(self, i);
     }
+    fn visit_uninterp_mut(&mut self, i: &mut crate::Uninterp) {
+        visit_uninterp_mut(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_use_glob_mut(&mut self, i: &mut crate::UseGlob) {
@@ -1150,6 +1153,12 @@ pub trait VisitMut {
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_where_predicate_mut(&mut self, i: &mut crate::WherePredicate) {
         visit_where_predicate_mut(self, i);
+    }
+    fn visit_with_spec_on_expr_mut(&mut self, i: &mut crate::WithSpecOnExpr) {
+        visit_with_spec_on_expr_mut(self, i);
+    }
+    fn visit_with_spec_on_fn_mut(&mut self, i: &mut crate::WithSpecOnFn) {
+        visit_with_spec_on_fn_mut(self, i);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -4013,6 +4022,9 @@ where
         crate::Publish::OpenRestricted(_binding_0) => {
             v.visit_open_restricted_mut(_binding_0);
         }
+        crate::Publish::Uninterp(_binding_0) => {
+            v.visit_uninterp_mut(_binding_0);
+        }
         crate::Publish::Default => {}
     }
 }
@@ -4201,6 +4213,9 @@ where
     }
     if let Some(it) = &mut node.unwind {
         v.visit_signature_unwind_mut(it);
+    }
+    if let Some(it) = &mut node.with {
+        v.visit_with_spec_on_fn_mut(it);
     }
 }
 pub fn visit_signature_spec_attr_mut<V>(v: &mut V, node: &mut crate::SignatureSpecAttr)
@@ -4712,6 +4727,12 @@ where
         }
     }
 }
+pub fn visit_uninterp_mut<V>(v: &mut V, node: &mut crate::Uninterp)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
 pub fn visit_use_glob_mut<V>(v: &mut V, node: &mut crate::UseGlob)
@@ -4871,6 +4892,41 @@ where
         }
         crate::WherePredicate::Type(_binding_0) => {
             v.visit_predicate_type_mut(_binding_0);
+        }
+    }
+}
+pub fn visit_with_spec_on_expr_mut<V>(v: &mut V, node: &mut crate::WithSpecOnExpr)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.with);
+    for mut el in Punctuated::pairs_mut(&mut node.inputs) {
+        let it = el.value_mut();
+        v.visit_expr_mut(it);
+    }
+    if let Some(it) = &mut node.outputs {
+        skip!((it).0);
+        full!(v.visit_pat_mut(& mut (it).1));
+    }
+    if let Some(it) = &mut node.follows {
+        skip!((it).0);
+        full!(v.visit_pat_mut(& mut (it).1));
+    }
+}
+pub fn visit_with_spec_on_fn_mut<V>(v: &mut V, node: &mut crate::WithSpecOnFn)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.with);
+    for mut el in Punctuated::pairs_mut(&mut node.inputs) {
+        let it = el.value_mut();
+        full!(v.visit_fn_arg_mut(it));
+    }
+    if let Some(it) = &mut node.outputs {
+        skip!((it).0);
+        for mut el in Punctuated::pairs_mut(&mut (it).1) {
+            let it = el.value_mut();
+            full!(v.visit_pat_type_mut(it));
         }
     }
 }

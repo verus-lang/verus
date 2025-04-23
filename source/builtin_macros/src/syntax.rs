@@ -368,6 +368,65 @@ fn proof_fn_tracks_to_type(span: Span, tracks: impl Iterator<Item = bool>) -> Ty
     Type::Tuple(syn_verus::TypeTuple { paren_token, elems })
 }
 
+pub(crate) fn rewrite_exe_pat(pat: &mut Pat) -> (Vec<Stmt>, Vec<Stmt>) {
+    let mut visit_pat = ExecGhostPatVisitor {
+        inside_ghost: 0,
+        tracked: None,
+        ghost: None,
+        x_decls: Vec::new(),
+        x_assigns: Vec::new(),
+    };
+
+    visit_pat.visit_pat_mut(pat);
+    let ExecGhostPatVisitor { x_decls, x_assigns, .. } = visit_pat;
+    return (x_decls, x_assigns);
+}
+
+fn rewrite_args_unwrap_ghost_tracked(erase_ghost: &EraseGhost, arg: &mut FnArg) -> Vec<Stmt> {
+    // Check for Ghost(x) or Tracked(x) argument
+    let mut unwrap_ghost_tracked = Vec::new();
+    if let FnArgKind::Typed(PatType { pat, .. }) = &mut arg.kind {
+        let pat = &mut **pat;
+        let mut tracked_wrapper = false;
+        let mut wrapped_pat_id = None;
+        if let Pat::TupleStruct(tup) = &*pat {
+            let ghost_wrapper = path_is_ident(&tup.path, "Ghost");
+            tracked_wrapper = path_is_ident(&tup.path, "Tracked");
+            if ghost_wrapper || tracked_wrapper || tup.elems.len() == 1 {
+                if let Pat::Ident(id) = &tup.elems[0] {
+                    wrapped_pat_id = Some(id.clone());
+                }
+            }
+        }
+        if let Some(mut wrapped_pat_id) = wrapped_pat_id {
+            // Change
+            //   fn f(x: Tracked<T>) {
+            // to
+            //   fn f(verus_tmp_x: Tracked<T>) {
+            //       #[verus::internal(header_unwrap_parameter)] let t;
+            //       #[verifier::proof_block] { t = verus_tmp_x.get() };
+            let span = pat.span();
+            let x = wrapped_pat_id.ident;
+            let tmp_id =
+                Ident::new(&format!("verus_tmp_{x}"), Span::mixed_site().located_at(pat.span()));
+            wrapped_pat_id.ident = tmp_id.clone();
+            *pat = Pat::Ident(wrapped_pat_id);
+            if erase_ghost.keep() {
+                unwrap_ghost_tracked.push(stmt_with_semi!(
+                    span => #[verus::internal(header_unwrap_parameter)] let #x));
+                if tracked_wrapper {
+                    unwrap_ghost_tracked.push(stmt_with_semi!(
+                        span => #[verifier::proof_block] { #x = #tmp_id.get() }));
+                } else {
+                    unwrap_ghost_tracked.push(stmt_with_semi!(
+                        span => #[verifier::proof_block] { #x = #tmp_id.view() }));
+                }
+            }
+        }
+    }
+    unwrap_ghost_tracked
+}
+
 impl Visitor {
     fn take_ghost<T: Default>(&self, dest: &mut T) -> T {
         take_ghost(self.erase_ghost, dest)
@@ -412,6 +471,7 @@ impl Visitor {
         &mut self,
         spec: &mut SignatureSpec,
         ret_pat: Option<(Pat, TType)>,
+        final_ret_pat: Option<Pat>, // Some(pat) if different from ret_pat,
         is_const: bool,
         span: Span,
     ) -> Vec<Stmt> {
@@ -506,6 +566,13 @@ impl Visitor {
                 };
                 if cont {
                     if let Some((p, ty)) = ret_pat {
+                        if let Some(final_ret_pat) = final_ret_pat {
+                            for expr in exprs.exprs.iter_mut() {
+                                *expr = Expr::Verbatim(
+                                    quote_spanned! {token.span => {let #final_ret_pat = #p; #expr}},
+                                )
+                            }
+                        }
                         spec_stmts.push(Stmt::Expr(
                             Expr::Verbatim(
                                 quote_spanned_builtin!(builtin, token.span => #builtin::ensures(|#p: #ty| [#exprs])),
@@ -672,47 +739,7 @@ impl Visitor {
             }
 
             // Check for Ghost(x) or Tracked(x) argument
-            if let FnArgKind::Typed(PatType { pat, .. }) = &mut arg.kind {
-                let pat = &mut **pat;
-                let mut tracked_wrapper = false;
-                let mut wrapped_pat_id = None;
-                if let Pat::TupleStruct(tup) = &*pat {
-                    let ghost_wrapper = path_is_ident(&tup.path, "Ghost");
-                    tracked_wrapper = path_is_ident(&tup.path, "Tracked");
-                    if ghost_wrapper || tracked_wrapper || tup.elems.len() == 1 {
-                        if let Pat::Ident(id) = &tup.elems[0] {
-                            wrapped_pat_id = Some(id.clone());
-                        }
-                    }
-                }
-                if let Some(mut wrapped_pat_id) = wrapped_pat_id {
-                    // Change
-                    //   fn f(x: Tracked<T>) {
-                    // to
-                    //   fn f(verus_tmp_x: Tracked<T>) {
-                    //       #[verus::internal(header_unwrap_parameter)] let t;
-                    //       #[verifier::proof_block] { t = verus_tmp_x.get() };
-                    let span = pat.span();
-                    let x = wrapped_pat_id.ident;
-                    let tmp_id = Ident::new(
-                        &format!("verus_tmp_{x}"),
-                        Span::mixed_site().located_at(pat.span()),
-                    );
-                    wrapped_pat_id.ident = tmp_id.clone();
-                    *pat = Pat::Ident(wrapped_pat_id);
-                    if self.erase_ghost.keep() {
-                        unwrap_ghost_tracked.push(stmt_with_semi!(
-                            span => #[verus::internal(header_unwrap_parameter)] let #x));
-                        if tracked_wrapper {
-                            unwrap_ghost_tracked.push(stmt_with_semi!(
-                                span => #[verifier::proof_block] { #x = #tmp_id.get() }));
-                        } else {
-                            unwrap_ghost_tracked.push(stmt_with_semi!(
-                                span => #[verifier::proof_block] { #x = #tmp_id.view() }));
-                        }
-                    }
-                }
-            }
+            unwrap_ghost_tracked.extend(rewrite_args_unwrap_ghost_tracked(&self.erase_ghost, arg));
 
             arg.tracked = None;
         }
@@ -757,7 +784,7 @@ impl Visitor {
             let publish_span = sig.publish.span();
             stmts.push(stmt_with_semi!(
                 publish_span =>
-                compile_error!("only `spec` functions can be marked `open` or `closed`")
+                compile_error!("only `spec` functions can be marked `open`, `closed`, or `uninterp`")
             ));
         }
 
@@ -779,19 +806,37 @@ impl Visitor {
             Publish::Default => vec![],
             Publish::Closed(o) => vec![mk_verus_attr(o.token.span, quote! { closed })],
             Publish::Open(o) => vec![mk_verus_attr(o.token.span, quote! { open })],
-            Publish::OpenRestricted(_) => {
-                unimplemented!("TODO: support open(...)")
+            Publish::Uninterp(o) => vec![mk_verus_attr(o.token.span, quote! { uninterp })],
+            Publish::OpenRestricted(o) => {
+                let in_token = &o.in_token;
+                let p = &o.path;
+                stmts.push(stmt_with_semi!(
+                    o.path.span() =>
+                    #[verus::internal(open_visibility_qualifier)]
+                    pub(#in_token#p) use crate as _
+                ));
+                vec![mk_verus_attr(o.open_token.span, quote! { open })]
             }
         };
 
         let (unimpl, ext_attrs) = match (&sig.mode, semi_token, is_trait) {
-            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => (
-                vec![Stmt::Expr(
+            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => {
+                // uninterpreted function
+                let unimpl = vec![Stmt::Expr(
                     Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())),
                     None,
-                )],
-                vec![mk_verus_attr(semi.span, quote! { external_body })],
-            ),
+                )];
+                #[cfg(verus_keep_ghost)]
+                if !matches!(&sig.publish, Publish::Uninterp(_)) {
+                    proc_macro::Diagnostic::spanned(
+                        sig.span().unwrap(),
+                        proc_macro::Level::Warning,
+                        "uninterpreted functions (`spec` functions defined without a body) need to be marked as `uninterp`\nthis will become a hard error in the future",
+                    )
+                    .emit();
+                }
+                (unimpl, vec![mk_verus_attr(semi.span, quote! { external_body })])
+            }
             _ => (vec![], vec![]),
         };
 
@@ -821,7 +866,7 @@ impl Visitor {
 
         let sig_span = sig.span().clone();
         let spec_stmts =
-            self.take_sig_specs(&mut sig.spec, ret_pat, sig.constness.is_some(), sig_span);
+            self.take_sig_specs(&mut sig.spec, ret_pat, None, sig.constness.is_some(), sig_span);
         if !self.erase_ghost.erase() {
             stmts.extend(spec_stmts);
         }
@@ -921,6 +966,7 @@ impl Visitor {
             (_, _, Publish::Default) => vec![mk_verus_attr(span, quote! { open })],
             (_, _, Publish::Closed(o)) => vec![mk_verus_attr(o.token.span, quote! { closed })],
             (_, _, Publish::Open(o)) => vec![mk_verus_attr(o.token.span, quote! { open })],
+            (_, _, Publish::Uninterp(o)) => vec![mk_verus_attr(o.token.span, quote! { uninterp })],
             (_, _, Publish::OpenRestricted(_)) => {
                 unimplemented!("TODO: support open(...)")
             }
@@ -1434,7 +1480,6 @@ impl Visitor {
                                     broadcast proof fn #lemma_ident()
                                         ensures
                                             #[trigger] #vstd::layout::size_of::<#type_>() == #size_lit,
-                                            #vstd::layout::is_sized::<#type_>(),
                                             #ensures_align
                                     {
                                     }
@@ -1536,6 +1581,7 @@ impl Visitor {
                 decreases: None,
                 invariants: invariants,
                 unwind: unwind,
+                with: None,
             },
         };
 
@@ -4296,6 +4342,66 @@ pub(crate) fn rewrite_expr(
     proc_macro::TokenStream::from(new_stream)
 }
 
+struct Stmts(Vec<Stmt>);
+
+impl Parse for Stmts {
+    fn parse(input: ParseStream) -> syn_verus::Result<Self> {
+        Block::parse_within(input).map(|stmts| Stmts(stmts))
+    }
+}
+
+pub(crate) fn rewrite_proof_decl(
+    erase_ghost: EraseGhost,
+    stream: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let stream = rejoin_tokens(stream);
+    let Stmts(stmts) = parse_macro_input!(stream as Stmts);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor {
+        erase_ghost,
+        use_spec_traits: true,
+        inside_ghost: 0,
+        inside_type: 0,
+        inside_external_code: 0,
+        inside_const: false,
+        inside_arith: InsideArith::None,
+        assign_to: false,
+        rustdoc: env_rustdoc(),
+    };
+    for mut ss in stmts {
+        match ss {
+            Stmt::Local(Local { tracked: None, ghost: None, .. }) => {
+                return quote_spanned!(ss.span() => compile_error!("Exec local is not allowed in proof_decl")).into();
+            }
+            Stmt::Local(_) => {
+                let (skip, mut new_stmts) = visitor.visit_stmt_extend(&mut ss);
+                if !skip {
+                    new_stmts.insert(0, ss)
+                }
+                for mut ss in new_stmts {
+                    visitor.visit_stmt_mut(&mut ss);
+                    ss.to_tokens(&mut new_stream);
+                }
+            }
+            _ => {
+                let span = ss.span();
+                let mut proof_expr = Expr::Unary(ExprUnary {
+                    attrs: vec![],
+                    expr: Box::new(Expr::Block(ExprBlock {
+                        attrs: vec![],
+                        label: None,
+                        block: Block { brace_token: Brace(span), stmts: vec![ss] },
+                    })),
+                    op: UnOp::Proof(Token![proof](span)),
+                });
+                visitor.visit_expr_mut(&mut proof_expr);
+                proof_expr.to_tokens(&mut new_stream);
+            }
+        };
+    }
+    proc_macro::TokenStream::from(new_stream)
+}
+
 pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, expr: &mut Expr) {
     let mut visitor = Visitor {
         erase_ghost,
@@ -4311,14 +4417,86 @@ pub(crate) fn rewrite_expr_node(erase_ghost: EraseGhost, inside_ghost: bool, exp
     visitor.visit_expr_mut(expr);
 }
 
+fn take_sig_with_spec(
+    erase_ghost: EraseGhost,
+    with: syn_verus::WithSpecOnFn,
+    sig: &mut syn::Signature,
+    ret_pat: &mut Option<Pat>,
+) -> Vec<Stmt> {
+    let syn_verus::WithSpecOnFn { mut inputs, outputs, .. } = with;
+    let mut spec_stmts = vec![];
+    if inputs.len() > 0 {
+        for arg in inputs.iter_mut() {
+            spec_stmts.extend(rewrite_args_unwrap_ghost_tracked(&erase_ghost, arg));
+            sig.inputs.push(syn::parse_quote_spanned! { arg.span() => #arg })
+        }
+    }
+    // ret.0 is executable returns.
+    // ret.1.. is the tracked/ghost returns.
+    if let Some((token, extra_ret)) = outputs {
+        if extra_ret.len() > 0 {
+            let span = extra_ret.span();
+            let extra_ret_typs: Vec<_> = extra_ret.iter().map(|pt| pt.ty.clone()).collect();
+            let mut elems = Punctuated::new();
+            if let Some(pat) = ret_pat {
+                elems.push(pat.clone());
+            } else {
+                elems.push(Pat::Wild(syn_verus::PatWild {
+                    attrs: vec![],
+                    underscore_token: Token![_](span),
+                }));
+            }
+            for pt in extra_ret {
+                elems.push(pt.pat.as_ref().clone());
+            }
+            *ret_pat = Some(Pat::Tuple(syn_verus::PatTuple {
+                attrs: vec![],
+                paren_token: Paren::default(),
+                elems,
+            }));
+            match &mut sig.output {
+                syn::ReturnType::Default => {
+                    let ty = syn::Type::Verbatim(quote_spanned!(
+                        sig.output.span() => (() #(,#extra_ret_typs)*)
+                    ));
+                    sig.output = syn::ReturnType::Type(syn::Token![->](token.span()), Box::new(ty));
+                }
+                syn::ReturnType::Type(_, ty) => {
+                    **ty = syn::Type::Verbatim(quote_spanned!(
+                        ty.span() => (#ty #(,#extra_ret_typs)*)
+                    ));
+                }
+            }
+        }
+    };
+    spec_stmts
+}
 pub(crate) fn sig_specs_attr(
     erase_ghost: EraseGhost,
     spec_attr: SignatureSpecAttr,
-    sig: &syn::Signature,
+    sig: &mut syn::Signature,
 ) -> Vec<Stmt> {
     let SignatureSpecAttr { ret_pat, mut spec } = spec_attr;
+    let mut spec_stmts = vec![];
+    let ret_pat = ret_pat.map(|v| v.0);
+    let mut final_ret_pat = ret_pat.clone();
+    // If the provided ret_pat is not ident (e.g., A { a, b }),
+    // we need to replace it with ident pat.
+    // ensure_expr1 to
+    // {let A{a, b} = _tmp_ret; ensure_expr1}
+    if let Some(with) = spec.with {
+        spec_stmts.extend(take_sig_with_spec(erase_ghost, with, sig, &mut final_ret_pat));
+    }
+    spec.with = None;
     let ret_pat = match (ret_pat, &sig.output) {
-        (Some((pat, _)), syn::ReturnType::Type(_, ty)) => Some((pat, ty.clone())),
+        (Some(pat), syn::ReturnType::Type(_, ty)) => {
+            let pat = if !matches!(pat, Pat::Ident(_)) {
+                Pat::Verbatim(quote_spanned! {pat.span() => __verus_tmp_ret})
+            } else {
+                pat
+            };
+            Some((pat, ty.clone()))
+        }
         _ => None,
     };
     let mut visitor = Visitor {
@@ -4333,7 +4511,14 @@ pub(crate) fn sig_specs_attr(
         rustdoc: env_rustdoc(),
     };
     let sig_span = sig.span().clone();
-    visitor.take_sig_specs(&mut spec, ret_pat, sig.constness.is_some(), sig_span)
+    spec_stmts.extend(visitor.take_sig_specs(
+        &mut spec,
+        ret_pat,
+        final_ret_pat,
+        sig.constness.is_some(),
+        sig_span,
+    ));
+    spec_stmts
 }
 
 pub(crate) fn while_loop_spec_attr(

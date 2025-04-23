@@ -248,7 +248,7 @@ test_verify_one_file! {
             t: T,
         }
 
-        #[verus_verify]
+        #[verus_verify(rlimit(2))]
         trait SomeTrait {
             #[verus_spec(ret =>
                 requires true
@@ -275,6 +275,249 @@ test_verify_one_file! {
         fn g() {
             let r = f();
             proof!{assert(r);}
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_external_with_unsupported_features code!{
+        #[verus_verify(external)]
+        fn f<'a>(v: &'a mut [usize]) -> &'a mut usize {
+            unimplemented!()
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_prover_attributes code!{
+        #[verus_verify(spinoff_prover, rlimit(2))]
+        #[verus_spec(
+            ensures
+                true
+        )]
+        fn test()
+        {}
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_invalid_combination_attr code!{
+        #[verus_verify(external, spinoff_prover)]
+        fn f<'a>(v: &'a mut [usize]) -> &'a mut usize {
+            unimplemented!()
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "conflict parameters")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_decl code!{
+        #[verus_spec]
+        fn f() {}
+        #[verus_spec]
+        fn test() {
+            proof!{
+                let x = 1 as int;
+                assert(x == 1);
+            }
+            proof_decl!{
+                let ghost mut x;
+                let tracked y = false;
+                x = 2int;
+                assert(!y);
+                if x == 1 {
+                    assert(false);
+                }
+            }
+
+            f();
+            proof!{
+                assert(!y);
+                assert(x == 2);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_proof_decl_reject_exec code!{
+        #[verus_spec]
+        fn f() {}
+        #[verus_spec]
+        fn test() {
+            proof_decl!{
+                f();
+            }
+            f();
+        }
+    } => Err(e) => assert_vir_error_msg(e, "cannot call function `crate::f` with mode exec")
+}
+
+test_verify_one_file! {
+    #[test] test_proof_decl_reject_exec_local code!{
+        #[verus_spec]
+        fn test() {
+            proof_decl!{
+                let x = true;
+            }
+        }
+    } => Err(e) => assert_vir_error_msg(e, "Exec local is not allowed in proof_decl")
+}
+
+test_verify_one_file! {
+    #[test] test_with code!{
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+                -> z: Ghost<u32>
+            requires
+                x < 100,
+                *old(y) < 100,
+            ensures
+                *y == x,
+                ret == x,
+                z@ == x,
+        )]
+        fn test_mut_tracked(x: u32) -> u32 {
+            proof!{
+                *y = x;
+            }
+            #[verus_spec(with |= Ghost(x))]
+            x
+        }
+
+        #[verus_spec]
+        fn test_call_mut_tracked(x: u32) {
+            proof_decl!{
+                let tracked mut y = 0u32;
+            }
+            {#[verus_spec(with Tracked(&mut y), Ghost(0) => _)]
+            test_mut_tracked(1);
+            };
+
+            if x < 100 && #[verus_spec(with Tracked(&mut y), Ghost(0) => _)]test_mut_tracked(x) == 0 {
+                return;
+            }
+
+            #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))]
+            let _ = test_mut_tracked(1);
+
+            proof!{
+                assert(y == 1);
+                assert(z == 1);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_trait_signature code!{
+        trait X {
+            #[verus_spec(ret =>
+                with
+                    Tracked(y): Tracked<&mut u32>,
+                    Ghost(w): Ghost<u32>,
+                    -> z: Ghost<u32>
+            )]
+            fn f(&self, x: u32) -> bool;
+        }
+    } => Err(e) => assert_any_vir_error_msg(e, "`with` does not support trait")
+}
+
+test_verify_one_file! {
+    #[test] test_unverified_code_signature code!{
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+                -> z: Ghost<u32>
+        )]
+        fn test_mut_tracked(x: u32) -> u32 {
+            proof!{
+                *y = x;
+            }
+            #[verus_spec(with |= Ghost(x))]
+            x
+        }
+
+        #[verifier::external]
+        fn external_call_with_dummy(x: u32) -> u32 {
+            #[verus_spec(with Tracked::assume_new(), Ghost::assume_new() => _)]
+            test_mut_tracked(0)
+        }
+
+        #[verifier::external]
+        fn external_call_untouched(x: u32) -> u32 {
+            test_mut_tracked(0)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_verified_call_unverified_signature code!{
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+                -> z: Ghost<u32>
+        )]
+        fn test_mut_tracked(x: u32) -> u32 {
+            proof!{
+                *y = x;
+            }
+            #[verus_spec(with |= Ghost(x))]
+            x
+        }
+
+        #[verus_spec]
+        fn verified_call_unverified(x: u32) {
+            test_mut_tracked(0); // FAILS
+        }
+    } => Err(e) => {
+        assert!(e.errors[0].rendered.contains("with"));
+        assert_one_fails(e)
+    }
+}
+
+test_verify_one_file! {
+    #[test] test_with2 code!{
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+                ->  z: Ghost<u32>
+            requires
+                x < 100,
+                *old(y) < 100,
+            ensures
+                *y == x,
+                ret == x,
+                z@ == x,
+        )]
+        fn test_mut_tracked(x: u32) -> u32 {
+            proof!{
+                *y = x;
+            }
+            #[verus_spec(with |= Ghost(x))]
+            x
+        }
+
+        #[verus_spec]
+        fn test_cal_mut_tracked(x: u32) {
+            proof_decl!{
+                let ghost mut z = 0u32;
+                let tracked mut y = 0u32;
+            }
+            if #[verus_spec(with Tracked(&mut y), Ghost(0) => Ghost(z))] test_mut_tracked(1) == 0 {
+                proof!{
+                    assert(z == 1);
+                }
+                return;
+            }
+
+            proof!{
+                assert(y == 1);
+            }
         }
     } => Ok(())
 }

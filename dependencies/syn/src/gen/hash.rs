@@ -2903,8 +2903,12 @@ impl Hash for crate::Publish {
                 state.write_u8(2u8);
                 v0.hash(state);
             }
-            crate::Publish::Default => {
+            crate::Publish::Uninterp(v0) => {
                 state.write_u8(3u8);
+                v0.hash(state);
+            }
+            crate::Publish::Default => {
+                state.write_u8(4u8);
             }
         }
     }
@@ -3070,6 +3074,7 @@ impl Hash for crate::SignatureSpec {
         self.decreases.hash(state);
         self.invariants.hash(state);
         self.unwind.hash(state);
+        self.with.hash(state);
     }
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
@@ -3602,6 +3607,13 @@ impl Hash for crate::UnOp {
         }
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::Uninterp {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::UseGlob {
@@ -3777,5 +3789,26 @@ impl Hash for crate::WherePredicate {
                 v0.hash(state);
             }
         }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::WithSpecOnExpr {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.inputs.hash(state);
+        self.outputs.hash(state);
+        self.follows.hash(state);
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::WithSpecOnFn {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.inputs.hash(state);
+        self.outputs.hash(state);
     }
 }

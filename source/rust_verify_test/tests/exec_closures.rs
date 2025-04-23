@@ -283,7 +283,7 @@ test_verify_one_file_with_options! {
         use vstd::prelude::*;
 
         // TODO requires/ensures need to be spec-erased
-        spec fn goo() -> bool;
+        uninterp spec fn goo() -> bool;
 
         fn testfn() {
             let f = || ensures goo() { assume(goo()); };

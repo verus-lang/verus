@@ -5771,6 +5771,11 @@
             "syn": "OpenRestricted"
           }
         ],
+        "Uninterp": [
+          {
+            "syn": "Uninterp"
+          }
+        ],
         "Default": []
       }
     },
@@ -6184,6 +6189,11 @@
         "unwind": {
           "option": {
             "syn": "SignatureUnwind"
+          }
+        },
+        "with": {
+          "option": {
+            "syn": "WithSpecOnFn"
           }
         }
       }
@@ -7162,6 +7172,17 @@
       "exhaustive": false
     },
     {
+      "ident": "Uninterp",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Uninterp"
+        }
+      }
+    },
+    {
       "ident": "UseGlob",
       "features": {
         "any": [
@@ -7467,6 +7488,85 @@
         ]
       },
       "exhaustive": false
+    },
+    {
+      "ident": "WithSpecOnExpr",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "with": {
+          "token": "With"
+        },
+        "inputs": {
+          "punctuated": {
+            "element": {
+              "syn": "Expr"
+            },
+            "punct": "Comma"
+          }
+        },
+        "outputs": {
+          "option": {
+            "tuple": [
+              {
+                "token": "FatArrow"
+              },
+              {
+                "syn": "Pat"
+              }
+            ]
+          }
+        },
+        "follows": {
+          "option": {
+            "tuple": [
+              {
+                "token": "OrEq"
+              },
+              {
+                "syn": "Pat"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "ident": "WithSpecOnFn",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "with": {
+          "token": "With"
+        },
+        "inputs": {
+          "punctuated": {
+            "element": {
+              "syn": "FnArg"
+            },
+            "punct": "Comma"
+          }
+        },
+        "outputs": {
+          "option": {
+            "tuple": [
+              {
+                "token": "RArrow"
+              },
+              {
+                "punctuated": {
+                  "element": {
+                    "syn": "PatType"
+                  },
+                  "punct": "Comma"
+                }
+              }
+            ]
+          }
+        }
+      }
     }
   ],
   "tokens": {
@@ -7616,6 +7716,7 @@
     "Type": "type",
     "Typeof": "typeof",
     "Underscore": "_",
+    "Uninterp": "uninterp",
     "Union": "union",
     "Unsafe": "unsafe",
     "Unsized": "unsized",
@@ -7625,6 +7726,7 @@
     "When": "when",
     "Where": "where",
     "While": "while",
+    "With": "with",
     "Yield": "yield"
   }
 }

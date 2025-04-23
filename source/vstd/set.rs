@@ -178,7 +178,7 @@ impl<A> Set<A> {
 
     /// Creates a [`Map`] whose domain is the given set.
     /// The values of the map are given by `f`, a function of the keys.
-    pub closed spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> Map<A, V>;
+    pub uninterp spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> Map<A, V>;
 
     /// Returns `true` if the sets are disjoint, i.e., if their interesection is
     /// the empty set.

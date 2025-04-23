@@ -443,9 +443,7 @@ test_verify_one_file_with_options! {
             assert(align_of::<u32>() == 4); // FAILS
         }
 
-        proof fn test_ptr_layout<T>()
-            requires vstd::layout::is_sized::<T>()
-        {
+        proof fn test_ptr_layout<T>() {
             assert(size_of::<*mut T>() == size_of::<*const T>());
             assert(size_of::<*mut T>() == size_of::<&T>());
             assert(align_of::<*mut T>() == align_of::<*const T>());

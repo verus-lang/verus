@@ -1074,6 +1074,9 @@ pub trait Visit<'ast> {
     fn visit_un_op(&mut self, i: &'ast crate::UnOp) {
         visit_un_op(self, i);
     }
+    fn visit_uninterp(&mut self, i: &'ast crate::Uninterp) {
+        visit_uninterp(self, i);
+    }
     #[cfg(feature = "full")]
     #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
     fn visit_use_glob(&mut self, i: &'ast crate::UseGlob) {
@@ -1136,6 +1139,12 @@ pub trait Visit<'ast> {
     #[cfg_attr(docsrs, doc(cfg(any(feature = "derive", feature = "full"))))]
     fn visit_where_predicate(&mut self, i: &'ast crate::WherePredicate) {
         visit_where_predicate(self, i);
+    }
+    fn visit_with_spec_on_expr(&mut self, i: &'ast crate::WithSpecOnExpr) {
+        visit_with_spec_on_expr(self, i);
+    }
+    fn visit_with_spec_on_fn(&mut self, i: &'ast crate::WithSpecOnFn) {
+        visit_with_spec_on_fn(self, i);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -4201,6 +4210,9 @@ where
         crate::Publish::OpenRestricted(_binding_0) => {
             v.visit_open_restricted(_binding_0);
         }
+        crate::Publish::Uninterp(_binding_0) => {
+            v.visit_uninterp(_binding_0);
+        }
         crate::Publish::Default => {}
     }
 }
@@ -4396,6 +4408,9 @@ where
     }
     if let Some(it) = &node.unwind {
         v.visit_signature_unwind(it);
+    }
+    if let Some(it) = &node.with {
+        v.visit_with_spec_on_fn(it);
     }
 }
 pub fn visit_signature_spec_attr<'ast, V>(
@@ -4925,6 +4940,12 @@ where
         }
     }
 }
+pub fn visit_uninterp<'ast, V>(v: &mut V, node: &'ast crate::Uninterp)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.token);
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "full")))]
 pub fn visit_use_glob<'ast, V>(v: &mut V, node: &'ast crate::UseGlob)
@@ -5090,6 +5111,41 @@ where
         }
         crate::WherePredicate::Type(_binding_0) => {
             v.visit_predicate_type(_binding_0);
+        }
+    }
+}
+pub fn visit_with_spec_on_expr<'ast, V>(v: &mut V, node: &'ast crate::WithSpecOnExpr)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.with);
+    for el in Punctuated::pairs(&node.inputs) {
+        let it = el.value();
+        v.visit_expr(it);
+    }
+    if let Some(it) = &node.outputs {
+        skip!((it).0);
+        full!(v.visit_pat(& (it).1));
+    }
+    if let Some(it) = &node.follows {
+        skip!((it).0);
+        full!(v.visit_pat(& (it).1));
+    }
+}
+pub fn visit_with_spec_on_fn<'ast, V>(v: &mut V, node: &'ast crate::WithSpecOnFn)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.with);
+    for el in Punctuated::pairs(&node.inputs) {
+        let it = el.value();
+        full!(v.visit_fn_arg(it));
+    }
+    if let Some(it) = &node.outputs {
+        skip!((it).0);
+        for el in Punctuated::pairs(&(it).1) {
+            let it = el.value();
+            full!(v.visit_pat_type(it));
         }
     }
 }

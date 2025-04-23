@@ -274,8 +274,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_forallstmt_implies verus_code! {
-        spec fn f(x: int) -> bool;
-        spec fn g(x: int) -> bool;
+        uninterp spec fn f(x: int) -> bool;
+        uninterp spec fn g(x: int) -> bool;
 
         proof fn x()
             requires forall |x: int| f(x) ==> g(x)

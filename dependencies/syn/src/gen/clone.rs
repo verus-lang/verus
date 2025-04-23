@@ -2311,6 +2311,7 @@ impl Clone for crate::Publish {
             crate::Publish::OpenRestricted(v0) => {
                 crate::Publish::OpenRestricted(v0.clone())
             }
+            crate::Publish::Uninterp(v0) => crate::Publish::Uninterp(v0.clone()),
             crate::Publish::Default => crate::Publish::Default,
         }
     }
@@ -2460,6 +2461,7 @@ impl Clone for crate::SignatureSpec {
             decreases: self.decreases.clone(),
             invariants: self.invariants.clone(),
             unwind: self.unwind.clone(),
+            with: self.with.clone(),
         }
     }
 }
@@ -2858,6 +2860,14 @@ impl Clone for crate::UnOp {
         *self
     }
 }
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::Uninterp {
+    fn clone(&self) -> Self {
+        crate::Uninterp {
+            token: self.token.clone(),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
 impl Clone for crate::UseGlob {
@@ -2999,6 +3009,27 @@ impl Clone for crate::WherePredicate {
                 crate::WherePredicate::Lifetime(v0.clone())
             }
             crate::WherePredicate::Type(v0) => crate::WherePredicate::Type(v0.clone()),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::WithSpecOnExpr {
+    fn clone(&self) -> Self {
+        crate::WithSpecOnExpr {
+            with: self.with.clone(),
+            inputs: self.inputs.clone(),
+            outputs: self.outputs.clone(),
+            follows: self.follows.clone(),
+        }
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "clone-impls")))]
+impl Clone for crate::WithSpecOnFn {
+    fn clone(&self) -> Self {
+        crate::WithSpecOnFn {
+            with: self.with.clone(),
+            inputs: self.inputs.clone(),
+            outputs: self.outputs.clone(),
         }
     }
 }

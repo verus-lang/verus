@@ -748,6 +748,7 @@ define_keywords! {
     "exec"        pub struct Exec
     "open"        pub struct Open
     "closed"      pub struct Closed
+    "uninterp"    pub struct Uninterp
     "ghost"       pub struct Ghost
     "tracked"     pub struct Tracked
     "requires"    pub struct Requires
@@ -755,6 +756,7 @@ define_keywords! {
     "ensures"     pub struct Ensures
     "returns"     pub struct Returns
     "decreases"   pub struct Decreases
+    "with"        pub struct With
     "opens_invariants"   pub struct OpensInvariants
     "invariant_except_break"   pub struct InvariantExceptBreak
     "no_unwind"   pub struct NoUnwind
@@ -1034,6 +1036,7 @@ macro_rules! Token {
     [exec]        => { $crate::token::Exec };
     [open]        => { $crate::token::Open };
     [closed]      => { $crate::token::Closed };
+    [uninterp]    => { $crate::token::Uninterp };
     [ghost]       => { $crate::token::Ghost };
     [tracked]     => { $crate::token::Tracked };
     [requires]    => { $crate::token::Requires };
@@ -1041,6 +1044,7 @@ macro_rules! Token {
     [ensures]     => { $crate::token::Ensures };
     [returns]     => { $crate::token::Returns };
     [decreases]   => { $crate::token::Decreases };
+    [with]   => { $crate::token::With };
     [opens_invariants]   => { $crate::token::OpensInvariants };
     [invariant_except_break]   => { $crate::token::InvariantExceptBreak };
     [no_unwind]   => { $crate::token::NoUnwind };
