@@ -276,7 +276,12 @@ pub(crate) fn handle_external_fn<'tcx>(
 ) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool, Safety), VirErr> {
     // This function is the proxy, and we need to look up the actual path.
 
-    if mode != Mode::Exec {
+    let is_builtin_external = matches!(
+        external_fn_specification_via_external_trait
+            .and_then(|d| ctxt.verus_items.id_to_name.get(&d)),
+        Some(VerusItem::External(_))
+    );
+    if mode != Mode::Exec && !is_builtin_external {
         return err_span(
             sig.span,
             format!("an `assume_specification` declaration cannot be marked `{mode:}`"),
@@ -314,6 +319,7 @@ pub(crate) fn handle_external_fn<'tcx>(
 
     if external_path.krate == Some(Arc::new("builtin".to_string()))
         && &*external_path.last_segment() != "clone"
+        && !is_builtin_external
     {
         return err_span(
             sig.span,
@@ -396,14 +402,14 @@ pub(crate) fn handle_external_fn<'tcx>(
     let mut external_preds = all_predicates(ctxt.tcx, external_id, substs2_early, true);
     let in_trait = external_fn_specification_via_external_trait.is_some();
     remove_ignored_trait_bounds_from_predicates(
-        ctxt.tcx,
+        ctxt,
         in_trait,
         &[ctxt.tcx.parent(external_id), ctxt.tcx.parent(id)],
         None,
         &mut proxy_preds,
     );
     remove_ignored_trait_bounds_from_predicates(
-        ctxt.tcx,
+        ctxt,
         in_trait,
         &[ctxt.tcx.parent(external_id)],
         None,
@@ -1122,8 +1128,10 @@ pub(crate) fn check_item_fn<'tcx>(
     // calling it. But we translate things to point to it internally, so we need to
     // mark it non-private in order to avoid errors down the line.
     let mut visibility = visibility;
-    if path == vir::def::exec_nonstatic_call_path(&Some(ctxt.vstd_crate_name.clone())) {
-        visibility.restricted_to = None;
+    for b in [true, false] {
+        if path == vir::def::nonstatic_call_path(&Some(ctxt.vstd_crate_name.clone()), b) {
+            visibility.restricted_to = None;
+        }
     }
 
     // Given a func named 'f' which has mut parameters 'x_0', ..., 'x_n' and body
@@ -1476,7 +1484,7 @@ fn is_mut_ty<'tcx>(
 }
 
 pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
-    tcx: TyCtxt<'tcx>,
+    ctxt: &Context<'tcx>,
     in_trait: bool,
     trait_ids: &[DefId],
     ex_trait_assoc: Option<rustc_middle::ty::GenericArg<'tcx>>,
@@ -1484,6 +1492,7 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
 ) {
     use rustc_middle::ty;
     use rustc_middle::ty::{ConstKind, ScalarInt, ValTree};
+    let tcx = ctxt.tcx;
     preds.retain(|p: &Clause<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {
             if in_trait && trait_ids.contains(&tp.trait_ref.def_id) && tp.trait_ref.args.len() >= 1
@@ -1505,12 +1514,16 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
                     true
                 }
             } else {
-                use crate::verus_items::RustItem;
+                use crate::verus_items::{BuiltinTraitItem, RustItem, VerusItem};
                 let rust_item = crate::verus_items::get_rust_item(tcx, tp.trait_ref.def_id);
+                let verus_item = ctxt.verus_items.id_to_name.get(&tp.trait_ref.def_id);
                 match rust_item {
                     Some(RustItem::Destruct) => false, // https://github.com/verus-lang/verus/pull/726
                     Some(RustItem::SliceSealed) => false, // https://github.com/verus-lang/verus/pull/1434
-                    _ => true,
+                    _ => match verus_item {
+                        Some(VerusItem::BuiltinTrait(BuiltinTraitItem::Sealed)) => false,
+                        _ => true,
+                    },
                 }
             }
         }

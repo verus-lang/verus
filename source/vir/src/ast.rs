@@ -689,6 +689,8 @@ pub type ImplPaths = Arc<Vec<ImplPath>>;
 pub enum CallTargetKind {
     /// Statically known function
     Static,
+    /// Call to a proof function with argument modes and return mode
+    ProofFn(Arc<Vec<Mode>>, Mode),
     /// Dynamically dispatched function
     Dynamic,
     /// Dynamically dispatched function with known resolved target
@@ -791,8 +793,10 @@ pub enum ExprX {
     /// Specification closure
     Closure(VarBinders<Typ>, Expr),
     /// Executable closure
-    ExecClosure {
+    NonSpecClosure {
         params: VarBinders<Typ>,
+        /// If this is a proof_fn, record the args/ret modes; otherwise, None
+        proof_fn_modes: Option<(Arc<Vec<Mode>>, Mode)>,
         body: Expr,
         requires: Exprs,
         ensures: Exprs,

@@ -998,17 +998,15 @@ pub fn unique_var_name(
     out
 }
 
-pub fn exec_nonstatic_call_fun(vstd_crate_name: &Ident) -> Fun {
-    Arc::new(FunX { path: exec_nonstatic_call_path(&Some(vstd_crate_name.clone())) })
+pub fn nonstatic_call_fun(vstd_crate_name: &Ident, is_proof: bool) -> Fun {
+    Arc::new(FunX { path: nonstatic_call_path(&Some(vstd_crate_name.clone()), is_proof) })
 }
 
-pub fn exec_nonstatic_call_path(vstd_crate_name: &Option<Ident>) -> Path {
+pub fn nonstatic_call_path(vstd_crate_name: &Option<Ident>, is_proof: bool) -> Path {
+    let name = if is_proof { "proof_nonstatic_call" } else { "exec_nonstatic_call" };
     Arc::new(PathX {
         krate: vstd_crate_name.clone(),
-        segments: Arc::new(vec![
-            Arc::new("pervasive".to_string()),
-            Arc::new("exec_nonstatic_call".to_string()),
-        ]),
+        segments: Arc::new(vec![Arc::new("pervasive".to_string()), Arc::new(name.to_string())]),
     })
 }
 

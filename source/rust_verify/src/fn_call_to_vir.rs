@@ -133,7 +133,10 @@ pub(crate) fn fn_call_to_vir<'tcx>(
 
     if let Some(verus_item) = verus_item {
         match verus_item {
-            VerusItem::Vstd(_, _) | VerusItem::Marker(_) | VerusItem::BuiltinType(_) => (),
+            VerusItem::Vstd(_, _)
+            | VerusItem::Marker(_)
+            | VerusItem::BuiltinType(_)
+            | VerusItem::External(_) => (),
             _ => {
                 return verus_item_to_vir(
                     bctx,
@@ -675,18 +678,37 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 mk_expr(ExprX::UnaryOpr(UnaryOpr::IntegerTypeBound(kind, Mode::Spec), arg))
             }
-            ExprItem::ClosureToFnSpec => {
-                record_spec_fn_no_proof_args(bctx, expr);
-                unsupported_err_unless!(
-                    args_len == 1,
-                    expr.span,
-                    "expected closure_to_spec_fn",
-                    &args
-                );
+            ExprItem::ClosureToFnSpec | ExprItem::ClosureToFnProof => {
+                unsupported_err_unless!(args_len == 1, expr.span, "expected closure_to_fn", &args);
                 if let ExprKind::Closure(..) = &args[0].kind {
-                    closure_to_vir(bctx, &args[0], expr_typ()?, true, ExprModifier::REGULAR)
+                    let is_spec_fn = matches!(expr_item, ExprItem::ClosureToFnSpec);
+                    let proof_fn_modes = if matches!(expr_item, ExprItem::ClosureToFnProof) {
+                        let ty = bctx.types.node_type(expr.hir_id);
+                        if let Some((arg_modes, ret_mode)) =
+                            crate::rust_to_vir_base::try_get_proof_fn_modes(
+                                &bctx.ctxt, expr.span, &ty,
+                            )?
+                        {
+                            let op = CompilableOperator::ClosureToFnProof(ret_mode);
+                            record_call(bctx, expr, ResolvedCall::CompilableOperator(op));
+                            Some((Arc::new(arg_modes), ret_mode))
+                        } else {
+                            panic!("unexpected closure_to_proof_fn type")
+                        }
+                    } else {
+                        record_spec_fn_no_proof_args(bctx, expr);
+                        None
+                    };
+                    closure_to_vir(
+                        bctx,
+                        &args[0],
+                        expr_typ()?,
+                        is_spec_fn,
+                        proof_fn_modes,
+                        ExprModifier::REGULAR,
+                    )
                 } else {
-                    err_span(args[0].span, "the argument to `closure_to_spec_fn` must be a closure")
+                    err_span(args[0].span, "the argument to `closure_to_fn` must be a closure")
                 }
             }
             ExprItem::SignedMin | ExprItem::SignedMax | ExprItem::UnsignedMax => {
@@ -1480,6 +1502,7 @@ fn verus_item_to_vir<'tcx, 'a>(
         | VerusItem::Marker(_)
         | VerusItem::BuiltinType(_)
         | VerusItem::BuiltinTrait(_)
+        | VerusItem::External(_)
         | VerusItem::Global(_) => unreachable!(),
     }
 }
@@ -2043,21 +2066,15 @@ fn check_union_field<'tcx>(
 }
 
 fn record_compilable_operator<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, op: CompilableOperator) {
-    let resolved_call = ResolvedCall::CompilableOperator(op);
-    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-    erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+    record_call(bctx, expr, ResolvedCall::CompilableOperator(op));
 }
 
 fn record_spec_fn_allow_proof_args<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
-    let resolved_call = ResolvedCall::SpecAllowProofArgs;
-    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-    erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+    record_call(bctx, expr, ResolvedCall::SpecAllowProofArgs);
 }
 
 fn record_spec_fn_no_proof_args<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr) {
-    let resolved_call = ResolvedCall::Spec;
-    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-    erasure_info.resolved_calls.push((expr.hir_id, expr.span.data(), resolved_call));
+    record_call(bctx, expr, ResolvedCall::Spec)
 }
 
 fn record_call<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr, resolved_call: ResolvedCall) {

@@ -1478,7 +1478,15 @@ pub(crate) fn expr_to_stm_opt(
             state.disable_recommends -= 1;
             Ok((check_stms, ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
         }
-        ExprX::ExecClosure { params, body, requires, ensures, ret, external_spec } => {
+        ExprX::NonSpecClosure {
+            params,
+            proof_fn_modes: _,
+            body,
+            requires,
+            ensures,
+            ret,
+            external_spec,
+        } => {
             let mut all_stms = Vec::new();
 
             // Emit the internals of the closure (ClosureInner behaves like a dead-end)

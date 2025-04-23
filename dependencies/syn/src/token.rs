@@ -776,6 +776,7 @@ define_keywords! {
     "isnt"        pub struct IsNot
     "FnSpec"      pub struct FnSpec
     "spec_fn"     pub struct SpecFn
+    "proof_fn"    pub struct ProofFn
     "via"         pub struct Via
     "when"        pub struct When
     "any"         pub struct InvAny
@@ -1075,6 +1076,7 @@ macro_rules! Token {
     [group]       => { $crate::token::BroadcastGroup };
     [FnSpec]      => { $crate::token::FnSpec };
     [SpecFn]      => { $crate::token::SpecFn };
+    [proof_fn]    => { $crate::token::ProofFn };
     [assume_specification]   => { $crate::token::AssumeSpecification };
     [&&&]         => { $crate::token::BigAnd };
     [|||]         => { $crate::token::BigOr };

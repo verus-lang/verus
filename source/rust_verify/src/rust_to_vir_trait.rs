@@ -145,14 +145,14 @@ pub(crate) fn translate_trait<'tcx>(
         let mut preds2 = proxy_predicates.instantiate(tcx, ex_trait_ref_for.args).predicates;
         use crate::rust_to_vir_func::remove_ignored_trait_bounds_from_predicates;
         remove_ignored_trait_bounds_from_predicates(
-            tcx,
+            ctxt,
             true,
             &[ex_trait_ref_for.def_id],
             Some(ex_trait_ref_for.args[0]),
             &mut preds1,
         );
         remove_ignored_trait_bounds_from_predicates(
-            tcx,
+            ctxt,
             true,
             &[ex_trait_ref_for.def_id, trait_def_id],
             Some(ex_trait_ref_for.args[0]),
