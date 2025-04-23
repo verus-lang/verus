@@ -4,9 +4,9 @@ use crate::ast::{
     VirErr,
 };
 use crate::ast_to_sst::{
-    check_pure_expr, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks,
-    expr_to_one_stm_with_post, expr_to_pure_exp_check, expr_to_pure_exp_skip_checks,
-    expr_to_stm_opt, expr_to_stm_or_error, stms_to_one_stm, State,
+    expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
+    expr_to_pure_exp_check, expr_to_pure_exp_skip_checks, expr_to_stm_opt, expr_to_stm_or_error,
+    stms_to_one_stm, State,
 };
 use crate::ast_util::{is_body_visible_to, unit_typ};
 use crate::ast_visitor;
@@ -19,7 +19,7 @@ use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,
     FunctionSstX, PostConditionKind, PostConditionSst, UnwindSst,
 };
-use crate::sst_util::{subst_exp, subst_stm};
+use crate::sst_util::{subst_exp, subst_local_decl, subst_stm};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -446,37 +446,57 @@ pub fn func_axioms_to_sst(
 
 pub(crate) fn map_expr_rename_vars(
     e: &Arc<SpannedTyped<ExprX>>,
-    req_ens_e_rename: &HashMap<VarIdent, VarIdent>,
+    param_renames: &HashMap<VarIdent, VarIdent>,
 ) -> Result<Arc<SpannedTyped<ExprX>>, Message> {
     ast_visitor::map_expr_visitor(e, &|expr| {
         Ok(match &expr.x {
-            ExprX::Var(i) => expr.new_x(ExprX::Var(req_ens_e_rename.get(i).unwrap_or(i).clone())),
+            ExprX::Var(i) => expr.new_x(ExprX::Var(param_renames.get(i).unwrap_or(i).clone())),
             ExprX::VarLoc(i) => {
-                expr.new_x(ExprX::VarLoc(req_ens_e_rename.get(i).unwrap_or(i).clone()))
+                expr.new_x(ExprX::VarLoc(param_renames.get(i).unwrap_or(i).clone()))
             }
             ExprX::VarAt(i, at) => {
-                expr.new_x(ExprX::VarAt(req_ens_e_rename.get(i).unwrap_or(i).clone(), *at))
+                expr.new_x(ExprX::VarAt(param_renames.get(i).unwrap_or(i).clone(), *at))
             }
             _ => expr.clone(),
         })
     })
 }
 
-pub fn func_def_to_sst(
-    ctx: &Ctx,
-    diagnostics: &impl air::messages::Diagnostics,
-    function: &Function,
-) -> Result<FuncCheckSst, VirErr> {
-    let body = match &function.x.body {
-        Some(body) => body,
-        _ => {
-            panic!("func_def_to_sst should only be called for function with a body");
-        }
-    };
+struct InheritanceSubstitutions {
+    trait_typ_substs: HashMap<Ident, Typ>,
+    param_renames: HashMap<VarIdent, VarIdent>,
+}
 
-    // Note: since is_const functions serve double duty as exec and spec,
-    // we generate an exec check for them here to catch any arithmetic overflows.
-    let (trait_typ_substs, req_ens_function, inherit) =
+/// We need to lower a bunch of expressions from AST to SST, some of which come from the
+/// trait method. For those expressions, we need to perform substitutions on params and type params.
+/// The `Lowerer` is a helper object which can be configured for either context: the current
+/// function or the trait method.
+struct Lowerer<'a, D: air::messages::Diagnostics> {
+    function: Function,
+    inherit: Option<InheritanceSubstitutions>,
+    ens_pars: Pars,
+    diagnostics: &'a D,
+}
+
+impl<'a, D> Lowerer<'a, D>
+where
+    D: air::messages::Diagnostics,
+{
+    fn current(function: &Function, ens_pars: &Pars, diagnostics: &'a D) -> Self {
+        Lowerer {
+            function: function.clone(),
+            inherit: None,
+            ens_pars: ens_pars.clone(),
+            diagnostics,
+        }
+    }
+
+    fn inheritance(
+        ctx: &Ctx,
+        function: &Function,
+        ens_pars: &Pars,
+        diagnostics: &'a D,
+    ) -> Option<Self> {
         if let FunctionKind::TraitMethodImpl { method, trait_path, trait_typ_args, .. } =
             &function.x.kind
         {
@@ -491,10 +511,169 @@ pub fn func_def_to_sst(
             for (x, t) in typ_params.iter().zip(trait_typ_args.iter()) {
                 trait_typ_substs.insert(x.clone(), t.clone());
             }
-            (trait_typ_substs, &ctx.func_map[method], true)
+
+            let trait_function = ctx.func_map[method].clone();
+
+            let mut param_renames: HashMap<_, _> = trait_function
+                .x
+                .params
+                .iter()
+                .zip(function.x.params.iter())
+                .map(|(p1, p2)| (p1.x.name.clone(), p2.x.name.clone()))
+                .collect();
+            param_renames
+                .insert(trait_function.x.ret.x.name.clone(), function.x.ret.x.name.clone());
+
+            let inherit = InheritanceSubstitutions { trait_typ_substs, param_renames };
+
+            Some(Lowerer {
+                function: trait_function,
+                inherit: Some(inherit),
+                ens_pars: ens_pars.clone(),
+                diagnostics,
+            })
         } else {
-            (HashMap::new(), function, false)
+            None
+        }
+    }
+
+    /// Lower a pure expression (e.g. from a requires clause)
+    /// Outside of recommends checking:
+    ///    this produces a pure SST expression, no Stms, no LocalDecls
+    /// Inside recommends checking:
+    ///    may produce local decls (appended to state.local_decls) and Stms (appended to stms)
+    fn lower_pure(
+        &self,
+        ctx: &Ctx,
+        state: &mut State,
+        expr: &Expr,
+        stms: &mut Vec<Stm>,
+    ) -> Result<Exp, VirErr> {
+        if ctx.checking_spec_preconditions() {
+            match &self.inherit {
+                None => {
+                    let (mut stms0, exp) = expr_to_pure_exp_check(ctx, state, expr)?;
+                    stms.append(&mut stms0);
+                    Ok(exp)
+                }
+                Some(inh) => {
+                    // REVIEW: This works, but it is likely confusing and brittle.
+                    //
+                    // We need to perform substitutions so that the expression from the trait
+                    // function context makes sense in the trait implementation with has different
+                    // argument names and type arguments.
+                    //
+                    // Right now, we: do the param renames, then do the lowering, then do type
+                    // param substitution, and fix up the local decls.
+                    // Though it seems to work fine, it does mean the lowering takes place
+                    // in a weird "half-substituted" state.
+
+                    let local_decls_init_len = state.local_decls.len();
+
+                    let expr = map_expr_rename_vars(expr, &inh.param_renames)?;
+                    let (stms0, exp) = expr_to_pure_exp_check(ctx, state, &expr)?;
+
+                    let exp = subst_exp(&inh.trait_typ_substs, &HashMap::new(), &exp);
+                    let mut stms0: Vec<_> = stms0
+                        .iter()
+                        .map(|stm| subst_stm(&inh.trait_typ_substs, &HashMap::new(), &stm))
+                        .collect();
+
+                    let local_decls_new_len = state.local_decls.len();
+                    for i in local_decls_init_len..local_decls_new_len {
+                        state.local_decls[i] =
+                            subst_local_decl(&inh.trait_typ_substs, &state.local_decls[i]);
+                    }
+
+                    stms.append(&mut stms0);
+                    Ok(exp)
+                }
+            }
+        } else {
+            // In this case, we don't modify the state
+            // (expr_to_exp_skip_checks creates its own State object which is thrown away)
+            match &self.inherit {
+                None => {
+                    let exp = expr_to_exp_skip_checks(ctx, self.diagnostics, &self.ens_pars, expr)?;
+                    Ok(exp)
+                }
+                Some(inh) => {
+                    let expr = map_expr_rename_vars(expr, &inh.param_renames)?;
+                    let exp =
+                        expr_to_exp_skip_checks(ctx, self.diagnostics, &self.ens_pars, &expr)?;
+                    let exp = subst_exp(&inh.trait_typ_substs, &HashMap::new(), &exp);
+                    Ok(exp)
+                }
+            }
+        }
+    }
+}
+
+impl MaskSpec {
+    fn map_to_sst(
+        &self,
+        f: &mut impl FnMut(&Expr) -> Result<Exp, VirErr>,
+    ) -> Result<MaskSet, VirErr> {
+        let mask_set = match self {
+            MaskSpec::InvariantOpens(span, exprs) => {
+                let mut exps = vec![];
+                for expr in exprs.iter() {
+                    exps.push(f(expr)?);
+                }
+                MaskSet::from_list(&exps, &span)
+            }
+            MaskSpec::InvariantOpensExcept(span, exprs) => {
+                let mut exps = vec![];
+                for expr in exprs.iter() {
+                    exps.push(f(expr)?);
+                }
+                MaskSet::from_list_complement(&exps, &span)
+            }
+            MaskSpec::InvariantOpensSet(expr) => {
+                let exp = f(expr)?;
+                MaskSet::arbitrary(&exp)
+            }
         };
+        Ok(mask_set)
+    }
+}
+
+impl UnwindSpec {
+    fn map_to_sst(
+        &self,
+        f: &mut impl FnMut(&Expr) -> Result<Exp, VirErr>,
+    ) -> Result<UnwindSst, VirErr> {
+        let unwind_sst = match self {
+            UnwindSpec::NoUnwind => UnwindSst::NoUnwind,
+            UnwindSpec::MayUnwind => UnwindSst::MayUnwind,
+            UnwindSpec::NoUnwindWhen(expr) => UnwindSst::NoUnwindWhen(f(expr)?),
+        };
+        Ok(unwind_sst)
+    }
+}
+
+impl UnwindSst {
+    fn map(&self, f: &impl Fn(&Exp) -> Result<Exp, VirErr>) -> Result<UnwindSst, VirErr> {
+        let unwind_sst = match self {
+            UnwindSst::NoUnwind => UnwindSst::NoUnwind,
+            UnwindSst::MayUnwind => UnwindSst::MayUnwind,
+            UnwindSst::NoUnwindWhen(exp) => UnwindSst::NoUnwindWhen(f(exp)?),
+        };
+        Ok(unwind_sst)
+    }
+}
+
+pub fn func_def_to_sst(
+    ctx: &Ctx,
+    diagnostics: &impl air::messages::Diagnostics,
+    function: &Function,
+) -> Result<FuncCheckSst, VirErr> {
+    let body = match &function.x.body {
+        Some(body) => body,
+        _ => {
+            panic!("func_def_to_sst should only be called for function with a body");
+        }
+    };
 
     let mut state = State::new(diagnostics);
 
@@ -507,9 +686,7 @@ pub fn func_def_to_sst(
     } else {
         None
     };
-
     let ens_params = Arc::new(ens_params);
-    let req_pars = params_to_pars(&function.x.params, true);
     let ens_pars = params_to_pars(&ens_params, true);
 
     for param in function.x.params.iter() {
@@ -521,132 +698,89 @@ pub fn func_def_to_sst(
         );
     }
 
-    let mut req_ens_e_rename: HashMap<_, _> = req_ens_function
-        .x
-        .params
-        .iter()
-        .zip(function.x.params.iter())
-        .map(|(p1, p2)| (p1.x.name.clone(), p2.x.name.clone()))
-        .collect();
-    req_ens_e_rename.insert(req_ens_function.x.ret.x.name.clone(), function.x.ret.x.name.clone());
+    // This is used for lowering expressions from the function
+    let lo_current = Lowerer::current(&function, &ens_pars, diagnostics);
 
-    let mut req_stms: Vec<Stm> = Vec::new();
-    let mut reqs: Vec<Exp> = Vec::new();
-    for e in req_ens_function.x.require.iter() {
-        let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
-        if ctx.checking_spec_preconditions() {
-            // TODO: apply trait_typs_substs here?
-            let (stms, exp) = expr_to_pure_exp_check(ctx, &mut state, &e_with_req_ens_params)?;
-            req_stms.extend(stms);
-            req_stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
-        } else {
-            // skip checks because we call expr_to_pure_exp_check above
-            let exp = expr_to_exp_skip_checks(ctx, diagnostics, &req_pars, &e_with_req_ens_params)?;
-            let exp = subst_exp(&trait_typ_substs, &HashMap::new(), &exp);
-            reqs.push(exp);
-        }
-    }
+    // This is used for lowering expressions from the *trait method* that this function
+    // inherits a signature from. (If it exists.)
+    let lo_inheritance = Lowerer::inheritance(ctx, &function, &ens_pars, diagnostics);
+    let inherit = lo_inheritance.is_some();
 
-    let mask_spec = req_ens_function.x.mask_spec_or_default(&req_ens_function.span);
-    let inv_spec_exprs = match &mask_spec {
-        MaskSpec::InvariantOpens(_span, exprs) | MaskSpec::InvariantOpensExcept(_span, exprs) => {
-            exprs.clone()
-        }
-        MaskSpec::InvariantOpensSet(e) => Arc::new(vec![e.clone()]),
-    };
-    let mut inv_spec_exps = vec![];
-    for e in inv_spec_exprs.iter() {
-        let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
-        let exp = if ctx.checking_spec_preconditions() {
-            let (stms, exp) = expr_to_pure_exp_check(ctx, &mut state, &e_with_req_ens_params)?;
-            req_stms.extend(stms);
-            exp
-        } else {
-            let exp = expr_to_exp_skip_checks(ctx, diagnostics, &req_pars, &e_with_req_ens_params)?;
-            let exp = subst_exp(&trait_typ_substs, &HashMap::new(), &exp);
-            exp
+    // For most kinds of specs (requires, unwind, mask), we always use the trait method
+    // if it exists and otherwise use the original method.
+    // This macro returns the appropriate Lowerer object.
+    macro_rules! lo_specs {
+        () => {
+            if inherit { &lo_inheritance.as_ref().unwrap() } else { &lo_current }
         };
-
-        let exp = state.finalize_exp(ctx, &exp)?;
-        inv_spec_exps.push(exp.clone());
     }
-    let mask_set = match &mask_spec {
-        MaskSpec::InvariantOpens(span, _exprs) => MaskSet::from_list(&inv_spec_exps, &span),
-        MaskSpec::InvariantOpensExcept(span, _exprs) => {
-            MaskSet::from_list_complement(&inv_spec_exps, &span)
-        }
-        MaskSpec::InvariantOpensSet(_expr) => MaskSet::arbitrary(&inv_spec_exps[0]),
-    };
-    state.mask = Some(mask_set);
+    let specs_function = lo_specs!().function.clone();
 
-    let unwind = match req_ens_function.x.unwind_spec_or_default() {
-        UnwindSpec::MayUnwind => UnwindSst::MayUnwind,
-        UnwindSpec::NoUnwind => UnwindSst::NoUnwind,
-        UnwindSpec::NoUnwindWhen(e) => {
-            let e_with_req_ens_params = map_expr_rename_vars(&e, &req_ens_e_rename)?;
-            let exp = if ctx.checking_spec_preconditions() {
-                let (stms, exp) = crate::ast_to_sst::expr_to_pure_exp_check(
-                    ctx,
-                    &mut state,
-                    &e_with_req_ens_params,
-                )?;
-                req_stms.extend(stms);
-                exp
-            } else {
-                crate::ast_to_sst::expr_to_exp_skip_checks(
-                    ctx,
-                    diagnostics,
-                    &req_pars,
-                    &e_with_req_ens_params,
-                )?
-            };
-            let exp = state.finalize_exp(ctx, &exp)?;
-            UnwindSst::NoUnwindWhen(exp)
-        }
-    };
-
-    for e in function.x.decrease.iter() {
-        if ctx.checking_spec_preconditions() {
-            let stms = check_pure_expr(ctx, &mut state, &e)?;
-            req_stms.extend(stms);
-        }
-    }
-    let mut ens_spec_precondition_stms: Vec<Stm> = Vec::new();
+    // These are used for the normal case (no recommends-checking)
+    let mut reqs: Vec<Exp> = Vec::new();
     let mut enss: Vec<Exp> = Vec::new();
-    if inherit {
-        for e in req_ens_function.x.ensure.iter() {
-            let e_with_req_ens_params = map_expr_rename_vars(e, &req_ens_e_rename)?;
-            if ctx.checking_spec_preconditions() {
-                let stms = check_pure_expr(ctx, &mut state, &e_with_req_ens_params)?;
-                let stms: Vec<_> = stms
-                    .iter()
-                    .map(|stm| subst_stm(&trait_typ_substs, &HashMap::new(), &stm))
-                    .collect();
-                ens_spec_precondition_stms.extend(stms);
-            } else {
-                // skip checks because we call expr_to_pure_exp_check above
-                let exp =
-                    expr_to_exp_skip_checks(ctx, diagnostics, &ens_pars, &e_with_req_ens_params)?;
-                let exp = subst_exp(&trait_typ_substs, &HashMap::new(), &exp);
+
+    // These are used for recommends-checking
+    let mut req_stms: Vec<Stm> = Vec::new();
+    let mut ens_spec_precondition_stms: Vec<Stm> = Vec::new();
+
+    // Requires: take from trait method if it exists
+    let requires = specs_function.x.require.clone();
+    for r in requires.iter() {
+        let r = lo_specs!().lower_pure(ctx, &mut state, r, &mut req_stms)?;
+        if ctx.checking_spec_preconditions() {
+            req_stms.push(Spanned::new(r.span.clone(), StmX::Assume(r)));
+        } else {
+            reqs.push(r);
+        }
+    }
+
+    // Inv mask: take from trait method if it exists
+    let mask_ast = specs_function.x.mask_spec_or_default(&specs_function.span);
+    let mask_sst = mask_ast
+        .map_to_sst(&mut |expr| lo_specs!().lower_pure(ctx, &mut state, expr, &mut req_stms))?;
+    state.mask = Some(mask_sst);
+
+    // Unwind spec: take from trait method if it exists
+    let unwind_ast = specs_function.x.unwind_spec_or_default();
+    let unwind_sst = unwind_ast
+        .map_to_sst(&mut |expr| lo_specs!().lower_pure(ctx, &mut state, expr, &mut req_stms))?;
+
+    // Decreases: add recommends if necessary; otherwise nothing to do
+    if ctx.checking_spec_preconditions() {
+        for d in function.x.decrease.iter() {
+            let _d = lo_current.lower_pure(ctx, &mut state, d, &mut req_stms)?;
+        }
+    }
+
+    // Ensures: combine from both sources
+    for expr in lo_current.function.x.ensure.iter() {
+        let exp = lo_current.lower_pure(ctx, &mut state, expr, &mut ens_spec_precondition_stms)?;
+        if !ctx.checking_spec_preconditions() {
+            let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
+            enss.push(exp);
+        }
+    }
+    if let Some(lo_inheritance) = &lo_inheritance {
+        for expr in lo_inheritance.function.x.ensure.clone().iter() {
+            let exp = lo_inheritance.lower_pure(
+                ctx,
+                &mut state,
+                expr,
+                &mut ens_spec_precondition_stms,
+            )?;
+            if !ctx.checking_spec_preconditions() {
                 let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
                 enss.push(exp);
             }
         }
     }
-    for e in function.x.ensure.iter() {
-        if ctx.checking_spec_preconditions() {
-            ens_spec_precondition_stms.extend(check_pure_expr(ctx, &mut state, &e)?);
-        } else {
-            // skip checks because we call expr_to_pure_exp_check above
-            let exp = expr_to_exp_skip_checks(ctx, diagnostics, &ens_pars, &e)?;
-            let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
-            enss.push(exp);
-        }
-    }
 
     // AST --> SST
     let mut stm = expr_to_one_stm_with_post(&ctx, &mut state, &body, &function.span)?;
-    if ctx.checking_spec_preconditions() && trait_typ_substs.len() == 0 {
+
+    // TODO handle via the Lowerer
+    if ctx.checking_spec_preconditions() && !inherit {
         if let Some(fun) = &function.x.decrease_by {
             let decrease_by_fun = &ctx.func_map[fun];
             let (body_stms, _exp) = expr_to_stm_or_error(
@@ -664,6 +798,7 @@ pub fn func_def_to_sst(
     let ens_spec_precondition_stms: Result<Vec<_>, _> =
         ens_spec_precondition_stms.iter().map(|s| state.finalize_stm(&ctx, &s)).collect();
     let ens_spec_precondition_stms = ens_spec_precondition_stms?;
+    let unwind_sst = unwind_sst.map(&|e| state.finalize_exp(&ctx, e))?;
 
     // Check termination
     let no_termination_check = function.x.mode == Mode::Exec && function.x.decrease.len() == 0;
@@ -689,7 +824,7 @@ pub fn func_def_to_sst(
             ens_spec_precondition_stms: Arc::new(ens_spec_precondition_stms),
             kind: PostConditionKind::Ensures,
         }),
-        unwind,
+        unwind: unwind_sst,
         body: stm,
         local_decls: Arc::new(local_decls),
         statics: Arc::new(statics.into_iter().collect()),
