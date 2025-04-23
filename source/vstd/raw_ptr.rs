@@ -619,7 +619,6 @@ impl PointsToRaw {
     #[verifier::external_body]
     pub proof fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
-            is_sized::<V>(),
             start as int % align_of::<V>() as int == 0,
             self.is_range(start as int, size_of::<V>() as int),
         ensures
@@ -640,7 +639,6 @@ impl<V> PointsTo<V> {
         ensures
             points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() as int),
             points_to_raw.provenance() == self.ptr()@.provenance,
-            is_sized::<V>(),
     {
         unimplemented!();
     }
