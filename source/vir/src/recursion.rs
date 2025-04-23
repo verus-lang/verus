@@ -1,7 +1,7 @@
 use crate::ast::{
     AutospecUsage, CallTarget, CallTargetKind, Constant, Dt, ExprX, Fun, Function, FunctionKind,
-    GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VarBinder,
-    VirErr,
+    GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, TraitId, Typ, TypX, Typs, UnaryOpr,
+    VarBinder, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
@@ -455,7 +455,10 @@ pub(crate) fn expand_call_graph(
             }
         }
         let tr = match &**bound {
-            GenericBoundX::Trait(tr, _) => tr,
+            GenericBoundX::Trait(TraitId::Path(tr), _) => tr,
+            GenericBoundX::Trait(TraitId::Sized, _) => {
+                continue;
+            }
             GenericBoundX::TypEquality(tr, _, _, _) => tr,
             GenericBoundX::ConstTyp(_, _) => {
                 continue;

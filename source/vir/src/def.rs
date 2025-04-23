@@ -67,6 +67,7 @@ const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
+pub(crate) const SIZED_BOUND: &str = "sized";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
 const SLICE_TYPE: &str = "slice%";
@@ -152,7 +153,9 @@ pub const TYPE_ID_SINT: &str = "SINT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
 pub const TYPE_ID_CONST_BOOL: &str = "CONST_BOOL";
 pub const DECORATION: &str = "Dcr";
-pub const DECORATE_NIL: &str = "$";
+pub const DECORATE_NIL_SIZED: &str = "$";
+pub const DECORATE_NIL_SLICE: &str = "$slice";
+pub const DECORATE_STRUCT_INHERIT: &str = "STRUCT";
 pub const DECORATE_REF: &str = "REF";
 pub const DECORATE_MUT_REF: &str = "MUT_REF";
 pub const DECORATE_BOX: &str = "BOX";
@@ -462,6 +465,10 @@ pub fn proj_param(i: usize) -> Ident {
 
 pub fn trait_bound(trait_path: &Path) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
+}
+
+pub fn sized_bound() -> Ident {
+    Arc::new(SIZED_BOUND.to_string())
 }
 
 pub fn prefix_type_id_fun(i: usize) -> Ident {

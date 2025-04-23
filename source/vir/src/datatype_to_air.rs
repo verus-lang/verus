@@ -186,8 +186,8 @@ fn datatype_or_fun_to_air_commands(
     let unbox_box_x = ident_apply(&prefix_unbox(dpath), &vec![box_x.clone()]);
     let id = match dtyp_id {
         Some(DTypId::Expr(e)) => e,
-        Some(DTypId::Primitive(p)) => crate::sst_to_air::primitive_id(&p, &typ_args),
-        None => datatype_id(dpath, &typ_args),
+        Some(DTypId::Primitive(p)) => crate::sst_to_air::primitive_id(ctx, &p, &typ_args),
+        None => datatype_id(ctx, dpath, &typ_args),
     };
     let has = expr_has_type(&x_var, &id);
     let has_box = expr_has_type(&box_x, &id);
@@ -320,10 +320,10 @@ fn datatype_or_fun_to_air_commands(
                 // trigger on has_type(box(ctor(arg1 ... argn)), T(typs))
                 let params = vec_map(&*variant.fields, |f| field_to_par(span, f));
                 let params = Arc::new(params);
-                let ctor_args = func_def_args(&Arc::new(vec![]), &params);
+                let ctor_args = func_def_args(ctx, &Arc::new(vec![]), &params);
                 let ctor = ident_apply(&variant_ident(&dt, &variant.name), &ctor_args);
                 let box_ctor = ident_apply(&prefix_box(dpath), &vec![ctor]);
-                let has_ctor = expr_has_type(&box_ctor, &datatype_id(dpath, &typ_args));
+                let has_ctor = expr_has_type(&box_ctor, &datatype_id(ctx, dpath, &typ_args));
                 let mut pre: Vec<Expr> = Vec::new();
                 for field in variant.fields.iter() {
                     let (typ, _, _) = &field.a;
@@ -350,8 +350,8 @@ fn datatype_or_fun_to_air_commands(
                 xfield_params.extend(crate::def::types().iter().map(|s| str_typ(s)));
             }
             for t in typ_args_opt.iter() {
-                xfield_args.extend(crate::sst_to_air::typ_to_ids(t));
-                xfield_unbox_args.extend(crate::sst_to_air::typ_to_ids(t));
+                xfield_args.extend(crate::sst_to_air::typ_to_ids(ctx, t));
+                xfield_unbox_args.extend(crate::sst_to_air::typ_to_ids(ctx, t));
             }
             xfield_params.push(dtyp.clone());
             xfield_args.push(x_var.clone());
@@ -597,8 +597,8 @@ fn datatype_or_fun_to_air_commands(
                 let mut xfield_args: Vec<air::ast::Expr> = Vec::new();
                 let mut yfield_args: Vec<air::ast::Expr> = Vec::new();
                 for t in typ_args_opt.iter() {
-                    xfield_args.extend(crate::sst_to_air::typ_to_ids(t));
-                    yfield_args.extend(crate::sst_to_air::typ_to_ids(t));
+                    xfield_args.extend(crate::sst_to_air::typ_to_ids(ctx, t));
+                    yfield_args.extend(crate::sst_to_air::typ_to_ids(ctx, t));
                 }
                 xfield_args.push(unbox_x.clone());
                 yfield_args.push(unbox_y.clone());
@@ -607,7 +607,7 @@ fn datatype_or_fun_to_air_commands(
                 let eq = if uses_ext {
                     let xfield = crate::sst_to_air::as_box(ctx, xfield, typ);
                     let yfield = crate::sst_to_air::as_box(ctx, yfield, typ);
-                    let ftids = crate::sst_to_air::typ_to_id(typ);
+                    let ftids = crate::sst_to_air::typ_to_id(ctx, typ);
                     let mut args = vec![deep_var.clone()];
                     args.push(ftids);
                     args.push(xfield);
@@ -636,7 +636,7 @@ fn datatype_or_fun_to_air_commands(
             let xapp = Arc::new(ExprX::ApplyFun(apolytyp.clone(), unbox_x.clone(), args.clone()));
             let yapp = Arc::new(ExprX::ApplyFun(apolytyp.clone(), unbox_y.clone(), args.clone()));
             let tparamret = typ_args.last().expect("return type").clone();
-            let ret_ids = crate::sst_to_air::typ_to_id(&tparamret);
+            let ret_ids = crate::sst_to_air::typ_to_id(ctx, &tparamret);
             let mut args = vec![deep_var.clone()];
             args.push(ret_ids);
             args.push(xapp);
@@ -726,7 +726,9 @@ pub fn datatypes_and_primitives_to_air(ctx: &Ctx, datatypes: &crate::ast::Dataty
             EncodedDtKind::Monotyp,
             &dpath,
             &str_typ(&path_to_air_ident(&dpath)),
-            Some(DTypId::Expr(crate::sst_to_air::monotyp_to_id(monotyp).last().unwrap().clone())),
+            Some(DTypId::Expr(
+                crate::sst_to_air::monotyp_to_id(ctx, monotyp).last().unwrap().clone(),
+            )),
             crate::poly::monotyp_to_typ(monotyp),
             &Arc::new(vec![]),
             &Arc::new(vec![]),
