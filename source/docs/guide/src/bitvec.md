@@ -34,7 +34,7 @@ But context can be imported explicitly with a `requires` clause:
 Attaching `by(bit_vector)` to a proof function `f` makes Verus use
 the `bit_vector` solver when verifying `f`. But note when another function
 calls `f`, Verus uses the _normal_ solver to verify that it satisfies all the
-preconditions of `f`. Here is an example of using `by(bit_vector)` on a proof
+preconditions of `f`. Here's an example of using `by(bit_vector)` on a proof
 function:
 ```rust
 {{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:de_morgan}}
