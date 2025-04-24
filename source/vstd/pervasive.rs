@@ -89,6 +89,15 @@ pub trait ForLoopGhostIteratorNew {
     spec fn ghost_iter(&self) -> Self::GhostIter;
 }
 
+// TODO: when default trait methods are supported, most of these should be given defaults
+// pub trait GhostIterator {
+//     type ExecIter;
+
+//     type Item;
+
+//     spec fn ghost_peek_next(&self) -> Option<Self::Item>;
+// }
+
 #[cfg(verus_keep_ghost)]
 pub trait FnWithRequiresEnsures<Args, Output>: Sized {
     spec fn requires(self, args: Args) -> bool;
