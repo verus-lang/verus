@@ -9,7 +9,7 @@ use super::relations::*;
 #[allow(unused_imports)]
 use super::seq::*;
 #[allow(unused_imports)]
-use super::set::Set;
+use super::set::{Set, set_int_range};
 
 verus! {
 
@@ -464,7 +464,18 @@ impl<A> Seq<A> {
 
     /// Converts a sequence into a set
     pub open spec fn to_set(self) -> Set<A> {
-        Set::new(|a: A| self.contains(a))
+        set_int_range(0, self.len() as int).map(|i| self.index(i))
+    }
+
+    // TODO(jonh): how to elegantly broadcast this?
+    pub proof fn to_set_ensures(self)
+        ensures forall |i| 0 <= i < self.len() ==> #[trigger] self.to_set().contains(self[i])
+    {
+        crate::set::lemma_set_int_range_ensures(0, self.len() as int);
+        assert forall |i| 0 <= i < self.len() implies #[trigger] self.to_set().contains(self[i]) by {
+            assert( set_int_range(0, self.len() as int).contains(i) && self[i] == self[i] );
+            crate::set::lemma_set_map_contains( set_int_range(0, self.len() as int), |i| self.index(i));
+        }
     }
 
     /// Converts a sequence into a multiset
@@ -905,15 +916,8 @@ impl<A> Seq<A> {
             self.to_set().len() <= self.len(),
         decreases self.len(),
     {
+        // trivial from lemma_set_map_len
         broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
-        broadcast use group_seq_properties;
-        broadcast use super::set_lib::group_set_properties;
-
-        if self.len() == 0 {
-        } else {
-            assert(self.drop_last().to_set().insert(self.last()) =~= self.to_set());
-            self.drop_last().lemma_cardinality_of_set();
-        }
     }
 
     /// A sequence is of length 0 if and only if its conversion to
@@ -923,6 +927,7 @@ impl<A> Seq<A> {
             self.to_set().len() == 0 <==> self.len() == 0,
     {
         broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
+        self.to_set_ensures();
 
         assert(self.len() == 0 ==> self.to_set().len() == 0) by { self.lemma_cardinality_of_set() }
         assert(!(self.len() == 0) ==> !(self.to_set().len() == 0)) by {
@@ -943,6 +948,8 @@ impl<A> Seq<A> {
         decreases self.len(),
     {
         broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
+        self.to_set_ensures();
+        self.drop_first().to_set_ensures();
 
         if self.len() == 0 {
         } else {
@@ -1559,16 +1566,33 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
 
 // Helper function showing that the recursive definition matches the set comprehension one
 proof fn seq_to_set_equal_rec<A>(seq: Seq<A>)
-    ensures
-        seq.to_set() == seq_to_set_rec(seq),
+ensures
+    seq.to_set() == seq_to_set_rec(seq),
+decreases seq.len(),
 {
     broadcast use super::set::group_set_axioms;
 
-    assert(forall|n| #[trigger] seq.contains(n) <==> seq_to_set_rec(seq).contains(n)) by {
-        seq_to_set_rec_contains(seq);
+    if seq.len() == 0 {
+        assert( seq.to_set() == seq_to_set_rec(seq) );
+    } else {
+        seq_to_set_equal_rec(seq.drop_last());
+        // transfer map index witnesses to and fro between definitions
+        assert forall |e| seq.to_set().contains(e) implies seq_to_set_rec(seq).contains(e) by {
+            let i = choose |i| #![auto] set_int_range(0, seq.len() as int).contains(i) && seq.index(i) == e;
+            if i < seq.len() - 1 {
+                assert( set_int_range(0, seq.drop_last().len() as int).contains(i) );
+            }
+        }
+        assert forall |e| seq_to_set_rec(seq).contains(e) implies seq.to_set().contains(e) by {
+            let i = if seq_to_set_rec(seq.drop_last()).contains(e) {
+                choose |i| #![auto] set_int_range(0, seq.drop_last().len() as int).contains(i) && seq.drop_last().index(i) == e
+                } else {
+                    seq.len() - 1
+                };
+            assert( set_int_range(0, seq.len() as int).contains(i) && seq.index(i) == e );
+        }
+        assert( seq.to_set() == seq_to_set_rec(seq) );
     }
-    assert(forall|n| #[trigger] seq.contains(n) <==> seq.to_set().contains(n));
-    assert(seq.to_set() =~= seq_to_set_rec(seq));
 }
 
 /// The set obtained from a sequence is finite

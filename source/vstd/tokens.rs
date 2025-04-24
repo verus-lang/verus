@@ -176,8 +176,8 @@ pub trait MonotonicCountToken : Sized {
 ///
 /// | VerusSync Strategy  | Field type  | Token trait            |
 /// |---------------------|-------------|------------------------|
-/// | `set`               | `Set<V>`    | [`UniqueElementToken<V>`](`UniqueElementToken`) |
-/// | `persistent_set`    | `Set<V>`    | `ElementToken<V> + Copy` |
+/// | `set`               | `ISet<V>`    | [`UniqueElementToken<V>`](`UniqueElementToken`) |
+/// | `persistent_set`    | `ISet<V>`    | `ElementToken<V> + Copy` |
 /// | `multiset`          | `Multiset<V>` | `ElementToken<V>`      |
 ///
 /// Each token represents a single element of the set or multiset.
@@ -274,7 +274,8 @@ impl<Key, Value, Token> MapToken<Key, Value, Token>
     }
 
     #[verifier::inline]
-    pub open spec fn dom(self) -> Set<Key> {
+    pub open spec fn dom(self) -> ISet<Key> {
+        // TODO(jonh): bridging the gap until Maps can be type-finite.
         self.map().dom()
     }
 
@@ -380,10 +381,12 @@ impl<Element, Token> SetToken<Element, Token>
         self.inst
     }
 
-    pub closed spec fn set(self) -> Set<Element> {
-        Set::new(
-            |e: Element| self.m.dom().contains(e),
-        )
+    pub closed spec fn set(self) -> ISet<Element> {
+        self.m.dom()
+// TODO(jonh): ask why this fancy comprehension to rebuild the same set.
+//         ISet::new(
+//             |e: Element| self.m.dom().contains(e),
+//         )
     }
 
     #[verifier::inline]
@@ -394,10 +397,10 @@ impl<Element, Token> SetToken<Element, Token>
     pub proof fn empty(instance_id: InstanceId) -> (tracked s: Self)
         ensures
             s.instance_id() == instance_id,
-            s.set() === Set::empty(),
+            s.set() === ISet::empty(),
     {
         let tracked s = Self { inst: instance_id, m: Map::tracked_empty() };
-        assert(s.set() =~= Set::empty());
+        assert(s.set() =~= ISet::empty());
         return s;
     }
 
@@ -551,8 +554,8 @@ impl<Element, Token> MultisetToken<Element, Token>
             self.multiset() == old(self).multiset().insert(token.element()),
     {
         use_type_invariant(&*self);
-        let f = fresh(self.m.dom());
-        fresh_is_fresh(self.m.dom());
+        let f = fresh(self.m.dom().to_finite());
+        fresh_is_fresh(self.m.dom().to_finite());
         map_values_insert_not_in(
             Self::map_elems(self.m),
             f,

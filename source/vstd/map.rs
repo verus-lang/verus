@@ -17,6 +17,7 @@ verus! {
 ///
 /// In general, a map might be infinite.
 /// To work specifically with finite maps, see the [`self.finite()`](Set::finite) predicate.
+/// TODO(jonh): update docs here when we have Map/IMap type split.
 ///
 /// Maps can be constructed in a few different ways:
 ///  * [`Map::empty()`] constructs an empty map.
@@ -42,7 +43,7 @@ impl<K, V> Map<K, V> {
     /// Gives a `Map<K, V>` whose domain contains every key, and maps each key
     /// to the value given by `fv`.
     pub open spec fn total(fv: spec_fn(K) -> V) -> Map<K, V> {
-        Set::full().mk_map(fv)
+        ISet::full().mk_map(fv)
     }
 
     /// Gives a `Map<K, V>` whose domain is given by the boolean predicate on keys `fk`,
@@ -52,7 +53,7 @@ impl<K, V> Map<K, V> {
     }
 
     /// The domain of the map as a set.
-    pub closed spec fn dom(self) -> Set<K> {
+    pub closed spec fn dom(self) -> ISet<K> {
         Set::new(|k| (self.mapping)(k) is Some)
     }
 
@@ -170,7 +171,7 @@ impl<K, V> Map<K, V> {
     }
 
     #[verifier::external_body]
-    pub proof fn tracked_remove_keys(tracked &mut self, keys: Set<K>) -> (tracked out_map: Map<
+    pub proof fn tracked_remove_keys(tracked &mut self, keys: ISet<K>) -> (tracked out_map: Map<
         K,
         V,
     >)
@@ -228,11 +229,11 @@ pub broadcast proof fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, ke
 /// The domain of the empty map is the empty set
 pub broadcast proof fn axiom_map_empty<K, V>()
     ensures
-        #[trigger] Map::<K, V>::empty().dom() == Set::<K>::empty(),
+        #[trigger] Map::<K, V>::empty().dom() == ISet::<K>::empty(),
 {
     broadcast use super::set::group_set_axioms;
 
-    assert(Set::new(|k: K| (|k| None::<V>)(k) is Some) == Set::<K>::empty());
+    assert(ISet::new(|k: K| (|k| None::<V>)(k) is Some) == ISet::<K>::empty());
 }
 
 /// The domain of a map after inserting a key-value pair is equivalent to inserting the key into

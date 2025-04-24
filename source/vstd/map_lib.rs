@@ -55,8 +55,9 @@ impl<K, V> Map<K, V> {
     ///    map![1 => 10, 2 => 11].values() =~= set![10, 11]
     /// );
     /// ```
-    pub open spec fn values(self) -> Set<V> {
-        Set::<V>::new(|v: V| self.contains_value(v))
+    pub open spec fn values(self) -> ISet<V> {
+        self.dom().map(|k: K| self.index(k))    // use finiteness-preserving construction
+//         ISet::<V>::new(|v: V| self.contains_value(v))
     }
 
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
@@ -120,7 +121,7 @@ impl<K, V> Map<K, V> {
     ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4})
     ///    =~= map![1 => 10]);
     /// ```
-    pub open spec fn remove_keys(self, keys: Set<K>) -> Self {
+    pub open spec fn remove_keys(self, keys: ISet<K>) -> Self {
         Self::new(|k: K| self.dom().contains(k) && !keys.contains(k), |k: K| self[k])
     }
 
@@ -135,7 +136,7 @@ impl<K, V> Map<K, V> {
     ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4})
     ///    =~= map![2 => 11, 3 => 12]);
     /// ```
-    pub open spec fn restrict(self, keys: Set<K>) -> Self {
+    pub open spec fn restrict(self, keys: ISet<K>) -> Self {
         Self::new(|k: K| self.dom().contains(k) && keys.contains(k), |k: K| self[k])
     }
 
@@ -198,7 +199,7 @@ impl<K, V> Map<K, V> {
 
     /// Removing a set of n keys from a map that previously contained all n keys
     /// results in a domain of size n less than the original domain.
-    pub proof fn lemma_remove_keys_len(self, keys: Set<K>)
+    pub proof fn lemma_remove_keys_len(self, keys: ISet<K>)
         requires
             forall|k: K| #[trigger] keys.contains(k) ==> self.contains_key(k),
             keys.finite(),
@@ -341,30 +342,31 @@ pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: Map<K, V>, m2: Map<K, V>,
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
-/// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `Set::new(fk)`.
+/// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `ISet::new(fk)`.
 pub broadcast proof fn lemma_map_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(fk, fv).dom() == Set::<K>::new(|k: K| fk(k)),
+        #[trigger] Map::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)),
 {
-    assert(Set::new(fk) =~= Set::<K>::new(|k: K| fk(k)));
+    assert(ISet::new(fk) =~= ISet::<K>::new(|k: K| fk(k)));
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to
-/// the set constructed with `Set::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
+/// the set constructed with `ISet::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
 /// the set of all values fv(k) where fk(k) is true.
 pub broadcast proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(fk, fv).values() == Set::<V>::new(
+        #[trigger] Map::<K, V>::new(fk, fv).values() == ISet::<V>::new(
             |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
         ),
 {
-    let keys = Set::<K>::new(fk);
+    let keys = ISet::<K>::new(fk);
     let values = Map::<K, V>::new(fk, fv).values();
     let map = Map::<K, V>::new(fk, fv);
     assert(map.dom() =~= keys);
     assert(forall|k: K| #[trigger] fk(k) ==> keys.contains(k));
-    assert(values =~= Set::<V>::new(
+
+    assert(values =~= ISet::<V>::new(
         |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
     ));
 }
@@ -374,9 +376,9 @@ pub broadcast proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: sp
 pub proof fn lemma_map_properties<K, V>()
     ensures
         forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
-            Map::<K, V>::new(fk, fv).dom() == Set::<K>::new(|k: K| fk(k)),  //from lemma_map_new_domain
+            Map::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)),  //from lemma_map_new_domain
         forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
-            Map::<K, V>::new(fk, fv).values() == Set::<V>::new(
+            Map::<K, V>::new(fk, fv).values() == ISet::<V>::new(
                 |v: V| exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v,
             ),  //from lemma_map_new_values
 {
@@ -390,37 +392,10 @@ pub broadcast group group_map_properties {
 }
 
 pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
-    requires
-        m.dom().finite(),
-    ensures
-        m.values().finite(),
-    decreases m.len(),
+requires m.dom().finite(),
+ensures m.values().finite(),
 {
-    if m.len() > 0 {
-        let k = m.dom().choose();
-        let v = m[k];
-        let m1 = m.remove(k);
-        assert(m.contains_key(k));
-        assert(m.contains_value(v));
-        let mv = m.values();
-        let m1v = m1.values();
-        assert_sets_equal!(mv == m1v.insert(v), v0 => {
-            if m.contains_value(v0) {
-                if v0 != v {
-                    let k0 = choose|k0| #![auto] m.contains_key(k0) && m[k0] == v0;
-                    assert(k0 != k);
-                    assert(m1.contains_key(k0));
-                    assert(mv.contains(v0) ==> m1v.insert(v).contains(v0));
-                    assert(mv.contains(v0) <== m1v.insert(v).contains(v0));
-                }
-            }
-        });
-        assert(m1.len() < m.len());
-        lemma_values_finite(m1);
-        axiom_set_insert_finite(m1.values(), v);
-    } else {
-        assert(m.values() =~= Set::<V>::empty());
-    }
+    // This proof is trivial now, since values() is defined as the map() of a finite source map.
 }
 
 } // verus!

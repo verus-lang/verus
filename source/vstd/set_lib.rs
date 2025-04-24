@@ -4,7 +4,14 @@ use super::multiset::Multiset;
 use super::pervasive::*;
 use super::prelude::Seq;
 #[allow(unused_imports)]
-use super::prelude::*;
+// use super::prelude::*;
+use builtin_macros::verus;
+use builtin::int;
+use builtin::admit;
+use builtin::SpecOrd;
+use builtin::SpecAdd;
+use builtin::SpecSub;
+
 #[allow(unused_imports)]
 use super::relations::*;
 #[allow(unused_imports)]
@@ -14,28 +21,62 @@ verus! {
 
 broadcast use super::set::group_set_axioms;
 
-impl<A> Set<A> {
+//////////////////////////////////////////////////////////////////////////////
+// Some general set properties
+//////////////////////////////////////////////////////////////////////////////
+
+impl<A, const Finite:bool> Set<A, Finite> {
     /// Is `true` if called by a "full" set, i.e., a set containing every element of type `A`.
     pub open spec fn is_full(self) -> bool {
-        self == Set::<A>::full()
+        self.to_infinite() == ISet::<A>::full()
     }
 
     /// Is `true` if called by an "empty" set, i.e., a set containing no elements and has length 0
     pub open spec fn is_empty(self) -> (b: bool) {
-        self =~= Set::<A>::empty()
+        self =~= Set::<A, Finite>::empty()
     }
 
-    /// Returns the set contains an element `f(x)` for every element `x` in `self`.
-    pub open spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B> {
-        Set::new(|a: B| exists|x: A| self.contains(x) && a == f(x))
+    /// A singleton set has at least one element and any two elements are equal.
+    pub open spec fn is_singleton(self) -> bool {
+        &&& self.len() > 0
+        &&& (forall|x: A, y: A| self.contains(x) && self.contains(y) ==> x == y)
     }
 
+    /// An element in an ordered set is called a least element (or a minimum), if it is less than
+    /// every other element of the set.
+    ///
+    /// change f to leq bc it is a relation. also these are an ordering relation
+    pub open spec fn is_least(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
+        self.contains(min) && forall|x: A| self.contains(x) ==> #[trigger] leq(min, x)
+    }
+
+    /// An element in an ordered set is called a minimal element, if no other element is less than it.
+    pub open spec fn is_minimal(self, leq: spec_fn(A, A) -> bool, min: A) -> bool {
+        self.contains(min) && forall|x: A|
+            self.contains(x) && #[trigger] leq(x, min) ==> #[trigger] leq(min, x)
+    }
+
+    /// An element in an ordered set is called a greatest element (or a maximum), if it is greater than
+    ///every other element of the set.
+    pub open spec fn is_greatest(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
+        self.contains(max) && forall|x: A| self.contains(x) ==> #[trigger] leq(x, max)
+    }
+
+    /// An element in an ordered set is called a maximal element, if no other element is greater than it.
+    pub open spec fn is_maximal(self, leq: spec_fn(A, A) -> bool, max: A) -> bool {
+        self.contains(max) && forall|x: A|
+            self.contains(x) && #[trigger] leq(max, x) ==> #[trigger] leq(x, max)
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////////
+// Finite set properties
+//////////////////////////////////////////////////////////////////////////////
+
+impl<A> Set<A, true> {
     /// Converts a set into a sequence with an arbitrary ordering.
     pub open spec fn to_seq(self) -> Seq<A>
-        recommends
-            self.finite(),
         decreases self.len(),
-        when self.finite()
         via Self::decreases_proof
     {
         if self.len() == 0 {
@@ -63,21 +104,13 @@ impl<A> Set<A> {
         self.to_seq().sort_by(leq)
     }
 
-    /// A singleton set has at least one element and any two elements are equal.
-    pub open spec fn is_singleton(self) -> bool {
-        &&& self.len() > 0
-        &&& (forall|x: A, y: A| self.contains(x) && self.contains(y) ==> x == y)
-    }
-
     /// Any totally-ordered set contains a unique minimal (equivalently, least) element.
     /// Returns an arbitrary value if r is not a total ordering
     pub closed spec fn find_unique_minimal(self, r: spec_fn(A, A) -> bool) -> A
         recommends
             total_ordering(r),
             self.len() > 0,
-            self.finite(),
         decreases self.len(),
-        when self.finite()
         via Self::prove_decrease_min_unique
     {
         if self.len() <= 1 {
@@ -107,12 +140,11 @@ impl<A> Set<A> {
     /// Proof of correctness and expected behavior for `Set::find_unique_minimal`.
     pub proof fn find_unique_minimal_ensures(self, r: spec_fn(A, A) -> bool)
         requires
-            self.finite(),
             self.len() > 0,
             total_ordering(r),
         ensures
-            is_minimal(r, self.find_unique_minimal(r), self) && (forall|min: A|
-                is_minimal(r, min, self) ==> self.find_unique_minimal(r) == min),
+            self.is_minimal(r, self.find_unique_minimal(r)) && (forall|min: A|
+                self.is_minimal(r, min) ==> self.find_unique_minimal(r) == min),
         decreases self.len(),
     {
         broadcast use group_set_properties;
@@ -120,11 +152,11 @@ impl<A> Set<A> {
         if self.len() == 1 {
             let x = choose|x: A| self.contains(x);
             assert(self.remove(x).insert(x) =~= self);
-            assert(is_minimal(r, self.find_unique_minimal(r), self));
+            assert(self.is_minimal(r, self.find_unique_minimal(r)));
         } else {
             let x = choose|x: A| self.contains(x);
             self.remove(x).find_unique_minimal_ensures(r);
-            assert(is_minimal(r, self.remove(x).find_unique_minimal(r), self.remove(x)));
+            assert(self.remove(x).is_minimal(r, self.remove(x).find_unique_minimal(r)));
             let y = self.remove(x).find_unique_minimal(r);
             let min_updated = self.find_unique_minimal(r);
             assert(!r(y, x) ==> min_updated == x);
@@ -137,7 +169,7 @@ impl<A> Set<A> {
             ) by {
                 assert(r(min_updated, x) || r(min_updated, y));
                 if min_updated == y {  // Case where the new min is the old min
-                    assert(is_minimal(r, self.find_unique_minimal(r), self));
+                    assert(self.is_minimal(r, self.find_unique_minimal(r)));
                 } else {  //Case where the new min is the newest element
                     assert(self.remove(x).contains(elt) || elt == x);
                     assert(min_updated == x);
@@ -152,8 +184,8 @@ impl<A> Set<A> {
                 }
             }
             assert forall|min_poss: A|
-                is_minimal(r, min_poss, self) implies self.find_unique_minimal(r) == min_poss by {
-                assert(is_minimal(r, min_poss, self.remove(x)) || x == min_poss);
+                self.is_minimal(r, min_poss) implies self.find_unique_minimal(r) == min_poss by {
+                assert(self.remove(x).is_minimal(r, min_poss) || x == min_poss);
                 assert(r(min_poss, self.find_unique_minimal(r)));
             }
         }
@@ -166,7 +198,6 @@ impl<A> Set<A> {
             total_ordering(r),
             self.len() > 0,
         decreases self.len(),
-        when self.finite()
         via Self::prove_decrease_max_unique
     {
         if self.len() <= 1 {
@@ -191,12 +222,11 @@ impl<A> Set<A> {
     /// Proof of correctness and expected behavior for `Set::find_unique_maximal`.
     pub proof fn find_unique_maximal_ensures(self, r: spec_fn(A, A) -> bool)
         requires
-            self.finite(),
             self.len() > 0,
             total_ordering(r),
         ensures
-            is_maximal(r, self.find_unique_maximal(r), self) && (forall|max: A|
-                is_maximal(r, max, self) ==> self.find_unique_maximal(r) == max),
+            self.is_maximal(r, self.find_unique_maximal(r)) && (forall|max: A|
+                self.is_maximal(r, max) ==> self.find_unique_maximal(r) == max),
         decreases self.len(),
     {
         broadcast use group_set_properties;
@@ -208,7 +238,7 @@ impl<A> Set<A> {
         } else {
             let x = choose|x: A| self.contains(x);
             self.remove(x).find_unique_maximal_ensures(r);
-            assert(is_maximal(r, self.remove(x).find_unique_maximal(r), self.remove(x)));
+            assert(self.remove(x).is_maximal(r, self.remove(x).find_unique_maximal(r)));
             assert(self.remove(x).insert(x) =~= self);
             let y = self.remove(x).find_unique_maximal(r);
             let max_updated = self.find_unique_maximal(r);
@@ -223,7 +253,7 @@ impl<A> Set<A> {
                 if max_updated == y {  // Case where the new max is the old max
                     assert(r(elt, max_updated));
                     assert(r(x, max_updated));
-                    assert(is_maximal(r, self.find_unique_maximal(r), self));
+                    assert(self.is_maximal(r, self.find_unique_maximal(r)));
                 } else {  //Case where the new max is the newest element
                     assert(self.remove(x).contains(elt) || elt == x);
                     assert(max_updated == x);
@@ -241,8 +271,8 @@ impl<A> Set<A> {
                 }
             }
             assert forall|max_poss: A|
-                is_maximal(r, max_poss, self) implies self.find_unique_maximal(r) == max_poss by {
-                assert(is_maximal(r, max_poss, self.remove(x)) || x == max_poss);
+                self.is_maximal(r, max_poss) implies self.find_unique_maximal(r) == max_poss by {
+                assert(self.remove(x).is_maximal(r, max_poss) || x == max_poss);
                 assert(r(max_poss, self.find_unique_maximal(r)));
                 assert(r(self.find_unique_maximal(r), max_poss));
             }
@@ -251,6 +281,7 @@ impl<A> Set<A> {
 
     /// Converts a set into a multiset where each element from the set has
     /// multiplicity 1 and any other element has multiplicity 0.
+    // TODO(jonh): why should this be limited to finite sets? Are Multisets finite by type?
     pub open spec fn to_multiset(self) -> Multiset<A>
         decreases self.len(),
         when self.finite()
@@ -267,7 +298,6 @@ impl<A> Set<A> {
     /// A finite set with length 0 is equivalent to the empty set.
     pub proof fn lemma_len0_is_empty(self)
         requires
-            self.finite(),
             self.len() == 0,
         ensures
             self == Set::<A>::empty(),
@@ -291,10 +321,8 @@ impl<A> Set<A> {
         assert(self.remove(self.choose()) =~= Set::empty());
     }
 
-    /// A set has exactly one element, if and only if, it has at least one element and any two elements are equal.
+    /// A finite set has exactly one element, if and only if, it has at least one element and any two elements are equal.
     pub proof fn lemma_is_singleton(s: Set<A>)
-        requires
-            s.finite(),
         ensures
             s.is_singleton() == (s.len() == 1),
     {
@@ -313,23 +341,43 @@ impl<A> Set<A> {
     }
 
     /// The result of filtering a finite set is finite and has size less than or equal to the original set.
+    /// If you have an ISet inf that's finite and you'd like to use this property,
+    /// let fin = inf.to_finite(); // requires inf.finite()
+    /// fin.lemma_len_filter(f);   // proves fin.filter(f).len() <= fin.len()
+    /// assert( inf.filter(f).equiv(fin.filter(f)) );   // spec fn giving extensionality analog
+    /// across finite/infinite type variants
+    /// assert( inf.filter(f).finite() );   // conclusion available from equiv
+    /// assert( inf.filter(f).len() == fin.filter(f) );
+    /// assert( fin.len() == inf.len() ); // we know this by to_finite
     pub proof fn lemma_len_filter(self, f: spec_fn(A) -> bool)
-        requires
-            self.finite(),
         ensures
             self.filter(f).finite(),
             self.filter(f).len() <= self.len(),
         decreases self.len(),
     {
-        lemma_len_intersect::<A>(self, Set::new(f));
+        let x: Set<A> = self;
+        let xi = x.to_infinite();
+        let fi = ISet::<A>::new(f);
+        
+        congruent_infiniteness(x, x.to_infinite());
+        lemma_len_intersect(xi, fi);
+        congruent_len(x, xi);
+        assert( xi.intersect(fi) == xi.filter(f) ); // trigger lemma_set_filter_is_intersect
+        congruent_len(x.filter(f), xi.filter(f));
     }
+}
 
+//////////////////////////////////////////////////////////////////////////////
+// Ordering properties (available on both flavors of set)
+//////////////////////////////////////////////////////////////////////////////
+
+impl<A, const Finite:bool> Set<A, Finite> {
     /// In a pre-ordered set, a greatest element is necessarily maximal.
     pub proof fn lemma_greatest_implies_maximal(self, r: spec_fn(A, A) -> bool, max: A)
         requires
             pre_ordering(r),
         ensures
-            is_greatest(r, max, self) ==> is_maximal(r, max, self),
+            self.is_greatest(r, max) ==> self.is_maximal(r, max),
     {
     }
 
@@ -338,7 +386,7 @@ impl<A> Set<A> {
         requires
             pre_ordering(r),
         ensures
-            is_least(r, min, self) ==> is_minimal(r, min, self),
+            self.is_least(r, min) ==> self.is_minimal(r, min),
     {
     }
 
@@ -347,9 +395,9 @@ impl<A> Set<A> {
         requires
             total_ordering(r),
         ensures
-            is_greatest(r, max, self) <==> is_maximal(r, max, self),
+            self.is_greatest(r, max) <==> self.is_maximal(r, max),
     {
-        assert(is_maximal(r, max, self) ==> forall|x: A|
+        assert(self.is_maximal(r, max) ==> forall|x: A|
             !self.contains(x) || !r(max, x) || r(x, max));
     }
 
@@ -358,9 +406,9 @@ impl<A> Set<A> {
         requires
             total_ordering(r),
         ensures
-            is_least(r, min, self) <==> is_minimal(r, min, self),
+            self.is_least(r, min) <==> self.is_minimal(r, min),
     {
-        assert(is_minimal(r, min, self) ==> forall|x: A|
+        assert(self.is_minimal(r, min) ==> forall|x: A|
             !self.contains(x) || !r(x, min) || r(min, x));
     }
 
@@ -370,10 +418,10 @@ impl<A> Set<A> {
             partial_ordering(r),
         ensures
             forall|min: A, min_prime: A|
-                is_least(r, min, self) && is_least(r, min_prime, self) ==> min == min_prime,
+                self.is_least(r, min) && self.is_least(r, min_prime) ==> min == min_prime,
     {
         assert forall|min: A, min_prime: A|
-            is_least(r, min, self) && is_least(r, min_prime, self) implies min == min_prime by {
+            self.is_least(r, min) && self.is_least(r, min_prime) implies min == min_prime by {
             assert(r(min, min_prime));
             assert(r(min_prime, min));
         }
@@ -385,10 +433,10 @@ impl<A> Set<A> {
             partial_ordering(r),
         ensures
             forall|max: A, max_prime: A|
-                is_greatest(r, max, self) && is_greatest(r, max_prime, self) ==> max == max_prime,
+                self.is_greatest(r, max) && self.is_greatest(r, max_prime) ==> max == max_prime,
     {
         assert forall|max: A, max_prime: A|
-            is_greatest(r, max, self) && is_greatest(r, max_prime, self) implies max
+            self.is_greatest(r, max) && self.is_greatest(r, max_prime) implies max
             == max_prime by {
             assert(r(max_prime, max));
             assert(r(max, max_prime));
@@ -401,10 +449,10 @@ impl<A> Set<A> {
             total_ordering(r),
         ensures
             forall|min: A, min_prime: A|
-                is_minimal(r, min, self) && is_minimal(r, min_prime, self) ==> min == min_prime,
+                self.is_minimal(r, min) && self.is_minimal(r, min_prime) ==> min == min_prime,
     {
         assert forall|min: A, min_prime: A|
-            is_minimal(r, min, self) && is_minimal(r, min_prime, self) implies min == min_prime by {
+            self.is_minimal(r, min) && self.is_minimal(r, min_prime) implies min == min_prime by {
             self.lemma_minimal_equivalent_least(r, min);
             self.lemma_minimal_equivalent_least(r, min_prime);
             self.lemma_least_is_unique(r);
@@ -418,10 +466,10 @@ impl<A> Set<A> {
             total_ordering(r),
         ensures
             forall|max: A, max_prime: A|
-                is_maximal(r, max, self) && is_maximal(r, max_prime, self) ==> max == max_prime,
+                self.is_maximal(r, max) && self.is_maximal(r, max_prime) ==> max == max_prime,
     {
         assert forall|max: A, max_prime: A|
-            is_maximal(r, max, self) && is_maximal(r, max_prime, self) implies max == max_prime by {
+            self.is_maximal(r, max) && self.is_maximal(r, max_prime) implies max == max_prime by {
             self.lemma_maximal_equivalent_greatest(r, max);
             self.lemma_maximal_equivalent_greatest(r, max_prime);
             self.lemma_greatest_is_unique(r);
@@ -430,18 +478,31 @@ impl<A> Set<A> {
 }
 
 /// The result of inserting an element `a` into a set `s` is finite iff `s` is finite.
-pub broadcast proof fn lemma_set_insert_finite_iff<A>(s: Set<A>, a: A)
+pub broadcast proof fn lemma_set_insert_finite_iff<A>(s: ISet<A>, a: A)
     ensures
         #[trigger] s.insert(a).finite() <==> s.finite(),
 {
+    // apppeal to finite-typed versions
     if s.insert(a).finite() {
         if s.contains(a) {
-            assert(s == s.insert(a));
+            assert( s.insert(a) == s );
         } else {
-            assert(s == s.insert(a).remove(a));
+            congruent_infiniteness( s.insert(a).to_finite().remove(a), s );
         }
     }
-    assert(s.insert(a).finite() ==> s.finite());
+    if s.finite() {
+        congruent_infiniteness( s.to_finite().insert(a), s.insert(a) );
+    }
+
+    // Original proof appeals to finite-preservation lemmas on infinite sets
+//     if s.insert(a).finite() {
+//         if s.contains(a) {
+//             assert(s == s.insert(a));
+//         } else {
+//             assert(s == s.insert(a).remove(a));
+//         }
+//     }
+//     assert(s.insert(a).finite() ==> s.finite());
 }
 
 /// The result of removing an element `a` into a set `s` is finite iff `s` is finite.
@@ -459,7 +520,7 @@ pub broadcast proof fn lemma_set_remove_finite_iff<A>(s: Set<A>, a: A)
 }
 
 /// The union of two sets is finite iff both sets are finite.
-pub broadcast proof fn lemma_set_union_finite_iff<A>(s1: Set<A>, s2: Set<A>)
+pub broadcast proof fn lemma_set_union_finite_iff<A>(s1: ISet<A>, s2: ISet<A>)
     ensures
         #[trigger] s1.union(s2).finite() <==> s1.finite() && s2.finite(),
 {
@@ -468,7 +529,7 @@ pub broadcast proof fn lemma_set_union_finite_iff<A>(s1: Set<A>, s2: Set<A>)
     }
 }
 
-pub proof fn lemma_set_union_finite_implies_sets_finite<A>(s1: Set<A>, s2: Set<A>)
+pub proof fn lemma_set_union_finite_implies_sets_finite<A>(s1: ISet<A>, s2: ISet<A>)
     requires
         s1.union(s2).finite(),
     ensures
@@ -476,13 +537,14 @@ pub proof fn lemma_set_union_finite_implies_sets_finite<A>(s1: Set<A>, s2: Set<A
         s2.finite(),
     decreases s1.union(s2).len(),
 {
+    broadcast use lemma_set_insert_finite;
     if s1.union(s2) =~= set![] {
         assert(s1 =~= set![]);
         assert(s2 =~= set![]);
     } else {
         let a = s1.union(s2).choose();
         assert(s1.remove(a).union(s2.remove(a)) == s1.union(s2).remove(a));
-        axiom_set_remove_len(s1.union(s2), a);
+        lemma_set_remove_len(s1.union(s2), a);
         lemma_set_union_finite_implies_sets_finite(s1.remove(a), s2.remove(a));
         assert(forall|s: Set<A>|
             #![auto]
@@ -491,6 +553,8 @@ pub proof fn lemma_set_union_finite_implies_sets_finite<A>(s1: Set<A>, s2: Set<A
             } else {
                 s.insert(a)
             });
+        if !s1.contains(a) { assert( s1.remove(a) == s1 ); }
+        if !s2.contains(a) { assert( s2.remove(a) == s2 ); }
         lemma_set_insert_finite_iff(s1, a);
         lemma_set_insert_finite_iff(s2, a);
     }
@@ -507,7 +571,7 @@ pub proof fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>)
     decreases s1.len(),
 {
     if s1.is_empty() {
-        assert(s1.union(s2) =~= s2);
+       congruent_len(s1.union(s2), s2);
     } else {
         let a = s1.choose();
         if s2.contains(a) {
@@ -546,7 +610,7 @@ pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
 }
 
 /// The size of the intersection of finite set `s1` and set `s2` is less than or equal to the size of `s1`.
-pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
+pub proof fn lemma_len_intersect<A>(s1: ISet<A>, s2: ISet<A>)
     requires
         s1.finite(),
     ensures
@@ -564,7 +628,7 @@ pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
 
 /// If `s1` is a subset of finite set `s2`, then the size of `s1` is less than or equal to
 /// the size of `s2` and `s1` must be finite.
-pub proof fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>)
+pub proof fn lemma_len_subset<A>(s1: ISet<A>, s2: ISet<A>)
     requires
         s2.finite(),
         s1.subset_of(s2),
@@ -577,7 +641,7 @@ pub proof fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>)
 }
 
 /// A subset of a finite set `s` is finite.
-pub broadcast proof fn lemma_set_subset_finite<A>(s: Set<A>, sub: Set<A>)
+pub broadcast proof fn lemma_set_subset_finite<A>(s: ISet<A>, sub: ISet<A>)
     requires
         s.finite(),
         sub.subset_of(s),
@@ -590,7 +654,7 @@ pub broadcast proof fn lemma_set_subset_finite<A>(s: Set<A>, sub: Set<A>)
 }
 
 /// The size of the difference of finite set `s1` and set `s2` is less than or equal to the size of `s1`.
-pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
+pub proof fn lemma_len_difference<A>(s1: ISet<A>, s2: ISet<A>)
     requires
         s1.finite(),
     ensures
@@ -604,11 +668,6 @@ pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
         assert(s1.difference(s2).remove(a) =~= s1.remove(a).difference(s2));
         lemma_len_difference::<A>(s1.remove(a), s2);
     }
-}
-
-/// Creates a finite set of integers in the range [lo, hi).
-pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
-    Set::new(|i: int| lo <= i && i < hi)
 }
 
 /// If a set solely contains integers in the range [a, b), then its size is
@@ -711,7 +770,7 @@ pub broadcast proof fn lemma_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If set `s2` contains element `a`, then the set difference of `s1` and `s2` does not contain `a`.
-pub broadcast proof fn lemma_set_difference2<A>(s1: Set<A>, s2: Set<A>, a: A)
+pub broadcast proof fn lemma_set_difference2<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>, a: A)
     ensures
         #![trigger s1.difference(s2).contains(a)]
         s2.contains(a) ==> !s1.difference(s2).contains(a),
@@ -720,11 +779,11 @@ pub broadcast proof fn lemma_set_difference2<A>(s1: Set<A>, s2: Set<A>, a: A)
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If sets `a` and `b` are disjoint, meaning they have no elements in common, then the set difference
-/// of `a + b` and `b` is equal to `a` and the set difference of `a + b` and `a` is equal to `b`.
-pub broadcast proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
+/// of `a.union(b)` and `b` is equal to `a` and the set difference of `a.union(b)` and `a` is equal to `b`.
+pub broadcast proof fn lemma_set_disjoint<A, const Finite: bool, const Finite2: bool>(a: Set<A, Finite>, b: Set<A, Finite2>)
     ensures
-        #![trigger (a + b).difference(a)]  //TODO: this might be too free
-        a.disjoint(b) ==> ((a + b).difference(a) =~= b && (a + b).difference(b) =~= a),
+        #![trigger a.union(b).difference(a)]  //TODO: this might be too free
+        a.disjoint(b) ==> (a.union(b).difference(a) =~= b.to_infinite() && a.union(b).difference(b) =~= a.to_infinite()),
 {
 }
 
@@ -735,23 +794,23 @@ pub broadcast proof fn lemma_set_disjoint<A>(a: Set<A>, b: Set<A>)
 //         also not that some proofs in seq_lib requires this lemma
 /// Set `s` has length 0 if and only if it is equal to the empty set. If `s` has length greater than 0,
 /// Then there must exist an element `x` such that `s` contains `x`.
-pub broadcast proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
+pub broadcast proof fn lemma_set_empty_equivalency_len<A, const Finite: bool>(s: Set<A, Finite>)
     requires
         s.finite(),
     ensures
         #![trigger s.len()]
-        (s.len() == 0 <==> s == Set::<A>::empty()) && (s.len() != 0 ==> exists|x: A| s.contains(x)),
+        (s.len() == 0 <==> s == Set::<A, Finite>::empty()) && (s.len() != 0 ==> exists|x: A| s.contains(x)),
 {
     assert(s.len() == 0 ==> s =~= Set::empty()) by {
         if s.len() == 0 {
-            assert(forall|a: A| !(Set::empty().contains(a)));
+            assert(forall|a: A| !(Set::<A, Finite>::empty().contains(a)));
             assert(Set::<A>::empty().len() == 0);
             assert(Set::<A>::empty().len() == s.len());
             assert((exists|a: A| s.contains(a)) || (forall|a: A| !s.contains(a)));
             if exists|a: A| s.contains(a) {
                 let a = s.choose();
                 assert(s.remove(a).len() == s.len() - 1) by {
-                    axiom_set_remove_len(s, a);
+                    lemma_set_remove_len(s, a);
                 }
             }
         }
@@ -761,22 +820,27 @@ pub broadcast proof fn lemma_set_empty_equivalency_len<A>(s: Set<A>)
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If sets `a` and `b` are disjoint, meaning they share no elements in common, then the length
-/// of the union `a + b` is equal to the sum of the lengths of `a` and `b`.
-pub broadcast proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
+/// of the union `a.union(b)` is equal to the sum of the lengths of `a` and `b`.
+pub broadcast proof fn lemma_set_disjoint_lens<A, const Finite1: bool, const Finite2: bool>(a: Set<A, Finite1>, b: Set<A, Finite2>)
     requires
         a.finite(),
         b.finite(),
     ensures
-        a.disjoint(b) ==> #[trigger] (a + b).len() == a.len() + b.len(),
+        a.disjoint(b) ==> #[trigger] a.union(b).len() == a.len() + b.len(),
     decreases a.len(),
 {
     if a.len() == 0 {
         lemma_set_empty_equivalency_len(a);
-        assert(a + b =~= b);
+        assert(a.union(b) =~= b.to_infinite());
+        congruent_len(b, b.to_infinite());
     } else {
         if a.disjoint(b) {
             let x = a.choose();
-            assert(a.remove(x) + b =~= (a + b).remove(x));
+            assert(a.remove(x).union(b) =~= a.union(b).remove(x));
+            // TODO(jonh): Ask verus folks why I need these when we have a group use above
+            broadcast use lemma_set_remove_finite;
+            broadcast use lemma_set_remove_len;
+            broadcast use lemma_set_union_finite;
             lemma_set_disjoint_lens(a.remove(x), b);
         }
     }
@@ -785,28 +849,29 @@ pub broadcast proof fn lemma_set_disjoint_lens<A>(a: Set<A>, b: Set<A>)
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The length of the union between two sets added to the length of the intersection between the
 /// two sets is equal to the sum of the lengths of the two sets.
-pub broadcast proof fn lemma_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
+pub broadcast proof fn lemma_set_intersect_union_lens<A, const Finite1: bool, const Finite2: bool>(a: Set<A, Finite1>, b: Set<A, Finite2>)
     requires
         a.finite(),
         b.finite(),
     ensures
-        #[trigger] (a + b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len(),
+        #[trigger] a.union(b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len(),
     decreases a.len(),
 {
     if a.len() == 0 {
-        lemma_set_empty_equivalency_len(a);
-        assert(a + b =~= b);
+        assert(a.union(b) =~= b.to_infinite());
         assert(a.intersect(b) =~= Set::empty());
-        assert(a.intersect(b).len() == 0);
+        congruent_len(b, b.to_infinite());
     } else {
         let x = a.choose();
         lemma_set_intersect_union_lens(a.remove(x), b);
         if (b.contains(x)) {
-            assert(a.remove(x) + b =~= (a + b));
+            assert(a.remove(x).union(b) =~= a.union(b));
             assert(a.intersect(b).remove(x) =~= a.remove(x).intersect(b));
         } else {
-            assert(a.remove(x) + b =~= (a + b).remove(x));
-            assert(a.remove(x).intersect(b) =~= a.intersect(b));
+            // b does not contain x
+            assert(a.remove(x).union(b) =~= a.union(b).remove(x));
+            // some trigger needed to reduce flakiness
+            assert( a.intersect(b) == a.remove(x).intersect(b) );
         }
     }
 }
@@ -817,21 +882,20 @@ pub broadcast proof fn lemma_set_intersect_union_lens<A>(a: Set<A>, b: Set<A>)
 ///
 /// The length of the set difference `A \ B` is equal to the length of `A` minus the length of the
 /// intersection `A ∩ B`.
-pub broadcast proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
+pub broadcast proof fn lemma_set_difference_len<A, const Finite1: bool, const Finite2: bool>(a: Set<A, Finite1>, b: Set<A, Finite2>)
     requires
         a.finite(),
         b.finite(),
     ensures
-        (#[trigger] a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == (a
-            + b).len()) && (a.difference(b).len() == a.len() - a.intersect(b).len()),
+        (#[trigger] a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == a.union(b).len()) && (a.difference(b).len() == a.len() - a.intersect(b).len()),
     decreases a.len(),
 {
     if a.len() == 0 {
         lemma_set_empty_equivalency_len(a);
         assert(a.difference(b) =~= Set::empty());
-        assert(b.difference(a) =~= b);
+        assert(b.difference(a) =~= b.to_infinite());
         assert(a.intersect(b) =~= Set::empty());
-        assert(a + b =~= b);
+        assert(a.union(b) =~= b.to_infinite());
     } else {
         let x = a.choose();
         lemma_set_difference_len(a.remove(x), b);
@@ -839,9 +903,9 @@ pub broadcast proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
             assert(a.intersect(b).remove(x) =~= a.remove(x).intersect(b));
             assert(a.remove(x).difference(b) =~= a.difference(b));
             assert(b.difference(a.remove(x)).remove(x) =~= b.difference(a));
-            assert(a.remove(x) + b =~= a + b);
+            assert(a.remove(x).union(b) =~= a.union(b));
         } else {
-            assert(a.remove(x) + b =~= (a + b).remove(x));
+            assert(a.remove(x).union(b) =~= a.union(b).remove(x));
             assert(a.remove(x).difference(b) =~= a.difference(b).remove(x));
             assert(b.difference(a.remove(x)) =~= b.difference(a));
             assert(a.remove(x).intersect(b) =~= a.intersect(b));
@@ -851,36 +915,37 @@ pub broadcast proof fn lemma_set_difference_len<A>(a: Set<A>, b: Set<A>)
 
 /// Properties of sets from the Dafny prelude (which were axioms in Dafny, but proven here in Verus)
 #[deprecated = "Use `broadcast use group_set_properties` instead"]
-pub proof fn lemma_set_properties<A>()
+pub proof fn lemma_set_properties<A, const Finite1: bool, const Finite2: bool>()
     ensures
-        forall|a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(b) == a.union(b),  //from lemma_set_union_again1
-        forall|a: Set<A>, b: Set<A>| #[trigger] a.union(b).union(a) == a.union(b),  //from lemma_set_union_again2
-        forall|a: Set<A>, b: Set<A>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b),  //from lemma_set_intersect_again1
-        forall|a: Set<A>, b: Set<A>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b),  //from lemma_set_intersect_again2
-        forall|s1: Set<A>, s2: Set<A>, a: A| s2.contains(a) ==> !s1.difference(s2).contains(a),  //from lemma_set_difference2
-        forall|a: Set<A>, b: Set<A>|
-            #![trigger (a + b).difference(a)]
-            a.disjoint(b) ==> ((a + b).difference(a) =~= b && (a + b).difference(b) =~= a),  //from lemma_set_disjoint
-        forall|s: Set<A>| #[trigger] s.len() != 0 && s.finite() ==> exists|a: A| s.contains(a),  // half of lemma_set_empty_equivalency_len
-        forall|a: Set<A>, b: Set<A>|
-            (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] (a + b).len() == a.len()
+        forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] a.union(b).union(b) == a.union(b),  //from lemma_set_union_again1
+        forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] a.union(b).union(a) == a.union(b),  //from lemma_set_union_again2
+        forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b),  //from lemma_set_intersect_again1
+        forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b),  //from lemma_set_intersect_again2
+        forall|s1: Set<A, Finite1>, s2: Set<A, Finite2>, a: A| s2.contains(a) ==> !s1.difference(s2).contains(a),  //from lemma_set_difference2
+        forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
+            #![trigger a.union(b).difference(a)]
+            a.disjoint(b) ==> (a.union(b).difference(a) =~= b.to_infinite() && a.union(b).difference(b) =~= a.to_infinite()),  //from lemma_set_disjoint
+        forall|s: Set<A, Finite1>| #[trigger] s.len() != 0 && s.finite() ==> exists|a: A| s.contains(a),  // half of lemma_set_empty_equivalency_len
+        forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
+            (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] a.union(b).len() == a.len()
                 + b.len(),  //from lemma_set_disjoint_lens
-        forall|a: Set<A>, b: Set<A>|
-            (a.finite() && b.finite()) ==> #[trigger] (a + b).len() + #[trigger] a.intersect(
+        forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
+            (a.finite() && b.finite()) ==> #[trigger] a.union(b).len() + #[trigger] a.intersect(
                 b,
             ).len() == a.len() + b.len(),  //from lemma_set_intersect_union_lens
-        forall|a: Set<A>, b: Set<A>|
+        forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
             (a.finite() && b.finite()) ==> ((#[trigger] a.difference(b).len() + b.difference(
                 a,
-            ).len() + a.intersect(b).len() == (a + b).len()) && (a.difference(b).len() == a.len()
+            ).len() + a.intersect(b).len() == a.union(b).len()) && (a.difference(b).len() == a.len()
                 - a.intersect(b).len())),  //from lemma_set_difference_len
 {
     broadcast use group_set_properties;
 
-    assert forall|s: Set<A>| #[trigger] s.len() != 0 && s.finite() implies exists|a: A|
-        s.contains(a) by {
-        assert(s.contains(s.choose()));
-    }
+    // TODO(verus): For some reason I now have to explicitly re-trigger extensionality expressions sitting in ensures
+    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] a.union(b).union(b) == a.union(b) );
+    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] a.union(b).union(a) == a.union(b) );
+    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b) );
+    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b) );
 }
 
 pub broadcast group group_set_properties {
@@ -898,7 +963,7 @@ pub broadcast group group_set_properties {
     lemma_set_empty_equivalency_len,
 }
 
-pub broadcast proof fn axiom_is_empty<A>(s: Set<A>)
+pub broadcast proof fn lemma_is_empty<A>(s: Set<A>)
     requires
         !(#[trigger] s.is_empty()),
     ensures
@@ -907,7 +972,7 @@ pub broadcast proof fn axiom_is_empty<A>(s: Set<A>)
     admit();  // REVIEW, should this be in `set`, or have a proof?
 }
 
-pub broadcast proof fn axiom_is_empty_len0<A>(s: Set<A>)
+pub broadcast proof fn lemma_is_empty_len0<A>(s: Set<A>)
     ensures
         #[trigger] s.is_empty() <==> (s.finite() && s.len() == 0),
 {
@@ -915,7 +980,7 @@ pub broadcast proof fn axiom_is_empty_len0<A>(s: Set<A>)
 
 #[doc(hidden)]
 #[verifier::inline]
-pub open spec fn check_argument_is_set<A>(s: Set<A>) -> Set<A> {
+pub open spec fn check_argument_is_set<A, const Finite: bool>(s: Set<A, Finite>) -> Set<A, Finite> {
     s
 }
 
@@ -975,8 +1040,8 @@ macro_rules! assert_sets_equal_internal {
 }
 
 pub broadcast group group_set_lib_default {
-    axiom_is_empty,
-    axiom_is_empty_len0,
+    lemma_is_empty,
+    lemma_is_empty_len0,
     lemma_set_subset_finite,
 }
 

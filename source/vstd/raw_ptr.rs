@@ -570,11 +570,11 @@ impl PointsToRaw {
     pub uninterp spec fn dom(self) -> Set<int>;
 
     pub open spec fn is_range(self, start: int, len: int) -> bool {
-        super::set_lib::set_int_range(start, start + len) =~= self.dom()
+        super::set::set_int_range(start, start + len) =~= self.dom()
     }
 
     pub open spec fn contains_range(self, start: int, len: int) -> bool {
-        super::set_lib::set_int_range(start, start + len) <= self.dom()
+        super::set::set_int_range(start, start + len) <= self.dom()
     }
 
     #[verifier::external_body]
@@ -594,7 +594,7 @@ impl PointsToRaw {
             res.0.provenance() == self.provenance(),
             res.1.provenance() == self.provenance(),
             res.0.dom() == range,
-            res.1.dom() == self.dom().difference(range),
+            res.1.dom() == self.dom().finite_difference(range),
     {
         unimplemented!();
     }

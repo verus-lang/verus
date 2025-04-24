@@ -12,6 +12,7 @@ pub use super::seq::seq;
 pub use super::seq::Seq;
 pub use super::set::set;
 pub use super::set::Set;
+pub use super::set::ISet;
 pub use super::view::*;
 
 #[cfg(verus_keep_ghost)]
