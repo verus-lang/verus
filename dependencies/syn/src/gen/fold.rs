@@ -2939,8 +2939,10 @@ where
         generics: f.fold_generics(node.generics),
         colon_token: node.colon_token,
         ty: f.fold_type(node.ty),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
         eq_token: node.eq_token,
-        expr: f.fold_expr(node.expr),
+        block: (node.block).map(|it| Box::new(f.fold_block(*it))),
+        expr: (node.expr).map(|it| Box::new(f.fold_expr(*it))),
         semi_token: node.semi_token,
     }
 }

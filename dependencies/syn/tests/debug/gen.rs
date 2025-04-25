@@ -3255,7 +3255,54 @@ impl Debug for Lite<syn::ImplItem> {
                 formatter.field("ident", Lite(&_val.ident));
                 formatter.field("generics", Lite(&_val.generics));
                 formatter.field("ty", Lite(&_val.ty));
-                formatter.field("expr", Lite(&_val.expr));
+                if let Some(val) = &_val.ensures {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::Ensures);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some(")?;
+                            Debug::fmt(Lite(&self.0), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("ensures", Print::ref_cast(val));
+                }
+                if _val.eq_token.is_some() {
+                    formatter.field("eq_token", &Present);
+                }
+                if let Some(val) = &_val.block {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(Box<syn::Block>);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some(")?;
+                            Debug::fmt(Lite(&self.0), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("block", Print::ref_cast(val));
+                }
+                if let Some(val) = &_val.expr {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(Box<syn::Expr>);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some(")?;
+                            Debug::fmt(Lite(&self.0), formatter)?;
+                            formatter.write_str(")")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("expr", Print::ref_cast(val));
+                }
+                if _val.semi_token.is_some() {
+                    formatter.field("semi_token", &Present);
+                }
                 formatter.finish()
             }
             syn::ImplItem::Fn(_val) => {
@@ -3332,7 +3379,54 @@ impl Debug for Lite<syn::ImplItemConst> {
         formatter.field("ident", Lite(&self.value.ident));
         formatter.field("generics", Lite(&self.value.generics));
         formatter.field("ty", Lite(&self.value.ty));
-        formatter.field("expr", Lite(&self.value.expr));
+        if let Some(val) = &self.value.ensures {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::Ensures);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("ensures", Print::ref_cast(val));
+        }
+        if self.value.eq_token.is_some() {
+            formatter.field("eq_token", &Present);
+        }
+        if let Some(val) = &self.value.block {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(Box<syn::Block>);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("block", Print::ref_cast(val));
+        }
+        if let Some(val) = &self.value.expr {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(Box<syn::Expr>);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some(")?;
+                    Debug::fmt(Lite(&self.0), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("expr", Print::ref_cast(val));
+        }
+        if self.value.semi_token.is_some() {
+            formatter.field("semi_token", &Present);
+        }
         formatter.finish()
     }
 }

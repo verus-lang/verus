@@ -1367,7 +1367,9 @@ impl PartialEq for crate::ImplItemConst {
             && self.publish == other.publish && self.mode == other.mode
             && self.defaultness == other.defaultness && self.ident == other.ident
             && self.generics == other.generics && self.ty == other.ty
-            && self.expr == other.expr
+            && self.ensures == other.ensures && self.eq_token == other.eq_token
+            && self.block == other.block && self.expr == other.expr
+            && self.semi_token == other.semi_token
     }
 }
 #[cfg(feature = "full")]

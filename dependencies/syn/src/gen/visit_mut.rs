@@ -2870,8 +2870,16 @@ where
     v.visit_generics_mut(&mut node.generics);
     skip!(node.colon_token);
     v.visit_type_mut(&mut node.ty);
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
     skip!(node.eq_token);
-    v.visit_expr_mut(&mut node.expr);
+    if let Some(it) = &mut node.block {
+        v.visit_block_mut(&mut **it);
+    }
+    if let Some(it) = &mut node.expr {
+        v.visit_expr_mut(&mut **it);
+    }
     skip!(node.semi_token);
 }
 #[cfg(feature = "full")]

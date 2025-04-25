@@ -3477,14 +3477,34 @@
         "ty": {
           "syn": "Type"
         },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
         "eq_token": {
-          "token": "Eq"
+          "option": {
+            "token": "Eq"
+          }
+        },
+        "block": {
+          "option": {
+            "box": {
+              "syn": "Block"
+            }
+          }
         },
         "expr": {
-          "syn": "Expr"
+          "option": {
+            "box": {
+              "syn": "Expr"
+            }
+          }
         },
         "semi_token": {
-          "token": "Semi"
+          "option": {
+            "token": "Semi"
+          }
         }
       }
     },

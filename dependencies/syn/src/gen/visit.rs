@@ -2991,8 +2991,16 @@ where
     v.visit_generics(&node.generics);
     skip!(node.colon_token);
     v.visit_type(&node.ty);
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
     skip!(node.eq_token);
-    v.visit_expr(&node.expr);
+    if let Some(it) = &node.block {
+        v.visit_block(&**it);
+    }
+    if let Some(it) = &node.expr {
+        v.visit_expr(&**it);
+    }
     skip!(node.semi_token);
 }
 #[cfg(feature = "full")]

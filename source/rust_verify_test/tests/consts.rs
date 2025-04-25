@@ -442,6 +442,16 @@ test_verify_one_file! {
             impl A {
                 pub const X: usize = 3;
                 pub const Y: usize = 1usize << A::X;
+                exec const B: u8
+                    ensures Self::B < 10
+                {
+                    7
+                }
+                exec const C: u8
+                    ensures Self::C < 10 // FAILS
+                {
+                    77
+                }
             }
 
             fn test() {
@@ -451,7 +461,10 @@ test_verify_one_file! {
                 assert(A::X == 3);
                 assert(A::Y == 1usize << 3);
                 assert(y == 1usize << 3);
+                let b = A::B;
+                assert(b < 11);
+                assert(b < 9); // FAILS
             }
         }
-    } => Ok(())
+    } => Err(err) => assert_fails(err, 2)
 }

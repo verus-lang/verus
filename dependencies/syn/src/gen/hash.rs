@@ -1778,7 +1778,11 @@ impl Hash for crate::ImplItemConst {
         self.ident.hash(state);
         self.generics.hash(state);
         self.ty.hash(state);
+        self.ensures.hash(state);
+        self.eq_token.hash(state);
+        self.block.hash(state);
         self.expr.hash(state);
+        self.semi_token.hash(state);
     }
 }
 #[cfg(feature = "full")]

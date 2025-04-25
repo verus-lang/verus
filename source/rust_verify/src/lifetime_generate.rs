@@ -2532,7 +2532,26 @@ fn erase_impl<'tcx>(
                 // handled in erase_trait
             }
             AssocItemKind::Const => {
-                // handled in erase_trait
+                let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
+                let ImplItem { ident, owner_id, kind, .. } = impl_item;
+                let id = owner_id.to_def_id();
+                let attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
+                let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+                match &kind {
+                    ImplItemKind::Const(_, body_id) => {
+                        erase_const_or_static(
+                            krate,
+                            ctxt,
+                            state,
+                            ident.span,
+                            id,
+                            vattrs.external_body,
+                            body_id,
+                            false,
+                        );
+                    }
+                    _ => panic!(),
+                }
             }
         }
     }

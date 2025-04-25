@@ -3794,32 +3794,25 @@ impl VisitMut for Visitor {
         visit_item_static_mut(self, sta);
     }
 
-    fn visit_impl_item_const_mut(&mut self, impl_c: &mut syn_verus::ImplItemConst) {
-        let mut mode = FnMode::Default;
+    fn visit_impl_item_const_mut(&mut self, con: &mut syn_verus::ImplItemConst) {
         let mode = self.visit_const_or_static(
-            impl_c.expr.span(),
-            &mut impl_c.attrs,
-            Some(&impl_c.vis),
-            &mut impl_c.publish,
-            &mut mode,
+            con.const_token.span,
+            &mut con.attrs,
+            Some(&con.vis),
+            &mut con.publish,
+            &mut con.mode,
         );
-        let mut ensures = None;
-        let mut block = None;
-        let mut eq_token = Some(impl_c.eq_token);
-        let mut semi_token = Some(impl_c.semi_token);
-        let mut expr = Some(Box::new(impl_c.expr.clone()));
         self.desugar_const_or_static(
             &mode,
-            &mut ensures,
-            &mut block,
-            &mut expr,
-            &mut eq_token,
-            &mut semi_token,
-            &impl_c.ty,
-            impl_c.expr.span(),
+            &mut con.ensures,
+            &mut con.block,
+            &mut con.expr,
+            &mut con.eq_token,
+            &mut con.semi_token,
+            &con.ty,
+            con.const_token.span,
         );
-        impl_c.expr = *expr.unwrap();
-        visit_impl_item_const_mut(self, impl_c);
+        visit_impl_item_const_mut(self, con);
     }
 
     fn visit_field_mut(&mut self, field: &mut Field) {
