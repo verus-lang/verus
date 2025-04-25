@@ -1485,6 +1485,7 @@ impl Verifier {
                             QueryOp::Body(Style::RecommendsFollowupFromError) => MessageLevel::Note,
                             QueryOp::Body(Style::RecommendsChecked) => MessageLevel::Warning,
                             QueryOp::Body(Style::Expanded) => MessageLevel::Note,
+                            QueryOp::Body(Style::CheckApiSafety) => MessageLevel::Error,
                         };
                         let function = &op.get_function();
                         let is_recommend = query_op.is_recommend();
@@ -2038,6 +2039,7 @@ impl Verifier {
             Arc::new(std::sync::Mutex::new(call_graph_log)),
             self.args.solver,
             false,
+            self.args.check_api_safety,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;

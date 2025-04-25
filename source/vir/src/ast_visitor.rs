@@ -529,6 +529,7 @@ where
                 ExprX::NeverToAny(e) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf))
                 }
+                ExprX::Nondeterministic => {}
             }
             VisitorControlFlow::Recurse
         }
@@ -1100,6 +1101,7 @@ where
             let expr = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
             ExprX::NeverToAny(expr)
         }
+        ExprX::Nondeterministic => ExprX::Nondeterministic,
     };
     let expr = SpannedTyped::new(&expr.span, &map_typ_visitor_env(&expr.typ, env, ft)?, exprx);
     fe(env, map, &expr)
