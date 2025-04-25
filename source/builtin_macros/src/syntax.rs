@@ -536,21 +536,22 @@ impl Visitor {
                             spec_stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                             false
                         } else {
+                            let span = exprs.exprs[0].span();
                             let e = take_expr(&mut exprs.exprs[0]);
                             match found {
                                 ExtractQuantTriggersFound::Auto => {
                                     exprs.exprs[0] = Expr::Verbatim(
-                                        quote_spanned!(exprs.exprs[0].span() => #[verus::internal(auto_trigger)] (#e)),
+                                        quote_spanned!(span => #[verus::internal(auto_trigger)] (#e)),
                                     );
                                 }
                                 ExtractQuantTriggersFound::AllTriggers => {
                                     exprs.exprs[0] = Expr::Verbatim(
-                                        quote_spanned!(exprs.exprs[0].span() => #[verus::internal(all_triggers)] (#e)),
+                                        quote_spanned!(span => #[verus::internal(all_triggers)] (#e)),
                                     );
                                 }
                                 ExtractQuantTriggersFound::Triggers(tuple) => {
                                     exprs.exprs[0] = Expr::Verbatim(
-                                        quote_spanned_builtin!(builtin, exprs.exprs[0].span() => #builtin::with_triggers(#tuple, #e)),
+                                        quote_spanned_builtin!(builtin, span => #builtin::with_triggers(#tuple, #e)),
                                     );
                                 }
                                 ExtractQuantTriggersFound::None => unreachable!(),
