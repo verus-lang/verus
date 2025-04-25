@@ -2313,6 +2313,12 @@ pub(crate) fn expr_to_stm_opt(
             let stmt = Spanned::new(expr.span.clone(), StmX::Air(s.clone()));
             return Ok((vec![stmt], ReturnValue::ImplicitUnit(expr.span.clone())));
         }
+        ExprX::Nondeterministic => {
+            let (var_ident, exp) =
+                state.declare_temp_var_stm(&expr.span, &expr.typ, LocalDeclKind::Nondeterministic);
+            let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
+            Ok((vec![stm], ReturnValue::Some(exp)))
+        }
     }
 }
 

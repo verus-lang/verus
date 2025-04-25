@@ -793,6 +793,7 @@ impl LocalDeclKind {
             LocalDeclKind::ExecClosureId => false,
             LocalDeclKind::ExecClosureParam => false,
             LocalDeclKind::ExecClosureRet => false,
+            LocalDeclKind::Nondeterministic => false,
         }
     }
 }

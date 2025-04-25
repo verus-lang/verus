@@ -667,11 +667,16 @@ pub fn func_def_to_sst(
     ctx: &Ctx,
     diagnostics: &impl air::messages::Diagnostics,
     function: &Function,
+    check_api_safety: bool,
 ) -> Result<FuncCheckSst, VirErr> {
-    let body = match &function.x.body {
-        Some(body) => body,
-        _ => {
-            panic!("func_def_to_sst should only be called for function with a body");
+    let body = if check_api_safety {
+        &crate::safe_api::body_that_havocs_all_outputs(function)
+    } else {
+        match &function.x.body {
+            Some(body) => body,
+            _ => {
+                panic!("func_def_to_sst should only be called for function with a body");
+            }
         }
     };
 
@@ -776,6 +781,11 @@ pub fn func_def_to_sst(
         }
     }
 
+    if check_api_safety {
+        let exps = crate::safe_api::axioms_for_default_spec_fns(ctx, diagnostics, function)?;
+        reqs.extend(exps);
+    }
+
     // AST --> SST
     let mut stm = expr_to_one_stm_with_post(&ctx, &mut state, &body, &function.span)?;
 
@@ -802,11 +812,12 @@ pub fn func_def_to_sst(
 
     // Check termination
     let no_termination_check = function.x.mode == Mode::Exec && function.x.decrease.len() == 0;
-    let (decls, stm) = if no_termination_check || ctx.checking_spec_preconditions() {
-        (vec![], stm)
-    } else {
-        crate::recursion::check_termination_stm(ctx, diagnostics, function, None, &stm)?
-    };
+    let (decls, stm) =
+        if no_termination_check || ctx.checking_spec_preconditions() || check_api_safety {
+            (vec![], stm)
+        } else {
+            crate::recursion::check_termination_stm(ctx, diagnostics, function, None, &stm)?
+        };
 
     // SST --> AIR
     for decl in decls {
@@ -822,7 +833,11 @@ pub fn func_def_to_sst(
             dest,
             ens_exps: Arc::new(enss),
             ens_spec_precondition_stms: Arc::new(ens_spec_precondition_stms),
-            kind: PostConditionKind::Ensures,
+            kind: if check_api_safety {
+                PostConditionKind::EnsuresSafeApiCheck
+            } else {
+                PostConditionKind::Ensures
+            },
         }),
         unwind: unwind_sst,
         body: stm,
@@ -859,7 +874,7 @@ pub fn function_to_sst(
     {
         (Mode::Exec | Mode::Proof, true, _) | (Mode::Spec, true, ItemKind::Const) => {
             ctx.fun = mk_fun_ctx(&function, false);
-            let def = crate::ast_to_sst_func::func_def_to_sst(ctx, diagnostics, function)?;
+            let def = crate::ast_to_sst_func::func_def_to_sst(ctx, diagnostics, function, false)?;
             ctx.fun = None;
             Some(Arc::new(def))
         }
@@ -873,11 +888,20 @@ pub fn function_to_sst(
             // We eagerly generate SST for recommends_check even if we might not use it.
             // Experiments with veritas indicate that this generally causes < 1% overhead.
             ctx.fun = mk_fun_ctx(&function, true);
-            let def = crate::ast_to_sst_func::func_def_to_sst(ctx, diagnostics, function)?;
+            let def = crate::ast_to_sst_func::func_def_to_sst(ctx, diagnostics, function, false)?;
             ctx.fun = None;
             Some(Arc::new(def))
         }
         _ => None,
+    };
+
+    let safe_api_check = if crate::safe_api::function_has_obligation(ctx, function) {
+        ctx.fun = mk_fun_ctx(&function, false);
+        let def = crate::ast_to_sst_func::func_def_to_sst(ctx, diagnostics, function, true)?;
+        ctx.fun = None;
+        Some(Arc::new(def))
+    } else {
+        None
     };
 
     let has = FunctionSstHas {
@@ -909,6 +933,7 @@ pub fn function_to_sst(
         axioms: Arc::new(func_axioms_sst),
         exec_proof_check,
         recommends_check,
+        safe_api_check,
     };
     Ok(function.new_x(functionx))
 }

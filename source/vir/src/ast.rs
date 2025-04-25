@@ -869,6 +869,8 @@ pub enum ExprX {
     AirStmt(Arc<String>),
     /// never-to-any conversion
     NeverToAny(Expr),
+    /// nondeterministic choice
+    Nondeterministic,
 }
 
 /// Statement, similar to rustc_hir::Stmt
