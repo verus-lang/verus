@@ -653,6 +653,20 @@ fn make_attributes<'tcx>(
     Ok(Arc::new(fattrs))
 }
 
+pub(crate) fn fixup_unerased_proxy_path(
+    path: &vir::ast::Path,
+    span: Span,
+) -> Result<vir::ast::Path, VirErr> {
+    let id = path.last_segment();
+    let prefix = "VERUS_UNERASED_PROXY__";
+    if id.starts_with(&prefix) {
+        let p = path.pop_segment().push_segment(Arc::new(id[prefix.len()..].to_string()));
+        Ok(p)
+    } else {
+        crate::internal_err!(span, "bad use of unerased_proxy attribute")
+    }
+}
+
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     functions: &mut Vec<vir::ast::Function>,
@@ -672,12 +686,47 @@ pub(crate) fn check_item_fn<'tcx>(
     external_info: &mut ExternalInfo,
     autoderive_action: Option<&AutomaticDeriveAction>,
 ) -> Result<Option<Fun>, VirErr> {
-    let this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+    let mut this_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
 
     let is_verus_spec = this_path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
 
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
+
+    if vattrs.encoded_const {
+        let fn_sig = ctxt.tcx.fn_sig(id).skip_binder();
+        if fn_sig.inputs().skip_binder().len() != 0 {
+            return err_span(sig.span, "encoded_const must have 0 arguments");
+        }
+
+        let body_id = match body_id {
+            CheckItemFnEither::BodyId(body_id) => body_id,
+            CheckItemFnEither::ParamNames(_) => {
+                crate::internal_err!(sig.span, "encoded_const expected CheckItemFnEither::BodyId");
+            }
+        };
+
+        let ty = fn_sig.output().skip_binder();
+        let typ = mid_ty_to_vir(ctxt.tcx, &ctxt.verus_items, id, sig.span, &ty, false)?;
+
+        let fun = check_item_const_or_static(
+            ctxt,
+            functions,
+            sig.span,
+            id,
+            visibility,
+            module_path,
+            attrs,
+            &typ,
+            body_id,
+            false,
+        )?;
+        return Ok(Some(fun));
+    }
+
+    if vattrs.unerased_proxy {
+        this_path = fixup_unerased_proxy_path(&this_path, sig.span)?;
+    }
 
     let external_trait_from_to = if let Some(to_trait_id) = external_trait {
         let from_trait_id = ctxt.tcx.parent(id);
@@ -1786,7 +1835,7 @@ pub(crate) fn get_external_def_id<'tcx>(
 
 pub(crate) fn check_item_const_or_static<'tcx>(
     ctxt: &Context<'tcx>,
-    vir: &mut KrateX,
+    functions: &mut Vec<vir::ast::Function>,
     span: Span,
     id: DefId,
     visibility: vir::ast::Visibility,
@@ -1795,9 +1844,16 @@ pub(crate) fn check_item_const_or_static<'tcx>(
     typ: &Typ,
     body_id: &BodyId,
     is_static: bool,
-) -> Result<(), VirErr> {
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+) -> Result<Fun, VirErr> {
+    let mut path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+
+    let vattrs = ctxt.get_verifier_attrs(attrs)?;
+    if vattrs.unerased_proxy {
+        path = fixup_unerased_proxy_path(&path, span)?;
+    }
+
     let name = Arc::new(FunX { path: path.clone() });
+
     let mode_opt = crate::attributes::get_mode_opt(attrs);
     let (func_mode, body_mode, ret_mode) = if is_static {
         // All statics are exec
@@ -1825,38 +1881,13 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             Some(m) => (m, m, m),
         }
     };
-    let vattrs = ctxt.get_verifier_attrs(attrs)?;
 
     if vattrs.external_fn_specification {
-        return err_span(span, "`assume_specification` attribute not yet supported for const");
+        return err_span(span, "`assume_specification` attribute not supported for const");
     }
 
     let body = find_body(ctxt, body_id);
-    let (actual_body_id, actual_body) = if let ExprKind::Block(block, _) = body.value.kind {
-        let first_stmt = block.stmts.iter().next();
-        if let Some(rustc_hir::StmtKind::Item(item)) = first_stmt.map(|stmt| &stmt.kind) {
-            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
-            let vattrs = ctxt.get_verifier_attrs(attrs)?;
-            if vattrs.internal_const_body {
-                let body_id = ctxt
-                    .tcx
-                    .hir_node_by_def_id(item.owner_id.def_id)
-                    .body_id()
-                    .expect("failed to get body_id");
-                let body = find_body(ctxt, &body_id);
-                Some((body_id, body))
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    }
-    .unwrap_or((*body_id, body));
-    let mut vir_body =
-        body_to_vir(ctxt, id, &actual_body_id, actual_body, body_mode, vattrs.external_body)?;
+    let mut vir_body = body_to_vir(ctxt, id, &body_id, body, body_mode, vattrs.external_body)?;
     let header = vir::headers::read_header(&mut vir_body)?;
     if header.require.len() + header.recommend.len() > 0 {
         return err_span(span, "consts cannot have requires/recommends");
@@ -1941,8 +1972,8 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         extra_dependencies: vec![],
     };
     let function = ctxt.spanned_new(span, func);
-    vir.functions.push(function);
-    Ok(())
+    functions.push(function);
+    Ok(name)
 }
 
 pub(crate) fn check_foreign_item_fn<'tcx>(

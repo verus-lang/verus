@@ -2012,7 +2012,20 @@ fn erase_fn_common<'tcx>(
     if ctxt.ignored_functions.contains(&id) {
         return;
     }
-    let path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+
+    let mut path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, id);
+
+    if let Some(local_id) = id.as_local() {
+        let hir_id = ctxt.tcx.local_def_id_to_hir_id(local_id);
+        let attrs = ctxt.tcx.hir().attrs(hir_id);
+        let vattrs = get_verifier_attrs(attrs, None).expect("get_verifier_attrs");
+
+        if vattrs.unerased_proxy {
+            path = crate::rust_to_vir_func::fixup_unerased_proxy_path(&path, sig_span)
+                .expect("fixup_unerased_proxy_path");
+        }
+    }
+
     let is_verus_spec = path.segments.last().expect("segment.last").starts_with(VERUS_SPEC);
     // TODO let is_verus_reveal = **path.segments.last().expect("segments.last") == VERUS_REVEAL_INTERNAL;
     if is_verus_spec {
@@ -2020,7 +2033,7 @@ fn erase_fn_common<'tcx>(
     }
     let fun_name = Arc::new(FunX { path: path.clone() });
     if let Some(f_vir) = &ctxt.functions[&fun_name] {
-        if f_vir.x.mode == Mode::Spec {
+        if f_vir.x.mode == Mode::Spec && f_vir.x.ret.x.mode == Mode::Spec {
             return;
         }
         if let Some(body_id) = body_id {

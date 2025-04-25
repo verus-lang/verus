@@ -166,7 +166,7 @@ fn check_item<'tcx>(
 
         crate::rust_to_vir_func::check_item_const_or_static(
             ctxt,
-            vir,
+            &mut vir.functions,
             item.span,
             item.owner_id.to_def_id(),
             visibility(),
@@ -175,7 +175,9 @@ fn check_item<'tcx>(
             &vir_ty,
             body_id,
             matches!(item.kind, ItemKind::Static(_, _, _)),
-        )
+        )?;
+
+        Ok(())
     };
 
     match &item.kind {
