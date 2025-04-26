@@ -141,9 +141,9 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                                 return err_span(attr.span, "invalid verus attribute");
                             }
                             let mut trees = trees.into_vec().into_iter();
-                            let tree: AttrTree = trees
-                                .next()
-                                .ok_or(vir_err_span_str(attr.span, "invalid verus attribute"))?;
+                            let tree: AttrTree = trees.next().ok_or_else(|| {
+                                vir_err_span_str(attr.span, "invalid verus attribute")
+                            })?;
                             Ok(Some((AttrPrefix::Verus(VerusPrefix::Internal), attr.span, tree)))
                         }
                         _ => return err_span(attr.span, "invalid verus attribute"),
