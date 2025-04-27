@@ -48,14 +48,14 @@ impl<A, const Finite:bool> Set<A, Finite> {
     // the file? Proposed solution from Bryan: add a seq to the representation
     // that's used in the finite case.
     spec fn private_new(f: spec_fn(A) -> bool) -> Set<A, Finite> {
-        Set {
-            set: |a|
-                if f(a) {
-                    true
-                } else {
-                    false
-                },
-        }
+        Set { set: f }
+//             set: |a|
+//                 if f(a) {
+//                     true
+//                 } else {
+//                     false
+//                 },
+//         }
     }
 
     // TODO(jonh): trusted because it calls private_new without proving that
@@ -95,6 +95,7 @@ ensures
 /// Creates a finite set of integers in the range [lo, hi).
 // TODO(jonh): discuss: I moved this from set_lib, which is a breaking change.
 // Should we make it a (deprecated?) pub import in set_lib as a transition facility?
+// Make this an associated method on Set.
 pub closed spec fn set_int_range(lo: int, hi: int) -> Set<int> {
     Set::private_new(|i: int| lo <= i && i < hi)
 }
@@ -148,6 +149,7 @@ pub open spec fn congruent<A, const Finite1: bool, const Finite2: bool>(s1: Set<
 // We could do s1.len && s2.len, but maybe that's too aggressive.
 // congruent(s1,s2) sort of demands the callsite type "assert(congruent(s1,s2))" anyway, so maybe
 // not useful.
+// After discussion: the congruent stuff is mostly only gonna be called inside set_lib anyway.
 pub proof fn congruent_len<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>)
 requires
     congruent(s1, s2),
@@ -413,7 +415,6 @@ impl<A> Set<A> {
     pub open spec fn spec_sub<const Finite2: bool>(self, s2: Set<A, Finite2>) -> Set<A> {
         self.finite_difference(s2)
     }
-
 }
 
 impl<A> ISet<A> {
@@ -434,7 +435,6 @@ impl<A> ISet<A> {
     pub open spec fn spec_sub<const Finite2: bool>(self, s2: Set<A, Finite2>) -> ISet<A> {
         self.difference(s2)
     }
-
 }
 
 // Closures make triggering finicky but using this to trigger explicitly works well.
@@ -910,6 +910,7 @@ pub broadcast proof fn lemma_set_empty<A, const Finite: bool>(a: A)
 }
 
 // TODO(jonh): there is no Set::new for finite sets. How does this lemma even typecheck?
+// --because new definition forces inference to guess Finite=false
 /// A call to `Set::new` with the predicate `f` contains `a` if and only if `f(a)` is true.
 pub broadcast proof fn bugcheck_lemma_set_new<A>(f: spec_fn(A) -> bool, a: A)
     ensures
