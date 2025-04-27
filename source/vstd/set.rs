@@ -1214,6 +1214,27 @@ pub broadcast proof fn lemma_set_empty_len<A, const Finite: bool>()
     fold::lemma_fold_empty::<A, Finite, nat>(0, |b: nat, a: A| b + 1);
 }
 
+pub broadcast proof fn lemma_set_map_insert<A, const Finite: bool, B>(s: GSet<A, Finite>, f: spec_fn(A) -> B, a: A)
+    ensures #[trigger] s.insert(a).map(f) == s.map(f).insert(f(a))
+{
+    broadcast use lemma_set_ext_equal;
+
+    assert( s.map(f).insert(f(a)) =~= s.insert(a).map(f) ) by {
+        assert forall |x| s.map(f).insert(f(a)).contains(x) implies s.insert(a).map(f).contains(x) by {
+            let prex = if x == f(a) { a } else {
+                choose |prex| s.contains(prex) && x == f(prex)
+            };
+            assert( s.insert(a).contains(prex) && x == f(prex) );
+        }
+        assert forall |x| s.insert(a).map(f).contains(x) implies s.map(f).insert(f(a)).contains(x) by {
+            let prex = choose |prex| s.insert(a).contains(prex) && x == f(prex);
+            if prex != a {
+                assert( s.contains(prex) && f(prex) == x );
+            }
+        }
+    }
+}
+
 pub broadcast proof fn lemma_set_map_len<A, const Finite: bool, B>(s: GSet<A, Finite>, f: spec_fn(A) -> B)
 requires s.finite(),
 ensures
@@ -1221,22 +1242,23 @@ ensures
     s.map(f).len() <= s.len()
 decreases s.len()
 {
+    broadcast use lemma_set_empty_len;
+    broadcast use lemma_set_choose_len;
+    broadcast use lemma_set_len_empty;
+    broadcast use lemma_set_remove_finite;
+    broadcast use lemma_set_remove_len;
+    broadcast use lemma_set_map_finite;
+    broadcast use lemma_set_insert_len;
+    broadcast use lemma_set_map_insert;
+
     if s == GSet::<A,Finite>::empty() {
-        broadcast use lemma_set_empty_len;
-        assert( s.map(f).len() == 0 );
-        assert( s.len() == 0 );
+        assert( s.map(f) == GSet::<B, Finite>::empty() );   // trigger lemma_set_empty_len
     } else {
-        broadcast use lemma_set_remove_finite;
         let e = s.choose();
         let ps = s.remove(e);
-        assert( ps.len() < s.len() );
-        lemma_set_map_len(ps, f);
-        assert( ps.map(f).len() <= ps.len() );
-        assert( ps.map(f).len() == ps.map(f).fold(0, |acc: nat, a| acc + 1) );
-        assert( ps.len() == ps.fold(0, |acc: nat, a| acc + 1) );
-
-        assert( s.map(f).len() == s.map(f).fold(0, |acc: nat, a| acc + 1) );
-        assert( s.len() == s.fold(0, |acc: nat, a| acc + 1) );
+        lemma_set_map_len(ps, f);   // broadcast use would create recursion at this call site
+        assert( s == ps.insert(e) );    // extn
+        assert( s.map(f).len() <= s.len() );
     }
 }
 
@@ -1365,6 +1387,7 @@ pub broadcast group group_set_axioms {
     lemma_set_map_contains,
     lemma_set_map_finite,
     lemma_set_map_len,
+    lemma_set_map_insert,
     lemma_to_finite_contains,
     lemma_set_finite_from_type,
     lemma_set_int_range_ensures,
