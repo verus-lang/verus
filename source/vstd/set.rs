@@ -7,7 +7,7 @@ use super::prelude::*;
 
 verus! {
 
-/// `Set<A>` is a set type for specifications.
+/// `GSet<A, true>` is a set type for specifications.
 ///
 /// An object `set: Set<A>` is a subset of the set of all values `a: A`.
 /// Equivalently, it can be thought of as a boolean predicate on `A`.
@@ -28,27 +28,26 @@ verus! {
 /// operator `=~=`.
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(A)]
-pub struct Set<A, const Finite:bool = true> {
+pub struct GSet<A, const Finite:bool = true> {
     set: spec_fn(A) -> bool,
 }
 
-// TODO(jonh): discuss. I wonder if we should name the base type GSet (generic),
-// and make Set a synonym that forces Finite=true. That would prevent this kind of error
-// 45  |         Set::full().mk_map(fv)
-//     |         ^^^^^^^^^ cannot infer the value of the const parameter `Finite` declared on the struct `Set`
-// and the associated extra cruft in the syntax.
+/// Set<A> is a synonym for GSet<A, true>, a set whose membership is finite (known at typechecking time).
+pub type Set<A> = GSet<A, true>;
 
-pub type ISet<A> = Set<A, false>;
+/// ISet<A> is a synonym for GSet<A, false>, a set whose membership may be infinite (but can be
+/// proven finite at verification time).
+pub type ISet<A> = GSet<A, false>;
 
-impl<A, const Finite:bool> Set<A, Finite> {
+impl<A, const Finite:bool> GSet<A, Finite> {
     // New is private because it can be used to construct infinite sets of either
     // type, and we need to exclude infinite predicates behind the finite version.
     //
     // TODO(jonh): can we enforce finiteness here without spreading it all over
     // the file? Proposed solution from Bryan: add a seq to the representation
     // that's used in the finite case.
-    spec fn private_new(f: spec_fn(A) -> bool) -> Set<A, Finite> {
-        Set { set: f }
+    spec fn private_new(f: spec_fn(A) -> bool) -> GSet<A, Finite> {
+        GSet { set: f }
 //             set: |a|
 //                 if f(a) {
 //                     true
@@ -61,23 +60,23 @@ impl<A, const Finite:bool> Set<A, Finite> {
     // TODO(jonh): trusted because it calls private_new without proving that
     // mapped finite sets are finite. Waiting on provable finite=true repr.
     /// Returns the set contains an element `f(x)` for every element `x` in `self`.
-    pub closed spec fn map<B>(self, f: spec_fn(A) -> B) -> Set<B, Finite> {
-        Set::<B, Finite>::private_new(|a: B| exists|x: A| self.contains(x) && a == f(x))
+    pub closed spec fn map<B>(self, f: spec_fn(A) -> B) -> GSet<B, Finite> {
+        GSet::<B, Finite>::private_new(|a: B| exists|x: A| self.contains(x) && a == f(x))
     }
 
     /// Set of all elements in the given set which satisfy the predicate `f`.
     /// Preserves finiteness of self.
-    pub closed spec fn filter(self, f: spec_fn(A) -> bool) -> (out: Set<A, Finite>)
+    pub closed spec fn filter(self, f: spec_fn(A) -> bool) -> (out: GSet<A, Finite>)
     {
-        Set::private_new(|a| self.contains(a) && f(a))
+        GSet::private_new(|a| self.contains(a) && f(a))
     }
 }
 
-impl<A, const Finite: bool> Set<A, Finite> {
+impl<A, const Finite: bool> GSet<A, Finite> {
     pub closed spec fn to_finite(self) -> Set<A>
     {
         if self.finite() {
-            Set{ set: self.set }
+            GSet{ set: self.set }
         } else {
             arbitrary()
         }
@@ -85,7 +84,7 @@ impl<A, const Finite: bool> Set<A, Finite> {
 }
 
 // TOOD(verus folks): "broadcast functions should have explicit #[trigger]" -- but hey there is one
-pub broadcast proof fn lemma_to_finite_contains<A, const Finite: bool>(s: Set<A, Finite>)
+pub broadcast proof fn lemma_to_finite_contains<A, const Finite: bool>(s: GSet<A, Finite>)
 ensures
     #![trigger(s.to_finite())]
     s.finite() ==> forall |a| s.contains(a) <==> #[trigger] s.to_finite().contains(a)
@@ -96,7 +95,7 @@ ensures
 // TODO(jonh): discuss: I moved this from set_lib, which is a breaking change.
 // Should we make it a (deprecated?) pub import in set_lib as a transition facility?
 // Make this an associated method on Set.
-pub closed spec fn set_int_range(lo: int, hi: int) -> Set<int> {
+pub closed spec fn set_int_range(lo: int, hi: int) -> GSet<int> {
     Set::private_new(|i: int| lo <= i && i < hi)
 }
 
@@ -116,7 +115,7 @@ pub closed spec fn set_int_range(lo: int, hi: int) -> Set<int> {
 //     }
 // }
 
-pub broadcast proof fn lemma_set_finite_from_type<A>(s: Set<A, true>)
+pub broadcast proof fn lemma_set_finite_from_type<A>(s: GSet<A, true>)
 ensures #[trigger] s.finite()
 {
     // Preserving this is the reason for the trustedness in the
@@ -140,7 +139,7 @@ impl<A> ISet<A> {
 // carefully to avoid violating the Finite=true => is_finite assumption.
 //////////////////////////////////////////////////////////////////////////////
 
-pub open spec fn congruent<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>) -> bool
+pub open spec fn congruent<A, const Finite1: bool, const Finite2: bool>(s1: GSet<A, Finite1>, s2: GSet<A, Finite2>) -> bool
 {
     forall |a: A| s1.contains(a) <==> s2.contains(a)
 }
@@ -150,7 +149,7 @@ pub open spec fn congruent<A, const Finite1: bool, const Finite2: bool>(s1: Set<
 // congruent(s1,s2) sort of demands the callsite type "assert(congruent(s1,s2))" anyway, so maybe
 // not useful.
 // After discussion: the congruent stuff is mostly only gonna be called inside set_lib anyway.
-pub proof fn congruent_len<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>)
+pub proof fn congruent_len<A, const Finite1: bool, const Finite2: bool>(s1: GSet<A, Finite1>, s2: GSet<A, Finite2>)
 requires
     congruent(s1, s2),
     s1.finite(),
@@ -163,10 +162,10 @@ decreases s1.len(),
     broadcast use lemma_set_choose_len;
     broadcast use lemma_set_ext_equal;
     broadcast use lemma_set_remove_finite;
-    if s1 == Set::<A, Finite1>::empty() {
+    if s1 == GSet::<A, Finite1>::empty() {
         assert( s1.len() == 0 );
         assert( forall |x| !s2.contains(x) );
-        assert( s2 =~= Set::<A, Finite2>::empty() );    // trigger extn to get lemma_set_empty_len
+        assert( s2 =~= GSet::<A, Finite2>::empty() );    // trigger extn to get lemma_set_empty_len
         assert( s2.len() == 0 );
     } else {
         let x = s1.choose();
@@ -185,20 +184,20 @@ decreases s1.len(),
     }
 }
 
-pub proof fn congruent_infiniteness<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>)
+pub proof fn congruent_infiniteness<A, const Finite1: bool, const Finite2: bool>(s1: GSet<A, Finite1>, s2: GSet<A, Finite2>)
 requires congruent(s1, s2),
 ensures s1.finite() <==> s2.finite(),
 {
 }
 
-pub broadcast proof fn lemma_set_map_contains<A, const Finite: bool, B>(s: Set<A, Finite>, f: spec_fn(A) -> B)
+pub broadcast proof fn lemma_set_map_contains<A, const Finite: bool, B>(s: GSet<A, Finite>, f: spec_fn(A) -> B)
 ensures
     #![trigger(s.map(f))]
     forall |y| s.map(f).contains(y) <==> (exists |x| s.contains(x) && f(x) == y)
 {
 }
 
-pub broadcast proof fn lemma_set_map_finite<A, const Finite: bool, B>(s: Set<A, Finite>, f: spec_fn(A) -> B)
+pub broadcast proof fn lemma_set_map_finite<A, const Finite: bool, B>(s: GSet<A, Finite>, f: spec_fn(A) -> B)
 requires s.finite(),
 ensures
     #![trigger(s.map(f))]
@@ -218,7 +217,7 @@ ensures
     assert( trigger_finite(g, ub) );    // tickle spec fn finite trigger
 }
 
-impl<A, const Finite:bool> Set<A, Finite> {
+impl<A, const Finite:bool> GSet<A, Finite> {
     pub open spec fn to_infinite(self) -> (infinite_out: ISet<A>)
     {
         ISet::new(|a| self.contains(a))
@@ -237,7 +236,7 @@ impl<A, const Finite:bool> Set<A, Finite> {
         broadcast use lemma_set_empty_len;
         broadcast use lemma_set_len_empty;
         if self.len() == 0 {
-            assert( self.to_infinite() =~= Set::empty() );
+            assert( self.to_infinite() =~= GSet::empty() );
         } else {
             let a = self.choose();
             lemma_set_remove_finite(self, a);
@@ -258,21 +257,21 @@ impl<A, const Finite:bool> Set<A, Finite> {
     }
 
     /// The "empty" set.
-//     #[rustc_diagnostic_item = "verus::vstd::set::Set::empty"]
-    pub closed spec fn empty() -> Set<A, Finite> {
-        Set { set: |a| false }
+//     #[rustc_diagnostic_item = "verus::vstd::set::GSet::empty"]
+    pub closed spec fn empty() -> GSet<A, Finite> {
+        GSet { set: |a| false }
     }
 
     /// The "full" set, i.e., set containing every element of type `A`.
     /// Note that `full()` always returns an ISet, even if A is inhabited
     /// by only a finite number of elements.
-//     #[rustc_diagnostic_item = "verus::vstd::set::Set::full"]
+//     #[rustc_diagnostic_item = "verus::vstd::set::GSet::full"]
     pub open spec fn full() -> ISet<A> {
         ISet::empty().complement()
     }
 
     /// Predicate indicating if the set contains the given element.
-//     #[rustc_diagnostic_item = "verus::vstd::set::Set::contains"]
+//     #[rustc_diagnostic_item = "verus::vstd::set::GSet::contains"]
     pub closed spec fn contains(self, a: A) -> bool {
         (self.set)(a)
     }
@@ -284,21 +283,21 @@ impl<A, const Finite:bool> Set<A, Finite> {
     }
 
     /// Returns `true` if the first argument is a subset of the second.
-//     #[rustc_diagnostic_item = "verus::vstd::set::Set::subset_of"]
-    pub open spec fn subset_of<const Finite2: bool>(self, s2: Set<A, Finite2>) -> bool {
+//     #[rustc_diagnostic_item = "verus::vstd::set::GSet::subset_of"]
+    pub open spec fn subset_of<const Finite2: bool>(self, s2: GSet<A, Finite2>) -> bool {
         forall|a: A| self.contains(a) ==> s2.contains(a)
     }
 
     #[verifier::inline]
-    pub open spec fn spec_le<const Finite2: bool>(self, s2: Set<A, Finite2>) -> bool {
+    pub open spec fn spec_le<const Finite2: bool>(self, s2: GSet<A, Finite2>) -> bool {
         self.subset_of(s2)
     }
 
     /// Returns a new set with the given element inserted.
     /// If that element is already in the set, then an identical set is returned.
-//     #[rustc_diagnostic_item = "verus::vstd::set::Set::insert"]
-    pub closed spec fn insert(self, a: A) -> Set<A, Finite> {
-        Set {
+//     #[rustc_diagnostic_item = "verus::vstd::set::GSet::insert"]
+    pub closed spec fn insert(self, a: A) -> GSet<A, Finite> {
+        GSet {
             set: |a2|
                 if a2 == a {
                     true
@@ -310,9 +309,9 @@ impl<A, const Finite:bool> Set<A, Finite> {
 
     /// Returns a new set with the given element removed.
     /// If that element is already absent from the set, then an identical set is returned.
-//     #[rustc_diagnostic_item = "verus::vstd::set::Set::remove"]
-    pub closed spec fn remove(self, a: A) -> Set<A, Finite> {
-        Set {
+//     #[rustc_diagnostic_item = "verus::vstd::set::GSet::remove"]
+    pub closed spec fn remove(self, a: A) -> GSet<A, Finite> {
+        GSet {
             set: |a2|
                 if a2 == a {
                     false
@@ -323,23 +322,23 @@ impl<A, const Finite:bool> Set<A, Finite> {
     }
 
     /// Union of two sets.
-    pub closed spec fn union<const Finite2: bool>(self, s2: Set<A, Finite2>) -> ISet<A> {
-        Set { set: |a| (self.set)(a) || (s2.set)(a) }
+    pub closed spec fn union<const Finite2: bool>(self, s2: GSet<A, Finite2>) -> ISet<A> {
+        GSet { set: |a| (self.set)(a) || (s2.set)(a) }
     }
 
     /// Intersection of two sets.
-    pub closed spec fn intersect<const Finite2: bool>(self, s2: Set<A, Finite2>) -> ISet<A> {
-        Set { set: |a| (self.set)(a) && (s2.set)(a) }
+    pub closed spec fn intersect<const Finite2: bool>(self, s2: GSet<A, Finite2>) -> ISet<A> {
+        GSet { set: |a| (self.set)(a) && (s2.set)(a) }
     }
 
     /// Set difference, i.e., the set of all elements in the first one but not in the second.
-    pub closed spec fn difference<const Finite2: bool>(self, s2: Set<A, Finite2>) -> ISet<A> {
-        Set { set: |a| (self.set)(a) && !(s2.set)(a) }
+    pub closed spec fn difference<const Finite2: bool>(self, s2: GSet<A, Finite2>) -> ISet<A> {
+        GSet { set: |a| (self.set)(a) && !(s2.set)(a) }
     }
 
     /// Set complement (within the space of all possible elements in `A`).
     pub closed spec fn complement(self) -> ISet<A> {
-        Set { set: |a| !(self.set)(a) }
+        GSet { set: |a| !(self.set)(a) }
     }
 
     /// Returns `true` if the set is finite.
@@ -373,7 +372,7 @@ impl<A, const Finite:bool> Set<A, Finite> {
 
     /// Returns `true` if the sets are disjoint, i.e., if their interesection is
     /// the empty set.
-    pub open spec fn disjoint<const Finite2: bool>(self, s2: Set<A, Finite2>) -> bool {
+    pub open spec fn disjoint<const Finite2: bool>(self, s2: GSet<A, Finite2>) -> bool {
         forall|a: A| self.contains(a) ==> !s2.contains(a)
     }
 }
@@ -386,11 +385,11 @@ impl<A> Set<A> {
     /// If *either* set in an intersection is finite, the result is finite.
     /// To exploit that knowledge using this method, put the one you know is finite in the `self`
     /// position.
-    pub closed spec fn finite_intersect<const Finite2: bool>(self, s2: Set<A, Finite2>) -> Set<A> {
+    pub closed spec fn finite_intersect<const Finite2: bool>(self, s2: GSet<A, Finite2>) -> Set<A> {
         Set { set: |a| (self.set)(a) && (s2.set)(a) }
     }
 
-    pub closed spec fn finite_difference<const Finite2: bool>(self, s2: Set<A, Finite2>) -> Set<A> {
+    pub closed spec fn finite_difference<const Finite2: bool>(self, s2: GSet<A, Finite2>) -> Set<A> {
         Set { set: |a| (self.set)(a) && !(s2.set)(a) }
     }
 }
@@ -406,13 +405,13 @@ impl<A> Set<A> {
 
     /// `*` operator, synonymous with `finite_intersect`
     #[verifier::inline]
-    pub open spec fn spec_mul<const Finite2: bool>(self, s2: Set<A, Finite2>) -> Set<A> {
+    pub open spec fn spec_mul<const Finite2: bool>(self, s2: GSet<A, Finite2>) -> Set<A> {
         self.finite_intersect(s2)
     }
 
     /// `-` operator, synonymous with `difference`
     #[verifier::inline]
-    pub open spec fn spec_sub<const Finite2: bool>(self, s2: Set<A, Finite2>) -> Set<A> {
+    pub open spec fn spec_sub<const Finite2: bool>(self, s2: GSet<A, Finite2>) -> Set<A> {
         self.finite_difference(s2)
     }
 }
@@ -426,13 +425,13 @@ impl<A> ISet<A> {
 
     /// `*` operator, synonymous with `intersect`
     #[verifier::inline]
-    pub open spec fn spec_mul<const Finite2: bool>(self, s2: Set<A, Finite2>) -> ISet<A> {
+    pub open spec fn spec_mul<const Finite2: bool>(self, s2: GSet<A, Finite2>) -> ISet<A> {
         self.intersect(s2)
     }
 
     /// `-` operator, synonymous with `difference`
     #[verifier::inline]
-    pub open spec fn spec_sub<const Finite2: bool>(self, s2: Set<A, Finite2>) -> ISet<A> {
+    pub open spec fn spec_sub<const Finite2: bool>(self, s2: GSet<A, Finite2>) -> ISet<A> {
         self.difference(s2)
     }
 }
@@ -442,7 +441,7 @@ spec fn trigger_finite<A>(f: spec_fn(A) -> nat, ub: nat) -> bool {
     true
 }
 
-spec fn surj_on<A, const AFinite: bool, B>(f: spec_fn(A) -> B, s: Set<A, AFinite>) -> bool {
+spec fn surj_on<A, const AFinite: bool, B>(f: spec_fn(A) -> B, s: GSet<A, AFinite>) -> bool {
     forall|a1, a2| #![all_triggers] s.contains(a1) && s.contains(a2) && a1 != a2 ==> f(a1) != f(a2)
 }
 
@@ -505,10 +504,10 @@ pub mod fold {
     // This predicate is intended to be used like an inductive predicate, with the corresponding
     // introduction, elimination and induction rules proved below.
     #[verifier(opaque)]
-    spec fn fold_graph<A, const Finite: bool, B>(z: B, f: spec_fn(B, A) -> B, s: Set<A, Finite>, y: B, d: nat) -> bool
+    spec fn fold_graph<A, const Finite: bool, B>(z: B, f: spec_fn(B, A) -> B, s: GSet<A, Finite>, y: B, d: nat) -> bool
         decreases d,
     {
-        if s === Set::empty() {
+        if s === GSet::empty() {
             &&& z == y
             &&& d == 0
         } else {
@@ -531,7 +530,7 @@ pub mod fold {
     // Introduction rules
     proof fn lemma_fold_graph_empty_intro<A, const Finite: bool, B>(z: B, f: spec_fn(B, A) -> B)
         ensures
-            fold_graph(z, f, Set::<A, Finite>::empty(), z, 0),
+            fold_graph(z, f, GSet::<A, Finite>::empty(), z, 0),
     {
         reveal(fold_graph);
     }
@@ -539,7 +538,7 @@ pub mod fold {
     proof fn lemma_fold_graph_insert_intro<A, const Finite: bool, B>(
         z: B,
         f: spec_fn(B, A) -> B,
-        s: Set<A, Finite>,
+        s: GSet<A, Finite>,
         y: B,
         d: nat,
         a: A,
@@ -556,8 +555,8 @@ pub mod fold {
         let _ = trigger_fold_graph(y, a);
         assert(s == s.insert(a).remove(a));
         assert( s.finite() ) by {
-            if s == Set::<A, Finite>::empty() {
-                let es = Set::<A>::empty();
+            if s == GSet::<A, Finite>::empty() {
+                let es = GSet::<A>::empty();
                 assert( congruent(es, s) );
                 congruent_infiniteness(es, s);
                 assert( s.finite() );
@@ -595,7 +594,7 @@ pub mod fold {
     // Elimination rules
     proof fn lemma_fold_graph_empty_elim<A, const Finite: bool, B>(z: B, f: spec_fn(B, A) -> B, y: B, d: nat)
         requires
-            fold_graph(z, f, Set::<A, Finite>::empty(), y, d),
+            fold_graph(z, f, GSet::<A, Finite>::empty(), y, d),
         ensures
             z == y,
             d == 0,
@@ -606,7 +605,7 @@ pub mod fold {
     proof fn lemma_fold_graph_insert_elim<A, const Finite: bool, B>(
         z: B,
         f: spec_fn(B, A) -> B,
-        s: Set<A, Finite>,
+        s: GSet<A, Finite>,
         y: B,
         d: nat,
         a: A,
@@ -628,7 +627,7 @@ pub mod fold {
     proof fn lemma_fold_graph_insert_elim_aux<A, const Finite: bool, B>(
         z: B,
         f: spec_fn(B, A) -> B,
-        s: Set<A, Finite>,
+        s: GSet<A, Finite>,
         y: B,
         d: nat,
         a: A,
@@ -655,7 +654,7 @@ pub mod fold {
                 &&& y == f(yr, aa)
             };
         assert(trigger_fold_graph(yr, a));
-        if s.remove(aa) === Set::empty() {
+        if s.remove(aa) === GSet::empty() {
         } else {
             if a == aa {
             } else {
@@ -681,15 +680,15 @@ pub mod fold {
     proof fn lemma_fold_graph_induct<A, const Finite: bool, B>(
         z: B,
         f: spec_fn(B, A) -> B,
-        s: Set<A, Finite>,
+        s: GSet<A, Finite>,
         y: B,
         d: nat,
-        pred: spec_fn(Set<A, Finite>, B, nat) -> bool,
+        pred: spec_fn(GSet<A, Finite>, B, nat) -> bool,
     )
         requires
             is_fun_commutative(f),
             fold_graph(z, f, s, y, d),
-            pred(Set::empty(), z, 0),
+            pred(GSet::empty(), z, 0),
             forall|a, s, y, d|
                 pred(s, y, d) && !s.contains(a) && #[trigger] fold_graph(z, f, s, y, d) ==> pred(
                     #[trigger] s.insert(a),
@@ -703,19 +702,19 @@ pub mod fold {
         broadcast use group_set_axioms_early;
 
         reveal(fold_graph);
-        if s === Set::empty() {
+        if s === GSet::empty() {
             lemma_fold_graph_empty_elim::<A, Finite, B>(z, f, y, d);
         } else {
             let a = s.choose();
             lemma_fold_graph_insert_elim(z, f, s.remove(a), y, d, a);
             let yp = choose|yp|
                 y == f(yp, a) && #[trigger] fold_graph(z, f, s.remove(a), yp, sub(d, 1));
-            assert( pred(Set::empty(), z, 0) ); // flaky trigger failure?
+            assert( pred(GSet::empty(), z, 0) ); // flaky trigger failure?
             lemma_fold_graph_induct::<A, Finite, B>(z, f, s.remove(a), yp, sub(d, 1), pred);
         }
     }
 
-    impl<A, const Finite: bool> Set<A, Finite> {
+    impl<A, const Finite: bool> GSet<A, Finite> {
         /// Folds the set, applying `f` to perform the fold. The next element for the fold is chosen by
         /// the choose operator.
         ///
@@ -731,7 +730,7 @@ pub mod fold {
         }
     }
 
-    proof fn lemma_fold_graph_finite<A, const Finite: bool, B>(z: B, f: spec_fn(B, A) -> B, s: Set<A, Finite>, y: B, d: nat)
+    proof fn lemma_fold_graph_finite<A, const Finite: bool, B>(z: B, f: spec_fn(B, A) -> B, s: GSet<A, Finite>, y: B, d: nat)
         requires
             is_fun_commutative(f),
             fold_graph(z, f, s, y, d),
@@ -740,9 +739,9 @@ pub mod fold {
     {
         broadcast use group_set_axioms_early;
 
-        let pred = |s: Set<A, Finite>, y, d| s.finite();
+        let pred = |s: GSet<A, Finite>, y, d| s.finite();
 
-        let empty = Set::<A, Finite>::empty();
+        let empty = GSet::<A, Finite>::empty();
         congruent_infiniteness(empty, empty.to_finite());
 
         lemma_fold_graph_induct::<A, Finite, B>(z, f, s, y, d, pred);
@@ -751,7 +750,7 @@ pub mod fold {
     proof fn lemma_fold_graph_deterministic<A, const Finite: bool, B>(
         z: B,
         f: spec_fn(B, A) -> B,
-        s: Set<A, Finite>,
+        s: GSet<A, Finite>,
         y1: B,
         y2: B,
         d1: nat,
@@ -765,11 +764,11 @@ pub mod fold {
             y1 == y2,
             d1 == d2,
     {
-        let pred = |s: Set<A, Finite>, y1: B, d1: nat|
+        let pred = |s: GSet<A, Finite>, y1: B, d1: nat|
             forall|y2, d2| fold_graph(z, f, s, y2, d2) ==> y1 == y2 && d2 == d1;
         // Base case
-        assert(pred(Set::empty(), z, 0)) by {
-            assert forall|y2, d2| fold_graph(z, f, Set::<A, Finite>::empty(), y2, d2) implies z == y2 && d2
+        assert(pred(GSet::empty(), z, 0)) by {
+            assert forall|y2, d2| fold_graph(z, f, GSet::<A, Finite>::empty(), y2, d2) implies z == y2 && d2
                 == 0 by {
                 lemma_fold_graph_empty_elim::<A, Finite, B>(z, f, y2, d2);
             };
@@ -791,7 +790,7 @@ pub mod fold {
         lemma_fold_graph_induct::<A, Finite, B>(z, f, s, y2, d2, pred);
     }
 
-    proof fn lemma_fold_is_fold_graph<A, const Finite: bool, B>(z: B, f: spec_fn(B, A) -> B, s: Set<A, Finite>, y: B, d: nat)
+    proof fn lemma_fold_is_fold_graph<A, const Finite: bool, B>(z: B, f: spec_fn(B, A) -> B, s: GSet<A, Finite>, y: B, d: nat)
         requires
             is_fun_commutative(f),
             fold_graph(z, f, s, y, d),
@@ -810,10 +809,10 @@ pub mod fold {
     // measure to prove the subsequent lemma `lemma_fold_graph_exists`. Instead, we first prove
     // this lemma, for which we use the upper bound of a finiteness witness as the decreasing
     // measure.
-    pub proof fn lemma_finite_set_induct<A, const Finite: bool>(s: Set<A, Finite>, pred: spec_fn(Set<A, Finite>) -> bool)
+    pub proof fn lemma_finite_set_induct<A, const Finite: bool>(s: GSet<A, Finite>, pred: spec_fn(GSet<A, Finite>) -> bool)
         requires
             s.finite(),
-            pred(Set::empty()),
+            pred(GSet::empty()),
             forall|s, a| pred(s) && s.finite() && !s.contains(a) ==> #[trigger] pred(s.insert(a)),
         ensures
             pred(s),
@@ -824,16 +823,16 @@ pub mod fold {
     }
 
     proof fn lemma_finite_set_induct_aux<A, const Finite: bool>(
-        s: Set<A, Finite>,
+        s: GSet<A, Finite>,
         f: spec_fn(A) -> nat,
         ub: nat,
-        pred: spec_fn(Set<A, Finite>) -> bool,
+        pred: spec_fn(GSet<A, Finite>) -> bool,
     )
         requires
             surj_on(f, s),
             s.finite(),
             forall|a| s.contains(a) ==> f(a) < ub,
-            pred(Set::empty()),
+            pred(GSet::empty()),
             forall|s, a| pred(s) && s.finite() && !s.contains(a) ==> #[trigger] pred(s.insert(a)),
         ensures
             pred(s),
@@ -841,7 +840,7 @@ pub mod fold {
     {
         broadcast use group_set_axioms_early;
 
-        if s =~= Set::empty() {
+        if s =~= GSet::empty() {
         } else {
             let a = s.choose();
             // If `f` maps something to `ub - 1`, remap it to `f(a)` so we can decrease ub
@@ -855,7 +854,7 @@ pub mod fold {
         }
     }
 
-    proof fn lemma_fold_graph_exists<A, const Finite: bool, B>(z: B, f: spec_fn(B, A) -> B, s: Set<A, Finite>)
+    proof fn lemma_fold_graph_exists<A, const Finite: bool, B>(z: B, f: spec_fn(B, A) -> B, s: GSet<A, Finite>)
         requires
             s.finite(),
             is_fun_commutative(f),
@@ -864,7 +863,7 @@ pub mod fold {
     {
         let pred = |s| exists|y, d| fold_graph(z, f, s, y, d);
         // Base case
-        assert(fold_graph(z, f, Set::<A, Finite>::empty(), z, 0)) by {
+        assert(fold_graph(z, f, GSet::<A, Finite>::empty(), z, 0)) by {
             lemma_fold_graph_empty_intro::<A, Finite, B>(z, f);
         };
         // Step case
@@ -877,7 +876,7 @@ pub mod fold {
         lemma_finite_set_induct(s, pred);
     }
 
-    pub broadcast proof fn lemma_fold_insert<A, const Finite: bool, B>(s: Set<A, Finite>, z: B, f: spec_fn(B, A) -> B, a: A)
+    pub broadcast proof fn lemma_fold_insert<A, const Finite: bool, B>(s: GSet<A, Finite>, z: B, f: spec_fn(B, A) -> B, a: A)
         requires
             s.finite(),
             !s.contains(a),
@@ -893,9 +892,9 @@ pub mod fold {
 
     pub broadcast proof fn lemma_fold_empty<A, const Finite: bool, B>(z: B, f: spec_fn(B, A) -> B)
         ensures
-            #[trigger] Set::<A, Finite>::empty().fold(z, f) == z,
+            #[trigger] GSet::<A, Finite>::empty().fold(z, f) == z,
     {
-        let (y, d): (B, nat) = choose|y, d| fold_graph(z, f, Set::<A, Finite>::empty(), y, d);
+        let (y, d): (B, nat) = choose|y, d| fold_graph(z, f, GSet::<A, Finite>::empty(), y, d);
         lemma_fold_graph_empty_intro::<A, Finite, B>(z, f);
         lemma_fold_graph_empty_elim::<A, Finite, B>(z, f, y, d);
     }
@@ -905,16 +904,7 @@ pub mod fold {
 /// The empty set contains no elements
 pub broadcast proof fn lemma_set_empty<A, const Finite: bool>(a: A)
     ensures
-        !(#[trigger] Set::<A, Finite>::empty().contains(a)),
-{
-}
-
-// TODO(jonh): there is no Set::new for finite sets. How does this lemma even typecheck?
-// --because new definition forces inference to guess Finite=false
-/// A call to `Set::new` with the predicate `f` contains `a` if and only if `f(a)` is true.
-pub broadcast proof fn bugcheck_lemma_set_new<A>(f: spec_fn(A) -> bool, a: A)
-    ensures
-        #[trigger] Set::new(f).contains(a) == f(a),
+        !(#[trigger] GSet::<A, Finite>::empty().contains(a)),
 {
 }
 
@@ -925,7 +915,7 @@ pub broadcast proof fn lemma_set_new<A>(f: spec_fn(A) -> bool, a: A)
 }
 
 /// The result of inserting element `a` into set `s` must contains `a`.
-pub broadcast proof fn lemma_set_insert_same<A, const Finite: bool>(s: Set<A, Finite>, a: A)
+pub broadcast proof fn lemma_set_insert_same<A, const Finite: bool>(s: GSet<A, Finite>, a: A)
     ensures
         #[trigger] s.insert(a).contains(a),
 {
@@ -933,7 +923,7 @@ pub broadcast proof fn lemma_set_insert_same<A, const Finite: bool>(s: Set<A, Fi
 
 /// If `a1` does not equal `a2`, then the result of inserting element `a2` into set `s`
 /// must contain `a1` if and only if the set contained `a1` before the insertion of `a2`.
-pub broadcast proof fn lemma_set_insert_different<A, const Finite: bool>(s: Set<A, Finite>, a1: A, a2: A)
+pub broadcast proof fn lemma_set_insert_different<A, const Finite: bool>(s: GSet<A, Finite>, a1: A, a2: A)
     requires
         a1 != a2,
     ensures
@@ -942,7 +932,7 @@ pub broadcast proof fn lemma_set_insert_different<A, const Finite: bool>(s: Set<
 }
 
 /// The result of removing element `a` from set `s` must not contain `a`.
-pub broadcast proof fn lemma_set_remove_same<A, const Finite: bool>(s: Set<A, Finite>, a: A)
+pub broadcast proof fn lemma_set_remove_same<A, const Finite: bool>(s: GSet<A, Finite>, a: A)
     ensures
         !(#[trigger] s.remove(a).contains(a)),
 {
@@ -950,7 +940,7 @@ pub broadcast proof fn lemma_set_remove_same<A, const Finite: bool>(s: Set<A, Fi
 
 /// Removing an element `a` from a set `s` and then inserting `a` back into the set`
 /// is equivalent to the original set `s`.
-pub broadcast proof fn lemma_set_remove_insert<A, const Finite: bool>(s: Set<A, Finite>, a: A)
+pub broadcast proof fn lemma_set_remove_insert<A, const Finite: bool>(s: GSet<A, Finite>, a: A)
     requires
         s.contains(a),
     ensures
@@ -980,7 +970,7 @@ pub broadcast proof fn lemma_set_remove_insert<A, const Finite: bool>(s: Set<A, 
 
 /// If `a1` does not equal `a2`, then the result of removing element `a2` from set `s`
 /// must contain `a1` if and only if the set contained `a1` before the removal of `a2`.
-pub broadcast proof fn lemma_set_remove_different<A, const Finite: bool>(s: Set<A, Finite>, a1: A, a2: A)
+pub broadcast proof fn lemma_set_remove_different<A, const Finite: bool>(s: GSet<A, Finite>, a1: A, a2: A)
     requires
         a1 != a2,
     ensures
@@ -990,7 +980,7 @@ pub broadcast proof fn lemma_set_remove_different<A, const Finite: bool>(s: Set<
 
 /// The union of sets `s1` and `s2` contains element `a` if and only if
 /// `s1` contains `a` and/or `s2` contains `a`.
-pub broadcast proof fn lemma_set_union<A, const Finite: bool, const Finite2: bool>(s1: Set<A, Finite>, s2: Set<A, Finite2>, a: A)
+pub broadcast proof fn lemma_set_union<A, const Finite: bool, const Finite2: bool>(s1: GSet<A, Finite>, s2: GSet<A, Finite2>, a: A)
     ensures
         #[trigger] s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
 {
@@ -1006,7 +996,7 @@ pub broadcast proof fn lemma_set_finite_union<A>(s1: Set<A>, s2: Set<A>, a: A)
 
 /// The intersection of sets `s1` and `s2` contains element `a` if and only if
 /// both `s1` and `s2` contain `a`.
-pub broadcast proof fn lemma_set_intersect<A, const Finite: bool, const Finite2: bool>(s1: Set<A, Finite>, s2: Set<A, Finite2>, a: A)
+pub broadcast proof fn lemma_set_intersect<A, const Finite: bool, const Finite2: bool>(s1: GSet<A, Finite>, s2: GSet<A, Finite2>, a: A)
     ensures
         #[trigger] s1.intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)),
 {
@@ -1014,7 +1004,7 @@ pub broadcast proof fn lemma_set_intersect<A, const Finite: bool, const Finite2:
 
 /// The finite-typed intersection of sets `s1` and `s2` contains element `a` if and only if
 /// both `s1` and `s2` contain `a`.
-pub broadcast proof fn lemma_set_finite_intersect<A, const Finite2: bool>(s1: Set<A>, s2: Set<A, Finite2>, a: A)
+pub broadcast proof fn lemma_set_finite_intersect<A, const Finite2: bool>(s1: Set<A>, s2: GSet<A, Finite2>, a: A)
     ensures
         #[trigger] s1.finite_intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)),
 {
@@ -1022,7 +1012,7 @@ pub broadcast proof fn lemma_set_finite_intersect<A, const Finite2: bool>(s1: Se
 
 /// The set difference between `s1` and `s2` contains element `a` if and only if
 /// `s1` contains `a` and `s2` does not contain `a`.
-pub broadcast proof fn lemma_set_difference<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>, a: A)
+pub broadcast proof fn lemma_set_difference<A, const Finite1: bool, const Finite2: bool>(s1: GSet<A, Finite1>, s2: GSet<A, Finite2>, a: A)
     ensures
         #[trigger] s1.difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
 {
@@ -1030,21 +1020,21 @@ pub broadcast proof fn lemma_set_difference<A, const Finite1: bool, const Finite
 
 /// The finite-typed set difference between `s1` and `s2` contains element `a` if and only if
 /// `s1` contains `a` and `s2` does not contain `a`.
-pub broadcast proof fn lemma_set_finite_difference<A, const Finite2: bool>(s1: Set<A>, s2: Set<A, Finite2>, a: A)
+pub broadcast proof fn lemma_set_finite_difference<A, const Finite2: bool>(s1: Set<A>, s2: GSet<A, Finite2>, a: A)
     ensures
         #[trigger] s1.finite_difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
 {
 }
 
 /// The complement of set `s` contains element `a` if and only if `s` does not contain `a`.
-pub broadcast proof fn lemma_set_complement<A, const Finite: bool>(s: Set<A, Finite>, a: A)
+pub broadcast proof fn lemma_set_complement<A, const Finite: bool>(s: GSet<A, Finite>, a: A)
     ensures
         #[trigger] s.complement().contains(a) == !s.contains(a),
 {
 }
 
 /// Sets `s1` and `s2` are equal if and only if they contain all of the same elements.
-pub broadcast proof fn lemma_set_ext_equal<A, const Finite: bool>(s1: Set<A, Finite>, s2: Set<A, Finite>)
+pub broadcast proof fn lemma_set_ext_equal<A, const Finite: bool>(s1: GSet<A, Finite>, s2: GSet<A, Finite>)
     ensures
         #[trigger] (s1 =~= s2) <==> (forall|a: A| s1.contains(a) == s2.contains(a)),
 {
@@ -1062,7 +1052,7 @@ pub broadcast proof fn lemma_set_ext_equal<A, const Finite: bool>(s1: Set<A, Fin
     }
 }
 
-pub broadcast proof fn lemma_set_ext_equal_deep<A, const Finite: bool>(s1: Set<A, Finite>, s2: Set<A, Finite>)
+pub broadcast proof fn lemma_set_ext_equal_deep<A, const Finite: bool>(s1: GSet<A, Finite>, s2: GSet<A, Finite>)
     ensures
         #[trigger] (s1 =~~= s2) <==> s1 =~= s2,
 {
@@ -1090,7 +1080,7 @@ pub broadcast proof fn lemma_mk_map_index<K, V>(s: ISet<K>, f: spec_fn(K) -> V, 
 /// The empty set is finite.
 pub broadcast proof fn lemma_set_empty_finite<A, const Finite: bool>()
     ensures
-        #[trigger] Set::<A, Finite>::empty().finite(),
+        #[trigger] GSet::<A, Finite>::empty().finite(),
 {
     let f = |a: A| 0;
     let ub = 0;
@@ -1098,7 +1088,7 @@ pub broadcast proof fn lemma_set_empty_finite<A, const Finite: bool>()
 }
 
 /// The result of inserting an element `a` into a finite set `s` is also finite.
-pub broadcast proof fn lemma_set_insert_finite<A, const Finite: bool>(s: Set<A, Finite>, a: A)
+pub broadcast proof fn lemma_set_insert_finite<A, const Finite: bool>(s: GSet<A, Finite>, a: A)
     requires
         s.finite(),
     ensures
@@ -1109,7 +1099,7 @@ pub broadcast proof fn lemma_set_insert_finite<A, const Finite: bool>(s: Set<A, 
     congruent_infiniteness(s.to_finite().insert(a), s.insert(a));
 }
 
-pub broadcast proof fn lemma_set_remove_finite<A, const Finite: bool>(s: Set<A, Finite>, a: A)
+pub broadcast proof fn lemma_set_remove_finite<A, const Finite: bool>(s: GSet<A, Finite>, a: A)
     requires
         s.finite(),
     ensures
@@ -1121,7 +1111,8 @@ pub broadcast proof fn lemma_set_remove_finite<A, const Finite: bool>(s: Set<A, 
 }
 
 /// The result of removing an element `a` from a finite set `s` is also finite.
-// pub broadcast proof fn lemma_set_remove_finite<A>(s: Set<A>, a: A)
+/// TODO(jonh) delete
+// pub broadcast proof fn lemma_set_remove_finite<A>(s: GSet<A>, a: A)
 //     requires
 //         s.finite(),
 //     ensures
@@ -1149,7 +1140,7 @@ pub broadcast proof fn lemma_set_remove_finite<A, const Finite: bool>(s: Set<A, 
 // }
 
 /// The union of two finite sets is finite.
-pub broadcast proof fn lemma_set_union_finite<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>)
+pub broadcast proof fn lemma_set_union_finite<A, const Finite1: bool, const Finite2: bool>(s1: GSet<A, Finite1>, s2: GSet<A, Finite2>)
     requires
         s1.finite(),
         s2.finite(),
@@ -1174,7 +1165,7 @@ pub broadcast proof fn lemma_set_union_finite<A, const Finite1: bool, const Fini
 }
 
 /// The intersection of two finite sets is finite.
-pub broadcast proof fn lemma_set_intersect_finite<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>)
+pub broadcast proof fn lemma_set_intersect_finite<A, const Finite1: bool, const Finite2: bool>(s1: GSet<A, Finite1>, s2: GSet<A, Finite2>)
     requires
         s1.finite() || s2.finite(),
     ensures
@@ -1186,7 +1177,7 @@ pub broadcast proof fn lemma_set_intersect_finite<A, const Finite1: bool, const 
 }
 
 /// The set difference between two finite sets is finite.
-pub broadcast proof fn lemma_set_difference_finite<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>)
+pub broadcast proof fn lemma_set_difference_finite<A, const Finite1: bool, const Finite2: bool>(s1: GSet<A, Finite1>, s2: GSet<A, Finite2>)
     requires
         s1.finite(),
     ensures
@@ -1199,7 +1190,7 @@ pub broadcast proof fn lemma_set_difference_finite<A, const Finite1: bool, const
 
 /// An infinite set `s` contains the element `s.choose()`.
 // TODO(verus): deprecate and rename choose_infinite!
-pub broadcast proof fn lemma_set_choose_finite<A, const Finite: bool>(s: Set<A, Finite>)
+pub broadcast proof fn lemma_set_choose_finite<A, const Finite: bool>(s: GSet<A, Finite>)
     requires
         !s.finite(),
     ensures
@@ -1218,19 +1209,19 @@ pub broadcast proof fn lemma_set_choose_finite<A, const Finite: bool>(s: Set<A, 
 /// The empty set has length 0.
 pub broadcast proof fn lemma_set_empty_len<A, const Finite: bool>()
     ensures
-        #[trigger] Set::<A, Finite>::empty().len() == 0,
+        #[trigger] GSet::<A, Finite>::empty().len() == 0,
 {
     fold::lemma_fold_empty::<A, Finite, nat>(0, |b: nat, a: A| b + 1);
 }
 
-pub broadcast proof fn lemma_set_map_len<A, const Finite: bool, B>(s: Set<A, Finite>, f: spec_fn(A) -> B)
+pub broadcast proof fn lemma_set_map_len<A, const Finite: bool, B>(s: GSet<A, Finite>, f: spec_fn(A) -> B)
 requires s.finite(),
 ensures
     #![trigger(s.map(f))]
     s.map(f).len() <= s.len()
 decreases s.len()
 {
-    if s == Set::<A,Finite>::empty() {
+    if s == GSet::<A,Finite>::empty() {
         broadcast use lemma_set_empty_len;
         assert( s.map(f).len() == 0 );
         assert( s.len() == 0 );
@@ -1249,10 +1240,10 @@ decreases s.len()
     }
 }
 
-pub broadcast proof fn lemma_set_len_empty<A, const Finite: bool>(s: Set<A, Finite>)
+pub broadcast proof fn lemma_set_len_empty<A, const Finite: bool>(s: GSet<A, Finite>)
 requires s.finite(),
     ensures
-        #[trigger] s.len() == 0 ==> Set::<A, Finite>::empty() == s,
+        #[trigger] s.len() == 0 ==> GSet::<A, Finite>::empty() == s,
 {
     if s.len() == 0 {
         broadcast use lemma_set_remove_len;
@@ -1263,7 +1254,7 @@ requires s.finite(),
             }
         }
         broadcast use lemma_set_ext_equal;
-        assert( s == Set::<A, Finite>::empty() );
+        assert( s == GSet::<A, Finite>::empty() );
     }
 }
 
@@ -1283,13 +1274,13 @@ decreases hi - lo,
         fold::lemma_fold_insert::<int, true, nat>(set_int_range(lo, hi-1), 0, |b: nat, a: int| b + 1, hi-1);
     } else {
         broadcast use lemma_set_empty_len;
-        assert( set_int_range(lo, hi) =~= Set::<int, true>::empty() );   // extn
+        assert( set_int_range(lo, hi) =~= Set::<int>::empty() );   // extn
     }
 }
 
 /// The result of inserting an element `a` into a finite set `s` has length
 /// `s.len() + 1` if `a` is not already in `s` and length `s.len()` otherwise.
-pub broadcast proof fn lemma_set_insert_len<A, const Finite: bool>(s: Set<A, Finite>, a: A)
+pub broadcast proof fn lemma_set_insert_len<A, const Finite: bool>(s: GSet<A, Finite>, a: A)
     requires
         s.finite(),
     ensures
@@ -1308,7 +1299,7 @@ pub broadcast proof fn lemma_set_insert_len<A, const Finite: bool>(s: Set<A, Fin
 
 /// The result of removing an element `a` from a finite set `s` has length
 /// `s.len() - 1` if `a` is in `s` and length `s.len()` otherwise.
-pub broadcast proof fn lemma_set_remove_len<A, const Finite: bool>(s: Set<A, Finite>, a: A)
+pub broadcast proof fn lemma_set_remove_len<A, const Finite: bool>(s: GSet<A, Finite>, a: A)
     requires
         s.finite()
     ensures
@@ -1330,7 +1321,7 @@ pub broadcast proof fn lemma_set_remove_len<A, const Finite: bool>(s: Set<A, Fin
 }
 
 /// If a finite set `s` contains any element, it has length greater than 0.
-pub broadcast proof fn lemma_set_contains_len<A>(s: Set<A>, a: A)
+pub broadcast proof fn lemma_set_contains_len<A>(s: GSet<A>, a: A)
     requires
         #[trigger] s.contains(a),
     ensures
@@ -1345,7 +1336,7 @@ pub broadcast proof fn lemma_set_contains_len<A>(s: Set<A>, a: A)
 }
 
 /// A finite set `s` contains the element `s.choose()` if it has length greater than 0.
-pub broadcast proof fn lemma_set_choose_len<A, const Finite: bool>(s: Set<A, Finite>)
+pub broadcast proof fn lemma_set_choose_len<A, const Finite: bool>(s: GSet<A, Finite>)
     requires
         s.finite(),
         #[trigger] s.len() != 0,
@@ -1359,12 +1350,12 @@ pub broadcast proof fn lemma_set_choose_len<A, const Finite: bool>(s: Set<A, Fin
     broadcast use lemma_set_insert_finite;
     broadcast use lemma_set_insert_len;
 
-    let pred = |s: Set<A, Finite>| s.finite() ==> s.len() == 0 <==> s =~= Set::empty();
+    let pred = |s: GSet<A, Finite>| s.finite() ==> s.len() == 0 <==> s =~= GSet::empty();
     fold::lemma_finite_set_induct(s, pred);
 }
 
 // filter definition is closed now, so we expose its meaning through this lemma
-pub broadcast proof fn lemma_set_filter_is_intersect<A, const Finite: bool>(s: Set<A, Finite>, f: spec_fn(A) -> bool)
+pub broadcast proof fn lemma_set_filter_is_intersect<A, const Finite: bool>(s: GSet<A, Finite>, f: spec_fn(A) -> bool)
 ensures
     congruent(#[trigger] s.filter(f), s.intersect(ISet::new(f)))
 {
@@ -1411,12 +1402,13 @@ pub broadcast group group_set_axioms {
     lemma_set_filter_is_intersect,
 }
 
+// TODO(jonh): discuss: should set![] construct a Set or a GSet with inferred type?
 // Macros
 #[doc(hidden)]
 #[macro_export]
 macro_rules! set_internal {
     [$($elem:expr),* $(,)?] => {
-        $crate::vstd::set::Set::empty()
+        $crate::vstd::set::GSet::empty()
             $(.insert($elem))*
     };
 }

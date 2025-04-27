@@ -25,7 +25,7 @@ broadcast use super::set::group_set_axioms;
 // Some general set properties
 //////////////////////////////////////////////////////////////////////////////
 
-impl<A, const Finite:bool> Set<A, Finite> {
+impl<A, const Finite:bool> GSet<A, Finite> {
     /// Is `true` if called by a "full" set, i.e., a set containing every element of type `A`.
     pub open spec fn is_full(self) -> bool {
         self.to_infinite() == ISet::<A>::full()
@@ -33,7 +33,7 @@ impl<A, const Finite:bool> Set<A, Finite> {
 
     /// Is `true` if called by an "empty" set, i.e., a set containing no elements and has length 0
     pub open spec fn is_empty(self) -> (b: bool) {
-        self =~= Set::<A, Finite>::empty()
+        self =~= GSet::<A, Finite>::empty()
     }
 
     /// A singleton set has at least one element and any two elements are equal.
@@ -73,7 +73,7 @@ impl<A, const Finite:bool> Set<A, Finite> {
 // Finite set properties
 //////////////////////////////////////////////////////////////////////////////
 
-impl<A> Set<A, true> {
+impl<A> Set<A> {
     /// Converts a set into a sequence with an arbitrary ordering.
     pub open spec fn to_seq(self) -> Seq<A>
         decreases self.len(),
@@ -371,7 +371,7 @@ impl<A> Set<A, true> {
 // Ordering properties (available on both flavors of set)
 //////////////////////////////////////////////////////////////////////////////
 
-impl<A, const Finite:bool> Set<A, Finite> {
+impl<A, const Finite:bool> GSet<A, Finite> {
     /// In a pre-ordered set, a greatest element is necessarily maximal.
     pub proof fn lemma_greatest_implies_maximal(self, r: spec_fn(A, A) -> bool, max: A)
         requires
@@ -770,7 +770,7 @@ pub broadcast proof fn lemma_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If set `s2` contains element `a`, then the set difference of `s1` and `s2` does not contain `a`.
-pub broadcast proof fn lemma_set_difference2<A, const Finite1: bool, const Finite2: bool>(s1: Set<A, Finite1>, s2: Set<A, Finite2>, a: A)
+pub broadcast proof fn lemma_set_difference2<A, const Finite1: bool, const Finite2: bool>(s1: GSet<A, Finite1>, s2: GSet<A, Finite2>, a: A)
     ensures
         #![trigger s1.difference(s2).contains(a)]
         s2.contains(a) ==> !s1.difference(s2).contains(a),
@@ -780,7 +780,7 @@ pub broadcast proof fn lemma_set_difference2<A, const Finite1: bool, const Finit
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If sets `a` and `b` are disjoint, meaning they have no elements in common, then the set difference
 /// of `a.union(b)` and `b` is equal to `a` and the set difference of `a.union(b)` and `a` is equal to `b`.
-pub broadcast proof fn lemma_set_disjoint<A, const Finite: bool, const Finite2: bool>(a: Set<A, Finite>, b: Set<A, Finite2>)
+pub broadcast proof fn lemma_set_disjoint<A, const Finite: bool, const Finite2: bool>(a: GSet<A, Finite>, b: GSet<A, Finite2>)
     ensures
         #![trigger a.union(b).difference(a)]  //TODO: this might be too free
         a.disjoint(b) ==> (a.union(b).difference(a) =~= b.to_infinite() && a.union(b).difference(b) =~= a.to_infinite()),
@@ -794,16 +794,16 @@ pub broadcast proof fn lemma_set_disjoint<A, const Finite: bool, const Finite2: 
 //         also not that some proofs in seq_lib requires this lemma
 /// Set `s` has length 0 if and only if it is equal to the empty set. If `s` has length greater than 0,
 /// Then there must exist an element `x` such that `s` contains `x`.
-pub broadcast proof fn lemma_set_empty_equivalency_len<A, const Finite: bool>(s: Set<A, Finite>)
+pub broadcast proof fn lemma_set_empty_equivalency_len<A, const Finite: bool>(s: GSet<A, Finite>)
     requires
         s.finite(),
     ensures
         #![trigger s.len()]
-        (s.len() == 0 <==> s == Set::<A, Finite>::empty()) && (s.len() != 0 ==> exists|x: A| s.contains(x)),
+        (s.len() == 0 <==> s == GSet::<A, Finite>::empty()) && (s.len() != 0 ==> exists|x: A| s.contains(x)),
 {
-    assert(s.len() == 0 ==> s =~= Set::empty()) by {
+    assert(s.len() == 0 ==> s =~= GSet::empty()) by {
         if s.len() == 0 {
-            assert(forall|a: A| !(Set::<A, Finite>::empty().contains(a)));
+            assert(forall|a: A| !(GSet::<A, Finite>::empty().contains(a)));
             assert(Set::<A>::empty().len() == 0);
             assert(Set::<A>::empty().len() == s.len());
             assert((exists|a: A| s.contains(a)) || (forall|a: A| !s.contains(a)));
@@ -815,13 +815,13 @@ pub broadcast proof fn lemma_set_empty_equivalency_len<A, const Finite: bool>(s:
             }
         }
     }
-    assert(s.len() == 0 <== s =~= Set::empty());
+    assert(s.len() == 0 <== s =~= GSet::empty());
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// If sets `a` and `b` are disjoint, meaning they share no elements in common, then the length
 /// of the union `a.union(b)` is equal to the sum of the lengths of `a` and `b`.
-pub broadcast proof fn lemma_set_disjoint_lens<A, const Finite1: bool, const Finite2: bool>(a: Set<A, Finite1>, b: Set<A, Finite2>)
+pub broadcast proof fn lemma_set_disjoint_lens<A, const Finite1: bool, const Finite2: bool>(a: GSet<A, Finite1>, b: GSet<A, Finite2>)
     requires
         a.finite(),
         b.finite(),
@@ -849,7 +849,7 @@ pub broadcast proof fn lemma_set_disjoint_lens<A, const Finite1: bool, const Fin
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The length of the union between two sets added to the length of the intersection between the
 /// two sets is equal to the sum of the lengths of the two sets.
-pub broadcast proof fn lemma_set_intersect_union_lens<A, const Finite1: bool, const Finite2: bool>(a: Set<A, Finite1>, b: Set<A, Finite2>)
+pub broadcast proof fn lemma_set_intersect_union_lens<A, const Finite1: bool, const Finite2: bool>(a: GSet<A, Finite1>, b: GSet<A, Finite2>)
     requires
         a.finite(),
         b.finite(),
@@ -859,7 +859,7 @@ pub broadcast proof fn lemma_set_intersect_union_lens<A, const Finite1: bool, co
 {
     if a.len() == 0 {
         assert(a.union(b) =~= b.to_infinite());
-        assert(a.intersect(b) =~= Set::empty());
+        assert(a.intersect(b) =~= GSet::empty());
         congruent_len(b, b.to_infinite());
     } else {
         let x = a.choose();
@@ -882,7 +882,7 @@ pub broadcast proof fn lemma_set_intersect_union_lens<A, const Finite1: bool, co
 ///
 /// The length of the set difference `A \ B` is equal to the length of `A` minus the length of the
 /// intersection `A ∩ B`.
-pub broadcast proof fn lemma_set_difference_len<A, const Finite1: bool, const Finite2: bool>(a: Set<A, Finite1>, b: Set<A, Finite2>)
+pub broadcast proof fn lemma_set_difference_len<A, const Finite1: bool, const Finite2: bool>(a: GSet<A, Finite1>, b: GSet<A, Finite2>)
     requires
         a.finite(),
         b.finite(),
@@ -892,9 +892,9 @@ pub broadcast proof fn lemma_set_difference_len<A, const Finite1: bool, const Fi
 {
     if a.len() == 0 {
         lemma_set_empty_equivalency_len(a);
-        assert(a.difference(b) =~= Set::empty());
+        assert(a.difference(b) =~= GSet::empty());
         assert(b.difference(a) =~= b.to_infinite());
-        assert(a.intersect(b) =~= Set::empty());
+        assert(a.intersect(b) =~= GSet::empty());
         assert(a.union(b) =~= b.to_infinite());
     } else {
         let x = a.choose();
@@ -917,23 +917,23 @@ pub broadcast proof fn lemma_set_difference_len<A, const Finite1: bool, const Fi
 #[deprecated = "Use `broadcast use group_set_properties` instead"]
 pub proof fn lemma_set_properties<A, const Finite1: bool, const Finite2: bool>()
     ensures
-        forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] a.union(b).union(b) == a.union(b),  //from lemma_set_union_again1
-        forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] a.union(b).union(a) == a.union(b),  //from lemma_set_union_again2
-        forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b),  //from lemma_set_intersect_again1
-        forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b),  //from lemma_set_intersect_again2
-        forall|s1: Set<A, Finite1>, s2: Set<A, Finite2>, a: A| s2.contains(a) ==> !s1.difference(s2).contains(a),  //from lemma_set_difference2
-        forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
+        forall|a: GSet<A, Finite1>, b: GSet<A, Finite2>| #[trigger] a.union(b).union(b) == a.union(b),  //from lemma_set_union_again1
+        forall|a: GSet<A, Finite1>, b: GSet<A, Finite2>| #[trigger] a.union(b).union(a) == a.union(b),  //from lemma_set_union_again2
+        forall|a: GSet<A, Finite1>, b: GSet<A, Finite2>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b),  //from lemma_set_intersect_again1
+        forall|a: GSet<A, Finite1>, b: GSet<A, Finite2>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b),  //from lemma_set_intersect_again2
+        forall|s1: GSet<A, Finite1>, s2: GSet<A, Finite2>, a: A| s2.contains(a) ==> !s1.difference(s2).contains(a),  //from lemma_set_difference2
+        forall|a: GSet<A, Finite1>, b: GSet<A, Finite2>|
             #![trigger a.union(b).difference(a)]
             a.disjoint(b) ==> (a.union(b).difference(a) =~= b.to_infinite() && a.union(b).difference(b) =~= a.to_infinite()),  //from lemma_set_disjoint
-        forall|s: Set<A, Finite1>| #[trigger] s.len() != 0 && s.finite() ==> exists|a: A| s.contains(a),  // half of lemma_set_empty_equivalency_len
-        forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
+        forall|s: GSet<A, Finite1>| #[trigger] s.len() != 0 && s.finite() ==> exists|a: A| s.contains(a),  // half of lemma_set_empty_equivalency_len
+        forall|a: GSet<A, Finite1>, b: GSet<A, Finite2>|
             (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] a.union(b).len() == a.len()
                 + b.len(),  //from lemma_set_disjoint_lens
-        forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
+        forall|a: GSet<A, Finite1>, b: GSet<A, Finite2>|
             (a.finite() && b.finite()) ==> #[trigger] a.union(b).len() + #[trigger] a.intersect(
                 b,
             ).len() == a.len() + b.len(),  //from lemma_set_intersect_union_lens
-        forall|a: Set<A, Finite1>, b: Set<A, Finite2>|
+        forall|a: GSet<A, Finite1>, b: GSet<A, Finite2>|
             (a.finite() && b.finite()) ==> ((#[trigger] a.difference(b).len() + b.difference(
                 a,
             ).len() + a.intersect(b).len() == a.union(b).len()) && (a.difference(b).len() == a.len()
@@ -942,10 +942,10 @@ pub proof fn lemma_set_properties<A, const Finite1: bool, const Finite2: bool>()
     broadcast use group_set_properties;
 
     // TODO(verus): For some reason I now have to explicitly re-trigger extensionality expressions sitting in ensures
-    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] a.union(b).union(b) == a.union(b) );
-    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] a.union(b).union(a) == a.union(b) );
-    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b) );
-    assert( forall|a: Set<A, Finite1>, b: Set<A, Finite2>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b) );
+    assert( forall|a: GSet<A, Finite1>, b: GSet<A, Finite2>| #[trigger] a.union(b).union(b) == a.union(b) );
+    assert( forall|a: GSet<A, Finite1>, b: GSet<A, Finite2>| #[trigger] a.union(b).union(a) == a.union(b) );
+    assert( forall|a: GSet<A, Finite1>, b: GSet<A, Finite2>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b) );
+    assert( forall|a: GSet<A, Finite1>, b: GSet<A, Finite2>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b) );
 }
 
 pub broadcast group group_set_properties {
@@ -980,7 +980,7 @@ pub broadcast proof fn lemma_is_empty_len0<A>(s: Set<A>)
 
 #[doc(hidden)]
 #[verifier::inline]
-pub open spec fn check_argument_is_set<A, const Finite: bool>(s: Set<A, Finite>) -> Set<A, Finite> {
+pub open spec fn check_argument_is_set<A, const Finite: bool>(s: GSet<A, Finite>) -> GSet<A, Finite> {
     s
 }
 

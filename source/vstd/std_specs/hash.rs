@@ -614,7 +614,8 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::keys ](
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             let (index, s) = keys@;
             &&& index == 0
-            &&& s.to_set() == m@.dom()
+                // TODO(jonh): switch to finite when we have finite maps
+            &&& s.to_set().to_infinite() == m@.dom()
             &&& s.no_duplicates()
         },
 ;

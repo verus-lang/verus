@@ -49,12 +49,12 @@ impl<K, V> Map<K, V> {
     /// Gives a `Map<K, V>` whose domain is given by the boolean predicate on keys `fk`,
     /// and maps each key to the value given by `fv`.
     pub open spec fn new(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V) -> Map<K, V> {
-        Set::new(fk).mk_map(fv)
+        ISet::new(fk).mk_map(fv)
     }
 
     /// The domain of the map as a set.
     pub closed spec fn dom(self) -> ISet<K> {
-        Set::new(|k| (self.mapping)(k) is Some)
+        ISet::new(|k| (self.mapping)(k) is Some)
     }
 
     /// Gets the value that the given key `key` maps to.
