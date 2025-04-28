@@ -24,8 +24,8 @@ use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{
-    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Path, PathX, Primitive,
-    Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
+    Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, Path, PathX,
+    Primitive, TraitId, Typ, TypDecorationArg, TypX, Typs, VarIdent, VirErr, VirErrAs,
 };
 use vir::ast_util::{str_unique_var, types_equal, undecorate_typ};
 
@@ -210,7 +210,10 @@ pub(crate) fn qpath_to_ident<'tcx>(
     }
 }
 
-fn clean_all_escaping_bound_vars<'tcx, T: rustc_middle::ty::TypeFoldable<TyCtxt<'tcx>>>(
+pub(crate) fn clean_all_escaping_bound_vars<
+    'tcx,
+    T: rustc_middle::ty::TypeFoldable<TyCtxt<'tcx>>,
+>(
     tcx: TyCtxt<'tcx>,
     value: T,
     param_env_src: DefId,
@@ -1305,6 +1308,70 @@ pub(crate) fn is_smt_arith<'tcx>(
     }
 }
 
+fn get_proof_fn_one_mode<'tcx>(
+    ctxt: &Context<'tcx>,
+    span: Span,
+    ty: &rustc_middle::ty::Ty<'tcx>,
+) -> Result<Mode, VirErr> {
+    match &ty.kind() {
+        TyKind::Tuple(_) if ty.tuple_fields().len() == 0 => {
+            return Ok(Mode::Spec);
+        }
+        TyKind::Adt(AdtDef(adt_def_data), _args) => {
+            let verus_item = ctxt.verus_items.id_to_name.get(&adt_def_data.did);
+            match verus_item {
+                Some(VerusItem::External(crate::verus_items::ExternalItem::Trk)) => {
+                    return Ok(Mode::Proof);
+                }
+                _ => {}
+            }
+        }
+        _ => {}
+    }
+    err_span(span, "could not read mode annotations from proof_fn type")
+}
+
+pub(crate) fn try_get_proof_fn_modes<'tcx>(
+    ctxt: &Context<'tcx>,
+    span: Span,
+    fun_ty: &rustc_middle::ty::Ty<'tcx>,
+) -> Result<Option<(Vec<Mode>, Mode)>, VirErr> {
+    match &fun_ty.kind() {
+        TyKind::Ref(_, t, _) => try_get_proof_fn_modes(ctxt, span, t),
+        TyKind::Adt(AdtDef(adt_def_data), args) => {
+            let verus_item = ctxt.verus_items.id_to_name.get(&adt_def_data.did);
+            if verus_item == Some(&VerusItem::External(crate::verus_items::ExternalItem::FnProof)) {
+                assert!(args.len() == 6);
+                let arg_mode_tuple = &args[2];
+                let ret_mode_typ = &args[3];
+                let ret_mode =
+                    if let rustc_middle::ty::GenericArgKind::Type(ty) = ret_mode_typ.unpack() {
+                        get_proof_fn_one_mode(ctxt, span, &ty)?
+                    } else {
+                        panic!("unexpected FnProof argument")
+                    };
+                let arg_modes =
+                    if let rustc_middle::ty::GenericArgKind::Type(ty) = arg_mode_tuple.unpack() {
+                        if let TyKind::Tuple(_) = ty.kind() {
+                            let mut modes: Vec<Mode> = Vec::new();
+                            for t in ty.tuple_fields().iter() {
+                                modes.push(get_proof_fn_one_mode(ctxt, span, &t)?);
+                            }
+                            modes
+                        } else {
+                            panic!("unexpected FnProof argument")
+                        }
+                    } else {
+                        panic!("unexpected FnProof argument")
+                    };
+                return Ok(Some((arg_modes, ret_mode)));
+            }
+            Ok(None)
+        }
+        _ => Ok(None),
+    }
+}
+
 pub(crate) fn check_generic_bound<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: &crate::verus_items::VerusItems,
@@ -1313,8 +1380,7 @@ pub(crate) fn check_generic_bound<'tcx>(
     trait_def_id: DefId,
     args: &[GenericArg<'tcx>],
 ) -> Result<Option<vir::ast::GenericBound>, VirErr> {
-    if Some(trait_def_id) == tcx.lang_items().sized_trait()
-        || Some(trait_def_id) == tcx.lang_items().copy_trait()
+    if Some(trait_def_id) == tcx.lang_items().copy_trait()
         || Some(trait_def_id) == tcx.lang_items().unpin_trait()
         || Some(trait_def_id) == tcx.lang_items().sync_trait()
         || Some(trait_def_id) == tcx.lang_items().tuple_trait()
@@ -1343,7 +1409,11 @@ pub(crate) fn check_generic_bound<'tcx>(
                 }
             }
         }
-        let trait_name = def_id_to_vir_path(tcx, verus_items, trait_def_id);
+        let trait_name = if Some(trait_def_id) == tcx.lang_items().sized_trait() {
+            TraitId::Sized
+        } else {
+            TraitId::Path(def_id_to_vir_path(tcx, verus_items, trait_def_id))
+        };
         Ok(Some(Arc::new(GenericBoundX::Trait(trait_name, Arc::new(vir_args)))))
     }
 }
@@ -1476,7 +1546,7 @@ where
                     substs,
                 )?;
                 if let Some(generic_bound) = generic_bound {
-                    if let GenericBoundX::Trait(path, typs) = &*generic_bound {
+                    if let GenericBoundX::Trait(TraitId::Path(path), typs) = &*generic_bound {
                         let bound = GenericBoundX::TypEquality(
                             path.clone(),
                             typs.clone(),
@@ -1614,9 +1684,21 @@ pub(crate) fn check_item_external_generics<'tcx>(
                     }
                 }
             }
-            (GenericArgKind::Const(cnst), GenericParamKind::Const { .. }) => {
-                match cnst.kind() {
-                    ConstKind::Param(param) if param.name.as_str() == param_name => { /* okay */ }
+            (
+                GenericArgKind::Const(c),
+                GenericParamKind::Const {
+                    ty: _,
+                    default: None,
+                    is_host_effect: false,
+                    synthetic: false,
+                },
+            ) => {
+                match c.kind() {
+                    ConstKind::Param(param) if param.name.as_str() == param_name => {
+                        // okay
+                        // Rust's type checking already checks us that c's type matches ty,
+                        // so we don't have to check that here.
+                    }
                     _ => {
                         return err();
                     }

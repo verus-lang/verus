@@ -14,9 +14,9 @@ use syn_verus::token;
 use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
     visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
-    visit_impl_item_fn_mut, visit_item_const_mut, visit_item_enum_mut, visit_item_fn_mut,
-    visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut, visit_local_mut,
-    visit_specification_mut, visit_trait_item_fn_mut, VisitMut,
+    visit_impl_item_const_mut, visit_impl_item_fn_mut, visit_item_const_mut, visit_item_enum_mut,
+    visit_item_fn_mut, visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut,
+    visit_local_mut, visit_specification_mut, visit_trait_item_fn_mut, VisitMut,
 };
 use syn_verus::BroadcastUse;
 use syn_verus::ExprBlock;
@@ -31,7 +31,7 @@ use syn_verus::{
     MatchesOpExpr, MatchesOpToken, ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path,
     Publish, Recommends, Requires, ReturnType, Returns, Signature, SignatureDecreases,
     SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem,
-    TraitItemFn, Type, TypeFnSpec, TypePath, UnOp, Visibility,
+    TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath, UnOp, Visibility,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -220,6 +220,154 @@ macro_rules! parse_quote_spanned_vstd {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ProofFnUsage {
+    FnOnce,
+    FnMut,
+    Fn,
+}
+
+impl Default for ProofFnUsage {
+    fn default() -> Self {
+        ProofFnUsage::Fn
+    }
+}
+
+#[derive(Default)]
+struct ProofFnOptions {
+    usage: ProofFnUsage,
+    req_ens: Option<Type>,
+    copy: bool,
+    send: bool,
+    sync: bool,
+}
+
+enum ProofFnTypeArg {
+    Usage(ProofFnUsage),
+    ReqEns(Option<Type>),
+    Copy,
+    Send,
+    Sync,
+    Tracked,
+    Ghost,
+    Zero,
+}
+
+const PROOF_FN_ONCE: u8 = 1;
+const PROOF_FN_MUT: u8 = 2;
+const PROOF_FN: u8 = 3;
+const PROOF_FN_COPY: u8 = 4;
+const PROOF_FN_SEND: u8 = 5;
+const PROOF_FN_SYNC: u8 = 6;
+
+impl ProofFnTypeArg {
+    fn to_type(&self, span: Span) -> Type {
+        let (s, n) = match self {
+            ProofFnTypeArg::Usage(ProofFnUsage::FnOnce) => (None, Some(PROOF_FN_ONCE)),
+            ProofFnTypeArg::Usage(ProofFnUsage::FnMut) => (None, Some(PROOF_FN_MUT)),
+            ProofFnTypeArg::Usage(ProofFnUsage::Fn) => (None, Some(PROOF_FN)),
+            ProofFnTypeArg::ReqEns(Some(_)) => (Some("RqEn".to_string()), None),
+            ProofFnTypeArg::ReqEns(None) => (None, None),
+            ProofFnTypeArg::Copy => (None, Some(PROOF_FN_COPY)),
+            ProofFnTypeArg::Send => (None, Some(PROOF_FN_SEND)),
+            ProofFnTypeArg::Sync => (None, Some(PROOF_FN_SYNC)),
+            ProofFnTypeArg::Tracked => (Some("Trk".to_string()), None),
+            ProofFnTypeArg::Ghost => (None, None),
+            ProofFnTypeArg::Zero => (None, Some(0)),
+        };
+        let s = s.map(|s| format_ident!("{}", s));
+        let stream = match (self, s, n) {
+            (ProofFnTypeArg::ReqEns(t), Some(s), None) => {
+                quote_spanned_builtin!(builtin, span => #builtin::#s<#t>)
+            }
+            (_, Some(s), _) => {
+                quote_spanned_builtin!(builtin, span => #builtin::#s)
+            }
+            (_, _, Some(n)) => {
+                quote_spanned!(span => #n)
+            }
+            (_, None, None) => {
+                quote_spanned!(span => ())
+            }
+        };
+        Type::Verbatim(stream)
+    }
+}
+
+impl ProofFnOptions {
+    fn parse<'a>(iter: impl Iterator<Item = &'a syn_verus::PathSegment>) -> Result<Self, String> {
+        let mut options = ProofFnOptions::default();
+        for path in iter {
+            use syn_verus::{GenericArgument, PathArguments};
+            match (path.ident.to_string().as_str(), &path.arguments) {
+                ("Once", PathArguments::None) if options.usage == ProofFnUsage::Fn => {
+                    options.usage = ProofFnUsage::FnOnce;
+                }
+                ("Mut", PathArguments::None) if options.usage == ProofFnUsage::Fn => {
+                    options.usage = ProofFnUsage::FnMut;
+                }
+                ("ReqEns", PathArguments::AngleBracketed(args))
+                    if options.req_ens.is_none()
+                        && args.colon2_token.is_none()
+                        && args.args.len() == 1
+                        && matches!(args.args[0], GenericArgument::Type(_)) =>
+                {
+                    match &args.args[0] {
+                        GenericArgument::Type(t) => options.req_ens = Some(t.clone()),
+                        _ => unreachable!(),
+                    }
+                }
+                ("Copy", PathArguments::None) if !options.copy => options.copy = true,
+                ("Send", PathArguments::None) if !options.send => options.send = true,
+                ("Sync", PathArguments::None) if !options.sync => options.sync = true,
+                _ => {
+                    return Err(format!("unexpected option {}", path.ident.to_string()));
+                }
+            }
+        }
+        Ok(options)
+    }
+
+    fn parse_opt(opt: &Option<syn_verus::FnProofOptions>) -> Result<Self, String> {
+        if let Some(opt) = opt {
+            Self::parse(opt.options.iter())
+        } else {
+            Ok(ProofFnOptions::default())
+        }
+    }
+
+    fn to_types(&self, span: Span) -> (Type, Type, Type, Type, Type) {
+        let usage = ProofFnTypeArg::Usage(self.usage).to_type(span);
+        let req_ens = match &self.req_ens {
+            None => ProofFnTypeArg::ReqEns(None).to_type(span),
+            Some(t) => ProofFnTypeArg::ReqEns(Some(t.clone())).to_type(span),
+        };
+        let f = |b: bool, arg: ProofFnTypeArg| {
+            (if b { arg } else { ProofFnTypeArg::Zero }).to_type(span)
+        };
+        let copy = f(self.copy, ProofFnTypeArg::Copy);
+        let send = f(self.send, ProofFnTypeArg::Send);
+        let sync = f(self.sync, ProofFnTypeArg::Sync);
+        (usage, req_ens, copy, send, sync)
+    }
+}
+
+fn proof_fn_track_to_type(span: Span, is_tracked: bool) -> Type {
+    let arg = if is_tracked { ProofFnTypeArg::Tracked } else { ProofFnTypeArg::Ghost };
+    arg.to_type(span)
+}
+
+fn proof_fn_tracks_to_type(span: Span, tracks: impl Iterator<Item = bool>) -> Type {
+    // build a tuple type (t1, ..., tn)
+    // where each tk is Trk or ()
+    let mut elems = Punctuated::new();
+    for tracked in tracks {
+        elems.push(proof_fn_track_to_type(span, tracked));
+    }
+    let paren_token = Paren { span: into_spans(span) };
+    Type::Tuple(syn_verus::TypeTuple { paren_token, elems })
+}
+
 pub(crate) fn rewrite_exe_pat(pat: &mut Pat) -> (Vec<Stmt>, Vec<Stmt>) {
     let mut visit_pat = ExecGhostPatVisitor {
         inside_ghost: 0,
@@ -388,21 +536,22 @@ impl Visitor {
                             spec_stmts.push(Stmt::Expr(expr, Some(Semi { spans: [token.span] })));
                             false
                         } else {
+                            let span = exprs.exprs[0].span();
                             let e = take_expr(&mut exprs.exprs[0]);
                             match found {
                                 ExtractQuantTriggersFound::Auto => {
                                     exprs.exprs[0] = Expr::Verbatim(
-                                        quote_spanned!(exprs.exprs[0].span() => #[verus::internal(auto_trigger)] (#e)),
+                                        quote_spanned!(span => #[verus::internal(auto_trigger)] (#e)),
                                     );
                                 }
                                 ExtractQuantTriggersFound::AllTriggers => {
                                     exprs.exprs[0] = Expr::Verbatim(
-                                        quote_spanned!(exprs.exprs[0].span() => #[verus::internal(all_triggers)] (#e)),
+                                        quote_spanned!(span => #[verus::internal(all_triggers)] (#e)),
                                     );
                                 }
                                 ExtractQuantTriggersFound::Triggers(tuple) => {
                                     exprs.exprs[0] = Expr::Verbatim(
-                                        quote_spanned_builtin!(builtin, exprs.exprs[0].span() => #builtin::with_triggers(#tuple, #e)),
+                                        quote_spanned_builtin!(builtin, span => #builtin::with_triggers(#tuple, #e)),
                                     );
                                 }
                                 ExtractQuantTriggersFound::None => unreachable!(),
@@ -1332,7 +1481,6 @@ impl Visitor {
                                     broadcast proof fn #lemma_ident()
                                         ensures
                                             #[trigger] #vstd::layout::size_of::<#type_>() == #size_lit,
-                                            #vstd::layout::is_sized::<#type_>(),
                                             #ensures_align
                                     {
                                     }
@@ -1804,7 +1952,7 @@ impl Visitor {
                 let closure_input_types = closure
                     .inputs
                     .iter()
-                    .map(|arg| match arg {
+                    .map(|arg| match &arg.pat {
                         Pat::Type(pat_ty) => Some(pat_ty.clone()),
                         _ => None,
                     })
@@ -2704,7 +2852,10 @@ impl Visitor {
             unreachable!();
         };
 
-        if self.inside_ghost > 0 {
+        let is_proof_fn = clos.proof_fn.is_some();
+        let is_spec_fn = self.inside_ghost > 0 && !is_proof_fn;
+        assert!(is_proof_fn || clos.options.is_none());
+        if is_spec_fn {
             let span = clos.span();
             if clos.requires.is_some() || clos.ensures.is_some() {
                 let err = "ghost closures cannot have requires/ensures";
@@ -2714,28 +2865,68 @@ impl Visitor {
                     #builtin::closure_to_fn_spec(#clos)
                 ));
             }
+        } else if is_proof_fn && self.inside_ghost == 0 {
+            let span = clos.span();
+            let err = "proof_fn closures are only allowed in proof mode";
+            *expr = Expr::Verbatim(quote_spanned!(span => compile_error!(#err)));
         } else {
-            let ret_pat = match &mut clos.output {
-                ReturnType::Default => None,
+            assert!(is_proof_fn == (self.inside_ghost > 0));
+            let (ret_pat, ret_tracked) = match &mut clos.output {
+                ReturnType::Default => (None, false),
                 ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
                     self.visit_type_mut(ty);
-                    if let Some(tracked) = tracked {
-                        *expr = Expr::Verbatim(quote_spanned!(tracked.span() =>
+                    if !is_proof_fn && tracked.is_some() {
+                        *expr = Expr::Verbatim(quote_spanned!(tracked.unwrap().span() =>
                             compile_error!("'tracked' not supported here")
                         ));
                         return true;
                     }
+                    let is_tracked = tracked.is_some();
+                    *tracked = None;
                     match std::mem::take(ret_opt) {
-                        None => None,
-                        Some(ret) => Some((ret.1.clone(), ty.clone())),
+                        None => (None, is_tracked),
+                        Some(ret) => (Some((ret.1.clone(), ty.clone())), is_tracked),
                     }
                 }
             };
             let requires = self.take_ghost(&mut clos.requires);
             let ensures = self.take_ghost(&mut clos.ensures);
+            let opts = match ProofFnOptions::parse_opt(&clos.options) {
+                Ok(opts) => opts,
+                Err(err) => {
+                    *expr = Expr::Verbatim(quote_spanned!(clos.span() =>
+                        compile_error!(#err)
+                    ));
+                    return true;
+                }
+            };
+            if opts.req_ens.is_some() && (requires.is_some() || ensures.is_some()) {
+                *expr = Expr::Verbatim(quote_spanned!(clos.span() =>
+                    compile_error!("ReqEns and requires/ensures cannot be used together")
+                ));
+                return true;
+            }
             let mut stmts: Vec<Stmt> = Vec::new();
             // TODO: wrap specs inside ghost blocks
             self.inside_ghost += 1;
+            if let Some(t) = &opts.req_ens {
+                let mut elems = Punctuated::new();
+                for input in &clos.inputs {
+                    let arg = match &input.pat {
+                        Pat::Type(p) => &p.pat,
+                        p => p,
+                    };
+                    elems.push(Expr::Verbatim(quote_spanned!(clos.span() => #arg)));
+                }
+                let paren_token = Paren { span: into_spans(clos.span()) };
+                let args = Expr::Tuple(ExprTuple { attrs: vec![], paren_token, elems });
+                stmts.push(stmt_with_semi!(builtin, clos.span() =>
+                    #builtin::requires([<#t as #builtin::ProofFnReqEnsDef<_, _>>::req(#args)])
+                ));
+                stmts.push(stmt_with_semi!(builtin, clos.span() =>
+                    #builtin::ensures(|ret| [<#t as #builtin::ProofFnReqEnsDef<_, _>>::ens(#args, ret)])
+                ));
+            }
             if let Some(Requires { token, mut exprs }) = requires {
                 for expr in exprs.exprs.iter_mut() {
                     self.visit_expr_mut(expr);
@@ -2769,7 +2960,29 @@ impl Visitor {
                     panic!("parser requires Expr::Block for requires/ensures")
                 }
             }
-            *expr = Expr::Closure(clos);
+            let span = clos.span();
+            let inputs = clos.inputs.clone();
+            clos.proof_fn = None;
+            clos.options = None;
+            for input in clos.inputs.iter_mut() {
+                input.tracked_token = None;
+            }
+            let mut new_expr = Expr::Closure(clos);
+            if is_proof_fn {
+                let (usage, _req_ens, copy, send, sync) = opts.to_types(span);
+                let arg_modes =
+                    proof_fn_tracks_to_type(span, inputs.iter().map(|x| x.tracked_token.is_some()));
+                let ret_mode = proof_fn_track_to_type(span, ret_tracked);
+                new_expr = Expr::Verbatim(quote_spanned_builtin!(builtin, span =>
+                    #builtin::closure_to_fn_proof::<#usage, #copy, #send, #sync, #arg_modes, #ret_mode, _, _, _>(#new_expr)
+                ));
+                if let Some(t) = &opts.req_ens {
+                    new_expr = Expr::Verbatim(quote_spanned_vstd!(vstd, span =>
+                        #vstd::function::proof_fn_as_req_ens::<#t, #usage, _, #copy, #send, #sync, _, _, _, _>(#new_expr)
+                    ));
+                }
+            }
+            *expr = new_expr;
         }
 
         true
@@ -2906,7 +3119,7 @@ impl Visitor {
             expr_name,
             expr,
             invariant,
-            decreases,
+            mut decreases,
             body,
         } = for_loop;
 
@@ -3011,6 +3224,16 @@ impl Visitor {
         } else {
             None
         };
+        if let Some(decreases) = &mut decreases {
+            for expr in &mut decreases.exprs.exprs {
+                *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() => {
+                    let #pat =
+                        #vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter)
+                        .unwrap_or(#vstd::pervasive::arbitrary());
+                    #expr
+                }));
+            }
+        }
         // REVIEW: we might also want no_auto_loop_invariant to suppress the ensures,
         // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.
         let ensure = if no_loop_invariant.is_none() {
@@ -3582,6 +3805,27 @@ impl VisitMut for Visitor {
         visit_item_static_mut(self, sta);
     }
 
+    fn visit_impl_item_const_mut(&mut self, con: &mut syn_verus::ImplItemConst) {
+        let mode = self.visit_const_or_static(
+            con.const_token.span,
+            &mut con.attrs,
+            Some(&con.vis),
+            &mut con.publish,
+            &mut con.mode,
+        );
+        self.desugar_const_or_static(
+            &mode,
+            &mut con.ensures,
+            &mut con.block,
+            &mut con.expr,
+            &mut con.eq_token,
+            &mut con.semi_token,
+            &con.ty,
+            con.const_token.span,
+        );
+        visit_impl_item_const_mut(self, con);
+    }
+
     fn visit_field_mut(&mut self, field: &mut Field) {
         visit_field_mut(self, field);
         field.attrs.extend(data_mode_attrs(&field.mode));
@@ -3680,6 +3924,85 @@ impl VisitMut for Visitor {
                 *ty = Type::Verbatim(quote_spanned_builtin! { builtin, span =>
                     #builtin::FnSpec<(#(#param_types ,)*), #out_type>
                 });
+            }
+            Type::FnProof(TypeFnProof {
+                proof_fn_token: _,
+                generics,
+                options,
+                paren_token: _,
+                inputs,
+                output,
+            }) => {
+                let mut param_types: Vec<&Type> = Vec::new();
+                for input in inputs.iter() {
+                    param_types.push(&input.arg.ty);
+                }
+                let (out_type, out_tracked) = match output {
+                    ReturnType::Default => (Type::Verbatim(quote_spanned! { span => () }), false),
+                    ReturnType::Type(_, tracked, opt_name, out_type) => {
+                        if let Some(name) = opt_name {
+                            *ty = Type::Verbatim(quote_spanned!(name.1.span() =>
+                                compile_error!("return-value name not expected here")
+                            ));
+                            return;
+                        }
+                        (*out_type, tracked.is_some())
+                    }
+                };
+                let (life, options_arg) = if let Some(generics) = &generics {
+                    use syn_verus::GenericArgument;
+                    let args: Vec<&GenericArgument> = generics.args.iter().collect();
+                    match &args[..] {
+                        [] => (None, None),
+                        [l @ GenericArgument::Lifetime(_)] => (Some((*l).clone()), None),
+                        [GenericArgument::Type(t)] if options.is_none() => {
+                            (None, Some((*t).clone()))
+                        }
+                        [l @ GenericArgument::Lifetime(_), GenericArgument::Type(t)]
+                            if options.is_none() =>
+                        {
+                            (Some((*l).clone()), Some((*t).clone()))
+                        }
+                        _ => {
+                            *ty = Type::Verbatim(quote_spanned!(generics.span() =>
+                                compile_error!("unexpected generic arguments to proof_fn")
+                            ));
+                            return;
+                        }
+                    }
+                } else {
+                    (None, None)
+                };
+                let options_arg = if let Some(options_arg) = options_arg {
+                    options_arg
+                } else {
+                    let opts = match ProofFnOptions::parse_opt(&options) {
+                        Ok(opts) => opts,
+                        Err(err) => {
+                            *ty = Type::Verbatim(quote_spanned!(options.span() =>
+                                compile_error!(#err)
+                            ));
+                            return;
+                        }
+                    };
+                    let (usage, req_ens, copy, send, sync) = opts.to_types(options.span());
+                    Type::Verbatim(quote_spanned_builtin!(builtin, span =>
+                        #builtin::FOpts<#usage, #req_ens, #copy, #send, #sync>
+                    ))
+                };
+
+                let arg_modes =
+                    proof_fn_tracks_to_type(span, inputs.iter().map(|x| x.tracked_token.is_some()));
+                let out_mode = proof_fn_track_to_type(span, out_tracked);
+                if let Some(life) = life {
+                    *ty = Type::Verbatim(quote_spanned_builtin!(builtin, span =>
+                        #builtin::FnProof<#life, #options_arg, #arg_modes, #out_mode, (#(#param_types ,)*), #out_type>
+                    ));
+                } else {
+                    *ty = Type::Verbatim(quote_spanned_builtin!(builtin, span =>
+                        #builtin::FnProof<#options_arg, #arg_modes, #out_mode, (#(#param_types ,)*), #out_type>
+                    ));
+                }
             }
             _ => {
                 *ty = tmp_ty;

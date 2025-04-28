@@ -1,3 +1,5 @@
+#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+
 use vstd::prelude::*;
 
 verus! {

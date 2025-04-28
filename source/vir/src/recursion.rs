@@ -1,7 +1,7 @@
 use crate::ast::{
     AutospecUsage, CallTarget, CallTargetKind, Constant, Dt, ExprX, Fun, Function, FunctionKind,
-    GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, Typ, TypX, Typs, UnaryOpr, VarBinder,
-    VirErr,
+    GenericBoundX, ImplPath, IntRange, Path, SpannedTyped, TraitId, Typ, TypX, Typs, UnaryOpr,
+    VarBinder, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp_skip_checks;
 use crate::ast_to_sst_func::params_to_pars;
@@ -246,7 +246,7 @@ pub(crate) fn mk_decreases_at_entry(
     Ok((decls, stm_assigns))
 }
 
-pub(crate) fn rewrite_recursive_fun_with_fueled_rec_call(
+pub(crate) fn rewrite_spec_recursive_fun_with_fueled_rec_call(
     ctx: &Ctx,
     function: &crate::sst::FunctionSst,
     body: &Exp,
@@ -312,8 +312,16 @@ fn check_termination<'a>(
     body: &Stm,
 ) -> Result<(Ctxt<'a>, Vec<Exp>, Stm), VirErr> {
     let num_decreases = function.x.decrease.len();
-    if num_decreases == 0 {
-        return Err(error(&function.span, "recursive function must have a decreases clause"));
+    if num_decreases == 0
+        && (function.x.mode != crate::ast::Mode::Exec
+            || (!function.x.attrs.exec_allows_no_decreases_clause
+                && !function.x.attrs.exec_assume_termination))
+    {
+        let mut e = error(&function.span, "recursive function must have a decreases clause");
+        if function.x.mode == crate::ast::Mode::Exec {
+            e = e.help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function");
+        }
+        return Err(e);
     }
 
     // use expr_to_exp_skip_checks here because checks in decreases done by func_def_to_air
@@ -385,8 +393,13 @@ pub(crate) fn check_termination_stm(
     function: &Function,
     proof_body: Option<Stm>,
     body: &Stm,
+    exec_with_no_termination_check: bool,
 ) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
     if !fun_is_recursive(ctx, &function) {
+        return Ok((vec![], body.clone()));
+    }
+
+    if exec_with_no_termination_check && function.x.decrease.is_empty() {
         return Ok((vec![], body.clone()));
     }
 
@@ -455,7 +468,10 @@ pub(crate) fn expand_call_graph(
             }
         }
         let tr = match &**bound {
-            GenericBoundX::Trait(tr, _) => tr,
+            GenericBoundX::Trait(TraitId::Path(tr), _) => tr,
+            GenericBoundX::Trait(TraitId::Sized, _) => {
+                continue;
+            }
             GenericBoundX::TypEquality(tr, _, _, _) => tr,
             GenericBoundX::ConstTyp(_, _) => {
                 continue;

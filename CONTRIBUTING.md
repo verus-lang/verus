@@ -49,7 +49,8 @@ To automatically apply these suggestions to the source code, type:
 vargo fmt
 ```
 
-If you want to use VS Code with `rust-analyzer` to edit the source code of Verus, copy
+If you want to use VS Code with `rust-analyzer` to edit the source code of Verus,
+open Visual Studio Code on the root of the project (not `source`) and copy
 `.vscode/settings.json.template` to `.vscode/settings.json` and then
 edit that file to customize it for your local setup. For instance,
 delete `[.exe]` if you're not using Windows and change it to `.exe` if

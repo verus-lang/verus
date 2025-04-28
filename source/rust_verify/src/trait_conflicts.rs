@@ -27,11 +27,10 @@
 
 use crate::lifetime_ast::*;
 use crate::lifetime_generate::*;
-use crate::verus_items::RustItem;
 use std::collections::{HashMap, HashSet};
 use vir::ast::{
-    AssocTypeImpl, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, TypDecoration,
-    TypDecorationArg,
+    AssocTypeImpl, Dt, GenericBoundX, GenericBounds, Ident, Path, Primitive, TraitId,
+    TypDecoration, TypDecorationArg,
 };
 
 // General purpose type to represent various types, where N comes from the TypNum enum:
@@ -179,17 +178,18 @@ fn gen_generics(
     let mut const_typs: HashMap<String, Typ> = HashMap::new();
     for b in typ_bounds.iter() {
         match &**b {
-            GenericBoundX::Trait(path, typs) => {
-                let rust_item = crate::verus_items::get_rust_item_path(path);
+            GenericBoundX::Trait(TraitId::Path(path), typs) => {
                 let typ = gen_typ(state, &typs[0]);
-                let bound = match rust_item {
-                    Some(RustItem::Sized) => Bound::Sized,
-                    _ => {
-                        let args = gen_typ_slice(state, &typs[1..]);
-                        let trait_path = state.trait_name(&path);
-                        Bound::Trait { trait_path, args, equality: None }
-                    }
+                let bound = {
+                    let args = gen_typ_slice(state, &typs[1..]);
+                    let trait_path = state.trait_name(&path);
+                    Bound::Trait { trait_path, args, equality: None }
                 };
+                generic_bounds.push(GenericBound { typ, bound_vars: vec![], bound });
+            }
+            GenericBoundX::Trait(TraitId::Sized, typs) => {
+                let typ = gen_typ(state, &typs[0]);
+                let bound = Bound::Sized;
                 generic_bounds.push(GenericBound { typ, bound_vars: vec![], bound });
             }
             GenericBoundX::TypEquality(path, typs, x, eq_typ) => {

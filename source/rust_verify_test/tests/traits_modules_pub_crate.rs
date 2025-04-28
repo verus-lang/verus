@@ -316,8 +316,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
 }
 
-test_verify_one_file! {
-    #[test] test_termination_4_ok verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_termination_4_ok ["exec_allows_no_decreases_clause"] => verus_code! {
         mod M1 {
             pub(crate) trait T {
                 fn f(&self, x: &Self, n: u64);
@@ -336,7 +336,7 @@ test_verify_one_file! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 
@@ -387,8 +387,8 @@ test_verify_one_file! {
     }
 }
 
-test_verify_one_file! {
-    #[test] test_termination_4_fail_1c verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_termination_4_fail_1c ["exec_allows_no_decreases_clause"] => verus_code! {
         mod M1 {
             pub(crate) trait T {
                 fn f(&self, x: &Self, n: u64);

@@ -139,6 +139,7 @@ pub(crate) enum ExprItem {
     StrSliceIsAscii,
     ArchWordBits,
     ClosureToFnSpec,
+    ClosureToFnProof,
     SignedMin,
     SignedMax,
     UnsignedMax,
@@ -294,6 +295,7 @@ pub(crate) enum VstdItem {
     SetFn(SetItem),
     Invariant(InvariantItem),
     ExecNonstaticCall,
+    ProofNonstaticCall,
     ArrayIndexGet,
     ArrayAsSlice,
     ArrayFillForCopyTypes,
@@ -321,6 +323,7 @@ pub(crate) enum BuiltinTypeItem {
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum BuiltinTraitItem {
     Integer,
+    Sealed,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
@@ -332,6 +335,20 @@ pub(crate) enum BuiltinFunctionItem {
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
 pub(crate) enum GlobalItem {
     SizeOf,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy, Hash)]
+#[allow(non_camel_case_types)]
+pub(crate) enum ExternalItem {
+    FnProof,
+    FOpts,
+    FnProofReq,
+    FnProofEns,
+    ProofFnOnce,
+    ProofFnMut,
+    ProofFn,
+    Trk,
+    RqEn,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -354,6 +371,7 @@ pub(crate) enum VerusItem {
     BuiltinTrait(BuiltinTraitItem),
     BuiltinFunction(BuiltinFunctionItem),
     Global(GlobalItem),
+    External(ExternalItem),
 }
 
 #[rustfmt::skip]
@@ -402,6 +420,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::strslice_is_ascii",       VerusItem::Expr(ExprItem::StrSliceIsAscii)),
         ("verus::builtin::arch_word_bits",          VerusItem::Expr(ExprItem::ArchWordBits)),
         ("verus::builtin::closure_to_fn_spec",      VerusItem::Expr(ExprItem::ClosureToFnSpec)),
+        ("verus::builtin::closure_to_fn_proof",     VerusItem::Expr(ExprItem::ClosureToFnProof)),
         ("verus::builtin::signed_min",              VerusItem::Expr(ExprItem::SignedMin)),
         ("verus::builtin::signed_max",              VerusItem::Expr(ExprItem::SignedMax)),
         ("verus::builtin::unsigned_max",            VerusItem::Expr(ExprItem::UnsignedMax)),
@@ -507,6 +526,7 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::vstd::invariant::spend_open_invariant_credit",          VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCredit       ), Some(Arc::new("invariant::spend_open_invariant_credit"         .to_owned())))),
         ("verus::vstd::invariant::spend_open_invariant_credit_in_proof", VerusItem::Vstd(VstdItem::Invariant(InvariantItem::SpendOpenInvariantCreditInProof), Some(Arc::new("invariant::spend_open_invariant_credit_in_proof".to_owned())))),
         ("verus::vstd::vstd::exec_nonstatic_call", VerusItem::Vstd(VstdItem::ExecNonstaticCall, Some(Arc::new("pervasive::exec_nonstatic_call".to_owned())))),
+        ("verus::vstd::vstd::proof_nonstatic_call", VerusItem::Vstd(VstdItem::ProofNonstaticCall, Some(Arc::new("pervasive::proof_nonstatic_call".to_owned())))),
 
         ("verus::vstd::std_specs::vec::vec_index", VerusItem::Vstd(VstdItem::VecIndex, Some(Arc::new("std_specs::vec::vec_index".to_owned())))),
         ("verus::vstd::array::array_index_get", VerusItem::Vstd(VstdItem::ArrayIndexGet, Some(Arc::new("array::array_index_get".to_owned())))),
@@ -527,11 +547,22 @@ fn verus_items_map() -> Vec<(&'static str, VerusItem)> {
         ("verus::builtin::Tracked",                 VerusItem::BuiltinType(BuiltinTypeItem::Tracked)),
 
         ("verus::builtin::Integer",                 VerusItem::BuiltinTrait(BuiltinTraitItem::Integer)),
+        ("verus::builtin::private::Sealed",         VerusItem::BuiltinTrait(BuiltinTraitItem::Sealed)),
 
         ("verus::builtin::call_requires", VerusItem::BuiltinFunction(BuiltinFunctionItem::CallRequires)),
         ("verus::builtin::call_ensures",  VerusItem::BuiltinFunction(BuiltinFunctionItem::CallEnsures)),
         
         ("verus::builtin::global_size_of", VerusItem::Global(GlobalItem::SizeOf)),
+
+        ("verus::builtin::FnProof",          VerusItem::External(ExternalItem::FnProof)),
+        ("verus::builtin::FOpts",   VerusItem::External(ExternalItem::FOpts)),
+        ("verus::builtin::ProofFnReqEnsDef::req", VerusItem::External(ExternalItem::FnProofReq)),
+        ("verus::builtin::ProofFnReqEnsDef::ens", VerusItem::External(ExternalItem::FnProofEns)),
+        ("verus::builtin::ProofFnOnce",      VerusItem::External(ExternalItem::ProofFnOnce)),
+        ("verus::builtin::ProofFnMut",       VerusItem::External(ExternalItem::ProofFnMut)),
+        ("verus::builtin::ProofFn",          VerusItem::External(ExternalItem::ProofFn)),
+        ("verus::builtin::Trk",              VerusItem::External(ExternalItem::Trk)),
+        ("verus::builtin::RqEn",             VerusItem::External(ExternalItem::RqEn)),
     ]
 }
 
@@ -681,6 +712,7 @@ pub(crate) fn get_rust_item<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Option<Ru
     get_rust_item_str(rust_path)
 }
 
+#[allow(dead_code)]
 pub(crate) fn get_rust_item_path(rust_path: &vir::ast::Path) -> Option<RustItem> {
     get_rust_item_str(Some(&vir::ast_util::path_as_friendly_rust_name(rust_path)))
 }

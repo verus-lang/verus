@@ -1478,7 +1478,15 @@ pub(crate) fn expr_to_stm_opt(
             state.disable_recommends -= 1;
             Ok((check_stms, ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
         }
-        ExprX::ExecClosure { params, body, requires, ensures, ret, external_spec } => {
+        ExprX::NonSpecClosure {
+            params,
+            proof_fn_modes: _,
+            body,
+            requires,
+            ensures,
+            ret,
+            external_spec,
+        } => {
             let mut all_stms = Vec::new();
 
             // Emit the internals of the closure (ClosureInner behaves like a dead-end)
@@ -2008,6 +2016,20 @@ pub(crate) fn expr_to_stm_opt(
             } else {
                 None
             };
+            if decrease.len() == 0
+                && !ctx
+                    .fun
+                    .as_ref()
+                    .map(|c| {
+                        let function = &ctx.func_map[&c.current_fun];
+                        function.x.attrs.exec_assume_termination
+                            || function.x.attrs.exec_allows_no_decreases_clause
+                    })
+                    .unwrap_or(false)
+            {
+                return Err(error(&expr.span, "loop must have a decreases clause")
+                    .help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function"));
+            }
 
             let (mut stms1, _e1) = expr_to_stm_opt(ctx, state, body)?;
             let mut check_recommends: Vec<Stm> = Vec::new();
@@ -2304,6 +2326,12 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::AirStmt(s) => {
             let stmt = Spanned::new(expr.span.clone(), StmX::Air(s.clone()));
             return Ok((vec![stmt], ReturnValue::ImplicitUnit(expr.span.clone())));
+        }
+        ExprX::Nondeterministic => {
+            let (var_ident, exp) =
+                state.declare_temp_var_stm(&expr.span, &expr.typ, LocalDeclKind::Nondeterministic);
+            let stm = assume_has_typ(&var_ident, &expr.typ, &expr.span);
+            Ok((vec![stm], ReturnValue::Some(exp)))
         }
     }
 }

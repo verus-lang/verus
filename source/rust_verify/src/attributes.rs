@@ -141,9 +141,9 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                                 return err_span(attr.span, "invalid verus attribute");
                             }
                             let mut trees = trees.into_vec().into_iter();
-                            let tree: AttrTree = trees
-                                .next()
-                                .ok_or(vir_err_span_str(attr.span, "invalid verus attribute"))?;
+                            let tree: AttrTree = trees.next().ok_or_else(|| {
+                                vir_err_span_str(attr.span, "invalid verus attribute")
+                            })?;
                             Ok(Some((AttrPrefix::Verus(VerusPrefix::Internal), attr.span, tree)))
                         }
                         _ => return err_span(attr.span, "invalid verus attribute"),
@@ -331,6 +331,10 @@ pub(crate) enum Attr {
     TypeInvariantFn,
     // Used for the encoding of `open([visibility qualified])`
     OpenVisibilityQualifier,
+    // Allow the function to not have decreases clauses
+    ExecAllowNoDecreasesClause,
+    // Assume that the function terminates
+    AssumeTermination,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -596,6 +600,12 @@ pub(crate) fn parse_attrs(
                         "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
                     );
                 }
+                AttrTree::Fun(_, arg, None) if arg == "assume_termination" => {
+                    v.push(Attr::AssumeTermination);
+                }
+                AttrTree::Fun(_, arg, None) if arg == "exec_allows_no_decreases_clause" => {
+                    v.push(Attr::ExecAllowNoDecreasesClause);
+                }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
             AttrPrefix::Verus(verus_prefix) => match verus_prefix {
@@ -794,6 +804,18 @@ pub(crate) fn get_auto_ext_equal_walk_parents<'tcx>(
     vir::ast::AutoExtEqual::default()
 }
 
+pub(crate) fn get_allow_exec_allows_no_decreases_clause_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> bool {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::ExecAllowNoDecreasesClause = attr {
+            return true;
+        }
+    }
+    false
+}
+
 pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr> {
     for attr in parse_attrs_opt(attrs, None) {
         match attr {
@@ -937,6 +959,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) size_of_broadcast_proof: bool,
     pub(crate) type_invariant_fn: bool,
     pub(crate) open_visibility_qualifier: bool,
+    pub(crate) assume_termination: bool,
+    pub(crate) exec_allows_no_decreases_clause: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1091,6 +1115,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         size_of_broadcast_proof: false,
         type_invariant_fn: false,
         open_visibility_qualifier: false,
+        assume_termination: false,
+        exec_allows_no_decreases_clause: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1159,6 +1185,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
             Attr::TypeInvariantFn => vs.type_invariant_fn = true,
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
+            Attr::AssumeTermination => vs.assume_termination = true,
+            Attr::ExecAllowNoDecreasesClause => vs.exec_allows_no_decreases_clause = true,
             _ => {}
         }
     }

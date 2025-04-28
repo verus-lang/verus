@@ -459,7 +459,37 @@ pub(crate) fn translate_impl<'tcx>(
                     unsupported_err!(item.span, "unsupported item ref in impl", impl_item_ref);
                 }
             }
-            _ => unsupported_err!(item.span, "unsupported item ref in impl", impl_item_ref),
+            AssocItemKind::Const => {
+                if trait_path_typ_args.is_some() {
+                    unsupported_err!(item.span, "not yet supported: const trait member")
+                }
+                if let ImplItemKind::Const(_ty, body_id) = &impl_item.kind {
+                    let def_id = body_id.hir_id.owner.to_def_id();
+                    let mid_ty = ctxt.tcx.type_of(def_id).skip_binder();
+                    let vir_ty = mid_ty_to_vir(
+                        ctxt.tcx,
+                        &ctxt.verus_items,
+                        def_id,
+                        impl_item.span,
+                        &mid_ty,
+                        false,
+                    )?;
+                    crate::rust_to_vir_func::check_item_const_or_static(
+                        ctxt,
+                        vir,
+                        impl_item.span,
+                        impl_item.owner_id.to_def_id(),
+                        mk_visibility(ctxt, impl_item.owner_id.to_def_id()),
+                        &module_path,
+                        ctxt.tcx.hir().attrs(impl_item.hir_id()),
+                        &vir_ty,
+                        body_id,
+                        false,
+                    )?;
+                } else {
+                    unsupported_err!(item.span, "unsupported item ref in impl", impl_item_ref);
+                }
+            }
         }
     }
     Ok(())

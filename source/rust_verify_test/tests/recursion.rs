@@ -691,7 +691,13 @@ test_verify_one_file! {
             use builtin::*;
             pub(crate) closed spec fn f2(i: int) -> int { crate::M1::f1(i - 1) }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(err.errors[0].code.is_none());
+        assert!(err.errors[1].code.is_none());
+        assert!(err.errors[0].message.contains("recursive function must have a decreases clause"));
+        assert!(err.errors[1].message.contains("recursive function must have a decreases clause"));
+    }
 }
 
 test_verify_one_file! {
@@ -1251,8 +1257,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] mutable_reference_no_decreases verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mutable_reference_no_decreases ["exec_allows_no_decreases_clause"] => verus_code! {
         fn e(s: &mut u64, i: usize) -> usize {
             if i < 10 {
                 e(s, i + 1)
@@ -1263,8 +1269,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] mutable_reference_decreases_1 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mutable_reference_decreases_1 ["exec_allows_no_decreases_clause"] => verus_code! {
         fn e(s: &mut u64, i: usize) -> usize
             decreases i
         {
@@ -1275,12 +1281,12 @@ test_verify_one_file! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 
-test_verify_one_file! {
-    #[test] mutable_reference_decreases_2_pass verus_code! {
+test_verify_one_file_with_options! {
+    #[test] mutable_reference_decreases_2_pass ["exec_allows_no_decreases_clause"] => verus_code! {
         fn e(s: &mut u64) -> u64
             decreases *old(s)
         {
@@ -1292,7 +1298,7 @@ test_verify_one_file! {
             }
         }
     } => Ok(err) => {
-        assert!(err.warnings.iter().find(|x| x.message.contains("decreases checks in exec functions do not guarantee termination of functions with loops or of their callers")).is_some());
+        assert!(err.warnings.iter().find(|x| x.message.contains("if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops")).is_some());
     }
 }
 

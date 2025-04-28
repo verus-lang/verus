@@ -1,6 +1,6 @@
 use crate::ast::{
     AcceptRecursiveType, Datatype, Dt, FunctionKind, GenericBound, GenericBoundX, Ident, Idents,
-    ImplPath, Krate, Path, Trait, Typ, TypX, VirErr,
+    ImplPath, Krate, Path, Trait, TraitId, Typ, TypX, VirErr,
 };
 use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::GlobalCtx;
@@ -592,7 +592,10 @@ pub(crate) fn suppress_bound_in_trait_decl(
     // See the check_traits comments below (particularly the part about not passing T's dictionary into
     // T's own members).
     let (bound_path, args) = match &**bound {
-        GenericBoundX::Trait(bound_path, args) => (bound_path, args),
+        GenericBoundX::Trait(TraitId::Path(bound_path), args) => (bound_path, args),
+        GenericBoundX::Trait(TraitId::Sized, _) => {
+            return false;
+        }
         GenericBoundX::TypEquality(..) => {
             return false;
         }
@@ -624,7 +627,10 @@ pub(crate) fn add_trait_to_graph(call_graph: &mut Graph<Node>, trt: &Trait) {
     let t_node = Node::Trait(t_path.clone());
     for bound in trt.x.typ_bounds.iter().chain(trt.x.assoc_typs_bounds.iter()) {
         let u_path = match &**bound {
-            GenericBoundX::Trait(u_path, _) => u_path,
+            GenericBoundX::Trait(TraitId::Path(u_path), _) => u_path,
+            GenericBoundX::Trait(TraitId::Sized, _) => {
+                continue;
+            }
             GenericBoundX::TypEquality(u_path, _, _, _) => u_path,
             GenericBoundX::ConstTyp(..) => {
                 continue;

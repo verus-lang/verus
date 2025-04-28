@@ -20,6 +20,8 @@
  - [`truncate`](#verifiertruncate)
  - [`type_invariant`](#verifiertype_invariant)
  - `when_used_as_spec`
+ - [`exec_allows_no_decreases_clause`](#verifierexec_allows_no_decreases_clause)
+ - [`assume_termination`](#verifierassume_termination)
 
 ## `#![all_triggers]`
 
@@ -134,3 +136,12 @@ already elided if the enclosing function body has no legitimate verification err
 ## `#[verifier::type_invariant]`
 
 Declares that a spec function is a type invariant for some datatype. See [type invariants](./reference-type-invariants.md).
+
+## `#[verifier::exec_allows_no_decreases_clause]`
+
+Disables the requirement that `exec` functions with recursion or loops have a decreases clause. Can be applied to a function, module, or crate, affects all the contents.
+
+## `#[verifier::assume_termination]`
+
+Assumes that an `exec` function is guaranteed to terminate, even if it does not have a `decreases` clause.
+This is currently unneeded, as `exec` termination checking does not check that callees also terminate.
