@@ -102,7 +102,13 @@ test_verify_one_file! {
             use builtin::*;
             pub(crate) fn f2(i: u64) -> u64 { crate::M1::f1(i - 1) }
         }
-    } => Err(err) => assert_vir_error_msg(err, "recursive function must have a decreases clause")
+    } => Err(err) => {
+        assert_eq!(err.errors.len(), 2);
+        assert!(err.errors[0].code.is_none());
+        assert!(err.errors[1].code.is_none());
+        assert!(err.errors[0].message.contains("recursive function must have a decreases clause"));
+        assert!(err.errors[1].message.contains("recursive function must have a decreases clause"));
+    }
 }
 
 test_verify_one_file! {

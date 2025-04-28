@@ -406,6 +406,16 @@ struct VerifyBucketOut {
     time_smt_run: Duration,
     rlimit_count: Option<u64>,
 }
+pub(crate) enum VerifyErr {
+    Vir(VirErr),
+    Emitted,
+}
+
+impl From<VirErr> for VerifyErr {
+    fn from(err: VirErr) -> Self {
+        VerifyErr::Vir(err)
+    }
+}
 
 impl Verifier {
     pub fn new(
@@ -2008,7 +2018,7 @@ impl Verifier {
         &mut self,
         compiler: &Compiler,
         spans: &SpanContext,
-    ) -> Result<(), VirErr> {
+    ) -> Result<(), VerifyErr> {
         let time_verify_sequential_start = Instant::now();
 
         let reporter = Reporter::new(spans, compiler);
@@ -2445,8 +2455,6 @@ impl Verifier {
 
                 if num_done == bucket_ids.len() {
                     break;
-                } else {
-                    assert!(workers.len() != 0);
                 }
             }
 
@@ -2472,7 +2480,7 @@ impl Verifier {
                 }
             }
             if worker_emitted_error {
-                return Err(error("found invalid code (see previous errors)"));
+                return Err(VerifyErr::Emitted);
             }
 
             // print remaining messages
@@ -2576,7 +2584,7 @@ impl Verifier {
         &mut self,
         compiler: &Compiler,
         spans: &SpanContext,
-    ) -> Result<(), VirErr> {
+    ) -> Result<(), VerifyErr> {
         // Verify crate
         let time_verify_crate_start = Instant::now();
 
@@ -3084,8 +3092,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             match self.verifier.verify_crate(compiler, &spans) {
                 Ok(()) => {}
                 Err(err) => {
-                    let reporter = Reporter::new(&spans, compiler);
-                    reporter.report_as(&err.to_any(), MessageLevel::Error);
+                    if let VerifyErr::Vir(err) = err {
+                        let reporter = Reporter::new(&spans, compiler);
+                        reporter.report_as(&err.to_any(), MessageLevel::Error);
+                    }
                     self.verifier.encountered_vir_error = true;
                 }
             }
