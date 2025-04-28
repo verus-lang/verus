@@ -820,7 +820,14 @@ pub fn func_def_to_sst(
         if no_termination_check || ctx.checking_spec_preconditions() || check_api_safety {
             (vec![], stm)
         } else {
-            crate::recursion::check_termination_stm(ctx, diagnostics, function, None, &stm, exec_with_no_termination_check)?
+            crate::recursion::check_termination_stm(
+                ctx,
+                diagnostics,
+                function,
+                None,
+                &stm,
+                exec_with_no_termination_check,
+            )?
         };
 
     // SST --> AIR
