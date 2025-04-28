@@ -199,7 +199,7 @@ pub const PROPH_BOOL: &str = "Proph%B";
 pub const PROPH_CONSTRUCT_BOOL: &str = "Proph%B%";
 pub const PROPH_BOOL_CUR: &str = "Proph%cur%B";
 pub const PROPH_BOOL_FUT: &str = "Proph%future%B";
-pub const PROPH_INT_SUFFIX: &str = "proph%I";
+pub const PROPH_INT_SUFFIX: &str = "proph%1";
 
 // List of QID suffixes we add to internally generated quantifiers
 pub const QID_BOX_AXIOM: &str = "box_axiom";
