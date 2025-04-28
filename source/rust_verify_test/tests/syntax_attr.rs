@@ -523,6 +523,51 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_proof_with code!{
+        #[verus_spec(ret =>
+            with
+                Tracked(y): Tracked<&mut u32>,
+                Ghost(w): Ghost<u32>,
+                ->  z: Ghost<u32>
+            requires
+                x < 100,
+                *old(y) < 100,
+            ensures
+                *y == x,
+                ret == x,
+                z@ == x,
+        )]
+        fn test_mut_tracked(x: u32) -> u32 {
+            proof!{
+                *y = x;
+            }
+            proof_with!{|= Ghost(x)}
+            x
+        }
+
+        #[verus_spec]
+        fn test_cal_mut_tracked(x: u32) {
+            proof_decl!{
+                let ghost mut z = 0u32;
+                let tracked mut y = 0u32;
+            }
+            if {
+                proof_with!{Tracked(&mut y), Ghost(0) => Ghost(z)} test_mut_tracked(1)
+            } == 0 {
+                proof!{
+                    assert(z == 1);
+                }
+                return;
+            }
+
+            proof!{
+                assert(y == 1);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_dual_spec code!{
         #[verus_verify(dual_spec(spec_f))]
         #[verus_spec(

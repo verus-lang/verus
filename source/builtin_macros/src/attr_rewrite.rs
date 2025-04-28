@@ -203,6 +203,50 @@ impl VisitMut for ExecReplacer {
             }
         }
     }
+
+    /// convert proof_with macro to functin with ghost/tracked argumemts.
+    /// In order to apply `with` to expr/stmt without using unstable feature.
+    /// proof_with!(Tracked(x), Ghost(y);
+    /// f(a);
+    fn visit_block_mut(&mut self, block: &mut syn::Block) {
+        syn::visit_mut::visit_block_mut(self, block);
+
+        if !self.erase.keep() {
+            return;
+        }
+
+        let mut with_args: TokenStream = TokenStream::new();
+        for stmt in &mut block.stmts {
+            match stmt {
+                syn::Stmt::Macro(syn::StmtMacro { mac, .. }) if mac.path.is_ident("proof_with") => {
+                    syn_verus::Token![with](mac.span()).to_tokens(&mut with_args);
+                    mac.tokens.to_tokens(&mut with_args);
+                }
+                syn::Stmt::Local(syn::Local { attrs, init: Some(_), .. })
+                    if !with_args.is_empty() =>
+                {
+                    attrs.push(crate::syntax::mk_rust_attr_syn(
+                        with_args.span(),
+                        "verus_spec",
+                        with_args,
+                    ));
+                    with_args = TokenStream::new();
+                }
+                syn::Stmt::Expr(expr, _) if !with_args.is_empty() => {
+                    let call_with_spec = syn_verus::parse2(with_args.clone())
+                        .expect(format!("Failed to parse proof_with {:?}", with_args).as_str());
+                    rewrite_with_expr(self.erase.clone(), expr, call_with_spec);
+                    with_args = TokenStream::new();
+                }
+                _ if with_args.is_empty() => {
+                    // do nothing
+                }
+                _ => {
+                    panic!("Expected a function call after proof_with! macro");
+                }
+            };
+        }
+    }
 }
 
 fn is_verus_proof_stmt(stmt: &syn::Stmt) -> bool {
@@ -234,7 +278,7 @@ pub fn rewrite_verus_spec(
     if !erase.keep() {
         return input;
     }
-    let mut f = match syn::parse::<VerusSpecTarget>(input) {
+    let f = match syn::parse::<VerusSpecTarget>(input) {
         Ok(f) => f,
         Err(err) => {
             // Make sure at least one error is reported, just in case Rust parses the function
@@ -246,14 +290,6 @@ pub fn rewrite_verus_spec(
             );
         }
     };
-
-    // Erase verus_spec attributes in function body if not in verification.
-    match &mut f {
-        VerusSpecTarget::FnOrLoop(AnyFnOrLoop::Fn(fun)) => {
-            replace_block(erase, fun.block_mut().unwrap());
-        }
-        _ => {}
-    }
 
     match f {
         VerusSpecTarget::FnOrLoop(f) => {
