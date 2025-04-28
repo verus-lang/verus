@@ -67,6 +67,7 @@ const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
+pub(crate) const SIZED_BOUND: &str = "sized";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
 const SLICE_TYPE: &str = "slice%";
@@ -150,8 +151,11 @@ pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
+pub const TYPE_ID_CONST_BOOL: &str = "CONST_BOOL";
 pub const DECORATION: &str = "Dcr";
-pub const DECORATE_NIL: &str = "$";
+pub const DECORATE_NIL_SIZED: &str = "$";
+pub const DECORATE_NIL_SLICE: &str = "$slice";
+pub const DECORATE_DST_INHERIT: &str = "DST";
 pub const DECORATE_REF: &str = "REF";
 pub const DECORATE_MUT_REF: &str = "MUT_REF";
 pub const DECORATE_BOX: &str = "BOX";
@@ -170,6 +174,7 @@ pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
 pub const MK_FUN: &str = "mk_fun";
 pub const CONST_INT: &str = "const_int";
+pub const CONST_BOOL: &str = "const_bool";
 pub const CHECK_DECREASE_INT: &str = "check_decrease_int";
 pub const CHECK_DECREASE_HEIGHT: &str = "check_decrease_height";
 pub const HEIGHT: &str = "height";
@@ -460,6 +465,10 @@ pub fn proj_param(i: usize) -> Ident {
 
 pub fn trait_bound(trait_path: &Path) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
+}
+
+pub fn sized_bound() -> Ident {
+    Arc::new(SIZED_BOUND.to_string())
 }
 
 pub fn prefix_type_id_fun(i: usize) -> Ident {
@@ -989,17 +998,15 @@ pub fn unique_var_name(
     out
 }
 
-pub fn exec_nonstatic_call_fun(vstd_crate_name: &Ident) -> Fun {
-    Arc::new(FunX { path: exec_nonstatic_call_path(&Some(vstd_crate_name.clone())) })
+pub fn nonstatic_call_fun(vstd_crate_name: &Ident, is_proof: bool) -> Fun {
+    Arc::new(FunX { path: nonstatic_call_path(&Some(vstd_crate_name.clone()), is_proof) })
 }
 
-pub fn exec_nonstatic_call_path(vstd_crate_name: &Option<Ident>) -> Path {
+pub fn nonstatic_call_path(vstd_crate_name: &Option<Ident>, is_proof: bool) -> Path {
+    let name = if is_proof { "proof_nonstatic_call" } else { "exec_nonstatic_call" };
     Arc::new(PathX {
         krate: vstd_crate_name.clone(),
-        segments: Arc::new(vec![
-            Arc::new("pervasive".to_string()),
-            Arc::new("exec_nonstatic_call".to_string()),
-        ]),
+        segments: Arc::new(vec![Arc::new("pervasive".to_string()), Arc::new(name.to_string())]),
     })
 }
 

@@ -627,3 +627,12 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "lemma_foo is not a broadcast proof fn")
 }
+
+test_verify_one_file! {
+    #[test] broadcast_mut_params verus_code! {
+        pub broadcast proof fn seq_reverse_len<A>(s: &mut u8)
+            ensures
+                *s == *s
+        { }
+    } => Err(err) => assert_vir_error_msg(err, "broadcast function cannot have &mut parameters")
+}

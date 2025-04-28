@@ -75,3 +75,33 @@ This proof function must also be annotated with the `#[via_fn]` attribute.
 
 It is the job of the proof function to prove the relevant decreases property for each
 call site.
+
+**Example.**
+In the following definition, we use a `via` clause to prove that the decreases-measure
+decreases.
+
+```rust
+spec fn floor_log2(n: u64) -> int 
+    decreases n
+    via floor_log2_decreases_proof
+{
+    if n <= 1 { 
+        0   
+    } else {
+        floor_log2(n >> 1) + 1 
+    }   
+}
+
+#[via_fn]
+proof fn floor_log2_decreases_proof(n: u64) {
+    assert(n > 1 ==> (n >> 1) < n) by(bit_vector);
+}
+```
+
+In order to check that the recursion in `floor_log2` terminates, Verus generates a proof obligation
+that `n > 1 ==> decreases_to!(n => n >> 1)`. (The `n > 1` hypothesis stems from the fact that
+the recursive call is in the else-block.) Thus we need to show:
+
+`n > 1 ==> (n >> 1) < n`
+
+Verus cannot prove this automatically. The proof function `floor_log2_decreases_proof` is defined as a `via_fn` and is referenced from the `via` clause. The body of the proof function contains a proof that `n > 1 ==> (n >> 1) < n`.

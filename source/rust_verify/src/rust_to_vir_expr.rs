@@ -572,6 +572,10 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             return pattern_to_vir(bctx, pat);
         }
         PatKind::Or(pats) => {
+            if pats.len() == 1 {
+                return pattern_to_vir(bctx, &pats[0]);
+            }
+
             assert!(pats.len() >= 2);
 
             let mut patterns: Vec<vir::ast::Pattern> = Vec::new();
@@ -1531,6 +1535,10 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg, modifier))?;
                     let expr_typ = typ_of_node(bctx, expr.span, &expr.hir_id, false)?;
 
+                    let proof_fn = crate::rust_to_vir_base::try_get_proof_fn_modes(
+                        &bctx.ctxt, expr.span, &fun_ty,
+                    )?;
+                    let is_proof_fun = proof_fn.is_some();
                     let is_spec_fn = match &*undecorate_typ(&vir_fun.typ) {
                         TypX::SpecFn(..) => true,
                         _ => false,
@@ -1551,7 +1559,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let span = bctx.ctxt.spans.to_air_span(expr.span.clone());
                         let tup = vir::ast_util::mk_tuple(&span, &Arc::new(vir_args));
                         let helper_fun =
-                            vir::def::exec_nonstatic_call_fun(&bctx.ctxt.vstd_crate_name);
+                            vir::def::nonstatic_call_fun(&bctx.ctxt.vstd_crate_name, is_proof_fun);
                         let ret_typ = expr_typ.clone();
 
                         // Anything that goes in `typ_args` needs to have the correct
@@ -1583,6 +1591,21 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                             &fun_ty,
                             true,
                         )?;
+
+                        let (kind, rcall) = if let Some((arg_modes, ret_mode)) = proof_fn {
+                            if arg_modes.len() != args.len() {
+                                return err_span(
+                                    expr.span,
+                                    "could not read mode annotations from proof_fn type",
+                                );
+                            }
+                            let arg_modes = Arc::new(arg_modes);
+                            let r = ResolvedCall::NonStaticProof(arg_modes.clone());
+                            let k = vir::ast::CallTargetKind::ProofFn(arg_modes, ret_mode);
+                            (k, r)
+                        } else {
+                            (vir::ast::CallTargetKind::Static, ResolvedCall::NonStaticExec)
+                        };
 
                         // Get impl_paths for the trait bound
                         // fun_ty : FnOnce<Args>
@@ -1618,14 +1641,14 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         let typ_args = Arc::new(vec![tup_typ, ret_typ, fun_typ]);
                         (
                             CallTarget::Fun(
-                                vir::ast::CallTargetKind::Static,
+                                kind,
                                 helper_fun,
                                 typ_args,
                                 impl_paths,
                                 AutospecUsage::Final,
                             ),
                             vec![vir_fun, tup],
-                            ResolvedCall::NonStaticExec,
+                            rcall,
                         )
                     };
 
@@ -1984,6 +2007,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                     };
                     match *undecorate_typ(&expr_typ()?) {
                         TypX::Int(_) => {}
+                        TypX::Bool => {}
                         _ => {
                             unsupported_err!(expr.span, format!("non-int ConstParam {:?}", id))
                         }
@@ -2274,7 +2298,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let closure_body = find_body(&bctx.ctxt, body_id);
                 expr_to_vir(bctx, closure_body.value, modifier)
             } else {
-                closure_to_vir(bctx, expr, expr_typ()?, false, modifier)
+                closure_to_vir(bctx, expr, expr_typ()?, false, None, modifier)
             }
         }
         ExprKind::Index(tgt_expr, idx_expr, _span) => {
@@ -2843,6 +2867,7 @@ pub(crate) fn closure_to_vir<'tcx>(
     closure_expr: &Expr<'tcx>,
     closure_vir_typ: Typ,
     is_spec_fn: bool,
+    proof_fn_modes: Option<(Arc<Vec<Mode>>, Mode)>,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     if let ExprKind::Closure(Closure { fn_decl, body: body_id, .. }) = &closure_expr.kind {
@@ -2908,8 +2933,9 @@ pub(crate) fn closure_to_vir<'tcx>(
 
             let ret = Arc::new(VarBinderX { name: id, a: ret_typ });
 
-            ExprX::ExecClosure {
+            ExprX::NonSpecClosure {
                 params: Arc::new(params),
+                proof_fn_modes,
                 body,
                 requires: require,
                 ensures: ensure,

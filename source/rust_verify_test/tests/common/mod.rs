@@ -319,14 +319,25 @@ pub fn run_verus(
             "test_crate".to_string(),
             "--crate-type".to_string(),
             "lib".to_string(),
-            "--extern".to_string(),
-            format!("builtin={lib_builtin_path}"),
+        ]
+        .into_iter(),
+    );
+    if !is_core {
+        verus_args.extend(
+            vec!["--extern".to_string(), format!("builtin={lib_builtin_path}")].into_iter(),
+        );
+    }
+    verus_args.extend(
+        vec![
             "--extern".to_string(),
             format!("builtin_macros={lib_builtin_macros_path}"),
             "--extern".to_string(),
             format!("state_machines_macros={lib_state_machines_macros_path}"),
             "-L".to_string(),
             format!("dependency={verus_target_path_str}"),
+            // suppress Rust's generation of long-type files
+            "-Z".to_string(),
+            "write_long_types_to_disk=no".to_string(),
         ]
         .into_iter(),
     );

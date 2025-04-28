@@ -20,7 +20,7 @@
  - [`truncate`](#verifiertruncate)
  - [`type_invariant`](#verifiertype_invariant)
  - `when_used_as_spec`
- - [`exec_allow_no_decreases_clause`](#verifierexec_allow_no_decreases_clause)
+ - [`exec_allows_no_decreases_clause`](#verifierexec_allows_no_decreases_clause)
  - [`assume_termination`](#verifierassume_termination)
 
 ## `#![all_triggers]`
@@ -137,7 +137,7 @@ already elided if the enclosing function body has no legitimate verification err
 
 Declares that a spec function is a type invariant for some datatype. See [type invariants](./reference-type-invariants.md).
 
-## `#[verifier::exec_allow_no_decreases_clause]`
+## `#[verifier::exec_allows_no_decreases_clause]`
 
 Disables the requirement that `exec` functions with recursion or loops have a decreases clause. Can be applied to a function, module, or crate, affects all the contents.
 

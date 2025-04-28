@@ -166,7 +166,7 @@ run, from the project root:
 
 ```
 cd source/vstd
-../target-verus/release/verus --crate-type=lib --is-vstd vstd.rs
+../target-verus/release/verus --crate-type=lib --is-vstd vstd.rs --cfg 'feature="std"' --cfg 'feature="alloc"'
 ```
 
 ### Common Conventions

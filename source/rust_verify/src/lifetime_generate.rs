@@ -3,7 +3,7 @@ use crate::erase::{ErasureHints, ResolvedCall};
 use crate::external::CrateItems;
 use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir, remove_host_arg};
 use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
-use crate::verus_items::{BuiltinTypeItem, RustItem, VerusItem, VerusItems};
+use crate::verus_items::{BuiltinTypeItem, ExternalItem, RustItem, VerusItem, VerusItems};
 use crate::{lifetime_ast::*, verus_items};
 use air::ast_util::str_ident;
 use rustc_ast::{BindingMode, BorrowKind, IsAuto, Mutability};
@@ -351,6 +351,7 @@ fn erase_generic_const<'tcx>(ctxt: &Context<'tcx>, state: &mut State, cnst: &Con
             Box::new(TypX::TypParam(state.typ_param(x.to_string(), None)))
         }
         vir::ast::TypX::ConstInt(i) => Box::new(TypX::Primitive(i.to_string())),
+        vir::ast::TypX::ConstBool(b) => Box::new(TypX::Primitive(b.to_string())),
         _ => panic!("GenericArgKind::Const"),
     }
 }
@@ -460,6 +461,12 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
                     BuiltinTypeItem::Ghost => Id::new(IdKind::Builtin, 0, "Ghost".to_owned()),
                     BuiltinTypeItem::Tracked => Id::new(IdKind::Builtin, 0, "Tracked".to_owned()),
                 },
+                Some(VerusItem::External(ExternalItem::FnProof)) => {
+                    Id::new(IdKind::Builtin, 0, "FnProof".to_owned())
+                }
+                Some(VerusItem::External(ExternalItem::FOpts)) => {
+                    Id::new(IdKind::Builtin, 0, "FOpts".to_owned())
+                }
                 _ => match rust_item {
                     Some(RustItem::Box) => {
                         assert!(typ_args.len() == 2);
@@ -841,6 +848,7 @@ fn erase_call<'tcx>(
                 GhostExec => None,
                 IntIntrinsic | Implies => None,
                 UseTypeInvariant => Some((false, "use_type_invariant", false)),
+                ClosureToFnProof(_) => Some((false, "closure_to_fn_proof", false)),
             };
             if let Some((true, method, expect_spec_inside)) = builtin_method {
                 assert!(receiver.is_some());
@@ -855,7 +863,11 @@ fn erase_call<'tcx>(
             } else if let Some((false, func, expect_spec_inside)) = builtin_method {
                 assert!(receiver.is_none());
                 assert!(args_slice.len() == 1);
-                let exp = erase_expr(ctxt, state, expect_spec_inside, &args_slice[0]);
+                let exp = if let ClosureToFnProof(mode) = op {
+                    Some(erase_expr_closure(ctxt, state, expect_spec_inside, *mode, &args_slice[0]))
+                } else {
+                    erase_expr(ctxt, state, expect_spec_inside, &args_slice[0])
+                };
                 if expect_spec_inside {
                     erase_spec_exps(ctxt, state, expr, vec![exp])
                 } else {
@@ -1019,15 +1031,28 @@ fn erase_call<'tcx>(
                 mk_exp(ExpX::DatatypeTuple(state.datatype_name(path), variant_opt, typ_args, args))
             }
         }
-        ResolvedCall::NonStaticExec => {
+        ResolvedCall::NonStaticExec | ResolvedCall::NonStaticProof(_) => {
             assert!(receiver.is_none());
             let expr_fun = expr_fun.expect("exec closure call function target");
             let exp_fun = erase_expr(ctxt, state, false, expr_fun).expect("closure call target");
             let typ_args = mk_typ_args(ctxt, state, node_substs);
-            let exps = args_slice
-                .iter()
-                .map(|a| erase_expr(ctxt, state, false, a).expect("call arg"))
-                .collect();
+            let mut exps: Vec<Exp> = Vec::new();
+            let modes = if let ResolvedCall::NonStaticProof(modes) = &call {
+                modes.clone()
+            } else {
+                Arc::new(args_slice.iter().map(|_| Mode::Exec).collect())
+            };
+            assert!(args_slice.len() == modes.len());
+            for (a, mode) in args_slice.iter().zip(modes.iter()) {
+                if *mode == Mode::Spec {
+                    let spec_exp = erase_expr(ctxt, state, true, a);
+                    let ty = ctxt.types().node_type(a.hir_id);
+                    let typ = erase_ty(ctxt, state, &ty);
+                    exps.push(erase_spec_exps_force_typ(ctxt, state, a.span, typ, vec![spec_exp]));
+                } else {
+                    exps.push(erase_expr(ctxt, state, false, a).expect("call arg"));
+                }
+            }
             // syntax quirk: need extra parens when exp_fun is a block
             let exp_fun = Box::new((expr_fun.span, ExpX::ExtraParens(exp_fun)));
             mk_exp(ExpX::Call(exp_fun, typ_args, exps))
@@ -1544,25 +1569,8 @@ fn erase_expr<'tcx>(
             let exp = erase_expr(ctxt, state, ctxt.ret_spec.expect("ret_spec"), expr);
             mk_exp(ExpX::Ret(exp))
         }
-        ExprKind::Closure(Closure { capture_clause: capture_by, body: body_id, .. }) => {
-            let mut params: Vec<(Span, Id, Typ)> = Vec::new();
-            let body = ctxt.tcx.hir().body(*body_id);
-            let ps = &body.params;
-            for p in ps.iter() {
-                let pat_var = crate::rust_to_vir_expr::pat_to_var(p.pat).expect("pat_to_var");
-                let (x, local_id) = match &pat_var {
-                    vir::ast::VarIdent(x, vir::ast::VarIdentDisambiguate::RustcId(local_id)) => {
-                        (x, local_id)
-                    }
-                    _ => panic!("pat_to_var"),
-                };
-                let x = state.local(x.to_string(), *local_id);
-                let typ = erase_ty(ctxt, state, &ctxt.types().node_type(p.hir_id));
-                params.push((p.pat.span, x, typ));
-            }
-            let body_exp = erase_expr(ctxt, state, expect_spec, &body.value);
-            let body_exp = force_block(body_exp, body.value.span);
-            mk_exp(ExpX::Closure(*capture_by, None, params, body_exp))
+        ExprKind::Closure(_) => {
+            Some(erase_expr_closure(ctxt, state, expect_spec, Mode::Exec, expr))
         }
         ExprKind::Block(block, None) => {
             let attrs = ctxt.tcx.hir().attrs(expr.hir_id);
@@ -1584,6 +1592,45 @@ fn erase_expr<'tcx>(
             dbg!(&expr);
             panic!()
         }
+    }
+}
+
+fn erase_expr_closure<'tcx>(
+    ctxt: &Context<'tcx>,
+    state: &mut State,
+    expect_spec: bool,
+    body_mode: Mode,
+    expr: &Expr<'tcx>,
+) -> Exp {
+    match &expr.kind {
+        ExprKind::Closure(Closure { capture_clause: capture_by, body: body_id, .. }) => {
+            let mut params: Vec<(Span, Id, Typ)> = Vec::new();
+            let body = ctxt.tcx.hir().body(*body_id);
+            let ps = &body.params;
+            for p in ps.iter() {
+                let pat_var = crate::rust_to_vir_expr::pat_to_var(p.pat).expect("pat_to_var");
+                let (x, local_id) = match &pat_var {
+                    vir::ast::VarIdent(x, vir::ast::VarIdentDisambiguate::RustcId(local_id)) => {
+                        (x, local_id)
+                    }
+                    _ => panic!("pat_to_var"),
+                };
+                let x = state.local(x.to_string(), *local_id);
+                let typ = erase_ty(ctxt, state, &ctxt.types().node_type(p.hir_id));
+                params.push((p.pat.span, x, typ));
+            }
+            let body_exp = if body_mode == Mode::Spec {
+                let spec_exp = erase_expr(ctxt, state, true, &body.value);
+                let ty = ctxt.types().node_type(body.value.hir_id);
+                let typ = erase_ty(ctxt, state, &ty);
+                Some(erase_spec_exps_force_typ(ctxt, state, body.value.span, typ, vec![spec_exp]))
+            } else {
+                erase_expr(ctxt, state, expect_spec, &body.value)
+            };
+            let body_exp = force_block(body_exp, body.value.span);
+            Box::new((expr.span, ExpX::Closure(*capture_by, None, params, body_exp)))
+        }
+        _ => panic!("expected closure"),
     }
 }
 
@@ -1746,6 +1793,7 @@ fn erase_mir_bound<'a, 'tcx>(
     erase_trait(ctxt, state, id);
     let trait_path = def_id_to_vir_path(tcx, &ctxt.verus_items, id);
     let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
+    let verus_item = ctxt.verus_items.id_to_name.get(&id);
     if Some(id) == tcx.lang_items().copy_trait() {
         Some(Bound::Copy)
     } else if Some(id) == tcx.lang_items().clone_trait() {
@@ -1762,6 +1810,12 @@ fn erase_mir_bound<'a, 'tcx>(
     {
         // "Thin" is a trait alias for Pointee (special case since we don't support trait aliases)
         Some(Bound::Thin)
+    } else if Some(&VerusItem::External(ExternalItem::ProofFnOnce)) == verus_item {
+        Some(Bound::ProofFn(ClosureKind::FnOnce))
+    } else if Some(&VerusItem::External(ExternalItem::ProofFnMut)) == verus_item {
+        Some(Bound::ProofFn(ClosureKind::FnMut))
+    } else if Some(&VerusItem::External(ExternalItem::ProofFn)) == verus_item {
+        Some(Bound::ProofFn(ClosureKind::Fn))
     } else if state.trait_decl_set.contains(&trait_path) {
         let (args, _) = erase_generic_args(ctxt, state, args, true);
         let trait_path = state.trait_name(&trait_path);

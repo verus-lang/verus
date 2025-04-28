@@ -152,6 +152,7 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
         TypX::Boxed(..) | TypX::TypParam(..) | TypX::SpecFn(..) | TypX::FnDef(..) => None,
         TypX::ConstInt(_) => None,
+        TypX::ConstBool(_) => None,
         TypX::Projection { .. } => None,
     }
 }
@@ -200,6 +201,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
         TypX::Primitive(_, _) => typ_as_mono(typ).is_none(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
+        TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -237,6 +239,7 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         }
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
+        TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -256,6 +259,7 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => typ.clone(),
+        TypX::ConstBool(_) => typ.clone(),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -286,6 +290,7 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
         TypX::TypParam(_) | TypX::Projection { .. } => exp.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => panic!("internal error: expression should not have ConstInt type"),
+        TypX::ConstBool(_) => panic!("internal error: expression should not have ConstBool type"),
         TypX::Air(_) => panic!("internal error: Air type created too soon"),
     }
 }
@@ -1020,6 +1025,7 @@ fn visit_func_check_sst(
             | (LocalDeclKind::OpenInvariantBinder, _, _)
             | (LocalDeclKind::ExecClosureId, _, _)
             | (LocalDeclKind::ExecClosureParam, _, _)
+            | (LocalDeclKind::Nondeterministic, _, _)
             | (LocalDeclKind::ExecClosureRet, _, _) => coerce_typ_to_native(ctx, &l.typ),
             (LocalDeclKind::TempViaAssign, _, _) | (LocalDeclKind::Decreases, _, _) => {
                 l.typ.clone()
@@ -1091,6 +1097,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         axioms,
         exec_proof_check,
         recommends_check,
+        safe_api_check,
     } = &function.x;
 
     if attrs.is_decrease_by {
@@ -1171,6 +1178,9 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
     let recommends_check = recommends_check.as_ref().map(|f| {
         Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret.x.typ))
     });
+    let safe_api_check = safe_api_check.as_ref().map(|f| {
+        Arc::new(visit_func_check_sst(ctx, &mut state, f, &poly_pars, &poly_ret, &ret.x.typ))
+    });
 
     state.types.pop_scope();
     assert_eq!(state.types.num_scopes(), 0);
@@ -1194,6 +1204,7 @@ fn visit_function(ctx: &Ctx, function: &FunctionSst) -> FunctionSst {
         axioms,
         exec_proof_check,
         recommends_check,
+        safe_api_check,
     };
     Spanned::new(function.span.clone(), functionx)
 }

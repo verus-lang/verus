@@ -14,8 +14,8 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    Fun, Function, FunctionKind, GenericBound, GenericBoundX, Ident, KrateX, TraitX, TypX, VirErr,
-    Visibility,
+    Fun, Function, FunctionKind, GenericBound, GenericBoundX, Ident, KrateX, TraitId, TraitX, TypX,
+    VirErr, Visibility,
 };
 use vir::def::{trait_self_type_param, VERUS_SPEC};
 
@@ -99,7 +99,7 @@ pub(crate) fn translate_trait<'tcx>(
         // Remove the Self: Trait bound introduced by rustc
         Arc::make_mut(&mut typ_bounds).retain(|gb| {
             match &**gb {
-                GenericBoundX::Trait(bnd, tp) => {
+                GenericBoundX::Trait(TraitId::Path(bnd), tp) => {
                     if bnd == &trait_path {
                         let gp: Vec<_> = Some(trait_self_type_param())
                             .into_iter()
@@ -117,6 +117,7 @@ pub(crate) fn translate_trait<'tcx>(
                         return false;
                     }
                 }
+                GenericBoundX::Trait(TraitId::Sized, _tp) => {}
                 GenericBoundX::TypEquality(..) => {}
                 GenericBoundX::ConstTyp(..) => {}
             }
@@ -144,14 +145,14 @@ pub(crate) fn translate_trait<'tcx>(
         let mut preds2 = proxy_predicates.instantiate(tcx, ex_trait_ref_for.args).predicates;
         use crate::rust_to_vir_func::remove_ignored_trait_bounds_from_predicates;
         remove_ignored_trait_bounds_from_predicates(
-            tcx,
+            ctxt,
             true,
             &[ex_trait_ref_for.def_id],
             Some(ex_trait_ref_for.args[0]),
             &mut preds1,
         );
         remove_ignored_trait_bounds_from_predicates(
-            tcx,
+            ctxt,
             true,
             &[ex_trait_ref_for.def_id, trait_def_id],
             Some(ex_trait_ref_for.args[0]),

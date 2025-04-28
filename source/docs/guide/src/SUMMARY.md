@@ -62,7 +62,7 @@
     - [Quantifier profiling](profiling.md)
     - [Modules, hiding, opaque, reveal]() <!--- Chris --->
     - [Hiding local proofs with `assert (...) by { ... }`](assert_by.md)
-    - [Structured proof by calculation](calc.md)
+    - [Structured proofs by calculation](calc.md)
     - [Proof by computation](assert_by_compute.md)
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces](breaking_proofs_into_pieces.md)

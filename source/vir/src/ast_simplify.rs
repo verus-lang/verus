@@ -527,7 +527,15 @@ fn simplify_one_expr(
             }
         }
         ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: expr1 } => Ok(expr1.clone()),
-        ExprX::ExecClosure { params, body, requires, ensures, ret, external_spec } => {
+        ExprX::NonSpecClosure {
+            params,
+            proof_fn_modes,
+            body,
+            requires,
+            ensures,
+            ret,
+            external_spec,
+        } => {
             assert!(external_spec.is_none());
 
             let closure_var_ident = state.next_temp();
@@ -544,8 +552,9 @@ fn simplify_one_expr(
             Ok(SpannedTyped::new(
                 &expr.span,
                 &expr.typ,
-                ExprX::ExecClosure {
+                ExprX::NonSpecClosure {
                     params: params.clone(),
+                    proof_fn_modes: proof_fn_modes.clone(),
                     body: body.clone(),
                     requires: requires.clone(),
                     ensures: ensures.clone(),
@@ -1227,6 +1236,11 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             mode: Mode::Exec,
             ext_equal: arity > 0,
             user_defined_invariant_fn: None,
+            sized_constraint: if arity == 0 {
+                None
+            } else {
+                Some(Arc::new(TypX::TypParam(prefix_tuple_param(arity - 1))))
+            },
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }
@@ -1279,6 +1293,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
             mode: Mode::Exec,
             ext_equal: false,
             user_defined_invariant_fn: None,
+            sized_constraint: None,
         };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }
@@ -1309,6 +1324,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         ctx.func_call_graph_log.clone(),
         ctx.solver.clone(),
         true,
+        ctx.check_api_safety,
     )?;
     Ok(krate)
 }
