@@ -2145,11 +2145,14 @@ impl Verifier {
                 let worker_sender = sender.clone();
                 let worker = std::thread::spawn(move || {
                     let r = std::panic::catch_unwind(|| {
-                        let mut completed_tasks: Vec<GlobalCtx> = Vec::new();
+                        let mut completed_tasks: Vec<Result<GlobalCtx, ()>> = Vec::new();
                         loop {
-                            let mut tq = thread_taskq.lock().unwrap();
-                            let elm = tq.pop_front();
-                            drop(tq);
+                            let elm = {
+                                let mut tq = thread_taskq.lock().unwrap();
+                                let elm = tq.pop_front();
+                                drop(tq);
+                                elm
+                            };
                             if let Some((_i, bucket_id, task, reporter)) = elm {
                                 let res = thread_verifier.verify_bucket_outer(
                                     &reporter,
@@ -2158,18 +2161,16 @@ impl Verifier {
                                     &bucket_id,
                                     task,
                                 );
-                                reporter.done(); // we've verified the bucket, send the done message
-                                match res {
-                                    Ok(res) => {
-                                        completed_tasks.push(res);
-                                    }
-                                    Err(e) => return Err(e),
+                                if let Err(e) = &res {
+                                    reporter.report_now(&e.clone().to_any());
                                 }
+                                reporter.done(); // we've verified the bucket, send the done message
+                                completed_tasks.push(res.map_err(|_| ()));
                             } else {
                                 break;
                             }
                         }
-                        Ok::<(Verifier, Vec<GlobalCtx>), VirErr>((thread_verifier, completed_tasks))
+                        (thread_verifier, completed_tasks)
                     });
 
                     match r {
@@ -2444,6 +2445,8 @@ impl Verifier {
 
                 if num_done == bucket_ids.len() {
                     break;
+                } else {
+                    assert!(workers.len() != 0);
                 }
             }
 
@@ -2454,16 +2457,22 @@ impl Verifier {
                 workers_finished.push(res);
             }
 
-            for res in workers_finished {
-                match res {
-                    Ok((verifier, res)) => {
-                        for r in res {
+            let mut worker_emitted_error = false;
+            for (verifier, results) in workers_finished {
+                self.merge(verifier);
+                for res in results {
+                    match res {
+                        Ok(r) => {
                             global_ctx.merge(r);
                         }
-                        self.merge(verifier);
+                        Err(()) => {
+                            worker_emitted_error = true;
+                        }
                     }
-                    Err(e) => return Err(e),
                 }
+            }
+            if worker_emitted_error {
+                return Err(error("found invalid code (see previous errors)"));
             }
 
             // print remaining messages
