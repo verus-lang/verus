@@ -104,6 +104,7 @@ pub enum MonoTypX {
     Decorate(crate::ast::TypDecoration, MonoTyp),
     Decorate2(crate::ast::TypDecoration, MonoTyps),
     Primitive(Primitive, MonoTyps),
+    MutRef(MonoTyp),
 }
 
 struct State {
@@ -140,6 +141,10 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
             let m2 = typ_as_mono(t)?;
             Some(Arc::new(MonoTypX::Decorate2(*d, Arc::new(vec![m1, m2]))))
         }
+        TypX::MutRef(t) => {
+            let monotyp = typ_as_mono(t)?;
+            Some(Arc::new(MonoTypX::MutRef(monotyp)))
+        }
         TypX::Primitive(Primitive::Array, _) => None,
         TypX::Primitive(name, typs) => {
             let monotyps = monotyps_as_mono(typs)?;
@@ -175,6 +180,7 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
             let typ = monotyp_to_typ(&typs[1]);
             Arc::new(TypX::Decorate(*d, Some(TypDecorationArg { allocator_typ }), typ))
         }
+        MonoTypX::MutRef(typ) => Arc::new(TypX::MutRef(monotyp_to_typ(typ))),
     }
 }
 
@@ -193,6 +199,7 @@ pub(crate) fn typ_is_poly(ctx: &Ctx, typ: &Typ) -> bool {
             }
         }
         TypX::Decorate(_, _, t) => typ_is_poly(ctx, t),
+        TypX::MutRef(t) => typ_is_poly(ctx, t),
         // Note: we rely on rust_to_vir_base normalizing TypX::Projection { .. }.
         // If it normalized to a projection, it is poly; otherwise it is handled by
         // one of the other TypX::* cases.
@@ -226,6 +233,9 @@ pub(crate) fn coerce_typ_to_native(ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_native(ctx, t)))
         }
+        TypX::MutRef(t) => {
+            Arc::new(TypX::MutRef(coerce_typ_to_native(ctx, t)))
+        }
         TypX::Boxed(_) => panic!("Boxed unexpected here"),
         TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::Primitive(_, _) => {
@@ -253,6 +263,9 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
         TypX::Decorate(d, targ, t) => {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t)))
         }
+        TypX::MutRef(t) => {
+            Arc::new(TypX::MutRef(coerce_typ_to_poly(_ctx, t)))
+        }
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
         TypX::ConstInt(_) => typ.clone(),
@@ -261,7 +274,18 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
 }
 
 pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
-    match &*crate::ast_util::undecorate_typ(&exp.typ) {
+    if let TypX::MutRef(typ) = &*exp.typ {
+        // Maintain the mutable reference wrapper, but unbox the inner type
+        let mut res = coerce_exp_to_native_handle_mut_ref(ctx, exp, typ);
+        Arc::make_mut(&mut res).typ = Arc::new(TypX::MutRef(res.typ.clone()));
+        res
+    } else {
+        coerce_exp_to_native_handle_mut_ref(ctx, exp, &exp.typ)
+    }
+}
+
+pub fn coerce_exp_to_native_handle_mut_ref(ctx: &Ctx, exp: &Exp, exp_typ: &Typ) -> Exp {
+    match &*crate::ast_util::undecorate_typ(&exp_typ) {
         TypX::Bool
         | TypX::Int(_)
         | TypX::SpecFn(..)
@@ -273,6 +297,9 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
         }
         TypX::Decorate(..) => {
             panic!("internal error: Decorate should be removed by undecorate_typ")
+        }
+        TypX::MutRef(_) => {
+            panic!("internal error: MutRef should be removed by coerce_exp_to_native")
         }
         TypX::Boxed(typ) => {
             if typ_is_poly(ctx, typ) {

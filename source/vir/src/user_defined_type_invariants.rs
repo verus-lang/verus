@@ -288,7 +288,7 @@ pub fn check_typ_ok_for_use_typ_invariant(span: &Span, t: &Typ) -> Result<(), Vi
             use crate::ast::TypDecoration::*;
             match dec {
                 Ref | Box | Rc | Arc | Tracked => check_typ_ok_for_use_typ_invariant(span, t),
-                MutRef | Never | ConstPtr => Err(error(span, "this type is not a datatype")),
+                Never | ConstPtr => Err(error(span, "this type is not a datatype")),
                 Ghost => Err(error(span, "cannot apply use_type_invariant for Ghost<_>")),
             }
         }

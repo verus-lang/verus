@@ -83,6 +83,10 @@ pub(crate) trait TypVisitor<R: Returner, Err> {
                 let t = self.visit_typ(t)?;
                 R::ret(|| Arc::new(TypX::Boxed(R::get(t))))
             }
+            TypX::MutRef(t) => {
+                let t = self.visit_typ(t)?;
+                R::ret(|| Arc::new(TypX::MutRef(R::get(t))))
+            }
             TypX::Projection { trait_typ_args, trait_path, name } => {
                 let trait_typ_args = self.visit_typs(trait_typ_args)?;
                 R::ret(|| {

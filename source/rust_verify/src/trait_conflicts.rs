@@ -119,7 +119,6 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
         vir::ast::TypX::Decorate(d, targ, t) => {
             let n = match d {
                 TypDecoration::Ref => TypNum::Ref,
-                TypDecoration::MutRef => TypNum::MutRef,
                 TypDecoration::Box => TypNum::Box,
                 TypDecoration::Rc => TypNum::Rc,
                 TypDecoration::Arc => TypNum::Arc,
@@ -136,6 +135,10 @@ fn gen_typ(state: &mut State, typ: &vir::ast::Typ) -> Typ {
                 }
             }
             gen_num_typ(n, gen_typs(state, &ts))
+        }
+        vir::ast::TypX::MutRef(t) => {
+            let mut ts = vec![t.clone()];
+            gen_num_typ(TypNum::MutRef, gen_typs(state, &ts))
         }
         vir::ast::TypX::Boxed(t) => gen_typ(state, t),
         vir::ast::TypX::TypParam(x) => {

@@ -153,6 +153,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::FnDef(f1, ts1, _res), TypX::FnDef(f2, ts2, _res2)) => {
             f1 == f2 && n_types_equal(ts1, ts2)
         }
+        (TypX::MutRef(t1), TypX::MutRef(t2)) => types_equal(t1, t2),
         // rather than matching on _, repeat all the cases to catch any new variants added to TypX:
         (TypX::Bool, _) => false,
         (TypX::Int(_), _) => false,
@@ -168,6 +169,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::ConstInt(_), _) => false,
         (TypX::Air(_), _) => false,
         (TypX::FnDef(..), _) => false,
+        (TypX::MutRef(_), _) => false,
     }
 }
 
@@ -818,9 +820,6 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
         TypX::Decorate(TypDecoration::Ref, _, typ) => {
             format!("&{}", typ_to_diagnostic_str(typ))
         }
-        TypX::Decorate(TypDecoration::MutRef, _, typ) => {
-            format!("&mut {}", typ_to_diagnostic_str(typ))
-        }
         TypX::Decorate(TypDecoration::ConstPtr, _, typ) => match &**typ {
             TypX::Primitive(crate::ast::Primitive::Ptr, typs) => {
                 format!("*const {}", typ_to_diagnostic_str(&typs[0]))
@@ -874,6 +873,7 @@ pub fn typ_to_diagnostic_str(typ: &Typ) -> String {
                 format!("")
             }
         ),
+        TypX::MutRef(typ) => format!("&mut {}", typ_to_diagnostic_str(typ)),
     }
 }
 

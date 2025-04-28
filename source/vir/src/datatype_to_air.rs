@@ -82,6 +82,7 @@ fn uses_ext_equal(ctx: &Ctx, typ: &Typ) -> bool {
         }
         TypX::Datatype(path, _, _) => ctx.datatype_map[path].x.ext_equal,
         TypX::Decorate(_, _, t) => uses_ext_equal(ctx, t),
+        TypX::MutRef(t) => uses_ext_equal(ctx, t),
         TypX::Boxed(typ) => uses_ext_equal(ctx, typ),
         TypX::TypParam(_) => true,
         TypX::Projection { .. } => true,

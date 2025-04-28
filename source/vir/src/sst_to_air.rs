@@ -139,6 +139,9 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
                 &typs.iter().map(monotyp_to_path).collect(),
             );
         }
+        MonoTypX::MutRef(typ) => {
+            return crate::def::monotyp_mut_ref(&monotyp_to_path(typ));
+        }
         MonoTypX::Decorate(dec, typ) => {
             return crate::def::monotyp_decorate(*dec, &monotyp_to_path(typ));
         }
@@ -172,7 +175,8 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
             }
         }
         TypX::Decorate(mut_ref, _, t) => {
-            if matches!(*mut_ref, TypDecoration::MutRef) {
+            // if matches!(*mut_ref, TypDecoration::MutRef) {
+            if todo!("see below") {
                 match &**t {
                     TypX::Int(_) => str_typ(PROPH_INT),
                     TypX::Bool => str_typ(PROPH_BOOL),
@@ -182,6 +186,10 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
             } else {
                 typ_to_air(ctx, t)
             }
+        }
+        TypX::MutRef(t) => {
+            // TODO(Abigail): move the logic here from above
+            todo!()
         }
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
@@ -217,7 +225,6 @@ pub fn range_to_id(range: &IntRange) -> Expr {
 fn decoration_str(d: TypDecoration) -> &'static str {
     match d {
         TypDecoration::Ref => crate::def::DECORATE_REF,
-        TypDecoration::MutRef => crate::def::DECORATE_MUT_REF,
         TypDecoration::Box => crate::def::DECORATE_BOX,
         TypDecoration::Rc => crate::def::DECORATE_RC,
         TypDecoration::Arc => crate::def::DECORATE_ARC,
@@ -244,6 +251,12 @@ pub fn monotyp_to_id(typ: &MonoTyp) -> Vec<Expr> {
                 args.extend(monotyp_to_id(t));
             }
             mk_id(air::ast_util::ident_apply_or_var(&f_name, &Arc::new(args)))
+        }
+        MonoTypX::MutRef(typ) => {
+            let mut typ_ids = monotyp_to_id(typ);
+            assert!(typ_ids.len() == 2);
+            typ_ids.insert(0, str_var(crate::def::TYPE_ID_MUT_REF));
+            typ_ids
         }
         MonoTypX::Decorate(d, typ) if crate::context::DECORATE => {
             let ds_typ = monotyp_to_id(typ);
@@ -317,6 +330,12 @@ pub fn typ_to_ids(typ: &Typ) -> Vec<Expr> {
         TypX::FnDef(fun, typs, _resolved_fun) => mk_id(fndef_id(fun, typs)),
         TypX::Datatype(dt, typs, _) => mk_id(datatype_id(&encode_dt_as_path(dt), typs)),
         TypX::Primitive(name, typs) => mk_id(primitive_id(&name, typs)),
+        TypX::MutRef(typ) => {
+            let mut typ_ids = typ_to_ids(typ);
+            assert!(typ_ids.len() == 2);
+            typ_ids.insert(0, str_var(crate::def::TYPE_ID_MUT_REF));
+            typ_ids
+        }
         TypX::Decorate(d, None, typ) if crate::context::DECORATE => {
             let ds_typ = typ_to_ids(typ);
             assert!(ds_typ.len() == 2);
@@ -455,6 +474,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             }
         }
         TypX::Decorate(..) => unreachable!(),
+        TypX::MutRef(typ) => typ_invariant(ctx, typ, expr), // TODO(prophecy): this may need to change later
         TypX::Boxed(_) => Some(expr_has_typ(expr, typ)),
         TypX::TypParam(_) => Some(expr_has_typ(expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(expr, typ)),
@@ -522,6 +542,7 @@ fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::Primitive(_, _) => prefix_typ_as_mono(prefix_box, typ, "primitive type"),
         TypX::FnDef(..) => Some(str_ident(crate::def::BOX_FNDEF)),
         TypX::Decorate(_, _, t) => return try_box(ctx, expr, t),
+        TypX::MutRef(_) => None, // TODO(prophecy): this may be incorrect
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
@@ -553,6 +574,7 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
         TypX::SpecFn(typs, _) => Some(prefix_unbox(&prefix_spec_fn_type(typs.len()))),
         TypX::AnonymousClosure(..) => unimplemented!(),
         TypX::Decorate(_, _, t) => return try_unbox(ctx, expr, t),
+        TypX::MutRef(_) => None, // TODO(prophecy): this may be incorrect
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::Projection { .. } => None,
@@ -734,6 +756,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
         ExpX::Var(x) => match expr_ctxt.mode {
             ExprMode::Spec => match &*exp.typ {
+                // TODO(Abigail): you probably want to factor out this logic into a new function
                 TypX::Decorate(crate::ast::TypDecoration::MutRef, None, t) => match &**t {
                     TypX::Int(_) => str_apply(PROPH_INT_FUT, &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))]),
                     TypX::Bool => str_apply(PROPH_BOOL_FUT, &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))]),

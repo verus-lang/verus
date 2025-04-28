@@ -89,6 +89,7 @@ const PROJECT_SEPARATOR: &str = "/";
 const MONOTYPE_APP_BEGIN: &str = "<";
 const MONOTYPE_APP_END: &str = ">";
 const MONOTYPE_DECORATE: &str = "$%";
+const MONOTYPE_MUT_REF: &str = "$%mutref";
 const TRAIT_DEFAULT_SEPARATOR: &str = "%default%";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
@@ -153,7 +154,6 @@ pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
 pub const DECORATION: &str = "Dcr";
 pub const DECORATE_NIL: &str = "$";
 pub const DECORATE_REF: &str = "REF";
-pub const DECORATE_MUT_REF: &str = "MUT_REF";
 pub const DECORATE_BOX: &str = "BOX";
 pub const DECORATE_RC: &str = "RC";
 pub const DECORATE_ARC: &str = "ARC";
@@ -161,6 +161,7 @@ pub const DECORATE_GHOST: &str = "GHOST";
 pub const DECORATE_TRACKED: &str = "TRACKED";
 pub const DECORATE_NEVER: &str = "NEVER";
 pub const DECORATE_CONST_PTR: &str = "CONST_PTR";
+pub const TYPE_ID_MUT_REF: &str = "MUT_REF";
 pub const TYPE_ID_ARRAY: &str = "ARRAY";
 pub const TYPE_ID_SLICE: &str = "SLICE";
 pub const TYPE_ID_STRSLICE: &str = "STRSLICE";
@@ -607,6 +608,17 @@ pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
         *last = ident;
         Arc::new(PathX { krate: datatype.krate.clone(), segments: Arc::new(segments) })
     }
+}
+
+pub fn monotyp_mut_ref(path: &Path) -> Path {
+    let id = Arc::new(format!(
+        "{}{}{}{}",
+        MONOTYPE_MUT_REF,
+        MONOTYPE_APP_BEGIN,
+        path_to_string(path),
+        MONOTYPE_APP_END
+    ));
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
 }
 
 pub fn monotyp_decorate(dec: crate::ast::TypDecoration, path: &Path) -> Path {

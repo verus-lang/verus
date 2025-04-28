@@ -102,7 +102,7 @@ fn check_well_founded_typ(
             }
             true
         }
-        TypX::Decorate(_, _targ, t) => {
+        TypX::Decorate(_, _, t) | TypX::MutRef(t) => {
             // We don't need to check the allocator type argument
             // (We can consider it to be AcceptRecursiveType::Accept.
             // This is ok because, e.g., the spec-encoding of Box<T, Allocator> doesn't
@@ -241,6 +241,7 @@ fn check_positive_uses(
             Ok(())
         }
         TypX::Decorate(_, _, t) => check_positive_uses(datatype, global, local, polarity, t),
+        TypX::MutRef(t) => check_positive_uses(datatype, global, local, polarity, t),
         TypX::Primitive(_, ts) => {
             for t in ts.iter() {
                 check_positive_uses(datatype, global, local, polarity, t)?;

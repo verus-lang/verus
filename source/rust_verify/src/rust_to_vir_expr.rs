@@ -1070,14 +1070,13 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             )?;
             let typ = &mut Arc::make_mut(&mut new_expr).typ;
             if let TypX::Decorate(
-                vir::ast::TypDecoration::MutRef
-                | vir::ast::TypDecoration::Ref
+                vir::ast::TypDecoration::Ref
                 | vir::ast::TypDecoration::Box
                 | vir::ast::TypDecoration::Rc
                 | vir::ast::TypDecoration::Arc,
                 _,
                 inner_typ,
-            ) = &**typ
+            ) | TypX::MutRef(inner_typ) = &**typ
             {
                 *typ = inner_typ.clone();
             }
@@ -1143,9 +1142,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                     adjustments,
                     adjustment_idx - 1,
                 )?;
-                let typ = Arc::new(TypX::Decorate(
-                    vir::ast::TypDecoration::MutRef,
-                    None,
+                let typ = Arc::new(TypX::MutRef(
                     new_expr.typ.clone(),
                 ));
                 Arc::make_mut(&mut new_expr).typ = typ;
@@ -1854,14 +1851,13 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 let mut new_expr = expr_to_vir_inner(bctx, arg, modifier)?;
                 let typ = &mut Arc::make_mut(&mut new_expr).typ;
                 if let TypX::Decorate(
-                    vir::ast::TypDecoration::MutRef
-                    | vir::ast::TypDecoration::Ref
+                    vir::ast::TypDecoration::Ref
                     | vir::ast::TypDecoration::Box
                     | vir::ast::TypDecoration::Rc
                     | vir::ast::TypDecoration::Arc,
                     _,
                     inner_typ,
-                ) = &**typ
+                ) | TypX::MutRef(inner_typ) = &**typ
                 {
                     *typ = inner_typ.clone();
                 }

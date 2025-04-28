@@ -104,10 +104,10 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
     let type_id_uint = str_to_node(TYPE_ID_UINT);
     let type_id_sint = str_to_node(TYPE_ID_SINT);
     let type_id_const_int = str_to_node(TYPE_ID_CONST_INT);
+    let type_id_mut_ref = str_to_node(TYPE_ID_MUT_REF);
     let decoration = str_to_node(DECORATION);
     let decorate_nil = str_to_node(DECORATE_NIL);
     let decorate_ref = str_to_node(DECORATE_REF);
-    let decorate_mut_ref = str_to_node(DECORATE_MUT_REF);
     let decorate_box = str_to_node(DECORATE_BOX);
     let decorate_rc = str_to_node(DECORATE_RC);
     let decorate_arc = str_to_node(DECORATE_ARC);
@@ -178,13 +178,13 @@ pub(crate) fn prelude_nodes(config: PreludeConfig) -> Vec<Node> {
         (declare-const [type_id_int] [typ])
         (declare-const [type_id_nat] [typ])
         (declare-const [type_id_char] [typ])
+        (declare-const [type_id_mut_ref] [typ])
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [type_id_const_int] (Int) [typ])
         (declare-sort [decoration] 0)
         (declare-const [decorate_nil] [decoration])
         (declare-fun [decorate_ref] ([decoration]) [decoration])
-        (declare-fun [decorate_mut_ref] ([decoration]) [decoration])
         (declare-fun [decorate_box] ([decoration] [typ] [decoration]) [decoration])
         (declare-fun [decorate_rc] ([decoration] [typ] [decoration]) [decoration])
         (declare-fun [decorate_arc] ([decoration] [typ] [decoration]) [decoration])

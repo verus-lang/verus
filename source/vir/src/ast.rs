@@ -173,8 +173,6 @@ pub enum IntRange {
 pub enum TypDecoration {
     /// &T
     Ref,
-    /// &mut T
-    MutRef,
     /// Box<T>
     Box,
     /// Rc<T>
@@ -268,6 +266,8 @@ pub enum TypX {
     ConstInt(BigInt),
     /// AIR type, used internally during translation
     Air(air::ast::Typ),
+    /// Mutable reference
+    MutRef(Typ),
 }
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, ToDebugSNode)]

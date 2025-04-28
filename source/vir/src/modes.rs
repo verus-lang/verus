@@ -856,7 +856,7 @@ fn check_expr_handle_mut_arg(
                 let param_mode = mode_join(outer_mode, param.x.mode);
                 if matches!(
                     &*param.x.typ,
-                    crate::ast::TypX::Decorate(TypDecoration::MutRef, None, _)
+                    crate::ast::TypX::MutRef(_)
                 ) {
                     if typing.in_forall_stmt {
                         return Err(error(
