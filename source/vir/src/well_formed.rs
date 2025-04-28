@@ -636,6 +636,14 @@ fn check_function(
         }
     } else {
     }
+    if let FunctionKind::TraitMethodDecl { has_default: false, .. } = &function.x.kind {
+        if function.x.attrs.exec_allows_no_decreases_clause {
+            return Err(error(
+                &function.span,
+                "trait method declaration cannot declare exec_allows_no_decreases_clause",
+            ));
+        }
+    }
 
     if function.x.attrs.is_decrease_by {
         match function.x.kind {
@@ -821,6 +829,13 @@ fn check_function(
         return Err(error(
             &function.span,
             "Please cargo build with `--features singular` to use integer_ring attribute",
+        ));
+    }
+
+    if function.x.attrs.exec_assume_termination && ctxt.no_cheating {
+        return Err(error(
+            &function.span,
+            "#[verifier::assume_termination] not allowed with --no-cheating",
         ));
     }
 
@@ -1070,9 +1085,11 @@ fn check_function(
 
     if function.x.mode == Mode::Exec
         && (function.x.decrease.len() > 0 || function.x.decrease_by.is_some())
+        && (function.x.attrs.exec_assume_termination
+            || function.x.attrs.exec_allows_no_decreases_clause)
     {
         diags.push(VirErrAs::Warning(
-            error(&function.span, "decreases checks in exec functions do not guarantee termination of functions with loops or of their callers"),
+            error(&function.span, "if exec_allows_no_decreases_clause is set, decreases checks in exec functions do not guarantee termination of functions with loops"),
         ));
     }
 

@@ -3119,7 +3119,7 @@ impl Visitor {
             expr_name,
             expr,
             invariant,
-            decreases,
+            mut decreases,
             body,
         } = for_loop;
 
@@ -3224,6 +3224,16 @@ impl Visitor {
         } else {
             None
         };
+        if let Some(decreases) = &mut decreases {
+            for expr in &mut decreases.exprs.exprs {
+                *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() => {
+                    let #pat =
+                        #vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter)
+                        .unwrap_or(#vstd::pervasive::arbitrary());
+                    #expr
+                }));
+            }
+        }
         // REVIEW: we might also want no_auto_loop_invariant to suppress the ensures,
         // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.
         let ensure = if no_loop_invariant.is_none() {

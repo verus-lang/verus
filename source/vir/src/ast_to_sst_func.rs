@@ -236,6 +236,7 @@ fn func_body_to_sst(
                 function,
                 Some(proof_body_stm),
                 &check_body_stm,
+                false,
             )?;
             termination_decls.splice(0..0, check_state.local_decls.into_iter());
 
@@ -811,12 +812,22 @@ pub fn func_def_to_sst(
     let unwind_sst = unwind_sst.map(&|e| state.finalize_exp(&ctx, e))?;
 
     // Check termination
-    let no_termination_check = function.x.mode == Mode::Exec && function.x.decrease.len() == 0;
+    let exec_with_no_termination_check = function.x.mode == Mode::Exec
+        && (function.x.attrs.exec_allows_no_decreases_clause
+            || function.x.attrs.exec_assume_termination);
+    let no_termination_check = function.x.decrease.len() == 0 && exec_with_no_termination_check;
     let (decls, stm) =
         if no_termination_check || ctx.checking_spec_preconditions() || check_api_safety {
             (vec![], stm)
         } else {
-            crate::recursion::check_termination_stm(ctx, diagnostics, function, None, &stm)?
+            crate::recursion::check_termination_stm(
+                ctx,
+                diagnostics,
+                function,
+                None,
+                &stm,
+                exec_with_no_termination_check,
+            )?
         };
 
     // SST --> AIR
