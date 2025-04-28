@@ -969,11 +969,15 @@ fn erase_call<'tcx>(
                     let mut exp = erase_expr(ctxt, state, false, e).expect("expr");
                     if is_first && is_method {
                         let adjustments = ctxt.types().expr_adjustments(e);
-                        if adjustments.len() == 1 {
+                        // There could be more than one adjustments:
+                        // For example
+                        // 1. mut [u8; N] -> &[u8]: [Borrow(Ref('{erased}, _)) -> &[u8; 10], Pointer(Unsize) -> &[u8]]
+                        // 2. Rc<String> -> &str will use two Borrow adjustments
+                        for adjust in adjustments {
                             use rustc_middle::ty::adjustment::{
                                 Adjust, AutoBorrow, AutoBorrowMutability,
                             };
-                            match adjustments[0].kind {
+                            match adjust.kind {
                                 Adjust::Borrow(AutoBorrow::Ref(_, m)) => {
                                     let m = match m {
                                         AutoBorrowMutability::Not => Mutability::Not,
