@@ -96,8 +96,9 @@ pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
     param.map_x(|p| {
         let ParamX { name, typ, mode, unwrapped_info: _ } = p;
         if !allow_is_mut {
-            todo!("chck that Param type is not a mutable reference");
-            panic!("mut unexpected here");
+            if matches!(&**typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)) {
+                panic!("mut unexpected here");
+            };
         }
         ParX { name: name.clone(), typ: typ.clone(), mode: *mode }
     })
