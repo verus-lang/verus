@@ -301,7 +301,11 @@ fn check_termination<'a>(
             || (!function.x.attrs.exec_allows_no_decreases_clause
                 && !function.x.attrs.exec_assume_termination))
     {
-        return Err(error(&function.span, "recursive function must have a decreases clause"));
+        let mut e = error(&function.span, "recursive function must have a decreases clause");
+        if function.x.mode == crate::ast::Mode::Exec {
+            e = e.help("to disable this check, use #[verifier::exec_allows_no_decreases_clause] on the function");
+        }
+        return Err(e);
     }
 
     // use expr_to_exp_skip_checks here because checks in decreases done by func_def_to_air
