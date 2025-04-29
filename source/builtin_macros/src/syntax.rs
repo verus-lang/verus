@@ -3088,6 +3088,10 @@ impl Visitor {
         //                        inv },
         //                  ensures
         //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_ensures(&y),
+        //                  decreases
+        //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_decrease(&y)
+        //                      .unwrap_or(vstd::pervasive::arbitrary()),
+        //
         //              {
         //                  #[allow(non_snake_case)]
         //                  let mut VERUS_loop_next;
@@ -3233,6 +3237,13 @@ impl Visitor {
                     #expr
                 }));
             }
+        } else {
+            attrs.push(mk_verus_attr(span, quote! { auto_decreases }));
+            decreases = Some(parse_quote_spanned_vstd!(vstd, span =>
+                decreases
+                    #vstd::pervasive::ForLoopGhostIterator::ghost_decrease(&#x_ghost_iter)
+                    .unwrap_or(#vstd::pervasive::arbitrary()),
+            ))
         }
         // REVIEW: we might also want no_auto_loop_invariant to suppress the ensures,
         // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.

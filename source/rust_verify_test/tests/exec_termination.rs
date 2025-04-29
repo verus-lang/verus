@@ -216,17 +216,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] for_loop_needs_decreases_clause verus_code! {
+    #[test] for_loop_doesnt_need_explicit_decreases_clause verus_code! {
         use vstd::prelude::*;
         fn a() {
             let mut i: i8 = 0;
+            // syntax macro inserts decreases clause automatically
             for x in iter: 0..10
                 invariant i == iter.cur * 3,
             {
                 i += 3;
             }
         }
-    } => Err(err) => assert_vir_error_msg(err, "loop must have a decreases clause")
+    } => Ok(())
 }
 
 test_verify_one_file_with_options! {
