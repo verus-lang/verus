@@ -537,10 +537,10 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
                         err = err.primary_span(&span);
                     }
                     err = err.secondary_label(&span, msg);
-                },
+                }
                 None => {
                     *help_accum += &format!("{} (no span info; submit a Verus bug)\n", msg);
-                },
+                }
             }
         };
         match node {
@@ -551,7 +551,13 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
                     let span = f.span.clone();
                     push(Some(span), ": function definition, whose body may have dependencies");
                 } else {
-                    push(None, &format!(": TraitImpl or TraitReqEns FnDefImplPath {}", fun.path.segments.last().unwrap()));
+                    push(
+                        None,
+                        &format!(
+                            ": TraitImpl or TraitReqEns FnDefImplPath {}",
+                            fun.path.segments.last().unwrap()
+                        ),
+                    );
                 }
             }
             Node::Datatype(dt) => {
