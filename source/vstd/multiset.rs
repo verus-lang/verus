@@ -200,6 +200,7 @@ pub broadcast proof fn lemma_multiset_empty_len<V>(m: Multiset<V>)
 {
     broadcast use group_multiset_axioms;
 
+    assert(m.len() == 0 <==> m =~= Multiset::empty());
 }
 
 // Specifications of `from_map`
