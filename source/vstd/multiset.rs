@@ -199,6 +199,7 @@ pub broadcast proof fn lemma_multiset_empty_len<V>(m: Multiset<V>)
         #[trigger] m.len() > 0 ==> exists|v: V| 0 < m.count(v),
 {
     broadcast use group_multiset_axioms;
+
 }
 
 // Specifications of `from_map`
