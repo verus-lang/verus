@@ -1683,13 +1683,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     UnwindAir::NoUnwind(ReasonForNoUnwind::Function) => error_with_label(
                         &stm.span,
                         "cannot show this call will not unwind, in function marked 'no_unwind'",
-                        "this call might unwind",
+                        format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
                     ),
                     UnwindAir::NoUnwind(ReasonForNoUnwind::OpenInvariant(span)) => {
                         error_with_label(
                             &stm.span,
                             "cannot show this call will not unwind",
-                            "this call might unwind",
+                            format!("call to {:} might unwind", fun_as_friendly_rust_name(fun)),
                         )
                         .secondary_label(span, "unwinding is not allowed in this invariant block")
                     }

@@ -573,3 +573,19 @@ test_verify_one_file_with_options! {
         }
     } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
 }
+
+test_verify_one_file! {
+    #[test] vec_index_nounwind verus_code! {
+        use vstd::*;
+
+        fn test(v: Vec<u64>)
+            requires v.len() > 5,
+            no_unwind
+        {
+            let x = v[0];
+            let mut v = v;
+            v[1] = 4;
+            let l = v.len();
+        }
+    } => Ok(())
+}

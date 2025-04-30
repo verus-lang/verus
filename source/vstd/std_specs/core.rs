@@ -1,6 +1,7 @@
 use super::super::prelude::*;
 
-verus! {
+use verus as verus_;
+verus_! {
 
 #[verifier::external_trait_specification]
 pub trait ExIndex<Idx> where Idx: ?Sized {
@@ -216,6 +217,7 @@ pub fn index_set<T, Idx, E>(container: &mut T, index: Idx, val: E) where
         old(container).spec_index_set_requires(index),
     ensures
         old(container).spec_index_set_ensures(container, index, val),
+    no_unwind
 {
     container[index] = val;
 }
