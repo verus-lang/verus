@@ -15,7 +15,7 @@ verus_! {
 #[verusfmt::skip]
 broadcast use
     super::set_lib::group_set_lib_default,
-    super::set::group_set_axioms,
+    super::set::group_set_lemmas,
     super::map::group_map_axioms;
 
 /// Unique identifier for every VerusSync instance.

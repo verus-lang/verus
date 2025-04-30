@@ -472,7 +472,7 @@ pub mod fold {
     //! and contributors.
     use super::*;
 
-    broadcast group group_set_axioms_early {
+    broadcast group group_set_lemmas_early {
         lemma_to_finite_contains,
         lemma_set_finite_from_type,
 //         lemma_set_int_range_ensures,
@@ -549,7 +549,7 @@ pub mod fold {
         ensures
             fold_graph(z, f, s.insert(a), f(y, a), d + 1),
     {
-        broadcast use group_set_axioms_early;
+        broadcast use group_set_lemmas_early;
 
         reveal(fold_graph);
         let _ = trigger_fold_graph(y, a);
@@ -640,7 +640,7 @@ pub mod fold {
             exists|yp| y == f(yp, a) && #[trigger] fold_graph(z, f, s.remove(a), yp, sub(d, 1)),
         decreases d,
     {
-        broadcast use group_set_axioms_early;
+        broadcast use group_set_lemmas_early;
 
         reveal(fold_graph);
         let (yr, aa): (B, A) = choose|yr, aa|
@@ -699,7 +699,7 @@ pub mod fold {
             pred(s, y, d),
         decreases d,
     {
-        broadcast use group_set_axioms_early;
+        broadcast use group_set_lemmas_early;
 
         reveal(fold_graph);
         if s === GSet::empty() {
@@ -737,7 +737,7 @@ pub mod fold {
         ensures
             s.finite(),
     {
-        broadcast use group_set_axioms_early;
+        broadcast use group_set_lemmas_early;
 
         let pred = |s: GSet<A, Finite>, y, d| s.finite();
 
@@ -838,7 +838,7 @@ pub mod fold {
             pred(s),
         decreases ub,
     {
-        broadcast use group_set_axioms_early;
+        broadcast use group_set_lemmas_early;
 
         if s =~= GSet::empty() {
         } else {
@@ -1076,7 +1076,6 @@ pub broadcast proof fn lemma_mk_map_index<K, V>(s: ISet<K>, f: spec_fn(K) -> V, 
     admit();
 }
 
-// Trusted axioms about finite
 /// The empty set is finite.
 pub broadcast proof fn lemma_set_empty_finite<A, const Finite: bool>()
     ensures
@@ -1383,7 +1382,7 @@ ensures
 {
 }
 
-pub broadcast group group_set_axioms {
+pub broadcast group group_set_lemmas {
     lemma_set_map_contains,
     lemma_set_map_finite,
     lemma_set_map_len,

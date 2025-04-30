@@ -19,7 +19,7 @@ use super::set::*;
 
 verus! {
 
-broadcast use super::set::group_set_axioms;
+broadcast use super::set::group_set_lemmas;
 
 //////////////////////////////////////////////////////////////////////////////
 // Some general set properties

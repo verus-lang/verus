@@ -231,7 +231,7 @@ pub broadcast proof fn axiom_map_empty<K, V>()
     ensures
         #[trigger] Map::<K, V>::empty().dom() == ISet::<K>::empty(),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
     assert(ISet::new(|k: K| (|k| None::<V>)(k) is Some) == ISet::<K>::empty());
 }
@@ -242,7 +242,7 @@ pub broadcast proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value
     ensures
         #[trigger] m.insert(key, value).dom() == m.dom().insert(key),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
     assert(m.insert(key, value).dom() =~= m.dom().insert(key));
 }
@@ -269,7 +269,7 @@ pub broadcast proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
     ensures
         #[trigger] m.remove(key).dom() == m.dom().remove(key),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
     assert(m.remove(key).dom() =~= m.dom().remove(key));
 }
@@ -292,7 +292,7 @@ pub broadcast proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
             &&& forall|k: K| #![auto] m1.dom().contains(k) ==> m1[k] == m2[k]
         },
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
     if m1 =~= m2 {
         assert(m1.dom() =~= m2.dom());

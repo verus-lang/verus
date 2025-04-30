@@ -894,7 +894,7 @@ impl<A> Seq<A> {
             self.len() == self.to_set().len(),
         decreases self.len(),
     {
-        broadcast use super::set::group_set_axioms;
+        broadcast use super::set::group_set_lemmas;
 
         seq_to_set_equal_rec::<A>(self);
         if self.len() == 0 {
@@ -917,7 +917,7 @@ impl<A> Seq<A> {
         decreases self.len(),
     {
         // trivial from lemma_set_map_len
-        broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
+        broadcast use super::set::group_set_lemmas, seq_to_set_is_finite;
     }
 
     /// A sequence is of length 0 if and only if its conversion to
@@ -926,7 +926,7 @@ impl<A> Seq<A> {
         ensures
             self.to_set().len() == 0 <==> self.len() == 0,
     {
-        broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
+        broadcast use super::set::group_set_lemmas, seq_to_set_is_finite;
         self.to_set_ensures();
 
         assert(self.len() == 0 ==> self.to_set().len() == 0) by { self.lemma_cardinality_of_set() }
@@ -947,7 +947,7 @@ impl<A> Seq<A> {
             self.no_duplicates(),
         decreases self.len(),
     {
-        broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
+        broadcast use super::set::group_set_lemmas, seq_to_set_is_finite;
         self.to_set_ensures();
         self.drop_first().to_set_ensures();
 
@@ -1527,7 +1527,7 @@ proof fn seq_to_set_rec_is_finite<A>(seq: Seq<A>)
         seq_to_set_rec(seq).finite(),
     decreases seq.len(),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
     if seq.len() > 0 {
         let sub_seq = seq.drop_last();
@@ -1543,7 +1543,7 @@ proof fn seq_to_set_rec_contains<A>(seq: Seq<A>)
         forall|a| #[trigger] seq.contains(a) <==> seq_to_set_rec(seq).contains(a),
     decreases seq.len(),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
     if seq.len() > 0 {
         assert(forall|a| #[trigger]
@@ -1570,7 +1570,7 @@ ensures
     seq.to_set() == seq_to_set_rec(seq),
 decreases seq.len(),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
     if seq.len() == 0 {
         assert( seq.to_set() == seq_to_set_rec(seq) );
@@ -1600,7 +1600,7 @@ pub broadcast proof fn seq_to_set_is_finite<A>(seq: Seq<A>)
     ensures
         #[trigger] seq.to_set().finite(),
 {
-    broadcast use super::set::group_set_axioms;
+    broadcast use super::set::group_set_lemmas;
 
     assert(seq.to_set().finite()) by {
         seq_to_set_equal_rec(seq);
