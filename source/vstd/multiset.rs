@@ -195,10 +195,10 @@ pub broadcast proof fn axiom_multiset_empty<V>(v: V)
 /// multiset that has a count greater than 0.
 pub broadcast proof fn lemma_multiset_empty_len<V>(m: Multiset<V>)
     ensures
-        (#[trigger] m.len() == 0 <==> m =~= Multiset::empty()) && (#[trigger] m.len() > 0
-            ==> exists|v: V| 0 < m.count(v)),
+        #[trigger] m.len() == 0 <==> m =~= Multiset::empty(),
+        #[trigger] m.len() > 0 ==> exists|v: V| 0 < m.count(v),
 {
-    admit();
+    broadcast use group_multiset_axioms;
 }
 
 // Specifications of `from_map`
