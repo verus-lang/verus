@@ -519,18 +519,29 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
         assert!(nodes.len() == len);
     }
 
+    // Message can't accumulate span-less "help" strings, so we accumulate them here and stuff them
+    // into the help field at the end of the loop.
+    let help_accum = &mut String::new();
+
     for (i, node) in nodes.iter().enumerate() {
-        let mut push = |span: Span, text: &str| {
-            if i == 0 {
-                err = err.primary_span(&span);
-            }
+        let mut push = |span: Option<Span>, text: &str| {
             let msg = format!(
                 "may be part of cycle (node {} of {} in cycle){}",
                 i + 1,
                 nodes.len(),
                 text
             );
-            err = err.secondary_label(&span, msg);
+            match span {
+                Some(span) => {
+                    if i == 0 {
+                        err = err.primary_span(&span);
+                    }
+                    err = err.secondary_label(&span, msg);
+                }
+                None => {
+                    *help_accum += &format!("{} (no span info; submit a Verus bug)\n", msg);
+                }
+            }
         };
         match node {
             Node::Fun(fun)
@@ -538,19 +549,31 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
             | Node::TraitReqEns(ImplPath::FnDefImplPath(fun), _) => {
                 if let Some(f) = krate.functions.iter().find(|f| f.x.name == *fun) {
                     let span = f.span.clone();
-                    push(span, ": function definition, whose body may have dependencies");
+                    push(Some(span), ": function definition, whose body may have dependencies");
+                } else {
+                    push(
+                        None,
+                        &format!(
+                            ": TraitImpl or TraitReqEns FnDefImplPath {}",
+                            fun.path.segments.last().unwrap()
+                        ),
+                    );
                 }
             }
             Node::Datatype(dt) => {
                 if let Some(d) = krate.datatypes.iter().find(|t| t.x.name == *dt) {
                     let span = d.span.clone();
-                    push(span, ": type definition");
+                    push(Some(span), ": type definition");
+                } else {
+                    push(None, ": Datatype");
                 }
             }
             Node::Trait(trait_path) => {
                 if let Some(t) = krate.traits.iter().find(|t| t.x.name == *trait_path) {
                     let span = t.span.clone();
-                    push(span, ": declaration of trait");
+                    push(Some(span), ": declaration of trait");
+                } else {
+                    push(None, ": Trait");
                 }
             }
             Node::TraitImpl(ImplPath::TraitImplPath(impl_path))
@@ -559,21 +582,36 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
                     krate.trait_impls.iter().find(|t| t.x.impl_path.clone() == *impl_path)
                 {
                     let span = t.span.clone();
-                    push(span, ": implementation of trait for a type");
+                    push(Some(span), ": implementation of trait for a type");
+                } else {
+                    push(None, ": TraitImpl or TraitReqEns ImplPath");
                 }
             }
             Node::ModuleReveal(path) => {
                 if let Some(t) = krate.modules.iter().find(|m| &m.x.path == path) {
                     let span = t.span.clone();
-                    push(span, ": module-level reveal");
+                    push(Some(span), ": module-level reveal");
+                } else {
+                    push(None, ": ModuleReveal");
                 }
             }
-            Node::Crate(_) => {}
+            Node::Crate(_) => {
+                push(None, ": crate");
+            }
             Node::SpanInfo { span_infos_index, text } => {
-                push(span_infos[*span_infos_index].clone(), text);
+                push(Some(span_infos[*span_infos_index].clone()), text);
             }
         }
     }
+
+    // If node 0 happens to not have a span, promote one of the other spans
+    // to primary; otherwise most of the Message output gets entirely omitted.
+    err = err.ensure_primary_label();
+
+    // Emit the extra text for objects we had no span info for. (These
+    // are probably internal errors that should get fixed.)
+    err = err.help(&*help_accum);
+
     err
 }
 
