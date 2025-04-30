@@ -539,7 +539,10 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
                     err = err.secondary_label(&span, msg);
                 }
                 None => {
-                    *help_accum += &format!("{} (no span info; submit a Verus bug)\n", msg);
+                    *help_accum += &format!(
+                        "{} (note: line number info is missing, maybe due to a Verus bug)\n",
+                        msg,
+                    );
                 }
             }
         };
@@ -547,56 +550,60 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
             Node::Fun(fun)
             | Node::TraitImpl(ImplPath::FnDefImplPath(fun))
             | Node::TraitReqEns(ImplPath::FnDefImplPath(fun), _) => {
+                let msg = ": function definition, whose body may have dependencies";
                 if let Some(f) = krate.functions.iter().find(|f| f.x.name == *fun) {
                     let span = f.span.clone();
-                    push(Some(span), ": function definition, whose body may have dependencies");
+                    push(Some(span), msg);
                 } else {
-                    push(
-                        None,
-                        &format!(
-                            ": TraitImpl or TraitReqEns FnDefImplPath {}",
-                            fun.path.segments.last().unwrap()
-                        ),
-                    );
+                    let name = crate::ast_util::fun_as_friendly_rust_name(fun);
+                    push(None, &format!("{} `{}`", msg, name));
                 }
             }
             Node::Datatype(dt) => {
+                let msg = ": type definition";
                 if let Some(d) = krate.datatypes.iter().find(|t| t.x.name == *dt) {
                     let span = d.span.clone();
-                    push(Some(span), ": type definition");
+                    push(Some(span), msg);
                 } else {
-                    push(None, ": Datatype");
+                    let name = crate::ast_util::dt_as_friendly_rust_name(dt);
+                    push(None, &format!("{}, `{}`", msg, name));
                 }
             }
             Node::Trait(trait_path) => {
+                let msg = ": declaration of trait";
                 if let Some(t) = krate.traits.iter().find(|t| t.x.name == *trait_path) {
                     let span = t.span.clone();
-                    push(Some(span), ": declaration of trait");
+                    push(Some(span), msg);
                 } else {
-                    push(None, ": Trait");
+                    let name = crate::ast_util::path_as_friendly_rust_name(trait_path);
+                    push(None, &format!("{} `{}`", msg, name));
                 }
             }
             Node::TraitImpl(ImplPath::TraitImplPath(impl_path))
             | Node::TraitReqEns(ImplPath::TraitImplPath(impl_path), _) => {
+                let msg = ": implementation of trait for a type";
                 if let Some(t) =
                     krate.trait_impls.iter().find(|t| t.x.impl_path.clone() == *impl_path)
                 {
                     let span = t.span.clone();
-                    push(Some(span), ": implementation of trait for a type");
+                    push(Some(span), msg);
                 } else {
-                    push(None, ": TraitImpl or TraitReqEns ImplPath");
+                    let name = crate::ast_util::path_as_friendly_rust_name(impl_path);
+                    push(None, &format!("{} `{}`", msg, name));
                 }
             }
             Node::ModuleReveal(path) => {
+                let msg = ": module-level reveal";
                 if let Some(t) = krate.modules.iter().find(|m| &m.x.path == path) {
                     let span = t.span.clone();
-                    push(Some(span), ": module-level reveal");
+                    push(Some(span), msg);
                 } else {
-                    push(None, ": ModuleReveal");
+                    let name = crate::ast_util::path_as_friendly_rust_name(path);
+                    push(None, &format!("{} `{}`", msg, name));
                 }
             }
-            Node::Crate(_) => {
-                push(None, ": crate");
+            Node::Crate(id) => {
+                push(None, &format!("crate `{}`", id));
             }
             Node::SpanInfo { span_infos_index, text } => {
                 push(Some(span_infos[*span_infos_index].clone()), text);
@@ -610,7 +617,9 @@ fn scc_error(krate: &Krate, span_infos: &Vec<Span>, nodes: &Vec<Node>) -> VirErr
 
     // Emit the extra text for objects we had no span info for. (These
     // are probably internal errors that should get fixed.)
-    err = err.help(&*help_accum);
+    if help_accum.len() > 0 {
+        err = err.help(&*help_accum);
+    }
 
     err
 }
