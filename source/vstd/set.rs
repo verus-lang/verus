@@ -32,6 +32,25 @@ pub struct GSet<A, const Finite:bool = true> {
     set: spec_fn(A) -> bool,
 }
 
+//////////////////////////////////////////////////////////////////////////////
+// Important soundness note!
+//
+// In this file, one can construct GSets directly with GSet{set:...}.
+// Doing so for ISet is always sound, but when the type is Set (finite=true),
+// we must be careful to only allow the set function to admit a finite number
+// of elements. Otherwise, one could prove that set both finite and infinite
+// and introduce false. The danger of this soundness risk is encapsulated
+// in lemma_set_finite_from_type, which assumes that the set function is finite.
+//
+// Outside of this file, callers only have access to Set constructors that
+// create only finite sets.
+//
+// For future work, we may figure out how to have Set use a seq-like
+// representation that is inherently finite to eliminate this risk. (However,
+// that introduces the problem of multiple representations of equivalent
+// sets, which creates a different problem with extensional equality.)
+//////////////////////////////////////////////////////////////////////////////
+
 /// Set<A> is a synonym for GSet<A, true>, a set whose membership is finite (known at typechecking time).
 pub type Set<A> = GSet<A, true>;
 
@@ -40,35 +59,19 @@ pub type Set<A> = GSet<A, true>;
 pub type ISet<A> = GSet<A, false>;
 
 impl<A, const Finite:bool> GSet<A, Finite> {
-    // New is private because it can be used to construct infinite sets of either
-    // type, and we need to exclude infinite predicates behind the finite version.
-    //
-    // TODO(jonh): can we enforce finiteness here without spreading it all over
-    // the file? Proposed solution from Bryan: add a seq to the representation
-    // that's used in the finite case.
-    spec fn private_new(f: spec_fn(A) -> bool) -> GSet<A, Finite> {
-        GSet { set: f }
-//             set: |a|
-//                 if f(a) {
-//                     true
-//                 } else {
-//                     false
-//                 },
-//         }
-    }
-
-    // TODO(jonh): trusted because it calls private_new without proving that
-    // mapped finite sets are finite. Waiting on provable finite=true repr.
+    // This map function is sound for finite sets because of `lemma_set_map_finite`,
+    // but we don't need to invoke that lemma here because this file is trusting
+    // GSet constructors to do so soundly (see "Important soundness note" above).
     /// Returns the set contains an element `f(x)` for every element `x` in `self`.
     pub closed spec fn map<B>(self, f: spec_fn(A) -> B) -> GSet<B, Finite> {
-        GSet::<B, Finite>::private_new(|a: B| exists|x: A| self.contains(x) && a == f(x))
+        GSet { set: |a: B| exists|x: A| self.contains(x) && a == f(x) }
     }
 
     /// Set of all elements in the given set which satisfy the predicate `f`.
     /// Preserves finiteness of self.
     pub closed spec fn filter(self, f: spec_fn(A) -> bool) -> (out: GSet<A, Finite>)
     {
-        GSet::private_new(|a| self.contains(a) && f(a))
+        GSet { set: |a| self.contains(a) && f(a) }
     }
 }
 
@@ -96,24 +99,8 @@ ensures
 // Should we make it a (deprecated?) pub import in set_lib as a transition facility?
 // Make this an associated method on Set.
 pub closed spec fn set_int_range(lo: int, hi: int) -> GSet<int> {
-    Set::private_new(|i: int| lo <= i && i < hi)
+    Set { set: |i: int| lo <= i && i < hi }
 }
-
-// TODO(jonh): delete
-// pub broadcast proof fn lemma_set_int_range_ensures(lo: int, hi: int)
-// ensures
-//     #![trigger(set_int_range(lo, hi))]
-//     forall |i: int| set_int_range(lo, hi).contains(i) <==> lo <= i && i < hi,
-//     set_int_range(lo, hi).len() == hi - lo,
-// decreases hi - lo,
-// {
-//     if lo < hi {
-//         lemma_set_int_range_ensures(lo, hi-1);
-//         assert( set_int_range(lo, hi) == set_int_range(lo, hi-1).insert(hi-1) );
-//         assert( !set_int_range(lo, hi).contains(hi-1) );
-// //         lemma_set_insert_len(set_int_range(lo, hi), hi-1);
-//     }
-// }
 
 pub broadcast proof fn lemma_set_finite_from_type<A>(s: GSet<A, true>)
 ensures #[trigger] s.finite()
@@ -126,18 +113,9 @@ ensures #[trigger] s.finite()
 
 impl<A> ISet<A> {
     pub closed spec fn new(f: spec_fn(A) -> bool) -> ISet<A> {
-        Self::private_new(f)
+        Set { set: f }
     }
 }
-
-//////////////////////////////////////////////////////////////////////////////
-// `private_new` should not appear below here.
-// (I tried putting it inside an inner module with an inner type, but then all
-// the definitions that need to talk about `set` get moved to that type, even
-// though they're not involved in the trusted protection of Finite-ness. So
-// absent another idea, this entire module is trusted to invoke private_new
-// carefully to avoid violating the Finite=true => is_finite assumption.
-//////////////////////////////////////////////////////////////////////////////
 
 pub open spec fn congruent<A, const Finite1: bool, const Finite2: bool>(s1: GSet<A, Finite1>, s2: GSet<A, Finite2>) -> bool
 {
@@ -472,10 +450,9 @@ pub mod fold {
     //! and contributors.
     use super::*;
 
-    broadcast group group_set_lemmas_early {
+    pub(in super) broadcast group group_set_lemmas_early {
         lemma_to_finite_contains,
         lemma_set_finite_from_type,
-//         lemma_set_int_range_ensures,
         lemma_set_empty,
         lemma_set_new,
         lemma_set_insert_same,
@@ -1383,34 +1360,40 @@ ensures
 }
 
 pub broadcast group group_set_lemmas {
+    // This line...
+    fold::group_set_lemmas_early,
+
+    // ...should replace these lines (up to the blank), but it doesn't.
+    // (verus #1616)
+//     lemma_to_finite_contains,
+//     lemma_set_finite_from_type,
+//     lemma_set_empty,
+//     lemma_set_new,
+//     lemma_set_insert_same,
+//     lemma_set_insert_different,
+//     lemma_set_remove_same,
+//     lemma_set_remove_insert,
+//     lemma_set_remove_different,
+//     lemma_set_union,
+//     lemma_set_finite_union,
+//     lemma_set_intersect,
+//     lemma_set_finite_intersect,
+//     lemma_set_difference,
+//     lemma_set_finite_difference,
+//     lemma_set_complement,
+//     lemma_set_ext_equal,
+//     lemma_set_ext_equal_deep,
+//     lemma_set_empty_finite,
+//     lemma_set_insert_finite,
+//     lemma_set_remove_finite,
+
     lemma_set_map_contains,
     lemma_set_map_finite,
     lemma_set_map_len,
     lemma_set_map_insert,
-    lemma_to_finite_contains,
-    lemma_set_finite_from_type,
     lemma_set_int_range_ensures,
-    lemma_set_empty,
-    lemma_set_new,
-    lemma_set_insert_same,
-    lemma_set_insert_different,
-    lemma_set_remove_same,
-    lemma_set_remove_insert,
-    lemma_set_remove_different,
-    lemma_set_union,
-    lemma_set_finite_union,
-    lemma_set_intersect,
-    lemma_set_finite_intersect,
-    lemma_set_difference,
-    lemma_set_finite_difference,
-    lemma_set_complement,
-    lemma_set_ext_equal,
-    lemma_set_ext_equal_deep,
     lemma_mk_map_domain,
     lemma_mk_map_index,
-    lemma_set_empty_finite,
-    lemma_set_insert_finite,
-    lemma_set_remove_finite,
     lemma_set_union_finite,
     lemma_set_intersect_finite,
     lemma_set_difference_finite,
