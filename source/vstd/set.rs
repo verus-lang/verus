@@ -87,11 +87,22 @@ impl<A, const Finite: bool> GSet<A, Finite> {
 }
 
 // TOOD(verus folks): "broadcast functions should have explicit #[trigger]" -- but hey there is one
+impl<A, const Finite: bool> GSet<A, Finite> {
+    pub broadcast proof fn lemma_to_finite_contains(self)
+    ensures
+        #![trigger(self.to_finite())]
+        self.finite() ==> forall |a| self.contains(a) <==> #[trigger] self.to_finite().contains(a)
+    {
+    }
+}
+
+// TODO(jonh): temporary name reachable from broadcast group
 pub broadcast proof fn lemma_to_finite_contains<A, const Finite: bool>(s: GSet<A, Finite>)
 ensures
     #![trigger(s.to_finite())]
     s.finite() ==> forall |a| s.contains(a) <==> #[trigger] s.to_finite().contains(a)
 {
+    s.lemma_to_finite_contains()
 }
 
 /// Creates a finite set of integers in the range [lo, hi).
