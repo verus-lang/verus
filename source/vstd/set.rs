@@ -113,7 +113,7 @@ ensures #[trigger] s.finite()
 
 impl<A> ISet<A> {
     pub closed spec fn new(f: spec_fn(A) -> bool) -> ISet<A> {
-        Set { set: f }
+        ISet { set: f }
     }
 }
 
@@ -1365,27 +1365,27 @@ pub broadcast group group_set_lemmas {
 
     // ...should replace these lines (up to the blank), but it doesn't.
     // (verus #1616)
-//     lemma_to_finite_contains,
-//     lemma_set_finite_from_type,
-//     lemma_set_empty,
-//     lemma_set_new,
-//     lemma_set_insert_same,
-//     lemma_set_insert_different,
-//     lemma_set_remove_same,
-//     lemma_set_remove_insert,
-//     lemma_set_remove_different,
-//     lemma_set_union,
-//     lemma_set_finite_union,
-//     lemma_set_intersect,
-//     lemma_set_finite_intersect,
-//     lemma_set_difference,
-//     lemma_set_finite_difference,
-//     lemma_set_complement,
-//     lemma_set_ext_equal,
-//     lemma_set_ext_equal_deep,
-//     lemma_set_empty_finite,
-//     lemma_set_insert_finite,
-//     lemma_set_remove_finite,
+    lemma_to_finite_contains,
+    lemma_set_finite_from_type,
+    lemma_set_empty,
+    lemma_set_new,
+    lemma_set_insert_same,
+    lemma_set_insert_different,
+    lemma_set_remove_same,
+    lemma_set_remove_insert,
+    lemma_set_remove_different,
+    lemma_set_union,
+    lemma_set_finite_union,
+    lemma_set_intersect,
+    lemma_set_finite_intersect,
+    lemma_set_difference,
+    lemma_set_finite_difference,
+    lemma_set_complement,
+    lemma_set_ext_equal,
+    lemma_set_ext_equal_deep,
+    lemma_set_empty_finite,
+    lemma_set_insert_finite,
+    lemma_set_remove_finite,
 
     lemma_set_map_contains,
     lemma_set_map_finite,
