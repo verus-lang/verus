@@ -206,6 +206,20 @@ pub closed spec fn spec_u64_to_le_bytes(x: u64) -> Seq<u8> {
     ]
 }
 
+pub open spec fn spec_u64_to_le_bytes_open(x: u64) -> Seq<u8> {
+    #[verusfmt::skip]
+    seq![
+        (x & 0xff) as u8,
+        ((x >> 8) & 0xff) as u8,
+        ((x >> 16) & 0xff) as u8,
+        ((x >> 24) & 0xff) as u8,
+        ((x >> 32) & 0xff) as u8,
+        ((x >> 40) & 0xff) as u8,
+        ((x >> 48) & 0xff) as u8,
+        ((x >> 56) & 0xff) as u8,
+    ]
+}
+
 pub closed spec fn spec_u64_from_le_bytes(s: Seq<u8>) -> u64
     recommends
         s.len() == 8,
@@ -298,6 +312,12 @@ pub proof fn lemma_auto_spec_u64_to_from_le_bytes()
     ) by (bit_vector);
         assert_seqs_equal!(spec_u64_to_le_bytes(spec_u64_from_le_bytes(s)) == s);
     }
+}
+
+pub proof fn spec_u64_to_le_bytes_to_open(x: u64)
+    ensures
+        spec_u64_to_le_bytes(x) == spec_u64_to_le_bytes_open(x),
+{
 }
 
 #[verifier::external_body]
