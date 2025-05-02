@@ -837,10 +837,6 @@ pub broadcast proof fn lemma_set_disjoint_lens<A, const Finite1: bool, const Fin
         if a.disjoint(b) {
             let x = a.choose();
             assert(a.remove(x).union(b) =~= a.union(b).remove(x));
-            // TODO(jonh): Ask verus folks why I need these when we have a group use above
-            broadcast use lemma_set_remove_finite;
-            broadcast use lemma_set_remove_len;
-            broadcast use lemma_set_union_finite;
             lemma_set_disjoint_lens(a.remove(x), b);
         }
     }

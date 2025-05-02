@@ -117,9 +117,22 @@ impl<A> ISet<A> {
     }
 }
 
+// `congruent` is an analog of extensional equality that is meaningful across types with mismatched
+// (or unknown) <Finite> arguments. If two sets are congruent, then they have the same finiteness
+// and the same len(). We anticipate that `congruent` reasoning will mostly be used in library
+// code, where we're trying to generalize over the Finite argument, and hence it's not exposed to
+// users through group lemma automation. We expect most user code will stay within Set or ISet,
+// where extensionality is the more natural concept and syntax.
+
 pub open spec fn congruent<A, const Finite1: bool, const Finite2: bool>(s1: GSet<A, Finite1>, s2: GSet<A, Finite2>) -> bool
 {
     forall |a: A| s1.contains(a) <==> s2.contains(a)
+}
+
+pub proof fn congruent_infiniteness<A, const Finite1: bool, const Finite2: bool>(s1: GSet<A, Finite1>, s2: GSet<A, Finite2>)
+requires congruent(s1, s2),
+ensures s1.finite() <==> s2.finite(),
+{
 }
 
 // TODO(jonh): discuss broadcasting. Not clear there's a broadcastable trigger here.
@@ -160,12 +173,6 @@ decreases s1.len(),
         assert( s1.remove(x).finite() );
         congruent_len(s1.remove(x), s2.remove(x));
     }
-}
-
-pub proof fn congruent_infiniteness<A, const Finite1: bool, const Finite2: bool>(s1: GSet<A, Finite1>, s2: GSet<A, Finite2>)
-requires congruent(s1, s2),
-ensures s1.finite() <==> s2.finite(),
-{
 }
 
 pub broadcast proof fn lemma_set_map_contains<A, const Finite: bool, B>(s: GSet<A, Finite>, f: spec_fn(A) -> B)
@@ -546,26 +553,8 @@ pub mod fold {
             }
         }
         assert( s.remove(a).finite() ); // trigger?
-//         assert( s.finite() );
-//         set_finite_from_type(s);
-//         lemma_set_insert_finite(s, a);
         assert( s.insert(a).finite() );
         assert( s.insert(a).remove(a).finite() );
-//         assert(
-//         {
-//             let yr = y;
-//             let s = s.insert(a);
-//             let y = f(y, a);
-//             let d = d + 1;
-//                     &&& trigger_fold_graph(yr, a)
-//                     &&& d > 0
-//                     &&& s.remove(a).finite()
-//                     &&& s.contains(a)
-//                     &&& fold_graph(z, f, s.remove(a), yr, sub(d, 1))
-//                     &&& y == f(yr, a)
-//         }
-//         );
-//         assert( fold_graph(z, f, s.insert(a), f(y, a), d + 1) );
     }
 
     // Elimination rules
