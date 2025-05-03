@@ -4426,6 +4426,13 @@ pub(crate) fn rewrite_proof_decl(
                     ss.to_tokens(&mut new_stream);
                 }
             }
+            Stmt::Macro(mut mac) => {
+                // Due to the difference between function-like macro vs proceudure macro,
+                // Macros used inside proof block need to explicitly call proof or proof_decl.
+                // We should avoid entering proof mode if calling a macro.
+                visitor.visit_macro_mut(&mut mac.mac);
+                mac.to_tokens(&mut new_stream);
+            }
             _ => {
                 let span = ss.span();
                 let mut proof_expr = Expr::Unary(ExprUnary {
