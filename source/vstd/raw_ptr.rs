@@ -473,6 +473,18 @@ macro_rules! pointer_specs {
                 opens_invariants none
                 no_unwind;
 
+            pub open spec fn spec_add<T: Sized>(p: *$mu T, offset: usize) -> *$mu T {
+                $ptr_from_data(PtrData { addr: (p@.addr + offset * size_of::<T>()) as usize, .. p@ })
+            }
+
+            #[verifier::when_used_as_spec(spec_add)]
+            pub assume_specification<T: Sized>[<*$mu T>::add](p: *$mu T, offset: usize) -> (q: *$mu T)
+                requires
+                    (p@.addr + offset * size_of::<T>()) <= usize::MAX,
+                ensures
+                    q == spec_add(p, offset)
+                opens_invariants none
+                no_unwind;
             }
         }
     };
