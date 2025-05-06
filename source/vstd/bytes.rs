@@ -206,6 +206,13 @@ pub closed spec fn spec_u64_to_le_bytes(x: u64) -> Seq<u8> {
     ]
 }
 
+// `spec_u64_to_le_bytes_open` is equivalent to `spec_u64_to_le_bytes` but
+// marked open, specifically for callers that need to know the internal
+// details of little-endian encoding.  It's not recommended to use this
+// directly in specifications; instead, use `spec_u64_to_le_bytes` and,
+// in those cases that depend on the low-level details of the encoding,
+// use the `spec_u64_to_le_bytes_to_open` lemma (below) to show equality
+// to `spec_u64_to_le_bytes_open`.
 pub open spec fn spec_u64_to_le_bytes_open(x: u64) -> Seq<u8> {
     #[verusfmt::skip]
     seq![
