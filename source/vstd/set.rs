@@ -76,14 +76,27 @@ impl<A, const Finite:bool> GSet<A, Finite> {
 }
 
 impl<A, const Finite: bool> GSet<A, Finite> {
-    pub closed spec fn to_finite(self) -> Set<A>
+    pub closed spec fn cast_finiteness<const NewFinite: bool>(self) -> GSet<A, NewFinite>
     {
-        if self.finite() {
-            GSet{ set: self.set }
+        if self.finite() || !NewFinite {
+            GSet { set: self.set }
         } else {
             arbitrary()
         }
     }
+
+    pub proof fn cast_finiteness_ensures(self)
+    ensures
+        self.cast_finiteness::<false>() == self.to_infinite(),
+    {
+    }
+
+    #[verifier::inline]
+    pub open spec fn to_finite(self) -> Set<A>
+    {
+        self.cast_finiteness::<true>()
+    }
+
 }
 
 // TOOD(verus folks): "broadcast functions should have explicit #[trigger]" -- but hey there is one
@@ -364,7 +377,7 @@ impl<A, const Finite:bool> GSet<A, Finite> {
 
     /// Creates a [`Map`] whose domain is the given set.
     /// The values of the map are given by `f`, a function of the keys.
-    pub uninterp spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> Map<A, V>;
+    pub uninterp spec fn mk_map<V>(self, f: spec_fn(A) -> V) -> GMap<A, V, Finite>;
 
     /// Returns `true` if the sets are disjoint, i.e., if their interesection is
     /// the empty set.

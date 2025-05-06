@@ -64,7 +64,7 @@ impl<V> Multiset<V> {
     pub uninterp spec fn from_map(m: Map<V, nat>) -> Self;
 
     pub open spec fn from_set(m: Set<V>) -> Self {
-        Self::from_map(Map::new(|k| m.contains(k), |v| 1))
+        Self::from_map(Map::new(m, |v| 1))
     }
 
     /// A singleton multiset, i.e., a multiset with a single element of multiplicity 1.
@@ -100,7 +100,7 @@ impl<V> Multiset<V> {
     /// Updates the multiplicity of the value `v` in the multiset to `mult`.
     pub open spec fn update(self, v: V, mult: nat) -> Self {
         let map = Map::new(
-            |key: V| (self.contains(key) || key == v),
+            self.dom().insert(v),
             |key: V|
                 if key == v {
                     mult
@@ -150,9 +150,11 @@ impl<V> Multiset<V> {
     /// Returns a multiset containing the lower count of a given element
     /// between the two sets. In other words, returns a multiset with only
     /// the elements that "overlap".
+    // TODO(jonh): is there some well-formedness representation concern that zero-count elements
+    // shall not appear in the map domain?
     pub open spec fn intersection_with(self, other: Self) -> Self {
         let m = Map::<V, nat>::new(
-            |v: V| self.contains(v),
+            self.dom(),
             |v: V| min(self.count(v) as int, other.count(v) as int) as nat,
         );
         Self::from_map(m)
@@ -162,7 +164,7 @@ impl<V> Multiset<V> {
     /// given element of the two sets.
     pub open spec fn difference_with(self, other: Self) -> Self {
         let m = Map::<V, nat>::new(
-            |v: V| self.contains(v),
+            self.dom(),
             |v: V| clip(self.count(v) - other.count(v)),
         );
         Self::from_map(m)
@@ -409,7 +411,7 @@ pub broadcast proof fn lemma_update_same<V>(m: Multiset<V>, v: V, mult: nat)
     broadcast use group_set_lemmas, group_map_axioms, group_multiset_axioms;
 
     let map = Map::new(
-        |key: V| (m.contains(key) || key == v),
+        m.dom().insert(v),
         |key: V|
             if key == v {
                 mult
@@ -439,7 +441,7 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
     broadcast use group_set_lemmas, group_map_axioms, group_multiset_axioms;
 
     let map = Map::new(
-        |key: V| (m.contains(key) || key == v1),
+        m.dom().insert(v1),
         |key: V|
             if key == v1 {
                 mult
@@ -447,9 +449,10 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
                 m.count(key)
             },
     );
-    assume( map.dom().finite() );
-    assume( ISet::new(|v: V| m.count(v) > 0).finite() );
+    assert( map.dom().finite() );
+    assert( ISet::new(|v: V| m.count(v) > 0).finite() );
     assert(map.dom().to_finite() =~= m.dom().insert(v1));
+    assert( m.update(v1, mult).count(v2) == m.count(v2) );
 }
 
 // Lemmas about `insert`
@@ -519,7 +522,7 @@ pub broadcast proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V
     broadcast use group_set_lemmas, group_map_axioms, group_multiset_axioms;
 
     let m = Map::<V, nat>::new(
-        |v: V| a.contains(v),
+        a.dom(),
         |v: V| min(a.count(v) as int, b.count(v) as int) as nat,
     );
     assert(m.dom().to_finite() =~= a.dom());
@@ -588,7 +591,7 @@ pub broadcast proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>,
     assume(false);  // jonh defers better multiset
     broadcast use group_set_lemmas, group_map_axioms, group_multiset_axioms;
 
-    let m = Map::<V, nat>::new(|v: V| a.contains(v), |v: V| clip(a.count(v) - b.count(v)));
+    let m = Map::<V, nat>::new(a.dom(), |v: V| clip(a.count(v) - b.count(v)));
     assert(m.dom().to_finite() =~= a.dom());
 }
 

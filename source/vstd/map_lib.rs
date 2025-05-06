@@ -1,4 +1,4 @@
-use super::map::Map;
+use super::map::{GMap,Map,IMap};
 #[allow(unused_imports)]
 use super::pervasive::*;
 #[allow(unused_imports)]
@@ -11,7 +11,7 @@ verus! {
 
 broadcast use super::map::group_map_axioms, super::set::group_set_lemmas;
 
-impl<K, V> Map<K, V> {
+impl<K, V, const Finite: bool> GMap<K, V, Finite> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
     #[verifier::inline]
     pub open spec fn is_full(self) -> bool {
@@ -55,9 +55,8 @@ impl<K, V> Map<K, V> {
     ///    map![1 => 10, 2 => 11].values() =~= set![10, 11]
     /// );
     /// ```
-    pub open spec fn values(self) -> ISet<V> {
-        self.dom().map(|k: K| self.index(k))    // use finiteness-preserving construction
-//         ISet::<V>::new(|v: V| self.contains_value(v))
+    pub open spec fn values(self) -> GSet<V, Finite> {
+        self.dom().map(|k: K| self.index(k))
     }
 
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
@@ -85,61 +84,6 @@ impl<K, V> Map<K, V> {
         self.submap_of(m2)
     }
 
-    /// Gives the union of two maps, defined as:
-    ///  * The domain is the union of the two input maps.
-    ///  * For a given key in _both_ input maps, it maps to the same value that it maps to in the _right_ map (`m2`).
-    ///  * For any other key in either input map (but not both), it maps to the same value
-    ///    as it does in that map.
-    ///
-    /// ## Example
-    ///
-    /// ```rust
-    /// assert(
-    ///    map![1 => 10, 2 => 11].union_prefer_right(map![1 => 20, 3 => 13])
-    ///    =~= map![1 => 20, 2 => 11, 3 => 13]);
-    /// ```
-    pub open spec fn union_prefer_right(self, m2: Self) -> Self {
-        Self::new(
-            |k: K| self.dom().contains(k) || m2.dom().contains(k),
-            |k: K|
-                if m2.dom().contains(k) {
-                    m2[k]
-                } else {
-                    self[k]
-                },
-        )
-    }
-
-    /// Removes the given keys and their associated values from the map.
-    ///
-    /// Ignores any key in `keys` which is not in the domain of `self`.
-    ///
-    /// ## Example
-    ///
-    /// ```rust
-    /// assert(
-    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4})
-    ///    =~= map![1 => 10]);
-    /// ```
-    pub open spec fn remove_keys(self, keys: ISet<K>) -> Self {
-        Self::new(|k: K| self.dom().contains(k) && !keys.contains(k), |k: K| self[k])
-    }
-
-    /// Complement to `remove_keys`. Restricts the map to (key, value) pairs
-    /// for keys that are _in_ the given set; that is, it removes any keys
-    /// _not_ in the set.
-    ///
-    /// ## Example
-    ///
-    /// ```rust
-    /// assert(
-    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4})
-    ///    =~= map![2 => 11, 3 => 12]);
-    /// ```
-    pub open spec fn restrict(self, keys: ISet<K>) -> Self {
-        Self::new(|k: K| self.dom().contains(k) && keys.contains(k), |k: K| self[k])
-    }
-
     /// Returns `true` if and only if the given key maps to the same value or does not exist in self and m2.
     pub open spec fn is_equal_on_key(self, m2: Self, key: K) -> bool {
         ||| (!self.dom().contains(key) && !m2.dom().contains(key))
@@ -151,30 +95,11 @@ impl<K, V> Map<K, V> {
         forall|k| #![auto] self.dom().contains(k) && m2.dom().contains(k) ==> self[k] == m2[k]
     }
 
-    /// Map a function `f` over all (k, v) pairs in `self`.
-    pub open spec fn map_entries<W>(self, f: spec_fn(K, V) -> W) -> Map<K, W> {
-        Map::new(|k: K| self.contains_key(k), |k: K| f(k, self[k]))
-    }
-
-    /// Map a function `f` over the values in `self`.
-    pub open spec fn map_values<W>(self, f: spec_fn(V) -> W) -> Map<K, W> {
-        Map::new(|k: K| self.contains_key(k), |k: K| f(self[k]))
-    }
-
     /// Returns `true` if and only if a map is injective
     pub open spec fn is_injective(self) -> bool {
         forall|x: K, y: K|
             x != y && self.dom().contains(x) && self.dom().contains(y) ==> #[trigger] self[x]
                 != #[trigger] self[y]
-    }
-
-    /// Swaps map keys and values. Values are not required to be unique; no
-    /// promises on which key is chosen on the intersection.
-    pub open spec fn invert(self) -> Map<V, K> {
-        Map::<V, K>::new(
-            |v: V| self.contains_value(v),
-            |v: V| choose|k: K| self.contains_pair(k, v),
-        )
     }
 
     // Proven lemmas
@@ -199,7 +124,7 @@ impl<K, V> Map<K, V> {
 
     /// Removing a set of n keys from a map that previously contained all n keys
     /// results in a domain of size n less than the original domain.
-    pub proof fn lemma_remove_keys_len(self, keys: ISet<K>)
+    pub proof fn lemma_remove_keys_len(self, keys: GSet<K, Finite>)
         requires
             forall|k: K| #[trigger] keys.contains(k) ==> self.contains_key(k),
             keys.finite(),
@@ -214,6 +139,21 @@ impl<K, V> Map<K, V> {
             let key = keys.choose();
             let val = self[key];
             self.remove(key).lemma_remove_keys_len(keys.remove(key));
+            self.remove(key).lemma_remove_keys(keys.remove(key));    // TODO(jonh): make broadcast
+            assert forall |k|
+                self.remove(key).remove_keys(keys.remove(key)).dom().contains(k)
+                implies
+                self.remove_keys(keys).dom().contains(k)
+                by
+                {
+                }
+            assert forall |k|
+                self.remove_keys(keys).dom().contains(k)
+                implies
+                self.remove(key).remove_keys(keys.remove(key)).dom().contains(k)
+                by
+                {
+                }
             assert(self.remove(key).remove_keys(keys.remove(key)) =~= self.remove_keys(keys));
         } else {
             assert(self.remove_keys(keys) =~= self);
@@ -296,9 +236,12 @@ pub broadcast proof fn lemma_union_remove_right<K, V>(m1: Map<K, V>, m2: Map<K, 
 
 pub broadcast proof fn lemma_union_dom<K, V>(m1: Map<K, V>, m2: Map<K, V>)
     ensures
-        #[trigger] m1.union_prefer_right(m2).dom() == m1.dom().union(m2.dom()),
+        #[trigger] m1.union_prefer_right(m2).dom() == m1.dom() + m2.dom(),
+// TODO(jonh): confirm this typechecking error: verus didn't seem to catch the type error in this
+// line.
+//         #[trigger] m1.union_prefer_right(m2).dom() == m1.dom().union(m2.dom()),
 {
-    assert(m1.dom().union(m2.dom()) =~= m1.union_prefer_right(m2).dom());
+    assert( m1.union_prefer_right(m2).dom() == m1.dom() + m2.dom() );
 }
 
 /// The size of the union of two disjoint maps is equal to the sum of the sizes of the individual maps
@@ -342,27 +285,34 @@ pub broadcast proof fn lemma_submap_of_trans<K, V>(m1: Map<K, V>, m2: Map<K, V>,
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
-/// The domain of a map constructed with `Map::new(fk, fv)` is equivalent to the set constructed with `ISet::new(fk)`.
-pub broadcast proof fn lemma_map_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+/// The domain of a map constructed with `IMap::new(fk, fv)` is equivalent to the set constructed with `ISet::new(fk)`.
+pub broadcast proof fn lemma_imap_new_domain<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)),
+        #[trigger] IMap::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)),
 {
     assert(ISet::new(fk) =~= ISet::<K>::new(|k: K| fk(k)));
+}
+
+// finite variant of same
+pub broadcast proof fn lemma_map_new_domain<K, V>(key_set: Set<K>, fv: spec_fn(K) -> V)
+    ensures
+    #[trigger] Map::<K, V>::new(key_set, fv).dom() == key_set,
+{
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// The set of values of a map constructed with `Map::new(fk, fv)` is equivalent to
 /// the set constructed with `ISet::new(|v: V| (exists |k: K| fk(k) && fv(k) == v)`. In other words,
 /// the set of all values fv(k) where fk(k) is true.
-pub broadcast proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+pub broadcast proof fn lemma_imap_new_values<K, V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
     ensures
-        #[trigger] Map::<K, V>::new(fk, fv).values() == ISet::<V>::new(
+        #[trigger] IMap::<K, V>::new(fk, fv).values() == ISet::<V>::new(
             |v: V| (exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v),
         ),
 {
     let keys = ISet::<K>::new(fk);
-    let values = Map::<K, V>::new(fk, fv).values();
-    let map = Map::<K, V>::new(fk, fv);
+    let values = IMap::<K, V>::new(fk, fv).values();
+    let map = IMap::<K, V>::new(fk, fv);
     assert(map.dom() =~= keys);
     assert(forall|k: K| #[trigger] fk(k) ==> keys.contains(k));
 
@@ -376,19 +326,19 @@ pub broadcast proof fn lemma_map_new_values<K, V>(fk: spec_fn(K) -> bool, fv: sp
 pub proof fn lemma_map_properties<K, V>()
     ensures
         forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
-            Map::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)),  //from lemma_map_new_domain
+            IMap::<K, V>::new(fk, fv).dom() == ISet::<K>::new(|k: K| fk(k)),  //from lemma_imap_new_domain
         forall|fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V| #[trigger]
-            Map::<K, V>::new(fk, fv).values() == ISet::<V>::new(
+            IMap::<K, V>::new(fk, fv).values() == ISet::<V>::new(
                 |v: V| exists|k: K| #[trigger] fk(k) && #[trigger] fv(k) == v,
-            ),  //from lemma_map_new_values
+            ),  //from lemma_imap_new_values
 {
     broadcast use group_map_properties;
 
 }
 
 pub broadcast group group_map_properties {
-    lemma_map_new_domain,
-    lemma_map_new_values,
+    lemma_imap_new_domain,
+    lemma_imap_new_values,
 }
 
 pub proof fn lemma_values_finite<K, V>(m: Map<K, V>)
