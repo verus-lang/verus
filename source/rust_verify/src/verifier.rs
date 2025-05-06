@@ -1989,6 +1989,15 @@ impl Verifier {
             &self.get_bucket(bucket_id).funs,
             &pruned_krate,
         )?;
+        if self.args.log_all || self.args.log_args.log_vir_sst {
+            let mut file =
+                self.create_log_file(Some(&bucket_id), crate::config::VIR_SST_FILE_SUFFIX)?;
+            vir::printer::write_krate_sst(
+                &mut file,
+                &krate_sst,
+                &self.args.log_args.vir_log_option,
+            );
+        }
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
