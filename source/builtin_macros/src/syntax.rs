@@ -1325,7 +1325,7 @@ impl Visitor {
                                 span.unwrap(),
                                 proc_macro::Level::Warning,
                                 "Outdated syntax for broadcast use.\n\
-                                         Use semicolon for multiple uses.",
+                                         Use curly braces for multiple uses.",
                             )
                             .emit();
                         }
