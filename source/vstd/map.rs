@@ -368,8 +368,14 @@ impl<K, V> Map<K, V> {
 // warning: broadcast functions should have explicit #[trigger] or #![trigger ...]
 pub broadcast proof fn lemma_finite_new_ensures<K,V>(key_set: Set<K>, fv: spec_fn(K) -> V)
     ensures
+    // well this trigger is obviously broken
         forall |k| key_set.contains(k) <==> (#[trigger] Map::new(key_set, fv)).dom().contains(k),
         forall |k| key_set.contains(k) ==> Map::new(key_set, fv)[k] == fv(k),
+
+// ugh but when I try to write sensical triggers, I get myself into an error. Halp.
+// TODO(verus): trigger group 0 does not cover variable k
+//         forall |k| #![trigger Map::new(key_set, fv).dom().contains(k)] key_set.contains(k) <==> Map::new(key_set, fv).dom().contains(k),
+//         forall |k| #![trigger Map::new(key_set, fv)[k]] key_set.contains(k) ==> Map::new(key_set, fv)[k] == fv(k),
 {
     broadcast use super::set::group_set_lemmas;
     broadcast use axiom_dom_ensures;

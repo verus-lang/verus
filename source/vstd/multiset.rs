@@ -59,8 +59,7 @@ impl<V> Multiset<V> {
     pub uninterp spec fn empty() -> Self;
 
     /// Creates a multiset whose elements are given by the domain of the map `m` and whose
-    /// multiplicities are given by the corresponding values of `m[element]`. The map `m`
-    /// must be finite, or else this multiset is arbitrary.
+    /// multiplicities are given by the corresponding values of `m[element]`.
     pub uninterp spec fn from_map(m: Map<V, nat>) -> Self;
 
     pub open spec fn from_set(m: Set<V>) -> Self {
@@ -414,25 +413,8 @@ pub broadcast proof fn lemma_update_same<V>(m: Multiset<V>, v: V, mult: nat)
         #[trigger] m.update(v, mult).count(v) == mult,
 {
     broadcast use group_set_lemmas, group_map_axioms, group_multiset_axioms;
-
-    let map = Map::new(
-        m.dom().insert(v),
-        |key: V|
-            if key == v {
-                mult
-            } else {
-                m.count(key)
-            },
-    );
-
-    assume( map.dom().finite() );
-    assert( m.dom().finite() );
-    assume(false);  // jonh defers better multiset
-//     assert( m.dom() == ISet::new(|v: V| m.count(v) > 0) );
-    assert( ISet::new(|v: V| m.count(v) > 0).finite() );
-
-    assert(map.dom().to_finite() =~= m.dom().insert(v));
-    assert( m.update(v, mult).count(v) == mult );
+    broadcast use axiom_multiset_contained;
+    assert( m.dom().insert(v).contains(v) );    // trigger lemma_set_insert_contains
 }
 
 /// The multiset resulting from updating a value `v1` in a multiset `m` to multiplicity `mult` will
@@ -455,41 +437,14 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
                 m.count(key)
             },
     );
-//     assert( map.dom().finite() );
-    broadcast use axiom_multiset_finite;
-//     assert( ISet::new(|v: V| m.count(v) > 0).finite() );
-    assert forall |v| map.dom().contains(v) implies m.idom().insert(v1).contains(v) by {
-        assert( m.dom().insert(v1).contains(v) );
-    }
-    assert forall |v| m.idom().insert(v1).contains(v) implies map.dom().contains(v) by {
+    assert forall |v| #![auto] map.dom().contains(v) implies m.idom().insert(v1).contains(v) by {
         assert( m.dom().insert(v1).contains(v) );  // trigger lemma_set_insert
     }
-//     assert( congruent(map.dom(), m.idom().insert(v1)) );
-//     assert(map.dom().to_finite() =~= m.dom().insert(v1));
-//     assert( map.dom().finite() );
-//     assert( m.update(v1, mult) == Multiset::<V>::from_map(map) );
+    assert forall |v| #![auto] m.idom().insert(v1).contains(v) implies map.dom().contains(v) by {
+        assert( m.dom().insert(v1).contains(v) );  // trigger lemma_set_insert
+    }
     if map.dom().contains(v2) {
-//         assert( map.dom().contains(v2) );
-//         assert( Multiset::<V>::from_map(map).count(v2) == map[v2] );
-//         assert( m.update(v1, mult).count(v2) == map[v2] );
         assert( m.dom().insert(v1).contains(v2) );  // trigger lemma_set_insert?
-//         if v2 == v1 {
-//             assert( m.count(v2) == map[v2] );
-//             assert( m.update(v1, mult).count(v2) == m.count(v2) );
-//         } else {
-//             lemma_finite_new_ensures(m.dom().insert(v1), |key: V| if key == v1 { mult } else { m.count(key) });
-//             assert( m.dom().insert(v1).contains(v2) );  // trigger lemma_set_insert?
-// //             assert( map[v2] == if v2 == v1 { mult } else {m.count(v2)} );
-// //             assert( map[v2] == m.count(v2) );
-// //             assert( m.update(v1, mult).count(v2) == m.count(v2) );
-//         }
-    } else {
-//         assert( m.count(v2) == 0 );
-//         assert( Multiset::<V>::from_map(map).count(v2) == 0 );
-//         assert( m.update(v1, mult) == Multiset::<V>::from_map(map) );
-//         assert( m.update(v1, mult).count(v2) == 0 );
-//         assert( m.update(v1, mult).count(v2) == map[v2] );
-//         assert( m.update(v1, mult).count(v2) == m.count(v2) );
     }
 }
 
@@ -556,14 +511,18 @@ pub broadcast proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V
     ensures
         #[trigger] a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int),
 {
-    assume(false);  // jonh defers better multiset
-    broadcast use group_set_lemmas, group_map_axioms, group_multiset_axioms;
-
-    let m = Map::<V, nat>::new(
+    let map = Map::<V, nat>::new(
         a.dom(),
         |v: V| min(a.count(v) as int, b.count(v) as int) as nat,
     );
-    assert(m.dom().to_finite() =~= a.dom());
+    broadcast use group_set_lemmas, group_map_axioms, group_multiset_axioms;
+    broadcast use group_multiset_axioms;
+
+    if map.dom().contains(x) {
+        assert( a.dom().contains(x) );  // trigger lemma_finite_new_ensures
+    } else {
+        assert( !a.dom().contains(x) ); // trigger something, not sure what
+    }
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
