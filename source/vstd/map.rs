@@ -347,7 +347,7 @@ impl<K, V, const Finite: bool> GMap<K, V, Finite> {
     }
 }
 
-// TODO(jonh): broadcast
+// TODO(jonh): broadcast -- but only meaningful internally
 broadcast proof fn axiom_dom_ensures<K,V,const Finite: bool>(m: GMap<K,V,Finite>)
 ensures congruent(#[trigger] m.dom(), ISet::new(|k| (m.mapping)(k) is Some))
 {
@@ -364,6 +364,17 @@ impl<K, V> Map<K, V> {
     }
 }
 
+// TODO(verus): discuss why am I getting this warning?
+// warning: broadcast functions should have explicit #[trigger] or #![trigger ...]
+pub broadcast proof fn lemma_finite_new_ensures<K,V>(key_set: Set<K>, fv: spec_fn(K) -> V)
+    ensures
+        forall |k| key_set.contains(k) <==> (#[trigger] Map::new(key_set, fv)).dom().contains(k),
+        forall |k| key_set.contains(k) ==> Map::new(key_set, fv)[k] == fv(k),
+{
+    broadcast use super::set::group_set_lemmas;
+    broadcast use axiom_dom_ensures;
+}
+
 impl<K, V> IMap<K, V> {
     /// Gives an `IMap<K, V>` whose domain contains every key, and maps each key
     /// to the value given by `fv`.
@@ -378,6 +389,16 @@ impl<K, V> IMap<K, V> {
         IMap { mapping: |k| if fk(k) { Some(fv(k)) } else { None } }
     }
 }
+
+pub broadcast proof fn lemma_infinite_new_ensures<K,V>(fk: spec_fn(K) -> bool, fv: spec_fn(K) -> V)
+    ensures
+        forall |k| fk(k) <==> (#[trigger] IMap::new(fk, fv)).dom().contains(k),
+        forall |k| fk(k) ==> IMap::new(fk, fv)[k] == fv(k),
+{
+    broadcast use super::set::group_set_lemmas;
+    broadcast use axiom_dom_ensures;
+}
+
 // Trusted axioms
 /* REVIEW: this is simpler than the two separate axioms below -- would this be ok?
 pub broadcast proof fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
@@ -523,7 +544,11 @@ pub broadcast proof fn axiom_map_ext_equal_deep<K, V, const Finite: bool>(m1: GM
 }
 
 pub broadcast group group_map_axioms {
-    axiom_dom_ensures,
+//     TODO(verus): discuss shouldn't be able to broadcast this since its ensures
+//     talks about .mapping field?
+//     axiom_dom_ensures,
+    lemma_finite_new_ensures,
+    lemma_infinite_new_ensures,
     axiom_map_index_decreases_finite,
     axiom_map_index_decreases_infinite,
     axiom_map_empty,

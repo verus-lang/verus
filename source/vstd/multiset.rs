@@ -177,20 +177,25 @@ impl<V> Multiset<V> {
         forall|x: V| self.count(x) == 0 || other.count(x) == 0
     }
 
+    pub open spec fn idom(self) -> ISet<V> {
+        ISet::new(|v: V| self.count(v) > 0)
+    }
+
     /// Returns the set of all elements that have a count greater than 0
     pub open spec fn dom(self) -> Set<V> {
         // This module assumes that all well-formed multisets have finite footprint,
         // so to_finite() here is reasonable.
-        ISet::new(|v: V| self.count(v) > 0).to_finite()
+        self.idom().to_finite()
     }
 }
 
 // TODO(jonh): we should probably remove all these axioms and give multisets a
-// finite-map based representation.
+// finite-map based representation. But we can't do that until finite-Set
+// allows recursive types, since (finite) Multiset wants to.
 pub broadcast proof fn axiom_multiset_finite<V>(m: Multiset<V>)
-ensures #[trigger] m.dom().finite()
+ensures #[trigger] m.idom().finite()
 {
-    assume(false);  // jonh defers better multiset
+    admit();
 }
 
 // Specification of `empty`
@@ -439,6 +444,7 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
         #[trigger] m.update(v1, mult).count(v2) == m.count(v2),
 {
     broadcast use group_set_lemmas, group_map_axioms, group_multiset_axioms;
+    broadcast use axiom_multiset_contained;
 
     let map = Map::new(
         m.dom().insert(v1),
@@ -449,10 +455,42 @@ pub broadcast proof fn lemma_update_different<V>(m: Multiset<V>, v1: V, mult: na
                 m.count(key)
             },
     );
-    assert( map.dom().finite() );
-    assert( ISet::new(|v: V| m.count(v) > 0).finite() );
-    assert(map.dom().to_finite() =~= m.dom().insert(v1));
-    assert( m.update(v1, mult).count(v2) == m.count(v2) );
+//     assert( map.dom().finite() );
+    broadcast use axiom_multiset_finite;
+//     assert( ISet::new(|v: V| m.count(v) > 0).finite() );
+    assert forall |v| map.dom().contains(v) implies m.idom().insert(v1).contains(v) by {
+        assert( m.dom().insert(v1).contains(v) );
+    }
+    assert forall |v| m.idom().insert(v1).contains(v) implies map.dom().contains(v) by {
+        assert( m.dom().insert(v1).contains(v) );  // trigger lemma_set_insert
+    }
+//     assert( congruent(map.dom(), m.idom().insert(v1)) );
+//     assert(map.dom().to_finite() =~= m.dom().insert(v1));
+//     assert( map.dom().finite() );
+//     assert( m.update(v1, mult) == Multiset::<V>::from_map(map) );
+    if map.dom().contains(v2) {
+//         assert( map.dom().contains(v2) );
+//         assert( Multiset::<V>::from_map(map).count(v2) == map[v2] );
+//         assert( m.update(v1, mult).count(v2) == map[v2] );
+        assert( m.dom().insert(v1).contains(v2) );  // trigger lemma_set_insert?
+//         if v2 == v1 {
+//             assert( m.count(v2) == map[v2] );
+//             assert( m.update(v1, mult).count(v2) == m.count(v2) );
+//         } else {
+//             lemma_finite_new_ensures(m.dom().insert(v1), |key: V| if key == v1 { mult } else { m.count(key) });
+//             assert( m.dom().insert(v1).contains(v2) );  // trigger lemma_set_insert?
+// //             assert( map[v2] == if v2 == v1 { mult } else {m.count(v2)} );
+// //             assert( map[v2] == m.count(v2) );
+// //             assert( m.update(v1, mult).count(v2) == m.count(v2) );
+//         }
+    } else {
+//         assert( m.count(v2) == 0 );
+//         assert( Multiset::<V>::from_map(map).count(v2) == 0 );
+//         assert( m.update(v1, mult) == Multiset::<V>::from_map(map) );
+//         assert( m.update(v1, mult).count(v2) == 0 );
+//         assert( m.update(v1, mult).count(v2) == map[v2] );
+//         assert( m.update(v1, mult).count(v2) == m.count(v2) );
+    }
 }
 
 // Lemmas about `insert`
