@@ -511,12 +511,13 @@ pub broadcast proof fn lemma_intersection_count<V>(a: Multiset<V>, b: Multiset<V
     ensures
         #[trigger] a.intersection_with(b).count(x) == min(a.count(x) as int, b.count(x) as int),
 {
+    broadcast use group_set_lemmas, group_map_axioms, group_multiset_axioms;
+    broadcast use group_multiset_axioms;
+
     let map = Map::<V, nat>::new(
         a.dom(),
         |v: V| min(a.count(v) as int, b.count(v) as int) as nat,
     );
-    broadcast use group_set_lemmas, group_map_axioms, group_multiset_axioms;
-    broadcast use group_multiset_axioms;
 
     if map.dom().contains(x) {
         assert( a.dom().contains(x) );  // trigger lemma_finite_new_ensures
@@ -585,11 +586,18 @@ pub broadcast proof fn lemma_difference_count<V>(a: Multiset<V>, b: Multiset<V>,
     ensures
         #[trigger] a.difference_with(b).count(x) == clip(a.count(x) - b.count(x)),
 {
-    assume(false);  // jonh defers better multiset
     broadcast use group_set_lemmas, group_map_axioms, group_multiset_axioms;
 
-    let m = Map::<V, nat>::new(a.dom(), |v: V| clip(a.count(v) - b.count(v)));
-    assert(m.dom().to_finite() =~= a.dom());
+    let map = Map::<V, nat>::new(
+        a.dom(),
+        |v: V| clip(a.count(v) - b.count(v)),
+    );
+    
+    if map.dom().contains(x) {
+        assert( a.dom().contains(x) );  // trigger lemma_finite_new_ensures
+    } else {
+        assert( !a.dom().contains(x) ); // trigger something, not sure what
+    }
 }
 
 // This verified lemma used to be an axiom in the Dafny prelude
