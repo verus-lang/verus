@@ -26,6 +26,7 @@ pub enum Style {
     RecommendsFollowupFromError,
     RecommendsChecked,
     Expanded,
+    CheckApiSafety,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -126,6 +127,13 @@ impl<'a> OpGenerator<'a> {
         }
     }
 
+    fn handle_proof_body_safe_api_check(
+        &mut self,
+        function: FunctionSst,
+    ) -> Result<Vec<Op>, VirErr> {
+        self.handle_proof_body(function, Style::CheckApiSafety)
+    }
+
     fn handle_scc_component(&mut self, scc_rep: Node) -> Result<Vec<Op>, VirErr> {
         let (mut ops, post_ops) = self.handle_specs_scc_component(&scc_rep)?;
 
@@ -133,9 +141,13 @@ impl<'a> OpGenerator<'a> {
             match &node {
                 Node::Fun(f) => {
                     if let Some(func) = self.func_map.get(f) {
+                        let func = func.clone();
                         let f_ops =
                             self.handle_proof_body_normal_for_proof_and_exec(func.clone())?;
+                        let f_ops2 = self.handle_proof_body_safe_api_check(func.clone())?;
+
                         ops.extend(f_ops);
+                        ops.extend(f_ops2);
                     }
                 }
                 _ => {}
@@ -247,15 +259,25 @@ impl<'a> OpGenerator<'a> {
         }
 
         let recommend = match style {
-            Style::Normal => false,
+            Style::Normal | Style::CheckApiSafety => false,
             Style::RecommendsFollowupFromError | Style::RecommendsChecked => true,
             Style::Expanded => panic!("handle_proof_body doesn't support Expanded"),
+        };
+        let safe_api = match style {
+            Style::CheckApiSafety => true,
+            Style::Normal
+            | Style::RecommendsFollowupFromError
+            | Style::RecommendsChecked
+            | Style::Expanded => false,
         };
 
         self.ctx.fun = mk_fun_ctx(&function, recommend);
 
-        let func_check_sst =
-            if recommend { &function.x.recommends_check } else { &function.x.exec_proof_check };
+        let func_check_sst = if recommend {
+            &function.x.recommends_check
+        } else {
+            if safe_api { &function.x.safe_api_check } else { &function.x.exec_proof_check }
+        };
 
         let Some(func_check_sst) = func_check_sst else {
             return Ok(vec![]);
@@ -445,6 +467,9 @@ impl Op {
                 append_profile_rerun("Function-Def", *profile_rerun)
             }
             OpKind::Query {
+                query_op: QueryOp::Body(Style::CheckApiSafety), profile_rerun, ..
+            } => append_profile_rerun("Check-Api-Safety", *profile_rerun),
+            OpKind::Query {
                 query_op:
                     QueryOp::Body(Style::RecommendsFollowupFromError | Style::RecommendsChecked),
                 profile_rerun,
@@ -479,6 +504,12 @@ impl Op {
             OpKind::Query { query_op: QueryOp::Body(Style::Expanded), profile_rerun, .. } => {
                 Some(append_profile_rerun("running expand-errors check", *profile_rerun))
             }
+            OpKind::Query {
+                query_op: QueryOp::Body(Style::CheckApiSafety), profile_rerun, ..
+            } => Some(append_profile_rerun(
+                "running check for check-api-safety flag (this is a special check that ignores the provided function body and assumes an arbitrary implementation)",
+                *profile_rerun,
+            )),
         }
     }
 
@@ -521,6 +552,7 @@ impl QueryOp {
             QueryOp::Body(Style::RecommendsFollowupFromError | Style::RecommendsChecked) => true,
             QueryOp::Body(Style::Normal) => false,
             QueryOp::Body(Style::Expanded) => false,
+            QueryOp::Body(Style::CheckApiSafety) => false,
         }
     }
 
@@ -530,6 +562,7 @@ impl QueryOp {
             QueryOp::Body(Style::RecommendsFollowupFromError | Style::RecommendsChecked) => false,
             QueryOp::Body(Style::Normal) => false,
             QueryOp::Body(Style::Expanded) => true,
+            QueryOp::Body(Style::CheckApiSafety) => false,
         }
     }
 }

@@ -433,3 +433,38 @@ test_verify_one_file! {
         const A: usize ensures 32 <= A <= 52 { stuff() }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] assoc_const verus_code! {
+        verus!{
+            struct A {}
+
+            impl A {
+                pub const X: usize = 3;
+                pub const Y: usize = 1usize << A::X;
+                exec const B: u8
+                    ensures Self::B < 10
+                {
+                    7
+                }
+                exec const C: u8
+                    ensures Self::C < 10 // FAILS
+                {
+                    77
+                }
+            }
+
+            fn test() {
+                let x = A::X;
+                let y = A::Y;
+                assert(x == 3);
+                assert(A::X == 3);
+                assert(A::Y == 1usize << 3);
+                assert(y == 1usize << 3);
+                let b = A::B;
+                assert(b < 11);
+                assert(b < 9); // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}

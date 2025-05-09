@@ -2,6 +2,8 @@ use super::multiset::*;
 use super::prelude::*;
 use core::marker::PhantomData;
 
+pub mod frac;
+
 use verus as verus_;
 verus_! {
 

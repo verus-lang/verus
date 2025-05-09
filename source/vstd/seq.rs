@@ -164,6 +164,72 @@ impl<A> Seq<A> {
     {
         self[0]
     }
+
+    #[verifier(external_body)]
+    pub proof fn tracked_empty() -> (tracked ret: Self)
+        ensures
+            ret === Seq::empty(),
+    {
+        unimplemented!()
+    }
+
+    #[verifier(external_body)]
+    pub proof fn tracked_remove(tracked &mut self, i: int) -> (tracked ret: A)
+        requires
+            0 <= i < old(self).len(),
+        ensures
+            ret === old(self)[i],
+            self.len() == old(self).len() - 1,
+            self == old(self).remove(i),
+    {
+        unimplemented!()
+    }
+
+    #[verifier(external_body)]
+    pub proof fn tracked_insert(tracked &mut self, i: int, tracked v: A)
+        requires
+            0 <= i <= old(self).len(),
+        ensures
+            self.len() == old(self).len() + 1,
+            self == old(self).insert(i, v),
+    {
+        unimplemented!()
+    }
+
+    #[verifier(external_body)]
+    pub proof fn tracked_borrow(tracked &self, i: int) -> (tracked ret: &A)
+        requires
+            0 <= i < self.len(),
+        ensures
+            *ret === self[i],
+    {
+        unimplemented!()
+    }
+
+    pub proof fn tracked_push(tracked &mut self, tracked v: A)
+        ensures
+            *self == old(self).push(v),
+            self.len() == old(self).len() + 1,
+    {
+        broadcast use group_seq_axioms;
+
+        assert(self.insert(self.len() as int, v) =~= self.push(v));
+        self.tracked_insert(self.len() as int, v);
+    }
+
+    pub proof fn tracked_pop(tracked &mut self) -> (tracked ret: A)
+        requires
+            old(self).len() > 0,
+        ensures
+            ret === old(self).last(),
+            self.len() == old(self).len() - 1,
+            *self == old(self).take(old(self).len() - 1),
+    {
+        broadcast use group_seq_axioms;
+
+        assert(self.remove(self.len() - 1) =~= self.take(self.len() - 1));
+        self.tracked_remove(self.len() - 1)
+    }
 }
 
 // Trusted axioms

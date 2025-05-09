@@ -123,7 +123,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_loop_forever ["vstd"] => verus_code! {
+    #[test] test_loop_forever ["vstd", "exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
 
         fn testfn() {
@@ -141,7 +141,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] test_requires_is_about_external_var ["vstd"] => verus_code! {
+    #[test] test_requires_is_about_external_var ["vstd", "exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
 
         fn testfn(b: bool) {
@@ -629,7 +629,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] while_loop_inside_closure ["vstd"] => verus_code! {
+    #[test] while_loop_inside_closure ["vstd", "exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
 
         fn foo() -> (i: u64)
@@ -802,7 +802,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    #[test] callee_is_computed_expression_with_loop ["vstd"] => verus_code! {
+    #[test] callee_is_computed_expression_with_loop ["vstd", "exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
 
         use vstd::{pervasive::*, prelude::*};
@@ -1236,8 +1236,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "cannot use type `crate::X` which is ignored")
 }
 
-test_verify_one_file! {
-    #[test] error_msg_use_external_type_closure_ret verus_code! {
+test_verify_one_file_with_options! {
+    #[test] error_msg_use_external_type_closure_ret ["exec_allows_no_decreases_clause"] => verus_code! {
         #[verifier(external)]
         struct X { }
 

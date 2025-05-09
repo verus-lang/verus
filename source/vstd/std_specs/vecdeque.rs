@@ -24,6 +24,15 @@ impl<T, A: Allocator> View for VecDeque<T, A> {
     uninterp spec fn view(&self) -> Seq<T>;
 }
 
+impl<T: DeepView, A: Allocator> DeepView for VecDeque<T, A> {
+    type V = Seq<T::V>;
+
+    open spec fn deep_view(&self) -> Seq<T::V> {
+        let v = self.view();
+        Seq::new(v.len(), |i: int| v[i].deep_view())
+    }
+}
+
 pub trait VecDequeAdditionalSpecFns<T>: View<V = Seq<T>> {
     spec fn spec_index(&self, i: int) -> T
         recommends

@@ -217,6 +217,7 @@ pub enum LocalDeclKind {
     ExecClosureId,
     ExecClosureParam,
     ExecClosureRet,
+    Nondeterministic,
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;
@@ -239,6 +240,7 @@ pub enum PostConditionKind {
     Ensures,
     DecreasesImplicitLemma,
     DecreasesBy,
+    EnsuresSafeApiCheck,
 }
 
 #[derive(Debug, Clone)]
@@ -321,6 +323,7 @@ pub struct FunctionSstX {
     pub axioms: Arc<FuncAxiomsSst>,
     pub exec_proof_check: Option<Arc<FuncCheckSst>>,
     pub recommends_check: Option<Arc<FuncCheckSst>>,
+    pub safe_api_check: Option<Arc<FuncCheckSst>>,
 }
 
 pub type KrateSst = Arc<KrateSstX>;

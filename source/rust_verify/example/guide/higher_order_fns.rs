@@ -1,4 +1,6 @@
 // rust_verify/tests/example.rs expect-failures
+#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
+
 #![allow(unused_imports)]
 
 use builtin::*;

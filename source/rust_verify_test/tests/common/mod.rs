@@ -319,14 +319,25 @@ pub fn run_verus(
             "test_crate".to_string(),
             "--crate-type".to_string(),
             "lib".to_string(),
-            "--extern".to_string(),
-            format!("builtin={lib_builtin_path}"),
+        ]
+        .into_iter(),
+    );
+    if !is_core {
+        verus_args.extend(
+            vec!["--extern".to_string(), format!("builtin={lib_builtin_path}")].into_iter(),
+        );
+    }
+    verus_args.extend(
+        vec![
             "--extern".to_string(),
             format!("builtin_macros={lib_builtin_macros_path}"),
             "--extern".to_string(),
             format!("state_machines_macros={lib_state_machines_macros_path}"),
             "-L".to_string(),
             format!("dependency={verus_target_path_str}"),
+            // suppress Rust's generation of long-type files
+            "-Z".to_string(),
+            "write_long_types_to_disk=no".to_string(),
         ]
         .into_iter(),
     );
@@ -381,7 +392,7 @@ pub fn run_verus(
 }
 
 #[allow(dead_code)]
-pub const USE_PRELUDE: &str = crate::common::code_str! {
+pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     // If we're using the pre-macro-expanded vstd lib, then it might have
     // some macro-internal stuff in it, and rustc needs this option in order to accept it.
     #![feature(fmt_internals)]
@@ -395,26 +406,51 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
     #![feature(const_refs_to_static)]
     #![feature(never_type)]
     #![feature(core_intrinsics)]
+};
 
+#[allow(dead_code)]
+pub const USE_PRELUDE: &str = crate::common::code_str! {
     use builtin::*;
     use builtin_macros::*;
 };
 
 #[allow(dead_code)]
 pub fn verify_one_file(name: &str, code: String, options: &[&str]) -> Result<TestErr, TestErr> {
-    let o: Vec<&str>;
-    let (no_prelude, options) = if options.contains(&"no-auto-import-builtin") {
-        o = options.iter().filter(|opt| **opt != "no-auto-import-builtin").map(|x| *x).collect();
-        (true, &o[..])
-    } else {
-        (false, options)
-    };
+    let mut options: Vec<_> = options.into_iter().map(|x| *x).collect();
+    let mut no_prelude = false;
+    let mut exec_allows_no_decreases_clause = false;
+    options.retain(|x| {
+        if *x == "exec_allows_no_decreases_clause" {
+            exec_allows_no_decreases_clause = true;
+            false
+        } else if *x == "no-auto-import-builtin" {
+            no_prelude = true;
+            false
+        } else {
+            true
+        }
+    });
 
     let vstd = code.contains("vstd::") || options.contains(&"vstd");
-    let code = if no_prelude { code } else { format!("{}\n{}", USE_PRELUDE, code.as_str()) };
+    let code = if no_prelude {
+        code
+    } else {
+        let exec_allows_no_decreases_clause_str = if exec_allows_no_decreases_clause {
+            "#![verifier::exec_allows_no_decreases_clause]\n"
+        } else {
+            ""
+        };
+        format!(
+            "{}{}{}\n{}",
+            FEATURE_PRELUDE,
+            exec_allows_no_decreases_clause_str,
+            USE_PRELUDE,
+            code.as_str()
+        )
+    };
 
     let files = vec![("test.rs".to_string(), code)];
-    verify_files_vstd_all_diags(name, files, "test.rs".to_string(), vstd, options)
+    verify_files_vstd_all_diags(name, files, "test.rs".to_string(), vstd, &options[..])
 }
 
 #[macro_export]

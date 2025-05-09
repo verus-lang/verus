@@ -29,8 +29,7 @@ proof fn calc_example_transitive_relations() {
         5 - 3; (<) {}
         5int; {}  // Notice that no intermediate relation
                   // is specified here, so `calc!` will
-                  // consider the top-level relation
-                  // `R`; here `<=`.
+                  // use the top-level relation, here `<=`.
         y;
     }
     // ANCHOR_END: transitive

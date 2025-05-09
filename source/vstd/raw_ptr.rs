@@ -254,7 +254,7 @@ pub open spec fn ptr_from_data<T: ?Sized>(data: PtrData) -> *const T {
 }
 
 #[verifier::external_body]
-pub broadcast proof fn axiom_ptr_mut_from_data<T>(data: PtrData)
+pub broadcast proof fn axiom_ptr_mut_from_data<T: ?Sized>(data: PtrData)
     ensures
         (#[trigger] ptr_mut_from_data::<T>(data))@ == data,
 {
@@ -267,7 +267,7 @@ pub uninterp spec fn view_reverse_for_eq<T: ?Sized>(data: PtrData) -> *mut T;
 
 /// Implies that `a@ == b@ ==> a == b`.
 #[verifier::external_body]
-pub broadcast proof fn ptrs_mut_eq<T>(a: *mut T)
+pub broadcast proof fn ptrs_mut_eq<T: ?Sized>(a: *mut T)
     ensures
         view_reverse_for_eq::<T>(#[trigger] a@) == a,
 {
@@ -619,7 +619,6 @@ impl PointsToRaw {
     #[verifier::external_body]
     pub proof fn into_typed<V>(tracked self, start: usize) -> (tracked points_to: PointsTo<V>)
         requires
-            is_sized::<V>(),
             start as int % align_of::<V>() as int == 0,
             self.is_range(start as int, size_of::<V>() as int),
         ensures
@@ -640,7 +639,6 @@ impl<V> PointsTo<V> {
         ensures
             points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() as int),
             points_to_raw.provenance() == self.ptr()@.provenance,
-            is_sized::<V>(),
     {
         unimplemented!();
     }

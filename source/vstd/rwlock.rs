@@ -337,7 +337,7 @@ struct_with_invariants_vstd!{
     pub struct RwLock<V, Pred: RwLockPredicate<V>> {
         cell: PCell<V>,
         exc: AtomicBool<_, RwLockToks::flag_exc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>, _>,
-        rc: AtomicU64<_, RwLockToks::flag_rc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>, _>,
+        rc: AtomicUsize<_, RwLockToks::flag_rc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>, _>,
 
         inst: Tracked<RwLockToks::Instance<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>>,
         pred: Ghost<Pred>,
@@ -350,7 +350,7 @@ struct_with_invariants_vstd!{
                 && g.value() == v
         }
 
-        invariant on rc with (inst) is (v: u64, g: RwLockToks::flag_rc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>) {
+        invariant on rc with (inst) is (v: usize, g: RwLockToks::flag_rc<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>) {
             g.instance_id() == inst@.id()
                 && g.value() == v
         }
@@ -515,7 +515,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
         let inst = Tracked(inst);
 
         let exc = AtomicBool::new(Ghost(inst), false, Tracked(flag_exc));
-        let rc = AtomicU64::new(Ghost(inst), 0, Tracked(flag_rc));
+        let rc = AtomicUsize::new(Ghost(inst), 0, Tracked(flag_rc));
 
         RwLock { cell, exc, rc, inst, pred: Ghost(pred) }
     }
@@ -525,6 +525,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
     /// **Warning:** The lock is _NOT_ released automatically when the handle
     /// is dropped. You must call [`WriteHandle::release_write`].
     /// Verus does not check that lock is released.
+    #[verifier::exec_allows_no_decreases_clause]
     pub fn acquire_write(&self) -> (ret: (V, WriteHandle<V, Pred>))
         ensures
             ({
@@ -617,6 +618,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
     /// **Warning:** The lock is _NOT_ released automatically when the handle
     /// is dropped. You must call [`ReadHandle::release_read`].
     /// Verus does not check that lock is released.
+    #[verifier::exec_allows_no_decreases_clause]
     pub fn acquire_read(&self) -> (read_handle: ReadHandle<V, Pred>)
         ensures
             read_handle.rwlock() == *self,
@@ -635,7 +637,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
                 RwLockToks::pending_reader<(Pred, CellId), PointsTo<V>, InternalPred<V, Pred>>,
             > = Option::None;
 
-            if val < 0xffff_ffff_ffff_ffff {
+            if val < usize::MAX {
                 let result =
                     atomic_with_ghost!(
                     &self.rc => compare_exchange(val, val + 1);
@@ -694,6 +696,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
 
     /// Destroys the lock and returns the inner object.
     /// Note that this may deadlock if not all locks have been released.
+    #[verifier::exec_allows_no_decreases_clause]
     pub fn into_inner(self) -> (v: V)
         ensures
             self.inv(v),

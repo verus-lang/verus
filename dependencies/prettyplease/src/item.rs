@@ -1170,7 +1170,12 @@ impl Printer {
         self.ty(&impl_item.ty);
         self.word(" = ");
         self.neverbreak();
-        self.expr(&impl_item.expr, FixupContext::NONE);
+        if let Some(expr) = &impl_item.expr {
+            self.expr(expr, FixupContext::NONE);
+        }
+        if let Some(block) = &impl_item.block {
+            self.small_block(block, &[]);
+        }
         self.word(";");
         self.end();
         self.hardbreak();

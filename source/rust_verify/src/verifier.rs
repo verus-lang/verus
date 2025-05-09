@@ -406,6 +406,16 @@ struct VerifyBucketOut {
     time_smt_run: Duration,
     rlimit_count: Option<u64>,
 }
+pub(crate) enum VerifyErr {
+    Vir(VirErr),
+    Emitted,
+}
+
+impl From<VirErr> for VerifyErr {
+    fn from(err: VirErr) -> Self {
+        VerifyErr::Vir(err)
+    }
+}
 
 impl Verifier {
     pub fn new(
@@ -496,6 +506,7 @@ impl Verifier {
             current_crate_modules: self.current_crate_modules.clone(),
             item_to_module_map: self.item_to_module_map.clone(),
             buckets: self.buckets.clone(),
+
             expand_flag: self.expand_flag,
             error_format: self.error_format,
         }
@@ -701,9 +712,10 @@ impl Verifier {
         command: &Command,
         context: &CommandContext,
         hint_upon_failure: &std::cell::RefCell<Option<Message>>,
-        is_singular: bool,
-        failed_assert_ids: &mut Vec<AssertId>,
+        prover_choice: vir::def::ProverChoice,
+        default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
+        let is_singular = prover_choice == vir::def::ProverChoice::Singular;
         let message_interface = Arc::new(vir::messages::VirMessageInterface {});
 
         let do_report_long_running = self.args.report_long_running;
@@ -864,7 +876,9 @@ impl Verifier {
                 }
                 ValidityResult::Invalid(Some(air_model), Some(error), assert_id_opt) => {
                     if let Some(assert_id) = assert_id_opt {
-                        failed_assert_ids.push(assert_id.clone());
+                        if prover_choice == vir::def::ProverChoice::DefaultProver {
+                            default_prover_failed_assert_ids.push(assert_id.clone());
+                        }
                     }
 
                     if is_first_check && level == Some(MessageLevel::Error) {
@@ -1005,7 +1019,7 @@ impl Verifier {
         function_name: &Fun,
         comment: &str,
         desc_prefix: Option<&str>,
-        failed_assert_ids: &mut Vec<AssertId>,
+        default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
         let user_filter = self.user_filter.as_ref().unwrap();
         let includes_function = user_filter.includes_function(function_name);
@@ -1053,8 +1067,8 @@ impl Verifier {
                     &command,
                     &context,
                     hint_upon_failure,
-                    *prover_choice == vir::def::ProverChoice::Singular,
-                    failed_assert_ids,
+                    *prover_choice,
+                    default_prover_failed_assert_ids,
                 );
         }
 
@@ -1482,6 +1496,7 @@ impl Verifier {
                             QueryOp::Body(Style::RecommendsFollowupFromError) => MessageLevel::Note,
                             QueryOp::Body(Style::RecommendsChecked) => MessageLevel::Warning,
                             QueryOp::Body(Style::Expanded) => MessageLevel::Note,
+                            QueryOp::Body(Style::CheckApiSafety) => MessageLevel::Error,
                         };
                         let function = &op.get_function();
                         let is_recommend = query_op.is_recommend();
@@ -1491,7 +1506,7 @@ impl Verifier {
 
                         let mut any_invalid = false;
                         let mut any_timed_out = false;
-                        let mut failed_assert_ids = vec![];
+                        let mut default_prover_failed_assert_ids = vec![];
                         let mut func_curr_smt_time = Duration::ZERO;
 
                         let mut func_curr_smt_rlimit_count = match self.args.solver {
@@ -1600,7 +1615,7 @@ impl Verifier {
                                 &function.x.name,
                                 &op.to_air_comment(),
                                 None,
-                                &mut failed_assert_ids,
+                                &mut default_prover_failed_assert_ids,
                             );
                             func_curr_smt_time +=
                                 query_air_context.get_time().1 - iter_curr_smt_time;
@@ -1787,11 +1802,13 @@ impl Verifier {
                                 function_opgen.retry_with_recommends(&op, any_invalid)?;
                             }
 
-                            if any_invalid && self.args.expand_errors && failed_assert_ids.len() > 0
+                            if any_invalid
+                                && self.args.expand_errors
+                                && default_prover_failed_assert_ids.len() > 0
                             {
                                 function_opgen.start_expand_errors_if_possible(
                                     &op,
-                                    failed_assert_ids[0].clone(),
+                                    default_prover_failed_assert_ids[0].clone(),
                                 );
                                 flush_diagnostics_to_report = true;
                             }
@@ -2001,7 +2018,7 @@ impl Verifier {
         &mut self,
         compiler: &Compiler,
         spans: &SpanContext,
-    ) -> Result<(), VirErr> {
+    ) -> Result<(), VerifyErr> {
         let time_verify_sequential_start = Instant::now();
 
         let reporter = Reporter::new(spans, compiler);
@@ -2033,6 +2050,7 @@ impl Verifier {
             Arc::new(std::sync::Mutex::new(call_graph_log)),
             self.args.solver,
             false,
+            self.args.check_api_safety,
         )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
@@ -2137,11 +2155,14 @@ impl Verifier {
                 let worker_sender = sender.clone();
                 let worker = std::thread::spawn(move || {
                     let r = std::panic::catch_unwind(|| {
-                        let mut completed_tasks: Vec<GlobalCtx> = Vec::new();
+                        let mut completed_tasks: Vec<Result<GlobalCtx, ()>> = Vec::new();
                         loop {
-                            let mut tq = thread_taskq.lock().unwrap();
-                            let elm = tq.pop_front();
-                            drop(tq);
+                            let elm = {
+                                let mut tq = thread_taskq.lock().unwrap();
+                                let elm = tq.pop_front();
+                                drop(tq);
+                                elm
+                            };
                             if let Some((_i, bucket_id, task, reporter)) = elm {
                                 let res = thread_verifier.verify_bucket_outer(
                                     &reporter,
@@ -2150,18 +2171,16 @@ impl Verifier {
                                     &bucket_id,
                                     task,
                                 );
-                                reporter.done(); // we've verified the bucket, send the done message
-                                match res {
-                                    Ok(res) => {
-                                        completed_tasks.push(res);
-                                    }
-                                    Err(e) => return Err(e),
+                                if let Err(e) = &res {
+                                    reporter.report_now(&e.clone().to_any());
                                 }
+                                reporter.done(); // we've verified the bucket, send the done message
+                                completed_tasks.push(res.map_err(|_| ()));
                             } else {
                                 break;
                             }
                         }
-                        Ok::<(Verifier, Vec<GlobalCtx>), VirErr>((thread_verifier, completed_tasks))
+                        (thread_verifier, completed_tasks)
                     });
 
                     match r {
@@ -2446,16 +2465,22 @@ impl Verifier {
                 workers_finished.push(res);
             }
 
-            for res in workers_finished {
-                match res {
-                    Ok((verifier, res)) => {
-                        for r in res {
+            let mut worker_emitted_error = false;
+            for (verifier, results) in workers_finished {
+                self.merge(verifier);
+                for res in results {
+                    match res {
+                        Ok(r) => {
                             global_ctx.merge(r);
                         }
-                        self.merge(verifier);
+                        Err(()) => {
+                            worker_emitted_error = true;
+                        }
                     }
-                    Err(e) => return Err(e),
                 }
+            }
+            if worker_emitted_error {
+                return Err(VerifyErr::Emitted);
             }
 
             // print remaining messages
@@ -2559,7 +2584,7 @@ impl Verifier {
         &mut self,
         compiler: &Compiler,
         spans: &SpanContext,
-    ) -> Result<(), VirErr> {
+    ) -> Result<(), VerifyErr> {
         // Verify crate
         let time_verify_crate_start = Instant::now();
 
@@ -3067,8 +3092,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             match self.verifier.verify_crate(compiler, &spans) {
                 Ok(()) => {}
                 Err(err) => {
-                    let reporter = Reporter::new(&spans, compiler);
-                    reporter.report_as(&err.to_any(), MessageLevel::Error);
+                    if let VerifyErr::Vir(err) = err {
+                        let reporter = Reporter::new(&spans, compiler);
+                        reporter.report_as(&err.to_any(), MessageLevel::Error);
+                    }
                     self.verifier.encountered_vir_error = true;
                 }
             }

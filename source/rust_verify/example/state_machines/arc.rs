@@ -1,3 +1,4 @@
+#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 #![allow(unused_imports)]
 
 // ANCHOR: full
@@ -249,7 +250,6 @@ impl<S> MyArc<S> {
             open_atomic_invariant!(self.inv.borrow().borrow() => g => {
                 let tracked GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
 
-                let count = count + 1;
                 res = inner_rc_ref.rc_cell.compare_exchange_weak(Tracked(&mut rc_perm), count, count + 1);
 
                 proof {

@@ -202,8 +202,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] question_mark_option verus_code! {
+test_verify_one_file_with_options! {
+    #[test] question_mark_option ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::*;
 
         fn test() -> (res: Option<u32>)
@@ -247,8 +247,8 @@ test_verify_one_file! {
     } => Err(err) => assert_fails(err, 2)
 }
 
-test_verify_one_file! {
-    #[test] question_mark_result verus_code! {
+test_verify_one_file_with_options! {
+    #[test] question_mark_result ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::*;
 
         fn test() -> (res: Result<u32, bool>)
@@ -544,4 +544,32 @@ test_verify_one_file! {
             let b = x;
         }
     } => Ok(())
+}
+
+test_verify_one_file_with_options! {
+    #[test] external_derive_attr ["--no-external-by-default"] => verus_code! {
+        #[derive(Clone, Copy)]
+        #[verifier::external_derive]
+        struct X {
+            u: u64,
+        }
+
+        fn test(x: X) {
+            let a = x.clone();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
+}
+
+test_verify_one_file_with_options! {
+    #[test] external_derive_attr_list ["--no-external-by-default"] => verus_code! {
+        #[derive(Clone, Copy)]
+        #[verifier::external_derive(Clone)]
+        struct X {
+            u: u64,
+        }
+
+        fn test(x: X) {
+            let a = x.clone();
+        }
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::clone` which is ignored")
 }
