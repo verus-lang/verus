@@ -195,6 +195,7 @@ impl<K, V, const Finite: bool> GMap<K, V, Finite> {
     pub proof fn lemma_union_prefer_right(self, m2: Self)
     ensures
         self.union_prefer_right(m2).dom().to_infinite() == self.dom().union(m2.dom()),
+        congruent(self.union_prefer_right(m2).dom(), self.dom().union(m2.dom())),
         forall |k| #![auto] self.union_prefer_right(m2).dom().contains(k) ==>
             self.union_prefer_right(m2)[k] == if m2.dom().contains(k) { m2[k] } else { self[k] },
     {
@@ -204,9 +205,11 @@ impl<K, V, const Finite: bool> GMap<K, V, Finite> {
         assert( self.union_prefer_right(m2).dom().to_infinite() == self.dom().union(m2.dom()) );
     }
 
+    // TODO(jonh) broadcast
     pub proof fn lemma_remove_keys(self, keys: GSet<K, Finite>)
     ensures
         self.remove_keys(keys).dom().to_infinite() == self.dom().difference(keys),
+        congruent(self.remove_keys(keys).dom(), self.dom().difference(keys)),
         forall |k| #![auto] self.remove_keys(keys).dom().contains(k) ==> self.remove_keys(keys)[k] == self[k]
     {
         broadcast use super::set::group_set_lemmas;
