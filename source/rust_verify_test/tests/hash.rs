@@ -815,6 +815,7 @@ test_verify_one_file_with_options! {
             m.insert(6, -8);
             let m_values = m.values();
             assert(m_values@.0 == 0);
+            // assert(m_values@.1.to_set() == set![4i8, -8i8]); // FAILS due to https://github.com/verus-lang/verus/issues/1633
             assert(m_values@.1.to_set() == m@.values());
             let ghost g_values = m_values@.1;
 
