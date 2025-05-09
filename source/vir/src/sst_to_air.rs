@@ -156,6 +156,7 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
 }
 
 pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
+    dbg!(&typ);
     match &**typ {
         TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
@@ -182,7 +183,7 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 TypX::Int(_) => str_typ(PROPH_INT),
                 TypX::Bool => str_typ(PROPH_BOOL),
                 TypX::Datatype(dt, _, _) => proph_typ(&path_to_air_ident(&encode_dt_as_path(dt))),
-                _ => todo!("unsupported prophecy type"),
+                _ => todo!("unsupported prophecy type {:?}", t),
             }
         }
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
@@ -1144,6 +1145,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 (_, ExpX::Const(..)) => true,
                 _ => false,
             };
+            dbg!(&exp);
             let lh = exp_to_expr(ctx, lhs, expr_ctxt)?;
             let rh = exp_to_expr(ctx, rhs, expr_ctxt)?;
             let expx = match op {
@@ -2875,7 +2877,8 @@ pub(crate) fn body_stm_to_air(
                 suffix_local_unique_proph(&suffix_local_unique_id(&decl.ident)),
                 typ_to_air(
                     ctx,
-                    &Arc::new(TypX::MutRef(decl.typ.clone())),
+                    // &Arc::new(TypX::MutRef(decl.typ.clone())),
+                    &decl.typ,
                 ),
             )));
         } else {

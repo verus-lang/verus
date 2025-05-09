@@ -487,6 +487,7 @@ pub fn func_name_to_air(
 }
 
 pub fn func_decl_to_air(ctx: &mut Ctx, function: &FunctionSst) -> Result<Commands, VirErr> {
+    dbg!(&function.x.decl.reqs);
     let func_decl_sst = &function.x.decl;
     let (is_trait_method_impl, inherit_fn_ens) = match &function.x.kind {
         FunctionKind::TraitMethodImpl { method, trait_typ_args, .. } => {

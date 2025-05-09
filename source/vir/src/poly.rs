@@ -143,6 +143,8 @@ pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
         }
         TypX::MutRef(t) => {
             let monotyp = typ_as_mono(t)?;
+            // TODO(prophecy) defenssive check
+            assert!(!matches!(&*monotyp, MonoTypX::MutRef(_)));
             Some(Arc::new(MonoTypX::MutRef(monotyp)))
         }
         TypX::Primitive(Primitive::Array, _) => None,
@@ -181,7 +183,11 @@ pub(crate) fn monotyp_to_typ(monotyp: &MonoTyp) -> Typ {
             let typ = monotyp_to_typ(&typs[1]);
             Arc::new(TypX::Decorate(*d, Some(TypDecorationArg { allocator_typ }), typ))
         }
-        MonoTypX::MutRef(typ) => Arc::new(TypX::MutRef(monotyp_to_typ(typ))),
+        MonoTypX::MutRef(typ) => {
+            let new_typ = monotyp_to_typ(typ);
+            assert!(!matches!(&*new_typ, TypX::MutRef(_)));
+            Arc::new(TypX::MutRef(new_typ))
+        },
     }
 }
 
@@ -267,7 +273,9 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
             Arc::new(TypX::Decorate(*d, targ.clone(), coerce_typ_to_poly(_ctx, t)))
         }
         TypX::MutRef(t) => {
-            Arc::new(TypX::MutRef(coerce_typ_to_poly(_ctx, t)))
+            let new_typ = coerce_typ_to_poly(_ctx, t);
+            assert!(!matches!(&*new_typ, TypX::MutRef(_)));
+            Arc::new(TypX::MutRef(new_typ))
         }
         TypX::Boxed(_) | TypX::TypParam(_) | TypX::Projection { .. } => typ.clone(),
         TypX::TypeId => panic!("internal error: TypeId created too soon"),
@@ -279,17 +287,21 @@ pub(crate) fn coerce_typ_to_poly(_ctx: &Ctx, typ: &Typ) -> Typ {
 
 pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
     if let TypX::MutRef(typ) = &*exp.typ {
+        let mut exp_i = exp.clone();
+        Arc::make_mut(&mut exp_i).typ = typ.clone();
         // Maintain the mutable reference wrapper, but unbox the inner type
-        let mut res = coerce_exp_to_native_handle_mut_ref(ctx, exp, typ);
+        let mut res = coerce_exp_to_native_handle_mut_ref(ctx, &exp_i);
+        dbg!(&res);
+        assert!(!matches!(&*res.typ, TypX::MutRef(_)));
         Arc::make_mut(&mut res).typ = Arc::new(TypX::MutRef(res.typ.clone()));
         res
     } else {
-        coerce_exp_to_native_handle_mut_ref(ctx, exp, &exp.typ)
+        coerce_exp_to_native_handle_mut_ref(ctx, exp)
     }
 }
 
-pub fn coerce_exp_to_native_handle_mut_ref(ctx: &Ctx, exp: &Exp, exp_typ: &Typ) -> Exp {
-    match &*crate::ast_util::undecorate_typ(&exp_typ) {
+pub fn coerce_exp_to_native_handle_mut_ref(ctx: &Ctx, exp: &Exp) -> Exp {
+    match &*crate::ast_util::undecorate_typ(&exp.typ) {
         TypX::Bool
         | TypX::Int(_)
         | TypX::SpecFn(..)
