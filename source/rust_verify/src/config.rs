@@ -26,6 +26,7 @@ pub const VIR_FILE_SUFFIX: &str = ".vir";
 pub const VIR_SIMPLE_FILE_SUFFIX: &str = "-simple.vir";
 pub const VIR_POLY_FILE_SUFFIX: &str = "-poly.vir";
 pub const VIR_SST_FILE_SUFFIX: &str = "-sst.vir";
+pub const VIR_SST_POLY_FILE_SUFFIX: &str = "-sst-poly.vir";
 pub const LIFETIME_FILE_SUFFIX: &str = "-lifetime.rs";
 pub const INTERPRETER_FILE_SUFFIX: &str = ".interp";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";

@@ -1999,6 +1999,15 @@ impl Verifier {
             );
         }
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
+        if self.args.log_all || self.args.log_args.log_vir_sst {
+            let mut file =
+                self.create_log_file(Some(&bucket_id), crate::config::VIR_SST_POLY_FILE_SUFFIX)?;
+            vir::printer::write_krate_sst(
+                &mut file,
+                &krate_sst,
+                &self.args.log_args.vir_log_option,
+            );
+        }
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
             self.verify_bucket(reporter, &krate_sst, source_map, bucket_id, &mut ctx)?;
