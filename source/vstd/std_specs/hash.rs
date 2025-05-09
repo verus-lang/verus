@@ -30,7 +30,7 @@ use core::borrow::Borrow;
 use core::hash::{BuildHasher, Hash, Hasher};
 use core::option::Option;
 use core::option::Option::None;
-use std::collections::hash_map::{DefaultHasher, Keys, RandomState};
+use std::collections::hash_map::{DefaultHasher, Keys, RandomState, Values};
 use std::collections::hash_set::Iter;
 use std::collections::{HashMap, HashSet};
 
@@ -346,6 +346,115 @@ impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
     }
 }
 
+// The `values` method of a `HashMap` returns an iterator of type `Values`,
+// so we specify that type here.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(Key)]
+#[verifier::accept_recursive_types(Value)]
+pub struct ExValues<'a, Key: 'a, Value: 'a>(Values<'a, Key, Value>);
+
+pub trait ValuesAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
+    spec fn view(self: &Self) -> (int, Seq<Value>);
+}
+
+impl<'a, Key: 'a, Value: 'a> ValuesAdditionalSpecFns<'a, Key, Value> for Values<'a, Key, Value> {
+    uninterp spec fn view(self: &Values<'a, Key, Value>) -> (int, Seq<Value>);
+}
+
+pub assume_specification<'a, Key, Value>[ Values::<'a, Key, Value>::next ](
+    values: &mut Values<'a, Key, Value>,
+) -> (r: Option<&'a Value>)
+    ensures
+        ({
+            let (old_index, old_seq) = old(values)@;
+            match r {
+                None => {
+                    &&& values@ == old(values)@
+                    &&& old_index >= old_seq.len()
+                },
+                Some(k) => {
+                    let (new_index, new_seq) = values@;
+                    &&& 0 <= old_index < old_seq.len()
+                    &&& new_seq == old_seq
+                    &&& new_index == old_index + 1
+                    &&& k == old_seq[old_index]
+                },
+            }
+        }),
+;
+
+pub struct ValuesGhostIterator<'a, Key, Value> {
+    pub pos: int,
+    pub values: Seq<Value>,
+    pub phantom: Option<&'a Key>,
+}
+
+impl<'a, Key, Value> super::super::pervasive::ForLoopGhostIteratorNew for Values<'a, Key, Value> {
+    type GhostIter = ValuesGhostIterator<'a, Key, Value>;
+
+    open spec fn ghost_iter(&self) -> ValuesGhostIterator<'a, Key, Value> {
+        ValuesGhostIterator { pos: self@.0, values: self@.1, phantom: None }
+    }
+}
+
+impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIterator for ValuesGhostIterator<
+    'a,
+    Key,
+    Value,
+> {
+    type ExecIter = Values<'a, Key, Value>;
+
+    type Item = Value;
+
+    type Decrease = int;
+
+    open spec fn exec_invariant(&self, exec_iter: &Values<'a, Key, Value>) -> bool {
+        &&& self.pos == exec_iter@.0
+        &&& self.values == exec_iter@.1
+    }
+
+    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
+        init matches Some(init) ==> {
+            &&& init.pos == 0
+            &&& init.values == self.values
+            &&& 0 <= self.pos <= self.values.len()
+        }
+    }
+
+    open spec fn ghost_ensures(&self) -> bool {
+        self.pos == self.values.len()
+    }
+
+    open spec fn ghost_decrease(&self) -> Option<int> {
+        Some(self.values.len() - self.pos)
+    }
+
+    open spec fn ghost_peek_next(&self) -> Option<Value> {
+        if 0 <= self.pos < self.values.len() {
+            Some(self.values[self.pos])
+        } else {
+            None
+        }
+    }
+
+    open spec fn ghost_advance(&self, _exec_iter: &Values<'a, Key, Value>) -> ValuesGhostIterator<
+        'a,
+        Key,
+        Value,
+    > {
+        Self { pos: self.pos + 1, ..*self }
+    }
+}
+
+impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
+    type V = Seq<Value>;
+
+    open spec fn view(&self) -> Seq<Value> {
+        self.values.take(self.pos)
+    }
+}
+
 // We now specify the behavior of `HashMap`.
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -616,6 +725,17 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::keys ](
             &&& index == 0
             &&& s.to_set() == m@.dom()
             &&& s.no_duplicates()
+        },
+;
+
+pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::values ](
+    m: &'a HashMap<Key, Value, S>,
+) -> (values: Values<'a, Key, Value>)
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+            let (index, s) = values@;
+            &&& index == 0
+            &&& s.to_set() == m@.values()
         },
 ;
 
