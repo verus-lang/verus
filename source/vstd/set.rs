@@ -89,6 +89,7 @@ impl<A, const Finite: bool> GSet<A, Finite> {
     ensures
         self.cast_finiteness::<false>() == self.to_infinite(),
     {
+        assert( self.set == |a| self.contains(a) ); // fn extensionality
     }
 
     #[verifier::inline]

@@ -43,6 +43,15 @@ ensures #[trigger] m.dom().finite()
     admit();
 }
 
+impl<K, V, const Finite: bool> GMap<K, V, Finite> {
+    pub open spec fn congruent<const Finite2: bool>(m1: GMap<K, V, Finite>, m2: GMap<K, V, Finite2>) -> bool
+    {
+        // TODO(jonh): change to GSet::congruent
+        &&& congruent(m1.dom(), m2.dom())
+        &&& forall |k| m1.contains_key(k) ==> m1[k] == m2[k]
+    }
+}
+
 /// IMap<K,V> is a type synonym a set whose membership may be infinite (but can be
 /// proven finite at verification time).
 pub type IMap<K, V> = GMap<K, V, false>;
@@ -344,6 +353,16 @@ impl<K, V, const Finite: bool> GMap<K, V, Finite> {
             *self == old(self).union_prefer_right(right),
     {
         unimplemented!();
+    }
+
+    // TODO(jonh): broadcast
+    /// Export publicly-meaningful definition of invert
+    pub proof fn lemma_invert_ensures(self)
+    ensures
+        GMap::congruent(self.invert(), IMap::new(|v| self.contains_value(v), |v| choose|k: K| self.contains_pair(k, v))),
+    {
+        broadcast use super::set::group_set_lemmas;
+        broadcast use axiom_dom_ensures;
     }
 }
 
