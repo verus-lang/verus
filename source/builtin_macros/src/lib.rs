@@ -23,6 +23,7 @@ mod is_variant;
 mod rustdoc;
 mod struct_decl_inv;
 mod structural;
+mod syntax_trait;
 mod topological_sort;
 
 decl_derive!([Structural] => structural::derive_structural);

@@ -227,9 +227,9 @@ fn compare_external_ty<'tcx>(
     verus_items: &crate::verus_items::VerusItems,
     ty1: &rustc_middle::ty::Ty<'tcx>,
     ty2: &rustc_middle::ty::Ty<'tcx>,
-    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
+    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
 ) -> bool {
-    if let Some((from_path, to_path)) = external_trait_from_to {
+    if let Some((from_path, to_path, _)) = external_trait_from_to {
         compare_external_ty_or_true(tcx, verus_items, from_path, to_path, ty1, ty2)
     } else {
         ty1 == ty2
@@ -241,7 +241,7 @@ fn compare_external_sig<'tcx>(
     verus_items: &crate::verus_items::VerusItems,
     sig1: &rustc_middle::ty::FnSig<'tcx>,
     sig2: &rustc_middle::ty::FnSig<'tcx>,
-    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
+    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
 ) -> Result<bool, VirErr> {
     use rustc_middle::ty::FnSig;
     // Ignore abi and safety for the sake of comparison
@@ -270,7 +270,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     body_id: &CheckItemFnEither<&BodyId, &[Ident]>,
     mode: Mode,
     vattrs: &VerifierAttrs,
-    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path)>,
+    external_trait_from_to: &Option<(vir::ast::Path, vir::ast::Path, Option<vir::ast::Path>)>,
     external_fn_specification_via_external_trait: Option<DefId>,
     external_info: &mut ExternalInfo,
 ) -> Result<(vir::ast::Path, vir::ast::Visibility, FunctionKind, bool, Safety), VirErr> {
@@ -676,7 +676,8 @@ pub(crate) fn check_item_fn<'tcx>(
     self_generics: Option<(&'tcx Generics, DefId)>,
     generics: &'tcx Generics,
     body_id: CheckItemFnEither<&BodyId, &[Ident]>,
-    external_trait: Option<DefId>,
+    // (target ExternalTraitSpecificationFor name, target external_trait_extension spec trait name)
+    external_trait: Option<(DefId, Option<String>)>,
     external_fn_specification_via_external_trait: Option<DefId>,
     external_info: &mut ExternalInfo,
     autoderive_action: Option<&AutomaticDeriveAction>,
@@ -688,11 +689,16 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = ctxt.get_verifier_attrs(attrs)?;
     let mode = get_mode(Mode::Exec, attrs);
 
-    let external_trait_from_to = if let Some(to_trait_id) = external_trait {
+    let external_trait_from_to = if let Some((to_trait_id, to_spec_name)) = external_trait {
         let from_trait_id = ctxt.tcx.parent(id);
         let from_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, from_trait_id);
         let to_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, to_trait_id);
-        Some((from_path, to_path))
+        let to_spec_path = if let Some(name) = to_spec_name {
+            Some(from_path.pop_segment().push_segment(Arc::new(name.clone())))
+        } else {
+            None
+        };
+        Some((from_path, to_path, to_spec_path))
     } else {
         None
     };
@@ -1056,7 +1062,7 @@ pub(crate) fn check_item_fn<'tcx>(
         let typ_params = Arc::new(typ_params);
         let mut typ_bounds = Arc::new(typ_bounds);
 
-        if let Some((from_path, to_path)) = &external_trait_from_to {
+        if let Some((from_path, to_path, _)) = &external_trait_from_to {
             typ_bounds = vir::traits::rewrite_external_bounds(from_path, to_path, &typ_bounds);
         }
         (typ_params, typ_bounds)
@@ -1220,8 +1226,8 @@ pub(crate) fn check_item_fn<'tcx>(
         }
     }
     let function = ctxt.spanned_new(sig.span, func);
-    let function = if let Some((from_path, to_path)) = &external_trait_from_to {
-        vir::traits::rewrite_external_function(from_path, to_path, &function)
+    let function = if let Some((from_path, to_path, to_spec_path)) = &external_trait_from_to {
+        vir::traits::rewrite_external_function(from_path, to_path, to_spec_path, &function)
     } else {
         function
     };
