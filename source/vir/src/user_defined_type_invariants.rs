@@ -60,10 +60,7 @@ pub(crate) fn annotate_user_defined_invariants(
                     let function = &functions.get(fun).unwrap();
                     let mut all_asserts = vec![];
                     for (arg, param) in args.iter().zip(function.x.params.iter()) {
-                        if matches!(
-                            &*param.x.typ,
-                            TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)
-                        ) {
+                        if matches!(&*param.x.typ, TypX::MutRef(_)) {
                             let mut new_asserts =
                                 asserts_for_lhs(info, functions, datatypes, module, arg)?;
                             all_asserts.append(&mut new_asserts);

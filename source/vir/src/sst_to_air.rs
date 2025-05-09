@@ -174,22 +174,16 @@ pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
                 }
             }
         }
-        TypX::Decorate(mut_ref, _, t) => {
-            // if matches!(*mut_ref, TypDecoration::MutRef) {
-            if todo!("see below") {
-                match &**t {
-                    TypX::Int(_) => str_typ(PROPH_INT),
-                    TypX::Bool => str_typ(PROPH_BOOL),
-                    TypX::Datatype(dt, _, _) => proph_typ(&path_to_air_ident(&encode_dt_as_path(dt))),
-                    _ => typ_to_air(ctx, t),
-                }
-            } else {
-                typ_to_air(ctx, t)
-            }
+        TypX::Decorate(_, _, t) => {
+            typ_to_air(ctx, t)
         }
         TypX::MutRef(t) => {
-            // TODO(Abigail): move the logic here from above
-            todo!()
+            match &**t {
+                TypX::Int(_) => str_typ(PROPH_INT),
+                TypX::Bool => str_typ(PROPH_BOOL),
+                TypX::Datatype(dt, _, _) => proph_typ(&path_to_air_ident(&encode_dt_as_path(dt))),
+                _ => todo!("unsupported prophecy type"),
+            }
         }
         TypX::FnDef(..) => str_typ(crate::def::FNDEF_TYPE),
         TypX::Boxed(_) => str_typ(POLY),
@@ -749,12 +743,13 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
 }
 
 pub(crate) fn ty_to_proph_accessor(typ: &Typ, future: bool) -> Ident {
+    dbg!(&typ);
     if future {
         match &**typ {
             TypX::Int(_) => str_ident(crate::def::PROPH_INT_FUT),
             TypX::Bool => str_ident(crate::def::PROPH_BOOL_FUT),
             TypX::Datatype(dt, _, _) => proph_ident_fut(&path_to_air_ident(&encode_dt_as_path(dt))),
-            TypX::MutRef(t) => panic!("unexpected MutRef in prophecy"),
+            TypX::MutRef(_) => panic!("unexpected MutRef in prophecy"),
             _ => todo!("ty not supported for prophecy"),
         }
     } else {
@@ -762,18 +757,19 @@ pub(crate) fn ty_to_proph_accessor(typ: &Typ, future: bool) -> Ident {
             TypX::Int(_) => str_ident(crate::def::PROPH_INT_CUR),
             TypX::Bool => str_ident(crate::def::PROPH_BOOL_CUR),
             TypX::Datatype(dt, _, _) => proph_ident_cur(&path_to_air_ident(&encode_dt_as_path(dt))),
-            TypX::MutRef(t) => panic!("unexpected MutRef in prophecy"),
+            TypX::MutRef(_) => panic!("unexpected MutRef in prophecy"),
             _ => todo!("ty not supported for prophecy"),
         }
     }
 }
 
 // TODO(prophecy) untested
-pub(crate) fn var_to_expr(ctx: &Ctx, x: &VarIdent, typ: &Typ, expr_ctxt: &ExprCtxt, var_at: Option<VarAt>) -> Expr {
+pub(crate) fn var_to_expr(_ctx: &Ctx, x: &VarIdent, typ: &Typ, expr_ctxt: &ExprCtxt, var_at: Option<VarAt>) -> Expr {
     let pre = match var_at {
         Some(VarAt::Pre) => true,
         None => false,
     };
+    dbg!(&typ);
     match expr_ctxt.mode {
         ExprMode::Spec => match &**typ {
             TypX::MutRef(t) => ident_apply(&ty_to_proph_accessor(t, !pre), &vec![string_var(&suffix_local_unique_id(x))]),
@@ -2790,7 +2786,7 @@ pub(crate) fn body_stm_to_air(
     for decl in local_decls.iter() {
         if decl.kind.is_mutable() {
             match &*decl.typ {
-                TypX::Decorate(crate::ast::TypDecoration::MutRef, None, t) => local_shared.push(
+                TypX::MutRef(t) => local_shared.push(
                     Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, t))),
                 ),
                 _ => local_shared.push(Arc::new(DeclX::Var(
@@ -2802,11 +2798,7 @@ pub(crate) fn body_stm_to_air(
                 suffix_local_unique_proph(&suffix_local_unique_id(&decl.ident)),
                 typ_to_air(
                     ctx,
-                    &Arc::new(TypX::Decorate(
-                        crate::ast::TypDecoration::MutRef,
-                        None,
-                        decl.typ.clone(),
-                    )),
+                    &Arc::new(TypX::MutRef(decl.typ.clone())),
                 ),
             )));
         } else {
@@ -2826,7 +2818,7 @@ pub(crate) fn body_stm_to_air(
     for param in params.iter() {
         declared.insert(unique_local(&param.x.name), param.x.typ.clone());
         assigned.insert(unique_local(&param.x.name));
-        if matches!(&*param.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)) {
+        if matches!(&*param.x.typ, TypX::MutRef(_)) {
             has_mut_params = true;
         }
     }
@@ -2855,7 +2847,7 @@ pub(crate) fn body_stm_to_air(
 
     let mut may_be_used_in_old = HashSet::<UniqueIdent>::new();
     for param in params.iter() {
-        if matches!(&*param.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)) {
+        if matches!(&*param.x.typ, TypX::MutRef(_)) {
             may_be_used_in_old.insert(unique_local(&param.x.name));
         }
     }
