@@ -2162,7 +2162,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stm_to_stmts(ctx, state, &assume_var(&stm.span, x, rhs))?
         }
         StmX::Assign { lhs: Dest { dest, is_init: false }, rhs } => {
-            dbg!(&dest);
             let mut stmts: Vec<Stmt> = Vec::new();
             if ctx.debug {
                 unimplemented!("assignments are unsupported in debugger mode");

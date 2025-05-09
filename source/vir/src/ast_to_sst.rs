@@ -552,11 +552,20 @@ fn expr_get_call(
                 let mut stms: Vec<Stm> = Vec::new();
                 let mut exps: Vec<Exp> = Vec::new();
                 for arg in args.iter() {
-                    // TODO(prophecy): declare temporary prophecy var for arg
                     let (mut stms0, e0) = expr_to_stm_opt(ctx, state, arg)?;
                     stms.append(&mut stms0);
                     let e0 = match e0.to_value() {
-                        Some(e) => e,
+                        Some(e) => {
+                            if let TypX::MutRef(_t) = &*e.typ {
+                                // TODO(prophecy): something like this, but not quite
+                                let (temp_ident, temp_var) =
+                                    state.declare_temp_assign(&e.span, &e.typ);
+                                stms.push(init_var(&e.span, &temp_ident, &e));
+                                temp_var
+                            } else {
+                                e
+                            }
+                        },
                         None => {
                             return Ok(Some((stms, ReturnedCall::Never)));
                         }
