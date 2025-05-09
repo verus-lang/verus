@@ -646,7 +646,7 @@ where
             p.x.name.clone(),
             ScopeEntry::new_outer_param_ret(
                 &p.x.typ,
-                matches!(&*p.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)),
+                matches!(&*p.x.typ, TypX::MutRef(_)),
                 true,
             ),
         );
@@ -1284,7 +1284,7 @@ where
             p.x.name.clone(),
             ScopeEntry::new_outer_param_ret(
                 &p.x.typ,
-                matches!(&*p.x.typ, TypX::Decorate(TypDecoration::MutRef, None, _)),
+                matches!(&*p.x.typ, TypX::MutRef(_)),
                 true,
             ),
         );

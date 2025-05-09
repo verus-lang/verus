@@ -748,42 +748,78 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
     Some(Arc::new(qid))
 }
 
+pub(crate) fn ty_to_proph_accessor(typ: &Typ, future: bool) -> Ident {
+    if future {
+        match &**typ {
+            TypX::Int(_) => str_ident(crate::def::PROPH_INT_FUT),
+            TypX::Bool => str_ident(crate::def::PROPH_BOOL_FUT),
+            TypX::Datatype(dt, _, _) => proph_ident_fut(&path_to_air_ident(&encode_dt_as_path(dt))),
+            TypX::MutRef(t) => panic!("unexpected MutRef in prophecy"),
+            _ => todo!("ty not supported for prophecy"),
+        }
+    } else {
+        match &**typ {
+            TypX::Int(_) => str_ident(crate::def::PROPH_INT_CUR),
+            TypX::Bool => str_ident(crate::def::PROPH_BOOL_CUR),
+            TypX::Datatype(dt, _, _) => proph_ident_cur(&path_to_air_ident(&encode_dt_as_path(dt))),
+            TypX::MutRef(t) => panic!("unexpected MutRef in prophecy"),
+            _ => todo!("ty not supported for prophecy"),
+        }
+    }
+}
+
+// TODO(prophecy) untested
+pub(crate) fn var_to_expr(ctx: &Ctx, x: &VarIdent, typ: &Typ, expr_ctxt: &ExprCtxt, var_at: Option<VarAt>) -> Expr {
+    let pre = match var_at {
+        Some(VarAt::Pre) => true,
+        None => false,
+    };
+    match expr_ctxt.mode {
+        ExprMode::Spec => match &**typ {
+            TypX::MutRef(t) => ident_apply(&ty_to_proph_accessor(t, !pre), &vec![string_var(&suffix_local_unique_id(x))]),
+            _ => if !pre {
+                string_var(&suffix_local_unique_id(x))
+            } else {
+                string_var(&prefix_pre_var(&suffix_local_unique_id(x)))
+            }
+        },
+        ExprMode::Body => match &**typ {
+            TypX::MutRef(t) => 
+                if !pre {
+                    ident_apply(&ty_to_proph_accessor(t, false), &vec![string_var(&suffix_local_unique_id(x))])
+                } else {
+                    ident_apply(&ty_to_proph_accessor(t, false), &vec![
+                        Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_unique_id(x)))
+                    ])
+                },
+            _ => if !pre {
+                string_var(&suffix_local_unique_id(x))
+            } else {
+                Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_unique_id(x)))
+            }
+        },
+        ExprMode::BodyPre =>
+            if pre {
+                panic!("unexpected old() in pre context");
+            } else {
+                match &**typ {
+                    TypX::MutRef(t) => ident_apply(&ty_to_proph_accessor(t, false), &vec![string_var(&suffix_local_unique_id(x))]),
+                    _ => string_var(&suffix_local_unique_id(x)),
+                }
+            }
+
+    }
+}
+
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<Expr, VirErr> {
     let result = match &exp.x {
         ExpX::Const(c) => {
             let expr = constant_to_expr(ctx, c);
             expr
         }
-        ExpX::Var(x) => match expr_ctxt.mode {
-            ExprMode::Spec => match &*exp.typ {
-                // TODO(Abigail): you probably want to factor out this logic into a new function
-                TypX::Decorate(crate::ast::TypDecoration::MutRef, None, t) => match &**t {
-                    TypX::Int(_) => str_apply(PROPH_INT_FUT, &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))]),
-                    TypX::Bool => str_apply(PROPH_BOOL_FUT, &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))]),
-                    TypX::Datatype(dt, _, _) => ident_apply(&proph_ident_fut(&path_to_air_ident(&encode_dt_as_path(dt))), &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))]),
-                    _ => string_var(&prefix_pre_var(&suffix_local_unique_id(x))),
-                },
-                _ => string_var(&suffix_local_unique_id(x)),
-            },
-            _ => string_var(&suffix_local_unique_id(x)),
-        },
-        ExpX::VarLoc(x) => string_var(&suffix_local_unique_id(x)),
-        ExpX::VarAt(x, VarAt::Pre) => match expr_ctxt.mode {
-            ExprMode::Spec => match &*exp.typ {
-                TypX::Decorate(crate::ast::TypDecoration::MutRef, None, t) => match &**t {
-                    TypX::Int(_) => str_apply(PROPH_INT_CUR, &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))]),
-                    TypX::Bool => str_apply(PROPH_BOOL_CUR, &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))]),
-                    TypX::Datatype(dt, _, _) => ident_apply(&proph_ident_cur(&path_to_air_ident(&encode_dt_as_path(dt))), &vec![Arc::new(ExprX::Var(Arc::new(x.to_string())))]),
-                    _ => string_var(&prefix_pre_var(&suffix_local_unique_id(x))),
-                },
-                //TypX::Decorate(crate::ast::TypDecoratson::MutRef, None, TypX::Bool) => string_var(&proph_bool_cur_var(&suffix_local_unique_id(x))),
-                _ => string_var(&prefix_pre_var(&suffix_local_unique_id(x))),
-            },
-            ExprMode::Body => {
-                Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_unique_id(x)))
-            }
-            ExprMode::BodyPre => string_var(&suffix_local_unique_id(x)),
-        },
+        ExpX::Var(x) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, None),
+        ExpX::VarLoc(x) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, None),
+        ExpX::VarAt(x, VarAt::Pre) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, Some(VarAt::Pre)),
         ExpX::StaticVar(f) => string_var(&static_name(f)),
         ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt)?,
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x))),
@@ -1709,7 +1745,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
 
             let typ_args: Vec<Expr> = typs.iter().map(typ_to_ids).flatten().collect();
             if func.x.params.iter().any(|p| {
-                matches!(&*p.x.typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _))
+                matches!(&*p.x.typ, TypX::MutRef(_))
             }) && ctx.debug
             {
                 unimplemented!("&mut args are unsupported in debugger mode");
@@ -1736,23 +1772,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 };
 
                 // TODO(prophecy): this is where the changes at the call sites will need to be made
-                if matches!(
-                    &*param.x.typ,
-                    TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)
-                ) {
+                if let TypX::MutRef(proph_t) = &*param.x.typ {
                     call_snapshot = true;
                     let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
                         loc_to_field_update_data(arg);
 
-                    let second_apply = match &*param.x.typ {
-                        TypX::Decorate(crate::ast::TypDecoration::MutRef, None, t) => match &**t {
-                            TypX::Int(_) => str_apply(PROPH_INT_FUT, &vec![Arc::new(ExprX::Var(suffix_local_unique_proph(&suffix_local_unique_id(&base_var))))]),
-                            TypX::Bool => str_apply(PROPH_BOOL_FUT, &vec![Arc::new(ExprX::Var(suffix_local_unique_proph(&suffix_local_unique_id(&base_var))))]),
-                            TypX::Datatype(dt, _, _) => ident_apply(&proph_ident_fut(&path_to_air_ident(&encode_dt_as_path(dt))), &vec![Arc::new(ExprX::Var(suffix_local_unique_proph(&suffix_local_unique_id(&base_var))))]),
-                            _ => Arc::new(ExprX::Var(Arc::new(suffix_local_unique_proph(&suffix_local_unique_id(&base_var)).to_string()))),
-                        },
-                        _ => Arc::new(ExprX::Var(Arc::new(suffix_local_unique_proph(&suffix_local_unique_id(&base_var)).to_string()))),
-                    }; 
+                    let second_apply = ident_apply(&ty_to_proph_accessor(proph_t, true), &vec![Arc::new(ExprX::Var(suffix_local_unique_proph(&suffix_local_unique_id(&base_var))))]);
                     let second_eq = Arc::new(ExprX::Binary(
                         air::ast::BinaryOp::Eq,
                         Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))),
@@ -1760,15 +1785,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     ));
                     stmts.insert(0, Arc::new(StmtX::Assume(second_eq)));
                     stmts.insert(0, Arc::new(StmtX::Havoc(suffix_local_unique_id(&base_var))));
-                    let first_apply = match &*param.x.typ {
-                        TypX::Decorate(crate::ast::TypDecoration::MutRef, None, t) => match &**t {
-                            TypX::Int(_) => str_apply(PROPH_INT_CUR, &vec![Arc::new(ExprX::Var(suffix_local_unique_proph(&suffix_local_unique_id(&base_var))))]),
-                            TypX::Bool => str_apply(PROPH_BOOL_CUR, &vec![Arc::new(ExprX::Var(suffix_local_unique_proph(&suffix_local_unique_id(&base_var))))]),
-                            TypX::Datatype(dt, _, _) => ident_apply(&proph_ident_cur(&path_to_air_ident(&encode_dt_as_path(dt))), &vec![Arc::new(ExprX::Var(suffix_local_unique_proph(&suffix_local_unique_id(&base_var))))]),
-                            _ => Arc::new(ExprX::Var(Arc::new(suffix_local_unique_proph(&suffix_local_unique_id(&base_var)).to_string()))),
-                        },
-                        _ => Arc::new(ExprX::Var(Arc::new(suffix_local_unique_proph(&suffix_local_unique_id(&base_var)).to_string()))),
-                    }; 
+                    let first_apply = ident_apply(&ty_to_proph_accessor(proph_t, false), &vec![Arc::new(ExprX::Var(suffix_local_unique_proph(&suffix_local_unique_id(&base_var))))]);
                     let first_eq = Arc::new(ExprX::Binary(
                         air::ast::BinaryOp::Eq,
                         first_apply,

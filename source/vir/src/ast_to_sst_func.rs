@@ -96,7 +96,7 @@ pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
     param.map_x(|p| {
         let ParamX { name, typ, mode, unwrapped_info: _ } = p;
         if !allow_is_mut {
-            if matches!(&**typ, TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)) {
+            if matches!(&**typ, TypX::MutRef(_)) {
                 panic!("mut unexpected here");
             };
         }
@@ -492,7 +492,7 @@ pub fn func_def_to_sst(
             LocalDeclKind::Param {
                 mutable: matches!(
                     &*param.x.typ,
-                    TypX::Decorate(crate::ast::TypDecoration::MutRef, None, _)
+                    TypX::MutRef(_)
                 ),
             },
             false,
