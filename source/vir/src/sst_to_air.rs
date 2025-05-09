@@ -156,7 +156,6 @@ pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
 }
 
 pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
-    dbg!(&typ);
     match &**typ {
         TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
@@ -811,7 +810,6 @@ pub(crate) fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
 }
 
 pub(crate) fn ty_to_proph_accessor(typ: &Typ, future: bool) -> Ident {
-    dbg!(&typ);
     if future {
         match &**typ {
             TypX::Int(_) => str_ident(crate::def::PROPH_INT_FUT),
@@ -837,7 +835,6 @@ pub(crate) fn var_to_expr(_ctx: &Ctx, x: &VarIdent, typ: &Typ, expr_ctxt: &ExprC
         Some(VarAt::Pre) => true,
         None => false,
     };
-    dbg!(&typ);
     match expr_ctxt.mode {
         ExprMode::Spec => match &**typ {
             TypX::MutRef(t) => ident_apply(&ty_to_proph_accessor(t, !pre), &vec![string_var(&suffix_local_unique_id(x))]),
@@ -864,12 +861,12 @@ pub(crate) fn var_to_expr(_ctx: &Ctx, x: &VarIdent, typ: &Typ, expr_ctxt: &ExprC
         },
         ExprMode::BodyPre =>
             if pre {
-                panic!("unexpected old() in pre context");
-            } else {
                 match &**typ {
                     TypX::MutRef(t) => ident_apply(&ty_to_proph_accessor(t, false), &vec![string_var(&suffix_local_unique_id(x))]),
                     _ => string_var(&suffix_local_unique_id(x)),
                 }
+            } else {
+                panic!("unexpected non-old() in non BodyPre context");
             }
 
     }
@@ -885,7 +882,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
         ExpX::Var(x) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, None),
         ExpX::VarLoc(x) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, None),
-        ExpX::VarAt(x, VarAt::Pre) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, Some(VarAt::Pre)),
+        ExpX::VarAt(x, VarAt::Pre) => {
+            dbg!(&exp);
+            var_to_expr(ctx, x, &exp.typ, expr_ctxt, Some(VarAt::Pre))
+        },
         ExpX::StaticVar(f) => string_var(&static_name(f)),
         ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt)?,
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x))),
@@ -1145,7 +1145,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
                 (_, ExpX::Const(..)) => true,
                 _ => false,
             };
-            dbg!(&exp);
             let lh = exp_to_expr(ctx, lhs, expr_ctxt)?;
             let rh = exp_to_expr(ctx, rhs, expr_ctxt)?;
             let expx = match op {

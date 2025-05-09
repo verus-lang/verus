@@ -291,7 +291,6 @@ pub(crate) fn coerce_exp_to_native(ctx: &Ctx, exp: &Exp) -> Exp {
         Arc::make_mut(&mut exp_i).typ = typ.clone();
         // Maintain the mutable reference wrapper, but unbox the inner type
         let mut res = coerce_exp_to_native_handle_mut_ref(ctx, &exp_i);
-        dbg!(&res);
         assert!(!matches!(&*res.typ, TypX::MutRef(_)));
         Arc::make_mut(&mut res).typ = Arc::new(TypX::MutRef(res.typ.clone()));
         res
