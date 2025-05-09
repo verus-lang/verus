@@ -344,6 +344,32 @@ impl ToDebugSNode for ExprX {
     }
 }
 
+impl ToDebugSNode for air::messages::MessageLevel {
+    fn to_node(&self, _opts: &ToDebugSNodeOpts) -> Node {
+        match self {
+            air::messages::MessageLevel::Error => Node::Atom("Error".to_string()),
+            air::messages::MessageLevel::Warning => Node::Atom("Warning".to_string()),
+            air::messages::MessageLevel::Note => Node::Atom("Note".to_string()),
+        }
+    }
+}
+
+impl<A: Clone + ToDebugSNode> ToDebugSNode for im::Vector<A> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        Node::List(self.iter().map(|x| x.to_node(opts)).collect())
+    }
+}
+
+impl<K: ToDebugSNode, V: ToDebugSNode> ToDebugSNode for std::collections::HashMap<K, V> {
+    fn to_node(&self, opts: &ToDebugSNodeOpts) -> Node {
+        let mut nodes = vec![];
+        for (k, v) in self.iter() {
+            nodes.push(Node::List(vec![k.to_node(opts), v.to_node(opts)]));
+        }
+        Node::List(nodes)
+    }
+}
+
 fn path_to_node(path: &Path) -> Node {
     Node::Atom(format!(
         "\"{}\"",
@@ -428,4 +454,73 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate, opts: &ToD
     let arch_nodes = nodes!(arch_word_bits {arch.word_bits.to_node(opts)});
     writeln!(&mut write, "{}\n", nw.node_to_string(&arch_nodes))
         .expect("cannot write to vir write");
+}
+
+pub fn write_krate_sst(
+    mut write: impl std::io::Write,
+    sst_crate: &crate::sst::KrateSst,
+    opts: &ToDebugSNodeOpts,
+) {
+    let mut nw = NodeWriter::new_vir();
+
+    let crate::sst::KrateSstX {
+        functions,
+        datatypes,
+        traits,
+        trait_impls,
+        assoc_type_impls,
+        reveal_groups,
+    } = &**sst_crate;
+
+    for datatype in datatypes.iter() {
+        if opts.no_span {
+            writeln!(&mut write, ";; {}", &datatype.span.as_string)
+                .expect("cannot write to vir write");
+        }
+        writeln!(&mut write, "{}\n", nw.node_to_string(&datatype.to_node(opts)))
+            .expect("cannot write to vir write");
+    }
+    for function in functions.iter() {
+        if opts.no_span {
+            writeln!(&mut write, ";; {}", &function.span.as_string)
+                .expect("cannot write to vir write");
+        }
+        writeln!(&mut write, "{}\n", nw.node_to_string(&function.to_node(opts)))
+            .expect("cannot write to vir write");
+    }
+    for trait_ in traits.iter() {
+        if opts.no_span {
+            writeln!(&mut write, ";; {}", &trait_.span.as_string)
+                .expect("cannot write to vir write");
+        }
+        let trait_node = Node::List(vec![Node::Atom("trait".to_owned()), trait_.to_node(opts)]);
+        writeln!(&mut write, "{}\n", nw.node_to_string(&trait_node))
+            .expect("cannot write to vir write");
+    }
+    writeln!(&mut write, ";; trait_impls").expect("cannot write to vir write");
+    for trait_impl in trait_impls.iter() {
+        if opts.no_span {
+            writeln!(&mut write, ";; {}", &trait_impl.span.as_string)
+                .expect("cannot write to vir write");
+        }
+        let trait_impl = nodes!(trait_impl {trait_impl.to_node(opts)});
+        writeln!(&mut write, "{}\n", nw.node_to_string(&trait_impl))
+            .expect("cannot write to vir write");
+    }
+    writeln!(&mut write, ";; assoc_type_impls").expect("cannot write to vir write");
+    for assoc in assoc_type_impls.iter() {
+        if opts.no_span {
+            writeln!(&mut write, ";; {}", &assoc.span.as_string)
+                .expect("cannot write to vir write");
+        }
+        let assoc_type_impl = nodes!(assoc_type_impl {assoc.to_node(opts)});
+        writeln!(&mut write, "{}\n", nw.node_to_string(&assoc_type_impl))
+            .expect("cannot write to vir write");
+    }
+    writeln!(&mut write, ";; reveal_groups").expect("cannot write to vir write");
+    for group in reveal_groups.iter() {
+        let group_node = nodes!(group {group.to_node(opts)});
+        writeln!(&mut write, "{}\n", nw.node_to_string(&group_node))
+            .expect("cannot write to vir write");
+    }
 }
