@@ -532,7 +532,7 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             }
         }
         TypX::Decorate(..) => unreachable!(),
-        TypX::MutRef(typ) => typ_invariant(ctx, typ, expr), // TODO(prophecy): this may need to change later
+        TypX::MutRef(typ) => typ_invariant(ctx, typ, &ident_apply(&ty_to_proph_accessor(typ, false), &vec![expr.clone()])), // TODO(prophecy): this may need to change later
         TypX::Boxed(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::TypParam(_) => Some(expr_has_typ(ctx, expr, typ)),
         TypX::Projection { .. } => Some(expr_has_typ(ctx, expr, typ)),
@@ -2162,6 +2162,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             stm_to_stmts(ctx, state, &assume_var(&stm.span, x, rhs))?
         }
         StmX::Assign { lhs: Dest { dest, is_init: false }, rhs } => {
+            dbg!(&dest);
             let mut stmts: Vec<Stmt> = Vec::new();
             if ctx.debug {
                 unimplemented!("assignments are unsupported in debugger mode");
@@ -2194,6 +2195,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             // TODO(andrea) move this to poly.rs once we have general support for mutable references
             if typ_is_poly(ctx, &base_typ) && !typ_is_poly(ctx, &value_typ) {
                 value = try_box(ctx, value, &value_typ).expect("box field update");
+            }
+            
+            if let TypX::MutRef(typ) = &*base_typ {
+                let acc = ty_to_proph_accessor(typ, false);
+                let bop = air::ast::BinaryOp::FieldUpdate(acc);
+                value = Arc::new(ExprX::Binary(bop, ident_var(&suffix_local_unique_id(&base_var)), value));
             }
 
             let a = Arc::new(StmtX::Assign(suffix_local_unique_id(&base_var), value));
