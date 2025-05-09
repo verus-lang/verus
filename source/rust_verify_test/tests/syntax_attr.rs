@@ -670,3 +670,25 @@ test_verify_one_file! {
 
     } => Err(e) => assert_rust_error_msg(e, "method `spec_f` is not a member of trait `X`")
 }
+
+test_verify_one_file! {
+    #[test] test_macro_inside_proof_decl code!{
+        macro_rules! inline_proof {
+            ($val: expr => $x: ident, $y: ident) => {
+                proof_decl!{
+                    let tracked $x: int = $val;
+                    let ghost $y: int = $val;
+                    assert($x == $y);
+                }
+             }
+        }
+
+        fn test_inline_proof_via_macro() {
+            proof_decl!{
+                inline_proof!(0 => x, y);
+                assert(x == 0);
+            }
+        }
+
+    } => Ok(())
+}
