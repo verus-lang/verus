@@ -882,10 +882,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Result<
         }
         ExpX::Var(x) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, None),
         ExpX::VarLoc(x) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, None),
-        ExpX::VarAt(x, VarAt::Pre) => {
-            dbg!(&exp);
-            var_to_expr(ctx, x, &exp.typ, expr_ctxt, Some(VarAt::Pre))
-        },
+        ExpX::VarAt(x, VarAt::Pre) => var_to_expr(ctx, x, &exp.typ, expr_ctxt, Some(VarAt::Pre)),
         ExpX::StaticVar(f) => string_var(&static_name(f)),
         ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt)?,
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x))),
