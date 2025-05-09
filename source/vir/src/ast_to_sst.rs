@@ -552,6 +552,7 @@ fn expr_get_call(
                 let mut stms: Vec<Stm> = Vec::new();
                 let mut exps: Vec<Exp> = Vec::new();
                 for arg in args.iter() {
+                    // TODO(prophecy): declare temporary prophecy var for arg
                     let (mut stms0, e0) = expr_to_stm_opt(ctx, state, arg)?;
                     stms.append(&mut stms0);
                     let e0 = match e0.to_value() {
