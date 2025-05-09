@@ -15,7 +15,7 @@ use crate::def::{
     path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_no_unwind_when,
     prefix_open_inv, prefix_pre_var, prefix_requires, prefix_spec_fn_type, prefix_unbox,
     snapshot_ident, static_name, suffix_global_id, suffix_local_unique_id,
-    suffix_local_unique_proph, suffix_typ_param_ids, unique_local, variant_field_ident,
+    suffix_typ_param_ids, unique_local, variant_field_ident,
     variant_field_ident_internal, variant_ident, CommandsWithContext, CommandsWithContextX,
     ProverChoice, SnapPos, SpanKind, Spanned, ARCH_SIZE, FUEL_BOOL, FUEL_BOOL_DEFAULT,
     FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, I_HI, I_LO, POLY, PROPH_BOOL, PROPH_INT,
@@ -1708,9 +1708,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             for arg in args.iter() {
                 match &arg.x {
                     ExpX::Loc(x) => match &x.x {
-                        ExpX::VarLoc(x) => req_args.push(string_var(&suffix_local_unique_proph(
-                            &suffix_local_unique_id(x),
-                        ))),
+                        ExpX::VarLoc(x) => req_args.push(string_var(&suffix_local_unique_id(x))),
                         _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?),
                     },
                     _ => req_args.push(exp_to_expr(ctx, &arg, expr_ctxt)?),
@@ -1842,7 +1840,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     let (base_var, LocFieldInfo { base_typ, base_span, a: fields }) =
                         loc_to_field_update_data(arg);
 
-                    let second_apply = ident_apply(&ty_to_proph_accessor(proph_t, true), &vec![Arc::new(ExprX::Var(suffix_local_unique_proph(&suffix_local_unique_id(&base_var))))]);
+                    let second_apply = ident_apply(&ty_to_proph_accessor(proph_t, true), &vec![Arc::new(ExprX::Var(suffix_local_unique_id(&base_var)))]);
                     let second_eq = Arc::new(ExprX::Binary(
                         air::ast::BinaryOp::Eq,
                         Arc::new(ExprX::Var(suffix_local_unique_id(&base_var))),
@@ -1850,7 +1848,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     ));
                     stmts.insert(0, Arc::new(StmtX::Assume(second_eq)));
                     stmts.insert(0, Arc::new(StmtX::Havoc(suffix_local_unique_id(&base_var))));
-                    let first_apply = ident_apply(&ty_to_proph_accessor(proph_t, false), &vec![Arc::new(ExprX::Var(suffix_local_unique_proph(&suffix_local_unique_id(&base_var))))]);
+                    let first_apply = ident_apply(&ty_to_proph_accessor(proph_t, false), &vec![Arc::new(ExprX::Var(suffix_local_unique_id(&base_var)))]);
                     let first_eq = Arc::new(ExprX::Binary(
                         air::ast::BinaryOp::Eq,
                         first_apply,
@@ -1868,7 +1866,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                     match &arg_x.x {
                         ExpX::Loc(x) => match &x.x {
                             ExpX::VarLoc(x) => ens_args_wo_typ.push(string_var(
-                                &suffix_local_unique_proph(&suffix_local_unique_id(x)),
+                                &&suffix_local_unique_id(x),
                             )),
                             _ => ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt)?),
                         },
@@ -2860,22 +2858,13 @@ pub(crate) fn body_stm_to_air(
     }
     for decl in local_decls.iter() {
         if decl.kind.is_mutable() {
-            match &*decl.typ {
-                TypX::MutRef(t) => local_shared.push(
-                    Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, t))),
-                ),
-                _ => local_shared.push(Arc::new(DeclX::Var(
-                    suffix_local_unique_id(&decl.ident),
-                    typ_to_air(ctx, &decl.typ),
-                ))),
-            };
-            local_shared.push(Arc::new(DeclX::Const(
-                suffix_local_unique_proph(&suffix_local_unique_id(&decl.ident)),
-                typ_to_air(
-                    ctx,
-                    // &Arc::new(TypX::MutRef(decl.typ.clone())),
-                    &decl.typ,
-                ),
+            // TODO(prophecy) match &*decl.typ {
+            // TODO(prophecy)     TypX::MutRef(t) => local_shared.push(
+            // TODO(prophecy)         Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, t))),
+            // TODO(prophecy)     ),
+            local_shared.push(Arc::new(DeclX::Var(
+                suffix_local_unique_id(&decl.ident),
+                typ_to_air(ctx, &decl.typ),
             )));
         } else {
             local_shared.push(Arc::new(DeclX::Const(

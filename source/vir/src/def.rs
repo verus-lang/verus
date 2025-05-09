@@ -205,7 +205,6 @@ pub const PROPH_BOOL: &str = "Proph%B";
 pub const PROPH_CONSTRUCT_BOOL: &str = "Proph%B%";
 pub const PROPH_BOOL_CUR: &str = "Proph%cur%B";
 pub const PROPH_BOOL_FUT: &str = "Proph%future%B";
-pub const PROPH_INT_SUFFIX: &str = "proph%1";
 
 // List of QID suffixes we add to internally generated quantifiers
 pub const QID_BOX_AXIOM: &str = "box_axiom";
@@ -343,9 +342,10 @@ pub fn suffix_local_unique_id(ident: &VarIdent) -> Ident {
     ident.lower()
 }
 
-pub fn suffix_local_unique_proph(ident: &Ident) -> Ident {
-    Arc::new(ident.to_string() + PROPH_INT_SUFFIX)
-}
+// TODO(prophecy)
+// pub fn suffix_local_unique_proph(ident: &Ident) -> Ident {
+//     Arc::new(ident.to_string() + PROPH_INT_SUFFIX)
+// }
 
 pub fn subst_rename_ident(x: &VarIdent, n: u64) -> VarIdent {
     let dis = crate::ast::VarIdentDisambiguate::VirSubst(n);
