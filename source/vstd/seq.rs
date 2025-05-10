@@ -261,7 +261,7 @@ pub broadcast proof fn axiom_seq_subrange_decreases<A>(s: Seq<A>, i: int, j: int
     ensures
         #[trigger] (decreases_to!(s => s.subrange(i, j))),
 {
-    broadcast use axiom_seq_subrange_len, axiom_seq_subrange_index;
+    broadcast use {axiom_seq_subrange_len, axiom_seq_subrange_index};
 
     let s2 = s.subrange(i, j);
     assert forall|i2: int| 0 <= i2 < s2.len() && #[trigger] trigger(s2[i2]) implies exists|i1: int|

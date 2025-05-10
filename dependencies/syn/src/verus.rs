@@ -350,8 +350,10 @@ ast_struct! {
     pub struct BroadcastUse {
         pub attrs: Vec<Attribute>,
         pub broadcast_use_tokens: (Token![broadcast], Token![use]),
+        pub brace_token: Option<token::Brace>,
         pub paths: Punctuated<ExprPath, Token![,]>,
         pub semi: Token![;],
+        pub warning: bool,
     }
 }
 
@@ -1300,27 +1302,43 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for BroadcastUse {
         fn parse(input: ParseStream) -> Result<Self> {
+            let mut warning = false;
             let attrs = Vec::new();
             let broadcast_use_tokens: (Token![broadcast], Token![use]) =
                 (input.parse()?, input.parse()?);
-            let mut paths = Punctuated::new();
-            let semi = loop {
-                let path: ExprPath = input.parse()?;
+            let (brace_token, paths) = if input.peek(token::Brace) {
+                let brace_content;
+                let brace = braced!(brace_content in input);
+                let paths = brace_content.parse_terminated(ExprPath::parse, Token![,])?;
+                (Some(brace), paths)
+            } else {
+                let path = input.parse()?;
+                let mut paths = Punctuated::new();
                 paths.push(path);
-                if input.peek(Token![,]) {
-                    let _: Token![,] = input.parse()?;
-                    continue;
-                } else {
-                    let semi: Token![;] = input.parse()?;
-                    break semi;
+                loop {
+                    if input.peek(Token![;]) {
+                        break;
+                    }
+                    warning = true;
+                    if input.peek(Token![,]) {
+                        let _: Token![,] = input.parse()?;
+                        continue;
+                    }
+                    let path = input.parse()?;
+                    paths.push(path);
                 }
+                (None, paths)
             };
+
+            let semi: Token![;] = input.parse()?;
 
             Ok(BroadcastUse {
                 attrs,
                 broadcast_use_tokens,
+                brace_token,
                 paths,
                 semi,
+                warning,
             })
         }
     }
@@ -1838,12 +1856,20 @@ mod printing {
             let BroadcastUse {
                 attrs: _,
                 broadcast_use_tokens,
+                brace_token,
                 paths,
                 semi,
+                warning: _,
             } = self;
             broadcast_use_tokens.0.to_tokens(tokens);
             broadcast_use_tokens.1.to_tokens(tokens);
-            paths.to_tokens(tokens);
+            if let Some(brace_token) = brace_token {
+                brace_token.surround(tokens, |tokens| {
+                    paths.to_tokens(tokens);
+                });
+            } else {
+                paths.to_tokens(tokens);
+            }
             semi.to_tokens(tokens);
         }
     }
