@@ -15,6 +15,8 @@ pub(crate) fn to_raw_span(span: Span) -> vir::messages::RawSpan {
 }
 
 // Note: this only returns Some for Spans in the local crate
+// WARNING: this should only be called from rustc's thread, not from a Verus worker thread,
+// because rustc may use its thread-local storage in .span().
 pub(crate) fn from_raw_span(raw_span: &vir::messages::RawSpan) -> Option<Span> {
     let x = (&(**raw_span)) as &(dyn std::any::Any + Sync + Send); // rust subtyping limitaiton
     x.downcast_ref::<SpanData>().map(|data| data.span())

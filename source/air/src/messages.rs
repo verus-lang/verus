@@ -38,6 +38,14 @@ pub trait Diagnostics {
     /// Override the msg's reporting level
     fn report_as(&self, msg: &ArcDynMessage, msg_as: MessageLevel);
 
+    /// Call report_as on each message
+    /// (And, optionally, sort the messages by span before calling report_as on each.)
+    fn report_as_multi(&self, msgs: Vec<(ArcDynMessage, MessageLevel)>) {
+        for (msg, msg_as) in msgs {
+            self.report_as(&msg, msg_as);
+        }
+    }
+
     /// Override the msg's reporting level and immediately display the message
     fn report_as_now(&self, msg: &ArcDynMessage, msg_as: MessageLevel);
 }
