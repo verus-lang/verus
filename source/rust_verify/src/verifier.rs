@@ -288,6 +288,8 @@ pub struct Verifier {
     pub bucket_stats: HashMap<BucketId, BucketStats>,
     /// smt runtimes for each function per bucket
     pub func_times: HashMap<BucketId, HashMap<Fun, FunctionSmtStats>>,
+    /// mode of each function
+    pub func_modes: HashMap<Fun, vir::ast::Mode>,
 
     pub via_cargo_args: Option<CargoVerusArgs>,
     // Some(DepTracker) if via_cargo_args.is_some(), None otherwise
@@ -445,6 +447,7 @@ impl Verifier {
 
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
+            func_modes: HashMap::new(),
 
             dep_tracker: if via_cargo_args.is_some() { Some(dep_tracker) } else { None },
             via_cargo_args,
@@ -490,6 +493,7 @@ impl Verifier {
             time_vir_rust_to_vir: Duration::new(0, 0),
             bucket_stats: HashMap::new(),
             func_times: HashMap::new(),
+            func_modes: HashMap::new(),
 
             via_cargo_args: self.via_cargo_args.clone(),
             dep_tracker: None,
@@ -2801,8 +2805,8 @@ impl Verifier {
         check_crate_result1.map_err(|e| (e, Vec::new()))?;
         check_crate_result.map_err(|e| (e, Vec::new()))?;
         let vir_crate = vir::autospec::resolve_autospec(&vir_crate).map_err(|e| (e, Vec::new()))?;
-        let (vir_crate, erasure_modes) =
-            vir::modes::check_crate(&vir_crate).map_err(|e| (e, Vec::new()))?;
+        let (vir_crate, erasure_modes) = vir::modes::check_crate(&vir_crate, &mut self.func_modes)
+            .map_err(|e| (e, Vec::new()))?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.crate_name = Some(crate_name);
