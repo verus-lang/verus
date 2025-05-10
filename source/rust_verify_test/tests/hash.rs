@@ -829,7 +829,7 @@ test_verify_one_file_with_options! {
             for v in iter: m_values
                 invariant
                     iter.values == g_values,
-                    g_values.to_set() =~= set![4i8, -8i8],
+                    g_values.to_set() == set![4i8, -8i8],
                     items@ == iter@,
             {
                 assert(iter.values.take(iter.pos).push(*v) =~= iter.values.take(iter.pos + 1));
