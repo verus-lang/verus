@@ -813,10 +813,14 @@ test_verify_one_file_with_options! {
 
             m.insert(3, 4);
             m.insert(6, -8);
+            assert(m@.values() == set![4i8, -8i8]) by {
+                assert(m@.contains_key(3u32));
+                assert(m@.contains_key(6u32));
+                assert(m@.values() =~= set![4i8, -8i8]);
+            };
             let m_values = m.values();
             assert(m_values@.0 == 0);
-            // assert(m_values@.1.to_set() == set![4i8, -8i8]); // FAILS due to https://github.com/verus-lang/verus/issues/1633
-            assert(m_values@.1.to_set() == m@.values());
+            assert(m_values@.1.to_set() == set![4i8, -8i8]);
             let ghost g_values = m_values@.1;
 
             let mut items = Vec::<i8>::new();
@@ -825,13 +829,13 @@ test_verify_one_file_with_options! {
             for v in iter: m_values
                 invariant
                     iter.values == g_values,
-                    g_values.to_set() =~= m@.values(),
+                    g_values.to_set() =~= set![4i8, -8i8],
                     items@ == iter@,
             {
                 assert(iter.values.take(iter.pos).push(*v) =~= iter.values.take(iter.pos + 1));
                 items.push(*v);
             }
-            assert(items@.to_set() =~= m@.values()) by {
+            assert(items@.to_set() =~= set![4i8, -8i8]) by {
                 assert(g_values.take(g_values.len() as int) =~= g_values);
             }
         }
