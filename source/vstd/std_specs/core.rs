@@ -58,9 +58,16 @@ pub assume_specification<T, U: From<T>>[ T::into ](a: T) -> (ret: U)
         call_ensures(U::from, (a,), ret),
 ;
 
+// TODO: we can't declare `ne` until the default_ensures PR is merged; otherwise, string.rs fails
+//   fn ne(&self, other: &Rhs) -> bool;
 #[verifier::external_trait_specification]
+#[verifier::external_trait_extension(PartialEqSpec)]
 pub trait ExPartialEq<Rhs: ?Sized> {
     type ExternalTraitSpecificationFor: core::cmp::PartialEq<Rhs>;
+
+    spec fn spec_eq(&self, other: &Rhs) -> bool;
+
+    fn eq(&self, other: &Rhs) -> bool;
 }
 
 #[verifier::external_trait_specification]
@@ -69,8 +76,21 @@ pub trait ExEq: PartialEq {
 }
 
 #[verifier::external_trait_specification]
+#[verifier::external_trait_extension(PartialOrdSpec)]
 pub trait ExPartialOrd<Rhs: ?Sized>: PartialEq<Rhs> {
     type ExternalTraitSpecificationFor: core::cmp::PartialOrd<Rhs>;
+
+    spec fn spec_partial_cmp(&self, other: &Rhs) -> Option<core::cmp::Ordering>;
+
+    fn partial_cmp(&self, other: &Rhs) -> Option<core::cmp::Ordering>;
+
+    fn lt(&self, other: &Rhs) -> bool;
+
+    fn le(&self, other: &Rhs) -> bool;
+
+    fn gt(&self, other: &Rhs) -> bool;
+
+    fn ge(&self, other: &Rhs) -> bool;
 }
 
 #[verifier::external_trait_specification]
@@ -127,6 +147,9 @@ pub assume_specification<T>[ core::mem::swap::<T> ](a: &mut T, b: &mut T)
     opens_invariants none
     no_unwind
 ;
+
+#[verifier::external_type_specification]
+pub struct ExOrdering(core::cmp::Ordering);
 
 #[verifier::external_type_specification]
 #[verifier::accept_recursive_types(V)]

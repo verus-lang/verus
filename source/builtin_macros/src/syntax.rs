@@ -34,7 +34,7 @@ use syn_verus::{
     TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath, UnOp, Visibility,
 };
 
-const VERUS_SPEC: &str = "VERUS_SPEC__";
+pub(crate) const VERUS_SPEC: &str = "VERUS_SPEC__";
 
 fn take_expr(expr: &mut Expr) -> Expr {
     let dummy: Expr = Expr::Verbatim(TokenStream::new());
@@ -1320,6 +1320,7 @@ impl Visitor {
     }
 
     fn visit_items_prefilter(&mut self, items: &mut Vec<Item>) {
+        crate::syntax_trait::expand_extension_traits(self.erase_ghost.erase_all(), items);
         if self.erase_ghost.erase_all() {
             // Erase ghost functions and constants
             items.retain(|item| match item {
@@ -4047,6 +4048,7 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_impl_mut(&mut self, imp: &mut ItemImpl) {
+        crate::syntax_trait::trait_extension_rewrite_impl(imp);
         imp.attrs.push(mk_verus_attr(imp.span(), quote! { verus_macro }));
         self.visit_impl_items_prefilter(&mut imp.items, imp.trait_.is_some());
         self.filter_attrs(&mut imp.attrs);

@@ -40,6 +40,7 @@ use crate::attributes::ExternalAttrs;
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::Context;
 use crate::rust_to_vir_base::{def_id_to_vir_path, def_id_to_vir_path_option};
+use crate::rust_to_vir_impl::ExternalInfo;
 use crate::rustc_hir::intravisit::*;
 use crate::verus_items::get_rust_item;
 use rustc_hir::{
@@ -124,7 +125,10 @@ impl CrateItems {
 ///     Trait impls need to be "whole" so we forbid external_body on individual
 ///     ImplItems in a trait_impl.
 
-pub(crate) fn get_crate_items<'tcx>(ctxt: &Context<'tcx>) -> Result<CrateItems, VirErr> {
+pub(crate) fn get_crate_items<'a, 'b, 'tcx>(
+    ctxt: &'a Context<'tcx>,
+    external_info: &'b mut ExternalInfo,
+) -> Result<CrateItems, VirErr> {
     let default_state = if ctxt.cmd_line_args.no_external_by_default {
         VerifState::Verify
     } else {
@@ -137,6 +141,7 @@ pub(crate) fn get_crate_items<'tcx>(ctxt: &Context<'tcx>) -> Result<CrateItems, 
     let mut visitor = VisitMod {
         items: vec![],
         ctxt: ctxt,
+        external_info,
         state: default_state,
         module_path: root_module_path,
         errors: vec![],
@@ -183,9 +188,10 @@ struct InsideImpl {
     has_any_verus_aware_item: bool,
 }
 
-struct VisitMod<'a, 'tcx> {
+struct VisitMod<'a, 'b, 'tcx> {
     items: Vec<CrateItem>,
     ctxt: &'a Context<'tcx>,
+    external_info: &'b mut ExternalInfo,
     errors: Vec<VirErr>,
 
     state: VerifState,
@@ -193,7 +199,7 @@ struct VisitMod<'a, 'tcx> {
     in_impl: Option<InsideImpl>,
 }
 
-impl<'a, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'a, 'tcx> {
+impl<'a, 'b, 'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitMod<'a, 'b, 'tcx> {
     // Configure the visitor for nested visits
     type Map = rustc_middle::hir::map::Map<'tcx>;
     type NestedFilter = rustc_middle::hir::nested_filter::All;
@@ -230,7 +236,7 @@ fn opts_in_to_verus(eattrs: &ExternalAttrs) -> bool {
         || eattrs.size_of_global
 }
 
-impl<'a, 'tcx> VisitMod<'a, 'tcx> {
+impl<'a, 'b, 'tcx> VisitMod<'a, 'b, 'tcx> {
     fn visit_general(&mut self, general_item: GeneralItem<'tcx>, hir_id: HirId, span: Span) {
         let attrs = self.ctxt.tcx.hir().attrs(hir_id);
 
@@ -244,6 +250,10 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
 
         let owner_id = hir_id.expect_owner();
         let def_id = owner_id.to_def_id();
+
+        if eattrs.external_trait_blanket {
+            self.external_info.external_trait_blanket.insert(def_id);
+        }
 
         {
             emit_errors_warnings_for_ignored_attrs(
