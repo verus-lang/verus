@@ -373,12 +373,12 @@ pub assume_specification<'a, Key, Value>[ Values::<'a, Key, Value>::next ](
                     &&& values@ == old(values)@
                     &&& old_index >= old_seq.len()
                 },
-                Some(k) => {
+                Some(v) => {
                     let (new_index, new_seq) = values@;
                     &&& 0 <= old_index < old_seq.len()
                     &&& new_seq == old_seq
                     &&& new_index == old_index + 1
-                    &&& k == old_seq[old_index]
+                    &&& v == old_seq[old_index]
                 },
             }
         }),
