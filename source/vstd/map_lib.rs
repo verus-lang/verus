@@ -51,9 +51,12 @@ impl<K, V> Map<K, V> {
     /// ## Example
     ///
     /// ```rust
-    /// assert(
-    ///    map![1 => 10, 2 => 11].values() =~= set![10, 11]
-    /// );
+    /// let m: Map<int, int> = map![1 => 10, 2 => 11];
+    /// assert(m.values() == set![10int, 11int]) by {
+    ///     assert(m.contains_key(1));
+    ///     assert(m.contains_key(2));
+    ///     assert(m.values() =~= set![10int, 11int]);
+    /// }
     /// ```
     pub open spec fn values(self) -> Set<V> {
         Set::<V>::new(|v: V| self.contains_value(v))
