@@ -683,7 +683,8 @@ pub mod parsing {
                 || input.peek(Token![decreases])
                 || input.peek(Token![via])
                 || input.peek(Token![when])
-                || input.peek(Token![opens_invariants]))
+                || input.peek(Token![opens_invariants])
+                || input.peek(Token![no_unwind]))
             {
                 let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
@@ -705,6 +706,9 @@ pub mod parsing {
                 }
                 if input.peek2(Token![opens_invariants]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'opens_invariants' (if you meant this block to be part of the specification, try parenthesizing it)"));
+                }
+                if input.peek2(Token![no_unwind]) {
+                    return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by 'no_unwind' (if you meant this block to be part of the specification, try parenthesizing it)"));
                 }
                 if input.peek2(Token![invariant_except_break]) {
                     return Err(input.error("This block would be parsed as the function/loop body, but it is followed immediately by an 'invariant_except_break' (if you meant this block to be part of the specification, try parenthesizing it)"));
