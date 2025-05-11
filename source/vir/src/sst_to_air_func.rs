@@ -736,32 +736,49 @@ pub fn func_axioms_to_air(
                 return Ok((Arc::new(decl_commands), check_commands));
             }
 
-            let name = suffix_global_id(&fun_to_air_ident(&function.x.name));
+            let mk_inv = |decl_commands: &mut Vec<Command>, name: &Fun, qid: &str, is_rec: bool| {
+                let name = suffix_global_id(&fun_to_air_ident(name));
 
-            // Return typing invariant
-            let mut f_args: Vec<Expr> = Vec::new();
-            let mut f_pre: Vec<Expr> = Vec::new();
-            for typ_param in function.x.typ_params.iter() {
-                let ids = suffix_typ_param_ids(&typ_param);
-                f_args.extend(ids.iter().map(|x| ident_var(&x.lower())));
-            }
-            for param in function.x.pars.iter() {
-                let arg = ident_var(&param.x.name.lower());
-                f_args.push(arg.clone());
-                if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
-                    f_pre.push(pre.clone());
+                // Return typing invariant
+                let mut f_args: Vec<Expr> = Vec::new();
+                let mut f_pre: Vec<Expr> = Vec::new();
+                for typ_param in function.x.typ_params.iter() {
+                    let ids = suffix_typ_param_ids(&typ_param);
+                    f_args.extend(ids.iter().map(|x| ident_var(&x.lower())));
                 }
-            }
-            let f_app = ident_apply(&name, &Arc::new(f_args));
-            if let Some(post) = typ_invariant(ctx, &function.x.ret.x.typ, &f_app) {
-                // (axiom (forall (...) (=> pre post)))
-                let name = format!("{}_pre_post", name);
-                let e_forall = mk_bind_expr(
-                    &func_bind(ctx, name, &function.x.typ_params, &function.x.pars, &f_app, false),
-                    &mk_implies(&mk_and(&f_pre), &post),
-                );
-                let inv_axiom = mk_unnamed_axiom(e_forall);
-                decl_commands.push(Arc::new(CommandX::Global(inv_axiom)));
+                for param in function.x.pars.iter() {
+                    let arg = ident_var(&param.x.name.lower());
+                    f_args.push(arg.clone());
+                    if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
+                        f_pre.push(pre.clone());
+                    }
+                }
+                if is_rec {
+                    f_args.push(str_var(FUEL_PARAM));
+                }
+                let f_app = ident_apply(&name, &Arc::new(f_args));
+                if let Some(post) = typ_invariant(ctx, &function.x.ret.x.typ, &f_app) {
+                    // (axiom (forall (...) (=> pre post)))
+                    let name = format!("{}{}", name, qid);
+                    let e_forall = mk_bind_expr(
+                        &func_bind(
+                            ctx,
+                            name,
+                            &function.x.typ_params,
+                            &function.x.pars,
+                            &f_app,
+                            is_rec,
+                        ),
+                        &mk_implies(&mk_and(&f_pre), &post),
+                    );
+                    let inv_axiom = mk_unnamed_axiom(e_forall);
+                    decl_commands.push(Arc::new(CommandX::Global(inv_axiom)));
+                }
+            };
+            mk_inv(&mut decl_commands, &function.x.name, "_pre_post", false);
+            if function.x.has.has_body && function.x.has.is_recursive {
+                let name = prefix_recursive_fun(&function.x.name);
+                mk_inv(&mut decl_commands, &name, "_pre_post_rec", true);
             }
         }
         Mode::Exec | Mode::Proof => {

@@ -2074,3 +2074,37 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] has_type_for_recursive_call verus_code! {
+        // https://verus-lang.zulipchat.com/#narrow/channel/399078-help/topic/missing.20recursive.20expansion/with/517201560
+        use vstd::prelude::*;
+        struct Link<K>(Option<Box<Node<K>>>);
+
+        struct Node<K> {
+            key: K,
+            left: Link<K>,
+            right: Link<K>,
+        }
+
+        proof fn right_mem<K>(node: Node<K>, key: K)
+            requires
+                node.right.as_set().contains(key),
+                node.key != key,
+            ensures
+                Link(Some(Box::new(node))).as_set().contains(key),
+        {
+        }
+
+        impl<K> Link<K> {
+            spec fn as_set(self) -> Set<K>
+                decreases self,
+            {
+                match self.0 {
+                    None => Set::empty(),
+                    Some(node) => node.left.as_set().union(node.right.as_set()).insert(node.key),
+                }
+            }
+        }
+    } => Ok(())
+}
