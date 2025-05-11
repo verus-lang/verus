@@ -799,6 +799,50 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] test_hash_map_values ["exec_allows_no_decreases_clause"] => verus_code! {
+        use std::collections::HashMap;
+        use std::collections::hash_map::Values;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::*;
+        fn test()
+        {
+            broadcast use vstd::std_specs::hash::group_hash_axioms;
+            let mut m = HashMap::<u32, i8>::new();
+            assert(m@ == Map::<u32, i8>::empty());
+            assert(m@.values() =~= Set::<i8>::empty());
+
+            m.insert(3, 4);
+            m.insert(6, -8);
+            assert(m@.values() == set![4i8, -8i8]) by {
+                assert(m@.contains_key(3u32));
+                assert(m@.contains_key(6u32));
+                assert(m@.values() =~= set![4i8, -8i8]);
+            };
+            let m_values = m.values();
+            assert(m_values@.0 == 0);
+            assert(m_values@.1.to_set() == set![4i8, -8i8]);
+            let ghost g_values = m_values@.1;
+
+            let mut items = Vec::<i8>::new();
+            assert(items@ =~= g_values.take(0));
+
+            for v in iter: m_values
+                invariant
+                    iter.values == g_values,
+                    g_values.to_set() == set![4i8, -8i8],
+                    items@ == iter@,
+            {
+                assert(iter.values.take(iter.pos).push(*v) =~= iter.values.take(iter.pos + 1));
+                items.push(*v);
+            }
+            assert(items@.to_set() =~= set![4i8, -8i8]) by {
+                assert(g_values.take(g_values.len() as int) =~= g_values);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
     #[test] test_hash_set_iter ["exec_allows_no_decreases_clause"] => verus_code! {
         use std::collections::HashSet;
         use std::collections::hash_set::Iter;
