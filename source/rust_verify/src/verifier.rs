@@ -170,6 +170,7 @@ pub(crate) enum ReporterMessage {
     ReportLongRunning(CommandContext),
     FinishLongRunning(CommandContext),
     Message(usize, Message, MessageLevel, bool),
+    Messages(usize, Vec<(Message, MessageLevel)>, bool),
     WorkerPanicked(Box<dyn std::any::Any + Send>),
     Done(usize),
 }
@@ -196,6 +197,18 @@ impl air::messages::Diagnostics for QueuedReporter {
             msg.clone().downcast().expect("unexpected value in Any -> Message conversion");
         self.queue
             .send(ReporterMessage::Message(self.bucket_id, msg, level, false))
+            .expect("could not send the message!");
+    }
+
+    fn report_as_multi(&self, msgs: Vec<(ArcDynMessage, MessageLevel)>) {
+        let mut queue_msgs: Vec<(Message, MessageLevel)> = Vec::new();
+        for (msg, level) in msgs {
+            let msg: Message =
+                msg.clone().downcast().expect("unexpected value in Any -> Message conversion");
+            queue_msgs.push((msg, level));
+        }
+        self.queue
+            .send(ReporterMessage::Messages(self.bucket_id, queue_msgs, false))
             .expect("could not send the message!");
     }
 
@@ -723,16 +736,12 @@ impl Verifier {
             let report_fn: Box<dyn FnMut(std::time::Duration, bool) -> ()> = Box::new(
                 move |elapsed, completed| {
                     if !completed {
-                        if let Some(in_line_order) = diagnostics_to_report.take() {
-                            let mut in_line_order = in_line_order.into_inner();
-                            in_line_order.sort_by_key(|(m, _)| {
-                                m.spans
-                                    .get(0)
-                                    .and_then(|s| crate::spans::from_raw_span(&s.raw_span))
-                            });
-                            for (error, error_level) in in_line_order.into_iter() {
-                                reporter.report_as(&error.clone().to_any(), error_level);
+                        if let Some(msgs) = diagnostics_to_report.take() {
+                            let mut msgs_any: Vec<(ArcDynMessage, MessageLevel)> = Vec::new();
+                            for (error, error_level) in msgs.into_inner().into_iter() {
+                                msgs_any.push((error.clone().to_any(), error_level));
                             }
+                            reporter.report_as_multi(msgs_any);
                         }
                     }
 
@@ -1456,14 +1465,12 @@ impl Verifier {
                     flush_diagnostics_to_report = true;
                 }
                 if flush_diagnostics_to_report {
-                    if let Some(container) = diagnostics_to_report.take() {
-                        let mut in_line_order = container.into_inner();
-                        in_line_order.sort_by_key(|(m, _)| {
-                            m.spans.get(0).and_then(|s| crate::spans::from_raw_span(&s.raw_span))
-                        });
-                        for (message, level) in in_line_order {
-                            reporter.report_as(&message.clone().to_any(), level);
+                    if let Some(msgs) = diagnostics_to_report.take() {
+                        let mut msgs_any: Vec<(ArcDynMessage, MessageLevel)> = Vec::new();
+                        for (error, error_level) in msgs.into_inner().into_iter() {
+                            msgs_any.push((error.clone().to_any(), error_level));
                         }
+                        reporter.report_as_multi(msgs_any);
                     }
                     if let Some(diag) = expand_errors_diagnostic {
                         reporter.report(&diag);
@@ -2215,10 +2222,27 @@ impl Verifier {
             // print messages immediately, while buffering other messages from the other buckets
             let mut active_bucket = None;
             let mut num_done = 0;
+            let mut local_msgs: VecDeque<ReporterMessage> = VecDeque::new();
             let reporter = Reporter::new(spans, compiler);
             loop {
-                let msg = receiver.recv().expect("receiving message failed");
+                let msg = if let Some(msg) = local_msgs.pop_front() {
+                    msg
+                } else {
+                    receiver.recv().expect("receiving message failed")
+                };
                 match msg {
+                    ReporterMessage::Messages(id, mut msgs, now) => {
+                        // The multi-message "Messages" gives us a chance to sort the messages
+                        // for clearer diagnostics.
+                        // We sort by span here, in rustc's thread, so that we can
+                        // legally use from_raw_span for the sorting.
+                        msgs.sort_by_key(|(m, _)| {
+                            m.spans.get(0).and_then(|s| crate::spans::from_raw_span(&s.raw_span))
+                        });
+                        for (msg, level) in msgs {
+                            local_msgs.push_back(ReporterMessage::Message(id, msg, level, now));
+                        }
+                    }
                     ReporterMessage::Message(id, msg, level, now) => {
                         if now {
                             // if the message should be reported immediately, do so
@@ -2447,6 +2471,10 @@ impl Verifier {
                     ReporterMessage::WorkerPanicked(err) => {
                         std::panic::resume_unwind(err);
                     }
+                }
+
+                if local_msgs.len() > 0 {
+                    continue;
                 }
 
                 let mut workers_running = Vec::with_capacity(workers.len());
