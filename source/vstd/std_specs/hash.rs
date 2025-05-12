@@ -501,6 +501,13 @@ pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::len ](
         len == spec_hash_map_len(m),
 ;
 
+pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::is_empty ](
+    m: &HashMap<Key, Value, S>,
+) -> (is_empty: bool)
+    ensures
+        is_empty == m@.is_empty(),
+;
+
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: HashMap<
     Key,
     Value,
@@ -867,7 +874,9 @@ pub assume_specification<Key, S>[ HashSet::<Key, S>::len ](m: &HashSet<Key, S>) 
         len == spec_hash_set_len(m),
 ;
 
-pub assume_specification<Key, S>[ HashSet::<Key, S>::is_empty ](m: &HashSet<Key, S>) -> (is_empty: bool)
+pub assume_specification<Key, S>[ HashSet::<Key, S>::is_empty ](
+    m: &HashSet<Key, S>,
+) -> (is_empty: bool)
     ensures
         is_empty == m@.is_empty(),
 ;
