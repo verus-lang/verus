@@ -419,6 +419,16 @@ struct VerifyBucketOut {
     time_smt_run: Duration,
     rlimit_count: Option<u64>,
 }
+pub(crate) enum VerifyErr {
+    Vir(VirErr),
+    Emitted,
+}
+
+impl From<VirErr> for VerifyErr {
+    fn from(err: VirErr) -> Self {
+        VerifyErr::Vir(err)
+    }
+}
 
 impl Verifier {
     pub fn new(
@@ -509,6 +519,7 @@ impl Verifier {
             current_crate_modules: self.current_crate_modules.clone(),
             item_to_module_map: self.item_to_module_map.clone(),
             buckets: self.buckets.clone(),
+
             expand_flag: self.expand_flag,
             error_format: self.error_format,
         }
@@ -1985,6 +1996,15 @@ impl Verifier {
             &self.get_bucket(bucket_id).funs,
             &pruned_krate,
         )?;
+        if self.args.log_all || self.args.log_args.log_vir_sst {
+            let mut file =
+                self.create_log_file(Some(&bucket_id), crate::config::VIR_SST_FILE_SUFFIX)?;
+            vir::printer::write_krate_sst(
+                &mut file,
+                &krate_sst,
+                &self.args.log_args.vir_log_option,
+            );
+        }
         let krate_sst = vir::poly::poly_krate_for_module(&mut ctx, &krate_sst);
 
         let VerifyBucketOut { time_smt_init, time_smt_run, rlimit_count } =
@@ -2014,7 +2034,7 @@ impl Verifier {
         &mut self,
         compiler: &Compiler,
         spans: &SpanContext,
-    ) -> Result<(), VirErr> {
+    ) -> Result<(), VerifyErr> {
         let time_verify_sequential_start = Instant::now();
 
         let reporter = Reporter::new(spans, compiler);
@@ -2151,11 +2171,14 @@ impl Verifier {
                 let worker_sender = sender.clone();
                 let worker = std::thread::spawn(move || {
                     let r = std::panic::catch_unwind(|| {
-                        let mut completed_tasks: Vec<GlobalCtx> = Vec::new();
+                        let mut completed_tasks: Vec<Result<GlobalCtx, ()>> = Vec::new();
                         loop {
-                            let mut tq = thread_taskq.lock().unwrap();
-                            let elm = tq.pop_front();
-                            drop(tq);
+                            let elm = {
+                                let mut tq = thread_taskq.lock().unwrap();
+                                let elm = tq.pop_front();
+                                drop(tq);
+                                elm
+                            };
                             if let Some((_i, bucket_id, task, reporter)) = elm {
                                 let res = thread_verifier.verify_bucket_outer(
                                     &reporter,
@@ -2164,18 +2187,16 @@ impl Verifier {
                                     &bucket_id,
                                     task,
                                 );
-                                reporter.done(); // we've verified the bucket, send the done message
-                                match res {
-                                    Ok(res) => {
-                                        completed_tasks.push(res);
-                                    }
-                                    Err(e) => return Err(e),
+                                if let Err(e) = &res {
+                                    reporter.report_now(&e.clone().to_any());
                                 }
+                                reporter.done(); // we've verified the bucket, send the done message
+                                completed_tasks.push(res.map_err(|_| ()));
                             } else {
                                 break;
                             }
                         }
-                        Ok::<(Verifier, Vec<GlobalCtx>), VirErr>((thread_verifier, completed_tasks))
+                        (thread_verifier, completed_tasks)
                     });
 
                     match r {
@@ -2481,16 +2502,22 @@ impl Verifier {
                 workers_finished.push(res);
             }
 
-            for res in workers_finished {
-                match res {
-                    Ok((verifier, res)) => {
-                        for r in res {
+            let mut worker_emitted_error = false;
+            for (verifier, results) in workers_finished {
+                self.merge(verifier);
+                for res in results {
+                    match res {
+                        Ok(r) => {
                             global_ctx.merge(r);
                         }
-                        self.merge(verifier);
+                        Err(()) => {
+                            worker_emitted_error = true;
+                        }
                     }
-                    Err(e) => return Err(e),
                 }
+            }
+            if worker_emitted_error {
+                return Err(VerifyErr::Emitted);
             }
 
             // print remaining messages
@@ -2594,7 +2621,7 @@ impl Verifier {
         &mut self,
         compiler: &Compiler,
         spans: &SpanContext,
-    ) -> Result<(), VirErr> {
+    ) -> Result<(), VerifyErr> {
         // Verify crate
         let time_verify_crate_start = Instant::now();
 
@@ -3102,8 +3129,10 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             match self.verifier.verify_crate(compiler, &spans) {
                 Ok(()) => {}
                 Err(err) => {
-                    let reporter = Reporter::new(&spans, compiler);
-                    reporter.report_as(&err.to_any(), MessageLevel::Error);
+                    if let VerifyErr::Vir(err) = err {
+                        let reporter = Reporter::new(&spans, compiler);
+                        reporter.report_as(&err.to_any(), MessageLevel::Error);
+                    }
                     self.verifier.encountered_vir_error = true;
                 }
             }

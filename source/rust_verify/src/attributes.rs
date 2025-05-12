@@ -273,6 +273,8 @@ pub(crate) enum Attr {
     InvariantBlock,
     // mark that a loop was desugared from a for-loop in the syntax macro
     ForLoop,
+    // mark the syntax macro inserted a synthetic decreases into a desugared for-loop
+    AutoDecreases,
     // this proof function is a termination proof
     DecreasesBy,
     // in a spec function, check the body for violations of recommends
@@ -331,6 +333,10 @@ pub(crate) enum Attr {
     TypeInvariantFn,
     // Used for the encoding of `open([visibility qualified])`
     OpenVisibilityQualifier,
+    // Allow the function to not have decreases clauses
+    ExecAllowNoDecreasesClause,
+    // Assume that the function terminates
+    AssumeTermination,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -596,6 +602,12 @@ pub(crate) fn parse_attrs(
                         "invalid trigger attribute: to provide a trigger expression, use the #![trigger <expr>] attribute",
                     );
                 }
+                AttrTree::Fun(_, arg, None) if arg == "assume_termination" => {
+                    v.push(Attr::AssumeTermination);
+                }
+                AttrTree::Fun(_, arg, None) if arg == "exec_allows_no_decreases_clause" => {
+                    v.push(Attr::ExecAllowNoDecreasesClause);
+                }
                 _ => return err_span(span, "unrecognized verifier attribute"),
             },
             AttrPrefix::Verus(verus_prefix) => match verus_prefix {
@@ -691,6 +703,9 @@ pub(crate) fn parse_attrs(
                         v.push(Attr::BroadcastForall)
                     }
                     AttrTree::Fun(_, arg, None) if arg == "for_loop" => v.push(Attr::ForLoop),
+                    AttrTree::Fun(_, arg, None) if arg == "auto_decreases" => {
+                        v.push(Attr::AutoDecreases)
+                    }
                     AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))
                         if arg == "prover" =>
                     {
@@ -792,6 +807,18 @@ pub(crate) fn get_auto_ext_equal_walk_parents<'tcx>(
         }
     }
     vir::ast::AutoExtEqual::default()
+}
+
+pub(crate) fn get_allow_exec_allows_no_decreases_clause_walk_parents<'tcx>(
+    tcx: rustc_middle::ty::TyCtxt<'tcx>,
+    def_id: rustc_span::def_id::DefId,
+) -> bool {
+    for attr in parse_attrs_walk_parents(tcx, def_id) {
+        if let Attr::ExecAllowNoDecreasesClause = attr {
+            return true;
+        }
+    }
+    false
 }
 
 pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr> {
@@ -909,6 +936,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
     pub(crate) for_loop: bool,
+    pub(crate) auto_decreases: bool,
     pub(crate) atomic: bool,
     pub(crate) integer_ring: bool,
     pub(crate) decreases_by: bool,
@@ -937,6 +965,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) size_of_broadcast_proof: bool,
     pub(crate) type_invariant_fn: bool,
     pub(crate) open_visibility_qualifier: bool,
+    pub(crate) assume_termination: bool,
+    pub(crate) exec_allows_no_decreases_clause: bool,
 }
 
 // Check for the `get_field_many_variants` attribute
@@ -1063,6 +1093,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         custom_req_err: None,
         bit_vector: false,
         for_loop: false,
+        auto_decreases: false,
         atomic: false,
         integer_ring: false,
         decreases_by: false,
@@ -1091,6 +1122,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         size_of_broadcast_proof: false,
         type_invariant_fn: false,
         open_visibility_qualifier: false,
+        assume_termination: false,
+        exec_allows_no_decreases_clause: false,
     };
     let mut unsupported_rustc_attr: Option<(String, Span)> = None;
     for attr in parse_attrs(attrs, diagnostics)? {
@@ -1131,6 +1164,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,
             Attr::ForLoop => vs.for_loop = true,
+            Attr::AutoDecreases => vs.auto_decreases = true,
             Attr::Atomic => vs.atomic = true,
             Attr::IntegerRing => vs.integer_ring = true,
             Attr::DecreasesBy => vs.decreases_by = true,
@@ -1159,6 +1193,8 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             Attr::SizeOfBroadcastProof => vs.size_of_broadcast_proof = true,
             Attr::TypeInvariantFn => vs.type_invariant_fn = true,
             Attr::OpenVisibilityQualifier => vs.open_visibility_qualifier = true,
+            Attr::AssumeTermination => vs.assume_termination = true,
+            Attr::ExecAllowNoDecreasesClause => vs.exec_allows_no_decreases_clause = true,
             _ => {}
         }
     }

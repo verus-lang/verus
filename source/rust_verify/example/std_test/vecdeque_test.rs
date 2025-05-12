@@ -1,3 +1,4 @@
+#![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 use std::collections::VecDeque;
 use vstd::pervasive::runtime_assert;
 #[allow(unused_imports)]

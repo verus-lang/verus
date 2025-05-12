@@ -613,6 +613,7 @@ fn make_attributes<'tcx>(
     print_as_method: bool,
     safety: Safety,
     span: Span,
+    is_trait_decl_no_default: bool,
 ) -> Result<vir::ast::FunctionAttrs, VirErr> {
     if vattrs.nonlinear && vattrs.spinoff_prover {
         return err_span(
@@ -648,6 +649,14 @@ fn make_attributes<'tcx>(
         is_unsafe: match safety {
             Safety::Safe => false,
             Safety::Unsafe => true,
+        },
+        exec_assume_termination: vattrs.assume_termination,
+        exec_allows_no_decreases_clause: if !is_trait_decl_no_default {
+            crate::attributes::get_allow_exec_allows_no_decreases_clause_walk_parents(
+                ctxt.tcx, def_id,
+            )
+        } else {
+            vattrs.exec_allows_no_decreases_clause
         },
     };
     Ok(Arc::new(fattrs))
@@ -1116,6 +1125,7 @@ pub(crate) fn check_item_fn<'tcx>(
         has_self_param,
         safety,
         sig.span,
+        matches!(kind, FunctionKind::TraitMethodDecl { has_default: false, .. }),
     )?;
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
@@ -1895,6 +1905,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         false,
         Safety::Safe,
         span,
+        false,
     )?;
 
     let (ensure, ens_has_return) =

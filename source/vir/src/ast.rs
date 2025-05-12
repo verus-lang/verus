@@ -1008,6 +1008,10 @@ pub struct FunctionAttrsX {
     pub is_external_body: bool,
     /// Is the function marked unsafe (i.e., with the Rust keyword 'unsafe')
     pub is_unsafe: bool,
+    /// Whether to assume that this function terminates
+    pub exec_assume_termination: bool,
+    /// Whether to allow this function to not terminate
+    pub exec_allows_no_decreases_clause: bool,
 }
 
 /// Function specification of its invariant mask

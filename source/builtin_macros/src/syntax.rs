@@ -3088,6 +3088,10 @@ impl Visitor {
         //                        inv },
         //                  ensures
         //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_ensures(&y),
+        //                  decreases
+        //                      ::vstd::pervasive::ForLoopGhostIterator::ghost_decrease(&y)
+        //                      .unwrap_or(vstd::pervasive::arbitrary()),
+        //
         //              {
         //                  #[allow(non_snake_case)]
         //                  let mut VERUS_loop_next;
@@ -3119,7 +3123,7 @@ impl Visitor {
             expr_name,
             expr,
             invariant,
-            decreases,
+            mut decreases,
             body,
         } = for_loop;
 
@@ -3224,6 +3228,23 @@ impl Visitor {
         } else {
             None
         };
+        if let Some(decreases) = &mut decreases {
+            for expr in &mut decreases.exprs.exprs {
+                *expr = Expr::Verbatim(quote_spanned_vstd!(vstd, expr.span() => {
+                    let #pat =
+                        #vstd::pervasive::ForLoopGhostIterator::ghost_peek_next(&#x_ghost_iter)
+                        .unwrap_or(#vstd::pervasive::arbitrary());
+                    #expr
+                }));
+            }
+        } else {
+            attrs.push(mk_verus_attr(span, quote! { auto_decreases }));
+            decreases = Some(parse_quote_spanned_vstd!(vstd, span =>
+                decreases
+                    #vstd::pervasive::ForLoopGhostIterator::ghost_decrease(&#x_ghost_iter)
+                    .unwrap_or(#vstd::pervasive::arbitrary()),
+            ))
+        }
         // REVIEW: we might also want no_auto_loop_invariant to suppress the ensures,
         // but at the moment, user-supplied ensures aren't supported, so this would be hard to use.
         let ensure = if no_loop_invariant.is_none() {
@@ -4405,6 +4426,13 @@ pub(crate) fn rewrite_proof_decl(
                     ss.to_tokens(&mut new_stream);
                 }
             }
+            Stmt::Macro(mut mac) => {
+                // Due to the difference between function-like macro vs proceudure macro,
+                // Macros used inside proof block need to explicitly call proof or proof_decl.
+                // We should avoid entering proof mode if calling a macro.
+                visitor.visit_macro_mut(&mut mac.mac);
+                mac.to_tokens(&mut new_stream);
+            }
             _ => {
                 let span = ss.span();
                 let mut proof_expr = Expr::Unary(ExprUnary {
@@ -4877,7 +4905,7 @@ pub(crate) fn has_external_code(attrs: &Vec<Attribute>) -> bool {
 /// Constructs #[name(tokens)]
 macro_rules! declare_mk_rust_attr {
     ($name:ident, $s:ident) => {
-        fn $name(span: Span, name: &str, tokens: TokenStream) -> $s::Attribute {
+        pub(crate) fn $name(span: Span, name: &str, tokens: TokenStream) -> $s::Attribute {
             let mut path_segments = $s::punctuated::Punctuated::new();
             path_segments.push($s::PathSegment {
                 ident: $s::Ident::new(name, span),

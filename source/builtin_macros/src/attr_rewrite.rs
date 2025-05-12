@@ -47,6 +47,8 @@ use crate::{
 
 pub const VERIFIED: &str = "_VERUS_VERIFIED";
 
+pub const DUAL_SPEC_PREFIX: &str = "__VERUS_SPEC";
+
 enum VerusIOTarget {
     Local(syn::Local),
     Expr(syn::Expr),
@@ -86,13 +88,15 @@ pub fn rewrite_verus_attribute(
         return input;
     }
 
-    let item = syn::parse_macro_input!(input as Item);
+    let mut item = syn::parse_macro_input!(input as Item);
     let args = syn::parse_macro_input!(attr_args with syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated);
 
     let mut attributes = Vec::new();
     let mut contains_non_external = false;
     let mut contains_external = false;
+    let mut spec_fun = None;
     const VERIFY_ATTRS: [&str; 2] = ["rlimit", "spinoff_prover"];
+    const DUAL_ATTR: &str = "dual_spec";
     const IGNORE_VERIFY_ATTRS: [&str; 2] = ["external", "external_body"];
 
     for arg in &args {
@@ -103,6 +107,33 @@ pub fn rewrite_verus_attribute(
         } else if VERIFY_ATTRS.contains(&path.to_string().as_str()) {
             contains_non_external = true;
             attributes.push(quote_spanned!(arg.span() => #[verifier::#arg]));
+        } else if DUAL_ATTR == path.to_string().as_str() {
+            // This is a macro-level hack to support dual mode.
+            // Thus, only a limited number of pure compute functions are
+            // supported.
+            // The real dual mode is not ready yet (e.g., verifier::dual_spec).
+            // The spec function is generated with the name _VERUS_SPEC_<name>
+            // if no name is given.
+            if let syn::Item::Fn(f) = &mut item {
+                let mut spec_f = f.clone();
+                let ident = if let syn::Meta::List(list) = arg {
+                    syn::parse2(list.tokens.clone())
+                        .expect("unsupported tokens in verus_verify(dual_spec(...))")
+                } else {
+                    syn::Ident::new(
+                        &format!("{DUAL_SPEC_PREFIX}_{}", f.sig.ident.to_string()),
+                        f.sig.ident.span(),
+                    )
+                };
+                spec_f.sig.ident = ident.clone();
+                spec_f.attrs = vec![mk_verus_attr_syn(f.span(), quote! { spec })];
+                // remove proof-related macros
+                spec_f.block.as_mut().stmts.retain(|stmt| !is_verus_proof_stmt(stmt));
+                spec_fun = Some(spec_f);
+
+                attributes
+                    .push(quote_spanned!(arg.span() => #[verifier::when_used_as_spec(#ident)]));
+            }
         } else {
             let span = arg.span();
             return proc_macro::TokenStream::from(quote_spanned!(span =>
@@ -119,11 +150,12 @@ pub fn rewrite_verus_attribute(
         attributes.push(quote_spanned!(item.span() => #[verifier::verify]));
     }
 
-    quote_spanned! {item.span()=>
+    let mut new_stream = quote_spanned! {item.span()=>
         #(#attributes)*
         #item
-    }
-    .into()
+    };
+    spec_fun.map(|f| f.to_tokens(&mut new_stream));
+    new_stream.into()
 }
 
 use syn::visit_mut::VisitMut;
@@ -171,6 +203,61 @@ impl VisitMut for ExecReplacer {
             }
         }
     }
+
+    /// convert proof_with macro to functin with ghost/tracked argumemts.
+    /// In order to apply `with` to expr/stmt without using unstable feature.
+    /// proof_with!(Tracked(x), Ghost(y);
+    /// f(a);
+    fn visit_block_mut(&mut self, block: &mut syn::Block) {
+        syn::visit_mut::visit_block_mut(self, block);
+
+        if !self.erase.keep() {
+            return;
+        }
+
+        let mut with_args: TokenStream = TokenStream::new();
+        for stmt in &mut block.stmts {
+            match stmt {
+                syn::Stmt::Macro(syn::StmtMacro { mac, .. }) if mac.path.is_ident("proof_with") => {
+                    syn_verus::Token![with](mac.span()).to_tokens(&mut with_args);
+                    mac.tokens.to_tokens(&mut with_args);
+                }
+                syn::Stmt::Local(syn::Local { attrs, init: Some(_), .. })
+                    if !with_args.is_empty() =>
+                {
+                    attrs.push(crate::syntax::mk_rust_attr_syn(
+                        with_args.span(),
+                        "verus_spec",
+                        with_args,
+                    ));
+                    with_args = TokenStream::new();
+                }
+                syn::Stmt::Expr(expr, _) if !with_args.is_empty() => {
+                    let call_with_spec = syn_verus::parse2(with_args.clone())
+                        .expect(format!("Failed to parse proof_with {:?}", with_args).as_str());
+                    rewrite_with_expr(self.erase.clone(), expr, call_with_spec);
+                    with_args = TokenStream::new();
+                }
+                _ if with_args.is_empty() => {
+                    // do nothing
+                }
+                _ => {
+                    panic!("Expected a function call after proof_with! macro");
+                }
+            };
+        }
+    }
+}
+
+fn is_verus_proof_stmt(stmt: &syn::Stmt) -> bool {
+    pub const VERUS_MACROS: [&str; 3] = ["proof", "proof_decl", "proof_with"];
+    if let syn::Stmt::Macro(mac_stmt) = stmt {
+        let syn::Macro { path, .. } = &mac_stmt.mac;
+        if let Some(ident) = path.get_ident() {
+            return VERUS_MACROS.contains(&ident.to_string().as_str());
+        }
+    }
+    false
 }
 
 // We need to replace some macros/attributes.
@@ -191,7 +278,7 @@ pub fn rewrite_verus_spec(
     if !erase.keep() {
         return input;
     }
-    let mut f = match syn::parse::<VerusSpecTarget>(input) {
+    let f = match syn::parse::<VerusSpecTarget>(input) {
         Ok(f) => f,
         Err(err) => {
             // Make sure at least one error is reported, just in case Rust parses the function
@@ -203,14 +290,6 @@ pub fn rewrite_verus_spec(
             );
         }
     };
-
-    // Erase verus_spec attributes in function body if not in verification.
-    match &mut f {
-        VerusSpecTarget::FnOrLoop(AnyFnOrLoop::Fn(fun)) => {
-            replace_block(erase, fun.block_mut().unwrap());
-        }
-        _ => {}
-    }
 
     match f {
         VerusSpecTarget::FnOrLoop(f) => {

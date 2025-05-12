@@ -31,6 +31,7 @@ fn main() {
     opts.optflag("", "json", "output as machine-readable json");
     opts.optflag("", "delimiters-are-layout", "consider delimiter-only lines as layout");
     opts.optflag("", "proofs-arent-trusted", "do not apply trusted to proofs");
+    opts.optflag("", "one-file", "parse one file, isntead of using the .d file produced by rustc");
 
     let matches = match opts.parse(&args[1..]) {
         Ok(m) => m,
@@ -49,12 +50,13 @@ fn main() {
         return;
     }
 
-    let deps_path = if !matches.free.is_empty() {
+    let path = if !matches.free.is_empty() {
         matches.free[0].clone()
     } else {
         print_usage(&program, opts);
         return;
     };
+    let path = std::path::Path::new(&path);
 
     let config = Config {
         print_all: matches.opt_present("p"),
@@ -64,7 +66,13 @@ fn main() {
         proofs_arent_trusted: matches.opt_present("proofs-arent-trusted"),
     };
 
-    match run(config, &std::path::Path::new(&deps_path)) {
+    let run_mode_paths = if matches.opt_present("one-file") {
+        RunMode::OneFile(path)
+    } else {
+        RunMode::DepsPath(path)
+    };
+
+    match run(config, run_mode_paths) {
         Ok(()) => (),
         Err(err) => {
             eprintln!("error: {}", err);
@@ -1654,9 +1662,25 @@ fn warn(msg: &str) {
     eprintln!("warning: {}", msg);
 }
 
-fn run(config: Config, deps_path: &std::path::Path) -> Result<(), String> {
+enum RunMode<'a> {
+    DepsPath(&'a std::path::Path),
+    OneFile(&'a std::path::Path),
+}
+
+fn run(config: Config, run_mode_paths: RunMode<'_>) -> Result<(), String> {
     let config = Rc::new(config);
-    let (root_path, files) = get_dependencies(deps_path)?;
+    let (root_path, files) = match run_mode_paths {
+        RunMode::DepsPath(path) => get_dependencies(path)?,
+        RunMode::OneFile(path) => {
+            let pathd = path.display();
+            (
+                path.parent().ok_or_else(|| format!("invalid path {pathd}"))?.to_owned(),
+                vec![std::path::PathBuf::from(
+                    path.file_name().ok_or_else(|| format!("invalid path {pathd}"))?,
+                )],
+            )
+        }
+    };
 
     let file_stats = files
         .iter()
