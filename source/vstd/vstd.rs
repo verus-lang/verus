@@ -76,7 +76,7 @@ use prelude::*;
 
 verus! {
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "alloc", feature = "std"))]
 #[cfg_attr(verus_keep_ghost, verifier::broadcast_use_by_default_when_this_crate_is_imported)]
 pub broadcast group group_vstd_default {
     seq::group_seq_axioms,
@@ -97,6 +97,29 @@ pub broadcast group group_vstd_default {
     layout::group_layout_axioms,
     function::group_seq_axioms,
     std_specs::hash::group_hash_axioms,
+}
+
+#[cfg(feature = "alloc")]
+#[cfg(not(feature = "std"))]
+#[cfg_attr(verus_keep_ghost, verifier::broadcast_use_by_default_when_this_crate_is_imported)]
+pub broadcast group group_vstd_default {
+    seq::group_seq_axioms,
+    seq_lib::group_seq_lib_default,
+    map::group_map_axioms,
+    set::group_set_axioms,
+    set_lib::group_set_lib_default,
+    std_specs::bits::group_bits_axioms,
+    std_specs::control_flow::group_control_flow_axioms,
+    std_specs::vec::group_vec_axioms,
+    slice::group_slice_axioms,
+    array::group_array_axioms,
+    multiset::group_multiset_axioms,
+    string::group_string_axioms,
+    std_specs::range::group_range_axioms,
+    raw_ptr::group_raw_ptr_axioms,
+    compute::all_spec_ensures,
+    layout::group_layout_axioms,
+    function::group_seq_axioms,
 }
 
 #[cfg(not(feature = "alloc"))]
