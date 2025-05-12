@@ -70,6 +70,14 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     }
 
     #[verifier::external_body]
+    pub fn is_empty(&self) -> (result: bool)
+        ensures
+            result == self@.is_empty(),
+    {
+        self.m.is_empty()
+    }
+
+    #[verifier::external_body]
     pub fn insert(&mut self, k: Key) -> (result: bool)
         ensures
             self@ == old(self)@.insert(k@) && result == !old(self)@.contains(k@),
