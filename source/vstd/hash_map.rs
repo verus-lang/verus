@@ -174,6 +174,14 @@ impl<Value> StringHashMap<Value> {
         self.m.reserve(additional);
     }
 
+    #[verifier::external_body]
+    pub fn is_empty(&self) -> (result: bool)
+        ensures
+            result == self@.is_empty(),
+    {
+        self.m.is_empty()
+    }
+
     pub uninterp spec fn spec_len(&self) -> usize;
 
     #[verifier::external_body]
