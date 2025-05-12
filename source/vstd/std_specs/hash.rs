@@ -1,10 +1,10 @@
-/// This code adds specifications for the standard-library type
-/// `std::collections::HashMap`.
+/// This code adds specifications for the standard-library types
+/// `std::collections::HashMap` and `std::collections::HashSet`.
 ///
 /// Most of the specification only applies if you use `HashMap<Key,
-/// Value>`. If you use some custom build hasher, e.g.,
-/// with`HashMap<Key, Value, CustomBuildHasher>`, the specification
-/// won't specify much.
+/// Value>` or `HashSet<Key>`. If you use some custom build hasher,
+/// e.g., with`HashMap<Key, Value, CustomBuildHasher>`, the
+/// specification won't specify much.
 ///
 /// Likewise, the specification is only meaningful when the `Key`
 /// obeys our hash table model, i.e., (1) `Key::hash` is
@@ -17,13 +17,10 @@
 /// In the future, we plan to devise a way for you to prove that it
 /// does so, so that you don't have to make such an assumption.
 ///
-/// To make most use of the specification, you should use `broadcast
-/// use vstd::std_specs::hash::group_hash_axioms;`. This will bring
-/// various useful axioms about the behavior of a `HashMap` into the
-/// ambient reasoning context. In the future, if we find that having
-/// these axioms in scope doesn't impact performance, we may put them
-/// into the global ambient context so you don't have to explicitly
-/// `broadcast use` them.
+/// By default, the Verus standard library brings useful axioms
+/// about the behavior of `HashMap` and `HashSet` into the ambient
+/// reasoning context by broadcasting the group
+/// `vstd::std_specs::hash::group_hash_axioms`.
 use super::super::prelude::*;
 
 use core::borrow::Borrow;

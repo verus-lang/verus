@@ -96,6 +96,7 @@ pub broadcast group group_vstd_default {
     compute::all_spec_ensures,
     layout::group_layout_axioms,
     function::group_seq_axioms,
+    std_specs::hash::group_hash_axioms,
 }
 
 #[cfg(not(feature = "alloc"))]
