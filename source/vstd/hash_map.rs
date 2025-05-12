@@ -99,6 +99,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
                 Some(v) => self@.contains_key(k@) && *v == self@[k@],
                 None => !self@.contains_key(k@),
             },
+            result.is_some() == self@.contains_key(k@),
     {
         self.m.get(k)
     }
