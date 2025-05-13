@@ -46,7 +46,14 @@ test_verify_one_file! {
             let mut m = HashMap::<u32, i8>::new();
             assert(m@ == Map::<u32, i8>::empty());
 
+            let b = m.is_empty();
+            assert(b);
+
             m.insert(3, 4);
+
+            let b = m.is_empty();
+            assert(!b);
+
             m.insert(6, -8);
             assert(m@[3] == 4);
 
@@ -83,9 +90,16 @@ test_verify_one_file! {
             let mut m = HashSet::<u32>::new();
             assert(m@ == Set::<u32>::empty());
 
+            let b = m.is_empty();
+            assert(b);
+
             let res = m.insert(3);
             assert(res);
             m.insert(6);
+
+            let b = m.is_empty();
+            assert(!b);
+
             let res = m.insert(3);
             assert(!res);
 
@@ -433,8 +447,15 @@ test_verify_one_file! {
 
             let mut m = HashMapWithView::<MyStruct, u32>::new();
             assert(m@ == Map::<(MyStruct, int), u32>::empty());
+
+            let b = m.is_empty();
+            assert(b);
+
             let s1 = MyStruct{ i: 3, j: 7 };
             m.insert(s1, 4);
+
+            let b = m.is_empty();
+            assert(!b);
 
             let s2 = MyStruct{ i: 3, j: 7 };
             let ghost w: (MyStruct, int) = (MyStruct{ i: 3, j: 7 }, 10);
@@ -512,9 +533,17 @@ test_verify_one_file! {
 
             let mut m = HashSetWithView::<MyStruct>::new();
             assert(m@ == Set::<(MyStruct, int)>::empty());
+
+            let b = m.is_empty();
+            assert(b);
+
             let s1 = MyStruct{ i: 3, j: 7 };
             let res = m.insert(s1);
             assert(res);
+
+            let b = m.is_empty();
+            assert(!b);
+
             let res = m.insert(MyStruct{ i: 3, j: 7 });
             assert(!res);
 
@@ -658,9 +687,16 @@ test_verify_one_file! {
             let mut m = StringHashMap::<i8>::new();
             assert(m@ == Map::<Seq<char>, i8>::empty());
 
+            let b = m.is_empty();
+            assert(b);
+
             let three: String = "three".to_string();
             let six: String = "six".to_string();
             m.insert(three.clone(), 4);
+
+            let b = m.is_empty();
+            assert(!b);
+
             m.insert(six.clone(), -8);
             assert(!(three@ =~= six@)) by {
                 reveal_strlit("three");
@@ -704,11 +740,17 @@ test_verify_one_file! {
             let mut m = StringHashSet::new();
             assert(m@ == Set::<Seq<char>>::empty());
 
+            let b = m.is_empty();
+            assert(b);
+
             let three: String = "three".to_string();
             let six: String = "six".to_string();
 
             let res = m.insert(three.clone());
             assert(res);
+
+            let b = m.is_empty();
+            assert(!b);
 
             m.insert(six.clone());
 
