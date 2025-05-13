@@ -43,6 +43,156 @@ pub(crate) fn autospec_fun(path: &vir::ast::Path, method_name: String) -> vir::a
     Arc::new(pathx)
 }
 
+struct Autospec {
+    /// This function should redirect to the following function:
+    redirect_to: Option<vir::ast::Fun>,
+    /// Which might need to be created
+    /// (for when_used_as_spec, the user supplies the function, but for allow_in_spec,
+    /// we have to create one from the 'returns' clause)
+    new_func: Option<vir::ast::Function>,
+}
+
+fn handle_autospec<'tcx>(
+    ctxt: &Context<'tcx>,
+    span: Span,
+    def_id: DefId,
+    vattrs: &VerifierAttrs,
+    functionx: &FunctionX,
+) -> Result<Autospec, VirErr> {
+    if let Some(method_name) = &vattrs.autospec {
+        if vattrs.allow_in_spec {
+            return err_span(
+                span,
+                format!("a function cannot be marked both 'when_used_as_spec' and 'allow_in_spec'"),
+            );
+        }
+        let this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
+            ctxt.tcx, def_id,
+        );
+        let path = autospec_fun(&this_path, method_name.clone());
+        Ok(Autospec { redirect_to: Some(Arc::new(FunX { path })), new_func: None })
+    } else if vattrs.allow_in_spec {
+        let this_path = crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(
+            ctxt.tcx, def_id,
+        );
+        if functionx.mode != Mode::Exec {
+            return err_span(span, format!("allow_in_spec can only be used on an exec function"));
+        }
+        let Some(ret_clause) = &functionx.returns else {
+            return err_span(
+                span,
+                format!("allow_in_spec can only be used on a function with a returns clause"),
+            );
+        };
+        if !matches!(&functionx.kind, FunctionKind::Static) {
+            return err_span(span, format!("allow_in_spec not supported for trait functions"));
+        }
+
+        let mut spec_params = vec![];
+        for p in functionx.params.iter() {
+            if p.x.is_mut {
+                return err_span(
+                    span,
+                    format!("allow_in_spec not supported for function with &mut param"),
+                );
+            }
+            if p.x.unwrapped_info.is_some() {
+                return err_span(
+                    span,
+                    format!(
+                        "allow_in_spec not supported for function with wrapped Tracked/Ghost params"
+                    ),
+                );
+            }
+            spec_params.push(vir::def::Spanned::new(
+                p.span.clone(),
+                ParamX {
+                    name: p.x.name.clone(),
+                    typ: p.x.typ.clone(),
+                    mode: Mode::Spec,
+                    is_mut: false,
+                    unwrapped_info: None,
+                },
+            ));
+        }
+        let ret_param = &functionx.ret;
+        let spec_ret_param = vir::def::Spanned::new(
+            ret_param.span.clone(),
+            ParamX {
+                name: air_unique_var(RETURN_VALUE),
+                typ: ret_param.x.typ.clone(),
+                mode: Mode::Spec,
+                is_mut: false,
+                unwrapped_info: None,
+            },
+        );
+
+        let new_func = ctxt.spanned_new(
+            span,
+            FunctionX {
+                name: vir::def::autospec_return_clause_spec_fn_name(&this_path),
+                proxy: None,
+                kind: FunctionKind::Static,
+                visibility: functionx.visibility.clone(),
+                body_visibility: BodyVisibility::Visibility(functionx.visibility.clone()),
+                opaqueness: Opaqueness::Revealed { visibility: functionx.visibility.clone() },
+                owning_module: functionx.owning_module.clone(),
+                mode: Mode::Spec,
+                typ_params: functionx.typ_params.clone(),
+                typ_bounds: functionx.typ_bounds.clone(),
+                params: Arc::new(spec_params),
+                ret: spec_ret_param,
+                ens_has_return: false,
+                require: functionx.require.clone(), // requires becomes recommends
+                ensure: Arc::new(vec![]),
+                returns: None,
+                decrease: Arc::new(vec![]),
+                decrease_when: None,
+                decrease_by: None,
+                fndef_axioms: None,
+                mask_spec: None,
+                unwind_spec: None,
+                item_kind: ItemKind::Function,
+                attrs: Arc::new(FunctionAttrsX {
+                    uses_ghost_blocks: vattrs.verus_macro,
+                    inline: false,
+                    hidden: Arc::new(vec![]),
+                    broadcast_forall: false,
+                    broadcast_forall_only: false,
+                    no_auto_trigger: false,
+                    auto_ext_equal: functionx.attrs.auto_ext_equal.clone(),
+                    custom_req_err: None,
+                    autospec: None,
+                    bit_vector: false,
+                    atomic: false,
+                    integer_ring: false,
+                    is_decrease_by: false,
+                    check_recommends: false,
+                    nonlinear: false,
+                    spinoff_prover: false,
+                    memoize: false,
+                    rlimit: None,
+                    print_zero_args: functionx.attrs.print_zero_args,
+                    print_as_method: functionx.attrs.print_as_method,
+                    prophecy_dependent: false,
+                    size_of_broadcast_proof: false,
+                    is_type_invariant_fn: false,
+                    is_external_body: false,
+                    is_unsafe: false,
+                    exec_assume_termination: false,
+                    exec_allows_no_decreases_clause: false,
+                }),
+                body: Some(ret_clause.clone()),
+                extra_dependencies: functionx.extra_dependencies.clone(),
+            },
+        );
+
+        Ok(Autospec { redirect_to: Some(new_func.x.name.clone()), new_func: Some(new_func) })
+    } else {
+        Ok(Autospec { redirect_to: None, new_func: None })
+    }
+}
+
 pub(crate) fn body_id_to_types<'tcx>(
     tcx: TyCtxt<'tcx>,
     id: &BodyId,
@@ -608,7 +758,6 @@ fn make_attributes<'tcx>(
     uses_ghost_blocks: bool,
     hidden: Arc<Vec<Fun>>,
     custom_req_err: Option<String>,
-    autospec: Option<Fun>,
     print_zero_args: bool,
     print_as_method: bool,
     safety: Safety,
@@ -631,7 +780,7 @@ fn make_attributes<'tcx>(
         broadcast_forall_only: false,
         auto_ext_equal: crate::attributes::get_auto_ext_equal_walk_parents(ctxt.tcx, def_id),
         bit_vector: vattrs.bit_vector,
-        autospec,
+        autospec: None, // filled in later
         atomic: vattrs.atomic,
         integer_ring: vattrs.integer_ring,
         is_decrease_by: vattrs.decreases_by,
@@ -1095,12 +1244,6 @@ pub(crate) fn check_item_fn<'tcx>(
         }
         _ => (),
     }
-    let autospec = vattrs.autospec.clone().map(|method_name| {
-        let this_path =
-            crate::rust_to_vir_base::def_id_to_vir_path_ignoring_diagnostic_rename(ctxt.tcx, id);
-        let path = autospec_fun(&this_path, method_name.clone());
-        Arc::new(FunX { path })
-    });
 
     if vattrs.nonlinear && vattrs.spinoff_prover {
         return err_span(
@@ -1120,7 +1263,6 @@ pub(crate) fn check_item_fn<'tcx>(
         vattrs.verus_macro,
         Arc::new(header.hidden),
         vattrs.custom_req_err.clone(),
-        autospec,
         n_params == 0,
         has_self_param,
         safety,
@@ -1167,7 +1309,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let (body_visibility, opaqueness) = get_body_visibility_and_fuel(
         sig.span,
         &visibility,
-        vattrs.publish,
+        vattrs.publish.clone(),
         &header.open_visibility_qualifier,
         vattrs.opaque,
         vattrs.opaque_outside_module,
@@ -1219,13 +1361,26 @@ pub(crate) fn check_item_fn<'tcx>(
             )?;
         }
     }
+
     let function = ctxt.spanned_new(sig.span, func);
-    let function = if let Some((from_path, to_path)) = &external_trait_from_to {
+    let mut function = if let Some((from_path, to_path)) = &external_trait_from_to {
         vir::traits::rewrite_external_function(from_path, to_path, &function)
     } else {
         function
     };
+
+    let autospec = handle_autospec(ctxt, sig.span, id, &vattrs, &function.x)?;
+    if autospec.redirect_to.is_some() {
+        Arc::make_mut(&mut Arc::make_mut(&mut function).x.attrs).autospec =
+            autospec.redirect_to.clone();
+    }
+
     functions.push(function);
+
+    if let Some(f) = &autospec.new_func {
+        functions.push(f.clone());
+    }
+
     if is_verus_spec { Ok(None) } else { Ok(Some(name)) }
 }
 
@@ -1889,10 +2044,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
             unwrapped_info: None,
         },
     );
-    let autospec = vattrs.autospec.clone().map(|method_name| {
-        let path = autospec_fun(&path, method_name.clone());
-        Arc::new(FunX { path })
-    });
     let fattrs = make_attributes(
         ctxt,
         id,
@@ -1900,7 +2051,6 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         false,
         Arc::new(vec![]),
         vattrs.custom_req_err.clone(),
-        autospec,
         false,
         false,
         Safety::Safe,
@@ -1923,7 +2073,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         !vattrs.external_body,
     )?;
 
-    let func = FunctionX {
+    let mut functionx = FunctionX {
         name: name.clone(),
         proxy: None,
         kind: FunctionKind::Static,
@@ -1951,8 +2101,19 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],
     };
-    let function = ctxt.spanned_new(span, func);
+
+    let autospec = handle_autospec(ctxt, span, id, &vattrs, &functionx)?;
+    if autospec.redirect_to.is_some() {
+        Arc::make_mut(&mut functionx.attrs).autospec = autospec.redirect_to.clone();
+    }
+
+    let function = ctxt.spanned_new(span, functionx);
     vir.functions.push(function);
+
+    if let Some(f) = &autospec.new_func {
+        vir.functions.push(f.clone());
+    }
+
     Ok(())
 }
 
