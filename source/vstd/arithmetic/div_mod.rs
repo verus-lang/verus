@@ -712,7 +712,7 @@ pub proof fn lemma_truncate_middle(x: int, b: int, c: int)
         0 < b * c,
         (b * x) % (b * c) == b * (x % c),
 {
-    broadcast use lemma_mul_strictly_positive, lemma_mul_nonnegative;
+    broadcast use {lemma_mul_strictly_positive, lemma_mul_nonnegative};
 
     calc! {
         (==)
@@ -969,7 +969,7 @@ pub broadcast proof fn lemma_part_bound1(a: int, b: int, c: int)
         b * ((a / b) - (c * ((b * (a / b)) / (b * c))));
     }
     assert(b * (a / b) % (b * c) <= b * (c - 1)) by {
-        broadcast use lemma_mul_is_commutative, lemma_mul_inequality;
+        broadcast use {lemma_mul_is_commutative, lemma_mul_inequality};
 
     };
 }
@@ -1050,7 +1050,7 @@ proof fn lemma_mod_basics_auto()
         forall|m: int| m > 0 ==> #[trigger] (m % m) == 0,
         forall|x: int, m: int| m > 0 ==> #[trigger] ((x % m) % m) == x % m,
 {
-    broadcast use lemma_mod_self_0, lemma_mod_twice;
+    broadcast use {lemma_mod_self_0, lemma_mod_twice};
 
 }
 
@@ -1642,7 +1642,7 @@ pub broadcast proof fn lemma_mod_mod(x: int, a: int, b: int)
         }
         a * (b * (x / (a * b)) + x % (a * b) / a) + (x % (a * b)) % a;
     }
-    broadcast use group_mod_properties, lemma_mul_is_commutative;
+    broadcast use {group_mod_properties, lemma_mul_is_commutative};
 
     lemma_fundamental_div_mod_converse(
         x,
@@ -1666,7 +1666,7 @@ pub broadcast proof fn lemma_part_bound2(x: int, y: int, z: int)
 
     lemma_mod_properties_auto();
     assert(x % y < y);
-    broadcast use lemma_mul_is_commutative, lemma_mul_increases;
+    broadcast use {lemma_mul_is_commutative, lemma_mul_increases};
 
     assert(y <= y * z);
     assert(0 <= x % y < y * z);

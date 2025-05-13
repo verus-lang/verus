@@ -3,7 +3,7 @@ use super::prelude::*;
 
 verus! {
 
-broadcast use super::set::group_set_axioms, super::map::group_map_axioms;
+broadcast use {super::set::group_set_axioms, super::map::group_map_axioms};
 
 /// Interface for "storage protocol" ghost state.
 /// This is an extension-slash-variant on the more well-known concept
