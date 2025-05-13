@@ -69,6 +69,15 @@ fn run() -> Result<std::process::ExitStatus, String> {
         let mut args = std::env::args().into_iter();
         let _bin = args.next().expect("executable in args");
         let mut all_args: Vec<_> = args.collect();
+
+        dbg!(&all_args);
+        // get environment variables
+        let env_args: Vec<_> = std::env::vars()
+            .filter(|(k, _)| k.starts_with("VERUS_"))
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect();
+        dbg!(&env_args);
+
         let mut record = false;
         let mut unpretty_arg = false;
         for i in 0..all_args.len() {
