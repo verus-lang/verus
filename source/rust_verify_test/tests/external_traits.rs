@@ -440,7 +440,6 @@ test_verify_one_file! {
             spec fn s(&self, q: &Self, a: A, b: bool, x: Self::X) -> bool;
         }
 
-
         impl T<u8> for u32 {
             type X = u16;
             fn f(&self, q: &Self, a: u8, b: bool, x: u16) -> (r: usize) {
@@ -455,6 +454,77 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_cycle2 verus_code! {
+        #[verifier::external]
+        trait T<A> {
+            type X;
+            fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> usize;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec)]
+        trait Ex<A> {
+            type ExternalTraitSpecificationFor: T<A>;
+            type X;
+            fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> (r: usize)
+                ensures self.s(q, a, b, x)
+                ;
+            spec fn s(&self, q: &Self, a: A, b: bool, x: Self::X) -> bool;
+        }
+
+        impl T<u8> for u32 {
+            type X = u16;
+            fn f(&self, q: &Self, a: u8, b: bool, x: u16) -> (r: usize) {
+                10
+            }
+        }
+
+        #[verifier::external_trait_extension]
+        impl TSpec<u8> for u32 {
+            spec fn s(&self, q: &Self, a: u8, b: bool, x: u16) -> bool {
+                !call_ensures(Self::f, (self, q, a, b, x), 10)
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "found a cyclic self-reference")
+}
+
+test_verify_one_file! {
+    #[test] test_trait_extension_mismatch verus_code! {
+        #[verifier::external]
+        trait T<A> {
+            type X;
+            fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> usize;
+        }
+
+        #[verifier::external_trait_specification]
+        #[verifier::external_trait_extension(TSpec)]
+        trait Ex<A> {
+            type ExternalTraitSpecificationFor: T<A>;
+            type X;
+            fn f(&self, q: &Self, a: A, b: bool, x: Self::X) -> (r: usize)
+                requires b, self.s(q, a, b, x)
+                ensures r > 7
+                ;
+            spec fn s(&self, q: &Self, a: A, b: bool, x: Self::X) -> bool;
+        }
+
+        impl<A> T<A> for u32 {
+            type X = u16;
+            fn f(&self, q: &Self, a: A, b: bool, x: u16) -> (r: usize) {
+                10
+            }
+        }
+
+        #[verifier::external_trait_extension]
+        impl TSpec<u8> for u32 {
+            spec fn s(&self, q: &Self, a: u8, b: bool, x: u16) -> bool {
+                true
+            }
+        }
+    } => Err(err) => assert_vir_error_msg(err, "TSpec must have a matching impl")
 }
 
 test_verify_one_file! {
