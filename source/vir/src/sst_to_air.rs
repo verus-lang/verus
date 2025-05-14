@@ -2071,12 +2071,25 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
             }
 
             // TODO(andrea) move this to poly.rs once we have general support for mutable references
-            if typ_is_poly(ctx, &base_typ) && !typ_is_poly(ctx, &value_typ) {
+            let boxed = if typ_is_poly(ctx, &base_typ) && !typ_is_poly(ctx, &value_typ) {
                 value = try_box(ctx, value, &value_typ).expect("box field update");
-            }
+                true
+            } else {
+                false
+            };
 
             let a = Arc::new(StmtX::Assign(suffix_local_unique_id(&base_var), value));
             stmts.push(a);
+            if fields.len() > 0 {
+                let mut var_exp = ident_var(&suffix_local_unique_id(&base_var));
+                if boxed {
+                    var_exp = try_unbox(ctx, var_exp, &value_typ).expect("assign try_unbox");
+                }
+                let typ_inv = typ_invariant(ctx, &value_typ, &var_exp);
+                if let Some(expr) = typ_inv {
+                    stmts.push(Arc::new(StmtX::Assume(expr)));
+                }
+            }
 
             stmts
         }
