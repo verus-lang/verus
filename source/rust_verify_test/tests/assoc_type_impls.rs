@@ -542,7 +542,7 @@ test_verify_one_file! {
         }
         impl<A: U> T for A where A::X: R { spec fn f() -> int { 100 } }
         impl U for char { type X = u8; }
-        impl U for bool { type X = u16; }
+        impl U for bool { type X = u8; }
         impl T for bool { spec fn f() -> int { 200 } }
 
         proof fn test() {
