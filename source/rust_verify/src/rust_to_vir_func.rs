@@ -16,7 +16,7 @@ use rustc_hir::{
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
-    GenericArgsRef, Region, TraitRef, TyCtxt, TyKind,
+    GenericArgsRef, PseudoCanonicalInput, Region, TraitRef, TypingEnv, TyCtxt, TyKind,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
@@ -460,13 +460,14 @@ fn get_substs_early<'tcx>(
             crate::internal_err!(span, "expected FnDef")
         }
     };
-    if let Some(host_effect_index) = generics.host_effect_index {
-        let mut s: Vec<_> = substs.iter().collect();
-        s.remove(host_effect_index);
-        Ok(tcx.mk_args(&s))
-    } else {
+    // TODO(1.85): is this still needed?
+    // if let Some(host_effect_index) = generics.host_effect_index {
+    //     let mut s: Vec<_> = substs.iter().collect();
+    //     s.remove(host_effect_index);
+    //     Ok(tcx.mk_args(&s))
+    // } else {
         Ok(substs)
-    }
+    // }
 }
 
 fn equalize_substs<'tcx>(
@@ -537,7 +538,7 @@ fn equalize_substs<'tcx>(
         let region = Region::new_bound(
             tcx,
             rustc_middle::ty::INNERMOST,
-            BoundRegion { var: BoundVar::from(idx), kind: BoundRegionKind::BrAnon },
+            BoundRegion { var: BoundVar::from(idx), kind: BoundRegionKind::Anon },
         );
         l1.push(region);
         l2.push(region);
@@ -1591,14 +1592,14 @@ fn all_predicates<'tcx>(
     substs: GenericArgsRef<'tcx>,
     preliminarily_try_to_process_and_eliminate_trait_aliases: bool,
 ) -> Vec<Clause<'tcx>> {
-    let substs = if let Some(index) = tcx.generics_of(id).host_effect_index {
-        let b = rustc_middle::ty::Const::from_bool(tcx, true);
-        let mut s: Vec<_> = substs.iter().collect();
-        s.insert(index, b.into());
-        tcx.mk_args(&s)
-    } else {
-        substs
-    };
+    // let substs = if let Some(index) = tcx.generics_of(id).host_effect_index {
+    //     let b = rustc_middle::ty::Const::from_bool(tcx, true);
+    //     let mut s: Vec<_> = substs.iter().collect();
+    //     s.insert(index, b.into());
+    //     tcx.mk_args(&s)
+    // } else {
+    //     substs
+    // };
     let mut trait_alias_clauses: Vec<Clause<'tcx>> = Vec::new();
     let preds = tcx.predicates_of(id);
     if preliminarily_try_to_process_and_eliminate_trait_aliases {
@@ -1710,10 +1711,11 @@ pub(crate) fn get_external_def_id<'tcx>(
         // function definition in the trait definition.
         // We want to resolve to a specific definition in a trait implementation.
         let node_substs = types.node_args(hir_id);
-        let param_env = tcx.param_env(proxy_fun_id);
-        let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
+        let typing_env = TypingEnv::post_analysis(tcx, proxy_fun_id);
+        let normalized_substs = tcx.normalize_erasing_regions(typing_env, node_substs);
         let trait_ref = TraitRef::new(tcx, trait_def_id, normalized_substs);
-        let candidate = tcx.codegen_select_candidate((param_env, trait_ref));
+        let pseudo_canonical_inp = PseudoCanonicalInput { typing_env, value: trait_ref };
+        let candidate = tcx.codegen_select_candidate(pseudo_canonical_inp);
 
         match candidate {
             Ok(ImplSource::UserDefined(u)) => {
@@ -1722,7 +1724,7 @@ pub(crate) fn get_external_def_id<'tcx>(
 
                 let inst = rustc_middle::ty::Instance::try_resolve(
                     tcx,
-                    param_env,
+                    typing_env,
                     external_id,
                     normalized_substs,
                 );
