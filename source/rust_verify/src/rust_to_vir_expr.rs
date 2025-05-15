@@ -26,13 +26,14 @@ use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_hir::def::{CtorKind, CtorOf, DefKind, Res};
 use rustc_hir::{
     BinOpKind, Block, Closure, Destination, Expr, ExprKind, HirId, ItemKind, LetExpr, LetStmt,
-    LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
+    LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, StructTailExpr, UnOp,
 };
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
 use rustc_middle::ty::{
-    AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, Upcast, VariantDef,
+    AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TypingEnv, TyCtxt, TyKind,
+    Upcast, VariantDef,
 };
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
@@ -1113,7 +1114,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 )
             }
         }
-        Adjust::Borrow(AutoBorrow::Ref(_region, AutoBorrowMutability::Not)) => {
+        Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Not)) => {
             // Similar to ExprKind::AddrOf
             let mut new_expr: Arc<SpannedTyped<vir::ast::ExprX>> = expr_to_vir_with_adjustments(
                 bctx,
@@ -1127,7 +1128,7 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             Arc::make_mut(&mut new_expr).typ = typ;
             Ok(new_expr)
         }
-        Adjust::Borrow(AutoBorrow::Ref(_region, AutoBorrowMutability::Mut { .. })) => {
+        Adjust::Borrow(AutoBorrow::Ref(AutoBorrowMutability::Mut { .. })) => {
             if current_modifier.deref_mut {
                 // * &mut cancels out
                 let mut new_modifier = current_modifier;
@@ -1287,8 +1288,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
         Adjust::Pointer(_cast) => {
             unsupported_err!(expr.span, "casting a pointer (here the cast is implicit)")
         }
-        Adjust::DynStar => {
-            unsupported_err!(expr.span, "dyn cast (here the cast is implicit)")
+        Adjust::ReborrowPin(_mut) => {
+            unsupported_err!(expr.span, "reborrowing a pinned reference")
         }
     }
 }
@@ -1689,7 +1690,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             }
             let ty = bctx.types.expr_ty_adjusted(e);
             let is_copy =
-                ty.is_copy_modulo_regions(bctx.ctxt.tcx, bctx.ctxt.tcx.param_env(bctx.fun_id));
+                tcx.type_is_copy_modulo_regions(TypingEnv::post_analysis(tcx, bctx.fun_id), ty);
             if is_copy {
                 let arg_vir = expr_to_vir(bctx, e, modifier)?;
                 let fun = vir::fun!("vstd" => "array", "array_fill_for_copy_types");
@@ -2271,10 +2272,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
             let label = dest.label.map(|l| l.ident.to_string());
             mk_expr(ExprX::BreakOrContinue { label, is_break: false })
         }
-        ExprKind::Struct(qpath, fields, spread) => {
-            let update = match spread {
-                None => None,
-                Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
+        ExprKind::Struct(qpath, fields, struct_tail) => {
+            let update = match struct_tail {
+                // Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
+                StructTailExpr::Base(expr) =>
+                    Some(expr_to_vir(bctx, expr, modifier)?),
+                _ => None,
             };
 
             let res = bctx.types.qpath_res(qpath, expr.hir_id);
@@ -2415,6 +2418,7 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::InlineAsm(..) => unsupported_err!(expr.span, format!("inline-asm expressions")),
         ExprKind::Err(..) => unsupported_err!(expr.span, format!("Err expressions")),
         ExprKind::Become(..) => unsupported_err!(expr.span, format!("Become expressions")),
+        ExprKind::UnsafeBinderCast(..) => unsupported_err!(expr.span, format!("unsafe binder cast")),
     }
 }
 
@@ -3014,7 +3018,7 @@ fn is_ptr_cast<'tcx>(
         (TyKind::RawPtr(ty1, _), TyKind::RawPtr(ty2, _)) => {
             if ty1 == ty2 {
                 return Ok(Some(PtrCastKind::Trivial));
-            } else if ty2.is_sized(bctx.ctxt.tcx, bctx.ctxt.tcx.param_env(bctx.fun_id)) {
+            } else if ty2.is_sized(bctx.ctxt.tcx, TypingEnv::post_analysis(bctx.ctxt.tcx, bctx.fun_id)) {
                 let src_ty = mid_ty_to_vir(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,

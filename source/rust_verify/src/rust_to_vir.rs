@@ -316,15 +316,6 @@ fn check_item<'tcx>(
         {
             return Ok(());
         }
-        ItemKind::OpaqueTy(OpaqueTy {
-            bounds: _,
-            origin: OpaqueTyOrigin::AsyncFn { .. },
-            hir_id,
-            def_id,
-            span,
-        }) => {
-            return Ok(());
-        }
         _ => {
             unsupported_err!(item.span, "unsupported item", item);
         }

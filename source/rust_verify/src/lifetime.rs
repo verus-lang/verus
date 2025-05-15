@@ -369,7 +369,7 @@ impl rustc_driver::Callbacks for LifetimeCallbacks {
     fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
+        queries: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         check(queries);
         rustc_driver::Compilation::Stop
@@ -422,10 +422,7 @@ pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
     let mut callbacks = LifetimeCallbacks {};
     let mut compiler = rustc_driver::RunCompiler::new(rustc_args, &mut callbacks);
     compiler.set_file_loader(Some(Box::new(LifetimeFileLoader { rust_code })));
-    match compiler.run() {
-        Ok(()) => (),
-        Err(_) => std::process::exit(128),
-    }
+    compiler.run(); // TODO(1.85): use catch_unwind here?
 }
 
 pub(crate) fn check_tracked_lifetimes<'tcx>(
