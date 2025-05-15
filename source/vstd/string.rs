@@ -28,12 +28,13 @@ pub open spec fn new_strlit_spec(s: &str) -> &str {
     s
 }
 
-#[cfg(feature = "alloc")]
-pub assume_specification[ str::to_string ](s: &str) -> (res: String)
-    ensures
-        s@ == res@,
-        s.is_ascii() == res.is_ascii(),
-;
+// TODO(1.85): make this work again
+// #[cfg(feature = "alloc")]
+// pub assume_specification[ str::to_string ](s: &str) -> (res: String)
+//     ensures
+//         s@ == res@,
+//         s.is_ascii() == res.is_ascii(),
+// ;
 
 #[verifier::external]
 pub trait StrSliceExecFns {

@@ -14,8 +14,8 @@ use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
-    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, ParamConst, TermKind, TypeFoldable,
-    TypeFolder, TypeSuperFoldable, TypeVisitableExt, ValTree,
+    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, PseudoCanonicalInput, ParamConst, TermKind, TypeFoldable,
+    TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTree,
 };
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{kw, Ident};
@@ -1165,36 +1165,66 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     span: Option<Span>,
     cnst: &rustc_middle::ty::Const<'tcx>,
 ) -> Result<Typ, VirErr> {
-    let cnst_kind = match cnst.kind() {
+    // TODO(1.85): make this work again
+    match cnst.kind() {
         ConstKind::Unevaluated(unevaluated) => {
-            let valtree = cnst.eval(
-                tcx,
-                tcx.param_env(unevaluated.def),
-                span.expect("expected span since 1.79.0"),
+            let span = span.expect("span");
+            let typing_env = TypingEnv {
+                param_env: tcx.param_env(unevaluated.def),
+                typing_mode: TypingMode::PostAnalysis,
+            };
+            let valtree = tcx.const_eval_resolve_for_typeck(
+                typing_env,
+                unevaluated,
+                span,
             );
             if valtree.is_err() {
-                unsupported_err!(span.expect("span"), format!("error evaluating const"));
+                unsupported_err!(span, format!("error evaluating const"));
             }
-            let (ty, valtree) = valtree.unwrap();
-            ConstKind::Value(ty, valtree)
+            let valtree = valtree.unwrap();
+            if valtree.is_err() {
+                unsupported_err!(span, format!("error evaluating const"));
+            }
+            let valtree = valtree.unwrap();
+            // TODO(1.85): we do need to figure out the type
+            // and distinguish ConstInt and ConstBool
+            if let ValTree::Leaf(i) = valtree {
+                let c = num_bigint::BigInt::from(i.to_bits(i.size()));
+                Ok(Arc::new(TypX::ConstInt(c)))
+            } else {
+                unsupported_err!(span, format!("const type argument {:?}", cnst));
+            }
+            // let c = num_bigint::BigInt::from(i.to_bits(i.size()));
+            // Ok(Arc::new(TypX::ConstInt(c)))
         }
-        kind => kind,
-    };
-    match cnst_kind {
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
-        ConstKind::Value(ty, ValTree::Leaf(i))
-            if matches!(ty.kind(), TyKind::Uint(_) | TyKind::Int(_)) =>
+        ConstKind::Value(_, ValTree::Leaf(i)) =>
         {
             let c = num_bigint::BigInt::from(i.to_bits(i.size()));
             Ok(Arc::new(TypX::ConstInt(c)))
         }
-        ConstKind::Value(ty, ValTree::Leaf(i)) if matches!(ty.kind(), TyKind::Bool) => {
-            Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0)))
-        }
+        // ConstKind::Value(ty, ValTree::Leaf(i)) if matches!(ty.kind(), TyKind::Bool) => {
+        //     Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0)))
+        // }
         _ => {
             unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
         }
     }
+    // match cnst.kind() {
+    //     ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
+    //     ConstKind::Value(ty, ValTree::Leaf(i))
+    //         if matches!(ty.kind(), TyKind::Uint(_) | TyKind::Int(_)) =>
+    //     {
+    //         let c = num_bigint::BigInt::from(i.to_bits(i.size()));
+    //         Ok(Arc::new(TypX::ConstInt(c)))
+    //     }
+    //     ConstKind::Value(ty, ValTree::Leaf(i)) if matches!(ty.kind(), TyKind::Bool) => {
+    //         Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0)))
+    //     }
+    //     _ => {
+    //         unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
+    //     }
+    // }
 }
 
 pub(crate) fn is_type_std_rc_or_arc_or_ref<'tcx>(
@@ -1270,7 +1300,7 @@ pub(crate) fn implements_structural<'tcx>(
         .get(&VerusItem::Marker(crate::verus_items::MarkerItem::Structural))
         .expect("structural trait is not defined");
 
-    let infcx = ctxt.tcx.infer_ctxt().build();
+    let infcx = ctxt.tcx.infer_ctxt().build(TypingMode::PostAnalysis);
     let ty = ctxt.tcx.erase_regions(ty);
     if ty.has_escaping_bound_vars() {
         return false;
@@ -1579,19 +1609,11 @@ where
                 }
             }
             ClauseKind::ConstArgHasType(cnst, ty) => {
-                let is_host = match cnst.kind() {
-                    ConstKind::Param(ParamConst { index, name: _ }) => {
-                        generics.host_effect_index == Some(index as usize)
-                    }
-                    _ => false,
-                };
-
-                if !is_host {
-                    let t1 = mid_ty_const_to_vir(tcx, Some(*span), &cnst)?;
-                    let t2 = mid_ty_to_vir(tcx, verus_items, param_env_src, *span, &ty, false)?;
-                    let bound = GenericBoundX::ConstTyp(t1, t2);
-                    bounds.push(Arc::new(bound));
-                }
+                // TODO(1.85): looks like HostEffect is now its own clause kind
+                let t1 = mid_ty_const_to_vir(tcx, Some(*span), &cnst)?;
+                let t2 = mid_ty_to_vir(tcx, verus_items, param_env_src, *span, &ty, false)?;
+                let bound = GenericBoundX::ConstTyp(t1, t2);
+                bounds.push(Arc::new(bound));
             }
             _ => {
                 return err_span(*span, "Verus does not yet support this type of bound");
@@ -1706,7 +1728,6 @@ pub(crate) fn check_item_external_generics<'tcx>(
                 GenericParamKind::Const {
                     ty: _,
                     default: None,
-                    is_host_effect: false,
                     synthetic: false,
                 },
             ) => {
@@ -1804,7 +1825,7 @@ fn check_generics_bounds_main<'tcx>(
         match &param.kind {
             GenericParamDefKind::Lifetime { .. } => {} // ignore
             GenericParamDefKind::Type { .. }
-            | GenericParamDefKind::Const { has_default: _, is_host_effect: false, .. } => {
+            | GenericParamDefKind::Const { has_default: _, .. } => {
                 mid_params.push(param);
             }
             GenericParamDefKind::Const { .. } => {}
@@ -1838,7 +1859,7 @@ fn check_generics_bounds_main<'tcx>(
 
         match mid_param.kind {
             GenericParamDefKind::Type { .. }
-            | GenericParamDefKind::Const { is_host_effect: false, .. } => {}
+            | GenericParamDefKind::Const { .. } => {}
             _ => {
                 continue;
             }
@@ -1972,25 +1993,26 @@ pub(crate) fn remove_host_arg<'tcx>(
     substs: GenericArgsRef<'tcx>,
     span: Span,
 ) -> Result<GenericArgsRef<'tcx>, VirErr> {
-    let generics = tcx.generics_of(f_id);
+    // let generics = tcx.generics_of(f_id);
 
-    if generics.count() != substs.len() {
-        return err_span(
-            span,
-            format!("Verus Internal Error: incorrect application of remove_host_arg"),
-        );
-    }
+    // if generics.count() != substs.len() {
+    //     return err_span(
+    //         span,
+    //         format!("Verus Internal Error: incorrect application of remove_host_arg"),
+    //     );
+    // }
 
-    if let Some(index) = generics.host_effect_index {
-        let mut s: Vec<_> = substs.iter().collect();
-        if !matches!(s[index].unpack(), GenericArgKind::Const(_)) {
-            return err_span(span, format!("Verus Internal Error: remove_host_arg expected Const"));
-        }
-        s.remove(index);
-        Ok(tcx.mk_args(&s))
-    } else {
-        Ok(substs)
-    }
+    // if let Some(index) = generics.host_effect_index {
+    //     let mut s: Vec<_> = substs.iter().collect();
+    //     if !matches!(s[index].unpack(), GenericArgKind::Const(_)) {
+    //         return err_span(span, format!("Verus Internal Error: remove_host_arg expected Const"));
+    //     }
+    //     s.remove(index);
+    //     Ok(tcx.mk_args(&s))
+    // } else {
+    //     Ok(substs)
+    // }
+    Ok(substs) // TODO(1.85): I think this filtering here may no longer be needed
 }
 
 pub(crate) fn ty_remove_references<'tcx>(

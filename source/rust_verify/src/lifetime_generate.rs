@@ -507,7 +507,11 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             use crate::rustc_trait_selection::traits::NormalizeExt;
             if let Some(fun_id) = state.enclosing_fun_id {
                 let param_env = ctxt.tcx.param_env(fun_id);
-                let ty_mode = rustc_middle::ty::TypingMode::analysis_in_body(ctxt.tcx, fun_id.as_local().expect("local fun_id"));
+                // TODO(1.85) The commented out line breaks on some trait proof fn's without a body when they involve
+                // both associated types and a tracked return value.
+                // Need to figure out if using PostAnalysis here is correct.
+                // let ty_mode = rustc_middle::ty::TypingMode::post_borrowck_analysis(ctxt.tcx, fun_id.as_local().expect("local fun_id"));
+                let ty_mode = rustc_middle::ty::TypingMode::PostAnalysis;
                 let infcx = ctxt.tcx.infer_ctxt().ignoring_regions().build(ty_mode);
                 let cause = rustc_infer::traits::ObligationCause::dummy();
                 let at = infcx.at(&cause, param_env);
@@ -934,7 +938,6 @@ fn erase_call<'tcx>(
                 expr,
             );
 
-            let typing_env = TypingEnv::post_analysis(ctxt.tcx, fn_def_id);
             let normalized_substs = ctxt.tcx.normalize_erasing_regions(typing_env, node_substs);
             let inst = rustc_middle::ty::Instance::try_resolve(
                 ctxt.tcx,
@@ -1371,7 +1374,7 @@ fn erase_expr<'tcx>(
                 let spread = match spread {
                     rustc_hir::StructTailExpr::None => None,
                     rustc_hir::StructTailExpr::Base(expr) => Some(erase_expr(ctxt, state, expect_spec, expr).expect("expr")),
-                    rustc_hir::StructTailExpr::DefaultFields(span) => unsupported_err!(expr.span, "default fields in struct tail expressions"),
+                    rustc_hir::StructTailExpr::DefaultFields(span) => None,
                 };
                 let typ_args = if let box TypX::Datatype(_, _, typ_args) = expr_typ(state) {
                     typ_args

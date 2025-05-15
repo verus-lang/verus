@@ -10,7 +10,7 @@ use crate::util::err_span;
 use air::ast_util::str_ident;
 use rustc_hir::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
-use rustc_middle::ty::{AdtDef, GenericArgKind, GenericArgsRef, TyKind};
+use rustc_middle::ty::{AdtDef, GenericArgKind, GenericArgsRef, TyKind, TypingEnv, TypingMode};
 use rustc_span::Span;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -447,7 +447,8 @@ fn get_sized_constraint<'tcx>(
     let tcx = ctxt.tcx;
 
     let param_env = tcx.param_env(adt_def.def_id());
-    if tcx.type_of(adt_def.def_id()).skip_binder().is_sized(tcx, param_env) {
+    let typing_env = TypingEnv::post_analysis(tcx, adt_def.def_id());
+    if tcx.type_of(adt_def.def_id()).skip_binder().is_sized(tcx, typing_env) {
         return Ok(None);
     }
 
@@ -466,7 +467,7 @@ fn get_sized_constraint<'tcx>(
 
         // Try normalizing (i.e., eliminating any projection types)
 
-        let infcx = tcx.infer_ctxt().ignoring_regions().build();
+        let infcx = tcx.infer_ctxt().ignoring_regions().build(TypingMode::PostAnalysis);
         let cause = rustc_infer::traits::ObligationCause::dummy();
         let at = infcx.at(&cause, param_env);
         let ty = &crate::rust_to_vir_base::clean_all_escaping_bound_vars(
