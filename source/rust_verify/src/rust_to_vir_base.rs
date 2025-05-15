@@ -14,7 +14,7 @@ use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
-    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, PseudoCanonicalInput, ParamConst, TermKind, TypeFoldable,
+    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, TermKind, TypeFoldable,
     TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTree,
 };
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
@@ -1166,65 +1166,35 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     cnst: &rustc_middle::ty::Const<'tcx>,
 ) -> Result<Typ, VirErr> {
     // TODO(1.85): make this work again
-    match cnst.kind() {
+    let cnst = match cnst.kind() {
         ConstKind::Unevaluated(unevaluated) => {
-            let span = span.expect("span");
             let typing_env = TypingEnv {
                 param_env: tcx.param_env(unevaluated.def),
                 typing_mode: TypingMode::PostAnalysis,
             };
-            let valtree = tcx.const_eval_resolve_for_typeck(
+            tcx.normalize_erasing_regions(
                 typing_env,
-                unevaluated,
-                span,
-            );
-            if valtree.is_err() {
-                unsupported_err!(span, format!("error evaluating const"));
-            }
-            let valtree = valtree.unwrap();
-            if valtree.is_err() {
-                unsupported_err!(span, format!("error evaluating const"));
-            }
-            let valtree = valtree.unwrap();
-            // TODO(1.85): we do need to figure out the type
-            // and distinguish ConstInt and ConstBool
-            if let ValTree::Leaf(i) = valtree {
-                let c = num_bigint::BigInt::from(i.to_bits(i.size()));
-                Ok(Arc::new(TypX::ConstInt(c)))
-            } else {
-                unsupported_err!(span, format!("const type argument {:?}", cnst));
-            }
-            // let c = num_bigint::BigInt::from(i.to_bits(i.size()));
-            // Ok(Arc::new(TypX::ConstInt(c)))
+                cnst.clone(),
+            )
         }
+        _ => cnst.clone(),
+    };
+
+    match cnst.kind() {
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
-        ConstKind::Value(_, ValTree::Leaf(i)) =>
+        ConstKind::Value(ty, ValTree::Leaf(i))
+            if matches!(ty.kind(), TyKind::Uint(_) | TyKind::Int(_)) =>
         {
             let c = num_bigint::BigInt::from(i.to_bits(i.size()));
             Ok(Arc::new(TypX::ConstInt(c)))
         }
-        // ConstKind::Value(ty, ValTree::Leaf(i)) if matches!(ty.kind(), TyKind::Bool) => {
-        //     Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0)))
-        // }
+        ConstKind::Value(ty, ValTree::Leaf(i)) if matches!(ty.kind(), TyKind::Bool) => {
+            Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0)))
+        }
         _ => {
             unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
         }
     }
-    // match cnst.kind() {
-    //     ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
-    //     ConstKind::Value(ty, ValTree::Leaf(i))
-    //         if matches!(ty.kind(), TyKind::Uint(_) | TyKind::Int(_)) =>
-    //     {
-    //         let c = num_bigint::BigInt::from(i.to_bits(i.size()));
-    //         Ok(Arc::new(TypX::ConstInt(c)))
-    //     }
-    //     ConstKind::Value(ty, ValTree::Leaf(i)) if matches!(ty.kind(), TyKind::Bool) => {
-    //         Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0)))
-    //     }
-    //     _ => {
-    //         unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
-    //     }
-    // }
 }
 
 pub(crate) fn is_type_std_rc_or_arc_or_ref<'tcx>(
