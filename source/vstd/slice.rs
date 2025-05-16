@@ -139,4 +139,19 @@ pub broadcast group group_slice_axioms {
     axiom_slice_get_usize,
 }
 
+impl<T> View for core::slice::Iter<'_, T> {
+    type V = Seq<T>;
+
+    uninterp spec fn view(&self) -> Seq<T>;
+}
+
+impl<T: DeepView> DeepView for core::slice::Iter<'_, T> {
+    type V = Seq<T::V>;
+
+    open spec fn deep_view(&self) -> Seq<T::V> {
+        let v = self.view();
+        Seq::new(v.len(), |i: int| v[i].deep_view())
+    }
+}
+
 } // verus!
