@@ -188,7 +188,7 @@ and `#[verifier::external_body]` can be used to mark this boundary.
 We can now compile the program above using the `--compile` option to Verus:
 
 ```
-./tools/rust-verify.sh --compile rust_verify/example/guide/requires_ensures.rs
+./target-verus/release/verus --compile rust_verify/example/guide/requires_ensures.rs
 ```
 
 This will produce an executable that prints a message when run:
