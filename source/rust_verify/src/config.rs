@@ -76,6 +76,7 @@ pub struct ArgsX {
     pub import: Vec<(String, String)>,
     pub verify_root: bool,
     pub verify_module: Vec<String>,
+    pub verify_only_module: Vec<String>,
     pub verify_function: Option<String>,
     pub no_external_by_default: bool,
     pub no_verify: bool,
@@ -122,6 +123,7 @@ impl ArgsX {
             import: Default::default(),
             verify_root: Default::default(),
             verify_module: Default::default(),
+            verify_only_module: Default::default(),
             verify_function: Default::default(),
             no_external_by_default: Default::default(),
             no_verify: Default::default(),
@@ -292,6 +294,7 @@ pub fn parse_args_with_imports(
     const OPT_IMPORT: &str = "import";
     const OPT_VERIFY_ROOT: &str = "verify-root";
     const OPT_VERIFY_MODULE: &str = "verify-module";
+    const OPT_VERIFY_ONLY_MODULE: &str = "verify-only-module";
     const OPT_VERIFY_FUNCTION: &str = "verify-function";
     const OPT_NO_EXTERNAL_BY_DEFAULT: &str = "no-external-by-default";
     const OPT_NO_VERIFY: &str = "no-verify";
@@ -440,7 +443,13 @@ pub fn parse_args_with_imports(
     opts.optmulti(
         "",
         OPT_VERIFY_MODULE,
-        "Verify just one submodule within crate (e.g. 'foo' or 'foo::bar'), can be repeated to verify only certain modules",
+        "Verify just one submodule and its descendants within the crate (e.g. 'foo' or 'foo::bar'), can be repeated to verify only certain modules",
+        "MODULE",
+    );
+    opts.optmulti(
+        "",
+        OPT_VERIFY_ONLY_MODULE,
+        "Verify just one submodule (excluding its descendants) within the crate (e.g. 'foo' or 'foo::bar'), can be repeated to verify only certain modules",
         "MODULE",
     );
     opts.optopt(
@@ -630,7 +639,29 @@ pub fn parse_args_with_imports(
         export: matches.opt_str(OPT_EXPORT),
         import: import,
         verify_module: matches.opt_strs(OPT_VERIFY_MODULE),
-        verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
+        verify_only_module: matches.opt_strs(OPT_VERIFY_ONLY_MODULE),
+        verify_function: {
+            if matches.opt_present(OPT_VERIFY_FUNCTION) {
+                if matches.opt_present(OPT_VERIFY_MODULE) {
+                    error("When using --verify-function, use --verify-only-module instead of --verify-module".to_owned())
+                }
+                if !matches.opt_present(OPT_VERIFY_ONLY_MODULE)
+                    && !matches.opt_present(OPT_VERIFY_ROOT)
+                {
+                    error(
+                        "--verify-function option requires --verify-only-module or --verify-root"
+                            .to_owned(),
+                    )
+                }
+                if matches.opt_count(OPT_VERIFY_ONLY_MODULE)
+                    + (if matches.opt_present(OPT_VERIFY_ROOT) { 1 } else { 0 })
+                    > 1
+                {
+                    error("Must pass at most one --verify-only-module or --verify-root when using --verify-function".to_string())
+                }
+            }
+            matches.opt_str(OPT_VERIFY_FUNCTION)
+        },
         no_external_by_default: matches.opt_present(OPT_NO_EXTERNAL_BY_DEFAULT),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
@@ -732,9 +763,19 @@ pub fn parse_args_with_imports(
         },
         profile_all: {
             if matches.opt_present(OPT_PROFILE_ALL) {
-                if !(matches.opt_present(OPT_VERIFY_MODULE) || matches.opt_present(OPT_VERIFY_ROOT))
+                if !(matches.opt_present(OPT_VERIFY_ONLY_MODULE)
+                    || matches.opt_present(OPT_VERIFY_ROOT))
                 {
-                    error("Must pass --verify-module or --verify-root when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
+                    error("Must pass --verify-only-module or --verify-root when using profile-all. To capture a full project's profile, consider -V capture-profiles".to_string())
+                }
+                if matches.opt_present(OPT_VERIFY_MODULE) {
+                    error("When using --profile-all, use --verify-only-module instead of --verify-module".to_string())
+                }
+                if matches.opt_count(OPT_VERIFY_ONLY_MODULE) > 1 {
+                    error(
+                        "Must pass at most one --verify-only-module when using profile-all"
+                            .to_string(),
+                    )
                 }
                 if matches.opt_present(OPT_PROFILE) {
                     error("--profile and --profile-all are mutually exclusive".to_string())

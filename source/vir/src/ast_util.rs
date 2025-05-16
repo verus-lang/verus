@@ -1,10 +1,11 @@
 use crate::ast::{
     ArchWordBits, BinaryOp, BodyVisibility, Constant, DatatypeTransparency, DatatypeX, Dt, Expr,
     ExprX, Exprs, FieldOpr, Fun, FunX, Function, FunctionKind, FunctionX, GenericBound,
-    GenericBoundX, HeaderExprX, Ident, InequalityOp, IntRange, IntegerTypeBitwidth, ItemKind,
-    MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped,
-    TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp, UnaryOpr,
-    UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants, Visibility,
+    GenericBoundX, HeaderExprX, Ident, Idents, InequalityOp, IntRange, IntegerTypeBitwidth,
+    ItemKind, MaskSpec, Mode, Module, Opaqueness, Param, ParamX, Params, Path, PathX, Quant,
+    SpannedTyped, TriggerAnnotation, Typ, TypDecoration, TypDecorationArg, TypX, Typs, UnaryOp,
+    UnaryOpr, UnwindSpec, VarBinder, VarBinderX, VarBinders, VarIdent, Variant, Variants,
+    Visibility,
 };
 use crate::messages::Span;
 use crate::sst::{Par, Pars};
@@ -52,6 +53,22 @@ impl PathX {
             _ => false,
         }
     }
+}
+
+pub fn path_segments_match_prefix(target: &Idents, prefix: &Idents) -> bool {
+    prefix.len() <= target.len() && prefix[..] == target[..prefix.len()]
+}
+
+pub fn parse_path_segments_from_user_str(s: &str) -> Result<Idents, crate::ast::VirErr> {
+    let mut arg_segments: Vec<Ident> =
+        s.split("::").map(|s| Arc::new(s.to_string())).collect::<Vec<_>>();
+    if arg_segments.first().map(|x| **x == "") == Some(true) {
+        arg_segments.remove(0);
+    }
+    if arg_segments.is_empty() {
+        return Err(crate::messages::error_bare(format!("invalid path {s}")));
+    }
+    Ok(Arc::new(arg_segments))
 }
 
 impl fmt::Debug for PathX {
