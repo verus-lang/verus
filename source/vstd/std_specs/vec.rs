@@ -46,6 +46,7 @@ pub fn vec_index<T, A: Allocator>(vec: &Vec<T, A>, i: usize) -> (element: &T)
         i < vec.view().len(),
     ensures
         *element == vec.view().index(i as int),
+    no_unwind
 {
     &vec[i]
 }
@@ -66,6 +67,7 @@ pub broadcast proof fn axiom_spec_len<A>(v: &Vec<A>)
 pub assume_specification<T, A: Allocator>[ Vec::<T, A>::len ](vec: &Vec<T, A>) -> (len: usize)
     ensures
         len == spec_vec_len(vec),
+        no_unwind
 ;
 
 ////// Other functions
