@@ -605,6 +605,9 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
                 match assoc_item.kind {
                     rustc_middle::ty::AssocKind::Type => {
                         let name = Arc::new(assoc_item.ident(tcx).to_string());
+                        if !trait_map.contains_key(&trait_path) {
+                            continue;
+                        }
                         if !trait_map[&trait_path].x.assoc_typs.contains(&name) {
                             continue;
                         }
