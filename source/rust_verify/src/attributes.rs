@@ -199,7 +199,7 @@ pub(crate) enum GhostBlockAttr {
     Wrapper,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) enum AttrPublish {
     Open,
     Closed,
@@ -257,6 +257,8 @@ pub(crate) enum Attr {
     NoAutoTrigger,
     // when used in a ghost context, redirect to a specified spec method
     Autospec(String),
+    // when used in a ghost context, redirect to the 'returns' clause
+    AllowInSpec,
     // specify list of places where == is promoted to =~=
     AutoExtEqual(vir::ast::AutoExtEqual),
     // add manual trigger to expression inside quantifier
@@ -472,6 +474,7 @@ pub(crate) fn parse_attrs(
                 {
                     v.push(Attr::Autospec(ident.clone()))
                 }
+                AttrTree::Fun(_, arg, None) if arg == "allow_in_spec" => v.push(Attr::AllowInSpec),
                 AttrTree::Fun(_, arg, None) if arg == "atomic" => v.push(Attr::Atomic),
                 AttrTree::Fun(_, arg, None) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
@@ -933,6 +936,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) broadcast_use_by_default_when_this_crate_is_imported: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autospec: Option<String>,
+    pub(crate) allow_in_spec: bool,
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
     pub(crate) for_loop: bool,
@@ -1090,6 +1094,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         broadcast_use_by_default_when_this_crate_is_imported: false,
         no_auto_trigger: false,
         autospec: None,
+        allow_in_spec: false,
         custom_req_err: None,
         bit_vector: false,
         for_loop: false,
@@ -1161,6 +1166,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             }
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
+            Attr::AllowInSpec => vs.allow_in_spec = true,
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,
             Attr::ForLoop => vs.for_loop = true,
