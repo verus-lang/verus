@@ -7,6 +7,9 @@ use alloc::string::{self, String, ToString};
 use super::prelude::*;
 use super::seq::Seq;
 use super::view::*;
+use crate::pervasive::ForLoopGhostIterator;
+use crate::pervasive::ForLoopGhostIteratorNew;
+use std::str::Chars;
 
 verus! {
 
@@ -318,6 +321,126 @@ impl StringExecFns for String {
             ret.is_ascii() == self.is_ascii() && other.is_ascii(),
     {
         self + other
+    }
+}
+
+pub assume_specification[ str::chars ](s: &str) -> (chars: Chars<'_>)
+    ensures
+        ({
+            let (index, c) = chars@;
+            &&& index == 0
+            &&& c == s@
+        }),
+;
+
+// The `chars` method of a `str` returns an iterator of type `Chars`,
+// so we specify that type here.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+pub struct ExChars<'a>(Chars<'a>);
+
+impl<'a> View for Chars<'a> {
+    type V = (int, Seq<char>);
+
+    uninterp spec fn view(&self) -> (int, Seq<char>);
+}
+
+impl<'a> DeepView for Chars<'a> {
+    type V = (int, Seq<char>);
+
+    open spec fn deep_view(&self) -> (int, Seq<char>) {
+        self.view()
+    }
+}
+
+pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (r: Option<char>)
+    ensures
+        ({
+            let (old_index, old_seq) = old(chars)@;
+            match r {
+                None => {
+                    &&& chars@ == old(chars)@
+                    &&& old_index >= old_seq.len()
+                },
+                Some(k) => {
+                    let (new_index, new_seq) = chars@;
+                    &&& 0 <= old_index < old_seq.len()
+                    &&& new_seq == old_seq
+                    &&& new_index == old_index + 1
+                    &&& k == old_seq[old_index]
+                },
+            }
+        }),
+;
+
+pub struct CharsGhostIterator<'a> {
+    pub pos: int,
+    pub chars: Seq<char>,
+    pub phantom: Option<&'a char>,
+}
+
+impl<'a> ForLoopGhostIteratorNew for Chars<'a> {
+    type GhostIter = CharsGhostIterator<'a>;
+
+    open spec fn ghost_iter(&self) -> CharsGhostIterator<'a> {
+        CharsGhostIterator { pos: self@.0, chars: self@.1, phantom: None }
+    }
+}
+
+impl<'a> ForLoopGhostIterator for CharsGhostIterator<'a> {
+    type ExecIter = Chars<'a>;
+
+    type Item = char;
+
+    type Decrease = int;
+
+    open spec fn exec_invariant(&self, exec_iter: &Chars<'a>) -> bool {
+        &&& self.pos == exec_iter@.0
+        &&& self.chars == exec_iter@.1
+    }
+
+    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
+        init matches Some(init) ==> {
+            &&& init.pos == 0
+            &&& init.chars == self.chars
+            &&& 0 <= self.pos <= self.chars.len()
+        }
+    }
+
+    open spec fn ghost_ensures(&self) -> bool {
+        self.pos == self.chars.len()
+    }
+
+    open spec fn ghost_decrease(&self) -> Option<int> {
+        Some(self.chars.len() - self.pos)
+    }
+
+    open spec fn ghost_peek_next(&self) -> Option<char> {
+        if 0 <= self.pos < self.chars.len() {
+            Some(self.chars[self.pos])
+        } else {
+            None
+        }
+    }
+
+    open spec fn ghost_advance(&self, _exec_iter: &Chars<'a>) -> CharsGhostIterator<'a> {
+        Self { pos: self.pos + 1, ..*self }
+    }
+}
+
+impl<'a> View for CharsGhostIterator<'a> {
+    type V = Seq<char>;
+
+    open spec fn view(&self) -> Seq<char> {
+        self.chars.take(self.pos)
+    }
+}
+
+impl<'a> DeepView for CharsGhostIterator<'a> {
+    type V = Seq<char>;
+
+    open spec fn deep_view(&self) -> Seq<char> {
+        self.view()
     }
 }
 
