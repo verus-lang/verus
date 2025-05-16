@@ -1908,6 +1908,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] decreases_in_pure_exp verus_code! {
+        spec fn f(n: int) -> bool
+            decreases n
+        {
+            (|b: bool| b)(f(n)) // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] decreases_checks_assert_by verus_code! {
+        // https://github.com/verus-lang/verus/issues/1624
+        #[via_fn]
+        proof fn test_decr(i: nat) {
+            assert(false) by {} // FAILS
+        }
+
+        spec fn test(i: nat) -> bool
+            decreases i
+            via test_decr
+        {
+            test(i)
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] lemma_not_proved_by_impossible_fun verus_code! {
         spec fn impossible_fun() -> bool
             decreases 0int

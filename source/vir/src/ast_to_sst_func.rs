@@ -74,6 +74,7 @@ pub fn mk_fun_ctx_dec<F: FunctionCommon>(
     checking_spec_preconditions: bool,
     checking_spec_decreases: bool,
 ) -> Option<FunctionCtx> {
+    assert!(!(checking_spec_preconditions && checking_spec_decreases));
     Some(FunctionCtx {
         checking_spec_preconditions,
         checking_spec_preconditions_for_non_spec: checking_spec_preconditions
@@ -871,7 +872,7 @@ pub fn function_to_sst(
     let func_decl_sst = crate::ast_to_sst_func::func_decl_to_sst(ctx, diagnostics, function)?;
     ctx.fun = None;
 
-    ctx.fun = mk_fun_ctx_dec(&function, true, true);
+    ctx.fun = mk_fun_ctx_dec(&function, false, true);
     let func_axioms_sst = crate::ast_to_sst_func::func_axioms_to_sst(
         ctx,
         diagnostics,
