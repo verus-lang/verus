@@ -2184,7 +2184,7 @@ pub(crate) fn check_item_const_or_static<'tcx>(
         functions.push(f.clone());
     }
 
-    Ok(())
+    Ok(name)
 }
 
 pub(crate) fn check_foreign_item_fn<'tcx>(
