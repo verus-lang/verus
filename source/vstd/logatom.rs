@@ -3,14 +3,12 @@ use super::prelude::*;
 verus! {
 
 pub trait ReadOperation: Sized {
-    type Resource  /* = () */
-    ;
-
     // tracked resource(s) passed to callback
-    type ExecResult  /* = () */
-    ;
+    type Resource;
 
     // executable result returned from operation
+    type ExecResult;
+
     spec fn requires(self, r: Self::Resource, e: Self::ExecResult) -> bool;
 
     // Optionally support peeking, which provides initial validation
@@ -25,18 +23,15 @@ pub trait ReadOperation: Sized {
 }
 
 pub trait MutOperation: Sized {
-    type Resource  /* = () */
-    ;
-
     // tracked resource(s) passed to callback
-    type ExecResult  /* = () */
-    ;
+    type Resource;
 
     // executable result returned from operation
-    type NewState  /* = () */
-    ;
+    type ExecResult;
 
     // type of new value for the resource
+    type NewState;
+
     spec fn requires(
         self,
         pre: Self::Resource,
@@ -63,8 +58,7 @@ pub trait MutOperation: Sized {
 }
 
 pub trait ReadLinearizer<Op: ReadOperation>: Sized {
-    type Completion  /* = () */
-    ;
+    type Completion;
 
     open spec fn namespaces(self) -> Set<int> {
         Set::empty()
@@ -103,8 +97,7 @@ pub trait ReadLinearizer<Op: ReadOperation>: Sized {
 }
 
 pub trait MutLinearizer<Op: MutOperation>: Sized {
-    type Completion  /* = () */
-    ;
+    type Completion;
 
     open spec fn namespaces(self) -> Set<int> {
         Set::empty()
