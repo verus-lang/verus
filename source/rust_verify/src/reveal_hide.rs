@@ -80,7 +80,6 @@ pub(crate) fn handle_reveal_hide<'ctxt>(
                     };
                     let matching_impls: Vec<_> = tcx
                         .inherent_impls(def_id)
-                        .expect("found inherent impls")
                         .iter()
                         .filter_map(|impl_def_id| {
                             let ident = rustc_span::symbol::Ident::from_str(sym.as_str());

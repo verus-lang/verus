@@ -262,7 +262,7 @@ impl<'a, 'tcx> VisitMod<'a, 'tcx> {
         let my_eattrs = eattrs.clone();
 
         let auto_derive_eattrs =
-            get_attributes_for_automatic_derive(&self.ctxt, &general_item, &attrs, span);
+            get_attributes_for_automatic_derive(&self.ctxt, &general_item, attrs, span);
         let eattrs = if let Some(auto_derive_eattrs) = auto_derive_eattrs {
             auto_derive_eattrs
         } else {
@@ -593,7 +593,7 @@ impl<'a> GeneralItem<'a> {
 fn get_attributes_for_automatic_derive<'tcx>(
     ctxt: &Context<'tcx>,
     general_item: &GeneralItem<'tcx>,
-    attrs: &[rustc_ast::Attribute],
+    attrs: &[rustc_hir::Attribute],
     span: Span,
 ) -> Option<ExternalAttrs> {
     let warn_unknown = || {

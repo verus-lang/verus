@@ -400,10 +400,8 @@ pub const FEATURE_PRELUDE: &str = crate::common::code_str! {
     #![allow(unused_imports)]
     #![allow(unused_macros)]
     #![allow(deprecated)]
-    #![feature(strict_provenance)]
     #![feature(allocator_api)]
     #![feature(proc_macro_hygiene)]
-    #![feature(const_refs_to_static)]
     #![feature(never_type)]
     #![feature(core_intrinsics)]
 };
