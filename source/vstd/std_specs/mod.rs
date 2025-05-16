@@ -3,6 +3,7 @@ pub mod alloc;
 
 pub mod atomic;
 pub mod bits;
+pub mod borrow;
 pub mod clone;
 pub mod control_flow;
 pub mod core;
