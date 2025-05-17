@@ -1439,7 +1439,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 };
                 mk_expr(ExprX::Ghost { alloc_wrapper: false, tracked, expr: block? })
             } else {
-                block_to_vir(bctx, body, &expr.span, &expr_typ()?, modifier)
+                let block = block_to_vir(bctx, body, &expr.span, &expr_typ()?, modifier);
+                if crate::attributes::is_proof_in_spec(bctx.ctxt.tcx.hir().attrs(expr.hir_id)) {
+                    mk_expr(ExprX::ProofInSpec(block?))
+                } else {
+                    block
+                }
             }
         }
         ExprKind::Call(fun, args_slice) => {

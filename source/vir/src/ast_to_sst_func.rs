@@ -260,6 +260,14 @@ fn func_body_to_sst(
             };
             Some(termination_check)
         } else {
+            if function.x.decrease.len() > 0 {
+                let msg = "proof blocks inside spec code is currently supported only for recursion";
+                // TODO: remove this restriction when we generalize ProofInSpec beyond termination
+                ast_visitor::expr_visitor_check(&body, &mut |_scope_map, expr| match &expr.x {
+                    ExprX::ProofInSpec(_) => Err(error(&expr.span, msg)),
+                    _ => Ok(()),
+                })?;
+            }
             None
         };
 
