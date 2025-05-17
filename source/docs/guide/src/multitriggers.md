@@ -3,7 +3,7 @@
 Suppose we have a `forall` expression with more than one variable, `i` and `j`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_distinct1}}
+{{#include ../../../../examples/guide/quants.rs:test_distinct1}}
 ```
 
 The `forall` expression shown above says that every element of `s` is distinct.
@@ -34,7 +34,7 @@ as in the following code, which defines the trigger to be the pair of expression
 `s[i]`, `s[j]`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_distinct2}}
+{{#include ../../../../examples/guide/quants.rs:test_distinct2}}
 ```
 
 Verus also supports an alternate, equivalent syntax `#![trigger ...]`,
@@ -42,7 +42,7 @@ where the `#![trigger ...]` immediately follows the `forall|...|`,
 in case we prefer to write the pair `s[i]`, `s[j]` directly:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_distinct3}}
+{{#include ../../../../examples/guide/quants.rs:test_distinct3}}
 ```
 
 When the trigger is the pair `s[i]`, `s[j]`,
@@ -63,7 +63,7 @@ A trigger must mention each of the quantifier variables `i` and `j` at least onc
 Otherwise, Verus will complain:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_distinct_fail1}}
+{{#include ../../../../examples/guide/quants.rs:test_distinct_fail1}}
 ```
 ```
 error: trigger does not cover variable i
@@ -82,7 +82,7 @@ to the trigger, which would cause the match to fail,
 since no expression matches `is_even(i)`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_distinct_fail2}}
+{{#include ../../../../examples/guide/quants.rs:test_distinct_fail2}}
 ```
 
 To make this example succeed, we'd have to mention `is_even(2)` explicitly:
@@ -108,7 +108,7 @@ The following example specifies both `#![trigger a[i], b[j]]` and `#![trigger a[
 as triggers, since neither is obviously better than the other:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_multitriggers}}
+{{#include ../../../../examples/guide/quants.rs:test_multitriggers}}
 ```
 
 (Note: to specify multiple triggers, you must use the `#![trigger ...]` syntax
@@ -132,7 +132,7 @@ consider an assertion that says that updating element `j`
 of sequence `s` leaves element `i` unaffected:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:seq_update_different}}
+{{#include ../../../../examples/guide/quants.rs:seq_update_different}}
 ```
 
 There are actually two possible triggers for this:
@@ -170,7 +170,7 @@ about sequence distinctness,
 writing `s[i] <= s[j]` in place of `s[i] != s[j]`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_sorted_good}}
+{{#include ../../../../examples/guide/quants.rs:test_sorted_good}}
 ```
 
 In Verus, this is the best way to express sortedness,
@@ -181,7 +181,7 @@ we could try to quantify over just a single variable `i`,
 and then compare `s[i]` to `s[i + 1]`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_sorted_bad1}}
+{{#include ../../../../examples/guide/quants.rs:test_sorted_bad1}}
 ```
 
 However, Verus complains that it couldn't find any good triggers:

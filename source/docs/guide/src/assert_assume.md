@@ -3,7 +3,7 @@
 In [an earlier chapter](./spec_lib.md), we started with an outline of a proof:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect_fail}}
+{{#include ../../../../examples/guide/lib_examples.rs:lemma_len_intersect_fail}}
 ```
 
 and then filled in the crucial missing steps to complete the proof.
@@ -486,5 +486,5 @@ The right amount of information is a matter of taste,
 but we can try to strike a reasonable balance between conciseness and informativeness:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:lemma_len_intersect_commented}}
+{{#include ../../../../examples/guide/lib_examples.rs:lemma_len_intersect_commented}}
 ```
