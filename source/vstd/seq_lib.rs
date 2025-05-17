@@ -1034,6 +1034,25 @@ impl<A> Seq<A> {
         broadcast use super::set_lib::group_set_properties;
 
     }
+
+    /// Update a subrange of a sequence starting at `off` to values `vs`.
+    /// Expects that the updated subrange `off` up to `off+vs.len()` fits
+    /// in the existing sequence.
+    pub open spec fn update_subrange_with(self, off: int, vs: Self) -> Self
+        recommends
+            0 <= off,
+            off + vs.len() <= self.len(),
+    {
+        Seq::new(
+            self.len(),
+            |i: int|
+                if off <= i < off + vs.len() {
+                    vs[i - off]
+                } else {
+                    self[i]
+                },
+        )
+    }
 }
 
 impl<A, B> Seq<(A, B)> {
