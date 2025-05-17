@@ -1935,6 +1935,24 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] decreases_checks_preconditions verus_code! {
+        proof fn p() requires false ensures false { }
+
+        #[via_fn]
+        proof fn ff(i: int) {
+            p(); // FAILS
+        }
+
+        spec fn f(i: int) -> int
+            decreases i
+            via ff
+        {
+            f(i)
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] lemma_not_proved_by_impossible_fun verus_code! {
         spec fn impossible_fun() -> bool
             decreases 0int
