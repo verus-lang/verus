@@ -116,10 +116,26 @@ spec fn test_rec2(x: int, y: int) -> int
     }
 }
 
+/// To help prove termination, recursive spec functions may have embedded proof blocks
+/// that can make assertions, use broadcasts, and call lemmas.
+spec fn test_rec_proof_block(x: int, y: int) -> int
+    decreases x,
+{
+    if x < 1 {
+        0
+    } else {
+        proof {
+            assert(x - 1 >= 0);
+        }
+        test_rec_proof_block(x - 1, y + 1) + 1
+    }
+}
+
 /// Decreases and recommends may specify additional clauses:
 ///   - decreases .. "when" restricts the function definition to a condition
 ///     that makes the function terminate
 ///   - decreases .. "via" specifies a proof function that proves the termination
+///     (although proof blocks are usually simpler; see above)
 ///   - recommends .. "when" specifies a proof function that proves the
 ///     recommendations of the functions invoked in the body
 spec fn add0(a: nat, b: nat) -> nat
