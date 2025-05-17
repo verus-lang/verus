@@ -106,7 +106,7 @@ jobs:
               ./tools/get-cvc5.sh
               echo cvc5 version `./cvc5 --version`
               vargo build
-              vargo run -p rust_verify -- -V cvc5 rust_verify/example/assorted_demo.rs
+              vargo run -p rust_verify -- -V cvc5 ../examples/assorted_demo.rs
               ;;
             *)
               VERUS_Z3_PATH="$(pwd)/z3" vargo test -p air
@@ -132,7 +132,7 @@ jobs:
         working-directory: ./source
         run: |
           ls -Al ./target-verus/release
-          ./target-verus/release/verus ./rust_verify/example/test.rs
+          ./target-verus/release/verus ../examples/test.rs
       - name: upload verus release artifact
         uses: actions/upload-artifact@v4
         if: matrix.features == ''
@@ -194,7 +194,7 @@ jobs:
         working-directory: ./source
         run: |
           ls -Al ./target-verus/release
-          ./target-verus/release/verus ./rust_verify/example/test.rs
+          ./target-verus/release/verus ../examples/test.rs
       - name: upload verus release artifact
         uses: actions/upload-artifact@v4
         with:
@@ -237,7 +237,7 @@ jobs:
         working-directory: .\source
         run: |
           ls .\target-verus\release
-          $env:VERUS_Z3_PATH = "$(Get-Location)\z3.exe"; Start-Process "$(Get-Location)\target-verus\release\verus.exe" "$(Get-Location)\rust_verify\example\test.rs"
+          $env:VERUS_Z3_PATH = "$(Get-Location)\z3.exe"; Start-Process "$(Get-Location)\target-verus\release\verus.exe" "$(Get-Location)\..\examples\test.rs"
         shell: powershell
       - name: upload verus release artifact
         uses: actions/upload-artifact@v4
@@ -282,7 +282,7 @@ jobs:
         working-directory: ./source
         run: |
           ls -Al ./target-verus/release
-          ./target-verus/release/verus ./rust_verify/example/test.rs
+          ./target-verus/release/verus ../examples/test.rs
       - name: upload verus release artifact
         uses: actions/upload-artifact@v4
         with:
