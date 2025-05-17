@@ -11,13 +11,13 @@ can use the built-in quantifier profiler.
 As a concrete example, suppose we have the following three functions defined:
 
 ```rust
-{{#include ../../../rust_verify/example/trigger_loops.rs:def_f_g}}
+{{#include ../../../../examples/trigger_loops.rs:def_f_g}}
 ```
 
 and we use them in the following proof code:
 
 ```rust
-{{#include ../../../rust_verify/example/trigger_loops.rs:trigger_forever2}}
+{{#include ../../../../examples/trigger_loops.rs:trigger_forever2}}
 ```
 
 Notice that we have three quantifiers in the `requires` clause; the first will
@@ -43,7 +43,7 @@ If we run the profiler on the example above, we'll see something along the lines
 
 ```
 error: function body check: Resource limit (rlimit) exceeded
-  --> rust_verify/example/trigger_loops.rs:64:1
+  --> ../examples/trigger_loops.rs:64:1
    |
 64 | fn trigger_forever2() {
    | ^^^^^^^^^^^^^^^^^^^^^
@@ -55,19 +55,19 @@ Analyzing prover log...
 note: Observed 27,184 total instantiations of user-level quantifiers
 
 note: Cost * Instantiations: 5391549700 (Instantiated 13,591 times - 49% of the total, cost 396700) top 1 of 3 user-level quantifiers.
-  --> rust_verify/example/trigger_loops.rs:68:78
+  --> ../examples/trigger_loops.rs:68:78
    |
 68 |    forall|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) ==> #[trigger] f(x, y),
    |    -------------------------------------------------------------------------^^^^^^^^^^^^^^^^^^ Triggers selected for this quantifier
 
 note: Cost * Instantiations: 1037237938 (Instantiated 13,591 times - 49% of the total, cost 76318) top 2 of 3 user-level quantifiers.
-  --> rust_verify/example/trigger_loops.rs:67:28
+  --> ../examples/trigger_loops.rs:67:28
    |
 67 |    forall|x: nat, y: nat| h(x, y) == f(x, y),
    |    -----------------------^^^^^^^----^^^^^^^ Triggers selected for this quantifier
 
 note: Cost * Instantiations: 16 (Instantiated 2 times - 0% of the total, cost 8) top 3 of 3 user-level quantifiers.
-  --> rust_verify/example/trigger_loops.rs:66:20
+  --> ../examples/trigger_loops.rs:66:20
    |
 66 |    forall|x: nat| g(x),
    |    ---------------^^^^ Triggers selected for this quantifier

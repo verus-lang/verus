@@ -36,5 +36,5 @@ given combination of arguments. This is useful for functions that would be impra
 to evaluate naively, as in this example:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/assert_by_compute.rs:fibonacci_memoize}}
+{{#include ../../../../examples/guide/assert_by_compute.rs:fibonacci_memoize}}
 ```

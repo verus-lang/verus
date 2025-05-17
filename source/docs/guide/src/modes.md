@@ -17,13 +17,13 @@ so we can organize the three modes in a hierarchy:
 Every function in Verus is either a `spec` function, a `proof` function, or an `exec` function:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:fun_modes}}
+{{#include ../../../../examples/guide/modes.rs:fun_modes}}
 ```
 
 `exec` is the default function annotation, so it is usually omitted:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:fun_modes2}}
+{{#include ../../../../examples/guide/modes.rs:fun_modes2}}
 ```
 
 The rest of this chapter will discuss these three modes in more detail.

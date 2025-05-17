@@ -24,7 +24,7 @@ Rust's fixed-bit-width integer types have both a lower and upper bound;
 a `u8` value is an integer constrained to be greater than or equal to `0` and less than 256:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/integers.rs:test_u8}}
+{{#include ../../../../examples/guide/integers.rs:test_u8}}
 ```
 
 The bounds of `usize` and `isize` are platform dependent.
@@ -75,14 +75,14 @@ As in ordinary Rust, integer constants in Verus can include their type as a suff
 (e.g. `7u8` or `7u32` or `7int`) to precisely specify the type of the constant:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/integers.rs:test_consts}}
+{{#include ../../../../examples/guide/integers.rs:test_consts}}
 ```
 
 Usually, but not always, Verus and Rust will be able to infer types for integer constants,
 so that you can omit the suffixes unless the Rust type checker complains about not being able to infer the type:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/integers.rs:test_consts_infer}}
+{{#include ../../../../examples/guide/integers.rs:test_consts_infer}}
 ```
 
 Note that the values `0`, `u`, `i`, `n`, and `4` in the expression `0 <= u < i < n < 4`
@@ -93,7 +93,7 @@ you can use `<=`, `<`, `>=`, `>`, `==`, and `!=` to compare values of different 
 Constants with the suffix `int` and `nat` can be arbitrarily large:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/integers.rs:test_consts_large}}
+{{#include ../../../../examples/guide/integers.rs:test_consts_large}}
 ```
 
 ## Integer coercions using "as"
@@ -102,7 +102,7 @@ As in ordinary rust, the `as` operator coerces one integer type to another.
 In ghost code, you can use `as int` or `as nat` to coerce to `int` or `nat`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/integers.rs:test_coerce}}
+{{#include ../../../../examples/guide/integers.rs:test_coerce}}
 ```
 
 You can use `as` to coerce a value `v` to a type `t` even if `v` is too small or too large to fit in `t`.
@@ -110,7 +110,7 @@ However, if the value `v` is outside the bounds of type t,
 then the expression `v as t` will produce some arbitrary value of type `t`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/integers.rs:test_coerce_fail}}
+{{#include ../../../../examples/guide/integers.rs:test_coerce_fail}}
 ```
 
 This produces an error for the assertion, along with a hint that the value in the `as` coercion might have been out of range:
@@ -140,7 +140,7 @@ The following operation fails because the arithmetic might produce an operation 
 than 255:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/integers.rs:test_sum}}
+{{#include ../../../../examples/guide/integers.rs:test_sum}}
 ```
 
 ```
@@ -157,7 +157,7 @@ To make this possible, Verus widens the results of many operations;
 for example, adding two `u8` values is widened to type `int`.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/integers.rs:test_sum2}}
+{{#include ../../../../examples/guide/integers.rs:test_sum2}}
 ```
 
 Since `+` does not overflow in ghost code, we can easily write specifications *about* overflow.
@@ -166,14 +166,14 @@ we simply write `requires x + y < 256`, relying on the fact that `x + y` is wide
 in the `requires` clause:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/integers.rs:test_sum3}}
+{{#include ../../../../examples/guide/integers.rs:test_sum3}}
 ```
 
 Also note that the inputs need not have the same type;
 you can add, subtract, or multiply one integer type with another:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/integers.rs:test_sum_mixed}}
+{{#include ../../../../examples/guide/integers.rs:test_sum_mixed}}
 ```
 
 In general in ghost code,

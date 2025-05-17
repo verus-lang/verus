@@ -13,7 +13,7 @@ the SMT solver uses the `exists` expression's trigger to try to find a witness.
 In the following example, the trigger is `is_even(i)`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_exists_succeeds}}
+{{#include ../../../../examples/guide/quants.rs:test_exists_succeeds}}
 ```
 
 There are three expressions that match the trigger:
@@ -26,7 +26,7 @@ By contrast, the same assertion fails in the following code,
 since no expressions matching `is_even(i)` are around:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_exists_fails}}
+{{#include ../../../../examples/guide/quants.rs:test_exists_fails}}
 ```
 
 ## choose
@@ -49,7 +49,7 @@ that makes `f(i)` true,
 and `choose` picks one of these witnesses arbitrarily:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_choose_succeeds}}
+{{#include ../../../../examples/guide/quants.rs:test_choose_succeeds}}
 ```
 
 If, on the other hand, we don't know `exists|i: int| f(i)`,
@@ -58,21 +58,21 @@ then `choose` just returns an arbitrary value that might not satisfy `f(i)`
 ghost code can create an arbitrary value of any type):
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_choose_fails}}
+{{#include ../../../../examples/guide/quants.rs:test_choose_fails}}
 ```
 
 Regardless of whether we know `exists|i: int| f(i)` or not,
 the `choose|i: int| f(i)` expression always returns the same value:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_choose_same}}
+{{#include ../../../../examples/guide/quants.rs:test_choose_same}}
 ```
 
 You can also choose multiple values together,
 collecting the values in a tuple:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_choose_succeeds2}}
+{{#include ../../../../examples/guide/quants.rs:test_choose_succeeds2}}
 ```
 
 In this example, the SMT solver can prove

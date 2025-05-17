@@ -3,13 +3,13 @@
 The previous section developed a tail-recursive implementation of `triangle`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:tail}}
+{{#include ../../../../examples/guide/recursion.rs:tail}}
 ```
 
 We can rewrite this as a `while` loop as follows:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:loop}}
+{{#include ../../../../examples/guide/recursion.rs:loop}}
 ```
 
 The loop is quite similar to the tail-recursive implementation.

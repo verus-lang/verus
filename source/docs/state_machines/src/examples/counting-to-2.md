@@ -11,7 +11,7 @@ Suppose we want to verify a program like the following:
 **Our objective:** Prove the counter read in the final step has value 2.
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/unverified_counting_to_2.rs:full}}
+{{#include ../../../../../examples/state_machines/tutorial/unverified_counting_to_2.rs:full}}
 ```
 
 We'll walk through the verification of this snippet, starting with the planning stage.
@@ -122,13 +122,13 @@ error: aborting due to previous error; 1 warning emitted
 Uh-oh. Verus wasn't able to prove the safety condition. Of course not—we didn't provide any invariant for our system! For all Verus knows, the state `{counter: 1, ticket_a: true, ticket_b: true}` is valid. Let's fix this up:
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_2.rs:inv}}
+{{#include ../../../../../examples/state_machines/tutorial/counting_to_2.rs:inv}}
 ```
 
 Our invariant is pretty straightforward: The value of the counter should be equal to the number of stamps. Now, we need to supply stub lemmas to prove that the invariant is preserved by every transition. In this case, Verus completes the proofs easily, so we don't need to supply any proofs in the lemma bodies to help out Verus.
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_2.rs:inv_proof}}
+{{#include ../../../../../examples/state_machines/tutorial/counting_to_2.rs:inv_proof}}
 ```
 
 Now that we've completed our abstraction, let's turn towards the implementation.
@@ -317,7 +317,7 @@ ghost token `X::counter`.
 More specifically, all threads will share this global state:
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_2.rs:global_struct}}
+{{#include ../../../../../examples/state_machines/tutorial/counting_to_2.rs:global_struct}}
 ```
 
 Note that we track `instance` as a separate field. This ensures that all threads agree

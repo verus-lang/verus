@@ -12,7 +12,7 @@ Here's an example, calling the `vec_map` function we defined in the
 [previous chapter](./exec_funs_as_values.md'):
 
 ```rust
-{{#include ../../../rust_verify/example/guide/higher_order_fns.rs:vec_map_example_with_closure}}
+{{#include ../../../../examples/guide/higher_order_fns.rs:vec_map_example_with_closure}}
 ```
 
 ## Closure capturing
@@ -49,5 +49,5 @@ point of the closure expression.
 Example:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/higher_order_fns.rs:closure_capture}}
+{{#include ../../../../examples/guide/higher_order_fns.rs:closure_capture}}
 ```

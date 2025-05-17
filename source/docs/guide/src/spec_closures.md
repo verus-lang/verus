@@ -6,7 +6,7 @@ uses an anonymous function `|i: int| 10 * i`
 to initialize a sequence with the values 0, 10, 20, 30, 40:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:new0}}
+{{#include ../../../../examples/guide/lib_examples.rs:new0}}
 ```
 
 The anonymous function `|i: int| 10 * i` has type `spec_fn(int) -> int`
@@ -28,5 +28,5 @@ For example, the `spec` function `adder`, shown below,
 can return an anonymous function that adds `x` to `y`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:ret_spec_fn}}
+{{#include ../../../../examples/guide/lib_examples.rs:ret_spec_fn}}
 ```

@@ -9,7 +9,7 @@ and suppose that we'd like to prove that two values of the datatype are equal.
 We could do this by using `=~=` on each field individually:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/ext_equal.rs:ext_eq_struct_fields}}
+{{#include ../../../../examples/guide/ext_equal.rs:ext_eq_struct_fields}}
 ```
 
 However, it's rather painful to use `=~=` on each field every time to check for equivalence.
@@ -18,7 +18,7 @@ to mark datatypes that need extensionality on `Seq`, `Set`, `Map`, `Multiset`, `
 fields or fields of other `#[verifier::ext_equal]` datatypes.  For example:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/ext_equal.rs:ext_eq_struct}}
+{{#include ../../../../examples/guide/ext_equal.rs:ext_eq_struct}}
 ```
 
 (Note: adding `#[verifier::ext_equal]` does not change the meaning of `==`;
@@ -34,11 +34,11 @@ that handles arbitrary nesting of collections, `spec_fn`, and datatypes.
 For example:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/ext_equal.rs:ext_eq_nested}}
+{{#include ../../../../examples/guide/ext_equal.rs:ext_eq_nested}}
 ```
 
 The same applies to `spec_fn`, as in:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/ext_equal.rs:ext_eq_fnspec}}
+{{#include ../../../../examples/guide/ext_equal.rs:ext_eq_fnspec}}
 ```

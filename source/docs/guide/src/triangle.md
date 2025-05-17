@@ -32,15 +32,15 @@ Finally, our implementation uses a while loop, which means it requires some [loo
 which we cover later.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:spec}}
+{{#include ../../../../examples/guide/recursion.rs:spec}}
 ```
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:mono}}
+{{#include ../../../../examples/guide/recursion.rs:mono}}
 ```
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:loop}}
+{{#include ../../../../examples/guide/recursion.rs:loop}}
 ```
 
 

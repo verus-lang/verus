@@ -7,16 +7,16 @@ the [Verus GitHub page](https://github.com/verus-lang/verus/blob/main/INSTALL.md
 to build Verus.
 
 Let's try running Verus on the following sample Rust program,
-found at [getting_started.rs](https://github.com/verus-lang/verus/tree/main/source/rust_verify/example/guide/getting_started.rs):
+found at [getting_started.rs](https://github.com/verus-lang/verus/tree/main/source/../examples/guide/getting_started.rs):
 
 ```rust
-{{#include ../../../rust_verify/example/guide/getting_started.rs}}
+{{#include ../../../../examples/guide/getting_started.rs}}
 ```
 
 To run Verus on this code, change to the `source` directory and type the following in Unix:
 
 ```
-./target-verus/release/verus rust_verify/example/guide/getting_started.rs
+./target-verus/release/verus ../examples/guide/getting_started.rs
 ```
 
 or the following in Windows:
@@ -34,7 +34,7 @@ verification results:: 1 verified, 0 errors
 ```
 
 This indicates that Verus successfully verified 1 function (the `main` function).
-If you want, you can try editing the `rust_verify/example/guide/getting_started.rs` file
+If you want, you can try editing the `../examples/guide/getting_started.rs` file
 to see a verification failure.
 For example, if you add the following line to `main`:
 
@@ -81,7 +81,7 @@ To both verify and compile a Rust file, add the `--compile` command-line option.
 For example:
 
 ```
-./target-verus/release/verus --compile rust_verify/example/guide/getting_started.rs
+./target-verus/release/verus --compile ../examples/guide/getting_started.rs
 ```
 
 This will generate an executable for `getting_started.rs`.

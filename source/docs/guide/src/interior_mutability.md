@@ -82,7 +82,7 @@ receive satisfies `cell.inv(val)`.
 Here's an example using an `InvCell` to implement a memoized function:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/interior_mutability.rs:inv_cell_example}}
+{{#include ../../../../examples/guide/interior_mutability.rs:inv_cell_example}}
 ```
 
 ### Tracked ghost state with `PCell`.
