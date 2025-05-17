@@ -5,9 +5,12 @@
 # Getting started
 
 - [Getting started](./getting_started.md)
+  - [... on the command line](./getting_started_cmd_line.md)
+  - [... with VSCode](./getting_started_vscode.md)
 
 # Tutorial: Fundamentals
 
+- [Using Verus within Rust](./verus_macro_intro.md)
 - [Basic specifications](specs.md)
     - [assert, requires, ensures, ghost code](./requires_ensures.md)
     - [Expressions and operators for specifications](./operators.md)
