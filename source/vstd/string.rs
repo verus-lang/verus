@@ -16,6 +16,14 @@ impl View for str {
     uninterp spec fn view(&self) -> Seq<char>;
 }
 
+impl DeepView for str {
+    type V = Seq<char>;
+
+    open spec fn deep_view(&self) -> Seq<char> {
+        self.view()
+    }
+}
+
 pub uninterp spec fn str_slice_is_ascii(s: &str) -> bool;
 
 #[verifier::when_used_as_spec(str_slice_is_ascii)]
@@ -184,6 +192,15 @@ impl View for String {
     type V = Seq<char>;
 
     uninterp spec fn view(&self) -> Seq<char>;
+}
+
+#[cfg(feature = "alloc")]
+impl DeepView for String {
+    type V = Seq<char>;
+
+    open spec fn deep_view(&self) -> Seq<char> {
+        self.view()
+    }
 }
 
 #[cfg(feature = "alloc")]
