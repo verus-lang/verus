@@ -151,12 +151,7 @@ pub(crate) fn get_crate_items<'tcx>(ctxt: &Context<'tcx>) -> Result<CrateItems, 
 
     let mut map = HashMap::<OwnerId, VerifOrExternal>::new();
     for crate_item in visitor.items.iter() {
-        let owner_id = match crate_item.id {
-            GeneralItemId::ItemId(id) => id.owner_id,
-            GeneralItemId::ImplItemId(id) => id.owner_id,
-            GeneralItemId::ForeignItemId(id) => id.owner_id,
-            GeneralItemId::TraitItemId(id) => id.owner_id,
-        };
+        let owner_id = crate_item.id.owner_id();
         let old = map.insert(owner_id, crate_item.verif.clone());
         assert!(old.is_none());
     }
@@ -462,6 +457,10 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
         return;
     }
 
+    if eattrs.uses_unerased_proxy {
+        return;
+    }
+
     // If an item is external, of if it's in a module that is marked external, then
     // it will be ignored. Therefore, if there's any other verus-relevant attribute,
     // it's probably a mistake.
@@ -545,6 +544,17 @@ fn emit_errors_warnings_for_ignored_attrs<'tcx>(
                 span,
                 format!("verus-related attribute has no effect because Verus is already ignoring this item. You may need to mark it as `#[verifier::verify]`."),
             )));
+        }
+    }
+}
+
+impl GeneralItemId {
+    pub(crate) fn owner_id(self) -> OwnerId {
+        match self {
+            GeneralItemId::ItemId(id) => id.owner_id,
+            GeneralItemId::ImplItemId(id) => id.owner_id,
+            GeneralItemId::ForeignItemId(id) => id.owner_id,
+            GeneralItemId::TraitItemId(id) => id.owner_id,
         }
     }
 }
