@@ -1421,3 +1421,50 @@ test_verify_one_file! {
         pub assume_specification<T: Display>[ T::to_string ](this: &T) -> (other: String);
     } => Err(err) => assert_vir_error_msg(err, "assume_specification cannot be used to specify generic specifications of trait methods")
 }
+
+test_verify_one_file! {
+    #[test] test_blanket_impl verus_code! {
+        trait Tr {
+            fn stuff(&self)
+                ensures self.foo();
+
+            spec fn foo(&self) -> bool;
+        }
+
+        #[verifier::external]
+        trait Blanket {
+            fn stuff2(&self);
+        }
+
+        #[verifier::external]
+        impl<T: Tr> Blanket for T {
+            fn stuff2(&self) {
+                self.stuff();
+            }
+        }
+
+        assume_specification <T: Tr> [ <T as Blanket>::stuff2 ] (x: &T)
+            ensures x.foo();
+
+
+        fn test_generic<T: Tr>(t: &T) {
+            t.stuff2();
+            assert(t.foo());
+        }
+
+        impl Tr for u64 {
+            fn stuff(&self) {
+                assume(false);
+            }
+
+            spec fn foo(&self) -> bool {
+                self < 5
+            }
+        }
+
+        fn test_specific(u: u64) {
+            u.stuff2();
+            assert(u < 5);
+        }
+    } => Ok(())
+}
