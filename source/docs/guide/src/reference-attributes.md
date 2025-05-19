@@ -1,9 +1,10 @@
 # Attributes
 
+ - `accept_recursive_types`
  - [`all_triggers`](#all_triggers)
+ - [`allow_in_spec`](#verifierallow_in_spec)
  - [`atomic`](#verifieratomic)
  - [`auto`](#auto)
- - `accept_recursive_types`
  - [`external`](#verifierexternal)
  - `external_body`
  - `external_fn_specification`
@@ -31,6 +32,12 @@ See [the trigger specification procedure](./trigger-annotations.md#selecting-tri
 for more information.
 
 Unlike most Verus attributes, this does not require the `verifier::` prefix.
+
+## `#![verifier::allow_in_spec]`
+
+Can be applied to an executable function with a [`returns` clause](./reference-returns.md).
+This allows the function to be used in spec mode, where it is interpreted as equivalent
+to the specified return-value.
 
 ## `#[verifier::atomic]`
 
