@@ -14,7 +14,7 @@ use rustc_middle::ty::Visibility;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
-    ConstKind, GenericArg, GenericArgKind, GenericArgsRef, TermKind, TypeFoldable,
+    ConstKind, GenericArg, GenericArgKind, TermKind, TypeFoldable,
     TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTree,
 };
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
@@ -434,7 +434,6 @@ pub(crate) fn get_impl_paths_for_clauses<'tcx>(
     mut remove_self_trait_bound: Option<(DefId, &mut Option<vir::ast::ImplPath>)>,
 ) -> vir::ast::ImplPaths {
     let mut impl_paths = Vec::new();
-    let param_env = tcx.param_env(param_env_src);
     let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
 
     // REVIEW: do we need this?
@@ -1477,7 +1476,7 @@ pub(crate) fn process_predicate_bounds<'tcx, 'a>(
     param_env_src: DefId,
     verus_items: &crate::verus_items::VerusItems,
     predicates: impl Iterator<Item = &'a (Clause<'tcx>, Span)>,
-    generics: &'tcx rustc_middle::ty::Generics,
+    _generics: &'tcx rustc_middle::ty::Generics,
 ) -> Result<Vec<vir::ast::GenericBound>, VirErr>
 where
     'tcx: 'a,
@@ -1515,8 +1514,6 @@ where
                     // Ignore Fn bounds
                     continue;
                 }
-
-                let substs = remove_host_arg(tcx, trait_def_id, substs, *span)?;
 
                 let generic_bound = check_generic_bound(
                     tcx,
@@ -1795,10 +1792,9 @@ fn check_generics_bounds_main<'tcx>(
         match &param.kind {
             GenericParamDefKind::Lifetime { .. } => {} // ignore
             GenericParamDefKind::Type { .. }
-            | GenericParamDefKind::Const { has_default: _, .. } => {
+            | GenericParamDefKind::Const { .. } => {
                 mid_params.push(param);
             }
-            GenericParamDefKind::Const { .. } => {}
         }
     }
 
@@ -1955,34 +1951,6 @@ pub(crate) fn auto_deref_supported_for_ty<'tcx>(
         }
         _ => false,
     }
-}
-
-pub(crate) fn remove_host_arg<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    f_id: DefId,
-    substs: GenericArgsRef<'tcx>,
-    span: Span,
-) -> Result<GenericArgsRef<'tcx>, VirErr> {
-    // let generics = tcx.generics_of(f_id);
-
-    // if generics.count() != substs.len() {
-    //     return err_span(
-    //         span,
-    //         format!("Verus Internal Error: incorrect application of remove_host_arg"),
-    //     );
-    // }
-
-    // if let Some(index) = generics.host_effect_index {
-    //     let mut s: Vec<_> = substs.iter().collect();
-    //     if !matches!(s[index].unpack(), GenericArgKind::Const(_)) {
-    //         return err_span(span, format!("Verus Internal Error: remove_host_arg expected Const"));
-    //     }
-    //     s.remove(index);
-    //     Ok(tcx.mk_args(&s))
-    // } else {
-    //     Ok(substs)
-    // }
-    Ok(substs) // TODO(1.85): I think this filtering here may no longer be needed
 }
 
 pub(crate) fn ty_remove_references<'tcx>(

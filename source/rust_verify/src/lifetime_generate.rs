@@ -1,17 +1,17 @@
 use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, GhostBlockAttr};
 use crate::erase::{ErasureHints, ResolvedCall};
 use crate::external::CrateItems;
-use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir, remove_host_arg};
+use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir};
 use crate::rust_to_vir_expr::{get_adt_res_struct_enum, get_adt_res_struct_enum_union};
 use crate::verus_items::{BuiltinTypeItem, ExternalItem, RustItem, VerusItem, VerusItems};
-use crate::{lifetime_ast::*, unsupported_err, verus_items};
+use crate::{lifetime_ast::*, verus_items};
 use air::ast_util::str_ident;
 use rustc_ast::{BindingMode, BorrowKind, IsAuto, Mutability};
 use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
     AssocItemKind, Block, BlockCheckMode, BodyId, Closure, Crate, Expr, ExprKind, FnSig, HirId,
-    Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OpaqueTy,
-    OpaqueTyOrigin, OwnerNode, Pat, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem,
+    Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node,
+    OwnerNode, Pat, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem,
     TraitItemKind, TraitItemRef, UnOp,
 };
 use rustc_middle::ty::{
@@ -954,7 +954,6 @@ fn erase_call<'tcx>(
 
             state.reach_fun(fn_def_id);
 
-            let node_substs = remove_host_arg(ctxt.tcx, fn_def_id, node_substs, expr.span).unwrap();
             let typ_args = mk_typ_args(ctxt, state, node_substs);
             let mut exps: Vec<Exp> = Vec::new();
             let mut is_first: bool = true;
@@ -1374,7 +1373,7 @@ fn erase_expr<'tcx>(
                 let spread = match spread {
                     rustc_hir::StructTailExpr::None => None,
                     rustc_hir::StructTailExpr::Base(expr) => Some(erase_expr(ctxt, state, expect_spec, expr).expect("expr")),
-                    rustc_hir::StructTailExpr::DefaultFields(span) => None,
+                    rustc_hir::StructTailExpr::DefaultFields(_span) => None,
                 };
                 let typ_args = if let box TypX::Datatype(_, _, typ_args) = expr_typ(state) {
                     typ_args
@@ -2220,13 +2219,7 @@ fn erase_impl_assocs<'tcx>(ctxt: &Context<'tcx>, state: &mut State, impl_id: Def
 
     let span = ctxt.tcx.def_span(impl_id);
 
-    let args = remove_host_arg(
-        ctxt.tcx,
-        trait_ref.skip_binder().def_id,
-        trait_ref.skip_binder().args,
-        span,
-    )
-    .expect("remove_host_arg");
+    let args = trait_ref.skip_binder().args;
     let (trait_typ_args, _) = erase_generic_args(ctxt, state, args, true);
 
     let mut lifetimes: Vec<GenericParam> = Vec::new();
@@ -2978,7 +2971,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             dbg!(item);
                             panic!("unexpected item");
                         }
-                        ItemKind::Trait( IsAuto::Yes, _, _, _, _,) | ItemKind::Trait(IsAuto::No, _, _, _, _,) => {
+                        ItemKind::Trait( IsAuto::Yes, _, _, _, _,) => {
                             dbg!(item);
                             panic!("unexpected item");
                         }

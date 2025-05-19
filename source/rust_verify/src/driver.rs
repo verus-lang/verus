@@ -2,7 +2,6 @@ use crate::config::Vstd;
 use crate::externs::VerusExterns;
 use crate::verifier::{Verifier, VerifierCallbacksEraseMacro};
 use std::time::{Duration, Instant};
-use rustc_errors::ErrorGuaranteed;
 
 struct DefaultCallbacks;
 impl rustc_driver::Callbacks for DefaultCallbacks {}

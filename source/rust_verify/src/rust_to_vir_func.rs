@@ -500,9 +500,9 @@ pub(crate) fn handle_external_fn<'tcx>(
     let ty1 = ctxt.tcx.type_of(id).skip_binder();
     let ty2 = ctxt.tcx.type_of(external_id).skip_binder();
 
-    let substs1_early = get_substs_early(ctxt.tcx, ty1, ctxt.tcx.generics_of(id), sig.span)?;
+    let substs1_early = get_substs_early(ty1, sig.span)?;
     let substs2_early =
-        get_substs_early(ctxt.tcx, ty2, ctxt.tcx.generics_of(external_id), sig.span)?;
+        get_substs_early(ty2, sig.span)?;
 
     let poly_sig1 = ctxt.tcx.fn_sig(id);
     let poly_sig2 = ctxt.tcx.fn_sig(external_id);
@@ -601,25 +601,15 @@ pub(crate) fn handle_external_fn<'tcx>(
 }
 
 fn get_substs_early<'tcx>(
-    tcx: TyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
-    generics: &'tcx rustc_middle::ty::Generics,
     span: Span,
 ) -> Result<GenericArgsRef<'tcx>, VirErr> {
-    let substs = match ty.kind() {
-        rustc_middle::ty::FnDef(_, substs) => substs,
+    match ty.kind() {
+        rustc_middle::ty::FnDef(_, substs) => Ok(substs),
         _ => {
             crate::internal_err!(span, "expected FnDef")
         }
-    };
-    // TODO(1.85): is this still needed?
-    // if let Some(host_effect_index) = generics.host_effect_index {
-    //     let mut s: Vec<_> = substs.iter().collect();
-    //     s.remove(host_effect_index);
-    //     Ok(tcx.mk_args(&s))
-    // } else {
-        Ok(substs)
-    // }
+    }
 }
 
 fn equalize_substs<'tcx>(

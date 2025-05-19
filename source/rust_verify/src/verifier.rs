@@ -30,7 +30,6 @@ use rustc_span::Span;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::Write;
-use std::ops::Deref;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use vir::context::{FuncCallGraphLogFiles, GlobalCtx};
