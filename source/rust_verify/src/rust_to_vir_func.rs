@@ -515,35 +515,37 @@ pub(crate) fn handle_external_fn<'tcx>(
         poly_sig1.skip_binder().bound_vars().len(),
         poly_sig2.skip_binder().bound_vars().len(),
     ) else {
-        return err_span(
+        return assume_specification_mismatch_type_error(
+            ctxt,
             sig.span,
-            format!(
-                "assume_specification requires function type signature to match exactly (got `{ty1:#?}` and `{ty2:#?}`)"
-            ),
+            external_id,
+            mismatch_type_error_user_str_early(ctxt, substs1_early, poly_sig1),
+            mismatch_type_error_user_str_early(ctxt, substs2_early, poly_sig2),
         );
     };
 
-    let poly_sig1 = poly_sig1.instantiate(ctxt.tcx, substs1_early);
-    let poly_sig1 =
-        ctxt.tcx.instantiate_bound_regions(poly_sig1, |br| substs1_late[usize::from(br.var)]).0;
+    let poly_sig1x = poly_sig1.instantiate(ctxt.tcx, substs1_early);
+    let poly_sig1x =
+        ctxt.tcx.instantiate_bound_regions(poly_sig1x, |br| substs1_late[usize::from(br.var)]).0;
 
-    let poly_sig2 = poly_sig2.instantiate(ctxt.tcx, substs2_early);
-    let poly_sig2 =
-        ctxt.tcx.instantiate_bound_regions(poly_sig2, |br| substs2_late[usize::from(br.var)]).0;
+    let poly_sig2x = poly_sig2.instantiate(ctxt.tcx, substs2_early);
+    let poly_sig2x =
+        ctxt.tcx.instantiate_bound_regions(poly_sig2x, |br| substs2_late[usize::from(br.var)]).0;
 
     let poly_sig_eq = compare_external_sig(
         ctxt.tcx,
         &ctxt.verus_items,
-        &poly_sig1,
-        &poly_sig2,
+        &poly_sig1x,
+        &poly_sig2x,
         &external_trait_from_to,
     )?;
     if !poly_sig_eq {
-        return err_span(
+        return assume_specification_mismatch_type_error(
+            ctxt,
             sig.span,
-            format!(
-                "assume_specification requires function type signature to match exactly (got `{poly_sig1:#?}` and `{poly_sig2:#?}`)"
-            ),
+            external_id,
+            mismatch_type_error_user_str_early(ctxt, substs1_early, poly_sig1),
+            mismatch_type_error_user_str_early(ctxt, substs2_early, poly_sig2),
         );
     }
 
@@ -698,6 +700,66 @@ fn equalize_substs<'tcx>(
     assert!(l2.len() == num_late2);
 
     Some((substs1_early, tcx.mk_args(&s2), l1, l2))
+}
+
+fn assume_specification_mismatch_type_error<'tcx, A>(
+    ctxt: &Context<'tcx>,
+    span: Span,
+    external_def_id: DefId,
+    t1: String,
+    t2: String,
+) -> Result<A, VirErr> {
+    let ex = crate::rust_to_vir_base::def_id_to_friendly(
+        ctxt.tcx,
+        Some(&ctxt.verus_items),
+        external_def_id,
+    );
+    err_span(
+        span,
+        format!(
+            "assume_specification requires function type signature to match `{:}` exactly \n      assume_specification provided: `{:}`\n      expected:                      `{:}`",
+            ex, t1, t2
+        ),
+    )
+}
+
+fn mismatch_type_error_user_str_early<'tcx>(
+    ctxt: &Context<'tcx>,
+    substs: GenericArgsRef<'tcx>,
+    poly_sig: rustc_middle::ty::EarlyBinder<'tcx, rustc_middle::ty::PolyFnSig<'tcx>>,
+) -> String {
+    let poly_sig = poly_sig.instantiate(ctxt.tcx, substs);
+    use rustc_middle::ty::FnSig;
+
+    let binder_str = binders_to_str(&poly_sig.bound_vars());
+
+    let mut args: Vec<String> = vec![];
+    let FnSig { inputs_and_output: io, c_variadic: _, safety: _, abi: _ } = poly_sig.skip_binder();
+    for t in io.iter() {
+        args.push(format!("{:}", t));
+    }
+
+    format!("{:}({:}) -> {:}", binder_str, args[0..args.len() - 1].join(", "), args[args.len() - 1],)
+}
+
+fn binders_to_str(l: &rustc_middle::ty::List<rustc_middle::ty::BoundVariableKind>) -> String {
+    use rustc_middle::ty::BoundTyKind;
+    use rustc_middle::ty::BoundVariableKind;
+    if l.len() == 0 {
+        return "".to_string();
+    }
+    let mut v = vec![];
+    for k in l.iter() {
+        let s = match &k {
+            BoundVariableKind::Ty(BoundTyKind::Anon) => "_",
+            BoundVariableKind::Ty(BoundTyKind::Param(_, sym)) => sym.as_str(),
+            BoundVariableKind::Region(BoundRegionKind::BrAnon | BoundRegionKind::BrEnv) => "'_",
+            BoundVariableKind::Region(BoundRegionKind::BrNamed(_, sym)) => sym.as_str(),
+            BoundVariableKind::Const => "CONST",
+        };
+        v.push(s.to_string());
+    }
+    format!("{:}{:}{:}", "for<", v.join(", "), "> ")
 }
 
 pub enum CheckItemFnEither<A, B> {

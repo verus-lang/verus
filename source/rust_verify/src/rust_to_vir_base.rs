@@ -128,6 +128,17 @@ fn def_to_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::ast::Ident 
     }
 }
 
+pub(crate) fn def_id_to_friendly<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    verus_items: Option<&crate::verus_items::VerusItems>,
+    def_id: DefId,
+) -> String {
+    match def_id_to_vir_path_option(tcx, verus_items, def_id) {
+        None => format!("{:?}", def_id),
+        Some(p) => vir::ast_util::path_as_friendly_rust_name(&p),
+    }
+}
+
 pub(crate) fn def_id_to_vir_path_option<'tcx>(
     tcx: TyCtxt<'tcx>,
     verus_items: Option<&crate::verus_items::VerusItems>,
