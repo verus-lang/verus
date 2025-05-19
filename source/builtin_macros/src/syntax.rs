@@ -844,7 +844,7 @@ impl Visitor {
         };
 
         let (unimpl, ext_attrs) = match (&sig.mode, semi_token, is_trait) {
-            (FnMode::ProofAxiom, Some(semi), false) => {
+            (FnMode::ProofAxiom(_), Some(semi), false) => {
                 let unimpl = vec![Stmt::Expr(
                     Expr::Verbatim(quote_spanned!(semi.span => unimplemented!())),
                     None,

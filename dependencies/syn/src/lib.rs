@@ -562,6 +562,7 @@ pub use crate::verus::{
     Prover, Publish, Recommends, Requires, Returns, RevealHide, SignatureDecreases,
     SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind, Specification,
     TypeFnProof, TypeFnSpec, Uninterp, View, WithSpecOnExpr, WithSpecOnFn,
+    ModeProofAxiom,
 };
 
 #[rustfmt::skip] // https://github.com/rust-lang/rustfmt/issues/6176
