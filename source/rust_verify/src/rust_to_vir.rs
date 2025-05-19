@@ -22,7 +22,7 @@ use std::collections::HashSet;
 use rustc_ast::IsAuto;
 use rustc_hir::{
     ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId, ItemKind, MaybeOwner,
-    Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode,
+    Mutability, OwnerNode,
 };
 
 use std::collections::HashMap;

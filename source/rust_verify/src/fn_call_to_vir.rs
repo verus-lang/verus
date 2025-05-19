@@ -4,7 +4,7 @@ use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
     bitwidth_and_signedness_of_integer_type, def_id_to_vir_path, is_smt_arith,
-    is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, remove_host_arg, typ_of_node,
+    is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, typ_of_node,
     typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
@@ -1834,11 +1834,10 @@ pub(crate) fn fix_node_substs<'tcx, 'a>(
 fn mk_typ_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
-    f: DefId,
+    _f: DefId,
     span: Span,
 ) -> Result<vir::ast::Typs, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let substs = remove_host_arg(tcx, f, substs, span)?;
     let mut typ_args: Vec<Typ> = Vec::new();
     for typ_arg in substs {
         match typ_arg.unpack() {

@@ -3,7 +3,7 @@ use crate::context::Context;
 use crate::external::CrateItems;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_id_to_vir_path_option, mid_ty_const_to_vir, mid_ty_to_vir,
-    mk_visibility, remove_host_arg, typ_path_and_ident_to_vir_path,
+    mk_visibility, typ_path_and_ident_to_vir_path,
 };
 use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
 use crate::unsupported_err;
@@ -105,7 +105,6 @@ fn trait_impl_to_vir<'tcx>(
     // We keep this full list, with the first element being the Self type X
     let mut types: Vec<Typ> = Vec::new();
     let args = trait_ref.skip_binder().args;
-    let args = remove_host_arg(ctxt.tcx, trait_ref.skip_binder().def_id, args, span)?;
     for arg in args.iter() {
         match arg.unpack() {
             GenericArgKind::Lifetime(_) => {}
@@ -190,7 +189,6 @@ fn translate_assoc_type<'tcx>(
         assoc_args.push(rustc_middle::ty::GenericArg::from(r));
     }
     let inst_bounds = bounds.instantiate(ctxt.tcx, &*assoc_args);
-    let param_env = ctxt.tcx.param_env(impl_item_id);
     let typing_env = TypingEnv::post_analysis(ctxt.tcx, impl_item_id);
     let inst_bounds = ctxt.tcx.normalize_erasing_regions(typing_env, inst_bounds);
 
