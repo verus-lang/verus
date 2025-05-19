@@ -743,8 +743,8 @@ fn binders_to_str(l: &rustc_middle::ty::List<rustc_middle::ty::BoundVariableKind
         let s = match &k {
             BoundVariableKind::Ty(BoundTyKind::Anon) => "_",
             BoundVariableKind::Ty(BoundTyKind::Param(_, sym)) => sym.as_str(),
-            BoundVariableKind::Region(BoundRegionKind::BrAnon | BoundRegionKind::BrEnv) => "'_",
-            BoundVariableKind::Region(BoundRegionKind::BrNamed(_, sym)) => sym.as_str(),
+            BoundVariableKind::Region(BoundRegionKind::Anon | BoundRegionKind::ClosureEnv) => "'_",
+            BoundVariableKind::Region(BoundRegionKind::Named(_, sym)) => sym.as_str(),
             BoundVariableKind::Const => "CONST",
         };
         v.push(s.to_string());
