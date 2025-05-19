@@ -196,7 +196,6 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let target_kind = if tcx.trait_of_item(f).is_none() {
         vir::ast::CallTargetKind::Static
     } else {
-        // TODO(1.85.0) let param_env = tcx.param_env(bctx.fun_id);
         let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
         let normalized_substs = tcx.normalize_erasing_regions(typing_env, node_substs);
         let inst = Instance::try_resolve(tcx, typing_env, f, normalized_substs);

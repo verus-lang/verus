@@ -422,7 +422,7 @@ pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
     let mut callbacks = LifetimeCallbacks {};
     let mut compiler = rustc_driver::RunCompiler::new(rustc_args, &mut callbacks);
     compiler.set_file_loader(Some(Box::new(LifetimeFileLoader { rust_code })));
-    compiler.run(); // TODO(1.85): use catch_unwind here?
+    compiler.run();
 }
 
 pub(crate) fn check_tracked_lifetimes<'tcx>(

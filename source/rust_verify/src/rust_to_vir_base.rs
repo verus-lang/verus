@@ -1164,19 +1164,18 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
     span: Option<Span>,
     cnst: &rustc_middle::ty::Const<'tcx>,
 ) -> Result<Typ, VirErr> {
-    // TODO(1.85): make this work again
     let cnst = match cnst.kind() {
         ConstKind::Unevaluated(unevaluated) => {
             let typing_env = TypingEnv {
                 param_env: tcx.param_env(unevaluated.def),
                 typing_mode: TypingMode::PostAnalysis,
             };
-            tcx.normalize_erasing_regions(
+            &tcx.normalize_erasing_regions(
                 typing_env,
                 cnst.clone(),
             )
         }
-        _ => cnst.clone(),
+        _ => cnst,
     };
 
     match cnst.kind() {
@@ -1576,7 +1575,6 @@ where
                 }
             }
             ClauseKind::ConstArgHasType(cnst, ty) => {
-                // TODO(1.85): looks like HostEffect is now its own clause kind
                 let t1 = mid_ty_const_to_vir(tcx, Some(*span), &cnst)?;
                 let t2 = mid_ty_to_vir(tcx, verus_items, param_env_src, *span, &ty, false)?;
                 let bound = GenericBoundX::ConstTyp(t1, t2);
