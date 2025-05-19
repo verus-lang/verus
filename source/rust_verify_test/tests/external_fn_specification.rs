@@ -861,6 +861,38 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
 }
 
+// allow_in_spec
+
+test_verify_one_file! {
+    #[test] test_allow_in_spec verus_code! {
+        #[verifier::external]
+        fn foo(x: bool) -> bool { !x }
+
+        #[verifier::allow_in_spec]
+        #[verifier::external_fn_specification]
+        fn exec_foo(x: bool) -> (res: bool)
+            returns !x
+        {
+            foo(x)
+        }
+
+        proof fn test() {
+            let a = foo(true);
+            assert(a == false);
+        }
+
+        fn test2() {
+            let a = foo(true);
+            assert(a == false);
+        }
+
+        fn test3() {
+            let a = foo(true);
+            assert(a == true); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
 // when_used_as_spec
 
 test_verify_one_file! {
