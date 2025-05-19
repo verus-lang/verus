@@ -96,7 +96,6 @@ pub fn main() {
 
     if is_direct_rustc_call {
         args.insert(0, program.clone());
-        // TODO(1.85): use catch_unwind?
         rust_verify::driver::run_rustc_compiler_directly(&args);
     }
 

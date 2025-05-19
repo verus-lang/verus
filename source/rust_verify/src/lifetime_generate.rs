@@ -507,10 +507,6 @@ fn erase_ty<'tcx>(ctxt: &Context<'tcx>, state: &mut State, ty: &Ty<'tcx>) -> Typ
             use crate::rustc_trait_selection::traits::NormalizeExt;
             if let Some(fun_id) = state.enclosing_fun_id {
                 let param_env = ctxt.tcx.param_env(fun_id);
-                // TODO(1.85) The commented out line breaks on some trait proof fn's without a body when they involve
-                // both associated types and a tracked return value.
-                // Need to figure out if using PostAnalysis here is correct.
-                // let ty_mode = rustc_middle::ty::TypingMode::post_borrowck_analysis(ctxt.tcx, fun_id.as_local().expect("local fun_id"));
                 let ty_mode = rustc_middle::ty::TypingMode::PostAnalysis;
                 let infcx = ctxt.tcx.infer_ctxt().ignoring_regions().build(ty_mode);
                 let cause = rustc_infer::traits::ObligationCause::dummy();
@@ -925,7 +921,6 @@ fn erase_call<'tcx>(
             let node_substs = node_substs;
             let mut fn_def_id = fn_def_id.expect("call id");
 
-            // TODO(1.85.0) let param_env = ctxt.tcx.param_env(state.enclosing_fun_id.expect("enclosing_fun_id"));
             let typing_env = TypingEnv::post_analysis(ctxt.tcx, state.enclosing_fun_id.expect("enclosing_fun_id"));
 
             let rust_item = crate::verus_items::get_rust_item(ctxt.tcx, fn_def_id);
@@ -2975,18 +2970,6 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             dbg!(item);
                             panic!("unexpected item");
                         }
-                        // TODO(1.85.0) ItemKind::OpaqueTy(OpaqueTy {
-                        // TODO(1.85.0)     generics: _,
-                        // TODO(1.85.0)     bounds: _,
-                        // TODO(1.85.0)     origin: OpaqueTyOrigin::AsyncFn(_),
-                        // TODO(1.85.0)     in_trait: _,
-                        // TODO(1.85.0)     lifetime_mapping: _,
-                        // TODO(1.85.0)     hir_id: _,
-                        // TODO(1.85.0)     def_id: _,
-                        // TODO(1.85.0)     span: _,
-                        // TODO(1.85.0) }) => {
-                        // TODO(1.85.0)     continue;
-                        // TODO(1.85.0) }
                     }
                 }
                 OwnerNode::TraitItem(_trait_item) => {
