@@ -1507,7 +1507,7 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "an 'axiom' fn should have no body")
 }
-        
+
 test_verify_one_file! {
     #[test] nonaxiom_without_body verus_code! {
         proof fn foo()

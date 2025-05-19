@@ -8,7 +8,8 @@ verus! {
 pub axiom fn tracked_swap<V>(tracked a: &mut V, tracked b: &mut V)
     ensures
         a == old(b),
-        b == old(a);
+        b == old(a),
+;
 
 /// Make any tracked object permanently shared and get a reference to it.
 ///
@@ -16,6 +17,7 @@ pub axiom fn tracked_swap<V>(tracked a: &mut V, tracked b: &mut V)
 /// of a lifetime variable, you want to try [`Shared`](crate::shared::Shared) instead.
 pub axiom fn tracked_static_ref<V>(tracked v: V) -> (tracked res: &'static V)
     ensures
-        res == v;
+        res == v,
+;
 
 } // verus!

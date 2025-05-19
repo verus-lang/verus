@@ -181,7 +181,9 @@ pub closed spec fn spec_affirm(b: bool) -> bool
 pub uninterp spec fn arbitrary<A>() -> A;
 
 pub axiom fn proof_from_false<A>() -> (tracked a: A)
-    requires false;
+    requires
+        false,
+;
 
 #[verifier::external_body]  /* vattr */
 #[allow(dead_code)]

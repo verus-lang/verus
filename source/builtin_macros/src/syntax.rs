@@ -781,8 +781,10 @@ impl Visitor {
             _ => {}
         }
 
-        if matches!(sig.mode, FnMode::Default | FnMode::Exec(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_))
-            && !matches!(sig.publish, Publish::Default)
+        if matches!(
+            sig.mode,
+            FnMode::Default | FnMode::Exec(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)
+        ) && !matches!(sig.publish, Publish::Default)
         {
             let publish_span = sig.publish.span();
             stmts.push(stmt_with_semi!(
@@ -791,7 +793,8 @@ impl Visitor {
             ));
         }
 
-        if sig.broadcast.is_some() && !matches!(sig.mode, FnMode::Proof(_) | FnMode::ProofAxiom(_)) {
+        if sig.broadcast.is_some() && !matches!(sig.mode, FnMode::Proof(_) | FnMode::ProofAxiom(_))
+        {
             let broadcast_span = sig.broadcast.span();
             stmts.push(stmt_with_semi!(
                 broadcast_span =>
@@ -1182,7 +1185,10 @@ fn split_trait_method(spec_items: &mut Vec<TraitItem>, fun: &mut TraitItemFn, er
         fun.sig.erase_spec_fields();
     } else if erase_ghost {
         match (&mut fun.default, &fun.sig.mode) {
-            (Some(default), FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)) => {
+            (
+                Some(default),
+                FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_),
+            ) => {
                 // replace body with panic!()
                 let span = default.span();
                 let expr: Expr = Expr::Verbatim(quote_spanned! {
@@ -1360,11 +1366,17 @@ impl Visitor {
             // Erase ghost functions and constants
             items.retain(|item| match item {
                 Item::Fn(fun) => match fun.sig.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_) => false,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
                 Item::Const(c) => match c.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_)| FnMode::ProofAxiom(_)  => false,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
                 _ => true,
@@ -1388,7 +1400,10 @@ impl Visitor {
                 Item::Fn(fun) => match (&fun.vis, &fun.sig.mode) {
                     (
                         Visibility::Public(_),
-                        FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_),
+                        FnMode::Spec(_)
+                        | FnMode::SpecChecked(_)
+                        | FnMode::Proof(_)
+                        | FnMode::ProofAxiom(_),
                     ) if erase_ghost => {
                         // replace body with panic!()
                         let expr: Expr = Expr::Verbatim(quote_spanned! {
@@ -1405,18 +1420,25 @@ impl Visitor {
             }
             let erase_fn = match item {
                 Item::Fn(fun) => match fun.sig.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_) if erase_ghost => {
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_)
+                        if erase_ghost =>
+                    {
                         Some((fun.sig.ident.clone(), fun.vis.clone()))
                     }
                     _ => None,
                 },
                 Item::Const(c) => match (&c.vis, &c.mode) {
                     (Visibility::Public(_), _) => None,
-                    (_, FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_))
-                        if erase_ghost =>
-                    {
-                        Some((c.ident.clone(), c.vis.clone()))
-                    }
+                    (
+                        _,
+                        FnMode::Spec(_)
+                        | FnMode::SpecChecked(_)
+                        | FnMode::Proof(_)
+                        | FnMode::ProofAxiom(_),
+                    ) if erase_ghost => Some((c.ident.clone(), c.vis.clone())),
                     _ => None,
                 },
                 /*
@@ -1779,11 +1801,17 @@ impl Visitor {
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
                 ImplItem::Fn(fun) => match fun.sig.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_) => false,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
                 ImplItem::Const(c) => match c.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_) => false,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
                 _ => true,
@@ -1796,14 +1824,29 @@ impl Visitor {
             ImplItem::Fn(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
                 (
                     (Visibility::Public(_), _) | (_, true),
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_),
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_),
                 ) => true,
-                (_, FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)) => !erase_ghost,
+                (
+                    _,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_),
+                ) => !erase_ghost,
                 (_, FnMode::Exec(_) | FnMode::Default) => true,
             },
             ImplItem::Const(c) => match (&c.vis, &c.mode) {
                 (Visibility::Public(_), _) => true,
-                (_, FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_)) => !erase_ghost,
+                (
+                    _,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_),
+                ) => !erase_ghost,
                 (_, FnMode::Exec(_) | FnMode::Default) => true,
             },
             _ => true,
@@ -1814,7 +1857,10 @@ impl Visitor {
                 ImplItem::Fn(fun) => match ((&fun.vis, for_trait), &fun.sig.mode) {
                     (
                         (Visibility::Public(_), _) | (_, true),
-                        FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_),
+                        FnMode::Spec(_)
+                        | FnMode::SpecChecked(_)
+                        | FnMode::Proof(_)
+                        | FnMode::ProofAxiom(_),
                     ) if erase_ghost => {
                         // replace body with panic!()
                         let expr: Expr = Expr::Verbatim(quote_spanned! {
@@ -1851,7 +1897,10 @@ impl Visitor {
         if self.erase_ghost.erase_all() {
             items.retain(|item| match item {
                 TraitItem::Fn(fun) => match fun.sig.mode {
-                    FnMode::Spec(_) | FnMode::SpecChecked(_) | FnMode::Proof(_) | FnMode::ProofAxiom(_) => false,
+                    FnMode::Spec(_)
+                    | FnMode::SpecChecked(_)
+                    | FnMode::Proof(_)
+                    | FnMode::ProofAxiom(_) => false,
                     FnMode::Exec(_) | FnMode::Default => true,
                 },
                 _ => true,

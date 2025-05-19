@@ -86,14 +86,16 @@ impl<P: PCM> Resource<P> {
         requires
             value.valid(),
         ensures
-            out.value() == value;
+            out.value() == value,
+    ;
 
     pub axiom fn join(tracked self, tracked other: Self) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),
         ensures
             out.loc() == self.loc(),
-            out.value() == P::op(self.value(), other.value());
+            out.value() == P::op(self.value(), other.value()),
+    ;
 
     pub axiom fn split(tracked self, left: P, right: P) -> (tracked out: (Self, Self))
         requires
@@ -102,30 +104,35 @@ impl<P: PCM> Resource<P> {
             out.0.loc() == self.loc(),
             out.1.loc() == self.loc(),
             out.0.value() == left,
-            out.1.value() == right;
+            out.1.value() == right,
+    ;
 
     pub axiom fn create_unit(loc: Loc) -> (tracked out: Self)
         ensures
             out.value() == P::unit(),
-            out.loc() == loc;
+            out.loc() == loc,
+    ;
 
     pub axiom fn validate(tracked &self)
         ensures
-            self.value().valid();
+            self.value().valid(),
+    ;
 
     pub axiom fn update(tracked self, new_value: P) -> (tracked out: Self)
         requires
             frame_preserving_update(self.value(), new_value),
         ensures
             out.loc() == self.loc(),
-            out.value() == new_value;
+            out.value() == new_value,
+    ;
 
     pub axiom fn update_nondeterministic(tracked self, new_values: Set<P>) -> (tracked out: Self)
         requires
             frame_preserving_update_nondeterministic(self.value(), new_values),
         ensures
             out.loc() == self.loc(),
-            new_values.contains(out.value());
+            new_values.contains(out.value()),
+    ;
 
     // Operations with shared references
     pub axiom fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
@@ -135,7 +142,8 @@ impl<P: PCM> Resource<P> {
         ensures
             out.loc() == self.loc(),
             incl(self.value(), out.value()),
-            incl(other.value(), out.value());
+            incl(other.value(), out.value()),
+    ;
 
     pub proof fn join_shared_to_target<'a>(
         tracked &'a self,
@@ -159,14 +167,16 @@ impl<P: PCM> Resource<P> {
             incl(target, self.value()),
         ensures
             out.loc() == self.loc(),
-            out.value() == target;
+            out.value() == target,
+    ;
 
     pub axiom fn validate_2(tracked &mut self, tracked other: &Self)
         requires
             old(self).loc() == other.loc(),
         ensures
             *self == *old(self),
-            P::op(self.value(), other.value()).valid();
+            P::op(self.value(), other.value()).valid(),
+    ;
 
     pub axiom fn update_with_shared(
         tracked self,
@@ -181,7 +191,8 @@ impl<P: PCM> Resource<P> {
             ),
         ensures
             out.loc() == self.loc(),
-            out.value() == new_value;
+            out.value() == new_value,
+    ;
 
     pub axiom fn update_nondeterministic_with_shared(
         tracked self,
@@ -196,7 +207,8 @@ impl<P: PCM> Resource<P> {
             ),
         ensures
             out.loc() == self.loc(),
-            new_values.contains(out.value());
+            new_values.contains(out.value()),
+    ;
 }
 
 } // verus!

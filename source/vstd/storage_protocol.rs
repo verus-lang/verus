@@ -137,14 +137,16 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         requires
             P::rel(p, s),
         ensures
-            out.value() == p;
+            out.value() == p,
+    ;
 
     pub axiom fn join(tracked a: Self, tracked b: Self) -> (tracked out: Self)
         requires
             a.loc() == b.loc(),
         ensures
             out.loc() == a.loc(),
-            out.value() == P::op(a.value(), b.value());
+            out.value() == P::op(a.value(), b.value()),
+    ;
 
     pub axiom fn split(tracked self, a_value: P, b_value: P) -> (tracked out: (Self, Self))
         requires
@@ -153,7 +155,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.0.loc() == self.loc(),
             out.1.loc() == self.loc(),
             out.0.value() == a_value,
-            out.1.value() == b_value;
+            out.1.value() == b_value,
+    ;
 
     /// Since `inv` isn't closed under inclusion, validity for an element
     /// is defined as the inclusion-closure of invariant, i.e., an element
@@ -164,7 +167,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             ({
                 let (q, t) = out;
                 P::rel(P::op(a.value(), q), t)
-            });
+            }),
+    ;
 
     // Updates and guards
     /// Most general kind of update, potentially depositing and withdrawing
@@ -255,7 +259,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         requires
             guards(p.value(), s_value),
         ensures
-            s == s_value;
+            s == s_value,
+    ;
 
     // Operations with shared references
     pub axiom fn join_shared<'a>(tracked &'a self, tracked other: &'a Self) -> (tracked out:
@@ -265,14 +270,16 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
         ensures
             out.loc() == self.loc(),
             incl(self.value(), out.value()),
-            incl(other.value(), out.value());
+            incl(other.value(), out.value()),
+    ;
 
     pub axiom fn weaken<'a>(tracked &'a self, target: P) -> (tracked out: &'a Self)
         requires
             incl(target, self.value()),
         ensures
             out.loc() == self.loc(),
-            out.value() == target;
+            out.value() == target,
+    ;
 
     pub axiom fn validate_with_shared(tracked p: &mut Self, tracked x: &Self) -> (res: (
         P,
@@ -285,7 +292,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             ({
                 let (q, t) = res;
                 { P::rel(P::op(P::op(p.value(), x.value()), q), t) }
-            });
+            }),
+    ;
 
     // See `logic_exchange_with_extra_guard`
     // https://github.com/secure-foundations/leaf/blob/a51725deedecc88294057ac1502a7c7ff2104a69/src/guarding/protocol.v#L720
@@ -328,7 +336,8 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             ({
                 let (new_p, new_s) = out;
                 new_p.loc() == p.loc() && new_values.contains((new_p.value(), new_s))
-            });
+            }),
+    ;
 }
 
 } // verus!

@@ -173,7 +173,8 @@ impl IsThread {
     /// will have the same ID.
     pub axiom fn agrees(tracked self, tracked other: IsThread)
         ensures
-            self@ == other@;
+            self@ == other@,
+    ;
 }
 
 #[verifier::external]
@@ -237,14 +238,16 @@ impl<V> ThreadShareable<V> {
         requires
             self.id() == is_thread@,
         ensures
-            res == self@;
+            res == self@,
+    ;
 
     /// Borrow the inner value provide we are on the same thread.
     pub axiom fn borrow(tracked &self, tracked is_thread: IsThread) -> (tracked res: &V)
         requires
             self.id() == is_thread@,
         ensures
-            *res == self@;
+            *res == self@,
+    ;
 }
 
 impl<V: Send> ThreadShareable<V> {
@@ -253,7 +256,8 @@ impl<V: Send> ThreadShareable<V> {
     /// require the inner type to be `Send`.
     pub axiom fn send_into(tracked self) -> (tracked res: V)
         ensures
-            res == self@;
+            res == self@,
+    ;
 }
 
 impl<V: Sync> ThreadShareable<V> {
@@ -262,7 +266,8 @@ impl<V: Sync> ThreadShareable<V> {
     /// require the inner type to be `Sync`.
     pub axiom fn sync_borrow(tracked &self) -> (tracked res: &V)
         ensures
-            *res == self@;
+            *res == self@,
+    ;
 }
 
 } // verus!

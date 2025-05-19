@@ -193,7 +193,8 @@ impl<T> PointsTo<T> {
         requires
             size_of::<T>() != 0,
         ensures
-            self@.ptr@.addr != 0;
+            self@.ptr@.addr != 0,
+    ;
 
     /// "Forgets" about the value stored behind the pointer.
     /// Updates the `PointsTo` value to [`MemContents::Uninit`](MemContents::Uninit).
@@ -203,7 +204,8 @@ impl<T> PointsTo<T> {
     pub axiom fn leak_contents(tracked &mut self)
         ensures
             self.ptr() == old(self).ptr(),
-            self.is_uninit();
+            self.is_uninit(),
+    ;
 
     /// Note: If both S and T are non-zero-sized, then this implies the pointers
     /// have distinct addresses.
@@ -211,7 +213,8 @@ impl<T> PointsTo<T> {
         ensures
             *old(self) == *self,
             self.ptr() as int + size_of::<T>() <= other.ptr() as int || other.ptr() as int
-                + size_of::<S>() <= self.ptr() as int;
+                + size_of::<S>() <= self.ptr() as int,
+    ;
 }
 
 impl<T> MemContents<T> {
@@ -243,7 +246,8 @@ pub open spec fn ptr_from_data<T: ?Sized>(data: PtrData) -> *const T {
 
 pub broadcast axiom fn axiom_ptr_mut_from_data<T: ?Sized>(data: PtrData)
     ensures
-        (#[trigger] ptr_mut_from_data::<T>(data))@ == data;
+        (#[trigger] ptr_mut_from_data::<T>(data))@ == data,
+;
 
 // Equiv to ptr_mut_from_data, but named differently to avoid trigger issues
 // Only use for ptrs_mut_eq
@@ -253,7 +257,8 @@ pub uninterp spec fn view_reverse_for_eq<T: ?Sized>(data: PtrData) -> *mut T;
 /// Implies that `a@ == b@ ==> a == b`.
 pub broadcast axiom fn ptrs_mut_eq<T: ?Sized>(a: *mut T)
     ensures
-        view_reverse_for_eq::<T>(#[trigger] a@) == a;
+        view_reverse_for_eq::<T>(#[trigger] a@) == a,
+;
 
 //////////////////////////////////////
 // Null ptrs
@@ -496,7 +501,8 @@ impl IsExposed {
 
     pub axiom fn null() -> (tracked exp: IsExposed)
         ensures
-            exp.provenance() == Provenance::null();
+            exp.provenance() == Provenance::null(),
+    ;
 }
 
 /// Perform a provenance expose operation.
@@ -558,7 +564,8 @@ impl PointsToRaw {
     pub axiom fn empty(provenance: Provenance) -> (tracked points_to_raw: Self)
         ensures
             points_to_raw.dom() == Set::<int>::empty(),
-            points_to_raw.provenance() == provenance;
+            points_to_raw.provenance() == provenance,
+    ;
 
     pub axiom fn split(tracked self, range: Set<int>) -> (tracked res: (Self, Self))
         requires
@@ -567,14 +574,16 @@ impl PointsToRaw {
             res.0.provenance() == self.provenance(),
             res.1.provenance() == self.provenance(),
             res.0.dom() == range,
-            res.1.dom() == self.dom().difference(range);
+            res.1.dom() == self.dom().difference(range),
+    ;
 
     pub axiom fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
         requires
             self.provenance() == other.provenance(),
         ensures
             joined.provenance() == self.provenance(),
-            joined.dom() == self.dom() + other.dom();
+            joined.dom() == self.dom() + other.dom(),
+    ;
 
     // In combination with PointsToRaw::empty(),
     // This lets us create a PointsTo for a ZST for _any_ pointer (any address and provenance).
@@ -590,7 +599,8 @@ impl PointsToRaw {
             points_to.ptr() == ptr_mut_from_data::<V>(
                 PtrData { addr: start, provenance: self.provenance(), metadata: Metadata::Thin },
             ),
-            points_to.is_uninit();
+            points_to.is_uninit(),
+    ;
 }
 
 impl<V> PointsTo<V> {
@@ -599,7 +609,8 @@ impl<V> PointsTo<V> {
             self.is_uninit(),
         ensures
             points_to_raw.is_range(self.ptr().addr() as int, size_of::<V>() as int),
-            points_to_raw.provenance() == self.ptr()@.provenance;
+            points_to_raw.provenance() == self.ptr()@.provenance,
+    ;
 }
 
 // Allocation and deallocation via the global allocator
@@ -759,7 +770,8 @@ impl<'a, T> SharedReference<'a, T> {
         ensures
             pt.ptr() == self.ptr(),
             pt.is_init(),
-            pt.value() == self.value();
+            pt.value() == self.value(),
+    ;
 }
 
 /// Like [`ptr_ref`] but returns a `SharedReference` so it keeps track of the relationship
