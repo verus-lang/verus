@@ -1,4 +1,4 @@
 [toolchain]
-channel = "1.85.0"
+channel = "1.85.1"
 # channel = "nightly-2023-09-29" # TODO update to match 1.84.0 (not officially supported)
 components = [ "rustc", "rust-std", "cargo", "rustfmt", "rustc-dev", "llvm-tools" ]
