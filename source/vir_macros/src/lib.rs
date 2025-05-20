@@ -11,13 +11,6 @@ fn to_node_inner(
     let (attr_args, trait_impl): (Option<proc_macro2::TokenStream>, bool) =
         if let Some(attr) = attribute {
             let attr_args = if !attr.is_empty() {
-                // let parser =
-                //     syn::punctuated::Punctuated::<_/* TODO(syn2) syn::NestedMeta */, syn::Token![,]>::parse_terminated;
-                // use syn::parse::Parser;
-                // let parser =
-                //     syn::MetaList::parse_nested_meta(&self, logic)
-                //     syn::punctuated::Punctuated::<_/* TODO(syn2) syn::NestedMeta */, syn::Token![,]>::parse_terminated;
-                // Some(parser.parse2(attr).expect("invalid macro input"))
                 Some(attr.clone())
             } else {
                 None
