@@ -13,6 +13,11 @@ impl InvariantPredicate<AtomicCellId, PermissionU64> for ModPredicate {
     }
 }
 
+// Atomic invariant
+// +----------------+
+// | PermissionU64  |
+// +----------------+
+
 fn atomic_caller(
     inv: &AtomicInvariant<AtomicCellId, PermissionU64, ModPredicate>,
     patomic: PAtomicU64,
@@ -20,18 +25,30 @@ fn atomic_caller(
     requires inv.constant() == patomic.id(),
 {
     
-    let old_v;
-
     // assert PRIVATE PRE of fetch_add_plus_1
-    let old_v = fetch_add_plus_1(3) atomically {
+    let old_v = patomic.fetch_add_plus_1(3) atomically {
         open_atomic_invariant!(inv => permu64 => { 
-            // assert ATOMIC PRE of fetch_add_plus_1
-            now(&mut permu64)
+            // assume inv's property
+            assert(inv.inv(patomic.id(), permu64));
+            assert(
+              &&& permu64.id() == patomic.id()
+              &&& permu64.value() as int % 2 == 0
+            )
+            // ✅ assert ATOMIC PRE of fetch_add_plus_1
+            let ghost old_permu64 = permu64.value(); // 38
+            assert(old_permu64 as int % 2 == 0);
+            now(&mut permu64) // the atomic operation
             // assume ATOMIC POST of fetch_add_plus_1
+            assert(
+              &&& permu64.id() == patomic.id()
+              // &&& permu64.value() == wrapping_add_u64(old_permu64, wrapping_add_u64(3, 1))
+              &&& permu64.value() == wrapping_add_u64(old_permu64, 4) // 42
+            )
+            assert(permu64.value() as int % 2 == 0);
+            // assert inv's property
         });
     };
     // assume PRIVATE POST of fetch_add_plus_1 at POST
-
     assert(old_v as int % 2 == 0);
 
 }
@@ -39,34 +56,70 @@ fn atomic_caller(
 fn non_atomic_caller() {
     let (p, Tracked(perm)) = AtomicU64::new(0);
 
+    // assert PRIVATE PRE of fetch_add_plus_1
+    // assert ATOMIC PRE of fetch_add_plus_1
     let old_v = fetch_add_plus_1(3) with (&mut perm);
+    // assume ATOMIC POST of fetch_add_plus_1
+    // assume PRIVATE POST of fetch_add_plus_1
 
     assert(perm.value() == 4);
 }
 
-fn fetch_add_plus_1(&self, v: u64)
-    AU: atomic_spec {
+// at the linarization point:
+//   (reading the current value of the Atomic),
+//   adding (v + 1) to the value of the Atomic and wrapping if we overflow
+
+fn fetch_add_plus_1(&self, v: u64) -> (r: u64)
+    AU: atomic_spec { // AU indicates the linearization point
         (tracked p: &mut PermissionU64)
-        requires
+        requires // ATOMIC PRE
             old(p).id() == self.id(),
-        ensures
+        ensures // ATOMIC POST
             p.id() == old(p).id(),
-            p.value() == wrapping_add(
+            p.value() == wrapping_add_u64(
                 old(p).value,
-                wrapping_add(v, 1))
+                wrapping_add_u64(v, 1))
     }   
     // AU: AtomicSpec
     //   (tracked p: &mut PermissionU64)
     //
     //   has_fired:
-    returns old(p).value();
+    requires true, // PRIVATE PRE
+    ensures r == old(p).value(), // PRIVATE POST
 {   
-    let w = wrapping_add(v, 1);
+    let w = wrapping_add_u64(v, 1);
 
-    self.fetch_add(w) atomically {
-        open_atomic_update!(AU => points_to => {
-            now(&mut points_to);
-        };
-    });
+    let old_v = self.fetch_add_wrapping(w) atomically {
+        open_atomic_update!(AU => permu64 => {
+            // assume ATOMIC PRE of fetch_add_plus_1
+            assert(permu64.id() == self.id());
+            // assert ATOMIC PRE of fetch_add_wrapping
+            let ghost old_permu64 = permu64.view().value();
+            now(&mut permu64);
+            // assume ATOMIC POST of fetch_add_wrapping
+            assert(permu64.id() == self.id());
+            assert(permu64.view().value() as int ==
+                wrapping_add_u64(old_permu64 as int, n as int)),
+            // assert ATOMIC POST of fetch_add_plus_1
+        });
+    };
+    // assume PRIVATE POST of fetch_add_plus_1
+    
+    old_v
 }
 }
+
+// pub exec fn fetch_add_wrapping(
+//     &self,
+//     n: u64,
+// ) -> ret : u64
+// atomic_spec {
+//   (perm: Tracked<&mut PermissionU64>),
+//   requires // ATOMIC PRE
+//     equal(self.id(), old(perm).view().patomic),
+//   ensures // ATOMIC POST
+//     perm.view().patomic == old(perm).view().patomic,
+//     perm.view().value as int == wrapping_add_u64(old(perm).view().value as int, n as int),
+// }
+// requires true // PRIVATE PRE
+// ensures equal(old(perm).view().value, ret), // PRIVATE POST
