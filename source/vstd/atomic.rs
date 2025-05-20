@@ -8,6 +8,8 @@ use core::sync::atomic::{
 #[cfg(target_has_atomic = "64")]
 use core::sync::atomic::{AtomicI64, AtomicU64};
 
+use crate::logatom::AtomicUpdate;
+
 use super::modes::*;
 use super::pervasive::*;
 use super::prelude::*;
@@ -728,6 +730,101 @@ impl<T> PAtomicPtr<T> {
         no_unwind
     {
         return self.ato.fetch_or(n, Ordering::SeqCst);
+    }
+}
+
+} // verus!
+
+verus! {
+
+// TODO: This is a prototype for the new atomic types.
+#[verifier::external_body]
+pub struct APAtomicU64 {
+    ato: AtomicU64,
+}
+
+#[verifier::external_body]
+pub tracked struct APermissionU64 {
+    no_copy: NoCopy,
+    unused: u64,
+}
+
+pub ghost struct APermissionU64Data {
+    pub patomic: int,
+    pub value: u64,
+}
+
+impl APermissionU64 {
+    #[verifier::external_body]
+    pub uninterp spec fn view(self) -> APermissionU64Data;
+}
+
+impl APAtomicU64 {
+    pub uninterp spec fn id(&self) -> int;
+
+    #[inline(always)]
+    #[verifier::external_body]
+    pub const fn new(i: u64) -> (res: (APAtomicU64, Tracked<APermissionU64>))
+        ensures
+            equal(res.1@.view(), APermissionU64Data { patomic: res.0.id(), value: i }),
+    {
+        let p = APAtomicU64 { ato: AtomicU64::new(i) };
+        (p, Tracked::assume_new())
+    }
+
+    #[inline(always)]
+    #[verifier::external_body]
+    #[verifier::atomic]
+    pub fn fetch_add_wrapping_original(&self, Tracked(perm): Tracked<APermissionU64>, n: u64)
+            -> (ret: (u64, Tracked<APermissionU64>))
+        requires equal(self.id(), perm.view().patomic),
+        ensures
+            equal(perm.view().value, ret.0),
+            ret.1@.view().patomic == perm.view().patomic,
+            ret.1@.view().value as int == wrapping_add_u64(perm.view().value as int, n as int),
+        opens_invariants none
+        no_unwind
+    {
+        (self.ato.fetch_add(n, Ordering::SeqCst), Tracked(perm))
+    }
+
+    #[inline(always)]
+    #[verifier::external_body]
+    pub fn fetch_add_wrapping(
+        &self,
+        n: u64,
+
+        /* (internal) */ Tracked(atomic_update): Tracked<AtomicUpdate<APermissionU64, APermissionU64>>,
+        /* (internal) */ Tracked(input_perm): Tracked<APermissionU64>,
+        ) -> (ret: (u64,
+        /* (internal) */ Tracked<APermissionU64>,
+        ))
+        // atomic_update: atomic_spec {
+        //   (tracked input_perm: APermissionU64) -> (tracked output_perm: APermissionU64)
+        //   requires // ATOMIC PRE
+        //     equal(self.id(), input_perm.view().patomic),
+        //   ensures { // ATOMIC POST
+        //     &&& output_perm.view().patomic == input_perm.view().patomic
+        //     &&& output_perm.view().value as int == wrapping_add_u64(input_perm.view().value as int, n as int)
+        //   }
+        // }
+        // requires true // PRIVATE PRE
+        // ensures // PRIVATE POST
+        //    equal(input_perm.view().value, ret),
+
+        opens_invariants none
+        no_unwind
+    {
+        // /* (internal) */ assume({
+        // /* (internal) */     &&& forall |input_perm: APermissionU64| #![all_triggers] atomic_update.req(input_perm) <==> /* atomic requires */
+        // /* (internal) */         equal(self.id(), input_perm.view().patomic)
+        // /* (internal) */     &&& forall |input_perm: APermissionU64, output_perm: APermissionU64| #![all_triggers] atomic_update.ens(input_perm, output_perm) <==> /* atomic ensures */ {
+        // /* (internal) */         &&& output_perm.view().patomic == input_perm.view().patomic
+        // /* (internal) */         &&& output_perm.view().value as int == wrapping_add_u64(input_perm.view().value as int, n as int)
+        // /* (internal) */     }
+        // /* (internal) */ });
+        let tracked perm = input_perm;
+        (self.ato.fetch_add(n, Ordering::SeqCst), Tracked(perm))
     }
 }
 

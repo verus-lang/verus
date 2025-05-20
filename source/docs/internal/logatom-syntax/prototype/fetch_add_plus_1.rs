@@ -69,50 +69,43 @@ fn non_atomic_caller() {
 //   (reading the current value of the Atomic),
 //   adding (v + 1) to the value of the Atomic and wrapping if we overflow
 
-struct AtomicUpdate<Input, Output> { ... }
 
-impl AtomicUpdate<Input, Output> {
-    spec fn req(input: Input) -> bool;
-    spec fn ens(input: Input, output: Output) -> bool;
-
-    spec fn has_fired() -> bool;
-}
-
-fn fetch_add_plus_1(&self, v: u64, AU: AtomicUpdate<PermissionU64, PermissionU64>) -> (r: u64)
+fn fetch_add_plus_1(patomic: PAtomicU64, v: u64) -> (r: u64)
+    // Tracked(AU): Tracked<AtomicUpdate<PermissionU64, PermissionU64>>
     AU: atomic_spec { // AU indicates the linearization point
         (tracked p: PermissionU64) -> (out_p: tracked PermissionU64)
         requires // ATOMIC PRE
-            p.id() == self.id(),
+            p.id() == patomic.id(),
         ensures // ATOMIC POST
             out_p.id() == p.id(),
             out_p.value() == wrapping_add_u64(
                 p.value,
                 wrapping_add_u64(v, 1))
-    }   
-    requires
-        forall |p| AU.req(p) <==> p.id() == self.id(),
-        forall |p| AU.ens(p) <==> (out_p.id() == p.id() && ...),
+    }
+    // requires
+    //     forall |p| AU.req(p) <==> p.id() == self.id(),
+    //     forall |p| AU.ens(p) <==> (out_p.id() == p.id() && ...),
 
     // AU: AtomicSpec
     //   (tracked p: &mut PermissionU64)
     //
     //   has_fired:
     requires true, // PRIVATE PRE
-    ensures r == old(p).value(), // PRIVATE POST
+    ensures r == p.view().value, // PRIVATE POST
 {   
     
 
     let w = wrapping_add_u64(v, 1);
 
-    let old_v = self.fetch_add_wrapping(w) atomically {
+    let old_v = patomic.fetch_add_wrapping(w) atomically {
         open_atomic_update!(AU => permu64 => {
             // assume ATOMIC PRE of fetch_add_plus_1
-            assert(permu64.id() == self.id());
+            assert(permu64.id() == patomic.id());
             // assert ATOMIC PRE of fetch_add_wrapping
             let ghost old_permu64 = permu64.view().value();
             now(&mut permu64);
             // assume ATOMIC POST of fetch_add_wrapping
-            assert(permu64.id() == self.id());
+            assert(permu64.id() == patomic.id());
             assert(permu64.view().value() as int ==
                 wrapping_add_u64(old_permu64 as int, n as int)),
             // assert ATOMIC POST of fetch_add_plus_1
