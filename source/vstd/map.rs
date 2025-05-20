@@ -108,46 +108,33 @@ impl<K, V> Map<K, V> {
         self.dom().len()
     }
 
-    #[verifier::external_body]
-    pub proof fn tracked_empty() -> (tracked out_v: Self)
+    pub axiom fn tracked_empty() -> (tracked out_v: Self)
         ensures
             out_v == Map::<K, V>::empty(),
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn tracked_insert(tracked &mut self, key: K, tracked value: V)
+    pub axiom fn tracked_insert(tracked &mut self, key: K, tracked value: V)
         ensures
             *self == Map::insert(*old(self), key, value),
-    {
-        unimplemented!();
-    }
+    ;
 
     /// todo fill in documentation
-    #[verifier::external_body]
-    pub proof fn tracked_remove(tracked &mut self, key: K) -> (tracked v: V)
+    pub axiom fn tracked_remove(tracked &mut self, key: K) -> (tracked v: V)
         requires
             old(self).dom().contains(key),
         ensures
             *self == Map::remove(*old(self), key),
             v == old(self)[key],
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn tracked_borrow(tracked &self, key: K) -> (tracked v: &V)
+    pub axiom fn tracked_borrow(tracked &self, key: K) -> (tracked v: &V)
         requires
             self.dom().contains(key),
         ensures
             *v === self.index(key),
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn tracked_map_keys<J>(
+    pub axiom fn tracked_map_keys<J>(
         tracked old_map: Map<K, V>,
         key_map: Map<J, K>,
     ) -> (tracked new_map: Map<J, V>)
@@ -165,12 +152,9 @@ impl<K, V> Map<K, V> {
                 key_map.dom().contains(j) ==> new_map.dom().contains(j) && #[trigger] new_map.index(
                     j,
                 ) == old_map.index(key_map.index(j)),
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn tracked_remove_keys(tracked &mut self, keys: Set<K>) -> (tracked out_map: Map<
+    pub axiom fn tracked_remove_keys(tracked &mut self, keys: Set<K>) -> (tracked out_map: Map<
         K,
         V,
     >)
@@ -179,51 +163,39 @@ impl<K, V> Map<K, V> {
         ensures
             self == old(self).remove_keys(keys),
             out_map == old(self).restrict(keys),
-    {
-        unimplemented!();
-    }
+    ;
 
-    #[verifier::external_body]
-    pub proof fn tracked_union_prefer_right(tracked &mut self, right: Self)
+    pub axiom fn tracked_union_prefer_right(tracked &mut self, right: Self)
         ensures
             *self == old(self).union_prefer_right(right),
-    {
-        unimplemented!();
-    }
+    ;
 }
 
 // Trusted axioms
 /* REVIEW: this is simpler than the two separate axioms below -- would this be ok?
-pub broadcast proof fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
+pub broadcast axiom fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().contains(key),
     ensures
-        #[trigger](decreases_to!(m => m[key])),
-{
-    admit();
-}
+        #[trigger](decreases_to!(m => m[key]));
 */
 
-pub broadcast proof fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key: K)
+pub broadcast axiom fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().finite(),
         m.dom().contains(key),
     ensures
         #[trigger] (decreases_to!(m => m[key])),
-{
-    admit();
-}
+;
 
 // REVIEW: this is currently a special case that is hard-wired into the verifier
 // It implements a version of https://github.com/FStarLang/FStar/pull/2954 .
-pub broadcast proof fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
+pub broadcast axiom fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().contains(key),
     ensures
         #[trigger] is_smaller_than_recursive_function_field(m[key], m),
-{
-    admit();
-}
+;
 
 /// The domain of the empty map is the empty set
 pub broadcast proof fn axiom_map_empty<K, V>()

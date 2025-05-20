@@ -53,6 +53,7 @@ ast_enum_of_structs! {
         Spec(ModeSpec),
         SpecChecked(ModeSpecChecked),
         Proof(ModeProof),
+        ProofAxiom(ModeProofAxiom),
         Exec(ModeExec),
         Default,
     }
@@ -82,6 +83,12 @@ ast_struct! {
 ast_struct! {
     pub struct ModeProof {
         pub proof_token: Token![proof],
+    }
+}
+
+ast_struct! {
+    pub struct ModeProofAxiom {
+        pub axiom_token: Token![axiom],
     }
 }
 
@@ -661,6 +668,9 @@ pub mod parsing {
             } else if input.peek(Token![proof]) {
                 let proof_token: Token![proof] = input.parse()?;
                 Ok(FnMode::Proof(ModeProof { proof_token }))
+            } else if input.peek(Token![axiom]) {
+                let axiom_token: Token![axiom] = input.parse()?;
+                Ok(FnMode::ProofAxiom(ModeProofAxiom { axiom_token }))
             } else if input.peek(Token![exec]) {
                 let exec_token: Token![exec] = input.parse()?;
                 Ok(FnMode::Exec(ModeExec { exec_token }))
@@ -1579,6 +1589,13 @@ mod printing {
     impl ToTokens for ModeProof {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.proof_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ModeProofAxiom {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.axiom_token.to_tokens(tokens);
         }
     }
 
