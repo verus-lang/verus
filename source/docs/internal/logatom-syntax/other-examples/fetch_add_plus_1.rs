@@ -69,17 +69,30 @@ fn non_atomic_caller() {
 //   (reading the current value of the Atomic),
 //   adding (v + 1) to the value of the Atomic and wrapping if we overflow
 
-fn fetch_add_plus_1(&self, v: u64) -> (r: u64)
+struct AtomicUpdate<Input, Output> { ... }
+
+impl AtomicUpdate<Input, Output> {
+    spec fn req(input: Input) -> bool;
+    spec fn ens(input: Input, output: Output) -> bool;
+
+    spec fn has_fired() -> bool;
+}
+
+fn fetch_add_plus_1(&self, v: u64, AU: AtomicUpdate<PermissionU64, PermissionU64>) -> (r: u64)
     AU: atomic_spec { // AU indicates the linearization point
-        (tracked p: &mut PermissionU64)
+        (tracked p: PermissionU64) -> (out_p: tracked PermissionU64)
         requires // ATOMIC PRE
-            old(p).id() == self.id(),
+            p.id() == self.id(),
         ensures // ATOMIC POST
-            p.id() == old(p).id(),
-            p.value() == wrapping_add_u64(
-                old(p).value,
+            out_p.id() == p.id(),
+            out_p.value() == wrapping_add_u64(
+                p.value,
                 wrapping_add_u64(v, 1))
     }   
+    requires
+        forall |p| AU.req(p) <==> p.id() == self.id(),
+        forall |p| AU.ens(p) <==> (out_p.id() == p.id() && ...),
+
     // AU: AtomicSpec
     //   (tracked p: &mut PermissionU64)
     //
@@ -87,6 +100,8 @@ fn fetch_add_plus_1(&self, v: u64) -> (r: u64)
     requires true, // PRIVATE PRE
     ensures r == old(p).value(), // PRIVATE POST
 {   
+    
+
     let w = wrapping_add_u64(v, 1);
 
     let old_v = self.fetch_add_wrapping(w) atomically {
