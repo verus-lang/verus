@@ -230,6 +230,20 @@ impl<A> Seq<A> {
         assert(self.remove(self.len() - 1) =~= self.take(self.len() - 1));
         self.tracked_remove(self.len() - 1)
     }
+
+    pub proof fn tracked_pop_front(tracked &mut self) -> (tracked ret: A)
+        requires
+            old(self).len() > 0,
+        ensures
+            ret === old(self).first(),
+            self.len() == old(self).len() - 1,
+            *self == old(self).drop_first(),
+    {
+        broadcast use group_seq_axioms;
+
+        assert(self.remove(0) =~= self.drop_first());
+        self.tracked_remove(0)
+    }
 }
 
 // Trusted axioms
