@@ -8,7 +8,7 @@ The following version of the function uses `return` to return
 the special value `0xffff_ffff` in case overflow is detected at run-time:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:loop_return}}
+{{#include ../../../../examples/guide/recursion.rs:loop_return}}
 ```
 
 Another way to exit early from a loop is with a `break` inside the loop body.
@@ -27,5 +27,5 @@ Furthermore, invariants that don't hold after a `break`
 must be marked as `invariant_except_break` rather than `invariant`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:loop_break}}
+{{#include ../../../../examples/guide/recursion.rs:loop_break}}
 ```

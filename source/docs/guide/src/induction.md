@@ -5,7 +5,7 @@ Given that, let's try a series of executable implementations of triangle numbers
 starting with a simple recursive implementation:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:rec_fail}}
+{{#include ../../../../examples/guide/recursion.rs:rec_fail}}
 ```
 
 We immediately run into one small practical difficulty:
@@ -26,7 +26,7 @@ that the result must fit,
 which for a `u32` result means `triangle(n) < 0x1_0000_0000`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:rec}}
+{{#include ../../../../examples/guide/recursion.rs:rec}}
 ```
 
 This time, verification succeeds.
@@ -80,7 +80,7 @@ First, to prepare for the mutable variables that we'll use in while loops,
 let's switch `sum` from being a return value to being a mutably updated variable:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:mut}}
+{{#include ../../../../examples/guide/recursion.rs:mut}}
 ```
 
 From the verification's point of view, this doesn't change anything significant.
@@ -95,7 +95,7 @@ We do this by introducing an index variable `idx` that counts up from `0` to `n`
 just as a while loop would do:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:tail_fail}}
+{{#include ../../../../examples/guide/recursion.rs:tail_fail}}
 ```
 
 In the preconditions and postconditions,
@@ -153,7 +153,7 @@ In other words, we need to prove that `triangle` is monotonic.
 We can use a `proof` function to implement this lemma:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:mono}}
+{{#include ../../../../examples/guide/recursion.rs:mono}}
 ```
 
 The proof is by induction on j,
@@ -168,13 +168,13 @@ Otherwise, it would be easy to prove `false`,
 as in the following non-terminating "proof":
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:circular}}
+{{#include ../../../../examples/guide/recursion.rs:circular}}
 ```
 
 We can use the `triangle_is_monotonic` lemma to complete the verification of `tail_triangle`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:tail}}
+{{#include ../../../../examples/guide/recursion.rs:tail}}
 ```
 
 Intuitively, we can think of the call from `tail_triangle` to `triangle_is_monotonic`

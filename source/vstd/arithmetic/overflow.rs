@@ -7,7 +7,7 @@
 /// It's a fully verified library, i.e., it contains no trusted code.
 ///
 /// Here are some examples using `CheckedU64`. (See
-/// `rust_verify/example/overflow.rs` for more examples, including
+/// `examples/overflow.rs` for more examples, including
 /// ones for the analogous `CheckedU32`.)
 ///
 /// ```

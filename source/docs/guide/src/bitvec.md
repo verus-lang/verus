@@ -16,19 +16,19 @@ with `by(bit_vector)` either on an `assert` or a `proof fn`.
 Using `by(bit_vector)` on an `assert` lets one assert a short and context-free
 bit-manipulation property, as in the following examples:
 ```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bitvector_easy}}
+{{#include ../../../../examples/guide/nonlinear_bitvec.rs:bitvector_easy}}
 ```
 
 As with `nonlinear_arith`, assertions expressed via `assert(...) by(bit_vector)` do not include any ambient facts from the surrounding context (e.g., from the surrounding function's `requires` clause or from previous variable assignments).  For example, the following example will fail:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bitvector_fail}}
+{{#include ../../../../examples/guide/nonlinear_bitvec.rs:bitvector_fail}}
 ```
 
 But context can be imported explicitly with a `requires` clause:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bitvector_success}}
+{{#include ../../../../examples/guide/nonlinear_bitvec.rs:bitvector_success}}
 ```
 
 Attaching `by(bit_vector)` to a proof function `f` makes Verus use
@@ -37,7 +37,7 @@ calls `f`, Verus uses the _normal_ solver to verify that it satisfies all the
 preconditions of `f`. Here's an example of using `by(bit_vector)` on a proof
 function:
 ```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:de_morgan}}
+{{#include ../../../../examples/guide/nonlinear_bitvec.rs:de_morgan}}
 ```
 
 
@@ -153,6 +153,6 @@ proof fn test_left_shift_u32_vs_u64(y: u32) {
 
 Some larger examples to browse:
 
- * [garbage collection example](https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_garbage_collection.rs)
- * [bitvector equivalence example](https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_equivalence.rs)
- * [miscellaneous](https://github.com/verus-lang/verus/blob/main/source/rust_verify/example/bitvector_basic.rs)
+ * [garbage collection example](https://github.com/verus-lang/verus/blob/main/source/../examples/bitvector_garbage_collection.rs)
+ * [bitvector equivalence example](https://github.com/verus-lang/verus/blob/main/source/../examples/bitvector_equivalence.rs)
+ * [miscellaneous](https://github.com/verus-lang/verus/blob/main/source/../examples/bitvector_basic.rs)

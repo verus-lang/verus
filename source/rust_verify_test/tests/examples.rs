@@ -13,16 +13,16 @@ enum Mode {
     ExpectFailures,
 }
 
-examples_in_dir!("../rust_verify/example");
-examples_in_dir!("../rust_verify/example/guide");
-examples_in_dir!("../rust_verify/example/state_machines");
-examples_in_dir!("../rust_verify/example/summer_school");
-examples_in_dir!("../rust_verify/example/state_machines/tutorial");
-examples_in_dir!("../rust_verify/example/state_machines/reference-examples");
-examples_in_dir!("../rust_verify/example/std_test");
+examples_in_dir!("../../examples");
+examples_in_dir!("../../examples/guide");
+examples_in_dir!("../../examples/state_machines");
+examples_in_dir!("../../examples/summer_school");
+examples_in_dir!("../../examples/state_machines/tutorial");
+examples_in_dir!("../../examples/state_machines/reference-examples");
+examples_in_dir!("../../examples/std_test");
 
 #[cfg(feature = "singular")]
-examples_in_dir!("../rust_verify/example/integer_ring");
+examples_in_dir!("../../examples/integer_ring");
 
 fn run_example_for_file(file_path: &str) {
     let relative_path = Path::new(file_path);
