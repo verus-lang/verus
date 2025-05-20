@@ -741,21 +741,17 @@ pub broadcast proof fn axiom_set_ext_equal_deep<A>(s1: Set<A>, s2: Set<A>)
 {
 }
 
-pub broadcast proof fn axiom_mk_map_domain<K, V>(s: Set<K>, f: spec_fn(K) -> V)
+pub broadcast axiom fn axiom_mk_map_domain<K, V>(s: Set<K>, f: spec_fn(K) -> V)
     ensures
         #[trigger] s.mk_map(f).dom() == s,
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_mk_map_index<K, V>(s: Set<K>, f: spec_fn(K) -> V, key: K)
+pub broadcast axiom fn axiom_mk_map_index<K, V>(s: Set<K>, f: spec_fn(K) -> V, key: K)
     requires
         s.contains(key),
     ensures
         #[trigger] s.mk_map(f)[key] == f(key),
-{
-    admit();
-}
+;
 
 // Trusted axioms about finite
 /// The empty set is finite.

@@ -152,26 +152,20 @@ impl StrSliceExecFns for str {
     }
 }
 
-pub broadcast proof fn axiom_str_literal_is_ascii<'a>(s: &'a str)
+pub broadcast axiom fn axiom_str_literal_is_ascii<'a>(s: &'a str)
     ensures
         #[trigger] s.is_ascii() == strslice_is_ascii(s),
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_str_literal_len<'a>(s: &'a str)
+pub broadcast axiom fn axiom_str_literal_len<'a>(s: &'a str)
     ensures
         #[trigger] s@.len() == strslice_len(s),
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
+pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
     ensures
         #[trigger] s@.index(i) == strslice_get_char(s, i),
-{
-    admit();
-}
+;
 
 pub broadcast group group_string_axioms {
     axiom_str_literal_is_ascii,

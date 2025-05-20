@@ -173,36 +173,29 @@ impl<K, V> Map<K, V> {
 
 // Trusted axioms
 /* REVIEW: this is simpler than the two separate axioms below -- would this be ok?
-pub broadcast proof fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
+pub broadcast axiom fn axiom_map_index_decreases<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().contains(key),
     ensures
-        #[trigger](decreases_to!(m => m[key])),
-{
-    admit();
-}
+        #[trigger](decreases_to!(m => m[key]));
 */
 
-pub broadcast proof fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key: K)
+pub broadcast axiom fn axiom_map_index_decreases_finite<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().finite(),
         m.dom().contains(key),
     ensures
         #[trigger] (decreases_to!(m => m[key])),
-{
-    admit();
-}
+;
 
 // REVIEW: this is currently a special case that is hard-wired into the verifier
 // It implements a version of https://github.com/FStarLang/FStar/pull/2954 .
-pub broadcast proof fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
+pub broadcast axiom fn axiom_map_index_decreases_infinite<K, V>(m: Map<K, V>, key: K)
     requires
         m.dom().contains(key),
     ensures
         #[trigger] is_smaller_than_recursive_function_field(m[key], m),
-{
-    admit();
-}
+;
 
 /// The domain of the empty map is the empty set
 pub broadcast proof fn axiom_map_empty<K, V>()

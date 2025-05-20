@@ -79,21 +79,17 @@ pub exec fn array_index_get<T, const N: usize>(ar: &[T; N], i: usize) -> (out: &
     &ar[i]
 }
 
-pub broadcast proof fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
+pub broadcast axiom fn array_len_matches_n<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] ar@.len()) == N,
-{
-    admit();
-}
+;
 
 pub uninterp spec fn spec_array_as_slice<T, const N: usize>(ar: &[T; N]) -> (out: &[T]);
 
-pub broadcast proof fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
+pub broadcast axiom fn axiom_spec_array_as_slice<T, const N: usize>(ar: &[T; N])
     ensures
         (#[trigger] spec_array_as_slice(ar))@ == ar@,
-{
-    admit();
-}
+;
 
 // Referenced by Verus' internal encoding for array -> slice coercion
 #[doc(hidden)]
@@ -114,15 +110,13 @@ pub assume_specification<T, const N: usize>[ <[T; N]>::as_slice ](ar: &[T; N]) -
 
 pub uninterp spec fn spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T) -> (res: [T; N]);
 
-pub broadcast proof fn axiom_spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T)
+pub broadcast axiom fn axiom_spec_array_fill_for_copy_type<T: Copy, const N: usize>(t: T)
     ensures
         #![trigger spec_array_fill_for_copy_type::<T, N>(t)]
         // intentionally triggering on `spec_array_fill_for_copy_type` only
         forall|i: int|
             0 <= i < N ==> spec_array_fill_for_copy_type::<T, N>(t).view()[i] == t,
-{
-    admit();
-}
+;
 
 // The 'array fill' [t; N] where t is a Copy type
 // (Does not necessarily apply when t is a non-Copy const)
