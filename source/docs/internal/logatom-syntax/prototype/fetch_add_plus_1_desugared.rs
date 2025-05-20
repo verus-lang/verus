@@ -69,7 +69,7 @@ fn fetch_add_plus_1(
     /* (internal) */            input.view().patomic == patomic.id()
     /* (internal) */     &&& forall |input: APermissionU64, output: APermissionU64| #![all_triggers]
     /* (internal) */         atomic_update.ens(input, output) <==> {
-    /* (internal) */             &&& output.view().patomic == input.id()
+    /* (internal) */             &&& output.view().patomic == input.view().patomic
     /* (internal) */             &&& output.view().value == wrapping_add_u64(input.view().value as int,
     /* (internal) */                    wrapping_add_u64(v as int, 1))
     /* (internal) */         }
@@ -80,44 +80,38 @@ fn fetch_add_plus_1(
     let w = v.wrapping_add(1);
     assert(w == wrapping_add_u64(v as int, 1));
 
-    // WIP:
-    // let old_v = patomic.fetch_add_wrapping(w) atomically {
+    //     // assert PRIVATE PRE of fetch_add_wrapping
+
+    // let old_v = patomic.fetch_add_wrapping(w) atomically { update =>
+
     //     open_atomic_update!(atomic_update => permu64 => {
-    //     // assume ATOMIC PRE of fetch_add_plus_1
-    //     assert(permu64.id() == patomic.id());
-    //     let ghost old_permu64 = permu64.view().value();
+    //     // assume ATOMIC PRE of atomic_update
+    /* (internal) */ let tracked permu64: APermissionU64 =
+                AtomicUpdate::<APermissionU64, APermissionU64>::assume_get_input();
+    /* (internal) */ assume(atomic_update.req(permu64));
+    assert(permu64.view().patomic == patomic.id());
+    let ghost old_permu64 = permu64;
+           
     //     // assert ATOMIC PRE of fetch_add_wrapping
-    //     atomic_update(&mut permu64);
+    assert(equal(patomic.id(), permu64.view().patomic));
+    //     let v = update(&mut permu64);
+    /* (internal) */ let tracked call_atomic_update: AtomicUpdate<APermissionU64, APermissionU64> =
+        AtomicUpdate::<APermissionU64, APermissionU64>::assume_new();
+    let (v, Tracked(permu64)) = patomic.fetch_add_wrapping(w,
+    
+    /* (internal) */ Tracked(call_atomic_update),
+    /* (internal) */ Tracked(permu64));
     //     // assume ATOMIC POST of fetch_add_wrapping
-    //     assert(permu64.id() == patomic.id());
-    //     assert(permu64.view().value() as int ==
-    //         wrapping_add_u64(old_permu64 as int, n as int)),
-    //     // assert ATOMIC POST of fetch_add_plus_1
+    /* (internal) */ assume(permu64.view().patomic == old_permu64.view().patomic);
+    /* (internal) */ assume(permu64.view().value == wrapping_add_u64(old_permu64.view().value as int, w as int));
+    assert(permu64.view().patomic == patomic.id());
+    assert(permu64.view().value as int == wrapping_add_u64(old_permu64.view().value as int, w as int));
+    //     // assert ATOMIC POST of atomic_update
+    /* (internal) */ assert(atomic_update.ens(old_permu64, permu64));
     //     })
     // };
+    assume(v == old_permu64.view().value);
 
-    /* (internal) */ {
-        /* (internal) */ let tracked permu64: APermissionU64 =
-            AtomicUpdate::<APermissionU64, APermissionU64>::assume_get_input();
-        /* (internal) */ assume(atomic_update.req(permu64));
-        // TODO change assert(permu64.id() == patomic.id());
-
-
-        /* (internal) */ let tracked permu64: APermissionU64 =
-            AtomicUpdate::<APermissionU64, APermissionU64>::assume_get_input();
-        patomic.fetch_add_wrapping(w
-        
-        /* (internal) */ Tracked(atomic_update),
-        /* (internal) */ Tracked(input_perm));
-    }
-    // }
-
-    // self.fetch_add(w) atomically {
-    //     open_atomic_update!(AU => points_to => {
-    //         now(&mut points_to);
-    //     };
-    // });
-    assume(false);
-    unreached()
+    v
 }
 }

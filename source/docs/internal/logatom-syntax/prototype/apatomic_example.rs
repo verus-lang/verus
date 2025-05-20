@@ -30,8 +30,8 @@ fn main() {
     {
         let (patomic, Tracked(perm)) = APAtomicU64::new(4);
         
-        // let (v, perm) = patomic.fetch_add_wrapping(2) atomically { atomic_update => v =>
-        //   let perm = atomic_update(perm);
+        // let (v, perm) = patomic.fetch_add_wrapping(2) atomically { update =>
+        //   let (v, perm) = update(perm);
         //   (v, perm)
         // };
 
