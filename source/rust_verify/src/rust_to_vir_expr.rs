@@ -1802,7 +1802,8 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         }
         ExprKind::Unary(op, arg) => match op {
             UnOp::Not => {
-                let not_op = match (tc.expr_ty_adjusted(arg)).kind() {
+                let ty = tc.expr_ty_adjusted(arg);
+                let not_op = match ty.kind() {
                     TyKind::Adt(_, _) | TyKind::Uint(_) | TyKind::Int(_) => {
                         let (Some(w), s) = bitwidth_and_signedness_of_integer_type(
                             &bctx.ctxt.verus_items,
@@ -1816,7 +1817,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                         UnaryOp::BitNot(if s { None } else { Some(w) })
                     }
                     TyKind::Bool => UnaryOp::Not,
-                    _ => panic!("Internal error on UnOp::Not translation"),
+                    _ => {
+                        unsupported_err!(
+                            expr.span,
+                            format!("applying `!` operator to type {:}", ty)
+                        )
+                    }
                 };
                 let varg = expr_to_vir(bctx, arg, modifier)?;
                 mk_expr(ExprX::Unary(not_op, varg))
