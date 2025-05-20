@@ -1799,14 +1799,6 @@ fn all_predicates<'tcx>(
     substs: GenericArgsRef<'tcx>,
     preliminarily_try_to_process_and_eliminate_trait_aliases: bool,
 ) -> Vec<Clause<'tcx>> {
-    // let substs = if let Some(index) = tcx.generics_of(id).host_effect_index {
-    //     let b = rustc_middle::ty::Const::from_bool(tcx, true);
-    //     let mut s: Vec<_> = substs.iter().collect();
-    //     s.insert(index, b.into());
-    //     tcx.mk_args(&s)
-    // } else {
-    //     substs
-    // };
     let mut trait_alias_clauses: Vec<Clause<'tcx>> = Vec::new();
     let preds = tcx.predicates_of(id);
     if preliminarily_try_to_process_and_eliminate_trait_aliases {
