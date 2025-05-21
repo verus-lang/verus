@@ -12,12 +12,12 @@ use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
-    Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HirId, MaybeOwner,
-    Param, Safety,
+    Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HeaderSafety, HirId, MaybeOwner, Param,
+    Safety,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
-    GenericArgsRef, Region, TyCtxt, TyKind, TypingEnv,
+    GenericArgsRef, PseudoCanonicalInput, Region, TraitRef, TypingEnv, TyCtxt, TyKind, ValTreeKind, Value
 };
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -940,7 +940,11 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         // No proxy.
         let has_self_param = has_self_parameter(ctxt, id);
-        (this_path.clone(), None, visibility, kind, has_self_param, sig.header.safety)
+        let safety = match sig.header.safety {
+            HeaderSafety::Normal(s) => s,
+            _ => Safety::Unsafe,
+        };
+        (this_path.clone(), None, visibility, kind, has_self_param, safety)
     };
 
     let name = Arc::new(FunX { path: path.clone() });
@@ -969,7 +973,7 @@ pub(crate) fn check_item_fn<'tcx>(
             decl,
             span: _,
         } => {
-            if mode != Mode::Exec && safety == &Safety::Unsafe {
+            if mode != Mode::Exec && safety == &HeaderSafety::Normal(Safety::Unsafe) {
                 return err_span(
                     sig.span,
                     format!("'unsafe' only makes sense on exec-mode functions"),
@@ -1754,10 +1758,14 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
             }
         }
         rustc_middle::ty::ClauseKind::<'tcx>::ConstArgHasType(cnst, _ty) => {
-            if let ConstKind::Value(ty, ValTree::Leaf(ScalarInt::TRUE)) = cnst.kind() {
-                match ty.kind() {
-                    TyKind::Bool => false,
-                    _ => true,
+            if let ConstKind::Value(Value { ty, valtree }) = cnst.kind() {
+                if *valtree == &ValTreeKind::Leaf(ScalarInt::TRUE) {
+                    match ty.kind() {
+                        TyKind::Bool => false,
+                        _ => true,
+                    }
+                } else {
+                    false
                 }
             } else {
                 false

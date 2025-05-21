@@ -7,17 +7,7 @@ struct DefaultCallbacks;
 impl rustc_driver::Callbacks for DefaultCallbacks {}
 
 pub fn run_rustc_compiler_directly(rustc_args: &Vec<String>) -> () {
-    rustc_driver::RunCompiler::new(&rustc_args, &mut DefaultCallbacks).run()
-}
-
-fn mk_compiler<'a>(
-    rustc_args: &'a [String],
-    verifier: &'a mut (dyn rustc_driver::Callbacks + Send),
-    file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
-) -> rustc_driver::RunCompiler<'a> {
-    let mut compiler = rustc_driver::RunCompiler::new(rustc_args, verifier);
-    compiler.set_file_loader(Some(file_loader));
-    compiler
+    rustc_driver::run_compiler(&rustc_args, &mut DefaultCallbacks)
 }
 
 fn run_compiler<'a, 'b>(
@@ -25,7 +15,8 @@ fn run_compiler<'a, 'b>(
     syntax_macro: bool,
     erase_ghost: bool,
     verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
-    file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
+    // TODO(1.86.0): no longer used; all call paths to here seem to set this to RealFileLoader (the default) anyway though?
+    _file_loader: Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>,
 ) -> Result<(), ()> {
     crate::config::enable_default_features_and_verus_attr(
         &mut rustc_args,
@@ -33,7 +24,7 @@ fn run_compiler<'a, 'b>(
         erase_ghost,
     );
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
-        mk_compiler(&rustc_args, verifier, file_loader).run()
+        rustc_driver::run_compiler(&rustc_args, verifier)
     }));
     result.map_err(|_| ())
 }

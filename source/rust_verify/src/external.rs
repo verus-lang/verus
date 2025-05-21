@@ -562,7 +562,7 @@ impl<'a> GeneralItem<'a> {
     fn may_have_external_body(self) -> bool {
         match self {
             GeneralItem::Item(i) => match i.kind {
-                ItemKind::Fn(..) => true,
+                ItemKind::Fn { .. } => true,
                 ItemKind::Struct(..) => true,
                 ItemKind::Enum(..) => true,
                 ItemKind::Union(..) => true,
