@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-vstd = { path = "../../../vstd", optional = true }
-builtin = { path = "../../../builtin", optional = true }
-builtin_macros = { path = "../../../builtin_macros", optional = true }
+vstd = { path = "../../../source/vstd", optional = true }
+builtin = { path = "../../../source/builtin", optional = true }
+builtin_macros = { path = "../../../source/builtin_macros", optional = true }
 
 [features]
 explicit-verus-deps = ["vstd", "builtin", "builtin_macros"]
