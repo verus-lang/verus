@@ -26,7 +26,7 @@ use rustc_hir::def::{CtorKind, CtorOf, DefKind, Res};
 use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_hir::{
     BinOpKind, Block, Closure, Destination, Expr, ExprKind, HirId, ItemKind, LetExpr, LetStmt,
-    LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, StructTailExpr, UnOp,
+    LoopSource, Node, Pat, PatExpr, PatExprKind, PatKind, QPath, Stmt, StmtKind, StructTailExpr, UnOp,
 };
 use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
@@ -242,6 +242,83 @@ pub(crate) fn expr_to_vir<'tcx>(
     Ok(vir_expr)
 }
 
+pub(crate) fn patexpr_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    pat: &Pat<'tcx>,
+    pat_typ: &Typ,
+    pat_expr: &PatExpr<'tcx>,
+) -> Result<PatternX, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    let mk_expr = move |x: ExprX| bctx.spanned_typed_new(pat.span, pat_typ, x);
+    let mk_lit_int = |in_negative_literal: bool, i: u128, typ: &Typ| -> Result<ExprX, VirErr> {
+        check_lit_int(&bctx.ctxt, pat.span, in_negative_literal, i, typ)?;
+        let c = vir::ast_util::const_int_from_u128(i);
+        Ok(ExprX::Const(c))
+    };
+    match pat_expr.kind {
+        // TODO(1.86.0): this duplicates the Lit case in expr_to_vir_innermost
+        PatExprKind::Lit {
+            lit, negated
+        } => match lit.node {
+            LitKind::Bool(b) => {
+                let c = vir::ast::Constant::Bool(if negated { !b } else { b });
+                Ok(PatternX::Expr(mk_expr(ExprX::Const(c))))
+            }
+            LitKind::Int(i, _) => {
+                // TODO: do we need to call check_lit_int here?
+                let mut big_int = num_bigint::BigInt::from(i.get());
+                if negated {
+                    big_int = -1 * big_int;
+                }
+                Ok(PatternX::Expr(mk_expr(ExprX::Const(Constant::Int(big_int)))))
+            }
+            LitKind::Char(c) => {
+                let c = vir::ast::Constant::Char(c);
+                Ok(PatternX::Expr(mk_expr(ExprX::Const(c))))
+            }
+            LitKind::Str(s, _str_style) => {
+                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
+                Ok(PatternX::Expr(mk_expr(ExprX::Const(c))))
+            }
+            _ => {
+                return err_span(span, "Unsupported constant type");
+            }
+        }
+        PatExprKind::Path(qpath) => {
+            let res = bctx.types.qpath_res(&qpath, pat_expr.hir_id);
+            match res {
+                Res::Def(DefKind::Const, id) => {
+                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
+                    let fun = FunX { path };
+                    let autospec_usage =
+                        if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
+                    let x = ExprX::ConstVar(Arc::new(fun), autospec_usage);
+
+                    let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x);
+
+                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                    erasure_info.hir_vir_ids.push((pat_expr.hir_id, expr.span.id));
+
+                    Ok(PatternX::Expr(expr))
+                }
+                Res::Err => {
+                    panic!(format!("Couldn't resolve {qpath:#?}"));
+                }
+                _ => {
+                    let (adt_def_id, variant_def, _is_enum) =
+                        get_adt_res_struct_enum(tcx, res, pat.span, true)?;
+                    let variant_name = str_ident(&variant_def.ident(tcx).as_str());
+                    let vir_path =
+                        def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, adt_def_id);
+                    Ok(PatternX::Constructor(Dt::Path(vir_path), variant_name, Arc::new(vec![])))
+                }
+            }
+        },
+        PatExprKind::ConstBlock(_) => err_span(span, "PatExprKind::ConstBlock"),
+    }
+}
+
 pub(crate) fn get_fn_path<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -386,7 +463,8 @@ fn get_adt_res<'tcx>(
             (struct_did, variant_def, false, adt_def.is_union())
         }
         _ => {
-            crate::internal_err!(span, "got unexpected Res trying to resolve constructor", res)
+            // crate::internal_err!(span, format!("got unexpected Res trying to resolve constructor {res:#?}"))
+            panic!(format!("got unexpected Res trying to resolve constructor {res:#?}"))
         }
     };
 
@@ -480,32 +558,8 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
                 }
             }
         }
-        PatKind::Path(qpath) => {
-            let res = bctx.types.qpath_res(qpath, pat.hir_id);
-            match res {
-                Res::Def(DefKind::Const, id) => {
-                    let path = def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, id);
-                    let fun = FunX { path };
-                    let autospec_usage =
-                        if bctx.in_ghost { AutospecUsage::IfMarked } else { AutospecUsage::Final };
-                    let x = ExprX::ConstVar(Arc::new(fun), autospec_usage);
-
-                    let expr = bctx.spanned_typed_new(pat.span, &pat_typ, x);
-
-                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                    erasure_info.hir_vir_ids.push((pat.hir_id, expr.span.id));
-
-                    PatternX::Expr(expr)
-                }
-                _ => {
-                    let (adt_def_id, variant_def, _is_enum) =
-                        get_adt_res_struct_enum(tcx, res, pat.span, true)?;
-                    let variant_name = str_ident(&variant_def.ident(tcx).as_str());
-                    let vir_path =
-                        def_id_to_vir_path(bctx.ctxt.tcx, &bctx.ctxt.verus_items, adt_def_id);
-                    PatternX::Constructor(Dt::Path(vir_path), variant_name, Arc::new(vec![]))
-                }
-            }
+        PatKind::Expr(expr) => {
+            patexpr_to_vir(bctx, expr.span, pat, &pat_typ, expr)?
         }
         PatKind::Tuple(pats, dot_dot_pos) => {
             let n = match &*pat_typ {
@@ -597,37 +651,42 @@ pub(crate) fn pattern_to_vir_inner<'tcx>(
             }
             pat_or
         }
-        PatKind::Lit(expr) => {
-            let e = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
-            PatternX::Expr(e)
-        }
         PatKind::Range(expr1_opt, expr2_opt, range_end) => {
             let e1 = match expr1_opt {
                 None => None,
                 Some(expr1) => {
-                    let e1 = expr_to_vir(bctx, expr1, ExprModifier::REGULAR)?;
-                    if !matches!(&*e1.typ, TypX::Int(_)) {
-                        unsupported_err!(expr1.span, "range pattern with non-int type");
+                    let e1 = patexpr_to_vir(bctx, expr1.span, pat, &pat_typ, expr1)?;
+                    if let PatternX::Expr(e1) = e1 {
+                        if !matches!(&*e1.typ, TypX::Int(_)) {
+                            unsupported_err!(expr1.span, "range pattern with non-int type");
+                        }
+                        Some(e1)
+                    } else {
+                        return err_span(expr1.span, "range pattern with unsupported type");
                     }
-                    Some(e1)
                 }
             };
             let e2 = match expr2_opt {
                 None => None,
                 Some(expr2) => {
-                    let e2 = expr_to_vir(bctx, expr2, ExprModifier::REGULAR)?;
-                    if !matches!(&*e2.typ, TypX::Int(_)) {
-                        unsupported_err!(expr2.span, "range pattern with non-int type");
+                    let e2 = patexpr_to_vir(bctx, expr2.span, pat, &pat_typ, expr2)?;
+                    if let PatternX::Expr(e2) = e2 {
+                        if !matches!(&*e2.typ, TypX::Int(_)) {
+                            unsupported_err!(expr2.span, "range pattern with non-int type");
+                        }
+                        let ineq = match range_end {
+                            rustc_hir::RangeEnd::Included => InequalityOp::Le,
+                            rustc_hir::RangeEnd::Excluded => InequalityOp::Lt,
+                        };
+                        Some((e2, ineq))
+                    } else {
+                        return err_span(expr2.span, "range pattern with unsupported type");
                     }
-                    let ineq = match range_end {
-                        rustc_hir::RangeEnd::Included => InequalityOp::Le,
-                        rustc_hir::RangeEnd::Excluded => InequalityOp::Lt,
-                    };
-                    Some((e2, ineq))
                 }
             };
             PatternX::Range(e1, e2)
         }
+        PatKind::Guard(..) => unsupported_err!(pat.span, "pattern guards", pat),
         PatKind::Ref(..) => unsupported_err!(pat.span, "ref patterns", pat),
         PatKind::Slice(..) => unsupported_err!(pat.span, "slice patterns", pat),
         PatKind::Never => unsupported_err!(pat.span, "never patterns", pat),
