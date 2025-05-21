@@ -366,7 +366,7 @@ proof fn hoisted_forall(i: int, j: int)
 {
 }
 
-proof fn hosted_exists(x: int, i: int)
+proof fn hoisted_exists(x: int, i: int)
     requires
         x == i + 1 && is_distinct(i, 5),
 {
