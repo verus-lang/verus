@@ -103,7 +103,7 @@ fn vec_map<T, U>(v: &Vec<T>, f: impl Fn(T) -> U) -> (result: Vec<U>) where
         forall|i|
             0 <= i < v.len() ==> call_requires(
                 f,
-                (v[i],),
+                (#[trigger] v[i],),
             ),
 // ANCHOR_END: vec_map_requires
 // ANCHOR: vec_map_ensures
@@ -119,16 +119,13 @@ fn vec_map<T, U>(v: &Vec<T>, f: impl Fn(T) -> U) -> (result: Vec<U>) where
         // ANCHOR_END: vec_map_ensures
 {
     let mut result = Vec::new();
-    let mut j = 0;
-    while j < v.len()
+    for j in 0..v.len()
         invariant
-            forall|i| 0 <= i < v.len() ==> call_requires(f, (v[i],)),
-            0 <= j <= v.len(),
+            forall|i| 0 <= i < v.len() ==> call_requires(f, (#[trigger] v[i],)),
             j == result.len(),
             forall|i| 0 <= i < j ==> call_ensures(f, (v[i],), #[trigger] result[i]),
     {
         result.push(f(v[j]));
-        j += 1;
     }
     result
 }

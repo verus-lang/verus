@@ -10,14 +10,17 @@ Verus allows you to reason about the preconditions and postconditions of functio
 via two builtin spec functions: `call_requires` and `call_ensures`.
 
  * `call_requires(f, args)` represents the precondition.
-    It takes two arguments: the function object and arguments
-    as a tuple. If it returns true, then it is possible to call `f` with the given args.
+    It takes two arguments: a function object `f` and a tuple `args`.
+    It returns true if and only if it is possible to call `f` with the elements of
+    `args` as its arguments.
  * `call_ensures(f, args, output)` represents the postcondition.
-    It takes takes _three_ arguments: the function object, arguments, and return vaue.
-    It represents the valid input-output pairs for `f`.
+    It takes takes _three_ arguments: a function object `f`, an arguments
+    tuple `args`, and a return value `output`.
+    It returns true if and only if it is possible for `f` to return the given output
+    when passed the given input arguments.
 
-The `vstd` library also [provides aliases](https://verus-lang.github.io/verus/verusdoc/vstd/pervasive/trait.FnWithRequiresEnsures.html), `f.requires(args)` and `f.ensures(args, output)`.
-These mean the same thing as `call_requires` and `call_ensures`.
+The `vstd` library also [provides aliases](https://verus-lang.github.io/verus/verusdoc/vstd/pervasive/trait.FnWithRequiresEnsures.html) `f.requires(args)` and `f.ensures(args, output)`.
+These are equivalent to `call_requires(f, args)` and `call_ensures(f, args, output)`.
 
 As with any normal call, Verus demands that the precondition be satisfied 
 when you call a function object.
@@ -49,7 +52,7 @@ the precondition of `f`:
 ```
 
 The `(50,)` looks a little funky. This is a 1-tuple.
-The `call_requires` and `call_ensures` always take tuple arguments for the "args".
+The `call_requires` and `call_ensures` always take tuple arguments for `args`.
 If `f` takes 0 arguments, then `call_requires` takes a unit tuple;
 if `f` takes 2 arguments, then it takes a pair; etc.
 Here, `f` takes 1 argument, so it takes a 1-tuple, which can be constructed by using
@@ -68,7 +71,7 @@ Observe that the precondition of `higher_order_fn` places a constraint on the po
 of `f`.
 As a result, `higher_order_fn` learns information about the return value of `f(50)`.
 Specifically, it learns that `call_ensures(f, (50,), ret)` holds, which by `higher_order_fn`'s
-precondition, implies that `ret % 2 == 0`.
+precondition implies that `ret % 2 == 0`.
 
 ### An important note
 
@@ -76,7 +79,7 @@ The above examples show the idiomatic way to constrain the preconditions and pos
 of a function argument. Observe that `call_requires` is used in a _positive_ position,
 i.e., "`call_requires` holds for this value".
 Meanwhile `call_ensures` is used in a _negative_ position, i.e., on the left hand side
-of an implication: "if `call_ensures` holds for a given value, this is satisfies this particular constraint".
+of an implication: "if `call_ensures` holds for a given value, then it satisfies this particular constraint".
 
 It is very common to need a guarantee that `f(args)` will return one specific value,
 say `expected_return_value`.
@@ -93,7 +96,7 @@ says that `expected_return_value` is a _possible_ return value of `f(args)`;
 however, it says nothing about _other_ possible return values.
 In general, `f` may be nondeterministic!
 Just because `expected_return_value` is one possible return
-value does not mean it is only one.
+value does not mean it is the only one.
 
 When faced with this situation, **what you really want is to write**:
 
