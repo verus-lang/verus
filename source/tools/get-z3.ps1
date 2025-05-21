@@ -1,4 +1,4 @@
-$z3_version = "4.12.5"
+$z3_version = "4.14.0"
 $filename = "z3-$z3_version-x64-win"
 
 $download_url = "https://github.com/Z3Prover/z3/releases/download/z3-$z3_version/$filename.zip"
