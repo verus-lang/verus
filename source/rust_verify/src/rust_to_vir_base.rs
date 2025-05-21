@@ -13,8 +13,8 @@ use rustc_middle::ty::fold::BoundVarReplacerDelegate;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
-    ConstKind, GenericArg, GenericArgKind, TermKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
-    TypeVisitableExt, TypingMode, ValTree,
+    ConstKind, GenericArg, GenericArgKind, TermKind, TypeFoldable,
+    TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTree, ValTreeKind, Value
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
@@ -22,6 +22,7 @@ use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{Ident, kw};
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::Arc;
 use vir::ast::{
     Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, Path, PathX,
@@ -1181,14 +1182,19 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
 
     match cnst.kind() {
         ConstKind::Param(param) => Ok(Arc::new(TypX::TypParam(Arc::new(param.name.to_string())))),
-        ConstKind::Value(ty, ValTree::Leaf(i))
-            if matches!(ty.kind(), TyKind::Uint(_) | TyKind::Int(_)) =>
+        ConstKind::Value(Value { ty, valtree }) =>
         {
-            let c = num_bigint::BigInt::from(i.to_bits(i.size()));
-            Ok(Arc::new(TypX::ConstInt(c)))
-        }
-        ConstKind::Value(ty, ValTree::Leaf(i)) if matches!(ty.kind(), TyKind::Bool) => {
-            Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0)))
+            let ValTreeKind::Leaf(i) = *valtree else {
+                unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst));
+            };
+            match ty.kind() {
+                TyKind::Uint(_) | TyKind::Int(_) => {
+                    let c = num_bigint::BigInt::from(i.to_bits(i.size()));
+                    Ok(Arc::new(TypX::ConstInt(c)))
+                }
+                TyKind::Bool => Ok(Arc::new(TypX::ConstBool(i.to_bits(i.size()) != 0))),
+                _ => unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
+            }
         }
         _ => {
             unsupported_err!(span.expect("span"), format!("const type argument {:?}", cnst))
@@ -1623,10 +1629,14 @@ pub(crate) fn check_item_external_generics<'tcx>(
     let mut substs_ref: Vec<_> = substs_ref.iter().skip(n_skip).collect();
     substs_ref.retain(|arg| match arg.unpack() {
         GenericArgKind::Const(cnst) => {
-            if let ConstKind::Value(ty, ValTree::Leaf(ScalarInt::TRUE)) = cnst.kind() {
-                match ty.kind() {
-                    TyKind::Bool => false,
-                    _ => true,
+            if let ConstKind::Value(Value { ty, valtree }) = cnst.kind() {
+                if let ValTreeKind::Leaf(ScalarInt::TRUE) = *valtree {
+                    match ty.kind() {
+                        TyKind::Bool => false,
+                        _ => true,
+                    }
+                } else {
+                    true
                 }
             } else {
                 true
