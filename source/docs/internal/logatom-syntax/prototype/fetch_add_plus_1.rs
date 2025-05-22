@@ -70,26 +70,18 @@ fn non_atomic_caller() {
 //   adding (v + 1) to the value of the Atomic and wrapping if we overflow
 
 
-fn fetch_add_plus_1(patomic: PAtomicU64, v: u64) -> (r: u64)
+fn fetch_add_plus_1(patomic: APAtomicU64, v: u64) -> (r: u64)
     // Tracked(AU): Tracked<AtomicUpdate<PermissionU64, PermissionU64>>
-    AU: atomic_spec { // AU indicates the linearization point
+    atomic_update: atomic_spec { // AU indicates the linearization point
         (tracked p: PermissionU64) -> (out_p: tracked PermissionU64)
         requires // ATOMIC PRE
-            p.id() == patomic.id(),
+            p.view().patomic == patomic.id(),
         ensures // ATOMIC POST
-            out_p.id() == p.id(),
-            out_p.value() == wrapping_add_u64(
-                p.value,
+            out_p.view().id == p.id(),
+            out_p.view().value == wrapping_add_u64(
+                p.view().value,
                 wrapping_add_u64(v, 1))
     }
-    // requires
-    //     forall |p| AU.req(p) <==> p.id() == self.id(),
-    //     forall |p| AU.ens(p) <==> (out_p.id() == p.id() && ...),
-
-    // AU: AtomicSpec
-    //   (tracked p: &mut PermissionU64)
-    //
-    //   has_fired:
     requires true, // PRIVATE PRE
     ensures r == p.view().value, // PRIVATE POST
 {   
@@ -97,17 +89,13 @@ fn fetch_add_plus_1(patomic: PAtomicU64, v: u64) -> (r: u64)
 
     let w = wrapping_add_u64(v, 1);
 
-    let old_v = patomic.fetch_add_wrapping(w) atomically {
-        open_atomic_update!(AU => permu64 => {
+    let old_v = patomic.fetch_add_wrapping(w) atomically { update =>
+        open_atomic_update!(atomic_update => permu64 => {
             // assume ATOMIC PRE of fetch_add_plus_1
-            assert(permu64.id() == patomic.id());
             // assert ATOMIC PRE of fetch_add_wrapping
-            let ghost old_permu64 = permu64.view().value();
-            now(&mut permu64);
+            let ghost old_permu64 = permu64.view().value;
+            let (v, Tracked(permu64)) = update(permu64);
             // assume ATOMIC POST of fetch_add_wrapping
-            assert(permu64.id() == patomic.id());
-            assert(permu64.view().value() as int ==
-                wrapping_add_u64(old_permu64 as int, n as int)),
             // assert ATOMIC POST of fetch_add_plus_1
         });
     };
@@ -121,13 +109,15 @@ fn fetch_add_plus_1(patomic: PAtomicU64, v: u64) -> (r: u64)
 //     &self,
 //     n: u64,
 // ) -> ret : u64
-// atomic_spec {
-//   (perm: Tracked<&mut PermissionU64>),
+// atomic_update: atomic_spec {
+//   (tracked input_perm: APermissionU64) -> (tracked output_perm: APermissionU64)
 //   requires // ATOMIC PRE
-//     equal(self.id(), old(perm).view().patomic),
-//   ensures // ATOMIC POST
-//     perm.view().patomic == old(perm).view().patomic,
-//     perm.view().value as int == wrapping_add_u64(old(perm).view().value as int, n as int),
+//     equal(self.id(), input_perm.view().patomic),
+//   ensures { // ATOMIC POST
+//     &&& output_perm.view().patomic == input_perm.view().patomic
+//     &&& output_perm.view().value as int == wrapping_add_u64(input_perm.view().value as int, n as int)
+//   }
 // }
 // requires true // PRIVATE PRE
-// ensures equal(old(perm).view().value, ret), // PRIVATE POST
+// ensures // PRIVATE POST
+//    equal(input_perm.view().value, ret),
