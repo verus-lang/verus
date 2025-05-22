@@ -35,14 +35,14 @@
 /// Example:
 /// - Refer to `examples/syntax_attr.rs`.
 use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
-use syn::{parse2, spanned::Spanned, Expr, Item};
+use quote::{ToTokens, quote, quote_spanned};
+use syn::{Expr, Item, parse2, spanned::Spanned};
 
 use crate::{
+    EraseGhost,
     attr_block_trait::{AnyAttrBlock, AnyFnOrLoop},
     syntax,
     syntax::mk_verus_attr_syn,
-    EraseGhost,
 };
 
 pub const VERIFIED: &str = "_VERUS_VERIFIED";

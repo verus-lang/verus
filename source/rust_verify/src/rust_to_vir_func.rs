@@ -1,26 +1,26 @@
-use crate::attributes::{get_mode, get_ret_mode, get_var_mode, AttrPublish, VerifierAttrs};
+use crate::attributes::{AttrPublish, VerifierAttrs, get_mode, get_ret_mode, get_var_mode};
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
     check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
 };
-use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
+use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir, pat_to_mut_var};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
 use rustc_hir::{
-    Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HirId, MaybeOwner, Param,
-    Safety,
+    Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HirId, MaybeOwner,
+    Param, Safety,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
-    GenericArgsRef, PseudoCanonicalInput, Region, TraitRef, TypingEnv, TyCtxt, TyKind,
+    GenericArgsRef, PseudoCanonicalInput, Region, TraitRef, TyCtxt, TyKind, TypingEnv,
 };
+use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
-use rustc_span::Span;
 use rustc_trait_selection::traits::ImplSource;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -501,8 +501,7 @@ pub(crate) fn handle_external_fn<'tcx>(
     let ty2 = ctxt.tcx.type_of(external_id).skip_binder();
 
     let substs1_early = get_substs_early(ty1, sig.span)?;
-    let substs2_early =
-        get_substs_early(ty2, sig.span)?;
+    let substs2_early = get_substs_early(ty2, sig.span)?;
 
     let poly_sig1 = ctxt.tcx.fn_sig(id);
     let poly_sig2 = ctxt.tcx.fn_sig(external_id);

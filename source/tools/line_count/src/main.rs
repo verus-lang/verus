@@ -6,10 +6,10 @@ use std::{
 };
 
 use serde::Serialize;
-use syn_verus::{spanned::Spanned, visit::Visit, Attribute, File, Meta, MetaList, Signature};
+use syn_verus::{Attribute, File, Meta, MetaList, Signature, spanned::Spanned, visit::Visit};
 use tabled::settings::{
-    object::{Columns, Rows},
     Alignment, Modify, Style,
+    object::{Columns, Rows},
 };
 
 struct Config {

@@ -1,11 +1,14 @@
-use crate::rustdoc::env_rustdoc;
 use crate::EraseGhost;
+use crate::rustdoc::env_rustdoc;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
-use quote::format_ident;
 use quote::ToTokens;
+use quote::format_ident;
 use quote::{quote, quote_spanned};
+use syn_verus::BroadcastUse;
+use syn_verus::ExprBlock;
+use syn_verus::ExprForLoop;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::parse_quote_spanned;
 use syn_verus::punctuated::Punctuated;
@@ -13,25 +16,22 @@ use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::token::{Brace, Bracket, Paren, Semi};
 use syn_verus::visit_mut::{
-    visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
-    visit_impl_item_const_mut, visit_impl_item_fn_mut, visit_item_const_mut, visit_item_enum_mut,
-    visit_item_fn_mut, visit_item_static_mut, visit_item_struct_mut, visit_item_union_mut,
-    visit_local_mut, visit_specification_mut, visit_trait_item_fn_mut, VisitMut,
+    VisitMut, visit_block_mut, visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut,
+    visit_field_mut, visit_impl_item_const_mut, visit_impl_item_fn_mut, visit_item_const_mut,
+    visit_item_enum_mut, visit_item_fn_mut, visit_item_static_mut, visit_item_struct_mut,
+    visit_item_union_mut, visit_local_mut, visit_specification_mut, visit_trait_item_fn_mut,
 };
-use syn_verus::BroadcastUse;
-use syn_verus::ExprBlock;
-use syn_verus::ExprForLoop;
 use syn_verus::{
-    braced, bracketed, parenthesized, parse_macro_input, AssumeSpecification, Attribute, BareFnArg,
-    BinOp, Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLit, ExprLoop,
-    ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field, FnArg, FnArgKind, FnMode, Global, Ident,
-    ImplItem, ImplItemFn, Invariant, InvariantEnsures, InvariantExceptBreak, InvariantNameSet,
-    InvariantNameSetList, InvariantNameSetSet, Item, ItemBroadcastGroup, ItemConst, ItemEnum,
-    ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemUnion, Lit, Local,
-    MatchesOpExpr, MatchesOpToken, ModeSpec, ModeSpecChecked, Pat, PatIdent, PatType, Path,
-    Publish, Recommends, Requires, ReturnType, Returns, Signature, SignatureDecreases,
-    SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind, Stmt, Token, TraitItem,
-    TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath, UnOp, Visibility,
+    AssumeSpecification, Attribute, BareFnArg, BinOp, Block, DataMode, Decreases, Ensures, Expr,
+    ExprBinary, ExprCall, ExprLit, ExprLoop, ExprMatches, ExprTuple, ExprUnary, ExprWhile, Field,
+    FnArg, FnArgKind, FnMode, Global, Ident, ImplItem, ImplItemFn, Invariant, InvariantEnsures,
+    InvariantExceptBreak, InvariantNameSet, InvariantNameSetList, InvariantNameSetSet, Item,
+    ItemBroadcastGroup, ItemConst, ItemEnum, ItemFn, ItemImpl, ItemMod, ItemStatic, ItemStruct,
+    ItemTrait, ItemUnion, Lit, Local, MatchesOpExpr, MatchesOpToken, ModeSpec, ModeSpecChecked,
+    Pat, PatIdent, PatType, Path, Publish, Recommends, Requires, ReturnType, Returns, Signature,
+    SignatureDecreases, SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind,
+    Stmt, Token, TraitItem, TraitItemFn, Type, TypeFnProof, TypeFnSpec, TypePath, UnOp, Visibility,
+    braced, bracketed, parenthesized, parse_macro_input,
 };
 
 const VERUS_SPEC: &str = "VERUS_SPEC__";
@@ -1208,7 +1208,7 @@ pub(crate) fn split_trait_method_syn(
     fun: &syn::TraitItemFn,
     erase_ghost: bool,
 ) -> Option<syn::TraitItemFn> {
-    use syn::{token::Brace, Block, Expr, Stmt};
+    use syn::{Block, Expr, Stmt, token::Brace};
     if !erase_ghost && fun.default.is_none() {
         do_split_trait_method!(syn, fun, spec_fun, mk_rust_attr_syn);
         // We won't run visit_trait_item_fn_mut, so we need to add no_method_body here:

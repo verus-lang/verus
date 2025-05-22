@@ -125,7 +125,7 @@ use serde::Deserialize;
 use std::fs::File;
 use std::io::Write;
 use vir::ast::VirErr;
-use vir::messages::{message_bare, Message, MessageLevel};
+use vir::messages::{Message, MessageLevel, message_bare};
 
 const LDBG_PREFIX: &str = "!!!ldbg!!! ";
 
@@ -171,35 +171,35 @@ macro_rules! ldbg {
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
 pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>) {
-        let hir = tcx.hir();
-        let krate = hir.krate();
-        rustc_hir_analysis::check_crate(tcx);
-        if tcx.dcx().err_count() != 0 {
-            return;
-        }
-        for owner in &krate.owners {
-            if let MaybeOwner::Owner(owner) = owner {
-                match owner.node() {
-                    OwnerNode::Item(item) => match &item.kind {
-                        rustc_hir::ItemKind::Fn(..) => {
-                            tcx.ensure().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
-                        }
-                        ItemKind::Impl(impll) => {
-                            for item in impll.items {
-                                match item.kind {
-                                    AssocItemKind::Fn { .. } => {
-                                        tcx.ensure().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
-                                    }
-                                    _ => {}
+    let hir = tcx.hir();
+    let krate = hir.krate();
+    rustc_hir_analysis::check_crate(tcx);
+    if tcx.dcx().err_count() != 0 {
+        return;
+    }
+    for owner in &krate.owners {
+        if let MaybeOwner::Owner(owner) = owner {
+            match owner.node() {
+                OwnerNode::Item(item) => match &item.kind {
+                    rustc_hir::ItemKind::Fn(..) => {
+                        tcx.ensure().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
+                    }
+                    ItemKind::Impl(impll) => {
+                        for item in impll.items {
+                            match item.kind {
+                                AssocItemKind::Fn { .. } => {
+                                    tcx.ensure().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
                                 }
+                                _ => {}
                             }
                         }
-                        _ => {}
-                    },
-                    _ => (),
-                }
+                    }
+                    _ => {}
+                },
+                _ => (),
             }
         }
+    }
 }
 
 const PROOF_FN_ONCE: u8 = 1;

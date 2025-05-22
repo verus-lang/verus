@@ -5,8 +5,8 @@ use crate::ast::{
 use crate::ast_util::fun_as_friendly_rust_name;
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::messages::error;
 use crate::messages::Span;
+use crate::messages::error;
 use crate::sst::{BndX, CallFun, Exp, ExpX};
 use std::collections::HashMap;
 use std::sync::Arc;

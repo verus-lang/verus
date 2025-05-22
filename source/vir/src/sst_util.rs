@@ -5,7 +5,7 @@ use crate::ast::{
 };
 use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
-use crate::def::{unique_bound, user_local_name, Spanned};
+use crate::def::{Spanned, unique_bound, user_local_name};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{

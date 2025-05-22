@@ -1,6 +1,6 @@
 use crate::attributes::{
-    get_custom_err_annotations, get_ghost_block_opt, get_trigger, get_var_mode, parse_attrs,
-    parse_attrs_opt, Attr, GhostBlockAttr,
+    Attr, GhostBlockAttr, get_custom_err_annotations, get_ghost_block_opt, get_trigger,
+    get_var_mode, parse_attrs, parse_attrs_opt,
 };
 use crate::context::{BodyCtxt, Context};
 use crate::erase::{CompilableOperator, ResolvedCall};
@@ -22,8 +22,8 @@ use crate::{fn_call_to_vir::fn_call_to_vir, unsupported_err, unsupported_err_unl
 use air::ast::Binder;
 use air::ast_util::str_ident;
 use rustc_ast::LitKind;
-use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_hir::def::{CtorKind, CtorOf, DefKind, Res};
+use rustc_hir::{Attribute, BindingMode, BorrowKind, ByRef, Mutability};
 use rustc_hir::{
     BinOpKind, Block, Closure, Destination, Expr, ExprKind, HirId, ItemKind, LetExpr, LetStmt,
     LoopSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, StructTailExpr, UnOp,
@@ -32,12 +32,12 @@ use rustc_middle::ty::adjustment::{
     Adjust, Adjustment, AutoBorrow, AutoBorrowMutability, PointerCoercion,
 };
 use rustc_middle::ty::{
-    AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TypingEnv, TyCtxt, TyKind,
-    Upcast, VariantDef,
+    AdtDef, ClauseKind, GenericArg, TraitPredicate, TraitRef, TyCtxt, TyKind, TypingEnv, Upcast,
+    VariantDef,
 };
+use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
-use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AutospecUsage, BinaryOp, BitwiseOp, CallTarget, Constant, Dt, ExprX, FieldOpr,
@@ -2275,10 +2275,12 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::Struct(qpath, fields, struct_tail) => {
             let update = match struct_tail {
                 // Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
-                StructTailExpr::Base(expr) =>
-                    Some(expr_to_vir(bctx, expr, modifier)?),
+                StructTailExpr::Base(expr) => Some(expr_to_vir(bctx, expr, modifier)?),
                 StructTailExpr::DefaultFields(..) => {
-                    unsupported_err!(expr.span, "default fields in struct expression not supported");
+                    unsupported_err!(
+                        expr.span,
+                        "default fields in struct expression not supported"
+                    );
                 }
                 _ => None,
             };
@@ -2421,7 +2423,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
         ExprKind::InlineAsm(..) => unsupported_err!(expr.span, format!("inline-asm expressions")),
         ExprKind::Err(..) => unsupported_err!(expr.span, format!("Err expressions")),
         ExprKind::Become(..) => unsupported_err!(expr.span, format!("Become expressions")),
-        ExprKind::UnsafeBinderCast(..) => unsupported_err!(expr.span, format!("unsafe binder cast")),
+        ExprKind::UnsafeBinderCast(..) => {
+            unsupported_err!(expr.span, format!("unsafe binder cast"))
+        }
     }
 }
 
@@ -3021,7 +3025,9 @@ fn is_ptr_cast<'tcx>(
         (TyKind::RawPtr(ty1, _), TyKind::RawPtr(ty2, _)) => {
             if ty1 == ty2 {
                 return Ok(Some(PtrCastKind::Trivial));
-            } else if ty2.is_sized(bctx.ctxt.tcx, TypingEnv::post_analysis(bctx.ctxt.tcx, bctx.fun_id)) {
+            } else if ty2
+                .is_sized(bctx.ctxt.tcx, TypingEnv::post_analysis(bctx.ctxt.tcx, bctx.fun_id))
+            {
                 let src_ty = mid_ty_to_vir(
                     bctx.ctxt.tcx,
                     &bctx.ctxt.verus_items,

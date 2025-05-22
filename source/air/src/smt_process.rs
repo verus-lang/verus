@@ -1,7 +1,7 @@
 use crate::context::SmtSolver;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, ChildStdout};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 
 struct SolverInfo {
     executable_name: &'static str,

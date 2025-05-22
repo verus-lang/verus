@@ -1,4 +1,4 @@
-use crate::attributes::{get_ghost_block_opt, get_mode, get_verifier_attrs, GhostBlockAttr};
+use crate::attributes::{GhostBlockAttr, get_ghost_block_opt, get_mode, get_verifier_attrs};
 use crate::erase::{ErasureHints, ResolvedCall};
 use crate::external::CrateItems;
 use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_const_to_vir};
@@ -10,21 +10,22 @@ use rustc_ast::{BindingMode, BorrowKind, IsAuto, Mutability};
 use rustc_hir::def::{CtorKind, DefKind, Res};
 use rustc_hir::{
     AssocItemKind, Block, BlockCheckMode, BodyId, Closure, Crate, Expr, ExprKind, FnSig, HirId,
-    Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node,
-    OwnerNode, Pat, PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem,
-    TraitItemKind, TraitItemRef, UnOp,
+    Impl, ImplItem, ImplItemKind, ItemKind, LetExpr, LetStmt, MaybeOwner, Node, OwnerNode, Pat,
+    PatKind, Safety, Stmt, StmtKind, TraitFn, TraitItem, TraitItemKind, TraitItemRef, UnOp,
 };
 use rustc_middle::ty::{
-    AdtDef, BoundRegionKind, BoundVariableKind, ClauseKind, Const, GenericArgKind, GenericParamDefKind, RegionKind, TermKind, Ty, TyCtxt, TyKind, TypeckResults, TypingEnv, VariantDef
+    AdtDef, BoundRegionKind, BoundVariableKind, ClauseKind, Const, GenericArgKind,
+    GenericParamDefKind, RegionKind, TermKind, Ty, TyCtxt, TyKind, TypeckResults, TypingEnv,
+    VariantDef,
 };
+use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::kw;
-use rustc_span::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{AutospecUsage, DatatypeTransparency, Dt, Fun, FunX, Function, Mode, Path};
 use vir::ast_util::get_field;
-use vir::def::{field_ident_from_rust, VERUS_SPEC};
+use vir::def::{VERUS_SPEC, field_ident_from_rust};
 use vir::messages::AstId;
 
 impl TypX {
@@ -921,7 +922,10 @@ fn erase_call<'tcx>(
             let node_substs = node_substs;
             let mut fn_def_id = fn_def_id.expect("call id");
 
-            let typing_env = TypingEnv::post_analysis(ctxt.tcx, state.enclosing_fun_id.expect("enclosing_fun_id"));
+            let typing_env = TypingEnv::post_analysis(
+                ctxt.tcx,
+                state.enclosing_fun_id.expect("enclosing_fun_id"),
+            );
 
             let rust_item = crate::verus_items::get_rust_item(ctxt.tcx, fn_def_id);
             let mut node_substs = crate::fn_call_to_vir::fix_node_substs(
@@ -1367,7 +1371,9 @@ fn erase_expr<'tcx>(
                     if is_enum { Some(state.variant(variant_name.to_string())) } else { None };
                 let spread = match spread {
                     rustc_hir::StructTailExpr::None => None,
-                    rustc_hir::StructTailExpr::Base(expr) => Some(erase_expr(ctxt, state, expect_spec, expr).expect("expr")),
+                    rustc_hir::StructTailExpr::Base(expr) => {
+                        Some(erase_expr(ctxt, state, expect_spec, expr).expect("expr"))
+                    }
                     rustc_hir::StructTailExpr::DefaultFields(_span) => None,
                 };
                 let typ_args = if let box TypX::Datatype(_, _, typ_args) = expr_typ(state) {
@@ -2595,7 +2601,9 @@ fn erase_variant_data<'tcx>(
             ctxt.tcx.hir().attrs(ctxt.tcx.local_def_id_to_hir_id(did)).iter()
         } else {
             ctxt.tcx.attrs_for_def(f_did).iter()
-        }).cloned().collect();
+        })
+        .cloned()
+        .collect();
         let mode = get_mode(Mode::Exec, &attrs[..]);
         if mode == Mode::Spec { Box::new(TypX::Phantom(typ)) } else { typ }
     };
@@ -2657,7 +2665,9 @@ fn erase_mir_datatype<'tcx>(ctxt: &Context<'tcx>, state: &mut State, id: DefId) 
         ctxt.tcx.hir().attrs(ctxt.tcx.local_def_id_to_hir_id(did)).iter()
     } else {
         ctxt.tcx.attrs_for_def(id).iter()
-    }).cloned().collect();
+    })
+    .cloned()
+    .collect();
 
     let rust_item = verus_items::get_rust_item(ctxt.tcx, id);
     if let Some(
@@ -2966,7 +2976,7 @@ pub(crate) fn gen_check_tracked_lifetimes<'tcx>(
                             dbg!(item);
                             panic!("unexpected item");
                         }
-                        ItemKind::Trait( IsAuto::Yes, _, _, _, _,) => {
+                        ItemKind::Trait(IsAuto::Yes, _, _, _, _) => {
                             dbg!(item);
                             panic!("unexpected item");
                         }

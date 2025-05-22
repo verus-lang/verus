@@ -5,15 +5,15 @@ use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_id_to_vir_path_option, mid_ty_const_to_vir, mid_ty_to_vir,
     mk_visibility, typ_path_and_ident_to_vir_path,
 };
-use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
+use crate::rust_to_vir_func::{CheckItemFnEither, check_item_fn};
 use crate::unsupported_err;
 use crate::util::{err_span, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::{AssocItemKind, ImplItemKind, Item, QPath, Safety, TraitRef};
 use rustc_middle::ty::{GenericArgKind, PseudoCanonicalInput, TypingEnv};
-use rustc_span::def_id::DefId;
 use rustc_span::Span;
+use rustc_span::def_id::DefId;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
@@ -202,9 +202,9 @@ fn translate_assoc_type<'tcx>(
                     unreachable!()
                 }
             });
-            let pseudo_canonical_inp = PseudoCanonicalInput { typing_env, value: poly_trait_refs.skip_binder() };
-            let candidate =
-                ctxt.tcx.codegen_select_candidate(pseudo_canonical_inp);
+            let pseudo_canonical_inp =
+                PseudoCanonicalInput { typing_env, value: poly_trait_refs.skip_binder() };
+            let candidate = ctxt.tcx.codegen_select_candidate(pseudo_canonical_inp);
             if let Ok(impl_source) = candidate {
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
                     let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, u.impl_def_id);

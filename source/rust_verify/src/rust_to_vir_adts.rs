@@ -1,4 +1,4 @@
-use crate::attributes::{get_mode, VerifierAttrs};
+use crate::attributes::{VerifierAttrs, get_mode};
 use crate::context::Context;
 use crate::rust_to_vir_base::{
     check_generics_bounds_with_polarity, def_id_to_vir_path, mid_ty_to_vir, mk_visibility,

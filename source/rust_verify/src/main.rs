@@ -1,6 +1,6 @@
 #![feature(rustc_private)]
 
-use rust_verify::util::{verus_build_info, VerusBuildProfile};
+use rust_verify::util::{VerusBuildProfile, verus_build_info};
 
 extern crate rustc_driver;
 extern crate rustc_log;

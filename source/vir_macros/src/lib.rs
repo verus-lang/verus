@@ -10,11 +10,7 @@ fn to_node_inner(
 
     let (attr_args, trait_impl): (Option<proc_macro2::TokenStream>, bool) =
         if let Some(attr) = attribute {
-            let attr_args = if !attr.is_empty() {
-                Some(attr.clone())
-            } else {
-                None
-            };
+            let attr_args = if !attr.is_empty() { Some(attr.clone()) } else { None };
             (attr_args, false)
         } else {
             let attr_args = match input
