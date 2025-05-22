@@ -782,7 +782,7 @@ fn run() -> Result<(), String> {
                 args.insert(pos + 1, "--config".to_string());
                 args.insert(
                     pos + 2,
-                    "unstable_features=true,style_edition=2024".to_string(),
+                    "style_edition=2024".to_string(),
                 );
             }
 
