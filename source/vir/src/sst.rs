@@ -123,6 +123,14 @@ pub struct LoopInv {
 
 pub type AssertId = air::ast::AssertId;
 
+#[derive(Debug, ToDebugSNode)]
+pub struct CallArg {
+    exp: Exp,
+    proph_var: Option<VarIdent>,
+}
+
+pub type CallArgs = Arc<Vec<CallArg>>;
+
 pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug, ToDebugSNode)]
@@ -133,7 +141,7 @@ pub enum StmX {
         resolved_method: Option<(Fun, Typs)>,
         mode: Mode,
         typ_args: Typs,
-        args: Exps,
+        args: CallArgs,
         // if split is Some, this is a dummy call to be replaced with assertions for error splitting
         split: Option<Message>,
         dest: Option<Dest>,

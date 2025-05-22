@@ -1833,7 +1833,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Result<Vec<Stmt>, Vi
                 } else {
                     arg.clone()
                 };
-
+                
                 // TODO(prophecy): this is where the changes at the call sites will need to be made
                 if let TypX::MutRef(proph_t) = &*param.x.typ {
                     call_snapshot = true;

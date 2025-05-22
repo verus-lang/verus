@@ -555,17 +555,7 @@ fn expr_get_call(
                     let (mut stms0, e0) = expr_to_stm_opt(ctx, state, arg)?;
                     stms.append(&mut stms0);
                     let e0 = match e0.to_value() {
-                        Some(e) => {
-                            if let TypX::MutRef(_t) = &*e.typ {
-                                // TODO(prophecy): something like this, but not quite
-                                let (temp_ident, temp_var) =
-                                    state.declare_temp_assign(&e.span, &e.typ);
-                                stms.push(init_var(&e.span, &temp_ident, &e));
-                                temp_var
-                            } else {
-                                e
-                            }
-                        },
+                        Some(e) => e,
                         None => {
                             return Ok(Some((stms, ReturnedCall::Never)));
                         }
@@ -888,26 +878,31 @@ fn stm_call(
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
 
-    let mut small_args: Vec<Exp> = Vec::new();
+    let mut call_args: Vec<Exp> = Vec::new();
     for arg in args.iter() {
-        if is_small_exp_or_loc(arg) {
-            small_args.push(arg.clone());
+
+        if let TypX::MutRef(_t) = &*arg.typ {
+            // TODO(prophecy): something like this, but not quite
+            let (temp_ident, temp_var) =
+                state.declare_temp_assign(&e.span, &e.typ);
+        } else if is_small_exp_or_loc(arg) {
+            call_args.push(arg.clone());
         } else {
             // To avoid copying arg in preconditions and postconditions,
             // put arg into a temporary variable
             let poly = crate::poly::arg_is_poly(ctx, &fun.x.kind, fun.x.mode, &arg.typ);
             let kind = LocalDeclKind::StmCallArg { native: !poly };
             let (temp_id, temp_var) = state.declare_temp_var_stm(&arg.span, &arg.typ, kind);
-            small_args.push(temp_var);
+            call_args.push(temp_var);
             stms.push(init_var(&arg.span, &temp_id, arg));
         }
     }
 
-    let small_args = Arc::new(small_args);
+    let call_args = Arc::new(call_args);
     if !state.checking_recommends(ctx) {
         match &state.mask {
             Some(caller_mask) => {
-                let callee_mask = mask_set_for_call(&fun, &typs, small_args.clone());
+                let callee_mask = mask_set_for_call(&fun, &typs, call_args.clone());
                 for assertion in callee_mask.subset_of(ctx, caller_mask, span) {
                     stms.push(Spanned::new(
                         span.clone(),
@@ -924,7 +919,7 @@ fn stm_call(
         resolved_method,
         mode: fun.x.mode,
         typ_args: typs,
-        args: small_args,
+        args: call_args,
         split: None,
         dest,
         assert_id: state.next_assert_id(),
