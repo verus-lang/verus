@@ -2277,6 +2277,9 @@ pub(crate) fn expr_to_vir_innermost<'tcx>(
                 // Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
                 StructTailExpr::Base(expr) =>
                     Some(expr_to_vir(bctx, expr, modifier)?),
+                StructTailExpr::DefaultFields(..) => {
+                    unsupported_err!(expr.span, "default fields in struct expression not supported");
+                }
                 _ => None,
             };
 
