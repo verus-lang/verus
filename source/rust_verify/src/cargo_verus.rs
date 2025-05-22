@@ -54,6 +54,11 @@ pub fn extend_args_and_check_is_direct_rustc_call(
     } else {
         false
     };
+    if verus_crate {
+        rustc_args.push("--check-cfg".to_owned());
+        rustc_args
+            .push("cfg(verus_keep_ghost, verus_keep_ghost_body, verus_verify_core)".to_owned());
+    }
     if !verus_crate {
         if let Some(package_id) = &package_id {
             let is_builtin =
