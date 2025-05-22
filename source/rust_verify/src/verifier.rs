@@ -3,7 +3,7 @@ use crate::config::{Args, CargoVerusArgs, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::externs::VerusExterns;
-use crate::spans::{from_raw_span, SpanContext, SpanContextX};
+use crate::spans::{SpanContext, SpanContextX, from_raw_span};
 use crate::user_filter::UserFilter;
 use crate::util::error;
 use crate::verus_items::VerusItems;
@@ -18,15 +18,15 @@ use rustc_interface::interface::Compiler;
 use rustc_session::config::ErrorOutputType;
 
 use vir::messages::{
-    message, note, note_bare, warning_bare, Message, MessageLabel, MessageLevel, MessageX, ToAny,
+    Message, MessageLabel, MessageLevel, MessageX, ToAny, message, note, note_bare, warning_bare,
 };
 
 use num_format::{Locale, ToFormattedString};
 use rustc_error_messages::MultiSpan;
 use rustc_middle::ty::TyCtxt;
+use rustc_span::Span;
 use rustc_span::def_id::LOCAL_CRATE;
 use rustc_span::source_map::SourceMap;
-use rustc_span::Span;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::Write;
@@ -39,7 +39,7 @@ use crate::expand_errors_driver::ExpandErrorsResult;
 use vir::ast::{Fun, Krate, VirErr};
 use vir::ast_util::{fun_as_friendly_rust_name, is_visible_to};
 use vir::def::{
-    path_to_string, CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos,
+    CommandContext, CommandsWithContext, CommandsWithContextX, SnapPos, path_to_string,
 };
 use vir::prelude::PreludeConfig;
 
@@ -2257,11 +2257,13 @@ impl Verifier {
                         // if it is the active bucket, mark it as done, and reset the active bucket
                         if let Some(m) = active_bucket {
                             if m == id {
-                                assert!(messages
-                                    .get_mut(id)
-                                    .expect("message id out of range")
-                                    .1
-                                    .is_empty());
+                                assert!(
+                                    messages
+                                        .get_mut(id)
+                                        .expect("message id out of range")
+                                        .1
+                                        .is_empty()
+                                );
                                 active_bucket = None;
                             }
                         }
@@ -2962,9 +2964,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
         self.verifier.error_format = Some(compiler.sess.opts.error_format);
 
         if self.verifier.via_cargo_args.is_some() {
-            let crate_meta_path = tcx
-                .output_filenames(())
-                .path(rustc_session::config::OutputType::Metadata);
+            let crate_meta_path =
+                tcx.output_filenames(()).path(rustc_session::config::OutputType::Metadata);
             if let rustc_session::config::OutFileName::Real(path) = crate_meta_path {
                 self.verifier.export_vir_path_via_cargo = Some(path.with_extension("vir"));
             }
@@ -3038,9 +3039,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                 let log_lifetime =
                     self.verifier.args.log_all || self.verifier.args.log_args.log_lifetime;
                 let lifetime_log_file = if log_lifetime {
-                    let file = self
-                        .verifier
-                        .create_log_file(None, crate::config::LIFETIME_FILE_SUFFIX);
+                    let file =
+                        self.verifier.create_log_file(None, crate::config::LIFETIME_FILE_SUFFIX);
                     match file {
                         Err(err) => {
                             reporter.report_as(&err.to_any(), MessageLevel::Error);

@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 use std::sync::Arc;
 
-use rustc_hir::{def::Res, Expr, ExprKind, QPath};
+use rustc_hir::{Expr, ExprKind, QPath, def::Res};
 use vir::ast::{ExprX, FunX, HeaderExprX};
 
 use crate::{

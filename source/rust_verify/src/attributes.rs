@@ -1,7 +1,7 @@
 use crate::util::{err_span, vir_err_span_str};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
-use rustc_hir::{AttrKind, AttrArgs, Attribute};
+use rustc_hir::{AttrArgs, AttrKind, Attribute};
 use rustc_span::Span;
 use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};
 
@@ -25,7 +25,8 @@ pub(crate) fn token_stream_to_trees(
     stream: &TokenStream,
 ) -> Result<Box<[AttrTree]>, ()> {
     let mut token_trees: Vec<&TokenTree> = Vec::new();
-    for x in stream.iter() { // TODO(1.83) trees?
+    for x in stream.iter() {
+        // TODO(1.83) trees?
         token_trees.push(x);
     }
     let mut i = 0;
@@ -73,7 +74,7 @@ fn attr_args_to_tree(span: Span, name: String, args: &AttrArgs) -> Result<AttrTr
         AttrArgs::Delimited(delim) => {
             Ok(AttrTree::Fun(span, name, Some(token_stream_to_trees(span, &delim.tokens)?)))
         }
-        AttrArgs::Eq{ eq_span: _, expr } => {
+        AttrArgs::Eq { eq_span: _, expr } => {
             dbg!(&expr);
             // TODO(main_new) match token_to_string(expr.tokens)? {
             // TODO(main_new)     None => Err(()),

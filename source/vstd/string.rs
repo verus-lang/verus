@@ -34,7 +34,6 @@ pub open spec fn new_strlit_spec(s: &str) -> &str {
 //     ensures
 //         s@ == res@,
 //         s.is_ascii() == res.is_ascii(),
-
 #[cfg(feature = "alloc")]
 use crate::alloc::borrow::ToOwned;
 

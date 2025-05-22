@@ -8,18 +8,18 @@ use rustc_ast::{BindingMode, ByRef, Mutability};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, QPath, Ty};
 use rustc_infer::infer::TyCtxtInferExt;
-use rustc_middle::ty::fold::BoundVarReplacerDelegate;
-use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_middle::ty::Visibility;
+use rustc_middle::ty::fold::BoundVarReplacerDelegate;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
-    ConstKind, GenericArg, GenericArgKind, TermKind, TypeFoldable,
-    TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTree,
+    ConstKind, GenericArg, GenericArgKind, TermKind, TypeFoldable, TypeFolder, TypeSuperFoldable,
+    TypeVisitableExt, TypingMode, ValTree,
 };
-use rustc_span::def_id::{DefId, LOCAL_CRATE};
-use rustc_span::symbol::{kw, Ident};
+use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
+use rustc_span::def_id::{DefId, LOCAL_CRATE};
+use rustc_span::symbol::{Ident, kw};
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -1017,9 +1017,8 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
             // wouldn't be allowed if the type were left in an unnormalized form.
             use crate::rustc_trait_selection::traits::NormalizeExt;
             let param_env = tcx.param_env(param_env_src);
-            let infcx = tcx.infer_ctxt().ignoring_regions().build(
-                rustc_type_ir::TypingMode::PostAnalysis
-            );
+            let infcx =
+                tcx.infer_ctxt().ignoring_regions().build(rustc_type_ir::TypingMode::PostAnalysis);
             let cause = rustc_infer::traits::ObligationCause::dummy();
             let at = infcx.at(&cause, param_env);
             let ty = &clean_all_escaping_bound_vars(tcx, *ty, param_env_src);
@@ -1078,8 +1077,12 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::FnDef(def_id, args) => {
             let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
             let normalized_substs = tcx.normalize_erasing_regions(typing_env, *args);
-            let inst =
-                rustc_middle::ty::Instance::try_resolve(tcx, typing_env, *def_id, normalized_substs);
+            let inst = rustc_middle::ty::Instance::try_resolve(
+                tcx,
+                typing_env,
+                *def_id,
+                normalized_substs,
+            );
             let mut resolved = None;
             if let Ok(Some(inst)) = inst {
                 if let rustc_middle::ty::InstanceKind::Item(did) = inst.def {
@@ -1170,10 +1173,7 @@ pub(crate) fn mid_ty_const_to_vir<'tcx>(
                 param_env: tcx.param_env(unevaluated.def),
                 typing_mode: TypingMode::PostAnalysis,
             };
-            &tcx.normalize_erasing_regions(
-                typing_env,
-                cnst.clone(),
-            )
+            &tcx.normalize_erasing_regions(typing_env, cnst.clone())
         }
         _ => cnst,
     };
@@ -1690,11 +1690,7 @@ pub(crate) fn check_item_external_generics<'tcx>(
             }
             (
                 GenericArgKind::Const(c),
-                GenericParamKind::Const {
-                    ty: _,
-                    default: None,
-                    synthetic: false,
-                },
+                GenericParamKind::Const { ty: _, default: None, synthetic: false },
             ) => {
                 match c.kind() {
                     ConstKind::Param(param) if param.name.as_str() == param_name => {
@@ -1789,8 +1785,7 @@ fn check_generics_bounds_main<'tcx>(
     for param in generics.own_params.iter() {
         match &param.kind {
             GenericParamDefKind::Lifetime { .. } => {} // ignore
-            GenericParamDefKind::Type { .. }
-            | GenericParamDefKind::Const { .. } => {
+            GenericParamDefKind::Type { .. } | GenericParamDefKind::Const { .. } => {
                 mid_params.push(param);
             }
         }
@@ -1822,8 +1817,7 @@ fn check_generics_bounds_main<'tcx>(
         unsupported_err_unless!(!mid_param.pure_wrt_drop, span, "may_dangle attribute");
 
         match mid_param.kind {
-            GenericParamDefKind::Type { .. }
-            | GenericParamDefKind::Const { .. } => {}
+            GenericParamDefKind::Type { .. } | GenericParamDefKind::Const { .. } => {}
             _ => {
                 continue;
             }

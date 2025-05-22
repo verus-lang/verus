@@ -2,9 +2,9 @@
 // The 'other half' to this mechanism is in builtin_macros/src/rustdoc.rs
 // which has more high-level details.
 
-use html5ever::{local_name, namespace_url, ns, QualName};
-use kuchiki::traits::TendrilSink;
+use html5ever::{QualName, local_name, namespace_url, ns};
 use kuchiki::NodeRef;
+use kuchiki::traits::TendrilSink;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::Path;

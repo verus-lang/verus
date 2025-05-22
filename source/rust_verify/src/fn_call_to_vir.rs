@@ -1,15 +1,14 @@
-use crate::attributes::{get_ghost_block_opt, GhostBlockAttr};
+use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
 use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
     bitwidth_and_signedness_of_integer_type, def_id_to_vir_path, is_smt_arith,
-    is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, typ_of_node,
-    typ_of_node_expect_mut_ref,
+    is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
-    check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array, extract_tuple,
-    get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var, ExprModifier,
+    ExprModifier, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array,
+    extract_tuple, get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var,
 };
 use crate::util::{err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
@@ -23,9 +22,9 @@ use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
 use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, TyKind, TypingEnv};
+use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
-use rustc_span::Span;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
@@ -1073,9 +1072,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let integer_trait_def_id = bctx.ctxt.verus_items.name_to_id
                     [&VerusItem::BuiltinTrait(verus_items::BuiltinTraitItem::Integer)];
                 let ty = bctx.types.node_type(args[0].hir_id);
-                let infcx = rustc_infer::infer::TyCtxtInferExt::infer_ctxt(tcx).build(
-                    rustc_type_ir::TypingMode::PostAnalysis
-                );
+                let infcx = rustc_infer::infer::TyCtxtInferExt::infer_ctxt(tcx)
+                    .build(rustc_type_ir::TypingMode::PostAnalysis);
                 matches!(&*source_vir.typ, TypX::TypParam(_))
                     && infcx
                         .type_implements_trait(

@@ -4,16 +4,16 @@ use crate::ast::{
     VirErr,
 };
 use crate::ast_to_sst::{
-    expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
+    State, expr_to_bind_decls_exp_skip_checks, expr_to_exp_skip_checks, expr_to_one_stm_with_post,
     expr_to_pure_exp_check, expr_to_pure_exp_skip_checks, expr_to_stm_opt, expr_to_stm_or_error,
-    stms_to_one_stm, State,
+    stms_to_one_stm,
 };
 use crate::ast_util::{is_body_visible_to, unit_typ};
 use crate::ast_visitor;
 use crate::context::{Ctx, FunctionCtx};
-use crate::def::{unique_local, Spanned};
+use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
-use crate::messages::{error, Message};
+use crate::messages::{Message, error};
 use crate::sst::{BndX, Exp, ExpX, Exps, LocalDeclKind, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst::{
     FuncAxiomsSst, FuncCheckSst, FuncDeclSst, FuncSpecBodySst, FunctionSst, FunctionSstHas,

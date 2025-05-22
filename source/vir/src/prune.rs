@@ -11,8 +11,8 @@ use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{
-    fn_inv_name, fn_namespace_name, fn_set_contains_name, fn_set_empty_name, fn_set_full_name,
-    fn_set_insert_name, fn_set_remove_name, fn_set_subset_of_name, Spanned,
+    Spanned, fn_inv_name, fn_namespace_name, fn_set_contains_name, fn_set_empty_name,
+    fn_set_full_name, fn_set_insert_name, fn_set_remove_name, fn_set_subset_of_name,
 };
 use crate::poly::MonoTyp;
 use air::scope_map::ScopeMap;
