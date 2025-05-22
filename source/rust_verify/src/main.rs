@@ -97,6 +97,7 @@ pub fn main() {
     if is_direct_rustc_call {
         args.insert(0, program.clone());
         rust_verify::driver::run_rustc_compiler_directly(&args);
+        return;
     }
 
     let via_cargo = via_cargo.then(|| rust_verify::config::parse_cargo_args(&program, &mut args));
