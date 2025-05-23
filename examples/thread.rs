@@ -2,7 +2,7 @@
 use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
-use vstd::{prelude::*, thread::*};
+use vstd::thread::*;
 
 verus! {
 
