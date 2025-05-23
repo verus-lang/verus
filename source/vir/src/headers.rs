@@ -15,6 +15,7 @@ pub struct Header {
     pub unwrap_parameters: Vec<UnwrapParameter>,
     pub hidden: Vec<Fun>,
     pub require: Exprs,
+    pub atomic_require: Exprs,
     pub recommend: Exprs,
     pub ensure_id_typ: Option<(VarIdent, Typ)>,
     pub ensure: Exprs,
@@ -35,6 +36,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut hidden: Vec<Fun> = Vec::new();
     let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
+    let mut atomic_require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
     let mut returns: Option<Expr> = None;
     let mut recommend: Option<Exprs> = None;
@@ -74,6 +76,15 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             ));
                         }
                         require = Some(es.clone());
+                    }
+                    HeaderExprX::AtomicRequires(es) => {
+                        if atomic_require.is_some() {
+                            return Err(error(
+                                &stmt.span,
+                                "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions",
+                            ));
+                        }
+                        atomic_require = Some(es.clone());
                     }
                     HeaderExprX::Recommends(es) => {
                         if recommend.is_some() {
@@ -226,6 +237,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     }
     *block = block[n..].to_vec();
     let require = require.unwrap_or(Arc::new(vec![]));
+    let atomic_require = atomic_require.unwrap_or(Arc::new(vec![]));
     let recommend = recommend.unwrap_or(Arc::new(vec![]));
     let (ensure_id_typ, ensure) = match ensure {
         None => (None, Arc::new(vec![])),
@@ -239,6 +251,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         no_method_body: false,
         hidden,
         require,
+        atomic_require,
         recommend,
         ensure_id_typ,
         ensure,

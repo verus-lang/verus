@@ -1137,6 +1137,7 @@ impl HeaderExprX {
             HeaderExprX::UnwrapParameter(_)
             | HeaderExprX::NoMethodBody
             | HeaderExprX::Requires(_)
+            | HeaderExprX::AtomicRequires(_)
             | HeaderExprX::Returns(_)
             | HeaderExprX::Recommends(_)
             | HeaderExprX::DecreasesWhen(_)

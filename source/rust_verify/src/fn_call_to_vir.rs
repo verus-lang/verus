@@ -313,6 +313,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody)))
             }
             SpecItem::Requires
+            | SpecItem::AtomicRequires
             | SpecItem::Recommends
             | SpecItem::OpensInvariants
             | SpecItem::Returns => {
@@ -339,7 +340,7 @@ fn verus_item_to_vir<'tcx, 'a>(
                 for (arg, vir_arg) in subargs.iter().zip(vir_args.iter()) {
                     let typ = vir::ast_util::undecorate_typ(&vir_arg.typ);
                     match spec_item {
-                        SpecItem::Requires | SpecItem::Recommends => match &*typ {
+                        SpecItem::Requires | SpecItem::Recommends | SpecItem::AtomicRequires => match &*typ {
                             TypX::Bool => {}
                             _ => {
                                 return err_span(
@@ -366,6 +367,7 @@ fn verus_item_to_vir<'tcx, 'a>(
 
                 let header = match spec_item {
                     SpecItem::Requires => Arc::new(HeaderExprX::Requires(Arc::new(vir_args))),
+                    SpecItem::AtomicRequires => Arc::new(HeaderExprX::AtomicRequires(Arc::new(vir_args))),
                     SpecItem::Recommends => Arc::new(HeaderExprX::Recommends(Arc::new(vir_args))),
                     SpecItem::OpensInvariants => Arc::new(HeaderExprX::InvariantOpens(
                         bctx.ctxt.spans.to_air_span(expr.span.clone()),

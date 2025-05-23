@@ -39,6 +39,14 @@ pub fn requires<A>(_a: A) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::atomic_requires"]
+#[verifier::proof]
+pub fn atomic_requires<A>(_a: A) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::ensures"]
 #[verifier::proof]
 pub fn ensures<A>(_a: A) {

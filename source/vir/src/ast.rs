@@ -541,6 +541,8 @@ pub enum HeaderExprX {
     NoMethodBody,
     /// Preconditions on exec/proof functions
     Requires(Exprs),
+    /// Atomic preconditions on exec/proof functions
+    AtomicRequires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
     Ensures(Option<(VarIdent, Typ)>, Exprs),
     /// Returns clause
