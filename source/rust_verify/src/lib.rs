@@ -57,6 +57,7 @@ mod lifetime_ast;
 mod lifetime_emit;
 mod lifetime_generate;
 pub mod profiler;
+mod resolve_traits;
 pub mod reveal_hide;
 mod rust_intrinsics_to_vir;
 pub mod rust_to_vir;
