@@ -41,6 +41,11 @@ pub trait ExDebug {
 }
 
 #[verifier::external_trait_specification]
+pub trait ExDisplay {
+    type ExternalTraitSpecificationFor: core::fmt::Display;
+}
+
+#[verifier::external_trait_specification]
 pub trait ExFrom<T>: Sized {
     type ExternalTraitSpecificationFor: core::convert::From<T>;
 
