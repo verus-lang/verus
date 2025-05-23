@@ -1,7 +1,7 @@
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::{prelude::*, *};
+use vstd::*;
 
 verus! {
 

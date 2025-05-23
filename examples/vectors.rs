@@ -118,7 +118,7 @@ fn pusher() -> Vec<u64> {
     v
 }
 
-spec fn uninterp_fn(x: u64) -> bool;
+uninterp spec fn uninterp_fn(x: u64) -> bool;
 
 fn pop_test(t: Vec<u64>)
     requires
