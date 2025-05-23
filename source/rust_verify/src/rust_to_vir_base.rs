@@ -1077,6 +1077,7 @@ pub(crate) fn mid_ty_to_vir_ghost<'tcx>(
         TyKind::FnDef(def_id, args) => {
             let typing_env = TypingEnv::post_analysis(tcx, param_env_src);
             let normalized_substs = tcx.normalize_erasing_regions(typing_env, *args);
+            // TODO: replace with crate::resolve_traits::resolve_trait_item
             let inst = rustc_middle::ty::Instance::try_resolve(
                 tcx,
                 typing_env,

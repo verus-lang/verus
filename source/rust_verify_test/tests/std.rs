@@ -507,7 +507,7 @@ test_verify_one_file! {
             let b = a.clone();
             assert(a == b); // FAILS
         }
-    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: instance")
+    } => Err(err) => assert_vir_error_msg(err, "The verifier does not yet support the following Rust feature: built-in instance")
 }
 
 test_verify_one_file_with_options! {
