@@ -715,13 +715,9 @@ pub fn func_def_to_sst(
 
     // For most kinds of specs (requires, unwind, mask), we always use the trait method
     // if it exists and otherwise use the original method.
-    // This macro returns the appropriate Lowerer object.
-    macro_rules! lo_specs {
-        () => {
-            if inherit { &lo_inheritance.as_ref().unwrap() } else { &lo_current }
-        };
-    }
-    let specs_function = lo_specs!().function.clone();
+    // The `lo_specs` is the appropriate Lowerer object for this case.
+    let lo_specs = if inherit { &lo_inheritance.as_ref().unwrap() } else { &lo_current };
+    let specs_function = lo_specs.function.clone();
 
     // These are used for the normal case (no recommends-checking)
     let mut reqs: Vec<Exp> = Vec::new();
@@ -734,7 +730,7 @@ pub fn func_def_to_sst(
     // Requires: take from trait method if it exists
     let requires = specs_function.x.require.clone();
     for r in requires.iter() {
-        let r = lo_specs!().lower_pure(ctx, &mut state, r, &mut req_stms)?;
+        let r = lo_specs.lower_pure(ctx, &mut state, r, &mut req_stms)?;
         if ctx.checking_spec_preconditions() {
             req_stms.push(Spanned::new(r.span.clone(), StmX::Assume(r)));
         } else {
@@ -745,13 +741,13 @@ pub fn func_def_to_sst(
     // Inv mask: take from trait method if it exists
     let mask_ast = specs_function.x.mask_spec_or_default(&specs_function.span);
     let mask_sst = mask_ast
-        .map_to_sst(&mut |expr| lo_specs!().lower_pure(ctx, &mut state, expr, &mut req_stms))?;
+        .map_to_sst(&mut |expr| lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms))?;
     state.mask = Some(mask_sst);
 
     // Unwind spec: take from trait method if it exists
     let unwind_ast = specs_function.x.unwind_spec_or_default();
     let unwind_sst = unwind_ast
-        .map_to_sst(&mut |expr| lo_specs!().lower_pure(ctx, &mut state, expr, &mut req_stms))?;
+        .map_to_sst(&mut |expr| lo_specs.lower_pure(ctx, &mut state, expr, &mut req_stms))?;
 
     // Decreases: add recommends if necessary; otherwise nothing to do
     if ctx.checking_spec_preconditions() {
