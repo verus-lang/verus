@@ -25,8 +25,10 @@ use super::super::prelude::*;
 
 use core::borrow::Borrow;
 use core::hash::{BuildHasher, Hash, Hasher};
+use core::marker::PhantomData;
 use core::option::Option;
 use core::option::Option::None;
+use std::collections::hash_map;
 use std::collections::hash_map::{DefaultHasher, Keys, RandomState, Values};
 use std::collections::hash_set;
 use std::collections::{HashMap, HashSet};
@@ -451,6 +453,157 @@ impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
         self.values.take(self.pos)
     }
 }
+
+// The `iter` method of a `HashMap` returns an iterator of type `hash_map::Iter`,
+// so we specify that type here.
+#[verifier::external_type_specification]
+#[verifier::external_body]
+#[verifier::accept_recursive_types(Key)]
+#[verifier::accept_recursive_types(Value)]
+pub struct ExMapIter<'a, Key: 'a, Value: 'a>(hash_map::Iter<'a, Key, Value>);
+
+pub trait MapIterAdditionalSpecFns<'a, Key: 'a, Value: 'a> {
+    spec fn view(self: &Self) -> (int, Seq<(Key, Value)>);
+}
+
+impl<'a, Key: 'a, Value: 'a> MapIterAdditionalSpecFns<'a, Key, Value> for hash_map::Iter<
+    'a,
+    Key,
+    Value,
+> {
+    uninterp spec fn view(self: &hash_map::Iter<'a, Key, Value>) -> (int, Seq<(Key, Value)>);
+}
+
+pub assume_specification<'a, Key, Value>[ hash_map::Iter::<'a, Key, Value>::next ](
+    iter: &mut hash_map::Iter<'a, Key, Value>,
+) -> (r: Option<(&'a Key, &'a Value)>)
+    ensures
+        ({
+            let (old_index, old_seq) = old(iter)@;
+            match r {
+                None => {
+                    &&& iter@ == old(iter)@
+                    &&& old_index >= old_seq.len()
+                },
+                Some((k, v)) => {
+                    let (new_index, new_seq) = iter@;
+                    let (old_k, old_v) = old_seq[old_index];
+                    &&& 0 <= old_index < old_seq.len()
+                    &&& new_seq == old_seq
+                    &&& new_index == old_index + 1
+                    &&& k == old_k
+                    &&& v == old_v
+                },
+            }
+        }),
+;
+
+pub struct MapIterGhostIterator<'a, Key, Value> {
+    pub pos: int,
+    pub kv_pairs: Seq<(Key, Value)>,
+    pub _marker: PhantomData<&'a Key>,
+}
+
+impl<'a, Key, Value> super::super::pervasive::ForLoopGhostIteratorNew for hash_map::Iter<
+    'a,
+    Key,
+    Value,
+> {
+    type GhostIter = MapIterGhostIterator<'a, Key, Value>;
+
+    open spec fn ghost_iter(&self) -> MapIterGhostIterator<'a, Key, Value> {
+        MapIterGhostIterator { pos: self@.0, kv_pairs: self@.1, _marker: PhantomData }
+    }
+}
+
+impl<'a, Key: 'a, Value: 'a> super::super::pervasive::ForLoopGhostIterator for MapIterGhostIterator<
+    'a,
+    Key,
+    Value,
+> {
+    type ExecIter = hash_map::Iter<'a, Key, Value>;
+
+    type Item = (Key, Value);
+
+    type Decrease = int;
+
+    open spec fn exec_invariant(&self, exec_iter: &hash_map::Iter<'a, Key, Value>) -> bool {
+        &&& self.pos == exec_iter@.0
+        &&& self.kv_pairs == exec_iter@.1
+    }
+
+    open spec fn ghost_invariant(&self, init: Option<&Self>) -> bool {
+        init matches Some(init) ==> {
+            &&& init.pos == 0
+            &&& init.kv_pairs == self.kv_pairs
+            &&& 0 <= self.pos <= self.kv_pairs.len()
+        }
+    }
+
+    open spec fn ghost_ensures(&self) -> bool {
+        self.pos == self.kv_pairs.len()
+    }
+
+    open spec fn ghost_decrease(&self) -> Option<int> {
+        Some(self.kv_pairs.len() - self.pos)
+    }
+
+    open spec fn ghost_peek_next(&self) -> Option<(Key, Value)> {
+        if 0 <= self.pos < self.kv_pairs.len() {
+            Some(self.kv_pairs[self.pos])
+        } else {
+            None
+        }
+    }
+
+    open spec fn ghost_advance(
+        &self,
+        _exec_iter: &hash_map::Iter<'a, Key, Value>,
+    ) -> MapIterGhostIterator<'a, Key, Value> {
+        Self { pos: self.pos + 1, ..*self }
+    }
+}
+
+impl<'a, Key, Value> View for MapIterGhostIterator<'a, Key, Value> {
+    type V = Seq<(Key, Value)>;
+
+    open spec fn view(&self) -> Seq<(Key, Value)> {
+        self.kv_pairs.take(self.pos)
+    }
+}
+
+// To allow reasoning about the ghost iterator when the executable
+// function `iter()` is invoked in a `for` loop header (e.g., in
+// `for x in it: v.iter() { ... }`), we need to specify the behavior of
+// the iterator in spec mode. To do that, we add
+// `#[verifier::when_used_as_spec(spec_iter)` to the specification for
+// the executable `iter` method and define that spec function here.
+pub uninterp spec fn spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>) -> (r:
+    hash_map::Iter<'a, Key, Value>);
+
+pub broadcast proof fn axiom_spec_hash_map_iter<'a, Key, Value, S>(m: &'a HashMap<Key, Value, S>)
+    ensures
+        ({
+            let (pos, v) = #[trigger] spec_hash_map_iter(m)@;
+            &&& pos == 0int
+            &&& forall|i: int| 0 <= i < v.len() ==> #[trigger] m@[v[i].0] == v[i].1
+        }),
+{
+    admit();
+}
+
+#[verifier::when_used_as_spec(spec_hash_map_iter)]
+pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::iter ](
+    m: &'a HashMap<Key, Value, S>,
+) -> (iter: hash_map::Iter<'a, Key, Value>)
+    ensures
+        obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
+            let (index, s) = iter@;
+            &&& index == 0
+            &&& s.to_set() == m@.kv_pairs()
+            &&& s.no_duplicates()
+        },
+;
 
 // We now specify the behavior of `HashMap`.
 #[verifier::external_type_specification]
@@ -1221,6 +1374,7 @@ pub broadcast group group_hash_axioms {
     axiom_set_deref_key_to_value,
     axiom_set_box_key_to_value,
     axiom_spec_hash_set_len,
+    axiom_spec_hash_map_iter,
 }
 
 } // verus!
