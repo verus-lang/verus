@@ -1,4 +1,5 @@
 use crate::attributes::{get_mode, get_ret_mode, get_var_mode, AttrPublish, VerifierAttrs};
+use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
@@ -1712,53 +1713,52 @@ pub(crate) fn get_external_def_id<'tcx>(
         // We want to resolve to a specific definition in a trait implementation.
         let node_substs = types.node_args(hir_id);
         let typing_env = TypingEnv::post_analysis(tcx, proxy_fun_id);
-        let normalized_substs = tcx.normalize_erasing_regions(typing_env, node_substs);
-        let trait_ref = TraitRef::new(tcx, trait_def_id, normalized_substs);
-        let pseudo_canonical_inp = PseudoCanonicalInput { typing_env, value: trait_ref };
-        let candidate = tcx.codegen_select_candidate(pseudo_canonical_inp);
 
-        match candidate {
-            Ok(ImplSource::UserDefined(u)) => {
-                let impl_def_id = u.impl_def_id;
-                let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+        let resolution = crate::resolve_traits::resolve_trait_item(
+            sig.span,
+            tcx,
+            typing_env,
+            external_id,
+            node_substs
+        )?;
 
-                let inst = rustc_middle::ty::Instance::try_resolve(
-                    tcx,
-                    typing_env,
-                    external_id,
-                    normalized_substs,
-                );
-                let Ok(inst) = inst else {
-                    return err_span(
-                        sig.span,
-                        "Verus Internal Error: handling assume_specification, resolve failed",
-                    );
-                };
-                let Some(inst) = inst else {
-                    return err_span(
-                        sig.span,
-                        "assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead",
-                    );
-                };
-                let rustc_middle::ty::InstanceKind::Item(did) = inst.def else {
-                    return err_span(
-                        sig.span,
-                        "Verus Internal Error: handling assume_specification, resolve failed",
-                    );
-                };
-
-                let is_default = tcx.impl_of_method(did).is_none();
-                unsupported_err_unless!(
-                    !is_default,
+        match resolution {
+            ResolutionResult::Unresolved => {
+                err_span(
+                    sig.span,
+                    "assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead",
+                )
+            }
+            ResolutionResult::Builtin(b) => {
+                err_span(
+                    sig.span,
+                    format!(
+                        "Verus assume_specification does not support this builtin impl '{:?}'",
+                        b
+                    ),
+                )
+            }
+            ResolutionResult::Resolved { resolved_item: ResolvedItem::FromTrait(..), .. } => {
+                unsupported_err!(
                     sig.span,
                     "assume_specification for a provided trait method"
                 );
-
+            }
+            ResolutionResult::Resolved {
+                impl_def_id,
+                impl_args,
+                impl_item_args: _,
+                resolved_item: ResolvedItem::FromImpl(impl_item_id, _args)
+            } => {
                 let trait_path = def_id_to_vir_path(tcx, verus_items, trait_def_id);
 
-                let mut types: Vec<Typ> = Vec::new();
-                for ty in trait_ref.instantiate(tcx, u.args).args.types() {
-                    types.push(mid_ty_to_vir(tcx, &verus_items, did, sig.span, &ty, false)?);
+                let mut types: Vec<Typ> = vec![];
+
+                let normalized_args = tcx.normalize_erasing_regions(typing_env, node_substs);
+                let trait_ref = tcx.impl_trait_ref(impl_def_id).expect("impl_trait_ref");
+
+                for ty in trait_ref.instantiate(tcx, impl_args).args.types() {
+                    types.push(mid_ty_to_vir(tcx, &verus_items, impl_item_id, sig.span, &ty, false)?);
                 }
 
                 let kind = FunctionKind::ForeignTraitMethodImpl {
@@ -1769,25 +1769,7 @@ pub(crate) fn get_external_def_id<'tcx>(
                     trait_path: trait_path,
                     trait_typ_args: Arc::new(types),
                 };
-                return Ok((did, kind));
-            }
-            Ok(ImplSource::Builtin(b, _)) => {
-                return err_span(
-                    sig.span,
-                    format!(
-                        "Verus assume_specification does not support ImplSource::Builtin '{:?}'",
-                        b
-                    ),
-                );
-            }
-            Ok(ImplSource::Param(_)) => {
-                return err_span(
-                    sig.span,
-                    "assume_specification not supported for unresolved trait functions",
-                );
-            }
-            Err(_) => {
-                crate::internal_err!(sig.span, "expected InstanceDef::Item")
+                Ok((impl_item_id, kind))
             }
         }
     } else {
