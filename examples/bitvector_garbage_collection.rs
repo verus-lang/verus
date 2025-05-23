@@ -1,12 +1,14 @@
 #[allow(unused_imports)]
 use vstd::prelude::*;
 
+#[allow(unused_macros)]
 macro_rules! get_bit_macro {
     ($a:expr, $b:expr) => {{
         (0x1u32 & ($a >> $b)) == 1
     }};
 }
 
+#[allow(unused_macros)]
 macro_rules! get_bit {
     ($($a:tt)*) => {
         verus_proof_macro_exprs!(get_bit_macro!($($a)*))

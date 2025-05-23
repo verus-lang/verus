@@ -2,19 +2,19 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::{pervasive::*, *};
+use vstd::{pervasive::*, prelude::*, *};
 
 verus! {
 
 // ANCHOR: def_f_g
-spec fn f(x: nat, y: nat) -> bool;
+uninterp spec fn f(x: nat, y: nat) -> bool;
 
-spec fn g(x: nat) -> bool;
+uninterp spec fn g(x: nat) -> bool;
 
-spec fn h(x: nat, y: nat) -> bool;
+uninterp spec fn h(x: nat, y: nat) -> bool;
 // ANCHOR_END: def_f_g
 
-spec fn j(x: nat) -> bool;
+uninterp spec fn j(x: nat) -> bool;
 
 proof fn quantifier_example()
     requires
@@ -83,8 +83,8 @@ fn simple_loop()
     while x < 10
         invariant
             0 <= x <= 10,
-            forall|i: u32| 0 <= i < x ==> g(i as nat),
-    //decreases x;
+            forall|i: u32| 0 <= i < x ==> g(i as nat)
+        decreases 10 - x
     {
         assume(g(x as nat));
         x = x + 1;
@@ -100,7 +100,7 @@ fn bad_loop()
         invariant
             forall|x: nat, y: nat|
                 f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) ==> #[trigger] f(x, y),
-    //decreases x;
+        decreases x
     {
         x = x - 1;
         assert(forall|x: nat, y: nat| x > 2318 && y < 100 ==> f(x, y));
