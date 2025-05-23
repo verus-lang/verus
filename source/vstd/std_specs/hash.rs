@@ -28,7 +28,7 @@ use core::hash::{BuildHasher, Hash, Hasher};
 use core::option::Option;
 use core::option::Option::None;
 use std::collections::hash_map::{DefaultHasher, Keys, RandomState, Values};
-use std::collections::hash_set::Iter;
+use std::collections::hash_set;
 use std::collections::{HashMap, HashSet};
 
 verus! {
@@ -867,23 +867,24 @@ pub assume_specification<'a, Key, Value, S>[ HashMap::<Key, Value, S>::values ](
         },
 ;
 
-// The `iter` method of a `HashSet` returns an iterator of type `Iter`,
+// The `iter` method of a `HashSet` returns an iterator of type `hash_set::Iter`,
 // so we specify that type here.
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
-pub struct ExIter<'a, Key: 'a>(Iter<'a, Key>);
+pub struct ExSetIter<'a, Key: 'a>(hash_set::Iter<'a, Key>);
 
-pub trait IterAdditionalSpecFns<'a, Key: 'a> {
+pub trait SetIterAdditionalSpecFns<'a, Key: 'a> {
     spec fn view(self: &Self) -> (int, Seq<Key>);
 }
 
-impl<'a, Key: 'a> IterAdditionalSpecFns<'a, Key> for Iter<'a, Key> {
-    uninterp spec fn view(self: &Iter<'a, Key>) -> (int, Seq<Key>);
+impl<'a, Key: 'a> SetIterAdditionalSpecFns<'a, Key> for hash_set::Iter<'a, Key> {
+    uninterp spec fn view(self: &hash_set::Iter<'a, Key>) -> (int, Seq<Key>);
 }
 
-pub assume_specification<'a, Key>[ Iter::<'a, Key>::next ](elements: &mut Iter<'a, Key>) -> (r:
-    Option<&'a Key>)
+pub assume_specification<'a, Key>[ hash_set::Iter::<'a, Key>::next ](
+    elements: &mut hash_set::Iter<'a, Key>,
+) -> (r: Option<&'a Key>)
     ensures
         ({
             let (old_index, old_seq) = old(elements)@;
@@ -903,28 +904,28 @@ pub assume_specification<'a, Key>[ Iter::<'a, Key>::next ](elements: &mut Iter<'
         }),
 ;
 
-pub struct IterGhostIterator<'a, Key> {
+pub struct SetIterGhostIterator<'a, Key> {
     pub pos: int,
     pub elements: Seq<Key>,
     pub phantom: Option<&'a Key>,
 }
 
-impl<'a, Key> super::super::pervasive::ForLoopGhostIteratorNew for Iter<'a, Key> {
-    type GhostIter = IterGhostIterator<'a, Key>;
+impl<'a, Key> super::super::pervasive::ForLoopGhostIteratorNew for hash_set::Iter<'a, Key> {
+    type GhostIter = SetIterGhostIterator<'a, Key>;
 
-    open spec fn ghost_iter(&self) -> IterGhostIterator<'a, Key> {
-        IterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
+    open spec fn ghost_iter(&self) -> SetIterGhostIterator<'a, Key> {
+        SetIterGhostIterator { pos: self@.0, elements: self@.1, phantom: None }
     }
 }
 
-impl<'a, Key: 'a> super::super::pervasive::ForLoopGhostIterator for IterGhostIterator<'a, Key> {
-    type ExecIter = Iter<'a, Key>;
+impl<'a, Key: 'a> super::super::pervasive::ForLoopGhostIterator for SetIterGhostIterator<'a, Key> {
+    type ExecIter = hash_set::Iter<'a, Key>;
 
     type Item = Key;
 
     type Decrease = int;
 
-    open spec fn exec_invariant(&self, exec_iter: &Iter<'a, Key>) -> bool {
+    open spec fn exec_invariant(&self, exec_iter: &hash_set::Iter<'a, Key>) -> bool {
         &&& self.pos == exec_iter@.0
         &&& self.elements == exec_iter@.1
     }
@@ -953,12 +954,15 @@ impl<'a, Key: 'a> super::super::pervasive::ForLoopGhostIterator for IterGhostIte
         }
     }
 
-    open spec fn ghost_advance(&self, _exec_iter: &Iter<'a, Key>) -> IterGhostIterator<'a, Key> {
+    open spec fn ghost_advance(&self, _exec_iter: &hash_set::Iter<'a, Key>) -> SetIterGhostIterator<
+        'a,
+        Key,
+    > {
         Self { pos: self.pos + 1, ..*self }
     }
 }
 
-impl<'a, Key> View for IterGhostIterator<'a, Key> {
+impl<'a, Key> View for SetIterGhostIterator<'a, Key> {
     type V = Seq<Key>;
 
     open spec fn view(&self) -> Seq<Key> {
@@ -1173,10 +1177,8 @@ pub assume_specification<Key, S>[ HashSet::<Key, S>::clear ](m: &mut HashSet<Key
         m@ == Set::<Key>::empty(),
 ;
 
-pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<Key, S>) -> (r: Iter<
-    'a,
-    Key,
->)
+pub assume_specification<'a, Key, S>[ HashSet::<Key, S>::iter ](m: &'a HashSet<Key, S>) -> (r:
+    hash_set::Iter<'a, Key>)
     ensures
         obeys_key_model::<Key>() && builds_valid_hashers::<S>() ==> {
             let (index, s) = r@;
