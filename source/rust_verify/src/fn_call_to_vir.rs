@@ -1,6 +1,7 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
 use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
+use crate::resolve_traits::{ResolutionResult, ResolvedItem};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
     bitwidth_and_signedness_of_integer_type, def_id_to_vir_path, is_smt_arith,
@@ -21,7 +22,7 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
-use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, TyKind, TypingEnv};
+use rustc_middle::ty::{GenericArg, GenericArgKind, TyKind, TypingEnv};
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
@@ -196,49 +197,70 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         vir::ast::CallTargetKind::Static
     } else {
         let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
-        let normalized_substs = tcx.normalize_erasing_regions(typing_env, node_substs);
-        let inst = Instance::try_resolve(tcx, typing_env, f, normalized_substs);
-        let Ok(inst) = inst else { crate::internal_err!(expr.span, "Instance::resolve") };
-        match inst {
-            Some(Instance { def: rustc_middle::ty::InstanceKind::Item(did), args }) => {
+
+        let res =
+            crate::resolve_traits::resolve_trait_item(expr.span, tcx, typing_env, f, node_substs)?;
+
+        match res {
+            ResolutionResult::Resolved {
+                impl_def_id: _,
+                impl_args: _,
+                impl_item_args: _,
+                resolved_item: ResolvedItem::FromImpl(did, args),
+            } => {
                 let typs = mk_typ_args(bctx, args, did, expr.span)?;
-                let mut f =
+                let impl_paths = get_impl_paths(bctx, did, args, None);
+
+                let f =
                     Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
                 record_name = f.clone();
 
-                let mut self_trait_impl_path = None;
-                let mut remove_self_trait_bound = None;
-                let mut is_trait_default = false;
-                if let Some(trait_id) = tcx.trait_of_item(did) {
-                    // We resolved to the trait method itself, which means this must be
-                    // a default method implementation in the trait.
-                    // Redirect this to the appropriate per-instance copy of the default method.
-                    is_trait_default = true;
-                    remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
-                }
-                let impl_paths = get_impl_paths(bctx, did, args, remove_self_trait_bound);
-                if tcx.trait_of_item(did).is_some() {
-                    if let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
-                    {
-                        f = vir::def::trait_inherit_default_name(&f, &impl_path);
-                    } else {
-                        panic!(
-                            "{} {:?}",
-                            "could not resolve call to trait default method", &expr.span
-                        );
-                    }
-                }
                 vir::ast::CallTargetKind::DynamicResolved {
                     resolved: f,
                     typs,
                     impl_paths,
-                    is_trait_default,
+                    is_trait_default: false,
                 }
             }
-            Some(inst) => {
-                unsupported_err!(expr.span, format!("instance {:?}", &inst.def));
+            ResolutionResult::Resolved {
+                impl_def_id: _,
+                impl_args: _,
+                impl_item_args: _,
+                resolved_item: ResolvedItem::FromTrait(did, args),
+            } => {
+                // We resolved to the trait method itself, which means this must be
+                // a default method implementation in the trait.
+                // Redirect this to the appropriate per-instance copy of the default method.
+
+                let typs = mk_typ_args(bctx, args, did, expr.span)?;
+
+                let mut self_trait_impl_path = None;
+                let trait_id = tcx.trait_of_item(did).unwrap();
+                let remove_self_trait_bound = Some((trait_id, &mut self_trait_impl_path));
+                let impl_paths = get_impl_paths(bctx, did, args, remove_self_trait_bound);
+
+                let Some(vir::ast::ImplPath::TraitImplPath(impl_path)) = self_trait_impl_path
+                else {
+                    panic!("{} {:?}", "could not resolve call to trait default method", &expr.span);
+                };
+
+                let f =
+                    Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
+                record_name = f.clone();
+
+                let f = vir::def::trait_inherit_default_name(&f, &impl_path);
+
+                vir::ast::CallTargetKind::DynamicResolved {
+                    resolved: f,
+                    typs,
+                    impl_paths,
+                    is_trait_default: true,
+                }
             }
-            None => {
+            ResolutionResult::Builtin(b) => {
+                unsupported_err!(expr.span, format!("built-in instance {:?}", b));
+            }
+            ResolutionResult::Unresolved => {
                 // Method is generic
                 vir::ast::CallTargetKind::Dynamic
             }
