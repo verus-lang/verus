@@ -62,6 +62,23 @@ impl<K, V> Map<K, V> {
         Set::<V>::new(|v: V| self.contains_value(v))
     }
 
+    ///
+    /// Returns the set of key-value pairs representing the map
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// let m: Map<int, int> = map![1 => 10, 2 => 11];
+    /// assert(m.kv_pairs() == set![(1int, 10int), (2int, 11int)] by {
+    ///     assert(m.contains_pair(1int, 10int));
+    ///     assert(m.contains_pair(2int, 11int));
+    ///     assert(m.kv_pairs() =~= set![(1int, 10int), (2int, 11int)]);
+    /// }
+    /// ```
+    pub open spec fn kv_pairs(self) -> Set<(K, V)> {
+        Set::<(K, V)>::new(|kv: (K, V)| self.dom().contains(kv.0) && self[kv.0] == kv.1)
+    }
+
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
     pub open spec fn contains_pair(self, k: K, v: V) -> bool {
         self.dom().contains(k) && self[k] == v
