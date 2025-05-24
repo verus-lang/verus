@@ -1,9 +1,9 @@
 # The verus! macro
 
-Recall the sample program from the [Getting Started](./getting_started.md) chapters.
+Recall the sample program from the [Getting Started](./getting_started.md) chapters:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/getting_started.rs}}
+{{#include ../../../../examples/guide/getting_started.rs}}
 ```
 
 What is this exactly? Is it Verus? Is it Rust?
