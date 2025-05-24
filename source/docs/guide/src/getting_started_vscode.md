@@ -19,11 +19,24 @@ This will create the following files:
 
 ## 2. Install verus-analyzer via VSCode
 
-Open VSCode and install `verus-analyzer` through the VSCode marketplace.
+Open VSCode and install verus-analyzer through the VSCode marketplace.
 
-## 3. Test that Verus is working.
+## 3. Open your workspace in VSCode.
 
-Open your `verus_test` project and navigate to the `src/main.rs` file. Paste in the following:
+Go to `File > Open Folder` and select the `verus_test` directory.
+
+## 4. Disable rust-analyzer
+
+If you have rust-analyzer installed, you'll want to disable it, as it is redundant and (without the proper configuration) will result in additional errors that you won't want to see.
+
+To disable rust-analyzer, go to the extensions panel, find rust-analyzer, click the
+gear icon, and select **"Disable (Workspace)"**. (This will disable rust-analyzer only
+for the current workspace.)
+Then click the blue **"Restart Extensions"** button that appears.
+
+## 5. Test that Verus is working.
+
+Within your `verus_test` project, navigate to the `src/main.rs` file. Paste in the following:
 
 ```rust
 use vstd::prelude::*;
@@ -69,10 +82,10 @@ error: assertion failed
 
 Delete this line, and now Verus should say that the file verifies successfully.
 
-## 4. Learn more about the verus-analyzer extension.
+## 6. Learn more about the verus-analyzer extension.
 
 See [the verus-analyzer README](https://github.com/verus-lang/verus-analyzer) for more information and tips on using verus-analyzer.
 
-## 5. Learn more about Verus
+## 7. Learn more about Verus
 
 [Continue with the tutorial](./verus_macro_intro.md), starting with an explanation of the `verus!` macro from the above example.
