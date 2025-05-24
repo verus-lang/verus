@@ -7,9 +7,9 @@ edition = "2018"
 
 # Note: do not add any dependencies on rustc -- VIR deliberately abstracts away from rustc's internals
 [dependencies]
-synstructure = "0.12"
+synstructure = "0.13"
 proc-macro2 = "*"
-syn = "^1"
+syn = "^2"
 
 [lib]
 proc-macro = true

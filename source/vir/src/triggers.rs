@@ -3,7 +3,7 @@ use crate::ast::{
     VarIdent, VirErr,
 };
 use crate::context::Ctx;
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::sst::{BndX, Exp, ExpX, Exps, Trig, Trigs};
 use crate::triggers_auto::AutoType;
 use crate::util::vec_map;

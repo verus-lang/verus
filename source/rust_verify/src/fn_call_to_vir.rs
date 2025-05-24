@@ -1,15 +1,14 @@
-use crate::attributes::{get_ghost_block_opt, GhostBlockAttr};
+use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
 use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
     bitwidth_and_signedness_of_integer_type, def_id_to_vir_path, is_smt_arith,
-    is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, remove_host_arg, typ_of_node,
-    typ_of_node_expect_mut_ref,
+    is_type_std_rc_or_arc_or_ref, mid_ty_to_vir, typ_of_node, typ_of_node_expect_mut_ref,
 };
 use crate::rust_to_vir_expr::{
-    check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array, extract_tuple,
-    get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var, ExprModifier,
+    ExprModifier, check_lit_int, closure_param_typs, closure_to_vir, expr_to_vir, extract_array,
+    extract_tuple, get_fn_path, is_expr_typ_mut_ref, mk_ty_clip, pat_to_var,
 };
 use crate::util::{err_span, vec_map, vec_map_result, vir_err_span_str};
 use crate::verus_items::{
@@ -22,10 +21,10 @@ use air::ast_util::str_ident;
 use rustc_ast::LitKind;
 use rustc_hir::def::Res;
 use rustc_hir::{Expr, ExprKind, Node, QPath};
-use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, TyKind};
+use rustc_middle::ty::{GenericArg, GenericArgKind, Instance, TyKind, TypingEnv};
+use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::source_map::Spanned;
-use rustc_span::Span;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{
@@ -196,9 +195,9 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let target_kind = if tcx.trait_of_item(f).is_none() {
         vir::ast::CallTargetKind::Static
     } else {
-        let param_env = tcx.param_env(bctx.fun_id);
-        let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
-        let inst = Instance::try_resolve(tcx, param_env, f, normalized_substs);
+        let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+        let normalized_substs = tcx.normalize_erasing_regions(typing_env, node_substs);
+        let inst = Instance::try_resolve(tcx, typing_env, f, normalized_substs);
         let Ok(inst) = inst else { crate::internal_err!(expr.span, "Instance::resolve") };
         match inst {
             Some(Instance { def: rustc_middle::ty::InstanceKind::Item(did), args }) => {
@@ -1073,7 +1072,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let integer_trait_def_id = bctx.ctxt.verus_items.name_to_id
                     [&VerusItem::BuiltinTrait(verus_items::BuiltinTraitItem::Integer)];
                 let ty = bctx.types.node_type(args[0].hir_id);
-                let infcx = rustc_infer::infer::TyCtxtInferExt::infer_ctxt(tcx).build();
+                let infcx = rustc_infer::infer::TyCtxtInferExt::infer_ctxt(tcx)
+                    .build(rustc_type_ir::TypingMode::PostAnalysis);
                 matches!(&*source_vir.typ, TypX::TypParam(_))
                     && infcx
                         .type_implements_trait(
@@ -1831,11 +1831,10 @@ pub(crate) fn fix_node_substs<'tcx, 'a>(
 fn mk_typ_args<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     substs: &'tcx rustc_middle::ty::List<rustc_middle::ty::GenericArg<'tcx>>,
-    f: DefId,
+    _f: DefId,
     span: Span,
 ) -> Result<vir::ast::Typs, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let substs = remove_host_arg(tcx, f, substs, span)?;
     let mut typ_args: Vec<Typ> = Vec::new();
     for typ_arg in substs {
         match typ_arg.unpack() {

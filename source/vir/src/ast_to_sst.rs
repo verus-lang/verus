@@ -6,11 +6,11 @@ use crate::ast::{
     VariantCheck, VirErr,
 };
 use crate::ast::{BuiltinSpecFun, Exprs};
-use crate::ast_util::{types_equal, undecorate_typ, unit_typ, QUANT_FORALL};
+use crate::ast_util::{QUANT_FORALL, types_equal, undecorate_typ, unit_typ};
 use crate::context::Ctx;
-use crate::def::{unique_local, Spanned};
+use crate::def::{Spanned, unique_local};
 use crate::inv_masks::MaskSet;
-use crate::messages::{error, error_with_secondary_label, internal_error, warning, Span, ToAny};
+use crate::messages::{Span, ToAny, error, error_with_secondary_label, internal_error, warning};
 use crate::sst::{
     Bnd, BndX, CallFun, Dest, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX,
     ParPurpose, Pars, Stm, StmX, UniqueIdent,

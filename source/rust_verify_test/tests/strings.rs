@@ -417,7 +417,7 @@ test_verify_one_file! {
         use vstd::string::*;
         fn test() {
             let a = ("ABC");
-            let b = a.to_string();
+            let b = a.to_owned();
             let c = b.as_str();
             proof {
                 reveal_strlit("ABC");
@@ -558,7 +558,7 @@ test_verify_one_file! {
                 reveal_strlit("world");
             }
 
-            let mut s = ("hello ").to_string();
+            let mut s = ("hello ").to_owned();
             s.append(("world"));
             assert(s@ =~= ("hello world")@);
             s
@@ -582,7 +582,7 @@ test_verify_one_file! {
                 reveal_strlit("world");
             }
 
-            let mut s = ("hello ").to_string();
+            let mut s = ("hello ").to_owned();
             s.append(("world"));
             assert(s@ !~= ("hello worlds")@);
             s
@@ -606,7 +606,7 @@ test_verify_one_file! {
                 reveal_strlit("world");
             }
 
-            let s1 = ("hello ").to_string();
+            let s1 = ("hello ").to_owned();
             let s = s1.concat(("world"));
             assert(s@ =~= ("hello world")@);
             s
@@ -630,7 +630,7 @@ test_verify_one_file! {
                 reveal_strlit("world");
             }
 
-            let s1 = ("hello ").to_string();
+            let s1 = ("hello ").to_owned();
             let s = s1.concat(("world"));
             assert(s@ !~= ("hello worlds")@);
             s

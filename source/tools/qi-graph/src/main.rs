@@ -8,9 +8,9 @@ use std::{
 use getopts::Options;
 use internals_interface::{Graph, Instantiation, InstantiationGraph};
 
+use petgraph::Graph as PGraph;
 use petgraph::algo::is_cyclic_directed;
 use petgraph::graph::NodeIndex;
-use petgraph::Graph as PGraph;
 trait ToDot<N: PartialEq + Eq + std::hash::Hash, E: PartialEq + Eq + std::hash::Hash> {
     fn to_dot_file(
         &self,

@@ -1,7 +1,7 @@
 use crate::ast::Field;
 use crate::ast::{
-    AssertProof, MonoidElt, MonoidStmtType, PostConditionReason, PostConditionReasonField,
-    ShardableType, SimplStmt, SpecialOp, SplitKind, SubIdx, TransitionKind, TransitionStmt, SM,
+    AssertProof, MonoidElt, MonoidStmtType, PostConditionReason, PostConditionReasonField, SM,
+    ShardableType, SimplStmt, SpecialOp, SplitKind, SubIdx, TransitionKind, TransitionStmt,
 };
 use crate::check_bind_stmts::uses_bind;
 use crate::concurrency_tokens::assign_pat_or_arbitrary;

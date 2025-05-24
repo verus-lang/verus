@@ -1,7 +1,7 @@
 //! More sanity checks on transitions, checking properties specifically for
 //! concurrency_tokens.rs
 
-use crate::ast::{SplitKind, TransitionStmt, SM};
+use crate::ast::{SM, SplitKind, TransitionStmt};
 use syn_verus::parse;
 use syn_verus::parse::Error;
 

@@ -5,7 +5,7 @@ use crate::ast::{
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::messages::{error_bare, error_with_label};
 use crate::util::vec_map_result;
 use air::scope_map::ScopeMap;

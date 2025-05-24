@@ -16,8 +16,8 @@ use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::visit::Visit;
 use syn_verus::{
-    braced, bracketed, parenthesized, Block, Error, Expr, ExprBlock, ExprLet, Ident, Macro, Pat,
-    PatIdent, PatOr, Token, Type,
+    Block, Error, Expr, ExprBlock, ExprLet, Ident, Macro, Pat, PatIdent, PatOr, Token, Type,
+    braced, bracketed, parenthesized,
 };
 
 /// Translate Rust AST into a transition AST by parsing our transition DSL.

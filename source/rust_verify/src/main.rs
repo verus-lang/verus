@@ -1,6 +1,6 @@
 #![feature(rustc_private)]
 
-use rust_verify::util::{verus_build_info, VerusBuildProfile};
+use rust_verify::util::{VerusBuildProfile, verus_build_info};
 
 extern crate rustc_driver;
 extern crate rustc_log;
@@ -95,13 +95,9 @@ pub fn main() {
         );
 
     if is_direct_rustc_call {
-        args.insert(0, program);
-        match rust_verify::driver::run_rustc_compiler_directly(&args) {
-            Ok(()) => return,
-            Err(_) => {
-                std::process::exit(1);
-            }
-        }
+        args.insert(0, program.clone());
+        rust_verify::driver::run_rustc_compiler_directly(&args);
+        return;
     }
 
     let via_cargo = via_cargo.then(|| rust_verify::config::parse_cargo_args(&program, &mut args));

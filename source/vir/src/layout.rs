@@ -1,7 +1,7 @@
 use crate::{
     ast::{Typ, TypDecoration, VirErr},
     ast_visitor::map_typ_visitor,
-    messages::{error, Span},
+    messages::{Span, error},
 };
 
 pub fn layout_of_typ_supported(typ: &Typ, span: &Span) -> Result<(), VirErr> {

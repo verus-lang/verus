@@ -2,7 +2,7 @@ use crate::ast::{
     Expr, ExprX, Function, FunctionX, GenericBoundX, Idents, Krate, KrateX, MaskSpec, Typ, TypX,
 };
 use crate::ast_visitor::{
-    expr_visitor_check, expr_visitor_dfs, typ_visitor_check, VisitorControlFlow, VisitorScopeMap,
+    VisitorControlFlow, VisitorScopeMap, expr_visitor_check, expr_visitor_dfs, typ_visitor_check,
 };
 pub use air::ast_util::{ident_binder, str_ident};
 use std::sync::Arc;

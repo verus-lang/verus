@@ -3,7 +3,7 @@
 use crate::ast::INIT_LABEL_TYPE_NAME;
 use crate::ast::TRANSITION_LABEL_TYPE_NAME;
 use crate::ast::{
-    Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition, SM,
+    Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, SM, ShardableType, Transition,
 };
 use crate::ident_visitor::validate_ident;
 use crate::parse_transition::parse_transition;
@@ -11,15 +11,15 @@ use crate::self_type_visitor::replace_self_sm;
 use crate::to_token_stream::shardable_type_to_type;
 use crate::transitions::check_transitions;
 use proc_macro2::Span;
+use syn_verus::Token;
 use syn_verus::buffer::Cursor;
 use syn_verus::parse;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::spanned::Spanned;
-use syn_verus::Token;
 use syn_verus::{
-    braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, FnArgKind, FnMode, GenericArgument,
+    AttrStyle, Attribute, Error, FieldsNamed, FnArg, FnArgKind, FnMode, GenericArgument,
     GenericParam, Generics, Ident, ImplItemFn, Item, ItemFn, Meta, MetaList, PathArguments,
-    Receiver, ReturnType, Type, TypeParam, TypePath, Visibility, WhereClause,
+    Receiver, ReturnType, Type, TypeParam, TypePath, Visibility, WhereClause, braced,
 };
 
 pub struct SMBundle {

@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::ast_util::{dt_as_friendly_rust_name, path_as_friendly_rust_name};
 use crate::context::GlobalCtx;
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::recursion::Node;
 use crate::scc::Graph;
 use std::collections::{HashMap, HashSet};

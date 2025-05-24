@@ -1,14 +1,14 @@
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
-use quote::quote;
 use quote::ToTokens;
+use quote::quote;
+use syn_verus::ExprBlock;
+use syn_verus::Token;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::parse_macro_input;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
-use syn_verus::ExprBlock;
-use syn_verus::Token;
-use syn_verus::{parenthesized, Block, Expr};
+use syn_verus::{Block, Expr, parenthesized};
 
 use crate::cfg_erase;
 use crate::syntax::rewrite_expr;

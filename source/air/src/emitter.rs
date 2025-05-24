@@ -1,6 +1,6 @@
 use crate::ast::{Decl, Expr, Ident, Query};
 use crate::context::SmtSolver;
-use crate::printer::{macro_push_node, NodeWriter, Printer};
+use crate::printer::{NodeWriter, Printer, macro_push_node};
 use crate::{node, nodes};
 use sise::Node;
 use std::io::Write;

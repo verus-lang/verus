@@ -348,7 +348,7 @@ test_verify_one_file! {
         #[verifier(external_type_specification)]
         struct ExFoo<X, const Y: u8, const Z: u16>(Foo<X, Y, Z>);
 
-    } => Err(err) => assert!(err.errors.iter().any(|x| x.message.contains("mismatched types")))
+    } => Err(err) => assert!(err.errors.iter().any(|x| x.message.contains("is not of type")))
 }
 
 test_verify_one_file! {

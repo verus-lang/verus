@@ -1,4 +1,4 @@
-use chrono::{prelude::*, DateTime};
+use chrono::{DateTime, prelude::*};
 use regex::Regex;
 use std::path::PathBuf;
 use std::time::Duration;

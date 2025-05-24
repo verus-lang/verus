@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::ast_util::{ident_binder, mk_and, mk_eq, mk_forall, mk_unnamed_axiom};
 use crate::context::Context;
-use crate::typecheck::{typ_eq, DeclaredX};
+use crate::typecheck::{DeclaredX, typ_eq};
 use crate::util::vec_map;
 use std::sync::Arc;
 

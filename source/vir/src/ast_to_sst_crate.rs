@@ -2,7 +2,7 @@ use crate::ast::{Fun, Krate, VirErr};
 use crate::ast_to_sst_func::function_to_sst;
 use crate::context::Ctx;
 use crate::sst::{FunctionSst, KrateSst, KrateSstX};
-use crate::sst_elaborate::{elaborate_function1, elaborate_function_rewrite_recursive};
+use crate::sst_elaborate::{elaborate_function_rewrite_recursive, elaborate_function1};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 

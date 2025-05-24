@@ -7,7 +7,7 @@ use crate::ast::{
 };
 use crate::context::{Context, SmtSolver};
 use crate::messages::MessageInterface;
-use crate::printer::{node_to_string, Printer};
+use crate::printer::{Printer, node_to_string};
 use crate::scope_map::ScopeMap;
 use crate::util::vec_map;
 use std::collections::HashSet;

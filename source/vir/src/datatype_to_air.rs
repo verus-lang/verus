@@ -2,14 +2,14 @@ use crate::ast::{
     DatatypeTransparency, Dt, Field, Ident, Idents, Mode, Path, Typ, TypX, VarIdent, Variants,
 };
 use crate::ast_util::{
-    air_unique_var, is_visible_to_of_owner, path_as_friendly_rust_name, LowerUniqueVar,
+    LowerUniqueVar, air_unique_var, is_visible_to_of_owner, path_as_friendly_rust_name,
 };
 use crate::context::Ctx;
 use crate::def::{
-    encode_dt_as_path, is_variant_ident, prefix_box, prefix_spec_fn_type, prefix_tuple_param,
-    prefix_type_id, prefix_unbox, variant_field_ident, variant_field_ident_internal, variant_ident,
-    Spanned, QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
-    QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
+    QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
+    QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM, Spanned, encode_dt_as_path,
+    is_variant_ident, prefix_box, prefix_spec_fn_type, prefix_tuple_param, prefix_type_id,
+    prefix_unbox, variant_field_ident, variant_field_ident_internal, variant_ident,
 };
 use crate::messages::Span;
 use crate::sst::{Par, ParPurpose, ParX};

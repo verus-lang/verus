@@ -1,6 +1,6 @@
 use crate::ast::{BinaryOp, Constant, Dt, IntRange, SpannedTyped, Typ, TypX, Typs, UnaryOp};
 use crate::context::Ctx;
-use crate::messages::{error_with_label, Message, Span};
+use crate::messages::{Message, Span, error_with_label};
 use crate::sst::{CallFun, Exp, ExpX};
 use std::sync::Arc;
 

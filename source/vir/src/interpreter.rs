@@ -13,7 +13,7 @@ use crate::ast::{
 use crate::ast_to_sst_func::SstMap;
 use crate::ast_util::{path_as_vstd_name, undecorate_typ};
 use crate::context::GlobalCtx;
-use crate::messages::{error, warning, Message, Span, ToAny};
+use crate::messages::{Message, Span, ToAny, error, warning};
 use crate::sst::{Bnd, BndX, CallFun, Exp, ExpX, Exps, FunctionSst, Trigs, UniqueIdent};
 use crate::sst_util::subst_exp;
 use crate::unicode::valid_unicode_scalar_bigint;

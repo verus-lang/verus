@@ -1,4 +1,4 @@
-use crate::ast::{MonoidStmtType, ShardableType, SpecialOp, SplitKind, TransitionStmt, SM};
+use crate::ast::{MonoidStmtType, SM, ShardableType, SpecialOp, SplitKind, TransitionStmt};
 use proc_macro2::Span;
 use syn_verus::parse;
 use syn_verus::parse::Error;

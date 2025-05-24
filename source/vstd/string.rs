@@ -28,8 +28,17 @@ pub open spec fn new_strlit_spec(s: &str) -> &str {
     s
 }
 
+// TODO: Blocked by https://github.com/verus-lang/verus/issues/1645
+// #[cfg(feature = "alloc")]
+// pub assume_specification[ str::to_string ](s: &str) -> (res: String)
+//     ensures
+//         s@ == res@,
+//         s.is_ascii() == res.is_ascii(),
 #[cfg(feature = "alloc")]
-pub assume_specification[ str::to_string ](s: &str) -> (res: String)
+use crate::alloc::borrow::ToOwned;
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ str::to_owned ](s: &str) -> (res: String)
     ensures
         s@ == res@,
         s.is_ascii() == res.is_ascii(),

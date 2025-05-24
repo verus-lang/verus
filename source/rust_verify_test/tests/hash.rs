@@ -690,8 +690,8 @@ test_verify_one_file! {
             let b = m.is_empty();
             assert(b);
 
-            let three: String = "three".to_string();
-            let six: String = "six".to_string();
+            let three: String = "three".to_owned();
+            let six: String = "six".to_owned();
             m.insert(three.clone(), 4);
 
             let b = m.is_empty();
@@ -743,8 +743,8 @@ test_verify_one_file! {
             let b = m.is_empty();
             assert(b);
 
-            let three: String = "three".to_string();
-            let six: String = "six".to_string();
+            let three: String = "three".to_owned();
+            let six: String = "six".to_owned();
 
             let res = m.insert(three.clone());
             assert(res);
@@ -754,7 +754,7 @@ test_verify_one_file! {
 
             m.insert(six.clone());
 
-            let res = m.insert("three".to_string());
+            let res = m.insert("three".to_owned());
             assert(!res);
 
             assert(!(three@ =~= six@)) by {

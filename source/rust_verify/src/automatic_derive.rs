@@ -38,12 +38,12 @@ pub fn get_action(rust_item: Option<RustItem>) -> AutomaticDeriveAction {
     }
 }
 
-pub fn is_automatically_derived(attrs: &[rustc_ast::Attribute]) -> bool {
+pub fn is_automatically_derived(attrs: &[rustc_hir::Attribute]) -> bool {
     for attr in attrs.iter() {
         match &attr.kind {
-            rustc_ast::AttrKind::Normal(item) => match &item.item.path.segments[..] {
+            rustc_hir::AttrKind::Normal(item) => match &item.path.segments[..] {
                 [segment] => {
-                    if segment.ident.as_str() == "automatically_derived" {
+                    if segment.as_str() == "automatically_derived" {
                         return true;
                     }
                 }

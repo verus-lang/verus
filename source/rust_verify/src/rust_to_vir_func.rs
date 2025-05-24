@@ -1,27 +1,26 @@
-use crate::attributes::{get_mode, get_ret_mode, get_var_mode, AttrPublish, VerifierAttrs};
+use crate::attributes::{AttrPublish, VerifierAttrs, get_mode, get_ret_mode, get_var_mode};
 use crate::automatic_derive::AutomaticDeriveAction;
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::mk_visibility;
 use crate::rust_to_vir_base::{
     check_generics_bounds_no_polarity, def_id_to_vir_path, mid_ty_to_vir, no_body_param_to_var,
 };
-use crate::rust_to_vir_expr::{expr_to_vir, pat_to_mut_var, ExprModifier};
+use crate::rust_to_vir_expr::{ExprModifier, expr_to_vir, pat_to_mut_var};
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::{err_span, err_span_bare};
 use crate::verus_items::{BuiltinTypeItem, VerusItem};
 use crate::{unsupported_err, unsupported_err_unless};
-use rustc_ast::Attribute;
 use rustc_hir::{
-    Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HirId, MaybeOwner, Param,
-    Safety,
+    Attribute, Body, BodyId, Crate, ExprKind, FnDecl, FnHeader, FnSig, Generics, HirId, MaybeOwner,
+    Param, Safety,
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
-    GenericArgsRef, Region, TraitRef, TyCtxt, TyKind,
+    GenericArgsRef, PseudoCanonicalInput, Region, TraitRef, TyCtxt, TyKind, TypingEnv,
 };
+use rustc_span::Span;
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
-use rustc_span::Span;
 use rustc_trait_selection::traits::ImplSource;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -501,9 +500,8 @@ pub(crate) fn handle_external_fn<'tcx>(
     let ty1 = ctxt.tcx.type_of(id).skip_binder();
     let ty2 = ctxt.tcx.type_of(external_id).skip_binder();
 
-    let substs1_early = get_substs_early(ctxt.tcx, ty1, ctxt.tcx.generics_of(id), sig.span)?;
-    let substs2_early =
-        get_substs_early(ctxt.tcx, ty2, ctxt.tcx.generics_of(external_id), sig.span)?;
+    let substs1_early = get_substs_early(ty1, sig.span)?;
+    let substs2_early = get_substs_early(ty2, sig.span)?;
 
     let poly_sig1 = ctxt.tcx.fn_sig(id);
     let poly_sig2 = ctxt.tcx.fn_sig(external_id);
@@ -602,23 +600,14 @@ pub(crate) fn handle_external_fn<'tcx>(
 }
 
 fn get_substs_early<'tcx>(
-    tcx: TyCtxt<'tcx>,
     ty: rustc_middle::ty::Ty<'tcx>,
-    generics: &'tcx rustc_middle::ty::Generics,
     span: Span,
 ) -> Result<GenericArgsRef<'tcx>, VirErr> {
-    let substs = match ty.kind() {
-        rustc_middle::ty::FnDef(_, substs) => substs,
+    match ty.kind() {
+        rustc_middle::ty::FnDef(_, substs) => Ok(substs),
         _ => {
             crate::internal_err!(span, "expected FnDef")
         }
-    };
-    if let Some(host_effect_index) = generics.host_effect_index {
-        let mut s: Vec<_> = substs.iter().collect();
-        s.remove(host_effect_index);
-        Ok(tcx.mk_args(&s))
-    } else {
-        Ok(substs)
     }
 }
 
@@ -690,7 +679,7 @@ fn equalize_substs<'tcx>(
         let region = Region::new_bound(
             tcx,
             rustc_middle::ty::INNERMOST,
-            BoundRegion { var: BoundVar::from(idx), kind: BoundRegionKind::BrAnon },
+            BoundRegion { var: BoundVar::from(idx), kind: BoundRegionKind::Anon },
         );
         l1.push(region);
         l2.push(region);
@@ -753,8 +742,8 @@ fn binders_to_str(l: &rustc_middle::ty::List<rustc_middle::ty::BoundVariableKind
         let s = match &k {
             BoundVariableKind::Ty(BoundTyKind::Anon) => "_",
             BoundVariableKind::Ty(BoundTyKind::Param(_, sym)) => sym.as_str(),
-            BoundVariableKind::Region(BoundRegionKind::BrAnon | BoundRegionKind::BrEnv) => "'_",
-            BoundVariableKind::Region(BoundRegionKind::BrNamed(_, sym)) => sym.as_str(),
+            BoundVariableKind::Region(BoundRegionKind::Anon | BoundRegionKind::ClosureEnv) => "'_",
+            BoundVariableKind::Region(BoundRegionKind::Named(_, sym)) => sym.as_str(),
             BoundVariableKind::Const => "CONST",
         };
         v.push(s.to_string());
@@ -1809,14 +1798,6 @@ fn all_predicates<'tcx>(
     substs: GenericArgsRef<'tcx>,
     preliminarily_try_to_process_and_eliminate_trait_aliases: bool,
 ) -> Vec<Clause<'tcx>> {
-    let substs = if let Some(index) = tcx.generics_of(id).host_effect_index {
-        let b = rustc_middle::ty::Const::from_bool(tcx, true);
-        let mut s: Vec<_> = substs.iter().collect();
-        s.insert(index, b.into());
-        tcx.mk_args(&s)
-    } else {
-        substs
-    };
     let mut trait_alias_clauses: Vec<Clause<'tcx>> = Vec::new();
     let preds = tcx.predicates_of(id);
     if preliminarily_try_to_process_and_eliminate_trait_aliases {
@@ -1928,10 +1909,11 @@ pub(crate) fn get_external_def_id<'tcx>(
         // function definition in the trait definition.
         // We want to resolve to a specific definition in a trait implementation.
         let node_substs = types.node_args(hir_id);
-        let param_env = tcx.param_env(proxy_fun_id);
-        let normalized_substs = tcx.normalize_erasing_regions(param_env, node_substs);
+        let typing_env = TypingEnv::post_analysis(tcx, proxy_fun_id);
+        let normalized_substs = tcx.normalize_erasing_regions(typing_env, node_substs);
         let trait_ref = TraitRef::new(tcx, trait_def_id, normalized_substs);
-        let candidate = tcx.codegen_select_candidate((param_env, trait_ref));
+        let pseudo_canonical_inp = PseudoCanonicalInput { typing_env, value: trait_ref };
+        let candidate = tcx.codegen_select_candidate(pseudo_canonical_inp);
 
         match candidate {
             Ok(ImplSource::UserDefined(u)) => {
@@ -1940,7 +1922,7 @@ pub(crate) fn get_external_def_id<'tcx>(
 
                 let inst = rustc_middle::ty::Instance::try_resolve(
                     tcx,
-                    param_env,
+                    typing_env,
                     external_id,
                     normalized_substs,
                 );
