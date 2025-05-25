@@ -313,7 +313,7 @@ pub broadcast group group_map_axioms {
 #[macro_export]
 macro_rules! map_internal {
     [$($key:expr => $value:expr),* $(,)?] => {
-        $crate::map::Map::empty()
+        $crate::vstd::map::Map::empty()
             $(.insert($key, $value))*
     }
 }
@@ -327,7 +327,7 @@ macro_rules! map_internal {
 #[macro_export]
 macro_rules! map {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::map::map_internal!($($tail)*))
+        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::map::map_internal!($($tail)*))
     };
 }
 
@@ -389,7 +389,7 @@ pub use map;
 #[macro_export]
 macro_rules! assert_maps_equal {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!($crate::map::assert_maps_equal_internal!($($tail)*))
+        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::map::assert_maps_equal_internal!($($tail)*))
     };
 }
 
@@ -406,8 +406,8 @@ macro_rules! assert_maps_equal_internal {
         assert_maps_equal_internal!($m1, $m2, key => { })
     };
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
-        #[verifier::spec] let m1 = $crate::map::check_argument_is_map($m1);
-        #[verifier::spec] let m2 = $crate::map::check_argument_is_map($m2);
+        #[verifier::spec] let m1 = $crate::vstd::map::check_argument_is_map($m1);
+        #[verifier::spec] let m2 = $crate::vstd::map::check_argument_is_map($m2);
         ::builtin::assert_by(::builtin::equal(m1, m2), {
             ::builtin::assert_forall_by(|$k $( : $t )?| {
                 // TODO better error message here: show the individual conjunct that fails,

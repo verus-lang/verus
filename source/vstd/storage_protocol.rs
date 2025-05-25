@@ -162,11 +162,11 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
     /// is defined as the inclusion-closure of invariant, i.e., an element
     /// is valid if there exists another element `x` that, added to it,
     /// meets the invariant.
-    pub axiom fn validate(tracked a: &Self) -> (out: (P, Map<K, V>))
+    pub axiom fn validate(tracked self: &Self) -> (out: (P, Map<K, V>))
         ensures
             ({
                 let (q, t) = out;
-                P::rel(P::op(a.value(), q), t)
+                P::rel(P::op(self.value(), q), t)
             }),
     ;
 
@@ -281,17 +281,17 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.value() == target,
     ;
 
-    pub axiom fn validate_with_shared(tracked p: &mut Self, tracked x: &Self) -> (res: (
+    pub axiom fn validate_with_shared(tracked self: &mut Self, tracked x: &Self) -> (res: (
         P,
         Map<K, V>,
     ))
         requires
-            old(p).loc() == x.loc(),
+            old(self).loc() == x.loc(),
         ensures
-            *p == *old(p),
+            *self == *old(self),
             ({
                 let (q, t) = res;
-                { P::rel(P::op(P::op(p.value(), x.value()), q), t) }
+                { P::rel(P::op(P::op(self.value(), x.value()), q), t) }
             }),
     ;
 
