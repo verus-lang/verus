@@ -227,6 +227,22 @@ impl View for String {
     uninterp spec fn view(&self) -> Seq<char>;
 }
 
+impl DeepView for String {
+    type V = Seq<char>;
+
+    open spec fn deep_view(&self) -> Seq<char> {
+        self.view()
+    }
+}
+
+impl<'a> DeepView for &'a str {
+    type V = Seq<char>;
+
+    open spec fn deep_view(&self) -> Seq<char> {
+        self.view()
+    }
+}
+
 #[cfg(feature = "alloc")]
 impl DeepView for String {
     type V = Seq<char>;
