@@ -16,7 +16,6 @@ const DP_ORDERING: &str = "dp";
 const GROEBNER_APPLY: &str = "groebner";
 const REDUCE_APPLY: &str = "reduce";
 const TO_INTEGER_RING: &str = "integer";
-const QUIT_SINGULAR: &str = "quit";
 
 // Verus-side reserved variable names for encoding purposes
 const RING_R: &str = "ring_R";
@@ -25,20 +24,7 @@ const IDEAL_G: &str = "ideal_G";
 const TMP_PREFIX: &str = "singular_tmp_";
 const USER_VAR_PREFIX: &str = "user_var_";
 
-const RESERVED_KEYWORDS: [&str; 10] = [
-    RING_DECL,
-    IDEAL_DECL,
-    DP_ORDERING,
-    GROEBNER_APPLY,
-    REDUCE_APPLY,
-    TO_INTEGER_RING,
-    QUIT_SINGULAR,
-    RING_R,
-    IDEAL_I,
-    IDEAL_G,
-];
-
-fn sanitize_var_name(name: String) -> String {
+fn sanitize_var_name(name: &String) -> String {
     // From singular docs
     // (See Sec. 3.5.3 of https://www.singular.uni-kl.de/index.php/singular.pdf)
     // Var names should start with a letter
@@ -65,24 +51,6 @@ fn sanitize_var_name(name: String) -> String {
     res
 }
 
-fn assert_not_reserved(name: &str) -> Result<(), String> {
-    for keyword in RESERVED_KEYWORDS {
-        if name == keyword {
-            return Err(format!(
-                "usage of the keyword {} is not supported when using the integer_ring solver",
-                keyword
-            ));
-        }
-    }
-    if name.starts_with(TMP_PREFIX) {
-        return Err(format!(
-            "usage of reserved prefix `{}` in {} is not supported when using the integer_ring solver",
-            TMP_PREFIX, name
-        ));
-    }
-    Ok(())
-}
-
 fn is_zero(expr: &Expr) -> bool {
     if let ExprX::Const(Constant::Nat(ss)) = &**expr {
         return **ss == "0".to_string();
@@ -93,10 +61,90 @@ fn is_zero(expr: &Expr) -> bool {
 struct SingularEncoder {
     tmp_idx: u32,
     node_map: HashMap<Node, Ident>,
+    singular_expr_map: HashMap<SingularExpr, Ident>,
     pp: Printer,
     user_vars: Vec<String>,
-    polys: Vec<String>,
-    mod_poly: Option<String>,
+}
+
+#[derive(PartialEq, Eq, Clone, Hash)]
+enum Var {
+    User(Ident),
+    Tmp(Ident),
+}
+
+#[derive(PartialEq, Eq, Clone, Hash)]
+enum SingularExpr {
+    Binary(BinOp, Box<SingularExpr>, Box<SingularExpr>),
+    Literal(Arc<String>),
+    Var(Var),
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Hash)]
+enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    EuclideanMod,
+}
+
+enum SingularReqClause {
+    Ideal(SingularExpr),
+}
+
+struct SingularEnsClause {
+    // Expression we want to test if it is equals 0
+    eq0: SingularExpr,
+    // If the user writes `ensures a % m == b` or `a % m == b % m` then the m becomes
+    // an extra ideal.
+    modulus: Option<SingularExpr>,
+}
+
+impl SingularExpr {
+    fn to_singular_string(&self) -> String {
+        match self {
+            SingularExpr::Binary(bin_op, lhs, rhs) => {
+                let op = match bin_op {
+                    BinOp::Add => "+",
+                    BinOp::Sub => "-",
+                    BinOp::Mul => "*",
+                    BinOp::EuclideanMod => panic!("EuclideanMod should be translated out"),
+                };
+                let l = lhs.to_singular_string();
+                let r = rhs.to_singular_string();
+                format!("({:} {:} {:})", l, op, r)
+            }
+            SingularExpr::Literal(l) => (**l).clone(),
+            SingularExpr::Var(Var::User(ident)) => sanitize_var_name(&ident),
+            SingularExpr::Var(Var::Tmp(tmp)) => tmp.to_string(),
+        }
+    }
+
+    fn decompose_modulus(&self) -> Option<(&SingularExpr, &SingularExpr)> {
+        match self {
+            SingularExpr::Binary(BinOp::EuclideanMod, a, b) => Some((&*a, &*b)),
+            _ => None,
+        }
+    }
+
+    fn sub(self, rhs: Self) -> Self {
+        SingularExpr::Binary(BinOp::Sub, Box::new(self), Box::new(rhs))
+    }
+
+    fn mul(self, rhs: Self) -> Self {
+        SingularExpr::Binary(BinOp::Mul, Box::new(self), Box::new(rhs))
+    }
+
+    fn modulo(self, rhs: Self) -> Self {
+        SingularExpr::Binary(BinOp::EuclideanMod, Box::new(self), Box::new(rhs))
+    }
+}
+
+impl SingularReqClause {
+    fn to_singular_string(&self) -> String {
+        match self {
+            SingularReqClause::Ideal(r) => r.to_singular_string(),
+        }
+    }
 }
 
 impl SingularEncoder {
@@ -106,57 +154,48 @@ impl SingularEncoder {
         SingularEncoder {
             tmp_idx: 0,
             node_map: HashMap::new(),
+            singular_expr_map: HashMap::new(),
             pp,
             user_vars,
-            polys: vec!["0".to_string()],
-            mod_poly: None,
         }
     }
 
-    fn allocate_temp_var(&mut self) -> String {
+    fn allocate_temp_var(&mut self) -> Arc<String> {
         self.tmp_idx += 1;
         let res = self.tmp_idx;
-        format!("{}{}", TMP_PREFIX, res)
+        Arc::new(format!("{}{}", TMP_PREFIX, res))
     }
 
-    fn expr_to_singular(&mut self, expr: &Expr) -> Result<String, String> {
+    fn expr_to_singular(&mut self, expr: &Expr) -> Result<SingularExpr, String> {
         match &**expr {
-            ExprX::Const(Constant::Nat(n)) => return Ok(n.to_string()),
-            ExprX::Var(x) => {
-                let sanitized = sanitize_var_name(x.to_string());
-                assert_not_reserved(&sanitized)?;
-                return Ok(sanitized);
-            }
+            ExprX::Const(Constant::Nat(n)) => Ok(SingularExpr::Literal(n.clone())),
+            ExprX::Var(x) => Ok(SingularExpr::Var(Var::User(x.clone()))),
             ExprX::Binary(BinaryOp::EuclideanMod, lhs, rhs) => {
                 // x % y ->  x - y * tmp
-                let key = self.pp.expr_to_node(expr);
-                let value = self.node_map.get(&key);
-                let t = match value {
-                    Some(tmp_var) => tmp_var.to_string(),
-                    None => {
-                        let tmp_var = self.allocate_temp_var();
-                        self.node_map.insert(key, Arc::new(tmp_var.clone()));
-                        tmp_var
-                    }
-                };
                 let lhs = self.expr_to_singular(&lhs)?;
                 let rhs = self.expr_to_singular(&rhs)?;
-                return Ok(format!("(({}) - (({})*({})))", lhs, rhs, t));
+                Ok(SingularExpr::Binary(BinOp::EuclideanMod, Box::new(lhs), Box::new(rhs)))
             }
             ExprX::Multi(op, exprs) => {
-                let mut ss = vec![];
-                let sop = match op {
-                    MultiOp::Add => " + ",
-                    MultiOp::Sub => " - ",
-                    MultiOp::Mul => " * ", // still reachable with constant multiplication
+                let bin_op = match op {
+                    MultiOp::Add => BinOp::Add,
+                    MultiOp::Sub => BinOp::Sub,
+                    MultiOp::Mul => BinOp::Mul, // still reachable with constant multiplication
                     _ => {
                         return Err(format!("unsupported integer_ring operator: {:?}", op.clone()));
                     }
                 };
-                for e in &**exprs {
-                    ss.push(format!("({})", self.expr_to_singular(&e)?));
+                assert!(exprs.len() >= 1);
+
+                let mut res = self.expr_to_singular(&exprs[0])?;
+                for e in exprs.iter().skip(1) {
+                    res = SingularExpr::Binary(
+                        bin_op,
+                        Box::new(res),
+                        Box::new(self.expr_to_singular(e)?),
+                    );
                 }
-                return Ok(format!("({})", ss.join(sop)));
+                Ok(res)
             }
             ExprX::Apply(fname, exprs) => {
                 if vir::def::ADD == (**fname).as_str() {
@@ -187,12 +226,12 @@ impl SingularEncoder {
                     let value = self.node_map.get(&key);
                     match value {
                         Some(tmp_var) => {
-                            return Ok(tmp_var.to_string());
+                            return Ok(SingularExpr::Var(Var::Tmp(tmp_var.clone())));
                         }
                         None => {
                             let tmp_var = self.allocate_temp_var();
-                            self.node_map.insert(key, Arc::new(tmp_var.clone()));
-                            return Ok(tmp_var);
+                            self.node_map.insert(key, tmp_var.clone());
+                            return Ok(SingularExpr::Var(Var::Tmp(tmp_var)));
                         }
                     }
                 }
@@ -201,87 +240,117 @@ impl SingularEncoder {
         }
     }
 
-    fn decompose_modulus(&mut self, expr: &Expr) -> Result<Option<(String, String)>, String> {
-        if let ExprX::Binary(BinaryOp::EuclideanMod, a, m) = &**expr {
-            let a = self.expr_to_singular(a)?;
-            let m = self.expr_to_singular(m)?;
-            return Ok(Some((a, m)));
-        }
-
-        if let ExprX::Apply(fname, exprs) = &**expr {
-            if vir::def::EUC_MOD == (**fname).as_str() {
-                if exprs.len() != 2 {
-                    panic!("internal error: singular mod translation");
-                }
-                let a = &exprs[0];
-                let m = &exprs[1];
-                let a = self.expr_to_singular(a)?;
-                let m = self.expr_to_singular(m)?;
-                return Ok(Some((a, m)));
-            }
-        }
-
-        return Ok(None);
-    }
-
-    fn encode_requires_poly(&mut self, expr: &Expr) -> Result<(), String> {
+    fn encode_requires_poly(&mut self, expr: &Expr) -> Result<SingularReqClause, String> {
         if let ExprX::Binary(BinaryOp::Eq, lhs, rhs) = &**expr {
-            let dlhs = self.decompose_modulus(lhs)?;
-            let drhs = self.decompose_modulus(rhs)?;
+            let lhs = self.expr_to_singular(lhs)?;
+            let rhs = self.expr_to_singular(rhs)?;
+
+            let dlhs = lhs.decompose_modulus();
+            let drhs = rhs.decompose_modulus();
 
             if let (Some((a1, m1)), Some((a2, m2))) = (dlhs, drhs) {
                 if m1 == m2 {
-                    let t = self.allocate_temp_var();
-                    self.polys.push(format!("({}) - ({}) - {} * ({})", a1, a2, t, m1));
-                    return Ok(());
+                    return Ok(SingularReqClause::Ideal(
+                        a1.clone().sub(a2.clone()).modulo(m1.clone()),
+                    ));
                 }
                 return Err(format!("requires not sharing divisor in integer_ring"));
             }
 
-            let lhs = self.expr_to_singular(lhs)?;
-            let rhs = self.expr_to_singular(rhs)?;
-            self.polys.push(format!("{} - {}", lhs, rhs));
-            return Ok(());
+            return Ok(SingularReqClause::Ideal(lhs.sub(rhs)));
         }
         return Err(format!("requires not in equational form in integer_ring"));
     }
 
-    fn encode_ensures_poly_inner(&mut self, expr: &Expr) -> Result<String, String> {
-        if let ExprX::Binary(BinaryOp::Eq, lhs, rhs) = &**expr {
-            let dlhs = self.decompose_modulus(lhs)?;
-            let drhs = self.decompose_modulus(rhs)?;
+    fn encode_ensures_poly(&mut self, expr: &Expr) -> Result<SingularEnsClause, String> {
+        if let ExprX::Binary(BinaryOp::Eq, lhs_e, rhs_e) = &**expr {
+            let lhs = self.expr_to_singular(lhs_e)?;
+            let rhs = self.expr_to_singular(rhs_e)?;
 
-            if is_zero(lhs) && drhs.is_some() {
+            let dlhs = lhs.decompose_modulus();
+            let drhs = rhs.decompose_modulus();
+
+            if is_zero(lhs_e) && drhs.is_some() {
                 let (a, m) = drhs.unwrap();
-                self.mod_poly = Some(m);
-                return Ok(format!("({})", a));
+                return Ok(SingularEnsClause { eq0: a.clone(), modulus: Some(m.clone()) });
             }
 
-            if is_zero(rhs) && dlhs.is_some() {
+            if is_zero(rhs_e) && dlhs.is_some() {
                 let (a, m) = dlhs.unwrap();
-                self.mod_poly = Some(m);
-                return Ok(format!("({})", a));
+                return Ok(SingularEnsClause { eq0: a.clone(), modulus: Some(m.clone()) });
             }
 
             if let (Some((a1, m1)), Some((a2, m2))) = (dlhs, drhs) {
                 if m1 == m2 {
-                    self.mod_poly = Some(m1);
-                    return Ok(format!("({}) - ({})", a1, a2));
+                    return Ok(SingularEnsClause {
+                        eq0: a1.clone().sub(a2.clone()),
+                        modulus: Some(m1.clone()),
+                    });
                 }
                 // potentially, we can support this case by not adding the mod_poly, unclear how helpful it would be
                 return Err(format!("integer_ring ensures not sharing divisor: {:?}", expr));
             }
 
-            let lhs = self.expr_to_singular(lhs)?;
-            let rhs = self.expr_to_singular(rhs)?;
-            return Ok(format!("({}) - ({})", lhs, rhs));
+            return Ok(SingularEnsClause { eq0: lhs.sub(rhs), modulus: None });
         }
 
         return Err(format!("integer_ring ensures not in equational form"));
     }
 
-    fn encode_ensures_poly(&mut self, ens: &Expr) -> Result<String, String> {
-        let goal = self.encode_ensures_poly_inner(ens)?;
+    fn translate(&mut self, e: &SingularExpr) -> SingularExpr {
+        match e {
+            SingularExpr::Binary(bin_op, lhs, rhs) => {
+                let l = self.translate(lhs);
+                let r = self.translate(rhs);
+                match bin_op {
+                    BinOp::EuclideanMod => {
+                        let t = match self.singular_expr_map.get(e) {
+                            Some(tmp_var) => tmp_var.clone(),
+                            None => {
+                                let tmp_var = self.allocate_temp_var();
+                                self.singular_expr_map.insert(e.clone(), tmp_var.clone());
+                                tmp_var
+                            }
+                        };
+                        let t = SingularExpr::Var(Var::Tmp(t));
+                        l.sub(r.mul(t))
+                    }
+                    BinOp::Add | BinOp::Sub | BinOp::Mul => {
+                        SingularExpr::Binary(*bin_op, Box::new(l), Box::new(r))
+                    }
+                }
+            }
+            SingularExpr::Literal(_) | SingularExpr::Var(_) => e.clone(),
+        }
+    }
+
+    fn translate_req(&mut self, c: &SingularReqClause) -> SingularReqClause {
+        match c {
+            SingularReqClause::Ideal(s) => SingularReqClause::Ideal(self.translate(s)),
+        }
+    }
+
+    fn translate_ens(&mut self, c: &SingularEnsClause) -> SingularEnsClause {
+        let SingularEnsClause { eq0, modulus } = c;
+        let eq0 = self.translate(eq0);
+        let modulus = match modulus {
+            Some(m) => Some(self.translate(m)),
+            None => None,
+        };
+        SingularEnsClause { eq0, modulus }
+    }
+
+    fn ideals_from_requires(&self, reqs: &[SingularReqClause]) -> Vec<String> {
+        let mut v = vec!["0".to_string()];
+        v.append(&mut reqs.iter().map(|m| m.to_singular_string()).collect::<Vec<_>>());
+        v
+    }
+
+    fn mk_singular_query(
+        &self,
+        ideals_from_requires: &Vec<String>,
+        ens: &SingularEnsClause,
+    ) -> String {
         let ring_string;
         // create tmp variable for uninterpreted functions and mod operator.
         let mut tmp_vars: Vec<String> = vec![];
@@ -298,22 +367,24 @@ impl SingularEncoder {
             tmp_vars.join(","),
             DP_ORDERING
         );
-        let mut ideal_string = format!("{} {} = {}", IDEAL_DECL, IDEAL_I, self.polys.join(",\n"));
 
-        // clear the mod poly, since this does not necessarily apply to the next goal.
-        if let Some(mp) = self.mod_poly.take() {
-            ideal_string.push_str(&format!(",\n{}", mp));
-        }
+        let ideals = match &ens.modulus {
+            None => ideals_from_requires.join(",\n"),
+            Some(r) => {
+                let mut i = ideals_from_requires.clone();
+                i.push(r.to_singular_string());
+                i.join(",\n")
+            }
+        };
+
+        let ideal_string = format!("{} {} = {}", IDEAL_DECL, IDEAL_I, ideals);
 
         let ideal_to_groebner =
             format!("{} {} = {}({})", IDEAL_DECL, IDEAL_G, GROEBNER_APPLY, IDEAL_I);
-        let reduce_string = format!("{}({}, {})", REDUCE_APPLY, goal, IDEAL_G);
+        let reduce_string =
+            format!("{}({}, {})", REDUCE_APPLY, ens.eq0.to_singular_string(), IDEAL_G);
 
-        let res = format!(
-            "{};\n{};\n{};\n{};\n",
-            ring_string, ideal_string, ideal_to_groebner, reduce_string
-        );
-        Ok(res)
+        format!("{};\n{};\n{};\n{};\n", ring_string, ideal_string, ideal_to_groebner, reduce_string)
     }
 }
 
@@ -332,43 +403,68 @@ fn encode_singular_queries(
     let mut vars: Vec<String> = vec![];
     for d in &**query.local {
         if let air::ast::DeclX::Var(name, _typ) = &**d {
-            vars.push(sanitize_var_name(name.to_string()));
+            vars.push(sanitize_var_name(&name));
         }
     }
 
     let mut encoder = SingularEncoder::new(solver, vars);
 
     // encode requires
+
+    let mut req_clauses: Vec<SingularReqClause> = vec![];
     for stmt in &**reqs {
         if let air::ast::StmtX::Assert(_, err, _, expr) = &**stmt {
             let err: vir::messages::Message =
                 err.clone().downcast().expect("unexpected value in Any -> Message conversion");
-            if let Err(info) = encoder.encode_requires_poly(expr) {
-                return Err(ValidityResult::Invalid(
-                    None,
-                    Some(err.clone().secondary_label(func_span, info)),
-                    None,
-                ));
+            match encoder.encode_requires_poly(expr) {
+                Ok(clause) => {
+                    req_clauses.push(clause);
+                }
+                Err(info) => {
+                    return Err(ValidityResult::Invalid(
+                        None,
+                        Some(err.clone().secondary_label(func_span, info)),
+                        None,
+                    ));
+                }
             }
         }
     }
 
     // each ensures is a separate query string
+    let mut ens_clauses: Vec<(SingularEnsClause, vir::messages::Message)> = vec![];
     for stmts in &**enss {
         if let air::ast::StmtX::Assert(_, err, _, expr) = &**stmts {
             let err: vir::messages::Message =
                 err.clone().downcast().expect("unexpected value in Any -> Message conversion");
-            let res = encoder.encode_ensures_poly(expr);
-            if let Err(info) = res {
-                return Err(ValidityResult::Invalid(
-                    None,
-                    Some(err.clone().secondary_label(func_span, info)),
-                    None,
-                ));
+            match encoder.encode_ensures_poly(expr) {
+                Ok(clause) => {
+                    ens_clauses.push((clause, err));
+                }
+                Err(info) => {
+                    return Err(ValidityResult::Invalid(
+                        None,
+                        Some(err.clone().secondary_label(func_span, info)),
+                        None,
+                    ));
+                }
             }
-            queries.push((res.unwrap(), err.clone()));
         }
     }
+
+    for r in req_clauses.iter_mut() {
+        *r = encoder.translate_req(r);
+    }
+    for e in ens_clauses.iter_mut() {
+        e.0 = encoder.translate_ens(&e.0);
+    }
+
+    let ideals = encoder.ideals_from_requires(&req_clauses);
+    for (ens_clause, err) in ens_clauses.iter() {
+        let query = encoder.mk_singular_query(&ideals, ens_clause);
+        queries.push((query, err.clone()));
+    }
+
     return Ok(());
 }
 
