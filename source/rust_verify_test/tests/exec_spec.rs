@@ -496,7 +496,7 @@ test_verify_one_file! {
 
         fn test() {
             let a = ExecMyPair(vec![1, 2, 3], vec![0, 1, 2]);
-            
+
             reveal_with_fuel(pred_helper, 3);
 
             if exec_pred(&a) {
