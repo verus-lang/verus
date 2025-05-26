@@ -142,6 +142,7 @@ impl<T: DeepViewClone> DeepViewClone for Option<T> {
     }
 }
 
+/// TODO: currently not supported by verusfmt
 impl<'a, T: DeepView> ExecSpecEq<'a> for &'a Option<T> where
     &'a T: for <'c> ExecSpecEq<'a, Other<'c> = &'c T>,
 {

@@ -7,7 +7,10 @@ use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::spanned::Spanned;
 use syn_verus::token::Comma;
 use syn_verus::{
-    parse_macro_input, Arm, BinOp, Block, Error, Expr, ExprMatches, Fields, FnArgKind, FnMode, GenericArgument, Ident, Index, Item, ItemEnum, ItemFn, ItemStruct, Lit, MatchesOpExpr, MatchesOpToken, Member, Pat, PatType, Path, PathArguments, PathSegment, ReturnType, Stmt, Type, UnOp, Visibility
+    parse_macro_input, Arm, BinOp, Block, Error, Expr, ExprMatches, Fields, FnArgKind, FnMode,
+    GenericArgument, Ident, Index, Item, ItemEnum, ItemFn, ItemStruct, Lit, MatchesOpExpr,
+    MatchesOpToken, Member, Pat, PatType, Path, PathArguments, PathSegment, ReturnType, Stmt, Type,
+    UnOp, Visibility,
 };
 
 /// Checks if the given path is of the form
@@ -29,8 +32,7 @@ fn is_path_eq(path: &Path, idents: &[&str]) -> bool {
 /// as a type
 fn get_seg_type_arg(seg: &PathSegment, n: usize) -> Result<&Type, Error> {
     match &seg.arguments {
-        PathArguments::AngleBracketed(args)
-        if n < args.args.len() => {
+        PathArguments::AngleBracketed(args) if n < args.args.len() => {
             if let GenericArgument::Type(typ) = &args.args[n] {
                 Ok(typ)
             } else {
@@ -45,7 +47,8 @@ fn get_seg_type_arg(seg: &PathSegment, n: usize) -> Result<&Type, Error> {
 fn get_simple_pat(pat: &Pat) -> Result<(&Ident, Option<Box<Type>>), Error> {
     if let Pat::Ident(pat_ident) = pat {
         return Ok((&pat_ident.ident, None));
-    } if let Pat::Type(PatType { pat, ty, .. }) = pat {
+    }
+    if let Pat::Type(PatType { pat, ty, .. }) = pat {
         if let Pat::Ident(pat_ident) = pat.as_ref() {
             return Ok((&pat_ident.ident, Some(ty.clone())));
         }
@@ -138,7 +141,9 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
         // Treat tuples as special case since we
         // can't enumerate all possible impls for them
         Type::Tuple(type_tuple) => {
-            let types = type_tuple.elems.iter()
+            let types = type_tuple
+                .elems
+                .iter()
                 .map(|ty| compile_type(ty, TypeKind::Owned))
                 .collect::<Result<Vec<_>, Error>>()?;
             return match ctx {
@@ -153,10 +158,8 @@ fn compile_type(typ: &Type, ctx: TypeKind) -> Result<TokenStream2, Error> {
     // Otherwise we assume that the type has
     // ExecSpecType implemented
     Ok(match ctx {
-        TypeKind::Owned =>
-            quote! { <#typ as ::vstd::exec_spec::ExecSpecType>::ExecOwnedType },
-        TypeKind::Ref =>
-            quote! { <#typ as ::vstd::exec_spec::ExecSpecType>::ExecRefType<'_> },
+        TypeKind::Owned => quote! { <#typ as ::vstd::exec_spec::ExecSpecType>::ExecOwnedType },
+        TypeKind::Ref => quote! { <#typ as ::vstd::exec_spec::ExecSpecType>::ExecRefType<'_> },
     })
 }
 
@@ -167,25 +170,29 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
     }
 
     let spec_name = &item_struct.ident;
-    let exec_name: Ident = Ident::new(
-        &format!("Exec{}", item_struct.ident.to_string()),
-        item_struct.span(),
-    );
+    let exec_name: Ident =
+        Ident::new(&format!("Exec{}", item_struct.ident.to_string()), item_struct.span());
 
     // Generate the fields
     let exec_fields = match &item_struct.fields {
         Fields::Named(fields_named) => {
-            let fields = fields_named.named.iter().map(|field| {
-                let vis = &field.vis;
-                let field_name = field.ident.as_ref().unwrap();
-                let field_type = compile_type(&field.ty, TypeKind::Owned)?;
-                Ok(quote! { #vis #field_name: #field_type })
-            }).collect::<Result<Vec<_>, Error>>()?;
+            let fields = fields_named
+                .named
+                .iter()
+                .map(|field| {
+                    let vis = &field.vis;
+                    let field_name = field.ident.as_ref().unwrap();
+                    let field_type = compile_type(&field.ty, TypeKind::Owned)?;
+                    Ok(quote! { #vis #field_name: #field_type })
+                })
+                .collect::<Result<Vec<_>, Error>>()?;
 
             quote! { { #(#fields,)* } }
         }
         Fields::Unnamed(fields_unnamed) => {
-            let fields = fields_unnamed.unnamed.iter()
+            let fields = fields_unnamed
+                .unnamed
+                .iter()
                 .map(|field| {
                     let vis = &field.vis;
                     let field_type = compile_type(&field.ty, TypeKind::Owned)?;
@@ -209,12 +216,10 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
             quote! { #spec_name { #(#field_views,)* } }
         }
         Fields::Unnamed(fields_unnamed) => {
-            let field_views = fields_unnamed.unnamed.iter()
-                .enumerate()
-                .map(|(i, _)| {
-                    let i = Index::from(i);
-                    quote! { self.#i.deep_view() }
-                });
+            let field_views = fields_unnamed.unnamed.iter().enumerate().map(|(i, _)| {
+                let i = Index::from(i);
+                quote! { self.#i.deep_view() }
+            });
 
             quote! { #spec_name(#(#field_views,)*) }
         }
@@ -232,12 +237,10 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
             quote! { #exec_name { #(#field_views,)* } }
         }
         Fields::Unnamed(fields_unnamed) => {
-            let field_views = fields_unnamed.unnamed.iter()
-                .enumerate()
-                .map(|(i, _)| {
-                    let i = Index::from(i);
-                    quote! { self.#i.deep_clone() }
-                });
+            let field_views = fields_unnamed.unnamed.iter().enumerate().map(|(i, _)| {
+                let i = Index::from(i);
+                quote! { self.#i.deep_clone() }
+            });
 
             quote! { #exec_name(#(#field_views,)*) }
         }
@@ -245,16 +248,14 @@ fn compile_struct(item_struct: &ItemStruct) -> Result<TokenStream2, Error> {
     };
 
     let vis = &item_struct.vis;
-    
+
     // Only open the view if the struct and all fields are public
     let open_or_close = if let Visibility::Public(..) = item_struct.vis {
-        if item_struct.fields.iter().all(|field| {
-            if let Visibility::Public(..) = field.vis {
-                true
-            } else {
-                false
-            }
-        }) {
+        if item_struct
+            .fields
+            .iter()
+            .all(|field| if let Visibility::Public(..) = field.vis { true } else { false })
+        {
             quote! { open }
         } else {
             quote! { closed }
@@ -310,40 +311,48 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
     }
 
     let spec_name = &item_enum.ident;
-    let exec_name: Ident = Ident::new(
-        &format!("Exec{}", item_enum.ident.to_string()),
-        item_enum.span(),
-    );
+    let exec_name: Ident =
+        Ident::new(&format!("Exec{}", item_enum.ident.to_string()), item_enum.span());
 
     // Compile the type of each variant
-    let exec_variants = item_enum.variants.iter().map(|variant| {
-        let name = &variant.ident;
+    let exec_variants = item_enum
+        .variants
+        .iter()
+        .map(|variant| {
+            let name = &variant.ident;
 
-        Ok(match &variant.fields {
-            Fields::Unit => quote! { #name },
-            Fields::Named(fields_named) => {
-                let fields = fields_named.named.iter().map(|field| {
-                        let field_name = field.ident.as_ref().unwrap();
-                        let typ = compile_type(&field.ty, TypeKind::Owned)?;
-                        Ok(quote! { #field_name: #typ })
-                    }).collect::<Result<Vec<_>, Error>>()?;
+            Ok(match &variant.fields {
+                Fields::Unit => quote! { #name },
+                Fields::Named(fields_named) => {
+                    let fields = fields_named
+                        .named
+                        .iter()
+                        .map(|field| {
+                            let field_name = field.ident.as_ref().unwrap();
+                            let typ = compile_type(&field.ty, TypeKind::Owned)?;
+                            Ok(quote! { #field_name: #typ })
+                        })
+                        .collect::<Result<Vec<_>, Error>>()?;
 
-                quote! {
-                    #name {
-                        #(#fields,)*
+                    quote! {
+                        #name {
+                            #(#fields,)*
+                        }
                     }
                 }
-            }
-            Fields::Unnamed(fields_unnamed) => {
-                let fields = fields_unnamed.unnamed.iter()
-                    .map(|field| compile_type(&field.ty, TypeKind::Owned))
-                    .collect::<Result<Vec<_>, Error>>()?;
-                quote! {
-                    #name(#(#fields,)*)
+                Fields::Unnamed(fields_unnamed) => {
+                    let fields = fields_unnamed
+                        .unnamed
+                        .iter()
+                        .map(|field| compile_type(&field.ty, TypeKind::Owned))
+                        .collect::<Result<Vec<_>, Error>>()?;
+                    quote! {
+                        #name(#(#fields,)*)
+                    }
                 }
-            }
+            })
         })
-    }).collect::<Result<Vec<_>, Error>>()?;
+        .collect::<Result<Vec<_>, Error>>()?;
 
     // Match arms in the DeepView implementation
     let deep_view_variant_arms = item_enum.variants.iter()
@@ -430,7 +439,7 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
         #vis enum #exec_name {
             #(#exec_variants,)*
         }
-    
+
         impl ExecSpecType for #spec_name {
             type ExecOwnedType = #exec_name;
             type ExecRefType<'a> = &'a #exec_name;
@@ -471,23 +480,31 @@ fn compile_enum(item_enum: &ItemEnum) -> Result<TokenStream2, Error> {
 
 /// Compiles a spec fn to the exec fn signature
 fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Error> {
-    let spec_params = item_fn.sig.inputs.iter().map(|param| {
-        if let FnArgKind::Typed(pat_type) = &param.kind {
-            let name = &pat_type.pat;
-            let (name, _) = get_simple_pat(name)?;
-            Ok((name, pat_type.ty.as_ref()))
-        } else {
-            Err(Error::new_spanned(param, "unsupported parameter type"))
-        }
-    }).collect::<Result<Vec<_>, Error>>()?;
+    let spec_params = item_fn
+        .sig
+        .inputs
+        .iter()
+        .map(|param| {
+            if let FnArgKind::Typed(pat_type) = &param.kind {
+                let name = &pat_type.pat;
+                let (name, _) = get_simple_pat(name)?;
+                Ok((name, pat_type.ty.as_ref()))
+            } else {
+                Err(Error::new_spanned(param, "unsupported parameter type"))
+            }
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
 
     // Compile parameters
-    let params = spec_params.iter().map(|(name, typ)| {
-        ctx.add_param((*name).clone());
-        let typ = compile_type(typ, TypeKind::Ref)?;
-        Ok(quote! { #name: #typ })
-    }).collect::<Result<Vec<_>, Error>>()?;
-    
+    let params = spec_params
+        .iter()
+        .map(|(name, typ)| {
+            ctx.add_param((*name).clone());
+            let typ = compile_type(typ, TypeKind::Ref)?;
+            Ok(quote! { #name: #typ })
+        })
+        .collect::<Result<Vec<_>, Error>>()?;
+
     // Compile return type
     let ret_type = match &item_fn.sig.output {
         ReturnType::Default => quote! { () },
@@ -499,10 +516,7 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
 
     let vis = &item_fn.vis;
     let spec_name = &item_fn.sig.ident;
-    let exec_name = Ident::new(
-        &format!("exec_{}", spec_name.to_string()),
-        spec_name.span(),
-    );
+    let exec_name = Ident::new(&format!("exec_{}", spec_name.to_string()), spec_name.span());
 
     // Generate a specification stating that
     //   requires <recommends clause of spec_f>
@@ -510,19 +524,21 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
     //   decreases <decreases clause of spec_f>
 
     // Substitute each spec var with <exec_var>.deep_view()
-    let bindings = spec_params.iter()
-        .map(|(name, typ)|
+    let bindings = spec_params
+        .iter()
+        .map(|(name, typ)| {
             quote! {
                 let #name: #typ = #name.deep_view();
-            })
+            }
+        })
         .collect::<Vec<_>>();
 
     let mut requires = if let Some(recommends) = &item_fn.sig.spec.recommends {
-        let requires = recommends.exprs.exprs.iter()
-            .map(|expr|
-                quote! {
-                    ({ #(#bindings)* #expr })
-                });
+        let requires = recommends.exprs.exprs.iter().map(|expr| {
+            quote! {
+                ({ #(#bindings)* #expr })
+            }
+        });
 
         quote! {
             #(#requires,)*
@@ -532,11 +548,11 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
     };
 
     let decreases = if let Some(decreases) = &item_fn.sig.spec.decreases {
-        let decrease_exprs = decreases.decreases.exprs.exprs.iter()
-            .map(|expr|
-                quote! {
-                    ({ #(#bindings)* #expr })
-                });
+        let decrease_exprs = decreases.decreases.exprs.exprs.iter().map(|expr| {
+            quote! {
+                ({ #(#bindings)* #expr })
+            }
+        });
 
         // When clauses are put into the requires clause
         // since it is only supported in spec mode
@@ -557,10 +573,9 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
         quote! {}
     };
 
-    let args_deep_view = spec_params.iter()
-        .map(|(name, _)| {
-            quote! { #name.deep_view() }
-        });
+    let args_deep_view = spec_params.iter().map(|(name, _)| {
+        quote! { #name.deep_view() }
+    });
 
     let ext_eq = BinOp::ExtDeepEq(Default::default());
 
@@ -585,10 +600,7 @@ struct LocalCtx {
 
 impl LocalCtx {
     fn new() -> Self {
-        LocalCtx {
-            params: HashSet::new(),
-            locals: HashSet::new(),
-        }
+        LocalCtx { params: HashSet::new(), locals: HashSet::new() }
     }
 
     fn add_param(&mut self, ident: Ident) {
@@ -605,10 +617,11 @@ impl LocalCtx {
 fn compile_pat_path(path: &Path) -> Result<Path, Error> {
     if path.segments.len() <= 2 {
         // Special case: do not change Some, None, Ok, Err
-        if is_path_eq(path, &["Some"]) ||
-            is_path_eq(path, &["None"]) ||
-            is_path_eq(path, &["Ok"]) ||
-            is_path_eq(path, &["Err"]) {
+        if is_path_eq(path, &["Some"])
+            || is_path_eq(path, &["None"])
+            || is_path_eq(path, &["Ok"])
+            || is_path_eq(path, &["Err"])
+        {
             return Ok(path.clone());
         }
 
@@ -633,29 +646,33 @@ enum ExprPathKind {
 /// Infers the kind of path based on context and the form of the path
 /// TODO: a bit ad-hoc
 fn infer_expr_path_kind(ctx: &LocalCtx, path: &Path) -> ExprPathKind {
-    if is_path_eq(path, &["Some"]) ||
-        is_path_eq(path, &["None"]) ||
-        is_path_eq(path, &["Ok"]) ||
-        is_path_eq(path, &["Err"]) {
+    if is_path_eq(path, &["Some"])
+        || is_path_eq(path, &["None"])
+        || is_path_eq(path, &["Ok"])
+        || is_path_eq(path, &["Err"])
+    {
         return ExprPathKind::StructOrEnum;
     }
 
     // e.g. usize::MAX, usize::MIN, ...
     if path.segments.len() == 2 {
         // Check if the last segment is all capital letters
-        let all_capitals = path.segments
-            .last().as_ref()
-            .unwrap().ident
-            .to_string().chars()
+        let all_capitals = path
+            .segments
+            .last()
+            .as_ref()
+            .unwrap()
+            .ident
+            .to_string()
+            .chars()
             .all(|c| c.is_uppercase());
 
         let first_seg = path.segments[0].ident.to_string();
 
         if all_capitals {
             match first_seg.as_str() {
-                "usize" | "u8" | "u16" | "u32" | "u64" | "u128" |
-                "isize" | "i8" | "i16" | "i32" | "i64" | "i128" |
-                "char" | "f32" | "f64" => return ExprPathKind::Constant,
+                "usize" | "u8" | "u16" | "u32" | "u64" | "u128" | "isize" | "i8" | "i16"
+                | "i32" | "i64" | "i128" | "char" | "f32" | "f64" => return ExprPathKind::Constant,
                 _ => {}
             }
         }
@@ -677,42 +694,34 @@ fn infer_expr_path_kind(ctx: &LocalCtx, path: &Path) -> ExprPathKind {
     // it is a struct/enum name; otherwise we assume that
     // it is a function name
 
-    let has_capital = path.segments.iter().any(|seg| {
-        seg.ident.to_string().chars().any(|c| c.is_uppercase())
-    });
+    let has_capital =
+        path.segments.iter().any(|seg| seg.ident.to_string().chars().any(|c| c.is_uppercase()));
 
     if has_capital {
-        if path.segments.len() <= 2 {
-            ExprPathKind::StructOrEnum
-        } else {
-            ExprPathKind::Unknown
-        }
+        if path.segments.len() <= 2 { ExprPathKind::StructOrEnum } else { ExprPathKind::Unknown }
     } else {
-        if path.segments.len() != 0 {
-            ExprPathKind::FnName
-        } else {
-            ExprPathKind::Unknown
-        }
+        if path.segments.len() != 0 { ExprPathKind::FnName } else { ExprPathKind::Unknown }
     }
 }
 
 /// Similar to `compile_pat_path`, but for paths occurring in expressions
 /// TODO: find ways to make this more reliable
-fn compile_expr_path(ctx: &LocalCtx, path: &Path, known_kind: Option<ExprPathKind>) -> Result<(Path, ExprPathKind), Error> {
+fn compile_expr_path(
+    ctx: &LocalCtx,
+    path: &Path,
+    known_kind: Option<ExprPathKind>,
+) -> Result<(Path, ExprPathKind), Error> {
     // Special case: do not change Some, None, Ok, Err
-    if is_path_eq(path, &["Some"]) ||
-        is_path_eq(path, &["None"]) ||
-        is_path_eq(path, &["Ok"]) ||
-        is_path_eq(path, &["Err"]) {
+    if is_path_eq(path, &["Some"])
+        || is_path_eq(path, &["None"])
+        || is_path_eq(path, &["Ok"])
+        || is_path_eq(path, &["Err"])
+    {
         return Ok((path.clone(), ExprPathKind::StructOrEnum));
     }
 
     // Get or infer the path kind
-    let kind = if let Some(kind) = known_kind {
-        kind
-    } else {
-        infer_expr_path_kind(ctx, path)
-    };
+    let kind = if let Some(kind) = known_kind { kind } else { infer_expr_path_kind(ctx, path) };
 
     let new_path = match kind {
         // Do not change local variables or function parameters
@@ -720,8 +729,7 @@ fn compile_expr_path(ctx: &LocalCtx, path: &Path, known_kind: Option<ExprPathKin
         ExprPathKind::FnName => prefix_nth_segment(path, "exec_", path.segments.len() - 1)?,
         ExprPathKind::StructOrEnum => prefix_nth_segment(path, "Exec", 0)?,
         ExprPathKind::Constant => path.clone(),
-        ExprPathKind::Unknown =>
-            return Err(Error::new_spanned(path, "unknown path kind")),
+        ExprPathKind::Unknown => return Err(Error::new_spanned(path, "unknown path kind")),
     };
 
     Ok((new_path, kind))
@@ -729,15 +737,19 @@ fn compile_expr_path(ctx: &LocalCtx, path: &Path, known_kind: Option<ExprPathKin
 
 /// Compile a spec mode pattern to an exec mode pattern
 /// potentially shadowing some local variables
-/// 
+///
 /// For paths occurring in the patterns,
 /// we assume that they are only used in two ways:
 ///   - SpecEnumName::Variant => ExecSpecEnumName::ExecVariant
 ///   - SpecStructName => ExecSpecStructName
-/// 
+///
 /// i.e. for paths of length 2, we prefix the first segment with `Exec`
 /// and for paths of length 1, we prefix the last segment with `Exec`
-fn compile_pattern(ctx: &mut LocalCtx, pat: &Pat, new_locals: &mut HashSet<Ident>) -> Result<TokenStream2, Error> {
+fn compile_pattern(
+    ctx: &mut LocalCtx,
+    pat: &Pat,
+    new_locals: &mut HashSet<Ident>,
+) -> Result<TokenStream2, Error> {
     match pat {
         Pat::Ident(pat_ident) => {
             // TODO: why do we need this case?
@@ -763,7 +775,9 @@ fn compile_pattern(ctx: &mut LocalCtx, pat: &Pat, new_locals: &mut HashSet<Ident
 
         Pat::TupleStruct(pat_tuple_struct) => {
             let new_path = compile_pat_path(&pat_tuple_struct.path)?;
-            let pats = pat_tuple_struct.elems.iter()
+            let pats = pat_tuple_struct
+                .elems
+                .iter()
                 .map(|pat| compile_pattern(ctx, pat, new_locals))
                 .collect::<Result<Vec<_>, Error>>()?;
 
@@ -774,7 +788,9 @@ fn compile_pattern(ctx: &mut LocalCtx, pat: &Pat, new_locals: &mut HashSet<Ident
 
         Pat::Struct(pat_struct) => {
             let new_path = compile_pat_path(&pat_struct.path)?;
-            let pats = pat_struct.fields.iter()
+            let pats = pat_struct
+                .fields
+                .iter()
                 .map(|field| {
                     let Member::Named(name) = &field.member else {
                         return Err(Error::new_spanned(field, "unsupported unamed field pattern"));
@@ -798,7 +814,9 @@ fn compile_pattern(ctx: &mut LocalCtx, pat: &Pat, new_locals: &mut HashSet<Ident
         }
 
         Pat::Tuple(pat_tuple) => {
-            let pats = pat_tuple.elems.iter()
+            let pats = pat_tuple
+                .elems
+                .iter()
                 .map(|pat| compile_pattern(ctx, pat, new_locals))
                 .collect::<Result<Vec<_>, Error>>()?;
 
@@ -812,7 +830,6 @@ fn compile_pattern(ctx: &mut LocalCtx, pat: &Pat, new_locals: &mut HashSet<Ident
         // Pat::Or(pat_or) => todo!(),
         // Pat::Macro(pat_macro) => todo!(),
         // Pat::Lit(pat_lit) => todo!(),
-
         _ => Err(Error::new_spanned(pat, "unsupported pattern")),
     }
 }
@@ -842,21 +859,22 @@ fn compile_match_arm(ctx: &LocalCtx, arm: &Arm) -> Result<TokenStream2, Error> {
 }
 
 /// Compiles an expression
-/// 
+///
 /// Suppose the original expression has (spec) type `T`
 /// the exec expression returned from this function should
 /// have the type `T::ExecRefType<'_>`
 fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
     match expr {
-        Expr::Lit(lit) =>
-            match &lit.lit {
-                Lit::Str(..) | Lit::Byte(..) |
-                Lit::Char(..) | Lit::Int(..) |
-                Lit::Float(..) | Lit::Bool(..) =>
-                    Ok(quote! { #lit }),
+        Expr::Lit(lit) => match &lit.lit {
+            Lit::Str(..)
+            | Lit::Byte(..)
+            | Lit::Char(..)
+            | Lit::Int(..)
+            | Lit::Float(..)
+            | Lit::Bool(..) => Ok(quote! { #lit }),
 
-                _ => Err(Error::new_spanned(lit, "unsupported literal")),
-            }
+            _ => Err(Error::new_spanned(lit, "unsupported literal")),
+        },
 
         // Blocks have the owned type, so we need to
         // convert back a reference again
@@ -867,7 +885,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
 
         // Macro invocations get passed through
         // except for the case of `seq![...]` => `&[...]`
-        Expr::Macro(expr_macro) =>
+        Expr::Macro(expr_macro) => {
             if is_path_eq(&expr_macro.mac.path, &["seq"]) {
                 let spec_args = &expr_macro.mac.tokens;
 
@@ -875,7 +893,10 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                 let args = syn_verus::parse2::<Exprs>(spec_args.clone())?;
 
                 // Compile each argument
-                let args = args.0.iter().map(|arg| compile_expr(ctx, arg))
+                let args = args
+                    .0
+                    .iter()
+                    .map(|arg| compile_expr(ctx, arg))
                     .collect::<Result<Vec<_>, Error>>()?;
 
                 // We need to convert each argument to the owned type
@@ -887,7 +908,8 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                 }).get_ref() })
             } else {
                 Ok(quote! { #expr_macro })
-            },
+            }
+        }
 
         Expr::Paren(expr_paren) => {
             let inner = compile_expr(ctx, &expr_paren.expr)?;
@@ -913,16 +935,12 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             match kind {
                 ExprPathKind::Param => Ok(quote! { #new_path }),
                 ExprPathKind::Local => Ok(quote! { (#new_path).get_ref() }),
-                ExprPathKind::FnName => Err(Error::new_spanned(
-                    expr_path,
-                    "unsupported path expression",
-                )),
+                ExprPathKind::FnName => {
+                    Err(Error::new_spanned(expr_path, "unsupported path expression"))
+                }
                 ExprPathKind::StructOrEnum => Ok(quote! { (#new_path).get_ref() }),
                 ExprPathKind::Constant => Ok(quote! { #new_path }),
-                _ => Err(Error::new_spanned(
-                    expr_path,
-                    "unsupported path expression",
-                )),
+                _ => Err(Error::new_spanned(expr_path, "unsupported path expression")),
             }
         }
 
@@ -934,86 +952,90 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         // we can just apply the operator directly
         //
         // We also support equality (TODO)
-        Expr::Binary(expr_binary) =>
-            match &expr_binary.op {
-                BinOp::Eq(..) => {
-                    let left = compile_expr(ctx, &expr_binary.left)?;
-                    let right = compile_expr(ctx, &expr_binary.right)?;
-                    Ok(quote! { ExecSpecEq::exec_eq(#left, #right) })
-                }
-
-                BinOp::Ne(..) => {
-                    let left = compile_expr(ctx, &expr_binary.left)?;
-                    let right = compile_expr(ctx, &expr_binary.right)?;
-                    Ok(quote! { !ExecSpecEq::exec_eq(#left, #right) })
-                }
-
-                // TODO
-                // BinOp::BigEq(..) => todo!(),
-                // BinOp::BigNe(..) => todo!(),
-                // BinOp::ExtEq(..) => todo!(),
-                // BinOp::ExtNe(..) => todo!(),
-                // BinOp::ExtDeepEq(..) => todo!(),
-                // BinOp::ExtDeepNe(..) => todo!(),
-
-                BinOp::Add(..) | BinOp::Sub(..) |
-                BinOp::Mul(..) | BinOp::Div(..) |
-                BinOp::Rem(..) |
-                BinOp::And(..) | BinOp::Or(..) |
-                BinOp::BitXor(..) | BinOp::BitAnd(..) |
-                BinOp::BitOr(..) | BinOp::Shl(..) | BinOp::Shr(..) |
-                BinOp::Lt(..) | BinOp::Le(..) |
-                BinOp::Ge(..) | BinOp::Gt(..)  => {
-                    let op = &expr_binary.op;
-                    let left = compile_expr(ctx, &expr_binary.left)?;
-                    let right = compile_expr(ctx, &expr_binary.right)?;
-
-                    Ok(quote! { #left #op #right })
-                }
-
-                // `a ==> b` to `!a || b`
-                BinOp::Imply(..) => {
-                    let left = compile_expr(ctx, &expr_binary.left)?;
-                    let right = compile_expr(ctx, &expr_binary.right)?;
-                    Ok(quote! { !(#left) || (#right) })
-                }
-
-                // `a <== b` to `!b || a`
-                BinOp::Exply(..) => {
-                    let left = compile_expr(ctx, &expr_binary.left)?;
-                    let right = compile_expr(ctx, &expr_binary.right)?;
-                    Ok(quote! { !(#right) || (#left) })
-                }
-
-                // `a <==> b` to `a == b`
-                BinOp::Equiv(..) => {
-                    let left = compile_expr(ctx, &expr_binary.left)?;
-                    let right = compile_expr(ctx, &expr_binary.right)?;
-                    Ok(quote! { ExecSpecEq::exec_eq(#left, #right) })
-                }
-                
-                // No plan to support
-                // BinOp::AddAssign(plus_eq) => todo!(),
-                // BinOp::SubAssign(minus_eq) => todo!(),
-                // BinOp::MulAssign(star_eq) => todo!(),
-                // BinOp::DivAssign(slash_eq) => todo!(),
-                // BinOp::RemAssign(percent_eq) => todo!(),
-                // BinOp::BitXorAssign(caret_eq) => todo!(),
-                // BinOp::BitAndAssign(and_eq) => todo!(),
-                // BinOp::BitOrAssign(or_eq) => todo!(),
-                // BinOp::ShlAssign(shl_eq) => todo!(),
-                // BinOp::ShrAssign(shr_eq) => todo!(),
-
-                _ => Err(Error::new_spanned(expr_binary, "unsupported binary operator")),
+        Expr::Binary(expr_binary) => match &expr_binary.op {
+            BinOp::Eq(..) => {
+                let left = compile_expr(ctx, &expr_binary.left)?;
+                let right = compile_expr(ctx, &expr_binary.right)?;
+                Ok(quote! { ExecSpecEq::exec_eq(#left, #right) })
             }
+
+            BinOp::Ne(..) => {
+                let left = compile_expr(ctx, &expr_binary.left)?;
+                let right = compile_expr(ctx, &expr_binary.right)?;
+                Ok(quote! { !ExecSpecEq::exec_eq(#left, #right) })
+            }
+
+            // TODO
+            // BinOp::BigEq(..) => todo!(),
+            // BinOp::BigNe(..) => todo!(),
+            // BinOp::ExtEq(..) => todo!(),
+            // BinOp::ExtNe(..) => todo!(),
+            // BinOp::ExtDeepEq(..) => todo!(),
+            // BinOp::ExtDeepNe(..) => todo!(),
+            BinOp::Add(..)
+            | BinOp::Sub(..)
+            | BinOp::Mul(..)
+            | BinOp::Div(..)
+            | BinOp::Rem(..)
+            | BinOp::And(..)
+            | BinOp::Or(..)
+            | BinOp::BitXor(..)
+            | BinOp::BitAnd(..)
+            | BinOp::BitOr(..)
+            | BinOp::Shl(..)
+            | BinOp::Shr(..)
+            | BinOp::Lt(..)
+            | BinOp::Le(..)
+            | BinOp::Ge(..)
+            | BinOp::Gt(..) => {
+                let op = &expr_binary.op;
+                let left = compile_expr(ctx, &expr_binary.left)?;
+                let right = compile_expr(ctx, &expr_binary.right)?;
+
+                Ok(quote! { #left #op #right })
+            }
+
+            // `a ==> b` to `!a || b`
+            BinOp::Imply(..) => {
+                let left = compile_expr(ctx, &expr_binary.left)?;
+                let right = compile_expr(ctx, &expr_binary.right)?;
+                Ok(quote! { !(#left) || (#right) })
+            }
+
+            // `a <== b` to `!b || a`
+            BinOp::Exply(..) => {
+                let left = compile_expr(ctx, &expr_binary.left)?;
+                let right = compile_expr(ctx, &expr_binary.right)?;
+                Ok(quote! { !(#right) || (#left) })
+            }
+
+            // `a <==> b` to `a == b`
+            BinOp::Equiv(..) => {
+                let left = compile_expr(ctx, &expr_binary.left)?;
+                let right = compile_expr(ctx, &expr_binary.right)?;
+                Ok(quote! { ExecSpecEq::exec_eq(#left, #right) })
+            }
+
+            // No plan to support
+            // BinOp::AddAssign(plus_eq) => todo!(),
+            // BinOp::SubAssign(minus_eq) => todo!(),
+            // BinOp::MulAssign(star_eq) => todo!(),
+            // BinOp::DivAssign(slash_eq) => todo!(),
+            // BinOp::RemAssign(percent_eq) => todo!(),
+            // BinOp::BitXorAssign(caret_eq) => todo!(),
+            // BinOp::BitAndAssign(and_eq) => todo!(),
+            // BinOp::BitOrAssign(or_eq) => todo!(),
+            // BinOp::ShlAssign(shl_eq) => todo!(),
+            // BinOp::ShrAssign(shr_eq) => todo!(),
+            _ => Err(Error::new_spanned(expr_binary, "unsupported binary operator")),
+        },
 
         // `as T` for a primitive T will be preserved
         // `as int`/`as nat` will be removed
         // TODO: more strict checking here
         Expr::Cast(expr_cast) => {
             if let Type::Path(type_path) = expr_cast.ty.as_ref() {
-                if is_path_eq(&type_path.path, &["int"]) ||
-                    is_path_eq(&type_path.path, &["nat"]) {
+                if is_path_eq(&type_path.path, &["int"]) || is_path_eq(&type_path.path, &["nat"]) {
                     return compile_expr(ctx, &expr_cast.expr);
                 }
             }
@@ -1033,9 +1055,17 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             // let e = &expr_if.else_branch.as_ref().unwrap().1;
             // println!("???: {}", quote! { #e });
 
-            let else_branch = compile_expr(ctx, &expr_if.else_branch.as_ref().ok_or(
-                Error::new_spanned(expr_if, "else branch is required for if expression")
-            )?.1)?;
+            let else_branch = compile_expr(
+                ctx,
+                &expr_if
+                    .else_branch
+                    .as_ref()
+                    .ok_or(Error::new_spanned(
+                        expr_if,
+                        "else branch is required for if expression",
+                    ))?
+                    .1,
+            )?;
 
             Ok(quote! {
                 // Convert back to get_ref
@@ -1062,37 +1092,39 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         Expr::Index(expr_index) => {
             let base = compile_expr(ctx, &expr_index.expr)?;
             let index = compile_expr(ctx, &expr_index.index)?;
-            
+
             // Ok(quote! { ((&#base[#index]).get_ref()) })
             Ok(quote! { #base.exec_index(#index).get_ref() })
         }
 
         // Only support unary arithmetic operators
         // and forall/exists
-        Expr::Unary(expr_unary) =>
-            match &expr_unary.op {
-                UnOp::Neg(..) | UnOp::Not(..) => {
-                    let op = &expr_unary.op;
-                    let expr = compile_expr(ctx, &expr_unary.expr)?;
-                    Ok(quote! { #op #expr })
-                }
-
-                // TODO
-                // UnOp::Forall(forall) => todo!(),
-                // UnOp::Exists(exists) => todo!(),
-
-                _ => Err(Error::new_spanned(expr_unary, "unsupported unary operator")),
+        Expr::Unary(expr_unary) => match &expr_unary.op {
+            UnOp::Neg(..) | UnOp::Not(..) => {
+                let op = &expr_unary.op;
+                let expr = compile_expr(ctx, &expr_unary.expr)?;
+                Ok(quote! { #op #expr })
             }
 
+            // TODO
+            // UnOp::Forall(forall) => todo!(),
+            // UnOp::Exists(exists) => todo!(),
+            _ => Err(Error::new_spanned(expr_unary, "unsupported unary operator")),
+        },
+
         Expr::BigAnd(big_and) => {
-            let exprs = big_and.exprs.iter()
+            let exprs = big_and
+                .exprs
+                .iter()
                 .map(|e| compile_expr(ctx, &e.expr))
                 .collect::<Result<Vec<_>, Error>>()?;
             Ok(quote! { #((#exprs))&&* })
         }
 
         Expr::BigOr(big_or) => {
-            let exprs = big_or.exprs.iter()
+            let exprs = big_or
+                .exprs
+                .iter()
                 .map(|e| compile_expr(ctx, &e.expr))
                 .collect::<Result<Vec<_>, Error>>()?;
             Ok(quote! { #((#exprs))||* })
@@ -1113,42 +1145,39 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             let (exec_fn_path, kind) = compile_expr_path(ctx, &fn_path.path, None)?;
 
             // Compile the arguments
-            let args = expr_call.args.iter()
+            let args = expr_call
+                .args
+                .iter()
                 .map(|arg| compile_expr(ctx, arg))
                 .collect::<Result<Vec<_>, Error>>()?;
 
             match kind {
                 // Struct/enums requires owned types
-                ExprPathKind::StructOrEnum =>
-                    Ok(quote! { #exec_fn_path(#(#args.get_owned()),*).get_ref() }),
+                ExprPathKind::StructOrEnum => {
+                    Ok(quote! { #exec_fn_path(#(#args.get_owned()),*).get_ref() })
+                }
 
-                ExprPathKind::FnName =>
-                    Ok(quote! { #exec_fn_path(#(#args),*).get_ref() }),
-            
-                _ => Err(Error::new_spanned(
-                    expr_call,
-                    "unsupported callee path",
-                )),
+                ExprPathKind::FnName => Ok(quote! { #exec_fn_path(#(#args),*).get_ref() }),
+
+                _ => Err(Error::new_spanned(expr_call, "unsupported callee path")),
             }
         }
 
         // We only permit a limited set of method calls
-        Expr::MethodCall(expr_method_call) =>
-            match expr_method_call.method.to_string().as_str() {
-                "len" => {
-                    let receiver = compile_expr(ctx, &expr_method_call.receiver)?;
-                    Ok(quote! { #receiver.exec_len() })
-                }
-
-                _ => Err(Error::new_spanned(
-                    expr_method_call,
-                    "unsupported method call",
-                )),
+        Expr::MethodCall(expr_method_call) => match expr_method_call.method.to_string().as_str() {
+            "len" => {
+                let receiver = compile_expr(ctx, &expr_method_call.receiver)?;
+                Ok(quote! { #receiver.exec_len() })
             }
+
+            _ => Err(Error::new_spanned(expr_method_call, "unsupported method call")),
+        },
 
         Expr::Match(expr_match) => {
             let expr = compile_expr(ctx, &expr_match.expr)?;
-            let arms = expr_match.arms.iter()
+            let arms = expr_match
+                .arms
+                .iter()
                 .map(|arm| compile_match_arm(ctx, arm))
                 .collect::<Result<Vec<_>, Error>>()?;
 
@@ -1160,7 +1189,9 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         }
 
         Expr::Tuple(expr_tuple) => {
-            let exprs = expr_tuple.elems.iter()
+            let exprs = expr_tuple
+                .elems
+                .iter()
                 .map(|e| compile_expr(ctx, e))
                 .collect::<Result<Vec<_>, Error>>()?;
             Ok(quote! { (#(#exprs.get_owned(),)*).get_ref() })
@@ -1169,19 +1200,21 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         Expr::Struct(expr_struct) => {
             let (new_path, kind) =
                 compile_expr_path(ctx, &expr_struct.path, Some(ExprPathKind::StructOrEnum))?;
-        
+
             if kind != ExprPathKind::StructOrEnum {
-                return Err(Error::new_spanned(
-                    expr_struct,
-                    "expected a struct or enum path",
-                ));
+                return Err(Error::new_spanned(expr_struct, "expected a struct or enum path"));
             }
 
             // Compile the fields
-            let fields = expr_struct.fields.iter()
+            let fields = expr_struct
+                .fields
+                .iter()
                 .map(|field| {
                     let Member::Named(name) = &field.member else {
-                        return Err(Error::new_spanned(field, "unsupported unamed field in struct expression"));
+                        return Err(Error::new_spanned(
+                            field,
+                            "unsupported unamed field in struct expression",
+                        ));
                     };
                     let value = compile_expr(ctx, &field.expr)?;
                     Ok(quote! { #name: #value.get_owned() })
@@ -1198,9 +1231,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         // 1. `lhs matches pat ==> rhs` to `match lhs { pat => rhs, _ => true }`
         // 2. `lhs matches pat && rhs` to `match lhs { pat => rhs, _ => false }`
         // 3. `lhs matches pat` to `match lhs { pat => true, _ => false }`
-        Expr::Matches(ExprMatches {
-            lhs, pat, op_expr, ..
-        }) => {
+        Expr::Matches(ExprMatches { lhs, pat, op_expr, .. }) => {
             let mut ctx = ctx.clone();
             let mut new_locals = HashSet::new();
             let pat = compile_pattern(&mut ctx, pat, &mut new_locals)?;
@@ -1215,12 +1246,11 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             };
 
             let false_rhs = match op_expr {
-                Some(MatchesOpExpr { op_token, .. }) =>
-                    match op_token {
-                        MatchesOpToken::Implies(..) => quote! { true },
-                        MatchesOpToken::AndAnd(..) => quote! { false },
-                        MatchesOpToken::BigAnd => quote! { false },
-                    }
+                Some(MatchesOpExpr { op_token, .. }) => match op_token {
+                    MatchesOpToken::Implies(..) => quote! { true },
+                    MatchesOpToken::AndAnd(..) => quote! { false },
+                    MatchesOpToken::BigAnd => quote! { false },
+                },
                 None => quote! { false },
             };
 
@@ -1270,20 +1300,19 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         // Expr::Assert(assert) => todo!(),
         // Expr::AssertForall(assert_forall) => todo!(),
         // Expr::RevealHide(reveal_hide) => todo!(),
-
         _ => Err(Error::new_spanned(expr, "unsupported expression")),
     }
 }
 
 /// Compiles a block
-/// 
+///
 /// TODO: to avoid issues of `temporary value dropped while borrowed`
 /// the return value of a block has the owned type instead of the ref type
 /// This might incur some performance overhead.
 fn compile_block(ctx: &LocalCtx, block: &Block) -> Result<TokenStream2, Error> {
     let mut ts = Vec::new();
     let mut ctx = ctx.clone();
-    
+
     for stmt in &block.stmts {
         match stmt {
             // A local binding
@@ -1295,7 +1324,10 @@ fn compile_block(ctx: &LocalCtx, block: &Block) -> Result<TokenStream2, Error> {
                 }
 
                 let Some(local_init) = &binding.init else {
-                    return Err(Error::new_spanned(stmt, "unsupported let statement without initializer"));
+                    return Err(Error::new_spanned(
+                        stmt,
+                        "unsupported let statement without initializer",
+                    ));
                 };
 
                 let expr = compile_expr(&ctx, &local_init.expr)?;
@@ -1323,7 +1355,8 @@ fn compile_block(ctx: &LocalCtx, block: &Block) -> Result<TokenStream2, Error> {
 
 /// Compiles a spec function into an exec function
 fn compile_spec_fn(item_fn: &ItemFn) -> Result<TokenStream2, Error> {
-    if let FnMode::Spec(..) = &item_fn.sig.mode {} else {
+    if let FnMode::Spec(..) = &item_fn.sig.mode {
+    } else {
         return Err(Error::new_spanned(item_fn, "#[exec_spec] only supports spec functions"));
     }
 
@@ -1351,8 +1384,10 @@ fn compile_item(item: Item) -> Result<TokenStream2, Error> {
 #[proc_macro]
 pub fn exec_spec(input: TokenStream) -> TokenStream {
     let items = parse_macro_input!(input as Items);
-    let res = items.0.into_iter().map(|item| {
-        match compile_item(item) {
+    let res = items
+        .0
+        .into_iter()
+        .map(|item| match compile_item(item) {
             Ok(ts) => {
                 println!("######## compiled item ########");
                 println!("{}", ts);
@@ -1360,14 +1395,14 @@ pub fn exec_spec(input: TokenStream) -> TokenStream {
                 Ok(ts)
             }
             Err(err) => Err(err.to_compile_error().into()),
-        }
-    }).collect::<Result<Vec<_>, _>>();
+        })
+        .collect::<Result<Vec<_>, _>>();
 
     match res {
-        Ok(ts) =>
-            quote! {
-                ::builtin_macros::verus! { #(#ts)* }
-            }.into(),
+        Ok(ts) => quote! {
+            ::builtin_macros::verus! { #(#ts)* }
+        }
+        .into(),
         Err(err) => err,
     }
 }
