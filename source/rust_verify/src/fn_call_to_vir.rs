@@ -408,9 +408,18 @@ fn verus_item_to_vir<'tcx, 'a>(
                 let header = Arc::new(HeaderExprX::InvariantOpensSet(arg));
                 mk_expr(ExprX::Header(header))
             }
+            
             SpecItem::Ensures => {
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected ensures", &args);
+                let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
+                let header = extract_ensures(&bctx, args[0])?;
+                // extract_ensures does most of the necessary work, so we can return at this point
+                mk_expr_span(args[0].span, ExprX::Header(header))
+            }
+            &SpecItem::AtomicEnsures => {
+                record_spec_fn_no_proof_args(bctx, expr);
+                unsupported_err_unless!(args_len == 1, expr.span, "expected atomic ensures", &args);
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
                 let header = extract_ensures(&bctx, args[0])?;
                 // extract_ensures does most of the necessary work, so we can return at this point

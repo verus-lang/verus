@@ -55,6 +55,14 @@ pub fn ensures<A>(_a: A) {
 
 // Can only appear at beginning of function body
 #[cfg(verus_keep_ghost)]
+#[rustc_diagnostic_item = "verus::builtin::atomic_ensures"]
+#[verifier::proof]
+pub fn atomic_ensures<A>(_a: A) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
+#[cfg(verus_keep_ghost)]
 #[rustc_diagnostic_item = "verus::builtin::returns"]
 #[verifier::proof]
 pub fn returns<A>(_a: A) {

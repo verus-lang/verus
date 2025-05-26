@@ -19,6 +19,8 @@ pub struct Header {
     pub recommend: Exprs,
     pub ensure_id_typ: Option<(VarIdent, Typ)>,
     pub ensure: Exprs,
+    pub atomic_ensure_id_typ: Option<(VarIdent, Typ)>,
+    pub atomic_ensure: Exprs,
     pub returns: Option<Expr>,
     pub invariant_except_break: Exprs,
     pub invariant: Exprs,
@@ -38,6 +40,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut require: Option<Exprs> = None;
     let mut atomic_require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
+    let mut atomic_ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
     let mut returns: Option<Expr> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant_except_break: Option<Exprs> = None;
@@ -103,6 +106,15 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             ));
                         }
                         ensure = Some((id_typ.clone(), es.clone()));
+                    }
+                    HeaderExprX::AtomicEnsures(id_typ, es) => {
+                        if ensure.is_some() {
+                            return Err(error(
+                                &stmt.span,
+                                "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
+                            ));
+                        }
+                        atomic_ensure = Some((id_typ.clone(), es.clone()));
                     }
                     HeaderExprX::Returns(e) => {
                         if returns.is_some() {
@@ -243,6 +255,10 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         None => (None, Arc::new(vec![])),
         Some((id_typ, es)) => (id_typ, es),
     };
+    let (atomic_ensure_id_typ, atomic_ensure) = match atomic_ensure {
+        None => (None, Arc::new(vec![])),
+        Some((id_typ, es)) => (id_typ, es),
+    };
     let invariant_except_break = invariant_except_break.unwrap_or(Arc::new(vec![]));
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
     let decrease = decrease.unwrap_or(Arc::new(vec![]));
@@ -255,6 +271,8 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         recommend,
         ensure_id_typ,
         ensure,
+        atomic_ensure_id_typ,
+        atomic_ensure,
         returns,
         invariant_except_break,
         invariant,

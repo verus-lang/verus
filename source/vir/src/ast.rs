@@ -545,6 +545,8 @@ pub enum HeaderExprX {
     AtomicRequires(Exprs),
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
     Ensures(Option<(VarIdent, Typ)>, Exprs),
+    /// Atomic Postconditions on exec/proof functions, with an optional name and type for the return value
+    AtomicEnsures(Option<(VarIdent, Typ)>, Exprs),
     /// Returns clause
     Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.

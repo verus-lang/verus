@@ -45,10 +45,10 @@ fn fetch_add_plus_1(
     /* will be syntax */ ]);
 
     #[cfg(verus_keep_ghost_body)]
-    /* will be syntax */ ::builtin::atomic_ensures(|r: u64, new_perm: APermissionU64| [
+    /* will be syntax */ ::builtin::ensures(|r: u64, new_perm: APermissionU64| [
     /* will be syntax */    ::builtin::spec_eq(new_perm.view().patomic, perm.view().patomic),
     /* will be syntax */    ::builtin::spec_eq(new_perm.view().value, wrapping_add_u64(
-    /* will be syntax */        perm.view().value, wrapping_add_u64(v, 1))),
+    /* will be syntax */        perm.view().value, wrapping_add_u64(v,spec_literal_integer("1"))))
     /* will be syntax */ ]);
 
     assume(false);

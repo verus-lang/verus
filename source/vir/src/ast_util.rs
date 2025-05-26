@@ -1155,7 +1155,7 @@ impl HeaderExprX {
                 "beginning of a loop body"
             }
 
-            HeaderExprX::Ensures(..) | HeaderExprX::Decreases(_) => {
+            HeaderExprX::Ensures(..) | HeaderExprX::AtomicEnsures(..) | HeaderExprX::Decreases(_) => {
                 "beginning of the function body or a loop body"
             }
         }
