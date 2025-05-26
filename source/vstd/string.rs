@@ -180,6 +180,7 @@ impl View for String {
     uninterp spec fn view(&self) -> Seq<char>;
 }
 
+#[cfg(feature = "alloc")]
 impl DeepView for String {
     type V = Seq<char>;
 
