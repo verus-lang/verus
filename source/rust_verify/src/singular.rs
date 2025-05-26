@@ -1,13 +1,16 @@
 use air::ast::{
-    BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, SingularQueryX,
+    BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, SingularQueryX, UnaryOp,
 };
 use air::context::{QueryContext, SmtSolver, ValidityResult};
+use air::messages::Diagnostics;
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
+use indexmap::IndexSet;
 use sise::Node;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
-use vir::messages::error;
+use vir::messages::{error, ToAny};
 
 // Singular reserved keyword
 const RING_DECL: &str = "ring";
@@ -74,7 +77,7 @@ enum Var {
 
 #[derive(PartialEq, Eq, Clone, Hash)]
 enum SingularExpr {
-    Binary(BinOp, Box<SingularExpr>, Box<SingularExpr>),
+    Binary(BinOp, Rc<SingularExpr>, Rc<SingularExpr>),
     Literal(Arc<String>),
     Var(Var),
 }
@@ -89,17 +92,56 @@ enum BinOp {
 
 enum SingularReqClause {
     Ideal(SingularExpr),
+    NotEqualToZero(SingularExpr),
 }
 
 struct SingularEnsClause {
     // Expression we want to test if it is equals 0
     eq0: SingularExpr,
-    // If the user writes `ensures a % m == b` or `a % m == b % m` then the m becomes
+    // If the user writes `ensures a % m == 0` or `a % m == b % m` then the m becomes
     // an extra ideal.
     modulus: Option<SingularExpr>,
 }
 
 impl SingularExpr {
+    fn find_divisors(&self, set: &mut IndexSet<SingularExpr>) {
+        match self {
+            SingularExpr::Binary(bin_op, lhs, rhs) => {
+                lhs.find_divisors(set);
+                rhs.find_divisors(set);
+                match bin_op {
+                    BinOp::Add | BinOp::Sub | BinOp::Mul => {}
+                    BinOp::EuclideanMod => {
+                        set.insert((&**rhs).clone());
+                    }
+                }
+            }
+            SingularExpr::Literal(_) | SingularExpr::Var(_) => {}
+        }
+    }
+
+    fn to_diagnostic_string(&self) -> String {
+        match self {
+            SingularExpr::Binary(bin_op, lhs, rhs) => {
+                let op = match bin_op {
+                    BinOp::Add => "+",
+                    BinOp::Sub => "-",
+                    BinOp::Mul => "*",
+                    BinOp::EuclideanMod => "%",
+                };
+                let l = lhs.to_diagnostic_string();
+                let r = rhs.to_diagnostic_string();
+                format!("({:} {:} {:})", l, op, r)
+            }
+            SingularExpr::Literal(l) => (**l).clone(),
+            SingularExpr::Var(Var::User(ident)) => {
+                let id = ident.to_string();
+                id[0..id.len() - vir::def::SUFFIX_PARAM.len()].to_string()
+            }
+            SingularExpr::Var(Var::Tmp(tmp)) => tmp.to_string(),
+        }
+    }
+
     fn to_singular_string(&self) -> String {
         match self {
             SingularExpr::Binary(bin_op, lhs, rhs) => {
@@ -127,15 +169,15 @@ impl SingularExpr {
     }
 
     fn sub(self, rhs: Self) -> Self {
-        SingularExpr::Binary(BinOp::Sub, Box::new(self), Box::new(rhs))
+        SingularExpr::Binary(BinOp::Sub, Rc::new(self), Rc::new(rhs))
     }
 
     fn mul(self, rhs: Self) -> Self {
-        SingularExpr::Binary(BinOp::Mul, Box::new(self), Box::new(rhs))
+        SingularExpr::Binary(BinOp::Mul, Rc::new(self), Rc::new(rhs))
     }
 
     fn modulo(self, rhs: Self) -> Self {
-        SingularExpr::Binary(BinOp::EuclideanMod, Box::new(self), Box::new(rhs))
+        SingularExpr::Binary(BinOp::EuclideanMod, Rc::new(self), Rc::new(rhs))
     }
 }
 
@@ -143,6 +185,9 @@ impl SingularReqClause {
     fn to_singular_string(&self) -> String {
         match self {
             SingularReqClause::Ideal(r) => r.to_singular_string(),
+            SingularReqClause::NotEqualToZero(_) => {
+                panic!("to_singular_string called on NotEqualToZero");
+            }
         }
     }
 }
@@ -174,7 +219,7 @@ impl SingularEncoder {
                 // x % y ->  x - y * tmp
                 let lhs = self.expr_to_singular(&lhs)?;
                 let rhs = self.expr_to_singular(&rhs)?;
-                Ok(SingularExpr::Binary(BinOp::EuclideanMod, Box::new(lhs), Box::new(rhs)))
+                Ok(lhs.modulo(rhs))
             }
             ExprX::Multi(op, exprs) => {
                 let bin_op = match op {
@@ -191,8 +236,8 @@ impl SingularEncoder {
                 for e in exprs.iter().skip(1) {
                     res = SingularExpr::Binary(
                         bin_op,
-                        Box::new(res),
-                        Box::new(self.expr_to_singular(e)?),
+                        Rc::new(res),
+                        Rc::new(self.expr_to_singular(e)?),
                     );
                 }
                 Ok(res)
@@ -259,6 +304,17 @@ impl SingularEncoder {
 
             return Ok(SingularReqClause::Ideal(lhs.sub(rhs)));
         }
+        if let ExprX::Unary(UnaryOp::Not, inner) = &**expr {
+            if let ExprX::Binary(BinaryOp::Eq, lhs, rhs) = &**inner {
+                if is_zero(lhs) {
+                    let x = self.expr_to_singular(rhs)?;
+                    return Ok(SingularReqClause::NotEqualToZero(x));
+                } else if is_zero(rhs) {
+                    let x = self.expr_to_singular(lhs)?;
+                    return Ok(SingularReqClause::NotEqualToZero(x));
+                }
+            }
+        }
         return Err(format!("requires not in equational form in integer_ring"));
     }
 
@@ -316,7 +372,7 @@ impl SingularEncoder {
                         l.sub(r.mul(t))
                     }
                     BinOp::Add | BinOp::Sub | BinOp::Mul => {
-                        SingularExpr::Binary(*bin_op, Box::new(l), Box::new(r))
+                        SingularExpr::Binary(*bin_op, Rc::new(l), Rc::new(r))
                     }
                 }
             }
@@ -327,6 +383,9 @@ impl SingularEncoder {
     fn translate_req(&mut self, c: &SingularReqClause) -> SingularReqClause {
         match c {
             SingularReqClause::Ideal(s) => SingularReqClause::Ideal(self.translate(s)),
+            SingularReqClause::NotEqualToZero(_) => {
+                panic!("translate_req called on NotEqualToZero");
+            }
         }
     }
 
@@ -340,9 +399,12 @@ impl SingularEncoder {
         SingularEnsClause { eq0, modulus }
     }
 
-    fn ideals_from_requires(&self, reqs: &[SingularReqClause]) -> Vec<String> {
+    fn ideals_from_requires(
+        &self,
+        reqs: &[(SingularReqClause, vir::messages::Span)],
+    ) -> Vec<String> {
         let mut v = vec!["0".to_string()];
-        v.append(&mut reqs.iter().map(|m| m.to_singular_string()).collect::<Vec<_>>());
+        v.append(&mut reqs.iter().map(|m| m.0.to_singular_string()).collect::<Vec<_>>());
         v
     }
 
@@ -388,11 +450,56 @@ impl SingularEncoder {
     }
 }
 
+fn diagnostics_for_ne0(
+    req_clauses: &Vec<(SingularReqClause, vir::messages::Span)>,
+    ens_clauses: &Vec<(SingularEnsClause, vir::messages::Message)>,
+    diagnostics: &impl Diagnostics,
+    func_span: &vir::messages::Span,
+) {
+    let mut provided: Vec<(SingularExpr, vir::messages::Span)> = vec![];
+    let mut expected_set: IndexSet<SingularExpr> = IndexSet::new();
+    for (r, span) in req_clauses.iter() {
+        match r {
+            SingularReqClause::Ideal(e) => {
+                e.find_divisors(&mut expected_set);
+            }
+            SingularReqClause::NotEqualToZero(e) => {
+                provided.push((e.clone(), span.clone()));
+            }
+        }
+    }
+    for (e, _) in ens_clauses.iter() {
+        let SingularEnsClause { eq0, modulus } = e;
+        eq0.find_divisors(&mut expected_set);
+        if let Some(m) = modulus {
+            m.find_divisors(&mut expected_set);
+            expected_set.insert(m.clone());
+        }
+    }
+
+    let mut provided_set = IndexSet::new();
+    for (c, span) in provided.iter() {
+        if !expected_set.contains(c) {
+            diagnostics.report(&vir::messages::warning(span,
+                "integer_ring: this precondition is superfluous and has no impact on the integer_ring decision procedure").to_any());
+        }
+        provided_set.insert(c);
+    }
+
+    for e in expected_set.iter() {
+        if !provided_set.contains(e) {
+            diagnostics.report(&vir::messages::warning(func_span,
+                format!("integer_ring: this lemma should have `{:} != 0` as a precondition, since this expression is used as a divisor. (This will be a hard error in the future.)", e.to_diagnostic_string())).to_any());
+        }
+    }
+}
+
 fn encode_singular_queries(
     solver: SmtSolver, // Needed by the AIR printer, even for Singular queries
     command: &Command,
     func_span: &vir::messages::Span,
     queries: &mut Vec<(String, vir::messages::Message)>,
+    diagnostics: &impl Diagnostics,
 ) -> Result<(), ValidityResult> {
     let CommandX::CheckSingular(ref query) = &**command else {
         panic!("internal error: integer_ring")
@@ -409,16 +516,16 @@ fn encode_singular_queries(
 
     let mut encoder = SingularEncoder::new(solver, vars);
 
-    // encode requires
+    // process the requires/ensures, turn the AIR expressions into SingularExprs
 
-    let mut req_clauses: Vec<SingularReqClause> = vec![];
+    let mut req_clauses: Vec<(SingularReqClause, vir::messages::Span)> = vec![];
     for stmt in &**reqs {
         if let air::ast::StmtX::Assert(_, err, _, expr) = &**stmt {
             let err: vir::messages::Message =
                 err.clone().downcast().expect("unexpected value in Any -> Message conversion");
             match encoder.encode_requires_poly(expr) {
                 Ok(clause) => {
-                    req_clauses.push(clause);
+                    req_clauses.push((clause, err.spans[0].clone()));
                 }
                 Err(info) => {
                     return Err(ValidityResult::Invalid(
@@ -431,7 +538,6 @@ fn encode_singular_queries(
         }
     }
 
-    // each ensures is a separate query string
     let mut ens_clauses: Vec<(SingularEnsClause, vir::messages::Message)> = vec![];
     for stmts in &**enss {
         if let air::ast::StmtX::Assert(_, err, _, expr) = &**stmts {
@@ -452,12 +558,26 @@ fn encode_singular_queries(
         }
     }
 
+    // Check if the preconditions of the form `d != 0` are correct
+    // (i.e., that they line up with divisors d used in the other expressions)
+
+    diagnostics_for_ne0(&req_clauses, &ens_clauses, diagnostics, func_span);
+
+    let mut req_clauses = req_clauses
+        .into_iter()
+        .filter(|(r, _)| !matches!(r, SingularReqClause::NotEqualToZero(_)))
+        .collect::<Vec<_>>();
+
+    // Translate a % d into a - d * tmp
+
     for r in req_clauses.iter_mut() {
-        *r = encoder.translate_req(r);
+        r.0 = encoder.translate_req(&r.0);
     }
     for e in ens_clauses.iter_mut() {
         e.0 = encoder.translate_ens(&e.0);
     }
+
+    // Make the queries (one per ensures clause)
 
     let ideals = encoder.ideals_from_requires(&req_clauses);
     for (ens_clause, err) in ens_clauses.iter() {
@@ -473,11 +593,16 @@ pub fn check_singular_valid(
     command: &Command,
     func_span: &vir::messages::Span,
     _query_context: QueryContext<'_, '_>,
+    diagnostics: &impl Diagnostics,
 ) -> ValidityResult {
     let mut queries = vec![];
-    if let Err(res) =
-        encode_singular_queries(context.get_solver().clone(), command, func_span, &mut queries)
-    {
+    if let Err(res) = encode_singular_queries(
+        context.get_solver().clone(),
+        command,
+        func_span,
+        &mut queries,
+        diagnostics,
+    ) {
         // in case of any encoding error, skip running Singular
         return res;
     }
