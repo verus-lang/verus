@@ -1,3 +1,5 @@
+#![cfg(feature = "alloc")]
+
 use super::prelude::*;
 
 verus! {

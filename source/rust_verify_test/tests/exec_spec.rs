@@ -461,9 +461,50 @@ test_verify_one_file! {
 
         fn sanity_check() {
             let a = ExecA { a: 3, b: 2 };
-            
+
             if exec_pred(&a) {
                 assert(a.a > a.b);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    /// Tests interoperability and generated post/pre-conditions
+    #[test] test_exec_spec_interop3 IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            struct MyPair(Seq<u32>, Seq<u32>);
+
+            spec fn pred_helper(a: Seq<u32>, b: Seq<u32>, i: usize) -> bool
+                recommends 0 <= i < a.len() == b.len()
+                decreases a.len() - i when i < usize::MAX
+            {
+                &&& a[i as int] > b[i as int]
+                &&& i + 1 < a.len() ==> pred_helper(a, b, (i + 1) as usize)
+            }
+
+            spec fn pred(p: MyPair) -> bool
+                recommends p.0.len() == p.1.len()
+            {
+                if p.0.len() == 0 {
+                    true
+                } else {
+                    pred_helper(p.0, p.1, 0)
+                }
+            }
+        }
+
+        fn test() {
+            let a = ExecMyPair(vec![1, 2, 3], vec![0, 1, 2]);
+            
+            reveal_with_fuel(pred_helper, 3);
+
+            if exec_pred(&a) {
+                assert(a.0@[0] > a.1@[0]);
+                assert(a.0@[1] > a.1@[1]);
+                assert(a.0@[2] > a.1@[2]);
+            } else {
+                assert(a.0@[0] <= a.1@[0] || a.0@[1] <= a.1@[1] || a.0@[2] <= a.1@[2]);
             }
         }
     } => Ok(())
