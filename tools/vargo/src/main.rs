@@ -1133,6 +1133,7 @@ fn run() -> Result<(), String> {
                 "vstd_build",
                 "verus",
                 "cargo-verus",
+                "exec_spec",
             ];
 
             let build_vstd = {
@@ -1198,6 +1199,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                 format!("rust_verify{}", EXE),
                 format!("verus{}", EXE),
                 format!("cargo-verus{}", EXE),
+                format!("{}exec_spec.{}", LIB_PRE, LIB_DL),
             ]
             .into_iter()
             {
@@ -1297,6 +1299,7 @@ cd "$( dirname "${{BASH_SOURCE[0]}}" )"
                 format!("builtin_macros"),
                 format!("state_machines_macros"),
                 format!("vstd"),
+                format!("exec_spec"),
             ] {
                 let from_d = std::path::Path::new(&src);
                 let to_d = target_verus_dir.join(&src);
