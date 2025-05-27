@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use proc_macro::TokenStream;
-use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
+use proc_macro2::{Group, Span, TokenStream as TokenStream2, TokenTree};
+use quote::{quote, quote_spanned};
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::spanned::Spanned;
 use syn_verus::token::Comma;
@@ -579,14 +579,19 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
 
     let ext_eq = BinOp::ExtDeepEq(Default::default());
 
-    Ok(quote! {
+    let sig = quote! {
         #vis fn #exec_name(
             #(#params,)*
         ) -> (res: #ret_type)
             requires #requires
             ensures res.deep_view() #ext_eq #spec_name(#(#args_deep_view),*)
             #decreases
-    })
+    };
+
+    // Set token's span to the original signature's span
+    // e.g. this will forward all "failed post-condition"
+    // errors to the signature
+    Ok(respan(sig, item_fn.sig.span()))
 }
 
 /// Records the parameters and local variable names
@@ -864,23 +869,23 @@ fn compile_match_arm(ctx: &LocalCtx, arm: &Arm) -> Result<TokenStream2, Error> {
 /// the exec expression returned from this function should
 /// have the type `T::ExecRefType<'_>`
 fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
-    match expr {
+    let expr_ts = match expr {
         Expr::Lit(lit) => match &lit.lit {
             Lit::Str(..)
             | Lit::Byte(..)
             | Lit::Char(..)
             | Lit::Int(..)
             | Lit::Float(..)
-            | Lit::Bool(..) => Ok(quote! { #lit }),
+            | Lit::Bool(..) => quote! { #lit },
 
-            _ => Err(Error::new_spanned(lit, "unsupported literal")),
+            _ => return Err(Error::new_spanned(lit, "unsupported literal")),
         },
 
         // Blocks have the owned type, so we need to
         // convert back a reference again
         Expr::Block(expr_block) => {
             let block_expr = compile_block(ctx, &expr_block.block)?;
-            Ok(quote! { #block_expr.get_ref() })
+            quote! { #block_expr.get_ref() }
         }
 
         // Macro invocations get passed through
@@ -900,20 +905,20 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                     .collect::<Result<Vec<_>, Error>>()?;
 
                 // We need to convert each argument to the owned type
-                Ok(quote! { ({
+                quote! { ({
                     let v = vec![ #((#args).get_owned()),* ];
                     // Sometimes required for proving functional correctness
                     assert(v.deep_view() == seq![ #spec_args ]);
                     v
-                }).get_ref() })
+                }).get_ref() }
             } else {
-                Ok(quote! { #expr_macro })
+                quote! { #expr_macro }
             }
         }
 
         Expr::Paren(expr_paren) => {
             let inner = compile_expr(ctx, &expr_paren.expr)?;
-            Ok(quote! { (#inner) })
+            quote! { #inner } // we'll insert the parenthesis in the end
         }
 
         Expr::Field(expr_field) => {
@@ -922,7 +927,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             // By default, x.y have the owned type of field y
             // so we need to take the reference and convert it
             // into the ref type
-            Ok(quote! { ((&#expr.#field).get_ref()) })
+            quote! { (&#expr.#field).get_ref() }
         }
 
         // If the variable is a local variable
@@ -933,14 +938,11 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             let (new_path, kind) = compile_expr_path(ctx, &expr_path.path, None)?;
 
             match kind {
-                ExprPathKind::Param => Ok(quote! { #new_path }),
-                ExprPathKind::Local => Ok(quote! { (#new_path).get_ref() }),
-                ExprPathKind::FnName => {
-                    Err(Error::new_spanned(expr_path, "unsupported path expression"))
-                }
-                ExprPathKind::StructOrEnum => Ok(quote! { (#new_path).get_ref() }),
-                ExprPathKind::Constant => Ok(quote! { #new_path }),
-                _ => Err(Error::new_spanned(expr_path, "unsupported path expression")),
+                ExprPathKind::Param => quote! { #new_path },
+                ExprPathKind::Local => quote! { (#new_path).get_ref() },
+                ExprPathKind::StructOrEnum => quote! { (#new_path).get_ref() },
+                ExprPathKind::Constant => quote! { #new_path },
+                _ => return Err(Error::new_spanned(expr_path, "unsupported path expression")),
             }
         }
 
@@ -956,13 +958,13 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             BinOp::Eq(..) => {
                 let left = compile_expr(ctx, &expr_binary.left)?;
                 let right = compile_expr(ctx, &expr_binary.right)?;
-                Ok(quote! { ExecSpecEq::exec_eq(#left, #right) })
+                quote! { ExecSpecEq::exec_eq(#left, #right) }
             }
 
             BinOp::Ne(..) => {
                 let left = compile_expr(ctx, &expr_binary.left)?;
                 let right = compile_expr(ctx, &expr_binary.right)?;
-                Ok(quote! { !ExecSpecEq::exec_eq(#left, #right) })
+                quote! { !ExecSpecEq::exec_eq(#left, #right) }
             }
 
             // TODO
@@ -992,28 +994,28 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                 let left = compile_expr(ctx, &expr_binary.left)?;
                 let right = compile_expr(ctx, &expr_binary.right)?;
 
-                Ok(quote! { #left #op #right })
+                quote! { #left #op #right }
             }
 
             // `a ==> b` to `!a || b`
             BinOp::Imply(..) => {
                 let left = compile_expr(ctx, &expr_binary.left)?;
                 let right = compile_expr(ctx, &expr_binary.right)?;
-                Ok(quote! { !(#left) || (#right) })
+                quote! { !(#left) || (#right) }
             }
 
             // `a <== b` to `!b || a`
             BinOp::Exply(..) => {
                 let left = compile_expr(ctx, &expr_binary.left)?;
                 let right = compile_expr(ctx, &expr_binary.right)?;
-                Ok(quote! { !(#right) || (#left) })
+                quote! { !(#right) || (#left) }
             }
 
             // `a <==> b` to `a == b`
             BinOp::Equiv(..) => {
                 let left = compile_expr(ctx, &expr_binary.left)?;
                 let right = compile_expr(ctx, &expr_binary.right)?;
-                Ok(quote! { ExecSpecEq::exec_eq(#left, #right) })
+                quote! { ExecSpecEq::exec_eq(#left, #right) }
             }
 
             // No plan to support
@@ -1027,26 +1029,29 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             // BinOp::BitOrAssign(or_eq) => todo!(),
             // BinOp::ShlAssign(shl_eq) => todo!(),
             // BinOp::ShrAssign(shr_eq) => todo!(),
-            _ => Err(Error::new_spanned(expr_binary, "unsupported binary operator")),
+            _ => return Err(Error::new_spanned(expr_binary, "unsupported binary operator")),
         },
 
         // `as T` for a primitive T will be preserved
         // `as int`/`as nat` will be removed
         // TODO: more strict checking here
-        Expr::Cast(expr_cast) => {
-            if let Type::Path(type_path) = expr_cast.ty.as_ref() {
-                if is_path_eq(&type_path.path, &["int"]) || is_path_eq(&type_path.path, &["nat"]) {
-                    return compile_expr(ctx, &expr_cast.expr);
-                }
+        Expr::Cast(expr_cast) => match expr_cast.ty.as_ref() {
+            Type::Path(type_path)
+                if is_path_eq(&type_path.path, &["int"])
+                    || is_path_eq(&type_path.path, &["nat"]) =>
+            {
+                compile_expr(ctx, &expr_cast.expr)?
             }
 
-            let typ = compile_type(&expr_cast.ty, TypeKind::Ref)?;
-            let expr = compile_expr(ctx, &expr_cast.expr)?;
+            _ => {
+                let typ = compile_type(&expr_cast.ty, TypeKind::Ref)?;
+                let expr = compile_expr(ctx, &expr_cast.expr)?;
 
-            Ok(quote! {
-                (#expr as #typ)
-            })
-        }
+                quote! {
+                    (#expr as #typ)
+                }
+            }
+        },
 
         Expr::If(expr_if) => {
             let cond = compile_expr(ctx, &expr_if.cond)?;
@@ -1067,7 +1072,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                     .1,
             )?;
 
-            Ok(quote! {
+            quote! {
                 // Convert back to get_ref
                 if #cond
                     #then_branch
@@ -1076,14 +1081,14 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                     // with the type of the then_bench (which is a block)
                     (#else_branch).get_owned()
                 }.get_ref()
-            })
+            }
         }
 
         // View expressions are ignored (e.g. "abc"@ => "abc")
         // TODO: more strict rules here
         Expr::View(view) => {
             let expr = compile_expr(ctx, &view.expr)?;
-            Ok(quote! { #expr })
+            quote! { #expr }
         }
 
         // NOTE: this only supports indexing into Seq<T>
@@ -1094,7 +1099,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             let index = compile_expr(ctx, &expr_index.index)?;
 
             // Ok(quote! { ((&#base[#index]).get_ref()) })
-            Ok(quote! { #base.exec_index(#index).get_ref() })
+            quote! { #base.exec_index(#index).get_ref() }
         }
 
         // Only support unary arithmetic operators
@@ -1103,13 +1108,13 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             UnOp::Neg(..) | UnOp::Not(..) => {
                 let op = &expr_unary.op;
                 let expr = compile_expr(ctx, &expr_unary.expr)?;
-                Ok(quote! { #op #expr })
+                quote! { #op #expr }
             }
 
             // TODO
             // UnOp::Forall(forall) => todo!(),
             // UnOp::Exists(exists) => todo!(),
-            _ => Err(Error::new_spanned(expr_unary, "unsupported unary operator")),
+            _ => return Err(Error::new_spanned(expr_unary, "unsupported unary operator")),
         },
 
         Expr::BigAnd(big_and) => {
@@ -1118,7 +1123,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                 .iter()
                 .map(|e| compile_expr(ctx, &e.expr))
                 .collect::<Result<Vec<_>, Error>>()?;
-            Ok(quote! { #((#exprs))&&* })
+            quote! { #((#exprs))&&* }
         }
 
         Expr::BigOr(big_or) => {
@@ -1127,7 +1132,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                 .iter()
                 .map(|e| compile_expr(ctx, &e.expr))
                 .collect::<Result<Vec<_>, Error>>()?;
-            Ok(quote! { #((#exprs))||* })
+            quote! { #((#exprs))||* }
         }
 
         // The current assumption is that the called
@@ -1154,12 +1159,12 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             match kind {
                 // Struct/enums requires owned types
                 ExprPathKind::StructOrEnum => {
-                    Ok(quote! { #exec_fn_path(#(#args.get_owned()),*).get_ref() })
+                    quote! { #exec_fn_path(#(#args.get_owned()),*).get_ref() }
                 }
 
-                ExprPathKind::FnName => Ok(quote! { #exec_fn_path(#(#args),*).get_ref() }),
+                ExprPathKind::FnName => quote! { #exec_fn_path(#(#args),*).get_ref() },
 
-                _ => Err(Error::new_spanned(expr_call, "unsupported callee path")),
+                _ => return Err(Error::new_spanned(expr_call, "unsupported callee path")),
             }
         }
 
@@ -1167,10 +1172,10 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         Expr::MethodCall(expr_method_call) => match expr_method_call.method.to_string().as_str() {
             "len" => {
                 let receiver = compile_expr(ctx, &expr_method_call.receiver)?;
-                Ok(quote! { #receiver.exec_len() })
+                quote! { #receiver.exec_len() }
             }
 
-            _ => Err(Error::new_spanned(expr_method_call, "unsupported method call")),
+            _ => return Err(Error::new_spanned(expr_method_call, "unsupported method call")),
         },
 
         Expr::Match(expr_match) => {
@@ -1181,11 +1186,11 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                 .map(|arm| compile_match_arm(ctx, arm))
                 .collect::<Result<Vec<_>, Error>>()?;
 
-            Ok(quote! {
+            quote! {
                 match #expr {
                     #(#arms,)*
                 }.get_ref()
-            })
+            }
         }
 
         Expr::Tuple(expr_tuple) => {
@@ -1194,7 +1199,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                 .iter()
                 .map(|e| compile_expr(ctx, e))
                 .collect::<Result<Vec<_>, Error>>()?;
-            Ok(quote! { (#(#exprs.get_owned(),)*).get_ref() })
+            quote! { (#(#exprs.get_owned(),)*).get_ref() }
         }
 
         Expr::Struct(expr_struct) => {
@@ -1221,11 +1226,11 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                 })
                 .collect::<Result<Vec<_>, Error>>()?;
 
-            Ok(quote! {
+            quote! {
                 #new_path {
                     #(#fields,)*
                 }.get_ref()
-            })
+            }
         }
 
         // 1. `lhs matches pat ==> rhs` to `match lhs { pat => rhs, _ => true }`
@@ -1254,12 +1259,12 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                 None => quote! { false },
             };
 
-            Ok(quote! {
+            quote! {
                 match #lhs {
                     #pat => #true_rhs,
                     _ => #false_rhs,
                 }.get_ref()
-            })
+            }
         }
 
         // TODOs:
@@ -1300,8 +1305,17 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         // Expr::Assert(assert) => todo!(),
         // Expr::AssertForall(assert_forall) => todo!(),
         // Expr::RevealHide(reveal_hide) => todo!(),
-        _ => Err(Error::new_spanned(expr, "unsupported expression")),
-    }
+        _ => return Err(Error::new_spanned(expr, "unsupported expression")),
+    };
+
+    // Wrap another token tree group
+    // so that the outer layer won't override
+    // the span of what's inside the group.
+    // And also helps with clarifying associativity
+    let expr_span = expr.span();
+    let expr_ts = quote_spanned! { expr_span=> (#expr_ts) };
+
+    Ok(expr_ts)
 }
 
 /// Compiles a block
@@ -1351,6 +1365,23 @@ fn compile_block(ctx: &LocalCtx, block: &Block) -> Result<TokenStream2, Error> {
     }
 
     Ok(quote! { { #(#ts)* } })
+}
+
+/// Recursively set the of all tokens in a token stream to the given one
+fn respan(input: TokenStream2, span: Span) -> TokenStream2 {
+    input
+        .into_iter()
+        .map(|mut tt| {
+            if let TokenTree::Group(g) = tt {
+                let mut new_g = Group::new(g.delimiter(), respan(g.stream(), span));
+                new_g.set_span(span);
+                TokenTree::Group(new_g)
+            } else {
+                tt.set_span(span);
+                tt
+            }
+        })
+        .collect()
 }
 
 /// Compiles a spec function into an exec function
