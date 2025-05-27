@@ -38,6 +38,7 @@ pub assume_specification[ str::to_owned ](s: &str) -> (res: String)
         s.is_ascii() == res.is_ascii(),
 ;
 
+#[cfg(feature = "alloc")]
 pub uninterp spec fn to_string_from_display_ensures<T: core::fmt::Display + ?Sized>(
     t: &T,
     s: String,
@@ -192,6 +193,14 @@ pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
         #[trigger] s@.index(i) == strslice_get_char(s, i),
 ;
 
+#[cfg(not(feature = "alloc"))]
+pub broadcast group group_string_axioms {
+    axiom_str_literal_is_ascii,
+    axiom_str_literal_len,
+    axiom_str_literal_get_char,
+}
+
+#[cfg(feature = "alloc")]
 pub broadcast group group_string_axioms {
     axiom_str_literal_is_ascii,
     axiom_str_literal_len,
