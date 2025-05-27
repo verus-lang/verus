@@ -509,3 +509,19 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    /// Tests that error spans are accurate
+    #[test] test_exec_spec_error_span IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            struct MyPair(Seq<u32>, Seq<u32>);
+
+            // Two failures: failed post-condition and overflow
+            spec fn pred(p: MyPair) -> bool // FAILS
+                recommends p.0.len() != 0 // FAILS
+            {
+                p.0[0] + 10 > 100 // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
