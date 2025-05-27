@@ -41,8 +41,8 @@ enum Vehicle2<T> {
 
 fn test_is_variant_1(v: Vehicle2<u64>) {
     match v {
-        Vehicle2::Car(_) => assert(v is Vehicle2::Car),
-        Vehicle2::Train(_) => assert(v is Vehicle2::Train),
+        Vehicle2::Car(_) => assert(v is Car),
+        Vehicle2::Train(_) => assert(v is Train),
     };
 }
 
