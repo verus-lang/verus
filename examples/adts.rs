@@ -1,4 +1,3 @@
-use builtin::*;
 use builtin_macros::*;
 #[allow(unused_imports)]
 use vstd::prelude::*;
@@ -34,7 +33,6 @@ fn test_structural_eq(passengers: u64) {
     assert(t != ca);
 }
 
-#[is_variant]
 #[derive(Structural, PartialEq, Eq)]
 enum Vehicle2<T> {
     Car(Car<T>),
@@ -43,14 +41,13 @@ enum Vehicle2<T> {
 
 fn test_is_variant_1(v: Vehicle2<u64>) {
     match v {
-        Vehicle2::Car(_) => assert(v.is_Car()),
-        Vehicle2::Train(_) => assert(v.is_Train()),
+        Vehicle2::Car(_) => assert(v is Vehicle2::Car),
+        Vehicle2::Train(_) => assert(v is Vehicle2::Train),
     };
 }
 
 fn test_is_variant_2(v: Vehicle2<u64>)
-    requires
-        v.is_Train() && v.get_Train_0(),
+    requires v matches Vehicle2::Train(true)
 {
 }
 

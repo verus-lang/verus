@@ -3,7 +3,7 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use vstd::{prelude::*, seq::*, seq_lib::*};
+use vstd::{prelude::*, seq_lib::*};
 
 macro_rules! get_bit64_macro {
     ($a:expr, $b:expr) => {{
@@ -12,6 +12,7 @@ macro_rules! get_bit64_macro {
 }
 
 // since this wraps with `verus_proof_macro_exprs`, should use the above `get_bit64_macro` if it is going to be executable.
+#[allow(unused_macros)]
 macro_rules! get_bit64 {
     ($($a:tt)*) => {
         verus_proof_macro_exprs!(get_bit64_macro!($($a)*))
@@ -29,6 +30,7 @@ macro_rules! set_bit64_macro {
 }
 
 // since this wraps with `verus_proof_macro_exprs`, should use the above `set_bit64_macro` if it is going to be executable.
+#[allow(unused_macros)]
 macro_rules! set_bit64 {
     ($($a:tt)*) => {
         verus_proof_macro_exprs!(set_bit64_macro!($($a)*))
