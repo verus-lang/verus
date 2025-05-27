@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use proc_macro::TokenStream;
 use proc_macro2::{Group, Span, TokenStream as TokenStream2, TokenTree};
@@ -499,7 +499,7 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
     let params = spec_params
         .iter()
         .map(|(name, typ)| {
-            ctx.add_param((*name).clone());
+            ctx.add((*name).clone(), VarMode::Ref);
             let typ = compile_type(typ, TypeKind::Ref)?;
             Ok(quote! { #name: #typ })
         })
@@ -594,26 +594,28 @@ fn compile_sig(ctx: &mut LocalCtx, item_fn: &ItemFn) -> Result<TokenStream2, Err
     Ok(respan(sig, item_fn.sig.span()))
 }
 
-/// Records the parameters and local variable names
-/// since parameters have reference types, and local variables
-/// have owned types, and we need to distinguish them
+/// Each variable is marked with a mode
+/// indicating whether it is the owned
+/// or the borrowed version of the spec type
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum VarMode {
+    Owned,
+    Ref,
+}
+
+/// Records the locals and their modes
 #[derive(Clone, Debug)]
 struct LocalCtx {
-    params: HashSet<Ident>,
-    locals: HashSet<Ident>,
+    vars: HashMap<Ident, VarMode>,
 }
 
 impl LocalCtx {
     fn new() -> Self {
-        LocalCtx { params: HashSet::new(), locals: HashSet::new() }
+        LocalCtx { vars: HashMap::new() }
     }
 
-    fn add_param(&mut self, ident: Ident) {
-        self.params.insert(ident);
-    }
-
-    fn add_local(&mut self, ident: Ident) {
-        self.locals.insert(ident);
+    fn add(&mut self, ident: Ident, mode: VarMode) {
+        self.vars.insert(ident, mode);
     }
 }
 
@@ -640,8 +642,7 @@ fn compile_pat_path(path: &Path) -> Result<Path, Error> {
 
 #[derive(Clone, Debug, PartialEq)]
 enum ExprPathKind {
-    Param,
-    Local,
+    Local(VarMode),
     FnName,
     StructOrEnum,
     Constant,
@@ -685,10 +686,8 @@ fn infer_expr_path_kind(ctx: &LocalCtx, path: &Path) -> ExprPathKind {
 
     if path.segments.len() == 1 {
         let seg = &path.segments[0];
-        if ctx.params.contains(&seg.ident) {
-            return ExprPathKind::Param;
-        } else if ctx.locals.contains(&seg.ident) {
-            return ExprPathKind::Local;
+        if let Some(mode) = ctx.vars.get(&seg.ident) {
+            return ExprPathKind::Local(*mode);
         }
     }
 
@@ -730,7 +729,7 @@ fn compile_expr_path(
 
     let new_path = match kind {
         // Do not change local variables or function parameters
-        ExprPathKind::Param | ExprPathKind::Local => path.clone(),
+        ExprPathKind::Local(..) => path.clone(),
         ExprPathKind::FnName => prefix_nth_segment(path, "exec_", path.segments.len() - 1)?,
         ExprPathKind::StructOrEnum => prefix_nth_segment(path, "Exec", 0)?,
         ExprPathKind::Constant => path.clone(),
@@ -765,7 +764,7 @@ fn compile_pattern(
             // Bound variables are added as params since
             // we will explicitly convert them to borrowed types
             // as opposed to owned types
-            ctx.add_param(pat_ident.ident.clone());
+            ctx.add(pat_ident.ident.clone(), VarMode::Ref);
             new_locals.insert(pat_ident.ident.clone());
             Ok(quote! { #pat })
         }
@@ -853,12 +852,12 @@ fn compile_match_arm(ctx: &LocalCtx, arm: &Arm) -> Result<TokenStream2, Error> {
         }
     });
 
-    let body = compile_expr(&ctx, &arm.body)?;
+    let body = compile_expr(&ctx, &arm.body, VarMode::Owned)?;
 
     Ok(quote! {
         #pat => {
             #(#local_converts)*
-            #body.get_owned()
+            #body
         }
     })
 }
@@ -867,16 +866,21 @@ fn compile_match_arm(ctx: &LocalCtx, arm: &Arm) -> Result<TokenStream2, Error> {
 ///
 /// Suppose the original expression has (spec) type `T`
 /// the exec expression returned from this function should
-/// have the type `T::ExecRefType<'_>`
-fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
+/// have the type
+/// - `T::ExecRefType<'_>` if mode is `VarMode::Ref`
+/// - `T::ExecOwnedType` if mode is `VarMode::Owned`
+fn compile_expr(ctx: &LocalCtx, expr: &Expr, mode: VarMode) -> Result<TokenStream2, Error> {
     let expr_ts = match expr {
         Expr::Lit(lit) => match &lit.lit {
-            Lit::Str(..)
-            | Lit::Byte(..)
-            | Lit::Char(..)
-            | Lit::Int(..)
-            | Lit::Float(..)
-            | Lit::Bool(..) => quote! { #lit },
+            Lit::Str(..) => match mode {
+                VarMode::Ref => quote! { #lit },
+                VarMode::Owned => quote! { #lit.to_string() },
+            },
+
+            // Same owned/borrowed types for these cases
+            Lit::Byte(..) | Lit::Char(..) | Lit::Int(..) | Lit::Float(..) | Lit::Bool(..) => {
+                quote! { #lit }
+            }
 
             _ => return Err(Error::new_spanned(lit, "unsupported literal")),
         },
@@ -885,7 +889,11 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         // convert back a reference again
         Expr::Block(expr_block) => {
             let block_expr = compile_block(ctx, &expr_block.block)?;
-            quote! { #block_expr.get_ref() }
+
+            match mode {
+                VarMode::Ref => quote! { #block_expr.get_ref() },
+                VarMode::Owned => quote! { #block_expr }, // block already have the owned mode
+            }
         }
 
         // Macro invocations get passed through
@@ -901,33 +909,46 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                 let args = args
                     .0
                     .iter()
-                    .map(|arg| compile_expr(ctx, arg))
+                    .map(|arg| compile_expr(ctx, arg, VarMode::Owned))
                     .collect::<Result<Vec<_>, Error>>()?;
 
                 // We need to convert each argument to the owned type
-                quote! { ({
-                    let v = vec![ #((#args).get_owned()),* ];
+                let owned = quote! { {
+                    let v = vec![ #(#args),* ];
                     // Sometimes required for proving functional correctness
                     assert(v.deep_view() == seq![ #spec_args ]);
                     v
-                }).get_ref() }
+                } };
+
+                match mode {
+                    VarMode::Ref => quote! { #owned.get_ref() },
+                    VarMode::Owned => owned,
+                }
             } else {
+                // TODO: typing?
                 quote! { #expr_macro }
             }
         }
 
         Expr::Paren(expr_paren) => {
-            let inner = compile_expr(ctx, &expr_paren.expr)?;
+            let inner = compile_expr(ctx, &expr_paren.expr, mode)?;
             quote! { #inner } // we'll insert the parenthesis in the end
         }
 
         Expr::Field(expr_field) => {
-            let expr = compile_expr(ctx, &expr_field.base)?;
+            // The base of a field is always get as a reference
+            // since we want to avoid partially moving the base
+            let expr = compile_expr(ctx, &expr_field.base, VarMode::Ref)?;
             let field = &expr_field.member;
             // By default, x.y have the owned type of field y
             // so we need to take the reference and convert it
             // into the ref type
-            quote! { (&#expr.#field).get_ref() }
+            match mode {
+                VarMode::Ref => quote! { (&#expr.#field).get_ref() },
+
+                // Basically clone the field
+                VarMode::Owned => quote! { (&#expr.#field).get_ref().get_owned() },
+            }
         }
 
         // If the variable is a local variable
@@ -938,10 +959,29 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             let (new_path, kind) = compile_expr_path(ctx, &expr_path.path, None)?;
 
             match kind {
-                ExprPathKind::Param => quote! { #new_path },
-                ExprPathKind::Local => quote! { (#new_path).get_ref() },
-                ExprPathKind::StructOrEnum => quote! { (#new_path).get_ref() },
-                ExprPathKind::Constant => quote! { #new_path },
+                ExprPathKind::Local(local_mode) => match (local_mode, mode) {
+                    // Borrowed type should be structural, so we can just copy
+                    (VarMode::Ref, VarMode::Ref) => quote! { #new_path },
+                    (VarMode::Ref, VarMode::Owned) => quote! { (#new_path).get_owned() },
+                    (VarMode::Owned, VarMode::Ref) => quote! { (#new_path).get_ref() },
+
+                    // We still need to clone in this case, since
+                    // we don't want to move the variable
+                    (VarMode::Owned, VarMode::Owned) => quote! { #new_path.get_ref().get_owned() },
+                },
+
+                ExprPathKind::StructOrEnum => match mode {
+                    VarMode::Ref => quote! { #new_path.get_ref() },
+                    VarMode::Owned => quote! { #new_path },
+                },
+
+                // We assume that constants (e.g. usize::MAX)
+                // have the borrowed type
+                ExprPathKind::Constant => match mode {
+                    VarMode::Ref => quote! { #new_path },
+                    VarMode::Owned => quote! { #new_path.get_owned() },
+                },
+
                 _ => return Err(Error::new_spanned(expr_path, "unsupported path expression")),
             }
         }
@@ -955,15 +995,16 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         //
         // We also support equality (TODO)
         Expr::Binary(expr_binary) => match &expr_binary.op {
+            // `bool` has the same owned and borrowed types, so no need to convert here
             BinOp::Eq(..) => {
-                let left = compile_expr(ctx, &expr_binary.left)?;
-                let right = compile_expr(ctx, &expr_binary.right)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref)?;
                 quote! { ExecSpecEq::exec_eq(#left, #right) }
             }
 
             BinOp::Ne(..) => {
-                let left = compile_expr(ctx, &expr_binary.left)?;
-                let right = compile_expr(ctx, &expr_binary.right)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref)?;
                 quote! { !ExecSpecEq::exec_eq(#left, #right) }
             }
 
@@ -974,6 +1015,10 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             // BinOp::ExtNe(..) => todo!(),
             // BinOp::ExtDeepEq(..) => todo!(),
             // BinOp::ExtDeepNe(..) => todo!(),
+
+            // Assuming these return integer/boolean types
+            // which have the same owned and borrowed types
+            // so no need to convert with get_ref/get_owned
             BinOp::Add(..)
             | BinOp::Sub(..)
             | BinOp::Mul(..)
@@ -991,30 +1036,30 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             | BinOp::Ge(..)
             | BinOp::Gt(..) => {
                 let op = &expr_binary.op;
-                let left = compile_expr(ctx, &expr_binary.left)?;
-                let right = compile_expr(ctx, &expr_binary.right)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref)?;
 
                 quote! { #left #op #right }
             }
 
             // `a ==> b` to `!a || b`
             BinOp::Imply(..) => {
-                let left = compile_expr(ctx, &expr_binary.left)?;
-                let right = compile_expr(ctx, &expr_binary.right)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref)?;
                 quote! { !(#left) || (#right) }
             }
 
             // `a <== b` to `!b || a`
             BinOp::Exply(..) => {
-                let left = compile_expr(ctx, &expr_binary.left)?;
-                let right = compile_expr(ctx, &expr_binary.right)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref)?;
                 quote! { !(#right) || (#left) }
             }
 
             // `a <==> b` to `a == b`
             BinOp::Equiv(..) => {
-                let left = compile_expr(ctx, &expr_binary.left)?;
-                let right = compile_expr(ctx, &expr_binary.right)?;
+                let left = compile_expr(ctx, &expr_binary.left, VarMode::Ref)?;
+                let right = compile_expr(ctx, &expr_binary.right, VarMode::Ref)?;
                 quote! { ExecSpecEq::exec_eq(#left, #right) }
             }
 
@@ -1040,12 +1085,12 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                 if is_path_eq(&type_path.path, &["int"])
                     || is_path_eq(&type_path.path, &["nat"]) =>
             {
-                compile_expr(ctx, &expr_cast.expr)?
+                compile_expr(ctx, &expr_cast.expr, mode)?
             }
 
             _ => {
                 let typ = compile_type(&expr_cast.ty, TypeKind::Ref)?;
-                let expr = compile_expr(ctx, &expr_cast.expr)?;
+                let expr = compile_expr(ctx, &expr_cast.expr, mode)?;
 
                 quote! {
                     (#expr as #typ)
@@ -1054,7 +1099,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         },
 
         Expr::If(expr_if) => {
-            let cond = compile_expr(ctx, &expr_if.cond)?;
+            let cond = compile_expr(ctx, &expr_if.cond, VarMode::Ref)?;
             let then_branch = compile_block(ctx, &expr_if.then_branch)?;
 
             // let e = &expr_if.else_branch.as_ref().unwrap().1;
@@ -1070,24 +1115,27 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                         "else branch is required for if expression",
                     ))?
                     .1,
+                VarMode::Owned, // to align with the owned type of then_branch
             )?;
 
-            quote! {
-                // Convert back to get_ref
+            let owned = quote! {
                 if #cond
                     #then_branch
                 else {
-                    // Add an get_owned call to align
-                    // with the type of the then_bench (which is a block)
-                    (#else_branch).get_owned()
-                }.get_ref()
+                    #else_branch
+                }
+            };
+
+            match mode {
+                VarMode::Ref => quote! { #owned.get_ref() },
+                VarMode::Owned => owned,
             }
         }
 
         // View expressions are ignored (e.g. "abc"@ => "abc")
         // TODO: more strict rules here
         Expr::View(view) => {
-            let expr = compile_expr(ctx, &view.expr)?;
+            let expr = compile_expr(ctx, &view.expr, mode)?;
             quote! { #expr }
         }
 
@@ -1095,19 +1143,22 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         // but NOT SpecString, whose exec version (String)
         // does not have a direct indexing operator
         Expr::Index(expr_index) => {
-            let base = compile_expr(ctx, &expr_index.expr)?;
-            let index = compile_expr(ctx, &expr_index.index)?;
+            let base = compile_expr(ctx, &expr_index.expr, VarMode::Ref)?;
+            let index = compile_expr(ctx, &expr_index.index, VarMode::Ref)?;
 
-            // Ok(quote! { ((&#base[#index]).get_ref()) })
-            quote! { #base.exec_index(#index).get_ref() }
+            match mode {
+                VarMode::Ref => quote! { #base.exec_index(#index).get_ref() },
+
+                // Clone to avoid partial moves
+                VarMode::Owned => quote! { #base.exec_index(#index).get_ref().get_owned() },
+            }
         }
 
         // Only support unary arithmetic operators
-        // and forall/exists
         Expr::Unary(expr_unary) => match &expr_unary.op {
             UnOp::Neg(..) | UnOp::Not(..) => {
                 let op = &expr_unary.op;
-                let expr = compile_expr(ctx, &expr_unary.expr)?;
+                let expr = compile_expr(ctx, &expr_unary.expr, VarMode::Ref)?;
                 quote! { #op #expr }
             }
 
@@ -1121,7 +1172,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             let exprs = big_and
                 .exprs
                 .iter()
-                .map(|e| compile_expr(ctx, &e.expr))
+                .map(|e| compile_expr(ctx, &e.expr, VarMode::Ref))
                 .collect::<Result<Vec<_>, Error>>()?;
             quote! { #((#exprs))&&* }
         }
@@ -1130,7 +1181,7 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             let exprs = big_or
                 .exprs
                 .iter()
-                .map(|e| compile_expr(ctx, &e.expr))
+                .map(|e| compile_expr(ctx, &e.expr, VarMode::Ref))
                 .collect::<Result<Vec<_>, Error>>()?;
             quote! { #((#exprs))||* }
         }
@@ -1149,29 +1200,39 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
 
             let (exec_fn_path, kind) = compile_expr_path(ctx, &fn_path.path, None)?;
 
-            // Compile the arguments
-            let args = expr_call
-                .args
-                .iter()
-                .map(|arg| compile_expr(ctx, arg))
-                .collect::<Result<Vec<_>, Error>>()?;
-
-            match kind {
-                // Struct/enums requires owned types
+            let owned = match kind {
+                // Struct/enums requires owned arguments
                 ExprPathKind::StructOrEnum => {
-                    quote! { #exec_fn_path(#(#args.get_owned()),*).get_ref() }
+                    let args = expr_call
+                        .args
+                        .iter()
+                        .map(|arg| compile_expr(ctx, arg, VarMode::Owned))
+                        .collect::<Result<Vec<_>, Error>>()?;
+                    quote! { #exec_fn_path(#(#args),*) }
                 }
 
-                ExprPathKind::FnName => quote! { #exec_fn_path(#(#args),*).get_ref() },
+                ExprPathKind::FnName => {
+                    let args = expr_call
+                        .args
+                        .iter()
+                        .map(|arg| compile_expr(ctx, arg, VarMode::Ref))
+                        .collect::<Result<Vec<_>, Error>>()?;
+                    quote! { #exec_fn_path(#(#args),*) }
+                }
 
                 _ => return Err(Error::new_spanned(expr_call, "unsupported callee path")),
+            };
+
+            match mode {
+                VarMode::Ref => quote! { #owned.get_ref() },
+                VarMode::Owned => owned,
             }
         }
 
         // We only permit a limited set of method calls
         Expr::MethodCall(expr_method_call) => match expr_method_call.method.to_string().as_str() {
             "len" => {
-                let receiver = compile_expr(ctx, &expr_method_call.receiver)?;
+                let receiver = compile_expr(ctx, &expr_method_call.receiver, VarMode::Ref)?;
                 quote! { #receiver.exec_len() }
             }
 
@@ -1179,17 +1240,22 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
         },
 
         Expr::Match(expr_match) => {
-            let expr = compile_expr(ctx, &expr_match.expr)?;
+            let expr = compile_expr(ctx, &expr_match.expr, VarMode::Ref)?;
             let arms = expr_match
                 .arms
                 .iter()
                 .map(|arm| compile_match_arm(ctx, arm))
                 .collect::<Result<Vec<_>, Error>>()?;
 
-            quote! {
+            let owned = quote! {
                 match #expr {
                     #(#arms,)*
-                }.get_ref()
+                }
+            };
+
+            match mode {
+                VarMode::Ref => quote! { #owned.get_ref() },
+                VarMode::Owned => owned,
             }
         }
 
@@ -1197,9 +1263,13 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             let exprs = expr_tuple
                 .elems
                 .iter()
-                .map(|e| compile_expr(ctx, e))
+                .map(|e| compile_expr(ctx, e, VarMode::Owned))
                 .collect::<Result<Vec<_>, Error>>()?;
-            quote! { (#(#exprs.get_owned(),)*).get_ref() }
+
+            match mode {
+                VarMode::Ref => quote! { (#(#exprs),*).get_ref() },
+                VarMode::Owned => quote! { (#(#exprs),*) },
+            }
         }
 
         Expr::Struct(expr_struct) => {
@@ -1221,15 +1291,20 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                             "unsupported unamed field in struct expression",
                         ));
                     };
-                    let value = compile_expr(ctx, &field.expr)?;
-                    Ok(quote! { #name: #value.get_owned() })
+                    let value = compile_expr(ctx, &field.expr, VarMode::Owned)?;
+                    Ok(quote! { #name: #value })
                 })
                 .collect::<Result<Vec<_>, Error>>()?;
 
-            quote! {
+            let owned = quote! {
                 #new_path {
                     #(#fields,)*
-                }.get_ref()
+                }
+            };
+
+            match mode {
+                VarMode::Ref => quote! { #owned.get_ref() },
+                VarMode::Owned => owned,
             }
         }
 
@@ -1241,11 +1316,11 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
             let mut new_locals = HashSet::new();
             let pat = compile_pattern(&mut ctx, pat, &mut new_locals)?;
 
-            let lhs = compile_expr(&ctx, lhs)?;
+            let lhs = compile_expr(&ctx, lhs, VarMode::Ref)?;
 
             let true_rhs = if let Some(MatchesOpExpr { rhs, .. }) = op_expr {
-                let rhs = compile_expr(&ctx, rhs)?;
-                quote! { { #rhs.get_owned() } }
+                let rhs = compile_expr(&ctx, rhs, VarMode::Owned)?;
+                quote! { { #rhs } }
             } else {
                 quote! { true }
             };
@@ -1259,11 +1334,16 @@ fn compile_expr(ctx: &LocalCtx, expr: &Expr) -> Result<TokenStream2, Error> {
                 None => quote! { false },
             };
 
-            quote! {
+            let owned = quote! {
                 match #lhs {
                     #pat => #true_rhs,
                     _ => #false_rhs,
-                }.get_ref()
+                }
+            };
+
+            match mode {
+                VarMode::Ref => quote! { #owned.get_ref() },
+                VarMode::Owned => owned,
             }
         }
 
@@ -1344,20 +1424,16 @@ fn compile_block(ctx: &LocalCtx, block: &Block) -> Result<TokenStream2, Error> {
                     ));
                 };
 
-                let expr = compile_expr(&ctx, &local_init.expr)?;
+                let expr = compile_expr(&ctx, &local_init.expr, VarMode::Owned)?;
 
-                ctx.add_local(var.clone());
-                ts.push(quote! {
-                    let #var = #expr.get_owned();
-                });
+                ctx.add(var.clone(), VarMode::Owned);
+                ts.push(quote! { let #var = #expr; });
             }
 
             // NOTE: this is expected to be the last expression
             Stmt::Expr(expr, ..) => {
-                let expr = compile_expr(&ctx, expr)?;
-                ts.push(quote! {
-                    (#expr).get_owned()
-                });
+                let expr = compile_expr(&ctx, expr, VarMode::Owned)?;
+                ts.push(quote! { #expr });
             }
 
             _ => return Err(Error::new_spanned(stmt, "unsupported statement")),
