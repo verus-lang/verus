@@ -88,12 +88,18 @@ fn run_example_for_file(file_path: &str) {
         relative_path.parent().expect("no parent dir"),
         &relative_path,
         true,
-        false,
+        true,
     );
 
     use regex::Regex;
     let re = Regex::new(r"verification results:: (\d+) verified, (\d+) errors").unwrap();
     let stdout = std::str::from_utf8(&output.stdout).expect("invalid stdout encoding");
+    let stderr = std::str::from_utf8(&output.stderr).expect("invalid stderr encoding").trim();
+    let mut errors = Vec::new();
+    let mut expand_errors_notes = Vec::new();
+    let mut is_failure = false;
+    let (warnings, _notes) =
+        parse_diags(stderr, &mut errors, &mut expand_errors_notes, &mut is_failure);
     let verifier_output: Option<(u64, u64)> = re.captures_iter(stdout).next().map(|x| {
         (
             x[1].parse().expect("invalid verifier output"),
@@ -108,6 +114,8 @@ fn run_example_for_file(file_path: &str) {
                     Some((_, 0)) => true,
                     _ => false,
                 }
+                && !is_failure
+                && warnings.len() == 0
         }
         Mode::ExpectErrors => !output.status.success(),
         Mode::ExpectFailures => {
@@ -121,10 +129,11 @@ fn run_example_for_file(file_path: &str) {
 
     if !success {
         eprintln!("- example {} - mode: {:?} - failed -", &path, mode);
-        eprintln!(
-            "- stderr -\n{}\n",
-            std::str::from_utf8(&output.stderr).expect("invalid stderr encoding")
-        );
+        if warnings.len() > 0 {
+            for w in warnings {
+                eprintln!("- warning - {}", w.rendered);
+            }
+        }
         eprintln!("- stdout -\n{}\n", stdout);
         assert!(false);
     }

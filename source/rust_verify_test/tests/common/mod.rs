@@ -164,6 +164,33 @@ pub fn verify_files_vstd_all_diags(
     }
 
     let mut is_failure = !is_run_success;
+    let (warnings, notes) =
+        parse_diags(rust_output, &mut errors, &mut expand_errors_notes, &mut is_failure);
+
+    if !keep_test_dir {
+        if !is_failure {
+            std::fs::remove_dir_all(&test_input_dir).unwrap();
+        } else {
+            print_input_dir_rerun_info(&test_input_dir, options, &entry_file);
+        }
+    }
+
+    if is_failure {
+        Err(TestErr { errors, warnings, notes, expand_errors_notes })
+    } else {
+        Ok(TestErr { errors, warnings, notes, expand_errors_notes })
+    }
+}
+
+pub fn parse_diags(
+    rust_output: &str,
+    errors: &mut Vec<Diagnostic>,
+    expand_errors_notes: &mut Vec<Diagnostic>,
+    is_failure: &mut bool,
+) -> (Vec<Diagnostic>, Vec<Diagnostic>) {
+    let aborting_due_to_re =
+        regex::Regex::new(r"^aborting due to( [0-9]+)? previous errors?").unwrap();
+
     let mut warnings = Vec::new();
     let mut notes = Vec::new();
 
@@ -192,25 +219,12 @@ pub fn verify_files_vstd_all_diags(
                 }
                 errors.push(diag);
             } else {
-                is_failure = true;
-                eprintln!("[unexpected json] {}", ss);
+                *is_failure = true;
+                eprintln!("[unexpected json] <{}>", ss);
             }
         }
     }
-
-    if !keep_test_dir {
-        if !is_failure {
-            std::fs::remove_dir_all(&test_input_dir).unwrap();
-        } else {
-            print_input_dir_rerun_info(&test_input_dir, options, &entry_file);
-        }
-    }
-
-    if is_failure {
-        Err(TestErr { errors, warnings, notes, expand_errors_notes })
-    } else {
-        Ok(TestErr { errors, warnings, notes, expand_errors_notes })
-    }
+    (warnings, notes)
 }
 
 pub fn run_verus(
