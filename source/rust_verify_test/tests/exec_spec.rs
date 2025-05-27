@@ -424,6 +424,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    /// Tests support for some built-in constants
+    #[test] test_exec_spec_constant IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            spec fn test(i: usize) -> bool {
+                usize::MAX - i != 0
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     /// Tests interoperability and generated post/pre-conditions
     #[test] test_exec_spec_interop1 IMPORTS.to_string() + verus_code_str! {
         exec_spec! {
@@ -524,4 +535,35 @@ test_verify_one_file! {
             }
         }
     } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    /// Test that linear variables are compiled correctly
+    #[test] test_exec_spec_linear IMPORTS.to_string() + verus_code_str! {
+        exec_spec! {
+            struct B;
+
+            struct A {
+                x: B,
+                y: B,
+            }
+
+            spec fn test1(a: A) -> bool {
+                let b = a;
+                let c = b;
+                let d = b;
+                true
+            }
+
+            spec fn test2(a: A) -> B {
+                let b = a.x;
+                let e = {
+                    let c = b;
+                    let d = b;
+                    d
+                };
+                e
+            }
+        }
+    } => Ok(())
 }
