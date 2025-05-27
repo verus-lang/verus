@@ -21,7 +21,7 @@ test_verify_one_file_with_options! {
             requires
                 true,
             ensures
-                true
+                true,
             no_unwind
         {
         }
