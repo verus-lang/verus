@@ -1,4 +1,9 @@
-#![cfg(feature = "alloc")]
+//! This module provides utilities for the compiled
+//! executable code of exec_spec
+//! 
+//! Currently we do not suppport no-alloc or no-std
+
+#![cfg(all(feature = "alloc", feature = "std"))]
 
 use super::prelude::*;
 
