@@ -8,6 +8,24 @@ test_verify_one_file_with_options! {
         use vstd::prelude::*;
         use vstd::invariant::*;
 
+        fn ensures_no_comma()
+            requires
+                true,
+            ensures
+                true
+            no_unwind
+        {
+        }
+
+        fn ensures_with_comma()
+            requires
+                true,
+            ensures
+                true
+            no_unwind
+        {
+        }
+
         fn fn_may_unwind()
             opens_invariants none
         {
