@@ -110,7 +110,6 @@ pub struct ArgsX {
     pub report_long_running: bool,
     pub use_crate_name: bool,
     pub solver: SmtSolver,
-    #[cfg(feature = "axiom-usage-info")]
     pub axiom_usage_info: bool,
     pub check_api_safety: bool,
 }
@@ -156,7 +155,6 @@ impl ArgsX {
             report_long_running: Default::default(),
             use_crate_name: Default::default(),
             solver: Default::default(),
-            #[cfg(feature = "axiom-usage-info")]
             axiom_usage_info: Default::default(),
             check_api_safety: Default::default(),
         }
@@ -391,7 +389,6 @@ pub fn parse_args_with_imports(
     const EXTENDED_CVC5: &str = "cvc5";
     const EXTENDED_ALLOW_INLINE_AIR: &str = "allow-inline-air";
     const EXTENDED_USE_CRATE_NAME: &str = "use-crate-name";
-    #[cfg(feature = "axiom-usage-info")]
     const EXTENDED_AXIOM_USAGE_INFO: &str = "axiom-usage-info";
     const EXTENDED_CHECK_API_SAFETY: &str = "check-api-safety";
     const EXTENDED_KEYS: &[(&str, &str)] = &[
@@ -416,7 +413,6 @@ pub fn parse_args_with_imports(
             EXTENDED_USE_CRATE_NAME,
             "Use the crate name in paths (useful when verifying vstd without --export)",
         ),
-        #[cfg(feature = "axiom-usage-info")]
         (EXTENDED_AXIOM_USAGE_INFO, "Print usage info for broadcasted axioms, lemmas, and groups"),
         (
             EXTENDED_CHECK_API_SAFETY,
@@ -764,7 +760,6 @@ pub fn parse_args_with_imports(
         report_long_running: !matches.opt_present(OPT_NO_REPORT_LONG_RUNNING),
         use_crate_name: extended.get(EXTENDED_USE_CRATE_NAME).is_some(),
         solver: if extended.get(EXTENDED_CVC5).is_some() { SmtSolver::Cvc5 } else { SmtSolver::Z3 },
-        #[cfg(feature = "axiom-usage-info")]
         axiom_usage_info: extended.get(EXTENDED_AXIOM_USAGE_INFO).is_some(),
         check_api_safety: extended.get(EXTENDED_CHECK_API_SAFETY).is_some(),
     };
