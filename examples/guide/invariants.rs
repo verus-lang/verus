@@ -31,10 +31,9 @@ proof fn lemma_fib_is_monotonic(i: nat, j: nat)
         fib(i) <= fib(j),
     decreases j - i,
 {
-    if i < 2 && j < 2 {
+    if j < 2 {
     } else if i == j {
     } else if i == j - 1 {
-        assert(fib(j) == fib((j - 2) as nat) + fib((j - 1) as nat));
     } else {
         lemma_fib_is_monotonic(i, (j - 1) as nat);
         lemma_fib_is_monotonic(i, (j - 2) as nat);
@@ -88,10 +87,9 @@ proof fn lemma_fib_is_monotonic(i: nat, j: nat)
     ensures
         fib(i) <= fib(j),
 {
-    if i < 2 && j < 2 {
+    if j < 2 {
     } else if i == j {
     } else if i == j - 1 {
-        assume(false);
     } else {
         assume(false);
     }

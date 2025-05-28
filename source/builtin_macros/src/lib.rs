@@ -27,8 +27,16 @@ mod topological_sort;
 
 decl_derive!([Structural] => structural::derive_structural);
 
-decl_attribute!([is_variant] => is_variant::attribute_is_variant);
-decl_attribute!([is_variant_no_deprecation_warning] => is_variant::attribute_is_variant_no_deprecation_warning);
+decl_attribute! {
+    [is_variant] =>
+    /// Add `is_<VARIANT>` and `get_<VARIANT>` functions to an enum
+    is_variant::attribute_is_variant
+}
+decl_attribute! {
+    [is_variant_no_deprecation_warning] =>
+    /// Add `is_<VARIANT>` and `get_<VARIANT>` functions to an enum
+    is_variant::attribute_is_variant_no_deprecation_warning
+}
 
 #[proc_macro_attribute]
 pub fn verus_enum_synthesize(
