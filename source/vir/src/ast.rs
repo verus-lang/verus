@@ -546,7 +546,7 @@ pub enum HeaderExprX {
     /// Postconditions on exec/proof functions, with an optional name and type for the return value
     Ensures(Option<(VarIdent, Typ)>, Exprs),
     /// Atomic Postconditions on exec/proof functions, with an optional name and type for the return value
-    AtomicEnsures(Option<(VarIdent, Typ)>, Exprs),
+    AtomicEnsures(Option<((VarIdent, Typ), (VarIdent, Typ))>, Exprs),
     /// Returns clause
     Returns(Expr),
     /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
@@ -1130,8 +1130,12 @@ pub struct FunctionX {
     pub ens_has_return: bool,
     /// Preconditions (requires for proof/exec functions, recommends for spec functions)
     pub require: Exprs,
+
+    pub atomic_require: Exprs,
     /// Postconditions (proof/exec functions only)
     pub ensure: Exprs,
+
+    pub atomic_ensure: Exprs,
     /// Expression in the 'returns' clause
     pub returns: Option<Expr>,
     /// Decreases clause to ensure recursive function termination

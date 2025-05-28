@@ -305,7 +305,9 @@ pub struct FuncAxiomsSst {
 pub struct FunctionSstHas {
     pub has_body: bool,
     pub has_requires: bool,
+    // pub has_atomic_requires: bool,
     pub has_ensures: bool,
+    // pub has_atomic_ensures: bool,
     pub has_decrease: bool,
     pub has_mask_spec: bool,
     pub has_return_name: bool,

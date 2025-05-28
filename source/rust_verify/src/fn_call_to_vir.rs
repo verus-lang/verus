@@ -421,8 +421,8 @@ fn verus_item_to_vir<'tcx, 'a>(
                 record_spec_fn_no_proof_args(bctx, expr);
                 unsupported_err_unless!(args_len == 1, expr.span, "expected atomic ensures", &args);
                 let bctx = &BodyCtxt { external_body: false, in_ghost: true, ..bctx.clone() };
-                let header = extract_ensures(&bctx, args[0])?;
-                // extract_ensures does most of the necessary work, so we can return at this point
+                let header = extract_atomic_ensures(&bctx, args[0])?;
+                // extract_atomic_ensures does most of the necessary work, so we can return at this point
                 mk_expr_span(args[0].span, ExprX::Header(header))
             }
             SpecItem::Decreases => {
@@ -1566,6 +1566,41 @@ fn extract_ensures<'tcx>(
         _ => {
             let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
             Ok(Arc::new(HeaderExprX::Ensures(None, Arc::new(args))))
+        }
+    }
+}
+
+fn extract_atomic_ensures<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &'tcx Expr<'tcx>,
+) -> Result<HeaderExpr, VirErr> {
+    let expr = skip_closure_coercion(bctx, expr);
+    let tcx = bctx.ctxt.tcx;
+    match &expr.kind {
+        ExprKind::Closure(closure) => {
+            let typs: Vec<Typ> = closure_param_typs(bctx, expr)?;
+            let body = tcx.hir().body(closure.body);
+            let mut xs: Vec<VarIdent> = Vec::new();
+            for param in body.params.iter() {
+                xs.push(pat_to_var(param.pat)?);
+            }
+            let expr = &body.value;
+            let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
+
+            match (typs.len(), xs.len()) {
+                (2, 2) => {
+                    let ret_id_typ = (xs[0].clone(), typs[0].clone());
+                    let update_id_typ = (xs[1].clone(), typs[1].clone());
+                    let id_typs = Some((ret_id_typ, update_id_typ));
+                    Ok(Arc::new(HeaderExprX::AtomicEnsures(id_typs, Arc::new(args))))
+                }
+                (0, 0) => Ok(Arc::new(HeaderExprX::AtomicEnsures(None, Arc::new(args)))),
+                _ => err_span(expr.span, "expected 2 parameters in closure (return value and atomic_update result)"),
+            }
+        }
+        _ => {
+            let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
+            Ok(Arc::new(HeaderExprX::AtomicEnsures(None, Arc::new(args))))
         }
     }
 }

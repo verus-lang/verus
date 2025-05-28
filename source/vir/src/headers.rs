@@ -19,7 +19,7 @@ pub struct Header {
     pub recommend: Exprs,
     pub ensure_id_typ: Option<(VarIdent, Typ)>,
     pub ensure: Exprs,
-    pub atomic_ensure_id_typ: Option<(VarIdent, Typ)>,
+    pub atomic_ensure_id_typ: Option<((VarIdent, Typ), (VarIdent, Typ))>,
     pub atomic_ensure: Exprs,
     pub returns: Option<Expr>,
     pub invariant_except_break: Exprs,
@@ -40,7 +40,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut require: Option<Exprs> = None;
     let mut atomic_require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
-    let mut atomic_ensure: Option<(Option<(VarIdent, Typ)>, Exprs)> = None;
+    let mut atomic_ensure: Option<(Option<((VarIdent, Typ), (VarIdent, Typ))>, Exprs)> = None;
     let mut returns: Option<Expr> = None;
     let mut recommend: Option<Exprs> = None;
     let mut invariant_except_break: Option<Exprs> = None;
@@ -107,14 +107,15 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         }
                         ensure = Some((id_typ.clone(), es.clone()));
                     }
-                    HeaderExprX::AtomicEnsures(id_typ, es) => {
+                    HeaderExprX::AtomicEnsures(id_typs_opt, es) => {
                         if ensure.is_some() {
                             return Err(error(
                                 &stmt.span,
                                 "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
                             ));
                         }
-                        atomic_ensure = Some((id_typ.clone(), es.clone()));
+                        // id_typs_opt is now Option<((VarIdent, Typ), (VarIdent, Typ))>
+                        atomic_ensure = Some((id_typs_opt.clone(), es.clone()));
                     }
                     HeaderExprX::Returns(e) => {
                         if returns.is_some() {
@@ -257,7 +258,7 @@ pub fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     };
     let (atomic_ensure_id_typ, atomic_ensure) = match atomic_ensure {
         None => (None, Arc::new(vec![])),
-        Some((id_typ, es)) => (id_typ, es),
+        Some((id_typs_opt, es)) => (id_typs_opt, es),
     };
     let invariant_except_break = invariant_except_break.unwrap_or(Arc::new(vec![]));
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
@@ -436,7 +437,9 @@ fn make_trait_decl(method: &Function, spec_method: &Function) -> Result<Function
         ret,
         ens_has_return: _,
         require,
+        atomic_require,
         ensure,
+        atomic_ensure,
         returns,
         decrease,
         decrease_when,
