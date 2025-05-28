@@ -50,7 +50,7 @@ fn attribute_is_variant_internal(
             proc_macro::Diagnostic::spanned(
                 ast.span().unwrap(),
                 proc_macro::Level::Warning,
-                "`#[is_variant]` is deprecated - use `->` or `matches` instead",
+                "`#[is_variant]` is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html",
             )
             .emit();
         }

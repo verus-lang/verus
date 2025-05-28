@@ -132,7 +132,7 @@ pub axiom fn proof_fn_as_req_ens<
             f.ensures(args, output) ==> #[trigger] R::ens(args, output),
 ;
 
-pub broadcast group group_seq_axioms {
+pub broadcast group group_function_axioms {
     axiom_proof_fn_requires,
     axiom_proof_fn_ensures,
 }

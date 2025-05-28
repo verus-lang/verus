@@ -95,7 +95,7 @@ pub broadcast group group_vstd_default {
     raw_ptr::group_raw_ptr_axioms,
     compute::all_spec_ensures,
     layout::group_layout_axioms,
-    function::group_seq_axioms,
+    function::group_function_axioms,
     std_specs::hash::group_hash_axioms,
     std_specs::vecdeque::group_vec_dequeue_axioms,
 }
@@ -120,7 +120,7 @@ pub broadcast group group_vstd_default {
     raw_ptr::group_raw_ptr_axioms,
     compute::all_spec_ensures,
     layout::group_layout_axioms,
-    function::group_seq_axioms,
+    function::group_function_axioms,
     std_specs::vecdeque::group_vec_dequeue_axioms,
 }
 
@@ -142,7 +142,7 @@ pub broadcast group group_vstd_default {
     raw_ptr::group_raw_ptr_axioms,
     compute::all_spec_ensures,
     layout::group_layout_axioms,
-    function::group_seq_axioms,
+    function::group_function_axioms,
 }
 
 } // verus!

@@ -1771,7 +1771,7 @@ test_verify_one_file! {
     } => Ok(err) => {
         dbg!(&err);
         assert!(err.errors.len() == 0);
-        assert!(err.warnings.iter().find(|w| w.message == "`#[is_variant]` is deprecated - use `->` or `matches` instead").is_some());
+        assert!(err.warnings.iter().find(|w| w.message.starts_with("`#[is_variant]` is deprecated - use `->` or `matches` instead")).is_some());
     }
 }
 

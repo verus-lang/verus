@@ -430,8 +430,5 @@ pub fn check_singular_valid(
         }
     }
 
-    return ValidityResult::Valid(
-        #[cfg(feature = "axiom-usage-info")]
-        air::context::UsageInfo::None,
-    );
+    return ValidityResult::Valid(air::context::UsageInfo::None);
 }

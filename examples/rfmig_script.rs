@@ -1,3 +1,4 @@
+// rust_verify/tests/example.rs
 #![cfg_attr(verus_keep_ghost, verifier::exec_allows_no_decreases_clause)]
 // #![allow(unused_imports, unused_macros, non_camel_case_types)] #![feature(fmt_internals)]
 use vstd::prelude::verus;
@@ -41,11 +42,9 @@ proof fn lemma_fibo_is_monotonic(i: nat, j: nat)
         fibo(i) <= fibo(j),
     decreases j - i,
 {
-    if i < 2 && j < 2 {
+    if j < 2 {
     } else if i == j {
     } else if i == j - 1 {
-        reveal_with_fuel(fibo, 2);
-        lemma_fibo_is_monotonic(i, (j - 1) as nat);
     } else {
         lemma_fibo_is_monotonic(i, (j - 1) as nat);
         lemma_fibo_is_monotonic(i, (j - 2) as nat);

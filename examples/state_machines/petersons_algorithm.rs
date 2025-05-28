@@ -1,3 +1,4 @@
+// rust_verify/tests/example.rs expect-warnings
 use builtin::*;
 use builtin_macros::*;
 use state_machines_macros::*;
