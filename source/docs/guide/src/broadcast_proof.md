@@ -60,3 +60,27 @@ group name, which can be brought into scope with `broadcast use broadcast_group_
 For example, the example above can all be automatically proved from `broadcast use vstd::seq_lib::group_seq_properties;`.
 We are working on extending the discoverability of these groups in the standard library
 documentation: they currently appear as regular functions.
+
+## Experimental broadcast lemma usage information
+
+You can use the `-V axiom-usage-info` experimental flag to obtain an overapproximation
+of the broadcasted axioms and lemmas that were used in the verification of each function.
+For large projects, use `--verify-only-module` and possibly `--verify-function` to limit the
+amount of output.
+
+As an example, using `-V axiom-usage-info` on [examples/broadcast_proof.rs](https://github.com/verus-lang/verus/blob/main/examples/broadcast_proof.rs) produces this information for the `increase_twice` function:
+
+```
+note: checking this function used these broadcasted lemmas and broadcast groups:
+        - (group) broadcast_proof::multiple_broadcast_proof::Multiple::group_properties,
+        - broadcast_proof::multiple_broadcast_proof::Multiple::lemma_add_aligned
+   --> ../examples/broadcast_proof.rs:161:11
+    |
+161 |       proof fn increase_twice(
+    |  ___________^
+162 | |         p1: Multiple, v: Multiple, p2: Multiple)
+    | |________________________________________________^
+```
+
+indicating that the `group_properties` group enabled the use of `lemma_add_aligned`, which was
+likely used in the proof.
