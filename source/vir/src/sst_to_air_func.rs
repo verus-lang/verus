@@ -178,7 +178,7 @@ pub(crate) fn broadcast_forall_group_axioms(
         // (axiom (=> (fuel_bool_default fuel%group) (and ... (fuel_bool_default fuel%member) ...)))
         let imply = mk_implies(&fuel_group, &mk_and(&member_fuels));
         let axiom = Arc::new(DeclX::Axiom(Axiom {
-            named: if cfg!(feature = "axiom-usage-info") {
+            named: if ctx.global.axiom_usage_info {
                 Some(fun_to_air_ident(&group.x.name))
             } else {
                 None
@@ -820,7 +820,7 @@ pub fn func_axioms_to_air(
                 };
                 // let axiom = mk_unnamed_axiom(fuel_imply);
                 let axiom = Arc::new(DeclX::Axiom(Axiom {
-                    named: if cfg!(feature = "axiom-usage-info") {
+                    named: if ctx.global.axiom_usage_info {
                         Some(fun_to_air_ident(&function.x.name))
                     } else {
                         None
