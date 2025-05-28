@@ -97,6 +97,7 @@ pub broadcast group group_vstd_default {
     layout::group_layout_axioms,
     function::group_seq_axioms,
     std_specs::hash::group_hash_axioms,
+    std_specs::vecdeque::group_vec_dequeue_axioms,
 }
 
 #[cfg(feature = "alloc")]
@@ -120,6 +121,7 @@ pub broadcast group group_vstd_default {
     compute::all_spec_ensures,
     layout::group_layout_axioms,
     function::group_seq_axioms,
+    std_specs::vecdeque::group_vec_dequeue_axioms,
 }
 
 #[cfg(not(feature = "alloc"))]
