@@ -81,9 +81,9 @@
     - [Passing functions as values](./exec_funs_as_values.md)
     - [Closures](./exec_closures.md)
 - [Ghost and tracked variables]()
-- [Strings]() <!--- Andrea --->
-    - [String library]() <!--- Andrea --->
-    - [String literals]() <!--- Andrea --->
+- [Strings](./strings.md)
+    <!-- - [String library]() --->
+    <!-- - [String literals]() --->
 - [Macros]()
 
 - [Unsafe code & complex ownership](./complex_ownership.md)
