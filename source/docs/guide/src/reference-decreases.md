@@ -108,18 +108,7 @@ Here we supply the fact Verus was missing using Verus's specialized
 [bit-vector reasoning mode](bitvec.md).
 
 ```rust
-spec fn floor_log2(n: u64) -> int 
-    decreases n
-{
-    if n <= 1 { 
-        0   
-    } else {
-        proof {
-          assert(n > 1 ==> (n >> 1) < n) by(bit_vector);
-        }
-        floor_log2(n >> 1) + 1 
-    }   
-}
+{{#include ../../../../examples/guide/recursion.rs:example_proof_in_spec}}
 ```
 
 #### Writing a separate proof of termination with the `via` clause
@@ -139,20 +128,6 @@ In the following definition, we use a `via` clause to prove that the decreases-m
 decreases.
 
 ```rust
-spec fn floor_log2(n: u64) -> int 
-    decreases n
-    via floor_log2_decreases_proof
-{
-    if n <= 1 { 
-        0   
-    } else {
-        floor_log2(n >> 1) + 1 
-    }   
-}
-
-#[via_fn]
-proof fn floor_log2_decreases_proof(n: u64) {
-    assert(n > 1 ==> (n >> 1) < n) by(bit_vector);
-}
+{{#include ../../../../examples/guide/recursion.rs:example_proof_using_via}}
 ```
 The proof function `floor_log2_decreases_proof` is defined as a `via_fn` and is referenced from the `via` clause. The body of the proof function contains a proof that `n > 1 ==> (n >> 1) < n` (the same proof we used inline above).
