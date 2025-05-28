@@ -15,7 +15,7 @@ verus! {
 
 /// `HashMapWithView` is a trusted wrapper around `std::collections::HashMap` with `View` implemented for the type `vstd::map::Map<<Key as View>::V, Value>`.
 ///
-/// See the Rust documentation for [`HashMap`](https://doc.rust-lang.org/std/collections/struct.HashMap.html) 
+/// See the Rust documentation for [`HashMap`](https://doc.rust-lang.org/std/collections/struct.HashMap.html)
 /// for details about the implementation.
 ///
 /// If you are using `std::collections::HashMap` directly, see [`ExHashMap`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/struct.ExHashMap.html)

@@ -17,7 +17,7 @@ verus! {
 
 /// `HashSetWithView` is a trusted wrapper around `std::collections::HashSet` with `View` implemented for the type `vstd::map::Set<<Key as View>::V>`.
 ///
-/// See the Rust documentation for [`HashSet`](https://doc.rust-lang.org/std/collections/struct.HashSet.html) 
+/// See the Rust documentation for [`HashSet`](https://doc.rust-lang.org/std/collections/struct.HashSet.html)
 /// for details about the implementation.
 ///
 /// If you are using `std::collections::HashSet` directly, see [`ExHashSet`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/struct.ExHashSet.html)

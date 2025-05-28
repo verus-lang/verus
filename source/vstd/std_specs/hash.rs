@@ -33,7 +33,7 @@ use std::collections::{HashMap, HashSet};
 
 verus! {
 
-/// Specifications for the behavior of 
+/// Specifications for the behavior of
 /// [`std::collections::hash_map::DefaultHasher`](https://doc.rust-lang.org/std/collections/hash_map/struct.DefaultHasher.html).
 ///
 /// We model a `DefaultHasher` as having a view (i.e., an abstract
@@ -79,7 +79,7 @@ pub assume_specification[ DefaultHasher::finish ](state: &DefaultHasher) -> (res
         result == DefaultHasher::spec_finish(state@),
 ;
 
-/// Specifies whether a type conforms to our requirements to be a key 
+/// Specifies whether a type conforms to our requirements to be a key
 /// in our hash table (and hash set) model.
 ///
 /// The two requirements are (1) the hash function
@@ -232,24 +232,24 @@ pub trait ExBuildHasher {
 /// Specifies whether a type conforms to our requirements to be a hash builder
 /// in our hash table (and hash set) model.
 ///
-/// Our model requires that for any two `Hasher`s that the `BuildHasher` builds, 
+/// Our model requires that for any two `Hasher`s that the `BuildHasher` builds,
 /// if they're both given the same write sequence
 /// then their states will match and they'll produce the same digest
 /// when invoked with `finish()`.
 ///
 /// The standard library has an axiom that `RandomState`, the default `BuildHasher`
-/// used by `HashMap` and `HashSet`, implements this model. 
-/// If you want to use some other hash builder type `MyHashBuilder`, 
+/// used by `HashMap` and `HashSet`, implements this model.
+/// If you want to use some other hash builder type `MyHashBuilder`,
 /// you need to explicitly state your assumption that it does so with
 /// `assume(vstd::std_specs::hash::builds_valid_hashers::<MyHashBuilder>())`.
 #[verifier::external_body]
 pub uninterp spec fn builds_valid_hashers<T: ?Sized>() -> bool;
 
-/// Specifications for the behavior of 
+/// Specifications for the behavior of
 /// [`std::hash::RandomState`](https://doc.rust-lang.org/std/hash/struct.RandomState.html).
 ///
 /// `RandomState` is the default `BuildHasher` used by Rust's `HashMap` and `HashSet` implementations.
-/// We have an axiom that `RandomState` satisfies [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html) 
+/// We have an axiom that `RandomState` satisfies [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
 /// and thereby conforms to our model of how `BuildHasher` behaves.
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -262,8 +262,8 @@ pub broadcast proof fn axiom_random_state_builds_valid_hashers()
     admit();
 }
 
-// The `keys` method of a `HashMap` returns an iterator of type `Keys`,
-// so we specify that type here.
+/// Specifications for the behavior of
+/// [`std::collections::hash_map::Keys`](https://doc.rust-lang.org/std/collections/hash_map/struct.Keys.html).
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
@@ -371,8 +371,8 @@ impl<'a, Key, Value> View for KeysGhostIterator<'a, Key, Value> {
     }
 }
 
-// The `values` method of a `HashMap` returns an iterator of type `Values`,
-// so we specify that type here.
+/// Specifications for the behavior of
+/// [`std::collections::hash_map::Values`](https://doc.rust-lang.org/std/collections/hash_map/struct.Values.html).
 #[verifier::external_type_specification]
 #[verifier::external_body]
 #[verifier::accept_recursive_types(Key)]
@@ -482,15 +482,15 @@ impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
 
 /// Specifications for the behavior of [`std::collections::HashMap`](https://doc.rust-lang.org/std/collections/struct.HashMap.html).
 ///
-/// We model a `HashMap` as having a view of type `Map<Key, Value>`, which reflects the current state of the map. 
+/// We model a `HashMap` as having a view of type `Map<Key, Value>`, which reflects the current state of the map.
 ///
 /// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
-/// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html) 
+/// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
 /// for information on use with primitive types and custom types,
-/// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html) 
+/// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
 /// for information on use with Rust's default implementation and custom implementations.
 /// Relevant axioms are contained in the broadcast group `vstd::std_specs::hash::group_hash_axioms`.
-/// 
+///
 /// Useful axioms about the behavior of HashMap are present in the broadcast group `vstd::std_specs::hash::group_hash_axioms`.
 #[verifier::external_type_specification]
 #[verifier::external_body]
@@ -883,15 +883,15 @@ impl<'a, Key> View for IterGhostIterator<'a, Key> {
 
 /// Specifications for the behavior of [`std::collections::HashSet`](https://doc.rust-lang.org/std/collections/struct.HashSet.html).
 ///
-/// We model a `HashSet` as having a view of type `Set<Key>`, which reflects the current state of the set. 
+/// We model a `HashSet` as having a view of type `Set<Key>`, which reflects the current state of the set.
 ///
 /// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
-/// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html) 
+/// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
 /// for information on use with primitive types and custom types,
-/// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html) 
+/// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
 /// for information on use with Rust's default implementation and custom implementations.
 /// Relevant axioms are contained in the broadcast group `vstd::std_specs::hash::group_hash_axioms`.
-/// 
+///
 /// Note that useful axioms about the behavior of HashSet are present in the broadcast group `vstd::std_specs::hash::group_hash_axioms`.
 #[verifier::external_type_specification]
 #[verifier::external_body]
