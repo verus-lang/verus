@@ -493,6 +493,7 @@ pub assume_specification<'a, Key, Value>[ hash_map::Iter::<'a, Key, Value>::next
                     &&& new_index == old_index + 1
                     &&& k == old_k
                     &&& v == old_v
+                    &&& old_seq.to_set().contains((*k, *v))
                 },
             }
         }),
