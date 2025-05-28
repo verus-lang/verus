@@ -146,8 +146,6 @@ pub fn verify_files_vstd_all_diags(
 
     let mut errors = Vec::new();
     let mut expand_errors_notes = Vec::new();
-    let aborting_due_to_re =
-        regex::Regex::new(r"^aborting due to( [0-9]+)? previous errors?").unwrap();
 
     #[cfg(target_os = "windows")]
     let is_run_success = run.status.success();
@@ -220,7 +218,7 @@ pub fn parse_diags(
                 errors.push(diag);
             } else {
                 *is_failure = true;
-                eprintln!("[unexpected json] <{}>", ss);
+                eprintln!("[unexpected json] \"{}\"", ss);
             }
         }
     }

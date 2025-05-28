@@ -11,6 +11,7 @@ enum Mode {
     ExpectSuccess,
     ExpectErrors,
     ExpectFailures,
+    ExpectWarnings,
 }
 
 examples_in_dir!("../../examples");
@@ -49,6 +50,7 @@ fn run_example_for_file(file_path: &str) {
             "expect-success" => mode = Mode::ExpectSuccess,
             "expect-errors" => mode = Mode::ExpectErrors,
             "expect-failures" => mode = Mode::ExpectFailures,
+            "expect-warnings" => mode = Mode::ExpectWarnings,
             "expand-errors" => {
                 mode = Mode::ExpectFailures;
                 options.push("--expand-errors");
@@ -118,6 +120,14 @@ fn run_example_for_file(file_path: &str) {
                 && warnings.len() == 0
         }
         Mode::ExpectErrors => !output.status.success(),
+        Mode::ExpectWarnings => {
+            output.status.success()
+                && match verifier_output {
+                    Some((_, 0)) => true,
+                    _ => false,
+                }
+                && warnings.len() > 0
+        }
         Mode::ExpectFailures => {
             !output.status.success()
                 && match verifier_output {
