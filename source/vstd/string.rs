@@ -2,14 +2,15 @@
 #![allow(unused_imports)]
 
 #[cfg(feature = "alloc")]
+use alloc::str::Chars;
+#[cfg(feature = "alloc")]
 use alloc::string::{self, String, ToString};
 
+#[cfg(feature = "alloc")]
+use super::pervasive::{ForLoopGhostIterator, ForLoopGhostIteratorNew};
 use super::prelude::*;
 use super::seq::Seq;
 use super::view::*;
-use crate::pervasive::ForLoopGhostIterator;
-use crate::pervasive::ForLoopGhostIteratorNew;
-use std::str::Chars;
 
 verus! {
 
@@ -324,6 +325,7 @@ impl StringExecFns for String {
     }
 }
 
+#[cfg(feature = "alloc")]
 pub assume_specification[ str::chars ](s: &str) -> (chars: Chars<'_>)
     ensures
         ({
@@ -337,22 +339,17 @@ pub assume_specification[ str::chars ](s: &str) -> (chars: Chars<'_>)
 // so we specify that type here.
 #[verifier::external_type_specification]
 #[verifier::external_body]
+#[cfg(feature = "alloc")]
 pub struct ExChars<'a>(Chars<'a>);
 
+#[cfg(feature = "alloc")]
 impl<'a> View for Chars<'a> {
     type V = (int, Seq<char>);
 
     uninterp spec fn view(&self) -> (int, Seq<char>);
 }
 
-impl<'a> DeepView for Chars<'a> {
-    type V = (int, Seq<char>);
-
-    open spec fn deep_view(&self) -> (int, Seq<char>) {
-        self.view()
-    }
-}
-
+#[cfg(feature = "alloc")]
 pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (r: Option<char>)
     ensures
         ({
@@ -373,12 +370,14 @@ pub assume_specification<'a>[ Chars::<'a>::next ](chars: &mut Chars<'a>) -> (r: 
         }),
 ;
 
+#[cfg(feature = "alloc")]
 pub struct CharsGhostIterator<'a> {
     pub pos: int,
     pub chars: Seq<char>,
     pub phantom: Option<&'a char>,
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> ForLoopGhostIteratorNew for Chars<'a> {
     type GhostIter = CharsGhostIterator<'a>;
 
@@ -387,6 +386,7 @@ impl<'a> ForLoopGhostIteratorNew for Chars<'a> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> ForLoopGhostIterator for CharsGhostIterator<'a> {
     type ExecIter = Chars<'a>;
 
@@ -428,6 +428,7 @@ impl<'a> ForLoopGhostIterator for CharsGhostIterator<'a> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> View for CharsGhostIterator<'a> {
     type V = Seq<char>;
 
@@ -436,6 +437,7 @@ impl<'a> View for CharsGhostIterator<'a> {
     }
 }
 
+#[cfg(feature = "alloc")]
 impl<'a> DeepView for CharsGhostIterator<'a> {
     type V = Seq<char>;
 
