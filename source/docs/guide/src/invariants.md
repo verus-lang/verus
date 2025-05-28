@@ -104,21 +104,11 @@ Verus with the inductive step(s).  Here's the basic skeleton:
 ```rust
 {{#include ../../../../examples/guide/invariants.rs:fib_mono_skeleton}}
 ```
-Notice that we've added `assume(false)` to the two trickier cases (following the approach
+Notice that we've added `assume(false)` to the final tricky case (following the approach
 of [using assert and assume](assert_assume.md) to build our proof).  When we run
 Verus, it succeeds, indicating that Verus doesn't need any help with our base cases.
-However, if we remove the first `assume(false)`, Verus reports that the postcondition
-is not satisfied, confirming that Verus needs help here.  We can help Verus by (essentially)
-telling it to unfold the definition of `fib(j)` one level, i.e., by writing:
-```rust
-assert(fib(j) == fib((j - 2) as nat) + fib((j - 1) as nat));
-```
-In this case, that's enough to complete this branch of the proof, since Verus knows that
-`fib((j - 1) as nat) == fib(i as nat)`, and the assertion shows that `fib(j)` cannot be
-less than `fib(i as nat)` (since `fib` returns non-negative values).
-
 The final portion of the proof, however, needs more help (you can confirm this by
-adding the same assertion we used above; the assertion passes, but the postcondition still fails).
+by removing the `assume(false)` and observing that the proof fails).
 The key idea here is to use our induction hypothesis to show that `fib(i)`
 is smaller than both `fib(j - 1)` and `fib(j - 2)`.  We do this via two recursive invocations
 of `lemma_fib_is_monotonic`.  Note that adding recursive calls means we need to add a decreases clause.
