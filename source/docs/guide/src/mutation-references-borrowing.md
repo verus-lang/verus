@@ -24,4 +24,4 @@ Verus only support the use of mutable references as arguments to a function, suc
 {{#include ../../../../examples/guide/references.rs:mut}}
 ```
 
-Given that the pieces of memory to which mutable references point can be modified during function calls, we need a particular way to talk about their old and updated in Verus spec code, particularly in the requires and ensures of functions and in asserts.
+Given that the pieces of memory to which mutable references point can be modified during function calls, we need a particular way to talk about their old and updated in Verus spec code, particularly in the `requires` and `ensures` of functions and in `assert`.
