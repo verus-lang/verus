@@ -168,9 +168,8 @@ add field += [k => v];
 ```
 
 ### Operations that manipulate collections of tokens
-
-You can also write versions of the above operations that operate on variable-sized collections of tokens
-rather than singleton key-value pairs.
+You can also write versions of the above operations that 
+use a map `map_toks`: <code><a href="https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html">Map&lt;K, <span style="font-style: italic; color: #c08080">Tok</span>&gt;</a></code>,
 Such token collections are managed as <a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.MapToken.html"><code>MapToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</code></a> objects.
 
 The operations below are equivalent to the above versions whenever `m == map![k => v]`,
