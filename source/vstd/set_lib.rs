@@ -427,6 +427,329 @@ impl<A> Set<A> {
             self.lemma_greatest_is_unique(r);
         }
     }
+
+    /// Set difference with an additional element inserted decreases the size of
+    /// the result. This can be useful for proving termination when traversing
+    /// a set while tracking the elements that have already been handled.
+    pub broadcast proof fn lemma_set_insert_diff_decreases(self, s: Set<A>, elt: A)
+        requires
+            self.contains(elt),
+            !s.contains(elt),
+            self.finite(),
+        ensures
+            #[trigger] self.difference(s.insert(elt)).len() < self.difference(s).len(),
+    {
+        self.difference(s.insert(elt)).lemma_subset_not_in_lt(self.difference(s), elt);
+    }
+
+    /// If there is an element not present in a subset, its length is stricly smaller.
+    pub proof fn lemma_subset_not_in_lt(self: Set<A>, s2: Set<A>, elt: A)
+        requires
+            self.subset_of(s2),
+            s2.finite(),
+            !self.contains(elt),
+            s2.contains(elt),
+        ensures
+            self.len() < s2.len(),
+    {
+        let s2_no_elt = s2.remove(elt);
+        assert(self.len() <= s2_no_elt.len()) by {
+            lemma_len_subset(self, s2_no_elt);
+        }
+    }
+
+    /// Inserting an element and mapping a function over a set commute
+    pub broadcast proof fn lemma_set_map_insert_commute<B>(self, elt: A, f: spec_fn(A) -> B)
+        ensures
+            #[trigger] self.insert(elt).map(f) =~= self.map(f).insert(f(elt)),
+    {
+        assert forall|x: B| self.map(f).insert(f(elt)).contains(x) implies self.insert(elt).map(
+            f,
+        ).contains(x) by {
+            if x == f(elt) {
+                assert(self.insert(elt).contains(elt));
+            } else {
+                let y = choose|y: A| self.contains(y) && f(y) == x;
+                assert(self.insert(elt).contains(y));
+            }
+        }
+    }
+
+    /// `map` and `union` commute
+    pub proof fn lemma_map_union_commute<B>(self, t: Set<A>, f: spec_fn(A) -> B)
+        ensures
+            (self.union(t)).map(f) =~= self.map(f).union(t.map(f)),
+    {
+        broadcast use group_set_axioms;
+
+        let lhs = self.union(t).map(f);
+        let rhs = self.map(f).union(t.map(f));
+
+        assert forall|elem: B| rhs.contains(elem) implies lhs.contains(elem) by {
+            if self.map(f).contains(elem) {
+                let preimage = choose|preimage: A| self.contains(preimage) && f(preimage) == elem;
+                assert(self.union(t).contains(preimage));
+            } else {
+                assert(t.map(f).contains(elem));
+                let preimage = choose|preimage: A| t.contains(preimage) && f(preimage) == elem;
+                assert(self.union(t).contains(preimage));
+            }
+        }
+    }
+
+    /// Utility function for more concise universal quantification over sets
+    pub open spec fn all(&self, pred: spec_fn(A) -> bool) -> bool {
+        forall|x: A| self.contains(x) ==> pred(x)
+    }
+
+    /// Utility function for more concise existential quantification over sets
+    pub open spec fn any(&self, pred: spec_fn(A) -> bool) -> bool {
+        exists|x: A| self.contains(x) && pred(x)
+    }
+
+    /// `any` is preserved between predicates `p` and `q` if `p` implies `q`.
+    pub broadcast proof fn lemma_any_map_preserved_pred<B>(
+        self,
+        p: spec_fn(A) -> bool,
+        q: spec_fn(B) -> bool,
+        f: spec_fn(A) -> B,
+    )
+        requires
+            #[trigger] self.any(p),
+            forall|x: A| #[trigger] p(x) ==> q(f(x)),
+        ensures
+            #[trigger] self.map(f).any(q),
+    {
+        let x = choose|x: A| self.contains(x) && p(x);
+        assert(self.map(f).contains(f(x)));
+    }
+
+    /// Collecting all elements `b` where `f` returns `Some(b)`
+    pub open spec fn filter_map<B>(self, f: spec_fn(A) -> Option<B>) -> Set<B> {
+        self.map(
+            |elem: A|
+                match f(elem) {
+                    Option::Some(r) => set!{r},
+                    Option::None => set!{},
+                },
+        ).flatten()
+    }
+
+    /// Inserting commutes with `filter_map`
+    pub broadcast proof fn lemma_filter_map_insert<B>(
+        s: Set<A>,
+        f: spec_fn(A) -> Option<B>,
+        elem: A,
+    )
+        ensures
+            #[trigger] s.insert(elem).filter_map(f) == (match f(elem) {
+                Some(res) => s.filter_map(f).insert(res),
+                None => s.filter_map(f),
+            }),
+    {
+        broadcast use group_set_axioms;
+        broadcast use Set::lemma_set_map_insert_commute;
+
+        let lhs = s.insert(elem).filter_map(f);
+        let rhs = match f(elem) {
+            Some(res) => s.filter_map(f).insert(res),
+            None => s.filter_map(f),
+        };
+        let to_set = |elem: A|
+            match f(elem) {
+                Option::Some(r) => set!{r},
+                Option::None => set!{},
+            };
+        assert forall|r: B| #[trigger] lhs.contains(r) implies rhs.contains(r) by {
+            if f(elem) != Some(r) {
+                let orig = choose|orig: A| #[trigger]
+                    s.contains(orig) && f(orig) == Option::Some(r);
+                assert(to_set(orig) == set!{r});
+                assert(s.map(to_set).contains(to_set(orig)));
+            }
+        }
+        assert forall|r: B| #[trigger] rhs.contains(r) implies lhs.contains(r) by {
+            if Some(r) == f(elem) {
+                assert(s.insert(elem).map(to_set).contains(to_set(elem)));
+            } else {
+                let orig = choose|orig: A| #[trigger]
+                    s.contains(orig) && f(orig) == Option::Some(r);
+                assert(s.insert(elem).map(to_set).contains(to_set(orig)));
+            }
+        }
+        assert(lhs =~= rhs);
+    }
+
+    /// `filter_map` and `union` commute.
+    pub broadcast proof fn lemma_filter_map_union<B>(self, f: spec_fn(A) -> Option<B>, t: Set<A>)
+        ensures
+            #[trigger] self.union(t).filter_map(f) == self.filter_map(f).union(t.filter_map(f)),
+    {
+        broadcast use group_set_axioms;
+
+        let lhs = self.union(t).filter_map(f);
+        let rhs = self.filter_map(f).union(t.filter_map(f));
+        let to_set = |elem: A|
+            match f(elem) {
+                Option::Some(r) => set!{r},
+                Option::None => set!{},
+            };
+
+        assert forall|elem: B| rhs.contains(elem) implies lhs.contains(elem) by {
+            if self.filter_map(f).contains(elem) {
+                let x = choose|x: A| self.contains(x) && f(x) == Option::Some(elem);
+                assert(self.union(t).contains(x));
+                assert(self.union(t).map(to_set).contains(to_set(x)));
+            }
+            if t.filter_map(f).contains(elem) {
+                let x = choose|x: A| t.contains(x) && f(x) == Option::Some(elem);
+                assert(self.union(t).contains(x));
+                assert(self.union(t).map(to_set).contains(to_set(x)));
+            }
+        }
+        assert forall|elem: B| lhs.contains(elem) implies rhs.contains(elem) by {
+            let x = choose|x: A| self.union(t).contains(x) && f(x) == Option::Some(elem);
+            if self.contains(x) {
+                assert(self.map(to_set).contains(to_set(x)));
+                assert(self.filter_map(f).contains(elem));
+            } else {
+                assert(t.contains(x));
+                assert(t.map(to_set).contains(to_set(x)));
+                assert(t.filter_map(f).contains(elem));
+            }
+        }
+        assert(lhs =~= rhs);
+    }
+
+    /// `map` preserves finiteness
+    pub proof fn lemma_map_finite<B>(self, f: spec_fn(A) -> B)
+        requires
+            self.finite(),
+        ensures
+            self.map(f).finite(),
+        decreases self.len(),
+    {
+        broadcast use group_set_axioms;
+        broadcast use lemma_set_empty_equivalency_len;
+
+        if self.len() == 0 {
+            assert(forall|elem: A| !(#[trigger] self.contains(elem)));
+            assert forall|res: B| #[trigger] self.map(f).contains(res) implies false by {
+                let x = choose|x: A| self.contains(x) && f(x) == res;
+            }
+            assert(self.map(f) =~= Set::<B>::empty());
+        } else {
+            let x = choose|x: A| self.contains(x);
+            assert(self.map(f).contains(f(x)));
+            self.remove(x).lemma_map_finite(f);
+            assert(self.remove(x).insert(x) == self);
+            assert(self.map(f) == self.remove(x).map(f).insert(f(x)));
+        }
+    }
+
+    pub broadcast proof fn lemma_set_all_subset(self, s2: Set<A>, p: spec_fn(A) -> bool)
+        requires
+            #[trigger] self.subset_of(s2),
+            s2.all(p),
+        ensures
+            #[trigger] self.all(p),
+    {
+        broadcast use group_set_axioms;
+
+    }
+
+    /// `filter_map` preserves finiteness.
+    pub broadcast proof fn lemma_filter_map_finite<B>(self, f: spec_fn(A) -> Option<B>)
+        requires
+            self.finite(),
+        ensures
+            #[trigger] self.filter_map(f).finite(),
+        decreases self.len(),
+    {
+        broadcast use group_set_axioms;
+        broadcast use Set::lemma_filter_map_insert;
+
+        let mapped = self.filter_map(f);
+        if self.len() == 0 {
+            assert(self.filter_map(f) =~= Set::<B>::empty());
+        } else {
+            let elem = self.choose();
+            self.remove(elem).lemma_filter_map_finite(f);
+            assert(self =~= self.remove(elem).insert(elem));
+        }
+    }
+
+    /// Conversion to a sequence and back to a set is the identity function.
+    pub broadcast proof fn lemma_to_seq_to_set_id(self)
+        requires
+            self.finite(),
+        ensures
+            #[trigger] self.to_seq().to_set() =~= self,
+        decreases self.len(),
+    {
+        broadcast use group_set_axioms;
+        broadcast use lemma_set_empty_equivalency_len;
+        broadcast use super::seq_lib::group_seq_properties;
+
+        if self.len() == 0 {
+            assert(self.to_seq().to_set() =~= Set::<A>::empty());
+        } else {
+            let elem = self.choose();
+            self.remove(elem).lemma_to_seq_to_set_id();
+            assert(self =~= self.remove(elem).insert(elem));
+            assert(self.to_seq().to_set() =~= self.remove(elem).to_seq().to_set().insert(elem));
+        }
+    }
+}
+
+impl<A> Set<Set<A>> {
+    pub open spec fn flatten(self) -> Set<A> {
+        Set::new(
+            |elem| exists|elem_s: Set<A>| #[trigger] self.contains(elem_s) && elem_s.contains(elem),
+        )
+    }
+
+    pub broadcast proof fn flatten_insert_union_commute(self, other: Set<A>)
+        ensures
+            self.flatten().union(other) =~= #[trigger] self.insert(other).flatten(),
+    {
+        broadcast use group_set_axioms;
+
+        let lhs = self.flatten().union(other);
+        let rhs = self.insert(other).flatten();
+
+        assert forall|elem: A| lhs.contains(elem) implies rhs.contains(elem) by {
+            if exists|s: Set<A>| self.contains(s) && s.contains(elem) {
+                let s = choose|s: Set<A>| self.contains(s) && s.contains(elem);
+                assert(self.insert(other).contains(s));
+                assert(s.contains(elem));
+            } else {
+                assert(self.insert(other).contains(other));
+            }
+        }
+    }
+}
+
+/// Two sets are equal iff mapping `f` results in equal sets, if `f` is injective.
+pub proof fn lemma_sets_eq_iff_injective_map_eq<T, S>(s1: Set<T>, s2: Set<T>, f: spec_fn(T) -> S)
+    requires
+        super::relations::injective(f),
+    ensures
+        (s1 == s2) <==> (s1.map(f) == s2.map(f)),
+{
+    broadcast use group_set_axioms;
+
+    if (s1.map(f) == s2.map(f)) {
+        assert(s1.map(f).len() == s2.map(f).len());
+        if !s1.subset_of(s2) {
+            let x = choose|x: T| s1.contains(x) && !s2.contains(x);
+            assert(s1.map(f).contains(f(x)));
+        } else if !s2.subset_of(s1) {
+            let x = choose|x: T| s2.contains(x) && !s1.contains(x);
+            assert(s2.map(f).contains(f(x)));
+        }
+        assert(s1 =~= s2);
+    }
 }
 
 /// The result of inserting an element `a` into a set `s` is finite iff `s` is finite.
