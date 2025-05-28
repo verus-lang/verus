@@ -37,7 +37,7 @@ pub open spec fn pow2(e: nat) -> nat
 }
 
 /// Proof that 2 to the power of any natural number (specifically,
-/// `e`) is positive
+/// `e`) is positive.
 pub broadcast proof fn lemma_pow2_pos(e: nat)
     ensures
         #[trigger] pow2(e) > 0,
@@ -46,7 +46,7 @@ pub broadcast proof fn lemma_pow2_pos(e: nat)
     lemma_pow_positive(2, e);
 }
 
-/// Proof that `pow2(e)` is equivalent to `pow(2, e)`
+/// Proof that `pow2(e)` is equivalent to `pow(2, e)`.
 pub broadcast proof fn lemma_pow2(e: nat)
     ensures
         #[trigger] pow2(e) == pow(2, e) as int,
@@ -93,7 +93,7 @@ pub broadcast proof fn lemma_pow2_strictly_increases(e1: nat, e2: nat)
     lemma_pow_strictly_increases(2, e1, e2);
 }
 
-/// Proof establishing the concrete values for all powers of 2 from 0 to 32 and also 2^64
+/// Proof establishing the concrete values for all powers of 2 from 0 to 32 and also 2^64.
 pub proof fn lemma2_to64()
     ensures
         pow2(0) == 0x1,
