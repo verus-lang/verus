@@ -99,11 +99,9 @@ proof fn lemma_fibo_is_monotonic(i: nat, j: nat)
     decreases j - i,
 {
     // ----
-    if i < 2 && j < 2 {
+    if j < 2 {
     } else if i == j {
     } else if i == j - 1 {
-        reveal_with_fuel(fibo, 2);
-        lemma_fibo_is_monotonic(i, (j - 1) as nat);
     } else {
         lemma_fibo_is_monotonic(i, (j - 1) as nat);
         lemma_fibo_is_monotonic(i, (j - 2) as nat);
