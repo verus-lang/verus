@@ -13,6 +13,13 @@ use std::collections::HashMap;
 
 verus! {
 
+/// `HashMapWithView` is a trusted wrapper around `std::collections::HashMap` with `View` implemented for the type `vstd::map::Map<<Key as View>::V, Value>`.
+///
+/// See the Rust documentation for [`HashMap`](https://doc.rust-lang.org/std/collections/struct.HashMap.html) 
+/// for details about the implementation.
+///
+/// If you are using `std::collections::HashMap` directly, see [`ExHashMap`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/struct.ExHashMap.html)
+/// for information on the Verus specifications for this type.
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(Key)]
 #[verifier::reject_recursive_types(Value)]
@@ -27,6 +34,8 @@ impl<Key, Value> View for HashMapWithView<Key, Value> where Key: View + Eq + Has
 }
 
 impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
+    /// Creates an empty `HashMapWithView` with a capacity of 0.
+    /// See Rust's [`HashMap::new()`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.new).
     #[verifier::external_body]
     pub fn new() -> (result: Self)
         requires
@@ -38,6 +47,8 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         Self { m: HashMap::new() }
     }
 
+    /// Creates an empty `HashMap` with at least capacity for the specified number of elements.
+    /// See Rust's [`HashMap::with_capacity()`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.with_capacity).
     #[verifier::external_body]
     pub fn with_capacity(capacity: usize) -> (result: Self)
         requires
@@ -49,6 +60,8 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         Self { m: HashMap::with_capacity(capacity) }
     }
 
+    /// Reserves capacity for at least `additional` number of elements in the map.
+    /// See Rust's [`HashMap::reserve()`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.reserve).
     #[verifier::external_body]
     pub fn reserve(&mut self, additional: usize)
         ensures
@@ -57,6 +70,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         self.m.reserve(additional);
     }
 
+    /// Returns true if the map is empty.
     #[verifier::external_body]
     pub fn is_empty(&self) -> (result: bool)
         ensures
@@ -65,8 +79,10 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         self.m.is_empty()
     }
 
+    /// Returns the number of elements in the map
     pub uninterp spec fn spec_len(&self) -> usize;
 
+    /// Returns the number of elements in the map.
     #[verifier::external_body]
     #[verifier::when_used_as_spec(spec_len)]
     pub fn len(&self) -> (result: usize)
@@ -76,6 +92,8 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         self.m.len()
     }
 
+    /// Inserts the given key and value in the map.
+    /// See Rust's [`HashMap::insert()`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.insert).
     #[verifier::external_body]
     pub fn insert(&mut self, k: Key, v: Value)
         ensures
@@ -84,6 +102,8 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         self.m.insert(k, v);
     }
 
+    /// Removes the given key from the map. If the key is not present in the map, the map is unmodified.
+    /// See Rust's [`HashMap::remove()`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.remove).
     #[verifier::external_body]
     pub fn remove(&mut self, k: &Key)
         ensures
@@ -92,6 +112,8 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         self.m.remove(k);
     }
 
+    /// Returns true if the map contains the given key.
+    /// See Rust's [`HashMap::contains_key()`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.contains_key).
     #[verifier::external_body]
     pub fn contains_key(&self, k: &Key) -> (result: bool)
         ensures
@@ -100,6 +122,8 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         self.m.contains_key(k)
     }
 
+    /// Returns a reference to the value corresponding to the given key in the map. If the key is not present in the map, returns `None`.
+    /// See Rust's [`HashMap::get()`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.get).
     #[verifier::external_body]
     pub fn get<'a>(&'a self, k: &Key) -> (result: Option<&'a Value>)
         ensures
@@ -111,6 +135,8 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         self.m.get(k)
     }
 
+    /// Clears all key-value pairs in the map. Retains the allocated memory for reuse.
+    /// See Rust's [`HashMap::clear()`](https://doc.rust-lang.org/std/collections/struct.HashMap.html#method.clear).
     #[verifier::external_body]
     pub fn clear(&mut self)
         ensures
@@ -119,6 +145,7 @@ impl<Key, Value> HashMapWithView<Key, Value> where Key: View + Eq + Hash {
         self.m.clear()
     }
 
+    /// Returns the union of the two maps. If a key is present in both maps, then the value in the right map (`other`) is retained.
     #[verifier::external_body]
     pub fn union_prefer_right(&mut self, other: Self)
         ensures

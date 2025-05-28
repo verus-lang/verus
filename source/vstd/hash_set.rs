@@ -15,6 +15,13 @@ use std::collections::HashSet;
 
 verus! {
 
+/// `HashSetWithView` is a trusted wrapper around `std::collections::HashSet` with `View` implemented for the type `vstd::map::Set<<Key as View>::V>`.
+///
+/// See the Rust documentation for [`HashSet`](https://doc.rust-lang.org/std/collections/struct.HashSet.html) 
+/// for details about the implementation.
+///
+/// If you are using `std::collections::HashSet` directly, see [`ExHashSet`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/struct.ExHashSet.html)
+/// for information on the Verus specifications for this type.
 #[verifier::ext_equal]
 #[verifier::reject_recursive_types(Key)]
 pub struct HashSetWithView<Key> where Key: View + Eq + Hash {
@@ -28,6 +35,9 @@ impl<Key> View for HashSetWithView<Key> where Key: View + Eq + Hash {
 }
 
 impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
+    /// Creates an empty `HashSet` with capacity 0.
+    // todo - key model
+    /// See Rust's [`HashSet::new()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.new).
     #[verifier::external_body]
     pub fn new() -> (result: Self)
         requires
@@ -39,6 +49,8 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
         Self { m: HashSet::new() }
     }
 
+    /// Creates an empty `HashSet` with at least capacity for the specified number of elements.
+    /// See Rust's [`HashSet::with_capacity()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.with_capacity).
     #[verifier::external_body]
     pub fn with_capacity(capacity: usize) -> (result: Self)
         requires
@@ -50,6 +62,8 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
         Self { m: HashSet::with_capacity(capacity) }
     }
 
+    /// Reserves capacity for at least `additional` number of elements in the set.
+    /// See Rust's [`HashSet::reserve()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.reserve).
     #[verifier::external_body]
     pub fn reserve(&mut self, additional: usize)
         ensures
@@ -58,8 +72,10 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
         self.m.reserve(additional);
     }
 
+    /// Returns the number of elements in the set.
     pub uninterp spec fn spec_len(&self) -> usize;
 
+    /// Returns the number of elements in the set.
     #[verifier::external_body]
     #[verifier::when_used_as_spec(spec_len)]
     pub fn len(&self) -> (result: usize)
@@ -69,6 +85,7 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
         self.m.len()
     }
 
+    /// Returns true if the set is empty.
     #[verifier::external_body]
     pub fn is_empty(&self) -> (result: bool)
         ensures
@@ -77,6 +94,8 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
         self.m.is_empty()
     }
 
+    /// Inserts the given value into the set. Returns true if the value was previously in the set, false otherwise.
+    /// See Rust's [`HashSet::insert()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.insert).
     #[verifier::external_body]
     pub fn insert(&mut self, k: Key) -> (result: bool)
         ensures
@@ -85,6 +104,8 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
         self.m.insert(k)
     }
 
+    /// Removes the given value from the set. Returns true if the value was previously in the set, false otherwise.
+    /// See Rust's [`HashSet::remove()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.remove).
     #[verifier::external_body]
     pub fn remove(&mut self, k: &Key) -> (result: bool)
         ensures
@@ -93,6 +114,8 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
         self.m.remove(k)
     }
 
+    /// Returns true if the set contains the given value.
+    /// See Rust's [`HashSet::contains()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.contains).
     #[verifier::external_body]
     pub fn contains(&self, k: &Key) -> (result: bool)
         ensures
@@ -101,6 +124,8 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
         self.m.contains(k)
     }
 
+    /// Returns a reference to the value in the set that is equal to the given value. If the value is not present in the set, returns `None`.
+    /// See Rust's [`HashSet::get()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.get).
     #[verifier::external_body]
     pub fn get<'a>(&'a self, k: &Key) -> (result: Option<&'a Key>)
         ensures
@@ -112,6 +137,8 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
         self.m.get(k)
     }
 
+    /// Clears all values from the set.
+    /// See Rust's [`HashSet::clear()`](https://doc.rust-lang.org/std/collections/struct.HashSet.html#method.clear).
     #[verifier::external_body]
     pub fn clear(&mut self)
         ensures
