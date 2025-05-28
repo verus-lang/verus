@@ -34,12 +34,34 @@ pub struct Set<A> {
 
 impl<A> Set<A> {
     /// The "empty" set.
+    ///
+    /// Usage Example: <br>
+    /// ```rust
+    /// let empty_set = Set::<A>::empty();
+    ///
+    /// assert(empty_set.is_empty());
+    /// assert(empty_set.complement() =~= Set::<A>::full());
+    /// assert(Set::<A>::empty().finite());
+    /// assert(Set::<A>::empty().len() == 0);
+    /// assert(forall |x: A| !Set::<A>::empty().contains(x));
+    /// ```
+    /// Axioms around the empty set are: <br>
+    /// * [`axiom_set_empty_finite`](crate::set::axiom_set_empty_finite) <br>
+    /// * [`axiom_set_empty_len`](crate::set::axiom_set_empty_len) <br>
+    /// * [`axiom_set_empty`](crate::set::axiom_set_empty)
     #[rustc_diagnostic_item = "verus::vstd::set::Set::empty"]
     pub closed spec fn empty() -> Set<A> {
         Set { set: |a| false }
     }
 
     /// Set whose membership is determined by the given boolean predicate.
+    ///
+    /// Usage Examples:
+    /// ```rust
+    /// let set_a = Set::new(|x : nat| x < 42);
+    /// let set_b = Set::<A>::new(|x| some_predicate(x));
+    /// assert(forall|x| some_predicate(x) <==> set_b.contains(x));
+    /// ```
     pub closed spec fn new(f: spec_fn(A) -> bool) -> Set<A> {
         Set {
             set: |a|
@@ -135,13 +157,13 @@ impl<A> Set<A> {
         Set { set: |a| (self.set)(a) && !(s2.set)(a) }
     }
 
-    /// Set complement (within the space of all possible elements in `A`).
     /// `-` operator, synonymous with `difference`
     #[verifier::inline]
     pub open spec fn spec_sub(self, s2: Set<A>) -> Set<A> {
         self.difference(s2)
     }
 
+    /// Set complement (within the space of all possible elements in `A`).
     pub closed spec fn complement(self) -> Set<A> {
         Set { set: |a| !(self.set)(a) }
     }
