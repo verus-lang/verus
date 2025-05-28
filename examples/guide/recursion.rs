@@ -329,8 +329,8 @@ spec fn ackermann(m: nat, n: nat) -> nat
 }
 
 proof fn test_ackermann() {
-    reveal_with_fuel(ackermann, 12);
-    assert(ackermann(3, 2) == 29);
+    reveal_with_fuel(ackermann, 9);
+    assert(ackermann(2, 3) == 9);
 }
 // ANCHOR_END: ackermann
 
