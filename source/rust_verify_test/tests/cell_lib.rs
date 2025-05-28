@@ -267,6 +267,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] ptr_some_put IMPORTS.to_string() + verus_code_str! {
+        global layout u32 is size == 4, align == 4;
+        pub fn f() {
+            layout_for_type_is_valid::<u32>();
+            let (ptr1, Tracked(token1), Tracked(dealloc)) = allocate(4, 4);
+            let tracked mut token1 = token1.into_typed::<u32>(ptr1 as usize);
+            let ptr1 = ptr1 as *mut u32;
+
+            ptr_mut_write(ptr1, Tracked(&token1), 7); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] ptr_mismatch_dispose2 IMPORTS.to_string() + verus_code_str! {
+        global layout u32 is size == 4, align == 4;
+        pub fn f() {
+            layout_for_type_is_valid::<u32>();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc1)) = allocate(4, 4);
+            deallocate(ptr1, 4, 4, Tracked(token1), Tracked(dealloc1)); 
+            ptr_mut_write(ptr1, Tracked(&mut token1), 7); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] ptr_none_take IMPORTS.to_string() + verus_code_str! {
         global layout u32 is size == 4, align == 4;
         pub fn f() {
