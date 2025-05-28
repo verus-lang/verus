@@ -9,8 +9,6 @@ verus! {
 
 fn vec_deque_test()
 {
-    broadcast use group_vec_dequeue_axioms;
-    
     let mut v1: VecDeque<u32> = VecDeque::<u32>::new();
     let mut v2: VecDeque<u32> = VecDeque::<u32>::new();
     v1.push_back(3);
