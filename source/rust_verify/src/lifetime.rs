@@ -189,7 +189,8 @@ pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
                             for item in impll.items {
                                 match item.kind {
                                     AssocItemKind::Fn { .. } => {
-                                        tcx.ensure().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
+                                        tcx.ensure().mir_borrowck(item.id.owner_id.def_id);
+                                        // REVIEW(main_new) correct?
                                     }
                                     _ => {}
                                 }

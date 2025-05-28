@@ -497,6 +497,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "exec_spec"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn_verus",
+]
+
+[[package]]
 name = "fixedbitset"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
