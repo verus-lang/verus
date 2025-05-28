@@ -109,8 +109,7 @@ If you require manual proof to prove the inherent safety condition, you can add
 an optional `by` clause:
 
 ```rust
-deposit field += [ k => tok ];
-by {
+deposit field += [ k => tok ] by {
     // proof goes here
 };
 ```
@@ -132,8 +131,7 @@ The `withdraw` instruction has an inherent safety condition that `field` contain
 an optional `by` clause:
 
 ```rust
-withdraw field -= [ k => tok ];
-by {
+withdraw field -= [ k => tok ] by {
     // proof goes here
 };
 ```
