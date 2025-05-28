@@ -108,8 +108,7 @@ If you require manual proof to prove the inherent safety condition, you can add
 an optional `by` clause:
 
 ```rust
-add field += set { e };
-by {
+add field += set { e } by {
     // proof goes here
 };
 ```
@@ -139,7 +138,7 @@ The resulting exchange function will accept an immutable reference
 
 ### Operations that manipulate collections of tokens
 
-You can also write versions of the above operations that operate on variable-sized collections of tokens
+You can also write versions of the above operations that operate on sets of tokens
 rather than singleton elements.
 Such token collections are managed as <a href="https://verus-lang.github.io/verus/verusdoc/vstd/tokens/struct.SetToken.html"><code>SetToken&lt;K, V, <span style="font-style: italic; color: #408040">tok</span>&gt;</code></a> objects.
 
