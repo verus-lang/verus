@@ -75,7 +75,7 @@
 
 - [Mutation, references, and borrowing](mutation-references-borrowing.md) <!--- Andrea --->
     - [Requires and ensures with mutable references](requires-ensures-mut-ref.md) <!--- Andrea --->
-    - [Assertions containing mutable references]() <!--- Andrea --->
+    - [Assertions containing mutable references](assert-mut-ref.md) <!--- Andrea --->
 - [Traits]()
 - [Higher-order executable functions](./higher-order-fns.md)
     - [Passing functions as values](./exec_funs_as_values.md)
