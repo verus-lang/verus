@@ -5,7 +5,7 @@ which uses a `forall` expression in a `requires` clause
 to prove an assertion:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:quants_use_forall}}
+{{#include ../../../../examples/guide/quants.rs:quants_use_forall}}
 ```
 
 The `forall` expression means that `0 <= i < s.len() ==> is_even(s[i])`
@@ -69,7 +69,7 @@ Mathematically, these are both equivalent.
 However, the assertion about `s[3] % 2 == 0` fails:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:trigger_fails}}
+{{#include ../../../../examples/guide/quants.rs:trigger_fails}}
 ```
 
 This fails because there are no expressions matching the pattern `is_even(s[...])`;
@@ -78,7 +78,7 @@ In order to prove `s[3] % 2 == 0`,
 we'd first have to mention `is_even(s[3])` explicitly:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_succeeds1}}
+{{#include ../../../../examples/guide/quants.rs:test_use_forall_succeeds1}}
 ```
 
 Once the expression `is_even(s[3])` coaxes the SMT solver into instantiating the
@@ -92,14 +92,14 @@ For example, the trigger `s[i]` matches any expression of the form
 also includes the `s[3]` inside `is_even(s[3])`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_succeeds2}}
+{{#include ../../../../examples/guide/quants.rs:test_use_forall_succeeds2}}
 ```
 
 In fact, if we omit the `#[trigger]` attribute entirely,
 Verus chooses the trigger `s[i]` automatically:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_succeeds3}}
+{{#include ../../../../examples/guide/quants.rs:test_use_forall_succeeds3}}
 ```
 
 In fact, Verus prints a note stating that it chose this trigger:
@@ -128,7 +128,7 @@ The programmer can accept this decision by writing `#![auto]` before the quantif
 which suppresses the note:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_succeeds4}}
+{{#include ../../../../examples/guide/quants.rs:test_use_forall_succeeds4}}
 ```
 
 ## Valid triggers and invalid triggers
@@ -142,7 +142,7 @@ In practice, a valid trigger needs to follow two rules:
 Suppose we want to choose the following invalid trigger, `0 <= i`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_bad1}}
+{{#include ../../../../examples/guide/quants.rs:test_use_forall_bad1}}
 ```
 
 this will result in the following error: 
@@ -156,7 +156,7 @@ error: trigger must be a function call, a field access, or a bitwise operator
 if we really wanted to, we could make it a valid trigger by introducing an extra function:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_bad2}}
+{{#include ../../../../examples/guide/quants.rs:test_use_forall_bad2}}
 ```
 
 but this trigger fails to match because the code doesn't explicitly mention `nonnegative(3)`
@@ -167,7 +167,7 @@ but this trigger fails to match because the code doesn't explicitly mention `non
 Going back to our original example: 
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_use_forall_succeeds3}}
+{{#include ../../../../examples/guide/quants.rs:test_use_forall_succeeds3}}
 ```
 
 So ... which trigger is better, `s[i]` or `is_even(s[i])`?

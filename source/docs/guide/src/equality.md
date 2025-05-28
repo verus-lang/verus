@@ -4,7 +4,7 @@ Equality behaves differently in ghost code than in executable code.
 In executable code, Rust defines `==` to mean a call to the `eq` function of the `PartialEq` trait:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/equality.rs:eq1}}
+{{#include ../../../../examples/guide/equality.rs:eq1}}
 ```
 
 For built-in integer types like `u8`, the `x.eq(y)` function is defined as we'd expect,
@@ -16,14 +16,14 @@ equivalence relation,
 even if the type implements the Rust [`Eq` trait](https://doc.rust-lang.org/std/cmp/trait.Eq.html):
 
 ```rust
-{{#include ../../../rust_verify/example/guide/equality.rs:eq2}}
+{{#include ../../../../examples/guide/equality.rs:eq2}}
 ```
 
 In ghost code, by contrast, the `==` operator is always an equivalence relation
 (i.e. it is reflexive, symmetric, and transitive):
 
 ```rust
-{{#include ../../../rust_verify/example/guide/equality.rs:eq3}}
+{{#include ../../../../examples/guide/equality.rs:eq3}}
 ```
 
 Verus defines `==` in ghost code to be true when:

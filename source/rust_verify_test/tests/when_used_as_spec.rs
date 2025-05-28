@@ -153,3 +153,52 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error_msg(err, "when_used_as_spec refers to function which is more private")
 }
+
+test_verify_one_file! {
+    #[test] allow_in_spec verus_code! {
+        #[verifier::allow_in_spec]
+        fn negate(a: bool) -> bool
+            returns !a
+        {
+            !a
+        }
+
+        proof fn test(b: bool) {
+            assert(negate(b) == !b);
+        }
+
+        uninterp spec fn arbitrary<T>() -> T;
+
+        #[verifier::allow_in_spec]
+        fn generic<T>(a: bool, b: T) -> T
+            returns if a { b } else { arbitrary() }
+        {
+            if a {
+                b
+            } else {
+                loop decreases 0int { assume(false); }
+            }
+        }
+
+        proof fn test2(c: u64) {
+            assert(generic(true, c) == c);
+            assert(generic(false, c) == arbitrary::<u64>());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] allow_in_spec_conflict verus_code! {
+        pub open spec fn negate_spec(a: bool) -> bool {
+            !a
+        }
+
+        #[verifier::when_used_as_spec(negate_spec)]
+        #[verifier::allow_in_spec]
+        pub fn negate(a: bool) -> bool
+            returns !a
+        {
+            !a
+        }
+    } => Err(err) => assert_vir_error_msg(err, "a function cannot be marked both 'when_used_as_spec' and 'allow_in_spec'")
+}

@@ -34,7 +34,7 @@ calc! {
 For example,
 
 ```rust
-{{#include ../../../rust_verify/example/guide/calc.rs:simple}}
+{{#include ../../../../examples/guide/calc.rs:simple}}
 ```
 
 which is equivalent to proving `a <= 5` using `a <= a + 3 <= 5`. In this case, each
@@ -69,7 +69,7 @@ and reported with a helpful error message.
 A simple example of using intermediate relations looks like the following:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/calc.rs:transitive}}
+{{#include ../../../../examples/guide/calc.rs:transitive}}
 ```
 
 This example is equivalent to saying `x <= y` using `x == 5 - 3 < 5 <= y`.

@@ -158,7 +158,7 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
-    // credit: (this example is copied from rust_verify/example/rw2022_scripts.rs, example C)
+    // credit: (this example is copied from examples/rw2022_scripts.rs, example C)
     #[test] test6_expand_forall ["--expand-errors"] => verus_code! {
         spec fn divides(factor: nat, candidate: nat) -> bool {
             candidate % factor == 0

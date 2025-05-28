@@ -182,12 +182,10 @@ impl<V> Multiset<V> {
 
 // Specification of `empty`
 /// The empty multiset maps every element to multiplicity 0
-pub broadcast proof fn axiom_multiset_empty<V>(v: V)
+pub broadcast axiom fn axiom_multiset_empty<V>(v: V)
     ensures
         #[trigger] Multiset::empty().count(v) == 0,
-{
-    admit();
-}
+;
 
 // This verified lemma used to be an axiom in the Dafny prelude
 /// A multiset is equivalent to the empty multiset if and only if it has length 0.
@@ -206,168 +204,136 @@ pub broadcast proof fn lemma_multiset_empty_len<V>(m: Multiset<V>)
 // Specifications of `from_map`
 /// A call to Multiset::new with input map `m` will return a multiset that maps
 /// value `v` to multiplicity `m[v]` if `v` is in the domain of `m`.
-pub broadcast proof fn axiom_multiset_contained<V>(m: Map<V, nat>, v: V)
+pub broadcast axiom fn axiom_multiset_contained<V>(m: Map<V, nat>, v: V)
     requires
         m.dom().finite(),
         m.dom().contains(v),
     ensures
         #[trigger] Multiset::from_map(m).count(v) == m[v],
-{
-    admit();
-}
+;
 
 /// A call to Multiset::new with input map `m` will return a multiset that maps
 /// value `v` to multiplicity 0 if `v` is not in the domain of `m`.
-pub broadcast proof fn axiom_multiset_new_not_contained<V>(m: Map<V, nat>, v: V)
+pub broadcast axiom fn axiom_multiset_new_not_contained<V>(m: Map<V, nat>, v: V)
     requires
         m.dom().finite(),
         !m.dom().contains(v),
     ensures
         #[trigger] Multiset::from_map(m).count(v) == 0,
-{
-    admit();
-}
+;
 
 // Specification of `singleton`
 /// A call to Multiset::singleton with input value `v` will return a multiset that maps
 /// value `v` to multiplicity 1.
-pub broadcast proof fn axiom_multiset_singleton<V>(v: V)
+pub broadcast axiom fn axiom_multiset_singleton<V>(v: V)
     ensures
         (#[trigger] Multiset::singleton(v)).count(v) == 1,
-{
-    admit();
-}
+;
 
 /// A call to Multiset::singleton with input value `v` will return a multiset that maps
 /// any value other than `v` to 0
-pub broadcast proof fn axiom_multiset_singleton_different<V>(v: V, w: V)
+pub broadcast axiom fn axiom_multiset_singleton_different<V>(v: V, w: V)
     ensures
         v != w ==> #[trigger] Multiset::singleton(v).count(w) == 0,
-{
-    admit();
-}
+;
 
 // Specification of `add`
 /// The count of value `v` in the multiset `m1.add(m2)` is equal to the sum of the
 /// counts of `v` in `m1` and `m2` individually.
-pub broadcast proof fn axiom_multiset_add<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
+pub broadcast axiom fn axiom_multiset_add<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
     ensures
         #[trigger] m1.add(m2).count(v) == m1.count(v) + m2.count(v),
-{
-    admit();
-}
+;
 
 // Specification of `sub`
 /// The count of value `v` in the multiset `m1.sub(m2)` is equal to the difference between the
 /// count of `v` in `m1` and `m2` individually. However, the difference is cut off at 0 and
 /// cannot be negative.
-pub broadcast proof fn axiom_multiset_sub<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
+pub broadcast axiom fn axiom_multiset_sub<V>(m1: Multiset<V>, m2: Multiset<V>, v: V)
     ensures
         #[trigger] m1.sub(m2).count(v) == if m1.count(v) >= m2.count(v) {
             m1.count(v) - m2.count(v)
         } else {
             0
         },
-{
-    admit();
-}
+;
 
 // Extensional equality
 /// Two multisets are equivalent if and only if they have the same count for every value.
-pub broadcast proof fn axiom_multiset_ext_equal<V>(m1: Multiset<V>, m2: Multiset<V>)
+pub broadcast axiom fn axiom_multiset_ext_equal<V>(m1: Multiset<V>, m2: Multiset<V>)
     ensures
         #[trigger] (m1 =~= m2) <==> (forall|v: V| m1.count(v) == m2.count(v)),
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_multiset_ext_equal_deep<V>(m1: Multiset<V>, m2: Multiset<V>)
+pub broadcast axiom fn axiom_multiset_ext_equal_deep<V>(m1: Multiset<V>, m2: Multiset<V>)
     ensures
         #[trigger] (m1 =~~= m2) <==> m1 =~= m2,
-{
-    admit();
-}
+;
 
 // Specification of `len`
 /// The length of the empty multiset is 0.
-pub broadcast proof fn axiom_len_empty<V>()
+pub broadcast axiom fn axiom_len_empty<V>()
     ensures
         (#[trigger] Multiset::<V>::empty().len()) == 0,
-{
-    admit();
-}
+;
 
 /// The length of a singleton multiset is 1.
-pub broadcast proof fn axiom_len_singleton<V>(v: V)
+pub broadcast axiom fn axiom_len_singleton<V>(v: V)
     ensures
         (#[trigger] Multiset::<V>::singleton(v).len()) == 1,
-{
-    admit();
-}
+;
 
 /// The length of the addition of two multisets is equal to the sum of the lengths of each individual multiset.
-pub broadcast proof fn axiom_len_add<V>(m1: Multiset<V>, m2: Multiset<V>)
+pub broadcast axiom fn axiom_len_add<V>(m1: Multiset<V>, m2: Multiset<V>)
     ensures
         (#[trigger] m1.add(m2).len()) == m1.len() + m2.len(),
-{
-    admit();
-}
+;
 
 // TODO could probably prove this theorem.
 /// The length of the subtraction of two multisets is equal to the difference between the lengths of each individual multiset.
-pub broadcast proof fn axiom_len_sub<V>(m1: Multiset<V>, m2: Multiset<V>)
+pub broadcast axiom fn axiom_len_sub<V>(m1: Multiset<V>, m2: Multiset<V>)
     requires
         m2.subset_of(m1),
     ensures
         (#[trigger] m1.sub(m2).len()) == m1.len() - m2.len(),
-{
-    admit();
-}
+;
 
 /// The count for any given value `v` in a multiset `m` must be less than or equal to the length of `m`.
-pub broadcast proof fn axiom_count_le_len<V>(m: Multiset<V>, v: V)
+pub broadcast axiom fn axiom_count_le_len<V>(m: Multiset<V>, v: V)
     ensures
         #[trigger] m.count(v) <= #[trigger] m.len(),
-{
-    admit();
-}
+;
 
 // Specification of `filter`
 /// For a given value `v` and boolean predicate `f`, if `f(v)` is true, then the count of `v` in
 /// `m.filter(f)` is the same as the count of `v` in `m`. Otherwise, the count of `v` in `m.filter(f)` is 0.
-pub broadcast proof fn axiom_filter_count<V>(m: Multiset<V>, f: spec_fn(V) -> bool, v: V)
+pub broadcast axiom fn axiom_filter_count<V>(m: Multiset<V>, f: spec_fn(V) -> bool, v: V)
     ensures
         (#[trigger] m.filter(f).count(v)) == if f(v) {
             m.count(v)
         } else {
             0
         },
-{
-    admit();
-}
+;
 
 // Specification of `choose`
 /// In a nonempty multiset `m`, the `choose` function will return a value that maps to a multiplicity
 /// greater than 0 in `m`.
-pub broadcast proof fn axiom_choose_count<V>(m: Multiset<V>)
+pub broadcast axiom fn axiom_choose_count<V>(m: Multiset<V>)
     requires
         #[trigger] m.len() != 0,
     ensures
         #[trigger] m.count(m.choose()) > 0,
-{
-    admit();
-}
+;
 
 // Axiom about finiteness
 /// The domain of a multiset (the set of all values that map to a multiplicity greater than 0) is always finite.
 // NB this axiom's soundness depends on the inability to learn anything about the entirety of
 // Multiset::from_map.dom().
-pub broadcast proof fn axiom_multiset_always_finite<V>(m: Multiset<V>)
+pub broadcast axiom fn axiom_multiset_always_finite<V>(m: Multiset<V>)
     ensures
         #[trigger] m.dom().finite(),
-{
-    admit();
-}
+;
 
 pub broadcast group group_multiset_axioms {
     axiom_multiset_empty,

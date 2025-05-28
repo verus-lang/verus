@@ -163,10 +163,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         }
         if only_check_earlier && !found_enabled {
             // no earlier assertions to check
-            return ValidityResult::Valid(
-                #[cfg(feature = "axiom-usage-info")]
-                crate::context::UsageInfo::None,
-            );
+            return ValidityResult::Valid(crate::context::UsageInfo::None);
         }
         Some(mk_and(&disabled))
     } else {
@@ -334,7 +331,6 @@ pub(crate) fn smt_check_assertion<'ctx>(
         ResultDetermination::Undetermined(true) => {
             context.state = ContextState::FoundResult;
 
-            #[cfg(feature = "axiom-usage-info")]
             let usage_info = if context.usage_info_enabled {
                 context.smt_log.log_word("get-unsat-core");
 
@@ -359,10 +355,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 crate::context::UsageInfo::None
             };
 
-            ValidityResult::Valid(
-                #[cfg(feature = "axiom-usage-info")]
-                usage_info,
-            )
+            ValidityResult::Valid(usage_info)
         }
         ResultDetermination::Undetermined(false) => smt_get_model(context, infos, air_model),
     }

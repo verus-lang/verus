@@ -41,7 +41,7 @@ because both `x1` and `x2` equal `s(10)`,
 and `s(10)` always produces the same result, because `s` is a `spec` function:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:determinism}}
+{{#include ../../../../examples/guide/modes.rs:determinism}}
 ```
 
 By contrast, the proof function `p` is, in principle,
@@ -72,7 +72,7 @@ For example, for the following function,
 callers are under no obligation to obey the `i > 0` recommendation:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:recommends1}}
+{{#include ../../../../examples/guide/modes.rs:recommends1}}
 ```
 
 It's perfectly legal for `test1` to call `f(0)`, and no error or warning will be generated for `f`
@@ -83,7 +83,7 @@ in hopes that any recommendation failures will help diagnose the verification fa
 For example, in the following:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:recommends2}}
+{{#include ../../../../examples/guide/modes.rs:recommends2}}
 ```
 
 Verus print the failed assertion as an error and then prints the failed recommendation as a note:
@@ -108,14 +108,14 @@ If the note isn't helpful, programmers are free to ignore it.
 By default, Verus does not perform `recommends` checking on calls from `spec` functions:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:recommends3}}
+{{#include ../../../../examples/guide/modes.rs:recommends3}}
 ```
 
 However, you can write `spec(checked)` to request `recommends` checking,
 which will cause Verus to generate warnings for `recommends` violations:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/modes.rs:recommends4}}
+{{#include ../../../../examples/guide/modes.rs:recommends4}}
 ```
 
 This is particularly useful for specifications that are part of the "trusted computing base"

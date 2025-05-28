@@ -230,19 +230,31 @@ impl<A> Seq<A> {
         assert(self.remove(self.len() - 1) =~= self.take(self.len() - 1));
         self.tracked_remove(self.len() - 1)
     }
+
+    pub proof fn tracked_pop_front(tracked &mut self) -> (tracked ret: A)
+        requires
+            old(self).len() > 0,
+        ensures
+            ret === old(self).first(),
+            self.len() == old(self).len() - 1,
+            *self == old(self).drop_first(),
+    {
+        broadcast use group_seq_axioms;
+
+        assert(self.remove(0) =~= self.drop_first());
+        self.tracked_remove(0)
+    }
 }
 
 // Trusted axioms
-pub broadcast proof fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
+pub broadcast axiom fn axiom_seq_index_decreases<A>(s: Seq<A>, i: int)
     requires
         0 <= i < s.len(),
     ensures
         #[trigger] (decreases_to!(s => s[i])),
-{
-    admit();
-}
+;
 
-pub proof fn axiom_seq_len_decreases<A>(s1: Seq<A>, s2: Seq<A>)
+pub axiom fn axiom_seq_len_decreases<A>(s1: Seq<A>, s2: Seq<A>)
     requires
         s2.len() < s1.len(),
         forall|i2: int|
@@ -250,9 +262,7 @@ pub proof fn axiom_seq_len_decreases<A>(s1: Seq<A>, s2: Seq<A>)
                 0 <= i1 < s1.len() && s1[i1] == s2[i2],
     ensures
         decreases_to!(s1 => s2),
-{
-    admit();
-}
+;
 
 pub broadcast proof fn axiom_seq_subrange_decreases<A>(s: Seq<A>, i: int, j: int)
     requires
@@ -271,146 +281,114 @@ pub broadcast proof fn axiom_seq_subrange_decreases<A>(s: Seq<A>, i: int, j: int
     axiom_seq_len_decreases(s, s2);
 }
 
-pub broadcast proof fn axiom_seq_empty<A>()
+pub broadcast axiom fn axiom_seq_empty<A>()
     ensures
         #[trigger] Seq::<A>::empty().len() == 0,
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_new_len<A>(len: nat, f: spec_fn(int) -> A)
+pub broadcast axiom fn axiom_seq_new_len<A>(len: nat, f: spec_fn(int) -> A)
     ensures
         #[trigger] Seq::new(len, f).len() == len,
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_new_index<A>(len: nat, f: spec_fn(int) -> A, i: int)
+pub broadcast axiom fn axiom_seq_new_index<A>(len: nat, f: spec_fn(int) -> A, i: int)
     requires
         0 <= i < len,
     ensures
         #[trigger] Seq::new(len, f)[i] == f(i),
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_push_len<A>(s: Seq<A>, a: A)
+pub broadcast axiom fn axiom_seq_push_len<A>(s: Seq<A>, a: A)
     ensures
         #[trigger] s.push(a).len() == s.len() + 1,
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
+pub broadcast axiom fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int)
     requires
         i == s.len(),
     ensures
         #[trigger] s.push(a)[i] == a,
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
+pub broadcast axiom fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int)
     requires
         0 <= i < s.len(),
     ensures
         #[trigger] s.push(a)[i] == s[i],
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
+pub broadcast axiom fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
     ensures
         #[trigger] s.update(i, a).len() == s.len(),
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
+pub broadcast axiom fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A)
     requires
         0 <= i < s.len(),
     ensures
         #[trigger] s.update(i, a)[i] == a,
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
+pub broadcast axiom fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A)
     requires
         0 <= i1 < s.len(),
         0 <= i2 < s.len(),
         i1 != i2,
     ensures
         #[trigger] s.update(i2, a)[i1] == s[i1],
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
+pub broadcast axiom fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
         #[trigger] (s1 =~= s2) <==> {
             &&& s1.len() == s2.len()
             &&& forall|i: int| 0 <= i < s1.len() ==> s1[i] == s2[i]
         },
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
+pub broadcast axiom fn axiom_seq_ext_equal_deep<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
         #[trigger] (s1 =~~= s2) <==> {
             &&& s1.len() == s2.len()
             &&& forall|i: int| 0 <= i < s1.len() ==> s1[i] =~~= s2[i]
         },
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
+pub broadcast axiom fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int)
     requires
         0 <= j <= k <= s.len(),
     ensures
         #[trigger] s.subrange(j, k).len() == k - j,
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
+pub broadcast axiom fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int)
     requires
         0 <= j <= k <= s.len(),
         0 <= i < k - j,
     ensures
         #[trigger] s.subrange(j, k)[i] == s[i + j],
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
+pub broadcast axiom fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>)
     ensures
         #[trigger] s1.add(s2).len() == s1.len() + s2.len(),
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
+pub broadcast axiom fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         0 <= i < s1.len(),
     ensures
         #[trigger] s1.add(s2)[i] == s1[i],
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
+pub broadcast axiom fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int)
     requires
         s1.len() <= i < s1.len() + s2.len(),
     ensures
         #[trigger] s1.add(s2)[i] == s2[i - s1.len()],
-{
-    admit();
-}
+;
 
 pub broadcast group group_seq_axioms {
     axiom_seq_index_decreases,

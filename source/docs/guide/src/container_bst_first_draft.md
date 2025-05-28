@@ -29,7 +29,7 @@ has an optional left child and an optional right child.
 Furthermore, the tree might be entirely empty, in which case there is no root.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map.rs:StructsDef}}
+{{#include ../../../../examples/guide/bst_map.rs:StructsDef}}
 ```
 
 Note that only `TreeMap` is marked `pub`. Its field, `root`, as well as the `Node` type
@@ -49,7 +49,7 @@ In this case, we want to interpret the data structure as a
 We can define such a function recursively.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map.rs:AsMapDef}}
+{{#include ../../../../examples/guide/bst_map.rs:AsMapDef}}
 ```
 
 Again note that only `TreeMap::as_map` is marked `pub`, and furthermore, that it's marked
@@ -62,7 +62,7 @@ e.g., `tree_map@` as a shorthand for `tree_map.view()`.
 We'll be writing our specifications in terms of `tree_map.view()`.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map.rs:ViewDef}}
+{{#include ../../../../examples/guide/bst_map.rs:ViewDef}}
 ```
 
 ### Establishing well-formedness
@@ -73,7 +73,7 @@ _N_, while the nodes in _N_'s right subtree have keys greater than _N_.
 Again, this can be defined by a recursive `spec` function.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map.rs:WellFormedDef}}
+{{#include ../../../../examples/guide/bst_map.rs:WellFormedDef}}
 ```
 
 ### Implementing a constructor: `TreeMap::new()`
@@ -82,7 +82,7 @@ Defining a constructor is simple; we create an empty tree with no root.
 The specification indicates that the returned object must represent the _empty_ map.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map.rs:new}}
+{{#include ../../../../examples/guide/bst_map.rs:new}}
 ```
 
 Recall that `tree_map@` is equivalent to `tree_map.as_map()`.
@@ -105,7 +105,7 @@ Specifically, Verus doesn't yet support an easy way to get a
 `&mut T` out of a `&mut Option<T>`. To get around this, we use [`std::mem::swap`](https://doc.rust-lang.org/std/mem/fn.swap.html) to get ownership of the node.)
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map.rs:insert}}
+{{#include ../../../../examples/guide/bst_map.rs:insert}}
 ```
 
 Observe that the specification of `TreeMap::insert` is given in terms of
@@ -118,7 +118,7 @@ we might have to reshape the tree a bit. However, since we aren't trying to foll
 any particular balancing strategy, it's still not that bad:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map.rs:delete}}
+{{#include ../../../../examples/guide/bst_map.rs:delete}}
 ```
 
 Observe that the specification of `TreeMap::delete` is given in terms of
@@ -131,7 +131,7 @@ This function looks up a key and returns an `Option<&V>` (`None` if the key isn'
 `TreeMap`).
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map.rs:get}}
+{{#include ../../../../examples/guide/bst_map.rs:get}}
 ```
 
 ### Using the `TreeMap` as a client
@@ -140,7 +140,7 @@ A short client program illustrates how we can reason about the `TreeMap` as if i
 a [`Map`](https://verus-lang.github.io/verus/verusdoc/vstd/map/struct.Map.html).
 
 ```rust
-{{#include ../../../rust_verify/example/guide/bst_map.rs:test}}
+{{#include ../../../../examples/guide/bst_map.rs:test}}
 ```
 
 ## Full source

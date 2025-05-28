@@ -745,6 +745,7 @@ define_keywords! {
     // verus
     "spec"        pub struct Spec
     "proof"       pub struct Proof
+    "axiom"       pub struct Axiom
     "exec"        pub struct Exec
     "open"        pub struct Open
     "closed"      pub struct Closed
@@ -1033,6 +1034,7 @@ macro_rules! Token {
     // verus
     [spec]        => { $crate::token::Spec };
     [proof]       => { $crate::token::Proof };
+    [axiom]       => { $crate::token::Axiom };
     [exec]        => { $crate::token::Exec };
     [open]        => { $crate::token::Open };
     [closed]      => { $crate::token::Closed };

@@ -77,7 +77,7 @@ pub trait ExProofFnReqEns<R>: ProofFnReqEnsAssoc<ReqEns = R> {
 }
 
 #[doc(hidden)]
-pub broadcast proof fn axiom_proof_fn_requires<
+pub broadcast axiom fn axiom_proof_fn_requires<
     F,
     ArgModes,
     OutMode,
@@ -90,12 +90,10 @@ pub broadcast proof fn axiom_proof_fn_requires<
 
     ensures
         #[trigger] f.requires(args) <==> <F as ProofFnReqEnsAssoc>::ReqEns::req(args),
-{
-    admit()
-}
+;
 
 #[doc(hidden)]
-pub broadcast proof fn axiom_proof_fn_ensures<
+pub broadcast axiom fn axiom_proof_fn_ensures<
     F,
     ArgModes,
     OutMode,
@@ -111,12 +109,10 @@ pub broadcast proof fn axiom_proof_fn_ensures<
             args,
             output,
         ),
-{
-    admit()
-}
+;
 
 /// Retype a proof_fn, introducing ReqEns<R>
-pub proof fn proof_fn_as_req_ens<
+pub axiom fn proof_fn_as_req_ens<
     R: ProofFnReqEnsDef<Args, Output>,
     const USAGE: u8,
     ReqEns,
@@ -134,10 +130,7 @@ pub proof fn proof_fn_as_req_ens<
         forall|args: Args| #[trigger] R::req(args) ==> f.requires(args),
         forall|args: Args, output: Output|
             f.ensures(args, output) ==> #[trigger] R::ens(args, output),
-{
-    admit();
-    proof_from_false()
-}
+;
 
 pub broadcast group group_seq_axioms {
     axiom_proof_fn_requires,

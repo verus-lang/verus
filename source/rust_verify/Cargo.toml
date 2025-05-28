@@ -31,7 +31,6 @@ rust_verify_test_macros = { path = "../rust_verify_test_macros" }
 
 [features]
 singular = ["vir/singular", "air/singular"]
-axiom-usage-info = ["vir/axiom-usage-info", "air/axiom-usage-info"]
 
 [package.metadata.rust-analyzer]
 rustc_private = true

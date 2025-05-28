@@ -1497,12 +1497,16 @@ impl Hash for crate::FnMode {
                 state.write_u8(2u8);
                 v0.hash(state);
             }
-            crate::FnMode::Exec(v0) => {
+            crate::FnMode::ProofAxiom(v0) => {
                 state.write_u8(3u8);
                 v0.hash(state);
             }
-            crate::FnMode::Default => {
+            crate::FnMode::Exec(v0) => {
                 state.write_u8(4u8);
+                v0.hash(state);
+            }
+            crate::FnMode::Default => {
+                state.write_u8(5u8);
             }
         }
     }
@@ -2520,6 +2524,13 @@ impl Hash for crate::ModeGhost {
 }
 #[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
 impl Hash for crate::ModeProof {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Hash for crate::ModeProofAxiom {
     fn hash<H>(&self, _state: &mut H)
     where
         H: Hasher,

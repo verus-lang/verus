@@ -2990,6 +2990,11 @@
             "syn": "ModeProof"
           }
         ],
+        "ProofAxiom": [
+          {
+            "syn": "ModeProofAxiom"
+          }
+        ],
         "Exec": [
           {
             "syn": "ModeExec"
@@ -5078,6 +5083,17 @@
       "fields": {
         "proof_token": {
           "token": "Proof"
+        }
+      }
+    },
+    {
+      "ident": "ModeProofAxiom",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "axiom_token": {
+          "token": "Axiom"
         }
       }
     },
@@ -7602,6 +7618,7 @@
     "At": "@",
     "Auto": "auto",
     "Await": "await",
+    "Axiom": "axiom",
     "Become": "become",
     "BigAnd": "&&&",
     "BigOr": "|||",

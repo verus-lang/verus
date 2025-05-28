@@ -13,11 +13,11 @@ in the [vstd](https://github.com/verus-lang/verus/tree/main/source/vstd/) direct
 For more information,
 see the [API documentation](https://verus-lang.github.io/verus/verusdoc/vstd/index.html).
 
-As an example, the [following code](https://github.com/verus-lang/verus/tree/main/source/rust_verify/example/guide/vstd_example.rs)
+As an example, the [following code](https://github.com/verus-lang/verus/tree/main/source/../examples/guide/vstd_example.rs)
 uses the `vstd::seq` module:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/vstd_example.rs}}
+{{#include ../../../../examples/guide/vstd_example.rs}}
 ```
 
 For convenience, the `vstd::prelude` module includes `builtin_macros`, `builtin`,

@@ -746,6 +746,9 @@ pub trait Visit<'ast> {
     fn visit_mode_proof(&mut self, i: &'ast crate::ModeProof) {
         visit_mode_proof(self, i);
     }
+    fn visit_mode_proof_axiom(&mut self, i: &'ast crate::ModeProofAxiom) {
+        visit_mode_proof_axiom(self, i);
+    }
     fn visit_mode_spec(&mut self, i: &'ast crate::ModeSpec) {
         visit_mode_spec(self, i);
     }
@@ -2722,6 +2725,9 @@ where
         crate::FnMode::Proof(_binding_0) => {
             v.visit_mode_proof(_binding_0);
         }
+        crate::FnMode::ProofAxiom(_binding_0) => {
+            v.visit_mode_proof_axiom(_binding_0);
+        }
         crate::FnMode::Exec(_binding_0) => {
             v.visit_mode_exec(_binding_0);
         }
@@ -3826,6 +3832,12 @@ where
     V: Visit<'ast> + ?Sized,
 {
     skip!(node.proof_token);
+}
+pub fn visit_mode_proof_axiom<'ast, V>(v: &mut V, node: &'ast crate::ModeProofAxiom)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    skip!(node.axiom_token);
 }
 pub fn visit_mode_spec<'ast, V>(v: &mut V, node: &'ast crate::ModeSpec)
 where

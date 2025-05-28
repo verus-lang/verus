@@ -33,7 +33,7 @@
 /// - Use of tracked variable is possible but in a different style.
 ///
 /// Example:
-/// - Refer to `example/syntax_attr.rs`.
+/// - Refer to `examples/syntax_attr.rs`.
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use syn::{parse2, spanned::Spanned, Expr, Item};

@@ -22,3 +22,7 @@ fn example() -> (return_name: return_type)
   ...
 }
 ```
+
+## With the `#![verifier::allow_in_spec]` attribute
+
+The [`#![verifier::allow_in_spec]` attribute](./reference-attributes.md#verifierallowinspec) attribute can be applied to an executable function with a [`returns` clause](./reference-returns.md).  This allows the function to be used in spec mode, where it is interpreted as equivalent to the specified return-value.

@@ -10,6 +10,7 @@ a.struct[title="struct syn::token::Async"],
 a.struct[title="struct syn::token::At"],
 a.struct[title="struct syn::token::Auto"],
 a.struct[title="struct syn::token::Await"],
+a.struct[title="struct syn::token::Axiom"],
 a.struct[title="struct syn::token::Become"],
 a.struct[title="struct syn::token::BigAnd"],
 a.struct[title="struct syn::token::BigOr"],
@@ -173,6 +174,7 @@ a.struct[title="struct syn::token::Async"]::before,
 a.struct[title="struct syn::token::At"]::before,
 a.struct[title="struct syn::token::Auto"]::before,
 a.struct[title="struct syn::token::Await"]::before,
+a.struct[title="struct syn::token::Axiom"]::before,
 a.struct[title="struct syn::token::Become"]::before,
 a.struct[title="struct syn::token::BigAnd"]::before,
 a.struct[title="struct syn::token::BigOr"]::before,
@@ -370,6 +372,10 @@ a.struct[title="struct syn::token::Auto"]::before {
 
 a.struct[title="struct syn::token::Await"]::before {
 	content: "Token![await]";
+}
+
+a.struct[title="struct syn::token::Axiom"]::before {
+	content: "Token![axiom]";
 }
 
 a.struct[title="struct syn::token::Become"]::before {
@@ -1057,6 +1063,7 @@ a.struct[title="struct syn::token::Assume"]::after,
 a.struct[title="struct syn::token::Async"]::after,
 a.struct[title="struct syn::token::Auto"]::after,
 a.struct[title="struct syn::token::Await"]::after,
+a.struct[title="struct syn::token::Axiom"]::after,
 a.struct[title="struct syn::token::Become"]::after,
 a.struct[title="struct syn::token::Box"]::after,
 a.struct[title="struct syn::token::Break"]::after,

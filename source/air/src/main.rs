@@ -1,5 +1,4 @@
 use air::ast::CommandX;
-#[cfg(feature = "axiom-usage-info")]
 use air::context::UsageInfo;
 use air::context::{Context, SmtSolver, ValidityResult};
 use air::messages::{AirMessage, AirMessageLabel, Reporter};
@@ -146,13 +145,6 @@ pub fn main() {
         let result =
             air_context.command(&*message_interface, &reporter, &command, Default::default());
         match result {
-            #[cfg(not(feature = "axiom-usage-info"))]
-            ValidityResult::Valid() => {
-                if let CommandX::CheckValid(_) = &**command {
-                    count_verified += 1;
-                }
-            }
-            #[cfg(feature = "axiom-usage-info")]
             ValidityResult::Valid(usage_info) => {
                 if let CommandX::CheckValid(_) = &**command {
                     count_verified += 1;

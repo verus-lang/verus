@@ -19,4 +19,3 @@ indexmap = { version = "1" }
 
 [features]
 singular = ["air/singular"]
-axiom-usage-info = ["air/axiom-usage-info"]

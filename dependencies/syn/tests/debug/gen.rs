@@ -2927,6 +2927,13 @@ impl Debug for Lite<syn::FnMode> {
                 formatter.write_str(")")?;
                 Ok(())
             }
+            syn::FnMode::ProofAxiom(_val) => {
+                formatter.write_str("FnMode::ProofAxiom")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
             syn::FnMode::Exec(_val) => {
                 formatter.write_str("FnMode::Exec")?;
                 formatter.write_str("(")?;
@@ -4802,6 +4809,12 @@ impl Debug for Lite<syn::ModeGhost> {
 impl Debug for Lite<syn::ModeProof> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("ModeProof");
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ModeProofAxiom> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeProofAxiom");
         formatter.finish()
     }
 }
@@ -7108,6 +7121,11 @@ impl Debug for Lite<syn::token::Auto> {
 impl Debug for Lite<syn::token::Await> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str("Token![await]")
+    }
+}
+impl Debug for Lite<syn::token::Axiom> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str("Token![axiom]")
     }
 }
 impl Debug for Lite<syn::token::Become> {

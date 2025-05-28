@@ -1,9 +1,10 @@
 # Attributes
 
+ - `accept_recursive_types`
  - [`all_triggers`](#all_triggers)
+ - [`allow_in_spec`](#verifierallow_in_spec)
  - [`atomic`](#verifieratomic)
  - [`auto`](#auto)
- - `accept_recursive_types`
  - [`external`](#verifierexternal)
  - `external_body`
  - `external_fn_specification`
@@ -32,6 +33,12 @@ for more information.
 
 Unlike most Verus attributes, this does not require the `verifier::` prefix.
 
+## `#![verifier::allow_in_spec]`
+
+Can be applied to an executable function with a [`returns` clause](./reference-returns.md).
+This allows the function to be used in spec mode, where it is interpreted as equivalent
+to the specified return-value.
+
 ## `#[verifier::atomic]`
 
 The attribute `#[verifier::atomic]` can be applied to any _exec-mode_ function to indicate
@@ -58,6 +65,13 @@ Unlike most Verus attributes, this does not require the `verifier::` prefix.
 
 Tells Verus to ignore the given item. Verus will error if any verified code attempts to
 reference the given item.
+
+This can have nontrivial implications for the TCB of a verified crate; see [here](./tcb.md).
+
+## `#[verifier::external_body]`
+
+Tells Verus to only consider the function definition but not the function body, trusting that
+it correctly satisfies its specification.
 
 This can have nontrivial implications for the TCB of a verified crate; see [here](./tcb.md).
 

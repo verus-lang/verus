@@ -1191,7 +1191,7 @@ fn is_first_param_self(sig: &Signature) -> bool {
 fn is_spec(sig: &Signature) -> bool {
     match &sig.mode {
         FnMode::Spec(_) | FnMode::SpecChecked(_) => true,
-        FnMode::Proof(_) | FnMode::Exec(_) | FnMode::Default => false,
+        FnMode::Proof(_) | FnMode::ProofAxiom(_) | FnMode::Exec(_) | FnMode::Default => false,
     }
 }
 

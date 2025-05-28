@@ -49,7 +49,7 @@ In addition to the documentation above, it can be helpful to see Verus used in a
  * [Publications and projects](https://verus-lang.github.io/verus/publications-and-projects/) using Verus.
  * [Videos, slides, and exercises](https://verus-lang.github.io/event-sites/2024-sosp/) from a day-long Verus tutorial.
  * [Standalone examples](https://github.com/secure-foundations/human-eval-verus/) showing Verus in use for small, concrete tasks.
- * [Small and medium-sized examples](source/rust_verify/example) illustrating various Verus features
+ * [Small and medium-sized examples](examples) illustrating various Verus features
  * [Unit tests](source/rust_verify_test/tests) for Verus, containing examples of Verus syntax and features.
 
 ## Getting in touch, reporting issues, and starting discussions

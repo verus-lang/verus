@@ -63,7 +63,7 @@ So the buffer will be represented by `UnsafeCell<MaybeUninit<T>>`.
 We'll also use atomics to represent the `head` and `tail`.
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/unverified_fifo.rs:queue}}
+{{#include ../../../../../examples/state_machines/tutorial/unverified_fifo.rs:queue}}
 ```
 
 The producer and consumer types will each have a reference to the queue.
@@ -75,13 +75,13 @@ the producer is the only entity that ever updates the `tail` and
 the consumer is the only entity that ever updates the `head`.)
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/unverified_fifo.rs:producer_consumer}}
+{{#include ../../../../../examples/state_machines/tutorial/unverified_fifo.rs:producer_consumer}}
 ```
 
 Finally, we come to the actual implementation:
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/unverified_fifo.rs:impl}}
+{{#include ../../../../../examples/state_machines/tutorial/unverified_fifo.rs:impl}}
 ```
 
 ## Verified implementation
@@ -112,13 +112,13 @@ and each permission token connects an identifier to the (possibly uninitialized 
 In the permission token, this value is represented as an `Option` type, though the option tag has no runtime representation.
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/pcell_example.rs:example}}
+{{#include ../../../../../examples/state_machines/tutorial/pcell_example.rs:example}}
 ```
 
 After erasure, the above code reduces to something like this:
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/pcell_example.rs:erased}}
+{{#include ../../../../../examples/state_machines/tutorial/pcell_example.rs:erased}}
 ```
 
 ### Using `PCell` in a verified queue.
@@ -289,9 +289,9 @@ Now that we finally have a handle on the protocol, let's implement it. It should
 And now, in code:
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/fifo.rs:enum_state}}
+{{#include ../../../../../examples/state_machines/tutorial/fifo.rs:enum_state}}
 
-{{#include ../../../../rust_verify/example/state_machines/tutorial/fifo.rs:fields}}
+{{#include ../../../../../examples/state_machines/tutorial/fifo.rs:fields}}
     // ...
 }}
 ```
@@ -328,7 +328,7 @@ Thus keys of the `storage` map will take on values in the range `[0, len)`.
 Now, let's dive into the transitions. Let's start with `produce_start` transition.
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/fifo.rs:transition_produce_start}}
+{{#include ../../../../../examples/state_machines/tutorial/fifo.rs:transition_produce_start}}
 ```
 
 It's a doozy, but we just need to break it down into three parts:
@@ -349,7 +349,7 @@ back into the system, which means we have to provide the guarantees about the pe
 in the enabing condition rather than in a post-guarantee.
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/fifo.rs:transition_produce_end}}
+{{#include ../../../../../examples/state_machines/tutorial/fifo.rs:transition_produce_end}}
 ```
 
 Check the [full source](./src-producer-consumer-queue.md) for the `consume_start` and `consume_end` transitions, which are pretty similar,
@@ -365,17 +365,17 @@ The well-formedness condition here demands us to be in the `ProducerState::Idle`
 (in every call to `enqueue`, we must start and end in the `Idle` state).
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/fifo.rs:impl_producer_struct}}
+{{#include ../../../../../examples/state_machines/tutorial/fifo.rs:impl_producer_struct}}
 ```
 
 For the `Queue` type itself, we add an atomic invariant for the `head` and `tail` fields:
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/fifo.rs:impl_queue_struct}}
+{{#include ../../../../../examples/state_machines/tutorial/fifo.rs:impl_queue_struct}}
 ```
 
 Now we can implement and verify `enqueue`:
 
 ```rust,ignore
-{{#include ../../../../rust_verify/example/state_machines/tutorial/fifo.rs:impl_producer}}
+{{#include ../../../../../examples/state_machines/tutorial/fifo.rs:impl_producer}}
 ```

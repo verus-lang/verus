@@ -121,14 +121,12 @@ impl<Key> HashSetWithView<Key> where Key: View + Eq + Hash {
     }
 }
 
-pub broadcast proof fn axiom_hash_set_with_view_spec_len<Key>(m: &HashSetWithView<Key>) where
+pub broadcast axiom fn axiom_hash_set_with_view_spec_len<Key>(m: &HashSetWithView<Key>) where
     Key: View + Eq + Hash,
 
     ensures
         #[trigger] m.spec_len() == m@.len(),
-{
-    admit();
-}
+;
 
 #[verifier::ext_equal]
 pub struct StringHashSet {
@@ -229,12 +227,10 @@ impl StringHashSet {
     }
 }
 
-pub broadcast proof fn axiom_string_hash_set_spec_len(m: &StringHashSet)
+pub broadcast axiom fn axiom_string_hash_set_spec_len(m: &StringHashSet)
     ensures
         #[trigger] m.spec_len() == m@.len(),
-{
-    admit();
-}
+;
 
 pub broadcast group group_hash_set_axioms {
     axiom_hash_set_with_view_spec_len,

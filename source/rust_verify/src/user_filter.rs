@@ -3,8 +3,9 @@ use crate::config::Args;
 use crate::util::error;
 use crate::verifier::module_name;
 use std::collections::HashSet;
-use vir::ast::{Fun, Function, Krate, Path, VirErr};
-use vir::ast_util::friendly_fun_name_crate_relative;
+use std::sync::Arc;
+use vir::ast::{Fun, Function, Krate, VirErr};
+use vir::ast_util::{friendly_fun_name_crate_relative, parse_path_segments_from_user_str};
 
 #[derive(Clone, Debug)]
 pub enum UserFilter {
@@ -16,11 +17,10 @@ pub enum UserFilter {
     Function(ModuleId, String, HashSet<Fun>),
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub enum ModuleId {
-    Root,
-    /// Colon separated, as the user would input
-    Module(String),
+type ModuleId = vir::ast::Idents;
+
+fn root_module_id() -> ModuleId {
+    Arc::new(vec![])
 }
 
 impl UserFilter {
@@ -33,36 +33,80 @@ impl UserFilter {
     }
 
     pub fn from_args(args: &Args, local_krate: &Krate) -> Result<UserFilter, VirErr> {
-        if let Some(func_name) = &args.verify_function {
-            if args.verify_module.is_empty() && !args.verify_root {
-                return Err(error(
-                    "--verify-function option requires --verify-module or --verify-root",
-                ));
+        let validate_module_name = |s: &str| -> Result<vir::ast::Idents, VirErr> {
+            let segments = parse_path_segments_from_user_str(s)?;
+            if local_krate.modules.iter().find(|m| m.x.path.segments == segments).is_none() {
+                let mut lines = local_krate
+                    .modules
+                    .iter()
+                    .filter_map(|m| {
+                        let name = module_name(&m.x.path);
+                        (m.x.path.segments.len() > 0).then(|| format!("- {name}"))
+                    })
+                    .collect::<Vec<_>>();
+                lines.sort(); // Present the available modules in sorted order
+                let mut msg = vec![
+                    format!(
+                        "could not find module {s} specified by --verify-module or --verify-only-module"
+                    ),
+                    format!("available modules are:"),
+                ];
+                msg.extend(lines);
+                msg.push(format!("or use --verify-root"));
+                return Err(error(msg.join("\n")));
             }
+            Ok(segments)
+        };
 
-            if args.verify_module.len() + (if args.verify_root { 1 } else { 0 }) > 1 {
-                return Err(error(
-                    "--verify-function only allowed with a single --verify-module (or --verify-root)",
-                ));
-            }
+        if let Some(func_name) = &args.verify_function {
+            assert!(!(args.verify_only_module.is_empty() && !args.verify_root));
+            assert!(!(args.verify_module.len() + (if args.verify_root { 1 } else { 0 }) > 1));
+            assert!(args.verify_module.is_empty());
 
             let module = if args.verify_root {
-                ModuleId::Root
+                root_module_id()
             } else {
-                ModuleId::Module(args.verify_module[0].clone())
+                let s = &args.verify_only_module[0];
+                validate_module_name(s)?
             };
             let matches = Self::get_matches(&module, func_name, &local_krate.functions)?;
             return Ok(UserFilter::Function(module, func_name.clone(), matches));
         }
 
-        if args.verify_module.is_empty() && !args.verify_root {
+        if args.verify_module.is_empty() && args.verify_only_module.is_empty() && !args.verify_root
+        {
             return Ok(UserFilter::None);
         }
 
-        let mut modules: Vec<ModuleId> =
-            args.verify_module.iter().map(|s| ModuleId::Module(s.clone())).collect();
+        let mut modules: Vec<ModuleId> = args
+            .verify_module
+            .iter()
+            .map(|s| {
+                let arg_segments = validate_module_name(s)?;
+                let mods = local_krate
+                    .modules
+                    .iter()
+                    .map(|m| m.x.path.segments.clone())
+                    .filter(|m_segments| {
+                        vir::ast_util::path_segments_match_prefix(m_segments, &arg_segments)
+                    })
+                    .collect::<Vec<ModuleId>>();
+                Ok(mods)
+            })
+            .collect::<Result<Vec<Vec<ModuleId>>, VirErr>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        modules.extend(
+            args.verify_only_module
+                .iter()
+                .map(|s| validate_module_name(s))
+                .collect::<Result<Vec<ModuleId>, VirErr>>()?,
+        );
+
         if args.verify_root {
-            modules.push(ModuleId::Root);
+            modules.push(root_module_id());
         }
 
         Ok(UserFilter::Modules(modules))
@@ -85,33 +129,12 @@ impl UserFilter {
             .filter(|m| {
                 // Return true if the ModuleId is in the remaining_modules set,
                 // and if so, remove it from the set.
-                remaining_modules.take(&module_id_of_path(&m.x.path)).is_some()
+                remaining_modules.take(&m.x.path.segments).is_some()
             })
             .cloned()
             .collect();
 
-        // Check if any modules from the user's list didn't appear in the krate modules
-        if let Some(mod_name) = remaining_modules.into_iter().next() {
-            let mut lines = modules
-                .iter()
-                .filter_map(|m| {
-                    let name = module_name(&m.x.path);
-                    (m.x.path.segments.len() > 0).then(|| format!("- {name}"))
-                })
-                .collect::<Vec<_>>();
-            lines.sort(); // Present the available modules in sorted order
-            let mod_name = match mod_name {
-                ModuleId::Root => "[root module]",
-                ModuleId::Module(m) => &m,
-            };
-            let mut msg = vec![
-                format!("could not find module {mod_name} specified by --verify-module"),
-                format!("available modules are:"),
-            ];
-            msg.extend(lines);
-            msg.push(format!("or use --verify-root"));
-            return Err(error(msg.join("\n")));
-        }
+        assert!(remaining_modules.is_empty(), "Some modules were not found in the krate modules");
 
         Ok(module_ids_to_verify)
     }
@@ -159,7 +182,7 @@ impl UserFilter {
             .iter()
             .filter(|f| match &f.x.owning_module {
                 None => false,
-                Some(m) => module_id == &module_id_of_path(m),
+                Some(m) => module_id == &m.segments,
             })
             .map(|f| {
                 let name = friendly_fun_name_crate_relative(
@@ -283,8 +306,4 @@ impl UserFilter {
             true
         }
     }
-}
-
-fn module_id_of_path(p: &Path) -> ModuleId {
-    if p.segments.len() == 0 { ModuleId::Root } else { ModuleId::Module(module_name(p)) }
 }
