@@ -16,6 +16,8 @@ pub mod option;
 pub mod range;
 pub mod result;
 
+pub mod slice;
+
 #[cfg(feature = "alloc")]
 pub mod vec;
 
