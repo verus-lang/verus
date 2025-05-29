@@ -1216,6 +1216,7 @@ impl<A> Seq<A> {
             ),
         decreases self.len(),
     {
+        #[allow(deprecated)]
         lemma_seq_properties::<A>();  // new broadcast group not working here
         broadcast use Seq::lemma_remove_duplicates_properties;
 
