@@ -1,4 +1,5 @@
-use super::map::Map;
+#[macro_use]
+use super::map::{Map, assert_maps_equal, assert_maps_equal_internal};
 #[allow(unused_imports)]
 use super::pervasive::*;
 #[allow(unused_imports)]
@@ -255,6 +256,311 @@ impl<K, V> Map<K, V> {
             assert(self.contains_pair(k, y));
             let l = choose|l: K| self.contains_pair(l, y) && self.invert()[y] == l && l != j;
         }
+    }
+
+    /// Keeps only those key-value pairs whose key satisfies `p`.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let m = map![1 => 10, 2 => 20];
+    ///     let even = |k: int| k % 2 == 0;
+    ///     assert(m.filter_keys(even) =~= map![2 => 20]);
+    /// }
+    /// ```
+    pub open spec fn filter_keys(self, p: spec_fn(K) -> bool) -> Self {
+        self.restrict(self.dom().filter(p))
+    }
+
+    /// Returns the value associated with key `k` in the map if it exists,
+    /// otherwise returns None.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn lookup_test() {
+    ///     let m: Map<int, bool> = map![
+    ///         1 => true,
+    ///         2 => false
+    ///     ];
+    ///
+    ///     assert(m.lookup(1) == Some(true));
+    ///     assert(m.lookup(3) == None);
+    /// }
+    /// ```
+    pub open spec fn lookup(self, k: K) -> Option<V> {
+        if self.dom().contains(k) {
+            Some(self[k])
+        } else {
+            None
+        }
+    }
+
+    /// A map contains a value satisfying predicate `p` iff some key maps to a value satisfying `p`.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn lookup_dom_value_any_test() {
+    ///     let m = map![1 => 10, 2 => 20, 3 => 30];
+    ///     let p = |v: int| v > 25;
+    ///     assert(m[3] == 30);
+    ///     assert(m.dom().any(|k| p(m[k])));
+    /// }
+    /// ```
+    pub proof fn lookup_dom_value_any(self, p: spec_fn(V) -> bool)
+        ensures
+            self.dom().any(|k: K| p(self[k])) <==> self.values().any(p),
+    {
+        broadcast use group_map_properties;
+
+        if self.dom().any(|k: K| p(self[k])) {
+            let k = choose|k: K| self.dom().contains(k) && #[trigger] p(self[k]);
+            assert(self.values().contains(self[k]));
+            assert(self.values().any(p));
+        }
+    }
+
+    /// Two maps are equal if and only if they are submaps of each other.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn submap_eq_test() {
+    ///     let m1 = map![1 => 10, 2 => 20];
+    ///     let m2 = map![1 => 10, 2 => 20];
+    ///     let m3 = map![1 => 10, 2 => 30];
+    ///
+    ///     assert(m1.submap_of(m2) && m2.submap_of(m1));
+    ///     assert(m1 == m2);
+    /// }
+    /// ```
+    pub proof fn lemma_submap_eq_iff(self, m: Self)
+        ensures
+            (self == m) <==> (self.submap_of(m) && m.submap_of(self)),
+    {
+        broadcast use group_map_properties;
+
+        if self.submap_of(m) && m.submap_of(self) {
+            assert_maps_equal!(self == m);
+        }
+    }
+
+    /// When removing a set of keys from a map after inserting (k,v),
+    /// the result depends on whether k is in the set:
+    /// if k is in the set, the insertion is discarded;
+    /// if not, the insertion happens after removal.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn map_remove_keys_insert_test() {
+    ///     let m = map![1 => 10, 2 => 20, 3 => 30];
+    ///     let to_remove = set![2, 4];
+    ///
+    ///     // 5 not in m: insert happens after remove
+    ///     assert(m.insert(5, 15).remove_keys(to_remove) == m.remove_keys(to_remove).insert(5, 15));
+    ///
+    ///     // 2 in m: insert is eliminated by remove
+    ///     assert(m.insert(2, 25).remove_keys(to_remove) == m.remove_keys(to_remove));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_map_remove_keys_insert(self, r: Set<K>, k: K, v: V)
+        ensures
+            #[trigger] self.insert(k, v).remove_keys(r) == if r.contains(k) {
+                self.remove_keys(r)
+            } else {
+                self.remove_keys(r).insert(k, v)
+            },
+    {
+        broadcast use group_map_properties;
+
+        let lhs = self.insert(k, v).remove_keys(r);
+        let rhs = if r.contains(k) {
+            self.remove_keys(r)
+        } else {
+            self.remove_keys(r).insert(k, v)
+        };
+        assert_maps_equal!(lhs == rhs);
+    }
+
+    /// Filtering keys after inserting `(k, v)` leaves the result unchanged when `p(k)` is false,
+    /// and otherwise adds `(k, v)` to the already-filtered map.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let m = map![1 => 10];
+    ///     let even = |k: int| k % 2 == 0;
+    ///
+    ///     assert(m.insert(3, 30).filter_keys(even) =~= m.filter_keys(even));
+    ///     assert(m.insert(2, 20).filter_keys(even)
+    ///            =~= m.filter_keys(even).insert(2, 20));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_filter_keys_insert(self, p: spec_fn(K) -> bool, k: K, v: V)
+        ensures
+            #[trigger] self.insert(k, v).filter_keys(p) == (if p(k) {
+                self.filter_keys(p).insert(k, v)
+            } else {
+                self.filter_keys(p)
+            }),
+    {
+        broadcast use group_map_properties;
+
+        let lhs = self.insert(k, v).filter_keys(p);
+        let rhs = if p(k) {
+            self.filter_keys(p).insert(k, v)
+        } else {
+            self.filter_keys(p)
+        };
+        assert_maps_equal!(lhs == rhs);
+    }
+}
+
+impl<K, V> Map<Seq<K>, V> {
+    /// Returns a sub-map of all entries whose key begins with `prefix`,
+    /// re-indexed so that the stored keys have that prefix removed.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let m = map![seq![1, 2] => 10, seq![1, 2, 3] => 20, seq![2] => 30];
+    ///     let sub = m.prefixed_entries(seq![1, 2]);
+    ///
+    ///     assert(sub.contains_key(seq![]));          // original key [1,2]
+    ///     assert(sub[seq![]] == 10);
+    ///
+    ///     assert(sub.contains_key(seq![3]));         // original key [1,2,3]
+    ///     assert(sub[seq![3]] == 20);
+    ///
+    ///     assert(!sub.contains_key(seq![2]));        // original key [2] was not prefixed
+    /// }
+    /// ```
+    pub open spec fn prefixed_entries(self, prefix: Seq<K>) -> Self {
+        Map::new(|k: Seq<K>| self.contains_key(prefix + k), |k: Seq<K>| self[prefix + k])
+    }
+
+    /// For every key `k` kept by `prefixed_entries(prefix)`,
+    /// the associated value is the one stored at `prefix + k` in the original map.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let m = map![seq![1, 2] => 10, seq![1, 2, 3] => 20];
+    ///     let p = seq![1, 2];
+    ///
+    ///     // key inside the sub-map
+    ///     assert(m.prefixed_entries(p)[seq![]] == m[p + seq![]]);      // 10
+    ///     assert(m.prefixed_entries(p)[seq![3]] == m[p + seq![3]]);    // 20
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_prefixed_entries_get(self, prefix: Seq<K>, k: Seq<K>)
+        requires
+            self.prefixed_entries(prefix).contains_key(k),
+        ensures
+            self.prefixed_entries(prefix)[k] == #[trigger] self[prefix + k],
+    {
+        broadcast use group_map_properties;
+
+    }
+
+    /// A key `k` is in `prefixed_entries(prefix)` exactly when the original map
+    /// contains the key `prefix + k`.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let m = map![seq![1, 2] => 10, seq![1, 2, 3] => 20];
+    ///     let p = seq![1, 2];
+    ///
+    ///     assert(m.prefixed_entries(p).contains_key(seq![])
+    ///            <==> m.contains_key(p + seq![]));
+    ///
+    ///     assert(m.prefixed_entries(p).contains_key(seq![3])
+    ///            <==> m.contains_key(p + seq![3]));
+    ///
+    ///     assert(!m.prefixed_entries(p).contains_key(seq![2]));
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_prefixed_entries_contains(self, prefix: Seq<K>, k: Seq<K>)
+        ensures
+            #[trigger] self.prefixed_entries(prefix).contains_key(k) <==> self.contains_key(
+                prefix + k,
+            ),
+    {
+        broadcast use group_map_properties;
+
+        let lhs = self.prefixed_entries(prefix);
+        let rhs = self;
+    }
+
+    /// Inserting `(prefix + k, v)` before taking `prefixed_entries(prefix)`
+    /// has the same effect as inserting `(k, v)` into the prefixed map.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let m = map![seq![1, 2] => 10];
+    ///     let p = seq![1, 2];
+    ///
+    ///     let left  = m.insert(p + seq![3], 20).prefixed_entries(p);
+    ///     let right = m.prefixed_entries(p).insert(seq![3], 20);
+    ///
+    ///     assert(left == right);
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_prefixed_entries_insert(self, prefix: Seq<K>, k: Seq<K>, v: V)
+        ensures
+            #[trigger] self.insert(prefix + k, v).prefixed_entries(prefix) == self.prefixed_entries(
+                prefix,
+            ).insert(k, v),
+    {
+        broadcast use group_map_properties;
+        broadcast use super::seq::group_seq_axioms;
+
+        #[allow(deprecated)]
+        super::seq_lib::lemma_seq_properties::<K>();  // new broadcast group not working here
+        broadcast use Map::lemma_prefixed_entries_contains, Map::lemma_prefixed_entries_get;
+
+        let lhs = self.insert(prefix + k, v).prefixed_entries(prefix);
+        let rhs = self.prefixed_entries(prefix).insert(k, v);
+        assert_maps_equal!(lhs == rhs, key => {
+        if key != k {
+            assert(prefix.is_prefix_of(prefix + key));
+        }
+    });
+    }
+
+    /// Taking the entries that share `prefix` commutes with `union_prefer_right`:
+    /// union the two maps first and then strip the prefix, or strip the prefix from
+    /// each map and then union them—the resulting maps are identical.
+    ///
+    /// ## Example
+    /// ```rust
+    /// proof fn example() {
+    ///     let a = map![seq![1, 2] => 10, seq![2, 3] => 20];
+    ///     let b = map![seq![1, 2] => 99, seq![2, 4] => 40];
+    ///     let p = seq![2];
+    ///
+    ///     assert(
+    ///         a.union_prefer_right(b).prefixed_entries(p)
+    ///         == a.prefixed_entries(p).union_prefer_right(b.prefixed_entries(p))
+    ///     );
+    /// }
+    /// ```
+    pub broadcast proof fn lemma_prefixed_entries_union(self, m: Self, prefix: Seq<K>)
+        ensures
+            #[trigger] self.union_prefer_right(m).prefixed_entries(prefix) == self.prefixed_entries(
+                prefix,
+            ).union_prefer_right(m.prefixed_entries(prefix)),
+    {
+        broadcast use group_map_properties;
+        broadcast use
+            Map::lemma_prefixed_entries_contains,
+            Map::lemma_prefixed_entries_get,
+            Map::lemma_prefixed_entries_insert,
+        ;
+
+        let lhs = self.union_prefer_right(m).prefixed_entries(prefix);
+        let rhs = self.prefixed_entries(prefix).union_prefer_right(m.prefixed_entries(prefix));
+        assert_maps_equal!(lhs == rhs);
     }
 }
 
