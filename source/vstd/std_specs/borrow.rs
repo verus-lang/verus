@@ -9,6 +9,7 @@ use std::borrow::ToOwned;
 
 verus! {
 
+#[cfg(feature = "alloc")]
 #[verifier::external_trait_specification]
 pub(crate) trait ExToOwned {
     type ExternalTraitSpecificationFor: ToOwned;
@@ -16,6 +17,7 @@ pub(crate) trait ExToOwned {
     type Owned: Borrow<Self>;
 }
 
+#[cfg(feature = "alloc")]
 #[verifier::external_type_specification]
 #[verifier::reject_recursive_types(B)]
 pub struct ExCow<'a, B: 'a + ?Sized + ToOwned>(Cow<'a, B>);
