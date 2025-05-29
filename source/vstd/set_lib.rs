@@ -427,6 +427,10 @@ impl<A> Set<A> {
             self.lemma_greatest_is_unique(r);
         }
     }
+
+    pub open spec fn any(self, pred: spec_fn(A) -> bool) -> bool {
+        exists|x: A| self.contains(x) && pred(x)
+    }
 }
 
 /// The result of inserting an element `a` into a set `s` is finite iff `s` is finite.
