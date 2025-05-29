@@ -3,17 +3,17 @@ use crate::context::Context;
 use crate::external::CrateItems;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_id_to_vir_path_option, mid_ty_const_to_vir, mid_ty_to_vir,
-    mk_visibility, remove_host_arg, typ_path_and_ident_to_vir_path,
+    mk_visibility, typ_path_and_ident_to_vir_path,
 };
-use crate::rust_to_vir_func::{check_item_fn, CheckItemFnEither};
+use crate::rust_to_vir_func::{CheckItemFnEither, check_item_fn};
 use crate::unsupported_err;
 use crate::util::{err_span, vir_err_span_str};
 use crate::verus_items::{self, MarkerItem, RustItem, VerusItem};
 use indexmap::{IndexMap, IndexSet};
 use rustc_hir::{AssocItemKind, ImplItemKind, Item, QPath, Safety, TraitRef};
-use rustc_middle::ty::GenericArgKind;
-use rustc_span::def_id::DefId;
+use rustc_middle::ty::{GenericArgKind, PseudoCanonicalInput, TypingEnv};
 use rustc_span::Span;
+use rustc_span::def_id::DefId;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use vir::ast::{
@@ -105,7 +105,6 @@ fn trait_impl_to_vir<'tcx>(
     // We keep this full list, with the first element being the Self type X
     let mut types: Vec<Typ> = Vec::new();
     let args = trait_ref.skip_binder().args;
-    let args = remove_host_arg(ctxt.tcx, trait_ref.skip_binder().def_id, args, span)?;
     for arg in args.iter() {
         match arg.unpack() {
             GenericArgKind::Lifetime(_) => {}
@@ -190,8 +189,8 @@ fn translate_assoc_type<'tcx>(
         assoc_args.push(rustc_middle::ty::GenericArg::from(r));
     }
     let inst_bounds = bounds.instantiate(ctxt.tcx, &*assoc_args);
-    let param_env = ctxt.tcx.param_env(impl_item_id);
-    let inst_bounds = ctxt.tcx.normalize_erasing_regions(param_env, inst_bounds);
+    let typing_env = TypingEnv::post_analysis(ctxt.tcx, impl_item_id);
+    let inst_bounds = ctxt.tcx.normalize_erasing_regions(typing_env, inst_bounds);
 
     let mut impl_paths = Vec::new();
     for inst_pred in inst_bounds {
@@ -203,8 +202,9 @@ fn translate_assoc_type<'tcx>(
                     unreachable!()
                 }
             });
-            let candidate =
-                ctxt.tcx.codegen_select_candidate((param_env, poly_trait_refs.skip_binder()));
+            let pseudo_canonical_inp =
+                PseudoCanonicalInput { typing_env, value: poly_trait_refs.skip_binder() };
+            let candidate = ctxt.tcx.codegen_select_candidate(pseudo_canonical_inp);
             if let Ok(impl_source) = candidate {
                 if let rustc_middle::traits::ImplSource::UserDefined(u) = impl_source {
                     let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, u.impl_def_id);
@@ -235,7 +235,7 @@ pub(crate) fn translate_impl<'tcx>(
     module_path: Path,
     external_info: &mut ExternalInfo,
     crate_items: &CrateItems,
-    attrs: &[rustc_ast::Attribute],
+    attrs: &[rustc_hir::Attribute],
 ) -> Result<(), VirErr> {
     let impl_def_id = item.owner_id.to_def_id();
     let impl_path = def_id_to_vir_path(ctxt.tcx, &ctxt.verus_items, impl_def_id);

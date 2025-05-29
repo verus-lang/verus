@@ -1,7 +1,7 @@
 use crate::ast::{CallTarget, Expr, ExprX, VirErr};
-use crate::ast_visitor::{expr_visitor_dfs, VisitorControlFlow, VisitorScopeMap};
-use crate::messages::error;
+use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap, expr_visitor_dfs};
 use crate::messages::Span;
+use crate::messages::error;
 use air::scope_map::ScopeMap;
 
 #[derive(Clone, Debug)]

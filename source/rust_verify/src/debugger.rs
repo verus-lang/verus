@@ -1,14 +1,14 @@
 use crate::spans::from_raw_span;
 use air::ast::Ident;
 use air::model::Model as AModel;
-use rustc_span::source_map::SourceMap;
 use rustc_span::Span;
+use rustc_span::source_map::SourceMap;
 use sise::Node;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
-use vir::def::{suffix_local_stmt_id, SnapPos, SpanKind};
+use vir::def::{SnapPos, SpanKind, suffix_local_stmt_id};
 use vir::messages::Span as ASpan;
 
 #[derive(Debug)]

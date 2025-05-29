@@ -1,7 +1,7 @@
 use crate::ast::{Decl, DeclX, Expr, ExprX, Query, QueryX, Stmt, StmtX, UnaryOp};
 use crate::ast_util::bool_typ;
 use crate::ast_util::{mk_and, mk_implies, mk_or, mk_true};
-use crate::def::{break_label, SWITCH_LABEL};
+use crate::def::{SWITCH_LABEL, break_label};
 use std::sync::Arc;
 
 fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Expr) -> Expr {
