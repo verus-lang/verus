@@ -592,7 +592,7 @@ pub broadcast proof fn axiom_hashmap_deepview_borrow<
 /// A `Map` constructed from a `HashMap` is always finite.
 pub broadcast proof fn axiom_hashmap_view_finite_dom<K, V>(m: HashMap<K, V>)
     ensures
-        (#[trigger] m@.dom()).finite(),
+        #[trigger] m@.dom().finite(),
 {
     admit();
 }
@@ -1193,6 +1193,8 @@ pub broadcast group group_hash_axioms {
     axiom_deref_key_removed,
     axiom_maps_deref_key_to_value,
     axiom_maps_box_key_to_value,
+    axiom_hashmap_deepview_borrow,
+    axiom_hashmap_view_finite_dom,
     axiom_bool_obeys_hash_table_key_model,
     axiom_u8_obeys_hash_table_key_model,
     axiom_u16_obeys_hash_table_key_model,
