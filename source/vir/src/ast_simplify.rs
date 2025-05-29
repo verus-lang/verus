@@ -23,7 +23,7 @@ use crate::context::GlobalCtx;
 use crate::def::dummy_param_name;
 use crate::def::is_dummy_param_name;
 use crate::def::{
-    positional_field_ident, prefix_tuple_param, prefix_tuple_variant, user_local_name, Spanned,
+    Spanned, positional_field_ident, prefix_tuple_param, prefix_tuple_variant, user_local_name,
 };
 use crate::messages::Span;
 use crate::messages::{error, internal_error};

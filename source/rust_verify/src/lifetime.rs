@@ -125,7 +125,7 @@ use serde::Deserialize;
 use std::fs::File;
 use std::io::Write;
 use vir::ast::VirErr;
-use vir::messages::{message_bare, Message, MessageLevel};
+use vir::messages::{Message, MessageLevel, message_bare};
 
 const LDBG_PREFIX: &str = "!!!ldbg!!! ";
 
@@ -170,38 +170,36 @@ macro_rules! ldbg {
 }
 
 // Call Rust's mir_borrowck to check lifetimes of #[spec] and #[proof] code and variables
-pub(crate) fn check<'tcx>(queries: &'tcx rustc_interface::Queries<'tcx>) {
-    queries.global_ctxt().expect("global_ctxt").enter(|tcx| {
-        let hir = tcx.hir();
-        let krate = hir.krate();
-        rustc_hir_analysis::check_crate(tcx);
-        if tcx.dcx().err_count() != 0 {
-            return;
-        }
-        for owner in &krate.owners {
-            if let MaybeOwner::Owner(owner) = owner {
-                match owner.node() {
-                    OwnerNode::Item(item) => match &item.kind {
-                        rustc_hir::ItemKind::Fn(..) => {
-                            tcx.ensure().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
-                        }
-                        ItemKind::Impl(impll) => {
-                            for item in impll.items {
-                                match item.kind {
-                                    AssocItemKind::Fn { .. } => {
-                                        tcx.ensure().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
-                                    }
-                                    _ => {}
+pub(crate) fn check<'tcx>(tcx: TyCtxt<'tcx>) {
+    let hir = tcx.hir();
+    let krate = hir.krate();
+    rustc_hir_analysis::check_crate(tcx);
+    if tcx.dcx().err_count() != 0 {
+        return;
+    }
+    for owner in &krate.owners {
+        if let MaybeOwner::Owner(owner) = owner {
+            match owner.node() {
+                OwnerNode::Item(item) => match &item.kind {
+                    rustc_hir::ItemKind::Fn(..) => {
+                        tcx.ensure().mir_borrowck(item.owner_id.def_id); // REVIEW(main_new) correct?
+                    }
+                    ItemKind::Impl(impll) => {
+                        for item in impll.items {
+                            match item.kind {
+                                AssocItemKind::Fn { .. } => {
+                                    tcx.ensure().mir_borrowck(item.id.owner_id.def_id); // REVIEW(main_new) correct?
                                 }
+                                _ => {}
                             }
                         }
-                        _ => {}
-                    },
-                    _ => (),
-                }
+                    }
+                    _ => {}
+                },
+                _ => (),
             }
         }
-    });
+    }
 }
 
 const PROOF_FN_ONCE: u8 = 1;
@@ -371,7 +369,7 @@ impl rustc_driver::Callbacks for LifetimeCallbacks {
     fn after_expansion<'tcx>(
         &mut self,
         _compiler: &rustc_interface::interface::Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
+        queries: TyCtxt<'tcx>,
     ) -> rustc_driver::Compilation {
         check(queries);
         rustc_driver::Compilation::Stop
@@ -424,10 +422,7 @@ pub fn lifetime_rustc_driver(rustc_args: &[String], rust_code: String) {
     let mut callbacks = LifetimeCallbacks {};
     let mut compiler = rustc_driver::RunCompiler::new(rustc_args, &mut callbacks);
     compiler.set_file_loader(Some(Box::new(LifetimeFileLoader { rust_code })));
-    match compiler.run() {
-        Ok(()) => (),
-        Err(_) => std::process::exit(128),
-    }
+    compiler.run();
 }
 
 pub(crate) fn check_tracked_lifetimes<'tcx>(
