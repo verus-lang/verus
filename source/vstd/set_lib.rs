@@ -534,9 +534,9 @@ pub proof fn lemma_set_union_finite_implies_sets_finite<A>(s1: ISet<A>, s2: ISet
     decreases s1.union(s2).len(),
 {
     broadcast use lemma_set_insert_finite;
-    if s1.union(s2) =~= set![] {
-        assert(s1 =~= set![]);
-        assert(s2 =~= set![]);
+    if s1.union(s2) =~= iset![] {
+        assert(s1 =~= iset![]);
+        assert(s2 =~= iset![]);
     } else {
         let a = s1.union(s2).choose();
         assert(s1.remove(a).union(s2.remove(a)) == s1.union(s2).remove(a));

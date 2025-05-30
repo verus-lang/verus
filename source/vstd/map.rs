@@ -595,7 +595,7 @@ macro_rules! map_internal {
     }
 }
 
-/// Create a map using syntax like `map![key1 => val1, key2 => val, ...]`.
+/// Create a finite Map using syntax like `map![key1 => val1, key2 => val, ...]`.
 ///
 /// This is equivalent to `Map::empty().insert(key1, val1).insert(key2, val2)...`.
 ///
@@ -608,6 +608,28 @@ macro_rules! map {
     };
 }
 
+/// Create an IMap using syntax like `map![key1 => val1, key2 => val, ...]`.
+///
+/// This is equivalent to `Map::empty().insert(key1, val1).insert(key2, val2)...`.
+///
+/// Note that this does _not_ require all keys to be distinct. In the case that two
+/// or more keys are equal, the resulting map uses the value of the rightmost entry.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! imap_internal {
+    [$($key:expr => $value:expr),* $(,)?] => {
+        $crate::map::IMap::empty()
+            $(.insert($key, $value))*
+    }
+}
+
+#[macro_export]
+macro_rules! imap {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_proof_macro_exprs!($crate::map::imap_internal!($($tail)*))
+    };
+}
+
 #[doc(hidden)]
 #[verifier::inline]
 pub open spec fn check_argument_is_map<K, V, const FINITE: bool>(m: GMap<K, V, FINITE>) -> GMap<K, V, FINITE> {
@@ -617,6 +639,9 @@ pub open spec fn check_argument_is_map<K, V, const FINITE: bool>(m: GMap<K, V, F
 #[doc(hidden)]
 pub use map_internal;
 pub use map;
+#[doc(hidden)]
+pub use imap_internal;
+pub use imap;
 
 /// Prove two maps `map1` and `map2` are equal by proving that their values are equal at each key.
 ///

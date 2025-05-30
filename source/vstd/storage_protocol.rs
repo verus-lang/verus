@@ -198,7 +198,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
                 new_p.loc() == p.loc() && new_p.value() == new_p_value && new_s == new_s_value
             }),
     {
-        let se = set![(new_p_value, new_s_value)];
+        let se = iset![(new_p_value, new_s_value)];
         Self::exchange_nondeterministic(p, s, se)
     }
 
@@ -336,7 +336,7 @@ impl<K, V, P: Protocol<K, V>> StorageResource<K, V, P> {
             out.0.value() == new_p_value,
             out.1 == new_s_value,
     {
-        let se = set![(new_p_value, new_s_value)];
+        let se = iset![(new_p_value, new_s_value)];
         Self::exchange_nondeterministic_with_shared(p, x, s, se)
     }
 

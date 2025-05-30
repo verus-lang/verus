@@ -108,9 +108,11 @@ impl<A, const FINITE: bool> GSet<A, FINITE> {
     }
 }
 
-/// Creates a finite set of integers in the range [lo, hi).
-pub closed spec fn set_int_range(lo: int, hi: int) -> GSet<int> {
-    Set { set: |i: int| lo <= i && i < hi }
+impl<const FINITE: bool> GSet<int, FINITE> {
+    /// Creates a finite set of integers in the range [lo, hi).
+    pub closed spec fn int_range(lo: int, hi: int) -> GSet<int, FINITE> {
+        GSet { set: |i: int| lo <= i && i < hi }
+    }
 }
 
 pub broadcast proof fn lemma_set_finite_from_type<A>(s: GSet<A, true>)
@@ -1194,24 +1196,31 @@ requires s.finite(),
     }
 }
 
-pub broadcast proof fn lemma_set_int_range_ensures(lo: int, hi: int)
+pub broadcast proof fn lemma_set_int_range_ensures<const FINITE: bool>(lo: int, hi: int)
 requires
     lo <= hi,
 ensures
-    #![trigger(set_int_range(lo, hi))]
-    forall |i: int| #[trigger] set_int_range(lo, hi).contains(i) <==> lo <= i && i < hi,
-    set_int_range(lo, hi).len() == hi - lo,
+    #![trigger(GSet::<int, FINITE>::int_range(lo, hi))]
+    forall |i: int| #[trigger] GSet::<int, FINITE>::int_range(lo, hi).contains(i) <==> lo <= i && i < hi,
+    GSet::<int, FINITE>::int_range(lo, hi).len() == hi - lo,
+    GSet::<int, FINITE>::int_range(lo, hi).finite(),
 decreases hi - lo,
 {
     if lo < hi {
-        lemma_set_int_range_ensures(lo, hi-1);
-        assert( set_int_range(lo, hi) =~= set_int_range(lo, hi-1).insert(hi-1) );
-        lemma_set_finite_from_type(set_int_range(lo, hi-1));
-        fold::lemma_fold_insert::<int, true, nat>(set_int_range(lo, hi-1), 0, |b: nat, a: int| b + 1, hi-1);
+        lemma_set_int_range_ensures::<FINITE>(lo, hi-1);
+        assert( GSet::<int, FINITE>::int_range(lo, hi) =~= GSet::<int, FINITE>::int_range(lo, hi-1).insert(hi-1) );
+        lemma_set_insert_finite(GSet::<int, FINITE>::int_range(lo, hi-1), hi-1);
+        fold::lemma_fold_insert::<int, FINITE, nat>(GSet::<int, FINITE>::int_range(lo, hi-1), 0, |b: nat, a: int| b + 1, hi-1);
     } else {
         broadcast use lemma_set_empty_len;
-        assert( set_int_range(lo, hi) =~= Set::<int>::empty() );   // extn
+        assert( GSet::<int, FINITE>::int_range(lo, hi) =~= GSet::<int, FINITE>::empty() );   // extn
+        broadcast use lemma_set_empty_finite;
     }
+}
+
+// TODO(jonh): remove
+pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
+    Set::<int>::int_range(lo, hi)
 }
 
 /// The result of inserting an element `a` into a finite set `s` has length
@@ -1349,7 +1358,7 @@ pub broadcast group group_set_lemmas {
 #[macro_export]
 macro_rules! set_internal {
     [$($elem:expr),* $(,)?] => {
-        $crate::vstd::set::GSet::empty()
+        $crate::vstd::set::Set::empty()
             $(.insert($elem))*
     };
 }
@@ -1361,7 +1370,27 @@ macro_rules! set {
     };
 }
 
+// 'iset' macro, so that the macro name prevents the need for type inference
+// of the FINITE parameter.
+#[doc(hidden)]
+#[macro_export]
+macro_rules! iset_internal {
+    [$($elem:expr),* $(,)?] => {
+        $crate::vstd::set::ISet::empty()
+            $(.insert($elem))*
+    };
+}
+
+#[macro_export]
+macro_rules! iset {
+    [$($tail:tt)*] => {
+        ::builtin_macros::verus_proof_macro_exprs!($crate::vstd::set::iset_internal!($($tail)*))
+    };
+}
+
 pub use set_internal;
 pub use set;
+pub use iset_internal;
+pub use iset;
 
 } // verus!
