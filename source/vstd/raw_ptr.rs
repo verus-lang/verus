@@ -941,7 +941,7 @@ impl<'a, T> SharedReference<'a, [T]> {
         &(self.as_ref())[idx]
     }
 
-    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
+    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<[T]>)
         ensures
             pt.ptr() == self.ptr(),
             pt.is_init(),
@@ -957,7 +957,7 @@ impl<'a, T> View for SharedReference<'a, [T]> {
 }
 
 #[verifier::external_body]
-pub broadcast axiom fn axiom_shared_ref_value_view<'a, T: ?Sized>(shared_ref: SharedReference<'a, [T]>)
+pub broadcast axiom fn axiom_shared_ref_value_view<'a, T>(shared_ref: SharedReference<'a, [T]>)
     ensures
         shared_ref.value()@ == #[trigger] shared_ref@,
 ;

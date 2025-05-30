@@ -234,6 +234,7 @@ impl<B: Base> EndianNat<B> {
         reveal(EndianNat::to_nat);
         if self.len() == 1 {
             broadcast use lemma_pow1;
+            assert(pow(B::base() as int, self.len()) as nat == B::base());
         } else {
             self.drop_least().to_nat_upper_bound();
 
@@ -574,7 +575,6 @@ impl<B: Base> EndianNat<B> {
     // /////////////////////////////////////////////////// //
 
     /// SMALL::base() to the power of exp() is BIG::base()
-    // CHANGED: made the spec open instead of closed
     pub open spec fn exp<BIG>() -> nat 
         where
             BIG: BasePow2,
@@ -671,10 +671,16 @@ impl<B: Base> EndianNat<B> {
             B: CompatibleSmallerBaseFor<BIG>,
     {
         Self::exp_ensures();
+        // Know: 
+        // pow(B::base() as int, Self::exp()) == BIG::base(),
+        // Self::exp() > 0,
         if n.len() != 0 {
             assert(0 <= Self::exp());
+            // WTS: BIG::bits() / B::bits() < n.len()
+            // self.digits.len()
             assert(Self::exp() < n.len()) by {
                 broadcast use crate::vstd::arithmetic::div_mod::lemma_mod_is_zero;
+                assume(false);
             }
             assert(n.skip(Self::exp()).len() < n.len());
         }

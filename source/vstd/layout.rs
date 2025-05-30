@@ -155,8 +155,7 @@ pub broadcast proof fn layout_of_primitives()
 
 // The size is a multiple of alignment and alignment is always a power of 2 by 
 // https://doc.rust-lang.org/reference/type-layout.html#r-layout.properties.size
-#[verifier::external_body]
-pub broadcast proof fn align_properties<T>()
+pub broadcast axiom fn align_properties<T>()
     ensures
         #![trigger align_of::<T>()]
         size_of::<T>() % align_of::<T>() == 0,
