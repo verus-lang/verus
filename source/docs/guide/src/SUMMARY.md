@@ -63,7 +63,7 @@
 - [Managing proof performance and why it's critical](smt_perf_overview.md)
     - [Measuring verification performance](performance.md)
     - [Quantifier profiling](profiling.md)
-    - [Modules, hiding, opaque, reveal]() <!--- Chris --->
+    - [Modules, hiding, opaque, reveal](opaque.md)
     - [Hiding local proofs with `assert (...) by { ... }`](assert_by.md)
     - [Structured proofs by calculation](calc.md)
     - [Proof by computation](assert_by_compute.md)
