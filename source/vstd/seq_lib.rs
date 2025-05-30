@@ -602,6 +602,37 @@ impl<A> Seq<A> {
         }
     }
 
+    /// A lemma that proves how [`Self::fold_left`] distributes over splitting a sequence.
+    pub broadcast proof fn lemma_fold_left_split<B>(self, b: B, f: spec_fn(B, A) -> B, k: int)
+        requires
+            0 <= k <= self.len(),
+        ensures
+            self.subrange(k, self.len() as int).fold_left(
+                (#[trigger] self.subrange(0, k).fold_left(b, f)),
+                f,
+            ) == self.fold_left(b, f),
+        decreases self.len(),
+    {
+        reveal_with_fuel(Seq::fold_left, 2);
+        if k == self.len() {
+            assert(self.subrange(0, self.len() as int) == self);
+        } else {
+            self.drop_last().lemma_fold_left_split(b, f, k);
+            assert_seqs_equal!(
+                self.drop_last().subrange(k, self.drop_last().len() as int) ==
+                self.subrange(k, self.len()-1)
+            );
+            assert_seqs_equal!(
+                self.drop_last().subrange(0, k) ==
+                self.subrange(0, k)
+            );
+            assert_seqs_equal!(
+                self.subrange(k, self.len() as int).drop_last() ==
+                self.subrange(k, self.len() - 1)
+            );
+        }
+    }
+
     /// An auxiliary lemma for proving [`Self::lemma_fold_left_alt`].
     proof fn aux_lemma_fold_left_alt<B>(self, b: B, f: spec_fn(B, A) -> B, k: int)
         requires
@@ -684,12 +715,14 @@ impl<A> Seq<A> {
     }
 
     /// A lemma that proves how [`Self::fold_right`] distributes over splitting a sequence.
-    pub proof fn lemma_fold_right_split<B>(self, f: spec_fn(A, B) -> B, b: B, k: int)
+    pub broadcast proof fn lemma_fold_right_split<B>(self, f: spec_fn(A, B) -> B, b: B, k: int)
         requires
             0 <= k <= self.len(),
         ensures
-            self.subrange(0, k).fold_right(f, self.subrange(k, self.len() as int).fold_right(f, b))
-                == self.fold_right(f, b),
+            self.subrange(0, k).fold_right(
+                f,
+                (#[trigger] self.subrange(k, self.len() as int).fold_right(f, b)),
+            ) == self.fold_right(f, b),
         decreases self.len(),
     {
         reveal_with_fuel(Seq::fold_right, 2);
@@ -2185,6 +2218,8 @@ pub broadcast group group_seq_lib_default {
     Seq::push_distributes_over_add,
     Seq::filter_distributes_over_add,
     seq_to_set_is_finite,
+    Seq::lemma_fold_right_split,
+    Seq::lemma_fold_left_split,
 }
 
 pub broadcast group group_to_multiset_ensures {
