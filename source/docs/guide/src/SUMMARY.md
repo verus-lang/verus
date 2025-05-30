@@ -5,9 +5,12 @@
 # Getting started
 
 - [Getting started](./getting_started.md)
+  - [... on the command line](./getting_started_cmd_line.md)
+  - [... with VSCode](./getting_started_vscode.md)
 
 # Tutorial: Fundamentals
 
+- [Using Verus within Rust](./verus_macro_intro.md)
 - [Basic specifications](specs.md)
     - [assert, requires, ensures, ghost code](./requires_ensures.md)
     - [Expressions and operators for specifications](./operators.md)
@@ -23,6 +26,7 @@
 - [Recursion and loops](recursion_loops.md)
     - [Recursive spec functions, decreases, fuel](recursion.md)
     - [Recursive exec and proof functions, proofs by induction](induction.md)
+        - [Lightweight termination checking](exec_termination.md)
     - [Loops and invariants](while.md)
         - [Loops with break](break.md)
         - [For Loops](for.md)
@@ -61,7 +65,7 @@
     - [Quantifier profiling](profiling.md)
     - [Modules, hiding, opaque, reveal]() <!--- Chris --->
     - [Hiding local proofs with `assert (...) by { ... }`](assert_by.md)
-    - [Structured proof by calculation](calc.md)
+    - [Structured proofs by calculation](calc.md)
     - [Proof by computation](assert_by_compute.md)
     - [Spinning off separate SMT queries]()
     - [Breaking proofs into smaller pieces](breaking_proofs_into_pieces.md)

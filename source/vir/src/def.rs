@@ -67,6 +67,7 @@ const PREFIX_PROJECT: &str = "proj%";
 const PREFIX_PROJECT_DECORATION: &str = "proj%%";
 const PREFIX_PROJECT_PARAM: &str = "Proj%";
 const PREFIX_TRAIT_BOUND: &str = "tr_bound%";
+pub(crate) const SIZED_BOUND: &str = "sized";
 const PREFIX_STATIC: &str = "static%";
 const PREFIX_BREAK_LABEL: &str = "break_label%";
 const SLICE_TYPE: &str = "slice%";
@@ -101,6 +102,8 @@ pub const SUFFIX_SNAP_WHILE_BEGIN: &str = "_while_begin";
 pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
 
 pub const CLOSURE_RETURN_VALUE_PREFIX: &str = "%closure_return";
+
+pub const AUTOSPEC_FUNC_SUFFIX: &str = "%returns_clause_autospec";
 
 pub const FNDEF_TYPE: &str = "fndef";
 pub const FNDEF_SINGLETON: &str = "fndef_singleton";
@@ -152,7 +155,9 @@ pub const TYPE_ID_SINT: &str = "SINT";
 pub const TYPE_ID_CONST_INT: &str = "CONST_INT";
 pub const TYPE_ID_CONST_BOOL: &str = "CONST_BOOL";
 pub const DECORATION: &str = "Dcr";
-pub const DECORATE_NIL: &str = "$";
+pub const DECORATE_NIL_SIZED: &str = "$";
+pub const DECORATE_NIL_SLICE: &str = "$slice";
+pub const DECORATE_DST_INHERIT: &str = "DST";
 pub const DECORATE_REF: &str = "REF";
 pub const DECORATE_MUT_REF: &str = "MUT_REF";
 pub const DECORATE_BOX: &str = "BOX";
@@ -462,6 +467,10 @@ pub fn proj_param(i: usize) -> Ident {
 
 pub fn trait_bound(trait_path: &Path) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TRAIT_BOUND, path_to_string(trait_path)))
+}
+
+pub fn sized_bound() -> Ident {
+    Arc::new(SIZED_BOUND.to_string())
 }
 
 pub fn prefix_type_id_fun(i: usize) -> Ident {
@@ -991,17 +1000,15 @@ pub fn unique_var_name(
     out
 }
 
-pub fn exec_nonstatic_call_fun(vstd_crate_name: &Ident) -> Fun {
-    Arc::new(FunX { path: exec_nonstatic_call_path(&Some(vstd_crate_name.clone())) })
+pub fn nonstatic_call_fun(vstd_crate_name: &Ident, is_proof: bool) -> Fun {
+    Arc::new(FunX { path: nonstatic_call_path(&Some(vstd_crate_name.clone()), is_proof) })
 }
 
-pub fn exec_nonstatic_call_path(vstd_crate_name: &Option<Ident>) -> Path {
+pub fn nonstatic_call_path(vstd_crate_name: &Option<Ident>, is_proof: bool) -> Path {
+    let name = if is_proof { "proof_nonstatic_call" } else { "exec_nonstatic_call" };
     Arc::new(PathX {
         krate: vstd_crate_name.clone(),
-        segments: Arc::new(vec![
-            Arc::new("pervasive".to_string()),
-            Arc::new("exec_nonstatic_call".to_string()),
-        ]),
+        segments: Arc::new(vec![Arc::new("pervasive".to_string()), Arc::new(name.to_string())]),
     })
 }
 
@@ -1033,4 +1040,10 @@ pub(crate) fn dummy_param_name() -> VarIdent {
 
 pub(crate) fn is_dummy_param_name(v: &VarIdent) -> bool {
     v.0.to_string() == DUMMY_PARAM
+}
+
+pub fn autospec_return_clause_spec_fn_name(path: &Path) -> Fun {
+    let name = path.last_segment();
+    let p = path.pop_segment().push_segment(Arc::new(format!("{}{}", name, AUTOSPEC_FUNC_SUFFIX)));
+    Arc::new(FunX { path: p })
 }

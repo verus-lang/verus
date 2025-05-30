@@ -22,7 +22,7 @@ In fact, they often just work automatically,
 as in the following examples:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:just_works}}
+{{#include ../../../../examples/guide/quants.rs:just_works}}
 ```
 
 In these examples, the triggers play no role.
@@ -41,7 +41,7 @@ where the quantifiers are eliminated and the quantified variables
 are hoisted into the function parameters:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:hoist}}
+{{#include ../../../../examples/guide/quants.rs:hoist}}
 ```
 
 ## Proving forall with assert-by
@@ -65,7 +65,7 @@ proof fn lemma_even_f(i: int)
 Now suppose we want to prove that `f(i)` is true for all even `i`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_even_f_fail1}}
+{{#include ../../../../examples/guide/quants.rs:test_even_f_fail1}}
 ```
 
 The proof above fails because it doesn't call `lemma_even_f`.
@@ -74,14 +74,14 @@ we need to pass `i` as an argument to the lemma,
 but `i` isn't in scope:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_even_f_fail2}}
+{{#include ../../../../examples/guide/quants.rs:test_even_f_fail2}}
 ```
 
 To deal with this, Verus supports a special form of `assert ... by`
 for proving `forall` expressions:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_even_f}}
+{{#include ../../../../examples/guide/quants.rs:test_even_f}}
 ```
 
 Inside the body of the `assert ... by`,
@@ -112,7 +112,7 @@ we should be able to call `lemma_g_proves_f`.
 However, we run into the problem that `j` isn't in scope:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_g_proves_f_fails}}
+{{#include ../../../../examples/guide/quants.rs:test_g_proves_f_fails}}
 ```
 
 In this situation,
@@ -120,5 +120,5 @@ we can use `choose` (discussed in the [previous section](./exists.md))
 to extract the value `j` from the `exists` expression:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/quants.rs:test_g_proves_f}}
+{{#include ../../../../examples/guide/quants.rs:test_g_proves_f}}
 ```

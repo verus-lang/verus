@@ -5,14 +5,14 @@
 use crate::ast::{
     AssocTypeImpl, AssocTypeImplX, AutospecUsage, CallTarget, Datatype, Dt, Expr, ExprX, Fun,
     Function, FunctionKind, Ident, Krate, KrateX, Mode, Module, ModuleX, Path, RevealGroup, Stmt,
-    Trait, TraitX, Typ, TypX,
+    Trait, TraitId, TraitX, Typ, TypX,
 };
 use crate::ast_util::{is_body_visible_to, is_visible_to, is_visible_to_or_true};
 use crate::ast_visitor::{VisitorControlFlow, VisitorScopeMap};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{
-    fn_inv_name, fn_namespace_name, fn_set_contains_name, fn_set_empty_name, fn_set_full_name,
-    fn_set_insert_name, fn_set_remove_name, fn_set_subset_of_name, Spanned,
+    Spanned, fn_inv_name, fn_namespace_name, fn_set_contains_name, fn_set_empty_name,
+    fn_set_full_name, fn_set_insert_name, fn_set_remove_name, fn_set_subset_of_name,
 };
 use crate::poly::MonoTyp;
 use air::scope_map::ScopeMap;
@@ -339,7 +339,10 @@ fn traverse_generic_bounds(
     for bound in bounds.iter() {
         // note: the types in the bounds are handled below in traverse_typs
         let path = match &**bound {
-            crate::ast::GenericBoundX::Trait(path, _) => path,
+            crate::ast::GenericBoundX::Trait(TraitId::Path(path), _) => path,
+            crate::ast::GenericBoundX::Trait(TraitId::Sized, _) => {
+                continue;
+            }
             crate::ast::GenericBoundX::TypEquality(path, _, name, _) => {
                 reach_assoc_type_decl(ctxt, state, &(path.clone(), name.clone()));
                 path
@@ -969,8 +972,13 @@ pub fn prune_krate_for_module_or_krate(
         let mut bound_types: Vec<ReachedType> = Vec::new();
         for bound in imp.x.typ_bounds.iter() {
             match &**bound {
-                crate::ast::GenericBoundX::Trait(path, typ_args) => {
-                    bound_traits.push(path.clone());
+                crate::ast::GenericBoundX::Trait(tid, typ_args) => {
+                    match tid {
+                        TraitId::Path(path) => {
+                            bound_traits.push(path.clone());
+                        }
+                        TraitId::Sized => {}
+                    }
                     for t in typ_args.iter() {
                         bound_types.push(typ_to_reached_type(t));
                     }

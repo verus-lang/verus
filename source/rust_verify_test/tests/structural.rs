@@ -80,8 +80,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_structural_trait_bound verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test_structural_trait_bound ["exec_allows_no_decreases_clause"] => verus_code! {
         use vstd::prelude::*;
 
         // Structural required for Rust eq to connect to SMT ==

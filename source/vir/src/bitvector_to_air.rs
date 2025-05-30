@@ -4,12 +4,12 @@ use crate::ast::{
     VarIdentDisambiguate, VirErr,
 };
 use crate::ast_util::{
-    allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type, is_integer_type,
-    is_integer_type_signed, LowerUniqueVar,
+    LowerUniqueVar, allowed_bitvector_type, bitwidth_from_int_range, bitwidth_from_type,
+    is_integer_type, is_integer_type_signed,
 };
 use crate::context::Ctx;
 use crate::def::suffix_local_unique_id;
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::sst::{BndX, Exp, ExpX};
 use crate::util::vec_map_result;
 use air::ast::{Binder, BinderX, Constant, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX};

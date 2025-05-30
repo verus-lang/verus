@@ -62,7 +62,7 @@ other than that which is:
 To supply context explicitly, you can use a `requires` clause, a shown below:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bound_checking}}
+{{#include ../../../../examples/guide/nonlinear_bitvec.rs:bound_checking}}
 ```
 
 Let's go through this example, one step at a time:
@@ -80,7 +80,7 @@ Furthermore, if you use a `by` clause, as in `assert ... by(nonlinear_arith) by 
 You can also use `by(nonlinear_arith)` in a proof function's signature. By including `by(nonlinear_arith)`, the query for this function runs with nonlinear arithmetic reasoning enabled. For example:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/nonlinear_bitvec.rs:bound_checking_func}}
+{{#include ../../../../examples/guide/nonlinear_bitvec.rs:bound_checking_func}}
 ```
 
 When a specialized solver is invoked on a `proof fn` like this, it is used to prove the
@@ -307,7 +307,7 @@ pub proof fn multiple_offsed_mod_gt_0(a: nat, b: nat, c: nat) by (nonlinear_arit
 }
 ```
 
-More `integer_ring` examples can be found in [this folder](https://github.com/verus-lang/verus/tree/main/source/rust_verify/example/integer_ring), and this [testcase file](https://github.com/verus-lang/verus/blob/main/source/rust_verify_test/tests/integer_ring.rs).
+More `integer_ring` examples can be found in [this folder](https://github.com/verus-lang/verus/tree/main/source/../examples/integer_ring), and this [testcase file](https://github.com/verus-lang/verus/blob/main/source/rust_verify_test/tests/integer_ring.rs).
 
 ### Examining the encoding
 

@@ -29,10 +29,36 @@ pub open spec fn new_strlit_spec(s: &str) -> &str {
 }
 
 #[cfg(feature = "alloc")]
-pub assume_specification[ str::to_string ](s: &str) -> (res: String)
+use crate::alloc::borrow::ToOwned;
+
+#[cfg(feature = "alloc")]
+pub assume_specification[ str::to_owned ](s: &str) -> (res: String)
     ensures
         s@ == res@,
         s.is_ascii() == res.is_ascii(),
+;
+
+#[cfg(feature = "alloc")]
+pub uninterp spec fn to_string_from_display_ensures<T: core::fmt::Display + ?Sized>(
+    t: &T,
+    s: String,
+) -> bool;
+
+#[cfg(feature = "alloc")]
+pub broadcast proof fn to_string_from_display_ensures_for_str(t: &str, res: String)
+    ensures
+        #[trigger] to_string_from_display_ensures::<str>(t, res) <==> (t@ == res@ && t.is_ascii()
+            == res.is_ascii()),
+{
+    admit();
+}
+
+#[cfg(feature = "alloc")]
+pub assume_specification<T: core::fmt::Display + ?Sized>[ <T as ToString>::to_string ](
+    t: &T,
+) -> (res: String)
+    ensures
+        to_string_from_display_ensures::<T>(t, res),
 ;
 
 #[verifier::external]
@@ -152,31 +178,34 @@ impl StrSliceExecFns for str {
     }
 }
 
-pub broadcast proof fn axiom_str_literal_is_ascii<'a>(s: &'a str)
+pub broadcast axiom fn axiom_str_literal_is_ascii<'a>(s: &'a str)
     ensures
         #[trigger] s.is_ascii() == strslice_is_ascii(s),
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_str_literal_len<'a>(s: &'a str)
+pub broadcast axiom fn axiom_str_literal_len<'a>(s: &'a str)
     ensures
         #[trigger] s@.len() == strslice_len(s),
-{
-    admit();
-}
+;
 
-pub broadcast proof fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
+pub broadcast axiom fn axiom_str_literal_get_char<'a>(s: &'a str, i: int)
     ensures
         #[trigger] s@.index(i) == strslice_get_char(s, i),
-{
-    admit();
-}
+;
 
+#[cfg(not(feature = "alloc"))]
 pub broadcast group group_string_axioms {
     axiom_str_literal_is_ascii,
     axiom_str_literal_len,
     axiom_str_literal_get_char,
+}
+
+#[cfg(feature = "alloc")]
+pub broadcast group group_string_axioms {
+    axiom_str_literal_is_ascii,
+    axiom_str_literal_len,
+    axiom_str_literal_get_char,
+    to_string_from_display_ensures_for_str,
 }
 
 #[cfg(feature = "alloc")]

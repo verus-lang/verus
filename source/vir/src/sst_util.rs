@@ -5,11 +5,12 @@ use crate::ast::{
 };
 use crate::ast_util::{get_variant, unit_typ};
 use crate::context::GlobalCtx;
-use crate::def::{unique_bound, user_local_name, Spanned};
+use crate::def::{Spanned, unique_bound, user_local_name};
 use crate::interpreter::InterpExp;
 use crate::messages::Span;
 use crate::sst::{
-    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDeclKind, Stm, Trig, Trigs, UniqueIdent,
+    BndX, CallFun, Exp, ExpX, Exps, InternalFun, LocalDecl, LocalDeclKind, LocalDeclX, Stm, Trig,
+    Trigs, UniqueIdent,
 };
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
@@ -49,6 +50,17 @@ pub(crate) fn free_vars_exps(exps: &[Exp]) -> HashMap<UniqueIdent, Typ> {
         free_vars_exp_scope(exp, &mut crate::sst_visitor::VisitorScopeMap::new(), &mut vars, false);
     }
     vars
+}
+
+pub(crate) fn subst_local_decl(
+    typ_substs: &HashMap<Ident, Typ>,
+    local_decl: &LocalDecl,
+) -> LocalDecl {
+    Arc::new(LocalDeclX {
+        ident: local_decl.ident.clone(),
+        typ: subst_typ(typ_substs, &local_decl.typ),
+        kind: local_decl.kind.clone(),
+    })
 }
 
 pub fn subst_typ(typ_substs: &HashMap<Ident, Typ>, typ: &Typ) -> Typ {
@@ -781,6 +793,7 @@ impl LocalDeclKind {
             LocalDeclKind::ExecClosureId => false,
             LocalDeclKind::ExecClosureParam => false,
             LocalDeclKind::ExecClosureRet => false,
+            LocalDeclKind::Nondeterministic => false,
         }
     }
 }

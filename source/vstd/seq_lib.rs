@@ -69,7 +69,7 @@ impl<A> Seq<A> {
     /// ## Example
     ///
     /// ```rust
-    /// {{#include ../../../rust_verify/example/multiset.rs:sorted_by_leq}}
+    /// {{#include ../../../../examples/multiset.rs:sorted_by_leq}}
     /// ```
     pub closed spec fn sort_by(self, leq: spec_fn(A, A) -> bool) -> Seq<A>
         recommends
@@ -905,7 +905,7 @@ impl<A> Seq<A> {
             self.to_set().len() <= self.len(),
         decreases self.len(),
     {
-        broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
+        broadcast use {super::set::group_set_axioms, seq_to_set_is_finite};
         broadcast use group_seq_properties;
         broadcast use super::set_lib::group_set_properties;
 
@@ -922,7 +922,7 @@ impl<A> Seq<A> {
         ensures
             self.to_set().len() == 0 <==> self.len() == 0,
     {
-        broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
+        broadcast use {super::set::group_set_axioms, seq_to_set_is_finite};
 
         assert(self.len() == 0 ==> self.to_set().len() == 0) by { self.lemma_cardinality_of_set() }
         assert(!(self.len() == 0) ==> !(self.to_set().len() == 0)) by {
@@ -942,7 +942,7 @@ impl<A> Seq<A> {
             self.no_duplicates(),
         decreases self.len(),
     {
-        broadcast use super::set::group_set_axioms, seq_to_set_is_finite;
+        broadcast use {super::set::group_set_axioms, seq_to_set_is_finite};
 
         if self.len() == 0 {
         } else {
@@ -1090,7 +1090,7 @@ impl<A> Seq<Seq<A>> {
             self.flatten() =~= self.flatten_alt(),
         decreases self.len(),
     {
-        broadcast use Seq::add_empty_right, Seq::push_distributes_over_add;
+        broadcast use {Seq::add_empty_right, Seq::push_distributes_over_add};
 
         if self.len() != 0 {
             self.drop_last().lemma_flatten_and_flatten_alt_are_equivalent();
@@ -2072,7 +2072,7 @@ pub proof fn lemma_seq_properties<A>()
             s.contains(a) <==> #[trigger] s.to_multiset().count(a)
                 > 0,  //from to_multiset_ensures
 {
-    broadcast use group_seq_properties, lemma_seq_skip_of_skip;
+    broadcast use {group_seq_properties, lemma_seq_skip_of_skip};
     // TODO: for some reason this still needs to be explicitly stated
 
     assert forall|s: Seq<A>, v: A, x: A| v == x || s.contains(x) implies #[trigger] s.push(

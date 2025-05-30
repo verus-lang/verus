@@ -356,8 +356,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] parse_empty_requires_ensure_invariant verus_code! {
+test_verify_one_file_with_options! {
+    #[test] parse_empty_requires_ensure_invariant ["exec_allows_no_decreases_clause"] => verus_code! {
         proof fn test()
             requires
         {
@@ -1408,4 +1408,38 @@ test_verify_one_file! {
             }
         }
     ) => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] derive_regression_1575 verus_code! {
+        #[derive(Clone, Copy)]
+        enum A { A, }
+
+        #[derive(Clone, Copy)]
+        enum B { B, }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] field_update_regression_1591 verus_code! {
+        use vstd::map::*;
+
+        struct PCB {
+            pid: usize,
+            parent_pid: usize,
+        }
+
+
+        fn test(pcb: &mut PCB) {
+            pcb.parent_pid = 10;
+
+            //assert(pcb.pid == old(pcb).pid); // this assert should not be necessary
+
+            proof {
+                let m = Map::<usize, bool>::empty();
+                let m2 = m.insert(pcb.pid, false);
+                assert(m2.contains_key(pcb.pid));
+            }
+        }
+    } => Ok(())
 }

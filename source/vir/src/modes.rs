@@ -5,7 +5,7 @@ use crate::ast::{
 };
 use crate::ast_util::{get_field, is_unit, path_as_vstd_name};
 use crate::def::user_local_name;
-use crate::messages::{error, Span};
+use crate::messages::{Span, error};
 use crate::messages::{error_bare, error_with_label};
 use crate::util::vec_map_result;
 use air::scope_map::ScopeMap;
@@ -84,8 +84,9 @@ impl SpecialPaths {
             &crate::def::spend_open_invariant_credit_path(&Some(vstd_crate_name.clone())),
         )
         .expect("could not find path to spend_open_invariant_credit");
-        let exec_nonstatic_call_name = path_as_vstd_name(&crate::def::exec_nonstatic_call_path(
+        let exec_nonstatic_call_name = path_as_vstd_name(&crate::def::nonstatic_call_path(
             &Some(vstd_crate_name.clone()),
+            false,
         ))
         .expect("could not find path to exec_nonstatic_call");
         Self {
@@ -796,6 +797,34 @@ fn check_expr_handle_mut_arg(
             record.erasure_modes.var_modes.push((expr.span.clone(), mode));
             Ok(mode)
         }
+        ExprX::Call(
+            CallTarget::Fun(crate::ast::CallTargetKind::ProofFn(param_modes, ret_mode), _, _, _, _),
+            es,
+        ) => {
+            // es = [FnProof, (...args...)]
+            assert!(es.len() == 2);
+            let binders = if let ExprX::Ctor(Dt::Tuple(_), _, binders, None) = &es[1].x {
+                binders
+            } else {
+                return Err(error(&expr.span, "arguments must be a tuple"));
+            };
+            let mode_error_msg = "cannot call function with mode proof";
+            if ctxt.check_ghost_blocks {
+                if typing.block_ghostness == Ghost::Exec {
+                    return Err(error(&expr.span, mode_error_msg));
+                }
+            }
+            if outer_mode != Mode::Proof {
+                return Err(error(&expr.span, mode_error_msg));
+            }
+            check_expr_has_mode(ctxt, record, typing, Mode::Proof, &es[0], Mode::Proof)?;
+            assert!(param_modes.len() == binders.len());
+            for (param_mode, binder) in param_modes.iter().zip(binders.iter()) {
+                let arg = &binder.a;
+                check_expr_has_mode(ctxt, record, typing, Mode::Proof, arg, *param_mode)?;
+            }
+            Ok(*ret_mode)
+        }
         ExprX::Call(CallTarget::Fun(_, x, _, _, autospec_usage), es) => {
             assert!(*autospec_usage == AutospecUsage::Final);
 
@@ -1102,22 +1131,41 @@ fn check_expr_handle_mut_arg(
             check_expr_has_mode(ctxt, record, &mut typing, Mode::Spec, body, Mode::Spec)?;
             Ok(Mode::Spec)
         }
-        ExprX::ExecClosure { params, ret, requires, ensures, body, external_spec } => {
+        ExprX::NonSpecClosure {
+            params,
+            proof_fn_modes,
+            ret,
+            requires,
+            ensures,
+            body,
+            external_spec,
+        } => {
             // This should not be filled in yet
             assert!(external_spec.is_none());
+            let (is_proof, param_modes, ret_mode, closure_mode) =
+                if let Some((param_modes, ret_mode)) = proof_fn_modes {
+                    (true, param_modes.clone(), *ret_mode, Mode::Proof)
+                } else {
+                    let param_modes = Arc::new(params.iter().map(|_| Mode::Exec).collect());
+                    (false, param_modes, Mode::Exec, Mode::Exec)
+                };
 
-            if typing.block_ghostness != Ghost::Exec || outer_mode != Mode::Exec {
+            if !is_proof && (typing.block_ghostness != Ghost::Exec || outer_mode != Mode::Exec) {
                 return Err(error(
                     &expr.span,
                     "closure in ghost code must be marked as a spec_fn by wrapping it in `closure_to_fn_spec` (this should happen automatically in the Verus syntax macro)",
                 ));
             }
+            if is_proof && (typing.block_ghostness == Ghost::Exec || outer_mode != Mode::Proof) {
+                return Err(error(&expr.span, "proof closure can only appear in proof mode"));
+            }
             let mut typing = typing.push_var_scope();
-            for binder in params.iter() {
-                typing.insert(&binder.name, Mode::Exec);
+            assert!(param_modes.len() == params.len());
+            for (param_mode, binder) in param_modes.iter().zip(params.iter()) {
+                typing.insert(&binder.name, *param_mode);
             }
             let mut typing = typing.push_atomic_insts(None);
-            let mut typing = typing.push_ret_mode(Some(Mode::Exec));
+            let mut typing = typing.push_ret_mode(Some(ret_mode));
 
             {
                 let mut ghost_typing = typing.push_block_ghostness(Ghost::Ghost);
@@ -1134,7 +1182,7 @@ fn check_expr_handle_mut_arg(
                 }
 
                 let mut ens_typing = ghost_typing.push_var_scope();
-                ens_typing.insert(&ret.name, Mode::Exec);
+                ens_typing.insert(&ret.name, ret_mode);
                 for ens in ensures.iter() {
                     check_expr_has_mode(
                         ctxt,
@@ -1147,9 +1195,9 @@ fn check_expr_handle_mut_arg(
                 }
             }
 
-            check_expr_has_mode(ctxt, record, &mut typing, Mode::Exec, body, Mode::Exec)?;
+            check_expr_has_mode(ctxt, record, &mut typing, outer_mode, body, ret_mode)?;
 
-            Ok(Mode::Exec)
+            Ok(closure_mode)
         }
         ExprX::ExecFnByName(fun) => {
             let function = ctxt.funs.get(fun).unwrap();
@@ -1522,6 +1570,9 @@ fn check_expr_handle_mut_arg(
                 return Err(error(&expr.span, "never-to-any coercion is not allowed in spec mode"));
             }
             Ok(mode)
+        }
+        ExprX::Nondeterministic => {
+            panic!("Nondeterministic is not created by user code right now");
         }
     };
     Ok((mode?, None))

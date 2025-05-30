@@ -9,7 +9,7 @@ use super::set_lib::*;
 
 verus! {
 
-broadcast use super::map::group_map_axioms, super::set::group_set_axioms;
+broadcast use {super::map::group_map_axioms, super::set::group_set_axioms};
 
 impl<K, V> Map<K, V> {
     /// Is `true` if called by a "full" map, i.e., a map containing every element of type `A`.
@@ -51,9 +51,12 @@ impl<K, V> Map<K, V> {
     /// ## Example
     ///
     /// ```rust
-    /// assert(
-    ///    map![1 => 10, 2 => 11].values() =~= set![10, 11]
-    /// );
+    /// let m: Map<int, int> = map![1 => 10, 2 => 11];
+    /// assert(m.values() == set![10int, 11int]) by {
+    ///     assert(m.contains_key(1));
+    ///     assert(m.contains_key(2));
+    ///     assert(m.values() =~= set![10int, 11int]);
+    /// }
     /// ```
     pub open spec fn values(self) -> Set<V> {
         Set::<V>::new(|v: V| self.contains_value(v))

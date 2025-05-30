@@ -546,13 +546,13 @@ test_verify_one_file! {
         impl T for bool { spec fn f() -> int { 200 } }
 
         proof fn test() {
-            assert(<char as T>::f() == 100);
             assert(<bool as T>::f() == 200);
+            assert(<char as T>::f() == 100);
+            assert(<bool as T>::f() == 100); // FAILS
             assert(<char as T>::f() == 200);
-            assert(<bool as T>::f() == 100);
             assert(false);
         }
-    } => Err(err) => assert_rust_error_msg(err, "conflicting implementations")
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {

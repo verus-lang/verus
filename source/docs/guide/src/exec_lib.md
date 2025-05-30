@@ -9,7 +9,7 @@ Verus supports some functionality of Rust's `std::vec::Vec` type. To use
 You can allocate `Vec` using `Vec::new` and then push elements into it:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:test_vec1}}
+{{#include ../../../../examples/guide/lib_examples.rs:test_vec1}}
 ```
 
 The code above is able to make assertions directly about the `Vec` value `v`.
@@ -30,7 +30,7 @@ a mathematical `view` from a concrete type.
 For example, `v@` returns a `Seq` of all the elements in the vector `v`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/lib_examples.rs:test_vec2}}
+{{#include ../../../../examples/guide/lib_examples.rs:test_vec2}}
 ```
 
 Using the `Seq` view of the `Vec` allows us to use the various features of `Seq`,

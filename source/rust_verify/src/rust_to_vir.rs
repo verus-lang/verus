@@ -11,7 +11,7 @@ use crate::external::{CrateItems, GeneralItemId, VerifOrExternal};
 use crate::reveal_hide::handle_reveal_hide;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct, check_item_union};
 use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_to_vir, mk_visibility};
-use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn, CheckItemFnEither};
+use crate::rust_to_vir_func::{CheckItemFnEither, check_foreign_item_fn, check_item_fn};
 use crate::rust_to_vir_global::TypIgnoreImplPaths;
 use crate::rust_to_vir_impl::ExternalInfo;
 use crate::util::err_span;
@@ -22,9 +22,8 @@ use std::collections::HashSet;
 use rustc_ast::IsAuto;
 use rustc_hir::{
     ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId, ItemKind, MaybeOwner,
-    Mutability, OpaqueTy, OpaqueTyOrigin, OwnerNode,
+    Mutability, OwnerNode,
 };
-use vir::def::Spanned;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -73,9 +72,9 @@ fn check_item<'tcx>(
             return Ok(()); // handled earlier
         }
         if vattrs.item_broadcast_use {
-            let err = crate::util::err_span(item.span, "invalid module-level broadcast use");
+            let err = || crate::util::err_span(item.span, "invalid module-level broadcast use");
             let ItemKind::Const(_ty, generics, body_id) = item.kind else {
-                return err;
+                return err();
             };
             unsupported_err_unless!(
                 generics.params.len() == 0 && generics.predicates.len() == 0,
@@ -87,7 +86,7 @@ fn check_item<'tcx>(
             let body = crate::rust_to_vir_func::find_body(ctxt, &body_id);
 
             let rustc_hir::ExprKind::Block(block, _) = body.value.kind else {
-                return err;
+                return err();
             };
 
             let funs = block
@@ -95,26 +94,26 @@ fn check_item<'tcx>(
                 .iter()
                 .map(|stmt| {
                     let err =
-                        crate::util::err_span(item.span, "invalid module-level broadcast use");
+                        || crate::util::err_span(item.span, "invalid module-level broadcast use");
 
                     let rustc_hir::StmtKind::Semi(expr) = stmt.kind else {
-                        return err;
+                        return err();
                     };
 
                     let rustc_hir::ExprKind::Call(fun_target, args) = expr.kind else {
-                        return err;
+                        return err();
                     };
 
                     let rustc_hir::ExprKind::Path(rustc_hir::QPath::Resolved(None, fun_path)) =
                         &fun_target.kind
                     else {
-                        return err;
+                        return err();
                     };
 
                     let Some(VerusItem::Directive(verus_items::DirectiveItem::RevealHide)) =
                         ctxt.get_verus_item(fun_path.res.def_id())
                     else {
-                        return err;
+                        return err();
                     };
 
                     let args: Vec<_> = args.iter().collect();
@@ -147,8 +146,7 @@ fn check_item<'tcx>(
                     "only one module-level `broadcast use` allowed for each module",
                 );
             }
-            let span = crate::spans::err_air_span(item.span);
-            *reveals = Some(Spanned::new(span, funs));
+            *reveals = Some(ctxt.spanned_new(item.span, funs));
 
             return Ok(());
         }
@@ -316,15 +314,6 @@ fn check_item<'tcx>(
         ItemKind::GlobalAsm(..) =>
         //TODO(utaal): add a crate-level attribute to enable global_asm
         {
-            return Ok(());
-        }
-        ItemKind::OpaqueTy(OpaqueTy {
-            generics: _,
-            bounds: _,
-            origin: OpaqueTyOrigin::AsyncFn(_),
-            in_trait: _,
-            lifetime_mapping: _,
-        }) => {
             return Ok(());
         }
         _ => {

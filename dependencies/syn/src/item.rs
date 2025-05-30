@@ -787,9 +787,11 @@ ast_struct! {
         pub generics: Generics,
         pub colon_token: Token![:],
         pub ty: Type,
-        pub eq_token: Token![=],
-        pub expr: Expr,
-        pub semi_token: Token![;],
+        pub ensures: Option<Ensures>,
+        pub eq_token: Option<Token![=]>,
+        pub block: Option<Box<Block>>,
+        pub expr: Option<Box<Expr>>,
+        pub semi_token: Option<Token![;]>,
     }
 }
 
@@ -1018,6 +1020,8 @@ pub(crate) mod parsing {
     ) -> Result<Item> {
         let ahead = input.fork();
         let vis: Visibility = ahead.parse()?;
+        ahead.parse::<Publish>()?;
+        ahead.parse::<FnMode>()?;
         ahead.parse::<DataMode>()?;
 
         let lookahead = ahead.lookahead1();
@@ -1102,13 +1106,7 @@ pub(crate) mod parsing {
                     }))
                 }
             }
-        } else if lookahead.peek(Token![const])
-            || lookahead.peek(Token![open])
-            || lookahead.peek(Token![closed])
-            || lookahead.peek(Token![exec])
-            || lookahead.peek(Token![tracked])
-            || lookahead.peek(Token![spec])
-        {
+        } else if lookahead.peek(Token![const]) {
             let vis = input.parse()?;
             let publish = input.parse()?;
             let mode = input.parse()?;
@@ -2878,6 +2876,9 @@ pub(crate) mod parsing {
             let mut attrs = input.call(Attribute::parse_outer)?;
             let ahead = input.fork();
             let vis: Visibility = ahead.parse()?;
+            ahead.parse::<Publish>()?;
+            ahead.parse::<FnMode>()?;
+            ahead.parse::<DataMode>()?;
 
             let mut lookahead = ahead.lookahead1();
             let defaultness = if lookahead.peek(Token![default]) && !ahead.peek2(Token![!]) {
@@ -2893,16 +2894,13 @@ pub(crate) mod parsing {
                 input.parse().map(ImplItem::BroadcastGroup)
             } else if lookahead.peek(Token![fn]) || peek_signature(&ahead, allow_safe) {
                 Ok(ImplItem::Fn(parse_impl_item_fn(input)?))
-            } else if lookahead.peek(Token![const])
-                || lookahead.peek(Token![open])
-                || lookahead.peek(Token![closed])
-                || lookahead.peek(Token![exec])
-                || lookahead.peek(Token![tracked])
-                || lookahead.peek(Token![spec])
-            {
-                input.advance_to(&ahead);
-                let publish = ahead.parse()?;
-                let mode = ahead.parse()?;
+            } else if lookahead.peek(Token![const]) {
+                let vis: Visibility = input.parse()?;
+                let publish = input.parse()?;
+                let mode = input.parse()?;
+                if defaultness.is_some() {
+                    input.parse::<Token![default]>()?;
+                }
                 let const_token: Token![const] = input.parse()?;
                 let lookahead = input.lookahead1();
                 let ident = if lookahead.peek(Ident) || lookahead.peek(Token![_]) {
@@ -2920,7 +2918,17 @@ pub(crate) mod parsing {
                     None
                 };
                 generics.where_clause = input.parse()?;
-                let semi_token: Token![;] = input.parse()?;
+                let ensures: Option<Ensures> = input.parse()?;
+                let (value, block, semi_token) = match (value, &ensures) {
+                    (None, None) => (None, None, Some(input.parse()?)),
+                    (Some((eq_token, expr)), None) => (
+                        Some((Some(eq_token), Some(Box::new(expr)))),
+                        None,
+                        Some(input.parse()?),
+                    ),
+                    (None, Some(_)) => (Some((None, None)), Some(input.parse()?), None),
+                    _ => return Err(lookahead.error()),
+                };
                 return match value {
                     Some((eq_token, expr))
                         if generics.lt_token.is_none() && generics.where_clause.is_none() =>
@@ -2936,8 +2944,10 @@ pub(crate) mod parsing {
                             generics,
                             colon_token,
                             ty,
+                            ensures,
                             eq_token,
                             expr,
+                            block,
                             semi_token,
                         }))
                     }
@@ -2994,9 +3004,17 @@ pub(crate) mod parsing {
 
             let colon_token: Token![:] = input.parse()?;
             let ty: Type = input.parse()?;
-            let eq_token: Token![=] = input.parse()?;
-            let expr: Expr = input.parse()?;
-            let semi_token: Token![;] = input.parse()?;
+            let ensures: Option<Ensures> = input.parse()?;
+            let (eq_token, expr, block, semi_token) = if ensures.is_none() {
+                (
+                    Some(input.parse()?),
+                    Some(Box::new(input.parse()?)),
+                    None,
+                    Some(input.parse()?),
+                )
+            } else {
+                (None, None, Some(input.parse()?), None)
+            };
 
             Ok(ImplItemConst {
                 attrs,
@@ -3009,8 +3027,10 @@ pub(crate) mod parsing {
                 generics: Generics::default(),
                 colon_token,
                 ty,
+                ensures,
                 eq_token,
                 expr,
+                block,
                 semi_token,
             })
         }
@@ -3566,7 +3586,9 @@ pub(crate) mod printing {
             self.ident.to_tokens(tokens);
             self.colon_token.to_tokens(tokens);
             self.ty.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
             self.eq_token.to_tokens(tokens);
+            self.block.to_tokens(tokens);
             self.expr.to_tokens(tokens);
             self.semi_token.to_tokens(tokens);
         }

@@ -69,8 +69,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] test2 verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test2 ["exec_allows_no_decreases_clause"] => verus_code! {
         enum List<A> {
             Nil,
             Cons(A, Box<List<A>>),
@@ -118,8 +118,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test2_struct verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test2_struct ["exec_allows_no_decreases_clause"] => verus_code! {
         enum List<A> {
             Nil,
             Cons { hd: A, tl: Box<List<A>> },
@@ -167,8 +167,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test2_fails verus_code! {
+test_verify_one_file_with_options! {
+    #[test] test2_fails ["exec_allows_no_decreases_clause"] => verus_code! {
         enum List<A> {
             Nil,
             Cons(A, Box<List<A>>),
@@ -1281,4 +1281,48 @@ test_verify_one_file! {
             assert(false); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] or_pattern_1_disjunct_issue1588 verus_code! {
+        enum Foo {
+            A,
+            B,
+        }
+
+        fn test(foo: &Foo) {
+            match foo {
+                | Foo::A => {
+                    assert(foo == Foo::A);
+                }
+                _ => {
+                    assert(foo == Foo::B);
+                }
+            }
+        }
+
+        fn test2(foo: &Foo) {
+            match foo {
+                | Foo::A => {
+                    assert(foo == Foo::A);
+                    assert(false); // FAILS
+                }
+                _ => {
+                    assert(foo == Foo::B);
+                }
+            }
+        }
+
+        fn test3(foo: &Foo) {
+            match foo {
+                | Foo::A => {
+                    assert(foo == Foo::A);
+                }
+                _ => {
+                    assert(foo == Foo::B);
+                    assert(false); // FAILS
+                }
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
 }

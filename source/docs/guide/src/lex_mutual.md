@@ -8,7 +8,7 @@ has two parameters `m` and `n`,
 and neither `m` nor `n` decrease in all 3 of the recursive calls:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:ackermann}}
+{{#include ../../../../examples/guide/recursion.rs:ackermann}}
 ```
 
 For this situation, Verus allows the `decreases` clause to contain multiple expressions,
@@ -27,7 +27,7 @@ as in the following example where `is_even` calls `is_odd` recursively
 and `is_odd` calls `is_even` recursively:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:even}}
+{{#include ../../../../examples/guide/recursion.rs:even}}
 ```
 
 The recursion here works for both positive and negative `i`;
@@ -36,7 +36,7 @@ in both cases, the recursion decreases `abs(i)`, the absolute value of `i`.
 An alternate way to write this mutual recursion is:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:even2}}
+{{#include ../../../../examples/guide/recursion.rs:even2}}
 ```
 
 In this alternate version, the recursive call `!is_even(i)` doesn't

@@ -10,7 +10,7 @@ triangle(n) = 0 + 1 + 2 + ... + (n - 1) + n
 We can express this as a simple recursive funciton:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/recursion.rs:spec}}
+{{#include ../../../../examples/guide/recursion.rs:spec}}
 ```
 
 This chapter discusses how to define and use recursive functions,
