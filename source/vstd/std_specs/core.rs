@@ -4,10 +4,19 @@ use verus as verus_;
 verus_! {
 
 #[verifier::external_trait_specification]
-pub trait ExIndex<Idx> where Idx: ?Sized {
-    type Output: ?Sized;
+pub trait ExDeref {
+    type ExternalTraitSpecificationFor: core::ops::Deref;
 
+    type Target: ?Sized;
+
+    fn deref(&self) -> &Self::Target;
+}
+
+#[verifier::external_trait_specification]
+pub trait ExIndex<Idx> where Idx: ?Sized {
     type ExternalTraitSpecificationFor: core::ops::Index<Idx>;
+
+    type Output: ?Sized;
 }
 
 #[verifier::external_trait_specification]

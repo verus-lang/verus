@@ -1164,6 +1164,47 @@ fn erase_expr<'tcx>(
     expect_spec: bool,
     expr: &Expr<'tcx>,
 ) -> Option<Exp> {
+    let mut exp = match erase_expr_inner(ctxt, state, expect_spec, expr) {
+        None => return None,
+        Some(exp) => exp,
+    };
+    let mut ty = ctxt.types().expr_ty(expr);
+    let adjustments = ctxt.types().expr_adjustments(expr);
+    let mut has_deref_call = false;
+    for adjust in adjustments {
+        use rustc_middle::ty::adjustment::{Adjust, AutoBorrow, AutoBorrowMutability};
+        match adjust.kind {
+            Adjust::Deref(Some(deref)) => {
+                if !crate::rust_to_vir_base::auto_deref_supported_for_ty(ctxt.tcx, &ty) {
+                    // exp := *op<_, &t>(&exp)
+                    let typ = erase_ty(ctxt, state, &adjust.target);
+                    let typ = Box::new(TypX::Ref(typ, None, deref.mutbl));
+                    exp = Box::new((exp.0, ExpX::AddrOf(deref.mutbl, exp)));
+                    exp = Box::new((exp.0, ExpX::Op(vec![exp], typ)));
+                    exp = Box::new((exp.0, ExpX::Deref(exp)));
+                    has_deref_call = true;
+                }
+            }
+            Adjust::Borrow(AutoBorrow::Ref(m)) if has_deref_call => {
+                let m = match m {
+                    AutoBorrowMutability::Not => Mutability::Not,
+                    AutoBorrowMutability::Mut { .. } => Mutability::Mut,
+                };
+                exp = Box::new((exp.0, ExpX::AddrOf(m, exp)));
+            }
+            _ => {}
+        }
+        ty = adjust.target;
+    }
+    Some(exp)
+}
+
+fn erase_expr_inner<'tcx>(
+    ctxt: &Context<'tcx>,
+    state: &mut State,
+    expect_spec: bool,
+    expr: &Expr<'tcx>,
+) -> Option<Exp> {
     let expr = expr.peel_drop_temps();
     let expr_typ = |state: &mut State| erase_ty(ctxt, state, &ctxt.types().node_type(expr.hir_id));
     let mk_exp1 = |e: ExpX| Box::new((expr.span, e));
