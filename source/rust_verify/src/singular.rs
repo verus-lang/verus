@@ -10,7 +10,7 @@ use sise::Node;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
-use vir::messages::{error, ToAny};
+use vir::messages::{ToAny, error};
 
 // Singular reserved keyword
 const RING_DECL: &str = "ring";
