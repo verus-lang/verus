@@ -34,7 +34,7 @@ For VIR -> AIR, we use these suffixes:
 
 // List of prefixes, suffixes, and separators that can appear in generated AIR code
 const SUFFIX_GLOBAL: &str = "?";
-const SUFFIX_PARAM: &str = "!";
+pub const SUFFIX_PARAM: &str = "!";
 const SUFFIX_LOCAL_STMT: &str = "@";
 const SUFFIX_LOCAL_EXPR: &str = "$";
 const SUFFIX_TYPE_PARAM: &str = "&";

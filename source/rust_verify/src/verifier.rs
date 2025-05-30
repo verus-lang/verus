@@ -787,6 +787,7 @@ impl Verifier {
                 &command,
                 &context.span,
                 QueryContext { report_long_running: Some(&mut report_long_running()) },
+                reporter,
             )
         };
 
