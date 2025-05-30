@@ -20,6 +20,12 @@ assert(*immut_ref_x == 0);
 }
 
 // ANCHOR: mut
+fn modify_y(a: &mut u32) 
+    ensures *a == 2
+{
+    *a = 2;
+}
+
 fn mutable_example()
 {
     let y: u32 = 1;
@@ -27,36 +33,24 @@ fn mutable_example()
     modify_y(&mut y);
     assert(y == 2);
 }
-
-fn modify_y(a: &mut u32) 
-    ensures *a == 2
-{
-    *a = 2;
-}
 // ANCHOR_END: mut
 
 // ANCHOR: requires
-fn function_requires_ensures()
-{
-    let mut z: u32 = 0;
-    check_and_inc(&mut z);
-}
-
 fn check_and_inc(a: &mut u32) 
     requires *old(a) == 0
     ensures *a == 1
 {
     *a = *a + 1;
 }
+
+fn function_requires_ensures()
+{
+    let mut z: u32 = 0;
+    check_and_inc(&mut z);
+}
 // ANCHOR_END: requires
 
 // ANCHOR: asserts
-fn asserts() 
-{
-    let mut x: u32 = 0;
-    check_and_assert(&mut x);
-}
-
 fn check_and_assert(a: &mut u32)
     requires *old(a) == 0
 {
@@ -65,17 +59,17 @@ fn check_and_assert(a: &mut u32)
     assert(*a == 1);
     *a = *a + 1;
     assert(*a == 2);
+    assert(*old(a) == 0);
+}
+
+fn asserts() 
+{
+    let mut x: u32 = 0;
+    check_and_assert(&mut x);
 }
 // ANCHOR_END: asserts
 
 // ANCHOR: complex
-fn complex_example()
-{
-    let mut d: u32 = 10;
-    decrease(&mut d);
-    assert(d == 0);
-}
-
 fn decrease(b: &mut u32)
     requires *old(b) == 10,
     ensures *b == 0,
@@ -92,6 +86,13 @@ fn decrease(b: &mut u32)
     }
     assert(*b == 0);
     assert(*old(b) == 10);
+}
+
+fn complex_example()
+{
+    let mut d: u32 = 10;
+    decrease(&mut d);
+    assert(d == 0);
 }
 // ANCHOR_END: complex
 
