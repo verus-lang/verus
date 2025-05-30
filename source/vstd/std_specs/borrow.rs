@@ -1,11 +1,12 @@
 #![allow(unused_imports)]
 use super::super::prelude::*;
 
-use core::borrow::Borrow;
-use std::borrow::Cow;
-use std::borrow::Cow::Borrowed;
-use std::borrow::Cow::Owned;
-use std::borrow::ToOwned;
+#[cfg(feature = "alloc")]
+use alloc::borrow::Borrow;
+#[cfg(feature = "alloc")]
+use alloc::borrow::Cow;
+#[cfg(feature = "alloc")]
+use alloc::borrow::ToOwned;
 
 verus! {
 
