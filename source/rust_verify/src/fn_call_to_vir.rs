@@ -1,7 +1,7 @@
 use crate::attributes::{GhostBlockAttr, get_ghost_block_opt};
 use crate::context::BodyCtxt;
 use crate::erase::{CompilableOperator, ResolvedCall};
-use crate::resolve_traits::{ResolutionResult, ResolvedItem};
+use crate::resolve_traits::{ResolutionResult, ResolvedItem, resolve_trait_item};
 use crate::reveal_hide::RevealHideResult;
 use crate::rust_to_vir_base::{
     bitwidth_and_signedness_of_integer_type, def_id_to_vir_path, is_smt_arith,
@@ -197,10 +197,7 @@ pub(crate) fn fn_call_to_vir<'tcx>(
         vir::ast::CallTargetKind::Static
     } else {
         let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
-
-        let res =
-            crate::resolve_traits::resolve_trait_item(expr.span, tcx, typing_env, f, node_substs)?;
-
+        let res = resolve_trait_item(expr.span, tcx, typing_env, f, node_substs)?;
         match res {
             ResolutionResult::Resolved {
                 impl_def_id: _,
@@ -275,6 +272,45 @@ pub(crate) fn fn_call_to_vir<'tcx>(
     let impl_paths = get_impl_paths(bctx, f, node_substs, None);
     let target = CallTarget::Fun(target_kind, name, typ_args, impl_paths, autospec_usage);
     Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, ExprX::Call(target, Arc::new(vir_args))))
+}
+
+pub(crate) fn deref_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    trait_fun_id: DefId,
+    arg: vir::ast::Expr,
+    expr_typ: Typ,
+    inner_ty: rustc_middle::ty::Ty<'tcx>,
+    span: Span,
+) -> Result<vir::ast::Expr, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    let typing_env = TypingEnv::post_analysis(tcx, bctx.fun_id);
+    let node_substs = tcx.mk_args(&[GenericArg::from(inner_ty)]);
+    let res = resolve_trait_item(span, tcx, typing_env, trait_fun_id, node_substs)?;
+    let target_kind = match res {
+        ResolutionResult::Resolved { resolved_item: ResolvedItem::FromImpl(did, args), .. } => {
+            let typs = mk_typ_args(bctx, args, did, span)?;
+            let impl_paths = get_impl_paths(bctx, did, args, None);
+            let resolved =
+                Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, did) });
+            vir::ast::CallTargetKind::DynamicResolved {
+                resolved,
+                typs,
+                impl_paths,
+                is_trait_default: false,
+            }
+        }
+        ResolutionResult::Unresolved => vir::ast::CallTargetKind::Dynamic,
+        _ => crate::internal_err!(span, "unexpected deref"),
+    };
+    let typ_args = mk_typ_args(bctx, node_substs, trait_fun_id, span)?;
+    let impl_paths = get_impl_paths(bctx, trait_fun_id, node_substs, None);
+    let trait_fun =
+        Arc::new(FunX { path: def_id_to_vir_path(tcx, &bctx.ctxt.verus_items, trait_fun_id) });
+    let call_target =
+        CallTarget::Fun(target_kind, trait_fun, typ_args, impl_paths, AutospecUsage::Final);
+    let args = Arc::new(vec![arg.clone()]);
+    let x = ExprX::Call(call_target, args);
+    Ok(bctx.spanned_typed_new(span, &expr_typ, x))
 }
 
 fn verus_item_to_vir<'tcx, 'a>(
