@@ -766,7 +766,7 @@ impl<'a, T> SharedReference<'a, T> {
         &*self.0
     }
 
-    axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
+    pub axiom fn points_to(tracked self) -> (tracked pt: &'a PointsTo<T>)
         ensures
             pt.ptr() == self.ptr(),
             pt.is_init(),
