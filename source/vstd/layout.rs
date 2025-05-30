@@ -93,8 +93,7 @@ pub exec fn layout_for_type_is_valid<V>()
 ///
 /// Note that alignment may be platform specific; if you need to use alignment, use
 /// [Verus's global directive](https://verus-lang.github.io/verus/guide/reference-global.html).
-#[verifier::external_body]
-pub broadcast proof fn layout_of_primitives()
+pub broadcast axiom fn layout_of_primitives()
     ensures
         #![trigger size_of::<bool>()]
         #![trigger size_of::<char>()]
@@ -117,8 +116,7 @@ pub broadcast proof fn layout_of_primitives()
         size_of::<u128>() == size_of::<i128>() == 16,
         size_of::<usize>() == size_of::<isize>(),
         size_of::<usize>() * 8 == usize::BITS,
-{
-}
+;
 
 /// Size and alignment of the unit tuple ([Reference](https://doc.rust-lang.org/reference/type-layout.html#r-layout.tuple.unit)).
 pub broadcast axiom fn layout_of_unit_tuple()
