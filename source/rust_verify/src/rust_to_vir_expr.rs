@@ -1022,6 +1022,17 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
     // peeling off the adjustment (i-1).
     // Whereas the node (expr, 0) is just expr by itself.
 
+    let expr_typ = || {
+        mid_ty_to_vir(
+            bctx.ctxt.tcx,
+            &bctx.ctxt.verus_items,
+            bctx.fun_id,
+            expr.span,
+            &adjustments[adjustment_idx - 1].target,
+            false,
+        )
+    };
+
     if adjustment_idx == 0 {
         let vir_expr = expr_to_vir_innermost(bctx, expr, current_modifier)?;
 
@@ -1054,16 +1065,8 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
                 adjustments,
                 adjustment_idx - 1,
             )?;
-            let expr_typ = mid_ty_to_vir(
-                bctx.ctxt.tcx,
-                &bctx.ctxt.verus_items,
-                bctx.fun_id,
-                expr.span,
-                &adjustments[adjustment_idx - 1].target,
-                false,
-            )?;
             let x = ExprX::NeverToAny(e);
-            Ok(bctx.spanned_typed_new(expr.span, &expr_typ, x))
+            Ok(bctx.spanned_typed_new(expr.span, &expr_typ()?, x))
         }
         Adjust::Deref(None) => {
             // handle same way as the UnOp::Deref case
@@ -1090,27 +1093,28 @@ pub(crate) fn expr_to_vir_with_adjustments<'tcx>(
             }
             Ok(new_expr)
         }
-        Adjust::Deref(Some(_)) => {
+        Adjust::Deref(Some(deref)) => {
             // note: deref has signature (&self) -> &Self::Target
             // and deref_mut has signature (&mut self) -> &mut Self::Target
             // The adjustment, though, goes from self -> Self::Target
             // without the refs.
+            let inner = expr_to_vir_with_adjustments(
+                bctx,
+                expr,
+                current_modifier,
+                adjustments,
+                adjustment_idx - 1,
+            );
             if auto_deref_supported_for_ty(bctx.ctxt.tcx, &get_inner_ty()) {
-                expr_to_vir_with_adjustments(
-                    bctx,
-                    expr,
-                    current_modifier,
-                    adjustments,
-                    adjustment_idx - 1,
-                )
+                inner
             } else {
-                unsupported_err!(
+                crate::fn_call_to_vir::deref_to_vir(
+                    bctx,
+                    deref.method_call(bctx.ctxt.tcx),
+                    inner?,
+                    expr_typ()?,
+                    get_inner_ty(),
                     expr.span,
-                    &format!(
-                        "overloaded deref (`{:}` is implicity converted to `{:}`)",
-                        get_inner_ty(),
-                        adjustment.target
-                    )
                 )
             }
         }

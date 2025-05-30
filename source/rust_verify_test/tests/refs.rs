@@ -496,7 +496,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] deref_not_allowed verus_code! {
+    #[test] deref_allowed_but_must_be_declared verus_code! {
         struct X { a: u8 }
 
         #[verifier::external]
@@ -511,7 +511,77 @@ test_verify_one_file! {
         {
             let t: &u8 = &a;
         }
-    } => Err(err) => assert_vir_error_msg(err, "overloaded deref (`X` is implicity converted to `u8`)")
+    } => Err(err) => assert_vir_error_msg(err, "cannot use function `crate::X::deref`")
+}
+
+test_verify_one_file! {
+    #[test] deref_vec_ok verus_code! {
+        use vstd::prelude::*;
+        use std::ops::Deref;
+        fn test1(v: Vec<u8>) {
+            let s0: &[u8] = v.as_slice();
+            let s1: &[u8] = v.deref();
+            let s2: &[u8] = &v;
+            assert(s0@ == s1@);
+            assert(s0@ == s2@);
+            let i2 = v.iter();
+        }
+        fn test2(v: &Vec<u8>) {
+            let s0: &[u8] = v.as_slice();
+            let s1: &[u8] = v.deref();
+            let s2: &[u8] = &v;
+            assert(s0@ == s1@);
+            assert(s0@ == s2@);
+            let i2 = v.iter();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] deref_vec_fails verus_code! {
+        use vstd::prelude::*;
+        use std::ops::Deref;
+        fn test1(v: Vec<u8>) {
+            let s0: &[u8] = v.as_slice();
+            let s1: &[u8] = v.deref();
+            let s2: &[u8] = &v;
+            let i2 = v.iter();
+            assert(s0@ == s1@);
+            assert(s0@ != s2@); // FAILS
+        }
+        fn test2(v: &Vec<u8>) {
+            let s0: &[u8] = v.as_slice();
+            let s1: &[u8] = v.deref();
+            let s2: &[u8] = &v;
+            let i2 = v.iter();
+            assert(s0@ == s1@);
+            assert(s0@ != s2@); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] deref_vec_alone1 verus_code! {
+        use vstd::prelude::*;
+        fn test1(v: Vec<u8>) {
+            let s2: &[u8] = &v;
+        }
+        fn test2(v: &Vec<u8>) {
+            let s2: &[u8] = &v;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] deref_vec_alone2 verus_code! {
+        use vstd::prelude::*;
+        fn test1(v: Vec<u8>) {
+            let i2 = v.iter();
+        }
+        fn test2(v: &Vec<u8>) {
+            let i2 = v.iter();
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
