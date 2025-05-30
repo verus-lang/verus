@@ -1304,13 +1304,18 @@ where
     let require =
         Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
 
-    map.push_scope(true);
+    let atomic_require =
+        Arc::new(vec_map_result(atomic_require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+        
+        map.push_scope(true);
     if function.x.ens_has_return {
         let _ = map
             .insert(ret.x.name.clone(), ScopeEntry::new_outer_param_ret(&ret.x.typ, false, true));
     }
     let ensure =
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+    let atomic_ensure =
+        Arc::new(vec_map_result(atomic_ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     map.pop_scope();
 
     let returns = match returns {
@@ -1365,6 +1370,12 @@ where
         None
     };
 
+    // let atomic_require =
+    // Arc::new(vec_map_result(atomic_require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+
+    // let atomic_ensure =
+    // Arc::new(vec_map_result(atomic_ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+
     let functionx = FunctionX {
         name,
         proxy,
@@ -1380,9 +1391,9 @@ where
         ret,
         ens_has_return: *ens_has_return,
         require,
-        atomic_require: atomic_require.clone(),
+        atomic_require,
         ensure,
-        atomic_ensure: atomic_ensure.clone(),
+        atomic_ensure,
         returns,
         decrease,
         decrease_when,

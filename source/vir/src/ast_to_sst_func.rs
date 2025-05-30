@@ -292,8 +292,21 @@ pub fn func_decl_to_sst(
     diagnostics: &impl air::messages::Diagnostics,
     function: &Function,
 ) -> Result<FuncDeclSst, VirErr> {
+    // Regular requires and ensures
     let (pars, reqs) = req_ens_to_sst(ctx, diagnostics, function, &function.x.require, true)?;
     let (ens_pars, enss) = req_ens_to_sst(ctx, diagnostics, function, &function.x.ensure, false)?;
+
+    // Atomic requires and ensures
+    let (_atomic_pars, atomic_reqs) = req_ens_to_sst(ctx, diagnostics, function, &function.x.atomic_require, true)?;
+    let (_atomic_ens_pars, atomic_enss) = req_ens_to_sst(ctx, diagnostics, function, &function.x.atomic_ensure, false)?;
+
+    // Merge atomic requires/ensures into the main requires/ensures
+    let mut combined_reqs = reqs;
+    combined_reqs.extend(atomic_reqs.into_iter());
+
+    let mut combined_enss = enss;
+    combined_enss.extend(atomic_enss.into_iter());
+
     let post_pars = params_to_pre_post_pars(&function.x.params, false);
 
     let mut inv_masks: Vec<Exps> = Vec::new();
@@ -379,8 +392,8 @@ pub fn func_decl_to_sst(
         req_inv_pars: pars,
         ens_pars,
         post_pars,
-        reqs: Arc::new(reqs),
-        enss: Arc::new(enss),
+        reqs: Arc::new(combined_reqs),
+        enss: Arc::new(combined_enss),
         inv_masks: Arc::new(inv_masks),
         unwind_condition,
         fndef_axioms: Arc::new(fndef_axiom_exps),
@@ -741,6 +754,16 @@ pub fn func_def_to_sst(
         }
     }
 
+    // Atomic requires
+    for r in specs_function.x.atomic_require.iter() {
+        let r = lo_specs!().lower_pure(ctx, &mut state, r, &mut req_stms)?;
+        if ctx.checking_spec_preconditions() {
+            req_stms.push(Spanned::new(r.span.clone(), StmX::Assume(r)));
+        } else {
+            reqs.push(r);
+        }
+    }
+
     // Inv mask: take from trait method if it exists
     let mask_ast = specs_function.x.mask_spec_or_default(&specs_function.span);
     let mask_sst = mask_ast
@@ -767,6 +790,7 @@ pub fn func_def_to_sst(
             enss.push(exp);
         }
     }
+
     if let Some(lo_inheritance) = &lo_inheritance {
         for expr in lo_inheritance.function.x.ensure.clone().iter() {
             let exp = lo_inheritance.lower_pure(
@@ -779,6 +803,15 @@ pub fn func_def_to_sst(
                 let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
                 enss.push(exp);
             }
+        }
+    }
+
+    // Atomic ensures
+    for expr in specs_function.x.atomic_ensure.iter() {
+        let exp = lo_specs!().lower_pure(ctx, &mut state, expr, &mut ens_spec_precondition_stms)?;
+        if !ctx.checking_spec_preconditions() {
+            let exp = crate::heuristics::maybe_insert_auto_ext_equal(ctx, &exp, |x| x.ensures);
+            enss.push(exp);
         }
     }
 
