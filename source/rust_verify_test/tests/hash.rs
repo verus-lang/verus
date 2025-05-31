@@ -892,6 +892,33 @@ test_verify_one_file_with_options! {
 }
 
 test_verify_one_file_with_options! {
+    #[test] test_hash_map_iter ["exec_allows_no_decreases_clause"] => verus_code! {
+        use std::collections::HashMap;
+        use std::collections::hash_map::Iter;
+        use vstd::prelude::*;
+        use vstd::std_specs::hash::*;
+        fn test()
+        {
+            let mut m = HashMap::<u32, i8>::new();
+            assert(m@ == Map::<u32, i8>::empty());
+
+            m.insert(3, 4);
+            m.insert(6, -8);
+
+            let mut idx = 0;
+            let m_iter = m.iter();
+            for (k, v) in iter: m_iter
+                invariant
+                    iter.kv_pairs.to_set() =~= set![(3u32, 4i8), (6u32, -8i8)],
+            {
+                assert(*k == 3 ==> *v == 4);
+                assert(*k == 6 ==> *v == -8);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file_with_options! {
     #[test] test_hash_set_iter ["exec_allows_no_decreases_clause"] => verus_code! {
         use std::collections::HashSet;
         use std::collections::hash_set::Iter;
