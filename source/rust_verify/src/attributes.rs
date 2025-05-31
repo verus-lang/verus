@@ -229,6 +229,8 @@ pub(crate) enum Attr {
     ExtEqual,
     // Rust ghost block
     GhostBlock(GhostBlockAttr),
+    // proof block inside spec-mode code
+    ProofInSpec,
     // Header to unwrap Tracked<T> and Ghost<T> parameters
     UnwrapParameter,
     // type parameter is not necessarily used in strictly positive positions
@@ -418,6 +420,7 @@ pub(crate) fn parse_attrs(
                 AttrTree::Fun(_, arg, None) if arg == "ghost_wrapper" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Wrapper))
                 }
+                AttrTree::Fun(_, arg, None) if arg == "proof_in_spec" => v.push(Attr::ProofInSpec),
                 // TODO: remove maybe_negative, strictly_positive
                 AttrTree::Fun(_, arg, None)
                     if arg == "maybe_negative" || arg == "reject_recursive_types" =>
@@ -827,6 +830,16 @@ pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr>
         }
     }
     None
+}
+
+pub(crate) fn is_proof_in_spec(attrs: &[Attribute]) -> bool {
+    for attr in parse_attrs_opt(attrs, None) {
+        match attr {
+            Attr::ProofInSpec => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 pub(crate) fn get_mode_opt(attrs: &[Attribute]) -> Option<Mode> {
