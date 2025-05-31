@@ -1368,7 +1368,7 @@ impl Verifier {
                 .cloned()
                 .filter(|d| is_visible_to(&d.x.visibility, module))
                 .collect(),
-        );
+        )?;
         self.run_commands(
             bucket_id,
             reporter,
@@ -1378,7 +1378,7 @@ impl Verifier {
         );
 
         let trait_commands = vir::traits::traits_to_air(ctx, &krate);
-        let trait_type_bounds_commands = vir::traits::trait_bound_axioms(ctx, &krate.traits);
+        let trait_type_bounds_commands = vir::traits::trait_bound_axioms(ctx, &krate.traits)?;
         let trait_commands = Arc::new(
             trait_commands.iter().chain(trait_type_bounds_commands.iter()).cloned().collect(),
         );
@@ -1391,7 +1391,7 @@ impl Verifier {
         );
 
         let assoc_type_impl_commands =
-            vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls);
+            vir::assoc_types_to_air::assoc_type_impls_to_air(ctx, &krate.assoc_type_impls)?;
         self.run_commands(
             bucket_id,
             reporter,

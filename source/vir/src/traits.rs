@@ -629,17 +629,24 @@ pub(crate) fn typ_equality_bound_to_air(
     air::ast_util::mk_and(&vec![eqd, eqt])
 }
 
-pub(crate) fn const_typ_bound_to_air(ctx: &Ctx, c: &Typ, t: &Typ) -> air::ast::Expr {
+pub(crate) fn const_typ_bound_to_air(
+    ctx: &Ctx,
+    c: &Typ,
+    t: &Typ,
+) -> Result<air::ast::Expr, VirErr> {
     let f = crate::ast_util::const_generic_to_primitive(t);
     let expr = air::ast_util::str_apply(f, &vec![crate::sst_to_air::typ_to_id(ctx, c)]);
-    if let Some(inv) = crate::sst_to_air::typ_invariant(ctx, t, &expr) {
+    Ok(if let Some(inv) = crate::sst_to_air::typ_invariant(ctx, t, &expr)? {
         inv
     } else {
         air::ast_util::mk_true()
-    }
+    })
 }
 
-pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<air::ast::Expr> {
+pub(crate) fn trait_bounds_to_air(
+    ctx: &Ctx,
+    typ_bounds: &GenericBounds,
+) -> Result<Vec<air::ast::Expr>, VirErr> {
     let mut bound_exprs: Vec<air::ast::Expr> = Vec::new();
     for bound in typ_bounds.iter() {
         match &**bound {
@@ -652,11 +659,11 @@ pub(crate) fn trait_bounds_to_air(ctx: &Ctx, typ_bounds: &GenericBounds) -> Vec<
                 bound_exprs.push(typ_equality_bound_to_air(ctx, path, typ_args, name, typ));
             }
             GenericBoundX::ConstTyp(c, t) => {
-                bound_exprs.push(const_typ_bound_to_air(ctx, c, t));
+                bound_exprs.push(const_typ_bound_to_air(ctx, c, t)?);
             }
         }
     }
-    bound_exprs
+    Ok(bound_exprs)
 }
 
 pub fn traits_to_air(_ctx: &Ctx, krate: &crate::sst::KrateSst) -> Commands {
@@ -682,7 +689,7 @@ pub fn traits_to_air(_ctx: &Ctx, krate: &crate::sst::KrateSst) -> Commands {
     Arc::new(commands)
 }
 
-pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
+pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Result<Commands, VirErr> {
     // forall typ_params. #[trigger] tr_bound%T(typ_params) ==> typ_bounds
     // Example:
     //   trait T<A: U> where Self: Q<A> {}
@@ -700,7 +707,7 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
         {
             let all_bounds =
                 tr.x.typ_bounds.iter().chain(tr.x.assoc_typs_bounds.iter()).cloned().collect();
-            let typ_bounds = trait_bounds_to_air(ctx, &Arc::new(all_bounds));
+            let typ_bounds = trait_bounds_to_air(ctx, &Arc::new(all_bounds))?;
             let qname = format!(
                 "{}_{}",
                 crate::ast_util::path_as_friendly_rust_name(&tr.x.name),
@@ -714,14 +721,14 @@ pub fn trait_bound_axioms(ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
                 &Arc::new(vec![]),
                 &trigs,
                 false,
-            );
+            )?;
             let imply = air::ast_util::mk_implies(&tr_bound, &air::ast_util::mk_and(&typ_bounds));
             let forall = mk_bind_expr(&bind, &imply);
             let axiom = Arc::new(DeclX::Axiom(air::ast::Axiom { named: None, expr: forall }));
             commands.push(Arc::new(CommandX::Global(axiom)));
         }
     }
-    Arc::new(commands)
+    Ok(Arc::new(commands))
 }
 
 // Consider a trait impl like:
@@ -757,7 +764,7 @@ pub(crate) fn hide_projections(typs: &Typs) -> (Typs, Vec<(Ident, Typ)>) {
     (Arc::new(typs), visitor.holes)
 }
 
-pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
+pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Result<Commands, VirErr> {
     // Axiom for bounds predicates (based on trait impls)
     // forall typ_params. typ_bounds ==> tr_bound%T(...typ_args...)
     // Example:
@@ -774,7 +781,7 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
     {
         tr_bound
     } else {
-        return Arc::new(vec![]);
+        return Ok(Arc::new(vec![]));
     };
     let name =
         format!("{}_{}", path_as_friendly_rust_name(&imp.x.impl_path), crate::def::QID_TRAIT_IMPL);
@@ -786,13 +793,13 @@ pub fn trait_impl_to_air(ctx: &Ctx, imp: &TraitImpl) -> Commands {
         &Arc::new(vec![]),
         &trigs,
         false,
-    );
-    let mut req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds);
+    )?;
+    let mut req_bounds = trait_bounds_to_air(ctx, &imp.x.typ_bounds)?;
     req_bounds.extend(eqs);
     let imply = mk_implies(&air::ast_util::mk_and(&req_bounds), &tr_bound);
     let forall = mk_bind_expr(&bind, &imply);
     let axiom = mk_unnamed_axiom(forall);
-    Arc::new(vec![Arc::new(CommandX::Global(axiom))])
+    Ok(Arc::new(vec![Arc::new(CommandX::Global(axiom))]))
 }
 
 pub fn check_no_dupe_impls(krate: &Krate) -> Result<(), VirErr> {

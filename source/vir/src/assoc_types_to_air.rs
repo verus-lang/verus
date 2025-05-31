@@ -10,7 +10,7 @@
 //!   (View::V u8) == u8
 //!   (View::V (Vec A)) == (Seq (View::V A))
 
-use crate::ast::{AssocTypeImpl, AssocTypeImplX, Trait};
+use crate::ast::{AssocTypeImpl, AssocTypeImplX, Trait, VirErr};
 use crate::context::Ctx;
 use crate::def::QID_ASSOC_TYPE_IMPL;
 use crate::sst_to_air::typ_to_ids;
@@ -45,7 +45,7 @@ pub fn assoc_type_decls_to_air(_ctx: &Ctx, traits: &Vec<Trait>) -> Commands {
     Arc::new(commands)
 }
 
-pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Commands {
+pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Result<Commands, VirErr> {
     let mut commands: Vec<Command> = Vec::new();
     for assoc in assocs {
         let AssocTypeImplX {
@@ -85,17 +85,18 @@ pub fn assoc_type_impls_to_air(ctx: &Ctx, assocs: &Vec<AssocTypeImpl>) -> Comman
                 &Arc::new(vec![]),
                 &vec![projection],
                 false,
-            );
+            )?;
             let imply = air::ast_util::mk_implies(&eqs, &eq);
             let forall = mk_bind_expr(&bind, &imply);
             commands.push(Arc::new(CommandX::Global(mk_unnamed_axiom(forall))));
+            Ok::<_, VirErr>(())
         };
         if crate::context::DECORATE {
-            push_command(true, 0);
-            push_command(false, 1);
+            push_command(true, 0)?;
+            push_command(false, 1)?;
         } else {
-            push_command(false, 0);
+            push_command(false, 0)?;
         }
     }
-    Arc::new(commands)
+    Ok(Arc::new(commands))
 }
