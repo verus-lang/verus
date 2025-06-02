@@ -638,7 +638,6 @@ pub fn expose_provenance<T: Sized>(m: *mut T) -> (provenance: Tracked<IsExposed>
 /// Construct a pointer with the given provenance from a _usize_ address.
 /// The provenance must have previously been exposed.
 #[verifier::external_body]
-#[allow(fuzzy_provenance_casts)]
 pub fn with_exposed_provenance<T: Sized>(
     addr: usize,
     Tracked(provenance): Tracked<IsExposed>,
@@ -932,6 +931,7 @@ impl<'a, T> SharedReference<'a, [T]> {
         self.as_ref().len()
     }
 
+    #[verifier::external_body]
     pub fn index(self, idx: usize) -> (out: &'a T)
         requires 
             0 <= idx < self.value()@.len()
