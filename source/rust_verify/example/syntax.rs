@@ -545,7 +545,7 @@ trait T {
     ;
 
     /// A trait function may have a default (provided) implementation,
-    /// and this defaults may have additional ensures specified with default_ensures
+    /// and this default may have additional ensures specified with default_ensures
     fn my_function_with_a_default(&self, i: u32, j: u32) -> (r: u32)
         requires
             0 <= i < 10,
