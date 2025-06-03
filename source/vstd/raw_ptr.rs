@@ -932,6 +932,7 @@ impl<'a, T> SharedReference<'a, [T]> {
     }
 
     #[verifier::external_body]
+    // TODO: Bug in lifetime_generate which generates the error "cannot return value referencing temporary value"
     pub fn index(self, idx: usize) -> (out: &'a T)
         requires 
             0 <= idx < self.value()@.len()
