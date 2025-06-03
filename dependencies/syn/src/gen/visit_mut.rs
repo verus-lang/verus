@@ -168,6 +168,9 @@ pub trait VisitMut {
     fn visit_decreases_mut(&mut self, i: &mut crate::Decreases) {
         visit_decreases_mut(self, i);
     }
+    fn visit_default_ensures_mut(&mut self, i: &mut crate::DefaultEnsures) {
+        visit_default_ensures_mut(self, i);
+    }
     #[cfg(feature = "derive")]
     #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
     fn visit_derive_input_mut(&mut self, i: &mut crate::DeriveInput) {
@@ -1291,6 +1294,9 @@ where
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
     }
+    if let Some(it) = &mut node.default_ensures {
+        v.visit_default_ensures_mut(it);
+    }
     if let Some(it) = &mut node.returns {
         v.visit_returns_mut(it);
     }
@@ -1662,6 +1668,13 @@ where
     v.visit_fields_named_mut(&mut node.fields);
 }
 pub fn visit_decreases_mut<V>(v: &mut V, node: &mut crate::Decreases)
+where
+    V: VisitMut + ?Sized,
+{
+    skip!(node.token);
+    v.visit_specification_mut(&mut node.exprs);
+}
+pub fn visit_default_ensures_mut<V>(v: &mut V, node: &mut crate::DefaultEnsures)
 where
     V: VisitMut + ?Sized,
 {
@@ -4155,6 +4168,9 @@ where
     }
     if let Some(it) = &mut node.ensures {
         v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.default_ensures {
+        v.visit_default_ensures_mut(it);
     }
     if let Some(it) = &mut node.returns {
         v.visit_returns_mut(it);

@@ -128,6 +128,7 @@ impl Debug for crate::AssumeSpecification {
         formatter.field("output", &self.output);
         formatter.field("requires", &self.requires);
         formatter.field("ensures", &self.ensures);
+        formatter.field("default_ensures", &self.default_ensures);
         formatter.field("returns", &self.returns);
         formatter.field("invariants", &self.invariants);
         formatter.field("unwind", &self.unwind);
@@ -590,6 +591,15 @@ impl crate::DataUnion {
 impl Debug for crate::Decreases {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Decreases");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(docsrs, doc(cfg(feature = "extra-traits")))]
+impl Debug for crate::DefaultEnsures {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("DefaultEnsures");
         formatter.field("token", &self.token);
         formatter.field("exprs", &self.exprs);
         formatter.finish()
@@ -3411,6 +3421,7 @@ impl Debug for crate::SignatureSpec {
         formatter.field("requires", &self.requires);
         formatter.field("recommends", &self.recommends);
         formatter.field("ensures", &self.ensures);
+        formatter.field("default_ensures", &self.default_ensures);
         formatter.field("returns", &self.returns);
         formatter.field("decreases", &self.decreases);
         formatter.field("invariants", &self.invariants);
