@@ -994,6 +994,46 @@ impl<A> Seq<A> {
             }
         }
     }
+
+    /// Mapping a function over a sequence and converting to a set is the same
+    /// as mapping it over the sequence converted to a set.
+    pub broadcast proof fn lemma_to_set_map_commutes<B>(self, f: spec_fn(A) -> B)
+        ensures
+            #[trigger] self.to_set().map(f) =~= self.map_values(f).to_set(),
+    {
+        broadcast use crate::vstd::group_vstd_default;
+
+        assert forall|elem: B|
+            self.to_set().map(f).contains(elem) <==> self.map_values(f).to_set().contains(elem) by {
+            if self.to_set().map(f).contains(elem) {
+                let x = choose|x: A| self.to_set().contains(x) && f(x) == elem;
+                let i = choose|i: int| 0 <= i < self.len() && self[i] == x;
+                assert(self.map_values(f)[i] == elem);
+            }
+            if self.map_values(f).to_set().contains(elem) {
+                let i = choose|i: int|
+                    0 <= i < self.map_values(f).len() && self.map_values(f)[i] == elem;
+                let x = self[i];
+                assert(self.to_set().contains(x));
+            }
+        };
+    }
+
+    /// Appending an element to a sequence and converting to set, is equal
+    /// to converting to set and inserting it.
+    pub broadcast proof fn lemma_to_set_insert_commutes(sq: Seq<A>, elt: A)
+        requires
+        ensures
+            #[trigger] (sq + seq![elt]).to_set() =~= sq.to_set().insert(elt),
+    {
+        broadcast use crate::vstd::group_vstd_default;
+        broadcast use lemma_seq_concat_contains_all_elements;
+        broadcast use lemma_seq_empty_contains_nothing;
+        broadcast use lemma_seq_contains_after_push;
+        broadcast use super::seq::group_seq_axioms;
+        broadcast use super::set_lib::group_set_properties;
+
+    }
 }
 
 impl<A, B> Seq<(A, B)> {
@@ -1615,6 +1655,16 @@ pub broadcast proof fn seq_to_set_is_finite<A>(seq: Seq<A>)
         seq_to_set_equal_rec(seq);
         seq_to_set_rec_is_finite(seq);
     }
+}
+
+pub proof fn seq_to_set_distributes_over_add<T>(s1: Seq<T>, s2: Seq<T>)
+    ensures
+        s1.to_set() + s2.to_set() =~= (s1 + s2).to_set(),
+{
+    broadcast use super::group_vstd_default;
+    broadcast use super::set_lib::group_set_properties;
+    broadcast use group_seq_properties;
+
 }
 
 /// If sequences a and b don't have duplicates, and there are no
