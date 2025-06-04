@@ -73,6 +73,7 @@ pub enum AnyFnOrLoop {
     Loop(syn::ExprLoop),
     ForLoop(syn::ExprForLoop),
     While(syn::ExprWhile),
+    Closure(syn::ExprClosure), // Added for completeness, if needed
 }
 
 impl syn::parse::Parse for AnyFnOrLoop {
@@ -111,6 +112,16 @@ impl syn::parse::Parse for AnyFnOrLoop {
         if let Ok(while_expr) = fork.parse::<ExprWhile>() {
             input.advance_to(&fork);
             return Ok(AnyFnOrLoop::While(while_expr));
+        }
+
+        // Try to parse as ExprClosure (if needed)
+        let fork = input.fork();
+        if let Ok(closure_expr) = fork.parse::<syn::ExprClosure>() {
+            input.advance_to(&fork);
+            if input.peek(syn::token::Comma) {
+                input.parse::<syn::token::Comma>()?;
+            }
+            return Ok(AnyFnOrLoop::Closure(closure_expr));
         }
 
         // If none of the above matched, return an error
