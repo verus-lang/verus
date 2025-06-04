@@ -449,7 +449,10 @@ impl ExpX {
                         return exp.x.to_string_prec(global, precedence);
                     }
                     HasType(t) => {
-                        (format!("{}.has_type({:?})", exp.x.to_user_string(global), t), 99)
+                        (format!("has_type({}, {:?})", exp.x.to_user_string(global), t), 99)
+                    }
+                    IntegerTypeBound(IntegerTypeBoundKind::ArchWordBits, _mode) => {
+                        (format!("usize::BITS"), 99)
                     }
                     IntegerTypeBound(kind, mode) => {
                         (format!("{:?}.{:?}({})", kind, mode, exp.x.to_user_string(global)), 99)
@@ -722,6 +725,11 @@ pub fn sst_conjoin(span: &Span, exps: &Vec<Exp>) -> Exp {
     chain_binary(span, BinaryOp::And, &sst_bool(span, true), exps)
 }
 
+pub fn sst_and(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
+    let op = BinaryOp::And;
+    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
+}
+
 pub fn sst_implies(span: &Span, e1: &Exp, e2: &Exp) -> Exp {
     let op = BinaryOp::Implies;
     SpannedTyped::new(span, &Arc::new(TypX::Bool), ExpX::Binary(op, e1.clone(), e2.clone()))
@@ -772,6 +780,10 @@ pub fn sst_int_literal(span: &Span, i: i128) -> Exp {
         &Arc::new(TypX::Int(IntRange::Int)),
         ExpX::Const(crate::ast_util::const_int_from_i128(i)),
     )
+}
+
+pub fn sst_int_literal_bigint(span: &Span, i: num_bigint::BigInt) -> Exp {
+    SpannedTyped::new(span, &Arc::new(TypX::Int(IntRange::Int)), ExpX::Const(Constant::Int(i)))
 }
 
 impl LocalDeclKind {
