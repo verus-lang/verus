@@ -261,7 +261,33 @@ test_verify_one_file! {
             let ptr1 = ptr1 as *mut u32;
 
             ptr_mut_write(ptr1, Tracked(&mut token1), 7);
-            ptr_mut_write(ptr1, Tracked(&mut token1), 5); // FAILS
+            ptr_mut_write(ptr1, Tracked(&mut token1), 5); 
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ptr_write_with_read_perm IMPORTS.to_string() + verus_code_str! {
+        global layout u32 is size == 4, align == 4;
+        pub fn f() {
+            layout_for_type_is_valid::<u32>();
+            let (ptr1, Tracked(token1), Tracked(dealloc)) = allocate(4, 4);
+            let tracked mut token1 = token1.into_typed::<u32>(ptr1 as usize);
+            let ptr1 = ptr1 as *mut u32;
+
+            ptr_mut_write(ptr1, Tracked(&token1), 7); // FAILS because ptr_mut_write expects mutable reference
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] ptr_write_after_dealloc IMPORTS.to_string() + verus_code_str! {
+        global layout u32 is size == 4, align == 4;
+        pub fn f() {
+            layout_for_type_is_valid::<u32>();
+            let (ptr1, Tracked(mut token1), Tracked(dealloc1)) = allocate(4, 4);
+            deallocate(ptr1, 4, 4, Tracked(token1), Tracked(dealloc1));
+            ptr_mut_write(ptr1, Tracked(&mut token1), 7); // FAILS because lifetime of permission has ended
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -275,7 +301,7 @@ test_verify_one_file! {
             let tracked mut token1 = token1.into_typed::<u32>(ptr1 as usize);
             let ptr1 = ptr1 as *mut u32;
 
-            let x = ptr_mut_read(ptr1, Tracked(&mut token1)); // FAILS
+            let x = ptr_mut_read(ptr1, Tracked(&mut token1)); // FAILS because memory is uninitialized
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -289,7 +315,7 @@ test_verify_one_file! {
             let tracked mut token1 = token1.into_typed::<u32>(ptr1 as usize);
             let ptr1 = ptr1 as *mut u32;
 
-            let x = ptr_ref(ptr1, Tracked(&token1)); // FAILS
+            let x = ptr_ref(ptr1, Tracked(&token1)); // FAILS because memory is uninitialized
         }
     } => Err(err) => assert_one_fails(err)
 }
