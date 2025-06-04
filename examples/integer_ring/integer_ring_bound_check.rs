@@ -16,6 +16,7 @@ verus! {
 proof fn ModAfterMul(x: int, y: int, z: int, m: int)
     by (integer_ring)
     requires
+        m != 0,
         (x - y) % m == 0,
     ensures
         (x * z - y * z) % m == 0,
