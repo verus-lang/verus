@@ -1,8 +1,8 @@
 #![allow(unused_imports)]
 
 /*!
-Tools and reasoning principles for [raw pointers](https://doc.rust-lang.org/std/primitive.pointer.html).  
-The tools here are meant to address "real Rust pointers, including all their subtleties on the Rust Abstract Machine, 
+Tools and reasoning principles for [raw pointers](https://doc.rust-lang.org/std/primitive.pointer.html).
+The tools here are meant to address "real Rust pointers, including all their subtleties on the Rust Abstract Machine,
 to the largest extent that is reasonable."
 
 For a gentler introduction to some of the concepts here, see [`PPtr`](crate::simple_pptr), which uses a much-simplified pointer model.
@@ -44,7 +44,6 @@ verus! {
 //    tag is readonly or not. In our model here, this tag is folded
 //    into the provenance.
 //
-
 /// Provenance
 ///
 /// A full model of provenance is given by formalisms such as "Stacked Borrows"
@@ -91,8 +90,8 @@ pub ghost enum Metadata {
 #[verifier::external_body]
 pub ghost struct DynMetadata {}
 
-/// Model of a pointer `*mut T` or `*const T` in Rust's abstract machine. 
-/// In addition to the address, each pointer has its corresponding provenance and metadata. 
+/// Model of a pointer `*mut T` or `*const T` in Rust's abstract machine.
+/// In addition to the address, each pointer has its corresponding provenance and metadata.
 pub ghost struct PtrData {
     pub addr: usize,
     pub provenance: Provenance,
@@ -134,16 +133,16 @@ pub ghost enum MemContents<T> {
     Init(T),
 }
 
-/// Data associated with a `PointsTo` permission. 
-/// We keep track of both the pointer and the (potentially uninitialized) value 
+/// Data associated with a `PointsTo` permission.
+/// We keep track of both the pointer and the (potentially uninitialized) value
 /// it points to.
-/// 
-/// If `opt_value` is `Init(T)`, this signifies that `ptr` points to initialized memory, 
-/// and the value of `opt_value` is consistent with the bytes `ptr` points to, 
+///
+/// If `opt_value` is `Init(T)`, this signifies that `ptr` points to initialized memory,
+/// and the value of `opt_value` is consistent with the bytes `ptr` points to,
 /// We also have all the ghost state associated with type `T`.
-/// 
-/// If `opt_value` is `Uninit`, then we have no knowledge about what's in memory, 
-/// and we assume `ptr` points to uninitialized memory. 
+///
+/// If `opt_value` is `Uninit`, then we have no knowledge about what's in memory,
+/// and we assume `ptr` points to uninitialized memory.
 /// (To be pedantic, the bytes might be initialized in Rust's abstract machine,
 //  but we don't know, so we have to pretend they're uninitialized.)
 pub ghost struct PointsToData<T> {
@@ -179,31 +178,31 @@ impl<T> PointsTo<T> {
         self.view().ptr
     }
 
-    /// The (possibly uninitialized) memory that this permission gives access to. 
+    /// The (possibly uninitialized) memory that this permission gives access to.
     #[verifier::inline]
     pub open spec fn opt_value(&self) -> MemContents<T> {
         self.view().opt_value
     }
 
-    /// Returns `true` if the permission's associated memory is initialized. 
+    /// Returns `true` if the permission's associated memory is initialized.
     #[verifier::inline]
     pub open spec fn is_init(&self) -> bool {
         self.opt_value().is_init()
     }
 
-    /// Returns `true` if the permission's associated memory is uninitialized. 
+    /// Returns `true` if the permission's associated memory is uninitialized.
     #[verifier::inline]
     pub open spec fn is_uninit(&self) -> bool {
         self.opt_value().is_uninit()
     }
 
-    /// If the permission's associated memory is initialized, 
-    /// returns the value that the pointer points to. 
-    /// Otherwise, the result is meaningless. 
+    /// If the permission's associated memory is initialized,
+    /// returns the value that the pointer points to.
+    /// Otherwise, the result is meaningless.
     #[verifier::inline]
-    pub open spec fn value(&self) -> T 
+    pub open spec fn value(&self) -> T
         recommends
-            self.is_init()
+            self.is_init(),
     {
         self.opt_value().value()
     }
@@ -230,9 +229,9 @@ impl<T> PointsTo<T> {
             self.is_uninit(),
     ;
 
-    /// Guarantees that the memory ranges associated with two permissions will not overlap, 
+    /// Guarantees that the memory ranges associated with two permissions will not overlap,
     /// since you cannot have two permissions to the same memory.
-    /// 
+    ///
     /// Note: If both S and T are non-zero-sized, then this implies the pointers
     /// have distinct addresses.
     pub axiom fn is_disjoint<S>(tracked &mut self, tracked other: &PointsTo<S>)
@@ -256,11 +255,12 @@ impl<T> MemContents<T> {
         self is Uninit
     }
 
-    /// If it is a [`MemContents::Init`] value, returns the value. 
+    /// If it is a [`MemContents::Init`] value, returns the value.
     /// Otherwise, the return value is meaningless.
     #[verifier::inline]
-    pub open spec fn value(&self) -> T 
-        recommends self is Init
+    pub open spec fn value(&self) -> T
+        recommends
+            self is Init,
     {
         self->0
     }
@@ -272,8 +272,8 @@ impl<T> MemContents<T> {
 /// Constructs a pointer from its underlying model.
 pub uninterp spec fn ptr_mut_from_data<T: ?Sized>(data: PtrData) -> *mut T;
 
-/// Constructs a pointer from its underlying model. 
-/// Since `*mut T` and `*const T` are [semantically the same](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html#pointer-model), 
+/// Constructs a pointer from its underlying model.
+/// Since `*mut T` and `*const T` are [semantically the same](https://verus-lang.github.io/verus/verusdoc/vstd/raw_ptr/index.html#pointer-model),
 /// we can define this operation in terms of the operation on `*mut T`.
 #[verifier::inline]
 pub open spec fn ptr_from_data<T: ?Sized>(data: PtrData) -> *const T {
@@ -340,16 +340,15 @@ pub assume_specification<
 // Casting
 // as-casts and implicit casts are translated internally to these functions
 // (including casts that involve *const ptrs)
-
-/// Cast a pointer to a thin pointer. Address and provenance are preserved; metadata is now thin. 
+/// Cast a pointer to a thin pointer. Address and provenance are preserved; metadata is now thin.
 pub open spec fn spec_cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> *mut U {
     ptr_mut_from_data(
         PtrData { addr: ptr@.addr, provenance: ptr@.provenance, metadata: Metadata::Thin },
     )
 }
 
-/// Cast a pointer to a thin pointer. Address and provenance are preserved; metadata is now thin. 
-/// 
+/// Cast a pointer to a thin pointer. Address and provenance are preserved; metadata is now thin.
+///
 /// Don't call this directly; use an `as`-cast instead.
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_ptr_to_thin_ptr")]
@@ -363,7 +362,7 @@ pub fn cast_ptr_to_thin_ptr<T: ?Sized, U: Sized>(ptr: *mut T) -> (result: *mut U
     ptr as *mut U
 }
 
-/// Cast a pointer to an array of length `N` to a slice pointer. 
+/// Cast a pointer to an array of length `N` to a slice pointer.
 /// Address and provenance are preserved; metadata has length `N`.
 pub open spec fn spec_cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> *mut [T] {
     ptr_mut_from_data(
@@ -371,9 +370,9 @@ pub open spec fn spec_cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [
     )
 }
 
-/// Cast a pointer to an array of length `N` to a slice pointer. 
+/// Cast a pointer to an array of length `N` to a slice pointer.
 /// Address and provenance are preserved; metadata has length `N`.
-/// 
+///
 /// Don't call this directly; use an `as`-cast instead.
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_array_ptr_to_slice_ptr")]
@@ -387,13 +386,13 @@ pub fn cast_array_ptr_to_slice_ptr<T, const N: usize>(ptr: *mut [T; N]) -> (resu
     ptr as *mut [T]
 }
 
-/// Cast a pointer to a `usize` by extracting just the address. 
+/// Cast a pointer to a `usize` by extracting just the address.
 pub open spec fn spec_cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> usize {
     ptr@.addr
 }
 
-/// Cast the address of a pointer to a `usize`. 
-/// 
+/// Cast the address of a pointer to a `usize`.
+///
 /// Don't call this directly; use an `as`-cast instead.
 #[verifier::external_body]
 #[cfg_attr(verus_keep_ghost, rustc_diagnostic_item = "verus::vstd::raw_ptr::cast_ptr_to_usize")]
@@ -409,10 +408,10 @@ pub fn cast_ptr_to_usize<T: Sized>(ptr: *mut T) -> (result: usize)
 
 //////////////////////////////////////
 // Reading and writing
-/// Calls [`core::ptr::write`] to write the value `v` to the memory location pointed to by `ptr`, 
-/// using the permission `perm`. 
+/// Calls [`core::ptr::write`] to write the value `v` to the memory location pointed to by `ptr`,
+/// using the permission `perm`.
 ///
-/// This does _not_ drop the contents. If the memory is already initialized, 
+/// This does _not_ drop the contents. If the memory is already initialized,
 /// this could leak allocations or resources, so care should be taken to not overwrite an object that should be dropped.
 /// This is appropriate for initializing uninitialized memory, or overwriting memory that has previously been [read](ptr_mut_read) from.
 #[inline(always)]
@@ -431,7 +430,7 @@ pub fn ptr_mut_write<T>(ptr: *mut T, Tracked(perm): Tracked<&mut PointsTo<T>>, v
     }
 }
 
-/// Calls [`core::ptr::read`] to read from the memory pointed to by `ptr`, 
+/// Calls [`core::ptr::read`] to read from the memory pointed to by `ptr`,
 /// using the permission `perm`.
 ///
 /// This leaves the data as "unitialized", i.e., performs a move.
@@ -454,7 +453,7 @@ pub fn ptr_mut_read<T>(ptr: *const T, Tracked(perm): Tracked<&mut PointsTo<T>>) 
     unsafe { core::ptr::read(ptr) }
 }
 
-/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety. 
+/// Equivalent to `&*ptr`, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
@@ -471,7 +470,7 @@ pub fn ptr_ref<T>(ptr: *const T, Tracked(perm): Tracked<&PointsTo<T>>) -> (v: &T
 }
 
 /* coming soon
-/// Equivalent to &mut *X, passing in a permission `perm` to ensure safety. 
+/// Equivalent to &mut *X, passing in a permission `perm` to ensure safety.
 /// The memory pointed to by `ptr` must be initialized.
 #[inline(always)]
 #[verifier::external_body]
@@ -607,7 +606,7 @@ pub tracked struct PointsToRaw {
 }
 
 impl PointsToRaw {
-    /// Provenance of the `PointsToRaw` permission; 
+    /// Provenance of the `PointsToRaw` permission;
     /// this corresponds to the original allocation and does not change.
     pub uninterp spec fn provenance(self) -> Provenance;
 
@@ -625,7 +624,7 @@ impl PointsToRaw {
         super::set_lib::set_int_range(start, start + len) <= self.dom()
     }
 
-    /// Constructs a `PointsToRaw` permission over an empty domain with the given provenance. 
+    /// Constructs a `PointsToRaw` permission over an empty domain with the given provenance.
     pub axiom fn empty(provenance: Provenance) -> (tracked points_to_raw: Self)
         ensures
             points_to_raw.dom() == Set::<int>::empty(),
@@ -633,7 +632,7 @@ impl PointsToRaw {
     ;
 
     /// Splits the current `PointsToRaw` permission into a permission with domain `range`
-    /// and a permission containing the rest of the domain, 
+    /// and a permission containing the rest of the domain,
     /// provided that `range` is contained in the domain of the current permission.
     pub axiom fn split(tracked self, range: Set<int>) -> (tracked res: (Self, Self))
         requires
@@ -645,8 +644,8 @@ impl PointsToRaw {
             res.1.dom() == self.dom().difference(range),
     ;
 
-    /// Joins two `PointsToRaw` permissions into one, 
-    /// provided that they have the same provenance. 
+    /// Joins two `PointsToRaw` permissions into one,
+    /// provided that they have the same provenance.
     /// The memory addresses of the new permission is the union of the domains of `self` and `other`.
     pub axiom fn join(tracked self, tracked other: Self) -> (tracked joined: Self)
         requires
@@ -657,10 +656,10 @@ impl PointsToRaw {
     ;
 
     /// Creates a `PointsTo<V>` permission from a `PointsToRaw` permission
-    /// with address `start` and the same provanance as the `PointsToRaw` permission, 
-    /// provided that `start` is aligned to `V` and 
+    /// with address `start` and the same provanance as the `PointsToRaw` permission,
+    /// provided that `start` is aligned to `V` and
     /// that the domain of the `PointsToRaw` permission matches the size of `V`.
-    /// 
+    ///
     /// In combination with PointsToRaw::empty(),
     /// this lets us create a PointsTo for a ZST for _any_ pointer (any address and provenance).
     /// (even null).
@@ -679,9 +678,9 @@ impl PointsToRaw {
 }
 
 impl<V> PointsTo<V> {
-    /// Creates a `PointsToRaw` from a `PointsTo<V>` with the same provenance 
+    /// Creates a `PointsToRaw` from a `PointsTo<V>` with the same provenance
     /// and a range corresponding to the address of the `PointsTo<V>` and size of `V`,
-    /// provided that the memory tracked by the `PointsTo<V>`is uninitialized. 
+    /// provided that the memory tracked by the `PointsTo<V>`is uninitialized.
     pub axiom fn into_raw(tracked self) -> (tracked points_to_raw: PointsToRaw)
         requires
             self.is_uninit(),
@@ -698,7 +697,7 @@ pub tracked struct Dealloc {
     no_copy: NoCopy,
 }
 
-/// Data associated with a `Dealloc` permission. 
+/// Data associated with a `Dealloc` permission.
 pub ghost struct DeallocData {
     pub addr: usize,
     pub size: nat,
@@ -772,10 +771,10 @@ pub fn allocate(size: usize, align: usize) -> (pt: (
     (p, Tracked::assume_new(), Tracked::assume_new())
 }
 
-/// Deallocate with the global allocator. 
-/// As per the [documented safety conditions on `dealloc`](https://doc.rust-lang.org/1.82.0/core/alloc/trait.GlobalAlloc.html#tymethod.dealloc), 
-/// the [`PointsToRaw`] permission ensures that `ptr` denotes a block of memory which is currently allocated 
-/// (and that it will not be accessed or deallocated again afterward), 
+/// Deallocate with the global allocator.
+/// As per the [documented safety conditions on `dealloc`](https://doc.rust-lang.org/1.82.0/core/alloc/trait.GlobalAlloc.html#tymethod.dealloc),
+/// the [`PointsToRaw`] permission ensures that `ptr` denotes a block of memory which is currently allocated
+/// (and that it will not be accessed or deallocated again afterward),
 /// while the [`Dealloc`] permission ensures that the layout is the same as the layout used to allocate this memory.
 /// In order to do so, the parameters of the [`PointsToRaw`] and [`Dealloc`] permissions must match the parameters of the deallocation.
 #[cfg(feature = "alloc")]
