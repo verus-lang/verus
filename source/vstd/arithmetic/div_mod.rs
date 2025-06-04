@@ -163,7 +163,7 @@ pub broadcast proof fn lemma_small_div_converse(x: int, d: int)
 }
 
 /// Proof that division of a positive integer by a positive integer
-/// less than or equal to it is nonzero. Specifically, 
+/// less than or equal to it is nonzero. Specifically,
 /// given that `x >= d`, we can conclude that `x / d > 0`.
 pub proof fn lemma_div_non_zero(x: int, d: int)
     requires
