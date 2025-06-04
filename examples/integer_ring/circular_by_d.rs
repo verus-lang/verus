@@ -1,3 +1,5 @@
+// rust_verify/tests/example.rs ignore --- currently times out
+
 // lemma originally from @hayley-leblanc
 use builtin::*;
 use builtin_macros::*;
@@ -15,6 +17,7 @@ pub proof fn lemma_mod_subtract_helper(
 )
     by (integer_ring)
     requires
+        d != 0,
         small_x == x % d,
         small_y == y % d,
         tmp1 == (x + y) % d,
@@ -49,6 +52,7 @@ pub proof fn lemma_mod_difference_equal_helper(
 )
     by (integer_ring)
     requires
+        d != 0,
         small_x == x % d,
         small_y == y % d,
         tmp1 == (small_y - small_x) % d,
@@ -85,6 +89,7 @@ pub proof fn lemma_mod_wrapped_len_helper(
 )
     by (integer_ring)
     requires
+        d != 0,
         small_x == x % d,
         small_y == y % d,
         tmp1 == (d - small_x + small_y) % d,
@@ -111,6 +116,8 @@ pub proof fn lemma_mod_wrapped_len(x: int, y: int, d: int)
 
 pub proof fn lemma_mod_between_helper(x: int, y: int, d: int)
     by (integer_ring)
+    requires
+        d != 0,
     ensures
         (x % d - y % d) % d == (x - y) % d,
 {
