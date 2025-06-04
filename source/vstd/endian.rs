@@ -1,24 +1,21 @@
-use core::marker::PhantomData;
-// use vstd::arithmetic::mul::lemma_mul_is_distributive_add_other_way;
-use vstd::arithmetic::power::*;
-use vstd::arithmetic::power2::*;
-use vstd::arithmetic::mul::*;
-use vstd::calc_macro::*;
 use vstd::prelude::*;
-use vstd::group_vstd_default;
 
 verus! {
 
-broadcast use group_vstd_default;
+
+mod traits {
+
+use vstd::prelude::*;
+use vstd::arithmetic::power2::*;
 
 /***** Traits *****/
 
 pub trait Base {
     spec fn base() -> nat;
 
-    proof fn base_min()
+    broadcast proof fn base_min()
         ensures
-            Self::base() > 1,
+            #[trigger] Self::base() > 1,
     ;
 }
 
@@ -38,6 +35,21 @@ pub trait CompatibleSmallerBaseFor<BIG: BasePow2>: BasePow2 {
             BIG::bits() > Self::bits() && BIG::bits() % Self::bits() == 0,
     ;
 }
+
+}
+
+mod nats {
+
+use vstd::prelude::*;
+use core::marker::PhantomData;
+use vstd::arithmetic::power::*;
+use vstd::arithmetic::power2::*;
+use vstd::arithmetic::mul::*;
+use vstd::calc_macro::*;
+use vstd::group_vstd_default;
+use crate::traits::*;
+
+broadcast use {group_vstd_default, Base::base_min, lemma_pow_positive};
 
 /***** Endian *****/
 
@@ -307,6 +319,7 @@ impl<B: Base> EndianNat<B> {
     {
         reveal(EndianNat::to_nat_left);
         reveal(EndianNat::to_nat_right);
+        reveal_with_fuel(pow, 2);
         if self.len() == 0 {
         } else {
             if self.drop_last().len() == 0 {
@@ -327,87 +340,48 @@ impl<B: Base> EndianNat<B> {
                 };
             } else {
                 // Dafny proof steps:  8
-                // Verus proof steps: 10
+                // Verus proof steps:  8
                 // Dafny proof hints:  5 (4 are one line)
-                // Verus proof hints:  9 (5 are one line)
+                // Verus proof hints:  5 (4 are one line)
                 calc! {
                     (==)
-                    self.to_nat_left() as int; {}                                           // ToNatLeft(xs);
+                    self.to_nat_left() as int; {}                                           // ToNatLeft(xs)
                     ((self.drop_last().to_nat_left() + self.last() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
-                    )) as nat) as int; {                                                    // ToNatLeft(DropLast(xs)) + Last(xs) * Pow(BASE(), |xs| - 1);
-                        lemma_pow_positive(B::base() as int, (self.len() - 1) as nat);      // Lack of ensures for B::base() spec fn
+                    )) as nat) as int; {                                                    // ToNatLeft(DropLast(xs)) + Last(xs) * Pow(BASE(), |xs| - 1)
                         self.drop_last().nat_left_eq_nat_right_little();                    // { inductive call, just like in Dafny }
                     }
                     self.drop_last().to_nat_right() + self.last() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
-                    ); {}                                                                   // ToNatRight(DropLast(xs)) + Last(xs) * Pow(BASE(), |xs| - 1);
+                    ); {}                                                                   // ToNatRight(DropLast(xs)) + Last(xs) * Pow(BASE(), |xs| - 1)
                     self.drop_last().drop_first().to_nat_right() * B::base()
                         + self.drop_last().first() + self.last() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
-                    ); {                                                                    // ToNatRight(DropFirst(DropLast(xs))) * BASE() + First(xs) + Last(xs) * Pow(BASE(), |xs| - 1);
+                    ); {                                                                    // ToNatRight(DropFirst(DropLast(xs))) * BASE() + First(xs) + Last(xs) * Pow(BASE(), |xs| - 1)
                         self.drop_last().drop_first().nat_left_eq_nat_right_little();       // { inductive call, just like in Dafny }
                     }
                     self.drop_last().drop_first().to_nat_left() * B::base()
                         + self.drop_last().first() + self.last() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
-                    ); {                                                                    // ToNatLeft(DropFirst(DropLast(xs))) * BASE() + First(xs) + Last(xs) * Pow(BASE(), |xs| - 1);
+                    ); {                                                                    // ToNatLeft(DropFirst(DropLast(xs))) * BASE() + First(xs) + Last(xs) * Pow(BASE(), |xs| - 1)
   
-                        assert(self.drop_last().drop_first() == self.drop_first().drop_last()); // { This showed up in Dafny, but combined with a lemma call, it completed the next two steps}
-                        //broadcast use group_mul_properties;
-                    }
-                    self.drop_first().drop_last().to_nat_left() * B::base() + self.first()
-                        + self.last() * pow(B::base() as int, (self.len() - 1) as nat); {
-
-                        assert(self.last() * pow(B::base() as int, (self.len() - 2) as nat)
-                            * B::base() == self.last() * (pow(
-                            B::base() as int,
-                            (self.len() - 2) as nat,
-                        ) * B::base())) by {
-                            broadcast use group_mul_properties;                                 // Part of the previous proof step in Dafny; here we make the relation it proves explicit
-
-                        }
-                        assert(pow(B::base() as int, (self.len() - 1) as nat) == pow(
-                            B::base() as int,
-                            (self.len() - 2) as nat,
-                        ) * B::base()) by {
-                            assert(B::base() == pow(B::base() as int, 1)) by {
-                                lemma_pow1(B::base() as int);                                   // Needed this b/c pow only has 1 fuel.  Could also be fixed via reveal_with_fuel(pow, 2);
-                            }
-                            lemma_pow_adds(B::base() as int, (self.len() - 2) as nat, 1);      // Not clear why this is needed.  Doesn't help to add reveal_with_fuel(pow, 2); Ah, it does work if you also call group_mul_properties
-                        }
+                        assert(self.drop_last().drop_first() == self.drop_first().drop_last()); // { Same as Dafny }
+                        broadcast use group_mul_properties;
                     }
                     self.drop_first().drop_last().to_nat_left() * B::base() + (self.last() * pow(
                         B::base() as int,
                         (self.len() - 2) as nat,
-                    )) * B::base() + self.first(); {                                        // ToNatLeft(DropLast(DropFirst(xs))) * BASE() + First(xs) + Last(xs) * Pow(BASE(), |xs| - 2) * BASE();
+                    )) * B::base() + self.first(); {                                        // ToNatLeft(DropLast(DropFirst(xs))) * BASE() + First(xs) + Last(xs) * Pow(BASE(), |xs| - 2) * BASE()
                         broadcast use lemma_mul_is_distributive_add_other_way;              // { Same proof hint as in Dafny }
-//                        lemma_mul_is_distributive_add_other_way(
-//                            B::base() as int,
-//                            self.drop_first().drop_last().to_nat_left() as int,
-//                            self.last() * pow(B::base() as int, (self.len() - 2) as nat),
-//                        );
                     }
-                    (self.drop_first().drop_last().to_nat_left() + self.last() * pow(
-                        B::base() as int,
-                        (self.len() - 2) as nat,
-                    )) * B::base() + self.first(); {
-                        assert((self.drop_first().drop_last().to_nat_left() + self.last() * pow(
-                            B::base() as int,
-                            (self.len() - 2) as nat,
-                        )) == self.drop_first().to_nat_left()) by {
-                            lemma_pow_positive(B::base() as int, (self.len() - 2) as nat);      // Unclear why this is needed.  I think it's b/c in to_nat_right, we cast to nat, so we have to show the pre-cast version isn't negative
-                        };  // If we just expand the definition, we get:
-                            //    self.drop_first().to_nat_left() == self.drop_first().drop_last().to_nat_left() + self.drop_first().last() * pow(B::base() as int, (self.drop_first().len() - 1) as nat)
-                    }
-                    (self.drop_first().to_nat_left() * B::base() + self.first()) as int; {  // ToNatLeft(DropFirst(xs)) * BASE() + First(xs);
+                    (self.drop_first().to_nat_left() * B::base() + self.first()) as int; {  // ToNatLeft(DropFirst(xs)) * BASE() + First(xs)
                         self.drop_first().nat_left_eq_nat_right_little();                   // { Same proof hint as in Dafny }
                     }
-                    self.to_nat_right() as int;                                             // ToNatRight(xs);
+                    self.to_nat_right() as int;                                             // ToNatRight(xs)
                 }
             }
         }
@@ -951,5 +925,7 @@ pub proof fn lemma_to_nat_bitwise_and(x: EndianNat<u8>, y: EndianNat<u8>)
     }
 }
 
+} // mod nats
+ 
 } // verus!
 
