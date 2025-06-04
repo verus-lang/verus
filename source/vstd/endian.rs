@@ -22,9 +22,9 @@ pub trait Base {
 pub trait BasePow2: Base {
     spec fn bits() -> nat;
 
-    proof fn bits_to_base()
+    broadcast proof fn bits_to_base()
         ensures
-            Self::bits() > 1,
+            #[trigger] Self::bits() > 1,
             Self::base() == pow2(Self::bits()),
     ;
 }
@@ -49,7 +49,7 @@ use vstd::calc_macro::*;
 use vstd::group_vstd_default;
 use crate::traits::*;
 
-broadcast use {group_vstd_default, Base::base_min, lemma_pow_positive};
+broadcast use {group_vstd_default, Base::base_min, BasePow2::bits_to_base, lemma_pow_positive};
 
 /***** Endian *****/
 
@@ -191,15 +191,7 @@ impl<B: Base> EndianNat<B> {
         if self.len() == 0 {
             0
         } else {
-            match self.endian {
-                Endian::Little => self.drop_first().to_nat_right() * B::base() + self.first(),
-                Endian::Big => {
-                    (self.drop_first().to_nat_right() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    )) as nat
-                }
-            }
+            self.drop_least().to_nat_right() * B::base() + self.least()
         }
     }
 
@@ -210,28 +202,17 @@ impl<B: Base> EndianNat<B> {
         if self.len() == 0 {
             0
         } else {
-            match self.endian {
-                Endian::Little => {
-                    (self.drop_last().to_nat_left() + self.last() * pow(
+            (self.drop_most().to_nat_left() + self.most() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
-                    )) as nat
-                }
-                Endian::Big => self.drop_last().to_nat_left() * B::base() + self.last()
-            }
+            )) as nat
         }
     }
 
-    // Provides default version of to_nat() which hides details of the endianness
-    #[verifier::opaque]
+    // Provides default version of to_nat() which chooses a direction
     pub open spec fn to_nat(self) -> nat
-        decreases self.len()
     {
-        if self.len() == 0 {
-            0
-        } else { 
-            self.drop_least().to_nat() * B::base() + self.least()
-        }
+        self.to_nat_right()
     }
 
     pub proof fn to_nat_upper_bound(self)
@@ -242,26 +223,34 @@ impl<B: Base> EndianNat<B> {
             self.to_nat() < pow(B::base() as int, self.len())
         decreases self.len(),
     {
-        reveal(EndianNat::to_nat);
+        reveal(EndianNat::to_nat_right);
         if self.len() == 1 {
             broadcast use lemma_pow1;
+            calc! {
+                (==)
+                self.to_nat(); {}
+                self.to_nat_right(); {}
+                self.drop_least().to_nat_right() * B::base() + self.least(); {}
+                0 * B::base() + self.least(); {}
+                self.least();
+            }
         } else {
             self.drop_least().to_nat_upper_bound();
 
             calc!{
                 (<)
-                self.to_nat(); 
+                self.to_nat_right(); 
                 (==) {}
-                self.drop_least().to_nat() * B::base() + self.least(); 
+                self.drop_least().to_nat_right() * B::base() + self.least(); 
                 (<) {}
-                self.drop_least().to_nat() * B::base() + B::base(); 
+                self.drop_least().to_nat_right() * B::base() + B::base(); 
                 (<=) {
                     broadcast use 
                         lemma_mul_inequality,
                         lemma_mul_is_distributive_sub_other_way;
-                    // assert(self.drop_least().to_nat() < pow(B::base() as int, (self.len() - 1) as nat));
-                    // assert(self.drop_least().to_nat() <= (pow(B::base() as int, (self.len() - 1) as nat) - 1) as nat);
-                    // assert(self.drop_least().to_nat() * B::base() <= (pow(B::base() as int, (self.len() - 1) as nat) - 1) * B::base() as nat);
+                    // assert(self.drop_least().to_nat_right() < pow(B::base() as int, (self.len() - 1) as nat));
+                    // assert(self.drop_least().to_nat_right() <= (pow(B::base() as int, (self.len() - 1) as nat) - 1) as nat);
+                    // assert(self.drop_least().to_nat_right() * B::base() <= (pow(B::base() as int, (self.len() - 1) as nat) - 1) * B::base() as nat);
                     assert((pow(B::base() as int, (self.len() - 1) as nat) - 1) * B::base() as nat == (pow(B::base() as int, (self.len() - 1) as nat) * B::base() - B::base()) as nat);
                 }
                 (pow(B::base() as int, (self.len() - 1) as nat) * B::base() - B::base() + B::base()) as nat;
@@ -283,62 +272,51 @@ impl<B: Base> EndianNat<B> {
         ensures
             self.to_nat() == self.to_nat_right() == self.to_nat_left(),
     {
-        self.to_nat_eq();
-        match self.endian {
-            Endian::Little => self.nat_left_eq_nat_right_little(),
-            Endian::Big => self.nat_left_eq_nat_right_big(),
-        }
-    }
-
-    pub proof fn to_nat_eq(self)
-        requires
-            self.wf(),
-        ensures
-            self.endian == Endian::Little ==> self.to_nat() == self.to_nat_right(),
-            self.endian == Endian::Big ==> self.to_nat() == self.to_nat_left(),
-        decreases self.len(),
-    {
-        reveal(EndianNat::to_nat_right);
-        reveal(EndianNat::to_nat_left);
         reveal(EndianNat::to_nat);
-
-        if self.len() == 0 {
-        } else {
-            self.drop_least().to_nat_eq();
-        }
+        self.nat_left_eq_nat_right();
     }
 
-    // TODO: How many of the triggering issues that arose with the broadcast pow properties are due to having mul_recursive and pow not opaque?
-    pub proof fn nat_left_eq_nat_right_little(self)
+    pub proof fn nat_left_eq_nat_right(self)
         requires
             self.wf(),
-            self.endian == Endian::Little,
         ensures
             self.to_nat_left() == self.to_nat_right(),
         decreases self.len(),
     {
-        reveal(EndianNat::to_nat_left);
-        reveal(EndianNat::to_nat_right);
         reveal_with_fuel(pow, 2);
         if self.len() == 0 {
+            assert(self.to_nat_left() == self.to_nat_right()) by {
+                reveal_with_fuel(EndianNat::to_nat_left, 1);
+                reveal_with_fuel(EndianNat::to_nat_right, 1);
+            }
         } else {
-            if self.drop_last().len() == 0 {
-                // This proof is similar to Dafny's in that it uses the same number of steps. 
-                // However, the first hint below isn't needed for Dafny, since Dafny
-                // provides 2 fuel by default, while Verus provides 1.
-                calc! {
-                    (==)
-                    self.to_nat_left(); {
-                        assert(self.drop_last().to_nat_left() == 0);
+            if self.drop_most().len() == 0 {
+                assert(self.to_nat_left() == self.to_nat_right()) by {
+                    reveal_with_fuel(EndianNat::to_nat_left, 1);
+                    reveal_with_fuel(EndianNat::to_nat_right, 1);
+                    calc! {
+                        (==)
+                        self.to_nat_left() as int; { }
+                        ((self.drop_most().to_nat_left() + self.most() * pow(
+                            B::base() as int,
+                            (self.len() - 1) as nat,
+                        )) as nat) as int; {
+                        }
+                        ((0 + self.most() * pow(
+                            B::base() as int,
+                            (self.len() - 1) as nat,
+                        )) as nat) as int; {
+                        }
+                        self.most() as int; { }
+                        self.least() as int; {}
+                        (0 * B::base() + self.least()) as int; {}
+                        (self.drop_least().to_nat_right() * B::base() + self.least()) as int; {}
+                        self.to_nat_right() as int;
                     }
-                    (self.last() * pow(B::base() as int, (self.len() - 1) as nat)) as nat; {}
-                    self.last(); {}
-                    self.first(); {
-                        assert(self.drop_first().to_nat_right() == 0);
-                    }
-                    self.to_nat_right();
                 };
             } else {
+                reveal_with_fuel(EndianNat::to_nat_left, 1);
+                reveal_with_fuel(EndianNat::to_nat_right, 1);
                 // Dafny proof steps:  8
                 // Verus proof steps:  8
                 // Dafny proof hints:  5 (4 are one line)
@@ -346,166 +324,56 @@ impl<B: Base> EndianNat<B> {
                 calc! {
                     (==)
                     self.to_nat_left() as int; {}                                           // ToNatLeft(xs)
-                    ((self.drop_last().to_nat_left() + self.last() * pow(
+                    ((self.drop_most().to_nat_left() + self.most() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
                     )) as nat) as int; {                                                    // ToNatLeft(DropLast(xs)) + Last(xs) * Pow(BASE(), |xs| - 1)
-                        self.drop_last().nat_left_eq_nat_right_little();                    // { inductive call, just like in Dafny }
+                        self.drop_most().nat_left_eq_nat_right();                    // { inductive call, just like in Dafny }
                     }
-                    self.drop_last().to_nat_right() + self.last() * pow(
+                    self.drop_most().to_nat_right() + self.most() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
-                    ); {}                                                                   // ToNatRight(DropLast(xs)) + Last(xs) * Pow(BASE(), |xs| - 1)
-                    self.drop_last().drop_first().to_nat_right() * B::base()
-                        + self.drop_last().first() + self.last() * pow(
+                    ); { }                                                                   // ToNatRight(DropLast(xs)) + Last(xs) * Pow(BASE(), |xs| - 1)
+                    self.drop_most().drop_least().to_nat_right() * B::base()
+                        + self.drop_most().least() + self.most() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
                     ); {                                                                    // ToNatRight(DropFirst(DropLast(xs))) * BASE() + First(xs) + Last(xs) * Pow(BASE(), |xs| - 1)
-                        self.drop_last().drop_first().nat_left_eq_nat_right_little();       // { inductive call, just like in Dafny }
+                        self.drop_most().drop_least().nat_left_eq_nat_right();       // { inductive call, just like in Dafny }
                     }
-                    self.drop_last().drop_first().to_nat_left() * B::base()
-                        + self.drop_last().first() + self.last() * pow(
+                    self.drop_most().drop_least().to_nat_left() * B::base()
+                        + self.drop_most().least() + self.most() * pow(
                         B::base() as int,
                         (self.len() - 1) as nat,
                     ); {                                                                    // ToNatLeft(DropFirst(DropLast(xs))) * BASE() + First(xs) + Last(xs) * Pow(BASE(), |xs| - 1)
-  
-                        assert(self.drop_last().drop_first() == self.drop_first().drop_last()); // { Same as Dafny }
+                        assert(self.drop_most().drop_least() == self.drop_least().drop_most()); // { Same as Dafny }
+                        // Verus needs some help seeing the two possible unfoldings here
+                        assert(self.drop_most().least() == self.least()) by {
+                            assert(self.drop_last().first() == self.first());
+                            assert(self.drop_first().last() == self.last());
+                        };
+                        assert(pow(B::base() as int, (self.len() - 1) as nat) == pow(B::base() as int, (self.len() - 2) as nat) * B::base()) by {
+                            broadcast use group_mul_properties;
+                        };
+                    }                                                                       // We introduce an additional step here (compared to Dafny)
+                    self.drop_least().drop_most().to_nat_left() * B::base()
+                        + self.least() + self.most() * (pow(
+                        B::base() as int,
+                        (self.len() - 2) as nat,
+                    ) * B::base()); {                                                                    // ToNatLeft(DropFirst(DropLast(xs))) * BASE() + First(xs) + Last(xs) * Pow(BASE(), |xs| - 1)
                         broadcast use group_mul_properties;
                     }
-                    self.drop_first().drop_last().to_nat_left() * B::base() + (self.last() * pow(
+                    self.drop_least().drop_most().to_nat_left() * B::base() 
+                      + (self.most() * pow(
                         B::base() as int,
                         (self.len() - 2) as nat,
-                    )) * B::base() + self.first(); {                                        // ToNatLeft(DropLast(DropFirst(xs))) * BASE() + First(xs) + Last(xs) * Pow(BASE(), |xs| - 2) * BASE()
+                    )) * B::base() + self.least(); {                                        // ToNatLeft(DropLast(DropFirst(xs))) * BASE() + First(xs) + Last(xs) * Pow(BASE(), |xs| - 2) * BASE()
                         broadcast use lemma_mul_is_distributive_add_other_way;              // { Same proof hint as in Dafny }
                     }
-                    (self.drop_first().to_nat_left() * B::base() + self.first()) as int; {  // ToNatLeft(DropFirst(xs)) * BASE() + First(xs)
-                        self.drop_first().nat_left_eq_nat_right_little();                   // { Same proof hint as in Dafny }
+                    (self.drop_least().to_nat_left() * B::base() + self.least()) as int; {  // ToNatLeft(DropFirst(xs)) * BASE() + First(xs)
+                        self.drop_least().nat_left_eq_nat_right();                   // { Same proof hint as in Dafny }
                     }
                     self.to_nat_right() as int;                                             // ToNatRight(xs)
-                }
-            }
-        }
-    }
-
-    // TODO: How many of the triggering issues that arose with the broadcast pow properties are due to having mul_recursive and pow not opaque?
-    pub proof fn nat_left_eq_nat_right_big(self)
-        requires
-            self.wf(),
-            self.endian == Endian::Big,
-        ensures
-            self.to_nat_left() == self.to_nat_right(),
-        decreases self.len(),
-    {
-        reveal(EndianNat::to_nat_left);
-        reveal(EndianNat::to_nat_right);
-        if self.len() == 0 {
-        } else {
-            if self.drop_first().len() == 0 {
-                // This proof is similar to Dafny's in that it uses the same number of steps and hints
-                // However, the first hint below isn't needed for Dafny, since Dafny
-                // provides 2 fuel by default, while Verus provides 1.
-                // The Dafny proof requires a reveal(pow) instead, 
-                // because they hide pow, which we should probably do as well.
-                calc! {
-                    (==)
-                    self.to_nat_right(); {
-                        assert(self.drop_first().to_nat_right() == 0);
-                    }
-                    (self.first() * pow(B::base() as int, (self.len() - 1) as nat)) as nat; {}
-                    self.first(); {}
-                    self.last(); {
-                        assert(self.drop_last().to_nat_left() == 0);
-                        assert(0 * B::base() == 0);
-                    }
-                    self.to_nat_left();
-                };
-            } else {
-                // Dafny proof steps:  8
-                // Verus proof steps: 11
-                // Dafny proof hints:  5 (4 are one line)
-                // Verus proof hints:  9 (5 are one line)
-                calc! {
-                    (==)
-                    self.to_nat_right() as int; {}
-                    ((self.drop_first().to_nat_right() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    )) as nat) as int; {
-                        assert(self.first() >= 0);
-                        assert(self.len() > 1);
-                        lemma_pow_positive(B::base() as int, (self.len() - 1) as nat);
-                        assert(pow(B::base() as int, (self.len() - 1) as nat) >= 0);
-                    }
-                    self.drop_first().to_nat_right() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    ); {
-                        self.drop_first().nat_left_eq_nat_right_big();
-                    }
-                    self.drop_first().to_nat_left() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    ); {}
-                    self.drop_first().drop_last().to_nat_left() * B::base()
-                        + self.drop_first().last() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    ); {
-                        self.drop_first().drop_last().nat_left_eq_nat_right_big();
-                    }
-                    self.drop_first().drop_last().to_nat_right() * B::base()
-                        + self.drop_first().last() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 1) as nat,
-                    ); {
-                        assert(self.drop_first().drop_last() == self.drop_last().drop_first());
-                        //broadcast use group_mul_properties;
-                    }
-                    self.drop_last().drop_first().to_nat_right() * B::base() + self.last()
-                        + self.first() * pow(B::base() as int, (self.len() - 1) as nat); {
-                        assert(self.first() * pow(B::base() as int, (self.len() - 2) as nat)
-                            * B::base() == self.first() * (pow(
-                            B::base() as int,
-                            (self.len() - 2) as nat,
-                        ) * B::base())) by {
-                            broadcast use vstd::arithmetic::mul::lemma_mul_is_associative;
-
-                        }
-                        assert(pow(B::base() as int, (self.len() - 1) as nat) == pow(
-                            B::base() as int,
-                            (self.len() - 2) as nat,
-                        ) * B::base()) by {
-                            assert(B::base() == pow(B::base() as int, 1)) by {
-                                lemma_pow1(B::base() as int);
-                            }
-                            lemma_pow_adds(B::base() as int, (self.len() - 2) as nat, 1);
-                        }
-                    }
-                    self.drop_last().drop_first().to_nat_right() * B::base() + (self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 2) as nat,
-                    )) * B::base() + self.last(); {
-                        lemma_mul_is_distributive_add_other_way(
-                            B::base() as int,
-                            self.drop_last().drop_first().to_nat_right() as int,
-                            self.first() * pow(B::base() as int, (self.len() - 2) as nat),
-                        );
-                    }
-                    (self.drop_last().drop_first().to_nat_right() + self.first() * pow(
-                        B::base() as int,
-                        (self.len() - 2) as nat,
-                    )) * B::base() + self.last(); {
-                        assert((self.drop_last().drop_first().to_nat_right() + self.first() * pow(
-                            B::base() as int,
-                            (self.len() - 2) as nat,
-                        )) == self.drop_last().to_nat_right()) by {
-                            lemma_pow_positive(B::base() as int, (self.len() - 2) as nat);
-                        };
-                    }
-                    (self.drop_last().to_nat_right() * B::base() + self.last()) as int; {
-                        self.drop_last().nat_left_eq_nat_right_big();
-                    }
-                    self.to_nat_left() as int;
                 }
             }
         }
@@ -562,8 +430,6 @@ impl<B: Base> EndianNat<B> {
         assert(forall|x| x != 0 ==> #[trigger] (0int / x) == 0);
         broadcast use vstd::arithmetic::power::lemma_pow_multiplies;
 
-        B::bits_to_base();
-
         calc! {
             (==)
             BIG::bits(); {
@@ -589,14 +455,12 @@ impl<B: Base> EndianNat<B> {
                 vstd::arithmetic::power2::lemma_pow2(BIG::bits());
             }
             pow2(BIG::bits()) as int; {
-                BIG::bits_to_base();
             }
             BIG::base() as int;
         }
 
         B::compatible();
         assert((BIG::bits() / B::bits()) != 0);
-        BIG::bits_to_base();
 
     }
 
@@ -887,7 +751,7 @@ pub proof fn lemma_to_nat_bitwise_and(x: EndianNat<u8>, y: EndianNat<u8>)
         forall |i| 0 <= i < x.len() ==> #[trigger] x.index(i) as u8 & y.index(i) as u8 == 0,
     decreases x.len(),
 {
-    reveal(EndianNat::to_nat);
+    reveal(EndianNat::to_nat_right);
 
     if x.len() == 0 || x.len() == 1 {}
     else {
@@ -928,4 +792,5 @@ pub proof fn lemma_to_nat_bitwise_and(x: EndianNat<u8>, y: EndianNat<u8>)
 } // mod nats
  
 } // verus!
+
 
