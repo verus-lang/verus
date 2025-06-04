@@ -261,7 +261,7 @@ test_verify_one_file! {
             let ptr1 = ptr1 as *mut u32;
 
             ptr_mut_write(ptr1, Tracked(&mut token1), 7);
-            ptr_mut_write(ptr1, Tracked(&mut token1), 5); 
+            ptr_mut_write(ptr1, Tracked(&mut token1), 5);
         }
     } => Ok(())
 }
