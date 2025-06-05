@@ -45,4 +45,5 @@ unexpected_cfgs = { level = "warn", check-cfg = [
   'cfg(exhaustive)',
   'cfg(prettyplease_debug)',
   'cfg(prettyplease_debug_indent)',
+  'cfg(test)',
 ] }
