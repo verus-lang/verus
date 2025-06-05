@@ -339,7 +339,8 @@ impl<K, V> Map<K, V> {
         broadcast use group_map_properties;
 
         if self.submap_of(m) && m.submap_of(self) {
-            assert_maps_equal!(self == m);
+            assert(self.dom() == m.dom());
+            assert(self == m);
         }
     }
 
@@ -377,7 +378,7 @@ impl<K, V> Map<K, V> {
         } else {
             self.remove_keys(r).insert(k, v)
         };
-        assert_maps_equal!(lhs == rhs);
+        assert(lhs == rhs);
     }
 
     /// Filtering keys after inserting `(k, v)` leaves the result unchanged when `p(k)` is false,
@@ -410,7 +411,7 @@ impl<K, V> Map<K, V> {
         } else {
             self.filter_keys(p)
         };
-        assert_maps_equal!(lhs == rhs);
+        assert(lhs == rhs);
     }
 }
 
@@ -521,11 +522,9 @@ impl<K, V> Map<Seq<K>, V> {
 
         let lhs = self.insert(prefix + k, v).prefixed_entries(prefix);
         let rhs = self.prefixed_entries(prefix).insert(k, v);
-        assert_maps_equal!(lhs == rhs, key => {
-        if key != k {
-            assert(prefix.is_prefix_of(prefix + key));
+        assert(lhs =~= rhs) by {
+            assert(forall|key| key != k ==> prefix.is_prefix_of(#[trigger] (prefix + key)));
         }
-    });
     }
 
     /// Taking the entries that share `prefix` commutes with `union_prefer_right`:
@@ -560,7 +559,7 @@ impl<K, V> Map<Seq<K>, V> {
 
         let lhs = self.union_prefer_right(m).prefixed_entries(prefix);
         let rhs = self.prefixed_entries(prefix).union_prefer_right(m.prefixed_entries(prefix));
-        assert_maps_equal!(lhs == rhs);
+        assert(lhs == rhs);
     }
 }
 
