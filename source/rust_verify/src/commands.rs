@@ -160,7 +160,7 @@ impl<'a> OpGenerator<'a> {
         for node in self.ctx.global.func_call_graph.get_scc_nodes(&scc_rep) {
             if let Node::TraitImpl(ImplPath::TraitImplPath(impl_path)) = node {
                 if let Some(imp) = self.trait_impl_map.get(&impl_path) {
-                    let cmds = vir::traits::trait_impl_to_air(&self.ctx, imp);
+                    let cmds = vir::traits::trait_impl_to_air(&self.ctx, imp)?;
                     ops.push(Op::context(ContextOp::TraitImpl, cmds, None));
                 }
             }
