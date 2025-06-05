@@ -36,25 +36,12 @@ impl<A> Set<A> {
             self.finite(),
         decreases self.len(),
         when self.finite()
-        via Self::decreases_proof
     {
         if self.len() == 0 {
             Seq::<A>::empty()
         } else {
             let x = self.choose();
             Seq::<A>::empty().push(x) + self.remove(x).to_seq()
-        }
-    }
-
-    // Helper function to prove termination of function to_seq
-    #[via_fn]
-    proof fn decreases_proof(self) {
-        broadcast use group_set_properties;
-
-        if self.len() > 0 {
-            let x = self.choose();
-            assert(self.contains(x));
-            assert(self.remove(x).len() < self.len());
         }
     }
 
@@ -78,8 +65,11 @@ impl<A> Set<A> {
             self.finite(),
         decreases self.len(),
         when self.finite()
-        via Self::prove_decrease_min_unique
     {
+        proof {
+            broadcast use group_set_properties;
+
+        }
         if self.len() <= 1 {
             self.choose()
         } else {
@@ -90,17 +80,6 @@ impl<A> Set<A> {
             } else {
                 x
             }
-        }
-    }
-
-    #[via_fn]
-    proof fn prove_decrease_min_unique(self, r: spec_fn(A, A) -> bool) {
-        broadcast use group_set_properties;
-
-        if self.len() > 0 {
-            let x = self.choose();
-            assert(self.contains(x));
-            assert(self.remove(x).len() < self.len());
         }
     }
 
@@ -167,8 +146,11 @@ impl<A> Set<A> {
             self.len() > 0,
         decreases self.len(),
         when self.finite()
-        via Self::prove_decrease_max_unique
     {
+        proof {
+            broadcast use group_set_properties;
+
+        }
         if self.len() <= 1 {
             self.choose()
         } else {
@@ -180,12 +162,6 @@ impl<A> Set<A> {
                 x
             }
         }
-    }
-
-    #[via_fn]
-    proof fn prove_decrease_max_unique(self, r: spec_fn(A, A) -> bool) {
-        broadcast use group_set_properties;
-
     }
 
     /// Proof of correctness and expected behavior for `Set::find_unique_maximal`.
