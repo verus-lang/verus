@@ -1220,12 +1220,20 @@ requires s.finite(),
     }
 }
 
+pub broadcast proof fn lemma_set_int_range_ensures_1<const FINITE: bool>(lo: int, hi: int)
+ensures
+    #![trigger(GSet::<int, FINITE>::int_range(lo, hi))]
+    forall |i: int| #[trigger] GSet::<int, FINITE>::int_range(lo, hi).contains(i) <==> lo <= i && i < hi,
+decreases hi - lo,
+{
+}
+
 pub broadcast proof fn lemma_set_int_range_ensures<const FINITE: bool>(lo: int, hi: int)
 requires
     lo <= hi,
 ensures
     #![trigger(GSet::<int, FINITE>::int_range(lo, hi))]
-    forall |i: int| #[trigger] GSet::<int, FINITE>::int_range(lo, hi).contains(i) <==> lo <= i && i < hi,
+:   forall |i: int| #[trigger] GSet::<int, FINITE>::int_range(lo, hi).contains(i) <==> lo <= i && i < hi,
     GSet::<int, FINITE>::int_range(lo, hi).len() == hi - lo,
     GSet::<int, FINITE>::int_range(lo, hi).finite(),
 decreases hi - lo,
@@ -1378,6 +1386,7 @@ pub broadcast group group_set_lemmas {
     lemma_set_map_finite,
     lemma_set_map_len,
     lemma_set_map_insert,
+    lemma_set_int_range_ensures_1,
     lemma_set_int_range_ensures,
     lemma_mk_map_domain,
     lemma_mk_map_index,
