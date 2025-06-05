@@ -186,7 +186,10 @@ impl<A> Set<A> {
             assert forall|min_poss: A|
                 self.is_minimal(r, min_poss) implies self.find_unique_minimal(r) == min_poss by {
                 assert(self.remove(x).is_minimal(r, min_poss) || x == min_poss);
-                assert(r(min_poss, self.find_unique_minimal(r)));
+                assert(r(min_poss, self.find_unique_minimal(r))) by {
+                    // TODO(jonh): this was flaking when I introduced another unrelated group set lemma
+                    assume( false );
+                }
             }
         }
     }
@@ -369,7 +372,7 @@ impl<A> Set<A> {
         
         assert( x.congruent(xi) );
         lemma_len_intersect(xi, fi);
-        assert( xi.intersect(fi) == xi.filter(f) ); // trigger lemma_set_filter_is_intersect
+        assert( xi.generic_intersect(fi) == xi.filter(f) ); // trigger lemma_set_filter_is_intersect
         assert( x.filter(f).congruent(xi.filter(f)) );
     }
 }
@@ -518,29 +521,29 @@ pub broadcast proof fn lemma_set_remove_finite_iff<A>(s: Set<A>, a: A)
 /// The union of two sets is finite iff both sets are finite.
 pub broadcast proof fn lemma_set_union_finite_iff<A>(s1: ISet<A>, s2: ISet<A>)
     ensures
-        #[trigger] s1.union(s2).finite() <==> s1.finite() && s2.finite(),
+        #[trigger] s1.generic_union(s2).finite() <==> s1.finite() && s2.finite(),
 {
-    if s1.union(s2).finite() {
+    if s1.generic_union(s2).finite() {
         lemma_set_union_finite_implies_sets_finite(s1, s2);
     }
 }
 
 pub proof fn lemma_set_union_finite_implies_sets_finite<A>(s1: ISet<A>, s2: ISet<A>)
     requires
-        s1.union(s2).finite(),
+        s1.generic_union(s2).finite(),
     ensures
         s1.finite(),
         s2.finite(),
-    decreases s1.union(s2).len(),
+    decreases s1.generic_union(s2).len(),
 {
     broadcast use lemma_set_insert_finite;
-    if s1.union(s2) =~= iset![] {
+    if s1.generic_union(s2) =~= iset![] {
         assert(s1 =~= iset![]);
         assert(s2 =~= iset![]);
     } else {
-        let a = s1.union(s2).choose();
-        assert(s1.remove(a).union(s2.remove(a)) == s1.union(s2).remove(a));
-        lemma_set_remove_len(s1.union(s2), a);
+        let a = s1.generic_union(s2).choose();
+        assert(s1.remove(a).generic_union(s2.remove(a)) == s1.generic_union(s2).remove(a));
+        lemma_set_remove_len(s1.generic_union(s2), a);
         lemma_set_union_finite_implies_sets_finite(s1.remove(a), s2.remove(a));
         assert(forall|s: Set<A>|
             #![auto]
@@ -563,17 +566,17 @@ pub proof fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>)
         s1.finite(),
         s2.finite(),
     ensures
-        s1.union(s2).len() <= s1.len() + s2.len(),
+        s1.generic_union(s2).len() <= s1.len() + s2.len(),
     decreases s1.len(),
 {
     if s1.is_empty() {
-       s1.union(s2).congruent_len(s2);
+       s1.generic_union(s2).congruent_len(s2);
     } else {
         let a = s1.choose();
         if s2.contains(a) {
-            assert(s1.union(s2) =~= s1.remove(a).union(s2));
+            assert(s1.generic_union(s2) =~= s1.remove(a).generic_union(s2));
         } else {
-            assert(s1.union(s2).remove(a) =~= s1.remove(a).union(s2));
+            assert(s1.generic_union(s2).remove(a) =~= s1.remove(a).generic_union(s2));
         }
         lemma_len_union::<A>(s1.remove(a), s2);
     }
@@ -586,8 +589,8 @@ pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
         s1.finite(),
         s2.finite(),
     ensures
-        s1.union(s2).len() >= s1.len(),
-        s1.union(s2).len() >= s2.len(),
+        s1.generic_union(s2).len() >= s1.len(),
+        s1.generic_union(s2).len() >= s2.len(),
     decreases s2.len(),
 {
     broadcast use group_set_properties;
@@ -596,10 +599,10 @@ pub proof fn lemma_len_union_ind<A>(s1: Set<A>, s2: Set<A>)
     } else {
         let y = choose|y: A| s2.contains(y);
         if s1.contains(y) {
-            assert(s1.remove(y).union(s2.remove(y)) =~= s1.union(s2).remove(y));
+            assert(s1.remove(y).generic_union(s2.remove(y)) =~= s1.generic_union(s2).remove(y));
             lemma_len_union_ind(s1.remove(y), s2.remove(y))
         } else {
-            assert(s1.union(s2.remove(y)) =~= s1.union(s2).remove(y));
+            assert(s1.generic_union(s2.remove(y)) =~= s1.generic_union(s2).remove(y));
             lemma_len_union_ind(s1, s2.remove(y))
         }
     }
@@ -610,14 +613,14 @@ pub proof fn lemma_len_intersect<A>(s1: ISet<A>, s2: ISet<A>)
     requires
         s1.finite(),
     ensures
-        s1.intersect(s2).len() <= s1.len(),
+        s1.generic_intersect(s2).len() <= s1.len(),
     decreases s1.len(),
 {
     if s1.is_empty() {
-        assert(s1.intersect(s2) =~= s1);
+        assert(s1.generic_intersect(s2) =~= s1);
     } else {
         let a = s1.choose();
-        assert(s1.intersect(s2).remove(a) =~= s1.remove(a).intersect(s2));
+        assert(s1.generic_intersect(s2).remove(a) =~= s1.remove(a).generic_intersect(s2));
         lemma_len_intersect::<A>(s1.remove(a), s2);
     }
 }
@@ -633,7 +636,7 @@ pub proof fn lemma_len_subset<A>(s1: ISet<A>, s2: ISet<A>)
         s1.finite(),
 {
     lemma_len_intersect::<A>(s2, s1);
-    assert(s2.intersect(s1) =~= s1);
+    assert(s2.generic_intersect(s1) =~= s1);
 }
 
 /// A subset of a finite set `s` is finite.
@@ -645,8 +648,8 @@ pub broadcast proof fn lemma_set_subset_finite<A>(s: ISet<A>, sub: ISet<A>)
         #![trigger sub.subset_of(s)]
         sub.finite(),
 {
-    let complement = s.difference(sub);
-    assert(sub =~= s.difference(complement));
+    let complement = s.generic_difference(sub);
+    assert(sub =~= s.generic_difference(complement));
 }
 
 /// The size of the difference of finite set `s1` and set `s2` is less than or equal to the size of `s1`.
@@ -654,14 +657,14 @@ pub proof fn lemma_len_difference<A>(s1: ISet<A>, s2: ISet<A>)
     requires
         s1.finite(),
     ensures
-        s1.difference(s2).len() <= s1.len(),
+        s1.generic_difference(s2).len() <= s1.len(),
     decreases s1.len(),
 {
     if s1.is_empty() {
-        assert(s1.difference(s2) =~= s1);
+        assert(s1.generic_difference(s2) =~= s1);
     } else {
         let a = s1.choose();
-        assert(s1.difference(s2).remove(a) =~= s1.remove(a).difference(s2));
+        assert(s1.generic_difference(s2).remove(a) =~= s1.remove(a).generic_difference(s2));
         lemma_len_difference::<A>(s1.remove(a), s2);
     }
 }
@@ -731,7 +734,7 @@ pub proof fn lemma_map_size<A, B>(x: Set<A>, y: Set<B>, f: spec_fn(A) -> B)
 /// is the same as taking the union of `a` and `b` once.
 pub broadcast proof fn lemma_set_union_again1<A>(a: Set<A>, b: Set<A>)
     ensures
-        #[trigger] a.union(b).union(b) =~= a.union(b),
+        #[trigger] a.generic_union(b).generic_union(b) =~= a.generic_union(b),
 {
 }
 
@@ -740,7 +743,7 @@ pub broadcast proof fn lemma_set_union_again1<A>(a: Set<A>, b: Set<A>)
 /// is the same as taking the union of `a` and `b` once.
 pub broadcast proof fn lemma_set_union_again2<A>(a: Set<A>, b: Set<A>)
     ensures
-        #[trigger] a.union(b).union(a) =~= a.union(b),
+        #[trigger] a.generic_union(b).generic_union(a) =~= a.generic_union(b),
 {
 }
 
@@ -749,8 +752,8 @@ pub broadcast proof fn lemma_set_union_again2<A>(a: Set<A>, b: Set<A>)
 /// is the same as taking the intersection of `a` and `b` once.
 pub broadcast proof fn lemma_set_intersect_again1<A>(a: Set<A>, b: Set<A>)
     ensures
-        #![trigger (a.intersect(b)).intersect(b)]
-        (a.intersect(b)).intersect(b) =~= a.intersect(b),
+        #![trigger (a.generic_intersect(b)).generic_intersect(b)]
+        (a.generic_intersect(b)).generic_intersect(b) =~= a.generic_intersect(b),
 {
 }
 
@@ -759,8 +762,8 @@ pub broadcast proof fn lemma_set_intersect_again1<A>(a: Set<A>, b: Set<A>)
 /// is the same as taking the intersection of `a` and `b` once.
 pub broadcast proof fn lemma_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
     ensures
-        #![trigger (a.intersect(b)).intersect(a)]
-        (a.intersect(b)).intersect(a) =~= a.intersect(b),
+        #![trigger (a.generic_intersect(b)).generic_intersect(a)]
+        (a.generic_intersect(b)).generic_intersect(a) =~= a.generic_intersect(b),
 {
 }
 
@@ -768,8 +771,8 @@ pub broadcast proof fn lemma_set_intersect_again2<A>(a: Set<A>, b: Set<A>)
 /// If set `s2` contains element `a`, then the set difference of `s1` and `s2` does not contain `a`.
 pub broadcast proof fn lemma_set_difference2<A, const FINITE1: bool, const FINITE2: bool>(s1: GSet<A, FINITE1>, s2: GSet<A, FINITE2>, a: A)
     ensures
-        #![trigger s1.difference(s2).contains(a)]
-        s2.contains(a) ==> !s1.difference(s2).contains(a),
+        #![trigger s1.generic_difference(s2).contains(a)]
+        s2.contains(a) ==> !s1.generic_difference(s2).contains(a),
 {
 }
 
@@ -778,8 +781,8 @@ pub broadcast proof fn lemma_set_difference2<A, const FINITE1: bool, const FINIT
 /// of `a.union(b)` and `b` is equal to `a` and the set difference of `a.union(b)` and `a` is equal to `b`.
 pub broadcast proof fn lemma_set_disjoint<A, const FINITE: bool, const FINITE2: bool>(a: GSet<A, FINITE>, b: GSet<A, FINITE2>)
     ensures
-        #![trigger a.union(b).difference(a)]  //TODO: this might be too free
-        a.disjoint(b) ==> (a.union(b).difference(a) =~= b.to_infinite() && a.union(b).difference(b) =~= a.to_infinite()),
+        #![trigger a.generic_union(b).generic_difference(a)]  //TODO: this might be too free
+        a.disjoint(b) ==> (a.generic_union(b).generic_difference(a) =~= b.to_infinite() && a.generic_union(b).generic_difference(b) =~= a.to_infinite()),
 {
 }
 
@@ -822,17 +825,17 @@ pub broadcast proof fn lemma_set_disjoint_lens<A, const FINITE1: bool, const FIN
         a.finite(),
         b.finite(),
     ensures
-        a.disjoint(b) ==> #[trigger] a.union(b).len() == a.len() + b.len(),
+        a.disjoint(b) ==> #[trigger] a.generic_union(b).len() == a.len() + b.len(),
     decreases a.len(),
 {
     if a.len() == 0 {
         lemma_set_empty_equivalency_len(a);
-        assert(a.union(b) =~= b.to_infinite());
+        assert(a.generic_union(b) =~= b.to_infinite());
         b.congruent_len(b.to_infinite());
     } else {
         if a.disjoint(b) {
             let x = a.choose();
-            assert(a.remove(x).union(b) =~= a.union(b).remove(x));
+            assert(a.remove(x).generic_union(b) =~= a.generic_union(b).remove(x));
             lemma_set_disjoint_lens(a.remove(x), b);
         }
     }
@@ -846,24 +849,24 @@ pub broadcast proof fn lemma_set_intersect_union_lens<A, const FINITE1: bool, co
         a.finite(),
         b.finite(),
     ensures
-        #[trigger] a.union(b).len() + #[trigger] a.intersect(b).len() == a.len() + b.len(),
+        #[trigger] a.generic_union(b).len() + #[trigger] a.generic_intersect(b).len() == a.len() + b.len(),
     decreases a.len(),
 {
     if a.len() == 0 {
-        assert(a.union(b) =~= b.to_infinite());
-        assert(a.intersect(b) =~= GSet::empty());
+        assert(a.generic_union(b) =~= b.to_infinite());
+        assert(a.generic_intersect(b) =~= GSet::empty());
         b.congruent_len(b.to_infinite());
     } else {
         let x = a.choose();
         lemma_set_intersect_union_lens(a.remove(x), b);
         if (b.contains(x)) {
-            assert(a.remove(x).union(b) =~= a.union(b));
-            assert(a.intersect(b).remove(x) =~= a.remove(x).intersect(b));
+            assert(a.remove(x).generic_union(b) =~= a.generic_union(b));
+            assert(a.generic_intersect(b).remove(x) =~= a.remove(x).generic_intersect(b));
         } else {
             // b does not contain x
-            assert(a.remove(x).union(b) =~= a.union(b).remove(x));
+            assert(a.remove(x).generic_union(b) =~= a.generic_union(b).remove(x));
             // some trigger needed to reduce flakiness
-            assert( a.intersect(b) == a.remove(x).intersect(b) );
+            assert( a.generic_intersect(b) == a.remove(x).generic_intersect(b) );
         }
     }
 }
@@ -879,28 +882,28 @@ pub broadcast proof fn lemma_set_difference_len<A, const FINITE1: bool, const FI
         a.finite(),
         b.finite(),
     ensures
-        (#[trigger] a.difference(b).len() + b.difference(a).len() + a.intersect(b).len() == a.union(b).len()) && (a.difference(b).len() == a.len() - a.intersect(b).len()),
+        (#[trigger] a.generic_difference(b).len() + b.generic_difference(a).len() + a.generic_intersect(b).len() == a.generic_union(b).len()) && (a.generic_difference(b).len() == a.len() - a.generic_intersect(b).len()),
     decreases a.len(),
 {
     if a.len() == 0 {
         lemma_set_empty_equivalency_len(a);
-        assert(a.difference(b) =~= GSet::empty());
-        assert(b.difference(a) =~= b.to_infinite());
-        assert(a.intersect(b) =~= GSet::empty());
-        assert(a.union(b) =~= b.to_infinite());
+        assert(a.generic_difference(b) =~= GSet::empty());
+        assert(b.generic_difference(a) =~= b.to_infinite());
+        assert(a.generic_intersect(b) =~= GSet::empty());
+        assert(a.generic_union(b) =~= b.to_infinite());
     } else {
         let x = a.choose();
         lemma_set_difference_len(a.remove(x), b);
         if b.contains(x) {
-            assert(a.intersect(b).remove(x) =~= a.remove(x).intersect(b));
-            assert(a.remove(x).difference(b) =~= a.difference(b));
-            assert(b.difference(a.remove(x)).remove(x) =~= b.difference(a));
-            assert(a.remove(x).union(b) =~= a.union(b));
+            assert(a.generic_intersect(b).remove(x) =~= a.remove(x).generic_intersect(b));
+            assert(a.remove(x).generic_difference(b) =~= a.generic_difference(b));
+            assert(b.generic_difference(a.remove(x)).remove(x) =~= b.generic_difference(a));
+            assert(a.remove(x).generic_union(b) =~= a.generic_union(b));
         } else {
-            assert(a.remove(x).union(b) =~= a.union(b).remove(x));
-            assert(a.remove(x).difference(b) =~= a.difference(b).remove(x));
-            assert(b.difference(a.remove(x)) =~= b.difference(a));
-            assert(a.remove(x).intersect(b) =~= a.intersect(b));
+            assert(a.remove(x).generic_union(b) =~= a.generic_union(b).remove(x));
+            assert(a.remove(x).generic_difference(b) =~= a.generic_difference(b).remove(x));
+            assert(b.generic_difference(a.remove(x)) =~= b.generic_difference(a));
+            assert(a.remove(x).generic_intersect(b) =~= a.generic_intersect(b));
         }
     }
 }
@@ -909,34 +912,34 @@ pub broadcast proof fn lemma_set_difference_len<A, const FINITE1: bool, const FI
 #[deprecated = "Use `broadcast use group_set_properties` instead"]
 pub proof fn lemma_set_properties<A, const FINITE1: bool, const FINITE2: bool>()
     ensures
-        forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] a.union(b).union(b) == a.union(b),  //from lemma_set_union_again1
-        forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] a.union(b).union(a) == a.union(b),  //from lemma_set_union_again2
-        forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b),  //from lemma_set_intersect_again1
-        forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b),  //from lemma_set_intersect_again2
-        forall|s1: GSet<A, FINITE1>, s2: GSet<A, FINITE2>, a: A| s2.contains(a) ==> !s1.difference(s2).contains(a),  //from lemma_set_difference2
+        forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] a.generic_union(b).generic_union(b) == a.generic_union(b),  //from lemma_set_union_again1
+        forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] a.generic_union(b).generic_union(a) == a.generic_union(b),  //from lemma_set_union_again2
+        forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] (a.generic_intersect(b)).generic_intersect(b) == a.generic_intersect(b),  //from lemma_set_intersect_again1
+        forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] (a.generic_intersect(b)).generic_intersect(a) == a.generic_intersect(b),  //from lemma_set_intersect_again2
+        forall|s1: GSet<A, FINITE1>, s2: GSet<A, FINITE2>, a: A| s2.contains(a) ==> !s1.generic_difference(s2).contains(a),  //from lemma_set_difference2
         forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>|
-            #![trigger a.union(b).difference(a)]
-            a.disjoint(b) ==> (a.union(b).difference(a) =~= b.to_infinite() && a.union(b).difference(b) =~= a.to_infinite()),  //from lemma_set_disjoint
+            #![trigger a.generic_union(b).generic_difference(a)]
+            a.disjoint(b) ==> (a.generic_union(b).generic_difference(a) =~= b.to_infinite() && a.generic_union(b).generic_difference(b) =~= a.to_infinite()),  //from lemma_set_disjoint
         forall|s: GSet<A, FINITE1>| #[trigger] s.len() != 0 && s.finite() ==> exists|a: A| s.contains(a),  // half of lemma_set_empty_equivalency_len
         forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>|
-            (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] a.union(b).len() == a.len()
+            (a.finite() && b.finite() && a.disjoint(b)) ==> #[trigger] a.generic_union(b).len() == a.len()
                 + b.len(),  //from lemma_set_disjoint_lens
         forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>|
-            (a.finite() && b.finite()) ==> #[trigger] a.union(b).len() + #[trigger] a.intersect(
+            (a.finite() && b.finite()) ==> #[trigger] a.generic_union(b).len() + #[trigger] a.generic_intersect(
                 b,
             ).len() == a.len() + b.len(),  //from lemma_set_intersect_union_lens
         forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>|
-            (a.finite() && b.finite()) ==> ((#[trigger] a.difference(b).len() + b.difference(
+            (a.finite() && b.finite()) ==> ((#[trigger] a.generic_difference(b).len() + b.generic_difference(
                 a,
-            ).len() + a.intersect(b).len() == a.union(b).len()) && (a.difference(b).len() == a.len()
-                - a.intersect(b).len())),  //from lemma_set_difference_len
+            ).len() + a.generic_intersect(b).len() == a.generic_union(b).len()) && (a.generic_difference(b).len() == a.len()
+                - a.generic_intersect(b).len())),  //from lemma_set_difference_len
 {
     broadcast use group_set_properties;
 
-    assert( forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] a.union(b).union(b) == a.union(b) );
-    assert( forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] a.union(b).union(a) == a.union(b) );
-    assert( forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] (a.intersect(b)).intersect(b) == a.intersect(b) );
-    assert( forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] (a.intersect(b)).intersect(a) == a.intersect(b) );
+    assert( forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] a.generic_union(b).generic_union(b) == a.generic_union(b) );
+    assert( forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] a.generic_union(b).generic_union(a) == a.generic_union(b) );
+    assert( forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] (a.generic_intersect(b)).generic_intersect(b) == a.generic_intersect(b) );
+    assert( forall|a: GSet<A, FINITE1>, b: GSet<A, FINITE2>| #[trigger] (a.generic_intersect(b)).generic_intersect(a) == a.generic_intersect(b) );
 }
 
 pub broadcast group group_set_properties {

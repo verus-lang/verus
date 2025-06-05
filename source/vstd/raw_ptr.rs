@@ -594,7 +594,7 @@ impl PointsToRaw {
             res.0.provenance() == self.provenance(),
             res.1.provenance() == self.provenance(),
             res.0.dom() == range,
-            res.1.dom() == self.dom().finite_difference(range),
+            res.1.dom() == self.dom().difference(range),
     {
         unimplemented!();
     }

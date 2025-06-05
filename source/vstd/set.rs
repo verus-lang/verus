@@ -73,6 +73,13 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
     {
         GSet { set: |a| self.contains(a) && f(a) }
     }
+
+    /// Replace each element of a set with the elements of another set.
+    /// Preserves finiteness of self.
+    pub closed spec fn product<B>(self, f: spec_fn(A) -> GSet<B, FINITE>) -> (out: GSet<B, FINITE>)
+    {
+        GSet { set: |b| exists |a| self.contains(a) && f(a).contains(b) }
+    }
 }
 
 impl<A, const FINITE: bool> GSet<A, FINITE> {
@@ -94,6 +101,7 @@ impl<A, const FINITE: bool> GSet<A, FINITE> {
 
     #[verifier::inline]
     pub open spec fn to_finite(self) -> Set<A>
+    recommends self.finite()
     {
         self.cast_finiteness::<true>()
     }
@@ -315,18 +323,24 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
         }
     }
 
-    /// Union of two sets.
-    pub closed spec fn union<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> ISet<A> {
+    /// Union of two sets of possibly-mixed finiteness.
+    /// Most applications should use the finite- or infinite- specializations
+    /// `union`; this generic version is mostly useful for writing generic libraries.
+    pub closed spec fn generic_union<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> ISet<A> {
         GSet { set: |a| (self.set)(a) || (s2.set)(a) }
     }
 
-    /// Intersection of two sets.
-    pub closed spec fn intersect<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> ISet<A> {
+    /// Intersection of two sets of possibly-mixed finiteness.
+    /// Most applications should use the finite- or infinite- specializations
+    /// `intersect`; this generic version is mostly useful for writing generic libraries.
+    pub closed spec fn generic_intersect<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> ISet<A> {
         GSet { set: |a| (self.set)(a) && (s2.set)(a) }
     }
 
     /// Set difference, i.e., the set of all elements in the first one but not in the second.
-    pub closed spec fn difference<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> ISet<A> {
+    /// Most applications should use the finite- or infinite- specializations
+    /// `difference`; this generic version is mostly useful for writing generic libraries.
+    pub closed spec fn generic_difference<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> ISet<A> {
         GSet { set: |a| (self.set)(a) && !(s2.set)(a) }
     }
 
@@ -372,43 +386,53 @@ impl<A, const FINITE:bool> GSet<A, FINITE> {
 }
 
 impl<A> Set<A> {
-    pub closed spec fn finite_union(self, s2: Set<A>) -> Set<A> {
+    pub closed spec fn union(self, s2: Set<A>) -> Set<A> {
         Set { set: |a| (self.set)(a) || (s2.set)(a) }
     }
 
     /// If *either* set in an intersection is finite, the result is finite.
     /// To exploit that knowledge using this method, put the one you know is finite in the `self`
     /// position.
-    pub closed spec fn finite_intersect<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> Set<A> {
+    pub closed spec fn intersect<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> Set<A> {
         Set { set: |a| (self.set)(a) && (s2.set)(a) }
     }
 
-    pub closed spec fn finite_difference<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> Set<A> {
+    pub closed spec fn difference<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> Set<A> {
         Set { set: |a| (self.set)(a) && !(s2.set)(a) }
     }
-}
 
-impl<A> Set<A> {
-    /// `+` operator, synonymous with `finite_union`
+    /// `+` operator, synonymous with `union`
     #[verifier::inline]
     pub open spec fn spec_add(self, s2: Set<A>) -> Set<A> {
-        self.finite_union(s2)
+        self.union(s2)
     }
 
-    /// `*` operator, synonymous with `finite_intersect`
+    /// `*` operator, synonymous with `intersect`
     #[verifier::inline]
     pub open spec fn spec_mul<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> Set<A> {
-        self.finite_intersect(s2)
+        self.intersect(s2)
     }
 
     /// `-` operator, synonymous with `difference`
     #[verifier::inline]
     pub open spec fn spec_sub<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> Set<A> {
-        self.finite_difference(s2)
+        self.difference(s2)
     }
 }
 
 impl<A> ISet<A> {
+    pub open spec fn union<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> Self {
+        ISet::new( |a| self.contains(a) || s2.contains(a) )
+    }
+
+    pub open spec fn intersect<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> Self {
+        ISet::new( |a| self.contains(a) && s2.contains(a) )
+    }
+
+    pub open spec fn difference<const FINITE2: bool>(self, s2: GSet<A, FINITE2>) -> Self {
+        ISet::new( |a| self.contains(a) && !s2.contains(a) )
+    }
+
     /// `+` operator, synonymous with `union`
     #[verifier::inline]
     pub open spec fn spec_add(self, s2: ISet<A>) -> ISet<A> {
@@ -474,12 +498,12 @@ pub mod fold {
         lemma_set_remove_same,
         lemma_set_remove_insert,
         lemma_set_remove_different,
+        lemma_set_generic_union,
         lemma_set_union,
-        lemma_set_finite_union,
+        lemma_set_generic_intersect,
         lemma_set_intersect,
-        lemma_set_finite_intersect,
+        lemma_set_generic_difference,
         lemma_set_difference,
-        lemma_set_finite_difference,
         lemma_set_complement,
         lemma_set_ext_equal,
         lemma_set_ext_equal_deep,
@@ -932,49 +956,49 @@ pub broadcast proof fn lemma_set_remove_different<A, const FINITE: bool>(s: GSet
 
 /// The union of sets `s1` and `s2` contains element `a` if and only if
 /// `s1` contains `a` and/or `s2` contains `a`.
-pub broadcast proof fn lemma_set_union<A, const FINITE: bool, const FINITE2: bool>(s1: GSet<A, FINITE>, s2: GSet<A, FINITE2>, a: A)
+pub broadcast proof fn lemma_set_generic_union<A, const FINITE: bool, const FINITE2: bool>(s1: GSet<A, FINITE>, s2: GSet<A, FINITE2>, a: A)
     ensures
-        #[trigger] s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
+        #[trigger] s1.generic_union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
 {
 }
 
 /// The finite-typed union of sets `s1` and `s2` contains element `a` if and only if
 /// `s1` contains `a` and/or `s2` contains `a`.
-pub broadcast proof fn lemma_set_finite_union<A>(s1: Set<A>, s2: Set<A>, a: A)
+pub broadcast proof fn lemma_set_union<A>(s1: Set<A>, s2: Set<A>, a: A)
     ensures
-        #[trigger] s1.finite_union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
+        #[trigger] s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a)),
 {
 }
 
 /// The intersection of sets `s1` and `s2` contains element `a` if and only if
 /// both `s1` and `s2` contain `a`.
-pub broadcast proof fn lemma_set_intersect<A, const FINITE: bool, const FINITE2: bool>(s1: GSet<A, FINITE>, s2: GSet<A, FINITE2>, a: A)
+pub broadcast proof fn lemma_set_generic_intersect<A, const FINITE: bool, const FINITE2: bool>(s1: GSet<A, FINITE>, s2: GSet<A, FINITE2>, a: A)
     ensures
-        #[trigger] s1.intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)),
+        #[trigger] s1.generic_intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)),
 {
 }
 
 /// The finite-typed intersection of sets `s1` and `s2` contains element `a` if and only if
 /// both `s1` and `s2` contain `a`.
-pub broadcast proof fn lemma_set_finite_intersect<A, const FINITE2: bool>(s1: Set<A>, s2: GSet<A, FINITE2>, a: A)
+pub broadcast proof fn lemma_set_intersect<A, const FINITE2: bool>(s1: Set<A>, s2: GSet<A, FINITE2>, a: A)
     ensures
-        #[trigger] s1.finite_intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)),
+        #[trigger] s1.intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)),
 {
 }
 
 /// The set difference between `s1` and `s2` contains element `a` if and only if
 /// `s1` contains `a` and `s2` does not contain `a`.
-pub broadcast proof fn lemma_set_difference<A, const FINITE1: bool, const FINITE2: bool>(s1: GSet<A, FINITE1>, s2: GSet<A, FINITE2>, a: A)
+pub broadcast proof fn lemma_set_generic_difference<A, const FINITE1: bool, const FINITE2: bool>(s1: GSet<A, FINITE1>, s2: GSet<A, FINITE2>, a: A)
     ensures
-        #[trigger] s1.difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
+        #[trigger] s1.generic_difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
 {
 }
 
 /// The finite-typed set difference between `s1` and `s2` contains element `a` if and only if
 /// `s1` contains `a` and `s2` does not contain `a`.
-pub broadcast proof fn lemma_set_finite_difference<A, const FINITE2: bool>(s1: Set<A>, s2: GSet<A, FINITE2>, a: A)
+pub broadcast proof fn lemma_set_difference<A, const FINITE2: bool>(s1: Set<A>, s2: GSet<A, FINITE2>, a: A)
     ensures
-        #[trigger] s1.finite_difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
+        #[trigger] s1.difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)),
 {
 }
 
@@ -1063,7 +1087,7 @@ pub broadcast proof fn lemma_set_union_finite<A, const FINITE1: bool, const FINI
         s1.finite(),
         s2.finite(),
     ensures
-        #[trigger] s1.union(s2).finite(),
+        #[trigger] s1.generic_union(s2).finite(),
 {
     let (f1, ub1) = choose|f: spec_fn(A) -> nat, ub: nat| #[trigger]
         trigger_finite(f, ub) && surj_on(f, s1) && (forall|a| s1.contains(a) ==> f(a) < ub);
@@ -1079,7 +1103,7 @@ pub broadcast proof fn lemma_set_union_finite<A, const FINITE1: bool, const FINI
     assert(trigger_finite(f3, ub3));
     assert(forall|a|
         #![all_triggers]
-        s1.union(s2).contains(a) ==> s1.contains(a) || s2.contains(a));
+        s1.generic_union(s2).contains(a) ==> s1.contains(a) || s2.contains(a));
 }
 
 /// The intersection of two finite sets is finite.
@@ -1087,11 +1111,11 @@ pub broadcast proof fn lemma_set_intersect_finite<A, const FINITE1: bool, const 
     requires
         s1.finite() || s2.finite(),
     ensures
-        #[trigger] s1.intersect(s2).finite(),
+        #[trigger] s1.generic_intersect(s2).finite(),
 {
     assert(forall|a|
         #![all_triggers]
-        s1.intersect(s2).contains(a) ==> s1.contains(a) && s2.contains(a));
+        s1.generic_intersect(s2).contains(a) ==> s1.contains(a) && s2.contains(a));
 }
 
 /// The set difference between two finite sets is finite.
@@ -1099,11 +1123,11 @@ pub broadcast proof fn lemma_set_difference_finite<A, const FINITE1: bool, const
     requires
         s1.finite(),
     ensures
-        #[trigger] s1.difference(s2).finite(),
+        #[trigger] s1.generic_difference(s2).finite(),
 {
     assert(forall|a|
         #![all_triggers]
-        s1.difference(s2).contains(a) ==> s1.contains(a) && !s2.contains(a));
+        s1.generic_difference(s2).contains(a) ==> s1.contains(a) && !s2.contains(a));
 }
 
 /// An infinite set `s` contains the element `s.choose()`.
@@ -1301,8 +1325,25 @@ pub broadcast proof fn lemma_set_choose_len<A, const FINITE: bool>(s: GSet<A, FI
 // filter definition is closed now, so we expose its meaning through this lemma
 pub broadcast proof fn lemma_set_filter_is_intersect<A, const FINITE: bool>(s: GSet<A, FINITE>, f: spec_fn(A) -> bool)
 ensures
-    (#[trigger] s.filter(f)).congruent(s.intersect(ISet::new(f)))
+    (#[trigger] s.filter(f)).congruent(s.generic_intersect(ISet::new(f)))
 {
+}
+
+impl<A, const FINITE: bool> GSet<A, FINITE>{
+    pub broadcast proof fn lemma_set_product_contains<B>(self, f: spec_fn(A) -> GSet<B, FINITE>)
+    ensures
+        #![trigger(self.product(f))]
+    forall |b| (#[trigger] self.product(f).contains(b)) <==> exists |a| self.contains(a) && f(a).contains(b)
+{
+}
+
+    pub broadcast proof fn lemma_set_product_contains_2<B>(self, f: spec_fn(A) -> GSet<B, FINITE>, a: A, b: B)
+    ensures
+        #![trigger self.contains(a), f(a).contains(b)]
+        #![trigger self.product(f).contains(b), f(a).contains(b)]
+        self.contains(a) && f(a).contains(b) ==> self.product(f).contains(b)
+    {
+    }
 }
 
 pub broadcast group group_set_lemmas {
@@ -1320,12 +1361,12 @@ pub broadcast group group_set_lemmas {
     lemma_set_remove_same,
     lemma_set_remove_insert,
     lemma_set_remove_different,
+    lemma_set_generic_union,
     lemma_set_union,
-    lemma_set_finite_union,
+    lemma_set_generic_intersect,
     lemma_set_intersect,
-    lemma_set_finite_intersect,
+    lemma_set_generic_difference,
     lemma_set_difference,
-    lemma_set_finite_difference,
     lemma_set_complement,
     lemma_set_ext_equal,
     lemma_set_ext_equal_deep,
@@ -1351,6 +1392,8 @@ pub broadcast group group_set_lemmas {
     lemma_set_contains_len,
     lemma_set_choose_len,
     lemma_set_filter_is_intersect,
+    GSet::lemma_set_product_contains,
+    GSet::lemma_set_product_contains_2,
 }
 
 // Macros
