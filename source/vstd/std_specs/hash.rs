@@ -486,7 +486,7 @@ impl<'a, Key, Value> View for ValuesGhostIterator<'a, Key, Value> {
 ///
 /// These specifications are only meaningful if `obeys_key_model::<Key>()` and `builds_valid_hashers::<S>()` hold.
 /// See [`obeys_key_model()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.obeys_key_model.html)
-/// for information on use with primitive types and custom types,
+/// for information on use with primitive types and other types,
 /// and see [`builds_valid_hashers()`](https://verus-lang.github.io/verus/verusdoc/vstd/std_specs/hash/fn.builds_valid_hashers.html)
 /// for information on use with Rust's default implementation and custom implementations.
 /// Relevant axioms are contained in the broadcast group `vstd::std_specs::hash::group_hash_axioms`.
