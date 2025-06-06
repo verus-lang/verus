@@ -39,6 +39,7 @@ use super::super::math::{sub as sub1};
 
 /// This function performs exponentiation recursively, to compute `b`
 /// to the power of a natural number `e`.
+#[verifier::opaque]
 pub open spec fn pow(b: int, e: nat) -> int
     decreases e,
 {
