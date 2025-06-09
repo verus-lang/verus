@@ -142,23 +142,23 @@ pub assume_specification<T>[ Option::<T>::is_none ](option: &Option<T>) -> (b: b
 // as_ref
 pub assume_specification<T>[ Option::<T>::as_ref ](option: &Option<T>) -> (a: Option<&T>)
     ensures
-        a.is_Some() <==> option.is_Some(),
-        a.is_Some() ==> option.get_Some_0() == a.get_Some_0(),
+        a is Some <==> option is Some,
+        a is Some ==> option->0 == a->0,
 ;
 
 // unwrap
 #[verifier::inline]
 pub open spec fn spec_unwrap<T>(option: Option<T>) -> T
     recommends
-        option.is_Some(),
+        option is Some,
 {
-    option.get_Some_0()
+    option->0
 }
 
 #[verifier::when_used_as_spec(spec_unwrap)]
 pub assume_specification<T>[ Option::<T>::unwrap ](option: Option<T>) -> (t: T)
     requires
-        option.is_Some(),
+        option is Some,
     ensures
         t == spec_unwrap(option),
 ;
