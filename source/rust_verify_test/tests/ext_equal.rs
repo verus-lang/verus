@@ -405,14 +405,14 @@ test_verify_one_file! {
         use vstd::prelude::*;
         proof fn test(a: core::option::Option<Seq<int>>, b: core::option::Option<Seq<int>>)
             requires
-                a.is_Some() == b.is_Some(),
-                a.is_Some() ==> {
-                    &&& a.get_Some_0().len() == 2
-                    &&& b.get_Some_0().len() == 2
-                    &&& a.get_Some_0()[0] == 0
-                    &&& b.get_Some_0()[0] == 0
-                    &&& a.get_Some_0()[1] == 1
-                    &&& b.get_Some_0()[1] == 1
+                a is Some == b is Some,
+                a is Some ==> {
+                    &&& a->0.len() == 2
+                    &&& b->0.len() == 2
+                    &&& a->0[0] == 0
+                    &&& b->0[0] == 0
+                    &&& a->0[1] == 1
+                    &&& b->0[1] == 1
                 },
         {
             assert(a =~= b);

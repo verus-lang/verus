@@ -831,10 +831,10 @@ test_verify_one_file_with_options! {
             })
               invariant
                   i == 0 || i == 1 || i == 2,
-                  i >= 1 ==> fun1.is_Some() &&
-                      (forall|x: u64| (x == 20 || x == 0 ==> fun1.get_Some_0().requires((x,)))),
-                  i >= 2 ==> fun2.is_Some() &&
-                      (forall|x: u64| (x == 20 || x == 1 ==> fun2.get_Some_0().requires((x,)))),
+                  i >= 1 ==> fun1 is Some &&
+                      (forall|x: u64| (x == 20 || x == 0 ==> fun1->0.requires((x,)))),
+                  i >= 2 ==> fun2 is Some &&
+                      (forall|x: u64| (x == 20 || x == 1 ==> fun2->0.requires((x,)))),
             {
             }
 
@@ -865,10 +865,10 @@ test_verify_one_file_with_options! {
             })
               invariant
                   i == 0 || i == 1 || i == 2,
-                  i >= 1 ==> fun1.is_Some() &&
-                      (forall|x: u64| (x == 20 || x == 0 ==> fun1.get_Some_0().requires((x,)))),
-                  i >= 2 ==> fun2.is_Some() &&
-                      (forall|x: u64| (x == 20 || x == 1 ==> fun2.get_Some_0().requires((x,)))),
+                  i >= 1 ==> fun1 is Some &&
+                      (forall|x: u64| (x == 20 || x == 0 ==> fun1->0.requires((x,)))),
+                  i >= 2 ==> fun2 is Some &&
+                      (forall|x: u64| (x == 20 || x == 1 ==> fun2->0.requires((x,)))),
             {
             }
 
