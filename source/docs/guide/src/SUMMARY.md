@@ -5,9 +5,12 @@
 # Getting started
 
 - [Getting started](./getting_started.md)
+  - [... on the command line](./getting_started_cmd_line.md)
+  - [... with VSCode](./getting_started_vscode.md)
 
 # Tutorial: Fundamentals
 
+- [Using Verus within Rust](./verus_macro_intro.md)
 - [Basic specifications](specs.md)
     - [assert, requires, ensures, ghost code](./requires_ensures.md)
     - [Expressions and operators for specifications](./operators.md)
@@ -70,9 +73,9 @@
 
 # Tutorial: Verification and Rust
 
-- [Mutation, references, and borrowing]() <!--- Andrea --->
-    - [Requires and ensures with mutable references]() <!--- Andrea --->
-    - [Assertions containing mutable references]() <!--- Andrea --->
+- [Mutation, references, and borrowing](mutation-references-borrowing.md) <!--- Andrea --->
+    - [Requires and ensures with mutable references](requires-ensures-mut-ref.md) <!--- Andrea --->
+    - [Assertions containing mutable references](assert-mut-ref.md) <!--- Andrea --->
 - [Traits]()
 - [Higher-order executable functions](./higher-order-fns.md)
     - [Passing functions as values](./exec_funs_as_values.md)

@@ -647,7 +647,7 @@ test_verify_one_file! {
         fn ex_f<T: Tr>() {
             T::f()
         }
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification not supported for unresolved trait functions")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification cannot be used to specify generic specifications of trait methods; consider using external_trait_specification instead")
 }
 
 // Other
@@ -859,6 +859,38 @@ test_verify_one_file! {
             x.swap()
         }
     } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
+}
+
+// allow_in_spec
+
+test_verify_one_file! {
+    #[test] test_allow_in_spec verus_code! {
+        #[verifier::external]
+        fn foo(x: bool) -> bool { !x }
+
+        #[verifier::allow_in_spec]
+        #[verifier::external_fn_specification]
+        fn exec_foo(x: bool) -> (res: bool)
+            returns !x
+        {
+            foo(x)
+        }
+
+        proof fn test() {
+            let a = foo(true);
+            assert(a == false);
+        }
+
+        fn test2() {
+            let a = foo(true);
+            assert(a == false);
+        }
+
+        fn test3() {
+            let a = foo(true);
+            assert(a == true); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
 }
 
 // when_used_as_spec
@@ -1416,8 +1448,103 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_trait_fn verus_code! {
+    #[test] test_blanket_impl_mismatch verus_code! {
         use std::fmt::Display;
+        // This is missing the ?Sized bound:
         pub assume_specification<T: Display>[ T::to_string ](this: &T) -> (other: String);
-    } => Err(err) => assert_vir_error_msg(err, "assume_specification cannot be used to specify generic specifications of trait methods")
+    } => Err(err) => assert_vir_error_msg(err, "assume_specification trait bound mismatch")
+}
+
+test_verify_one_file! {
+    #[test] test_blanket_impl verus_code! {
+        trait Tr {
+            fn stuff(&self)
+                ensures self.foo();
+
+            spec fn foo(&self) -> bool;
+        }
+
+        #[verifier::external]
+        trait Blanket {
+            fn stuff2(&self);
+        }
+
+        #[verifier::external]
+        impl<T: Tr> Blanket for T {
+            fn stuff2(&self) {
+                self.stuff();
+            }
+        }
+
+        assume_specification <T: Tr> [ <T as Blanket>::stuff2 ] (x: &T)
+            ensures x.foo();
+
+
+        fn test_generic<T: Tr>(t: &T) {
+            t.stuff2();
+            assert(t.foo());
+        }
+
+        impl Tr for u64 {
+            fn stuff(&self) {
+                assume(false);
+            }
+
+            spec fn foo(&self) -> bool {
+                self < 5
+            }
+        }
+
+        fn test_specific(u: u64) {
+            u.stuff2();
+            assert(u < 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_blanket_impl_unsized verus_code! {
+        trait Tr {
+            fn stuff(&self)
+                ensures self.foo();
+
+            spec fn foo(&self) -> bool;
+        }
+
+        #[verifier::external]
+        trait Blanket {
+            fn stuff2(&self);
+        }
+
+        #[verifier::external]
+        impl<T: Tr + ?Sized> Blanket for T {
+            fn stuff2(&self) {
+                self.stuff();
+            }
+        }
+
+        assume_specification <T: Tr + ?Sized> [ <T as Blanket>::stuff2 ] (x: &T)
+            ensures x.foo();
+
+
+        fn test_generic<T: Tr + ?Sized>(t: &T) {
+            t.stuff2();
+            assert(t.foo());
+        }
+
+        impl Tr for u64 {
+            fn stuff(&self) {
+                assume(false);
+            }
+
+            spec fn foo(&self) -> bool {
+                self < 5
+            }
+        }
+
+        fn test_specific(u: u64) {
+            u.stuff2();
+            assert(u < 5);
+        }
+    } => Ok(())
 }

@@ -1,8 +1,7 @@
 use crate::util::{err_span, vir_err_span_str};
-use rustc_ast::ast::AttrArgs;
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
-use rustc_ast::{AttrKind, Attribute};
+use rustc_hir::{AttrArgs, AttrKind, Attribute};
 use rustc_span::Span;
 use vir::ast::{AcceptRecursiveType, Mode, TriggerAnnotation, VirErr, VirErrAs};
 
@@ -26,7 +25,8 @@ pub(crate) fn token_stream_to_trees(
     stream: &TokenStream,
 ) -> Result<Box<[AttrTree]>, ()> {
     let mut token_trees: Vec<&TokenTree> = Vec::new();
-    for x in stream.trees() {
+    for x in stream.iter() {
+        // TODO(1.83) trees?
         token_trees.push(x);
     }
     let mut i = 0;
@@ -74,17 +74,12 @@ fn attr_args_to_tree(span: Span, name: String, args: &AttrArgs) -> Result<AttrTr
         AttrArgs::Delimited(delim) => {
             Ok(AttrTree::Fun(span, name, Some(token_stream_to_trees(span, &delim.tokens)?)))
         }
-        AttrArgs::Eq(_, rustc_ast::ast::AttrArgsEq::Ast(expr)) => {
+        AttrArgs::Eq { eq_span: _, expr } => {
             dbg!(&expr);
             // TODO(main_new) match token_to_string(expr.tokens)? {
             // TODO(main_new)     None => Err(()),
             // TODO(main_new)     Some(token) => Ok(AttrTree::Eq(span, name, token)),
             // TODO(main_new) },
-            todo!()
-        }
-        AttrArgs::Eq(_, rustc_ast::ast::AttrArgsEq::Hir(lit)) => {
-            dbg!(&lit);
-            // TODO(main_new)
             todo!()
         }
     }
@@ -107,8 +102,8 @@ enum AttrPrefix {
 
 fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>, VirErr> {
     match &attr.kind {
-        AttrKind::Normal(item) => match &item.item.path.segments[..] {
-            [segment] if segment.ident.as_str() == "verifier" => match &item.item.args {
+        AttrKind::Normal(item) => match &item.path.segments[..] {
+            [segment] if segment.as_str() == "verifier" => match &item.args {
                 // TODO(main_new) MacArgs::Delimited(_, _, token_stream) => {
                 // TODO(main_new)     let trees: Box<[AttrTree]> = token_stream_to_trees(attr.span, token_stream)
                 // TODO(main_new)         .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute"))?;
@@ -123,15 +118,15 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                 // TODO(main_new) }
                 _ => return err_span(attr.span, "invalid verifier attribute"),
             },
-            [prefix_segment, segment] if prefix_segment.ident.as_str() == "verifier" => {
-                attr_args_to_tree(attr.span, segment.ident.to_string(), &item.item.args)
+            [prefix_segment, segment] if prefix_segment.as_str() == "verifier" => {
+                attr_args_to_tree(attr.span, segment.to_string(), &item.args)
                     .map(|tree| Some((AttrPrefix::Verifier, attr.span, tree)))
                     .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute"))
             }
-            [prefix_segment, segment] if prefix_segment.ident.as_str() == "verus" => {
-                let name = segment.ident.to_string();
+            [prefix_segment, segment] if prefix_segment.as_str() == "verus" => {
+                let name = segment.to_string();
                 match &*name {
-                    "internal" => match &item.item.args {
+                    "internal" => match &item.args {
                         AttrArgs::Delimited(delim) => {
                             let trees: Box<[AttrTree]> =
                                 token_stream_to_trees(attr.span, &delim.tokens).map_err(|_| {
@@ -148,27 +143,27 @@ fn attr_to_tree(attr: &Attribute) -> Result<Option<(AttrPrefix, Span, AttrTree)>
                         }
                         _ => return err_span(attr.span, "invalid verus attribute"),
                     },
-                    _ => attr_args_to_tree(attr.span, name, &item.item.args)
+                    _ => attr_args_to_tree(attr.span, name, &item.args)
                         .map(|tree| Some((AttrPrefix::Verus(VerusPrefix::None), attr.span, tree)))
                         .map_err(|_| vir_err_span_str(attr.span, "invalid verifier attribute")),
                 }
             }
             [segment]
-                if segment.ident.as_str() == "spec"
-                    || segment.ident.as_str() == "proof"
-                    || segment.ident.as_str() == "exec" =>
+                if segment.as_str() == "spec"
+                    || segment.as_str() == "proof"
+                    || segment.as_str() == "exec" =>
             {
                 return err_span(
                     attr.span,
                     "attributes spec, proof, exec are not supported anymore; use the verus! macro instead",
                 );
             }
-            [segment] if segment.ident.as_str().starts_with("rustc_") => {
-                if !RUSTC_ATTRS_OK_TO_IGNORE.contains(&segment.ident.as_str()) {
+            [segment] if segment.as_str().starts_with("rustc_") => {
+                if !RUSTC_ATTRS_OK_TO_IGNORE.contains(&segment.as_str()) {
                     Ok(Some((
                         AttrPrefix::Rustc,
                         attr.span,
-                        AttrTree::Fun(attr.span, segment.ident.as_str().into(), None),
+                        AttrTree::Fun(attr.span, segment.as_str().into(), None),
                     )))
                 } else {
                     Ok(None)
@@ -199,7 +194,7 @@ pub(crate) enum GhostBlockAttr {
     Wrapper,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) enum AttrPublish {
     Open,
     Closed,
@@ -257,6 +252,8 @@ pub(crate) enum Attr {
     NoAutoTrigger,
     // when used in a ghost context, redirect to a specified spec method
     Autospec(String),
+    // when used in a ghost context, redirect to the 'returns' clause
+    AllowInSpec,
     // specify list of places where == is promoted to =~=
     AutoExtEqual(vir::ast::AutoExtEqual),
     // add manual trigger to expression inside quantifier
@@ -472,6 +469,7 @@ pub(crate) fn parse_attrs(
                 {
                     v.push(Attr::Autospec(ident.clone()))
                 }
+                AttrTree::Fun(_, arg, None) if arg == "allow_in_spec" => v.push(Attr::AllowInSpec),
                 AttrTree::Fun(_, arg, None) if arg == "atomic" => v.push(Attr::Atomic),
                 AttrTree::Fun(_, arg, None) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
@@ -933,6 +931,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) broadcast_use_by_default_when_this_crate_is_imported: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autospec: Option<String>,
+    pub(crate) allow_in_spec: bool,
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
     pub(crate) for_loop: bool,
@@ -1090,6 +1089,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
         broadcast_use_by_default_when_this_crate_is_imported: false,
         no_auto_trigger: false,
         autospec: None,
+        allow_in_spec: false,
         custom_req_err: None,
         bit_vector: false,
         for_loop: false,
@@ -1161,6 +1161,7 @@ pub(crate) fn get_verifier_attrs_maybe_check(
             }
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autospec(method_ident) => vs.autospec = Some(method_ident),
+            Attr::AllowInSpec => vs.allow_in_spec = true,
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,
             Attr::ForLoop => vs.for_loop = true,

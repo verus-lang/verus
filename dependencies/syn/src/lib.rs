@@ -558,8 +558,8 @@ pub use crate::verus::{
     GlobalInner, GlobalLayout, GlobalSizeOf, Invariant, InvariantEnsures, InvariantExceptBreak,
     InvariantNameSet, InvariantNameSetAny, InvariantNameSetList, InvariantNameSetNone,
     InvariantNameSetSet, ItemBroadcastGroup, LoopSpec, MatchesOpExpr, MatchesOpToken, Mode,
-    ModeExec, ModeGhost, ModeProof, ModeSpec, ModeSpecChecked, ModeTracked, Open, OpenRestricted,
-    Prover, Publish, Recommends, Requires, Returns, RevealHide, SignatureDecreases,
+    ModeExec, ModeGhost, ModeProof, ModeProofAxiom, ModeSpec, ModeSpecChecked, ModeTracked, Open,
+    OpenRestricted, Prover, Publish, Recommends, Requires, Returns, RevealHide, SignatureDecreases,
     SignatureInvariants, SignatureSpec, SignatureSpecAttr, SignatureUnwind, Specification,
     TypeFnProof, TypeFnSpec, Uninterp, View, WithSpecOnExpr, WithSpecOnFn,
 };

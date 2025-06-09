@@ -480,6 +480,123 @@ impl<Key, Value, S> View for HashMap<Key, Value, S> {
     uninterp spec fn view(&self) -> Map<Key, Value>;
 }
 
+impl<Key: DeepView, Value: DeepView, S> DeepView for HashMap<Key, Value, S> {
+    type V = Map<Key::V, Value::V>;
+
+    open spec fn deep_view(&self) -> Map<Key::V, Value::V> {
+        hash_map_deep_view_impl(*self)
+    }
+}
+
+/// The actual definition of `HashMap::deep_view`.
+///
+/// This is a separate function since it introduces a lot of quantifiers and revealing an opaque trait
+/// method is not supported. In most cases, it's easier to use one of the lemmas below instead
+/// of revealing this function directly.
+#[verifier::opaque]
+pub open spec fn hash_map_deep_view_impl<Key: DeepView, Value: DeepView, S>(
+    m: HashMap<Key, Value, S>,
+) -> Map<Key::V, Value::V> {
+    Map::new(
+        |k: Key::V|
+            exists|orig_k: Key| #[trigger] m@.contains_key(orig_k) && k == orig_k.deep_view(),
+        |dk: Key::V|
+            {
+                let k = choose|k: Key| m@.contains_key(k) && #[trigger] k.deep_view() == dk;
+                m@[k].deep_view()
+            },
+    )
+}
+
+pub broadcast proof fn lemma_hashmap_deepview_dom<K: DeepView, V: DeepView>(m: HashMap<K, V>)
+    ensures
+        #[trigger] m.deep_view().dom() == m@.dom().map(|k: K| k.deep_view()),
+{
+    reveal(hash_map_deep_view_impl);
+    broadcast use group_hash_axioms;
+    broadcast use crate::vstd::group_vstd_default;
+
+    assert(m.deep_view().dom() =~= m@.dom().map(|k: K| k.deep_view()));
+}
+
+pub broadcast proof fn lemma_hashmap_deepview_properties<K: DeepView, V: DeepView>(m: HashMap<K, V>)
+    requires
+        crate::relations::injective(|k: K| k.deep_view()),
+    ensures
+        #![trigger m.deep_view()]
+        // all elements in m.view() are present in m.deep_view()
+        forall|k: K| #[trigger]
+            m@.contains_key(k) ==> m.deep_view().contains_key(k.deep_view())
+                && m.deep_view()[k.deep_view()] == m@[k].deep_view(),
+        // all elements in m.deep_view() are present in m.view()
+        forall|dk: <K as DeepView>::V| #[trigger]
+            m.deep_view().contains_key(dk) ==> exists|k: K|
+                k.deep_view() == dk && #[trigger] m@.contains_key(k),
+{
+    reveal(hash_map_deep_view_impl);
+    broadcast use group_hash_axioms;
+    broadcast use crate::vstd::group_vstd_default;
+
+    assert(m.deep_view().dom() == m@.dom().map(|k: K| k.deep_view()));
+    assert forall|k: K| #[trigger] m@.contains_key(k) implies m.deep_view().contains_key(
+        k.deep_view(),
+    ) && m.deep_view()[k.deep_view()] == m@[k].deep_view() by {
+        assert forall|k1: K, k2: K| #[trigger]
+            k1.deep_view() == #[trigger] k2.deep_view() implies k1 == k2 by {
+            let ghost k_deepview = |k: K| k.deep_view();
+            assert(crate::relations::injective(k_deepview));
+            assert(k_deepview(k1) == k_deepview(k2));
+        }
+    }
+}
+
+pub broadcast proof fn lemma_hashmap_deepview_values<K: DeepView, V: DeepView>(m: HashMap<K, V>)
+    requires
+        crate::relations::injective(|k: K| k.deep_view()),
+    ensures
+        #[trigger] m.deep_view().values() =~= m@.values().map(|v: V| v.deep_view()),
+{
+    reveal(hash_map_deep_view_impl);
+    broadcast use group_hash_axioms;
+    broadcast use lemma_hashmap_deepview_properties;
+    broadcast use crate::vstd::group_vstd_default;
+
+    let lhs = m.deep_view().values();
+    let rhs = m@.values().map(|v: V| v.deep_view());
+    assert forall|v: V::V| #[trigger] lhs.contains(v) implies rhs.contains(v) by {
+        let dk = choose|dk: K::V| #[trigger]
+            m.deep_view().contains_key(dk) && m.deep_view()[dk] == v;
+        let k = choose|k: K| #[trigger] m@.contains_key(k) && k.deep_view() == dk;
+        let ov = choose|ov: V| #[trigger] m@.contains_key(k) && m@[k] == ov && ov.deep_view() == v;
+        assert(v == ov.deep_view());
+        assert(m@.values().contains(ov));
+    }
+}
+
+/// Borrowing a key works the same way on deep_view as on view,
+/// if deep_view is injective; see `axiom_contains_deref_key`.
+pub broadcast proof fn axiom_hashmap_deepview_borrow<
+    K: DeepView + Borrow<Q>,
+    V: DeepView,
+    Q: View<V = <K as DeepView>::V> + Hash + Eq + ?Sized,
+>(m: HashMap<K, V>, k: &Q)
+    requires
+        obeys_key_model::<K>(),
+        crate::relations::injective(|k: K| k.deep_view()),
+    ensures
+        #[trigger] contains_borrowed_key(m@, k) <==> m.deep_view().contains_key(k@),
+{
+    admit();
+}
+
+/// A `Map` constructed from a `HashMap` is always finite.
+pub broadcast proof fn axiom_hashmap_view_finite_dom<K, V>(m: HashMap<K, V>)
+    ensures
+        #[trigger] m@.dom().finite(),
+{
+    admit();
+}
+
 pub uninterp spec fn spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>) -> usize;
 
 pub broadcast proof fn axiom_spec_hash_map_len<Key, Value, S>(m: &HashMap<Key, Value, S>)
@@ -503,6 +620,13 @@ pub assume_specification<Key, Value, S>[ HashMap::<Key, Value, S>::is_empty ](
 ) -> (res: bool)
     ensures
         res == m@.is_empty(),
+;
+
+pub assume_specification<K: Clone, V: Clone, S: Clone>[ <HashMap::<K, V, S> as Clone>::clone ](
+    this: &HashMap<K, V, S>,
+) -> (other: HashMap<K, V, S>)
+    ensures
+        other@ == this@,
 ;
 
 pub assume_specification<Key, Value>[ HashMap::<Key, Value>::new ]() -> (m: HashMap<
@@ -1069,6 +1193,8 @@ pub broadcast group group_hash_axioms {
     axiom_deref_key_removed,
     axiom_maps_deref_key_to_value,
     axiom_maps_box_key_to_value,
+    axiom_hashmap_deepview_borrow,
+    axiom_hashmap_view_finite_dom,
     axiom_bool_obeys_hash_table_key_model,
     axiom_u8_obeys_hash_table_key_model,
     axiom_u16_obeys_hash_table_key_model,

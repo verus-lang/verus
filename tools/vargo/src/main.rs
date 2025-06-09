@@ -780,7 +780,7 @@ fn run() -> Result<(), String> {
                 info(format!("formatting source").as_str());
 
                 args.insert(pos + 1, "--config".to_string());
-                args.insert(pos + 2, "unstable_features=true,version=Two".to_string());
+                args.insert(pos + 2, "style_edition=2024".to_string());
             }
 
             let target_verus_dir_absolute = std::fs::canonicalize(&target_verus_dir)

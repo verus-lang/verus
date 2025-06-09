@@ -11,7 +11,7 @@ use crate::ast_util::{
 use crate::def::user_local_name;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use crate::internal_err;
-use crate::messages::{error, error_with_label, Message, Span};
+use crate::messages::{Message, Span, error, error_with_label};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;

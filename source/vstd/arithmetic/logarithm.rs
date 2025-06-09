@@ -52,7 +52,7 @@ pub open spec fn log(base: int, pow: int) -> int
     }
 }
 
-/// Proof that since `pow` is less than `base`, its logarithm in that base is 0
+/// Proof that since `pow` is less than `base`, its logarithm in that base is 0.
 pub proof fn lemma_log0(base: int, pow: int)
     requires
         base > 1,
@@ -65,7 +65,7 @@ pub proof fn lemma_log0(base: int, pow: int)
 
 /// Proof that since `pow` is greater than or equal to `base`, its
 /// logarithm in that base is 1 more than the logarithm of `pow /
-/// base`
+/// base`.
 pub broadcast proof fn lemma_log_s(base: int, pow: int)
     requires
         base > 1,
@@ -120,7 +120,7 @@ pub proof fn lemma_log_is_ordered(base: int, pow1: int, pow2: int)
     }
 }
 
-/// Proof that the integer logarithm of `pow(base, n)` in base `base` is `n`
+/// Proof that the integer logarithm of `pow(base, n)` in base `base` is `n`.
 pub proof fn lemma_log_pow(base: int, n: nat)
     requires
         base > 1,

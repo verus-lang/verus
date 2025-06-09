@@ -24,7 +24,7 @@ when you call a function object.
 This is demonstrated by the following example:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/higher_order_fns.rs:example1}}
+{{#include ../../../../examples/guide/higher_order_fns.rs:example1}}
 ```
 
 As we can see, `test` calls `higher_order_fn`, passing in `double`.
@@ -45,7 +45,7 @@ To fix this, we can add a precondition to `higher_order_fn` that gives informati
 the precondition of `f`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/higher_order_fns.rs:example2}}
+{{#include ../../../../examples/guide/higher_order_fns.rs:example2}}
 ```
 
 The `(50,)` looks a little funky. This is a 1-tuple.
@@ -61,7 +61,7 @@ Verus now accepts this code, as the precondition of `higher_order_fn` now guaran
 We can go further and allow `higher_order_fn` to reason about the _output_ value of `f`:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/higher_order_fns.rs:example3}}
+{{#include ../../../../examples/guide/higher_order_fns.rs:example3}}
 ```
 
 Observe that the precondition of `higher_order_fn` places a constraint on the postcondition
@@ -117,14 +117,14 @@ The key challenge is to determine the right specfication to use.
 The signature we want is:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/higher_order_fns.rs:vec_map_signature}}
+{{#include ../../../../examples/guide/higher_order_fns.rs:vec_map_signature}}
 ```
 
 First, what do we need to **require**? We need to require that it's okay to call `f`
 with any element of the vector as input.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/higher_order_fns.rs:vec_map_requires}}
+{{#include ../../../../examples/guide/higher_order_fns.rs:vec_map_requires}}
 ```
 
 Next, what ought we to **ensure**? Naturally, we want the returned vector to have the same
@@ -133,20 +133,20 @@ vector is a possible output when the provided function `f` is called on the corr
 element from the input vector.
 
 ```rust
-{{#include ../../../rust_verify/example/guide/higher_order_fns.rs:vec_map_ensures}}
+{{#include ../../../../examples/guide/higher_order_fns.rs:vec_map_ensures}}
 ```
 
 Now that we have a specification, the implementation and loop invariant should
 fall into place:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/higher_order_fns.rs:vec_map}}
+{{#include ../../../../examples/guide/higher_order_fns.rs:vec_map}}
 ```
 
 Finally, we can try it out with an example:
 
 ```rust
-{{#include ../../../rust_verify/example/guide/higher_order_fns.rs:vec_map_example}}
+{{#include ../../../../examples/guide/higher_order_fns.rs:vec_map_example}}
 ```
 
 ### Conclusion

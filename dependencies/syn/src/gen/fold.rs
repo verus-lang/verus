@@ -819,6 +819,12 @@ pub trait Fold {
     fn fold_mode_proof(&mut self, i: crate::ModeProof) -> crate::ModeProof {
         fold_mode_proof(self, i)
     }
+    fn fold_mode_proof_axiom(
+        &mut self,
+        i: crate::ModeProofAxiom,
+    ) -> crate::ModeProofAxiom {
+        fold_mode_proof_axiom(self, i)
+    }
     fn fold_mode_spec(&mut self, i: crate::ModeSpec) -> crate::ModeSpec {
         fold_mode_spec(self, i)
     }
@@ -2649,6 +2655,9 @@ where
         crate::FnMode::Proof(_binding_0) => {
             crate::FnMode::Proof(f.fold_mode_proof(_binding_0))
         }
+        crate::FnMode::ProofAxiom(_binding_0) => {
+            crate::FnMode::ProofAxiom(f.fold_mode_proof_axiom(_binding_0))
+        }
         crate::FnMode::Exec(_binding_0) => {
             crate::FnMode::Exec(f.fold_mode_exec(_binding_0))
         }
@@ -3781,6 +3790,17 @@ where
 {
     crate::ModeProof {
         proof_token: node.proof_token,
+    }
+}
+pub fn fold_mode_proof_axiom<F>(
+    f: &mut F,
+    node: crate::ModeProofAxiom,
+) -> crate::ModeProofAxiom
+where
+    F: Fold + ?Sized,
+{
+    crate::ModeProofAxiom {
+        axiom_token: node.axiom_token,
     }
 }
 pub fn fold_mode_spec<F>(f: &mut F, node: crate::ModeSpec) -> crate::ModeSpec

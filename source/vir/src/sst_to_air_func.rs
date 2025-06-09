@@ -5,16 +5,16 @@ use crate::ast::{
 use crate::ast_util::{LowerUniqueVar, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{
-    new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_no_unwind_when,
-    prefix_open_inv, prefix_pre_var, prefix_recursive_fun, prefix_requires, static_name,
-    suffix_global_id, suffix_typ_param_ids, CommandsWithContext, SnapPos, Spanned, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, THIS_PRE_FAILED, ZERO,
+    CommandsWithContext, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC, SnapPos,
+    Spanned, THIS_PRE_FAILED, ZERO, new_internal_qid, prefix_ensures, prefix_fuel_id,
+    prefix_fuel_nat, prefix_no_unwind_when, prefix_open_inv, prefix_pre_var, prefix_recursive_fun,
+    prefix_requires, static_name, suffix_global_id, suffix_typ_param_ids,
 };
 use crate::messages::{MessageLabel, Span};
 use crate::sst::FuncCheckSst;
 use crate::sst::{BndX, ExpX, Exps, FunctionSst, ParPurpose, ParX, Pars};
 use crate::sst_to_air::{
-    exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids, ExprCtxt, ExprMode,
+    ExprCtxt, ExprMode, exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, typ_to_ids,
 };
 use crate::util::vec_map;
 use air::ast::{
@@ -178,7 +178,7 @@ pub(crate) fn broadcast_forall_group_axioms(
         // (axiom (=> (fuel_bool_default fuel%group) (and ... (fuel_bool_default fuel%member) ...)))
         let imply = mk_implies(&fuel_group, &mk_and(&member_fuels));
         let axiom = Arc::new(DeclX::Axiom(Axiom {
-            named: if cfg!(feature = "axiom-usage-info") {
+            named: if ctx.global.axiom_usage_info {
                 Some(fun_to_air_ident(&group.x.name))
             } else {
                 None
@@ -820,7 +820,7 @@ pub fn func_axioms_to_air(
                 };
                 // let axiom = mk_unnamed_axiom(fuel_imply);
                 let axiom = Arc::new(DeclX::Axiom(Axiom {
-                    named: if cfg!(feature = "axiom-usage-info") {
+                    named: if ctx.global.axiom_usage_info {
                         Some(fun_to_air_ident(&function.x.name))
                     } else {
                         None
