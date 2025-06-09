@@ -3117,10 +3117,14 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
             && !self.verifier.encountered_error
             && !self.verifier.encountered_vir_error
         {
+            let fns = if self.verifier.count_verified == 1 { "function" } else { "functions" };
+            let errs = if self.verifier.count_errors == 1 { "error" } else { "errors" };
             println!(
-                "verification results:: {} verified, {} errors{}",
+                "verification results:: {} verified {}, {} {}{}",
                 self.verifier.count_verified,
+                fns,
                 self.verifier.count_errors,
+                errs,
                 if !crate::driver::is_verifying_entire_crate(&self.verifier) {
                     " (partial verification with `--verify-*`)"
                 } else {

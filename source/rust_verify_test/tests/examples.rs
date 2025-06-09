@@ -94,7 +94,7 @@ fn run_example_for_file(file_path: &str) {
     );
 
     use regex::Regex;
-    let re = Regex::new(r"verification results:: (\d+) verified, (\d+) errors").unwrap();
+    let re = Regex::new(r"verification results:: (\d+) verified functions?, (\d+) errors?").unwrap();
     let stdout = std::str::from_utf8(&output.stdout).expect("invalid stdout encoding");
     let stderr = std::str::from_utf8(&output.stderr).expect("invalid stderr encoding").trim();
     let mut errors = Vec::new();

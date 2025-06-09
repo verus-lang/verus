@@ -208,10 +208,14 @@ pub fn print_verification_results(record: bool, verus_full_stdout: &Vec<u8>) {
         };
 
         if let Some((verified, errors, is_verifying_entire_crate)) = verification_results {
+            let fns = if verified == 1 { "function" } else { "functions" };
+            let errs = if errors == 1 { "error" } else { "errors" };
             println!(
-                "verification results:: {} verified, {} errors{}",
-                verified,
-                errors,
+                "verification results:: {} verified {}, {} {}{}",
+                self.verifier.count_verified,
+                fns,
+                self.verifier.count_errors,
+                errs,
                 if !is_verifying_entire_crate {
                     " (partial verification with `--verify-*`)"
                 } else {
