@@ -547,7 +547,7 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
             })),
             MonoidElt::OptionSome(e) => Some(Expr::Verbatim(quote_vstd! { vstd =>
                 #vstd::prelude::imply(
-                    (#cur).is_Some(),
+                    (#cur) is Some,
                     #vstd::prelude::equal((#cur).get_Some_0(), #e),
                 )
             })),
@@ -574,7 +574,7 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
         }
     } else {
         match elt {
-            MonoidElt::OptionSome(_e) => Some(Expr::Verbatim(quote! { (#cur).is_None() })),
+            MonoidElt::OptionSome(_e) => Some(Expr::Verbatim(quote! { (#cur) is None })),
             MonoidElt::SingletonKV(key, _val) => {
                 Some(Expr::Verbatim(quote! { !(#cur).dom().contains(#key) }))
             }
@@ -586,7 +586,7 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
                     let ty = get_opt_type(stype);
                     Some(Expr::Verbatim(quote_vstd! { vstd =>
                         #vstd::state_machine_internal::opt_is_none::<#ty>(#e)
-                          || (#cur).is_None()
+                          || (#cur) is None
                     }))
                 }
 
@@ -740,9 +740,9 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
             let pat = pat_opt.as_ref().unwrap();
             if !is_definitely_irrefutable(pat) {
                 let e = expr_matches(&Expr::Verbatim(quote! { (#cur).get_Some_0() }), pat);
-                Expr::Verbatim(quote! { (#cur).is_Some() && (#e) })
+                Expr::Verbatim(quote! { (#cur) is Some && (#e) })
             } else {
-                Expr::Verbatim(quote! { (#cur).is_Some() })
+                Expr::Verbatim(quote! { (#cur) is Some })
             }
         }
         MonoidElt::OptionSome(Some(e)) => {
