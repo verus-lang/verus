@@ -4,6 +4,7 @@
 use builtin::*;
 #[allow(unused_imports)]
 use builtin_macros::*;
+#[allow(unused_imports)]
 use vstd::prelude::*;
 
 verus! {
@@ -28,7 +29,7 @@ fn modify_y(a: &mut u32)
 
 fn mutable_example()
 {
-    let y: u32 = 1;
+    let mut y: u32 = 1;
     assert(y == 1);
     modify_y(&mut y);
     assert(y == 2);
