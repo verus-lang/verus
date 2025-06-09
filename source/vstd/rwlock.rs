@@ -556,7 +556,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
                 returning res;
                 ghost g =>
             {
-                if res.is_Ok() {
+                if res is Ok {
                     token = Option::Some(self.inst.borrow().acquire_exc_start(&mut g));
                 }
             });
@@ -644,7 +644,7 @@ impl<V, Pred: RwLockPredicate<V>> RwLock<V, Pred> {
                     returning res;
                     ghost g =>
                 {
-                    if res.is_Ok() {
+                    if res is Ok {
                         token = Option::Some(self.inst.borrow().acquire_read_start(&mut g));
                     }
                 });
