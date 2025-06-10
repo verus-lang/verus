@@ -1014,6 +1014,7 @@ impl Verifier {
         desc_prefix: Option<&str>,
         default_prover_failed_assert_ids: &mut Vec<AssertId>,
     ) -> RunCommandQueriesResult {
+        dbg!(function_name);
         let user_filter = self.user_filter.as_ref().unwrap();
         let includes_function = user_filter.includes_function(function_name);
         if !includes_function {
