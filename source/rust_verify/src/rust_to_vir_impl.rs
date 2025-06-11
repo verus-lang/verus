@@ -555,7 +555,6 @@ pub(crate) fn collect_external_trait_impls<'tcx>(
         }
     }
 
-
     // Next, collect all possible new implementations of traits known to Verus:
     let mut auto_import_impls: Vec<DefId> = Vec::new();
     for trait_id in all_trait_ids {
