@@ -4,6 +4,8 @@ use super::prelude::*;
 verus! {
 
 #[cfg(verus_keep_ghost)]
+use super::arithmetic::power::pow;
+#[cfg(verus_keep_ghost)]
 use super::arithmetic::power2::{
     pow2,
     lemma_pow2_unfold,
@@ -46,6 +48,7 @@ macro_rules! lemma_shr_is_div {
             reveal(pow2);
             if shift == 0 {
                 assert(x >> 0 == x) by (bit_vector);
+                reveal(pow);
                 assert(pow2(0) == 1) by (compute_only);
             } else {
                 assert(x >> shift == (x >> ((sub(shift, 1)) as $uN)) / 2) by (bit_vector)

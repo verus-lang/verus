@@ -66,6 +66,7 @@ pub broadcast proof fn lemma_pow2_unfold(e: nat)
     ensures
         #[trigger] pow2(e) == 2 * pow2((e - 1) as nat),
 {
+    reveal(pow);
     lemma_pow2(e);
     lemma_pow2((e - 1) as nat);
 }
