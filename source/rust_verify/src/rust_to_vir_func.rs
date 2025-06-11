@@ -17,7 +17,7 @@ use rustc_hir::{
 };
 use rustc_middle::ty::{
     AdtDef, BoundRegion, BoundRegionKind, BoundVar, Clause, ClauseKind, GenericArgKind,
-    GenericArgsRef, PseudoCanonicalInput, Region, TraitRef, TypingEnv, TyCtxt, TyKind, ValTreeKind, Value
+    GenericArgsRef, Region, TypingEnv, TyCtxt, TyKind, ValTreeKind, Value
 };
 use rustc_span::Span;
 use rustc_span::def_id::DefId;
@@ -1721,7 +1721,7 @@ pub(crate) fn remove_ignored_trait_bounds_from_predicates<'tcx>(
     preds: &mut Vec<Clause<'tcx>>,
 ) {
     use rustc_middle::ty;
-    use rustc_middle::ty::{ConstKind, ScalarInt, ValTree};
+    use rustc_middle::ty::{ConstKind, ScalarInt};
     let tcx = ctxt.tcx;
     preds.retain(|p: &Clause<'tcx>| match p.kind().skip_binder() {
         rustc_middle::ty::ClauseKind::<'tcx>::Trait(tp) => {

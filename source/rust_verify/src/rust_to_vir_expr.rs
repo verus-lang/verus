@@ -251,11 +251,6 @@ pub(crate) fn patexpr_to_vir<'tcx>(
 ) -> Result<PatternX, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let mk_expr = move |x: ExprX| bctx.spanned_typed_new(pat.span, pat_typ, x);
-    let mk_lit_int = |in_negative_literal: bool, i: u128, typ: &Typ| -> Result<ExprX, VirErr> {
-        check_lit_int(&bctx.ctxt, pat.span, in_negative_literal, i, typ)?;
-        let c = vir::ast_util::const_int_from_u128(i);
-        Ok(ExprX::Const(c))
-    };
     match pat_expr.kind {
         // TODO(1.86.0): this duplicates the Lit case in expr_to_vir_innermost
         PatExprKind::Lit {
@@ -266,7 +261,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                 Ok(PatternX::Expr(mk_expr(ExprX::Const(c))))
             }
             LitKind::Int(i, _) => {
-                // TODO: do we need to call check_lit_int here?
+                check_lit_int(&bctx.ctxt, pat.span, negated, i.get(), pat_typ)?;
                 let mut big_int = num_bigint::BigInt::from(i.get());
                 if negated {
                     big_int = -1 * big_int;
@@ -303,7 +298,7 @@ pub(crate) fn patexpr_to_vir<'tcx>(
                     Ok(PatternX::Expr(expr))
                 }
                 Res::Err => {
-                    panic!(format!("Couldn't resolve {qpath:#?}"));
+                    err_span(span, format!("Couldn't resolve {qpath:#?}"))
                 }
                 _ => match resolve_ctor(bctx.ctxt.tcx, res) {
                     Some((ctor, CtorKind::Const)) => {
@@ -427,8 +422,7 @@ fn get_adt_res<'tcx>(
             (struct_did, variant_def, false, adt_def.is_union())
         }
         _ => {
-            // crate::internal_err!(span, format!("got unexpected Res trying to resolve constructor {res:#?}"))
-            panic!(format!("got unexpected Res trying to resolve constructor {res:#?}"))
+            crate::internal_err!(span, format!("got unexpected Res trying to resolve constructor {res:#?}"))
         }
     };
 
