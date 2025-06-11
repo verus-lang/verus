@@ -28,12 +28,15 @@ impl<T: DeepView> DeepView for Option<T> {
 
 ////// Add is_variant-style spec functions
 pub trait OptionAdditionalFns<T>: Sized {
+    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_Some(&self) -> bool;
 
+    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn get_Some_0(&self) -> T;
 
+    #[deprecated(note = "is_Variant is deprecated - use `->` or `matches` instead: https://verus-lang.github.io/verus/guide/datatypes_enum.html")]
     #[allow(non_snake_case)]
     spec fn is_None(&self) -> bool;
 
@@ -43,26 +46,29 @@ pub trait OptionAdditionalFns<T>: Sized {
     #[allow(non_snake_case)]
     spec fn arrow_0(&self) -> T;
 
+    /// Auxilliary spec function for the spec of `tracked_unwrap`, `tracked_borrow`, and `tracked_take`.
+    spec fn tracked_is_some(&self) -> bool;
+
     proof fn tracked_unwrap(tracked self) -> (tracked t: T)
         requires
-            self.is_Some(),
+            self.tracked_is_some(),
         ensures
-            t == self.get_Some_0(),
+            t == self->0,
     ;
 
     proof fn tracked_borrow(tracked &self) -> (tracked t: &T)
         requires
-            self.is_Some(),
+            self.tracked_is_some(),
         ensures
-            t == self.get_Some_0(),
+            t == self->0,
     ;
 
     proof fn tracked_take(tracked &mut self) -> (tracked t: T)
         requires
-            old(self).is_Some(),
+            old(self).tracked_is_some(),
         ensures
-            t == old(self).get_Some_0(),
-            self.is_None(),
+            t == old(self)->0,
+            !self.tracked_is_some(),
     ;
 }
 
@@ -90,6 +96,10 @@ impl<T> OptionAdditionalFns<T> for Option<T> {
     #[verifier::inline]
     open spec fn arrow_0(&self) -> T {
         get_variant_field(self, "Some", "0")
+    }
+
+    open spec fn tracked_is_some(&self) -> bool {
+        is_variant(self, "Some")
     }
 
     proof fn tracked_unwrap(tracked self) -> (tracked t: T) {
@@ -142,23 +152,23 @@ pub assume_specification<T>[ Option::<T>::is_none ](option: &Option<T>) -> (b: b
 // as_ref
 pub assume_specification<T>[ Option::<T>::as_ref ](option: &Option<T>) -> (a: Option<&T>)
     ensures
-        a.is_Some() <==> option.is_Some(),
-        a.is_Some() ==> option.get_Some_0() == a.get_Some_0(),
+        a is Some <==> option is Some,
+        a is Some ==> option->0 == a->0,
 ;
 
 // unwrap
 #[verifier::inline]
 pub open spec fn spec_unwrap<T>(option: Option<T>) -> T
     recommends
-        option.is_Some(),
+        option is Some,
 {
-    option.get_Some_0()
+    option->0
 }
 
 #[verifier::when_used_as_spec(spec_unwrap)]
 pub assume_specification<T>[ Option::<T>::unwrap ](option: Option<T>) -> (t: T)
     requires
-        option.is_Some(),
+        option is Some,
     ensures
         t == spec_unwrap(option),
 ;
