@@ -194,8 +194,20 @@ impl<A, const FINITE: bool> GSet<A, FINITE> {
 
 pub broadcast proof fn lemma_set_map_contains<A, const FINITE: bool, B>(s: GSet<A, FINITE>, f: spec_fn(A) -> B)
 ensures
-    #![trigger(s.map(f))]
+    #![trigger s.map(f)]
     forall |y| s.map(f).contains(y) <==> (exists |x| s.contains(x) && f(x) == y)
+{
+}
+
+pub broadcast proof fn lemma_set_map_subset<A, const FINITE1: bool, const FINITE2: bool, B>(
+    s1: GSet<A, FINITE1>,
+    s2: GSet<A, FINITE2>,
+    f: spec_fn(A) -> B)
+requires
+    s1.subset_of(s2)
+ensures
+    #![trigger s1.map(f), s2.map(f)]
+    s1.map(f).subset_of(s2.map(f))
 {
 }
 
@@ -1082,7 +1094,7 @@ pub broadcast proof fn lemma_set_remove_finite<A, const FINITE: bool>(s: GSet<A,
 }
 
 /// The union of two finite sets is finite.
-pub broadcast proof fn lemma_set_union_finite<A, const FINITE1: bool, const FINITE2: bool>(s1: GSet<A, FINITE1>, s2: GSet<A, FINITE2>)
+pub broadcast proof fn lemma_set_generic_union_finite<A, const FINITE1: bool, const FINITE2: bool>(s1: GSet<A, FINITE1>, s2: GSet<A, FINITE2>)
     requires
         s1.finite(),
         s2.finite(),
@@ -1106,8 +1118,19 @@ pub broadcast proof fn lemma_set_union_finite<A, const FINITE1: bool, const FINI
         s1.generic_union(s2).contains(a) ==> s1.contains(a) || s2.contains(a));
 }
 
+pub broadcast proof fn lemma_set_union_finite<A>(s1: ISet<A>, s2: ISet<A>)
+    requires
+        s1.finite(),
+        s2.finite(),
+ensures
+    #[trigger] s1.union(s2).finite()
+{
+    assert( s1.union(s2) == s1.generic_union(s2) );
+    lemma_set_generic_union_finite(s1, s2);
+}
+
 /// The intersection of two finite sets is finite.
-pub broadcast proof fn lemma_set_intersect_finite<A, const FINITE1: bool, const FINITE2: bool>(s1: GSet<A, FINITE1>, s2: GSet<A, FINITE2>)
+pub broadcast proof fn lemma_set_generic_intersect_finite<A, const FINITE1: bool, const FINITE2: bool>(s1: GSet<A, FINITE1>, s2: GSet<A, FINITE2>)
     requires
         s1.finite() || s2.finite(),
     ensures
@@ -1118,8 +1141,16 @@ pub broadcast proof fn lemma_set_intersect_finite<A, const FINITE1: bool, const 
         s1.generic_intersect(s2).contains(a) ==> s1.contains(a) && s2.contains(a));
 }
 
+pub broadcast proof fn lemma_set_intersect_finite<A>(s1: ISet<A>, s2: ISet<A>)
+    requires
+        s1.finite() || s2.finite(),
+    ensures
+        #[trigger] s1.intersect(s2).finite(),
+{
+}
+
 /// The set difference between two finite sets is finite.
-pub broadcast proof fn lemma_set_difference_finite<A, const FINITE1: bool, const FINITE2: bool>(s1: GSet<A, FINITE1>, s2: GSet<A, FINITE2>)
+pub broadcast proof fn lemma_set_generic_difference_finite<A, const FINITE1: bool, const FINITE2: bool>(s1: GSet<A, FINITE1>, s2: GSet<A, FINITE2>)
     requires
         s1.finite(),
     ensures
@@ -1128,6 +1159,14 @@ pub broadcast proof fn lemma_set_difference_finite<A, const FINITE1: bool, const
     assert(forall|a|
         #![all_triggers]
         s1.generic_difference(s2).contains(a) ==> s1.contains(a) && !s2.contains(a));
+}
+
+pub broadcast proof fn lemma_set_difference_finite<A>(s1: ISet<A>, s2: ISet<A>)
+    requires
+        s1.finite(),
+    ensures
+        #[trigger] s1.difference(s2).finite(),
+{
 }
 
 /// An infinite set `s` contains the element `s.choose()`.
@@ -1373,14 +1412,18 @@ pub broadcast group group_set_lemmas {
     lemma_set_remove_finite,
 
     lemma_set_map_contains,
+    lemma_set_map_subset,
     lemma_set_map_finite,
     lemma_set_map_len,
     lemma_set_map_insert,
     lemma_set_int_range_ensures,
     lemma_mk_map_domain,
     lemma_mk_map_index,
+    lemma_set_generic_union_finite,
     lemma_set_union_finite,
+    lemma_set_generic_intersect_finite,
     lemma_set_intersect_finite,
+    lemma_set_generic_difference_finite,
     lemma_set_difference_finite,
     lemma_set_choose_infinite,
     lemma_set_empty_len,
