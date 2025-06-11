@@ -211,8 +211,8 @@ state_machine!{ RequireLetExample {
     // Equivalent to:
     transition!{
         add_1_alternative() {
-            require pre.x_opt.is_Some();
-            let x = pre.x_opt.get_Some_0();
+            require pre.x_opt is Some;
+            let x = pre.x_opt->0;
             update x_opt = Some(x + 1);
         }
     }

@@ -297,8 +297,8 @@ fn visit(graph: &ConcreteDirectedGraph, dfs_state: &mut DfsState, v: usize) -> (
     ensures
         res.0 ==> dfs_state.well_formed(graph),
         res.0 ==> equal(dfs_state.cur_stack@, old(dfs_state).cur_stack@),
-        res.0 ==> res.1@.is_Some() && res.1@.get_Some_0().instance_id() == dfs_state.instance@.id()
-            && res.1@.get_Some_0().element() == v,
+        res.0 ==> res.1@ is Some && res.1@->0.instance_id() == dfs_state.instance@.id()
+            && res.1@->0.element() == v,
         !res.0 ==> graph@.is_cycle(dfs_state.cycle@),
         equal(dfs_state.instance, old(dfs_state).instance),
 {

@@ -53,8 +53,8 @@ fn test_is_variant_2(v: Vehicle2<u64>)
 
 fn test_option(o: Option<u64>) -> (res: u64)
     ensures
-        res == if o.is_Some() {
-            o.get_Some_0()
+        res == if o is Some {
+            o->0
         } else {
             0
         },
@@ -67,8 +67,8 @@ fn test_option(o: Option<u64>) -> (res: u64)
 
 fn test_result<E>(r: Result<u64, E>) -> (res: u64)
     ensures
-        res == if r.is_Ok() {
-            r.get_Ok_0()
+        res == if r is Ok {
+            r->Ok_0
         } else {
             0
         },
