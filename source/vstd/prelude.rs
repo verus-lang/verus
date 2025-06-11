@@ -6,12 +6,10 @@ pub use crate::builtin::*;
 
 pub use builtin_macros::*;
 
-pub use super::map::map;
-pub use super::map::Map;
+pub use super::map::{map,imap,Map,IMap};
 pub use super::seq::seq;
 pub use super::seq::Seq;
-pub use super::set::set;
-pub use super::set::Set;
+pub use super::set::{set,iset,Set,ISet};
 pub use super::view::*;
 
 #[cfg(verus_keep_ghost)]
