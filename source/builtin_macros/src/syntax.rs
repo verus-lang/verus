@@ -2908,8 +2908,8 @@ impl Visitor {
             }
         } else if let Expr::Unary(unary) = expr {
             let span = unary.span();
-            match (is_inside_ghost, mode_block, &*unary.expr) {
-                (false, (false, _), Expr::Block(..)) => {
+            match (mode_block, &*unary.expr) {
+                ((false, _), Expr::Block(..)) => {
                     // proof { ... }
                     let mut inner = take_expr(&mut *unary.expr);
                     if self.inside_const {
@@ -2917,12 +2917,12 @@ impl Visitor {
                             quote_spanned!(span => {#[verus::internal(const_header_wrapper)] ||/* vattr */{#inner};}),
                         );
                     }
-                    *expr = self.maybe_erase_expr(
-                        span,
-                        Expr::Verbatim(
-                            quote_spanned!(span => #[verifier::proof_block] /* vattr */ #inner),
-                        ),
-                    );
+                    let e = if is_inside_ghost {
+                        quote_spanned!(span => #[verifier::proof_in_spec] /* vattr */ #inner)
+                    } else {
+                        quote_spanned!(span => #[verifier::proof_block] /* vattr */ #inner)
+                    };
+                    *expr = self.maybe_erase_expr(span, Expr::Verbatim(e));
                 }
                 _ => {
                     *expr = Expr::Verbatim(

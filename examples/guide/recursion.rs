@@ -332,8 +332,8 @@ spec fn ackermann(m: nat, n: nat) -> nat
 }
 
 proof fn test_ackermann() {
-    reveal_with_fuel(ackermann, 12);
-    assert(ackermann(3, 2) == 29);
+    reveal_with_fuel(ackermann, 9);
+    assert(ackermann(2, 3) == 9);
 }
 // ANCHOR_END: ackermann
 
@@ -490,6 +490,40 @@ proof fn example_decreases_to(s: Seq<int>)
     assert(decreases_to!(s => s.subrange(1, 3)));
 }
 // ANCHOR_END: example_decreases_to
+
+
+// ANCHOR: example_proof_in_spec
+spec fn floor_log2(n: u64) -> int 
+    decreases n
+{
+    if n <= 1 { 
+        0   
+    } else {
+        proof {
+          assert(n > 1 ==> (n >> 1) < n) by(bit_vector);
+        }
+        floor_log2(n >> 1) + 1 
+    }   
+}
+// ANCHOR_END: example_proof_in_spec
+
+// ANCHOR: example_proof_using_via
+spec fn floor_log2_via(n: u64) -> int 
+    decreases n
+    via floor_log2_decreases_proof
+{
+    if n <= 1 { 
+        0   
+    } else {
+        floor_log2_via(n >> 1) + 1 
+    }   
+}
+
+#[via_fn]
+proof fn floor_log2_decreases_proof(n: u64) {
+    assert(n > 1 ==> (n >> 1) < n) by(bit_vector);
+}
+// ANCHOR_END: example_proof_using_via
 
 fn main() {
 }
