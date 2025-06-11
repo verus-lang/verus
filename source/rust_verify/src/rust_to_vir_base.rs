@@ -14,7 +14,7 @@ use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_middle::ty::{Clause, ClauseKind, GenericParamDefKind};
 use rustc_middle::ty::{
     ConstKind, GenericArg, GenericArgKind, TermKind, TypeFoldable,
-    TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTree, ValTreeKind, Value
+    TypeFolder, TypeSuperFoldable, TypeVisitableExt, TypingMode, ValTreeKind, Value
 };
 use rustc_middle::ty::{TraitPredicate, TypingEnv};
 use rustc_span::Span;
@@ -22,7 +22,6 @@ use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::{Ident, kw};
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::sync::Arc;
 use vir::ast::{
     Dt, GenericBoundX, Idents, ImplPath, IntRange, IntegerTypeBitwidth, Mode, Path, PathX,

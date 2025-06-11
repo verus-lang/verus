@@ -2881,8 +2881,6 @@ pub(crate) struct VerifierCallbacksEraseMacro {
     /// end time of lifetime analysys
     pub(crate) lifetime_end_time: Option<Instant>,
     pub(crate) rustc_args: Vec<String>,
-    pub(crate) file_loader:
-        Option<Box<dyn 'static + rustc_span::source_map::FileLoader + Send + Sync>>,
     pub(crate) verus_externs: Option<VerusExterns>,
 }
 
@@ -3073,11 +3071,8 @@ impl rustc_driver::Callbacks for VerifierCallbacksEraseMacro {
                         // We could print them immediately, but instead,
                         // let's first run rustc's standard lifetime checking
                         // because the error messages are likely to be better.
-                        let file_loader =
-                            std::mem::take(&mut self.file_loader).expect("file_loader");
                         let compile_status = crate::driver::run_with_erase_macro_compile(
                             self.rustc_args.clone(),
-                            file_loader,
                             false,
                             self.verifier.args.vstd,
                         );
