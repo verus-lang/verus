@@ -3,7 +3,7 @@ use super::set::*;
 
 verus! {
 
-broadcast use super::set::group_set_axioms;
+broadcast use super::set::group_set_lemmas;
 /** Interface for PCM / Resource Algebra ghost state.
 
 RA-based ghost state is a well-established theory that is especially
@@ -99,14 +99,14 @@ pub open spec fn frame_preserving_update<P: PCM>(a: P, b: P) -> bool {
     forall|c| #![trigger P::op(a, c), P::op(b, c)] P::op(a, c).valid() ==> P::op(b, c).valid()
 }
 
-pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(a: P, bs: Set<P>) -> bool {
+pub open spec fn frame_preserving_update_nondeterministic<P: PCM>(a: P, bs: ISet<P>) -> bool {
     forall|c|
         #![trigger P::op(a, c)]
         P::op(a, c).valid() ==> exists|b| #[trigger] bs.contains(b) && P::op(b, c).valid()
 }
 
-pub open spec fn set_op<P: PCM>(s: Set<P>, t: P) -> Set<P> {
-    Set::new(|v| exists|q| s.contains(q) && v == P::op(q, t))
+pub open spec fn set_op<P: PCM>(s: ISet<P>, t: P) -> ISet<P> {
+    ISet::new(|v| exists|q| s.contains(q) && v == P::op(q, t))
 }
 
 impl<P: PCM> Resource<P> {
@@ -162,7 +162,7 @@ impl<P: PCM> Resource<P> {
         self.update_nondeterministic(new_values)
     }
 
-    pub axiom fn update_nondeterministic(tracked self, new_values: Set<P>) -> (tracked out: Self)
+    pub axiom fn update_nondeterministic(tracked self, new_values: ISet<P>) -> (tracked out: Self)
         requires
             frame_preserving_update_nondeterministic(self.value(), new_values),
         ensures
@@ -242,7 +242,7 @@ impl<P: PCM> Resource<P> {
     pub axiom fn update_nondeterministic_with_shared(
         tracked self,
         tracked other: &Self,
-        new_values: Set<P>,
+        new_values: ISet<P>,
     ) -> (tracked out: Self)
         requires
             self.loc() == other.loc(),

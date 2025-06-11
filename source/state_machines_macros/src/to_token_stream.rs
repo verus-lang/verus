@@ -1050,12 +1050,12 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
             Type::Verbatim(quote_spanned! { span => ::core::option::Option<#ty> })
         }
         ShardableType::Set(ty) | ShardableType::PersistentSet(ty) => {
-            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::set::Set<#ty> })
+            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::set::ISet<#ty> })
         }
         ShardableType::Map(key, val)
         | ShardableType::PersistentMap(key, val)
         | ShardableType::StorageMap(key, val) => {
-            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::map::Map<#key, #val> })
+            Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::map::IMap<#key, #val> })
         }
         ShardableType::Multiset(ty) => {
             Type::Verbatim(quote_spanned_vstd! { vstd, span => #vstd::multiset::Multiset<#ty> })
