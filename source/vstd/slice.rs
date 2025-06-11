@@ -139,18 +139,13 @@ pub broadcast group group_slice_axioms {
     axiom_slice_get_usize,
 }
 
-#[verifier::external_type_specification]
-#[verifier::accept_recursive_types(T)]
-#[verifier::external_body]
-pub struct ExIter<'a, T: 'a>(std::slice::Iter<'a, T>);
-
-impl<T> View for std::slice::Iter<'_, T> {
+impl<T> View for core::slice::Iter<'_, T> {
     type V = Seq<T>;
 
     uninterp spec fn view(&self) -> Seq<T>;
 }
 
-impl<T: DeepView> DeepView for std::slice::Iter<'_, T> {
+impl<T: DeepView> DeepView for core::slice::Iter<'_, T> {
     type V = Seq<T::V>;
 
     open spec fn deep_view(&self) -> Seq<T::V> {
